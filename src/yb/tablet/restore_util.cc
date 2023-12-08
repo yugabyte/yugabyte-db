@@ -15,12 +15,100 @@
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/doc_read_context.h"
 
+#include "yb/dockv/packed_value.h"
+#include "yb/dockv/value_packing_v2.h"
+
 #include "yb/rpc/lightweight_message.h"
 
 #include "yb/tablet/tablet_metadata.h"
 
 #include "yb/util/logging.h"
+
 namespace yb {
+
+namespace {
+
+void AddKeyValue(Slice key, Slice value, docdb::DocWriteBatch* write_batch) {
+  auto& pair = write_batch->AddRaw();
+  pair.key.assign(key.cdata(), key.size());
+  pair.value.assign(value.cdata(), value.size());
+}
+
+void AddEntry(
+    Slice key, dockv::PackedValueV1 value, DataType data_type, docdb::DocWriteBatch* write_batch) {
+  AddKeyValue(key, *value, write_batch);
+}
+
+void AddEntry(
+    Slice key, dockv::PackedValueV2 value, DataType data_type, docdb::DocWriteBatch* write_batch) {
+  auto ql_value = CHECK_RESULT(UnpackQLValue(value, data_type));
+  ValueBuffer buffer;
+  dockv::AppendEncodedValue(ql_value, &buffer);
+  AddKeyValue(key, buffer.AsSlice(), write_batch);
+}
+
+int64_t GetValue(const dockv::PrimitiveValue& value, int64_t* type) {
+  return value.GetInt64();
+}
+
+bool GetValue(const dockv::PrimitiveValue& value, bool* type) {
+  return value.GetBoolean();
+}
+
+template <class ValueType>
+Result<std::optional<ValueType>> GetColumnValuePacked(
+    tablet::TableInfo* table_info, Slice packed_value, const std::string& column_name) {
+  auto value_slice = packed_value;
+  RETURN_NOT_OK(dockv::ValueControlFields::Decode(&value_slice));
+  auto packed_row_version = dockv::GetPackedRowVersion(value_slice);
+  SCHECK(packed_row_version.has_value(), Corruption, "Packed row expected: $0",
+         packed_value.ToDebugHexString());
+  value_slice.consume_byte();
+  const dockv::SchemaPacking& packing = VERIFY_RESULT(
+      table_info->doc_read_context->schema_packing_storage.GetPacking(&value_slice));
+  auto column_id = VERIFY_RESULT(table_info->schema().ColumnIdByName(column_name));
+  auto index = packing.GetIndex(column_id);
+  if (index == dockv::SchemaPacking::kSkippedColumnIdx) {
+    return std::nullopt;
+  }
+  switch (*packed_row_version) {
+    case dockv::PackedRowVersion::kV1: {
+      dockv::PackedRowDecoderV1 decoder(packing, value_slice.data());
+      dockv::Value column_value;
+      RETURN_NOT_OK(column_value.Decode(*decoder.FetchValue(index)));
+      // Using nullptr cast for overload routing.
+      return GetValue(column_value.primitive_value(), static_cast<ValueType*>(nullptr));
+    }
+    case dockv::PackedRowVersion::kV2: {
+      dockv::PackedRowDecoderV2 decoder(packing, value_slice.data());
+      auto column_value = VERIFY_RESULT(dockv::UnpackPrimitiveValue(
+          decoder.FetchValue(index), packing.column_packing_data(index).data_type));
+      // Using nullptr cast for overload routing.
+      return GetValue(column_value, static_cast<ValueType*>(nullptr));
+    }
+  }
+  return UnexpectedPackedRowVersionStatus(*packed_row_version);
+}
+
+template <class ValueType>
+Result<std::optional<ValueType>> GetColumnValueNotPacked(
+    tablet::TableInfo* table_info, Slice value, const std::string& column_name,
+    const dockv::SubDocKey& decoded_sub_doc_key) {
+  SCHECK_EQ(decoded_sub_doc_key.subkeys().size(), 1U, Corruption, "Wrong number of subdoc keys");
+  const auto& first_subkey = decoded_sub_doc_key.subkeys()[0];
+  if (first_subkey.type() == dockv::KeyEntryType::kColumnId) {
+    auto column_id = first_subkey.GetColumnId();
+    const ColumnSchema& column = VERIFY_RESULT(table_info->schema().column_by_id(column_id));
+    if (column.name() == column_name) {
+      dockv::Value column_value;
+      RETURN_NOT_OK(column_value.Decode(value));
+      return GetValue(column_value.primitive_value(), static_cast<ValueType*>(nullptr));
+    }
+  }
+  return std::nullopt;
+}
+
+} // namespace
 
 Status FetchState::SetPrefix(const Slice& prefix) {
   if (prefix_.empty()) {
@@ -144,23 +232,43 @@ Status RestorePatch::ProcessExistingOnlyEntry(
     if (!subkey.empty()) {
       char type = subkey.consume_byte();
       if (dockv::IsColumnId(static_cast<dockv::KeyEntryType>(type))) {
-        Slice packed_value = last_packed_row_restoring_state_.value.AsSlice();
-        const dockv::SchemaPacking& packing = VERIFY_RESULT(
-            table_info_->doc_read_context->schema_packing_storage.GetPacking(&packed_value));
-        int64_t column_id_as_int64 = VERIFY_RESULT(util::FastDecodeSignedVarIntUnsafe(&subkey));
+        if (!last_packed_row_restoring_state_.decoder) {
+          Slice packed_value = last_packed_row_restoring_state_.value.AsSlice();
+          auto packed_row_version = *dockv::GetPackedRowVersion(
+              static_cast<dockv::ValueEntryType>(packed_value.consume_byte()));
+          const dockv::SchemaPacking& packing = VERIFY_RESULT(
+              table_info_->doc_read_context->schema_packing_storage.GetPacking(&packed_value));
+          switch (packed_row_version) {
+            case dockv::PackedRowVersion::kV1:
+              last_packed_row_restoring_state_.decoder.emplace(
+                  std::in_place_type_t<dockv::PackedRowDecoderV1>(), packing, packed_value.data());
+              break;
+            case dockv::PackedRowVersion::kV2:
+              last_packed_row_restoring_state_.decoder.emplace(
+                  std::in_place_type_t<dockv::PackedRowDecoderV2>(), packing, packed_value.data());
+              break;
+          }
+        }
+        int64_t column_id_as_int64 = VERIFY_RESULT(FastDecodeSignedVarIntUnsafe(&subkey));
         // Expect only one subkey.
         SCHECK_EQ(subkey.empty(), true, Corruption, "Only one subkey expected");
         ColumnId column_id;
         RETURN_NOT_OK(ColumnId::FromInt64(column_id_as_int64, &column_id));
-        auto value = packing.GetValue(column_id, packed_value);
         // Insert this column's packed row value.
-        if (value) {
+        return std::visit([this, column_id, existing_key](auto& decoder) {
+          auto index = decoder.packing().GetIndex(column_id);
+          if (index == dockv::SchemaPacking::kSkippedColumnIdx) {
+            return Status::OK();
+          }
+          auto value = decoder.FetchValue(index);
           VLOG_WITH_FUNC(1) << "Inserting key: " << existing_key.ToDebugHexString()
-                            << ", value: " << (*value).ToDebugHexString();
-          AddKeyValue(existing_key, *value, doc_batch_);
+                            << ", value: " << value->ToDebugHexString();
+          AddEntry(
+              existing_key, value, decoder.packing().column_packing_data(index).data_type,
+              doc_batch_);
           IncrementTicker(RestoreTicker::kInserts);
           return Status::OK();
-        }
+        }, *last_packed_row_restoring_state_.decoder);
       }
     }
   }
@@ -228,19 +336,15 @@ Status RestorePatch::TryUpdateLastPackedRow(const Slice& key, const Slice& value
                     << ", value: " << value.ToDebugHexString();
   auto value_slice = value;
   RETURN_NOT_OK(dockv::ValueControlFields::Decode(&value_slice));
-  if (value_slice.TryConsumeByte(dockv::ValueEntryTypeAsChar::kPackedRow)) {
+  auto value_type = dockv::DecodeValueEntryType(value_slice);
+  if (IsPackedRow(value_type)) {
     VLOG_WITH_FUNC(2) << "Packed row encountered in the restoring state. Key: "
                       << key.ToDebugHexString() << ", value: " << value.ToDebugHexString();
     last_packed_row_restoring_state_.key = key;
     last_packed_row_restoring_state_.value = value_slice;
+    last_packed_row_restoring_state_.decoder.reset();
   }
   return Status::OK();
-}
-
-void AddKeyValue(const Slice& key, const Slice& value, docdb::DocWriteBatch* write_batch) {
-  auto& pair = write_batch->AddRaw();
-  pair.key.assign(key.cdata(), key.size());
-  pair.value.assign(value.cdata(), value.size());
 }
 
 void WriteToRocksDB(
@@ -263,14 +367,6 @@ void WriteToRocksDB(
 
   tablet->WriteToRocksDB(
       &frontiers, &rocksdb_write_batch, docdb::StorageDbType::kRegular);
-}
-
-int64_t GetValue(const dockv::Value& value, int64_t* type) {
-  return value.primitive_value().GetInt64();
-}
-
-bool GetValue(const dockv::Value& value, bool* type) {
-  return value.primitive_value().GetBoolean();
 }
 
 Result<std::optional<int64_t>> GetInt64ColumnValue(

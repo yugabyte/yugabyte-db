@@ -34,6 +34,7 @@
 
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_heartbeat.pb.h"
+#include "yb/master/sys_catalog_constants.h"
 
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/rpc_context.h"
@@ -180,6 +181,19 @@ void GetTablePartitionList(const client::YBTablePtr& table, PgTablePartitionsPB*
     *partition_keys->Add() = key;
   }
   partition_list->set_version(table_partition_list->version);
+}
+
+void AddTransactionInfo(
+    PgGetActiveTransactionListResponsePB* out, const PgClientSessionLocker& locker) {
+  auto& session = *locker;
+  const auto* txn_id = session.GetTransactionId();
+  if (!txn_id) {
+    return;
+  }
+
+  auto& entry = *out->add_entries();
+  entry.set_session_id(session.id());
+  txn_id->AsSlice().CopyToBuffer(entry.mutable_txn_id());
 }
 
 } // namespace
@@ -485,6 +499,10 @@ class PgClientServiceImpl::Impl {
       auto& node_entry = (*resp->mutable_transactions_by_node())[old_txn->host_node_uuid()];
       node_entry.add_transaction_ids(txn_id);
       for (const auto& tablet_id : old_txn->tablets()) {
+        // DDL statements might have master tablet as one of their involved tablets, skip it.
+        if (tablet_id == master::kSysCatalogTabletId) {
+          continue;
+        }
         auto& tablet_entry = (*lock_status_req.mutable_transactions_by_tablet())[tablet_id];
         auto* transaction = tablet_entry.add_transactions();
         transaction->set_id(txn_id);
@@ -574,8 +592,8 @@ class PgClientServiceImpl::Impl {
         RSTATUS_DCHECK(
             tablets.emplace(tablet_id).second, IllegalState,
             "Found tablet $0 more than once in PgGetLockStatusResponsePB", tablet_id);
-        for (auto& [txn, _] : lock_it->transaction_locks()) {
-          seen_transactions.insert(VERIFY_RESULT(TransactionId::FromString(txn)));
+        for (auto& txn : lock_it->transaction_locks()) {
+          seen_transactions.insert(VERIFY_RESULT(FullyDecodeTransactionId(txn.id())));
         }
         lock_it++;
       }
@@ -792,6 +810,27 @@ class PgClientServiceImpl::Impl {
       remote_tservers.push_back(VERIFY_RESULT(client().GetRemoteTabletServer(permanent_uuid)));
     }
     return remote_tservers;
+  }
+
+  Status GetActiveTransactionList(
+      const PgGetActiveTransactionListRequestPB& req, PgGetActiveTransactionListResponsePB* resp,
+      rpc::RpcContext* context) {
+    if (req.has_session_id()) {
+      AddTransactionInfo(resp, VERIFY_RESULT(GetSession(req.session_id().value())));
+      return Status::OK();
+    }
+
+    decltype(sessions_) sessions_snapshot;
+    {
+      std::lock_guard lock(mutex_);
+      sessions_snapshot = sessions_;
+    }
+
+    for (const auto& session : sessions_snapshot) {
+      AddTransactionInfo(resp, PgClientSessionLocker(session));
+    }
+
+    return Status::OK();
   }
 
   Status CancelTransaction(const PgCancelTransactionRequestPB& req,

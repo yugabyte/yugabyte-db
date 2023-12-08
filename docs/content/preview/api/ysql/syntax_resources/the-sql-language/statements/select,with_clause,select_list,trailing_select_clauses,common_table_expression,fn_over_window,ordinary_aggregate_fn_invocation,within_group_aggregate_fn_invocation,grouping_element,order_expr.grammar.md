@@ -33,12 +33,12 @@ trailing_select_clauses ::= [ FROM { from_item [ , ... ] } ]
                               [ OF table_name [ , ... ] ] 
                               [ NOWAIT | SKIP LOCKED ] [ ... ] ]
 
-common_table_expression ::= name [ ( name [ , ... ] ) ] AS ( 
-                            { select
-                              | values
-                              | insert
-                              | update
-                              | delete } )
+common_table_expression ::= cte_name [ ( column_name [ , ... ] ) ] AS 
+                            ( { select
+                                | values
+                                | insert
+                                | update
+                                | delete } )
 
 fn_over_window ::= name  ( [ expression [ , ... ] | * ]  
                    [ FILTER ( WHERE boolean_expression ) ] OVER 

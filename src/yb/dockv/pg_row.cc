@@ -20,7 +20,9 @@
 
 #include "yb/dockv/doc_key.h"
 #include "yb/dockv/doc_kv_util.h"
+#include "yb/dockv/packed_value.h"
 #include "yb/dockv/reader_projection.h"
+#include "yb/dockv/value_packing.h"
 #include "yb/dockv/value_type.h"
 
 #include "yb/util/decimal.h"
@@ -95,20 +97,72 @@ size_t AppendString(Slice slice, ValueBuffer* buffer, bool append_zero) {
   return result;
 }
 
+bool IsNull(char value_type) {
+  return value_type == ValueEntryTypeAsChar::kNullLow ||
+         // Need to check tombstone case since we could have data from old releases that don't
+         // convert tombstone records to null during compaction.
+         value_type == ValueEntryTypeAsChar::kTombstone;
+}
+
+struct VisitDoDecodeValueV2 {
+  PackedValueV2 input;
+  PgValueDatum* value;
+  ValueBuffer* buffer;
+
+  Status Binary() const {
+    *value = AppendString(*input, buffer, false);
+    return Status::OK();
+  }
+
+  Status Decimal() const {
+    return String();
+  }
+
+  Status String() const {
+    *value = AppendString(*input, buffer, true);
+    return Status::OK();
+  }
+
+  template <class T>
+  Status Primitive() const {
+#ifdef IS_LITTLE_ENDIAN
+    *value = 0;
+    memcpy(value, input->data(), sizeof(T));
+    return Status::OK();
+#else
+    #error "Big endian not implemented"
+#endif
+  }
+};
+
+Status DoDecodeValueV2(
+    PackedValueV2 input, DataType data_type,
+    bool* is_null, PgValueDatum* value, ValueBuffer* buffer) {
+  if (input.IsNull()) {
+    *is_null = true;
+    return Status::OK();
+  }
+  *is_null = false;
+  VisitDoDecodeValueV2 visitor {
+    .input = input,
+    .value = value,
+    .buffer = buffer,
+  };
+  return VisitDataType(data_type, visitor);
+}
+
 Status DoDecodeValue(
     Slice slice, DataType data_type, bool* is_null, PgValueDatum* value, ValueBuffer* buffer) {
   RSTATUS_DCHECK(!slice.empty(), Corruption, "Cannot decode a value from an empty slice");
   auto original_start = slice.data();
 
-  const auto value_type = static_cast<ValueEntryType>(slice.consume_byte());
-  if (value_type == ValueEntryType::kNullLow ||
-      // Need to check tombstone case since we could have data from old releases that don't convert
-      // tombstone records to null during compaction.
-      value_type == ValueEntryType::kTombstone) {
+  const auto value_type_char = slice.consume_byte();
+  if (IsNull(value_type_char)) {
     *is_null = true;
     return Status::OK();
   }
 
+  const auto value_type = static_cast<ValueEntryType>(value_type_char);
   *is_null = false;
 
   switch (data_type) {
@@ -156,6 +210,313 @@ Status DoDecodeValue(
   RSTATUS_DCHECK(
       false, Corruption, "Wrong value type $0 in $1 OR unsupported datatype $2",
       value_type, Slice(original_start, slice.end()).ToDebugHexString(), data_type);
+}
+
+template <class T, bool kLast>
+void EncodePrimitive(const PgTableRow& row, WriteBuffer* buffer, const PgWireEncoderEntry* chain) {
+  auto index = chain->data;
+  if (PREDICT_FALSE(row.IsNull(index))) {
+    buffer->PushBack(1);
+    CallNextEncoder<kLast>(row, buffer, chain);
+    return;
+  }
+
+  auto datum = row.GetPrimitiveDatum(index);
+  auto value = LoadRaw<T, BigEndian>(&datum);
+  buffer->AppendWithPrefix(0, pointer_cast<const char*>(&value), sizeof(value));
+  CallNextEncoder<kLast>(row, buffer, chain);
+}
+
+template <bool kLast>
+void EncodeBinary(const PgTableRow& row, WriteBuffer* buffer, const PgWireEncoderEntry* chain) {
+  auto index = chain->data;
+  if (PREDICT_FALSE(row.IsNull(index))) {
+    buffer->PushBack(1);
+    CallNextEncoder<kLast>(row, buffer, chain);
+    return;
+  }
+
+  auto slice = row.GetVarlenSlice(index);
+  buffer->AppendWithPrefix(0, slice);
+  CallNextEncoder<kLast>(row, buffer, chain);
+}
+
+template <bool kLast>
+struct EncoderProvider {
+  template <class T>
+  PgWireEncoder Primitive() const {
+    return EncodePrimitive<T, kLast>;
+  }
+
+  PgWireEncoder Binary() const {
+    return EncodeBinary<kLast>;
+  }
+
+  PgWireEncoder String() const {
+    return Binary();
+  }
+
+  PgWireEncoder Decimal() const {
+    return Binary();
+  }
+};
+
+template <bool kLast>
+struct DecodeBoolColumn {
+  UnsafeStatus V1(
+      const PackedColumnDecoderData& data, size_t projection_index,
+      const PackedColumnDecoderEntry* chain, ValueEntryType value_type, Slice column_value) {
+    auto* row = static_cast<PgTableRow*>(data.context);
+    if (!column_value.empty()) {
+      return STATUS_FORMAT(
+          Corruption, "Non empty value for BOOL column", column_value.ToDebugHexString())
+          .UnsafeRelease();
+    }
+    if (value_type == ValueEntryType::kTrue) {
+      row->SetDatum(projection_index, 1);
+    } else if (value_type == ValueEntryType::kFalse) {
+      row->SetDatum(projection_index, 0);
+    } else {
+      return STATUS_FORMAT(
+          Corruption, "Unexpected value type for BOOL column: $0", value_type).UnsafeRelease();
+    }
+
+    return CallNextDecoder<kLast>(data, projection_index, chain);
+  }
+};
+
+template <bool kLast, class Decoder>
+struct DecodePgTableRow {
+  UnsafeStatus operator()(
+      const PackedColumnDecoderData& data, size_t projection_index,
+      const PackedColumnDecoderEntry* chain, Slice column_value) {
+    auto row = static_cast<PgTableRow*>(data.context);
+    auto value_type_char = column_value.consume_byte();
+    if (PREDICT_FALSE(IsNull(value_type_char))) {
+      row->SetNull(projection_index);
+      return CallNextDecoder<kLast>(data, projection_index, chain);
+    }
+    Decoder decoder;
+    return decoder(
+        data, projection_index, chain, static_cast<ValueEntryType>(value_type_char), column_value);
+  }
+};
+
+Result<const char*> StripHybridTime(const char* begin, const char* end) {
+  if (*begin == dockv::KeyEntryTypeAsChar::kHybridTime) {
+    ++begin;
+    return DocHybridTime::EncodedFromStart(begin, end);
+  }
+
+  auto status = STATUS_FORMAT(
+      Corruption, "Unexpected value type: $0", static_cast<ValueEntryType>(*begin));
+  RSTATUS_DCHECK_OK(status);
+  return status;
+}
+
+template <class T> struct GetValueType;
+
+template <>
+struct GetValueType<float> {
+  static constexpr ValueEntryType kValue = ValueEntryType::kFloat;
+};
+
+template <>
+struct GetValueType<int8_t> {
+  static constexpr ValueEntryType kValue = ValueEntryType::kInt32;
+};
+
+template <>
+struct GetValueType<int16_t> {
+  static constexpr ValueEntryType kValue = ValueEntryType::kInt32;
+};
+
+template <>
+struct GetValueType<int32_t> {
+  static constexpr ValueEntryType kValue = ValueEntryType::kInt32;
+};
+
+template <>
+struct GetValueType<uint32_t> {
+  static constexpr ValueEntryType kValue = ValueEntryType::kUInt32;
+};
+
+template <>
+struct GetValueType<double> {
+  static constexpr ValueEntryType kValue = ValueEntryType::kDouble;
+};
+
+template <>
+struct GetValueType<int64_t> {
+  static constexpr ValueEntryType kValue = ValueEntryType::kInt64;
+};
+
+template <>
+struct GetValueType<uint64_t> {
+  static constexpr ValueEntryType kValue = ValueEntryType::kUInt64;
+};
+
+template <class T>
+struct PrimitiveValueDecoder {
+  bool V1(PgTableRow* row, size_t projection_index, const char* begin, const char* end) const {
+    auto value_type = GetValueType<T>::kValue;
+    constexpr size_t kEncodedSize = sizeof(T) <= 4 ? 4 : 8;
+    if (PREDICT_FALSE(end - begin != 1 + kEncodedSize)) {
+      return false;
+    }
+    auto value_type_char = *begin;
+    if (PREDICT_FALSE(value_type_char != static_cast<char>(value_type))) {
+      return false;
+    }
+    ++begin;
+    if (kEncodedSize == 4) {
+      row->SetDatum(projection_index, BigEndian::Load32(begin));
+    } else {
+      row->SetDatum(projection_index, BigEndian::Load64(begin));
+    }
+    return true;
+  }
+
+  void V2(PgTableRow* row, size_t projection_index, const char* begin, const char* end) const {
+#ifdef IS_LITTLE_ENDIAN
+    PgValueDatum value = 0;
+    memcpy(&value, begin, sizeof(T));
+    row->SetDatum(projection_index, value);
+#else
+    #error "Big endian not implemented"
+#endif
+  }
+};
+
+template <>
+struct PrimitiveValueDecoder<bool> {
+  bool V1(PgTableRow* row, size_t projection_index, const char* begin, const char* end) const {
+    if (PREDICT_FALSE(end - begin != 1)) {
+      return false;
+    }
+    auto value_type_char = *begin;
+    if (value_type_char == ValueEntryTypeAsChar::kTrue) {
+      row->SetDatum(projection_index, 1);
+    } else if (value_type_char == ValueEntryTypeAsChar::kFalse) {
+      row->SetDatum(projection_index, 0);
+    } else {
+      return false;
+    }
+    return true;
+  }
+
+  void V2(PgTableRow* row, size_t projection_index, const char* begin, const char* end) const {
+    row->SetDatum(projection_index, *begin);
+  }
+};
+
+template <bool kAppendZero, char kValueType>
+struct BinaryValueDecoder {
+  bool V1(PgTableRow* row, size_t projection_index, const char* begin, const char* end) const {
+    if (PREDICT_FALSE(begin == end)) {
+      return false;
+    }
+    if (PREDICT_FALSE(*begin != kValueType)) {
+      return false;
+    }
+    row->SetBinary(projection_index, Slice(++begin, end), kAppendZero);
+    return true;
+  }
+
+  void V2(PgTableRow* row, size_t projection_index, const char* begin, const char* end) const {
+    row->SetBinary(projection_index, Slice(begin, end), kAppendZero);
+  }
+};
+
+template <bool kLast, class Decoder>
+UnsafeStatus DoDecodePackedColumn(
+    const PackedColumnDecoderData& data, size_t projection_index,
+    const PackedColumnDecoderEntry* chain, const char* begin, const char* end) {
+  auto* row = static_cast<PgTableRow*>(data.context);
+  Decoder decoder;
+  if (decoder.V1(row, projection_index, begin, end)) {
+    return CallNextDecoder<kLast>(data, projection_index, chain);
+  }
+
+  if (PREDICT_FALSE(begin == end)) {
+    row->SetNull(projection_index);
+    return CallNextDecoder<kLast>(data, projection_index, chain);
+  }
+
+  auto value_type_char = *begin;
+  if (IsNull(value_type_char)) {
+    row->SetNull(projection_index);
+    return CallNextDecoder<kLast>(data, projection_index, chain);
+  }
+
+  auto result = StripHybridTime(begin, end);
+  if (!result.ok()) {
+    return result.status().UnsafeRelease();
+  }
+  return DoDecodePackedColumn<kLast, Decoder>(data, projection_index, chain, *result, end);
+}
+
+template <bool kLast, class Decoder>
+UnsafeStatus DoDecodePackedColumn(
+    const PackedColumnDecoderData& data, size_t projection_index,
+    const PackedColumnDecoderEntry* chain, PackedValueV1 value) {
+  return DoDecodePackedColumn<kLast, Decoder>(
+      data, projection_index, chain, value->cdata(), value->cend());
+}
+
+template <bool kLast, class Decoder>
+UnsafeStatus DoDecodePackedColumn(
+    const PackedColumnDecoderData& data, size_t projection_index,
+    const PackedColumnDecoderEntry* chain, PackedValueV2 value) {
+  auto* row = static_cast<PgTableRow*>(data.context);
+  if (PREDICT_FALSE(value.IsNull())) {
+    row->SetNull(projection_index);
+    return CallNextDecoder<kLast>(data, projection_index, chain);
+  }
+  Decoder decoder;
+  decoder.V2(row, projection_index, value->cdata(), value->cend());
+  return CallNextDecoder<kLast>(data, projection_index, chain);
+}
+
+template <class RowDecoder, bool kLast, class T>
+UnsafeStatus DecodePackedColumn(
+    const PackedColumnDecoderData& data, size_t projection_index,
+    const PackedColumnDecoderEntry* chain) {
+  auto column_value = static_cast<RowDecoder*>(data.decoder)->FetchValue(chain->data);
+  return DoDecodePackedColumn<kLast, T>(
+      data, projection_index, chain, column_value);
+}
+
+template <class RowDecoder, bool kLast>
+struct GetPackedColumnDecoderVisitor {
+  template <class T>
+  PackedColumnDecoder Primitive() const {
+    return DecodePackedColumn<RowDecoder, kLast, PrimitiveValueDecoder<T>>;
+  }
+
+  PackedColumnDecoder Binary() const {
+    return DecodePackedColumn<
+        RowDecoder, kLast, BinaryValueDecoder<false, ValueEntryTypeAsChar::kString>>;
+  }
+
+  PackedColumnDecoder String() const {
+    return DecodePackedColumn<
+        RowDecoder, kLast, BinaryValueDecoder<true, ValueEntryTypeAsChar::kString>>;
+  }
+
+  PackedColumnDecoder Decimal() const {
+    return DecodePackedColumn<
+        RowDecoder, kLast, BinaryValueDecoder<true, ValueEntryTypeAsChar::kDecimal>>;
+  }
+};
+
+template <class RowDecoder>
+PackedColumnDecoder GetPackedColumnDecoder2(bool last, DataType data_type) {
+  if (last) {
+    return VisitDataType(data_type, GetPackedColumnDecoderVisitor<RowDecoder, true>());
+  } else {
+    return VisitDataType(data_type, GetPackedColumnDecoderVisitor<RowDecoder, false>());
+  }
 }
 
 } // namespace
@@ -326,24 +687,13 @@ std::optional<PgValue> PgTableRow::GetValueByIndex(size_t index) const {
   return PgValue(GetDatum(index));
 }
 
-void PgTableRow::AppendValueByIndex(size_t index, WriteBuffer* buffer) const {
-  if (is_null_[index]) {
-    const char kNullMark = 1;
-    buffer->Append(&kNullMark, 1);
-    return;
-  }
-
-  const auto fixed_size = FixedSize(projection_->columns[index].data_type);
-  if (fixed_size) {
-    auto big_endian_value = BigEndian::FromHost64(values_[index]);
-    Slice slice(pointer_cast<const uint8_t*>(&big_endian_value), 8);
-    buffer->AppendWithPrefix(0, slice.Suffix(fixed_size));
-    return;
-  }
-
-  const auto data = pointer_cast<const char*>(buffer_.data()) + values_[index];
-  const auto len = BigEndian::Load64(data);
-  buffer->AppendWithPrefix(0, data, len + 8);
+PgWireEncoderEntry PgTableRow::GetEncoder(size_t index, bool last) const {
+  auto data_type = projection_->columns[index].data_type;
+  return PgWireEncoderEntry {
+    .encoder = !last ? VisitDataType(data_type, EncoderProvider<false>())
+                     : VisitDataType(data_type, EncoderProvider<true>()),
+    .data = index,
+  };
 }
 
 std::optional<PgValue> PgTableRow::GetValueByColumnId(ColumnIdRep column_id) const {
@@ -367,17 +717,30 @@ void PgTableRow::Reset() {
   buffer_.clear();
 }
 
-void PgTableRow::SetNull() {
-  memset(is_null_.data(), 1, is_null_.size() * sizeof(is_null_[0]));
+Status PgTableRow::SetNullOrMissingResult(const Schema& schema) {
+  for (size_t i = 0; i != is_null_.size(); ++i) {
+    const auto& column_schema =
+        VERIFY_RESULT_REF(schema.column_by_id(projection_->columns[i].id));
+    const auto& missing_value = column_schema.missing_value();
+    RETURN_NOT_OK(SetValueByColumnIdx(i, missing_value));
+  }
+  return Status::OK();
 }
 
 void PgTableRow::SetNull(size_t column_idx) {
   is_null_[column_idx] = true;
 }
 
-Status PgTableRow::DecodeValue(size_t column_idx, Slice value) {
+Status PgTableRow::DecodeValue(size_t column_idx, PackedValueV1 value) {
   DCHECK_LT(column_idx, projection_->columns.size());
   return DoDecodeValue(
+      *value, projection_->columns[column_idx].data_type,
+      &is_null_[column_idx], &values_[column_idx], &buffer_);
+}
+
+Status PgTableRow::DecodeValue(size_t column_idx, PackedValueV2 value) {
+  DCHECK_LT(column_idx, projection_->columns.size());
+  return DoDecodeValueV2(
       value, projection_->columns[column_idx].data_type,
       &is_null_[column_idx], &values_[column_idx], &buffer_);
 }
@@ -393,6 +756,10 @@ PgValue PgTableRow::TrimString(size_t idx, size_t skip_prefix, size_t new_len) {
 
 Status PgTableRow::SetValue(ColumnId column_id, const QLValuePB& value) {
   const size_t idx = projection_->ColumnIdxById(column_id);
+  return SetValueByColumnIdx(idx, value);
+}
+
+Status PgTableRow::SetValueByColumnIdx(size_t idx, const QLValuePB& value) {
   if (yb::IsNull(value)) {
     is_null_[idx] = true;
     return Status::OK();
@@ -433,6 +800,17 @@ void PgTableRow::SetBinary(size_t column_idx, Slice value, bool append_zero) {
   is_null_[column_idx] = false;
   values_[column_idx] = buffer_.size();
   AppendString(value, &buffer_, append_zero);
+}
+
+PackedColumnDecoder PgTableRow::GetPackedColumnDecoder(
+    PackedRowVersion version, bool last, DataType data_type) {
+  switch (version) {
+    case PackedRowVersion::kV1:
+      return GetPackedColumnDecoder2<PackedRowDecoderV1>(last, data_type);
+    case PackedRowVersion::kV2:
+      return GetPackedColumnDecoder2<PackedRowDecoderV2>(last, data_type);
+  }
+  FATAL_INVALID_ENUM_VALUE(PackedRowVersion, version);
 }
 
 }  // namespace yb::dockv

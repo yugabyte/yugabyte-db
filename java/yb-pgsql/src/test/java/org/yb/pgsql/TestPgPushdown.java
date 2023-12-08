@@ -1370,11 +1370,14 @@ public class TestPgPushdown extends BasePgSQLTest {
   /** Ensure pushing down aggregate functions with variables (columns). */
   @Test
   public void aggregatesVar() throws Exception {
+    StringBuilder sb = new StringBuilder();
     for (String agg : Arrays.asList("COUNT", "SUM", "MAX", "MIN", "AVG")) {
       for (String column : Arrays.asList("id", "v")) {
-        new AggregatePushdownTester(String.format("%s(%s)", agg, column)).test();
+        sb.append(String.format("%s(%s),", agg, column));
       }
     }
+    // Pass all aggregates at once.  Make sure to remove the trailing comma.
+    new AggregatePushdownTester(sb.substring(0, sb.length() - 1)).test();
   }
 
   //
@@ -1723,22 +1726,27 @@ public class TestPgPushdown extends BasePgSQLTest {
             "CREATE TABLE %s (id int PRIMARY KEY, v int)",
             tableName));
         stmt.executeUpdate(String.format(
-            "CREATE INDEX %s ON %s (v, id)",
+            "CREATE INDEX %s ON %s (v ASC, id)",
             indexName, tableName));
         stmt.executeUpdate(String.format(
             "INSERT INTO %s ("
                 + "SELECT generate_series, generate_series + 1 FROM generate_series(1, %s)"
                 + ");",
             tableName, numRowsToInsert));
-        verifyPushdown(stmt, "" /* hint */);
-        verifyPushdown(stmt, String.format("/*+SeqScan(%s)*/", tableName));
-        verifyPushdown(stmt, String.format("/*+IndexOnlyScan(%s %s)*/", tableName, indexName));
+        verifyPushdown(stmt, "" /* hint */, null /* quals */);
+        verifyPushdown(stmt, String.format("/*+SeqScan(%s)*/", tableName), null /* quals */);
+        final String quals = String.format("v > %s", numRowsToInsert / 2);
+        verifyPushdown(
+            stmt, String.format("/*+IndexOnlyScan(%s %s)*/", tableName, indexName), quals);
+        verifyPushdown(stmt, String.format("/*+IndexScan(%s %s)*/", tableName, indexName), quals);
         stmt.executeUpdate(String.format("DROP TABLE %s", tableName));
       }
     }
 
-    private void verifyPushdown(Statement stmt, String hint) throws Exception {
-      String query = String.format("%s SELECT %s FROM %s", hint, optimizedExpr, tableName);
+    private void verifyPushdown(Statement stmt, String hint, String quals) throws Exception {
+      String query = String.format(
+            "%sSELECT %s FROM %s%s",
+            hint, optimizedExpr, tableName, (quals != null ? " WHERE " + quals : ""));
       verifyStatementMetric(
           stmt,
           query,

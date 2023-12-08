@@ -893,7 +893,8 @@ class GoogleCloudAdmin():
                 root_volume=root_vol.get("source") if root_vol else None,
                 root_volume_device_name=root_vol.get("deviceName") if root_vol else None,
                 instance_state=instance_state,
-                is_running=True if instance_state == "RUNNING" else False
+                is_running=True if instance_state == "RUNNING" else False,
+                metadata=data.get("metadata")
             )
             if not get_all:
                 return result
@@ -1064,6 +1065,30 @@ class GoogleCloudAdmin():
         except HttpError:
             logging.exception('Failed to get console output from {}'.format(instance_name))
             return ''
+
+    def update_boot_script(self, args, instance, boot_script):
+        metadata = instance['metadata']
+        # Get the current metadata 'items' list or initialize it if not present
+        current_items = metadata.get('items', [])
+
+        # Find the index of the 'startup-script' metadata item, or -1 if not found
+        startup_script_index = next((index for index, item in enumerate(current_items)
+                                     if item['key'] == 'startup-script'), -1)
+
+        # If the 'startup-script' metadata item exists, update the value;
+        # otherwise, append a new item
+        if startup_script_index != -1:
+            current_items[startup_script_index]['value'] = boot_script
+        else:
+            current_items.append({'key': 'startup-script', 'value': boot_script})
+
+        # Update the instance metadata with the new items list
+        self.compute.instances().setMetadata(
+            project=self.project,
+            zone=args.zone,
+            instance=instance['name'],
+            body={'fingerprint': metadata.get('fingerprint'), 'items': current_items}
+        ).execute()
 
     def modify_tags(self, args, instance, tags_to_set_str, tags_to_remove_str):
         tags_to_set = json.loads(tags_to_set_str) if tags_to_set_str is not None else {}

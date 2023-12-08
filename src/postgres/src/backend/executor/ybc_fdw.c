@@ -127,30 +127,50 @@ ybcGetForeignPaths(PlannerInfo *root,
 				   RelOptInfo *baserel,
 				   Oid foreigntableid)
 {
-	Cost startup_cost;
-	Cost total_cost;
+	if (yb_enable_base_scans_cost_model)
+	{
+		/* Create sequential scan path */
+		ForeignPath *seq_scan_path = create_foreignscan_path(root,
+													baserel,
+													NULL, /* default pathtarget */
+													baserel->rows,
+													0, /* startup_cost */
+													0, /* total_cost */
+													NIL,  /* no pathkeys */
+													baserel->lateral_relids,
+													NULL, /* no extra plan */
+													NULL  /* no options yet */);
+		
+		yb_cost_seqscan((Path*) seq_scan_path, root, baserel, NULL);
+		add_path(baserel, (Path*) seq_scan_path);
+	}
+	else
+	{
+		Cost startup_cost;
+		Cost total_cost;
+		
+		/* Estimate costs */
+		ybcCostEstimate(baserel, YBC_FULL_SCAN_SELECTIVITY,
+						false /* is_backwards scan */,
+						true /* is_seq_scan */,
+						false /* is_uncovered_idx_scan */,
+						&startup_cost,
+						&total_cost,
+						baserel->reltablespace /* index_tablespace_oid */);
 
-	/* Estimate costs */
-	ybcCostEstimate(baserel, YBC_FULL_SCAN_SELECTIVITY,
-					false /* is_backwards scan */,
-					true /* is_seq_scan */,
-					false /* is_uncovered_idx_scan */,
-					&startup_cost,
-					&total_cost,
-					baserel->reltablespace /* index_tablespace_oid */);
-
-	/* Create a ForeignPath node and it as the scan path */
-	add_path(baserel,
-			 (Path *) create_foreignscan_path(root,
-											  baserel,
-											  NULL, /* default pathtarget */
-											  baserel->rows,
-											  startup_cost,
-											  total_cost,
-											  NIL,  /* no pathkeys */
-											  baserel->lateral_relids,
-											  NULL, /* no extra plan */
-											  NULL  /* no options yet */ ));
+		/* Create a ForeignPath node and it as the scan path */
+		add_path(baserel,
+				 (Path *) create_foreignscan_path(root,
+												  baserel,
+												  NULL, /* default pathtarget */
+												  baserel->rows,
+												  startup_cost,
+												  total_cost,
+												  NIL,  /* no pathkeys */
+												  baserel->lateral_relids,
+												  NULL, /* no extra plan */
+												  NULL  /* no options yet */ ));
+	}
 
 	/* Add primary key and secondary index paths also */
 	create_index_paths(root, baserel);
@@ -275,8 +295,7 @@ ybcGetForeignPlan(PlannerInfo *root,
 							remote_colrefs,  /* fdw_private data (attribute types) */
 							NIL,             /* remote target list (none for now) */
 							remote_quals,
-							outer_plan,
-							best_path->path.yb_path_info);
+							outer_plan);
 }
 
 /* ------------------------------------------------------------------------- */
@@ -305,7 +324,6 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	Relation    relation     = node->ss.ss_currentRelation;
 
 	YbFdwExecState *ybc_state = NULL;
-	ForeignScan *foreignScan = castNode(ForeignScan, node->ss.ps.plan);
 
 	/* Do nothing in EXPLAIN (no ANALYZE) case.  node->fdw_state stays NULL. */
 	if (eflags & EXEC_FLAG_EXPLAIN_ONLY)
@@ -326,7 +344,7 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 	if (YBReadFromFollowersEnabled()) {
 		ereport(DEBUG2, (errmsg("Doing read from followers")));
 	}
-	if (foreignScan->scan.yb_lock_mechanism == YB_RANGE_LOCK_ON_SCAN)
+	if (XactIsoLevel == XACT_SERIALIZABLE)
 	{
 		/*
 		 * In case of SERIALIZABLE isolation level we have to take predicate locks to disallow
@@ -380,6 +398,7 @@ ybcSetupScanTargets(ForeignScanState *node)
 		YbDmlAppendTargetsAggregate(node->yb_fdw_aggrefs,
 									RelationGetDescr(ss->ss_currentRelation),
 									NULL /* index */,
+									false /* xs_want_itup */,
 									handle);
 
 		/*

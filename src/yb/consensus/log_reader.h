@@ -232,7 +232,7 @@ class LogReader {
   // Metrics
   scoped_refptr<Counter> bytes_read_;
   scoped_refptr<Counter> entries_read_;
-  scoped_refptr<Histogram> read_batch_latency_;
+  scoped_refptr<EventStats> read_batch_latency_;
 
   // The sequence of all current log segments in increasing sequence number order.
   SegmentSequence segments_;

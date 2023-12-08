@@ -60,6 +60,14 @@ class ClientMasterRpcBase : public rpc::Rpc {
     return master_admin_proxy();
   }
 
+  std::shared_ptr<master::MasterBackupProxy> master_backup_proxy() {
+    return client_data_->master_backup_proxy();
+  }
+
+  auto master_proxy_helper(const master::MasterBackupProxy*) {
+    return master_backup_proxy();
+  }
+
   std::shared_ptr<master::MasterClusterProxy> master_cluster_proxy() {
     return client_data_->master_cluster_proxy();
   }

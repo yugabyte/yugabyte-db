@@ -79,6 +79,9 @@ public class CustomerTask extends Model {
     @EnumValue("XCluster Configuration")
     XClusterConfig(true),
 
+    @EnumValue("Disaster Recovery Config")
+    DrConfig(true),
+
     @EnumValue("Universe Key")
     UniverseKey(true),
 
@@ -304,7 +307,10 @@ public class CustomerTask extends Model {
     ConfigureDBApisKubernetes,
 
     @EnumValue("CreateImageBundle")
-    CreateImageBundle;
+    CreateImageBundle,
+
+    @EnumValue("ReprovisionNode")
+    ReprovisionNode;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -439,6 +445,8 @@ public class CustomerTask extends Model {
           return completed ? "Configured DB APIs" : "Configuring DB APIs";
         case CreateImageBundle:
           return completed ? "Created" : "Creating";
+        case ReprovisionNode:
+          return completed ? "Reprovisioned" : "Reprovisioning";
         default:
           return null;
       }
@@ -468,6 +476,8 @@ public class CustomerTask extends Model {
           return "Reboot";
         case RestartUniverse:
           return "Restart";
+        case ReprovisionNode:
+          return "Re-provision";
         default:
           return toFriendlyTypeName();
       }

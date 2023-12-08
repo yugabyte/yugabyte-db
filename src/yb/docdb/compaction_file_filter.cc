@@ -158,7 +158,21 @@ unique_ptr<CompactionFileFilter> DocDBCompactionFileFilterFactory::CreateCompact
   const HybridTime filter_ht = clock_->Now();
   auto history_retention = retention_policy_->GetRetentionDirective();
   MonoDelta table_ttl = history_retention.table_ttl;
-  HybridTime history_cutoff = history_retention.history_cutoff;
+  // For the sys catalog tablet, the expiration time is never set
+  // since it does not have TTL so the chosen
+  // history cutoff does not matter since the files will never expire. For tablets
+  // on tserver, only the primary_cutoff_ht will be valid and that can
+  // be used to detect expiration. Still, to be safe here we simply take the minimum
+  // of both.
+  HybridTime history_cutoff = HybridTime::kMax;
+  if (history_retention.history_cutoff.cotables_cutoff_ht) {
+    history_cutoff.MakeAtMost(
+        history_retention.history_cutoff.cotables_cutoff_ht);
+  }
+  if (history_retention.history_cutoff.primary_cutoff_ht) {
+    history_cutoff.MakeAtMost(
+        history_retention.history_cutoff.primary_cutoff_ht);
+  }
   HybridTime min_kept_ht = HybridTime::kMax;
   const ExpiryMode mode = CurrentExpiryMode();
 

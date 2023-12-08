@@ -25,7 +25,7 @@ import org.yb.cdc.common.ExpectedRecordYSQL;
 import org.yb.cdc.common.HelperValues;
 import org.yb.cdc.util.CDCSubscriber;
 
-import org.yb.cdc.util.TestUtils;
+import org.yb.cdc.util.CDCTestUtils;
 import org.yb.YBTestRunner;
 
 import static org.yb.AssertionWrappers.*;
@@ -384,7 +384,7 @@ public class TestArrayTypes extends CDCBaseClass {
       CDCSubscriber txidSub = new CDCSubscriber("testtxid", getMasterAddresses());
       txidSub.createStream("proto");
 
-      TestUtils.runSqlScript(connection, "sql_datatype_script/complete_array_types.sql");
+      CDCTestUtils.runSqlScript(connection, "sql_datatype_script/complete_array_types.sql");
 
       ExpectedRecordYSQL<?> expectedRecordVarbit =
         new ExpectedRecordYSQL<>(1, "{1011,011101,1101110111}", Op.INSERT);

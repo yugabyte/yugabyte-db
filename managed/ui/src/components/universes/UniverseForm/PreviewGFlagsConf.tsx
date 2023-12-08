@@ -2,7 +2,8 @@ import { FC } from 'react';
 import { Box } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 import { YBTextarea } from '../../../redesign/components';
-import { CONST_VALUES, verifyLDAPAttributes } from '../../../utils/UniverseUtils';
+import { CONST_VALUES } from '../../../utils/UniverseUtils';
+import { isNonEmptyString } from '../../../utils/ObjectUtils';
 
 interface PreviewConfFormProps {
   formProps: any;
@@ -22,23 +23,32 @@ export const PreviewGFlagsConf: FC<PreviewConfFormProps> = ({
     serverType === 'TSERVER'
       ? formProps?.values?.tserverFlagDetails?.previewFlagValue ?? formProps?.values?.flagvalue
       : formProps?.values?.masterFlagDetails?.previewFlagValue ?? formProps?.values?.flagvalue;
+
+  const rows =
+    serverType === 'TSERVER'
+      ? formProps?.values?.tserverFlagDetails?.flagvalueobject
+      : formProps?.values?.masterFlagDetails?.flagvalueobject;
+
+  const filteredErrorRow = rows?.find((row: any) => isNonEmptyString(row?.errorMessageKey));
+  const errorMessageKey = filteredErrorRow?.errorMessageKey;
+  const isWarning = errorMessageKey === 'universeForm.gFlags.nonASCIIDetected';
+
   const previewConfValue =
     CONF_PREFIX +
     CONST_VALUES.SINGLE_QUOTES_SEPARATOR +
     flagValue +
     CONST_VALUES.SINGLE_QUOTES_SEPARATOR;
-  const { isAttributeInvalid, errorMessage, isWarning } = verifyLDAPAttributes(previewConfValue);
 
   return (
     <Box>
       <YBTextarea
-        minRows={9}
-        maxRows={15}
+        minRows={8}
+        maxRows={11}
         readOnly={true}
         value={previewConfValue}
-        error={isAttributeInvalid}
+        error={isNonEmptyString(errorMessageKey) && !isWarning}
         isWarning={isWarning}
-        message={t(errorMessage)}
+        message={t(errorMessageKey)}
       />
     </Box>
   );

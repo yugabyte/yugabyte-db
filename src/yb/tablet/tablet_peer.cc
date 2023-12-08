@@ -134,19 +134,19 @@ DECLARE_bool(enable_flush_retryable_requests);
 namespace yb {
 namespace tablet {
 
-METRIC_DEFINE_coarse_histogram(table, op_prepare_queue_length, "Operation Prepare Queue Length",
+METRIC_DEFINE_event_stats(table, op_prepare_queue_length, "Operation Prepare Queue Length",
                         MetricUnit::kTasks,
                         "Number of operations waiting to be prepared within this tablet. "
                         "High queue lengths indicate that the server is unable to process "
                         "operations as fast as they are being written to the WAL.");
 
-METRIC_DEFINE_coarse_histogram(table, op_prepare_queue_time, "Operation Prepare Queue Time",
+METRIC_DEFINE_event_stats(table, op_prepare_queue_time, "Operation Prepare Queue Time",
                         MetricUnit::kMicroseconds,
                         "Time that operations spent waiting in the prepare queue before being "
                         "processed. High queue times indicate that the server is unable to "
                         "process operations as fast as they are being written to the WAL.");
 
-METRIC_DEFINE_coarse_histogram(table, op_prepare_run_time, "Operation Prepare Run Time",
+METRIC_DEFINE_event_stats(table, op_prepare_run_time, "Operation Prepare Run Time",
                         MetricUnit::kMicroseconds,
                         "Time that operations spent being prepared in the tablet. "
                         "High values may indicate that the server is under-provisioned or "
@@ -377,13 +377,20 @@ Result<HybridTime> TabletPeer::PreparePeerRequest() {
     auto propagated_history_cutoff =
         tablet_->RetentionPolicy()->HistoryCutoffToPropagate(last_write_ht);
 
-    if (propagated_history_cutoff) {
+    if (propagated_history_cutoff.cotables_cutoff_ht ||
+        propagated_history_cutoff.primary_cutoff_ht) {
       VLOG_WITH_PREFIX(2) << "Propagate history cutoff: " << propagated_history_cutoff;
 
       auto operation = std::make_unique<HistoryCutoffOperation>(tablet_);
       auto request = operation->AllocateRequest();
-      request->set_history_cutoff(propagated_history_cutoff.ToUint64());
-
+      if (propagated_history_cutoff.primary_cutoff_ht) {
+        request->set_primary_cutoff_ht(
+            propagated_history_cutoff.primary_cutoff_ht.ToUint64());
+      }
+      if (propagated_history_cutoff.cotables_cutoff_ht) {
+        request->set_cotables_cutoff_ht(
+            propagated_history_cutoff.cotables_cutoff_ht.ToUint64());
+      }
       Submit(std::move(operation), leader_term);
     }
   }
@@ -528,7 +535,10 @@ void TabletPeer::CompleteShutdown(
   {
     std::lock_guard lock(lock_);
     strand_.reset();
-    retryable_requests_flusher_.reset();
+    if (retryable_requests_flusher_) {
+      retryable_requests_flusher_->Shutdown();
+      retryable_requests_flusher_.reset();
+    }
     // Release mem tracker resources.
     has_consensus_.store(false, std::memory_order_release);
     // Clear the consensus and destroy it outside the lock.
@@ -777,7 +787,7 @@ void TabletPeer::GetTabletStatusPB(TabletStatusPB* status_pb_out) {
   disk_size_info.ToPB(status_pb_out);
   // Set hide status of the tablet.
   status_pb_out->set_is_hidden(meta_->hidden());
-  status_pb_out->set_has_been_fully_compacted(meta_->has_been_fully_compacted());
+  status_pb_out->set_parent_data_compacted(meta_->parent_data_compacted());
 }
 
 Status TabletPeer::RunLogGC() {
@@ -1044,20 +1054,9 @@ Result<int64_t> TabletPeer::GetEarliestNeededLogIndex(std::string* details) cons
 Result<std::pair<OpId, HybridTime>> TabletPeer::GetOpIdAndSafeTimeForXReplBootstrap() const {
   auto tablet = VERIFY_RESULT(shared_tablet_safe());
 
-  if (tablet->table_type() == TableType::TRANSACTION_STATUS_TABLE_TYPE) {
-    // Transaction status tables do not have backup/restores, instead we need to bootstrap from the
-    // earliest required log record. This will be the CREATED\PENDING log record of the oldest
-    // active transaction.
-    auto index = VERIFY_RESULT(GetEarliestNeededLogIndex());
-    if (index > 0) {
-      index--;
-    }
-    // Term does not matter, so can be set to 0.
-
-    auto op_id = OpId(0, index);
-    auto bootstrap_time = VERIFY_RESULT(tablet->SafeTime(RequireLease::kTrue));
-    return std::make_pair(std::move(op_id), std::move(bootstrap_time));
-  }
+  SCHECK_NE(
+      tablet->table_type(), TableType::TRANSACTION_STATUS_TABLE_TYPE, IllegalState,
+      "Transaction status table cannot be bootstrapped.");
 
   auto op_id = GetLatestLogEntryOpId();
 
@@ -1712,6 +1711,16 @@ bool TabletPeer::TEST_HasRetryableRequestsOnDisk() {
   auto retryable_requests_flusher = shared_retryable_requests_flusher();
   return retryable_requests_flusher
       ? retryable_requests_flusher->TEST_HasRetryableRequestsOnDisk()
+      : false;
+}
+
+bool TabletPeer::TEST_IsFlushingRetryableRequests() {
+  if (!FlushRetryableRequestsEnabled()) {
+    return false;
+  }
+  auto retryable_requests_flusher = shared_retryable_requests_flusher();
+  return retryable_requests_flusher
+      ? retryable_requests_flusher->TEST_IsFlushing()
       : false;
 }
 

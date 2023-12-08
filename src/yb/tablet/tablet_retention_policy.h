@@ -22,7 +22,8 @@
 namespace yb {
 namespace tablet {
 
-using AllowedHistoryCutoffProvider = std::function<HybridTime(RaftGroupMetadata*)>;
+using AllowedHistoryCutoffProvider =
+    std::function<docdb::HistoryCutoff(RaftGroupMetadata*)>;
 
 // History retention policy used by a tablet. It is based on pending reads and a fixed retention
 // interval configured by the user.
@@ -39,14 +40,15 @@ class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
 
   // Tries to update history cutoff to proposed value, not allowing it to decrease.
   // Returns new committed history cutoff value.
-  HybridTime UpdateCommittedHistoryCutoff(HybridTime new_value);
+  docdb::HistoryCutoff UpdateCommittedHistoryCutoff(
+      docdb::HistoryCutoff new_value);
 
   // Returns history cutoff for propagation.
   // It is used at tablet leader while creating request for peer.
   // Invalid hybrid time is returned when history cutoff should not be propagated.
   // For instance it could happen if we already have big enough history cutoff or propagated it
   // recently.
-  HybridTime HistoryCutoffToPropagate(HybridTime last_write_ht);
+  docdb::HistoryCutoff HistoryCutoffToPropagate(HybridTime last_write_ht);
 
   // Register/Unregister a read operation, with an associated timestamp, for the purpose of
   // tracking the oldest read point.
@@ -57,11 +59,15 @@ class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
 
  private:
   bool ShouldRetainDeleteMarkersInMajorCompaction() const;
-  HybridTime EffectiveHistoryCutoff() REQUIRES(mutex_);
+  docdb::HistoryCutoff EffectiveHistoryCutoff() REQUIRES(mutex_);
 
   // Check proposed history cutoff against other restrictions (for instance min reading timestamp),
   // and returns most close value that satisfies them.
-  HybridTime SanitizeHistoryCutoff(HybridTime proposed_history_cutoff) REQUIRES(mutex_);
+  docdb::HistoryCutoff SanitizeHistoryCutoff(
+      docdb::HistoryCutoff proposed_history_cutoff) REQUIRES(mutex_);
+
+  void MakeAtLeast(docdb::HistoryCutoff value) REQUIRES(mutex_);
+  HybridTime GetEarliestAllowedReadHt() REQUIRES(mutex_);
 
   const std::string& LogPrefix() const {
     return log_prefix_;
@@ -75,7 +81,8 @@ class TabletRetentionPolicy : public docdb::HistoryRetentionPolicy {
   mutable std::mutex mutex_;
   // Set of active read timestamps.
   std::multiset<HybridTime> active_readers_ GUARDED_BY(mutex_);
-  HybridTime committed_history_cutoff_ GUARDED_BY(mutex_) = HybridTime::kMin;
+  docdb::HistoryCutoff committed_history_cutoff_information_ GUARDED_BY(mutex_)
+      = { HybridTime::kMin, HybridTime::kMin };
   CoarseTimePoint next_history_cutoff_propagation_ GUARDED_BY(mutex_) = CoarseTimePoint::min();
   int disable_counter_ GUARDED_BY(mutex_) = 0;
 };

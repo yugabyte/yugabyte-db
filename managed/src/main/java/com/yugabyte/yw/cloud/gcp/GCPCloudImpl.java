@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.cloud.gcp;
 
+import static com.google.common.collect.MoreCollectors.onlyElement;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
@@ -11,12 +12,14 @@ import com.google.api.services.compute.model.Backend;
 import com.google.api.services.compute.model.BackendService;
 import com.google.api.services.compute.model.ConnectionDraining;
 import com.google.api.services.compute.model.ForwardingRule;
+import com.google.api.services.compute.model.HTTPHealthCheck;
 import com.google.api.services.compute.model.HealthCheck;
 import com.google.api.services.compute.model.InstanceGroup;
 import com.google.api.services.compute.model.InstanceReference;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.CloudAPI;
+import com.yugabyte.yw.common.CloudUtil.Protocol;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -270,14 +273,28 @@ public class GCPCloudImpl implements CloudAPI {
     return backends;
   }
 
+  private Integer getPortForHealthCheck(HealthCheck healthCheck) {
+    Protocol healthCheckProtocol = Protocol.valueOf(healthCheck.getType());
+    switch (healthCheckProtocol) {
+      case TCP:
+        return healthCheck.getTcpHealthCheck().getPort();
+      case HTTP:
+        return healthCheck.getHttpHealthCheck().getPort();
+      default:
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
+            "Health check with protocol: " + healthCheckProtocol.name() + " not supported");
+    }
+  }
+
   /**
    * Check if the list of health checks need to be updated or not based on the list of protocols and
    * ports For now, only TCP healthchecks are supported
    *
    * @param apiClient GCP API client
    * @param region Region where the health checks exists
-   * @param protocol Protocol for the health checks
-   * @param port Port on which the health check is supposed to be present
+   * @param healthCheckConfiguration Health check configuration to be used while creating the health
+   *     checks
    * @param healthCheckUrls Existing health checks already present in the backend service
    * @return Updated list of health checks that should be associated with the backend service
    */
@@ -285,13 +302,19 @@ public class GCPCloudImpl implements CloudAPI {
   protected List<String> ensureHealthChecks(
       GCPProjectApiClient apiClient,
       String region,
-      String protocol,
-      Integer port,
+      NLBHealthCheckConfiguration healthCheckConfiguration,
       List<String> healthCheckUrls) {
     List<HealthCheck> healthChecks = new ArrayList();
+    Protocol healthCheckProtocol = healthCheckConfiguration.getHealthCheckProtocol();
+    // Since GCP currently allows configurtion of a single health check, only the first port from
+    // the list of ports is selected
+    Integer healthCheckPort = healthCheckConfiguration.getHealthCheckPorts().get(0);
     // This list will always either be empty or a singleton list as GCP doesn't allow multiple
     // health checks
     // However, we are not making that assumption here, to support future changes in the GCP API
+    if (healthCheckUrls == null) {
+      healthCheckUrls = new ArrayList();
+    }
     for (String healthCheckUrl : healthCheckUrls) {
       String healthCheckName = CloudAPI.getResourceNameFromResourceUrl(healthCheckUrl);
       healthChecks.add(apiClient.getRegionalHelathCheckByName(region, healthCheckName));
@@ -300,17 +323,62 @@ public class GCPCloudImpl implements CloudAPI {
     Set<Integer> portsWithHealthCheck =
         new HashSet(
             healthChecks.stream()
-                .map(hc -> hc.getTcpHealthCheck().getPort())
+                .filter(hc -> hc.getType().equals(healthCheckProtocol.name()))
+                .map(hc -> getPortForHealthCheck(hc))
                 .collect(Collectors.toList()));
-    if (!portsWithHealthCheck.contains(port)) {
-      log.debug("Creating new health checks on port " + port);
+    if (!portsWithHealthCheck.contains(healthCheckPort)) {
+      log.debug("Creating new health checks on port " + healthCheckPort);
       try {
-        newHealthCheckUrls.add(apiClient.createNewHealthCheckForPort(region, protocol, port));
+        String newHealthCheckUrl = "";
+        switch (healthCheckProtocol) {
+          case TCP:
+            newHealthCheckUrl = apiClient.createNewTCPHealthCheckForPort(region, healthCheckPort);
+            break;
+          case HTTP:
+            newHealthCheckUrl =
+                apiClient.createNewHTTPHealthCheckForPort(
+                    region,
+                    healthCheckPort,
+                    healthCheckConfiguration.getHealthCheckPortsToPathsMap().get(healthCheckPort));
+            break;
+        }
+        newHealthCheckUrls.add(newHealthCheckUrl);
         return newHealthCheckUrls;
       } catch (IOException e) {
         log.error(e.getMessage());
         throw new PlatformServiceException(
-            INTERNAL_SERVER_ERROR, "Failed to create new health check on port " + port);
+            INTERNAL_SERVER_ERROR, "Failed to create new health check on port " + healthCheckPort);
+      }
+    } else {
+      // Because of the filter applied while creating the portsWithHealthCheck set, this we are sure
+      // that type of health check would always be correct
+      // Only in case of HTTP health checks, we need to check the path as well
+      if (healthCheckProtocol == Protocol.HTTP) {
+        HealthCheck existingHealthCheckToCheck =
+            healthChecks.stream()
+                .filter(hc -> getPortForHealthCheck(hc).equals(healthCheckPort))
+                .collect(onlyElement());
+        HTTPHealthCheck httpHealthCheck = existingHealthCheckToCheck.getHttpHealthCheck();
+        if (!httpHealthCheck
+            .getRequestPath()
+            .equals(
+                healthCheckConfiguration.getHealthCheckPortsToPathsMap().get(healthCheckPort))) {
+          try {
+            httpHealthCheck =
+                httpHealthCheck.setRequestPath(
+                    healthCheckConfiguration.getHealthCheckPortsToPathsMap().get(healthCheckPort));
+            existingHealthCheckToCheck =
+                existingHealthCheckToCheck.setHttpHealthCheck(httpHealthCheck);
+            String updatedHealthCheck =
+                apiClient.updateHealthCheck(region, existingHealthCheckToCheck);
+            newHealthCheckUrls.add(updatedHealthCheck);
+            return newHealthCheckUrls;
+          } catch (Exception e) {
+            log.error(e.getMessage());
+            throw new PlatformServiceException(
+                INTERNAL_SERVER_ERROR, "Failed to update health check on port " + healthCheckPort);
+          }
+        }
       }
     }
     return healthCheckUrls;
@@ -352,11 +420,18 @@ public class GCPCloudImpl implements CloudAPI {
       String regionCode,
       String lbName,
       Map<AvailabilityZone, Set<NodeID>> azToNodeIDs,
-      List<Integer> ports,
+      List<Integer> portsToForward,
       NLBHealthCheckConfiguration healthCheckConfig) {
-    String protocol = healthCheckConfig.getHealthCheckProtocol().toString();
     GCPProjectApiClient apiClient = new GCPProjectApiClient(runtimeConfGetter, provider);
-    manageNodeGroup(provider, regionCode, lbName, azToNodeIDs, protocol, ports, apiClient);
+    manageNodeGroup(
+        provider,
+        regionCode,
+        lbName,
+        azToNodeIDs,
+        "TCP",
+        portsToForward,
+        healthCheckConfig,
+        apiClient);
   }
 
   /**
@@ -368,8 +443,11 @@ public class GCPCloudImpl implements CloudAPI {
    * @param regionCode the region code.
    * @param lbName the load balancer name.
    * @param nodeIDs the DB node IDs (name, uuid).
-   * @param protocol the listening protocol. (Only TCP supported for now)
-   * @param ports the listening ports enabled (YSQL, YCQL, YEDIS).
+   * @param lbProtocol the protocol that lb would be listenting and forwarding packets for. (Only
+   *     TCP supported for now)
+   * @param portsToForward the listening ports to be forwarded by the load balancer (eg: YSQL port,
+   *     YCQL port, YEDIS port).
+   * @param healthCheckConfigurationn configuration to be used when setting up health checks
    * @param apiClient client object to make requests to the Google compute platform
    */
   @VisibleForTesting
@@ -378,15 +456,16 @@ public class GCPCloudImpl implements CloudAPI {
       String regionCode,
       String lbName,
       Map<AvailabilityZone, Set<NodeID>> azToNodeIDs,
-      String protocol,
-      List<Integer> ports,
+      String lbProtocol,
+      List<Integer> portsToForward,
+      NLBHealthCheckConfiguration healthCheckConfiguration,
       GCPProjectApiClient apiClient) {
     String backendServiceName = lbName;
-    if (!protocol.equals("TCP")) {
+    if (!lbProtocol.equals("TCP")) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Currently only TCP load balancers are supported.");
     }
-    if (ports.isEmpty()) {
+    if (portsToForward.isEmpty()) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Load balancer must be configured for atleast one port");
     }
@@ -400,15 +479,11 @@ public class GCPCloudImpl implements CloudAPI {
       backends = ensureBackends(apiClient, nodeAzMap, backends);
       backendService.setConnectionDraining((new ConnectionDraining()).setDrainingTimeoutSec(3600));
       backendService.setBackends(backends);
-      if (!backendService.getProtocol().equals(protocol)) {
-        backendService.setProtocol(protocol);
-      }
+      backendService.setProtocol(lbProtocol);
       log.debug("Checking health checks....");
       List<String> healthChecks = backendService.getHealthChecks();
-      // It is the responsiblity of the caller to add the ysql port first in the list
-      Integer healthCheckPort = ports.get(0);
       healthChecks =
-          ensureHealthChecks(apiClient, regionCode, protocol, healthCheckPort, healthChecks);
+          ensureHealthChecks(apiClient, regionCode, healthCheckConfiguration, healthChecks);
       backendService.setHealthChecks(healthChecks);
       apiClient.updateBackendService(regionCode, backendService);
 
@@ -416,7 +491,7 @@ public class GCPCloudImpl implements CloudAPI {
       log.debug("Checking forwarding rules....");
       List<ForwardingRule> forwardingRules =
           apiClient.getRegionalForwardingRulesForBackend(regionCode, backendService.getSelfLink());
-      ensureForwardingRules(protocol, ports, forwardingRules);
+      ensureForwardingRules(lbProtocol, portsToForward, forwardingRules);
     } catch (Exception e) {
       String message = "Error executing task {manageNodeGroup()} " + e.toString();
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, message);

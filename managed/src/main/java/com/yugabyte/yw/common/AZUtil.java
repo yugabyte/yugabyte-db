@@ -10,7 +10,14 @@ import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
 import com.azure.core.http.rest.PagedIterable;
 import com.azure.core.http.rest.PagedResponse;
+import com.azure.core.management.AzureEnvironment;
+import com.azure.core.management.profile.AzureProfile;
 import com.azure.core.util.BinaryData;
+import com.azure.core.util.IterableStream;
+import com.azure.identity.ClientSecretCredential;
+import com.azure.identity.ClientSecretCredentialBuilder;
+import com.azure.resourcemanager.AzureResourceManager;
+import com.azure.resourcemanager.monitor.fluent.models.EventDataInner;
 import com.azure.storage.blob.BlobClient;
 import com.azure.storage.blob.BlobContainerClient;
 import com.azure.storage.blob.BlobContainerClientBuilder;
@@ -20,11 +27,18 @@ import com.azure.storage.blob.models.ListBlobsOptions;
 import com.azure.storage.blob.specialized.BlobInputStream;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.common.UniverseInterruptionResult.InterruptionStatus;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigStorageAzureData;
+import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.provider.AzureCloudInfo;
 import java.io.BufferedReader;
 import java.io.IOException;
 import java.io.InputStream;
@@ -34,6 +48,7 @@ import java.net.URL;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.HashMap;
@@ -42,6 +57,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.StreamSupport;
 import lombok.extern.slf4j.Slf4j;
@@ -175,7 +191,18 @@ public class AZUtil implements CloudUtil {
         BlobContainerClient blobContainerClient =
             createBlobContainerClient(azureUrl, sasToken, container);
         ListBlobsOptions blobsOptions = new ListBlobsOptions().setMaxResultsPerPage(1);
-        blobContainerClient.listBlobs(blobsOptions, Duration.ofMinutes(5));
+        PagedIterable<BlobItem> blobItems =
+            blobContainerClient.listBlobs(blobsOptions, Duration.ofMinutes(5));
+        if (blobItems == null) {
+          return false;
+        }
+        if (blobItems.iterator().hasNext()) {
+          BlobClient blobClient =
+              blobContainerClient.getBlobClient(blobItems.iterator().next().getName());
+          if (!blobClient.exists()) {
+            return false;
+          }
+        }
       } catch (Exception e) {
         log.error(
             String.format(
@@ -543,5 +570,79 @@ public class AZUtil implements CloudUtil {
       log.error("Fetch Azure spot prices failed with error {}", e.getMessage());
     }
     return Double.NaN;
+  }
+
+  public UniverseInterruptionResult spotInstanceUniverseStatus(Universe universe) {
+    UniverseInterruptionResult result = new UniverseInterruptionResult(universe.getName());
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+    Provider primaryClusterProvider =
+        Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+    String startTime = universe.getCreationDate().toInstant().toString();
+    UUID primaryClusterUUID = universe.getUniverseDetails().getPrimaryCluster().uuid;
+
+    // For nodes in primary cluster
+    for (final NodeDetails nodeDetails : universe.getNodesInCluster(primaryClusterUUID)) {
+      result.addNodeStatus(
+          nodeDetails.nodeName,
+          isSpotInstanceInterrupted(nodeDetails.nodeName, primaryClusterProvider, startTime)
+              ? InterruptionStatus.Interrupted
+              : InterruptionStatus.NotInterrupted);
+    }
+    // For nodes in read replicas
+    for (Cluster cluster : universe.getUniverseDetails().getReadOnlyClusters()) {
+      Provider provider = Provider.getOrBadRequest(UUID.fromString(cluster.userIntent.provider));
+      for (final NodeDetails nodeDetails : universe.getNodesInCluster(cluster.uuid)) {
+        result.addNodeStatus(
+            nodeDetails.nodeName,
+            isSpotInstanceInterrupted(nodeDetails.nodeName, provider, startTime)
+                ? InterruptionStatus.Interrupted
+                : InterruptionStatus.NotInterrupted);
+      }
+    }
+    return result;
+  }
+
+  private boolean isSpotInstanceInterrupted(String nodeName, Provider provider, String startTime) {
+    try {
+      AzureCloudInfo azuInfo = provider.getDetails().getCloudInfo().getAzu();
+      AzureProfile profile = new AzureProfile(AzureEnvironment.AZURE);
+      ClientSecretCredential clientSecretCredential =
+          new ClientSecretCredentialBuilder()
+              .clientId(azuInfo.getAzuClientId())
+              .clientSecret(azuInfo.getAzuClientSecret())
+              .tenantId(azuInfo.getAzuTenantId())
+              .build();
+      AzureResourceManager azure =
+          AzureResourceManager.authenticate(clientSecretCredential, profile)
+              .withSubscription(azuInfo.getAzuSubscriptionId());
+      String resourceID =
+          String.format(
+              "/SUBSCRIPTIONS/%s/RESOURCEGROUPS/%s/PROVIDERS/MICROSOFT.COMPUTE/VIRTUALMACHINES/%s",
+              azuInfo.azuSubscriptionId, azuInfo.azuRG, nodeName);
+
+      String filter =
+          String.format(
+              "eventTimestamp ge '%s' and " + "eventTimestamp le '%s' and resourceID eq '%s'",
+              startTime, Instant.now().toString(), resourceID);
+
+      PagedIterable<EventDataInner> eventList =
+          azure.diagnosticSettings().manager().serviceClient().getActivityLogs().list(filter);
+
+      for (PagedResponse<EventDataInner> resp : eventList.iterableByPage()) {
+        IterableStream<EventDataInner> events = resp.getElements();
+        for (EventDataInner event : events) {
+          String operationName = event.operationName().value().toLowerCase(),
+              status = event.status().value();
+          if (operationName.contains("evictspotvm") && status.equalsIgnoreCase("Succeeded")) {
+            return true;
+          }
+        }
+      }
+      return false;
+    } catch (Exception e) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          "Fetch interruptions status for AZURE failed with" + e.getMessage());
+    }
   }
 }

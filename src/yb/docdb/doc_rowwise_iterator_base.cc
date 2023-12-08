@@ -276,7 +276,7 @@ Status DocRowwiseIteratorBase::GetNextReadSubDocKey(dockv::SubDocKey* sub_doc_ke
   return Status::OK();
 }
 
-Result<Slice> DocRowwiseIteratorBase::GetTupleId() const {
+Slice DocRowwiseIteratorBase::GetTupleId() const {
   // Return tuple id without cotable id / colocation id if any.
   Slice tuple_id = row_key_;
   if (tuple_id.starts_with(dockv::KeyEntryTypeAsChar::kTableId)) {
@@ -318,7 +318,7 @@ void DocRowwiseIteratorBase::SeekTuple(Slice tuple_id) {
 }
 
 Result<bool> DocRowwiseIteratorBase::FetchTuple(Slice tuple_id, qlexpr::QLTableRow* row) {
-  return VERIFY_RESULT(FetchNext(row)) && VERIFY_RESULT(GetTupleId()) == tuple_id;
+  return VERIFY_RESULT(FetchNext(row)) && GetTupleId() == tuple_id;
 }
 
 Slice DocRowwiseIteratorBase::shared_key_prefix() const {

@@ -38,7 +38,7 @@ void ReaderProjection::AddColumn(
   columns.push_back({
     .id = column_id,
     .subkey = dockv::KeyEntryValue::MakeColumnId(column_id),
-    .data_type = schema.column(idx).type()->main(),
+    .data_type = schema.column(idx).type()->main()
   });
 }
 

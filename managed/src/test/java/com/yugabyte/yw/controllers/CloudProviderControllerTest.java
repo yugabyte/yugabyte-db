@@ -4,6 +4,7 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
+import static com.yugabyte.yw.common.AssertHelper.assertConflict;
 import static com.yugabyte.yw.common.AssertHelper.assertInternalServerError;
 import static com.yugabyte.yw.common.AssertHelper.assertOk;
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
@@ -281,7 +282,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     bodyJson.put("code", "aws");
     bodyJson.put("name", "Amazon");
     Result result = assertPlatformException(() -> createProvider(bodyJson));
-    assertBadRequest(result, "Provider with the name Amazon already exists");
+    assertConflict(result, "Provider with the name Amazon already exists");
   }
 
   @Test

@@ -24,6 +24,8 @@
 
 using std::string;
 
+DECLARE_bool(ysql_ddl_rollback_enabled);
+
 namespace yb {
 namespace client {
 
@@ -203,6 +205,7 @@ Status YBTableAlterer::ToRequest(master::AlterTableRequestPB* req) {
 
   if (txn_) {
     txn_->ToPB(req->mutable_transaction());
+    req->set_ysql_ddl_rollback_enabled(FLAGS_ysql_ddl_rollback_enabled);
   }
 
   if (increment_schema_version_) {

@@ -224,6 +224,11 @@ static int	pg_SSPI_make_upn(char *accountname,
 static int	CheckRADIUSAuth(Port *port);
 static int	PerformRadiusTransaction(const char *server, const char *secret, const char *portstr, const char *identifier, const char *user_name, const char *passwd);
 
+/*----------------------------------------------------------------
+ * JWT Authentication
+ *----------------------------------------------------------------
+ */
+static int	YbCheckJwtAuth(Port *port);
 
 /*
  * Maximum accepted size of GSS and SSPI authentication tokens.
@@ -333,6 +338,11 @@ auth_failed(Port *port, int status, const char *logdetail, bool yb_role_is_locke
 		case uaRADIUS:
 			errstr = gettext_noop("RADIUS authentication failed for user \"%s\"");
 			break;
+
+		case uaYbJWT:
+			errstr = gettext_noop("JWT authentication failed for user \"%s\"");
+			break;
+
 		default:
 			errstr = gettext_noop("authentication failed for user \"%s\": invalid authentication method");
 			break;
@@ -697,6 +707,10 @@ ClientAuthentication(Port *port)
 			/* uaCert will be treated as if clientcert=verify-full (uaTrust) */
 		case uaTrust:
 			status = STATUS_OK;
+			break;
+
+		case uaYbJWT:
+			status = YbCheckJwtAuth(port);
 			break;
 	}
 
@@ -3512,4 +3526,144 @@ PerformRadiusTransaction(const char *server, const char *secret, const char *por
 			continue;
 		}
 	}							/* while (true) */
+}
+
+/*----------------------------------------------------------------
+ * JWT authentication
+ *----------------------------------------------------------------
+ */
+
+static char *ybReadFile(const char *outer_filename, const char *inc_filename,
+						int elevel);
+
+static void
+ybGetJwtAuthOptionsFromPortAndJwks(Port *port, char *jwks,
+								   YBCPgJwtAuthOptions *opt)
+{
+	HbaLine	   *hba_line = port->hba;
+
+	opt->jwks = jwks;
+	opt->usermap = hba_line->usermap;
+	opt->username = port->user_name;
+
+	/* Use "sub" as the default matching claim key */
+	opt->matching_claim_key = hba_line->yb_jwt_matching_claim_key ?: "sub";
+
+	opt->allowed_issuers = (char **) YbPtrListToArray(
+		hba_line->yb_jwt_issuers, &opt->allowed_issuers_length);
+
+	opt->allowed_audiences = (char **) YbPtrListToArray(
+		hba_line->yb_jwt_audiences, &opt->allowed_audiences_length);
+}
+
+static int
+YbCheckJwtAuth(Port *port)
+{
+	char	   *jwt;
+	char	   *jwks;
+	int			auth_result;
+
+	/*
+	 * Read the jwks file before the password prompt so that we fail fast if we
+	 * fail to read the jwks file or the content is invalid.
+	 */
+	jwks = ybReadFile(HbaFileName, port->hba->yb_jwt_jwks_path, LOG);
+	if (jwks == NULL)
+		return STATUS_ERROR;
+
+	/* Send regular password request to client, and get the response */
+	sendAuthRequest(port, AUTH_REQ_PASSWORD, NULL, 0);
+
+	/* Interpret password as jwt */
+	jwt = recv_password_packet(port);
+	if (jwt == NULL)
+		return STATUS_EOF; /* client didn't send jwt */
+
+	/*
+	 * We are allocating a temporary array of char* for audiences and issuers
+	 * entries. We do that since there is no easy way to send the PG List to the
+	 * C++ layer.
+	 */
+	YBCPgJwtAuthOptions jwt_auth_options;
+	ybGetJwtAuthOptionsFromPortAndJwks(port, jwks, &jwt_auth_options);
+
+	YBCStatus s = YBCValidateJWT(jwt, &jwt_auth_options);
+	auth_result = (s) ? STATUS_ERROR : STATUS_OK;
+	if (s) /* !ok */
+	{
+		ereport(LOG,
+				(errmsg("JWT login failed with error: %s",
+						YBCStatusMessageBegin(s))));
+		YBCFreeStatus(s);
+	}
+
+	/* Free up the temporary arrays we made in YbJwtAuthOptionsFromHba */
+	pfree(jwt_auth_options.allowed_audiences);
+	pfree(jwt_auth_options.allowed_issuers);
+
+	pfree(jwks);
+	pfree(jwt);
+	return auth_result;
+}
+
+/*
+ * Reads the contents of the given file path. If the file path is a relative
+ * path, it is treated as relative to the directory of the provided
+ * outer_filename.
+ *
+ * An error is reported at elevel LOG if the file path is invalid,
+ * inaccessible or the contents are not in the database encoding.
+ *
+ * This function is derived from the tokenize_inc_file function from the
+ * src/postgres/src/backend/libpq/hba.c file. The tokenize_inc_file tokenizes
+ * the hba lines from an included file while this function just reads them.
+ */
+static char *
+ybReadFile(const char *outer_filename, const char *inc_filename, int elevel)
+{
+	char *file_fullname;
+	char *file_contents;
+	int len;
+
+	if (is_absolute_path(inc_filename))
+	{
+		/* absolute path is taken as-is */
+		file_fullname = pstrdup(inc_filename);
+	}
+	else
+	{
+		/* relative path is relative to dir of file from which the path was
+		 * referenced. */
+		file_fullname =
+			(char *) palloc(strlen(outer_filename) + 1 + strlen(inc_filename) + 1);
+		strcpy(file_fullname, outer_filename);
+		get_parent_directory(file_fullname);
+		join_path_components(file_fullname, file_fullname, inc_filename);
+		canonicalize_path(file_fullname);
+	}
+
+	file_contents = YbReadWholeFile(file_fullname, &len, elevel);
+	if (file_contents == NULL)
+	{
+		pfree(file_fullname);
+		return NULL;
+	}
+
+	/*
+	 * Make sure the contents are valid.
+	 *
+	 * We use noError as true because we want to have control over the ereport
+	 * elevel in case of invalid file contents.
+	 */
+	if (!pg_verifymbstr(file_contents, len, /* noError */ true))
+	{
+		ereport(elevel,
+				(errcode(ERRCODE_CHARACTER_NOT_IN_REPERTOIRE),
+				 errmsg("invalid encoding of file \"%s\"", inc_filename)));
+		pfree(file_fullname);
+		return NULL;
+	}
+
+	pfree(file_fullname);
+	return file_contents;
 }

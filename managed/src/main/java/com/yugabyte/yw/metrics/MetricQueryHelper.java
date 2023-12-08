@@ -9,15 +9,14 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
+import com.google.common.collect.ImmutableSet;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
-import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.KubernetesUtil;
-import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.PlatformExecutorFactory;
-import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.config.ProviderConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.MetricQueryParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -25,29 +24,12 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.metrics.data.AlertData;
 import com.yugabyte.yw.metrics.data.AlertsResponse;
 import com.yugabyte.yw.metrics.data.ResponseStatus;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
-import java.util.UUID;
-import java.util.concurrent.Callable;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
-import java.util.concurrent.Future;
+import java.util.*;
+import java.util.concurrent.*;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import org.apache.commons.collections.CollectionUtils;
@@ -80,7 +62,24 @@ public class MetricQueryHelper {
   private static final String POD_NAME = "pod_name";
   private static final String CONTAINER_NAME = "container_name";
   private static final String PVC = "persistentvolumeclaim";
+
+  private static final String DEFAULT_MOUNT_POINTS = "/mnt/d[0-9]+";
+
+  private static final Set<String> DATA_DISK_USAGE_METRICS =
+      ImmutableSet.of(
+          "disk_usage", "disk_used_size_total", "disk_capacity_size_total", "disk_usage_percent");
+
+  private static final Set<String> DISK_USAGE_METRICS =
+      ImmutableSet.<String>builder()
+          .addAll(DATA_DISK_USAGE_METRICS)
+          .add("disk_volume_usage_percent")
+          .add("disk_volume_used")
+          .add("disk_volume_capacity")
+          .build();
+
   private final Config appConfig;
+
+  private final RuntimeConfGetter confGetter;
 
   private final ApiHelper apiHelper;
 
@@ -91,10 +90,12 @@ public class MetricQueryHelper {
   @Inject
   public MetricQueryHelper(
       Config appConfig,
+      RuntimeConfGetter confGetter,
       ApiHelper apiHelper,
       MetricUrlProvider metricUrlProvider,
       PlatformExecutorFactory platformExecutorFactory) {
     this.appConfig = appConfig;
+    this.confGetter = confGetter;
     this.apiHelper = apiHelper;
     this.metricUrlProvider = metricUrlProvider;
     this.platformExecutorFactory = platformExecutorFactory;
@@ -102,7 +103,7 @@ public class MetricQueryHelper {
 
   @VisibleForTesting
   public MetricQueryHelper() {
-    this(null, null, null, null);
+    this(null, null, null, null, null);
   }
 
   /**
@@ -529,39 +530,31 @@ public class MetricQueryHelper {
     HashMap<String, HashMap<String, String>> filterOverrides = new HashMap<>();
     // For a disk usage metric query, the mount point has to be modified to match the actual
     // mount point for an onprem universe.
-    if (metricNames.contains("disk_usage")) {
-      List<Universe> universes =
-          customer.getUniverses().stream()
-              .filter(
-                  u ->
-                      u.getUniverseDetails().nodePrefix != null
-                          && u.getUniverseDetails().nodePrefix.equals(nodePrefix))
-              .collect(Collectors.toList());
-      if (CollectionUtils.isEmpty(universes)) {
-        LOG.warn(
-            "Failed to find universe with node prefix {}, will not add mount point filter",
-            nodePrefix);
-        return filterOverrides;
-      }
-      if (universes.get(0).getUniverseDetails().getPrimaryCluster().userIntent.providerType
-          == CloudType.onprem) {
-        final String mountRoots =
-            universes.get(0).getNodes().stream()
-                .filter(MetricQueryHelper::checkNonNullMountRoots)
-                .map(n -> n.cloudInfo.mount_roots)
-                .findFirst()
-                .orElse("");
-        // TODO: technically, this code is based on the primary cluster being onprem
-        // and will return inaccurate results if the universe has a read replica that is
-        // not onprem.
-        if (!mountRoots.isEmpty()) {
-          HashMap<String, String> mountFilters = new HashMap<>();
-          mountFilters.put("mountpoint", mountRoots.replace(',', '|'));
-          // convert "/storage1,/bar" to the filter "/storage1|/bar"
-          filterOverrides.put("disk_usage", mountFilters);
-        } else {
-          LOG.debug("No mount points found in onprem universe {}", nodePrefix);
+    for (String metricName : metricNames) {
+      if (DISK_USAGE_METRICS.contains(metricName)) {
+        List<Universe> universes =
+            customer.getUniverses().stream()
+                .filter(
+                    u ->
+                        u.getUniverseDetails().nodePrefix != null
+                            && u.getUniverseDetails().nodePrefix.equals(nodePrefix))
+                .collect(Collectors.toList());
+        if (CollectionUtils.isEmpty(universes)) {
+          LOG.warn(
+              "Failed to find universe with node prefix {}, will not add mount point filter",
+              nodePrefix);
+          return filterOverrides;
         }
+        Universe universe = universes.get(0);
+        String dataMountPoints = getDataMountPoints(universe);
+        String otherMountPoints = getOtherMountPoints(confGetter, universe);
+        HashMap<String, String> mountFilters = new HashMap<>();
+        if (DATA_DISK_USAGE_METRICS.contains(metricName)) {
+          mountFilters.put("mountpoint", dataMountPoints);
+        } else {
+          mountFilters.put("mountpoint", otherMountPoints + "|" + dataMountPoints);
+        }
+        filterOverrides.put(metricName, mountFilters);
       }
     }
     return filterOverrides;
@@ -571,5 +564,42 @@ public class MetricQueryHelper {
     return n.cloudInfo != null
         && n.cloudInfo.mount_roots != null
         && !n.cloudInfo.mount_roots.isEmpty();
+  }
+
+  public static String getDataMountPoints(Universe universe) {
+    if (universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType
+        == CloudType.onprem) {
+      final String mountRoots =
+          universe.getNodes().stream()
+              .filter(MetricQueryHelper::checkNonNullMountRoots)
+              .map(n -> n.cloudInfo.mount_roots)
+              .findFirst()
+              .orElse("");
+      // TODO: technically, this code is based on the primary cluster being onprem
+      // and will return inaccurate results if the universe has a read replica that is
+      // not onprem.
+      if (!mountRoots.isEmpty()) {
+        HashMap<String, String> mountFilters = new HashMap<>();
+        return mountRoots;
+      } else {
+        LOG.debug(
+            "No mount points found in onprem universe {}",
+            universe.getUniverseDetails().nodePrefix);
+      }
+    }
+    return DEFAULT_MOUNT_POINTS;
+  }
+
+  public static String getOtherMountPoints(RuntimeConfGetter confGetter, Universe universe) {
+    UUID providerUuid =
+        UUID.fromString(universe.getUniverseDetails().getPrimaryCluster().userIntent.provider);
+    Provider provider = Provider.getOrBadRequest(providerUuid);
+    String otherMountPoints =
+        confGetter.getConfForScope(provider, ProviderConfKeys.monitoredMountRoots);
+    if (StringUtils.isBlank(otherMountPoints)) {
+      // Special value to make sure no metric values are returned for the query
+      return "#";
+    }
+    return otherMountPoints.replaceAll(",", "|");
   }
 }

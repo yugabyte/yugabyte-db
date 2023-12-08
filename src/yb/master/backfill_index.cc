@@ -235,7 +235,8 @@ Status MultiStageAlterTable::ClearFullyAppliedAndUpdateState(
     CatalogManager* catalog_manager,
     const scoped_refptr<TableInfo>& table,
     boost::optional<uint32_t> expected_version,
-    bool update_state_to_running) {
+    bool update_state_to_running,
+    const LeaderEpoch& epoch) {
   auto l = table->LockForWrite();
   uint32_t current_version = l->pb.version();
   if (expected_version && *expected_version != current_version) {
@@ -253,7 +254,7 @@ Status MultiStageAlterTable::ClearFullyAppliedAndUpdateState(
   auto new_state = update_state_to_running ? SysTablesEntryPB::RUNNING : SysTablesEntryPB::ALTERING;
   l.mutable_data()->set_state(new_state, Format("Current schema version=$0", current_version));
 
-  Status s = catalog_manager->sys_catalog_->Upsert(catalog_manager->leader_ready_term(), table);
+  Status s = catalog_manager->sys_catalog_->Upsert(epoch, table);
   if (!s.ok()) {
     LOG(WARNING) << "An error occurred while updating sys-tables: " << s.ToString()
                  << ". This master may not be the leader anymore.";
@@ -270,6 +271,7 @@ Result<bool> MultiStageAlterTable::UpdateIndexPermission(
     CatalogManager* catalog_manager,
     const scoped_refptr<TableInfo>& indexed_table,
     const std::unordered_map<TableId, IndexPermissions>& perm_mapping,
+    const LeaderEpoch& epoch,
     boost::optional<uint32_t> current_version) {
   TRACE(__func__);
   DVLOG(3) << __PRETTY_FUNCTION__ << " " << yb::ToString(*indexed_table);
@@ -344,8 +346,7 @@ Result<bool> MultiStageAlterTable::UpdateIndexPermission(
 
     // Update sys-catalog with the new indexed table info.
     TRACE("Updating indexed table metadata on disk");
-    RETURN_NOT_OK(catalog_manager->sys_catalog_->Upsert(
-        catalog_manager->leader_ready_term(), indexed_table));
+    RETURN_NOT_OK(catalog_manager->sys_catalog_->Upsert(epoch, indexed_table));
 
     // Update the in-memory state.
     TRACE("Committing in-memory state");
@@ -368,10 +369,10 @@ Status MultiStageAlterTable::StartBackfillingData(
     CatalogManager* catalog_manager,
     const scoped_refptr<TableInfo>& indexed_table,
     const std::vector<IndexInfoPB>& idx_infos,
-    boost::optional<uint32_t> current_version) {
+    boost::optional<uint32_t> current_version, const LeaderEpoch& epoch) {
   // We leave the table state as ALTERING so that a master failover can resume the backfill.
   RETURN_NOT_OK(ClearFullyAppliedAndUpdateState(
-      catalog_manager, indexed_table, current_version, /* change_state to RUNNING */ false));
+      catalog_manager, indexed_table, current_version, /* change_state to RUNNING */ false, epoch));
 
   auto ns_info = catalog_manager->FindNamespaceById(indexed_table->namespace_id());
   RETURN_NOT_OK_PREPEND(ns_info, "Unable to get namespace info for backfill");
@@ -389,7 +390,7 @@ Status MultiStageAlterTable::StartBackfillingData(
 
   auto backfill_table = std::make_shared<BackfillTable>(
       catalog_manager->master_, catalog_manager->AsyncTaskPool(), indexed_table, idx_infos,
-      *ns_info);
+      *ns_info, epoch);
   Status s = backfill_table->Launch();
   if (!s.ok()) {
     indexed_table->ClearIsBackfilling();
@@ -431,7 +432,7 @@ IndexPermissions NextPermission(IndexPermissions perm) {
 
 Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
     CatalogManager* catalog_manager, const scoped_refptr<TableInfo>& indexed_table,
-    uint32_t current_version, bool respect_backfill_deferrals) {
+    uint32_t current_version, const LeaderEpoch& epoch, bool respect_backfill_deferrals) {
   DVLOG(3) << __PRETTY_FUNCTION__ << " " << yb::ToString(*indexed_table);
 
   const bool is_ysql_table = (indexed_table->GetTableType() == TableType::PGSQL_TABLE_TYPE);
@@ -503,7 +504,7 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
     TRACE("Not necessary to launch next version");
     VLOG(1) << "Not necessary to launch next version";
     return ClearFullyAppliedAndUpdateState(
-        catalog_manager, indexed_table, current_version, /* change state to RUNNING */ true);
+        catalog_manager, indexed_table, current_version, /* change state to RUNNING */ true, epoch);
   }
 
   // For YSQL online schema migration of indexes, instead of master driving the schema changes,
@@ -529,9 +530,8 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
   if (!indexes_to_update.empty()) {
     VLOG(1) << "Updating index permissions for " << yb::ToString(indexes_to_update) << " on "
             << indexed_table->ToString();
-    Result<bool> permissions_updated =
-        VERIFY_RESULT(UpdateIndexPermission(catalog_manager, indexed_table, indexes_to_update,
-                                            current_version));
+    Result<bool> permissions_updated = VERIFY_RESULT(UpdateIndexPermission(
+        catalog_manager, indexed_table, indexes_to_update, epoch, current_version));
 
     if (!permissions_updated.ok()) {
       LOG(WARNING) << "Could not update index permissions."
@@ -542,7 +542,7 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
 
     if (permissions_updated.ok() && *permissions_updated) {
       VLOG(1) << "Sending alter table request with updated permissions";
-      RETURN_NOT_OK(catalog_manager->SendAlterTableRequest(indexed_table));
+      RETURN_NOT_OK(catalog_manager->SendAlterTableRequest(indexed_table, epoch));
       return Status::OK();
     }
   }
@@ -555,7 +555,7 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
     DeleteTableResponsePB resp;
     req.mutable_table()->set_table_id(index_info_to_update.table_id());
     req.set_is_index_table(true);
-    RETURN_NOT_OK(catalog_manager->DeleteTableInternal(&req, &resp, nullptr));
+    RETURN_NOT_OK(catalog_manager->DeleteTableInternal(&req, &resp, nullptr, epoch));
     return Status::OK();
   }
 
@@ -570,7 +570,7 @@ Status MultiStageAlterTable::LaunchNextTableInfoVersionIfNecessary(
     }
     WARN_NOT_OK(
         StartBackfillingData(
-            catalog_manager, indexed_table.get(), indexes_to_backfill, current_version),
+            catalog_manager, indexed_table.get(), indexes_to_backfill, current_version, epoch),
         yb::Format("Could not launch backfill for $0", indexed_table->ToString()));
   }
 
@@ -665,18 +665,19 @@ std::string RetrieveIndexNames(CatalogManager* mgr,
 
 BackfillTable::BackfillTable(
     Master* master, ThreadPool* callback_pool, const scoped_refptr<TableInfo>& indexed_table,
-    std::vector<IndexInfoPB> indexes, const scoped_refptr<NamespaceInfo>& ns_info)
+    std::vector<IndexInfoPB> indexes, const scoped_refptr<NamespaceInfo>& ns_info,
+    LeaderEpoch epoch)
     : master_(master),
       callback_pool_(callback_pool),
       indexed_table_(indexed_table),
       index_infos_(indexes),
       requested_index_ids_(IndexIdsFromInfos(indexes)),
-      requested_index_names_(RetrieveIndexNames(
-          master->catalog_manager_impl(), requested_index_ids_)),
-      ns_info_(ns_info) {
+      requested_index_names_(
+          RetrieveIndexNames(master->catalog_manager_impl(), requested_index_ids_)),
+      ns_info_(ns_info),
+      epoch_(std::move(epoch)) {
   auto l = indexed_table_->LockForRead();
   schema_version_ = indexed_table_->metadata().state().pb.version();
-  leader_term_ = master_->catalog_manager()->leader_ready_term();
   if (l.data().pb.backfill_jobs_size() > 0) {
     number_rows_processed_.store(l.data().pb.backfill_jobs(0).num_rows_processed());
   } else {
@@ -735,7 +736,8 @@ Status BackfillTable::Launch() {
             {idx_info.table_id(), BackfillJobPB::IN_PROGRESS});
       }
       RETURN_NOT_OK_PREPEND(
-          master_->catalog_manager_impl()->sys_catalog_->Upsert(leader_term(), indexed_table_),
+          master_->catalog_manager_impl()->sys_catalog_->Upsert(
+              epoch_, indexed_table_),
           "Failed to persist backfill jobs. Abandoning launch.");
       l.Commit();
     }
@@ -795,8 +797,8 @@ Status BackfillTable::LaunchComputeSafeTimeForRead() {
   tablets_pending_.store(tablets.size(), std::memory_order_release);
   auto min_cutoff = master()->clock()->Now();
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
-    auto get_safetime = std::make_shared<GetSafeTimeForTablet>(
-        shared_from_this(), tablet, min_cutoff);
+    auto get_safetime =
+        std::make_shared<GetSafeTimeForTablet>(shared_from_this(), tablet, min_cutoff, epoch());
     RETURN_NOT_OK(get_safetime->Launch());
   }
   return Status::OK();
@@ -839,8 +841,8 @@ Status BackfillTable::UpdateRowsProcessedForIndexTable(const uint64_t number_row
   VLOG(2) << "Updated backfill task to having processed " << number_rows_processed
           << " more rows. Total rows processed is: " << number_rows_processed_;
 
-  RETURN_NOT_OK(
-      master_->catalog_manager_impl()->sys_catalog_->Upsert(leader_term(), indexed_table_));
+  RETURN_NOT_OK(master_->catalog_manager_impl()->sys_catalog_->Upsert(
+      epoch_, indexed_table_));
   l.Commit();
   return Status::OK();
 }
@@ -886,7 +888,8 @@ Status BackfillTable::PersistSafeTimeAndStartBackfill() {
     auto* backfill_job = l.mutable_data()->pb.mutable_backfill_jobs(0);
     backfill_job->set_backfilling_timestamp(read_time_for_backfill_.ToUint64());
     RETURN_NOT_OK_PREPEND(
-        master_->catalog_manager_impl()->sys_catalog_->Upsert(leader_term(), indexed_table_),
+        master_->catalog_manager_impl()->sys_catalog_->Upsert(
+            epoch_, indexed_table_),
         "Failed to persist backfilling timestamp. Abandoning.");
     l.Commit();
     VLOG_WITH_PREFIX(2) << "Saved " << read_time_for_backfill_ << " as backfilling_timestamp";
@@ -943,6 +946,13 @@ Status BackfillTable::DoLaunchBackfill() {
 }
 
 Status BackfillTable::DoBackfill() {
+  // There's a use-after-free bug here. Exposed by using the flag FLAGS_TEST_block_do_backfill to do
+  // a PITR when a backfill is in progress. The issue is catalog reload frees all tablets, but
+  // TableInfo has raw pointers to TabletInfos.  For now, this GetTablets call must be above the
+  // wait loop to ensure we bump the ref count of the backing tablets before the catalog reload so
+  // the TabletInfo objects aren't freed.
+  // todo: https://github.com/yugabyte/yugabyte-db/issues/18257
+  auto tablets = indexed_table_->GetTablets();
   while (FLAGS_TEST_block_do_backfill) {
     constexpr auto kSpinWait = 100ms;
     LOG(INFO) << Format("Blocking $0 for $1", __func__, kSpinWait);
@@ -950,7 +960,6 @@ Status BackfillTable::DoBackfill() {
   }
   VLOG_WITH_PREFIX(1) << "starting backfill with timestamp: "
                       << read_time_for_backfill_;
-  auto tablets = indexed_table_->GetTablets();
 
   num_tablets_.store(tablets.size(), std::memory_order_release);
   tablets_pending_.store(tablets.size(), std::memory_order_release);
@@ -1038,8 +1047,8 @@ Status BackfillTable::MarkIndexesAsDesired(
         idx_pb->set_num_rows_processed_by_backfill_job(number_rows_processed_);
       }
     }
-    RETURN_NOT_OK(
-        master_->catalog_manager_impl()->sys_catalog_->Upsert(leader_term(), indexed_table_));
+    RETURN_NOT_OK(master_->catalog_manager_impl()->sys_catalog_->Upsert(
+        epoch_, indexed_table_));
     l.Commit();
   }
   return Status::OK();
@@ -1055,7 +1064,8 @@ Status BackfillTable::CheckIfDone() {
   if (indexes_to_build().empty()) {
     done_.store(true, std::memory_order_release);
     RETURN_NOT_OK_PREPEND(
-        UpdateIndexPermissionsForIndexes(), "Could not update index permissions after backfill");
+        UpdateIndexPermissionsForIndexes(),
+        "Could not update index permissions after backfill");
   }
   return Status::OK();
 }
@@ -1093,7 +1103,7 @@ Status BackfillTable::UpdateIndexPermissionsForIndexes() {
 
   RETURN_NOT_OK_PREPEND(
       MultiStageAlterTable::UpdateIndexPermission(
-          master_->catalog_manager_impl(), indexed_table_, permissions_to_set, boost::none),
+          master_->catalog_manager_impl(), indexed_table_, permissions_to_set, epoch_, boost::none),
       "Could not update permissions after backfill. "
       "Possible that the master-leader has changed, or the table was deleted.");
   backfill_job_->SetState(
@@ -1104,7 +1114,7 @@ Status BackfillTable::UpdateIndexPermissionsForIndexes() {
       ->ReenableSplittingForBackfillingTable(indexed_table_->id());
 
   VLOG(1) << "Sending alter table requests to the Indexed table";
-  RETURN_NOT_OK(master_->catalog_manager_impl()->SendAlterTableRequest(indexed_table_));
+  RETURN_NOT_OK(master_->catalog_manager_impl()->SendAlterTableRequest(indexed_table_, epoch_));
   VLOG(1) << "DONE Sending alter table requests to the Indexed table";
 
   LOG(INFO) << "Done backfill on " << indexed_table_->ToString() << " setting permissions to "
@@ -1124,7 +1134,7 @@ Status BackfillTable::ClearCheckpointStateInTablets() {
     }
   }
   RETURN_NOT_OK_PREPEND(
-      master()->catalog_manager()->sys_catalog()->Upsert(leader_term(), tablet_ptrs),
+      master()->catalog_manager()->sys_catalog()->Upsert(epoch_, tablet_ptrs),
       "Could not persist that the table is done backfilling.");
   for (scoped_refptr<TabletInfo>& tablet : tablets) {
     VLOG(2) << "Done backfilling the table. " << yb::ToString(tablet)
@@ -1141,9 +1151,10 @@ Status BackfillTable::ClearCheckpointStateInTablets() {
     DCHECK_LE(l.data().pb.backfill_jobs_size(), 1) << "For now we only expect to have up to 1 "
                                                        "outstanding backfill job.";
     l.mutable_data()->pb.clear_backfill_jobs();
-    RETURN_NOT_OK_PREPEND(master_->catalog_manager_impl()->sys_catalog_->Upsert(
-                              leader_term(), indexed_table_),
-                          "Could not clear backfilling timestamp.");
+    RETURN_NOT_OK_PREPEND(
+        master_->catalog_manager_impl()->sys_catalog_->Upsert(
+            epoch_, indexed_table_),
+        "Could not clear backfilling timestamp.");
     l.Commit();
   }
   VLOG_WITH_PREFIX(2) << "Cleared backfilling timestamp.";
@@ -1200,10 +1211,9 @@ Status BackfillTable::AllowCompactionsToGCDeleteMarkers(
     TRACE("Updating index table metadata on disk");
     RETURN_NOT_OK_PREPEND(
         master_->catalog_manager_impl()->sys_catalog_->Upsert(
-            leader_term(), index_table_info),
+            epoch_, index_table_info),
         yb::Format(
-            "Could not update index_table_info for $0 to enable compactions.",
-            index_table_id));
+            "Could not update index_table_info for $0 to enable compactions.", index_table_id));
 
     // Update the in-memory state.
     TRACE("Committing in-memory state");
@@ -1228,7 +1238,8 @@ Status BackfillTable::SendRpcToAllowCompactionsToGCDeleteMarkers(
 
 Status BackfillTable::SendRpcToAllowCompactionsToGCDeleteMarkers(
     const scoped_refptr<TabletInfo> &tablet, const std::string &table_id) {
-  auto call = std::make_shared<AsyncBackfillDone>(master_, callback_pool_, tablet, table_id);
+  auto call =
+      std::make_shared<AsyncBackfillDone>(master_, callback_pool_, tablet, table_id, epoch_);
   tablet->table()->AddTask(call);
   RETURN_NOT_OK_PREPEND(
       master_->catalog_manager()->ScheduleTask(call),
@@ -1283,7 +1294,8 @@ Status BackfillTablet::LaunchNextChunkOrDone() {
   } else if (!backfill_table_->done()) {
     VLOG_WITH_PREFIX(2) << "Launching next chunk from " << backfilled_until_;
     auto chunk = std::make_shared<BackfillChunk>(shared_from_this(),
-                                                 backfilled_until_);
+                                                 backfilled_until_,
+                                                 backfill_table_->epoch());
     return chunk->Launch();
   }
   return Status::OK();
@@ -1317,8 +1329,9 @@ Status BackfillTablet::UpdateBackfilledUntil(
     for (const auto& idx_id : backfill_table_->indexes_to_build()) {
       l.mutable_data()->pb.mutable_backfilled_until()->insert({idx_id, backfilled_until_});
     }
-    RETURN_NOT_OK(backfill_table_->master()->catalog_manager()->sys_catalog()->Upsert(
-        backfill_table_->leader_term(), tablet_));
+    RETURN_NOT_OK(
+        backfill_table_->master()->catalog_manager()->sys_catalog()->Upsert(
+            backfill_table_->epoch(), tablet_));
     l.Commit();
   }
 
@@ -1421,11 +1434,13 @@ TabletServerId GetSafeTimeForTablet::permanent_uuid() {
 }
 
 BackfillChunk::BackfillChunk(std::shared_ptr<BackfillTablet> backfill_tablet,
-                             const std::string& start_key)
+                             const std::string& start_key,
+                             LeaderEpoch epoch)
     : RetryingTSRpcTask(backfill_tablet->master(),
                         backfill_tablet->threadpool(),
                         std::unique_ptr<TSPicker>(new PickLeaderReplica(backfill_tablet->tablet())),
                         backfill_tablet->tablet()->table().get(),
+                        std::move(epoch),
                         /* async_task_throttler */ nullptr),
       indexes_being_backfilled_(backfill_tablet->indexes_to_build()),
       backfill_tablet_(backfill_tablet),

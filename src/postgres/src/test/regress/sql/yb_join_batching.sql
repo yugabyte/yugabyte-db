@@ -26,6 +26,7 @@ SET enable_hashjoin = off;
 SET enable_mergejoin = off;
 SET enable_seqscan = off;
 SET enable_material = off;
+SET yb_prefer_bnl = on;
 
 SET yb_bnl_batch_size = 3;
 

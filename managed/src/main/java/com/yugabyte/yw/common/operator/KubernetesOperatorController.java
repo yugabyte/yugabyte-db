@@ -43,6 +43,7 @@ import io.yugabyte.operator.v1alpha1.YBUniverse;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YcqlPassword;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.YsqlPassword;
 import java.lang.reflect.Field;
+import java.lang.reflect.Modifier;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Base64;
@@ -182,11 +183,16 @@ public class KubernetesOperatorController {
         UniverseResp universeResp =
             universeCRUDHandler.findByName(cust, universeName).stream().findFirst().orElse(null);
 
-        if (universeResp == null
-            && isRunningInKubernetes()
-            && canDeleteProvider(cust, universeName)) {
-          String status = ybUniverse.getStatus().getUniverseStatus();
-          if (status.contains("DestroyKubernetesUniverse Success")) {
+        if (universeResp == null) {
+          var ybUniStatus = ybUniverse.getStatus();
+          // at this point the universe should be deleted, lets just return.
+          if (ybUniStatus == null) {
+            return;
+          }
+          String status = ybUniStatus.getUniverseStatus();
+          if (status.contains("DestroyKubernetesUniverse Success")
+              && canDeleteProvider(cust, universeName)
+              && isRunningInKubernetes()) {
             LOG.info("Status is: " + status);
             LOG.info("Deleting provider now");
             Result deleteProvider = deleteProvider(cust.getUuid(), universeName);
@@ -565,8 +571,6 @@ public class KubernetesOperatorController {
     }
     Provider provider = getProvider(customerUUID, ybUniverse);
     userIntent.provider = provider.getUuid().toString();
-    // Provider.create(customerUUID, UUID.fromString(userIntent.provider), CloudType.gcp, "gcp-3",
-    // details);
     userIntent.providerType = CloudType.kubernetes;
     userIntent.replicationFactor =
         ybUniverse.getSpec().getReplicationFactor() != null
@@ -621,8 +625,12 @@ public class KubernetesOperatorController {
       userIntent.enableYCQLAuth = true;
       userIntent.ycqlPassword = password;
     }
-    userIntent.masterGFlags = new HashMap<>(ybUniverse.getSpec().getMasterGFlags());
-    userIntent.tserverGFlags = new HashMap<>(ybUniverse.getSpec().getTserverGFlags());
+    if (ybUniverse.getSpec().getMasterGFlags() != null) {
+      userIntent.masterGFlags = new HashMap<>(ybUniverse.getSpec().getMasterGFlags());
+    }
+    if (ybUniverse.getSpec().getTserverGFlags() != null) {
+      userIntent.tserverGFlags = new HashMap<>(ybUniverse.getSpec().getTserverGFlags());
+    }
     return userIntent;
   }
 
@@ -676,18 +684,35 @@ public class KubernetesOperatorController {
     try {
       // If the provider already exists, don't create another
       String providerName = getProviderName(ybUniverse.getMetadata().getName());
+      // Check if need to filter zones.
+      List<String> zonesFilter = ybUniverse.getSpec().getZoneFilter();
       List<Provider> providers =
           Provider.getAll(customerUUID).stream()
               .filter(
                   p -> p.getCloudCode() == CloudType.kubernetes && p.getName().equals(providerName))
               .collect(Collectors.toList());
       Provider autoProvider = null;
+      if (!providers.isEmpty()) {
+        if (!zonesFilter.isEmpty()) {
+          LOG.error(
+              "Zone filter is not supported with pre-existing providers, ignoring zone filter");
+        }
+      }
+
       if (providers.isEmpty() && isRunningInKubernetes()) {
         KubernetesProviderFormData providerData = cloudProviderHandler.suggestedKubernetesConfigs();
         providerData.regionList =
             providerData.regionList.stream()
                 .map(
                     r -> {
+                      if (zonesFilter != null) {
+                        List<KubernetesProviderFormData.RegionData.ZoneData> filteredZones =
+                            r.zoneList.stream()
+                                .filter(z -> zonesFilter.contains(z.name))
+                                .collect(Collectors.toList());
+
+                        r.zoneList = filteredZones;
+                      }
                       r.zoneList =
                           r.zoneList.stream()
                               .map(
@@ -768,6 +793,11 @@ public class KubernetesOperatorController {
     try {
       Pair<Field, UserIntent> kubernetesOperatorVersionUpdate = null;
       for (Field field : fields) {
+        int modifiers = field.getModifiers();
+        if (!Modifier.isPublic(modifiers)) {
+          // ignore private, protected for now;
+          continue;
+        }
         if (field.get(newIntent) != null && field.get(oldIntent) != null) {
           if (!field.get(oldIntent).equals(field.get(newIntent))) {
             if (!field.getName().equals("kubernetesOperatorVersion")) {

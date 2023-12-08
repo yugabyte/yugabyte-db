@@ -23,6 +23,7 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.castore.CustomCAStoreManager;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import io.ebean.annotation.EnumValue;
 import java.nio.charset.StandardCharsets;
 import java.security.KeyStore;
 import java.util.Arrays;
@@ -30,6 +31,7 @@ import java.util.Calendar;
 import java.util.List;
 import java.util.Map;
 import java.util.TimeZone;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -49,6 +51,17 @@ public class VaultAccessor {
   /** Vault supports 2 versions of API, we have to use version 1 to connect with Vault. */
   private int apiVersion;
 
+  private AuthType authType;
+
+  // allowed authentication menthods to access the vault
+  public enum AuthType {
+    @EnumValue("Token")
+    Token,
+
+    @EnumValue("AppRole")
+    AppRole,
+  }
+
   /**
    * Constructs vault object of com.bettercloud.vault.Vault use buildVaultAccessor to build an
    * object
@@ -60,6 +73,22 @@ public class VaultAccessor {
     LOG.debug("Calling HCVaultAccessor: with vault {}, API version: {}", vObj, apiVersion);
 
     vault = vObj;
+    authType = AuthType.Token;
+    tokenTtlExpiry = Calendar.getInstance();
+  }
+
+  public VaultAccessor(Vault vObj, int apiVer, AuthType type) {
+
+    tokenTTL = 0;
+    apiVersion = apiVer;
+    LOG.debug(
+        "Calling HCVaultAccessor: with vault {}, API version: {}, auth type: {}",
+        vObj,
+        apiVersion,
+        type);
+
+    vault = vObj;
+    authType = type;
     tokenTtlExpiry = Calendar.getInstance();
   }
 
@@ -71,20 +100,7 @@ public class VaultAccessor {
 
     VaultConfig config = new VaultConfig().address(vaultAddr).token(vaultToken);
 
-    // Need to do this to circumvent the issue of not being able to call non-static methods
-    // of CAStore into this class. HCVault/EAR code needs refactoring.
-    CustomCAStoreManager customCAStoreManager =
-        StaticInjectorHolder.injector().instanceOf(CustomCAStoreManager.class);
-    boolean customCAUploaded = customCAStoreManager.areCustomCAsPresent();
-    boolean ybaTrustStoreEnabled = customCAStoreManager.isEnabled();
-    if (customCAUploaded && !ybaTrustStoreEnabled) {
-      LOG.warn("Skipping to use YBA's custom trust-store as the feature is disabled");
-    }
-    if (customCAUploaded && ybaTrustStoreEnabled) {
-      LOG.debug("Using YBA's custom trust-store with Java defaults");
-      KeyStore ybaJavaKeyStore = customCAStoreManager.getYbaAndJavaKeyStore();
-      config.sslConfig(new SslConfig().trustStore(ybaJavaKeyStore).build());
-    }
+    config = customCAStoreConfig(config);
     config = config.build();
 
     Vault vault = new Vault(config, Integer.valueOf(apiVersion));
@@ -100,6 +116,81 @@ public class VaultAccessor {
       throw e;
     }
     return vAccessor;
+  }
+
+  public static VaultAccessor buildVaultAccessorFromAppRole(
+      String vaultAddr, String vaultAuthNamespace, String vaultRoleID, String vaultSecretID)
+      throws VaultException {
+    LOG.debug("Calling buildVaultAccessorFromAppRole: with address {}", vaultAddr);
+
+    VaultConfig config = new VaultConfig().address(vaultAddr);
+    config = customCAStoreConfig(config);
+    config.build();
+    int apiVersion = 1;
+    Vault vault = new Vault(config, apiVersion);
+    String path = "approle";
+    AuthResponse response;
+
+    try {
+      if (!StringUtils.isBlank(vaultAuthNamespace)) {
+        LOG.info("Namespace given = '{}'", vaultAuthNamespace);
+        response =
+            vault
+                .auth()
+                .withNameSpace(vaultAuthNamespace)
+                .loginByAppRole(path, vaultRoleID, vaultSecretID);
+        LOG.info("Adding namespace '{}' to vault config", vaultAuthNamespace);
+        config = config.nameSpace(vaultAuthNamespace);
+      } else {
+        LOG.info("No namespace given.");
+        response = vault.auth().loginByAppRole(path, vaultRoleID, vaultSecretID);
+      }
+    } catch (VaultException e) {
+      LOG.error("Creation of vault (AppRole) has failed with error:" + e.getMessage());
+      throw e;
+    }
+    String vaultToken = response.getAuthClientToken();
+
+    config = config.token(vaultToken);
+
+    config = customCAStoreConfig(config);
+    config = config.build();
+
+    vault = new Vault(config, Integer.valueOf(apiVersion));
+    LOG.info("Created vault connection (AppRole) with {}, - {}", vaultAddr, vault);
+    VaultAccessor vAccessor = new VaultAccessor(vault, apiVersion, AuthType.AppRole);
+
+    try {
+      vAccessor.tokenSelfLookupCheck();
+      vAccessor.getTokenExpiryFromVault();
+    } catch (VaultException e) {
+      LOG.error("Creation of vault (Approle) has failed with error:" + e.getMessage());
+      throw e;
+    }
+    return vAccessor;
+  }
+
+  public static VaultConfig customCAStoreConfig(VaultConfig config) throws VaultException {
+    // Need to do this to circumvent the issue of not being able to call non-static methods
+    // of CAStore into this class. HCVault/EAR code needs refactoring.
+    CustomCAStoreManager customCAStoreManager =
+        StaticInjectorHolder.injector().instanceOf(CustomCAStoreManager.class);
+    boolean customCAUploaded = customCAStoreManager.areCustomCAsPresent();
+    boolean ybaTrustStoreEnabled = customCAStoreManager.isEnabled();
+    if (customCAUploaded && !ybaTrustStoreEnabled) {
+      LOG.warn("Skipping to use YBA's custom trust-store as the feature is disabled");
+    }
+    if (customCAUploaded && ybaTrustStoreEnabled) {
+      LOG.debug("Using YBA's custom trust-store with Java defaults");
+      KeyStore ybaJavaKeyStore = customCAStoreManager.getYbaAndJavaKeyStore();
+      try {
+        config.sslConfig(new SslConfig().trustStore(ybaJavaKeyStore).build());
+      } catch (VaultException e) {
+        LOG.error("Creation of vault with SSL config has failed with error:" + e.getMessage());
+        throw e;
+      }
+    }
+    return config;
   }
 
   public void tokenSelfLookupCheck() throws VaultException {
@@ -189,11 +280,23 @@ public class VaultAccessor {
         LOG.warn("Vault Token {} is not renewable", token);
         return;
       }
+      renewToken(token);
 
+    } catch (VaultException e) {
+      LOG.warn("Received exception while attempting to renew");
+    }
+  }
+
+  public void renewToken(String token) {
+
+    try {
       long ttl = vault.auth().lookupSelf().getTTL();
       if (ttl < (3600 * TTL_RENEWAL_BEFORE_EXPIRY_HRS)) {
         vault.auth().renewSelf();
-        LOG.info("Token {} is renewed as it was very close to expiry", token);
+        LOG.info(
+            "Token {} of authentication type {} has been renewed as it was very close to expiry",
+            token,
+            authType);
         return;
       }
 
@@ -203,7 +306,7 @@ public class VaultAccessor {
         LOG.info(
             "Token {} is renewed as it has passed {}0% of its expiry window",
             token, TTL_EXPIRY_PERCENT_FACTOR);
-      } else LOG.debug("Not need to renew token {} for now", token);
+      } else LOG.debug("No need to renew token {} for now", token);
 
     } catch (VaultException e) {
       LOG.warn("Received exception while attempting to renew");

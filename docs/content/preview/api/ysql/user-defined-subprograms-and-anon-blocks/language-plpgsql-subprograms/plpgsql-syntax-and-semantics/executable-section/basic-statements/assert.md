@@ -1,8 +1,8 @@
 ---
-title: The "assert" statement [YSQL]
-headerTitle: The "assert" statement
+title: The PL/pgSQL "assert" statement [YSQL]
+headerTitle: The PL/pgSQL "assert" statement
 linkTitle: >
-  The "assert" statement
+  "assert" statement
 description: Describes the syntax and semantics of the PL/pgSQL "assert" statement. [YSQL].
 menu:
   preview:

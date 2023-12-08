@@ -332,11 +332,20 @@ Status ReadQuery::DoPerform() {
   require_lease_ = tablet::RequireLease(req_->consistency_level() == YBConsistencyLevel::STRONG);
   // TODO: should check all the tables referenced by the requests to decide if it is transactional.
   const bool transactional = this->transactional();
+
   // Should not pick read time for serializable isolation, since it is picked after read intents
   // are added. Also conflict resolution for serializable isolation should be done without read time
   // specified. So we use max hybrid time for conflict resolution in such case.
   // It was implemented as part of #655.
-  if (!serializable_isolation) {
+  //
+  // Similarly, for explicit row locking, if no read time is specified by the query layer, we can
+  // avoid picking one before conflict resolution. Instead we can pick one while reading i.e., after
+  // writing intents (see PickReadTime() in Run()). This helps in Wait-on-Conflict concurrency
+  // control mode by allowing retrying of conflict resolution on the tserver once the waiting
+  // transaction exits a wait queue, instead of throwing a kConflict error and expecting the query
+  // layer to maybe retry. It also helps retry kReadRestart errors which might occur during the
+  // reading phase in the context of this operation.
+  if (!serializable_isolation && !has_row_mark) {
     RETURN_NOT_OK(PickReadTime(server_.Clock()));
   }
 
@@ -408,7 +417,9 @@ Status ReadQuery::DoPickReadTime(server::Clock* clock) {
   if (metrics) {
     start_time = MonoTime::Now();
   }
-  if (!read_time_) {
+
+  const auto read_time_was_empty = !read_time_;
+  if (read_time_was_empty) {
     safe_ht_to_read_ = VERIFY_RESULT(abstract_tablet_->SafeTime(require_lease_));
     // If the read time is not specified, then it is a single-shard read.
     // So we should restart it in server in case of failure.
@@ -443,8 +454,11 @@ Status ReadQuery::DoPickReadTime(server::Clock* clock) {
   if (metrics) {
     auto safe_time_wait = MonoTime::Now() - start_time;
     metrics->Increment(
-         tablet::TabletHistograms::kReadTimeWait,
+         tablet::TabletEventStats::kReadTimeWait,
          make_unsigned(safe_time_wait.ToMicroseconds()));
+    if (read_time_was_empty) {
+      metrics->Increment(tablet::TabletCounters::kPickReadTimeOnDocDB);
+    }
   }
   return Status::OK();
 }
@@ -567,6 +581,9 @@ Result<ReadHybridTime> ReadQuery::DoReadImpl() {
   if (IsForBackfill()) {
     read_operation_data.read_time = read_time_;
   } else {
+    if (!read_time_) {
+      tablet()->metrics()->Increment(tablet::TabletCounters::kPickReadTimeOnDocDB);
+    }
     read_tx = VERIFY_RESULT(
         tablet::ScopedReadOperation::Create(abstract_tablet_.get(), require_lease_, read_time_));
     read_operation_data.read_time = read_tx.read_time();

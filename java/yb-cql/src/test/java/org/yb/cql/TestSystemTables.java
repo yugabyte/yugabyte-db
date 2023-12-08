@@ -416,6 +416,14 @@ public class TestSystemTables extends BaseCQLTest {
     assertEquals(type, row.getString("type"));
   }
 
+  private void verifyTypeSchema(Row row, String type_name,
+                                List<String> field_names, List<String> field_types) {
+    assertEquals(DEFAULT_TEST_KEYSPACE, row.getString("keyspace_name"));
+    assertEquals(type_name, row.getString("type_name"));
+    assertEquals(field_names, row.getList("field_names", String.class));
+    assertEquals(field_types, row.getList("field_types", String.class));
+  }
+
   @Test
   public void testSystemColumnsTable() throws Exception {
     session.execute("CREATE TABLE many_columns (c1 int, c2 text, c3 int, c4 text, c5 int, c6 int," +
@@ -447,6 +455,35 @@ public class TestSystemTables extends BaseCQLTest {
     assertEquals(2, results.size());
     verifyColumnSchema(results.get(0), "counter_column", "k", "partition_key", 0, "int", "none");
     verifyColumnSchema(results.get(1), "counter_column", "c", "regular", -1, "counter", "none");
+  }
+
+  @Test
+  public void testQuotedColumnNames() throws Exception {
+    session.execute("CREATE TYPE \"set\" (v int)");
+    session.execute("CREATE TYPE \"Index\" (\"table\" frozen<\"set\">)");
+    session.execute("CREATE TABLE tbl (h int PRIMARY KEY, \"IN\" frozen<\"Index\">, " +
+        "\"set\" set<int>, \"type\" frozen<\"set\">, \"create\" set<frozen<\"set\">>)");
+    List<Row> results = session.execute(String.format("SELECT * FROM system_schema.columns WHERE " +
+        "keyspace_name = '%s' AND table_name = 'tbl'", DEFAULT_TEST_KEYSPACE)).all();
+
+    assertEquals(5, results.size());
+    verifyColumnSchema(results.get(0), "tbl", "h", "partition_key", 0, "int", "none");
+    verifyColumnSchema(results.get(1), "tbl", "IN", "regular", -1, "frozen<\"Index\">", "none");
+    verifyColumnSchema(results.get(2), "tbl", "set", "regular", -1, "set<int>", "none");
+    verifyColumnSchema(results.get(3), "tbl", "type", "regular", -1, "frozen<\"set\">", "none");
+    verifyColumnSchema(
+        results.get(4), "tbl", "create", "regular", -1, "set<frozen<\"set\">>", "none");
+
+    results = session.execute(String.format("SELECT * FROM system_schema.types WHERE " +
+        "keyspace_name = '%s'", DEFAULT_TEST_KEYSPACE)).all();
+    assertEquals(2, results.size());
+    verifyTypeSchema(
+        results.get(0), "Index", Arrays.asList("table"), Arrays.asList("frozen<\"set\">"));
+    verifyTypeSchema(results.get(1), "set", Arrays.asList("v"), Arrays.asList("int"));
+
+    session.execute("DROP TABLE tbl");
+    // The type cannot be deleted automaticaly by the test framework. Delete it here.
+    session.execute("DROP TYPE \"Index\"");
   }
 
   @Test

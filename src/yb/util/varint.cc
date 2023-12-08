@@ -24,7 +24,6 @@
 using std::ostream;
 
 namespace yb {
-namespace util {
 
 void BigNumDeleter::operator()(BIGNUM* bn) const {
   BN_free(bn);
@@ -305,5 +304,4 @@ VarInt operator-(const VarInt& lhs, const VarInt& rhs) {
   return VarInt(std::move(temp));
 }
 
-} // namespace util
 } // namespace yb

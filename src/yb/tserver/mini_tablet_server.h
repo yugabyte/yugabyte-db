@@ -90,6 +90,8 @@ class MiniTabletServer {
   // having all its tablets bootstrapped.
   Status Start(WaitTabletsBootstrapped wait_tablets_bootstrapped = WaitTabletsBootstrapped::kTrue);
 
+  std::string ToString() const;
+
   // Waits for the tablet server to be fully initialized, including
   // having all tablets bootstrapped.
   Status WaitStarted();

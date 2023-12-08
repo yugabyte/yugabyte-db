@@ -285,7 +285,8 @@ bool ClusterLoadBalancer::IsLoadBalancerEnabled() const {
 ClusterLoadBalancer::ClusterLoadBalancer(CatalogManager* cm)
     : random_(GetRandomSeed32()),
       is_enabled_(FLAGS_enable_load_balancing),
-      cbuf_activities_(FLAGS_load_balancer_num_idle_runs) {
+      cbuf_activities_(FLAGS_load_balancer_num_idle_runs),
+      epoch_(LeaderEpoch(-1)) {
   ResetGlobalState(false /* initialize_ts_descs */);
 
   catalog_manager_ = cm;
@@ -584,7 +585,8 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
   RecordActivity(task_added, master_errors);
 }
 
-void ClusterLoadBalancer::RunLoadBalancer(Options* options) {
+void ClusterLoadBalancer::RunLoadBalancer(const LeaderEpoch& epoch, Options* options) {
+  epoch_ = epoch;
   SysClusterConfigEntryPB config;
   CHECK_OK(catalog_manager_->GetClusterConfig(&config));
 
@@ -1665,7 +1667,7 @@ Status ClusterLoadBalancer::SendReplicaChanges(
              IllegalState,
              "Sending duplicate add replica task.");
     catalog_manager_->SendAddServerRequest(
-        tablet, GetDefaultMemberType(), l->pb.committed_consensus_state(), ts_uuid);
+        tablet, GetDefaultMemberType(), l->pb.committed_consensus_state(), ts_uuid, epoch_);
   } else {
     // If the replica is also the leader, first step it down and then remove.
     if (state_->per_tablet_meta_[tablet->id()].leader_uuid == ts_uuid) {
@@ -1675,7 +1677,7 @@ Status ClusterLoadBalancer::SendReplicaChanges(
           IllegalState,
           "Sending duplicate leader stepdown task.");
       catalog_manager_->SendLeaderStepDownRequest(
-          tablet, l->pb.committed_consensus_state(), ts_uuid, should_remove_leader,
+          tablet, l->pb.committed_consensus_state(), ts_uuid, should_remove_leader, epoch_,
           new_leader_ts_uuid);
     } else {
       SCHECK_EQ(
@@ -1684,7 +1686,7 @@ Status ClusterLoadBalancer::SendReplicaChanges(
           IllegalState,
           "Sending duplicate remove replica task.");
       catalog_manager_->SendRemoveServerRequest(
-          tablet, l->pb.committed_consensus_state(), ts_uuid);
+          tablet, l->pb.committed_consensus_state(), ts_uuid, epoch_);
     }
   }
   return Status::OK();

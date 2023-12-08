@@ -28,6 +28,7 @@
 
 #include <assert.h>
 #include <inttypes.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -77,6 +78,7 @@
 #include "commands/variable.h"
 #include "common/pg_yb_common.h"
 #include "lib/stringinfo.h"
+#include "libpq/hba.h"
 #include "optimizer/cost.h"
 #include "tcop/utility.h"
 #include "utils/builtins.h"
@@ -172,6 +174,7 @@ int ybc_disable_pg_locking = -1;
 
 /* Forward declarations */
 static void YBCInstallTxnDdlHook();
+static bool YBCanEnableDBCatalogVersionMode();
 
 bool yb_enable_docdb_tracing = false;
 bool yb_read_from_followers = false;
@@ -464,22 +467,128 @@ YBSavepointsEnabled()
 	return IsYugaByteEnabled() && YBTransactionsEnabled() && cached_value;
 }
 
+/*
+ * Return true if we are in per-database catalog version mode. In order to
+ * use per-database catalog version mode, two conditions must be met:
+ *   * --FLAGS_TEST_enable_db_catalog_version_mode=true
+ *   * the table pg_yb_catalog_version has one row per database. 
+ * This function takes care of the YSQL upgrade from global catalog version
+ * mode to per-database catalog version mode when the default value of
+ * --FLAGS_TEST_enable_db_catalog_version_mode is changed to true. In this
+ * upgrade procedure --FLAGS_TEST_enable_db_catalog_version_mode is set to
+ * true before the table pg_yb_catalog_version is updated to have one row per
+ * database.
+ * This function does not consider going from per-database catalog version
+ * mode back to global catalog version mode.
+ */
 bool
 YBIsDBCatalogVersionMode()
 {
-	static int cached_value = -1;
-	if (cached_value == -1)
+	static bool cached_is_db_catalog_version_mode = false;
+	static int cached_gflag = -1;
+
+	if (cached_is_db_catalog_version_mode)
+		return true;
+
+	if (cached_gflag == -1)
 	{
-		cached_value = YBCIsEnvVarTrueWithDefault(
+		cached_gflag = YBCIsEnvVarTrueWithDefault(
 			"FLAGS_TEST_enable_db_catalog_version_mode", false);
 	}
+
 	/*
-	 * During initdb (bootstrap mode), CATALOG_VERSION_PROTOBUF_ENTRY is used
+	 * During bootstrap phase in initdb, CATALOG_VERSION_PROTOBUF_ENTRY is used
 	 * for catalog version type.
 	 */
-	return IsYugaByteEnabled() &&
-		   YbGetCatalogVersionType() == CATALOG_VERSION_CATALOG_TABLE &&
-		   cached_value;
+	if (!IsYugaByteEnabled() ||
+		YbGetCatalogVersionType() != CATALOG_VERSION_CATALOG_TABLE ||
+		!cached_gflag)
+		return false;
+
+	/*
+	 * During second phase of initdb, per-db catalog version mode is supported.
+	 */
+	if (YBCIsInitDbModeEnvVarSet())
+	{
+		cached_is_db_catalog_version_mode = true;
+		return true;
+	}
+
+	/*
+	 * At this point, we know that FLAGS_TEST_enable_db_catalog_version_mode is
+	 * turned on. However in case of YSQL upgrade we may not be ready to enable
+	 * per-db catalog version mode yet. Note that we only provide support where
+	 * we go from global catalog version mode to per-db catalog version mode,
+	 * not for the opposite direction.
+	 */
+	if (YBCanEnableDBCatalogVersionMode())
+	{
+		cached_is_db_catalog_version_mode = true;
+		/*
+		 * Switching to per-db mode and set catalog version to 1, which is the
+		 * initial per-database catalog version value after the table
+		 * pg_yb_catalog_version is upgraded to have one row per database.
+		 * Note that we assume there are no DDL statements running during
+		 * YSQL upgrade and in particular we do not support concurrent DDL
+		 * statements when switching from global catalog version mode to
+		 * per-database catalog version mode. As of 2023-08-07, this is not
+		 * enforced and therefore if a concurrent DDL statement is executed:
+		 * (1) if this DDL statement also increments a table schema, we still
+		 * have the table schema version mismatch check as a safety net to
+		 * reject stale read/write RPCs;
+		 * (2) if this DDL statement only increments the catalog version,
+		 * then stale read/write RPCs are possible which can lead to wrong
+		 * results;
+		 */
+		yb_last_known_catalog_cache_version = 1;
+		YbUpdateCatalogCacheVersion(1);
+		elog(DEBUG3, "switching to per-db mode");
+		return true;
+	}
+
+	/* We cannot enable per-db catalog version mode yet. */
+	return false;
+}
+
+static bool
+YBCanEnableDBCatalogVersionMode()
+{
+	/*
+	 * Even when FLAGS_TEST_enable_db_catalog_version_mode is turned on we
+	 * cannot simply enable per-database catalog mode if the table
+	 * pg_yb_catalog_version does not have one row for each database.
+	 * Consider YSQL upgrade, it happens after cluster software upgrade and
+	 * can take time. During YSQL upgrade we need to wait until the
+	 * pg_yb_catalog_version table is updated to have one row per database.
+	 * In addition, we do not want to switch to per-database catalog version
+	 * mode at any moment to prevent the following case:
+	 *
+	 * (1) At time t1, pg_yb_catalog_version is prefetched and there is only
+	 * one row in the table because the table has not been upgraded yet.
+	 * (2) At time t2 > t1, pg_yb_catalog_version is transactionally upgraded
+	 * to have one row per database.
+	 * (3) At time t3 > t2, assume that we already switched to per-database
+	 * catalog version mode, then we will try to find the row of MyDatabaseId
+	 * from the pg_yb_catalog_version data prefetched in step (1). That row
+	 * would not exist because at time t1 pg_yb_catalog_version only had one
+	 * row for template1. This is going to cause a user visible exception.
+	 *
+	 * Therefore after the pg_yb_catalog_version is upgraded, we may continue
+	 * to remain on global catalog version mode until we are not doing
+	 * prefetching.
+	 */
+	if (YBCIsSysTablePrefetchingStarted())
+		return false;
+
+	/*
+	 * We assume that the table pg_yb_catalog_version has either exactly
+	 * one row in global catalog version mode, or one row per database in
+	 * per-database catalog version mode. It is unexpected if it has more
+	 * than one rows but not exactly one row per database. During YSQL
+	 * upgrade, the pg_yb_catalog_version is transactionally updated
+	 * to have one row per database.
+	 */
+	return (YbGetNumberOfDatabases() > 1);
 }
 
 void
@@ -563,6 +672,17 @@ GetStatusMsgAndArgumentsByCode(const uint32_t pg_err_code,
 			*msg_nargs = 1;
 			*msg_args = (const char **) palloc(sizeof(const char *));
 			(*msg_args)[0] = FetchUniqueConstraintName(YBCStatusRelationOid(s));
+			break;
+		case ERRCODE_T_R_DEADLOCK_DETECTED:
+			if (YBCIsTxnDeadlockError(txn_err_code)) {
+				*msg_buf = "deadlock detected";
+				*msg_nargs = 0;
+				*msg_args = NULL;
+
+				*detail_buf = status_msg;
+				*detail_nargs = status_nargs;
+				*detail_args = status_args;
+			}
 			break;
 		default:
 			break;
@@ -654,6 +774,7 @@ YBInitPostgresBackend(
 		callbacks.UnixEpochToPostgresEpoch = &YbUnixEpochToPostgresEpoch;
 		callbacks.PostgresEpochToUnixEpoch= &YbPostgresEpochToUnixEpoch;
 		callbacks.ConstructTextArrayDatum = &YbConstructTextArrayDatum;
+		callbacks.CheckUserMap = &check_usermap;
 		YBCInitPgGate(type_table, count, callbacks);
 		YBCInstallTxnDdlHook();
 
@@ -666,6 +787,14 @@ YBInitPostgresBackend(
 		HandleYBStatus(YBCPgInitSession(db_name ? db_name : user_name,
 										&yb_session_stats.current_state));
 		YBCSetTimeout(StatementTimeout, NULL);
+
+		/*
+		 * Upon completion of the first heartbeat to the local tserver, retrieve
+		 * and store the session ID in shared memory, so that entities
+		 * associated with a session ID (like txn IDs) can be transitively
+		 * mapped to PG backends.
+		 */
+		yb_pgstat_add_session_info(YBCPgGetSessionID());
 	}
 }
 
@@ -1172,13 +1301,16 @@ bool yb_enable_create_with_table_oid = false;
 int yb_index_state_flags_update_delay = 1000;
 bool yb_enable_expression_pushdown = true;
 bool yb_enable_distinct_pushdown = true;
+bool yb_enable_index_aggregate_pushdown = true;
 bool yb_enable_optimizer_statistics = false;
 bool yb_bypass_cond_recheck = true;
 bool yb_make_next_ddl_statement_nonbreaking = false;
 bool yb_plpgsql_disable_prefetch_in_for_query = false;
 bool yb_enable_sequence_pushdown = true;
 bool yb_disable_wait_for_backends_catalog_version = false;
+bool yb_enable_base_scans_cost_model = false;
 int yb_wait_for_backends_catalog_version_timeout = 5 * 60 * 1000;	/* 5 min */
+bool yb_prefer_bnl = false;
 
 //------------------------------------------------------------------------------
 // YB Debug utils.
@@ -1194,6 +1326,10 @@ bool yb_test_system_catalogs_creation = false;
 bool yb_test_fail_next_ddl = false;
 
 char *yb_test_block_index_phase = "";
+
+char *yb_test_fail_index_state_change = "";
+
+bool ddl_rollback_enabled = false;
 
 const char*
 YBDatumToString(Datum datum, Oid typid)
@@ -1358,13 +1494,13 @@ void
 YBDecrementDdlNestingLevel()
 {
 	--ddl_transaction_state.nesting_level;
+	if (yb_test_fail_next_ddl)
+	{
+		yb_test_fail_next_ddl = false;
+		elog(ERROR, "Failed DDL operation as requested");
+	}
 	if (ddl_transaction_state.nesting_level == 0)
 	{
-		if (yb_test_fail_next_ddl)
-		{
-			yb_test_fail_next_ddl = false;
-			elog(ERROR, "Failed DDL operation as requested");
-		}
 		if (GetCurrentMemoryContext() == ddl_transaction_state.mem_context)
 			MemoryContextSwitchTo(ddl_transaction_state.mem_context->parent);
 		/*
@@ -1985,6 +2121,19 @@ YbTestGucBlockWhileStrEqual(char **actual, const char *expected,
 			ConfigReloadPending = false;
 			ProcessConfigFile(PGC_SIGHUP);
 		}
+	}
+}
+
+void
+YbTestGucFailIfStrEqual(char *actual, const char *expected)
+{
+	if (strcmp(actual, expected) == 0)
+	{
+		ereport(ERROR,
+				(errmsg("TEST injected failure at stage %s", expected),
+				 errhidestmt(true),
+				 errhidecontext(true)));
+
 	}
 }
 
@@ -2793,6 +2942,30 @@ Datum
 yb_get_effective_transaction_isolation_level(PG_FUNCTION_ARGS)
 {
 	PG_RETURN_CSTRING(yb_fetch_effective_transaction_isolation_level());
+}
+
+Datum
+yb_get_current_transaction(PG_FUNCTION_ARGS)
+{
+	pg_uuid_t *txn_id = NULL;
+	bool is_null = false;
+
+	if (!yb_enable_pg_locks)
+	{
+		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("get_current_transaction is unavailable"),
+						errdetail("yb_enable_pg_locks is false or a system "
+								  "upgrade is in progress")));
+	}
+
+	txn_id = (pg_uuid_t *) palloc(sizeof(pg_uuid_t));
+	HandleYBStatus(
+		YBCPgGetSelfActiveTransaction((YBCPgUuid *) txn_id, &is_null));
+
+	if (is_null)
+		PG_RETURN_NULL();
+
+	PG_RETURN_UUID_P(txn_id);
 }
 
 Datum
@@ -3624,10 +3797,14 @@ void YBSetRowLockPolicy(int *docdb_wait_policy, LockWaitPolicy pg_wait_policy)
 
 uint32_t YbGetNumberOfDatabases()
 {
-	Assert(YBIsDBCatalogVersionMode());
 	uint32_t num_databases = 0;
 	HandleYBStatus(YBCGetNumberOfDatabases(&num_databases));
-	Assert(num_databases > 0);
+	/*
+	 * It is possible that at the beginning master has not passed back the
+	 * contents of pg_yb_catalog_versions back to tserver yet so that tserver's
+	 * ysql_db_catalog_version_map_ is still empty. In this case we get 0
+	 * databases back.
+	 */
 	return num_databases;
 }
 
@@ -3651,7 +3828,7 @@ YbGetSplitOptions(Relation rel)
 	OptSplit *split_options = makeNode(OptSplit);
 	split_options->split_type = NUM_TABLETS;
 	split_options->num_tablets = rel->yb_table_properties->num_tablets;
-	/* 
+	/*
 	 * Copy split points if we have a live range key.
 	 * (RelationGetPrimaryKeyIndex returns InvalidOid if pkey is currently
 	 * being dropped).
@@ -3713,4 +3890,79 @@ bool YbIsStickyConnection(int *change)
 	*change = 0; /* Since it is updated it will be set to 0 */
 	elog(DEBUG5, "Number of sticky objects: %d", yb_committed_sticky_object_count);
 	return (yb_committed_sticky_object_count > 0);
+}
+
+void**
+YbPtrListToArray(const List* str_list, size_t* length) {
+	void		**buf;
+	ListCell	*lc;
+
+	/* Assumes that the pointer sizes are equal for every type */
+	buf = (void **) palloc(sizeof(void *) * list_length(str_list));
+	*length = 0;
+	foreach (lc, str_list)
+	{
+		buf[(*length)++] = (void *) lfirst(lc);
+	}
+
+	return buf;
+}
+
+/*
+ * This function is almost equivalent to the `read_whole_file` function of
+ * src/postgres/src/backend/commands/extension.c. It differs only in its error
+ * handling. The original read_whole_file function logs errors elevel ERROR
+ * while this function accepts the elevel as the argument for better control
+ * over error handling.
+ */
+char *
+YbReadWholeFile(const char *filename, int* length, int elevel)
+{
+	char	   *buf;
+	FILE	   *file;
+	size_t		bytes_to_read;
+	struct stat fst;
+
+	if (stat(filename, &fst) < 0)
+	{
+		ereport(elevel,
+				(errcode_for_file_access(),
+				 errmsg("could not stat file \"%s\": %m", filename)));
+		return NULL;
+	}
+
+	if (fst.st_size > (MaxAllocSize - 1))
+	{
+		ereport(elevel,
+				(errcode(ERRCODE_PROGRAM_LIMIT_EXCEEDED),
+				 errmsg("file \"%s\" is too large", filename)));
+		return NULL;
+	}
+	bytes_to_read = (size_t) fst.st_size;
+
+	if ((file = AllocateFile(filename, PG_BINARY_R)) == NULL)
+	{
+		ereport(elevel,
+				(errcode_for_file_access(),
+				 errmsg("could not open file \"%s\" for reading: %m",
+						filename)));
+		return NULL;
+	}
+
+	buf = (char *) palloc(bytes_to_read + 1);
+
+	*length = fread(buf, 1, bytes_to_read, file);
+
+	if (ferror(file))
+	{
+		ereport(elevel,
+				(errcode_for_file_access(),
+				 errmsg("could not read file \"%s\": %m", filename)));
+		return NULL;
+	}
+
+	FreeFile(file);
+
+	buf[*length] = '\0';
+	return buf;
 }

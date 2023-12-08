@@ -81,6 +81,8 @@ export const MetricTypesWithOperations = {
       'disk_iops',
       'disk_usage_percent',
       'disk_used_size_total',
+      'disk_volume_usage_percent',
+      'disk_volume_used',
       'disk_bytes_per_second_per_node',
       'network_packets',
       'network_bytes',

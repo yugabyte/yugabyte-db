@@ -158,20 +158,20 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
     RETURN_NOT_OK(BuildSchemaAndCreateTables(num_consumer_tablets, num_producer_tablets));
 
     for (uint32_t i = 0; i < num_additional_producers; ++i) {
-      std::string cluster_id = Format("additional_producer_$0", i);
+      YBTables tables;
       std::unique_ptr<Cluster> additional_producer_cluster = VERIFY_RESULT(AddClusterWithTables(
-          &producer_clusters_, &(producer_tables_[cluster_id]), cluster_id,
-          num_producer_tablets.size(), num_tablets_per_table, /* is_producer= */ true,
-          num_tservers));
+          &producer_clusters_, &tables, i, num_producer_tablets.size(), num_tablets_per_table,
+          /* is_producer= */ true, num_tservers));
+      producer_tables_[additional_producer_cluster->mini_cluster_->GetClusterId()] =
+          std::move(tables);
       additional_clusters_.additional_producer_clusters_.push_back(
           std::move(additional_producer_cluster));
     }
 
     for (uint32_t i = 0; i < num_additional_consumers; ++i) {
       std::unique_ptr<Cluster> additional_consumer_cluster = VERIFY_RESULT(AddClusterWithTables(
-          &consumer_clusters_, &consumer_tables_, Format("additional_consumer_$0", i),
-          num_consumer_tablets.size(), num_tablets_per_table, /* is_producer= */ false,
-          num_tservers));
+          &consumer_clusters_, &consumer_tables_, i, num_consumer_tablets.size(),
+          num_tablets_per_table, /* is_producer= */ false, num_tservers));
       additional_clusters_.additional_consumer_clusters_.push_back(
           std::move(additional_consumer_cluster));
     }
@@ -292,11 +292,11 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
   Status WaitForLoadBalancersToStabilizeOnAllClusters() {
     for (const auto& producer_cluster : producer_clusters_) {
       auto cluster = producer_cluster->mini_cluster_.get();
-      RETURN_NOT_OK(WaitForLoadBalancersToStabilize(cluster));
+      RETURN_NOT_OK(WaitForLoadBalancerToStabilize(cluster));
     }
     for (const auto& consumer_cluster : consumer_clusters_) {
       auto cluster = consumer_cluster->mini_cluster_.get();
-      RETURN_NOT_OK(WaitForLoadBalancersToStabilize(cluster));
+      RETURN_NOT_OK(WaitForLoadBalancerToStabilize(cluster));
     }
     return Status::OK();
   }

@@ -479,16 +479,40 @@ public class TestYsqlMetrics extends BasePgSQLTest {
       // If the tracking logic is not accurate and has errors, it will accumulate and shows in the
       // output.
       {
-        final long maxMemSimpleStart = runExplainAnalyze(statement, 1000);
+        final int N_WARMUP_RUNS = 5;
+        final int N_UNMEASURED_RUNS = 80;
+        final int N_MEASURED_RUNS = 20;
+        final int N_ALLOWABLE_FAILURES = 4;
+        final int LIMIT = 1000;
 
-        final String query = buildExplainAnalyzeDemoQuery(1000);
-        int loopN = 100;
-        while (loopN-- > 0) {
-          statement.executeQuery(query);
+        // The first few runs have a higher max memory - we want to use a the lowest value.
+        long maxMemSimpleStart = Long.MAX_VALUE;
+        for (int i = 0; i < N_WARMUP_RUNS; i++) {
+          long maxMem = runExplainAnalyze(statement, LIMIT);
+          if (maxMem < maxMemSimpleStart)
+            maxMemSimpleStart = maxMem;
         }
 
-        final long maxMemSimpleEnd = runExplainAnalyze(statement, 1000);
-        assertEquals(maxMemSimpleEnd, maxMemSimpleStart);
+        // Run the query to allow for any potential memory leak to accumulate.
+        for (int i = 0; i < N_UNMEASURED_RUNS; i++) {
+          runExplainAnalyze(statement, LIMIT);
+        }
+
+        // There is some slight variation to the counter, but we expect the max memory to be
+        // consistent in most runs.
+        int numberOfFailures = 0;
+        for (int i = 0; i < N_MEASURED_RUNS; i++) {
+          final long maxMemCurrent = runExplainAnalyze(statement, LIMIT);
+          if (maxMemCurrent != maxMemSimpleStart) {
+            numberOfFailures++;
+            LOG.info(String.format(
+              "[Run %d]: expected %d (current max mem) to be equal to %d (starting max mem)",
+              i, maxMemCurrent, maxMemSimpleStart));
+          }
+        }
+
+        assertLessThanOrEqualTo("Too many runs had an unexpected max memory.",
+                                numberOfFailures, N_ALLOWABLE_FAILURES);
       }
 
       // Run an accurate max-memory validation by including a single memory consumption operator

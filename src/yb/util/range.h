@@ -113,6 +113,10 @@ class RangeObject {
   RangeObject(Int start, Int stop, Int step)
       : start_(start), stop_(start + (stop - start + step - 1) / step * step), step_(step) {}
 
+  size_t size() const {
+    return (stop_ - start_ + step_ - 1) / step_;
+  }
+
   const_iterator begin() const {
     return const_iterator(start_, step_);
   }

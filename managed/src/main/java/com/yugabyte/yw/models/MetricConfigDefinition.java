@@ -5,21 +5,10 @@ package com.yugabyte.yw.models;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
 import com.fasterxml.jackson.annotation.JsonProperty;
-import com.yugabyte.yw.metrics.MetricQueryContext;
-import com.yugabyte.yw.metrics.MetricSettings;
-import com.yugabyte.yw.metrics.NodeAggregation;
-import com.yugabyte.yw.metrics.SplitMode;
-import com.yugabyte.yw.metrics.TimeAggregation;
+import com.yugabyte.yw.metrics.*;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.HashMap;
-import java.util.HashSet;
-import java.util.LinkedHashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.Set;
+import java.util.*;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import lombok.Data;
@@ -76,6 +65,10 @@ public class MetricConfigDefinition {
 
   @ApiModelProperty(value = "Metric filters", accessMode = READ_ONLY)
   private Map<String, String> filters = new HashMap<>();
+
+  @ApiModelProperty(value = "Metric exclude filters", accessMode = READ_ONLY)
+  @JsonProperty("exclude_filters")
+  private Map<String, String> excludeFilters = new HashMap<>();
 
   @ApiModelProperty(value = "Fields, used to group metric query result", accessMode = READ_ONLY)
   @JsonProperty("group_by")
@@ -199,6 +192,7 @@ public class MetricConfigDefinition {
 
     // If we have additional filters, we add them
     Map<String, String> allFilters = new HashMap<>(filters);
+    Map<String, String> allExcludeFilters = new HashMap<>(excludeFilters);
     if (!context.getAdditionalFilters().isEmpty()) {
       allFilters.putAll(context.getAdditionalFilters());
       // The kubelet volume metrics only has the persistentvolumeclain field
@@ -213,9 +207,9 @@ public class MetricConfigDefinition {
         allFilters.remove("persistentvolumeclaim");
       }
     }
-
-    if (!allFilters.isEmpty()) {
-      query.append(filtersToString(allFilters, context.getExcludeFilters()));
+    allExcludeFilters.putAll(context.getExcludeFilters());
+    if (!allFilters.isEmpty() || !allExcludeFilters.isEmpty()) {
+      query.append(filtersToString(allFilters, allExcludeFilters));
     }
 
     // Range is applicable only when we have functions

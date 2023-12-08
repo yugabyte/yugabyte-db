@@ -13,6 +13,7 @@ import { YBPanelItem } from '../panels';
 import { YBLoadingCircleIcon } from '../common/indicators';
 import { YBCheckBox, YBButtonLink, YBToggle } from '../common/forms/fields';
 import { QuerySearchInput } from './QuerySearchInput';
+import { QueryType } from './helpers/constants';
 
 const dropdownColKeys = {
   Query: {
@@ -356,9 +357,10 @@ const SlowQueriesComponent = () => {
         }
       />
       <QueryInfoSidePanel
-        visible={selectedRow.length}
         onHide={() => setSelectedRow([])}
         queryData={ysqlQueries.find((x) => selectedRow.length && x.queryid === selectedRow[0])}
+        queryType={QueryType.SLOW}
+        visible={selectedRow.length}
       />
     </div>
   );

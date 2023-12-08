@@ -9,10 +9,8 @@
 | "Show costs in UI" | "yb.ui.show_cost" | "CUSTOMER" | "Option to enable/disable costs in UI" | "Boolean" |
 | "Helm chart http download timeout" | "yb.releases.download_helm_chart_http_timeout" | "CUSTOMER" | "The timeout for downloading the Helm chart while importing a release using HTTP" | "Duration" |
 | "Use Redesigned Provider UI" | "yb.ui.feature_flags.provider_redesign" | "CUSTOMER" | "The redesigned provider UI adds a provider list view, a provider details view and improves the provider creation form for AWS, AZU, GCP, and K8s" | "Boolean" |
-| "Use K8 custom resources" | "yb.ui.feature_flags.k8s_custom_resources" | "CUSTOMER" | "Allows user to select custom K8 memory(GB) and cpu cores" | "Boolean" |
 | "Enforce User Tags" | "yb.universe.user_tags.is_enforced" | "CUSTOMER" | "Prevents universe creation when the enforced tags are not provided." | "Boolean" |
 | "Enforced User Tags List" | "yb.universe.user_tags.enforced_tags" | "CUSTOMER" | "A list of enforced user tag and accepted value pairs during universe creation. Pass '*' to accept all values for a tag. Ex: [\"yb_task:dev\",\"yb_task:test\",\"yb_owner:*\",\"yb_dept:eng\",\"yb_dept:qa\", \"yb_dept:product\", \"yb_dept:sales\"]" | "Key Value SetMultimap" |
-| "Enforce Secure Universe Passwords" | "yb.security.enforce_secure_universe_passwords" | "CUSTOMER" | "Prevents universe creation when the Ysql/Ycql password isn't secure." | "Boolean" |
 | "Allow Unsupported Instances" | "yb.internal.allow_unsupported_instances" | "PROVIDER" | "Enabling removes supported instance type filtering on AWS providers." | "Boolean" |
 | "Default AWS Instance Type" | "yb.aws.default_instance_type" | "PROVIDER" | "Default AWS Instance Type" | "String" |
 | "Default GCP Instance Type" | "yb.gcp.default_instance_type" | "PROVIDER" | "Default GCP Instance Type" | "String" |
@@ -37,12 +35,13 @@
 | "Enable Node Agent Client" | "yb.node_agent.client.enabled" | "PROVIDER" | "Enable node agent client for communication to DB nodes." | "Boolean" |
 | "Enable Ansible Offloading" | "yb.node_agent.ansible_offloading.enabled" | "PROVIDER" | "Offload ansible tasks to the DB nodes." | "Boolean" |
 | "Remote tmp directory" | "yb.filepaths.remoteTmpDirectory" | "PROVIDER" | "A remote temporary directory should be used for performing operations on nodes within the provider scope." | "String" |
-| "Polling interval for Opertion status" | "yb.gcp.operation_status_polling_interval" | "PROVIDER" | "Interval to poll the status of ongoing resource creation operations." | "Long" |
-| "Operation Timeout interval" | "yb.gcp.operation_timeout_interval" | "PROVIDER" | "Timeout interval to wait for resource creation operations to complete sucessfully." | "Long" |
+| "Polling interval for GCP Opertion status" | "yb.gcp.operations.status_polling_interval" | "PROVIDER" | "Interval to poll the status of an ongoing GCP resource creation operation." | "Duration" |
+| "GCP Operation Timeout interval" | "yb.gcp.operations.timeout_interval" | "PROVIDER" | "Timeout interval to wait for GCP resource creation operations to complete sucessfully." | "Duration" |
 | "Make YBC listen on 0.0.0.0" | "yb.ybc_flags.listen_on_all_interfaces_k8s" | "PROVIDER" | "Makes YBC bind on all network interfaces" | "Boolean" |
 | "Azure Virtual Machine Params blob" | "yb.azure.custom_params.vm" | "PROVIDER" | "Custom JSON of Azure parameters to apply on top of virtual machine creation." | "String" |
 | "Azure Disk Params blob" | "yb.azure.custom_params.disk" | "PROVIDER" | "Custom JSON of Azure parameters to apply on top of data disk creation." | "String" |
 | "Azure Network Interface Params blob" | "yb.azure.custom_params.network" | "PROVIDER" | "Custom JSON of Azure parameters to apply on top of network interface creation." | "String" |
+| "Monitored mount roots" | "yb.provider.monitored_mount_roots" | "PROVIDER" | "Mount roots, which we show on the merics dashboard and which we're alerting on." | "String" |
 | "Max Number of Parallel Node Checks" | "yb.health.max_num_parallel_node_checks" | "GLOBAL" | "Number of parallel node checks, spawned as part of universes health check process" | "Integer" |
 | "Log Script Output For YBA HA Feature" | "yb.ha.logScriptOutput" | "GLOBAL" | "To log backup restore script output for debugging issues" | "Boolean" |
 | "Use Kubectl" | "yb.use_kubectl" | "GLOBAL" | "Use java library instead of spinning up kubectl process." | "Boolean" |
@@ -62,6 +61,7 @@
 | "YBC Node Upgrade Batch Size" | "ybc.upgrade.node_batch_size" | "GLOBAL" | "The number of maximum nodes on which ybc will be upgraded simultaneously" | "Integer" |
 | "YBC Stable Release" | "ybc.releases.stable_version" | "GLOBAL" | "Stable version for Yb-Controller" | "String" |
 | "YBC admin operation timeout" | "ybc.timeout.admin_operation_timeout_ms" | "GLOBAL" | "YBC client timeout in milliseconds for admin operations" | "Integer" |
+| "Bootstrap producer timeout" | "yb.xcluster.bootstrap_producer_timeout_ms" | "GLOBAL" | "Bootstrap producer timeout in milliseconds" | "Integer" |
 | "YBC socket read timeout" | "ybc.timeout.socket_read_timeout_ms" | "GLOBAL" | "YBC client socket read timeout in milliseconds" | "Integer" |
 | "YBC operation timeout" | "ybc.timeout.operation_timeout_ms" | "GLOBAL" | "YBC client timeout in milliseconds for operations" | "Integer" |
 | "Enable YBA's custom CA trust-store" | "yb.customCATrustStore.enabled" | "GLOBAL" | "Enable YBA's custom CA trust-store" | "Boolean" |
@@ -91,6 +91,8 @@
 | "Delete Expired Backup MAX GC Size" | "yb.backup.delete_expired_backup_max_gc_size" | "GLOBAL" | "Number of expired backups to be deleted in a single GC iteration." | "Integer" |
 | "Prometheus external URL" | "yb.metrics.external.url" | "GLOBAL" | "URL used to generate Prometheus metrics on YBA UI and to set up HA metrics federation." | "String" |
 | "Prometheus link use browser FQDN" | "yb.metrics.link.use_browser_fqdn" | "GLOBAL" | "If Prometheus link in browser should point to current FQDN in browser or use value from backend." | "Boolean" |
+| "Devops command timeout" | "yb.devops.command_timeout" | "GLOBAL" | "Devops command timeout" | "Duration" |
+| "YBC Compatible DB Version" | "ybc.compatible_db_version" | "GLOBAL" | "Minimum YBDB version which supports YBC" | "String" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |
 | "Node Checkout Time" | "yb.health.nodeCheckTimeoutSec" | "UNIVERSE" | "The timeout (in seconds) for node check operation as part of universe health check" | "Integer" |
@@ -161,6 +163,10 @@
 | "YSQL Upgrade Timeout in seconds" | "yb.upgrade.ysql_upgrade_timeout_sec" | "UNIVERSE" | "Controls the yb-client admin operation timeout when performing the runUpgradeYSQL subtask rpc calls." | "Integer" |
 | "Under replicated tablets check timeout" | "yb.checks.under_replicated_tablets.timeout" | "UNIVERSE" | "Controls the max time out when performing the checkUnderReplicatedTablets subtask" | "Duration" |
 | "Enabling under replicated tablets check" | "yb.checks.under_replicated_tablets.enabled" | "UNIVERSE" | "Controls whether or not to perform the checkUnderReplicatedTablets subtask" | "Boolean" |
+| "Master config change result check timeout" | "yb.checks.change_master_config.timeout" | "UNIVERSE" | "Controls the max time out when waiting for master config change to finish" | "Duration" |
+| "Enabling Master config change result check" | "yb.checks.change_master_config.enabled" | "UNIVERSE" | "Controls whether or not to wait for master config change to finish" | "Boolean" |
+| "Enabling follower lag check" | "yb.checks.follower_lag.enabled" | "UNIVERSE" | "Controls whether or not to perform the follower lag checks" | "Boolean" |
+| "Follower lag check timeout" | "yb.checks.follower_lag.timeout" | "UNIVERSE" | "Controls the max time out when performing follower lag checks" | "Duration" |
 | "Memory check timeout" | "yb.dbmem.checks.timeout" | "UNIVERSE" | "Timeout for memory check in secs" | "Long" |
 | "Wait time before doing restore during xCluster setup task" | "yb.xcluster.sleep_time_before_restore" | "UNIVERSE" | "The amount of time to sleep (wait) before executing restore subtask during xCluster setup; it is useful because xCluster setup also drops the database before restore and the sleep makes sure the drop operation has reached all the nodes" | "Duration" |
 | "Use server broadcast address for yb_backup" | "yb.backup.use_server_broadcast_address_for_yb_backup" | "UNIVERSE" | "Controls whether server_broadcast_address entry should be used during yb_backup.py backup/restore" | "Boolean" |
@@ -168,6 +174,7 @@
 | "YSQL Queries Timeout" | "yb.ysql_timeout_secs" | "UNIVERSE" | "Timeout in secs for YSQL queries" | "Long" |
 | "Number of cores to keep" | "yb.num_cores_to_keep" | "UNIVERSE" | "Controls the configuration to set the number of cores to keep in the Ansible layer" | "Integer" |
 | "Whether to check YBA xCluster object is in sync with DB replication group" | "yb.xcluster.ensure_sync_get_replication_status" | "UNIVERSE" | "It ensures that the YBA XCluster object for tables that are in replication is in sync with replication group in DB. If they are not in sync and this is true, getting the xCluster object will throw an exception and the user has to resync the xCluster config." | "Boolean" |
-| "Network Load balancer health check port" | "yb.universe.network_load_balancer.custom_health_check_port" | "UNIVERSE" | "Port to use for health checks performed by the network load balancer. -1 indicates default port" | "Integer" |
+| "Network Load balancer health check ports" | "yb.universe.network_load_balancer.custom_health_check_ports" | "UNIVERSE" | "Ports to use for health checks performed by the network load balancer. Invalid and duplicate ports will be ignored. For GCP, only the first health check port would be used." | "Integer List" |
 | "Network Load balancer health check protocol" | "yb.universe.network_load_balancer.custom_health_check_protocol" | "UNIVERSE" | "Protocol to use for health checks performed by the network load balancer" | "Protocol" |
-| "Network Load balancer health check path" | "yb.universe.network_load_balancer.custom_health_check_path" | "UNIVERSE" | "Path probed by HTTP/HTTPS health checks performed by the network load balancer" | "String" |
+| "Network Load balancer health check paths" | "yb.universe.network_load_balancer.custom_health_check_paths" | "UNIVERSE" | "Paths probed by HTTP/HTTPS health checks performed by the network load balancer. Paths are mapped one-to-one with the custom health check ports runtime configuration." | "String List" |
+| "Default PITR retention period for txn xCluster" | "yb.xcluster.transactional.pitr.default_retention_period" | "UNIVERSE" | "The default retention period used to create PITR configs for transactional xCluster replication; it will be used when there is no existing PITR configs and it is not specified in the task parameters" | "Duration" |

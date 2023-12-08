@@ -226,7 +226,7 @@ void WriteQuery::Finished(WriteOperation* operation, const Status& status) {
     if (metrics) {
       auto op_duration_usec =
           make_unsigned(MonoDelta(CoarseMonoClock::now() - start_time_).ToMicroseconds());
-      metrics->Increment(tablet::TabletHistograms::kQlWriteLatency, op_duration_usec);
+      metrics->Increment(tablet::TabletEventStats::kQlWriteLatency, op_duration_usec);
     }
   }
 
@@ -644,6 +644,9 @@ void WriteQuery::CompleteExecute(HybridTime safe_time) {
 
 Status WriteQuery::DoCompleteExecute(HybridTime safe_time) {
   auto tablet = VERIFY_RESULT(tablet_safe());
+  if (prepare_result_.need_read_snapshot && !read_time_) {
+    tablet->metrics()->Increment(tablet::TabletCounters::kPickReadTimeOnDocDB);
+  }
   auto read_op = prepare_result_.need_read_snapshot
       ? VERIFY_RESULT(ScopedReadOperation::Create(tablet.get(),
                                                   RequireLease::kTrue,
@@ -866,8 +869,7 @@ struct UpdateQLIndexesTask {
 
   Status Init(const TabletPtr& tablet, docdb::QLWriteOperation* write_op) {
     client = &tablet->client();
-    session = std::make_shared<client::YBSession>(client);
-    session->SetDeadline(query->deadline());
+    session = client->NewSession(query->deadline());
     if (write_op->request().has_child_transaction_data()) {
       child_transaction_data = &write_op->request().child_transaction_data();
       auto child_data = VERIFY_RESULT(client::ChildTransactionData::FromPB(

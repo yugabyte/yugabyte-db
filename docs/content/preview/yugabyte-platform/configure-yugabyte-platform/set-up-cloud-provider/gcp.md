@@ -77,6 +77,7 @@ When deploying a universe, YugabyteDB Anywhere uses the provider configuration s
   - your cloud provider credentials
   - specified regions and availability zones (this can be a subset of those specified in the provider configuration)
   - a Linux image
+  - optionally, an [instance template](#gcp-instance-templates)
 
 - Provision those VMs with YugabyteDB software.
 
@@ -85,6 +86,41 @@ Note: YugabyteDB Anywhere needs network connectivity to the VMs, service account
 ## Prerequisites
 
 - Cloud provider credentials. YugabyteDB Anywhere uses your credentials to automatically provision and de-provision instances that run YugabyteDB. An instance for YugabyteDB includes a compute instance, as well as local or remote disk storage attached to the compute instance.
+
+### GCP instance templates
+
+You can optionally add a GCP [instance template](https://cloud.google.com/compute/docs/instance-templates) as a region-level property when creating a GCP provider in YugabyteDB Anywhere.
+
+Instance templates provide a way to specify a set of arbitrary instance parameters, which can then be used when creating instances in Google Cloud. Instance templates define the machine type, boot disk image or container image, labels, startup script, and other instance properties. When a template is added to a GCP provider, YugabyteDB Anywhere will use most (but not all) of the configuration defined by the template to create the nodes when deploying a universe.
+
+{{< note title="Note" >}}
+Instance templates are only supported in YugabyteDB Anywhere version 2.18.2.0 and later.
+{{< /note >}}
+
+Using an instance template allows you to customize instance features that are not accessible to a provider alone, such as (but not limited to) the following:
+
+- Volume disk encryption
+- Startup scripts
+- On-host maintenance
+- Sole tenancy
+- Confidential VM service
+
+For instructions on creating an instance template on Google Cloud, refer to [Create instance templates](https://cloud.google.com/compute/docs/instance-templates/create-instance-templates) in the Google documentation.
+
+When creating the template, ensure that you create the template under the right project and choose the correct network and subnetwork under **Advanced Options** > **Networking**.
+
+Note that not all template customizations are honored by YugabyteDB Anywhere when creating a universe using a provider with a template. The following properties can't be overridden by an instance template:
+
+- Project
+- Zone
+- Boot disk (Auto- delete, disk type, and disk image)
+- IP forwarding
+- Instance type
+- Ssh keys
+- Project wide SSH keys (always blocked)
+- Cloud NAT
+- Subnetwork
+- Volume (type, size, and source (always None))
 
 ## Configure GCP
 
@@ -154,6 +190,7 @@ For each region that you want to use for this configuration, do the following:
 - Select the region.
 - Optionally, specify a **Custom Machine Image**. YugabyteDB Anywhere allows you to bring up universes on Ubuntu 18.04 host nodes, assuming you have Python 2 or later installed on the host, as well as the provider created with a custom AMI and custom SSH user.
 - Enter the ID of a shared subnet.
+- Optionally, if you have an [instance template](#gcp-instance-templates), specify the template name in the **Instance Template** field.
 
 ### Advanced
 

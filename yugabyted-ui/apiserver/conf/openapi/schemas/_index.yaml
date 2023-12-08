@@ -548,10 +548,16 @@ ClusterNodeInfo:
       description: The number of CPU cores per node
       type: integer
       default: 0
+    ram_provisioned_gb:
+      description: The total size of provisioned ram (GB)
+      type: number
+      format: double
+      default: 0
   required:
     - num_cores
     - memory_mb
     - disk_size_gb
+    - ram_provisioned_gb
 ClusterRegionInfo:
   title: Cluster Region Info
   description: Cluster region info list

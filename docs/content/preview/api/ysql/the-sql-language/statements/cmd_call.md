@@ -33,14 +33,14 @@ Use the `CALL` statement to execute a stored procedure.
 
 <div class="tab-content">
   <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/call_procedure,subprogram_arg,arg_name.grammar.md" %}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/call_procedure,actual_arg,formal_arg.grammar.md" %}}
   </div>
   <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/call_procedure,subprogram_arg,arg_name.diagram.md" %}}
+  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/call_procedure,actual_arg,formal_arg.diagram.md" %}}
   </div>
 </div>
 
-{{< tip title="The syntax and semantics of 'subprogram_arg' are the same for function invocation as for 'CALL'." >}}
+{{< tip title="The syntax and semantics of 'actual_arg' are the same for function invocation as for 'CALL'." >}}
 The syntax and semantics of the _subprogram_arg_ rule (for example how to use the named parameter invocation style to avoid providing actual arguments for defaulted parameters) are the same for invoking a function as for `CALL`. A function cannot be invoked with the `CALL` statement. Rather, it's invoked as (part of) an expression in DML statements like `SELECT` or in PL/pgSQL source code.
 {{< /tip >}}
 

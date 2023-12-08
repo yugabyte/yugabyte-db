@@ -46,12 +46,12 @@ void AppendHash(uint16_t hash, KeyBytes* key) {
 }
 
 void KeyBytes::AppendUInt64AsVarInt(uint64_t value) {
-  unsigned char buf[util::kMaxVarIntBufferSize];
-  AppendRawBytes(Slice(buf, util::FastEncodeUnsignedVarInt(value, buf)));
+  unsigned char buf[kMaxVarIntBufferSize];
+  AppendRawBytes(Slice(buf, FastEncodeUnsignedVarInt(value, buf)));
 }
 
 void KeyBytes::AppendColumnId(ColumnId column_id) {
-  util::FastAppendSignedVarIntToBuffer(column_id.rep(), &data_);
+  FastAppendSignedVarIntToBuffer(column_id.rep(), &data_);
 }
 
 void KeyBytes::AppendKeyEntryType(KeyEntryType value_type) {

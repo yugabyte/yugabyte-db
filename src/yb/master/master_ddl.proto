@@ -110,6 +110,8 @@ message CreateTableRequestPB {
   optional bytes matview_pg_table_id = 24;
 
   repeated StatefulServiceKind hosted_stateful_services = 27;
+
+  optional bool ysql_ddl_rollback_enabled = 28 [ default = false ];
 }
 
 message CreateTableResponsePB {
@@ -304,6 +306,7 @@ message DeleteTableRequestPB {
   required TableIdentifierPB table = 1;
   optional bool is_index_table = 2 [ default = false ];
   optional TransactionMetadataPB transaction = 3;
+  optional bool ysql_ddl_rollback_enabled = 4 [ default = false ];
 }
 
 message DeleteTableResponsePB {
@@ -391,8 +394,11 @@ message AlterTableRequestPB {
   // Replication information for this table.
   optional ReplicationInfoPB replication_info = 8;
 
-  // DDL Dependent upon Transaction success (abort removes). Used by YSQL.
+  // This is the transaction performing the Alter operation. This is used by TServers to abort
+  // any ongoing DML on the table other than this transaction.
   optional TransactionMetadataPB transaction = 9;
+  // If set, YB-Master will poll the status of 'transaction' and rollback the Alter if failed.
+  optional bool ysql_ddl_rollback_enabled = 12 [ default = false ];
 
   // If set, updates the pgschema_name in SchemaPB.
   optional string pgschema_name = 10;
@@ -562,8 +568,10 @@ message CreateTablegroupRequestPB {
   required bytes namespace_id = 2;
   optional string namespace_name = 3;
 
-  // If aborted, tablegroup and related DocDB entities will be removed.
+  // These two fields ensure that YB-Master will poll the status of 'transaction' and delete the
+  // tablegroup if aborted.
   optional TransactionMetadataPB transaction = 5;
+  optional bool ysql_ddl_rollback_enabled = 6 [ default = false ];
 
   // This denotes the tablespace that this tablegroup is associated with.
   optional bytes tablespace_id = 4;
@@ -579,7 +587,15 @@ message CreateTablegroupResponsePB {
 
 message DeleteTablegroupRequestPB {
   required bytes id = 1;
-  optional bytes namespace_id_UNUSED = 2 [ deprecated = true ];
+
+  // Deprecated namespace_id.
+  reserved 2;
+
+  // These two fields ensure that YB-Master will first mark the tablegroup for deletion, poll the
+  // status of 'transaction' and rollback the marker if failed. Otherwise deletion of the tablegroup
+  // will be initiated upon receipt of this request.
+  optional TransactionMetadataPB transaction = 3;
+  optional bool ysql_ddl_rollback_enabled = 4 [ default = false ];
 }
 
 message DeleteTablegroupResponsePB {

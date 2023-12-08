@@ -1998,10 +1998,7 @@ DefineIndex(Oid relationId,
 		/* Wait for all backends to have up-to-date version. */
 		YbWaitForBackendsCatalogVersion();
 
-		#ifdef YB_TODO
-		/* The below line should be added after latest master rebase */
 		YbTestGucFailIfStrEqual(yb_test_fail_index_state_change, "indisready");
-		#endif
 
 		/*
 		 * Update the pg_index row to mark the index as ready for inserts.
@@ -2040,10 +2037,7 @@ DefineIndex(Oid relationId,
 		/* Do backfill. */
 		HandleYBStatus(YBCPgBackfillIndex(databaseId, indexRelationId));
 
-		#ifdef YB_TODO
-		/* The below line should be added after latest master rebase */
 		YbTestGucFailIfStrEqual(yb_test_fail_index_state_change, "postbackfill");
-		#endif
 
 		if (yb_test_block_index_phase[0] != '\0')
 			YbTestGucBlockWhileStrEqual(&yb_test_block_index_phase,

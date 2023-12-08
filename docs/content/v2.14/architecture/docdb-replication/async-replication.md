@@ -61,7 +61,7 @@ This topology involves many source clusters sending data to one central sink clu
 
 ### More complex topologies
 
-Outside of our traditional 1:1 topology and the above 1:N and N:1, there are many other sensible configurations one might want to setup this replication feature with. However, none of these are currently officially supported. Some examples:
+Outside of our traditional 1:1 topology and the above 1:N and N:1, there are many other sensible configurations one might want to use this replication feature with. However, none of these are currently officially supported. Some examples:
 
 - Daisy chaining -- connecting a series of clusters, as both source and target, for example: `A<>B<>C`
 - Ring -- connecting a series of clusters, in a loop, for example: `A<>B<>C<>A`

@@ -84,3 +84,43 @@ func GetMastersFuture(nodeHost string, future chan MastersFuture) {
     masters.Error = err
     future <- masters
 }
+
+type MasterAddressAndType struct {
+    HostPort string `json:"master_server"`
+    IsLeader bool   `json:"is_leader"`
+}
+
+type MastersListFuture struct {
+    Masters []MasterAddressAndType `json:"master_server_and_type"`
+    Error   error
+}
+func GetMastersFromTserverFuture(nodeHost string, future chan MastersListFuture) {
+    masters := MastersListFuture{
+        Masters: []MasterAddressAndType{},
+        Error:   nil,
+    }
+    httpClient := &http.Client{
+        Timeout: time.Second * 10,
+    }
+    url := fmt.Sprintf("http://%s:%s/api/v1/masters", nodeHost, TserverUIPort)
+    resp, err := httpClient.Get(url)
+    if err != nil {
+        masters.Error = err
+        future <- masters
+        return
+    }
+    defer resp.Body.Close()
+    body, err := ioutil.ReadAll(resp.Body)
+    if err != nil {
+        masters.Error = err
+        future <- masters
+        return
+    }
+    err = json.Unmarshal([]byte(body), &masters)
+    if masters.Error != nil {
+        future <- masters
+        return
+    }
+    masters.Error = err
+    future <- masters
+}

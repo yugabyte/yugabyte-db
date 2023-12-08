@@ -176,6 +176,16 @@ class GcpCloud(AbstractCloud):
         self.admin.reboot_instance(host_info['zone'], host_info['name'])
         self.wait_for_server_ports(host_info["private_ip"], host_info["id"], server_ports)
 
+    def update_user_data(self, args):
+        if args.boot_script is None:
+            return
+        boot_script = ''
+        with open(args.boot_script, 'r') as script:
+            boot_script = script.read()
+        instance = self.get_host_info(args)
+        logging.info("[app] Updating the user_data for the instance {}".format(instance['id']))
+        self.get_admin().update_boot_script(args, instance, boot_script)
+
     def get_regions(self, args):
         regions_we_know_of = self.get_admin().get_regions()
         if args.network is None:

@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.yugabyte.yw.models.helpers.CommonUtils.getDurationSeconds;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
@@ -17,6 +18,7 @@ import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.DrainableMap;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.ShutdownHookHandler;
@@ -49,6 +51,7 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.TimeoutException;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -342,6 +345,12 @@ public class TaskExecutor {
       // Update task state on submission failure.
       runnableTasks.remove(taskUUID);
       runnableTask.updateTaskDetailsOnError(TaskInfo.State.Failure, e);
+      log.error("Error occurred in submitting the task", e);
+      String msg =
+          (e instanceof RejectedExecutionException)
+              ? "Task submission failed as too many tasks are running"
+              : "Error occurred during task submission for execution";
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, msg);
     }
     return taskUUID;
   }
@@ -800,7 +809,6 @@ public class TaskExecutor {
     @Override
     public void run() {
       Throwable t = null;
-      TaskType taskType = taskInfo.getTaskType();
       taskStartTime = Instant.now();
       Map<String, String> taskLabels = this.getTaskMetricLabels();
 
@@ -1131,7 +1139,6 @@ public class TaskExecutor {
      */
     public void runSubTasks(boolean abortOnFailure) {
       RuntimeException anyRe = null;
-      Throwable throwable = null;
       try {
         for (SubTaskGroup subTaskGroup : subTaskGroups) {
           if (subTaskGroup.getSubTaskCount() == 0) {
@@ -1157,10 +1164,8 @@ public class TaskExecutor {
               subTaskGroup.waitForSubTasks(abortOnFailure);
             }
           } catch (CancellationException e) {
-            throwable = e;
             throw new CancellationException(subTaskGroup.toString() + " is cancelled.");
           } catch (RuntimeException e) {
-            throwable = e;
             if (subTaskGroup.ignoreErrors) {
               log.error("Ignoring error for " + subTaskGroup, e);
             } else {

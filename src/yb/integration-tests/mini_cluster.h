@@ -117,14 +117,19 @@ class MiniCluster : public MiniClusterBase {
 
   // Start a cluster with a Master and 'num_tablet_servers' TabletServers.
   // All servers run on the loopback interface with ephemeral ports.
-  Status Start(
+  Status StartAsync(
       const std::vector<tserver::TabletServerOptions>& extra_tserver_options =
-      std::vector<tserver::TabletServerOptions>());
+          std::vector<tserver::TabletServerOptions>());
 
   // Like the previous method but performs initialization synchronously, i.e.
   // this will wait for all TS's to be started and initialized. Tests should
   // use this if they interact with tablets immediately after Start();
-  Status StartSync();
+  Status Start(
+      const std::vector<tserver::TabletServerOptions>& extra_tserver_options =
+      std::vector<tserver::TabletServerOptions>());
+
+  // Deprecated. Use Start() instead.
+  Status StartSync() { return Start(); }
 
   // Stop and restart the mini cluster synchronously. The cluster's persistent state will be kept.
   Status RestartSync();
@@ -394,7 +399,7 @@ Status WaitForAnySstFiles(
     MiniCluster* cluster, const TabletId& tablet_id,
     MonoDelta timeout = MonoDelta::FromSeconds(5) * kTimeMultiplier);
 
-Status WaitForPeersAreFullyCompacted(
+Status WaitForPeersPostSplitCompacted(
     MiniCluster* cluster, const std::vector<TabletId>& tablet_ids,
     MonoDelta timeout = MonoDelta::FromSeconds(15) * kTimeMultiplier);
 

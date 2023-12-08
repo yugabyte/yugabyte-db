@@ -40,8 +40,6 @@ Where
 
 ## Examples
 
-You can do this as shown below.
-
 ```sql
 ycqlsh> CREATE KEYSPACE example;
 ```

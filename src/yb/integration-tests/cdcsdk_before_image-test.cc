@@ -58,65 +58,6 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestModifyPrimaryKeyBeforeImage))
   }
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestSchemaChangeBeforeImage)) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
-  ASSERT_OK(SetUpWithParams(3, 1, false));
-  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
-  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
-  ASSERT_EQ(tablets.size(), 1);
-  xrepl::StreamId stream_id =
-      ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT, CDCRecordType::ALL));
-  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
-  ASSERT_FALSE(set_resp.has_error());
-
-  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
-
-  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 2)"));
-  ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 3 WHERE key = 1"));
-  ASSERT_OK(conn.Execute("ALTER TABLE test_table ADD COLUMN value_2 INT"));
-  ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 4 WHERE key = 1"));
-  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (4, 5, 6)"));
-  ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 99 WHERE key = 1"));
-  ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 99 WHERE key = 4"));
-  ASSERT_OK(conn.Execute("UPDATE test_table SET value_2 = 66 WHERE key = 4"));
-
-  // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
-  const uint32_t expected_count[] = {2, 2, 5, 0, 0, 0};
-  const uint32_t expected_count_packed_row[] = {2, 3, 4, 0, 0, 0};
-  uint32_t count[] = {0, 0, 0, 0, 0, 0};
-
-  ExpectedRecordWithThreeColumns expected_records[] = {
-      {0, 0, 0}, {1, 2, INT_MAX},  {1, 3, INT_MAX}, {0, 0, INT_MAX}, {1, 4, INT_MAX},
-      {4, 5, 6}, {1, 99, INT_MAX}, {4, 99, 6},      {4, 99, 66}};
-  ExpectedRecordWithThreeColumns expected_before_image_records[] = {
-      {}, {}, {1, 2, INT_MAX}, {}, {1, 3, INT_MAX}, {}, {1, 4, INT_MAX}, {4, 5, 6}, {4, 99, 6}};
-
-  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
-
-  // If the packed row is enabled and there are multiple tables altered, if CDC fail to get before
-  // image row with the current running schema version, then it will ignore the before image tuples.
-  uint32_t seen_dml_records = 0;
-  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
-    if (record.row_message().op() == RowMessage::BEGIN ||
-        record.row_message().op() == RowMessage::COMMIT) {
-      continue;
-    }
-    if (seen_dml_records <= 6) {
-      CheckRecordWithThreeColumns(
-          record, expected_records[seen_dml_records], count, true,
-          expected_before_image_records[seen_dml_records]);
-    } else {
-      CheckRecordWithThreeColumns(
-          record, expected_records[seen_dml_records], count, true,
-          expected_before_image_records[seen_dml_records], true);
-    }
-    seen_dml_records++;
-  }
-  LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
-  CheckCount(FLAGS_ysql_enable_packed_row ? expected_count_packed_row : expected_count, count);
-}
-
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestBeforeImageRetention)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, false));
@@ -1244,6 +1185,77 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestMultiShardUpdateBeforeImageOn
     CheckCount(expected_count, count);
   }
 }
+
+YB_STRONGLY_TYPED_BOOL(SetColumnDefaultValue);
+class CDCYsqlAddColumnBeforeImageTest
+    : public CDCSDKYsqlTest, public ::testing::WithParamInterface<SetColumnDefaultValue> {};
+
+TEST_P(CDCYsqlAddColumnBeforeImageTest, TestAddColumnBeforeImage) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
+  ASSERT_OK(SetUpWithParams(3, 1, false));
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 1);
+  xrepl::StreamId stream_id =
+      ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT, CDCRecordType::ALL));
+  auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(set_resp.has_error());
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (1, 2)"));
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 3 WHERE key = 1"));
+  const auto default_clause = GetParam() ? "DEFAULT 5" : "";
+  ASSERT_OK(conn.ExecuteFormat(
+      "ALTER TABLE test_table ADD COLUMN value_2 INT $0", default_clause));
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 4 WHERE key = 1"));
+  ASSERT_OK(conn.Execute("INSERT INTO test_table VALUES (4, 5, 6)"));
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 99 WHERE key = 1"));
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value_1 = 99 WHERE key = 4"));
+  ASSERT_OK(conn.Execute("UPDATE test_table SET value_2 = 66 WHERE key = 4"));
+
+  // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE in that order.
+  const uint32_t expected_count[] = {2, 2, 5, 0, 0, 0};
+  const uint32_t expected_count_packed_row[] = {2, 3, 4, 0, 0, 0};
+  uint32_t count[] = {0, 0, 0, 0, 0, 0};
+
+  auto default_val = GetParam() ? 5 : INT_MAX;
+  ExpectedRecordWithThreeColumns expected_records[] = {
+      {0, 0, 0}, {1, 2, default_val},  {1, 3, default_val}, {0, 0, default_val},
+      {1, 4, default_val}, {4, 5, 6}, {1, 99, default_val}, {4, 99, 6}, {4, 99, 66}};
+  ExpectedRecordWithThreeColumns expected_before_image_records[] = {
+      {}, {}, {1, 2, default_val}, {}, {1, 3, default_val}, {}, {1, 4, default_val},
+      {4, 5, 6}, {4, 99, 6}};
+
+  GetChangesResponsePB change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+
+  // If the packed row is enabled and there are multiple tables altered, if CDC fail to get before
+  // image row with the current running schema version, then it will ignore the before image tuples.
+  uint32_t seen_dml_records = 0;
+  for (const auto& record : change_resp.cdc_sdk_proto_records()) {
+    if (record.row_message().op() == RowMessage::BEGIN ||
+        record.row_message().op() == RowMessage::COMMIT) {
+      continue;
+    }
+    if (seen_dml_records <= 6) {
+      CheckRecordWithThreeColumns(
+          record, expected_records[seen_dml_records], count, true,
+          expected_before_image_records[seen_dml_records]);
+    } else {
+      CheckRecordWithThreeColumns(
+          record, expected_records[seen_dml_records], count, true,
+          expected_before_image_records[seen_dml_records], true);
+    }
+    seen_dml_records++;
+  }
+  LOG(INFO) << "Got " << count[1] << " insert record and " << count[2] << " update record";
+  CheckCount(FLAGS_ysql_enable_packed_row ? expected_count_packed_row : expected_count, count);
+}
+
+INSTANTIATE_TEST_CASE_P(
+    AddColumnBeforeImage, CDCYsqlAddColumnBeforeImageTest,
+    ::testing::Values(SetColumnDefaultValue::kTrue, SetColumnDefaultValue::kFalse));
 
 }  // namespace cdc
 }  // namespace yb

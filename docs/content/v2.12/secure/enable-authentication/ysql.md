@@ -109,7 +109,7 @@ A YugabyteDB cluster with authentication enabled starts with the default admin u
 $ ./bin/ysqlsh -U yugabyte
 ```
 
-You will be prompted to enter the password. Upon successful login to the YSQL shell, you will see the following:
+You will be prompted to enter the password. After logging in to the YSQL shell, you will see the following:
 
 ```output
 ysqlsh (11.2-YB-2.7.0.0-b0)
@@ -265,7 +265,7 @@ yugabyte=# SELECT rolname, rolsuper, rolcanlogin FROM pg_roles WHERE rolname='jo
 (1 row)
 ```
 
-To grant `SUPERUSER` privileges to `john`, login as a superuser and run the following `ALTER ROLE` command:
+To grant `SUPERUSER` privileges to `john`, log in as a superuser and run the following `ALTER ROLE` command:
 
 ```plpgsql
 yugabyte=# ALTER ROLE john SUPERUSER;
@@ -301,7 +301,7 @@ yugabyte=# ALTER ROLE john WITH NOSUPERUSER;
 
 ### Enable and disable login privileges
 
-To verify that `john` can login to the database, do the following:
+To verify that `john` can log in to the database, do the following:
 
 ```plpgsql
 yugabyte=# SELECT role, rolcanlogin FROM pg_roles WHERE role='john';
@@ -333,7 +333,7 @@ yugabyte=# SELECT rolname, rolcanlogin FROM pg_roles WHERE rolname='john';
 (1 row)
 ```
 
-Trying to login as `john` using `ysqlsh` will now fail:
+Trying to log in as `john` using `ysqlsh` will now fail:
 
 ```sh
 $ ./bin/ysqlsh -U john

@@ -191,15 +191,15 @@ class TabletSplitITest : public TabletSplitITestBase<MiniCluster> {
   // post-split parent/source tablet peers.
   Result<std::vector<tablet::TabletPeerPtr>> ListSplitCompleteTabletPeers();
 
-  // Returns all tablet peers in the cluster which are not part of a transaction table and which are
-  // not in TABLET_DATA_SPLIT_COMPLETED state. In most of the test cases below, this corresponds to
-  // post-split children tablet peers.
-  Result<std::vector<tablet::TabletPeerPtr>> ListPostSplitChildrenTabletPeers();
+  // Returns all tablet peers in the cluster which are not part of a transaction table
+  // and which are Active (refer to IsActive). In most of the test cases below,
+  // this corresponds to post-split children tablet peers.
+  Result<std::vector<tablet::TabletPeerPtr>> ListTestTableActiveTabletPeers();
 
   // Wait for all peers to complete post-split compaction.
-  Status WaitForTestTablePostSplitTabletsFullyCompacted(MonoDelta timeout);
+  Status WaitForTestTableTabletPeersPostSplitCompacted(MonoDelta timeout);
 
-  Result<int> NumPostSplitTabletPeersFullyCompacted();
+  Result<int> NumTestTableTabletPeersPostSplitCompacted();
 
   // Returns the smallest sst file size among all replicas for a given tablet id
   Result<uint64_t> GetMinSstFileSizeAmongAllReplicas(const std::string& tablet_id);

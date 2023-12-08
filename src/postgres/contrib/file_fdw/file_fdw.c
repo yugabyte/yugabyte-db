@@ -615,8 +615,7 @@ fileGetForeignPlan(PlannerInfo *root,
 							best_path->fdw_private,
 							NIL,	/* no custom tlist */
 							NIL,	/* no remote quals */
-							outer_plan,
-							best_path->path.yb_path_info);
+							outer_plan);
 }
 
 /*

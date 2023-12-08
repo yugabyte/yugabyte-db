@@ -58,7 +58,7 @@ public class RebootNodeInUniverseTest extends CommissionerBaseTest {
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = numNodes;
     userIntent.provider = defaultProvider.getUuid().toString();
-    userIntent.ybSoftwareVersion = "yb-version";
+    userIntent.ybSoftwareVersion = "2.16.7.0-b1";
     userIntent.accessKeyCode = "demo-access";
     userIntent.replicationFactor = replicationFactor;
     userIntent.regionList = ImmutableList.of(region.getUuid());

@@ -17,6 +17,7 @@
 #include <list>
 #include <memory>
 #include <string>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -533,7 +534,7 @@ const YBCPgTypeEntity *PgApiImpl::FindTypeEntity(int type_oid) {
 Status PgApiImpl::InitSession(const string& database_name, YBCPgExecStatsState* session_stats) {
   CHECK(!pg_session_);
   auto session = make_scoped_refptr<PgSession>(
-      &pg_client_, database_name, pg_txn_manager_, clock_, pg_callbacks_, session_stats);
+      &pg_client_, database_name, pg_txn_manager_, pg_callbacks_, session_stats);
   if (!database_name.empty()) {
     RETURN_NOT_OK(session->ConnectDatabase(database_name));
   }
@@ -541,6 +542,8 @@ Status PgApiImpl::InitSession(const string& database_name, YBCPgExecStatsState* 
   pg_session_.swap(session);
   return Status::OK();
 }
+
+uint64_t PgApiImpl::GetSessionID() const { return pg_client_.SessionID(); }
 
 Status PgApiImpl::InvalidateCache() {
   pg_session_->InvalidateAllTablesCache();
@@ -838,12 +841,16 @@ Status PgApiImpl::ExecCreateTablegroup(PgStatement *handle) {
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
+  pg_session_->SetDdlHasSyscatalogChanges();
   return down_cast<PgCreateTablegroup*>(handle)->Exec();
 }
 
 Status PgApiImpl::NewDropTablegroup(const PgOid database_oid,
                                     const PgOid tablegroup_oid,
                                     PgStatement **handle) {
+  SCHECK(pg_txn_manager_->IsDdlMode(),
+         IllegalState,
+         "Tablegroup is being dropped outside of DDL mode");
   auto stmt = std::make_unique<PgDropTablegroup>(pg_session_, database_oid, tablegroup_oid);
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -855,6 +862,7 @@ Status PgApiImpl::ExecDropTablegroup(PgStatement *handle) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
+  pg_session_->SetDdlHasSyscatalogChanges();
   return down_cast<PgDropTablegroup*>(handle)->Exec();
 }
 
@@ -937,14 +945,16 @@ Status PgApiImpl::NewAlterTable(const PgObjectId& table_id,
 }
 
 Status PgApiImpl::AlterTableAddColumn(PgStatement *handle, const char *name,
-                                      int order, const YBCPgTypeEntity *attr_type) {
+                                      int order,
+                                      const YBCPgTypeEntity *attr_type,
+                                      YBCPgExpr missing_value) {
   if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_ALTER_TABLE)) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
 
   PgAlterTable *pg_stmt = down_cast<PgAlterTable*>(handle);
-  return pg_stmt->AddColumn(name, attr_type, order);
+  return pg_stmt->AddColumn(name, attr_type, order, missing_value);
 }
 
 Status PgApiImpl::AlterTableRenameColumn(PgStatement *handle, const char *oldname,
@@ -1012,6 +1022,9 @@ Status PgApiImpl::ExecAlterTable(PgStatement *handle) {
 Status PgApiImpl::NewDropTable(const PgObjectId& table_id,
                                bool if_exist,
                                PgStatement **handle) {
+  SCHECK(pg_txn_manager_->IsDdlMode(),
+         IllegalState,
+         "Table is being dropped outside of DDL mode");
   auto stmt = std::make_unique<PgDropTable>(pg_session_, table_id, if_exist);
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -1170,12 +1183,16 @@ Status PgApiImpl::ExecCreateIndex(PgStatement *handle) {
     // Invalid handle.
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
+  pg_session_->SetDdlHasSyscatalogChanges();
   return down_cast<PgCreateTable*>(handle)->Exec();
 }
 
 Status PgApiImpl::NewDropIndex(const PgObjectId& index_id,
                                bool if_exist,
                                PgStatement **handle) {
+  SCHECK(pg_txn_manager_->IsDdlMode(),
+         IllegalState,
+         "Index is being dropped outside of DDL mode");
   auto stmt = std::make_unique<PgDropIndex>(pg_session_, index_id, if_exist);
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -1208,6 +1225,14 @@ Status PgApiImpl::ExecDropTable(PgStatement *handle) {
   return down_cast<PgDropTable*>(handle)->Exec();
 }
 
+Status PgApiImpl::ExecDropIndex(PgStatement *handle) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_DROP_INDEX)) {
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  pg_session_->SetDdlHasSyscatalogChanges();
+  return down_cast<PgDropIndex*>(handle)->Exec();
+}
+
 Result<int> PgApiImpl::WaitForBackendsCatalogVersion(PgOid dboid, uint64_t version) {
   tserver::PgWaitForBackendsCatalogVersionRequestPB req;
   req.set_database_oid(dboid);
@@ -1236,6 +1261,10 @@ Status PgApiImpl::BackfillIndex(const PgObjectId& table_id) {
 
 Status PgApiImpl::DmlAppendTarget(PgStatement *handle, PgExpr *target) {
   return down_cast<PgDml*>(handle)->AppendTarget(target);
+}
+
+Result<bool> PgApiImpl::DmlHasSystemTargets(PgStatement *handle) {
+  return down_cast<PgDml*>(handle)->has_system_targets();
 }
 
 Status PgApiImpl::DmlAppendQual(PgStatement *handle, PgExpr *qual, bool is_primary) {
@@ -1558,6 +1587,15 @@ Status PgApiImpl::SetForwardScan(PgStatement *handle, bool is_forward_scan) {
     return STATUS(InvalidArgument, "Invalid statement handle");
   }
   down_cast<PgDmlRead*>(handle)->SetForwardScan(is_forward_scan);
+  return Status::OK();
+}
+
+Status PgApiImpl::SetDistinctPrefixLength(PgStatement *handle, int distinct_prefix_length) {
+  if (!PgStatement::IsValidStmt(handle, StmtOp::STMT_SELECT)) {
+    // Invalid handle.
+    return STATUS(InvalidArgument, "Invalid statement handle");
+  }
+  down_cast<PgDmlRead*>(handle)->SetDistinctPrefixLength(distinct_prefix_length);
   return Status::OK();
 }
 
@@ -1920,6 +1958,42 @@ double PgApiImpl::GetTransactionPriority() const {
 
 TxnPriorityRequirement PgApiImpl::GetTransactionPriorityType() const {
   return pg_txn_manager_->GetTransactionPriorityType();
+}
+
+Result<Uuid> PgApiImpl::GetActiveTransaction() const {
+  Uuid result;
+  RETURN_NOT_OK(pg_client_.EnumerateActiveTransactions(
+      make_lw_function(
+          [&result](
+              const tserver::PgGetActiveTransactionListResponsePB_EntryPB& entry, bool is_last) {
+            DCHECK(is_last);
+            result = VERIFY_RESULT(Uuid::FromSlice(Slice(entry.txn_id())));
+            return static_cast<Status>(Status::OK());
+          }),
+      /*for_current_session_only=*/true));
+
+  return result;
+}
+
+Status PgApiImpl::GetActiveTransactions(YBCPgSessionTxnInfo* infos, size_t num_infos) {
+  std::unordered_map<uint64_t, Slice> txns;
+  txns.reserve(num_infos);
+  return pg_client_.EnumerateActiveTransactions(make_lw_function(
+      [&txns, infos, num_infos](
+          const tserver::PgGetActiveTransactionListResponsePB_EntryPB& entry, bool is_last) {
+        txns.emplace(entry.session_id(), entry.txn_id());
+        if (is_last) {
+          for (auto* i = infos, *end = i + num_infos; i != end; ++i) {
+            auto txn = txns.find(i->session_id);
+            if (txn != txns.end()) {
+              auto uuid = VERIFY_RESULT(Uuid::FromSlice(txn->second));
+              uuid.ToBytes(i->txn_id.data);
+              i->is_not_null = true;
+            }
+          }
+        }
+        return static_cast<Status>(Status::OK());
+      }));
 }
 
 void PgApiImpl::ResetCatalogReadTime() {

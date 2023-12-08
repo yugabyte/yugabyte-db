@@ -61,6 +61,8 @@ class YBColumnSpec::Data {
 
   int32_t pg_type_oid = kPgInvalidOid;
 
+  QLValuePB missing_value;
+
   // For ALTER
   std::optional<std::string> rename_to;
 };

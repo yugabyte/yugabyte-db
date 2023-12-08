@@ -102,6 +102,10 @@ DEFINE_RUNTIME_uint64(master_maximum_heartbeats_without_lease, 10,
 DEFINE_test_flag(bool, master_ui_redirect_to_leader, true,
                  "Redirect master UI requests to the master leader");
 
+DEFINE_RUNTIME_uint32(maximum_tablet_leader_lease_expired_secs, 2 * 60,
+    "If the leader lease in master's view has expired for this amount of seconds, "
+    "report it as a leaderless tablet.");
+
 DECLARE_int32(ysql_tablespace_info_refresh_secs);
 
 DECLARE_string(webserver_ca_certificate_file);
@@ -2036,29 +2040,80 @@ std::vector<TabletInfoPtr> MasterPathHandlers::GetNonSystemTablets() {
   return nonsystem_tablets;
 }
 
-std::vector<TabletInfoPtr> MasterPathHandlers::GetLeaderlessTablets() {
-  std::vector<TabletInfoPtr> leaderless_tablets;
+std::vector<std::pair<TabletInfoPtr, std::string>> MasterPathHandlers::GetLeaderlessTablets() {
+  std::vector<std::pair<TabletInfoPtr, std::string>> leaderless_tablets;
 
   auto nonsystem_tablets = GetNonSystemTablets();
+  const auto now_usec = master_->clock()->Now().GetPhysicalValueMicros();
+  const auto maximum_heartbeats =
+      GetAtomicFlag(&FLAGS_master_maximum_heartbeats_without_lease);
+  const auto max_lease_expired_secs =
+      GetAtomicFlag(&FLAGS_maximum_tablet_leader_lease_expired_secs);
 
   for (TabletInfoPtr t : nonsystem_tablets) {
     if (t.get()->LockForRead()->is_deleted()) {
       continue;
     }
     auto rm = t.get()->GetReplicaLocations();
+    bool leader_only_mode = rm->size() == 1;
 
+    std::string leaderless_reason = "Leader peer not found";
     auto has_leader = std::any_of(
       rm->begin(), rm->end(),
-      [](const auto &item) {
+      [&leaderless_reason, max_lease_expired_secs, leader_only_mode, maximum_heartbeats, now_usec](
+          const auto &item) {
+        if (item.second.role != PeerRole::LEADER) {
+          return false;
+        }
+        const auto kReasonPrefix =
+            Format("Leader peer $0: ", item.second.ts_desc->permanent_uuid());
         auto leader_lease_info = item.second.leader_lease_info;
-        return item.second.role == PeerRole::LEADER &&
-               (leader_lease_info.leader_lease_status == consensus::LeaderLeaseStatus::HAS_LEASE ||
-                    leader_lease_info.heartbeats_without_leader_lease <
-                        GetAtomicFlag(&FLAGS_master_maximum_heartbeats_without_lease));
+        // CHECK 1:
+        // If the leader lease info is not initialized or it's leader only mode,
+        // treat it as leaderlss if the leader node is crashed/partitioned by checking
+        // TimeSinceHeartbeat().
+        if (!leader_lease_info.initialized || leader_only_mode) {
+          const auto time_since_heartbeat_secs =
+              item.second.ts_desc->TimeSinceHeartbeat().ToSeconds();
+          if (time_since_heartbeat_secs > max_lease_expired_secs) {
+            leaderless_reason = kReasonPrefix +
+                Format("no heartbeats received from leader node in last $0 seconds, "
+                       "might be node crash or network partition",
+                       time_since_heartbeat_secs);
+            return false;
+          }
+          return true;
+        }
+
+        // CHECK 2:
+        // If the leader doesn't have valid lease for enough time, also treat it as leaderless.
+        if (leader_lease_info.leader_lease_status != consensus::LeaderLeaseStatus::HAS_LEASE &&
+            leader_lease_info.heartbeats_without_leader_lease >= maximum_heartbeats) {
+          leaderless_reason =
+               kReasonPrefix + Format("no leader lease in $0 heartbeats",
+                                      leader_lease_info.heartbeats_without_leader_lease);
+          return false;
+        }
+
+        // CHECK 3:
+        // Check if the ht_lease of leader has been expired.
+        // It's possible that the leader node is partitioned and master cannot receive any
+        // heartbeats from it and it can pass CHECK 2.
+        if (now_usec > leader_lease_info.ht_lease_expiration +
+                max_lease_expired_secs * 1000 * 1000) {
+          leaderless_reason = kReasonPrefix + Format(
+              "leader lease expired for more than $0 seconds, lease_exp: $1 now: $2, "
+              "possibly false positive if the leader just had trouble communicating with master",
+              max_lease_expired_secs,
+              leader_lease_info.ht_lease_expiration,
+              now_usec);
+          return false;
+        }
+        return true;
       });
 
     if (!has_leader) {
-      leaderless_tablets.push_back(t);
+      leaderless_tablets.push_back(std::make_pair(t, leaderless_reason));
     }
   }
   return leaderless_tablets;
@@ -2173,15 +2228,17 @@ void MasterPathHandlers::HandleTabletReplicasPage(const Webserver::WebRequest& r
 
   *output << "<h3>Leaderless Tablets</h3>\n";
   *output << "<table class='table table-striped'>\n";
-  *output << "  <tr><th>Table Name</th><th>Table UUID</th><th>Tablet ID</th></tr>\n";
+  *output << "  <tr><th>Table Name</th><th>Table UUID</th><th>Tablet ID</th>"
+             "<th>Leaderless Reason</th></tr>\n";
 
-  for (TabletInfoPtr t : leaderless_tablets) {
+  for (const std::pair<TabletInfoPtr, string>& t : leaderless_tablets) {
     *output << Format(
-        "<tr><td><a href=\"/table?id=$0\">$1</a></td><td>$2</td><th>$3</th></tr>\n",
-        EscapeForHtmlToString(t->table()->id()),
-        EscapeForHtmlToString(t->table()->name()),
-        EscapeForHtmlToString(t->table()->id()),
-        EscapeForHtmlToString(t.get()->tablet_id()));
+        "<tr><td><a href=\"/table?id=$0\">$1</a></td><td>$2</td><td>$3</td><td>$4</td></tr>\n",
+        EscapeForHtmlToString(t.first->table()->id()),
+        EscapeForHtmlToString(t.first->table()->name()),
+        EscapeForHtmlToString(t.first->table()->id()),
+        EscapeForHtmlToString(t.first.get()->tablet_id()),
+        EscapeForHtmlToString(t.second));
   }
 
   *output << "</table>\n";
@@ -2229,12 +2286,14 @@ void MasterPathHandlers::HandleGetReplicationStatus(const Webserver::WebRequest&
   jw.String("leaderless_tablets");
   jw.StartArray();
 
-  for (TabletInfoPtr t : leaderless_ts) {
+  for (const std::pair<TabletInfoPtr, std::string>& t : leaderless_ts) {
     jw.StartObject();
     jw.String("table_uuid");
-    jw.String(t->table()->id());
+    jw.String(t.first->table()->id());
     jw.String("tablet_uuid");
-    jw.String(t.get()->tablet_id());
+    jw.String(t.first.get()->tablet_id());
+    jw.String("reason");
+    jw.String(t.second);
     jw.EndObject();
   }
 

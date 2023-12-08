@@ -117,6 +117,7 @@
 #include "yb/util/status_fwd.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 #include "yb/util/write_buffer.h"
 
@@ -233,6 +234,9 @@ DEFINE_test_flag(bool, skip_aborting_active_transactions_during_schema_change, f
 DEFINE_test_flag(
     bool, skip_force_superblock_flush, false,
     "Used in tests to skip superblock flush on tablet flush.");
+
+DEFINE_test_flag(
+    uint64, wait_row_mark_exclusive_count, 0, "Number of row mark exclusive reads to wait for.");
 
 double TEST_delay_create_transaction_probability = 0;
 
@@ -2055,6 +2059,22 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
 void TabletServiceImpl::Read(const ReadRequestPB* req,
                              ReadResponsePB* resp,
                              rpc::RpcContext context) {
+#ifndef NDEBUG
+  if (PREDICT_FALSE(FLAGS_TEST_wait_row_mark_exclusive_count > 0)) {
+    for (const auto& pgsql_req : req->pgsql_batch()) {
+      if (pgsql_req.has_row_mark_type() &&
+          pgsql_req.row_mark_type() == RowMarkType::ROW_MARK_EXCLUSIVE) {
+        static CountDownLatch row_mark_exclusive_latch(FLAGS_TEST_wait_row_mark_exclusive_count);
+        row_mark_exclusive_latch.CountDown();
+        row_mark_exclusive_latch.Wait();
+        TEST_SYNC_POINT("TabletServiceImpl::Read::RowMarkExclusive:1");
+        TEST_SYNC_POINT("TabletServiceImpl::Read::RowMarkExclusive:2");
+        break;
+      }
+    }
+  }
+#endif // NDEBUG
+
   if (FLAGS_TEST_tserver_noop_read_write) {
     context.RespondSuccess();
     return;
@@ -2883,6 +2903,32 @@ void TabletServiceImpl::CancelTransaction(
     DCHECK_EQ(res->status, TransactionStatus::ABORTED);
   }
 
+  context.RespondSuccess();
+}
+
+void TabletServiceImpl::StartRemoteSnapshotTransfer(
+    const StartRemoteSnapshotTransferRequestPB* req, StartRemoteSnapshotTransferResponsePB* resp,
+    rpc::RpcContext context) {
+  if (!CheckUuidMatchOrRespond(
+          server_->tablet_manager(), "StartRemoteSnapshotTransfer", req, resp, &context)) {
+    return;
+  }
+
+  Status s = server_->tablet_manager()->StartRemoteSnapshotTransfer(*req);
+  if (!s.ok()) {
+    // Using Status::AlreadyPresent for a remote snapshot transfer operation that is already in
+    // progress.
+    if (s.IsAlreadyPresent()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 30) << "Start remote snapshot transfer failed: " << s;
+      SetupErrorAndRespond(
+          resp->mutable_error(), s, TabletServerErrorPB::ALREADY_IN_PROGRESS, &context);
+      return;
+    } else {
+      LOG(WARNING) << "Start remote snapshot transfer failed: " << s;
+    }
+  }
+
+  RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
   context.RespondSuccess();
 }
 

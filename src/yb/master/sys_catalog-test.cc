@@ -126,7 +126,8 @@ TEST_F(SysCatalogTest, TestSysCatalogTablesOperations) {
   const std::string table_id = "abc";
   scoped_refptr<TableInfo> table = CreateUncommittedTable(table_id);
   // Add the table
-  ASSERT_OK(sys_catalog_->Upsert(kLeaderTerm, table));
+  auto epoch = LeaderEpoch(kLeaderTerm, sys_catalog_->pitr_count());
+  ASSERT_OK(sys_catalog_->Upsert(epoch, table));
   table->mutable_metadata()->CommitMutation();
 
   // Verify it showed up.
@@ -141,7 +142,7 @@ TEST_F(SysCatalogTest, TestSysCatalogTablesOperations) {
     auto l = table->LockForWrite();
     l.mutable_data()->pb.set_version(1);
     l.mutable_data()->pb.set_state(SysTablesEntryPB::DELETING);
-    ASSERT_OK(sys_catalog_->Upsert(kLeaderTerm, table));
+    ASSERT_OK(sys_catalog_->Upsert(epoch, table));
     l.Commit();
   }
 
@@ -152,7 +153,7 @@ TEST_F(SysCatalogTest, TestSysCatalogTablesOperations) {
 
   // Delete the table
   loader->Reset();
-  ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, table));
+  ASSERT_OK(sys_catalog_->Delete(epoch, table));
   ASSERT_OK(sys_catalog_->Visit(loader.get()));
   ASSERT_EQ(kNumSystemTables, loader->tables.size());
 }
@@ -169,6 +170,7 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
   unique_ptr<TestTabletLoader> loader(new TestTabletLoader());
   ASSERT_OK(sys_catalog_->Visit(loader.get()));
   ASSERT_EQ(kNumSystemTables, loader->tablets.size());
+  auto epoch = LeaderEpoch(kLeaderTerm, sys_catalog_->pitr_count());
 
   // Add tablet1 and tablet2
   {
@@ -177,7 +179,7 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
     tablets.push_back(tablet2.get());
 
     loader->Reset();
-    ASSERT_OK(sys_catalog_->Upsert(kLeaderTerm, tablets));
+    ASSERT_OK(sys_catalog_->Upsert(epoch, tablets));
     tablet1->mutable_metadata()->CommitMutation();
     tablet2->mutable_metadata()->CommitMutation();
 
@@ -194,7 +196,7 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
 
     auto l1 = tablet1->LockForWrite();
     l1.mutable_data()->pb.set_state(SysTabletsEntryPB::RUNNING);
-    ASSERT_OK(sys_catalog_->Upsert(kLeaderTerm, tablets));
+    ASSERT_OK(sys_catalog_->Upsert(epoch, tablets));
     l1.Commit();
 
     loader->Reset();
@@ -219,7 +221,7 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
     l2.mutable_data()->pb.set_state(SysTabletsEntryPB::RUNNING);
 
     loader->Reset();
-    ASSERT_OK(sys_catalog_->Upsert(kLeaderTerm, to_add, to_update));
+    ASSERT_OK(sys_catalog_->Upsert(epoch, to_add, to_update));
 
     l1.Commit();
     l2.Commit();
@@ -240,7 +242,7 @@ TEST_F(SysCatalogTest, TestSysCatalogTabletsOperations) {
     tablets.push_back(tablet3.get());
 
     loader->Reset();
-    ASSERT_OK(sys_catalog_->Delete(kLeaderTerm, tablets));
+    ASSERT_OK(sys_catalog_->Delete(epoch, tablets));
     ASSERT_OK(sys_catalog_->Visit(loader.get()));
     ASSERT_EQ(1 + kNumSystemTables, loader->tablets.size());
     ASSERT_METADATA_EQ(tablet2.get(), loader->tablets[tablet2->id()]);
@@ -684,7 +686,8 @@ TEST_F(SysCatalogTest, TestOrphanedTabletsDeleted) {
     tablet->mutable_metadata()->mutable_dirty()->pb.set_state(p.first);
     tablets.push_back(tablet);
   }
-  ASSERT_OK(sys_catalog_->Upsert(kLeaderTerm, table, tablets));
+  auto epoch = LeaderEpoch(kLeaderTerm, sys_catalog_->pitr_count());
+  ASSERT_OK(sys_catalog_->Upsert(epoch, table, tablets));
 
   // Restart the cluster and wait for the background task to set the tablet's in-memory and
   // persisted states to DELETED.
@@ -716,7 +719,8 @@ TEST_F(SysCatalogTest, TestTableIdsHasAtLeastOneTable) {
   auto tablet = CreateUncommittedTablet(table.get(), tablet_id);
   tablet->mutable_metadata()->mutable_dirty()->pb.set_state(SysTabletsEntryPB::RUNNING);
   tablet->mutable_metadata()->mutable_dirty()->pb.clear_table_ids();
-  ASSERT_OK(sys_catalog_->Upsert(kLeaderTerm, table, tablet));
+  auto epoch = LeaderEpoch(kLeaderTerm, sys_catalog_->pitr_count());
+  ASSERT_OK(sys_catalog_->Upsert(epoch, table, tablet));
 
   // Restart the cluster and wait for the background task to update the tablet's in-memory and
   // persisted table_ids field to be non-empty.
@@ -751,7 +755,8 @@ TEST_F(SysCatalogTest, TestCatalogManagerTasksTracker) {
   const std::string table_id = "abc";
   scoped_refptr<TableInfo> table = CreateUncommittedTable(table_id);
   // Add the table.
-  ASSERT_OK(sys_catalog_->Upsert(kLeaderTerm, table));
+  auto epoch = LeaderEpoch(kLeaderTerm, sys_catalog_->pitr_count());
+  ASSERT_OK(sys_catalog_->Upsert(epoch, table));
   table->mutable_metadata()->CommitMutation();
 
   // Verify it showed up.
@@ -765,7 +770,7 @@ TEST_F(SysCatalogTest, TestCatalogManagerTasksTracker) {
   for (int task_id = 0; task_id < FLAGS_tasks_tracker_num_tasks + 10; ++task_id) {
     scoped_refptr<TabletInfo> tablet(new TabletInfo(table, kSysCatalogTableId));
     auto task = std::make_shared<AsyncTruncate>(
-        master_, master_->catalog_manager()->AsyncTaskPool(), tablet);
+        master_, master_->catalog_manager()->AsyncTaskPool(), tablet, epoch);
     table->AddTask(task);
   }
 
@@ -789,6 +794,55 @@ TEST_F(SysCatalogTest, TestCatalogManagerTasksTracker) {
 
   // Cleanup tasks.
   table->AbortTasksAndClose();
+}
+
+// Test migration of the TableInfo namespace_name field.
+TEST_F(SysCatalogTest, TestNamespaceNameMigration) {
+  // First create a new namespace to add our table to.
+  unique_ptr<TestNamespaceLoader> ns_loader(new TestNamespaceLoader());
+  ASSERT_OK(sys_catalog_->Visit(ns_loader.get()));
+  ASSERT_EQ(kNumSystemNamespaces, ns_loader->namespaces.size());
+
+  auto epoch = LeaderEpoch(kLeaderTerm, sys_catalog_->pitr_count());
+  scoped_refptr<NamespaceInfo> ns(new NamespaceInfo("deadbeafdeadbeafdeadbeafdeadbeaf"));
+  {
+    auto l = ns->LockForWrite();
+    l.mutable_data()->pb.set_name("test_ns");
+    ASSERT_OK(sys_catalog_->Upsert(epoch, ns));
+    l.Commit();
+  }
+
+  // Now create a new table and add it to that namespace.
+  unique_ptr<TestTableLoader> loader(new TestTableLoader());
+  ASSERT_OK(sys_catalog_->Visit(loader.get()));
+  ASSERT_EQ(kNumSystemTables, loader->tables.size());
+  const std::string table_id = "testtableid";
+  scoped_refptr<TableInfo> table = CreateUncommittedTable(table_id);
+
+  // Only set the namespace id and clear the namespace name for this table.
+  {
+    auto* metadata = &table->mutable_metadata()->mutable_dirty()->pb;
+    metadata->clear_namespace_name();
+    metadata->set_namespace_id(ns->id());
+  }
+
+  // Add the table.
+  ASSERT_OK(sys_catalog_->Upsert(epoch, table));
+  table->mutable_metadata()->CommitMutation();
+
+  // Restart the cluster and wait for the background task to update the persistent state of the
+  // table's namespace_name.
+  ASSERT_OK(RestartMaster());
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        loader->Reset();
+        RETURN_NOT_OK(sys_catalog_->Visit(loader.get()));
+        auto in_mem_ns_name = master_->catalog_manager()->GetTableInfo(table_id)->namespace_name();
+        auto persisted_ns_name = loader->tables[table_id]->LockForRead()->namespace_name();
+        return !in_mem_ns_name.empty() && in_mem_ns_name == ns->name() &&
+               !persisted_ns_name.empty() && persisted_ns_name == ns->name();
+      },
+      10s * kTimeMultiplier, "Wait for table's namespace_name to be set in memory and on disk."));
 }
 
 } // namespace master

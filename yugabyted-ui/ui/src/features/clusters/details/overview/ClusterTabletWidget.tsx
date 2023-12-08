@@ -2,6 +2,7 @@ import React, { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Box, Grid, makeStyles, Typography } from '@material-ui/core';
 import { useGetClusterTabletsQuery } from '@app/api/src';
+import { ChevronRight } from '@material-ui/icons';
 
 // Local imports
 import type { HealthCheckInfo } from '@app/api/src';
@@ -42,6 +43,10 @@ const useStyles = makeStyles((theme) => ({
     textAlign: 'left',
     paddingTop: theme.spacing(0.25)
   },
+  arrow: {
+    color: theme.palette.grey[600],
+    marginTop: theme.spacing(0.5)
+  },
 }));
 
 interface ClusterTabletWidgetProps {
@@ -65,7 +70,10 @@ export const ClusterTabletWidget: FC<ClusterTabletWidgetProps> = ({ health }) =>
 
   return (
     <Box>
-      <Typography variant="body2" className={classes.title}>{t('clusterDetail.overview.tablets')}</Typography>
+      <Box display="flex" alignItems="center">
+        <Typography variant="body2" className={classes.title}>{t('clusterDetail.overview.tablets')}</Typography>
+        <ChevronRight className={classes.arrow} />
+      </Box>
       <Grid container className={classes.container}>
         <div className={classes.section}>
           <Typography variant="h4" className={classes.value}>

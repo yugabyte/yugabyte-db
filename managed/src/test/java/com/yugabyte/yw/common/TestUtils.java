@@ -11,9 +11,11 @@ package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.google.common.collect.ImmutableMap;
 import com.google.protobuf.ByteString;
 import com.yugabyte.yw.controllers.RequestContext;
 import com.yugabyte.yw.controllers.TokenAuthenticator;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import java.io.IOException;
@@ -85,5 +87,17 @@ public class TestUtils {
                             .build())
                     .build())
             .build());
+  }
+
+  public static UniverseDefinitionTaskParams.UserIntentOverrides composeAZOverrides(
+      UUID azUUID, String instanceType, Integer cgroupSize) {
+    UniverseDefinitionTaskParams.UserIntentOverrides result =
+        new UniverseDefinitionTaskParams.UserIntentOverrides();
+    UniverseDefinitionTaskParams.AZOverrides azOverrides =
+        new UniverseDefinitionTaskParams.AZOverrides();
+    azOverrides.setCgroupSize(cgroupSize);
+    azOverrides.setInstanceType(instanceType);
+    result.setAzOverrides(ImmutableMap.of(azUUID, azOverrides));
+    return result;
   }
 }

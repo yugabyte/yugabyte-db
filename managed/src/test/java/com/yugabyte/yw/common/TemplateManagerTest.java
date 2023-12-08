@@ -9,18 +9,18 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNull;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.*;
 
 import com.typesafe.config.Config;
-import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AccessKey.KeyInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import java.io.File;
 import java.io.IOException;
+import java.time.Duration;
 import java.util.Arrays;
 import java.util.LinkedList;
 import java.util.List;
@@ -48,9 +48,9 @@ public class TemplateManagerTest extends FakeDBApplication {
 
   @Mock ShellProcessHandler shellProcessHandler;
 
-  @Mock RuntimeConfigFactory runtimeConfigFactory;
-
   @Mock Config mockConfig;
+
+  @Mock RuntimeConfGetter mockConfGetter;
 
   @Mock NodeAgentClient nodeAgentClient;
 
@@ -103,7 +103,9 @@ public class TemplateManagerTest extends FakeDBApplication {
     testProvider = ModelFactory.onpremProvider(testCustomer);
     when(mockConfig.getString(YB_STORAGE_PATH_KEY)).thenReturn(YB_STORAGE_PATH_VALUE);
     when(mockConfig.getString(YB_THIRDPARTY_KEY)).thenReturn(YB_THIRDPARTY_VALUE);
-    when(runtimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ssh2Enabled))).thenReturn(false);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.devopsCommandTimeout)))
+        .thenReturn(Duration.ofHours(1));
   }
 
   @After

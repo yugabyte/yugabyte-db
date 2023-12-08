@@ -400,6 +400,10 @@ public class TestPgUniqueConstraint extends BasePgSQLTest {
     for (HostAndPort hp : miniCluster.getMasters().keySet()) {
       assertTrue(miniCluster.getClient().setFlag(hp,
           "enable_transactional_ddl_gc", "false"));
+    }
+    for (HostAndPort hp : miniCluster.getTabletServers().keySet()) {
+      assertTrue(miniCluster.getClient().setFlag(hp,
+          "allowed_preview_flags_csv", "ysql_ddl_rollback_enabled=true"));
       assertTrue(miniCluster.getClient().setFlag(hp,
           "ysql_ddl_rollback_enabled", "false"));
     }
@@ -410,12 +414,10 @@ public class TestPgUniqueConstraint extends BasePgSQLTest {
           "duplicate key"
       );
     }
-    // Reset the YB-Master flags.
+    // Reset flags.
     for (HostAndPort hp : miniCluster.getMasters().keySet()) {
       assertTrue(miniCluster.getClient().setFlag(hp,
           "enable_transactional_ddl_gc", "true"));
-      assertTrue(miniCluster.getClient().setFlag(hp,
-          "ysql_ddl_rollback_enabled", "true"));
     }
 
     try (Statement stmt = connection.createStatement()) {

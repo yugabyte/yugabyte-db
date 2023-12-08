@@ -23,8 +23,11 @@
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/ref_counted.h"
 
+#include "yb/master/leader_epoch.h"
 #include "yb/master/master_admin.fwd.h"
 #include "yb/master/master_fwd.h"
+
+#include "yb/rpc/rpc_context.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
@@ -46,7 +49,9 @@ class FlushManager {
 
   // API to start a table flushing.
   Status FlushTables(const FlushTablesRequestPB* req,
-                     FlushTablesResponsePB* resp);
+                     FlushTablesResponsePB* resp,
+                     rpc::RpcContext* rpc,
+                     const LeaderEpoch& epoch);
 
   Status IsFlushTablesDone(const IsFlushTablesDoneRequestPB* req,
                            IsFlushTablesDoneResponsePB* resp);
@@ -61,7 +66,8 @@ class FlushManager {
                                const scoped_refptr<TableInfo>& table,
                                const std::vector<TabletId>& tablet_ids,
                                const FlushRequestId& flush_id,
-                               bool is_compaction);
+                               bool is_compaction,
+                               const LeaderEpoch& epoch);
 
   void DeleteCompleteFlushRequests();
 

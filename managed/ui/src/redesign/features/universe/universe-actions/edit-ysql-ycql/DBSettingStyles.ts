@@ -14,5 +14,8 @@ export const dbSettingStyles = makeStyles((theme) => ({
     background: '#FFFFFF',
     borderRadius: theme.spacing(1),
     padding: theme.spacing(0.5, 1.5)
+  },
+  errorNote: {
+    color: '#a94442'
   }
 }));

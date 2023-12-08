@@ -150,6 +150,18 @@ void PeerManager::ClosePeersNotInConfig(const RaftConfigPB& config) {
   }
 }
 
+void PeerManager::DumpToHtml(std::ostream& out) const {
+  out << "<h2>Peer Manager</h2>" << std::endl;
+  out << "<ul>" << std::endl;
+  std::lock_guard lock(lock_);
+  for (const auto& entry : peers_) {
+    out << "<li>" << std::endl;
+    entry.second->DumpToHtml(out);
+    out << "</li>" << std::endl;
+  }
+  out << "</ul>" << std::endl;
+}
+
 std::string PeerManager::LogPrefix() const {
   return MakeTabletLogPrefix(tablet_id_, local_uuid_);
 }

@@ -92,6 +92,8 @@ class PgDml : public PgStatement {
 
   bool has_aggregate_targets() const;
 
+  bool has_system_targets() const;
+
   bool has_doc_op() const {
     return doc_op_ != nullptr;
   }
@@ -185,6 +187,7 @@ class PgDml : public PgStatement {
   PgTable target_;
   std::vector<PgFetchedTarget*> targets_;
   bool has_aggregate_targets_ = false;
+  bool has_system_targets_ = false;
 
   // bind_desc_ is the descriptor of the table whose key columns' values will be specified by the
   // the DML statement being executed.

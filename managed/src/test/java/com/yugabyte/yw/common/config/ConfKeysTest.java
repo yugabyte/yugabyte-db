@@ -121,7 +121,10 @@ public class ConfKeysTest extends FakeDBApplication {
     // No data validation for these types yet
     Set<ConfDataType<?>> exceptions =
         ImmutableSet.of(
-            ConfDataType.StringListType, ConfDataType.StringType, ConfDataType.TagListType);
+            ConfDataType.StringListType,
+            ConfDataType.StringType,
+            ConfDataType.TagListType,
+            ConfDataType.IntegerListType);
 
     Set<ConfDataType<?>> includedObjectsType =
         ImmutableSet.of(ConfDataType.KeyValuesSetMultimapType);

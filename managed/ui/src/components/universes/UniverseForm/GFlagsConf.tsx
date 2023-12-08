@@ -8,9 +8,9 @@ import { MultilineGFlags } from '../../../utils/UniverseUtils';
 
 interface GFlagConfProps {
   formProps: any;
-  mode: string;
   serverType: string;
   flagName: string;
+  updateJWKSDialogStatus: (status: boolean) => void;
 }
 
 const POSTGRES_USERNAME_MAP = 'https://www.postgresql.org/docs/current/auth-username-maps.html';
@@ -52,7 +52,12 @@ const GFlagAdditionalDescription = {
   ysql_ident_conf_csv: 'universeForm.gFlags.identConfDescriptionMore'
 } as const;
 
-export const GFlagsConf: FC<GFlagConfProps> = ({ formProps, mode, serverType, flagName }) => {
+export const GFlagsConf: FC<GFlagConfProps> = ({
+  formProps,
+  serverType,
+  flagName,
+  updateJWKSDialogStatus
+}) => {
   const classes = useStyles();
   const { t } = useTranslation();
   const [currentView, setCurentView] = useState<GFlagMultilineMode>(GFlagMultilineMode.EDIT);
@@ -128,9 +133,8 @@ export const GFlagsConf: FC<GFlagConfProps> = ({ formProps, mode, serverType, fl
         {currentView === GFlagMultilineMode.EDIT && (
           <EditGFlagsConf
             formProps={formProps}
-            mode={mode}
             serverType={serverType}
-            flagName={flagName}
+            updateJWKSDialogStatus={updateJWKSDialogStatus}
           />
         )}
         {currentView === GFlagMultilineMode.PREVIEW && (

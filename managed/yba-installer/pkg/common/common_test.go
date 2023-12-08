@@ -26,8 +26,11 @@ level1: etc
 		t.Fatalf("error writing file %s: %s", filePath, err)
 	}
 
-	setYamlValue(filePath, "level1", "new1")
-	setYamlValue(filePath, "foo.bar.abc", "new2")
+	SetYamlValue(filePath, "level1", "new1")
+	SetYamlValue(filePath, "foo.bar.abc", "new2")
+	SetYamlValue(filePath, "foo.bar.ghi", "new3")
+	SetYamlValue(filePath, "biz.baz.booz", "new4")
+	SetYamlValue(filePath, "level2", "new5")
 
 	v := viper.New()
 	v.SetConfigFile(filePath)
@@ -48,4 +51,21 @@ level1: etc
 		t.Fatalf("yaml entry doesn't match expected '%s' '%s'", real, expected)
 	}
 
+	real = v.GetString("foo.bar.ghi")
+	expected = "new3"
+	if real != expected {
+		t.Fatalf("yaml entry doesn't match expected '%s' '%s'", real, expected)
+	}
+
+	real = v.GetString("biz.baz.booz")
+	expected = "new4"
+	if real != expected {
+		t.Fatalf("yaml entry doesn't match expected '%s' '%s'", real, expected)
+	}
+
+	real = v.GetString("level2")
+	expected = "new5"
+	if real != expected {
+		t.Fatalf("yaml entry doesn't match expected '%s' '%s'", real, expected)
+	}
 }

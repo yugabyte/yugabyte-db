@@ -65,6 +65,10 @@ struct DocReadContext {
     return schema_;
   }
 
+  Schema* mutable_schema() {
+    return &schema_;
+  }
+
   void SetCotableId(const Uuid& cotable_id);
 
   // The number of bytes before actual key values for all encoded keys in this table.

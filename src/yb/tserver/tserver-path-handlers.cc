@@ -383,9 +383,8 @@ void HandleRocksDBPage(
     *output << tablet_result.status();
     return;
   }
-  auto doc_db = (*tablet_result)->doc_db();
-  DumpRocksDB("Regular", doc_db.regular, output);
-  DumpRocksDB("Intents", doc_db.intents, output);
+  DumpRocksDB("Regular", (*tablet_result)->regular_db(), output);
+  DumpRocksDB("Intents", (*tablet_result)->intents_db(), output);
 }
 
 void HandleWaitQueuePage(

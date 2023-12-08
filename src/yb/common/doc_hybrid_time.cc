@@ -27,8 +27,8 @@
 
 using std::string;
 
-using yb::util::FastEncodeDescendingSignedVarInt;
-using yb::util::FastDecodeDescendingSignedVarIntUnsafe;
+using yb::FastEncodeDescendingSignedVarInt;
+using yb::FastDecodeDescendingSignedVarIntUnsafe;
 
 using strings::SubstituteAndAppend;
 
@@ -89,22 +89,29 @@ char* DocHybridTime::EncodedInDocDbFormat(char* dest) const {
 }
 
 Result<Slice> DocHybridTime::EncodedFromStart(Slice* slice) {
-  const auto* start = slice->data();
+  const auto* begin = slice->cdata();
+  const char* mid = VERIFY_RESULT(EncodedFromStart(begin, slice->cend()));
+  *slice = Slice(mid, slice->cend());
+  return Slice(begin, mid);
+}
+
+Result<const char*> DocHybridTime::EncodedFromStart(const char* begin, const char* end) {
+  const char* start = begin;
   // There are following components:
   // 1) Generation number - not used always 0.
   // 2) Physical part of hybrid time.
   // 3) Logical part of hybrid time.
   // 4) Write id.
   for (size_t i = 0; i != 4; ++i) {
-    auto size = util::FastDecodeDescendingSignedVarIntSize(*slice);
-    if (size == 0 || size > slice->size()) {
+    auto size = FastDecodeDescendingSignedVarIntSize(Slice(begin, end));
+    if (size == 0 || begin + size > end) {
       return STATUS_FORMAT(
           Corruption, "Bad doc hybrid time: $0, step: $1",
-          Slice(start, slice->end()).ToDebugHexString(), i);
+          Slice(start, end).ToDebugHexString(), i);
     }
-    slice->remove_prefix(size);
+    begin += size;
   }
-  return Slice(start, slice->data());
+  return begin;
 }
 
 Result<DocHybridTime> DocHybridTime::DecodeFrom(Slice *slice) {

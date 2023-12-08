@@ -35,6 +35,7 @@
 #include "postgres.h"
 
 #include "access/relscan.h"
+#include "access/xact.h"
 #include "access/yb_scan.h"
 #include "executor/execdebug.h"
 #include "executor/nodeYbSeqscan.h"
@@ -103,6 +104,36 @@ YbSeqNext(YbSeqScanState *node)
 										node->aggrefs,
 										&estate->yb_exec_params);
 		node->ss.ss_currentScanDesc = tsdesc;
+	}
+
+	/*
+	 * Set up any locking that happens at the time of the scan.
+	 */
+	if (IsYugaByteEnabled() && IsolationIsSerializable())
+	{
+		/*
+		 * In case of SERIALIZABLE isolation level we have to take prefix range
+		 * locks to disallow INSERTion of new rows that satisfy the query
+		 * predicate. So, we set the rowmark on all read requests sent to
+		 * tserver instead of locking each tuple one by one in LockRows node.
+		 */
+		if (estate->es_rowmarks && estate->es_range_table_size > 0)
+		{
+			ExecRowMark *erm = estate->es_rowmarks[0];
+			/* Do not propagate non-row-locking row marks. */
+			if (erm->markType != ROW_MARK_REFERENCE &&
+				erm->markType != ROW_MARK_COPY)
+			{
+				/* YB_TODO(jason): move ybScan = (YbScanDesc)tsdesc; higher. */
+				YbScanDesc ybScan = (YbScanDesc) tsdesc;
+
+				ybScan->exec_params->rowmark = erm->markType;
+				ybScan->exec_params->pg_wait_policy = erm->waitPolicy;
+				YBSetRowLockPolicy(
+					&ybScan->exec_params->docdb_wait_policy,
+					erm->waitPolicy);
+			}
+		}
 	}
 
 	/*

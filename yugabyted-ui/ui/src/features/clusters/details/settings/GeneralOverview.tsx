@@ -1,7 +1,7 @@
 import React, { FC } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Box, Divider, Grid, makeStyles, Paper, Typography } from '@material-ui/core';
-import { useGetClusterNodesQuery, useGetClusterQuery } from '@app/api/src';
+import { useGetClusterQuery } from '@app/api/src';
 import { roundDecimal, getFaultTolerance } from '@app/helpers';
 import { STATUS_TYPES, YBStatus } from '@app/components';
 import { intlFormat } from 'date-fns';
@@ -57,10 +57,6 @@ export const GeneralOverview: FC<GeneralOverviewProps> = () => {
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const { data: nodesResponse } = useGetClusterNodesQuery();
-  const totalRamUsageGb = (nodesResponse?.data.reduce((acc, curr) =>
-    acc + curr.metrics.ram_provisioned_bytes, 0) ?? 0) / (1024 * 1024 * 1024);
-
   const { data: clusterData } = useGetClusterQuery();
   const cluster = clusterData?.data;
 
@@ -72,6 +68,7 @@ export const GeneralOverview: FC<GeneralOverviewProps> = () => {
   const databaseVersion = cluster?.info.software_version ?? '';
   const totalDiskSize = clusterSpec?.cluster_info.node_info.disk_size_gb ?? 0;
   const totalCores = clusterSpec?.cluster_info?.node_info.num_cores ?? 0;
+  const totalRamProvisionedGb = clusterSpec?.cluster_info?.node_info.ram_provisioned_gb ?? 0;
 
   // Get text for ram usage
   const getRamUsageText = (ramUsageGb: number) => {
@@ -202,7 +199,7 @@ export const GeneralOverview: FC<GeneralOverviewProps> = () => {
             {t('clusterDetail.overview.totalMemory')}
           </Typography>
           <Typography variant="body2" className={classes.value}>
-            {getRamUsageText(totalRamUsageGb)}
+            {getRamUsageText(totalRamProvisionedGb)}
           </Typography>
         </Grid>
         <Grid item xs={2}>

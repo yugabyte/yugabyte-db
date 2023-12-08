@@ -405,6 +405,8 @@ void UnpackUDTAndFrozen(const QLType::SharedPtr& type, QLValuePB* value) {
     QLMapValuePB* map = value->mutable_map_value();
     for (int i = 0; i < map->keys_size(); ++i) {
       map->mutable_keys(i)->set_string_value(field_names[i]);
+      // Unpack nested FROZEN<UDT>, FROZEN<MAP>, etc.
+      UnpackUDTAndFrozen(type->param_type(i), map->mutable_values(i));
     }
   } else if (type->IsFrozen() && value->value_case() == QLValuePB::kFrozenValue) {
     if (type->param_type()->IsUserDefined()) {

@@ -55,6 +55,17 @@ YBSession::YBSession(YBClient* client, const scoped_refptr<ClockBase>& clock) {
   async_rpc_metrics_ = metric_entity ? std::make_shared<AsyncRpcMetrics>(metric_entity) : nullptr;
 }
 
+YBSession::YBSession(YBClient* client, MonoDelta delta, const scoped_refptr<ClockBase>& clock)
+    : YBSession(client, clock) {
+  SetTimeout(delta);
+}
+
+YBSession::YBSession(
+    YBClient* client, CoarseTimePoint deadline, const scoped_refptr<ClockBase>& clock)
+    : YBSession(client, clock) {
+  SetDeadline(deadline);
+}
+
 void YBSession::RestartNonTxnReadPoint(const Restart restart) {
   const auto& read_point = batcher_config_.non_transactional_read_point;
   DCHECK_NOTNULL(read_point.get());
@@ -292,7 +303,9 @@ internal::Batcher& YBSession::Batcher() {
       batcher_->SetDeadline(deadline_);
     } else {
       auto timeout = timeout_;
+      // In retail mode default to 60s.
       if (PREDICT_FALSE(!timeout.Initialized())) {
+        DCHECK(false) << "Session deadline or timeout must always be set.\n" << GetStackTrace();
         YB_LOG_EVERY_N(WARNING, 100000)
             << "Client writing with no deadline set, using 60 seconds.\n"
             << GetStackTrace();

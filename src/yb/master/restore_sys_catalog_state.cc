@@ -862,19 +862,22 @@ Status RestoreSysCatalogState::PrepareWriteBatch(
     const Schema& schema, docdb::SchemaPackingProvider* schema_packing_provider,
     docdb::DocWriteBatch* write_batch, const HybridTime& now_ht) {
   for (const auto& entry : entries_.entries()) {
+    VLOG_WITH_FUNC(4)
+        << "type: " << entry.type() << ", id: " << Slice(entry.id()).ToDebugHexString()
+        << ", data: " << Slice(entry.data()).ToDebugHexString();
     RETURN_NOT_OK(WriteEntry(
         entry.type(), entry.id(), entry.data(), QLWriteRequestPB::QL_STMT_INSERT, schema,
         schema_packing_provider, write_batch));
   }
 
-  for (const auto& tablet_id_and_pb : restoration_.non_system_obsolete_tablets) {
-    RETURN_NOT_OK(PrepareTabletCleanup(
-        tablet_id_and_pb.first, tablet_id_and_pb.second, schema, schema_packing_provider,
+  for (const auto& [tablet_id, pb] : restoration_.non_system_obsolete_tablets) {
+    VLOG_WITH_FUNC(4) << "Cleanup tablet: " << tablet_id << ", " << pb.ShortDebugString();
+    RETURN_NOT_OK(PrepareTabletCleanup(tablet_id, pb, schema, schema_packing_provider,
         write_batch));
   }
-  for (const auto& table_id_and_pb : restoration_.non_system_obsolete_tables) {
-    RETURN_NOT_OK(PrepareTableCleanup(
-        table_id_and_pb.first, table_id_and_pb.second, schema, schema_packing_provider, write_batch,
+  for (const auto& [table_id, pb] : restoration_.non_system_obsolete_tables) {
+    VLOG_WITH_FUNC(4) << "Cleanup table: " << table_id << ", " << pb.ShortDebugString();
+    RETURN_NOT_OK(PrepareTableCleanup(table_id, pb, schema, schema_packing_provider, write_batch,
         now_ht));
   }
 

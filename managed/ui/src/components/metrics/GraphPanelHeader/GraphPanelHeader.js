@@ -35,8 +35,8 @@ import { CustomDatePicker } from '../CustomDatePicker/CustomDatePicker';
 import { MetricsMeasureSelector } from '../MetricsMeasureSelector/MetricsMeasureSelector';
 import { OutlierSelector } from '../OutlierSelector/OutlierSelector';
 
+import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import './GraphPanelHeader.scss';
-import { ybFormatDateTimezone } from '../../../redesign/helpers/DateUtils';
 
 require('react-widgets/dist/css/react-widgets.css');
 
@@ -710,10 +710,7 @@ class GraphPanelHeader extends Component {
                   <form name="GraphPanelFilterForm">
                     <div id="reportrange" className="pull-right">
                       <div className="timezone">
-                        Timezone:{' '}
-                        {currentUser.data.timezone
-                          ? ybFormatDateTimezone(new Date(), currentUser.data.timezone)
-                          : moment().format('[UTC]ZZ')}
+                        Current Timestamp:&nbsp;{ybFormatDate(new Date())}
                       </div>
                       <div className="graph-interval-container">
                         <Dropdown

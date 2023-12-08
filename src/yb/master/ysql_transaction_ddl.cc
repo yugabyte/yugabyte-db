@@ -16,11 +16,14 @@
 #include "yb/client/transaction_rpc.h"
 
 #include "yb/qlexpr/ql_expr.h"
+
+#include "yb/common/colocated_util.h"
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/casts.h"
 
+#include "yb/master/master_util.h"
 #include "yb/master/sys_catalog.h"
 
 #include "yb/tablet/tablet.h"
@@ -50,6 +53,10 @@ using std::vector;
 
 namespace yb {
 namespace master {
+
+static const char* kTableNameColName = "relname";
+static const char* kTablegroupNameColName = "grpname";
+
 namespace {
 
 bool IsTableModifiedByTransaction(TableInfo* table,
@@ -283,14 +290,29 @@ Result<bool> YsqlTransactionDdl::PgSchemaChecker(const scoped_refptr<TableInfo>&
 Status YsqlTransactionDdl::PgSchemaCheckerWithReadTime(
     const scoped_refptr<TableInfo>& table, const ReadHybridTime& read_time, bool* result,
     HybridTime* read_restart_ht) {
-  const PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table->id()));
-  auto read_data =
-      VERIFY_RESULT(sys_catalog_->TableReadData(database_oid, kPgClassTableOid, read_time));
+  PgOid oid = kPgInvalidOid;
+  string pg_catalog_table_id, name_col;
+  if (table->IsColocationParentTable()) {
+    // The table we have is a dummy parent table, hence not present in YSQL.
+    // We need to check a tablegroup instead.
+    const auto tablegroup_id = GetTablegroupIdFromParentTableId(table->id());
+    const PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTablegroupId(tablegroup_id));
+    const auto pg_yb_tablegroup_table_id = GetPgsqlTableId(database_oid, kPgYbTablegroupTableOid);
+    oid = VERIFY_RESULT(GetPgsqlTablegroupOid(tablegroup_id));
+    pg_catalog_table_id = GetPgsqlTableId(database_oid, kPgYbTablegroupTableOid);
+    name_col = kTablegroupNameColName;
+  } else {
+    const PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table->id()));
+    pg_catalog_table_id = GetPgsqlTableId(database_oid, kPgClassTableOid);
+    oid = VERIFY_RESULT(GetPgsqlTableOid(table->id()));
+    name_col = kTableNameColName;
+  }
 
-  PgOid oid = VERIFY_RESULT(GetPgsqlTableOid(table->id()));
+  auto read_data = VERIFY_RESULT(sys_catalog_->TableReadData(pg_catalog_table_id, read_time));
   auto oid_col_id = VERIFY_RESULT(read_data.ColumnByName("oid")).rep();
-  auto relname_col_id = VERIFY_RESULT(read_data.ColumnByName("relname")).rep();
-  dockv::ReaderProjection projection(read_data.schema(), {oid_col_id, relname_col_id});
+  auto relname_col_id = VERIFY_RESULT(read_data.ColumnByName(name_col)).rep();
+  dockv::ReaderProjection projection;
+  projection.Init(read_data.schema(), {oid_col_id, relname_col_id});
   RequestScope request_scope;
   auto iter =
       VERIFY_RESULT(GetPgCatalogTableScanIterator(read_data, oid, projection, &request_scope));

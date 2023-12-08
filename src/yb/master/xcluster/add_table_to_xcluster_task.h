@@ -14,18 +14,21 @@
 #pragma once
 
 #include <string>
+
+#include "yb/cdc/cdc_types.h"
 #include "yb/client/client_fwd.h"
 #include "yb/common/hybrid_time.h"
+#include "yb/gutil/thread_annotations.h"
+#include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/server/monitored_task.h"
-#include "yb/gutil/thread_annotations.h"
-#include "yb/cdc/cdc_types.h"
 
 namespace yb::master {
 class AddTableToXClusterTask : public server::RunnableMonitoredTask {
  public:
-  AddTableToXClusterTask(CatalogManager* catalog_manager, TableInfoPtr table_info);
+  AddTableToXClusterTask(
+      CatalogManager* catalog_manager, TableInfoPtr table_info, LeaderEpoch epoch);
 
   server::MonitoredTaskType type() const override {
     return server::MonitoredTaskType::kAddTableToXClusterReplication;
@@ -70,5 +73,6 @@ class AddTableToXClusterTask : public server::RunnableMonitoredTask {
   HybridTime bootstrap_time_ = HybridTime::kInvalid;
   HybridTime initial_xcluster_safe_time_ = HybridTime::kInvalid;
   cdc::ReplicationGroupId replication_group_id_;
+  LeaderEpoch epoch_;
 };
 }  // namespace yb::master

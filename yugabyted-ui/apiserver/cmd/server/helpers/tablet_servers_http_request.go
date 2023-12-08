@@ -1,14 +1,11 @@
 package helpers
 
 import (
+        "apiserver/cmd/server/logger"
         "encoding/json"
         "errors"
-        "fmt"
-        "io/ioutil"
         "net"
-        "net/http"
         "regexp"
-        "time"
 )
 
 type PathMetrics struct {
@@ -47,23 +44,18 @@ type TabletServersFuture struct {
         Error   error
 }
 
-func GetTabletServersFuture(nodeHost string, future chan TabletServersFuture) {
+func GetTabletServersFuture(log logger.Logger, nodeHost string, future chan TabletServersFuture) {
         tabletServers := TabletServersFuture{
                 Tablets: map[string]map[string]TabletServer{},
                 Error:   nil,
         }
-        httpClient := &http.Client{
-                Timeout: time.Second * 10,
-        }
-        url := fmt.Sprintf("http://%s:%s/api/v1/tablet-servers", nodeHost, MasterUIPort)
-        resp, err := httpClient.Get(url)
+        urls, err := BuildMasterURLs(log, "api/v1/tablet-servers")
         if err != nil {
                 tabletServers.Error = err
                 future <- tabletServers
                 return
         }
-        defer resp.Body.Close()
-        body, err := ioutil.ReadAll(resp.Body)
+        body, err := AttemptGetRequests(log, urls, true)
         if err != nil {
                 tabletServers.Error = err
                 future <- tabletServers
@@ -102,18 +94,13 @@ func GetNodesList(tablets TabletServersFuture) []string {
 
 // Helper for getting a map between hostnames and uuids for tservers
 // For now, we hit the /tablet-servers endpoint and parse the html
-func GetHostToUuidMap(nodeHost string) (map[string]string, error) {
+func GetHostToUuidMap(log logger.Logger, nodeHost string) (map[string]string, error) {
         hostToUuidMap := map[string]string{}
-        httpClient := &http.Client{
-                Timeout: time.Second * 10,
-        }
-        url := fmt.Sprintf("http://%s:%s/tablet-servers", HOST, MasterUIPort)
-        resp, err := httpClient.Get(url)
+        urls, err := BuildMasterURLs(log, "tablet-servers")
         if err != nil {
                 return hostToUuidMap, err
         }
-        defer resp.Body.Close()
-        body, err := ioutil.ReadAll(resp.Body)
+        body, err := AttemptGetRequests(log, urls, false)
         if err != nil {
                 return hostToUuidMap, err
         }

@@ -258,12 +258,10 @@ explain (costs off)
 select max(unique1) from tenk1;
 explain (costs off)
   select max(unique1) from tenk1 where unique1 < 42;
--- YB TODO(#16927): uncomment the following query, which crashes
--- select max(unique1) from tenk1 where unique1 < 42;
+select max(unique1) from tenk1 where unique1 < 42;
 explain (costs off)
   select max(unique1) from tenk1 where unique1 > 42;
--- YB TODO(#16927): uncomment the following query, which crashes
--- select max(unique1) from tenk1 where unique1 > 42;
+select max(unique1) from tenk1 where unique1 > 42;
 
 -- the planner may choose a generic aggregate here if parallel query is
 -- enabled, since that plan will be parallel safe and the "optimized"
@@ -273,8 +271,7 @@ begin;
 set local max_parallel_workers_per_gather = 0;
 explain (costs off)
   select max(unique1) from tenk1 where unique1 > 42000;
--- YB TODO(#16927): uncomment the following query, which crashes
--- select max(unique1) from tenk1 where unique1 > 42000;
+select max(unique1) from tenk1 where unique1 > 42000;
 rollback;
 
 -- multi-column index (uses tenk1_thous_tenthous)
@@ -293,9 +290,8 @@ explain (costs off)
 -- 1. mainly order by absolute value of f1.
 -- 2. order positives before negatives by adding an offset of -1/+1 using the
 --    sign function.
--- YB TODO(#16927): uncomment the following query, which crashes
--- select f1, (select min(unique1) from tenk1 where unique1 > f1) AS gt
---   from int4_tbl order by abs(f1) - sign(f1);
+select f1, (select min(unique1) from tenk1 where unique1 > f1) AS gt
+  from int4_tbl order by abs(f1) - sign(f1);
 
 -- check some cases that were handled incorrectly in 8.3.0
 explain (costs off)

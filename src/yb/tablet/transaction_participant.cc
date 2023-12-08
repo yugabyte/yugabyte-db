@@ -114,11 +114,11 @@ METRIC_DEFINE_simple_gauge_uint64(
     tablet, aborted_transactions_pending_cleanup,
     "Total number of aborted transactions running in participant",
     yb::MetricUnit::kTransactions);
-METRIC_DEFINE_coarse_histogram(tablet, conflict_resolution_latency, "Conflict Resolution Latency",
+METRIC_DEFINE_event_stats(tablet, conflict_resolution_latency, "Conflict Resolution Latency",
                                yb::MetricUnit::kMicroseconds,
                                "Microseconds spent on conflict resolution across all "
                                "transactions at the current tablet");
-METRIC_DEFINE_coarse_histogram(tablet, conflict_resolution_num_keys_scanned,
+METRIC_DEFINE_event_stats(tablet, conflict_resolution_num_keys_scanned,
                                "Total Keys Scanned During Conflict Resolution",
                                yb::MetricUnit::kKeys,
                                "Number of keys scanned during conflict resolution)");
@@ -1875,8 +1875,8 @@ class TransactionParticipant::Impl
   scoped_refptr<AtomicGauge<uint64_t>> metric_transactions_running_;
   scoped_refptr<AtomicGauge<uint64_t>> metric_aborted_transactions_pending_cleanup_;
   scoped_refptr<Counter> metric_transaction_not_found_;
-  scoped_refptr<Histogram> metric_conflict_resolution_latency_;
-  scoped_refptr<Histogram> metric_conflict_resolution_num_keys_scanned_;
+  scoped_refptr<EventStats> metric_conflict_resolution_latency_;
+  scoped_refptr<EventStats> metric_conflict_resolution_num_keys_scanned_;
 
   TransactionLoader loader_;
   std::atomic<bool> closing_{false};

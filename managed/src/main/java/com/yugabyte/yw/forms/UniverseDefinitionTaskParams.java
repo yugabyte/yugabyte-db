@@ -5,6 +5,8 @@ package com.yugabyte.yw.forms;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.*;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.fasterxml.jackson.databind.util.StdConverter;
 import com.google.common.base.Strings;
@@ -27,12 +29,21 @@ import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
 import java.io.File;
 import java.util.*;
+import java.util.function.Function;
 import java.util.stream.Collectors;
+import javax.annotation.Nonnull;
 import javax.annotation.Nullable;
+import javax.validation.constraints.NotNull;
 import javax.validation.constraints.Size;
+import lombok.Data;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.ToString;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.data.validation.Constraints;
+import play.libs.Json;
 
 /**
  * This class captures the user intent for creation of the universe. Note some nuances in the way
@@ -296,15 +307,30 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return false;
     }
 
-    public void validate(boolean validateGFlagsConsistency, boolean isAuthEnforced) {
+    public void validate(
+        boolean validateGFlagsConsistency, boolean isAuthEnforced, Set<NodeDetails> nodes) {
       if (uuid == null) {
         throw new IllegalStateException("Cluster uuid should not be null");
       }
       if (placementInfo == null) {
         throw new IllegalStateException("Placement should be provided");
       }
-      checkDeviceInfo();
-      checkStorageType();
+      checkDeviceInfo(userIntent.deviceInfo);
+      if (userIntent.masterDeviceInfo != null && userIntent.dedicatedNodes) {
+        checkDeviceInfo(userIntent.masterDeviceInfo);
+        checkStorageType(
+            userIntent.deviceInfo,
+            nodes.stream()
+                .filter(n -> n.dedicatedTo == UniverseTaskBase.ServerType.TSERVER)
+                .collect(Collectors.toSet()));
+        checkStorageType(
+            userIntent.masterDeviceInfo,
+            nodes.stream()
+                .filter(n -> n.dedicatedTo == UniverseTaskBase.ServerType.MASTER)
+                .collect(Collectors.toSet()));
+      } else {
+        checkStorageType(userIntent.deviceInfo, nodes);
+      }
       validateAuth(isAuthEnforced);
       if (validateGFlagsConsistency) {
         GFlagsUtil.checkGflagsAndIntentConsistency(userIntent);
@@ -338,9 +364,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
     }
 
-    private void checkDeviceInfo() {
+    private void checkDeviceInfo(DeviceInfo deviceInfo) {
       CloudType cloudType = userIntent.providerType;
-      DeviceInfo deviceInfo = userIntent.deviceInfo;
       if (cloudType.isRequiresDeviceInfo()) {
         if (deviceInfo == null) {
           throw new PlatformServiceException(
@@ -354,13 +379,17 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
     }
 
-    private void checkStorageType() {
-      if (userIntent.deviceInfo == null) {
+    private void checkStorageType(DeviceInfo deviceInfo, Set<NodeDetails> nodes) {
+      if (deviceInfo == null) {
         return;
       }
-      DeviceInfo deviceInfo = userIntent.deviceInfo;
       CloudType cloudType = userIntent.providerType;
-      if (cloudType == CloudType.aws && hasEphemeralStorage(userIntent)) {
+      boolean hasEphemeralStorage =
+          nodes.stream()
+              .filter(n -> hasEphemeralStorage(cloudType, n.cloudInfo.instance_type, deviceInfo))
+              .findFirst()
+              .isPresent();
+      if (cloudType == CloudType.aws && hasEphemeralStorage) {
         // Ephemeral storage AWS instances should not have storage type
         if (deviceInfo.storageType != null) {
           throw new PlatformServiceException(
@@ -386,19 +415,23 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
   }
 
-  public static boolean hasEphemeralStorage(UserIntent userIntent) {
-    boolean result =
-        hasEphemeralStorage(
-            userIntent.providerType, userIntent.instanceType, userIntent.deviceInfo);
-    if (userIntent.dedicatedNodes) {
-      result =
-          result
-              || hasEphemeralStorage(
-                  userIntent.providerType,
-                  userIntent.masterInstanceType,
-                  userIntent.masterDeviceInfo);
+  public static boolean hasEphemeralStorage(UniverseDefinitionTaskParams params) {
+    if (CollectionUtils.isEmpty(params.nodeDetailsSet)) {
+      return false;
     }
-    return result;
+    for (Cluster cluster : params.clusters) {
+      for (NodeDetails node : params.nodeDetailsSet) {
+        if (!node.isInPlacement(cluster.uuid)) {
+          continue;
+        }
+        DeviceInfo deviceInfo = cluster.userIntent.getDeviceInfoForNode(node);
+        if (hasEphemeralStorage(
+            cluster.userIntent.providerType, node.cloudInfo.instance_type, deviceInfo)) {
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   public static boolean hasEphemeralStorage(
@@ -419,7 +452,70 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     return false;
   }
 
+  interface PerProcessOverrides<T> {
+    Map<UniverseTaskBase.ServerType, T> getPerProcess();
+
+    void setPerProcess(Map<UniverseTaskBase.ServerType, T> values);
+  }
+
+  // TODO: We can migrate masterDeviceInfo, masterInstanceType here
+  @Data
+  public static class OverridenDetails {
+    @ApiModelProperty private String instanceType;
+    @ApiModelProperty private DeviceInfo deviceInfo;
+    @ApiModelProperty private Integer cgroupSize;
+
+    public void mergeWith(OverridenDetails other) {
+      if (other == null) {
+        return;
+      }
+      if (other.getDeviceInfo() != null) {
+        this.deviceInfo = other.getDeviceInfo();
+      }
+      if (other.getInstanceType() != null) {
+        this.instanceType = other.getInstanceType();
+      }
+      if (other.getCgroupSize() != null) {
+        this.cgroupSize = other.getCgroupSize();
+      }
+    }
+
+    public <T, P extends OverridenDetails> P mergeApply(T val, Function<T, P> extractor) {
+      P result = null;
+      if (val != null) {
+        result = extractor.apply(val);
+        if (result != null) {
+          mergeWith(result);
+        }
+      }
+      return result;
+    }
+  }
+
+  @Data
+  public static class AZOverrides extends OverridenDetails
+      implements PerProcessOverrides<OverridenDetails> {
+    @ApiModelProperty private Map<UniverseTaskBase.ServerType, OverridenDetails> perProcess;
+  }
+
+  @Data
+  public static class UserIntentOverrides implements PerProcessOverrides<OverridenDetails> {
+    @ApiModelProperty private Map<UniverseTaskBase.ServerType, OverridenDetails> perProcess;
+    @ApiModelProperty private Map<UUID, AZOverrides> azOverrides;
+
+    @JsonIgnore
+    public UserIntentOverrides clone() {
+      try {
+        return Json.mapper()
+            .treeToValue(Json.mapper().valueToTree(this), UserIntentOverrides.class);
+      } catch (JsonProcessingException e) {
+        throw new RuntimeException("Failed to clone overrides", e);
+      }
+    }
+  }
+
   /** The user defined intent for the universe. */
+  @Slf4j
   public static class UserIntent {
 
     // Nice name for the universe.
@@ -569,6 +665,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // New version of gflags. If present - replaces old masterGFlags/tserverGFlags thing
     @ApiModelProperty public SpecificGFlags specificGFlags;
 
+    // Overrides for some of user intent values per AZ or/and process type.
+    @Getter @Setter @ApiModelProperty private UserIntentOverrides userIntentOverrides;
+
+    // Amount of memory to limit the postgres process to via the ysql cgroup (in megabytes)
+    // 0 will not set any cgroup limits.
+    // For read replica null or -1 value means use that of from primary cluster.
+    @Getter @Setter @ApiModelProperty private Integer cgroupSize;
+
     @Override
     public String toString() {
       return "UserIntent "
@@ -653,27 +757,95 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         newUserIntent.masterDeviceInfo = masterDeviceInfo.clone();
       }
       newUserIntent.dedicatedNodes = dedicatedNodes;
+      if (userIntentOverrides != null) {
+        newUserIntent.userIntentOverrides = userIntentOverrides.clone();
+      }
+      newUserIntent.cgroupSize = cgroupSize;
       return newUserIntent;
     }
 
-    public String getInstanceTypeForNode(NodeDetails nodeDetails) {
-      return getInstanceTypeForProcessType(nodeDetails.dedicatedTo);
+    private OverridenDetails getOverridenDetails(
+        @Nonnull UniverseTaskBase.ServerType serverType, @Nullable UUID azUUID) {
+      OverridenDetails res = new OverridenDetails(); // Empty
+      if (userIntentOverrides != null) {
+        res.mergeApply(userIntentOverrides.getPerProcess(), perProc -> perProc.get(serverType));
+        if (azUUID != null) {
+          AZOverrides azOverrides =
+              res.mergeApply(userIntentOverrides.getAzOverrides(), az -> az.get(azUUID));
+          if (azOverrides != null) {
+            res.mergeApply(azOverrides.getPerProcess(), perProc -> perProc.get(serverType));
+          }
+        }
+      }
+      return res;
     }
 
-    public String getInstanceTypeForProcessType(@Nullable UniverseTaskBase.ServerType type) {
-      if (type == UniverseTaskBase.ServerType.MASTER && masterInstanceType != null) {
+    public Integer getCGroupSize(@NotNull NodeDetails nodeDetails) {
+      return getCGroupSize(nodeDetails.azUuid);
+    }
+
+    public Integer getCGroupSize(UUID azUUID) {
+      OverridenDetails overridenDetails =
+          getOverridenDetails(UniverseTaskBase.ServerType.TSERVER, azUUID);
+      if (overridenDetails.getCgroupSize() != null) {
+        return overridenDetails.getCgroupSize();
+      }
+      return cgroupSize;
+    }
+
+    @JsonIgnore
+    public String getBaseInstanceType() {
+      return getInstanceType(null);
+    }
+
+    public String getInstanceType(@Nullable UUID azUUID) {
+      return getInstanceType(null, azUUID);
+    }
+
+    public String getInstanceType(
+        @Nullable UniverseTaskBase.ServerType serverType, @Nullable UUID azUUID) {
+      if (serverType != UniverseTaskBase.ServerType.MASTER
+          && serverType != UniverseTaskBase.ServerType.TSERVER) {
+        serverType = UniverseTaskBase.ServerType.TSERVER;
+      }
+      String result = instanceType;
+      if (serverType == UniverseTaskBase.ServerType.MASTER
+          && masterInstanceType != null
+          && dedicatedNodes) {
         return masterInstanceType;
       }
-      return instanceType;
+      OverridenDetails overridenDetails = getOverridenDetails(serverType, azUUID);
+      if (overridenDetails.getInstanceType() != null) {
+        result = overridenDetails.getInstanceType();
+        log.debug("Getting overriden instance type {} for az {}", result, azUUID);
+      }
+      return result;
+    }
+
+    public String getInstanceTypeForNode(NodeDetails nodeDetails) {
+      return getInstanceType(nodeDetails.dedicatedTo, nodeDetails.getAzUuid());
     }
 
     public DeviceInfo getDeviceInfoForNode(NodeDetails nodeDetails) {
-      return getDeviceInfoForProcessType(nodeDetails.dedicatedTo);
-    }
-
-    public DeviceInfo getDeviceInfoForProcessType(@Nullable UniverseTaskBase.ServerType type) {
-      if (type == UniverseTaskBase.ServerType.MASTER && masterDeviceInfo != null) {
+      if (dedicatedNodes
+          && masterDeviceInfo != null
+          && nodeDetails.dedicatedTo == UniverseTaskBase.ServerType.MASTER) {
         return masterDeviceInfo;
+      }
+      OverridenDetails overridenDetails =
+          getOverridenDetails(UniverseTaskBase.ServerType.TSERVER, nodeDetails.getAzUuid());
+      if (overridenDetails.getDeviceInfo() != null) {
+        JsonNode original = Json.toJson(deviceInfo);
+        JsonNode overriden = Json.toJson(overridenDetails.getDeviceInfo());
+        log.debug(
+            "Getting overriden device info {} for az {}",
+            Json.toJson(overriden),
+            nodeDetails.getAzUuid());
+
+        CommonUtils.deepMerge(original, overriden);
+        log.debug("Device info after merging {}", original);
+
+        return Json.fromJson(original, DeviceInfo.class);
       }
       return deviceInfo;
     }
@@ -697,7 +869,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
           && useTimeSync == other.useTimeSync
           && useSystemd == other.useSystemd
           && dedicatedNodes == other.dedicatedNodes
-          && Objects.equals(masterInstanceType, other.masterInstanceType)) {
+          && Objects.equals(masterInstanceType, other.masterInstanceType)
+          && Objects.equals(userIntentOverrides, other.userIntentOverrides)) {
         return true;
       }
       return false;
@@ -973,6 +1146,17 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return null;
     }
     return nodeDetailsSet.stream().filter(n -> n.isInPlacement(uuid)).collect(Collectors.toSet());
+  }
+
+  @JsonIgnore
+  public Cluster getClusterByNodeUUID(UUID nodeUUID) {
+    NodeDetails node =
+        nodeDetailsSet.stream().filter(n -> n.nodeUuid.equals(nodeUUID)).findFirst().orElse(null);
+    if (node == null) {
+      return null;
+    }
+
+    return getClusterByUuid(node.placementUuid);
   }
 
   @JsonIgnore

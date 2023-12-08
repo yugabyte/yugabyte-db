@@ -38,10 +38,12 @@ disk_usage:
   filters:
     saved_name: "node_filesystem_free_bytes|node_filesystem_size_bytes"
     mountpoint: "/mnt/d[0-9]+"
+  exclude_filters:
+    fstype: "rootfs"
   group_by: saved_name
   panel_group: "Node Metrics"
   layout:
-    title: "Disk Usage"
+    title: "Data Disks Usage"
     xaxis:
       type: "date"
     yaxis:
@@ -52,11 +54,9 @@ disk_usage:
 
 disk_usage_percent:
   metric: "disk_used_size_total/disk_capacity_size_total"
-  filters:
-    mountpoint: "/mnt/d[0-9]+"
   panel_group: "Node Metrics"
   layout:
-    title: "Disk Usage Percent"
+    title: "Data Disks Usage Percent"
     xaxis:
       type: "date"
     yaxis:
@@ -70,8 +70,10 @@ disk_used_size_total:
   operator: "/ 1073741824"
   filters:
     mountpoint: "/mnt/d[0-9]+"
+  exclude_filters:
+    fstype: "rootfs"
   layout:
-    title: "Disk Usage"
+    title: "Data Disks Usage"
     xaxis:
       type: "date"
     yaxis:
@@ -85,8 +87,58 @@ disk_capacity_size_total:
   operator: "/ 1073741824"
   filters:
     mountpoint: "/mnt/d[0-9]+"
+  exclude_filters:
+    fstype: "rootfs"
   layout:
-    title: "Disk Capacity"
+    title: "Data Disks Capacity"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "node_filesystem_size_bytes": "Disk Capacity"
+      ticksuffix: "&nbsp;GB"
+
+disk_volume_usage_percent:
+  metric: "disk_volume_used/disk_volume_capacity"
+  panel_group: "Node Metrics"
+  layout:
+    title: "Disk Volume Usage Percent"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "disk_used_size_total/disk_capacity_size_total": "Disk Usage"
+      ticksuffix: "&nbsp;%"
+
+disk_volume_used:
+  metric: "node_filesystem_used_bytes"
+  function: "sum"
+  operator: "/ 1073741824"
+  filters:
+    mountpoint: "/|/mnt/d[0-9]+"
+  group_by: "mountpoint"
+  exclude_filters:
+    fstype: "rootfs"
+  layout:
+    title: "Disk Volume Usage"
+    xaxis:
+      type: "date"
+    yaxis:
+      alias:
+        "node_filesystem_used_bytes": "Disk Usage"
+      ticksuffix: "&nbsp;GB"
+
+disk_volume_capacity:
+  metric: "node_filesystem_size_bytes"
+  function: "sum"
+  operator: "/ 1073741824"
+  filters:
+    mountpoint: "/|/mnt/d[0-9]+"
+  group_by: "mountpoint"
+  exclude_filters:
+    fstype: "rootfs"
+  layout:
+    title: "Disk Volume Capacity"
     xaxis:
       type: "date"
     yaxis:

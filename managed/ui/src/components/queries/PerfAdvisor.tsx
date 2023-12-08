@@ -11,7 +11,7 @@ import { YBButton } from '../common/forms/fields';
 import { performanceRecommendationApi, QUERY_KEY } from './helpers/api';
 import { formatPerfRecommendationsData } from './helpers/utils';
 import { EXTERNAL_LINKS } from './helpers/constants';
-import { ybFormatDateTimezone } from '../../redesign/helpers/DateUtils';
+import { ybFormatDate } from '../../redesign/helpers/DateUtils';
 import { isEmptyString, isNonEmptyString } from '../../utils/ObjectUtils';
 import {
   IndexAndShardingRecommendationData,
@@ -444,7 +444,7 @@ export const PerfAdvisor: FC = () => {
             <p className="scanTime">
               {t('clusterDetail.performance.advisor.ScanTime')}
               {t('clusterDetail.performance.advisor.Separator')}
-              {ybFormatDateTimezone(new Date(), currentUserTimezone)}
+              {ybFormatDate(new Date())}
             </p>
             <YBButton
               btnClass="btn btn-orange rescanBtnRecPage"

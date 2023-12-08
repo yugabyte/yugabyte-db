@@ -359,9 +359,8 @@ typedef struct BitmapOr
  */
 typedef struct Scan
 {
-	Plan			plan;
-	Index			scanrelid;		/* relid is index into the range table */
-	YbLockMechanism	yb_lock_mechanism;	/* locks taken as part of the scan */
+	Plan		plan;
+	Index		scanrelid;		/* relid is index into the range table */
 } Scan;
 
 /* ----------------
@@ -451,6 +450,10 @@ typedef struct IndexScan
 	ScanDirection indexorderdir;	/* forward or backward or don't care */
 	PushdownExprs yb_idx_pushdown;
 	PushdownExprs yb_rel_pushdown;
+	double		estimated_num_nexts;
+	double		estimated_num_seeks;
+	int         yb_distinct_prefixlen; /* distinct index scan prefix */
+	YbLockMechanism	yb_lock_mechanism;	/* locks taken as part of the scan */
 } IndexScan;
 
 /* ----------------
@@ -500,6 +503,9 @@ typedef struct IndexOnlyScan
 	 * In majority of cases it is NULL which means that indexqual will be used for tuple recheck.
 	 */
 	List	   *yb_indexqual_for_recheck;
+	double		estimated_num_nexts;
+	double		estimated_num_seeks;
+	int         yb_distinct_prefixlen; /* distinct index scan prefix */
 } IndexOnlyScan;
 
 /* ----------------
@@ -806,7 +812,7 @@ typedef struct NestLoop
  */
 typedef struct YbBNLHashClauseInfo
 {
-	Oid hashOp;				/* Operator to hash the outer side of this clause 
+	Oid hashOp;				/* Operator to hash the outer side of this clause
 							   with. */
 	int innerHashAttNo;		/* Attno of inner side variable. */
 	Expr *outerParamExpr;	/* Outer expression of this clause. */

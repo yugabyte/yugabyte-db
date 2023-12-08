@@ -61,7 +61,7 @@ class YBBackupTest : public pgwrapper::PgCommandTestBase {
 
   void LogTabletsInfo(const std::vector<yb::master::TabletLocationsPB>& tablets);
 
-  Status WaitForTabletFullyCompacted(size_t tserver_idx, const TabletId& tablet_id);
+  Status WaitForTabletPostSplitCompacted(size_t tserver_idx, const TabletId& tablet_id);
 
   void DoTestYEDISBackup(helpers::TableOp tableOp);
   void DoTestYSQLKeyspaceBackup(helpers::TableOp tableOp);

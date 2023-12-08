@@ -10,20 +10,29 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.rbac.PermissionInfo;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.rbac.PermissionUtil;
+import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.common.rbac.RoleUtil;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.RoleBindingFormData;
 import com.yugabyte.yw.forms.RoleFormData;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.rbac.Role;
 import com.yugabyte.yw.models.rbac.Role.RoleType;
+import com.yugabyte.yw.models.rbac.RoleBinding;
+import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
 import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiParam;
 import io.swagger.annotations.Authorization;
 import java.util.Collections;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.EnumUtils;
@@ -39,11 +48,14 @@ public class RBACController extends AuthenticatedController {
 
   private final PermissionUtil permissionUtil;
   private final RoleUtil roleUtil;
+  private final RoleBindingUtil roleBindingUtil;
 
   @Inject
-  public RBACController(PermissionUtil permissionUtil, RoleUtil roleUtil) {
+  public RBACController(
+      PermissionUtil permissionUtil, RoleUtil roleUtil, RoleBindingUtil roleBindingUtil) {
     this.permissionUtil = permissionUtil;
     this.roleUtil = roleUtil;
+    this.roleBindingUtil = roleBindingUtil;
   }
 
   /**
@@ -251,5 +263,75 @@ public class RBACController extends AuthenticatedController {
     return YBPSuccess.withMessage(
         String.format(
             "Successfully deleted role with UUID '%s' for customer '%s'", roleUUID, customerUUID));
+  }
+
+  @ApiOperation(
+      value = "Get all the role bindings available",
+      nickname = "getRoleBindings",
+      response = RoleBinding.class,
+      responseContainer = "Map")
+  public Result listRoleBinding(
+      UUID customerUUID,
+      @ApiParam(value = "Optional user UUID to filter role binding map") UUID userUUID) {
+    // Check if customer exists.
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+
+    Map<UUID, List<RoleBinding>> roleBindingMap = new HashMap<>();
+    if (userUUID != null) {
+      // Get the role bindings for the given user if 'userUUID' is not null.
+      Users user = Users.getOrBadRequest(customerUUID, userUUID);
+      roleBindingMap.put(user.getUuid(), RoleBinding.getAll(user.getUuid()));
+    } else {
+      // Get all the users for the given customer.
+      // Merge all the role bindings for users of the customer.
+      List<Users> usersInCustomer = Users.getAll(customerUUID);
+      for (Users user : usersInCustomer) {
+        roleBindingMap.put(user.getUuid(), RoleBinding.getAll(user.getUuid()));
+      }
+    }
+    return PlatformResults.withData(roleBindingMap);
+  }
+
+  @ApiOperation(
+      value = "Edit the role bindings of a user",
+      nickname = "editRoleBinding",
+      response = RoleBinding.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "RoleBindingFormData",
+          value = "set role bindings form data",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.RoleBindingFormData",
+          required = true))
+  public Result setRoleBindings(UUID customerUUID, UUID userUUID, Http.Request request) {
+    // Check if customer exists.
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+
+    // Check if user UUID exists within the above customer
+    Users user = Users.getOrBadRequest(customerUUID, userUUID);
+
+    // Parse request body.
+    JsonNode requestBody = request.body().asJson();
+    RoleBindingFormData roleBindingFormData =
+        formFactory.getFormDataOrBadRequest(requestBody, RoleBindingFormData.class);
+
+    // Validate the roles and resource group definitions.
+    roleBindingUtil.validateRoles(userUUID, roleBindingFormData.getRoleResourceDefinitions());
+    roleBindingUtil.validateResourceGroups(
+        customerUUID, roleBindingFormData.getRoleResourceDefinitions());
+
+    // Delete all existing user role bindings and create new given role bindings.
+    List<RoleBinding> createdRoleBindings =
+        roleBindingUtil.setUserRoleBindings(
+            userUUID, roleBindingFormData.getRoleResourceDefinitions(), RoleBindingType.Custom);
+
+    auditService()
+        .createAuditEntryWithReqBody(
+            request,
+            Audit.TargetType.RoleBinding,
+            userUUID.toString(),
+            Audit.ActionType.Edit,
+            Json.toJson(roleBindingFormData));
+    return PlatformResults.withData(createdRoleBindings);
   }
 }

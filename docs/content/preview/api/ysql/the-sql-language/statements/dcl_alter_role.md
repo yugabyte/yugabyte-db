@@ -55,9 +55,9 @@ Only roles with SUPERUSER privilege can create other SUPERUSER roles.
 - `CREATEROLE`, `NOCREATEROLE` determine whether the role can create other roles or not.
 - `INHERIT`, `NOINHERIT` determine whether the role inherits privileges of the roles that it is a member of.
 Without INHERIT, membership in another role only grants the ability to SET ROLE to that other role. The privileges of the other role are only available after having done so.
-- `LOGIN`, `NOLOGIN` determine whether new role is allowed to login or not. Only roles with login privilege can be used during client connection.
-- `CONNECTION LIMIT` specifies how many concurrent connections the role can make. This only applies to roles that can login.
-- `[ENCRYPTED] PASSWORD` sets the password for the role. This only applies to roles that can login.
+- `LOGIN`, `NOLOGIN` determine whether new role is allowed to log in or not. Only roles with login privilege can be used during client connection.
+- `CONNECTION LIMIT` specifies how many concurrent connections the role can make. This only applies to roles that can log in.
+- `[ENCRYPTED] PASSWORD` sets the password for the role. This only applies to roles that can log in.
 If no password is specified, the password will be set to null and password authentication will always fail for that user.
 Note that password is always stored encrypted in system catalogs and the optional keyword ENCRYPTED is only present for compatibility with PostgreSQL.
 - `VALID UNTIL` sets a date and time after which the role's password is no longer valid.

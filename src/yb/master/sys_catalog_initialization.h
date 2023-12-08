@@ -35,6 +35,8 @@ DECLARE_bool(create_initial_sys_catalog_snapshot);
 namespace yb {
 namespace master {
 
+struct LeaderEpoch;
+
 // Used by the catalog manager to prepare an initial sys catalog snapshot.
 class InitialSysCatalogSnapshotWriter {
  public:
@@ -66,7 +68,7 @@ Status MakeYsqlSysCatalogTablesTransactional(
     TableIndex::TablesRange tables,
     SysCatalogTable* sys_catalog,
     SysConfigInfo* ysql_catalog_config,
-    int64_t term);
+    const LeaderEpoch& epoch);
 
 }  // namespace master
 }  // namespace yb

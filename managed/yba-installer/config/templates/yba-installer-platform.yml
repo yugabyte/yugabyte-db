@@ -31,7 +31,7 @@ services:
             {{end}}
 
             {{if eq (yamlPath "postgres.install.enabled") "true" }}
-            username="postgres"
+            username="{{ yamlPath "postgres.install.username" }}"
             password=""
             host="localhost"
             port="{{ yamlPath "postgres.install.port" }}"
@@ -147,7 +147,10 @@ services:
         }
         cors {
           pathPrefixes = ["/"]
-          allowedOrigins =  ["https://{{ yamlPath "host" }}"]
+          allowedOrigins =  [
+            "https://{{ yamlPath "host" }}",
+            "{{ yamlPath "platform.support_origin_url"}}"
+          ]
           supportsCredentials=true
           allowedHttpMethods = ["GET", "POST", "PUT", "OPTIONS", "DELETE"]
           allowedHttpHeaders = [
@@ -173,7 +176,7 @@ services:
       Group={{ yamlPath "service_username" }}
       Type=simple
 
-      Environment="JAVA_HOME={{ installVersionDir }}/jdk-17.0.7+7/"
+      Environment="JAVA_HOME={{ installVersionDir }}/jdk-17.0.7+7-jre/"
       Environment="YB_OIDC_SECRET={{ yamlPath "platform.ybOidcSecret" }}"
       Environment="PLATFORM_APP_SECRET={{ yamlPath "platform.appSecret" }}"
 

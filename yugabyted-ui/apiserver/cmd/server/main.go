@@ -79,6 +79,9 @@ func main() {
 
         // Initialize logger
         log := logger.Log
+        if helpers.Debug {
+            log = logger.DebugLog
+        }
         defer log.Cleanup()
         log.Infof("Logger initialized")
 

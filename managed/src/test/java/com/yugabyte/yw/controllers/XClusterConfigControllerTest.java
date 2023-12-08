@@ -965,7 +965,12 @@ public class XClusterConfigControllerTest extends FakeDBApplication {
                 doRequestWithAuthTokenAndBody(
                     "PUT", editAPIEndpoint, user.createAuthToken(), editNameRequest));
     assertEquals(contentAsString(result), BAD_REQUEST, result.status());
-    assertResponseError("XClusterConfig with same name already exists", result);
+    assertResponseError(
+        String.format(
+            "xCluster config between source universe %s and target universe %s with name '%s' "
+                + "already exists.",
+            sourceUniverseUUID, targetUniverseUUID, configName + "-new"),
+        result);
     assertNoTasksCreated();
     assertAuditEntry(0, customer.getUuid());
 

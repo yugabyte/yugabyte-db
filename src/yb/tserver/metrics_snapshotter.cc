@@ -317,15 +317,14 @@ Status MetricsSnapshotter::Thread::DoPrometheusMetricsSnapshot(const client::Tab
 Status MetricsSnapshotter::Thread::DoMetricsSnapshot() {
   CHECK(IsCurrentThread());
 
-  auto client_ = async_client_init_->client();
-  shared_ptr<YBSession> session = client_->NewSession();
-  session->SetTimeout(15s);
+  auto client = async_client_init_->client();
+  auto session = client->NewSession(15s);
 
   const YBTableName kTableName(
       YQL_DATABASE_CQL, master::kSystemNamespaceName, kMetricsSnapshotsTableName);
 
   client::TableHandle table;
-  RETURN_NOT_OK(table.Open(kTableName, client_));
+  RETURN_NOT_OK(table.Open(kTableName, client));
 
   NMSWriter::EntityMetricsMap table_metrics;
   NMSWriter::MetricsMap server_metrics;

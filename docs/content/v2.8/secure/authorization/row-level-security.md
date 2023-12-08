@@ -40,7 +40,7 @@ $ ./ysqlsh -U yugabyte -W
 ```
 
 
-When prompted for the password, enter the yugabyte password. You should be able to login and see a response like below.
+When prompted for the password, enter the yugabyte password. You should be able to log in and see a response like below.
 
 
 ```

@@ -183,7 +183,8 @@ extern void YbDmlAppendTargetSystem(AttrNumber attnum, YBCPgStatement handle);
 extern void YbDmlAppendTargetRegular(TupleDesc tupdesc, AttrNumber attnum,
 									 YBCPgStatement handle);
 extern void YbDmlAppendTargetsAggregate(List *aggrefs, TupleDesc tupdesc,
-										Relation index, YBCPgStatement handle);
+										Relation index, bool xs_want_itup,
+										YBCPgStatement handle);
 extern void YbDmlAppendTargets(List *colrefs, YBCPgStatement handle);
 /* Add quals to the given statement. */
 extern void YbDmlAppendQuals(List *quals, bool is_primary,
@@ -206,6 +207,7 @@ extern YbScanDesc ybcBeginScan(Relation relation,
 							   PushdownExprs *rel_pushdown,
 							   PushdownExprs *idx_pushdown,
 							   List *aggrefs,
+							   int distinct_prefixlen,
 							   YBCPgExecParameters *exec_params);
 
 /* Returns whether the given populated ybScan needs PG-side recheck. */
@@ -219,6 +221,8 @@ extern bool YbPredetermineNeedsRecheck(Relation relation,
 
 HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);
 IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);
+bool ybc_getnext_aggslot(IndexScanDesc scan, YBCPgStatement handle,
+						 bool index_only_scan);
 
 Oid ybc_get_attcollation(TupleDesc bind_desc, AttrNumber attnum);
 
@@ -255,7 +259,8 @@ extern void ybcCostEstimate(RelOptInfo *baserel, Selectivity selectivity,
 							bool is_backwards_scan, bool is_seq_scan, bool is_uncovered_idx_scan,
 							Cost *startup_cost, Cost *total_cost, Oid index_tablespace_oid);
 extern void ybcIndexCostEstimate(struct PlannerInfo *root, IndexPath *path,
-								 Selectivity *selectivity, Cost *startup_cost, Cost *total_cost);
+								 			Selectivity *selectivity, Cost *startup_cost,
+											Cost *total_cost);
 
 /*
  * Fetch a single row for given ybctid into a slot.

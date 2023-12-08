@@ -26,11 +26,9 @@ namespace tablet {
 // Interface for snapshot coordinator.
 class SnapshotCoordinator {
  public:
-  virtual Status CreateReplicated(
-      int64_t leader_term, const SnapshotOperation& operation) = 0;
+  virtual Status CreateReplicated(int64_t leader_term, const SnapshotOperation& operation) = 0;
 
-  virtual Status DeleteReplicated(
-      int64_t leader_term, const SnapshotOperation& operation) = 0;
+  virtual Status DeleteReplicated(int64_t leader_term, const SnapshotOperation& operation) = 0;
 
   virtual Status RestoreSysCatalogReplicated(
       int64_t leader_term, const SnapshotOperation& operation, Status* complete_status) = 0;

@@ -16,7 +16,7 @@ type: docs
 
 This term denotes parameters like _timezone_ that you can set, within the scope of a single session, and for no longer than the session's duration, with the _[set](../../../the-sql-language/statements/cmd_set/)_ statement. You observe the current value with the _[show](../../../the-sql-language/statements/cmd_show/)_ statement or the _[current_setting()](https://www.postgresql.org/docs/11/functions-admin.html#FUNCTIONS-ADMIN-SET)_ built-in function.
 
-You can execute a _set_ statement in the source text of a subprogram's _[implementation_definition](../../../syntax_resources/grammar_diagrams/#implementation-definition)_. But you might prefer to make such a setting a property of the subprogram like this:
+You can execute a _set_ statement in the source text of a subprogram's _[subprogram_implementation](../../../syntax_resources/grammar_diagrams/#subprogram-implementation)_. But you might prefer to make such a setting a property of the subprogram like this:
 
 ```plpgsql
 drop function if exists f() cascade;

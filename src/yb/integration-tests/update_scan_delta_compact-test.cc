@@ -136,10 +136,8 @@ class UpdateScanDeltaCompactionTest : public YBMiniClusterTestBase<MiniCluster> 
   }
 
   shared_ptr<YBSession> CreateSession() {
-    shared_ptr<YBSession> session = client_->NewSession();
     // Bumped this up from 5 sec to 30 sec in hope to fix the flakiness in this test.
-    session->SetTimeout(30s);
-    return session;
+    return client_->NewSession(30s);
   }
 
   // Continuously updates the existing data until 'stop_latch' drops to 0.

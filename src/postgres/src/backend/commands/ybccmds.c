@@ -62,10 +62,13 @@
 #include "pg_yb_utils.h"
 
 #include "access/nbtree.h"
+#include "catalog/heap.h"
 #include "commands/defrem.h"
 #include "nodes/nodeFuncs.h"
+#include "optimizer/optimizer.h"
 #include "parser/parser.h"
 #include "parser/parse_coerce.h"
+#include "parser/parse_relation.h"
 #include "parser/parse_type.h"
 #include "parser/parse_utilcmd.h"
 
@@ -124,7 +127,7 @@ YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bo
 										  next_oid,
 										  colocated,
 										  &handle));
-	
+
 	YBCStatus createdb_status = YBCPgExecCreateDatabase(handle);
 	/* If OID collision happends for CREATE DATABASE, then we need to retry CREATE DATABASE. */
 	if (retry_on_oid_collision)
@@ -132,7 +135,7 @@ YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bo
 		*retry_on_oid_collision = createdb_status &&
 				YBCStatusPgsqlError(createdb_status) == ERRCODE_DUPLICATE_DATABASE &&
 				*YBCGetGFlags()->ysql_enable_create_database_oid_collision_retry;
-		
+
 		if (*retry_on_oid_collision)
 		{
 			YBCFreeStatus(createdb_status);
@@ -191,6 +194,20 @@ YBCDropTablegroup(Oid grpoid)
 	YBCPgStatement handle;
 
 	HandleYBStatus(YBCPgNewDropTablegroup(MyDatabaseId, grpoid, &handle));
+	if (ddl_rollback_enabled)
+	{
+		/*
+		 * The following function marks the tablegroup for deletion. YB-Master
+		 * will delete the tablegroup after the transaction is successfully
+		 * committed.
+		 */
+		HandleYBStatus(YBCPgExecDropTablegroup(handle));
+		return;
+	}
+	/*
+	 * YSQL DDL Rollback is disabled. Fall back to performing the YB-Master
+	 * side deletion after the transaction commits.
+	 */
 	YBSaveDdlHandle(handle);
 }
 
@@ -782,11 +799,8 @@ YBCDropTable(Relation relation)
 		{
 			return;
 		}
-		/*
-		 * YSQL DDL Rollback is not yet supported for colocated tables.
-		 */
-		if (*YBCGetGFlags()->ysql_ddl_rollback_enabled &&
-			!yb_props->is_colocated)
+
+		if (ddl_rollback_enabled)
 		{
 			/*
 			 * The following issues a request to the YB-Master to drop the
@@ -1092,10 +1106,39 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 			Assert(list_length(handles) == 1);
 			YBCPgStatement add_col_handle =
 				(YBCPgStatement) lfirst(list_head(handles));
+
+			YBCPgExpr res = NULL;
+			if (colDef->raw_default && yb_enable_add_column_missing_default)
+			{
+				ParseState *pstate = make_parsestate(NULL);
+				pstate->p_sourcetext = NULL;
+				ParseNamespaceItem *nsitem = addRangeTableEntryForRelation(pstate,
+																		   rel,
+																		   AccessShareLock,
+																		   NULL,
+																		   false,
+																		   true);
+				addNSItemToQuery(pstate, nsitem, true, true, true);
+				Expr *expr = (Expr *) cookDefault(pstate, colDef->raw_default,
+												  typeOid, typmod,
+												  colDef->colname,
+												  colDef->generated);
+				expr = expression_planner(expr);
+				EState *estate = CreateExecutorState();
+				ExprState *exprState = ExecPrepareExpr(expr, estate);
+				ExprContext *econtext = GetPerTupleExprContext(estate);
+				bool missingIsNull;
+				Datum missingval = ExecEvalExpr(exprState, econtext,
+												&missingIsNull);
+				res = YBCNewConstant(add_col_handle, typeOid, colDef->collOid,
+									 missingval, missingIsNull);
+				FreeExecutorState(estate);
+			}
 			HandleYBStatus(YBCPgAlterTableAddColumn(add_col_handle,
 													colDef->colname,
 													order,
-													col_type));
+													col_type,
+													res));
 			++(*col);
 			*needsYBAlter = true;
 
@@ -1528,15 +1571,26 @@ YBCDropIndex(Relation index)
 													   false, /* if_exists */
 													   &handle),
 									 &not_found);
-		const bool valid_handle = !not_found;
-		if (valid_handle)
+		if (not_found)
+			return;
+
+		if (ddl_rollback_enabled)
 		{
 			/*
-			 * We cannot abort drop in DocDB so postpone the execution until
-			 * the rest of the statement/txn is finished executing.
+			 * The following issues a request to the YB-Master to drop the
+			 * index once this transaction commits.
 			 */
-			YBSaveDdlHandle(handle);
+			HandleYBStatusIgnoreNotFound(YBCPgExecDropIndex(handle),
+										 &not_found);
+			return;
 		}
+		/*
+		 * YSQL DDL Rollback is disabled. This means DocDB will not rollback
+		 * the drop if the transaction ends up failing. We cannot abort drop
+		 * in DocDB so postpone the execution until the rest of the statement/
+		 * txn finishes executing.
+		 */
+		YBSaveDdlHandle(handle);
 	}
 }
 

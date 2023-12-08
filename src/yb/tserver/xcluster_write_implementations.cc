@@ -72,8 +72,7 @@ Status UpdatePackedRow(const Slice& key,
   // Don't perform any changes to the value for the following cases:
   // 1. Non-packed rows
   // 2. We don't have a schema version map of producer to consumer schema versions
-  if (!value_slice.TryConsumeByte(dockv::ValueEntryTypeAsChar::kPackedRow) ||
-      schema_versions_map.empty()) {
+  if (!IsPackedRow(dockv::DecodeValueEntryType(value_slice)) || schema_versions_map.empty()) {
     // Return the whole value without changes
     out->Truncate(0);
     out->Reserve(value.size());

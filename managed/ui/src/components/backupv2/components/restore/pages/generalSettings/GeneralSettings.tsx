@@ -88,15 +88,16 @@ export const GeneralSettings = React.forwardRef<PageRef>((_, forwardRef) => {
     backupDetails
   } = restoreContext;
 
+  const { t } = useTranslation();
+
   const methods = useForm<IGeneralSettings>({
     defaultValues: generalSettings ?? {},
-    resolver: yupResolver(getValidationSchema(restoreContext))
+    resolver: yupResolver(getValidationSchema(restoreContext, t))
   });
 
   const { handleSubmit, watch } = methods;
 
   const classes = useStyles();
-  const { t } = useTranslation();
 
   const saveValues = useCallback(
     (val: IGeneralSettings) => {

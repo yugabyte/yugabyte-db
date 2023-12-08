@@ -22,7 +22,7 @@ In the context of YugabyteDB Managed, when a Yugabyte cluster is deployed in a V
 
 ![VPC network using peering](/images/yb-cloud/managed-vpc-diagram.png)
 
-**Peering Connections** on the **VPC Network** tab of the **Network Access** page displays a list of peering connections configured for your account that includes the peering connection name, cloud provider, the network name (GCP) or ID (AWS) of the peered VPC, the name of the YugabyteDB VPC, and [status](#peering-connection-status) of the connection (Pending or Active).
+**Peering Connections** on the **VPC Network** tab of the **Networking** page displays a list of peering connections configured for your account that includes the peering connection name, cloud provider, the network name (GCP) or ID (AWS) of the peered VPC, the name of the YugabyteDB VPC, and [status](#peering-connection-status) of the connection (Pending or Active).
 
 ![Peering connections](/images/yb-cloud/cloud-vpc-peering.png)
 

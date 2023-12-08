@@ -56,6 +56,7 @@
 #include "yb/common/pg_types.h"
 #include "yb/common/retryable_request.h"
 #include "yb/common/schema.h"
+#include "yb/common/snapshot.h"
 #include "yb/common/transaction.h"
 
 #include "yb/encryption/encryption.pb.h"
@@ -117,7 +118,7 @@ class ClientMasterRpcBase;
 using GetTableLocationsCallback =
     std::function<void(const Result<master::GetTableLocationsResponsePB*>&)>;
 using OpenTableAsyncCallback = std::function<void(const Result<YBTablePtr>&)>;
-
+using CreateSnapshotCallback = std::function<void(Result<TxnSnapshotId>)>;
 using MasterAddressSource = std::function<std::vector<std::string>()>;
 
 struct TransactionStatusTablets {
@@ -314,11 +315,13 @@ class YBClient {
   // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.
   Status DeleteIndexTable(const YBTableName& table_name,
                           YBTableName* indexed_table_name = nullptr,
-                          bool wait = true);
+                          bool wait = true,
+                          const TransactionMetadata *txn = nullptr);
 
   Status DeleteIndexTable(const std::string& table_id,
                           YBTableName* indexed_table_name = nullptr,
                           bool wait = true,
+                          const TransactionMetadata *txn = nullptr,
                           CoarseTimePoint deadline = CoarseTimePoint());
 
   // Flush or compact the specified tables.
@@ -480,7 +483,7 @@ class YBClient {
                           const std::string& tablespace_id,
                           const TransactionMetadata* txn);
 
-  Status DeleteTablegroup(const std::string& tablegroup_id);
+  Status DeleteTablegroup(const std::string& tablegroup_id, const TransactionMetadata* txn);
 
   // Check if the tablegroup given by 'tablegroup_id' exists.
   // Result value is set only on success.
@@ -770,7 +773,8 @@ class YBClient {
   // Create a new session for interacting with the cluster.
   // User is responsible for destroying the session object.
   // This is a fully local operation (no RPCs or blocking).
-  std::shared_ptr<YBSession> NewSession();
+  std::shared_ptr<YBSession> NewSession(MonoDelta delta);
+  std::shared_ptr<YBSession> NewSession(CoarseTimePoint deadline);
 
   // Return the socket address of the master leader for this client.
   HostPort GetMasterLeaderAddress();
@@ -883,6 +887,14 @@ class YBClient {
   std::future<Result<std::vector<internal::RemoteTabletPtr>>> LookupAllTabletsFuture(
       const std::shared_ptr<YBTable>& table,
       CoarseTimePoint deadline);
+
+  Status CreateSnapshot(
+      const std::vector<YBTableName>& tables, CreateSnapshotCallback callback);
+
+  Status DeleteSnapshot(const TxnSnapshotId& snapshot_id, master::DeleteSnapshotResponsePB* resp);
+
+  Result<google::protobuf::RepeatedPtrField<master::SnapshotInfoPB>> ListSnapshots(
+      const TxnSnapshotId& snapshot_id = TxnSnapshotId::Nil(), bool prepare_for_backup = false);
 
   rpc::Messenger* messenger() const;
 

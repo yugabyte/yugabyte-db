@@ -95,7 +95,7 @@ A YugabyteDB cluster with authentication enabled starts with the default admin u
 $ ./bin/ysqlsh -U yugabyte
 ```
 
-You are prompted to enter the password. Upon successful login to the YSQL shell, you should see the following output:
+You are prompted to enter the password. Upon successful log in to the YSQL shell, you should see the following output:
 
 ```output
 ysqlsh (11.2-YB-2.7.0.0-b0)
@@ -287,7 +287,7 @@ yugabyte=# ALTER ROLE john WITH NOSUPERUSER;
 
 ### Enable and disable login privileges
 
-To verify that `john` can login to the database, do the following:
+To verify that `john` can log in to the database, do the following:
 
 ```sql
 yugabyte=# SELECT rolname, rolcanlogin FROM pg_roles WHERE rolname='john';

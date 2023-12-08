@@ -13,6 +13,9 @@ enableGitInfo = true
   date = [ "lastmod", ":default" ]
 # lastmod = [ ":git", ":default" ]
 
+[params]
+  regenerateDiagrams = false
+
 [module]
   [module.hugoVersion]
     extended = true
@@ -29,3 +32,4 @@ enableGitInfo = true
 
 [markup.goldmark.parser.attribute]
     block = true
+

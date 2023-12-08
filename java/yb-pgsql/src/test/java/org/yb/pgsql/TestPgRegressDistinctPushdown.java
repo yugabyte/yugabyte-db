@@ -27,8 +27,16 @@ public class TestPgRegressDistinctPushdown extends BasePgSQLTest {
   }
 
   /**
-   * Test the GUC variable yb_enable_distinct_pushdown
-   * Param controls whether to enable pushdown feature for SELECT DISTINCT clauses
+   * Sets the default value for both the number of masters and tservers.
+   */
+  @Override
+  protected int getReplicationFactor() {
+    return 1;
+  }
+
+  /**
+   * Home for expected plans and regressions tests for
+   * numerous queries affected by DISTINCT pushdown
    */
   @Test
   public void testPgRegressDistinctPushdown() throws Exception {

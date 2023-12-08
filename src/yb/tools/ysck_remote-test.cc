@@ -135,8 +135,7 @@ class RemoteYsckTest : public YBTest {
       promise->Set(status);
       return;
     }
-    shared_ptr<YBSession> session(client_->NewSession());
-    session->SetTimeout(10s);
+    auto session = client_->NewSession(10s);
 
     for (uint64_t i = 0; continue_writing.Load(); i++) {
       std::shared_ptr<client::YBqlWriteOp> insert(table->NewQLInsert());
@@ -156,8 +155,7 @@ class RemoteYsckTest : public YBTest {
   Status GenerateRowWrites(uint64_t num_rows) {
     shared_ptr<YBTable> table;
     RETURN_NOT_OK(client_->OpenTable(kTableName, &table));
-    shared_ptr<YBSession> session(client_->NewSession());
-    session->SetTimeout(10s);
+    auto session = client_->NewSession(10s);
     for (uint64_t i = 0; i < num_rows; i++) {
       VLOG(1) << "Generating write for row id " << i;
       std::shared_ptr<client::YBqlWriteOp> insert(table->NewQLInsert());

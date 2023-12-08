@@ -832,6 +832,16 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 
 		const uint64_t catalog_master_version =
 			YbGetCatalogCacheVersionForTablePrefetching();
+
+		/*
+		 * Call YBIsDBCatalogVersionMode before prefetching is started
+		 * to initialize its static variables.
+		 */
+		bool is_db_catalog_version_mode = YBIsDBCatalogVersionMode();
+		ereport(DEBUG3,
+				(errmsg("is_db_catalog_version_mode=%d",
+						is_db_catalog_version_mode)));
+
 		YBCPgResetCatalogReadTime();
 		YBCStartSysTablePrefetching(
 			catalog_master_version, YB_YQL_PREFETCHER_NO_CACHE);

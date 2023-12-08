@@ -1,11 +1,11 @@
 ```output.ebnf
 copy_from ::= COPY table_name [ ( column_name [ , ... ] ) ]  FROM 
-              { 'filename' | PROGRAM 'command' | STDIN } 
-              [ [ WITH ] ( option [ , copy_option [ ... ] ] ) ]
+              { 'filename' | PROGRAM 'command' | STDIN }  
+              [ [ WITH ] ( copy_option [ , ... ] ) ]
 
 copy_to ::= COPY { table_name [ ( column_names ) ] | subquery }  TO 
-            { 'filename' | PROGRAM 'command' | STDOUT } 
-            [ [ WITH ] ( option [ , copy_option [ ... ] ] ) ]
+            { 'filename' | PROGRAM 'command' | STDOUT }  
+            [ [ WITH ] ( copy_option [ , ... ] ) ]
 
 copy_option ::= FORMAT format_name
                 | OIDS [ boolean ]

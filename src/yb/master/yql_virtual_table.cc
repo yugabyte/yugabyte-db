@@ -50,7 +50,7 @@ YQLVirtualTable::YQLVirtualTable(const TableName& table_name,
                 "server", metricName, metricDescription,
                 MetricUnit::kMicroseconds, metricDescription,
                 MetricLevel::kInfo, 0, 10000000, 2);
-    histogram_ = master->metric_entity()->FindOrCreateHistogram(std::move(prototype));
+    histogram_ = master->metric_entity()->FindOrCreateMetric<Histogram>(std::move(prototype));
 }
 
 YQLVirtualTable::~YQLVirtualTable() = default;

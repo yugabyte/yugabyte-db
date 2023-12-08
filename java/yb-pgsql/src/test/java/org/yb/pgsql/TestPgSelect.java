@@ -1192,7 +1192,7 @@ public class TestPgSelect extends BasePgSQLTest {
         assertEquals(0, metrics.seekCount);
 
         metrics = assertFullDocDBFilter(statement, query, "idx");
-        assertEquals(2, metrics.seekCount);
+        assertEquals(1, metrics.seekCount);
       }
     }
   }

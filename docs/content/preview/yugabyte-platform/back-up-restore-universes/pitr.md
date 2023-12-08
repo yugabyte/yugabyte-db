@@ -3,6 +3,7 @@ title: Point-in-time recovery in YugabyteDB Anywhere
 headerTitle: Point-in-time recovery
 linkTitle: Point-in-time recovery
 description: Using Point-in-time recovery in YugabyteDB Anywhere
+headContent: Restore to a point in time
 menu:
   preview_yugabyte-platform:
     parent: back-up-restore-universes

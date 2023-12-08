@@ -96,7 +96,7 @@ Status ConvertQLValuePBToRapidJson(const QLValuePB& ql_value_pb,
       break;
 
     case QLValuePB::ValueCase::kVarintValue: { // VARINT -> INT64
-        util::VarInt varint;
+        VarInt varint;
         size_t num_decoded_bytes = 0;
         RETURN_NOT_OK(varint.DecodeFromComparable(ql_value_pb.varint_value(), &num_decoded_bytes));
         rapidjson_value->SetInt64(VERIFY_RESULT(varint.ToInt64()));

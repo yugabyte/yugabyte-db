@@ -26,6 +26,7 @@
 #include "yb/master/master_types.pb.h"
 
 #include "yb/tablet/snapshot_coordinator.h"
+#include "yb/tablet/tablet_retention_policy.h"
 
 #include "yb/util/status_fwd.h"
 #include "yb/util/opid.h"
@@ -79,12 +80,14 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
   Status Delete(
       const TxnSnapshotId& snapshot_id, int64_t leader_term, CoarseTimePoint deadline);
 
-  // As usual negative leader_term means that this operation was replicated at the follower.
-  Status CreateReplicated(
-      int64_t leader_term, const tablet::SnapshotOperation& operation) override;
+  Status AbortRestore(
+      const TxnSnapshotRestorationId& restoration_id, int64_t leader_term,
+      CoarseTimePoint deadline);
 
-  Status DeleteReplicated(
-      int64_t leader_term, const tablet::SnapshotOperation& operation) override;
+  // As usual negative leader_term means that this operation was replicated at the follower.
+  Status CreateReplicated(int64_t leader_term, const tablet::SnapshotOperation& operation) override;
+
+  Status DeleteReplicated(int64_t leader_term, const tablet::SnapshotOperation& operation) override;
 
   Status RestoreSysCatalogReplicated(
       int64_t leader_term, const tablet::SnapshotOperation& operation,
@@ -130,9 +133,10 @@ class MasterSnapshotCoordinator : public tablet::SnapshotCoordinator {
 
   Status FillHeartbeatResponse(TSHeartbeatResponsePB* resp);
 
-  HybridTime AllowedHistoryCutoffProvider(tablet::RaftGroupMetadata* metadata);
+  docdb::HistoryCutoff AllowedHistoryCutoffProvider(
+      tablet::RaftGroupMetadata* metadata);
 
-  void SysCatalogLoaded(int64_t term);
+  void SysCatalogLoaded(int64_t leader_term);
 
   Result<docdb::KeyValuePairPB> UpdateRestorationAndGetWritePair(
       SnapshotScheduleRestoration* restoration);

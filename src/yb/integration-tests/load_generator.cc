@@ -79,10 +79,6 @@ DEFINE_NON_RUNTIME_int32(load_gen_wait_time_increment_step_ms,
 
 namespace {
 
-void ConfigureYBSession(YBSession* session) {
-  session->SetTimeout(60s);
-}
-
 string FormatWithSize(const string& s) {
   return strings::Substitute("'$0' ($1 bytes)", s, s.size());
 }
@@ -384,8 +380,7 @@ bool RedisNoopSingleThreadedWriter::Write(
 }
 
 void YBSingleThreadedWriter::ConfigureSession() {
-  session_ = client_->NewSession();
-  ConfigureYBSession(session_.get());
+  session_ = client_->NewSession(60s);
 }
 
 bool YBSingleThreadedWriter::Write(
@@ -553,8 +548,7 @@ void RedisSingleThreadedReader::CloseSession() {
 }
 
 void YBSingleThreadedReader::ConfigureSession() {
-  session_ = client_->NewSession();
-  ConfigureYBSession(session_.get());
+  session_ = client_->NewSession(60s);
 }
 
 bool NoopSingleThreadedWriter::Write(

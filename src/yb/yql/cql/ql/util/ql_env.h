@@ -80,7 +80,7 @@ class QLEnv {
   // Read/write related methods.
 
   // Create a read/write session.
-  client::YBSessionPtr NewSession();
+  client::YBSessionPtr NewSession(CoarseTimePoint deadline);
 
   // Create a new transaction.
   Result<client::YBTransactionPtr> NewTransaction(const client::YBTransactionPtr& transaction,

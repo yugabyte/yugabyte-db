@@ -11,12 +11,12 @@
 
   {{ range .Site.Data.currentVersions.dbVersions }}
     {{- if or (eq $docVersion .series) (eq $docVersion .alias)  -}}
-      <div class="admonition warning">
+      <div class="admonition note">
         {{- if or (eq .isLTS true) (eq .isSTS true) -}}
-          <p class="admonition-title">Attention</p>
-          <p>This page documents a stable (production) version. For testing and development with the latest features, use <a href="{{ $previewUrl }}">the preview {{ $previewVersion }} version.</a></p>
+<!--          <p class="admonition-title">Attention</p> -->
+          <p>This page documents a stable (production) version. For testing and development with the latest features, use the <a href="{{ $previewUrl }}">preview {{ $previewVersion }} version.</a></p>
         {{- else -}}
-          <p class="admonition-title">Attention</p>
+<!--          <p class="admonition-title">Attention</p> -->
           <p>This page documents an earlier version. <a href="{{ $previewUrl }}">Go to the preview {{ $previewVersion }} version.</a></p>
         {{- end -}}
       </div>

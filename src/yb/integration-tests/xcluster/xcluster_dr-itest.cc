@@ -61,7 +61,7 @@ class XClusterDRTest : public XClusterYsqlTestBase {
     ASSERT_OK(InitClusters(opts));
 
     auto producer_cluster_future = std::async(std::launch::async, [&] {
-      auto table_name = ASSERT_RESULT(CreateYsqlTable(&producer_cluster_));
+      auto table_name = ASSERT_RESULT(CreateYsqlTable(&producer_cluster_, namespace_name));
       ASSERT_OK(producer_client()->OpenTable(table_name, &producer_table_));
     });
 
@@ -75,18 +75,14 @@ class XClusterDRTest : public XClusterYsqlTestBase {
     SetReplicationDirection(ReplicationDirection::ProducerToConsumer);
   }
 
-  Result<client::YBTableName> CreateYsqlTable(Cluster* cluster) {
+  Result<client::YBTableName> CreateYsqlTable(Cluster* cluster, const std::string& namespace_name) {
     return super::CreateYsqlTable(
-        cluster,
-        kDatabaseName,
-        {} /* schema_name */,
-        kTableName,
-        {} /*tablegroup_name*/,
+        cluster, namespace_name, {} /* schema_name */, kTableName, {} /*tablegroup_name*/,
         kTabletCount);
   }
 
-  Status DropYsqlTable(Cluster* cluster) {
-    return super::DropYsqlTable(cluster, kDatabaseName, "" /* schema_name */, kTableName);
+  Status DropYsqlTable(Cluster* cluster, const std::string& namespace_name) {
+    return super::DropYsqlTable(cluster, namespace_name, "" /* schema_name */, kTableName);
   }
 
   void WriteBatchOnSource() {
@@ -159,9 +155,9 @@ class XClusterDRTest : public XClusterYsqlTestBase {
   Status RestoreSnapshotOnTarget(const TxnSnapshotId& snapshot_id) {
     // Drop and recreate tables on target cluster.
     if (target_table_->get()) {
-      RETURN_NOT_OK(DropYsqlTable(target_cluster_));
+      RETURN_NOT_OK(DropYsqlTable(target_cluster_, namespace_name));
     }
-    auto table_name = VERIFY_RESULT(CreateYsqlTable(target_cluster_));
+    auto table_name = VERIFY_RESULT(CreateYsqlTable(target_cluster_, namespace_name));
     RETURN_NOT_OK(target_client_->OpenTable(table_name, target_table_));
 
     auto source_snapshot = VERIFY_RESULT(source_snapshot_util_->ListSnapshots(

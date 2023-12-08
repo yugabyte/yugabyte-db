@@ -138,6 +138,8 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
 
   bool Succeeded();
 
+  bool ShouldChangeRole();
+
   // Change the peer's role to VOTER.
   Status ChangeRole();
 
@@ -242,6 +244,10 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   // We need to know whether this ended succesfully before changing the peer's member type from
   // PRE_VOTER to VOTER.
   bool succeeded_ GUARDED_BY(mutex_) = false;
+
+  // Only RemoteBootstraps should try changing the peer's member type. Snapshot transfers should not
+  // and should skip that step.
+  bool should_try_change_role_ GUARDED_BY(mutex_) = true;
 
   // Directory where the checkpoint files are stored for this session (only for rocksdb).
   std::string checkpoint_dir_;

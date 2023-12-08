@@ -14,6 +14,7 @@
 #pragma once
 
 #include <memory>
+#include <optional>
 #include <string>
 
 #include "libpq-fe.h" // NOLINT
@@ -25,6 +26,7 @@
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/result.h"
 #include "yb/util/subprocess.h"
+#include "yb/util/uuid.h"
 
 namespace yb {
 namespace pgwrapper {
@@ -68,8 +70,8 @@ inline constexpr bool IsPGNonNeg = IsPGNonNegImpl<T>::value;
 
 template<class T>
 concept AllowedPGType =
-    IsPGNonNeg<T> || IsPGIntType<T> || IsPGFloatType<T> ||
-    std::is_same_v<T, bool> || std::is_same_v<T, std::string> || std::is_same_v<T, PGOid>;
+    IsPGNonNeg<T> || IsPGIntType<T> || IsPGFloatType<T> || std::is_same_v<T, bool> ||
+    std::is_same_v<T, std::string> || std::is_same_v<T, PGOid> || std::is_same_v<T, Uuid>;
 
 template<AllowedPGType T>
 struct PGTypeTraits {
@@ -97,6 +99,15 @@ using GetValueResult = Result<typename PGTypeTraits<T>::ReturnType>;
 
 template<class T>
 GetValueResult<T> GetValue(PGresult* result, int row, int column);
+
+template<class T>
+Result<std::optional<typename PGTypeTraits<typename T::value_type>::ReturnType>> GetValue(
+    PGresult* result, int row, int column) {
+  if (PQgetisnull(result, row, column)) {
+    return std::nullopt;
+  }
+  return GetValue<typename T::value_type>(result, row, column);
+}
 
 inline Result<int32_t> GetInt32(PGresult* result, int row, int column) {
   return GetValue<int32_t>(result, row, column);
@@ -169,7 +180,7 @@ class PGConn {
       const std::string& row_sep = DefaultRowSeparator());
 
   template<class T>
-  GetValueResult<T> FetchValue(const std::string& command) {
+  auto FetchValue(const std::string& command) -> decltype(GetValue<T>(nullptr, 0, 0)) {
     auto res = VERIFY_RESULT(FetchMatrix(command, 1, 1));
     return GetValue<T>(res.get(), 0, 0);
   }
@@ -244,6 +255,7 @@ bool IsRetryable(const Status& status);
 Result<PGConn> Execute(Result<PGConn> connection, const std::string& query);
 Result<PGConn> SetHighPriTxn(Result<PGConn> connection);
 Result<PGConn> SetLowPriTxn(Result<PGConn> connection);
+Status SetMaxBatchSize(PGConn* conn, size_t max_batch_size);
 
 class PGConnPerf {
  public:

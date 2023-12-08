@@ -368,7 +368,6 @@ _outScanInfo(StringInfo str, const Scan *node)
 	_outPlanInfo(str, (const Plan *) node);
 
 	WRITE_UINT_FIELD(scanrelid);
-	WRITE_ENUM_FIELD(yb_lock_mechanism, YbLockMechanism);
 }
 
 /*
@@ -600,6 +599,8 @@ _outIndexScan(StringInfo str, const IndexScan *node)
 	WRITE_NODE_FIELD(yb_idx_pushdown.colrefs);
 	WRITE_NODE_FIELD(yb_rel_pushdown.quals);
 	WRITE_NODE_FIELD(yb_rel_pushdown.colrefs);
+	WRITE_INT_FIELD(yb_distinct_prefixlen);
+	WRITE_ENUM_FIELD(yb_lock_mechanism, YbLockMechanism);
 }
 
 static void
@@ -617,6 +618,7 @@ _outIndexOnlyScan(StringInfo str, const IndexOnlyScan *node)
 	WRITE_ENUM_FIELD(indexorderdir, ScanDirection);
 	WRITE_NODE_FIELD(yb_pushdown.quals);
 	WRITE_NODE_FIELD(yb_pushdown.colrefs);
+	WRITE_INT_FIELD(yb_distinct_prefixlen);
 }
 
 static void
@@ -1861,7 +1863,6 @@ _outPathInfo(StringInfo str, const Path *node)
 	WRITE_FLOAT_FIELD(startup_cost, "%.2f");
 	WRITE_FLOAT_FIELD(total_cost, "%.2f");
 	WRITE_NODE_FIELD(pathkeys);
-	WRITE_ENUM_FIELD(yb_path_info.yb_lock_mechanism, YbLockMechanism);
 }
 
 /*
@@ -1901,6 +1902,7 @@ _outIndexPath(StringInfo str, const IndexPath *node)
 	WRITE_ENUM_FIELD(indexscandir, ScanDirection);
 	WRITE_FLOAT_FIELD(indextotalcost, "%.2f");
 	WRITE_FLOAT_FIELD(indexselectivity, "%.4f");
+	WRITE_ENUM_FIELD(yb_index_path_info.yb_lock_mechanism, YbLockMechanism);
 }
 
 static void

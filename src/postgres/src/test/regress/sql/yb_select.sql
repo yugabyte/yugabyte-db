@@ -133,3 +133,8 @@ EXPLAIN (SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT DISTINCT att.attname as name
 	    att.attnum > 0
 	    AND att.attisdropped IS FALSE
 	ORDER BY att.attnum LIMIT 1;
+
+-- check system columns in YbSeqScan(#18485)
+explain (costs off)
+/*+ SeqScan(nr2) */ SELECT tableoid::regclass, * from nr2 where i = 1;
+/*+ SeqScan(nr2) */ SELECT tableoid::regclass, * from nr2 where i = 1;

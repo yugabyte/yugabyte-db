@@ -62,7 +62,7 @@ class TestAdminClient {
   Result<std::vector<master::TabletLocationsPB>> GetTabletLocations(
       const std::string& ns, const std::string& table);
 
-  Status WaitForTabletFullyCompacted(size_t tserver_idx, const TabletId& tablet_id);
+  Status WaitForTabletPostSplitCompacted(size_t tserver_idx, const TabletId& tablet_id);
 
   Status FlushTable(const std::string& ns, const std::string& table);
 

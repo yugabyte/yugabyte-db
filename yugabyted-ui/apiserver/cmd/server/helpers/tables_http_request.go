@@ -1,13 +1,10 @@
 package helpers
 
 import (
+    "apiserver/cmd/server/logger"
     "encoding/json"
-    "fmt"
-    "io/ioutil"
-    "net/http"
     "net/url"
     "strconv"
-    "time"
 )
 
 type OnDiskSizeStruct struct {
@@ -53,36 +50,37 @@ type TablesFuture struct {
     Error  error
 }
 
-func GetTablesFuture(nodeHost string, onlyUserTables bool, future chan TablesFuture) {
+func GetTablesFuture(
+    log logger.Logger,
+    nodeHost string,
+    onlyUserTables bool,
+    future chan TablesFuture,
+) {
     tables := TablesFuture{
         Tables: TablesResponseStruct{},
         Error: nil,
     }
-    httpClient := &http.Client{
-            Timeout: time.Second * 10,
-    }
-    baseUrl := fmt.Sprintf("http://%s:%s/api/v1/tables", nodeHost, MasterUIPort)
-
-    requestUrl, err := url.Parse(baseUrl)
+    urls, err := BuildMasterURLs(log, "api/v1/tables")
     if err != nil {
         tables.Error = err
         future <- tables
         return
     }
-
+    requestUrls := []string{}
     // Query params
     params := url.Values{}
     params.Add("only_user_tables", strconv.FormatBool(onlyUserTables))
-    requestUrl.RawQuery = params.Encode()
-
-    resp, err := httpClient.Get(requestUrl.String())
-    if err != nil {
+    for _, baseUrl := range urls {
+        requestUrl, err := url.Parse(baseUrl)
+        if err != nil {
             tables.Error = err
             future <- tables
             return
+        }
+        requestUrl.RawQuery = params.Encode()
+        requestUrls = append(requestUrls, requestUrl.String())
     }
-    defer resp.Body.Close()
-    body, err := ioutil.ReadAll(resp.Body)
+    body, err := AttemptGetRequests(log, requestUrls, true)
     if err != nil {
             tables.Error = err
             future <- tables
@@ -137,36 +135,37 @@ type TableInfoFuture struct {
 }
 
 // Get info for a table given the table id
-func GetTableInfoFuture(nodeHost string, id string, future chan TableInfoFuture) {
+func GetTableInfoFuture(
+    log logger.Logger,
+    nodeHost string,
+    id string,
+    future chan TableInfoFuture,
+) {
     tableInfo := TableInfoFuture{
         TableInfo: TableInfoStruct{},
         Error: nil,
     }
-    httpClient := &http.Client{
-            Timeout: time.Second * 10,
-    }
-    baseUrl := fmt.Sprintf("http://%s:%s/api/v1/table", nodeHost, MasterUIPort)
-
-    requestUrl, err := url.Parse(baseUrl)
+    urls, err := BuildMasterURLs(log, "api/v1/table")
     if err != nil {
         tableInfo.Error = err
         future <- tableInfo
         return
     }
-
+    requestUrls := []string{}
     // Query params
     params := url.Values{}
     params.Add("id", id)
-    requestUrl.RawQuery = params.Encode()
-
-    resp, err := httpClient.Get(requestUrl.String())
-    if err != nil {
+    for _, baseUrl := range urls {
+        requestUrl, err := url.Parse(baseUrl)
+        if err != nil {
             tableInfo.Error = err
             future <- tableInfo
             return
+        }
+        requestUrl.RawQuery = params.Encode()
+        requestUrls = append(requestUrls, requestUrl.String())
     }
-    defer resp.Body.Close()
-    body, err := ioutil.ReadAll(resp.Body)
+    body, err := AttemptGetRequests(log, requestUrls, true)
     if err != nil {
             tableInfo.Error = err
             future <- tableInfo

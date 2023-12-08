@@ -370,11 +370,7 @@ struct HistogramData {
   double min;
   double max;
   double sum;
-  double median;
-  double percentile95;
-  double percentile99;
   double average;
-  double standard_deviation;
 };
 
 enum StatsLevel {

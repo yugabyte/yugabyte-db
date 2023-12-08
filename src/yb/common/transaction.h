@@ -420,4 +420,21 @@ extern const std::string kTransactionTablePrefix;
 
 YB_DEFINE_ENUM(CleanupType, (kGraceful)(kImmediate))
 
+// Provides a unified efficient interface for accessing lock info in a TabletLockInfoPB message.
+// Single-shard waiter info is created and returned, and TransactionLockInfoPB instances are made
+// accessible by TransactionId.
+class TransactionLockInfoManager {
+ public:
+  explicit TransactionLockInfoManager(TabletLockInfoPB* tablet_lock_info);
+
+  TabletLockInfoPB::TransactionLockInfoPB* GetOrAddTransactionLockInfo(const TransactionId& id);
+
+  TabletLockInfoPB::WaiterInfoPB* GetSingleShardLockInfo();
+
+ private:
+  TabletLockInfoPB* tablet_lock_info_;
+  std::unordered_map<
+      TransactionId, TabletLockInfoPB::TransactionLockInfoPB*> transaction_lock_infos_;
+};
+
 } // namespace yb

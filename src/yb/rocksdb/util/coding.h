@@ -74,8 +74,7 @@ extern const char* GetVarint64Ptr(const char* p, const char* limit, uint64_t* v)
 inline const char* GetSignedVarint64Ptr(
     const char* p, const char* limit, const char* read_allowed_from, int64_t* value) {
   size_t decoded_size;
-  if (!yb::util::FastDecodeSignedVarInt(p, limit - p, read_allowed_from, value, &decoded_size)
-           .ok()) {
+  if (!yb::FastDecodeSignedVarInt(p, limit - p, read_allowed_from, value, &decoded_size).ok()) {
     return nullptr;
   }
   return p + decoded_size;
@@ -220,9 +219,9 @@ inline void PutVarint32(std::string* dst, uint32_t v) {
 }
 
 inline void PutSignedVarint(std::string* dst, int64_t v) {
-  char buf[yb::util::kMaxVarIntBufferSize];
+  char buf[yb::kMaxVarIntBufferSize];
   size_t encoded_size;
-  yb::util::FastEncodeSignedVarInt(v, pointer_cast<uint8_t*>(buf), &encoded_size);
+  yb::FastEncodeSignedVarInt(v, pointer_cast<uint8_t*>(buf), &encoded_size);
   dst->append(buf, encoded_size);
 }
 
@@ -251,7 +250,7 @@ inline void PutVarint64(std::string* dst, uint64_t v) {
 }
 
 inline void FastPutVarint64(std::string* dst, uint64_t v) {
-  char buf[yb::util::kMaxVarIntBufferSize];
+  char buf[yb::kMaxVarIntBufferSize];
   char* ptr = FastEncodeVarint64(buf, v);
   dst->append(buf, static_cast<size_t>(ptr - buf));
 }

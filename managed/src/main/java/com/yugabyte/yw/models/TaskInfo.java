@@ -20,10 +20,10 @@ import io.ebean.ExpressionList;
 import io.ebean.FetchGroup;
 import io.ebean.Finder;
 import io.ebean.Model;
-import io.ebean.annotation.CreatedTimestamp;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
-import io.ebean.annotation.UpdatedTimestamp;
+import io.ebean.annotation.WhenCreated;
+import io.ebean.annotation.WhenModified;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.Collection;
@@ -135,12 +135,12 @@ public class TaskInfo extends Model {
   private UserTaskDetails.SubTaskGroupType subTaskGroupType;
 
   // The task creation time.
-  @CreatedTimestamp
+  @WhenCreated
   @ApiModelProperty(value = "Creation time", accessMode = READ_ONLY, example = "1624295239113")
   private Date createTime;
 
   // The task update time. Time of the latest update (including heartbeat updates) on this task.
-  @UpdatedTimestamp
+  @WhenModified
   @ApiModelProperty(value = "Updated time", accessMode = READ_ONLY, example = "1624295239113")
   private Date updateTime;
 

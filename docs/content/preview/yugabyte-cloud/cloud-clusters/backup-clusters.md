@@ -36,6 +36,8 @@ If [some cluster operations](../#locking-operations) are already running during 
 
 Backups that don't run are postponed until the next scheduled backup. You can also perform a manual backup after the blocking operation completes.
 
+You can't restore a backup to a cluster with an version of YugabyteDB that is earlier than that of the backup. If you need to restore to an earlier version, contact {{% support-cloud %}}.
+
 Backups are not supported for Sandbox clusters.
 
 ## Recommendations

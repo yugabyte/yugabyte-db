@@ -23,9 +23,6 @@ public class WaitForFollowerLag extends AbstractTaskBase {
   // Time to wait (in millisec) during each iteration of follower lag check.
   private static final int WAIT_EACH_ATTEMPT_MS = 1000;
 
-  // Max time we wait to catch up (secs)
-  private static final int FOLLOWER_LAG_TIMEOUT_SEC = 900;
-
   // Log after these many iterations
   private static final int LOG_EVERY_NUM_ITERS = 10;
 
@@ -61,6 +58,8 @@ public class WaitForFollowerLag extends AbstractTaskBase {
     double followerLagMs = maxFollowerLagThresholdMs + 1;
     int numIters = 0;
     long startTimeMs = System.currentTimeMillis();
+    long maxWaitTimeMs =
+        confGetter.getConfForScope(universe, UniverseConfKeys.followerLagTimeout).toMillis();
 
     try {
       ip = Util.getNodeIp(universe, node);
@@ -85,7 +84,7 @@ public class WaitForFollowerLag extends AbstractTaskBase {
         // if reached certain threshold of elapsed time, timeout and throw failed/abort the upgrade
         long curTimeMs = System.currentTimeMillis();
         long timeElapedMs = curTimeMs - startTimeMs;
-        if (timeElapedMs >= (FOLLOWER_LAG_TIMEOUT_SEC * 1000)) {
+        if (timeElapedMs >= maxWaitTimeMs) {
           throw new RuntimeException(
               String.format(
                   "Follower lag timeout reached: ip=%s, port=%d, followerLagMs=%f",

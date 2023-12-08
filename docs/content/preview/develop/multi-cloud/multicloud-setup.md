@@ -90,7 +90,7 @@ Now, you should have a 6-node cluster with 2 nodes in each cloud provider like t
 {{<nav/panel name="anywhere">}}
 
 {{<note>}}
-For detailed instructions on how to setup a Multi-cloud universe in YB Anywhere, see [Create a multi-cloud universe](../../../yugabyte-platform/create-deployments/create-universe-multi-cloud/).
+To set up a multi-cloud universe in YB Anywhere, see [Create a multi-cloud universe](../../../yugabyte-platform/create-deployments/create-universe-multi-cloud/).
 {{</note>}}
 
 <!-- END: YBA cluster setup instructions -->

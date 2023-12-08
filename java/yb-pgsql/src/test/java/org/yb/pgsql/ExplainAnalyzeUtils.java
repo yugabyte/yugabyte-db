@@ -33,6 +33,7 @@ public class ExplainAnalyzeUtils {
   public static final String NODE_SEQ_SCAN = "Seq Scan";
   public static final String NODE_SORT = "Sort";
   public static final String NODE_VALUES_SCAN = "Values Scan";
+  public static final String NODE_YB_BATCHED_NESTED_LOOP = "YB Batched Nested Loop";
   public static final String NODE_YB_SEQ_SCAN = "YB Seq Scan";
 
   public static final String OPERATION_INSERT = "Insert";

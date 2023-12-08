@@ -18,8 +18,8 @@ const useStyles = makeStyles((theme) => ({
   container: {
     flexWrap: "nowrap",
     marginTop: theme.spacing(1.5),
-    justifyContent: "center",
-    width: theme.spacing(40),
+    justifyContent: 'center',
+    minWidth: theme.spacing(40),
   },
   title: {
     color: theme.palette.grey[900],

@@ -178,6 +178,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     when(mockConfig.getInt("yb.fs_stateless.max_files_count_persist")).thenReturn(100);
     when(mockConfig.getBoolean("yb.fs_stateless.suppress_error")).thenReturn(true);
     when(mockConfig.getLong("yb.fs_stateless.max_file_size_bytes")).thenReturn((long) 10000);
+    when(mockConfig.getString("ybc.compatible_db_version")).thenReturn("2.15.0.0-b1");
     when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockConfig);
 
     return new GuiceApplicationBuilder()
@@ -1344,6 +1345,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
             node.cloudInfo = new CloudSpecificInfo();
             node.cloudInfo.private_ip = "1.2.3." + idx;
             node.cloudInfo.az = availabilityZone.getCode();
+            node.cloudInfo.instance_type = instanceTypeString;
             node.azUuid = availabilityZone.getUuid();
             universeDetails.nodeDetailsSet.add(node);
           }

@@ -27,8 +27,6 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.config.GlobalConfKeys;
-import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
@@ -58,17 +56,12 @@ public class RegionControllerTest extends FakeDBApplication {
   Provider provider;
   Customer customer;
   Users user;
-  SettableRuntimeConfigFactory runtimeConfigFactory;
 
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
     provider = ModelFactory.awsProvider(customer);
-    runtimeConfigFactory = app.injector().instanceOf(SettableRuntimeConfigFactory.class);
-    runtimeConfigFactory
-        .globalRuntimeConf()
-        .setValue(GlobalConfKeys.useLegacyPayloadForRegionAndAZs.getKey(), "true");
   }
 
   private Result listRegions(UUID providerUUID) {
@@ -88,6 +81,13 @@ public class RegionControllerTest extends FakeDBApplication {
     return doRequestWithBody("POST", uri, body);
   }
 
+  private Result createRegionV2(UUID providerUUID, JsonNode body) {
+    String uri =
+        String.format(
+            "/api/customers/%s/providers/%s/provider_regions", customer.getUuid(), providerUUID);
+    return doRequestWithBody("POST", uri, body);
+  }
+
   private Result deleteRegion(UUID providerUUID, UUID regionUUID) {
     String uri =
         String.format(
@@ -100,6 +100,14 @@ public class RegionControllerTest extends FakeDBApplication {
     String uri =
         String.format(
             "/api/customers/%s/providers/%s/regions/%s",
+            customer.getUuid(), providerUUID, regionUUID);
+    return doRequestWithBody("PUT", uri, body);
+  }
+
+  private Result editRegionV2(UUID providerUUID, UUID regionUUID, JsonNode body) {
+    String uri =
+        String.format(
+            "/api/customers/%s/providers/%s/provider_regions/%s",
             customer.getUuid(), providerUUID, regionUUID);
     return doRequestWithBody("PUT", uri, body);
   }
@@ -414,13 +422,9 @@ public class RegionControllerTest extends FakeDBApplication {
         ConfigHelper.ConfigType.AWSRegionMetadata.toString(),
         Json.parse("{\"us-west-2\": {\"name\": \"us-west-2\", \"ybImage\": \"yb image\"}}"),
         ConfigHelper.ConfigType.AWSRegionMetadata.getDescription());
-    // use v2 APIs payload for region creation.
-    runtimeConfigFactory
-        .globalRuntimeConf()
-        .setValue(GlobalConfKeys.useLegacyPayloadForRegionAndAZs.getKey(), "false");
 
     JsonNode regionBody = generateRegionRequestBody();
-    Result result = createRegion(p.getUuid(), regionBody);
+    Result result = createRegionV2(p.getUuid(), regionBody);
     Region region = Json.fromJson(Json.parse(contentAsString(result)), Region.class);
     assertEquals(OK, result.status());
     assertNotNull("Region not created, empty UUID.", region.getUuid());
@@ -437,13 +441,9 @@ public class RegionControllerTest extends FakeDBApplication {
         ConfigHelper.ConfigType.AWSRegionMetadata.toString(),
         Json.parse("{\"us-west-2\": {\"name\": \"us-west-2\", \"ybImage\": \"yb image\"}}"),
         ConfigHelper.ConfigType.AWSRegionMetadata.getDescription());
-    // use v2 APIs payload for region creation.
-    runtimeConfigFactory
-        .globalRuntimeConf()
-        .setValue(GlobalConfKeys.useLegacyPayloadForRegionAndAZs.getKey(), "false");
 
     JsonNode regionBody = generateRegionRequestBody();
-    Result result = createRegion(p.getUuid(), regionBody);
+    Result result = createRegionV2(p.getUuid(), regionBody);
     Region region = Json.fromJson(Json.parse(contentAsString(result)), Region.class);
     assertEquals(OK, result.status());
     assertNotNull("Region not created, empty UUID.", region.getUuid());
@@ -460,7 +460,7 @@ public class RegionControllerTest extends FakeDBApplication {
     region.setZones(zones);
     region.getDetails().getCloudInfo().getAws().setSecurityGroupId("Modified group id");
 
-    result = editRegion(p.getUuid(), region.getUuid(), Json.toJson(region));
+    result = editRegionV2(p.getUuid(), region.getUuid(), Json.toJson(region));
     region = Json.fromJson(Json.parse(contentAsString(result)), Region.class);
     assertEquals(OK, result.status());
     assertEquals(2, region.getZones().size());

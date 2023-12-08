@@ -4,6 +4,7 @@ import static java.util.stream.Collectors.groupingBy;
 import static java.util.stream.Collectors.mapping;
 import static java.util.stream.Collectors.toSet;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.amazonaws.AmazonServiceException;
 import com.amazonaws.SdkClientException;
@@ -11,6 +12,8 @@ import com.amazonaws.auth.AWSCredentialsProvider;
 import com.amazonaws.auth.AWSStaticCredentialsProvider;
 import com.amazonaws.auth.BasicAWSCredentials;
 import com.amazonaws.auth.DefaultAWSCredentialsProviderChain;
+import com.amazonaws.services.cloudtrail.AWSCloudTrail;
+import com.amazonaws.services.cloudtrail.AWSCloudTrailClientBuilder;
 import com.amazonaws.services.ec2.AmazonEC2;
 import com.amazonaws.services.ec2.AmazonEC2ClientBuilder;
 import com.amazonaws.services.ec2.model.AuthorizeSecurityGroupIngressRequest;
@@ -52,12 +55,20 @@ import com.amazonaws.services.elasticloadbalancingv2.model.DescribeLoadBalancers
 import com.amazonaws.services.elasticloadbalancingv2.model.DescribeTargetGroupsRequest;
 import com.amazonaws.services.elasticloadbalancingv2.model.DescribeTargetHealthRequest;
 import com.amazonaws.services.elasticloadbalancingv2.model.ForwardActionConfig;
+import com.amazonaws.services.elasticloadbalancingv2.model.InvalidConfigurationRequestException;
 import com.amazonaws.services.elasticloadbalancingv2.model.Listener;
 import com.amazonaws.services.elasticloadbalancingv2.model.LoadBalancer;
+import com.amazonaws.services.elasticloadbalancingv2.model.Matcher;
 import com.amazonaws.services.elasticloadbalancingv2.model.ModifyListenerRequest;
+import com.amazonaws.services.elasticloadbalancingv2.model.ModifyTargetGroupAttributesRequest;
+import com.amazonaws.services.elasticloadbalancingv2.model.ModifyTargetGroupAttributesResult;
+import com.amazonaws.services.elasticloadbalancingv2.model.ModifyTargetGroupRequest;
+import com.amazonaws.services.elasticloadbalancingv2.model.ModifyTargetGroupResult;
 import com.amazonaws.services.elasticloadbalancingv2.model.RegisterTargetsRequest;
 import com.amazonaws.services.elasticloadbalancingv2.model.TargetDescription;
 import com.amazonaws.services.elasticloadbalancingv2.model.TargetGroup;
+import com.amazonaws.services.elasticloadbalancingv2.model.TargetGroupAttribute;
+import com.amazonaws.services.elasticloadbalancingv2.model.TargetGroupNotFoundException;
 import com.amazonaws.services.elasticloadbalancingv2.model.TargetGroupTuple;
 import com.amazonaws.services.elasticloadbalancingv2.model.TargetHealthDescription;
 import com.amazonaws.services.elasticloadbalancingv2.model.TargetTypeEnum;
@@ -78,9 +89,11 @@ import com.amazonaws.services.securitytoken.model.GetCallerIdentityResult;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.collect.ImmutableList;
 import com.google.inject.Inject;
 import com.yugabyte.yw.cloud.CloudAPI;
+import com.yugabyte.yw.common.CloudUtil.Protocol;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
@@ -134,6 +147,14 @@ public class AWSCloudImpl implements CloudAPI {
     AWSCredentialsProvider credentialsProvider = getCredsOrFallbackToDefault(provider);
     return AmazonEC2ClientBuilder.standard()
         .withRegion(regionCode)
+        .withCredentials(credentialsProvider)
+        .build();
+  }
+
+  public AWSCloudTrail getCloudTrailClient(Provider provider, String region) {
+    AWSCredentialsProvider credentialsProvider = getCredsOrFallbackToDefault(provider);
+    return AWSCloudTrailClientBuilder.standard()
+        .withRegion(region)
         .withCredentials(credentialsProvider)
         .build();
   }
@@ -347,7 +368,8 @@ public class AWSCloudImpl implements CloudAPI {
     return listeners;
   }
 
-  private Listener getListenerByPort(AmazonElasticLoadBalancing lbClient, String lbName, int port) {
+  @VisibleForTesting
+  Listener getListenerByPort(AmazonElasticLoadBalancing lbClient, String lbName, int port) {
     List<Listener> listeners = getListeners(lbClient, lbName);
     for (Listener listener : listeners) {
       if (listener.getPort() == port) return listener;
@@ -437,10 +459,10 @@ public class AWSCloudImpl implements CloudAPI {
       String regionCode,
       String lbName,
       Map<AvailabilityZone, Set<NodeID>> azToNodeIDs,
-      List<Integer> ports,
+      List<Integer> portsToForward,
       NLBHealthCheckConfiguration healthCheckConfiguration) {
     try {
-      String protocol = healthCheckConfiguration.getHealthCheckProtocol().toString();
+      String lbProtocol = "TCP";
       // Get aws clients
       AmazonElasticLoadBalancing lbClient = getELBClient(provider, regionCode);
       AmazonEC2 ec2Client = getEC2Client(provider, regionCode);
@@ -449,27 +471,44 @@ public class AWSCloudImpl implements CloudAPI {
           azToNodeIDs.values().stream().flatMap(Collection::stream).collect(Collectors.toList());
       List<String> instanceIDs = getInstanceIDs(ec2Client, nodeIDs);
       // Check for listeners on each enabled port
-      for (int port : ports) {
+      for (int port : portsToForward) {
         Listener listener = getListenerByPort(lbClient, lbName, port);
         // If no listener exists for a port, create target group and listener
         // else check target group settings and add/remove nodes from target group
         String targetGroupName = "tg-" + UUID.randomUUID().toString().substring(0, 29);
+        String targetGroupArn = null;
         if (listener == null) {
-          String targetGroupArn =
-              createNodeGroup(lbClient, lbName, targetGroupName, protocol, port, instanceIDs);
-          createListener(lbClient, lbName, targetGroupArn, protocol, port);
+          targetGroupArn =
+              createNodeGroup(
+                  lbClient,
+                  lbName,
+                  targetGroupName,
+                  lbProtocol,
+                  port,
+                  instanceIDs,
+                  healthCheckConfiguration);
+          createListener(lbClient, lbName, targetGroupArn, lbProtocol, port);
         } else {
           // Check if listener has target group otherwise create one
-          String targetGroupArn = getListenerTargetGroup(listener);
+          targetGroupArn = getListenerTargetGroup(listener);
           if (targetGroupArn == null) {
             targetGroupArn =
-                createNodeGroup(lbClient, lbName, targetGroupName, protocol, port, instanceIDs);
+                createNodeGroup(
+                    lbClient,
+                    lbName,
+                    targetGroupName,
+                    lbProtocol,
+                    port,
+                    instanceIDs,
+                    healthCheckConfiguration);
             setListenerTargetGroup(lbClient, listener.getListenerArn(), targetGroupArn);
           } else {
             // Check node group
-            checkNodeGroup(lbClient, targetGroupArn, protocol, port, instanceIDs);
+            checkNodeGroup(
+                lbClient, targetGroupArn, lbProtocol, port, instanceIDs, healthCheckConfiguration);
           }
         }
+        ensureTargetGroupAttributes(lbClient, targetGroupArn);
       }
     } catch (Exception e) {
       String message = "Error executing task {manageNodeGroup()}, error='{}'";
@@ -493,12 +532,14 @@ public class AWSCloudImpl implements CloudAPI {
    * @param port the listening port.
    * @param instanceIDs the EC2 node instance IDs.
    */
-  private void checkNodeGroup(
+  @VisibleForTesting
+  void checkNodeGroup(
       AmazonElasticLoadBalancing lbClient,
       String targetGroupArn,
       String protocol,
       int port,
-      List<String> instanceIDs) {
+      List<String> instanceIDs,
+      NLBHealthCheckConfiguration healthCheckConfiguration) {
     try {
       // Check target group settings
       TargetGroup targetGroup = getTargetGroup(lbClient, targetGroupArn);
@@ -517,10 +558,74 @@ public class AWSCloudImpl implements CloudAPI {
                 + port);
       } else { // Check target group nodes
         checkTargetGroupNodes(lbClient, targetGroupArn, instanceIDs, port);
+        checkTargetGroupHealthCheckConfiguration(
+            lbClient, port, targetGroup, healthCheckConfiguration);
+        // TODO: Check Heatch check for Target group
       }
     } catch (Exception e) {
       String message = "Error executing task {checkNodeGroup()}, error='{}'";
       throw new RuntimeException(message, e);
+    }
+  }
+
+  private void checkTargetGroupHealthCheckConfiguration(
+      AmazonElasticLoadBalancing lbClient,
+      int port,
+      TargetGroup targetGroup,
+      NLBHealthCheckConfiguration healthCheckConfiguration) {
+    boolean healthCheckModified = false;
+    ModifyTargetGroupRequest modifyTargetGroupRequest =
+        new ModifyTargetGroupRequest().withTargetGroupArn(targetGroup.getTargetGroupArn());
+    Protocol healthCheckProtocol = healthCheckConfiguration.getHealthCheckProtocol();
+    List<Integer> healthCheckPorts = healthCheckConfiguration.getHealthCheckPorts();
+    // If there is no health probe corrosponding to the port that is being forwareded, we
+    // select the 0th indexed port as the default health check for that forwarding rule
+    // This is because this case would only arise in case of custom health checks
+    // TODO: Find a way to link the correct custom health check to the correct forwarding rule
+    Integer healthCheckPort = healthCheckPorts.isEmpty() ? port : healthCheckPorts.get(0);
+    String healthCheckPath =
+        healthCheckConfiguration.getHealthCheckPortsToPathsMap().get(healthCheckPort);
+    if (!targetGroup.getHealthCheckProtocol().equals(healthCheckProtocol.name())) {
+      modifyTargetGroupRequest =
+          modifyTargetGroupRequest.withHealthCheckProtocol(healthCheckProtocol.name());
+      healthCheckModified = true;
+    }
+    if (!targetGroup.getHealthCheckPort().equals(Integer.toString(healthCheckPort))) {
+      modifyTargetGroupRequest =
+          modifyTargetGroupRequest.withHealthCheckPort(Integer.toString(healthCheckPort));
+      healthCheckModified = true;
+    }
+    if (healthCheckProtocol == Protocol.HTTP
+        && (targetGroup.getHealthCheckPath() == null
+            || !targetGroup.getHealthCheckPath().equals(healthCheckPath))) {
+      modifyTargetGroupRequest =
+          modifyTargetGroupRequest
+              .withHealthCheckPath(healthCheckPath)
+              .withMatcher(new Matcher().withHttpCode("200"));
+      healthCheckModified = true;
+    }
+
+    if (healthCheckModified) {
+      try {
+        ModifyTargetGroupResult result = lbClient.modifyTargetGroup(modifyTargetGroupRequest);
+      } catch (TargetGroupNotFoundException e) {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR, "Target group not found: " + targetGroup.getTargetGroupArn());
+      } catch (InvalidConfigurationRequestException e) {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
+            "Invalid configuration request for target group: "
+                + targetGroup.getTargetGroupArn()
+                + " with attributes: "
+                + modifyTargetGroupRequest.toString());
+      } catch (Exception e) {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
+            "Error modifying target group: "
+                + targetGroup.getTargetGroupArn()
+                + " "
+                + e.toString());
+      }
     }
   }
 
@@ -541,11 +646,46 @@ public class AWSCloudImpl implements CloudAPI {
       String targetGroupName,
       String protocol,
       int port,
-      List<String> instanceIDs) {
+      List<String> instanceIDs,
+      NLBHealthCheckConfiguration healthCheckConfiguration) {
     String vpc = getLoadBalancerByName(lbClient, lbName).getVpcId();
-    String targetGroupArn = createTargetGroup(lbClient, targetGroupName, protocol, port, vpc);
+    String targetGroupArn =
+        createTargetGroup(lbClient, targetGroupName, protocol, port, vpc, healthCheckConfiguration);
     registerTargets(lbClient, targetGroupArn, instanceIDs, port);
     return targetGroupArn;
+  }
+
+  /**
+   * Since by default target groups do not terminate connections when a node is deregistered, we
+   * ensure that the default value is overriden to true.
+   *
+   * @param lbClient the AWS ELB client for API calls.
+   * @param targetGroupArn the target group arn.
+   */
+  @VisibleForTesting
+  void ensureTargetGroupAttributes(AmazonElasticLoadBalancing lbClient, String targetGroupArn) {
+    ModifyTargetGroupAttributesRequest request =
+        new ModifyTargetGroupAttributesRequest()
+            .withTargetGroupArn(targetGroupArn)
+            .withAttributes(
+                Arrays.asList(
+                    new TargetGroupAttribute()
+                        .withKey("deregistration_delay.connection_termination.enabled")
+                        .withValue("true")));
+    try {
+      ModifyTargetGroupAttributesResult result = lbClient.modifyTargetGroupAttributes(request);
+    } catch (TargetGroupNotFoundException e) {
+      LOG.warn("No such target group with targetGroupArn: " + request.getTargetGroupArn());
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Target group not found: " + request.getTargetGroupArn());
+    } catch (InvalidConfigurationRequestException e) {
+      LOG.warn(
+          "Attempt to set invalid configuration on target group with targetGroupArn: "
+              + request.getTargetGroupArn());
+      LOG.info("Target group attributes: " + request.getAttributes().toString());
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Failed to update attributes of target group.");
+    }
   }
 
   // Target group methods
@@ -555,7 +695,8 @@ public class AWSCloudImpl implements CloudAPI {
     return lbClient.describeTargetGroups(request).getTargetGroups().get(0);
   }
 
-  private String getListenerTargetGroup(Listener listener) {
+  @VisibleForTesting
+  String getListenerTargetGroup(Listener listener) {
     List<Action> actions = listener.getDefaultActions();
     for (Action action : actions) {
       if (action.getType().equals(ActionTypeEnum.Forward.toString())) {
@@ -567,14 +708,28 @@ public class AWSCloudImpl implements CloudAPI {
   }
 
   private String createTargetGroup(
-      AmazonElasticLoadBalancing lbClient, String name, String protocol, int port, String vpc) {
+      AmazonElasticLoadBalancing lbClient,
+      String name,
+      String protocol,
+      int port,
+      String vpc,
+      NLBHealthCheckConfiguration healthCheckConfiguration) {
     CreateTargetGroupRequest targetGroupRequest =
         new CreateTargetGroupRequest()
             .withName(name)
             .withProtocol(protocol)
             .withPort(port)
             .withVpcId(vpc)
-            .withTargetType(TargetTypeEnum.Instance);
+            .withTargetType(TargetTypeEnum.Instance)
+            .withHealthCheckProtocol(healthCheckConfiguration.getHealthCheckProtocol().name())
+            .withHealthCheckPort(Integer.toString(port));
+    if (healthCheckConfiguration.getHealthCheckProtocol().equals(Protocol.HTTP)) {
+      targetGroupRequest =
+          targetGroupRequest
+              .withHealthCheckPath(
+                  healthCheckConfiguration.getHealthCheckPortsToPathsMap().get(port))
+              .withMatcher(new Matcher().withHttpCode("200"));
+    }
     TargetGroup targetGroup =
         lbClient.createTargetGroup(targetGroupRequest).getTargetGroups().get(0);
     String targetGroupArn = targetGroup.getTargetGroupArn();
@@ -642,7 +797,8 @@ public class AWSCloudImpl implements CloudAPI {
    * @param nodeIDs the node IDs (name, uuid).
    * @return a list. The node instance IDs.
    */
-  private List<String> getInstanceIDs(AmazonEC2 ec2Client, List<NodeID> nodeIDs) throws Exception {
+  @VisibleForTesting
+  List<String> getInstanceIDs(AmazonEC2 ec2Client, List<NodeID> nodeIDs) {
     if (CollectionUtils.isEmpty(nodeIDs)) {
       return new ArrayList<>();
     }
@@ -670,9 +826,12 @@ public class AWSCloudImpl implements CloudAPI {
     for (NodeID id : nodeIDs) {
       List<String> ids = nodeToInstances.getOrDefault(id, Collections.emptyList());
       if (ids.isEmpty()) {
-        throw new Exception("Failure: node instance with name \"" + id.getName() + "\" not found");
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
+            "Failure: node instance with name \"" + id.getName() + "\" not found");
       } else if (ids.size() > 1) {
-        throw new Exception(
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
             "Failure: multiple nodes with name \"" + id.getName() + "\" and no UUID are found");
       }
       instanceIDs.addAll(ids);

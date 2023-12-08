@@ -237,6 +237,7 @@ public class EditXClusterConfigTest extends CommissionerBaseTest {
             requestedTableToAddInfoList,
             Collections.emptyMap(),
             XClusterConfigTaskBase.getTableIds(requestedTableToAddInfoList),
+            Collections.emptyMap(),
             tableIdsToRemove);
     try {
       UUID taskUUID = commissioner.submit(TaskType.EditXClusterConfig, taskParams);

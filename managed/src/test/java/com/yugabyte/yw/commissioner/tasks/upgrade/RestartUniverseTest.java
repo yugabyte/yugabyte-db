@@ -39,7 +39,6 @@ public class RestartUniverseTest extends UpgradeTaskTest {
   private static final List<TaskType> ROLLING_RESTART_TASK_SEQUENCE_MASTER =
       ImmutableList.of(
           TaskType.SetNodeState,
-          TaskType.CheckUnderReplicatedTablets,
           TaskType.RunHooks,
           TaskType.AnsibleClusterServerCtl,
           TaskType.AnsibleClusterServerCtl,
@@ -127,7 +126,7 @@ public class RestartUniverseTest extends UpgradeTaskTest {
     assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
     position = assertSequence(subTasksByPosition, TSERVER, position);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks); // PostUpgrade hooks
-    assertEquals(78, position);
+    assertEquals(75, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
   }

@@ -606,11 +606,12 @@ Status FrontierSchemaVersionUpdater::UpdateSchemaVersion(Slice key, Slice value)
     return Status::OK();
   }
   RETURN_NOT_OK(dockv::ValueControlFields::Decode(&value));
-  if (!value.TryConsumeByte(ValueEntryTypeAsChar::kPackedRow)) {
+  if (!IsPackedRow(dockv::DecodeValueEntryType(value))) {
     return Status::OK();
   }
+  value.consume_byte();
   auto schema_version =
-      narrow_cast<SchemaVersion>(VERIFY_RESULT(util::FastDecodeUnsignedVarInt(&value)));
+      narrow_cast<SchemaVersion>(VERIFY_RESULT(FastDecodeUnsignedVarInt(&value)));
   dockv::DocKeyDecoder decoder(key);
   auto cotable_id = Uuid::Nil();
   if (VERIFY_RESULT(decoder.DecodeCotableId(&cotable_id))) {
@@ -757,7 +758,7 @@ Status ExternalIntentsBatchWriter::PrepareApplyExternalIntentsBatch(
     return Status::OK();
   }
   for (;;) {
-    auto key_size = VERIFY_RESULT(util::FastDecodeUnsignedVarInt(&input_value));
+    auto key_size = VERIFY_RESULT(FastDecodeUnsignedVarInt(&input_value));
     if (key_size == 0) {
       break;
     }
@@ -766,7 +767,7 @@ Status ExternalIntentsBatchWriter::PrepareApplyExternalIntentsBatch(
     }
     auto output_key = input_value.Prefix(key_size);
     input_value.remove_prefix(key_size);
-    auto value_size = VERIFY_RESULT(util::FastDecodeUnsignedVarInt(&input_value));
+    auto value_size = VERIFY_RESULT(FastDecodeUnsignedVarInt(&input_value));
     if (input_value.size() < value_size) {
       return NotEnoughBytes(input_value.size(), value_size, original_input_value);
     }

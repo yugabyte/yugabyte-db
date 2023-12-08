@@ -3,7 +3,9 @@
 package com.yugabyte.yw.common.gflags;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
@@ -16,9 +18,11 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -28,6 +32,9 @@ import java.io.StringReader;
 import java.io.StringWriter;
 import java.net.URI;
 import java.net.URISyntaxException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.NoSuchAlgorithmException;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collection;
@@ -42,6 +49,8 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import org.apache.commons.collections.MapUtils;
@@ -139,6 +148,13 @@ public class GFlagsUtil {
   public static final String YBC_PER_UPLOAD_OBJECTS = "per_upload_num_objects";
   public static final String YBC_PER_DOWNLOAD_OBJECTS = "per_download_num_objects";
   public static final String TMP_DIRECTORY = "tmp_dir";
+  public static final String JWKS_FILE_CONTENT_KEY = "jwks=";
+  public static final String JWT_AUDIENCES = "jwt_audiences=";
+  public static final String JWT_ISSUERS = "jwt_issuers=";
+  public static final String JWT_MATCHING_CLAIM_KEY = "jwt_matching_claim_key=";
+  public static final String JWT_JWKS_FILE_PATH = "jwt_jwks_path";
+  public static final String JWT_AUTH = "jwt";
+  public static final String GFLAG_REMOTE_FILES_PATH = TSERVER_DIR + "/conf/gflag_files/";
 
   private static final Set<String> GFLAGS_FORBIDDEN_TO_OVERRIDE =
       ImmutableSet.<String>builder()
@@ -359,7 +375,7 @@ public class GFlagsUtil {
 
   /** Return the map of ybc flags which will be passed to the db nodes. */
   public static Map<String, String> getYbcFlagsForK8s(
-      UUID universeUUID, String nodeName, boolean listenOnAllInterfaces) {
+      UUID universeUUID, String nodeName, boolean listenOnAllInterfaces, int hardwareConcurrency) {
     Universe universe = Universe.getOrBadRequest(universeUUID);
     NodeDetails node = universe.getNode(nodeName);
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
@@ -367,11 +383,6 @@ public class GFlagsUtil {
     String providerUUID = userIntent.provider;
     Provider provider = Provider.getOrBadRequest(UUID.fromString(providerUUID));
     String ybHomeDir = provider.getYbHome();
-    int hardwareConcurrency =
-        (int)
-            Math.ceil(
-                InstanceType.getOrBadRequest(provider.getUuid(), node.cloudInfo.instance_type)
-                    .getNumCores());
     String serverAddress =
         listenOnAllInterfaces
             ? (userIntent.enableIPV6 ? "[::]" : "0.0.0.0")
@@ -404,7 +415,7 @@ public class GFlagsUtil {
     return ybcFlags;
   }
 
-  private static String getYbHomeDir(String providerUUID) {
+  public static String getYbHomeDir(String providerUUID) {
     if (providerUUID == null) {
       return CommonUtils.DEFAULT_YB_HOME_DIR;
     }
@@ -697,9 +708,10 @@ public class GFlagsUtil {
       NodeDetails node,
       Map<String, String> userGFlags,
       Map<String, String> platformGFlags,
-      boolean allowOverrideAll) {
+      boolean allowOverrideAll,
+      RuntimeConfGetter confGetter,
+      AnsibleConfigureServers.Params taskParams) {
     mergeCSVs(userGFlags, platformGFlags, UNDEFOK);
-    mergeCSVs(userGFlags, platformGFlags, YSQL_HBA_CONF_CSV);
     if (!allowOverrideAll) {
       GFLAGS_FORBIDDEN_TO_OVERRIDE.forEach(
           gflag -> {
@@ -725,6 +737,17 @@ public class GFlagsUtil {
     if (userGFlags.containsKey(REDIS_PROXY_BIND_ADDRESS)) {
       mergeHostAndPort(userGFlags, REDIS_PROXY_BIND_ADDRESS, node.redisServerRpcPort);
     }
+    if (userGFlags.containsKey(YSQL_HBA_CONF_CSV)
+        && confGetter.getGlobalConf(GlobalConfKeys.oidcFeatureEnhancements)) {
+      /*
+       * Preprocess the ysql_hba_conf_csv flag for IdP specific use case.
+       * Refer Design Doc:
+       * https://docs.google.com/document/d/1SJzZJrAqc0wkXTCuMS7UKi1-5xEuYQKCOOa3QWYpMeM/edit
+       */
+      processHbaConfFlagIfRequired(node, userGFlags, confGetter, taskParams);
+    }
+    // Merge the `ysql_hba_conf_csv` post pre-processing the hba conf for jwt if required.
+    mergeCSVs(userGFlags, platformGFlags, YSQL_HBA_CONF_CSV);
   }
 
   /**
@@ -860,14 +883,14 @@ public class GFlagsUtil {
     if (userGFlags.containsKey(key)) {
       String userValue = userGFlags.get(key).toString();
       try {
-        CSVParser userValueParser = new CSVParser(new StringReader(userValue), CSVFormat.DEFAULT);
+        CSVFormat csvFormat = CSVFormat.DEFAULT;
+        CSVParser userValueParser = new CSVParser(new StringReader(userValue), csvFormat);
         CSVParser platformValuesParser =
             new CSVParser(
-                new StringReader(platformGFlags.getOrDefault(key, "").toString()),
-                CSVFormat.DEFAULT);
+                new StringReader(platformGFlags.getOrDefault(key, "").toString()), csvFormat);
         Set<String> records = new LinkedHashSet<>();
         StringWriter writer = new StringWriter();
-        CSVPrinter csvPrinter = new CSVPrinter(writer, CSVFormat.DEFAULT);
+        CSVPrinter csvPrinter = new CSVPrinter(writer, csvFormat);
         for (CSVRecord record : userValueParser) {
           records.addAll(record.toList());
         }
@@ -897,6 +920,157 @@ public class GFlagsUtil {
     } catch (URISyntaxException ex) {
       LOG.warn("Not a uri {}", uriStr);
     }
+  }
+
+  public static String updateJwtJWKSPath(
+      String hbaConfValue, Path localGflagFilePath, String providerUUID) {
+    int jwksIndex = hbaConfValue.indexOf(JWKS_FILE_CONTENT_KEY);
+    if (jwksIndex == -1) {
+      return hbaConfValue;
+    }
+    int startIndex = jwksIndex + 5; // Move to the character after "jwks="
+
+    // Find the closing curly brace for the JSON object
+    int endIndex = findMatchingClosingBrace(hbaConfValue, startIndex);
+    if (endIndex != -1) {
+      String jsonNode = hbaConfValue.substring(startIndex, endIndex + 1);
+      String fileName = "";
+      try {
+        fileName = FileUtils.computeHashForAFile(jsonNode, 10);
+      } catch (NoSuchAlgorithmException e) {
+        LOG.warn("Error generating the hash for a file, {}", e.getMessage());
+        // Generate a random string in case of failure.
+        fileName = UUID.randomUUID().toString();
+      }
+      Path localJWKSFilePath = localGflagFilePath.resolve(fileName);
+      try {
+        Files.write(localJWKSFilePath, jsonNode.getBytes());
+      } catch (IOException e) {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR, String.format("JWKS file write failed %s", e.getMessage()));
+      }
+      String ybHomeDir = getYbHomeDir(providerUUID);
+      String remoteJWKSFilePath = ybHomeDir + GFLAG_REMOTE_FILES_PATH + fileName;
+      String jwtJWKSPath = JWT_JWKS_FILE_PATH + "=\"\"" + remoteJWKSFilePath + "\"\"";
+      StringBuilder sb = new StringBuilder(hbaConfValue);
+      sb.replace(jwksIndex, endIndex + 1, jwtJWKSPath);
+      return sb.toString();
+    }
+
+    return hbaConfValue;
+  }
+
+  public static int findMatchingClosingBrace(String input, int startIndex) {
+    // Utility function for forming the complete JSON from a given string.
+    // We match the { paranthesis counts to determine the valid Json Object.
+    int count = 0;
+    for (int i = startIndex; i < input.length(); i++) {
+      char c = input.charAt(i);
+      if (c == '{') {
+        count++;
+      } else if (c == '}') {
+        count--;
+        if (count == 0) {
+          return i;
+        }
+      }
+    }
+    return -1;
+  }
+
+  public static String updateHbaConfValueForJWT(
+      String hbaConfValue, Path localGflagFilePath, String providerUUID) {
+    List<String> doubleQuotedKeys =
+        ImmutableList.of(JWT_AUDIENCES, JWT_ISSUERS, JWT_MATCHING_CLAIM_KEY);
+    String updatedHbaConfValue = updateJwtJWKSPath(hbaConfValue, localGflagFilePath, providerUUID);
+    for (String key : doubleQuotedKeys) {
+      updatedHbaConfValue = processJWTValues(updatedHbaConfValue, key);
+    }
+    return updatedHbaConfValue;
+  }
+
+  public static String processJWTValues(String hbaConfValue, String key) {
+    // DB expects the key value to be double double quoted. This utility checks the
+    // same & in case they are single quoted wraps them inside double quotes else returns.
+    Pattern doubleDoubleQuotePattern = Pattern.compile(key + "\"\".*?\"\"");
+    Matcher doubleDoubleQuoteMatcher = doubleDoubleQuotePattern.matcher(hbaConfValue);
+    if (doubleDoubleQuoteMatcher.find()) {
+      // String contains a double-double-quoted value, return as it is
+      return hbaConfValue;
+    } else {
+      // Wrap the value in double double quotes while handling single quotes
+      Pattern pattern = Pattern.compile(key + "\"(.*?)\"");
+      Matcher matcher = pattern.matcher(hbaConfValue);
+      StringBuffer buffer = new StringBuffer();
+      if (matcher.find()) {
+        String oldValue = matcher.group(1);
+        String replacement =
+            Matcher.quoteReplacement(String.format("%s\"\"" + oldValue + "\"\"", key));
+        matcher.appendReplacement(buffer, replacement);
+      }
+      matcher.appendTail(buffer);
+      return buffer.toString();
+    }
+  }
+
+  public static void processHbaConfFlagIfRequired(
+      NodeDetails node,
+      Map<String, String> userFlags,
+      RuntimeConfGetter confGetter,
+      AnsibleConfigureServers.Params taskParams) {
+    String hbaConfValue = userFlags.get(YSQL_HBA_CONF_CSV);
+    Path tmpDirectoryPath =
+        FileUtils.getOrCreateTmpDirectory(
+            confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath));
+    Path localGflagFilePath = tmpDirectoryPath.resolve(node.getNodeUuid().toString());
+    if (!Files.isDirectory(localGflagFilePath)) {
+      try {
+        Files.createDirectory(localGflagFilePath);
+      } catch (IOException e) {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
+            String.format("Failed to create tmp gflag directory, {}", e.getMessage()));
+      }
+    }
+    Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    UserIntent userIntent = universeDetails.getClusterByUuid(node.placementUuid).userIntent;
+    String providerUUID = userIntent.provider;
+
+    String modifiedHbaConfEntries = "";
+    // Split the input string at positions where it starts with "host..." or "local"
+    String[] hbaConfEntries = hbaConfValue.split("(?i)(?<=\\s|,|\")\\s*(?=host\\w*|local\\b)");
+
+    for (int i = 0; i < hbaConfEntries.length; i++) {
+      String hbaConfEntry = hbaConfEntries[i];
+      if (hbaConfEntry.isEmpty()) {
+        continue;
+      }
+      hbaConfEntry.trim();
+      if (hbaConfEntry.contains(JWT_AUTH)) {
+        StringBuilder modifiedHbaConfEntry = new StringBuilder();
+        if (i != 0 && !hbaConfEntries[i - 1].endsWith("\"")) {
+          modifiedHbaConfEntry.append("\"");
+        }
+        modifiedHbaConfEntry.append(
+            updateHbaConfValueForJWT(hbaConfEntry, localGflagFilePath, providerUUID));
+        if (i != 0 && !hbaConfEntries[i - 1].endsWith("\"")) {
+          if (i != hbaConfEntries.length - 1) {
+            // Remove the trailing comma
+            modifiedHbaConfEntry.setLength(modifiedHbaConfEntry.length() - 1);
+          }
+          modifiedHbaConfEntry.append("\"");
+          if (i != hbaConfEntries.length - 1) {
+            // Add the trailing comma
+            modifiedHbaConfEntry.append(",");
+          }
+        }
+        modifiedHbaConfEntries += modifiedHbaConfEntry.toString();
+      } else {
+        modifiedHbaConfEntries += hbaConfEntry;
+      }
+    }
+    userFlags.put(YSQL_HBA_CONF_CSV, modifiedHbaConfEntries);
   }
 
   /**

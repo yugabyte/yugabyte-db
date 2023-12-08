@@ -8,6 +8,8 @@ menu:
     parent: security
     identifier: enable-encryption-in-transit
     weight: 29
+rightNav:
+  hideH4: true
 type: docs
 ---
 
@@ -15,6 +17,7 @@ YugabyteDB Anywhere allows you to protect data in transit by using the following
 
 - Server-to-server encryption for intra-node communication between YB-Master and YB-TServer nodes.
 - Client-to-server encryption for communication between clients and nodes when using CLIs, tools, and APIs for YSQL and YCQL.
+- Encryption for communication between YugabytedDB Anywhere and other services, including LDAP, OIDC, Hashicorp Vault, Webhook, and S3 backup storage.
 
 {{< note title="Note" >}}
 
@@ -37,6 +40,68 @@ YugabyteDB Anywhere can create self-signed certificates for each universe. These
 1. The node private key (`node.ip_address.key`).
 
 YugabyteDB Anywhere retains the root certificate and the root private key for all interactions with the cluster.
+
+### Customize the organization name in self-signed certificates
+
+YugabyteDB Anywhere automatically creates self-signed certificates when you run some workflows, such as create universe. The organization name in certificates is set to `example.com` by default.
+
+If you are using YBA version 2.18.2 or later to manage universes with YugabyteDB version 2.18.2 or later, you can set a custom organization name using the global [runtime configuration](../../administer-yugabyte-platform/manage-runtime-config/) flag, `yb.tlsCertificate.organizationName`.
+
+Note that, for the change to take effect, you need to set the flag _before_ you run a workflow that generates a self-signed certificate.
+
+Customize the organization name as follows:
+
+1. In YugabyteDB Anywhere, navigate to **Admin** > **Advanced** and select the **Global Configuration** tab.
+1. In the **Search** bar, enter `yb.tlsCertificate.organizationName` to view the flag, as per the following illustration:
+
+    ![Custom Organization name](/images/yp/encryption-in-transit/custom-org-name.png)
+
+1. Click **Actions** > **Edit Configuration**, enter a new Config Value, and click **Save**.
+
+#### Validate custom organization name
+
+You can verify the organization name by running the following `openssl x509` command:
+
+```sh
+openssl x509 -in ca.crt -text
+```
+
+```output {hl_lines=[6]}
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number: 1683277970271 (0x187eb2f7b5f)
+        Signature Algorithm: sha256WithRSAEncryption
+        Issuer: CN=yb-dev-sb-ybdemo-univ1~2, O=example.com
+        Validity
+            Not Before: May 5 09:12:50 2023 GMT
+            Not After : May 5 09:12:50 2027 GMT
+```
+
+Notice that default value is `O=example.com`.
+
+After setting the runtime configuration to a value of your choice, (`org-foo` in this example), you should see output similar to the following:
+
+```sh
+openssl x509 -in ca.crt -text -noout
+```
+
+```output
+Certificate:
+    Data:
+        Version: 3 (0x2)
+        Serial Number: 1689376612248 (0x18956b15f98)
+        Signature Algorithm: sha256WithRSAEncryption
+        Issuer: CN = yb-dev-sb-ybdemo-univ1~2, O = org-foo
+        Validity
+            Not Before: Jul 14 23:16:52 2023 GMT
+            Not After : Jul 14 23:16:52 2027 GMT
+        Subject: CN = yb-dev-sb-ybdemo-univ1~2, O = org-foo
+        Subject Public Key Info:
+            Public Key Algorithm: rsaEncryption
+                Public-Key: (2048 bit)
+                Modulus:
+```
 
 ### Use YugabyteDB Anywhere-generated certificates to enable TLS
 
@@ -298,7 +363,7 @@ You need to configure HashiCorp Vault in order to use it with YugabyteDB Anywher
 
 - Configure the secret engine, as follows:
 
-  - Create a root CA  or configure the top-level CA.
+  - Create a root CA or configure the top-level CA.
 
   - Optionally, create an intermediate CA chain and sign them.
 
@@ -443,7 +508,7 @@ kubectl get ClusterIssuer
 kubectl -n <namespace> Issuer
 ```
 
-## Connecting to clusters
+## Connect to clusters
 
 Using TLS, you can connect to the YSQL and YCQL endpoints.
 
@@ -568,3 +633,48 @@ In addition, as the `ssl_protocols` setting does not propagate to PostgreSQL, it
 ```shell
 --ysql_pg_conf_csv="ssl_min_protocol_version=TLSv1.2"
 ```
+
+## Use self-signed and custom CA certificates
+
+YugabyteDB Anywhere uses TLS to protect data in transit when connecting to other services, including:
+
+- LDAP
+- OIDC
+- Webhook
+- S3 backup storage
+- Hashicorp Vault
+- YBA high availability
+
+If you are using self-signed or custom CA certificates, YugabyteDB cannot verify your TLS connections unless you add the certificates to the YugabyteDB Anywhere Trust Store.
+
+Note that self-signed and custom CA certificates cannot be verified for OIDC connections, even if they are uploaded to the trust store. Connections are still encrypted.
+
+### Add certificates to your trust store
+
+To add a certificate to the YugabyteDB Anywhere Trust Store, do the following:
+
+1. Navigate to **Admin > CA Certificates**.
+
+1. Click **Upload Trusted CA Certificate**.
+
+1. Enter a name for the certificate.
+
+1. Click **Upload**, select your certifcate (in .crt format) and click **Save CA Certificate**.
+
+### Rotate a certificate in your trust store
+
+To rotate a certificate in your YugabyteDB Anywhere Trust Store, do the following:
+
+1. Navigate to **Admin > CA Certificates**.
+
+1. Click the **...** button for the certificate and choose **Update Certificate**.
+
+1. Click **Upload**, select your certifcate (in .crt format) and click **Save CA Certificate**.
+
+### Delete a certificate in your trust store
+
+To delete a certificate in your YugabyteDB Anywhere Trust Store, do the following:
+
+1. Navigate to **Admin > CA Certificates**.
+
+1. Click the **...** button for the certificate and choose **Delete**, then click **Delete CA Certificate**.
