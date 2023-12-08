@@ -69,6 +69,7 @@
 
 #include "yb/util/env.h"
 #include "yb/util/flag_tags.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/scope_exit.h"
@@ -377,7 +378,9 @@ int Webserver::BeginRequestCallback(struct sq_connection* connection,
     handler = it->second;
   }
 
-  return RunPathHandler(*handler, connection, request_info);
+  int result = RunPathHandler(*handler, connection, request_info);
+  MemTracker::GcTcmallocIfNeeded();
+  return result;
 }
 
 int Webserver::RunPathHandler(const PathHandler& handler,

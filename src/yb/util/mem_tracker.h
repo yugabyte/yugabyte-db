@@ -240,6 +240,12 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   // Gets a shared_ptr to the "root" tracker, creating it if necessary.
   static MemTrackerPtr GetRootTracker();
 
+  // Called when the total release memory is larger than mem_tracker_tcmalloc_gc_release_bytes.
+  // TcMalloc holds onto released memory and very slowly (if ever) releases it back to
+  // the OS. This is problematic since it is memory we are not constantly tracking which
+  // can cause us to go way over mem limits.
+  static void GcTcmallocIfNeeded();
+
   // Tries to update consumption from external source.
   // Returns true if consumption was updated, false otherwise.
   //
@@ -369,12 +375,6 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   // added GC functions.  Returns true if max_consumption is still exceeded. Takes
   // gc_lock. Updates metrics if initialized.
   bool GcMemory(int64_t max_consumption);
-
-  // Called when the total release memory is larger than mem_tracker_tcmalloc_gc_release_bytes.
-  // TcMalloc holds onto released memory and very slowly (if ever) releases it back to
-  // the OS. This is problematic since it is memory we are not constantly tracking which
-  // can cause us to go way over mem limits.
-  void GcTcmallocIfNeeded();
 
   // Logs the stack of the current consume/release. Used for debugging only.
   void LogUpdate(bool is_consume, int64_t bytes) const;
