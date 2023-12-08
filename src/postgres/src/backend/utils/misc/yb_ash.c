@@ -63,53 +63,12 @@ static ProcessUtility_hook_type prev_ProcessUtility = NULL;
 static volatile sig_atomic_t got_sigterm = false;
 static volatile sig_atomic_t got_sighup = false;
 
-/* Struct to store ASH samples in the circular buffer. */
-typedef struct YbAshSample {
-	/*
-	 * Metadata of the sample.
-	 * yql_endpoint_tserver_uuid and rpc_request_id are also part of the metadata,
-	 * but the reason to not store them inside YBCAshMetadata is that these remain
-	 * constant in PG for all the samples of a particular node. So we don't store it
-	 * in YBCAshMetadata, which is stored in the procarray to save shared memory.
-	 */
-	YBCAshMetadata metadata;
-
-	/*
-	 * UUID of the TServer where the query generated.
-	 * This remains constant for PG samples on a node, but can differ for TServer
-	 * samples as TServer can be processing requests from other nodes.
-	 */
-	unsigned char yql_endpoint_tserver_uuid[16];
-
-	/*
-	 * A single query can generate multiple RPCs, this is used to differentiate
-	 * those RPCs. This will always be 0 for PG samples
-	 */
-	int64_t rpc_request_id;
-
-	/* Auxiliary information about the sample. */
-	char aux_info[16];
-
-	/* 32-bit wait event code of the sample. */
-	uint32_t wait_event_code;
-
-	/*
-	 * If a certain number of samples are available and we capture a portion of
-	 * them, the sample weight is the reciprocal of the captured portion or 1,
-	 * whichever is maximum.
-	 */
-	double sample_weight;
-
-	/* Timestamp when the sample was captured. */
-	TimestampTz sample_time;
-} YbAshSample;
-
 typedef struct YbAsh
 {
 	LWLock		lock;			/* Protects the circular buffer */
 	int			index;			/* Index to insert new buffer entry */
 	int			max_entries;	/* Maximum # of entries in the buffer */
-	YbAshSample circular_buffer[FLEXIBLE_ARRAY_MEMBER];
+	YBCAshSample circular_buffer[FLEXIBLE_ARRAY_MEMBER];
 } YbAsh;
 
 static YbAsh *yb_ash = NULL;
@@ -117,6 +76,8 @@ static YbAsh *yb_ash = NULL;
 static int yb_ash_cb_max_entries(void);
 static void yb_set_ash_metadata(uint64_t query_id);
 static void yb_unset_ash_metadata();
+static void YbAshAcquireBufferLock(bool exclusive);
+static void YbAshReleaseBufferLock();
 
 static void yb_ash_post_parse_analyze(ParseState *pstate, Query *query);
 static void yb_ash_ExecutorStart(QueryDesc *queryDesc, int eflags);
@@ -129,6 +90,8 @@ static void yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 static const unsigned char *get_yql_endpoint_tserver_uuid();
 static void copy_pgproc_sample_fields(PGPROC *proc);
 static void copy_non_pgproc_sample_fields(float8 sample_weight, TimestampTz sample_time);
+static void YbAshIncrementCircularBufferIndex(void);
+static YBCAshSample *YbAshGetNextCircularBufferSlot(void);
 
 static void uchar_to_uuid(unsigned char *in, pg_uuid_t *out);
 static void client_ip_to_string(unsigned char *client_addr, uint16 client_port,
@@ -179,7 +142,7 @@ YbAshSetSessionId(uint64 session_id)
 static int
 yb_ash_cb_max_entries(void)
 {
-	return yb_ash_circular_buffer_size * 1024 / sizeof(YbAshSample);
+	return yb_ash_circular_buffer_size * 1024 / sizeof(YBCAshSample);
 }
 
 /*
@@ -193,7 +156,7 @@ YbAshShmemSize(void)
 
 	size = offsetof(YbAsh, circular_buffer);
 	size = add_size(size, mul_size(yb_ash_cb_max_entries(),
-								   sizeof(YbAshSample)));
+								   sizeof(YBCAshSample)));
 
 	return size;
 }
@@ -218,7 +181,7 @@ YbAshShmemInit(void)
 		LWLockInitialize(&yb_ash->lock, LWTRANCHE_YB_ASH_CIRCULAR_BUFFER);
 		yb_ash->index = 0;
 		yb_ash->max_entries = yb_ash_cb_max_entries();
-		MemSet(yb_ash->circular_buffer, 0, yb_ash->max_entries * sizeof(YbAshSample));
+		MemSet(yb_ash->circular_buffer, 0, yb_ash->max_entries * sizeof(YBCAshSample));
 	}
 }
 
@@ -313,6 +276,18 @@ yb_unset_ash_metadata()
 }
 
 static void
+YbAshAcquireBufferLock(bool exclusive)
+{
+	LWLockAcquire(&yb_ash->lock, exclusive ? LW_EXCLUSIVE : LW_SHARED);
+}
+
+static void
+YbAshReleaseBufferLock()
+{
+	LWLockRelease(&yb_ash->lock);
+}
+
+static void
 yb_ash_sigterm(SIGNAL_ARGS)
 {
 	int			save_errno = errno;
@@ -375,14 +350,21 @@ YbAshMain(Datum main_arg)
 					(errmsg("bgworker yb_ash signal: processed SIGHUP")));
 		}
 
-		sample_time = GetCurrentTimestamp();
-
 		if (yb_ash_sample_size > 0)
 		{
-			LWLockAcquire(&yb_ash->lock, LW_EXCLUSIVE);
-			YbStoreAshSamples(sample_time);
-			/* TODO: get tserver samples */
-			LWLockRelease(&yb_ash->lock);
+			sample_time = GetCurrentTimestamp();
+
+			/*
+			 * The circular buffer lock is acquired in exclusive mode inside
+			 * YBCStoreTServerAshSamples after getting the ASH samples from
+			 * tserver and just before copying it into the buffer. The lock
+			 * is released after we copy the PG samples.
+			 */
+			YBCStoreTServerAshSamples(&YbAshAcquireBufferLock,
+									  &YbAshGetNextCircularBufferSlot,
+									  sample_time);
+			YbStorePgAshSamples(sample_time);
+			YbAshReleaseBufferLock();
 		}
 	}
 	proc_exit(0);
@@ -395,6 +377,16 @@ get_yql_endpoint_tserver_uuid()
 	if (!local_tserver_uuid && IsYugaByteEnabled())
 		local_tserver_uuid = YBCGetLocalTserverUuid();
 	return local_tserver_uuid;
+}
+
+/*
+ * Increments the index to insert in the circular buffer.
+ */
+static void
+YbAshIncrementCircularBufferIndex(void)
+{
+	if (++yb_ash->index == yb_ash->max_entries)
+		yb_ash->index = 0;
 }
 
 /*
@@ -413,8 +405,7 @@ YbAshStoreSample(PGPROC *proc, int num_procs, TimestampTz sample_time,
 	copy_pgproc_sample_fields(proc);
 	copy_non_pgproc_sample_fields(sample_weight, sample_time);
 
-	if (++yb_ash->index == yb_ash->max_entries)
-		yb_ash->index = 0;
+	YbAshIncrementCircularBufferIndex();
 
 	if (++(*samples_stored) == yb_ash_sample_size)
 		return false;
@@ -425,7 +416,7 @@ YbAshStoreSample(PGPROC *proc, int num_procs, TimestampTz sample_time,
 static void
 copy_pgproc_sample_fields(PGPROC *proc)
 {
-	YbAshSample *cb_sample = &yb_ash->circular_buffer[yb_ash->index];
+	YBCAshSample *cb_sample = &yb_ash->circular_buffer[yb_ash->index];
 
 	/* TODO: Add aux info to circular buffer once it's available */
 	LWLockAcquire(&proc->yb_ash_metadata_lock, LW_SHARED);
@@ -438,7 +429,7 @@ copy_pgproc_sample_fields(PGPROC *proc)
 static void
 copy_non_pgproc_sample_fields(float8 sample_weight, TimestampTz sample_time)
 {
-	YbAshSample *cb_sample = &yb_ash->circular_buffer[yb_ash->index];
+	YBCAshSample *cb_sample = &yb_ash->circular_buffer[yb_ash->index];
 
 	/* yql_endpoint_tserver_uuid is constant for all PG samples */
 	if (get_yql_endpoint_tserver_uuid())
@@ -450,6 +441,18 @@ copy_non_pgproc_sample_fields(float8 sample_weight, TimestampTz sample_time)
 	cb_sample->rpc_request_id = 0;
 	cb_sample->sample_weight = sample_weight;
 	cb_sample->sample_time = sample_time;
+}
+
+/*
+ * Returns a pointer to the circular buffer slot where the sample should be
+ * inserted and increments the index.
+ */
+static YBCAshSample *
+YbAshGetNextCircularBufferSlot(void)
+{
+	YBCAshSample *slot = &yb_ash->circular_buffer[yb_ash->index];
+	YbAshIncrementCircularBufferIndex();
+	return slot;
 }
 
 Datum
@@ -497,7 +500,7 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 
 	MemoryContextSwitchTo(oldcontext);
 
-	LWLockAcquire(&yb_ash->lock, LW_SHARED);
+	YbAshAcquireBufferLock(false /* exclusive */);
 
 	for (i = 0; i < yb_ash->max_entries; ++i)
 	{
@@ -512,7 +515,7 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 		memset(values, 0, sizeof(values));
 		memset(nulls, 0, sizeof(nulls));
 
-		YbAshSample *sample = &yb_ash->circular_buffer[i];
+		YBCAshSample *sample = &yb_ash->circular_buffer[i];
 		YBCAshMetadata *metadata = &sample->metadata;
 
 		if (sample->sample_time != 0)
@@ -560,7 +563,7 @@ yb_active_session_history(PG_FUNCTION_ARGS)
 		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
 	}
 
-	LWLockRelease(&yb_ash->lock);
+	YbAshReleaseBufferLock();
 
 #undef ACTIVE_SESSION_HISTORY_COLS
 
