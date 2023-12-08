@@ -231,7 +231,7 @@ extern bool YBRelHasSecondaryIndices(Relation relation);
 extern bool YBTransactionsEnabled();
 
 /*
- * Whether the current txn is of READ COMMITTED (or READ UNCOMMITTED) isolation level and it it uses
+ * Whether the current txn is of READ COMMITTED (or READ UNCOMMITTED) isolation level, and it uses
  * the new READ COMMITTED implementation instead of mapping to REPEATABLE READ level. The latter
  * condition is dictated by the value of gflag yb_enable_read_committed_isolation.
  */
@@ -279,7 +279,10 @@ extern void HandleYBTableDescStatus(YBCStatus status, YBCPgTableDesc table);
  */
 extern void YBInitPostgresBackend(const char *program_name,
 								  const char *db_name,
-								  const char *user_name);
+								  const char *user_name,
+								  uint64_t *session_id);
+
+extern bool YbGetCurrentSessionId(uint64_t *session_id);
 
 /*
  * This should be called on all exit paths from the PostgreSQL backend process.
@@ -519,6 +522,12 @@ extern int yb_wait_for_backends_catalog_version_timeout;
  */
 extern bool yb_prefer_bnl;
 
+/*
+ * If true, all fields that vary from run to run are hidden from the
+ * output of EXPLAIN.
+ */
+extern bool yb_explain_hide_non_deterministic_fields;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;
@@ -557,6 +566,12 @@ extern bool yb_test_system_catalogs_creation;
 extern bool yb_test_fail_next_ddl;
 
 /*
+ * If set to true, next increment catalog version operation will fail and
+ * reset this back to false.
+ */
+extern bool yb_test_fail_next_inc_catalog_version;
+
+/*
  * Block the given index creation phase.
  * - "indisready": index state change to indisready
  *   (not supported for non-concurrent)
@@ -576,6 +591,12 @@ extern char *yb_test_fail_index_state_change;
  * back upon failure.
 */
 extern bool ddl_rollback_enabled;
+
+/*
+ * GUC to allow user to silence the error saying that advisory locks are not
+ * supported.
+ */
+extern bool yb_silence_advisory_locks_not_supported_error;
 
 /*
  * See also ybc_util.h which contains additional such variable declarations for

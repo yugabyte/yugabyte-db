@@ -93,6 +93,10 @@ class StreamMetadata {
     DCHECK(loaded_);
     return checkpoint_type_;
   }
+  std::optional<CDCSDKSnapshotOption> GetSnapshotOption() const {
+    DCHECK(loaded_);
+    return consistent_snapshot_option_;
+  }
   master::SysCDCStreamEntryPB_State GetState() const {
     DCHECK(loaded_);
     return state_.load(std::memory_order_acquire);
@@ -106,6 +110,11 @@ class StreamMetadata {
     SharedLock l(table_ids_mutex_);
     return table_ids_;
   }
+  std::optional<uint64_t> GetConsistentSnapshotTime() const {
+    DCHECK(loaded_);
+    return consistent_snapshot_time_.load(std::memory_order_acquire);
+  }
+
 
   std::shared_ptr<StreamTabletMetadata> GetTabletMetadata(const TabletId& tablet_id)
       EXCLUDES(tablet_metadata_map_mutex_);
@@ -127,8 +136,10 @@ class StreamMetadata {
   CDCRecordFormat record_format_;
   CDCRequestSource source_type_;
   CDCCheckpointType checkpoint_type_;
+  std::optional<CDCSDKSnapshotOption> consistent_snapshot_option_;
   std::atomic<master::SysCDCStreamEntryPB_State> state_;
   std::atomic<StreamModeTransactional> transactional_{StreamModeTransactional::kFalse};
+  std::atomic<std::optional<uint64_t>> consistent_snapshot_time_;
 
   std::mutex load_mutex_;  // Used to ensure only a single thread performs InitOrReload.
   std::atomic<bool> loaded_ = false;

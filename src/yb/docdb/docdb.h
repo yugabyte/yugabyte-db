@@ -141,6 +141,10 @@ struct ExternalTxnApplyStateData {
   SubtxnSet aborted_subtransactions;
   IntraTxnWriteId write_id = 0;
 
+  // Only apply intents that are within the filter. Used by xCluster to only apply intents that
+  // match the key range of the matching producer tablet.
+  KeyBounds filter_range;
+
   std::string ToString() const {
     return YB_STRUCT_TO_STRING(commit_ht, aborted_subtransactions, write_id);
   }

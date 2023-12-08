@@ -141,6 +141,20 @@ func (c *Container) getNodes(clusterType ...string) ([]string, error) {
     return hostNames, nil
 }
 
+func getPreferenceOrder(cloud, region, zone string,
+    zonePreferences []helpers.MultiAffinitizedLeader) int32 {
+    for i, leader := range zonePreferences {
+        for _, cloudInfo := range leader.Zones {
+            if cloud == cloudInfo.PlacementCloud &&
+               region == cloudInfo.PlacementRegion &&
+               zone == cloudInfo.PlacementZone {
+                return int32(i+1)
+            }
+        }
+    }
+    return -1
+}
+
 func getSlowQueriesFuture(nodeHost string, conn *pgxpool.Pool, future chan SlowQueriesFuture) {
     slowQueries := SlowQueriesFuture{
         Items: []*models.SlowQueryResponseYsqlQueryItem{},
@@ -929,6 +943,11 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
             // the implementation here.
             // For now, assuming IsTserver is always true
             _, isMaster := masters[hostName]
+            zonePreferences := clusterConfigResponse.ClusterConfig.
+            ReplicationInfo.MultiAffinitizedLeaders
+            var preferenceOrder int32 = getPreferenceOrder(
+                nodeData.Cloud, nodeData.Region, nodeData.Zone,
+                zonePreferences)
             response.Data = append(response.Data, models.NodeData{
                 Name:            hostName,
                 Host:            hostName,
@@ -936,6 +955,7 @@ func (c *Container) GetClusterNodes(ctx echo.Context) error {
                 IsMaster:        isMaster,
                 IsTserver:       true,
                 IsReadReplica:   isReadReplica,
+                PreferenceOrder: preferenceOrder,
                 IsMasterUp:      isMasterUp,
                 IsBootstrapping: isBootstrapping,
                 Metrics: models.NodeDataMetrics{
@@ -1489,6 +1509,21 @@ func (c *Container) GetTableInfo(ctx echo.Context) error {
 // GetClusterAlerts - Get all cluster alerts info (If Any)
 func (c *Container) GetClusterAlerts(ctx echo.Context) error {
 
+    nodeHost := ctx.QueryParam("node_address")
+    // If node_address is provided, get alerts from node at that address
+    if nodeHost != "" {
+        httpClient := &http.Client{
+            Timeout: time.Second * 10,
+        }
+        url := fmt.Sprintf("http://%s:%s/api/alerts", nodeHost, c.serverPort)
+        resp, err := httpClient.Get(url)
+        if err != nil {
+            c.logger.Errorf("Failed to get alerts from node %s: %s", nodeHost, err.Error())
+            return ctx.String(http.StatusInternalServerError, err.Error())
+        }
+        defer resp.Body.Close()
+        return ctx.Stream(resp.StatusCode, echo.MIMEApplicationJSONCharsetUTF8, resp.Body)
+    }
     alertsResponse := models.AlertsResponse {
         Data: []models.AlertsInfo{},
     }
@@ -1554,4 +1589,9 @@ func (c *Container) GetClusterConnections(ctx echo.Context) error {
         }
     }
     return ctx.JSON(http.StatusOK, connectionsResponse)
+}
+
+// GetNodeAddress - Get the node address for the current node
+func (c *Container) GetNodeAddress(ctx echo.Context) error {
+    return ctx.String(http.StatusOK, helpers.HOST)
 }

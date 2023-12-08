@@ -12,6 +12,7 @@
       "no": "No",
       "proceed": "Proceed",
       "requiredField": "Required field",
+      "fieldRequired": "This field is required",
       "save": "Save",
       "validateAndSave": "Validate and Save",
       "yes": "Yes",
@@ -29,13 +30,18 @@
       "selectAll": "Select All",
       "selected": "Selected",
       "note": "Note :",
-      "reload": "Reload"
+      "reload": "Reload",
+      "seconds": "Seconds"
     },
     "task": {
       "viewDetails": "View Details"
     },
     "queryError": {
-      "failedToFetchUniverselist": "Error fetching universe list."
+      "failedToFetchUniverselist": "Error fetching universe list.",
+      "failedToFetchCustomerRuntimeCOnfig": "Error fetching runtime configurations for the current customer.",
+      "failedToFetchSourceUniverse": "Unable to fetch universe details for source universe UUID: {{universeUuid}}",
+      "failedToFetchTargetuniverse": "Unable to fetch universe details for target universe UUID: {{universeUuid}}",
+      "failedToFetchMetrics": "Failed to fetch metrics."
     },
     "universeActions": {
       "encryptionAtRest": {
@@ -110,6 +116,55 @@
         "disableEITWarning": "Note! Enabling/Disabling of “Encryption In Transit” or Enabling/Disabling of “Node to Node” or “Client to Node” encryption will be performed as non rolling upgrade.",
         "xClusterRotateCaWarning": "Note! Rotating node to node CA certs for universes participating in xCluster replication as the source universe will interrupt the replication and require a restart of the xCluster config to resume replication after TLS rotation is completed.",
         "xClusterToggleEncryptionWarning": "Note! Toggling on/off encryption for universes participating in xCluster replication will interrupt the replication. To enable replication again, please ensure all participating universes have matching TLS encryption setting and restart the affected xCluster configurations."
+      },
+      "dbRollbackUpgrade": {
+        "modalTitle": "Upgrade Database",
+        "upgradeAction": "Upgrade",
+        "chooseTarget": "1. Choose target Version",
+        "currentVersion": "Current Version",
+        "targetVersion": "Target Version",
+        "additionalStep": "An additional step is required based on the selected version.",
+        "additionalStepInfo": "After the upgrade is completed, you'll need to manually finalize the upgrade to finish the process.",
+        "configureUpgrade": "2. Configure upgrade details",
+        "rolllingUpgradeLabel": "Rolling upgrade (upgrade nodes one at a time)",
+        "upgradeDelayLabel": "Upgrade delay between Nodes:",
+        "footerMsg1": "Once the upgrade is finished, you can assess Universe performance and ",
+        "footerMsg2": "if any unusual behavior is detected.",
+        "rollbackPrevious": "roll back to the previous version",
+        "avoidDisruption": "Avoid disruption to xCluster replication",
+        "xclusterWarning": "This universe is part of one or more xCluster replications. To minimize disruptions to these replications during the upgrade process, you should, if possible, upgrade the target universe first.",
+        "rollbackUpgradeTite": "Roll Back Upgrade",
+        "rollbackModalMsg": "Are you sure you wish to roll back to ",
+        "rollbackOnenode": "Rollback one node at a time",
+        "delayBwRollback": "Delay between rollbacks:",
+        "proceedRollback": "Proceed with Rollback",
+        "version": "version",
+        "preFinalize": {
+          "finalizeUpgrade": "Finalize Upgrade",
+          "rollback": "Roll back to the previous version",
+          "bannerMsg1": "Next Step: Evaluate the Universe and finalize the upgrade",
+          "bannerMsg2": "You should now evaluate the universe performance.",
+          "bannerMsg3": "If you are OK with the upgrade, click ",
+          "bannerMsg4": "to complete the process.Otherwise, click ",
+          "bannerMsg5": " to revert the upgrade.",
+          "evaluationLink": "View recommended evaluation steps",
+          "modalTitle": "One last reminder before we proceed...",
+          "modalMsg1": "After the upgrade is finalized, you won't be able to roll back.",
+          "modalMsg2": "Make sure you evaluate the universe performance before finalizing the upgrade.",
+          "modalSubmitLabel": "Proceed to finalize the upgrade"
+        },
+        "rollback": {
+          "bannerMsg": "The Universe database version upgrade has encountered an issue. To restore the Universe to its normal state, you have the option to either roll back the upgrade or retry the upgrade.",
+          "viewTask": "View Task Details",
+          "retryTask": "Retry Task"
+        },
+        "widget": {
+          "versionLabel": "Version",
+          "upgradeAvailable": "Upgrade Available",
+          "rollingBackTooltip": "Rolling back to v{{version}}",
+          "finalizingTooltip": "Finalizing v{{version}}",
+          "upgradingTooltip": "Upgrading to v{{version}}"
+        }
       }
     },
     "commonErrors": {
@@ -504,7 +559,6 @@
         "heading": "Disaster Recovery",
         "actionButton": {
           "abortSwitchover": "Abort Switchover",
-          "connectApplications": "Connect",
           "switchover": "Switchover",
           "repairDr": "Repair DR",
           "restartReplication": "Restart Replication",
@@ -529,7 +583,10 @@
         "enableDrPrompt": {
           "featureDescription": "Enable <bold>Active-Active Single-Master Disaster Recovery</bold> (DR) for near-zero recovery point objective (RPO) & recovery time objective (RTO) in the event of a universe outage.",
           "actionButton": "Configure & Enable Disaster Recovery",
-          "learnMore": "Learn more about <docsLink>DR.</docsLink>"
+          "learnMore": "Learn more about <docsLink>DR.</docsLink>",
+          "tooltip": {
+            "universeLinkedToTxnXCluster": "This universe can't be used for disaster recovery as it is already participating in a transactional xCluster config."
+          }
         },
         "banner": {
           "enablingDr": "<bold>Enabling disaster recovery...</bold> Universe operations are not available while the operation is in progress.",
@@ -576,13 +633,7 @@
             "description": "Start failover immediately at the cost of <bold>losing some data</bold> that is not replicated to the DR replica.",
             "estimatedDataLoss": {
               "label": "Estimated Data Loss",
-              "tooltip": "Data loss is estimated based on the internal clock skew on the standby cluster. **TODO: To review this text.",
-              "rpoBenchmark": {
-                "below": "{{ms}}ms lower than RPO",
-                "above": "{{ms}}ms greater than RPO",
-                "equal": "Data loss equal to RPO"
-              },
-              "none": "None"
+              "tooltip": "The estimated data loss is determined by the DR replica's safe time lag at the last known safe time."
             },
             "confirmationInstructions": "Enter DR Replica universe name to proceed.",
             "submitButton": "Initiate Failover",
@@ -671,7 +722,7 @@
             },
             "estimatedDataLoss": {
               "label": "Potential data loss on failover",
-              "tooltip": "If you would like to failover, this is the potential data loss measured in time. This is estimated based on the clock skew of tablets on the standby universe. **TODO: Needs to be updated."
+              "tooltip": "If you would like to failover, this is the potential data loss measured in time. This estimated is determined by the DR replica's safe time lag at the last known safe time."
             }
           },
           "participant": {
@@ -696,15 +747,15 @@
               },
               "configureBootstrap": {
                 "instruction": "3. Configure bootstrap.",
-                "submitButton": "Next: Configure RPO",
+                "submitButton": "Set up and Enable Disaster Recovery",
                 "backupStorageConfig": "Select the backup storage config to use for bootstrapping.",
                 "parallelThreads": "Parallel threads",
                 "bootstrapOffPeakNote": "Note: We recommend setting up Disaster Recovery during off-peak hours if bootstrap is required."
               },
-              "configureRpo": {
-                "instruction": "4. Configure RPO threshold to receive alerts.",
+              "configureAlert": {
+                "instruction": "4. Specify replication lag threshold to receive alerts. (Optional)",
                 "submitButton": "Set up and Enable Disaster Recovery",
-                "rpo": "Recovery Point Objective (RPO)",
+                "maxAcceptableLag": "Max Acceptable Lag",
                 "duration": {
                   "second": "Second",
                   "minute": "Minute",
@@ -824,6 +875,16 @@
         }
       },
       "xCluster": {
+        "heading": "Replication",
+        "actionButton": {
+          "createXClusterConfig": {
+            "label": "Configure Replication",
+            "tooltip": {
+              "universeLinkedToTxnXCluster": "Another xCluster replication config cannot be configure as this universe is already participating in a transactional xCluster config."
+            }
+          },
+          "configureReplicationLagAlert": "Max acceptable lag time"
+        },
         "selectTable": {
           "error": {
             "failedToFetchIsBootstrapRequired": {
@@ -842,6 +903,31 @@
             }
           }
         },
+        "metricsPanel": {
+          "graphFilter": {
+            "nodeAggregation": {
+              "max": "Max",
+              "min": "Min",
+              "average": "Average"
+            },
+            "splitType": {
+              "cluster": "Cluster",
+              "node": "Node",
+              "namespace": "Database",
+              "table": "Table"
+            },
+            "splitMode": {
+              "all": "All",
+              "top": "Top K",
+              "bottom": "Bottom K"
+            }
+          },
+          "graphTitle": {
+            "asyncReplicationSentLag": "Async Replication Lag",
+            "consumerSafeTimeLag": "Consumer Safe Time Lag",
+            "consumerSafeTimeSkew": "Consumer Safe Time Skew"
+          }
+        },
         "error": {
           "undefinedXClusterTableType": "The tables in this config have unknown or mixed type.",
           "undefinedSourceUniverseUuid": "The xCluster config does not have an associated source universe.",
@@ -850,7 +936,9 @@
           "failedToFindTargetUniverse": "Unable to find a universe with the target universe UUID: {{universeUuid}}",
           "failedToFetchSourceUniverse": "Unable to fetch universe details for source universe UUID: {{universeUuid}}",
           "faliedToFetchTargetuniverse": "Unable to fetch universe details for target universe UUID: {{universeUuid}}",
-          "failedToFetchCurrentSafetimes": "Unable to fetch current safetimes."
+          "failedToFetchUniverse": "Unable to fetch universe details for universe UUID: {{universeUuid}}",
+          "failedToFetchCurrentSafetimes": "Unable to fetch current safetimes.",
+          "failedToFetchConfigReplicationLagMetric": "Failed to fetch replication lag metric for the current config."
         },
         "syncDbModal": {
           "title": "Reconcile Config with Database",
@@ -863,6 +951,23 @@
           "success": {
             "taskSuccess": "Reconciled xCluster config with DB."
           }
+        },
+        "restartReplicationModal": {
+          "title": "Restart Replication",
+          "step": {
+            "selectTables": {
+              "instruction": "1. Select the tables you want to restart replication for.",
+              "submitButton": "Next: Configure boostrap"
+            },
+            "configureBootstrap": {
+              "instruction": "2. Configure bootstrap.",
+              "submitButton": "Restart Replication"
+            }
+          },
+          "error": {
+            "requestFailure": "Restart replication request failed.",
+            "taskFailure": "Restart replication task failed."
+          }
         }
       },
       "taskList": {
@@ -872,6 +977,11 @@
         "error": {
           "failedToFetchUniverseTaskList": "Unable to fetch universe task list."
         }
+      }
+    },
+    "metric": {
+      "tooltip": {
+        "viewInPrometheus": "View this metric in Prometheus"
       }
     },
     "admin": {
@@ -1200,7 +1310,7 @@
       },
       "permissions": {
         "title": "User Roles",
-        "connectOnly": "Users without a role are automatically assigned the '<b>Connect Only</b>' role, limiting access to login and view their profile page",
+        "connectOnly": "Users without any built-in role are automatically assigned the '<b>Connect Only</b>' role, allowing access to login and view their profile page",
         "noUniverses": "There are no Universes deployed in this account. Selected roles will be applied to all future Universes by default. You can modify role's scope after deployment.",
         "role": "Role",
         "for": "for",
@@ -1255,7 +1365,7 @@
           "createUser": "Create User",
           "search": "Search by user email",
           "table": {
-            "email": "User Email",
+            "email": "Username/Email",
             "role": "Role",
             "moreRoles": "+ {{count}} More",
             "connectOnly": "Connect Only (Default)",
@@ -1306,7 +1416,8 @@
         "database": "Database",
         "tables": "Tables",
         "copyBackupLocation": "Copy backup location",
-        "copied": "Copied"
+        "copied": "Copied",
+        "restoreFailed": "Restore Failed"
       }
     }
   }

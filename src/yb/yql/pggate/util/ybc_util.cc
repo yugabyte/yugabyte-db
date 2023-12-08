@@ -30,6 +30,7 @@
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/thread.h"
@@ -384,6 +385,13 @@ double YBCEvalHashValueSelectivity(int32_t hash_low, int32_t hash_high) {
 
 void YBCInitThreading() {
   InitThreading();
+}
+
+void YBCGenerateAshRootRequestId(unsigned char *root_request_id) {
+  uint64_t a = RandomUniformInt<uint64_t>();
+  uint64_t b = RandomUniformInt<uint64_t>();
+  std::memcpy(root_request_id, &a, sizeof(uint64_t));
+  std::memcpy(root_request_id + sizeof(uint64_t), &b, sizeof(uint64_t));
 }
 
 } // extern "C"

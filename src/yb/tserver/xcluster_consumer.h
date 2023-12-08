@@ -65,6 +65,10 @@ namespace tserver {
 class XClusterPoller;
 class TabletServer;
 
+namespace xcluster {
+class AutoFlagsVersionHandler;
+}  // namespace xcluster
+
 struct XClusterClient {
   std::unique_ptr<rpc::Messenger> messenger;
   std::unique_ptr<rpc::SecureContext> secure_context;
@@ -119,6 +123,9 @@ class XClusterConsumer : public XClusterConsumerIf {
       master::TSHeartbeatRequestPB* req, bool needs_full_tablet_report) override;
 
   void StoreReplicationError(const XClusterPollerId& poller_id, ReplicationErrorPb error);
+
+  Status ReportNewAutoFlagConfigVersion(
+      const cdc::ReplicationGroupId& replication_group_id, uint32_t new_version) const;
 
  private:
   // Runs a thread that periodically polls for any new threads.
@@ -240,6 +247,8 @@ class XClusterConsumer : public XClusterConsumerIf {
 
   std::unique_ptr<rocksdb::RateLimiter> rate_limiter_;
   FlagCallbackRegistration rate_limiter_callback_;
+
+  std::unique_ptr<xcluster::AutoFlagsVersionHandler> auto_flags_version_handler_;
 };
 
 } // namespace tserver

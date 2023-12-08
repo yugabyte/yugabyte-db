@@ -133,7 +133,7 @@ public class CallHomeManagerTest extends FakeDBApplication {
 
     JsonNode expectedPayload = callHomePayload(u);
     JsonNode actualPayload =
-        callHomeManager.CollectDiagnostics(defaultCustomer, CollectionLevel.MEDIUM);
+        callHomeManager.collectDiagnostics(defaultCustomer, CollectionLevel.MEDIUM);
     assertEquals(expectedPayload, actualPayload);
   }
 

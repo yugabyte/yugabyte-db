@@ -273,6 +273,16 @@ class RefCntSlice {
     slice_ = Slice(slice_.mutable_data(), new_size);
   }
 
+  void Reset() {
+    holder_.Reset();
+  }
+
+  const RefCntBuffer& holder() const {
+    return holder_;
+  }
+
+  size_t DynamicMemoryUsage() const { return holder_.DynamicMemoryUsage(); }
+
   std::string ToString() const;
 
  private:

@@ -52,7 +52,6 @@ import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -62,8 +61,10 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.StreamSupport;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.ybc.CloudStoreSpec;
 import play.libs.Json;
@@ -86,6 +87,15 @@ public class AZUtil implements CloudUtil {
           + "endsWith(productName, 'Series') and "
           + "priceType eq 'Consumption' and contains(meterName, 'Spot')";
 
+  public class CloudLocationInfoAzure extends CloudLocationInfo {
+    public String azureUrl;
+
+    public CloudLocationInfoAzure(String azureUrl, String bucket, String cloudPath) {
+      super(bucket, cloudPath);
+      this.azureUrl = azureUrl;
+    }
+  }
+
   /*
    * For Azure location like https://azurl.storage.net/testcontainer/suffix,
    * splitLocation[0] is equal to azurl.storage.net
@@ -99,44 +109,31 @@ public class AZUtil implements CloudUtil {
   }
 
   @Override
-  public ConfigLocationInfo getConfigLocationInfo(String location) {
-    String[] splitLocations = getSplitLocationValue(location);
-    String bucket = splitLocations.length > 1 ? splitLocations[1] : "";
-    String cloudPath = splitLocations.length > 2 ? splitLocations[2] : "";
-    return new ConfigLocationInfo(bucket, cloudPath);
+  public CloudLocationInfo getCloudLocationInfo(
+      String region, CustomerConfigData configData, @Nullable String backupLocation) {
+    CustomerConfigStorageAzureData s3Data = (CustomerConfigStorageAzureData) configData;
+    Map<String, String> configRegionLocationsMap = getRegionLocationsMap(configData);
+    String configLocation = configRegionLocationsMap.getOrDefault(region, s3Data.backupLocation);
+    String[] backupSplitLocations =
+        getSplitLocationValue(
+            StringUtils.isBlank(backupLocation) ? configLocation : backupLocation);
+    String[] configSplitLocations = getSplitLocationValue(configLocation);
+    String azureUrl = "https://" + configSplitLocations[0];
+    String bucket = configSplitLocations.length > 1 ? configSplitLocations[1] : "";
+    String cloudPath = backupSplitLocations.length > 2 ? backupSplitLocations[2] : "";
+    return new CloudLocationInfoAzure(azureUrl, bucket, cloudPath);
   }
 
   @Override
-  public void checkStoragePrefixValidity(String configLocation, String backupLocation) {
-    String[] configLocationSplit = getSplitLocationValue(configLocation);
-    String[] backupLocationSplit = getSplitLocationValue(backupLocation);
-
-    // AZ url should be same.
-    if (!StringUtils.equals(configLocationSplit[0], backupLocationSplit[0])) {
-      throw new PlatformServiceException(
-          PRECONDITION_FAILED,
-          String.format(
-              "Config URL %s and backup location URL %s do not match",
-              configLocationSplit[0], backupLocationSplit[0]));
-    }
-    // Container should be same in any case.
-    if (!StringUtils.equals(configLocationSplit[1], backupLocationSplit[1])) {
-      throw new PlatformServiceException(
-          PRECONDITION_FAILED,
-          String.format(
-              "Config container %s and backup location container %s do not match",
-              configLocationSplit[1], backupLocationSplit[1]));
-    }
-  }
-
-  @Override
-  public void deleteKeyIfExists(CustomerConfigData configData, String defaultBackupLocation)
-      throws Exception {
+  public boolean deleteKeyIfExists(CustomerConfigData configData, String defaultBackupLocation) {
     CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
-    String[] splitLocation = getSplitLocationValue(defaultBackupLocation);
-    String azureUrl = "https://" + splitLocation[0];
-    String container = splitLocation.length > 1 ? splitLocation[1] : "";
-    String blob = splitLocation.length > 2 ? splitLocation[2] : "";
+    CloudLocationInfoAzure cLInfo =
+        (CloudLocationInfoAzure)
+            getCloudLocationInfo(
+                YbcBackupUtil.DEFAULT_REGION_STRING, configData, defaultBackupLocation);
+    String azureUrl = cLInfo.azureUrl;
+    String container = cLInfo.bucket;
+    String blob = cLInfo.cloudPath;
     String keyLocation = blob.substring(0, blob.lastIndexOf('/')) + KEY_LOCATION_SUFFIX;
     String sasToken = azData.azureSasToken;
     try {
@@ -150,12 +147,12 @@ public class AZUtil implements CloudUtil {
         retrieveAndDeleteObjects(pagedResponse, blobContainerClient);
       } else {
         log.info("Specified Location " + keyLocation + " does not contain objects");
-        return;
       }
-    } catch (BlobStorageException e) {
-      log.error("Error while deleting key object from container " + container, e.getMessage());
-      throw e;
+    } catch (Exception e) {
+      log.error("Error while deleting key object at location: {}", keyLocation, e);
+      return false;
     }
+    return true;
   }
 
   // Returns a map for <container_url, SAS token>
@@ -185,17 +182,19 @@ public class AZUtil implements CloudUtil {
 
   @Override
   public boolean canCredentialListObjects(
-      CustomerConfigData configData, Collection<String> locations) {
-    if (CollectionUtils.isEmpty(locations)) {
+      CustomerConfigData configData, Map<String, String> regionLocationsMap) {
+    if (MapUtils.isEmpty(regionLocationsMap)) {
       return true;
     }
     CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
     Map<String, String> containerTokenMap = getContainerTokenMap(azData);
-    for (String location : locations) {
-      String[] splitLocation = getSplitLocationValue(location);
-      String azureUrl = "https://" + splitLocation[0];
-      ConfigLocationInfo configLocationInfo = getConfigLocationInfo(location);
-      String container = configLocationInfo.bucket;
+    for (Map.Entry<String, String> entry : regionLocationsMap.entrySet()) {
+      String region = entry.getKey();
+      String location = entry.getValue();
+      CloudLocationInfoAzure cLInfo =
+          (CloudLocationInfoAzure) getCloudLocationInfo(region, configData, location);
+      String azureUrl = cLInfo.azureUrl;
+      String container = cLInfo.bucket;
       String containerEndpoint = String.format("%s/%s", azureUrl, container);
       String sasToken = containerTokenMap.get(containerEndpoint);
       if (StringUtils.isEmpty(sasToken)) {
@@ -231,11 +230,10 @@ public class AZUtil implements CloudUtil {
         // Use "cloudDir" of success marker as object prefix
         String prefix = regionPrefix.getValue().cloudDir;
         // Use config's Azure Url and container
-        String configLocation = configRegions.get(regionPrefix.getKey());
-        String[] splitLocation = getSplitLocationValue(configLocation);
-        String azureUrl = "https://" + splitLocation[0];
-        ConfigLocationInfo configLocationInfo = getConfigLocationInfo(configLocation);
-        String container = configLocationInfo.bucket;
+        CloudLocationInfoAzure cLInfo =
+            (CloudLocationInfoAzure) getCloudLocationInfo(regionPrefix.getKey(), configData, null);
+        String container = cLInfo.bucket;
+        String azureUrl = cLInfo.azureUrl;
         String containerEndpoint = String.format("%s/%s", azureUrl, container);
         String sasToken = containerTokenMap.get(containerEndpoint);
         log.debug(
@@ -278,39 +276,55 @@ public class AZUtil implements CloudUtil {
   }
 
   @Override
-  public void deleteStorage(CustomerConfigData configData, List<String> backupLocations)
-      throws Exception {
+  public boolean deleteStorage(
+      CustomerConfigData configData, Map<String, List<String>> backupRegionLocationsMap) {
     CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
     Map<String, String> containerTokenMap = getContainerTokenMap(azData);
-    for (String backupLocation : backupLocations) {
+    for (Map.Entry<String, List<String>> backupRegionLocations :
+        backupRegionLocationsMap.entrySet()) {
+      String region = backupRegionLocations.getKey();
       try {
-        String[] splitLocation = getSplitLocationValue(backupLocation);
-        String azureUrl = "https://" + splitLocation[0];
-        String container = splitLocation[1];
-        String blob = splitLocation[2];
+        CloudLocationInfoAzure cLInfo =
+            (CloudLocationInfoAzure) getCloudLocationInfo(region, configData, "");
+        String azureUrl = cLInfo.azureUrl;
+        String container = cLInfo.bucket;
         String containerEndpoint = String.format("%s/%s", azureUrl, container);
         String sasToken = containerTokenMap.get(containerEndpoint);
         if (StringUtils.isEmpty(sasToken)) {
-          throw new Exception(String.format("No SAS token for given location %s", backupLocation));
+          log.error("No SAS token for given region {}, container {}", region, container);
         }
         BlobContainerClient blobContainerClient =
             createBlobContainerClient(azureUrl, sasToken, container);
-        ListBlobsOptions blobsOptions = new ListBlobsOptions().setPrefix(blob);
-        PagedIterable<BlobItem> pagedIterable =
-            blobContainerClient.listBlobs(blobsOptions, Duration.ofHours(4));
-        Iterator<PagedResponse<BlobItem>> pagedResponse = pagedIterable.iterableByPage().iterator();
-        log.debug("Retrieved blobs info for container " + container + " with prefix " + blob);
-        retrieveAndDeleteObjects(pagedResponse, blobContainerClient);
+        for (String backupLocation : backupRegionLocations.getValue()) {
+          try {
+            cLInfo =
+                (CloudLocationInfoAzure) getCloudLocationInfo(region, configData, backupLocation);
+            String blob = cLInfo.cloudPath;
+            ListBlobsOptions blobsOptions = new ListBlobsOptions().setPrefix(blob);
+            PagedIterable<BlobItem> pagedIterable =
+                blobContainerClient.listBlobs(blobsOptions, Duration.ofHours(4));
+            Iterator<PagedResponse<BlobItem>> pagedResponse =
+                pagedIterable.iterableByPage().iterator();
+            log.debug("Retrieved blobs info for container " + container + " with prefix " + blob);
+            retrieveAndDeleteObjects(pagedResponse, blobContainerClient);
+          } catch (BlobStorageException e) {
+            log.error(
+                "Error occured while deleting objects at location {}. Error {}",
+                backupLocation,
+                e.getMessage());
+            return false;
+          }
+        }
       } catch (BlobStorageException e) {
-        log.error(" Error in deleting objects at location " + backupLocation, e.getMessage());
-        throw e;
+        log.error(" Error occured while deleting objects in Azure: {}", e.getMessage());
+        return false;
       }
     }
+    return true;
   }
 
   public static void retrieveAndDeleteObjects(
-      Iterator<PagedResponse<BlobItem>> pagedResponse, BlobContainerClient blobContainerClient)
-      throws Exception {
+      Iterator<PagedResponse<BlobItem>> pagedResponse, BlobContainerClient blobContainerClient) {
     while (pagedResponse.hasNext()) {
       PagedResponse<BlobItem> response = pagedResponse.next();
       BlobClient blobClient;
@@ -334,14 +348,22 @@ public class AZUtil implements CloudUtil {
       String commonDir,
       String previousBackupLocation,
       CustomerConfigData configData) {
-    String storageLocation = getRegionLocationsMap(configData).get(region);
-    Pair<String, Map<String, String>> pair = getContainerCredsMapPair(configData, storageLocation);
-    String cloudDir = StringUtils.isNotBlank(commonDir) ? BackupUtil.appendSlash(commonDir) : "";
+    Pair<String, Map<String, String>> pair = getContainerCredsMapPair(configData, region);
+    CloudLocationInfoAzure csInfoAzure =
+        (CloudLocationInfoAzure) getCloudLocationInfo(region, configData, "");
+    String cloudDir =
+        StringUtils.isNotBlank(csInfoAzure.cloudPath)
+            ? BackupUtil.getPathWithPrefixSuffixJoin(csInfoAzure.cloudPath, commonDir)
+            : commonDir;
+    cloudDir = StringUtils.isNotBlank(cloudDir) ? BackupUtil.appendSlash(cloudDir) : "";
     String previousCloudDir = "";
     if (StringUtils.isNotBlank(previousBackupLocation)) {
-      String[] splitValues = getSplitLocationValue(previousBackupLocation);
+      csInfoAzure =
+          (CloudLocationInfoAzure) getCloudLocationInfo(region, configData, previousBackupLocation);
       previousCloudDir =
-          splitValues.length > 2 ? BackupUtil.appendSlash(splitValues[2]) : previousCloudDir;
+          StringUtils.isNotBlank(csInfoAzure.cloudPath)
+              ? BackupUtil.appendSlash(csInfoAzure.cloudPath)
+              : previousCloudDir;
     }
     return YbcBackupUtil.buildCloudStoreSpec(
         pair.getFirst(), cloudDir, previousCloudDir, pair.getSecond(), Util.AZ);
@@ -352,11 +374,11 @@ public class AZUtil implements CloudUtil {
   @Override
   public CloudStoreSpec createRestoreCloudStoreSpec(
       String region, String cloudDir, CustomerConfigData configData, boolean isDsm) {
-    String storageLocation = getRegionLocationsMap(configData).get(region);
-    Pair<String, Map<String, String>> pair = getContainerCredsMapPair(configData, storageLocation);
+    Pair<String, Map<String, String>> pair = getContainerCredsMapPair(configData, region);
     if (isDsm) {
-      String[] splitValues = getSplitLocationValue(cloudDir);
-      String location = BackupUtil.appendSlash(splitValues[2]);
+      CloudLocationInfoAzure csInfoAzure =
+          (CloudLocationInfoAzure) getCloudLocationInfo(region, configData, cloudDir);
+      String location = BackupUtil.appendSlash(csInfoAzure.cloudPath);
       return YbcBackupUtil.buildCloudStoreSpec(
           pair.getFirst(), location, "", pair.getSecond(), Util.AZ);
     }
@@ -365,11 +387,12 @@ public class AZUtil implements CloudUtil {
   }
 
   private Pair<String, Map<String, String>> getContainerCredsMapPair(
-      CustomerConfigData configData, String storageLocation) {
+      CustomerConfigData configData, String region) {
     CustomerConfigStorageAzureData azData = (CustomerConfigStorageAzureData) configData;
-    String[] splitValues = getSplitLocationValue(storageLocation);
-    String azureUrl = "https://" + splitValues[0];
-    String container = splitValues[1];
+    CloudLocationInfoAzure csInfoAzure =
+        (CloudLocationInfoAzure) getCloudLocationInfo(region, configData, "");
+    String azureUrl = csInfoAzure.azureUrl;
+    String container = csInfoAzure.bucket;
     Map<String, String> containerTokenMap = getContainerTokenMap(azData);
     String containerEndpoint = String.format("%s/%s", azureUrl, container);
     String azureSasToken = containerTokenMap.get(containerEndpoint);
@@ -428,12 +451,14 @@ public class AZUtil implements CloudUtil {
       return locations.stream()
           .map(
               l -> {
-                String[] splitLocation = getSplitLocationValue(l);
-                String blob = splitLocation.length > 2 ? splitLocation[2] : "";
+                CloudLocationInfoAzure cLInfo =
+                    (CloudLocationInfoAzure)
+                        getCloudLocationInfo(YbcBackupUtil.DEFAULT_REGION_STRING, configData, l);
+                String blob = cLInfo.cloudPath;
 
                 // objectSuffix is the exact suffix with file name
                 String objectSuffix =
-                    splitLocation.length > 1
+                    StringUtils.isNotBlank(blob)
                         ? BackupUtil.getPathWithPrefixSuffixJoin(blob, fileName)
                         : fileName;
                 BlobClient blobClient = blobContainerClient.getBlobClient(objectSuffix);

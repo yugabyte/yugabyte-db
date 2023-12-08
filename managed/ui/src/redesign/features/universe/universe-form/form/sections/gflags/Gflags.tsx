@@ -126,11 +126,7 @@ export const GFlags = ({ runtimeConfigs }: UniverseFormConfigurationProps) => {
         </Box>
       )}
 
-      {(isPrimary ||
-        (enableRRGflags &&
-          !isInherited &&
-          !isPrimary &&
-          provider?.code !== CloudType.kubernetes)) && (
+      {(isPrimary || (enableRRGflags && !isInherited && !isPrimary)) && (
         <Box display="flex" width={isPrimary ? '1284px' : '1062px'} mt={4}>
           <GFlagsField
             control={control}

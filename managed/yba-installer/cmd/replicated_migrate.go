@@ -98,7 +98,20 @@ var replicatedMigrationStart = &cobra.Command{
 		state.Replicated.PrometheusFileUser = statInfo.Uid
 		state.Replicated.PrometheusFileGroup = statInfo.Gid
 
-		// Mark install state. Do thi smanually, as we are also updating additional fields.
+		version, err := replflow.YbaVersion(config)
+		if err != nil {
+			log.Fatal("unable to validate running YBA version: " + err.Error())
+		}
+		if version != ybaCtl.Version() {
+			prompt := "Detected version mismatch between active YBA and migration target version. " +
+				"Rollback will not be allowed once YBA is running after migration start. Continue?"
+			if !common.UserConfirm(prompt, common.DefaultNo) {
+				log.Fatal("not starting migration")
+			}
+		}
+		state.Replicated.OriginalVersion = version
+
+		// Mark install state. Do this manually, as we are also updating additional fields.
 		state.CurrentStatus = ybactlstate.MigratingStatus
 		if err := ybactlstate.StoreState(state); err != nil {
 			log.Fatal("before replicated migration, failed to update state: " + err.Error())
@@ -216,7 +229,8 @@ var replicatedMigrationStart = &cobra.Command{
 			if match {
 				input := fmt.Sprintf("%s/%s", replBackupDir, file.Name())
 				log.Info(fmt.Sprintf("Restoring replicated backup %s to YBA.", input))
-				RestoreBackupScript(input, common.GetBaseInstall(), false, true, plat, true, false)
+				// backup path, destination, skipRestart, verbose, platform, migration, systemPG, disableVersion
+				RestoreBackupScript(input, common.GetBaseInstall(), false, true, plat, true, false, true)
 				break
 			}
 		}
@@ -326,15 +340,31 @@ var replicatedRollbackCmd = &cobra.Command{
 		if err != nil {
 			log.Fatal("failed to YBA Installer state: " + err.Error())
 		}
-		if err := state.TransitionStatus(ybactlstate.RollbackStatus); err != nil {
-			log.Fatal("failed to update statue: " + err.Error())
-		}
 
+		if common.Version != state.Replicated.OriginalVersion &&
+			state.CurrentStatus == ybactlstate.MigrateStatus {
+			log.Debug("version change detected")
+			if os.Getenv("YBA_MODE") == "dev" {
+				prompt := "rollback is discouraged for version change after YBA is running. Continue?"
+				if !common.UserConfirm(prompt, common.DefaultNo) {
+					log.Fatal("Cannot rollback after migration has successfully started and there is a " +
+						"YBA Version change")
+				}
+			} else {
+				log.Fatal("Cannot rollback after migration has successfully started and there is a " +
+					"YBA Version change")
+			}
+		}
 		prompt := "Rollback to Replicated will not carry over any changes made to YBA after " +
 			"migration began. Continue?"
 		if !common.UserConfirm(prompt, common.DefaultNo) {
 			log.Fatal("canceling rollback")
 		}
+		// Only transition state after we start the rollback
+		if err := state.TransitionStatus(ybactlstate.RollbackStatus); err != nil {
+			log.Fatal("failed to update statue: " + err.Error())
+		}
+
 		if err := rollbackMigrations(state); err != nil {
 			log.Fatal("rollback failed: " + err.Error())
 		}

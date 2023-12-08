@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2023 YugaByte, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -26,6 +26,8 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -50,13 +52,18 @@ import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import javax.inject.Singleton;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.MapUtils;
 import play.libs.Json;
@@ -69,8 +76,11 @@ public class LocalNodeManager {
   public static final String TSERVER_EXECUTABLE = "yb-tserver";
   public static final String CONTROLLER_EXECUTABLE = "yb-controller-server";
 
-  private static final String LOOPBACK_PREFIX = "127.0.0.";
-  private static final String COMMAND_OUTPUT_PREFIX = "Command output:";
+  private static final String MAX_MEM_RATIO_TSERVER = "0.1";
+  private static final String MAX_MEM_RATIO_MASTER = "0.05";
+
+  private static final String LOOPBACK_PREFIX = "127.0.";
+  public static final String COMMAND_OUTPUT_PREFIX = "Command output:";
   private static final boolean RUN_LOG_THREADS = false;
 
   private Map<Integer, String> predefinedConfig = null;
@@ -78,10 +88,20 @@ public class LocalNodeManager {
 
   private Map<String, NodeInfo> nodesByNameMap = new ConcurrentHashMap<>();
 
+  private SpecificGFlags additionalGFlags;
+
+  @Setter private int ipRangeStart = 2;
+  @Setter private int ipRangeEnd = 100;
+
   @Inject private RuntimeConfGetter confGetter;
 
   public void setPredefinedConfig(Map<Integer, String> predefinedConfig) {
     this.predefinedConfig = predefinedConfig;
+  }
+
+  public void setAdditionalGFlags(SpecificGFlags additionalGFlags) {
+    log.debug("Set additional gflags: {}", additionalGFlags.getPerProcessFlags().value);
+    this.additionalGFlags = additionalGFlags;
   }
 
   // Temporary method.
@@ -92,12 +112,20 @@ public class LocalNodeManager {
             process -> {
               try {
                 log.debug("Destroying {}", process.pid());
-                process.destroy();
+                killProcess(process.pid());
               } catch (Exception e) {
                 log.error("Failed to destroy process " + process, e);
               }
             });
     nodesByNameMap.clear();
+  }
+
+  private void killProcess(long pid) throws IOException, InterruptedException {
+    int exitCode = Runtime.getRuntime().exec(String.format("kill -SIGTERM %d", pid)).waitFor();
+    if (exitCode != 0) {
+      throw new IllegalStateException(
+          String.format("Failed to kill process %d - exit code is %d", pid, exitCode));
+    }
   }
 
   private enum NodeState {
@@ -170,62 +198,21 @@ public class LocalNodeManager {
     return result;
   }
 
-  public ShellResponse runYsqlCommand(
-      NodeDetails node, Universe universe, String dbName, String ysqlCommand, long timeoutSec) {
-    UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
-    LocalCloudInfo cloudInfo = getCloudInfo(node, universe);
-    List<String> bashCommand = new ArrayList<>();
-    bashCommand.add(cloudInfo.getYugabyteBinDir() + "/ysqlsh");
-    bashCommand.add("-h");
-    bashCommand.add(node.cloudInfo.private_ip);
-    bashCommand.add("-t");
-    bashCommand.add("-p");
-    bashCommand.add(String.valueOf(node.ysqlServerRpcPort));
-    bashCommand.add("-U");
-    bashCommand.add("yugabyte");
-    bashCommand.add("-d");
-    bashCommand.add(dbName);
-    bashCommand.add("-c");
-    ysqlCommand = ysqlCommand.replace("\"", "");
-    bashCommand.add(ysqlCommand);
-
-    ProcessBuilder processBuilder =
-        new ProcessBuilder(bashCommand.toArray(new String[0])).redirectErrorStream(true);
-    if (cluster.userIntent.enableClientToNodeEncrypt && !cluster.userIntent.enableYSQLAuth) {
-      processBuilder.environment().put("sslmode", "require");
-    }
-    try {
-      log.debug("Running command {}", String.join(" ", bashCommand));
-      Process process = processBuilder.start();
-      long timeOut = timeoutSec * 1000;
-      while (process.isAlive() && timeOut > 0) {
-        Thread.sleep(50);
-        timeOut -= 50;
-      }
-      if (process.isAlive()) {
-        throw new RuntimeException("Timed out waiting for query");
-      }
-      return ShellResponse.create(process.exitValue(), COMMAND_OUTPUT_PREFIX + getOutput(process));
-    } catch (IOException | InterruptedException e) {
-      throw new RuntimeException(e);
-    }
-  }
-
   public static String getRawCommandOutput(String str) {
     String result = str.replaceFirst(COMMAND_OUTPUT_PREFIX, "");
     return result.strip();
   }
 
-  private LocalCloudInfo getCloudInfo(NodeDetails nodeDetails, Universe universe) {
+  public static LocalCloudInfo getCloudInfo(NodeDetails nodeDetails, Universe universe) {
     return getCloudInfo(universe.getCluster(nodeDetails.placementUuid).userIntent);
   }
 
-  private LocalCloudInfo getCloudInfo(UniverseDefinitionTaskParams.UserIntent userIntent) {
+  public static LocalCloudInfo getCloudInfo(UniverseDefinitionTaskParams.UserIntent userIntent) {
     Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
     return CloudInfoInterface.get(provider);
   }
 
-  private String getOutput(Process process) throws IOException {
+  public static String getOutput(Process process) throws IOException {
     StringBuilder builder = new StringBuilder();
     String separator = System.getProperty("line.separator");
     String line = null;
@@ -349,6 +336,14 @@ public class LocalNodeManager {
         value = value.replace(CommonUtils.DEFAULT_YB_HOME_DIR, getNodeRoot(userIntent, nodeInfo));
         gflags.put(key, value);
       }
+      if (!gflags.containsKey(GFlagsUtil.DEFAULT_MEMORY_LIMIT_TO_RAM_RATIO)
+          && serverType != UniverseTaskBase.ServerType.CONTROLLER) {
+        gflags.put(
+            GFlagsUtil.DEFAULT_MEMORY_LIMIT_TO_RAM_RATIO,
+            serverType == UniverseTaskBase.ServerType.TSERVER
+                ? MAX_MEM_RATIO_TSERVER
+                : MAX_MEM_RATIO_MASTER);
+      }
       processCerts(args, gflags, nodeInfo, userIntent);
       writeGFlagsToFile(userIntent, gflags, serverType, nodeInfo);
     } catch (IOException e) {
@@ -433,7 +428,7 @@ public class LocalNodeManager {
     log.info("Starting process: {}", Joiner.on(" ").join(args));
     try {
       Process proc = procBuilder.start();
-      Thread.sleep(100);
+      Thread.sleep(200);
       if (!proc.isAlive()) {
         throw new RuntimeException(
             "Process exited with code " + proc.exitValue() + " and output " + getOutput(proc));
@@ -462,7 +457,11 @@ public class LocalNodeManager {
       UniverseTaskBase.ServerType serverType,
       NodeInfo nodeInfo)
       throws IOException {
-    log.debug("Write gflags {} to file {}", gflags, serverType);
+    Map<String, String> gflagsToWrite = new LinkedHashMap<>(gflags);
+    if (additionalGFlags != null) {
+      gflagsToWrite.putAll(additionalGFlags.getPerProcessFlags().value.get(serverType));
+    }
+    log.debug("Write gflags {} to file {}", gflagsToWrite, serverType);
     File flagFileTmpPath = new File(getNodeGFlagsFile(userIntent, serverType, nodeInfo));
     if (!flagFileTmpPath.exists()) {
       flagFileTmpPath.getParentFile().mkdirs();
@@ -471,8 +470,8 @@ public class LocalNodeManager {
     try (FileOutputStream fis = new FileOutputStream(flagFileTmpPath);
         OutputStreamWriter writer = new OutputStreamWriter(fis);
         BufferedWriter buf = new BufferedWriter(writer)) {
-      for (String key : gflags.keySet()) {
-        buf.write("--" + key + "=" + gflags.get(key));
+      for (String key : gflagsToWrite.keySet()) {
+        buf.write("--" + key + "=" + gflagsToWrite.get(key));
         buf.newLine();
       }
       buf.flush();
@@ -523,8 +522,11 @@ public class LocalNodeManager {
             nodeDetails.tserverRpcPort,
             nodeDetails.ysqlServerHttpPort,
             nodeDetails.yqlServerRpcPort);
-    for (int suffix = 2; suffix < 255; suffix++) {
-      String ip = LOOPBACK_PREFIX + suffix;
+    List<Integer> ips =
+        IntStream.range(ipRangeStart, ipRangeEnd).boxed().collect(Collectors.toList());
+    Collections.shuffle(ips);
+    for (Integer lastTwoBytes : ips) {
+      String ip = LOOPBACK_PREFIX + ((lastTwoBytes >> 8) & 0xFF) + "." + (lastTwoBytes & 0xFF);
       if (usedIPs.contains(ip)) {
         continue;
       }

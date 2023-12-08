@@ -225,6 +225,8 @@ class PgDdlAtomicitySanityTest : public PgDdlAtomicityTest {
       "--allowed_preview_flags_csv=ysql_ddl_rollback_enabled");
     options->extra_tserver_flags.push_back("--ysql_ddl_rollback_enabled=true");
     options->extra_tserver_flags.push_back("--report_ysql_ddl_txn_status_to_master=true");
+    // TODO (#19975): Enable read committed isolation
+    options->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=false");
   }
 };
 
@@ -549,7 +551,6 @@ TEST_F(PgDdlAtomicityParallelDdlTest, TestParallelDdl) {
   // Add columns in the first thread.
   TestThreadHolder thread_holder;
   thread_holder.AddThreadFunctor([this, &tablename] {
-    auto conn = ASSERT_RESULT(Connect());
     for (size_t i = kNumIterations; i < kNumIterations * 2;) {
       if (ASSERT_RESULT(RunDdlHelper("ALTER TABLE $0 ADD COLUMN col_$1 TEXT", tablename, i))) {
        ++i;
@@ -559,7 +560,6 @@ TEST_F(PgDdlAtomicityParallelDdlTest, TestParallelDdl) {
 
   // Rename columns in the second thread.
   thread_holder.AddThreadFunctor([this, &tablename] {
-    auto conn = ASSERT_RESULT(Connect());
     for (size_t i = 0; i < kNumIterations;) {
       if (ASSERT_RESULT(RunDdlHelper("ALTER TABLE $0 RENAME COLUMN col_$1 TO renamedcol_$2",
                                      tablename, i, i))) {

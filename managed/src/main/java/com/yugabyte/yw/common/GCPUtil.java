@@ -12,6 +12,7 @@ import com.google.api.gax.paging.Page;
 import com.google.api.gax.retrying.RetrySettings;
 import com.google.auth.Credentials;
 import com.google.auth.oauth2.GoogleCredentials;
+import com.google.cloud.BatchResult;
 import com.google.cloud.logging.LogEntry;
 import com.google.cloud.logging.Logging;
 import com.google.cloud.logging.Logging.EntryListOption;
@@ -21,6 +22,7 @@ import com.google.cloud.storage.BlobId;
 import com.google.cloud.storage.BlobInfo;
 import com.google.cloud.storage.Bucket;
 import com.google.cloud.storage.Storage;
+import com.google.cloud.storage.Storage.BlobListOption;
 import com.google.cloud.storage.Storage.BucketListOption;
 import com.google.cloud.storage.StorageBatch;
 import com.google.cloud.storage.StorageBatchResult;
@@ -53,7 +55,6 @@ import java.nio.channels.Channels;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collection;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -61,10 +62,15 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 import java.util.stream.StreamSupport;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.ybc.CloudStoreSpec;
 import play.libs.Json;
@@ -86,6 +92,7 @@ public class GCPUtil implements CloudUtil {
 
   private static JsonNode PRICE_JSON = null;
   private static final String IMAGE_PREFIX = "CP-COMPUTEENGINE-VMIMAGE-";
+  private static final int DELETE_STORAGE_BATCH_REQUEST_SIZE = 100;
 
   public static String[] getSplitLocationValue(String location) {
     int prefixLength =
@@ -98,11 +105,18 @@ public class GCPUtil implements CloudUtil {
   }
 
   @Override
-  public ConfigLocationInfo getConfigLocationInfo(String location) {
-    String[] splitLocations = getSplitLocationValue(location);
-    String bucket = splitLocations.length > 0 ? splitLocations[0] : "";
-    String cloudPath = splitLocations.length > 1 ? splitLocations[1] : "";
-    return new ConfigLocationInfo(bucket, cloudPath);
+  public CloudLocationInfo getCloudLocationInfo(
+      String region, CustomerConfigData configData, @Nullable String backupLocation) {
+    CustomerConfigStorageGCSData s3Data = (CustomerConfigStorageGCSData) configData;
+    Map<String, String> configRegionLocationsMap = getRegionLocationsMap(configData);
+    String configLocation = configRegionLocationsMap.getOrDefault(region, s3Data.backupLocation);
+    String[] backupSplitLocations =
+        getSplitLocationValue(
+            StringUtils.isBlank(backupLocation) ? configLocation : backupLocation);
+    String[] configSplitLocations = getSplitLocationValue(configLocation);
+    String bucket = configSplitLocations.length > 0 ? configSplitLocations[0] : "";
+    String cloudPath = backupSplitLocations.length > 1 ? backupSplitLocations[1] : "";
+    return new CloudLocationInfo(bucket, cloudPath);
   }
 
   public static Storage getStorageService(CustomerConfigStorageGCSData gcsData) throws IOException {
@@ -133,39 +147,28 @@ public class GCPUtil implements CloudUtil {
   }
 
   @Override
-  public void checkStoragePrefixValidity(String configLocation, String backupLocation) {
-    String[] configLocationSplit = getSplitLocationValue(configLocation);
-    String[] backupLocationSplit = getSplitLocationValue(backupLocation);
-    // Buckets should be same in any case.
-    if (!StringUtils.equals(configLocationSplit[0], backupLocationSplit[0])) {
-      throw new PlatformServiceException(
-          PRECONDITION_FAILED,
-          String.format(
-              "Config bucket %s and backup location bucket %s do not match",
-              configLocationSplit[0], backupLocationSplit[0]));
-    }
-  }
-
-  @Override
-  public void deleteKeyIfExists(CustomerConfigData configData, String defaultBackupLocation)
-      throws Exception {
-    String[] splitLocation = getSplitLocationValue(defaultBackupLocation);
-    String bucketName = splitLocation[0];
-    String objectPrefix = splitLocation[1];
+  public boolean deleteKeyIfExists(CustomerConfigData configData, String defaultBackupLocation) {
+    CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) configData;
+    CloudLocationInfo cLInfo =
+        getCloudLocationInfo(
+            YbcBackupUtil.DEFAULT_REGION_STRING, configData, defaultBackupLocation);
+    String bucketName = cLInfo.bucket;
+    String objectPrefix = cLInfo.cloudPath;
     String keyLocation =
         objectPrefix.substring(0, objectPrefix.lastIndexOf('/')) + KEY_LOCATION_SUFFIX;
     try {
-      Storage storage = getStorageService((CustomerConfigStorageGCSData) configData);
+      Storage storage = getStorageService(gcsData);
       boolean deleted = storage.delete(bucketName, keyLocation);
       if (!deleted) {
         log.info("Specified Location " + keyLocation + " does not contain objects");
       } else {
         log.debug("Retrieved blobs info for bucket " + bucketName + " with prefix " + keyLocation);
       }
-    } catch (StorageException e) {
-      log.error("Error while deleting key object from bucket " + bucketName, e.getReason());
-      throw e;
+    } catch (Exception e) {
+      log.error("Error while deleting key object at location: {}", keyLocation, e);
+      return false;
     }
+    return true;
   }
 
   private void tryListObjects(Storage storage, String bucket, String prefix) throws Exception {
@@ -183,23 +186,26 @@ public class GCPUtil implements CloudUtil {
 
   @Override
   public boolean canCredentialListObjects(
-      CustomerConfigData configData, Collection<String> locations) {
-    if (CollectionUtils.isEmpty(locations)) {
+      CustomerConfigData configData, Map<String, String> regionLocationsMap) {
+    if (MapUtils.isEmpty(regionLocationsMap)) {
       return true;
     }
     try {
-      Storage storage = getStorageService((CustomerConfigStorageGCSData) configData);
-      for (String configLocation : locations) {
+      CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) configData;
+      Storage storage = getStorageService(gcsData);
+      for (Map.Entry<String, String> entry : regionLocationsMap.entrySet()) {
+        String region = entry.getKey();
+        String location = entry.getValue();
         try {
-          String[] splitLocation = getSplitLocationValue(configLocation);
-          String bucketName = splitLocation.length > 0 ? splitLocation[0] : "";
-          String prefix = splitLocation.length > 1 ? splitLocation[1] : "";
+          CloudLocationInfo cLInfo = getCloudLocationInfo(region, configData, location);
+          String bucketName = cLInfo.bucket;
+          String prefix = cLInfo.cloudPath;
           tryListObjects(storage, bucketName, prefix);
         } catch (Exception e) {
           log.error(
               String.format(
                   "GCP Credential cannot list objects in the specified backup location %s",
-                  configLocation),
+                  location),
               e);
           return false;
         }
@@ -225,9 +231,7 @@ public class GCPUtil implements CloudUtil {
           // Use "cloudDir" of success marker as object prefix
           String prefix = regionPrefix.getValue().cloudDir;
           // Use config's bucket for bucket name
-          ConfigLocationInfo configLocationInfo =
-              getConfigLocationInfo(configRegions.get(regionPrefix.getKey()));
-          String bucketName = configLocationInfo.bucket;
+          String bucketName = getCloudLocationInfo(regionPrefix.getKey(), configData, null).bucket;
           log.debug("Trying object listing with GCS bucket {} and prefix {}", bucketName, prefix);
           try {
             tryListObjects(storage, bucketName, prefix);
@@ -248,48 +252,104 @@ public class GCPUtil implements CloudUtil {
     }
   }
 
-  public void deleteStorage(CustomerConfigData configData, List<String> backupLocations)
-      throws Exception {
-    for (String backupLocation : backupLocations) {
+  public boolean deleteStorage(
+      CustomerConfigData configData, Map<String, List<String>> backupRegionLocationsMap) {
+    for (Map.Entry<String, List<String>> backupRegionLocations :
+        backupRegionLocationsMap.entrySet()) {
+      String region = backupRegionLocations.getKey();
       try {
-        String[] splitLocation = getSplitLocationValue(backupLocation);
-        String bucketName = splitLocation[0];
-        String objectPrefix = splitLocation[1];
         Storage storage = getStorageService((CustomerConfigStorageGCSData) configData);
-
-        List<StorageBatchResult<Boolean>> results = new ArrayList<>();
-        StorageBatch storageBatch = storage.batch();
-        try {
-          Page<Blob> blobs = storage.list(bucketName, Storage.BlobListOption.prefix(objectPrefix));
-          if (blobs != null) {
-            log.debug(
-                "Retrieved blobs info for bucket " + bucketName + " with prefix " + objectPrefix);
-            StreamSupport.stream(blobs.iterateAll().spliterator(), true)
-                .forEach(
-                    blob -> {
-                      results.add(storageBatch.delete(blob.getBlobId()));
-                    });
-          }
-        } finally {
-          if (!results.isEmpty()) {
-            storageBatch.submit();
-            if (!results.stream().allMatch(r -> r != null && r.get())) {
-              throw new RuntimeException(
-                  "Error in deleting objects in bucket "
-                      + bucketName
-                      + " with prefix "
-                      + objectPrefix);
-            }
+        for (String backupLocation : backupRegionLocations.getValue()) {
+          CloudLocationInfo cLInfo = getCloudLocationInfo(region, configData, backupLocation);
+          String bucketName = cLInfo.bucket;
+          String objectPrefix = cLInfo.cloudPath;
+          try {
+            Page<Blob> blobs =
+                storage.list(
+                    bucketName,
+                    BlobListOption.pageSize(DELETE_STORAGE_BATCH_REQUEST_SIZE),
+                    BlobListOption.prefix(objectPrefix));
+            log.debug("Deleting blobs at location: {}", backupLocation);
+            String nextPageToken = null;
+            do {
+              deleteBlob(storage, blobs, backupLocation);
+              nextPageToken = blobs.getNextPageToken();
+              if (nextPageToken != null) {
+                blobs =
+                    storage.list(
+                        bucketName,
+                        BlobListOption.pageSize(DELETE_STORAGE_BATCH_REQUEST_SIZE),
+                        BlobListOption.prefix(objectPrefix),
+                        BlobListOption.pageToken(nextPageToken));
+              }
+            } while (nextPageToken != null);
+          } catch (StorageException | InterruptedException e) {
+            log.error(
+                "Error occured while deleting objects at location {}. Error {}",
+                backupLocation,
+                e.getMessage());
+            return false;
           }
         }
-      } catch (StorageException e) {
-        log.error(" Error in deleting objects at location " + backupLocation, e.getReason());
-        throw e;
+      } catch (StorageException | IOException e) {
+        log.error(" Error occured while deleting objects in GCS: {}", e.getMessage());
+        return false;
       }
+    }
+    return true;
+  }
+
+  private void deleteBlob(Storage storage, Page<Blob> blobs, String backupLocation)
+      throws InterruptedException {
+    List<Blob> blobsList =
+        StreamSupport.stream(blobs.getValues().spliterator(), false).collect(Collectors.toList());
+    if (blobs == null || blobsList.size() == 0) {
+      return;
+    }
+
+    CountDownLatch blobDeletionWaitBarrier = new CountDownLatch(blobsList.size());
+    AtomicInteger failed = new AtomicInteger();
+    List<StorageBatchResult<Boolean>> results = new ArrayList<>();
+    StorageBatch storageBatch = storage.batch();
+    blobsList.stream()
+        .forEach(
+            blob -> {
+              if (blob != null) {
+                storageBatch
+                    .delete(blob.getBlobId())
+                    .notify(
+                        new BatchResult.Callback<>() {
+                          @Override
+                          public void success(Boolean result) {
+                            blobDeletionWaitBarrier.countDown();
+                          }
+
+                          @Override
+                          public void error(StorageException exception) {
+                            log.error(exception.getMessage());
+                            failed.incrementAndGet();
+                            blobDeletionWaitBarrier.countDown();
+                          }
+                        });
+              }
+            });
+
+    storageBatch.submit();
+    if (!blobDeletionWaitBarrier.await(30, TimeUnit.MINUTES)) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          String.format(
+              "Timed out waiting for objects at location %s to get deleted", backupLocation));
+    } else if (failed.get() > 0) {
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR,
+          String.format("Encountered failures deleting objects at location %s", backupLocation));
     }
   }
 
   @Override
+  // This method is in use by ReleaseManager code, which does not contain config location in
+  // CustomerConfigData object. Such case would not be allowed for UI generated customer config.
   public InputStream getCloudFileInputStream(CustomerConfigData configData, String cloudPath)
       throws Exception {
     Storage storage = getStorageService((CustomerConfigStorageGCSData) configData);
@@ -321,13 +381,14 @@ public class GCPUtil implements CloudUtil {
       return locations.stream()
           .map(
               l -> {
-                String[] splitLocation = getSplitLocationValue(l);
-                String bucketName = splitLocation[0];
+                CloudLocationInfo cLInfo =
+                    getCloudLocationInfo(YbcBackupUtil.DEFAULT_REGION_STRING, configData, l);
+                String bucketName = cLInfo.bucket;
 
                 // This is the absolute location inside the GS bucket to get the file
                 String objectSuffix =
-                    splitLocation.length > 1
-                        ? BackupUtil.getPathWithPrefixSuffixJoin(splitLocation[1], fileName)
+                    StringUtils.isNotBlank(cLInfo.cloudPath)
+                        ? BackupUtil.getPathWithPrefixSuffixJoin(cLInfo.cloudPath, fileName)
                         : fileName;
                 Blob blob = storage.get(bucketName, objectSuffix);
                 if (blob != null && blob.exists()) {
@@ -348,19 +409,20 @@ public class GCPUtil implements CloudUtil {
       String previousBackupLocation,
       CustomerConfigData configData) {
     CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) configData;
-    String storageLocation = getRegionLocationsMap(configData).get(region);
-    String[] splitValues = getSplitLocationValue(storageLocation);
-    String bucket = splitValues[0];
+    CloudLocationInfo csInfo = getCloudLocationInfo(region, configData, "");
+    String bucket = csInfo.bucket;
     String cloudDir =
-        splitValues.length > 1
-            ? BackupUtil.getPathWithPrefixSuffixJoin(splitValues[1], commonDir)
+        StringUtils.isNotBlank(csInfo.cloudPath)
+            ? BackupUtil.getPathWithPrefixSuffixJoin(csInfo.cloudPath, commonDir)
             : commonDir;
     cloudDir = StringUtils.isNotBlank(cloudDir) ? BackupUtil.appendSlash(cloudDir) : "";
     String previousCloudDir = "";
     if (StringUtils.isNotBlank(previousBackupLocation)) {
-      splitValues = getSplitLocationValue(previousBackupLocation);
+      csInfo = getCloudLocationInfo(region, configData, previousBackupLocation);
       previousCloudDir =
-          splitValues.length > 1 ? BackupUtil.appendSlash(splitValues[1]) : previousCloudDir;
+          StringUtils.isNotBlank(csInfo.cloudPath)
+              ? BackupUtil.appendSlash(csInfo.cloudPath)
+              : previousCloudDir;
     }
     Map<String, String> gcsCredsMap = createCredsMapYbc(gcsData);
     return YbcBackupUtil.buildCloudStoreSpec(
@@ -373,13 +435,13 @@ public class GCPUtil implements CloudUtil {
   public CloudStoreSpec createRestoreCloudStoreSpec(
       String region, String cloudDir, CustomerConfigData configData, boolean isDsm) {
     CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) configData;
-    String storageLocation = getRegionLocationsMap(configData).get(region);
-    String[] splitValues = getSplitLocationValue(storageLocation);
-    String bucket = splitValues[0];
+    CloudLocationInfo csInfo = getCloudLocationInfo(region, configData, "");
+    String bucket = csInfo.bucket;
     Map<String, String> gcsCredsMap = createCredsMapYbc(gcsData);
     if (isDsm) {
-      String location = BackupUtil.appendSlash(getSplitLocationValue(cloudDir)[1]);
-      return YbcBackupUtil.buildCloudStoreSpec(bucket, location, "", gcsCredsMap, Util.GCS);
+      String location = getCloudLocationInfo(region, configData, cloudDir).cloudPath;
+      return YbcBackupUtil.buildCloudStoreSpec(
+          bucket, BackupUtil.appendSlash(location), "", gcsCredsMap, Util.GCS);
     }
     return YbcBackupUtil.buildCloudStoreSpec(bucket, cloudDir, "", gcsCredsMap, Util.GCS);
   }
@@ -478,7 +540,7 @@ public class GCPUtil implements CloudUtil {
             EXPECTATION_FAILED, "Error while creating Storage service from GCS Data!");
       }
 
-      validateOnLocation(storage, gcsData.backupLocation, permissions);
+      validateOnLocation(storage, YbcBackupUtil.DEFAULT_REGION_STRING, configData, permissions);
 
       if (CollectionUtils.isNotEmpty(gcsData.regionLocations)) {
         for (RegionLocations location : gcsData.regionLocations) {
@@ -487,7 +549,7 @@ public class GCPUtil implements CloudUtil {
                 EXPECTATION_FAILED, "Region of a location cannot be empty.");
           }
 
-          validateOnLocation(storage, location.location, permissions);
+          validateOnLocation(storage, location.region, configData, permissions);
         }
       }
     } else {
@@ -541,9 +603,12 @@ public class GCPUtil implements CloudUtil {
    * specified.
    */
   private void validateOnLocation(
-      Storage storage, String location, List<ExtraPermissionToValidate> permissions) {
-    ConfigLocationInfo locationInfo = getConfigLocationInfo(location);
-    validateOnBucket(storage, locationInfo.bucket, locationInfo.cloudPath, permissions);
+      Storage storage,
+      String region,
+      CustomerConfigData configData,
+      List<ExtraPermissionToValidate> permissions) {
+    CloudLocationInfo cLInfo = getCloudLocationInfo(region, configData, null);
+    validateOnBucket(storage, cLInfo.bucket, cLInfo.cloudPath, permissions);
   }
 
   /**

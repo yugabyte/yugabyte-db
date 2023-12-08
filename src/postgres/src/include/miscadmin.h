@@ -437,7 +437,8 @@ extern AuxProcType MyAuxProcType;
 extern void pg_split_opts(char **argv, int *argcp, const char *optstr);
 extern void InitializeMaxBackends(void);
 extern void InitPostgres(const char *in_dbname, Oid dboid, const char *username,
-			 Oid useroid, char *out_dbname, bool override_allow_connections);
+			 Oid useroid, char *out_dbname, uint64_t *session_id,
+			 bool override_allow_connections);
 extern void BaseInit(void);
 
 /* in utils/init/miscinit.c */

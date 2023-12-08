@@ -292,6 +292,10 @@ class CDCServiceContextImpl : public cdc::CDCServiceContext {
         tablet_server_.metric_entity(), tablet_server_.mem_tracker(), tablet_server_.messenger());
   }
 
+  Result<uint32> GetAutoFlagsConfigVersion() const override {
+    return tablet_server_.ValidateAndGetAutoFlagsConfigVersion();
+  }
+
  private:
   TabletServer& tablet_server_;
 };
@@ -301,7 +305,7 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
     : DbServerBase("TabletServer", opts, "yb.tabletserver", server::CreateMemTrackerForServer()),
       fail_heartbeats_for_tests_(false),
       opts_(opts),
-      auto_flags_manager_(new AutoFlagsManager("yb-tserver", fs_manager_.get())),
+      auto_flags_manager_(new AutoFlagsManager("yb-tserver", clock(), fs_manager_.get())),
       tablet_manager_(new TSTabletManager(fs_manager_.get(), this, metric_registry())),
       path_handlers_(new TabletServerPathHandlers(this)),
       maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
@@ -496,13 +500,17 @@ Status TabletServer::Init() {
     shared_object().SetPostgresAuthKey(RandomUniformInt<uint64_t>());
   }
 
+  shared_object().SetTserverUuid(fs_manager()->uuid());
+
   return Status::OK();
 }
 
 Status TabletServer::InitAutoFlags() {
+  RETURN_NOT_OK(auto_flags_manager_->Init(options_.HostsString()));
+
   if (!VERIFY_RESULT(auto_flags_manager_->LoadFromFile())) {
-    RETURN_NOT_OK(auto_flags_manager_->LoadFromMaster(
-        options_.HostsString(), *opts_.GetMasterAddresses(), ApplyNonRuntimeAutoFlags::kTrue));
+    RETURN_NOT_OK(
+        auto_flags_manager_->LoadFromMaster(options_.HostsString(), *opts_.GetMasterAddresses()));
   }
 
   return RpcAndWebServerBase::InitAutoFlags();
@@ -516,9 +524,13 @@ uint32_t TabletServer::GetAutoFlagConfigVersion() const {
   return auto_flags_manager_->GetConfigVersion();
 }
 
-Status TabletServer::SetAutoFlagConfig(const AutoFlagsConfigPB new_config) {
-  return auto_flags_manager_->LoadFromConfig(
-      std::move(new_config), ApplyNonRuntimeAutoFlags::kFalse);
+void TabletServer::HandleMasterHeartbeatResponse(
+    HybridTime heartbeat_sent_time, std::optional<AutoFlagsConfigPB> new_config) {
+  auto_flags_manager_->HandleMasterHeartbeatResponse(heartbeat_sent_time, std::move(new_config));
+}
+
+Result<uint32> TabletServer::ValidateAndGetAutoFlagsConfigVersion() const {
+  return auto_flags_manager_->ValidateAndGetConfigVersion();
 }
 
 AutoFlagsConfigPB TabletServer::TEST_GetAutoFlagConfig() const {

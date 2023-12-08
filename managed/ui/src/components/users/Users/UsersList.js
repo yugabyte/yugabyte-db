@@ -72,7 +72,7 @@ export const UsersList = (props) => {
     ) {
       return null;
     } else {
-      const disableRoleEdit = user?.ldapSpecifiedRole; //if user is LDAP
+      const disableRoleEdit = user?.ldapSpecifiedRole;; //if user is LDAP
       return (
         <DropdownButton
           className="btn btn-default"

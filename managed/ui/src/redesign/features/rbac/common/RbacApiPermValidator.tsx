@@ -76,8 +76,8 @@ const getResourceId = (permissionDef: Permission, onResource: OnResourceType) =>
         onResource === 'CUSTOMER_ID'
           ? localStorage.getItem('customerId')
           : typeof onResource === 'string'
-          ? onResource
-          : onResource?.OTHER;
+            ? onResource
+            : onResource?.OTHER;
       break;
     case Resource.ROLE:
       uuid = typeof onResource === 'string' ? onResource : onResource?.ROLE;
@@ -214,5 +214,10 @@ export const RbacValidator: FC<RequireAccessReqOrCustomValidateFn> = ({
 export const customPermValidateFunction = (
   validateFn: RbacApiPermValidatorProps['customValidateFunction']
 ) => {
+
+  if (!isRbacEnabled()) {
+    return true;
+  }
+
   return validateFn?.((window as any).rbac_permissions as UserPermission[]) ?? false;
 };

@@ -110,6 +110,8 @@ To configure YugabyteDB, run the following shell script:
 
 ## Create a local cluster
 
+Use the [yugabyted](../../reference/configuration/yugabyted/) utility to create and manage universes.
+
 To create a single-node local cluster with a replication factor (RF) of 1, run the following command:
 
 ```sh

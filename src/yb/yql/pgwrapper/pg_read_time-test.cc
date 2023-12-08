@@ -29,6 +29,7 @@
 #include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "yb/tools/tools_test_utils.h"
 
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(enable_wait_queues);
@@ -73,21 +74,24 @@ class PgReadTimeTest : public PgMiniTestBase {
     return num_pick_read_time_on_docdb;
   }
 
-  void CheckReadTimePickedOnDocdb(const StmtExecutor& stmt_executor) {
-    CheckReadTimePickingLocation(stmt_executor, true /* read_time_picked_on_docdb */);
+  void CheckReadTimePickedOnDocdb(
+      const StmtExecutor& stmt_executor,
+      uint64_t expected_num_picked_read_time_on_doc_db_metric = 1) {
+    CheckReadTimePickingLocation(stmt_executor, expected_num_picked_read_time_on_doc_db_metric);
   }
 
   void CheckReadTimeProvidedToDocdb(const StmtExecutor& stmt_executor) {
-    CheckReadTimePickingLocation(stmt_executor, false /* read_time_picked_on_docdb */);
+    CheckReadTimePickingLocation(
+        stmt_executor, 0 /* expected_num_picked_read_time_on_doc_db_metric */);
   }
 
  private:
   void CheckReadTimePickingLocation(
-      const StmtExecutor& stmt_executor, bool read_time_picked_on_docdb) {
-    uint64_t initial = GetNumPickedReadTimeOnDocDb();
+      const StmtExecutor& stmt_executor, uint64_t expected_num_picked_read_time_on_doc_db_metric) {
+    const auto initial = GetNumPickedReadTimeOnDocDb();
     stmt_executor();
-    uint64_t diff = GetNumPickedReadTimeOnDocDb() - initial;
-    ASSERT_EQ(diff, (read_time_picked_on_docdb ? 1 : 0));
+    const auto diff = GetNumPickedReadTimeOnDocDb() - initial;
+    ASSERT_EQ(diff, expected_num_picked_read_time_on_doc_db_metric);
   }
 };
 
@@ -232,12 +236,16 @@ TEST_F(PgReadTimeTest, CheckReadTimePickingLocation) {
       });
 
   // 4. no pipeline, single operation in first batch, starts a distributed transation
+  //
+  // expected_num_picked_read_time_on_doc_db_metric is set because in case of a SELECT FOR UPDATE,
+  // a read time is picked in read_query.cc, but an extra picking is done in write_query.cc just
+  // after conflict resolution is done (see DoTransactionalConflictsResolved()).
   CheckReadTimePickedOnDocdb(
       [&conn, kTable]() {
         ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
         ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1 FOR UPDATE", kTable));
         ASSERT_OK(conn.CommitTransaction());
-      });
+      }, 2 /* expected_num_picked_read_time_on_doc_db_metric */);
 
   // 5. no pipeline, multiple operations to various tablets in first batch, starts a distributed
   //    transation
@@ -282,6 +290,37 @@ TEST_F(PgReadTimeTest, CheckReadTimePickingLocation) {
         ASSERT_OK(conn.ExecuteFormat("CALL insert_rows_$0(121, 150)", kSingleTabletTable));
       });
   ASSERT_OK(ResetMaxBatchSize(&conn));
+
+  // Test cases in a read committed txn block (in this isolation level each statement uses a new
+  // latest read point). For each statement, if the new read time for that statement can be picked
+  // on docdb, ensure it is.
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
+  CheckReadTimePickedOnDocdb(
+      [&conn, kTable]() {
+        ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1", kTable));
+      });
+
+  CheckReadTimePickedOnDocdb(
+      [&conn, kTable]() {
+        ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET v=1 WHERE k=1", kTable));
+      });
+
+  CheckReadTimeProvidedToDocdb(
+      [&conn, kTable]() {
+        ASSERT_OK(conn.FetchFormat("SELECT COUNT(*) FROM $0", kTable));
+      });
+
+  CheckReadTimePickedOnDocdb(
+      [&conn, kSingleTabletTable]() {
+        ASSERT_OK(conn.FetchFormat("SELECT COUNT(*) FROM $0", kSingleTabletTable));
+      });
+
+  CheckReadTimePickedOnDocdb(
+      [&conn, kTable]() {
+        ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1 FOR UPDATE", kTable));
+      }, 2 /* expected_num_picked_read_time_on_doc_db_metric */);
+
+  ASSERT_OK(conn.CommitTransaction());
 }
 
 // Test the session configuration parameter yb_read_time which reads the data as of a point in time
@@ -315,6 +354,63 @@ TEST_F(PgMiniTestBase, CheckReadingDataAsOfPastTime) {
   ASSERT_OK(conn.Execute("SET yb_read_time TO 0"));
   count = ASSERT_RESULT(conn.FetchRow<PGUint64>(Format("SELECT count(*) FROM t")));
   ASSERT_EQ(count, 6);
+}
+
+// Test the read-time flag of ysql_dump to generate the schema of the database as of a timestamp t
+// 1- Create two tables
+// 2- Get the current timestamp t
+// 3- Run ysql_dump to capture the schema as ground truth for comparison
+// 4- Create one more table
+// 5- Run ysql_dump --readtime=t to generate the schema as of timestamp t
+// 6- Compare the schema of step 5 with the ground truth (should be the same)
+TEST_F(PgMiniTestBase, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLDumpAsOfTime)) {
+  auto conn = ASSERT_RESULT(Connect());
+  // Step 1
+  LOG(INFO) << "Create table t1";
+  ASSERT_OK(conn.Execute("CREATE TABLE t1 (k1 INT, v1 INT);"));
+  LOG(INFO) << "Create table t2";
+  ASSERT_OK(conn.Execute("CREATE TABLE t2 (k2 INT primary key, v2 text);"));
+  //  Step 2
+  auto t1 = ASSERT_RESULT(conn.FetchRow<PGUint64>(
+      Format("SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint")));
+  LOG(INFO) << "Current timestamp t=" << std::to_string(t1);
+  // Step 3
+  auto hostport = pg_host_port();
+  std::string kHostFlag = "--host=" + hostport.host();
+  std::string kPortFlag = "--port=" + std::to_string(hostport.port());
+  std::vector<std::string> args = {
+      GetPgToolPath("ysql_dump"),
+      kHostFlag,
+      kPortFlag,
+      "--schema-only",
+      "--include-yb-metadata",
+      "yugabyte"  // Database name
+  };
+  LOG(INFO) << "Run tool: " << AsString(args);
+  std::string ground_truth;
+  ASSERT_OK(Subprocess::Call(args, &ground_truth));
+  LOG(INFO) << "Tool output: " << ground_truth;
+
+  // Step 4
+  LOG(INFO) << "Create table t3";
+  ASSERT_OK(conn.Execute("CREATE TABLE t3 (k INT, f INT);"));
+  // Step 5
+  std::string timestamp_flag = "--read-time=" + std::to_string(t1);
+  args = {
+      GetPgToolPath("ysql_dump"),
+      kHostFlag,
+      kPortFlag,
+      "--schema-only",
+      timestamp_flag,
+      "--include-yb-metadata",
+      "yugabyte"  // database name
+  };
+  LOG(INFO) << "Run tool: " << AsString(args);
+  std::string dump_as_of_time;
+  ASSERT_OK(Subprocess::Call(args, &dump_as_of_time));
+  LOG(INFO) << "Tool output: " << dump_as_of_time;
+  // Step 6
+  ASSERT_STR_EQ(ground_truth, dump_as_of_time);
 }
 
 } // namespace yb::pgwrapper

@@ -3,7 +3,6 @@ title: Build the YugabyteDB docs locally
 headerTitle: Build the docs
 linkTitle: Build the docs
 description: Build the YugabyteDB docs locally
-image: /images/section_icons/index/quick_start.png
 menu:
   preview:
     identifier: docs-build
@@ -59,7 +58,7 @@ Create the folder with `mkdir ~/.hugo-cache`, then start a new terminal session.
 
 ## Fork the repository
 
-1. To make the commands in this section work correctly when you paste them, set an environment variable to store your GitHub username. (Replace `your-github-id` here with your own GitHub ID.)
+1. To make the commands in this section work correctly when you paste them, set an environment variable to store your GitHub username. (Replace `your-github-id` in the following command with your own GitHub ID.)
 
     ```sh
     export GITHUB_ID=your-github-id
@@ -84,10 +83,12 @@ Create the folder with `mkdir ~/.hugo-cache`, then start a new terminal session.
 1. Make sure that your local repository is still current with the upstream Yugabyte repository:
 
     ```sh
+    cd docs/
     git checkout master
     git pull upstream master
-    git push origin
     ```
+
+Refer to [Edit an existing page](../docs-edit/#edit-an-existing-page) to create a new branch, commit your changes, and create a pull request.
 
 ## Build the docs site {#live-reload}
 

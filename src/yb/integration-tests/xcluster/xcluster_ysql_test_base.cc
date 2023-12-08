@@ -435,16 +435,19 @@ Status XClusterYsqlTestBase::VerifyWrittenRecords(
 
 Status XClusterYsqlTestBase::VerifyWrittenRecords(
     const YBTableName& producer_table_name, const YBTableName& consumer_table_name) {
-  return LoggedWaitFor(
-      [this, producer_table_name, consumer_table_name]() -> Result<bool> {
+  int prod_count = 0, cons_count = 0;
+  const Status s = LoggedWaitFor(
+      [this, producer_table_name, consumer_table_name, &prod_count, &cons_count]() -> Result<bool> {
         auto producer_results =
             VERIFY_RESULT(ScanToStrings(producer_table_name, &producer_cluster_));
         auto consumer_results =
             VERIFY_RESULT(ScanToStrings(consumer_table_name, &consumer_cluster_));
-        if (PQntuples(producer_results.get()) != PQntuples(consumer_results.get())) {
+        prod_count = PQntuples(producer_results.get());
+        cons_count = PQntuples(consumer_results.get());
+        if (prod_count != cons_count) {
           return false;
         }
-        for (int i = 0; i < PQntuples(producer_results.get()); ++i) {
+        for (int i = 0; i < prod_count; ++i) {
           auto prod_val = EXPECT_RESULT(pgwrapper::ToString(producer_results.get(), i, 0));
           auto cons_val = EXPECT_RESULT(pgwrapper::ToString(consumer_results.get(), i, 0));
           if (prod_val != cons_val) {
@@ -454,6 +457,8 @@ Status XClusterYsqlTestBase::VerifyWrittenRecords(
         return true;
       },
       MonoDelta::FromSeconds(kRpcTimeout), "Verify written records");
+  LOG(INFO) << "Row counts, Producer: " << prod_count << ", Consumer: " << cons_count;
+  return s;
 }
 
 Result<std::vector<xrepl::StreamId>> XClusterYsqlTestBase::BootstrapCluster(

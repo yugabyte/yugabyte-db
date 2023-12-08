@@ -49,14 +49,12 @@ export const DeleteConfigModal = ({
           queryClient.invalidateQueries(drConfigQueryKey.detail(drConfig.uuid));
 
           // Refetch the source & target universes to remove references to the deleted DR config.
-          queryClient.invalidateQueries(
-            universeQueryKey.detail(drConfig.xClusterConfig.sourceUniverseUUID),
-            { exact: true }
-          );
-          queryClient.invalidateQueries(
-            universeQueryKey.detail(drConfig.xClusterConfig.targetUniverseUUID),
-            { exact: true }
-          );
+          queryClient.invalidateQueries(universeQueryKey.detail(drConfig.primaryUniverseUuid), {
+            exact: true
+          });
+          queryClient.invalidateQueries(universeQueryKey.detail(drConfig.drReplicaUniverseUuid), {
+            exact: true
+          });
         };
         const handleTaskCompletion = (error: boolean) => {
           if (error) {
@@ -81,6 +79,11 @@ export const DeleteConfigModal = ({
           invalidateQueries();
         };
 
+        toast.success(
+          <Typography variant="body2" component="span">
+            {t('success.requestSuccess')}
+          </Typography>
+        );
         modalProps.onClose();
         if (redirectUrl) {
           browserHistory.push(redirectUrl);

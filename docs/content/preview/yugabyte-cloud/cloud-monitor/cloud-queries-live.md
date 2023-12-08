@@ -1,9 +1,9 @@
 ---
-title: View live queries
+title: View live queries in YugabyteDB Managed
+headerTitle: View live queries
 linkTitle: Live queries
 description: View live queries running on your cluster.
 headcontent: View live queries running on your cluster
-image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:
     identifier: cloud-queries-live

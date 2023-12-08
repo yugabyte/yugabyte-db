@@ -320,6 +320,8 @@ class ClusterAdminClient {
 
   Status GetWalRetentionSecs(const client::YBTableName& table_name);
 
+  Status GetAutoFlagsConfig();
+
   Status PromoteAutoFlags(
       const std::string& max_flag_class, const bool promote_non_runtime_flags, const bool force);
 
@@ -388,7 +390,8 @@ class ClusterAdminClient {
 
   Status CreateCDCSDKDBStream(
       const TypedNamespaceName& ns, const std::string& CheckPointType,
-      const cdc::CDCRecordType RecordType);
+      const cdc::CDCRecordType RecordType,
+      const std::optional<std::string>& ConsistentSnapshotOption);
 
   Status DeleteCDCStream(const std::string& stream_id, bool force_delete = false);
 
@@ -399,6 +402,9 @@ class ClusterAdminClient {
   Status ListCDCSDKStreams(const std::string& namespace_name);
 
   Status GetCDCDBStreamInfo(const std::string& db_stream_id);
+
+  Status YsqlBackfillReplicationSlotNameToCDCSDKStream(
+      const std::string& stream_id, const std::string& replication_slot_name);
 
   Status SetupNamespaceReplicationWithBootstrap(const std::string& replication_id,
                                   const std::vector<std::string>& producer_addresses,

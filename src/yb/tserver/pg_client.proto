@@ -99,6 +99,10 @@ service PgClientService {
   // DEPRECATED
   rpc SetActiveSubTransaction(PgSetActiveSubTransactionRequestPB)
       returns (PgSetActiveSubTransactionResponsePB);
+
+  rpc FetchData(PgFetchDataRequestPB) returns (PgFetchDataResponsePB) {
+    option (yb.rpc.lightweight_method).sides = PROXY;
+  };
 }
 
 message PgHeartbeatRequestPB {
@@ -520,6 +524,8 @@ message PgPerformOptionsPB {
   bool trace_requested = 19;
   bool yb_non_ddl_txn_for_sys_tables_allowed = 21;
   int64 pg_txn_start_us = 22;
+
+  AshMetadataPB ash_metadata = 23;
 }
 
 message PgPerformRequestPB {
@@ -784,10 +790,12 @@ message PgGetTableKeyRangesRequestPB {
   uint64 range_size_bytes = 6;
   bool is_forward = 7;
   uint32 max_key_length = 8;
+  uint64 read_time_serial_no = 9;
 }
 
 message PgGetTableKeyRangesResponsePB {
   AppStatusPB status = 1;
+  fixed64 current_ht = 2;
 }
 
 message PgGetNewObjectIdRequestPB {
@@ -797,4 +805,14 @@ message PgGetNewObjectIdRequestPB {
 message PgGetNewObjectIdResponsePB {
   AppStatusPB status = 1;
   uint32 new_oid = 2;
+}
+
+message PgFetchDataRequestPB {
+  uint64 session_id = 1;
+  uint64 data_id = 2;
+}
+
+message PgFetchDataResponsePB {
+  AppStatusPB status = 1;
+  uint32 sidecar = 2;
 }

@@ -110,6 +110,8 @@ typedef boost::container::static_vector<TabletCreationMetaData, kNumSplitParts>
 
 typedef Callback<void(tablet::TabletPeerPtr)> ConsensusChangeCallback;
 
+class TabletMetadataValidator;
+
 // If 'expr' fails, log a message, tombstone the given tablet, and return the
 // error status.
 #define TOMBSTONE_NOT_OK(expr, meta, uuid, msg, ts_manager_ptr) \
@@ -124,6 +126,8 @@ typedef Callback<void(tablet::TabletPeerPtr)> ConsensusChangeCallback;
 // Type of tablet directory.
 YB_DEFINE_ENUM(TabletDirType, (kData)(kWal));
 YB_DEFINE_ENUM(TabletRemoteSessionType, (kBootstrap)(kSnapshotTransfer));
+
+YB_STRONGLY_TYPED_BOOL(MarkDirtyAfterRegister);
 
 // Keeps track of the tablets hosted on the tablet server side.
 //
@@ -466,13 +470,18 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
                         const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
                         RegisterTabletPeerMode mode);
 
+  Status RegisterTabletUnlocked(const TabletId& tablet_id,
+                                const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
+                                RegisterTabletPeerMode mode) REQUIRES(mutex_);
+
   // Create and register a new TabletPeer, given tablet metadata.
   // Calls RegisterTablet() with the given 'mode' parameter after constructing
   // the TablerPeer object. See RegisterTablet() for details about the
   // semantics of 'mode' and the locking requirements.
   Result<std::shared_ptr<tablet::TabletPeer>> CreateAndRegisterTabletPeer(
       const scoped_refptr<tablet::RaftGroupMetadata>& meta,
-      RegisterTabletPeerMode mode);
+      RegisterTabletPeerMode mode,
+      MarkDirtyAfterRegister mark_dirty_after_register = MarkDirtyAfterRegister::kFalse);
 
   // Returns either table_data_assignment_map_ or table_wal_assignment_map_ depending on dir_type.
   TableDiskAssignmentMap* GetTableDiskAssignmentMapUnlocked(TabletDirType dir_type);
@@ -494,10 +503,16 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   void MarkDirtyUnlocked(const TabletId& tablet_id,
                          std::shared_ptr<consensus::StateChangeContext> context) REQUIRES(mutex_);
 
+  // This function is a indirection for running on a thread pool.
+  void HandleNonReadyTabletOnStartup(
+      const scoped_refptr<tablet::RaftGroupMetadata>& meta,
+      const scoped_refptr<TransitionInProgressDeleter>& deleter);
+
   // Handle the case on startup where we find a tablet that is not in ready state. Generally, we
   // tombstone the replica.
-  Status HandleNonReadyTabletOnStartup(
-      const scoped_refptr<tablet::RaftGroupMetadata>& meta);
+  Status DoHandleNonReadyTabletOnStartup(
+      const tablet::RaftGroupMetadataPtr& meta,
+      const scoped_refptr<TransitionInProgressDeleter>& deleter);
 
   Status StartSubtabletsSplit(
       const tablet::RaftGroupMetadata& source_tablet_meta, SplitTabletsCreationMetaData* tcmetas);
@@ -685,6 +700,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   // Used for verifying tablet data integrity.
   std::unique_ptr<rpc::Poller> verify_tablet_data_poller_;
 
+  // Used for verifying tablet metadata data integrity.
+  std::unique_ptr<TabletMetadataValidator> tablet_metadata_validator_;
+
   // Used for cleaning up old metrics.
   std::unique_ptr<rpc::Poller> metrics_cleaner_;
 
@@ -706,6 +724,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   // Gauge to monitor applied split operations.
   scoped_refptr<yb::AtomicGauge<uint64_t>> ts_split_op_apply_;
+
+  // Gauge to monitor the total time to open all tablets' metadata.
+  scoped_refptr<yb::AtomicGauge<uint64_t>> ts_open_metadata_time_us_;
 
   // Gauge to monitor post-split compactions that have been started.
   scoped_refptr<yb::AtomicGauge<uint64_t>> ts_post_split_compaction_added_;

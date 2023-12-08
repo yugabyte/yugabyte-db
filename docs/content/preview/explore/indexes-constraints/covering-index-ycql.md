@@ -4,7 +4,6 @@ headerTitle: Covering indexes
 linkTitle: Covering indexes
 description: Using covering indexes in YCQL
 headContent: Explore covering indexes in YugabyteDB using YCQL
-image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
     identifier: covering-index-ycql

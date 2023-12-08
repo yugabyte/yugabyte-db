@@ -1,5 +1,5 @@
 ---
-title: api-key resource
+title: ybm CLI api-key resource
 headerTitle: ybm api-key
 linkTitle: api-key
 description: YugabyteDB Managed CLI reference api-key resource.
@@ -49,7 +49,7 @@ Create an API key.
 | --name | Required. Name for the API key. |
 | --duration | Required. The duration for which the API Key will be valid. 0 denotes that the key will never expire. |
 | --unit | Required. The time unit for the duration for which the API Key will be valid. `Hours`, `Days`, or `Months`. |
-| --description | Description for the API key. |
+| &#8209;&#8209;description | Description for the API key. |
 | --role-name | The name of the role to assign to the API Key. If not provided, the Admin role is assigned. |
 
 ### list

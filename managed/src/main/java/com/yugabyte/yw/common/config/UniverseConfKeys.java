@@ -849,6 +849,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Enable Yugabyte DB Rollback support",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> allowGFlagsOverrideDuringPreFinalize =
+      new ConfKeyInfo<>(
+          "yb.gflags.allow_during_prefinalize",
+          ScopeType.UNIVERSE,
+          "Allow editing GFlags for a universe in pre-finalize state",
+          "Allow editing GFlags for a universe in pre-finalize state",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> txnXClusterPitrDefaultRetentionPeriod =
       new ConfKeyInfo<>(
           "yb.xcluster.transactional.pitr.default_retention_period",

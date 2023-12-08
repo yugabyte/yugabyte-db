@@ -1,3 +1,10 @@
+import {
+  NodeAggregation,
+  SplitMode,
+  SplitType,
+  TimeAggregation
+} from '../../components/metrics/dtos';
+import { MetricName } from '../../components/xcluster/constants';
 import { YBTableRelationType } from './constants';
 import { DeepPartial } from './types';
 
@@ -449,20 +456,92 @@ export interface GraphFilter {
   currentSelectedNodeType: string | null;
 }
 
+/**
+ * Source: managed/src/main/java/com/yugabyte/yw/metrics/MetricSettings.java
+ */
 export interface MetricSettings {
   metric: string;
-  splitTopNodes: number;
+
+  nodeAggregation?: NodeAggregation;
+  timeAggregation?: TimeAggregation;
+  splitMode?: SplitMode;
+  splitType?: SplitType;
+  // splitCount is ignored when constructing the metric query if splitMode is
+  // SplitMode.NONE.
+  splitCount?: number;
+  returnAggregatedValue?: boolean;
 }
 
-export interface MetricQueryParams {
-  metricsWithSettings: MetricSettings[];
+/**
+ * Source: managed/src/main/java/com/yugabyte/yw/forms/MetricQueryParams.java
+ */
+export interface MetricsQueryParams {
   start: string;
-  end: string;
-  nodePrefix: string;
-  nodeNames: string[];
+
+  availabilityZones?: string[];
+  clusterUuids?: string[];
+  end?: string;
+  isRecharts?: boolean;
+  // `metrics` gets added to `metricsSettingsMap` on the backend
+  // with default settings.
+  // See MetricsQueryHelper.java for details.
+  metrics?: MetricName[];
+  metricsWithSettings?: MetricSettings[];
+  namespaceId?: string;
+  nodeNames?: string[];
+  nodePrefix?: string;
+  regionCode?: string[];
+  serverType?: string;
+  streamId?: string;
+  tableId?: string;
+  tableName?: string;
+  xClusterConfigUuid?: string;
 }
 
-// TODO: Need to move the above enums to global dtos file under src/redesign/utils as part of PLAT-7010
+// ---------------------------------------------------------------------------
+// Metric Respose Types
+// Source:
+// - Response JSON from MetricsQueryExecutor.java
+export interface MetricTrace {
+  name: string;
+  type: string;
+  x: number[];
+  y: string[] | number[];
+
+  instanceName?: string;
+  tableId?: string;
+  tableName?: string;
+  namespaceId?: string;
+  namespaceName?: string;
+  mode?: string;
+  line?: {
+    dash: string;
+    width: number;
+  };
+}
+
+export interface Metric {
+  data: MetricTrace[];
+  directURLs: string[];
+  layout: {
+    title: string;
+    xaxis: {
+      alias: { [x: string]: string };
+      type: string;
+    };
+    yaxis: {
+      alias: { [x: string]: string };
+      ticksuffix: string;
+    };
+  };
+  metricsLinkUseBrowserFqdn: boolean;
+  queryKey: string;
+}
+
+export type MetricsQueryResponse = {
+  [metricName in MetricName]?: Metric;
+};
+// ---------------------------------------------------------------------------
 
 // ---------------------------------------------------------------------------
 // Platform Result Types

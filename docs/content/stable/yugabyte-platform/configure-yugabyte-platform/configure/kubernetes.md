@@ -3,7 +3,6 @@ title: Configure YugabyteDB Anywhere on Kubernetes
 headerTitle: Overview
 linkTitle: Overview
 description: Configure YugabyteDB Anywhere on Kubernetes
-image: /images/section_icons/deploy/enterprise.png
 headcontent: Configure YugabyteDB Anywhere on Kubernetes
 menu:
   stable_yugabyte-platform:

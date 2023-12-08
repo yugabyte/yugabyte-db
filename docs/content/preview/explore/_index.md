@@ -74,7 +74,7 @@ You can run examples using a universe set up on your local machine or in a cloud
 
 To run the examples, you need to create a single- or multi-node universe.
 
-For testing and learning YugabyteDB, use the [yugabyted](../reference/configuration/yugabyted/) utility to create and manage universes.
+Use the [yugabyted](../reference/configuration/yugabyted/) utility to create and manage universes.
 
 The following instructions show how to _simulate_ a single- or multi-node universe on a single computer. To deploy an actual multi-zone universe using yugabyted, follow the instructions in [Create a multi-zone cluster](../reference/configuration/yugabyted/#create-a-multi-zone-cluster).
 
@@ -250,7 +250,7 @@ For instructions on creating a universe in YugabyteDB Anywhere, refer to [Create
 
 YB Workload Simulator is a Java application that simulates workloads against YugabyteDB and provides live metrics of latency and throughput from the application's point of view. Some Explore topics use the application to demonstrate features of YugabyteDB.
 
-The application uses the YugabyteDB JDBC [Smart Driver](../drivers-orms/smart-drivers/), which features universe- and topology-aware connection load balancing. The driver automatically balances application connections across the nodes in a universe, and rebalances connections when a node fails. For more information, see [YB Workload Simulator](https://github.com/YugabyteDB-Samples/yb-workload-simulator/).
+The application uses the YugabyteDB JDBC [Smart Driver](../drivers-orms/smart-drivers/), which features universe- and topology-aware connection load balancing. The driver automatically balances application connections across the nodes in a universe, and re-balances connections when a node fails. For more information, see [YB Workload Simulator](https://github.com/YugabyteDB-Samples/yb-workload-simulator/).
 
 ### Download
 

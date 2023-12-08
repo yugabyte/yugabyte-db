@@ -93,5 +93,6 @@ extern char *get_publication_name(Oid pubid);
 extern Datum pg_get_publication_tables(PG_FUNCTION_ARGS);
 
 extern bool yb_is_publishable_relation(Relation rel);
+extern void yb_log_unsupported_publication_relations();
 
 #endif							/* PG_PUBLICATION_H */

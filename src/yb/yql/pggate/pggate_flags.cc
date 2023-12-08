@@ -79,6 +79,9 @@ DEPRECATE_FLAG(bool, ysql_enable_update_batching, "10_2022");
 DEFINE_UNKNOWN_bool(ysql_suppress_unsupported_error, false,
             "Suppress ERROR on use of unsupported SQL statement and use WARNING instead");
 
+DEFINE_NON_RUNTIME_bool(ysql_suppress_unsafe_alter_notice, false,
+    "Suppress NOTICE on use of unsafe ALTER statements");
+
 DEFINE_UNKNOWN_int32(ysql_sequence_cache_minval, 100,
              "Set how many sequence numbers to be preallocated in cache.");
 
@@ -128,11 +131,16 @@ DEFINE_UNKNOWN_bool(ysql_sleep_before_retry_on_txn_conflict, true,
 // - Use boolean experimental flag just in case introducing "ybRunContext" is a wrong idea.
 DEFINE_UNKNOWN_bool(ysql_disable_portal_run_context, false, "Whether to use portal ybRunContext.");
 
-DEFINE_UNKNOWN_bool(yb_enable_read_committed_isolation, false,
-            "Defines how READ COMMITTED (which is our default SQL-layer isolation) and"
-            "READ UNCOMMITTED are mapped internally. If false (default), both map to the stricter "
-            "REPEATABLE READ implementation. If true, both use the new READ COMMITTED "
-            "implementation instead.");
+#ifdef NDEBUG
+constexpr bool kEnableReadCommitted = false;
+#else
+constexpr bool kEnableReadCommitted = true;
+#endif
+DEFINE_NON_RUNTIME_bool(
+    yb_enable_read_committed_isolation, kEnableReadCommitted,
+    "Defines how READ COMMITTED (which is our default SQL-layer isolation) and READ UNCOMMITTED "
+    "are mapped internally. If false (default), both map to the stricter REPEATABLE READ "
+    "implementation. If true, both use the new READ COMMITTED implementation instead.");
 
 DEFINE_test_flag(bool, yb_lwlock_crash_after_acquire_pg_stat_statements_reset, false,
              "Issue sigkill for crash test after acquiring a LWLock in pg_stat_statements reset.");
@@ -154,6 +162,5 @@ TAG_FLAG(ysql_enable_create_database_oid_collision_retry, advanced);
 
 DEFINE_NON_RUNTIME_bool(ysql_use_relcache_file, true, "Use relcache init file");
 
-DEFINE_NON_RUNTIME_PREVIEW_bool(enable_yb_auh, false,
-                                "True to enable Active Universe History");
-TAG_FLAG(enable_yb_auh, hidden);
+DEFINE_test_flag(bool, yb_enable_ash, false,
+                 "True to enable Active Session History");

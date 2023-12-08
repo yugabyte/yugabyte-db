@@ -414,7 +414,7 @@ TEST_F(PgOnConflictTest, NoTxnOnConflict) {
 TEST_F_EX(PgOnConflictTest, ValidSessionAfterTxnCommitConflict, PgFailOnConflictTest) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE test (k int PRIMARY KEY)"));
-  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
   ASSERT_OK(conn.Execute("INSERT INTO test VALUES(1)"));
   auto extra_conn = ASSERT_RESULT(Connect());
   ASSERT_OK(extra_conn.Execute("INSERT INTO test VALUES(1)"));

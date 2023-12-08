@@ -1,6 +1,5 @@
-import { AXIOS_INSTANCE, AlertsResponse, useGetClusterAlertsQuery } from "@app/api/src";
+import { AXIOS_INSTANCE, useGetClusterAlertsQuery } from "@app/api/src";
 import { BadgeVariant } from "@app/components/YBBadge/YBBadge";
-import axios from "axios";
 import { getUnixTime } from "date-fns";
 import { subMinutes } from "date-fns";
 import { useEffect, useMemo, useState } from "react";
@@ -56,44 +55,13 @@ type CPUAlert = {
   cpu_75: boolean;
 };
 
-export const useFetchAlerts = (nodeHost: string | true = "") => {
+export const useFetchAlerts = (nodeHost: string) => {
   const { data: upstreamAlerts, refetch: refetchUpstreamAlerts } = 
-    useGetClusterAlertsQuery({ query: { enabled: nodeHost === true }});
-
-  const [refetch, setRefetch] = useState<boolean>(false);
-  const refetchAlerts = () => setRefetch((prev) => !prev);
-
-  const [alerts, setAlerts] = useState<AlertsResponse>({
-    data: [],
-  });
-
-  useEffect(() => {
-    if (nodeHost === true) {
-      return;
-    } else if (!nodeHost) {
-      setAlerts({ data: [] });
-      return;
-    }
-
-    const fetchNodeAlerts = async () => {
-      const alerts = await axios.get<AlertsResponse>(`http://${nodeHost}:15433/api/alerts`)
-        .then(({ data }) => data)
-        .catch((err) => {
-          console.error(err);
-          return { data: [] } as AlertsResponse;
-        });
-
-      setAlerts(alerts);
-    };
-
-    fetchNodeAlerts();
-  }, [nodeHost, refetch]);
-
-
+    useGetClusterAlertsQuery({ node_address: nodeHost });
 
   return {
-    data: nodeHost === true ? upstreamAlerts : alerts, 
-    refetch: nodeHost === true ? refetchUpstreamAlerts : refetchAlerts
+    data: upstreamAlerts,
+    refetch: refetchUpstreamAlerts
   };
 };
 
@@ -167,7 +135,7 @@ export type AlertNotification = {
   status: BadgeVariant;
 };
 
-export const useAlerts = (nodeHost: string | true = "") => {
+export const useAlerts = (nodeHost: string) => {
   const { data: upstreamAlerts, refetch: refetchUpstreamAlerts } = useFetchAlerts(nodeHost);
 
   /* const upstreamAlerts = {
@@ -184,7 +152,7 @@ export const useAlerts = (nodeHost: string | true = "") => {
   }; */
 
   const { data: cpuAlerts, refetch: refetchCPUAlerts } = 
-    useCPUAlert(nodeHost === true ? undefined : nodeHost);
+    useCPUAlert(nodeHost === "" ? undefined : nodeHost);
 
   const refetch = () => {
     refetchUpstreamAlerts();

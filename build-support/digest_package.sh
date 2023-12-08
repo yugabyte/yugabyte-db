@@ -14,11 +14,11 @@
 # This code is sourced from $SRCROOT/build-support/jenkins/build.sh.  The function it provides
 # create md5 and sha files for whatever package is passed in.
 
-if [[ $BASH_SOURCE == $0 ]]; then
-  fatal "File '$BASH_SOURCE' must be sourced, not invoked"
+if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
+  fatal "File '${BASH_SOURCE[0]}' must be sourced, not invoked"
 fi
 
-log "$BASH_SOURCE is being sourced"
+log "${BASH_SOURCE[0]} is being sourced"
 
 digest_package() {
   package_path=$1

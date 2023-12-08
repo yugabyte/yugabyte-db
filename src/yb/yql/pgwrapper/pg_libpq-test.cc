@@ -58,6 +58,7 @@
 #include "yb/util/cast.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/os-util.h"
 #include "yb/util/path_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
@@ -188,6 +189,80 @@ TEST_F(PgLibPqTest, Simple) {
 
   const auto row = ASSERT_RESULT((conn.FetchRow<int32_t, std::string>("SELECT * FROM t")));
   ASSERT_EQ(row, (decltype(row){1, "hello"}));
+}
+
+// Make sure index scan queries that error at the beginning of scanning don't bump up the pgstat
+// idx_scan metric.
+TEST_F(PgLibPqTest, PgStatIdxScanNoIncrementOnErrorTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  constexpr auto kNumColumns = 30;
+  constexpr auto kMaxPredicates = 64;
+  // This matches PGSTAT_STAT_INTERVAL.
+  const auto kPgstatStatInterval = 500ms;
+  // This matches PGSTAT_MAX_WAIT_TIME.
+  const auto kPgstatMaxWaitTime = 10000ms;
+
+  std::ostringstream create_table_ss;
+  create_table_ss << "CREATE TABLE many (";
+  for (int i = 1; i <= kNumColumns; ++i)
+    create_table_ss << "c" << i << " INT,";
+  create_table_ss << "k INT PRIMARY KEY)";
+  ASSERT_OK(conn.Execute(create_table_ss.str()));
+
+  std::ostringstream create_index_ss;
+  create_index_ss << "CREATE INDEX ON many (c1 ASC";
+  for (int i = 2; i <= kNumColumns; ++i)
+    create_index_ss << ", c" << i;
+  create_index_ss << ")";
+  ASSERT_OK(conn.Execute(create_index_ss.str()));
+
+  // There should be only two indexes: pkey index and secondary index.  We want to get stats for the
+  // secondary index, but its name is too long, so filter by != 'many_pkey'.
+  const auto idx_scan_query =
+      "SELECT idx_scan FROM pg_stat_user_indexes WHERE indexrelname != 'many_pkey'";
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(idx_scan_query)), 0);
+
+  std::ostringstream query_ss;
+  query_ss << "SELECT k FROM many WHERE TRUE";
+  auto num_predicates = 0;
+  for (int i = 1; i <= kNumColumns && num_predicates < kMaxPredicates; ++i, ++num_predicates) {
+    query_ss << " AND c" << i << " = 1";
+  }
+  for (int i = 1; i <= kNumColumns && num_predicates < kMaxPredicates; ++i, ++num_predicates) {
+    query_ss << " AND c" << i << " > 0";
+  }
+  for (int i = 1; i <= kNumColumns && num_predicates < kMaxPredicates; ++i, ++num_predicates) {
+    query_ss << " AND c" << i << " < 2";
+  }
+
+  // Successful scan should increment idx_scan.
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query_ss.str())));
+  ASSERT_OK(conn.FetchMatrix(query_ss.str(), 0, 1));
+  // Stats can take time to update, so retry-loop.
+  ASSERT_OK(LoggedWaitFor(
+      [&conn, &idx_scan_query]() -> Result<bool> {
+        return VERIFY_RESULT(conn.FetchRow<int64_t>(idx_scan_query)) == 1;
+      },
+      kPgstatMaxWaitTime,
+      "idx_scan == 1"));
+
+  // Add last predicate, which should not have been added from above and therefore is a new
+  // predicate.
+  static_assert(kMaxPredicates < kNumColumns * 3);
+  query_ss << " AND c" << kNumColumns << " < 2";
+
+  // Unsuccessful scan should not increment idx_scan.
+  ASSERT_TRUE(ASSERT_RESULT(conn.HasIndexScan(query_ss.str())));
+  auto status = ResultToStatus(conn.Fetch(query_ss.str()));
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(),
+                      Format("ERROR:  cannot use more than $0 predicates in a table or index scan",
+                             kMaxPredicates));
+  // To avoid sleeping too long, wait the minimum time (x2) rather than maximum time.  In most
+  // cases, the stats should be updated at the minimum pace, so this should be sufficient to catch
+  // regressions.
+  SleepFor(kPgstatStatInterval * 2);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int64_t>(idx_scan_query)), 1);
 }
 
 TEST_F_EX(PgLibPqTest, SerializableColoring, PgLibPqFailOnConflictTest) {
@@ -341,7 +416,9 @@ TEST_F(PgLibPqTest, ConcurrentInsertTruncateForeignKey) {
 
   for (int i = 0; i != kTruncateThreads; ++i) {
     thread_holder.AddThreadFunctor([this, &stop = thread_holder.stop_flag()] {
-      auto truncate_conn = ASSERT_RESULT(Connect());
+      // TODO (#19975): Enable read committed isolation
+      auto truncate_conn = ASSERT_RESULT(
+          SetDefaultTransactionIsolation(Connect(), IsolationLevel::SNAPSHOT_ISOLATION));
       int idx __attribute__((unused)) = 0;
       while (!stop.load(std::memory_order_acquire)) {
         auto status = truncate_conn.Execute("TRUNCATE TABLE t1, t2 CASCADE");
@@ -1426,11 +1503,13 @@ void PgLibPqTest::PerformSimultaneousTxnsAndVerifyConflicts(
   auto res = ASSERT_RESULT(conn1.Fetch(query_statement));
   ASSERT_EQ(PQntuples(res.get()), 1);
 
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
   auto status = conn2.Execute("DELETE FROM t WHERE a = 1");
   ASSERT_TRUE(IsSerializeAccessError(status)) <<  status;
   ASSERT_STR_CONTAINS(status.ToString(), "conflicts with higher priority transaction");
 
   ASSERT_OK(conn1.CommitTransaction());
+  ASSERT_OK(conn2.CommitTransaction());
 
   // Ensure that reads to separate tables in a colocated database/tablegroup do not conflict.
   if (colocated) {
@@ -3102,11 +3181,24 @@ class PgLibPqYSQLBackendCrash: public PgLibPqTest {
     options->extra_tserver_flags.push_back(
         Format("--TEST_yb_lwlock_crash_after_acquire_pg_stat_statements_reset=true"));
     options->extra_tserver_flags.push_back(
-        Format("--yb_backend_oom_score_adj=" + expected_oom_score));
+        Format("--yb_backend_oom_score_adj=" + expected_backend_oom_score));
+    options->extra_tserver_flags.push_back(
+        Format("--yb_webserver_oom_score_adj=" + expected_webserver_oom_score));
   }
 
  protected:
-  const std::string expected_oom_score = "123";
+  const std::string expected_backend_oom_score = "123";
+  const std::string expected_webserver_oom_score = "456";
+
+  void GetPostmasterPid(std::string *postmaster_pid) {
+    auto conn = ASSERT_RESULT(Connect());
+    auto backend_pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+
+    ASSERT_TRUE(RunShellProcess(Format("ps -o ppid= $0", backend_pid), postmaster_pid));
+
+    postmaster_pid->erase(std::remove(postmaster_pid->begin(), postmaster_pid->end(), '\n'),
+                          postmaster_pid->end());
+  }
 };
 
 TEST_F_EX(PgLibPqTest,
@@ -3125,6 +3217,25 @@ TEST_F_EX(PgLibPqTest,
   ASSERT_EQ(row, (decltype(row){"SELECT pg_stat_statements_reset()", "Terminated by SIGKILL"}));
 }
 
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(TestWebserverKill),
+          PgLibPqYSQLBackendCrash) {
+
+  string postmaster_pid;
+  GetPostmasterPid(&postmaster_pid);
+
+  string message;
+  for (int i = 0; i < 50; i++) {
+    ASSERT_OK(WaitFor([postmaster_pid]() -> Result<bool> {
+      string count;
+      RunShellProcess(Format("pgrep -f 'YSQL webserver' -P $0 | wc -l", postmaster_pid), &count);
+      return count[0] == '1';
+    }, 1500ms, "Webserver restarting..."));
+    ASSERT_TRUE(RunShellProcess(Format("pkill -9 -f 'YSQL webserver' -P $0", postmaster_pid),
+                                &message));
+  }
+}
+
 #ifdef __linux__
 TEST_F_EX(PgLibPqTest,
           TestOomScoreAdjPGBackend,
@@ -3136,7 +3247,27 @@ TEST_F_EX(PgLibPqTest,
   std::ifstream fPtr(file_name);
   std::string oom_score_adj;
   getline(fPtr, oom_score_adj);
-  ASSERT_EQ(oom_score_adj, expected_oom_score);
+  ASSERT_EQ(oom_score_adj, expected_backend_oom_score);
+}
+TEST_F_EX(PgLibPqTest,
+          TestOomScoreAdjPGWebserver,
+          PgLibPqYSQLBackendCrash) {
+
+  string postmaster_pid;
+  GetPostmasterPid(&postmaster_pid);
+
+  // Get the webserver pid using postmaster pid
+  string webserver_pid;
+  RunShellProcess(Format("pgrep -f 'YSQL webserver' -P $0", postmaster_pid), &webserver_pid);
+  webserver_pid.erase(std::remove(webserver_pid.begin(), webserver_pid.end(), '\n'),
+                      webserver_pid.end());
+
+  // Check the webserver's OOM score
+  std::string file_name = "/proc/" + webserver_pid + "/oom_score_adj";
+  std::ifstream fPtr(file_name);
+  std::string oom_score_adj;
+  getline(fPtr, oom_score_adj);
+  ASSERT_EQ(oom_score_adj, expected_webserver_oom_score);
 }
 #endif
 

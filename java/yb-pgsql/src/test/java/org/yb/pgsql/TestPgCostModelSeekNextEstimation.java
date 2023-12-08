@@ -1,7 +1,8 @@
 package org.yb.pgsql;
 
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_SCAN;
-import static org.yb.pgsql.ExplainAnalyzeUtils.testExplainDebugVerbose;
+import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_SEQ_SCAN;
+import static org.yb.pgsql.ExplainAnalyzeUtils.testExplainDebug;
 
 import java.sql.Connection;
 import java.sql.Statement;
@@ -59,9 +60,10 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
     return JsonUtil.makeCheckerBuilder(PlanCheckerBuilder.class, false);
   }
 
-  private void testSeekAndNextEstimationHelper(Statement stmt, String query, String table_name,
-                                               String index_name, double expected_seeks,
-                                               double expected_nexts) throws Exception {
+  private void testSeekAndNextEstimationIndexScanHelper(Statement stmt, String query,
+                                                        String table_name, String index_name,
+                                                        double expected_seeks,
+                                                        double expected_nexts) throws Exception {
     double expected_seeks_lower_bound = expected_seeks * SEEK_LOWER_BOUND_FACTOR
         - SEEK_FAULT_TOLERANCE_OFFSET;
     double expected_seeks_upper_bound = expected_seeks * SEEK_UPPER_BOUND_FACTOR
@@ -71,12 +73,49 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
     double expected_nexts_upper_bound = expected_nexts * NEXT_UPPER_BOUND_FACTOR
         + NEXT_FAULT_TOLERANCE_OFFSET;
     try {
-      testExplainDebugVerbose(stmt, query,
+      testExplainDebug(stmt, query,
           makeTopLevelBuilder()
               .plan(makePlanBuilder()
                   .nodeType(NODE_INDEX_SCAN)
                   .relationName(table_name)
                   .indexName(index_name)
+                  .estimatedSeeks(Checkers.closed(expected_seeks_lower_bound,
+                                                  expected_seeks_upper_bound))
+                  .estimatedNexts(Checkers.closed(expected_nexts_lower_bound,
+                                                  expected_nexts_upper_bound))
+                  .metric(METRIC_NUM_DB_SEEK,
+                          Checkers.closed(expected_seeks_lower_bound,
+                                          expected_seeks_upper_bound))
+                  .metric(METRIC_NUM_DB_NEXT,
+                          Checkers.closed(expected_nexts_lower_bound,
+                                          expected_nexts_upper_bound))
+                  .build())
+              .build());
+    }
+    catch (AssertionError e) {
+      LOG.info("Failed Query: " + query);
+      LOG.info(e.toString());
+      throw e;
+    }
+  }
+
+  private void testSeekAndNextEstimationSeqScanHelper(Statement stmt, String query,
+                                                      String table_name, double expected_seeks,
+                                                      double expected_nexts) throws Exception {
+    double expected_seeks_lower_bound = expected_seeks * SEEK_LOWER_BOUND_FACTOR
+        - SEEK_FAULT_TOLERANCE_OFFSET;
+    double expected_seeks_upper_bound = expected_seeks * SEEK_UPPER_BOUND_FACTOR
+        + SEEK_FAULT_TOLERANCE_OFFSET;
+    double expected_nexts_lower_bound = expected_nexts * NEXT_LOWER_BOUND_FACTOR
+        - NEXT_FAULT_TOLERANCE_OFFSET;
+    double expected_nexts_upper_bound = expected_nexts * NEXT_UPPER_BOUND_FACTOR
+        + NEXT_FAULT_TOLERANCE_OFFSET;
+    try {
+      testExplainDebug(stmt, query,
+          makeTopLevelBuilder()
+              .plan(makePlanBuilder()
+                  .nodeType(NODE_SEQ_SCAN)
+                  .relationName(table_name)
                   .estimatedSeeks(Checkers.closed(expected_seeks_lower_bound,
                                                   expected_seeks_upper_bound))
                   .estimatedNexts(Checkers.closed(expected_nexts_lower_bound,
@@ -109,8 +148,8 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
       stmt.execute(String.format("CREATE TABLE %s (k1 INT, PRIMARY KEY (k1 ASC))", T1_NAME));
       stmt.execute(String.format("INSERT INTO %s SELECT s1 FROM generate_series(1, 20) s1",
                                  T1_NAME));
-      stmt.execute(String.format("CREATE TABLE %s (k1 INT, k2 INT, PRIMARY KEY (k1 ASC, k2 ASC))",
-                                 T2_NAME));
+      stmt.execute(String.format("CREATE TABLE %s (k1 INT, k2 INT, PRIMARY KEY (k1 ASC, k2 "
+                                 + "ASC))", T2_NAME));
       stmt.execute(String.format("INSERT INTO %s SELECT s1, s2 FROM generate_series(1, 20) s1, "
                                  + "generate_series(1, 20) s2", T2_NAME));
       stmt.execute(String.format("CREATE TABLE %s (k1 INT, k2 INT, k3 INT,"
@@ -156,113 +195,225 @@ public class TestPgCostModelSeekNextEstimation extends BasePgSQLTest {
   // Expected seeks and nexts are hardcoded values based on DocDB actual seek and next counts
   // in Nov/2023.
   @Test
-  public void testSeekNextEstimation() throws Exception {
+  public void testSeekNextEstimationIndexScan() throws Exception {
     try (Statement stmt = this.connection2.createStatement()) {
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k1 IN (4, 8)", T1_NAME, T1_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 IN (4, 8)", T1_NAME, T1_NAME),
         T1_NAME, T1_INDEX_NAME, 2, 4);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k1 IN (4, 8, 12)", T1_NAME, T1_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 IN (4, 8, 12)", T1_NAME, T1_NAME),
         T1_NAME, T1_INDEX_NAME, 3, 7);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k1 IN (4, 8, 12, 16)", T1_NAME, T1_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 IN (4, 8, 12, 16)", T1_NAME, T1_NAME),
         T1_NAME, T1_INDEX_NAME, 4, 10);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k1 IN (4, 8, 12, 16)", T2_NAME, T2_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 IN (4, 8, 12, 16)", T2_NAME, T2_NAME),
         T2_NAME, T2_INDEX_NAME, 4, 86);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k2 IN (4, 8, 12, 16)", T2_NAME, T2_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k2 IN (4, 8, 12, 16)", T2_NAME, T2_NAME),
         T2_NAME, T2_INDEX_NAME, 101, 280);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k1 IN (4, 8, 12) AND k4 IN (4, 8, 12, 16)", T4_NAME, T4_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 IN (4, 8, 12) AND k4 IN (4, 8, 12, 16)", T4_NAME, T4_NAME),
         T4_NAME, T4_INDEX_NAME, 6007, 16808);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k2 IN (4, 8, 12, 16) AND k4 IN (4, 8, 12)", T4_NAME, T4_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k2 IN (4, 8, 12, 16) AND k4 IN (4, 8, 12)", T4_NAME, T4_NAME),
         T4_NAME, T4_INDEX_NAME, 6505, 17804);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k1 IN (4, 8, 12, 16) AND k2 IN (4, 8, 12, 16)", T4_NAME, T4_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 IN (4, 8, 12, 16) AND k2 IN (4, 8, 12, 16)", T4_NAME, T4_NAME),
         T4_NAME, T4_INDEX_NAME, 22, 6436);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k1 >= 4 and k1 < 14", T1_NAME, T1_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 >= 4 and k1 < 14", T1_NAME, T1_NAME),
         T1_NAME, T1_INDEX_NAME, 1, 10);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k1 >= 4 and k1 < 14", T2_NAME, T2_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 >= 4 and k1 < 14", T2_NAME, T2_NAME),
         T2_NAME, T2_INDEX_NAME, 1, 200);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k1 >= 4 and k1 < 14", T3_NAME, T3_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 >= 4 and k1 < 14", T3_NAME, T3_NAME),
         T3_NAME, T3_INDEX_NAME, 4, 4000);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k1 >= 4 and k1 < 14", T4_NAME, T4_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 >= 4 and k1 < 14", T4_NAME, T4_NAME),
         T4_NAME, T4_INDEX_NAME, 79, 80000);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k2 >= 4 and k2 < 14", T2_NAME, T2_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k2 >= 4 and k2 < 14", T2_NAME, T2_NAME),
         T2_NAME, T2_INDEX_NAME, 41, 280);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k3 >= 4 and k3 < 14", T3_NAME, T3_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k3 >= 4 and k3 < 14", T3_NAME, T3_NAME),
         T3_NAME, T3_INDEX_NAME, 804, 5600);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k4 >= 4 and k4 < 14", T4_NAME, T4_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k4 >= 4 and k4 < 14", T4_NAME, T4_NAME),
         T4_NAME, T4_INDEX_NAME, 16079, 112000);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k3 >= 4 and k3 < 14", T4_NAME, T4_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k3 >= 4 and k3 < 14", T4_NAME, T4_NAME),
         T4_NAME, T4_INDEX_NAME, 879, 81600);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k3 >= 4 and k3 < 14", T4_NAME, T4_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k3 >= 4 and k3 < 14", T4_NAME, T4_NAME),
         T4_NAME, T4_INDEX_NAME, 879, 81600);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k1 >= 4 and k1 < 14 and k3 >= 4 and k3 < 14", T4_NAME, T4_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 >= 4 and k1 < 14 and k3 >= 4 and k3 < 14", T4_NAME, T4_NAME),
         T4_NAME, T4_INDEX_NAME, 440, 40800);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k1 = 4 and k2 IN (4, 8, 12, 16)", T4_NAME, T4_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 = 4 and k2 IN (4, 8, 12, 16)", T4_NAME, T4_NAME),
         T4_NAME, T4_INDEX_NAME, 5, 1606);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k1 IN (4, 8, 12, 16) and k2 = 4", T4_NAME, T4_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 IN (4, 8, 12, 16) and k2 = 4", T4_NAME, T4_NAME),
         T4_NAME, T4_INDEX_NAME, 5, 1606);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k3 IN (4, 8, 12, 16) and k4 = 4", T4_NAME, T4_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k3 IN (4, 8, 12, 16) and k4 = 4", T4_NAME, T4_NAME),
         T4_NAME, T4_INDEX_NAME, 2002, 4000);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k1 >= 4 and k1 < 5 and k2 IN (4, 8, 12, 16)", T2_NAME, T2_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 >= 4 and k1 < 5 and k2 IN (4, 8, 12, 16)", T2_NAME, T2_NAME),
         T2_NAME, T2_INDEX_NAME, 5, 8);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k1 >= 4 and k1 < 6 and k2 IN (4, 8, 12, 16)", T2_NAME, T2_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 >= 4 and k1 < 6 and k2 IN (4, 8, 12, 16)", T2_NAME, T2_NAME),
         T2_NAME, T2_INDEX_NAME, 10, 18);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k1 >= 4 and k1 < 14 and k2 IN (4, 8, 12, 16)", T2_NAME, T2_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 >= 4 and k1 < 14 and k2 IN (4, 8, 12, 16)", T2_NAME, T2_NAME),
         T2_NAME, T2_INDEX_NAME, 50, 98);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k1 >= 4 and k1 < 7 and k3 IN (4, 8, 12, 16)", T3_NAME, T3_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 >= 4 and k1 < 7 and k3 IN (4, 8, 12, 16)", T3_NAME, T3_NAME),
         T3_NAME, T3_INDEX_NAME, 301, 600);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k2 >= 4 and k2 < 7 and k4 IN (4, 8, 12)", T4_NAME, T4_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k2 >= 4 and k2 < 7 and k4 IN (4, 8, 12)", T4_NAME, T4_NAME),
         T4_NAME, T4_INDEX_NAME, 4844, 9680);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k1 IN (1, 4, 7, 10)", T4_NAME, T4_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 IN (1, 4, 7, 10)", T4_NAME, T4_NAME),
         T4_NAME, T4_INDEX_NAME, 35, 32037);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k1 >= 4 AND k2 >= 4", T4_NAME, T4_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 >= 4 AND k2 >= 4", T4_NAME, T4_NAME),
         T4_NAME, T4_INDEX_NAME, 129, 115744);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k1 >= 4 AND k1 < 14 AND k2 >= 4", T4_NAME, T4_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 >= 4 AND k1 < 14 AND k2 >= 4", T4_NAME, T4_NAME),
         T4_NAME, T4_INDEX_NAME, 76, 68084);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k1 >= 4 AND k1 < 14 AND k2 >= 4 AND k2 < 14", T4_NAME, T4_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 >= 4 AND k1 < 14 AND k2 >= 4 AND k2 < 14", T4_NAME, T4_NAME),
         T4_NAME, T4_INDEX_NAME, 59, 40077);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k1 >= 4 AND k2 >= 4 AND k2 < 14", T4_NAME, T4_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 >= 4 AND k2 >= 4 AND k2 < 14", T4_NAME, T4_NAME),
         T4_NAME, T4_INDEX_NAME, 100, 68132);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k1 IN (1, 4, 7, 10) AND k2 IN (1, 4, 7, 10)", T4_NAME, T4_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 IN (1, 4, 7, 10) AND k2 IN (1, 4, 7, 10)", T4_NAME, T4_NAME),
         T4_NAME, T4_INDEX_NAME, 22, 6436);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k1 >= 4 AND k3 >= 4", T4_NAME, T4_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 >= 4 AND k3 >= 4", T4_NAME, T4_NAME),
         T4_NAME, T4_INDEX_NAME, 453, 116392);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k1 >= 4 AND k1 < 14 AND k3 >= 4 AND k3 < 14", T4_NAME, T4_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 >= 4 AND k1 < 14 AND k3 >= 4 AND k3 < 14", T4_NAME, T4_NAME),
         T4_NAME, T4_INDEX_NAME, 440, 40839);
-      testSeekAndNextEstimationHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * FROM %s "
-        + "WHERE k1 >= 4 AND k3 >= 4 AND k3 < 14", T4_NAME, T4_NAME),
+      testSeekAndNextEstimationIndexScanHelper(stmt, String.format("/*+IndexScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 >= 4 AND k3 >= 4 AND k3 < 14", T4_NAME, T4_NAME),
         T4_NAME, T4_INDEX_NAME, 747, 69426);
+    }
+  }
+
+  @Test
+  public void testSeekNextEstimationSeqScan() throws Exception {
+    try (Statement stmt = this.connection2.createStatement()) {
+      stmt.execute(String.format("SET enable_indexscan=off"));
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 IN (4, 8)", T1_NAME, T1_NAME),
+        T1_NAME, 1, 19);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 IN (4, 8, 12)", T1_NAME, T1_NAME),
+        T1_NAME, 1, 19);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 IN (4, 8, 12, 16)", T1_NAME, T1_NAME),
+        T1_NAME, 1, 19);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 IN (4, 8, 12, 16)", T2_NAME, T2_NAME),
+        T2_NAME, 1, 399);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k2 IN (4, 8, 12, 16)", T2_NAME, T2_NAME),
+        T2_NAME, 1, 399);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 IN (4, 8, 12) AND k4 IN (4, 8, 12, 16)", T4_NAME, T4_NAME),
+        T4_NAME, 157, 160155);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k2 IN (4, 8, 12, 16) AND k4 IN (4, 8, 12)", T4_NAME, T4_NAME),
+        T4_NAME, 157, 160155);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 IN (4, 8, 12, 16) AND k2 IN (4, 8, 12, 16)", T4_NAME, T4_NAME),
+        T4_NAME, 157, 160155);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 >= 4 and k1 < 14", T1_NAME, T1_NAME),
+        T1_NAME, 1, 19);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 >= 4 and k1 < 14", T2_NAME, T2_NAME),
+        T2_NAME, 1, 399);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 >= 4 and k1 < 14", T3_NAME, T3_NAME),
+        T3_NAME, 4, 8002);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 >= 4 and k1 < 14", T4_NAME, T4_NAME),
+        T4_NAME, 79, 160077);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k2 >= 4 and k2 < 14", T2_NAME, T2_NAME),
+        T2_NAME, 1, 399);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k3 >= 4 and k3 < 14", T3_NAME, T3_NAME),
+        T3_NAME, 4, 8002);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k4 >= 4 and k4 < 14", T4_NAME, T4_NAME),
+        T4_NAME, 79, 160077);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k3 >= 4 and k3 < 14", T4_NAME, T4_NAME),
+        T4_NAME, 79, 160077);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k3 >= 4 and k3 < 14", T4_NAME, T4_NAME),
+        T4_NAME, 79, 160077);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 >= 4 and k1 < 14 and k3 >= 4 and k3 < 14", T4_NAME, T4_NAME),
+        T4_NAME, 40, 160038);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 = 4 and k2 IN (4, 8, 12, 16)", T4_NAME, T4_NAME),
+        T4_NAME, 8, 160006);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 IN (4, 8, 12, 16) and k2 = 4", T4_NAME, T4_NAME),
+        T4_NAME, 8, 160006);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k3 IN (4, 8, 12, 16) and k4 = 4", T4_NAME, T4_NAME),
+        T4_NAME, 9, 160007);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 >= 4 and k1 < 5 and k2 IN (4, 8, 12, 16)", T2_NAME, T2_NAME),
+        T2_NAME, 1, 399);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 >= 4 and k1 < 6 and k2 IN (4, 8, 12, 16)", T2_NAME, T2_NAME),
+        T2_NAME, 1, 399);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 >= 4 and k1 < 14 and k2 IN (4, 8, 12, 16)", T2_NAME, T2_NAME),
+        T2_NAME, 1, 399);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 >= 4 and k1 < 7 and k3 IN (4, 8, 12, 16)", T3_NAME, T3_NAME),
+        T3_NAME, 2, 8000);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k2 >= 4 and k2 < 7 and k4 IN (4, 8, 12)", T4_NAME, T4_NAME),
+        T4_NAME, 24, 160022);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 IN (1, 4, 7, 10)", T4_NAME, T4_NAME),
+        T4_NAME, 157, 160155);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 >= 4 AND k2 >= 4", T4_NAME, T4_NAME),
+        T4_NAME, 114, 160112);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 >= 4 AND k1 < 14 AND k2 >= 4", T4_NAME, T4_NAME),
+        T4_NAME, 67, 160065);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 >= 4 AND k1 < 14 AND k2 >= 4 AND k2 < 14", T4_NAME, T4_NAME),
+        T4_NAME, 40, 160038);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 >= 4 AND k2 >= 4 AND k2 < 14", T4_NAME, T4_NAME),
+        T4_NAME, 67, 160065);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 IN (1, 4, 7, 10) AND k2 IN (1, 4, 7, 10)", T4_NAME, T4_NAME),
+        T4_NAME, 157, 160155);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 >= 4 AND k3 >= 4", T4_NAME, T4_NAME),
+        T4_NAME, 114, 160112);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 >= 4 AND k1 < 14 AND k3 >= 4 AND k3 < 14", T4_NAME, T4_NAME),
+        T4_NAME, 40, 160038);
+      testSeekAndNextEstimationSeqScanHelper(stmt, String.format("/*+SeqScan(%s)*/ SELECT * "
+        + "FROM %s WHERE k1 >= 4 AND k3 >= 4 AND k3 < 14", T4_NAME, T4_NAME),
+        T4_NAME, 67, 160065);
     }
   }
 }

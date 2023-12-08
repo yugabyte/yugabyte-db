@@ -134,13 +134,12 @@ public class BackupHelper {
   }
 
   public boolean abortBackupTask(UUID taskUUID) {
-    boolean status = commissioner.abortTask(taskUUID);
-    return status;
+    return commissioner.abortTask(taskUUID, false);
   }
 
   public List<UUID> getBackupUUIDList(UUID taskUUID) {
     List<Backup> backups = Backup.fetchAllBackupsByTaskUUID(taskUUID);
-    List<UUID> uuidList = new ArrayList<UUID>();
+    List<UUID> uuidList = new ArrayList<UUID>(backups.size());
 
     for (Backup b : backups) {
       uuidList.add(b.getBackupUUID());
@@ -305,7 +304,8 @@ public class BackupHelper {
               configData,
               taskParams.backupStorageInfoList.parallelStream()
                   .map(bSI -> bSI.storageLocation)
-                  .collect(Collectors.toSet()));
+                  .collect(Collectors.toSet()),
+              false);
     }
 
     if (taskParams.category.equals(BackupCategory.YB_CONTROLLER) && !universe.isYbcEnabled()) {
@@ -445,7 +445,7 @@ public class BackupHelper {
   }
 
   public void validateRestoreOverwrites(
-      List<BackupStorageInfo> backupStorageInfos, Universe universe, Backup.BackupCategory category)
+      List<BackupStorageInfo> backupStorageInfos, Universe universe)
       throws PlatformServiceException {
     List<TableInfo> tableInfoList = getTableInfosOrEmpty(universe);
     for (BackupStorageInfo backupInfo : backupStorageInfos) {
@@ -822,7 +822,7 @@ public class BackupHelper {
     storageUtilFactory
         .getStorageUtil(storageConfig.getName())
         .validateStorageConfigOnDefaultLocationsList(
-            storageConfig.getDataObject(), preflightParams.getBackupLocations());
+            storageConfig.getDataObject(), preflightParams.getBackupLocations(), false);
 
     UUID backupUUID = preflightParams.getBackupUUID();
     if (backupUUID != null) {

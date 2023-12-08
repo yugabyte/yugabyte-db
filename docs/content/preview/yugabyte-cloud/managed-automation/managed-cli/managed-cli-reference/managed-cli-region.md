@@ -1,5 +1,5 @@
 ---
-title: region resource
+title: ybm CLI region resource
 headerTitle: ybm region
 linkTitle: region
 description: YugabyteDB Managed CLI reference Region resource.

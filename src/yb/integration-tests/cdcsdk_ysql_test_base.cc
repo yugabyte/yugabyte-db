@@ -753,13 +753,22 @@ namespace cdc {
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const GetChangesResponsePB* change_resp,
       const TableId table_id) {
+
+    return UpdateCheckpoint(stream_id, tablets, change_resp->cdc_sdk_checkpoint(), table_id);
+  }
+
+  Result<GetChangesResponsePB> CDCSDKYsqlTest::UpdateCheckpoint(
+      const xrepl::StreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      const CDCSDKCheckpointPB& resp_checkpoint,
+      const TableId table_id) {
     GetChangesRequestPB change_req2;
     GetChangesResponsePB change_resp2;
     PrepareChangeRequest(
-        &change_req2, stream_id, tablets, 0, change_resp->cdc_sdk_checkpoint().index(),
-        change_resp->cdc_sdk_checkpoint().term(), change_resp->cdc_sdk_checkpoint().key(),
-        change_resp->cdc_sdk_checkpoint().write_id(),
-        change_resp->cdc_sdk_checkpoint().snapshot_time(), table_id);
+        &change_req2, stream_id, tablets, 0, resp_checkpoint.index(),
+        resp_checkpoint.term(), resp_checkpoint.key(),
+        resp_checkpoint.write_id(),
+        resp_checkpoint.snapshot_time(), table_id);
     RpcController get_changes_rpc;
     RETURN_NOT_OK(cdc_proxy_->GetChanges(change_req2, &change_resp2, &get_changes_rpc));
     if (change_resp2.has_error()) {
@@ -913,7 +922,9 @@ namespace cdc {
 
           if (set_checkpoint_resp.has_error() &&
               set_checkpoint_resp.error().code() != CDCErrorPB::TABLET_NOT_FOUND &&
-              set_checkpoint_resp.error().code() != CDCErrorPB::LEADER_NOT_READY) {
+              set_checkpoint_resp.error().code() != CDCErrorPB::LEADER_NOT_READY &&
+              set_checkpoint_resp.error().status().message().find("TRY_AGAIN_CODE") ==
+                  std::string::npos) {
             return STATUS_FORMAT(
                 InternalError, "Response had error: $0", set_checkpoint_resp.DebugString());
           }
@@ -986,6 +997,33 @@ namespace cdc {
         cdc_proxy_->GetCheckpoint(get_checkpoint_req, &get_checkpoint_resp, &get_checkpoint_rpc));
 
     return get_checkpoint_resp;
+  }
+
+  Result<CDCSDKCheckpointPB> CDCSDKYsqlTest::GetCDCSDKSnapshotCheckpoint(
+      const xrepl::StreamId& stream_id, const TabletId& tablet_id, const TableId& table_id) {
+    RpcController get_checkpoint_rpc;
+    GetCheckpointRequestPB get_checkpoint_req;
+    GetCheckpointResponsePB get_checkpoint_resp;
+    auto deadline = CoarseMonoClock::now() + test_client()->default_rpc_timeout();
+    get_checkpoint_rpc.set_deadline(deadline);
+    get_checkpoint_req.set_stream_id(stream_id.ToString());
+
+    if (!table_id.empty()) {
+      get_checkpoint_req.set_table_id(table_id);
+    }
+
+    get_checkpoint_req.set_tablet_id(tablet_id);
+    RETURN_NOT_OK(
+        cdc_proxy_->GetCheckpoint(get_checkpoint_req, &get_checkpoint_resp, &get_checkpoint_rpc));
+
+    CDCSDKCheckpointPB checkpoint_resp;
+    checkpoint_resp.set_index(get_checkpoint_resp.checkpoint().op_id().index());
+    checkpoint_resp.set_term(get_checkpoint_resp.checkpoint().op_id().term());
+    checkpoint_resp.set_write_id(-1);
+    checkpoint_resp.set_snapshot_time(get_checkpoint_resp.snapshot_time());
+    checkpoint_resp.set_key(get_checkpoint_resp.snapshot_key());
+
+    return checkpoint_resp;
   }
 
   Result<GetTabletListToPollForCDCResponsePB> CDCSDKYsqlTest::GetTabletListToPollForCDC(
@@ -1819,6 +1857,22 @@ namespace cdc {
         test_cluster()->mini_tablet_server(new_leader_index)->server()->permanent_uuid());
     RETURN_NOT_OK(Subprocess::Call(argv));
 
+    return Status::OK();
+  }
+
+  Status CDCSDKYsqlTest::StepDownLeader(size_t new_leader_index, const TabletId tablet_id) {
+    Status status = yb_admin_client_->SetLoadBalancerEnabled(false);
+    if (!status.ok()) {
+      return status;
+    }
+
+    status = yb_admin_client_->LeaderStepDownWithNewLeader(
+        tablet_id,
+        test_cluster()->mini_tablet_server(new_leader_index)->server()->permanent_uuid());
+    if (!status.ok()) {
+      return status;
+    }
+    SleepFor(MonoDelta::FromMilliseconds(500));
     return Status::OK();
   }
 
@@ -2682,14 +2736,14 @@ namespace cdc {
     size_t first_leader_index = -1;
     size_t first_follower_index = -1;
     GetTabletLeaderAndAnyFollowerIndex(tablets, &first_leader_index, &first_follower_index);
+    StartYbAdminClient();
     if (first_leader_index == 0) {
       // We want to avoid the scenario where the first TServer is the leader, since we want to shut
       // the leader TServer down and call GetChanges. GetChanges will be called on the cdc_proxy
       // based on the first TServer's address and we want to avoid the network issues.
-      ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
+      ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
     }
-    ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
-    SleepFor(MonoDelta::FromSeconds(10));
+    ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
 
     // Call GetChanges with new LEADER.
     change_resp =
@@ -2720,9 +2774,9 @@ namespace cdc {
       // We want to avoid the scenario where the first TServer is the leader, since we want to shut
       // the leader TServer down and call GetChanges. GetChanges will be called on the cdc_proxy
       // based on the first TServer's address and we want to avoid the network issues.
-      ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
+      ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
     }
-    ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
+    ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
     change_resp =
         ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
     // Validate the columns and insert counts.
@@ -2847,13 +2901,14 @@ namespace cdc {
     size_t first_leader_index = -1;
     size_t first_follower_index = -1;
     GetTabletLeaderAndAnyFollowerIndex(tablets, &first_leader_index, &first_follower_index);
+    StartYbAdminClient();
     if (first_leader_index == 0) {
       // We want to avoid the scenario where the first TServer is the leader, since we want to shut
       // the leader TServer down and call GetChanges. GetChanges will be called on the cdc_proxy
       // based on the first TServer's address and we want to avoid the network issues.
-      ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
+      ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
     }
-    ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
+    ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
     change_resp =
         ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
     ValidateColumnCounts(change_resp, 2);
@@ -2987,6 +3042,7 @@ namespace cdc {
 
   void CDCSDKYsqlTest::GetRecordsAndSplitCount(
       const xrepl::StreamId& stream_id, const TabletId& tablet_id, const TableId& table_id,
+      CDCCheckpointType checkpoint_type,
       int* record_count, int* total_records, int* total_splits) {
     std::vector<pair<TabletId, CDCSDKCheckpointPB>> tablets;
     tablets.push_back({tablet_id, {}});
@@ -3014,7 +3070,9 @@ namespace cdc {
             ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_id, tablet_id));
         for (const auto& tablet_checkpoint_pair : get_tablets_resp.tablet_checkpoint_pairs()) {
           auto new_tablet = tablet_checkpoint_pair.tablet_locations();
-          auto new_checkpoint = tablet_checkpoint_pair.cdc_sdk_checkpoint();
+          auto new_checkpoint = (checkpoint_type == CDCCheckpointType::EXPLICIT)
+                                    ? change_resp.cdc_sdk_checkpoint()
+                                    : tablet_checkpoint_pair.cdc_sdk_checkpoint();
           tablets.push_back({new_tablet.tablet_id(), new_checkpoint});
         }
       }
@@ -3184,6 +3242,109 @@ namespace cdc {
     auto table = cm.GetTableInfo(table_id);
     return cm.XreplValidateSplitCandidateTable(*table);
   }
+
+  void CDCSDKYsqlTest::LogRetentionBarrierAndRelatedDetails(
+    const GetCheckpointResponsePB& checkpoint_result,
+    const tablet::TabletPeerPtr& tablet_peer) {
+
+    LOG(INFO) << "Snapshot Time : " << checkpoint_result.snapshot_time();
+    LOG(INFO) << "History cutoff: " << tablet_peer->get_cdc_sdk_safe_time();
+    LOG(INFO) << "Snapshot Safe Opid: " <<  checkpoint_result.checkpoint().op_id()
+              << ", WAL index protected from: " << tablet_peer->get_cdc_min_replicated_index()
+              << ", Intents protected from: " << tablet_peer->cdc_sdk_min_checkpoint_op_id();
+  }
+
+  void CDCSDKYsqlTest::ConsumeSnapshotAndVerifyRecords(
+      const xrepl::StreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      const CDCSDKCheckpointPB& cp_resp,
+      const CDCSDKYsqlTest::ExpectedRecord* expected_records,
+      const uint32_t* expected_count,
+      uint32_t* count) {
+
+    GetChangesResponsePB change_resp_updated =
+    ASSERT_RESULT(UpdateCheckpoint(stream_id, tablets, cp_resp));
+
+    uint32_t record_size = change_resp_updated.cdc_sdk_proto_records_size();
+    for (uint32_t i = 0; i < record_size; ++i) {
+      const CDCSDKProtoRecordPB record = change_resp_updated.cdc_sdk_proto_records(i);
+      CheckRecord(record, expected_records[i], count);
+    }
+    LOG(INFO) << "Got " << count[4] << " read record and " << count[0] << " ddl record";
+    CheckCount(expected_count, count);
+  }
+
+  Result<uint32_t> CDCSDKYsqlTest::ConsumeSnapshotAndVerifyCounts(
+      const xrepl::StreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      const CDCSDKCheckpointPB& cp_resp,
+      GetChangesResponsePB* change_resp_after_snapshot) {
+
+    uint32_t reads_snapshot = 0;
+    bool end_snapshot = false;
+    bool first_read = true;
+    GetChangesResponsePB change_resp;
+    GetChangesResponsePB change_resp_updated;
+
+    while (true) {
+      if (first_read) {
+        change_resp_updated = VERIFY_RESULT(UpdateCheckpoint(stream_id, tablets, cp_resp));
+        first_read = false;
+      } else {
+        change_resp_updated = VERIFY_RESULT(UpdateCheckpoint(stream_id, tablets, &change_resp));
+      }
+
+      uint32_t record_size = change_resp_updated.cdc_sdk_proto_records_size();
+      uint32_t read_count = 0;
+      for (uint32_t i = 0; i < record_size; ++i) {
+        const CDCSDKProtoRecordPB record = change_resp_updated.cdc_sdk_proto_records(i);
+        if (record.row_message().op() == RowMessage::READ) {
+          read_count++;
+        } else if (record.row_message().op() == RowMessage::INSERT) {
+          end_snapshot = true;
+          break;
+        }
+      }
+      if (end_snapshot) {
+        break;
+      }
+      reads_snapshot += read_count;
+      change_resp = change_resp_updated;
+    }
+
+    *change_resp_after_snapshot = change_resp;
+    return reads_snapshot;
+  }
+
+  Result<uint32_t> CDCSDKYsqlTest::ConsumeInsertsAndVerifyCounts(
+      const xrepl::StreamId& stream_id,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      const GetChangesResponsePB& change_resp_after_snapshot) {
+
+    uint32_t inserts_snapshot = 0;
+    GetChangesResponsePB change_resp = change_resp_after_snapshot;
+
+    while (true) {
+      GetChangesResponsePB change_resp1 =
+          VERIFY_RESULT(UpdateCheckpoint(stream_id, tablets, &change_resp));
+      uint32_t record_size_after_snapshot = change_resp1.cdc_sdk_proto_records_size();
+      if (record_size_after_snapshot == 0) {
+        break;
+      }
+      uint32_t insert_count = 0;
+      for (uint32_t i = 0; i < record_size_after_snapshot; ++i) {
+        const CDCSDKProtoRecordPB record = change_resp1.cdc_sdk_proto_records(i);
+        if (record.row_message().op() == RowMessage::INSERT) {
+          insert_count++;
+        }
+      }
+      inserts_snapshot += insert_count;
+      change_resp = change_resp1;
+    }
+
+    return inserts_snapshot;
+  }
+
 
 } // namespace cdc
 } // namespace yb

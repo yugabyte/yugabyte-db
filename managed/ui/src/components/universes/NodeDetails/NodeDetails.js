@@ -30,8 +30,8 @@ export default class NodeDetails extends Component {
       const uuid = currentUniverse.data.universeUUID;
       this.props.getUniversePerNodeStatus(uuid);
       this.props.resetNodeDetails();
-      this.props.getMasterNodesInfo(uuid);
       if (hasLiveNodes(currentUniverse.data)) {
+        this.props.getMasterNodesInfo(uuid);
         this.props.getUniversePerNodeMetrics(uuid);
       }
 

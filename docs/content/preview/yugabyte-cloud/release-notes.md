@@ -4,7 +4,6 @@ headerTitle: What's new in YugabyteDB Managed
 linkTitle: Change log
 description: YugabyteDB Managed Change Log and known issues.
 headcontent: New features and known issues
-image: /images/section_icons/index/quick_start.png
 menu:
   preview_yugabyte-cloud:
     identifier: yugabytedb-managed-releases
@@ -20,6 +19,30 @@ On this page:
 
 ## Change log
 
+### December 4, 2023
+
+**New Features**
+
+- Support for [federated authentication](../managed-security/managed-authentication/), which allows you to use an identity provider to manage access to your YugabyteDB Managed account. Initial support includes the Microsoft Entra ID (Azure AD) platform, providing single sign-on access for your account users using their Microsoft identities.
+- Added ability to [audit account login activity](../cloud-secure-clusters/cloud-activity/). Navigate to **Security > Activity > Access History** to review the access history, including the client IP address, activity type, number of attempts, timestamp, and result.
+- Added ability to use different instance types and node sizes for different [read replica regions](../cloud-clusters/managed-read-replica/) in a cluster. Specify higher vCPU and disk size per node for replicas in high traffic regions, and vice-versa for lower traffic regions.
+- Support for Azure Key Vault for enabling and disabling YugabyteDB [encryption at rest](../cloud-secure-clusters/managed-ear/) using a customer managed key.
+
+**Database**
+
+- Production track updated to 2.14.14.0.
+
+### November 16, 2023
+
+**New Features**
+
+- [Product Labs](../../yugabyte-cloud/managed-labs/) provides an interactive, in-product learning experience. Learn about YugabyteDB features using real-world applications running on live YugabyteDB clusters. The first lab, Create Global Applications, demonstrates how to manage latencies using three different deployment strategies.
+- Support for [exporting cluster metrics](../cloud-monitor/metrics-export/) to Sumo Logic.
+
+**Database**
+
+- Innovation track updated to 2.18.4.1.
+
 ### November 3, 2023
 
 **New Features**
@@ -30,6 +53,7 @@ On this page:
 **Database**
 
 - Production track updated to 2.14.13.0.
+- Preview track updated to 2.19.3.0.
 
 ### October 5, 2023
 
@@ -446,6 +470,7 @@ This release includes the following features:
 - **Clusters** - No support for scaling vCPUs on single node clusters.
 - **Metrics** - The **View Full Screen** option in charts on the cluster **Overview** and **Performance Metrics** pages does not work in some versions of Safari 14.0 (Big Sur).
 - **Metrics** - Some clusters in European regions may show occasional spikes in the YSQL Operations/sec chart. This is due to cluster health checks and can be ignored.
+- **Metrics** - For a cluster with read replicas with different IOPS provisioned (AWS only), the provisioned IOPS metric shows the same IOPS across all replicas.
 - **Widely-dispersed regions** - For multi-region clusters with widely-dispersed regions, Performance Advisor, Slow Queries, and some metrics may not return any results.
 - **Maximum number of regions** - Multi-region clusters and their read replicas are limited to a maximum of 8 regions.
 

@@ -48,6 +48,9 @@ const useStyles = makeStyles((theme) => ({
   infoBanner: {
     marginTop: 'auto'
   },
+  confirmTextInputBox: {
+    width: '400px'
+  },
   dialogContentRoot: {
     display: 'flex',
     flexDirection: 'column'
@@ -63,7 +66,7 @@ export const InitiateSwitchoverModal = ({ drConfig, modalProps }: InitiateSwitch
   const classes = useStyles();
   const queryClient = useQueryClient();
 
-  const targetUniverseUuid = drConfig.xClusterConfig.targetUniverseUUID;
+  const targetUniverseUuid = drConfig.drReplicaUniverseUuid;
   const targetUniverseQuery = useQuery(
     universeQueryKey.detail(targetUniverseUuid),
     () => api.fetchUniverse(targetUniverseUuid),
@@ -71,7 +74,11 @@ export const InitiateSwitchoverModal = ({ drConfig, modalProps }: InitiateSwitch
   );
 
   const initiateSwitchoverMutation = useMutation(
-    (drConfig: DrConfig) => api.initiateSwitchover(drConfig.uuid),
+    (drConfig: DrConfig) =>
+      api.initiateSwitchover(drConfig.uuid, {
+        primaryUniverseUuid: drConfig.drReplicaUniverseUuid ?? '',
+        drReplicaUniverseUuid: drConfig.primaryUniverseUuid ?? ''
+      }),
     {
       onSuccess: (response, drConfig) => {
         const invalidateQueries = () => {
@@ -80,14 +87,12 @@ export const InitiateSwitchoverModal = ({ drConfig, modalProps }: InitiateSwitch
 
           // The `drConfigUuidsAsSource` and `drConfigUuidsAsTarget` fields will need to be updated as
           // we switched roles for both universes.
-          queryClient.invalidateQueries(
-            universeQueryKey.detail(drConfig.xClusterConfig.sourceUniverseUUID),
-            { exact: true }
-          );
-          queryClient.invalidateQueries(
-            universeQueryKey.detail(drConfig.xClusterConfig.targetUniverseUUID),
-            { exact: true }
-          );
+          queryClient.invalidateQueries(universeQueryKey.detail(drConfig.primaryUniverseUuid), {
+            exact: true
+          });
+          queryClient.invalidateQueries(universeQueryKey.detail(drConfig.drReplicaUniverseUuid), {
+            exact: true
+          });
         };
         const handleTaskCompletion = (error: boolean) => {
           if (error) {
@@ -109,9 +114,7 @@ export const InitiateSwitchoverModal = ({ drConfig, modalProps }: InitiateSwitch
                   <Trans
                     i18nKey={`${TRANSLATION_KEY_PREFIX}.success.taskSuccess`}
                     components={{
-                      universeLink: (
-                        <a href={`/universes/${drConfig.xClusterConfig.targetUniverseUUID}`} />
-                      ),
+                      universeLink: <a href={`/universes/${drConfig.drReplicaUniverseUuid}`} />,
                       bold: <b />
                     }}
                     values={{ sourceUniverseName: targetUniverseQuery.data?.name }}
@@ -131,8 +134,8 @@ export const InitiateSwitchoverModal = ({ drConfig, modalProps }: InitiateSwitch
     }
   );
 
-  if (!drConfig.xClusterConfig.sourceUniverseUUID || !drConfig.xClusterConfig.targetUniverseUUID) {
-    const i18nKey = drConfig.xClusterConfig.sourceUniverseUUID
+  if (!drConfig.primaryUniverseUuid || !drConfig.drReplicaUniverseUuid) {
+    const i18nKey = drConfig.primaryUniverseUuid
       ? 'undefinedTargetUniverseUuid'
       : 'undefinedSourceUniverseUuid';
     return (
@@ -146,8 +149,9 @@ export const InitiateSwitchoverModal = ({ drConfig, modalProps }: InitiateSwitch
   if (targetUniverseQuery.isError) {
     return (
       <YBErrorIndicator
-        customErrorMessage={t('faliedToFetchTargetuniverse', {
-          keyPrefix: 'clusterDetail.xCluster.error'
+        customErrorMessage={t('failedToFetchTargetuniverse', {
+          keyPrefix: 'queryError.error',
+          universeUuid: drConfig.drReplicaUniverseUuid
         })}
       />
     );
@@ -211,7 +215,7 @@ export const InitiateSwitchoverModal = ({ drConfig, modalProps }: InitiateSwitch
           {t('confirmationInstructions')}
         </Typography>
         <YBInput
-          fullWidth
+          className={classes.confirmTextInputBox}
           placeholder={targetUniverseName}
           value={confirmationText}
           onChange={(event) => setConfirmationText(event.target.value)}

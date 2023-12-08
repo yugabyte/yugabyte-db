@@ -33,12 +33,33 @@ export const UniverseState = {
   }
 };
 
+export const SoftwareUpgradeState = {
+  READY: 'Ready',
+  UPGRADING: 'Upgrading',
+  UPGRADE_FAILED: 'UpgradeFailed',
+  PRE_FINALIZE: 'PreFinalize',
+  FINALIZING: 'Finalizing',
+  FINALIZE_FAILED: 'FinalizeFailed',
+  ROLLING_BACK: 'RollingBack',
+  ROLLBACK_FAILED: 'RollbackFailed'
+};
+
+export const SoftwareUpgradeTaskType = {
+  SOFTWARE_UPGRADE: 'SoftwareUpgrade',
+  SOFTWARE_UPGRADEYB: 'SoftwareUpgradeYB',
+  FINALIZE_UPGRADE: 'FinalizeUpgrade',
+  ROLLBACK_UPGRADE: 'RollbackUpgrade'
+};
+
 /**
  * Returns a universe status object with:
  *  - state - A universe state from the universe state mapping {@link UniverseState}
  *  - error - The error string from the current universe
  */
 export const getUniverseStatus = (universe) => {
+  if (!universe) {
+    return { state: UniverseState.UNKNOWN, error: '' };
+  }
   const {
     updateInProgress,
     updateSucceeded,
@@ -107,4 +128,24 @@ export const hasPendingTasksForUniverse = (universeUUID, customerTaskList) => {
   return isNonEmptyArray(customerTaskList)
     ? customerTaskList.some((taskItem) => isPendingUniverseTask(universeUUID, taskItem))
     : false;
+};
+
+export const getcurrentUniverseFailedTask = (currentUniverse, customerTaskList) => {
+  const latestTask = customerTaskList?.find((task) => {
+    return task.targetUUID === currentUniverse.universeUUID;
+  });
+  if (latestTask && (latestTask.status === 'Failure' || latestTask.status === 'Aborted')) {
+    return latestTask;
+  }
+  const universeDetails = currentUniverse.universeDetails;
+  // Last universe task succeeded, but there can be a placement modification task failure.
+  if (isDefinedNotNull(universeDetails.placementModificationTaskUuid)) {
+    return customerTaskList?.find((task) => {
+      return (
+        task.targetUUID === currentUniverse.universeUUID &&
+        task.id === universeDetails.placementModificationTaskUuid
+      );
+    });
+  }
+  return null;
 };

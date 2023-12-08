@@ -135,6 +135,12 @@ public class NodeAgentController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.NodeAgentForm",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result updateState(UUID customerUuid, UUID nodeUuid, Http.Request request) {
     NodeAgentForm payload = parseJsonAndValidate(request, NodeAgentForm.class);
     NodeAgent nodeAgent = nodeAgentHandler.updateState(customerUuid, nodeUuid, payload);
@@ -152,6 +158,12 @@ public class NodeAgentController extends AuthenticatedController {
       response = YBPSuccess.class,
       hidden = true,
       nickname = "UnregisterNodeAgent")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result unregister(UUID customerUuid, UUID nodeUuid, Http.Request request) {
     NodeAgent.getOrBadRequest(customerUuid, nodeUuid);
     nodeAgentHandler.unregister(nodeUuid);
@@ -169,6 +181,12 @@ public class NodeAgentController extends AuthenticatedController {
       response = String.class,
       produces = "application/gzip, application/x-sh",
       nickname = "DownloadNodeAgentInstaller")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result download(String downloadType, String os, String arch) {
     NodeAgentDownloadFile fileToDownload =
         nodeAgentHandler.validateAndGetDownloadFile(downloadType, os, arch);
@@ -191,8 +209,8 @@ public class NodeAgentController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
   public Result reinstall(UUID customerUuid, UUID universeUuid, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUuid);

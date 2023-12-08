@@ -119,7 +119,10 @@ class TabletServer : public DbServerBase, public TabletServerIf {
   std::string ToString() const override;
 
   uint32_t GetAutoFlagConfigVersion() const override;
-  Status SetAutoFlagConfig(const AutoFlagsConfigPB new_config);
+  void HandleMasterHeartbeatResponse(
+      HybridTime heartbeat_sent_time, std::optional<AutoFlagsConfigPB> new_config);
+
+  Result<uint32> ValidateAndGetAutoFlagsConfigVersion() const;
 
   AutoFlagsConfigPB TEST_GetAutoFlagConfig() const;
 

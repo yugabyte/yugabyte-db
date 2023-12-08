@@ -26,6 +26,7 @@ import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.ServiceList;
+import io.fabric8.kubernetes.api.model.Volume;
 import io.fabric8.kubernetes.api.model.events.v1.Event;
 import io.fabric8.kubernetes.api.model.events.v1.EventList;
 import java.io.BufferedWriter;
@@ -380,20 +381,130 @@ public class ShellKubernetesManager extends KubernetesManager {
   }
 
   @Override
+  public void deleteUnusedPVCs(
+      Map<String, String> config,
+      String namespace,
+      String helmReleaseName,
+      String appLabelValue,
+      boolean newNamingStyle,
+      int replicaCount) {
+
+    String appLabel = newNamingStyle ? "app.kubernetes.io/name" : "app";
+    String labelSelector =
+        String.format("%s=%s,release=%s", appLabel, appLabelValue, helmReleaseName);
+    if (!checkStatefulSetStatus(config, namespace, labelSelector, replicaCount)) {
+      String message = "Statefulset is not ready: " + namespace + labelSelector;
+      throw new RuntimeException(message);
+    }
+    List<PersistentVolumeClaim> pvcs =
+        getPVCs(config, namespace, helmReleaseName, appLabelValue, newNamingStyle);
+    List<String> activePodVolumes =
+        getActivePodVolumes(
+            config, namespace, helmReleaseName, appLabelValue, newNamingStyle, replicaCount);
+    log.info(activePodVolumes.toString());
+    for (PersistentVolumeClaim pvc : pvcs) {
+      String pvcName = pvc.getMetadata().getName();
+      if (!activePodVolumes.contains(pvcName)) {
+        log.info("Deleting pvc" + pvcName);
+        List<String> commandList =
+            ImmutableList.of("kubectl", "--namespace", namespace, "delete", "pvc", pvcName);
+        execCommand(config, commandList, true).processErrors("Unable to delete  PVC:" + pvcName);
+      }
+    }
+  }
+
+  private List<String> getActivePodVolumes(
+      Map<String, String> config,
+      String namespace,
+      String helmReleaseName,
+      String appLabelValue,
+      boolean newNamingStyle,
+      int replicaCount) {
+    String appLabel = newNamingStyle ? "app.kubernetes.io/name" : "app";
+    String labelSelector =
+        String.format("%s=%s,release=%s", appLabel, appLabelValue, helmReleaseName);
+    List<String> commandList =
+        ImmutableList.of(
+            "kubectl", "--namespace", namespace, "get", "pods", "-l", labelSelector, "-o=json");
+    ShellResponse response =
+        execCommand(config, commandList, true).processErrors("Unable to get Pod Volumes");
+
+    List<Pod> podList = deserialize(response.getMessage(), PodList.class).getItems();
+    // Verify all replicas are up.
+    assert podList.size() == replicaCount;
+    List<String> pvcNames = new ArrayList<>();
+    for (Pod pod : podList) {
+      for (Volume volume : pod.getSpec().getVolumes()) {
+        if (volume.getPersistentVolumeClaim() != null) {
+          pvcNames.add(volume.getPersistentVolumeClaim().getClaimName());
+        }
+      }
+    }
+    return pvcNames;
+  }
+
+  @Override
   public List<PersistentVolumeClaim> getPVCs(
       Map<String, String> config,
       String namespace,
       String helmReleaseName,
-      String appName,
+      String appLabelValue,
       boolean newNamingStyle) {
     String appLabel = newNamingStyle ? "app.kubernetes.io/name" : "app";
-    String labelSelector = String.format("%s=%s,release=%s", appLabel, appName, helmReleaseName);
+    String labelSelector =
+        String.format("%s=%s,release=%s", appLabel, appLabelValue, helmReleaseName);
     List<String> commandList =
         ImmutableList.of(
             "kubectl", "--namespace", namespace, "get", "pvc", "-l", labelSelector, "-o", "json");
     ShellResponse response =
         execCommand(config, commandList, false).processErrors("Unable to get PVCs");
     return deserialize(response.getMessage(), PersistentVolumeClaimList.class).getItems();
+  }
+
+  private boolean checkStatefulSetStatus(
+      Map<String, String> config, String namespace, String labelSelector, int replicaCount) {
+    List<String> commandList =
+        ImmutableList.of(
+            "kubectl",
+            "--namespace",
+            namespace,
+            "get",
+            "statefulsets",
+            "-l",
+            labelSelector,
+            "-o=jsonpath={range .items[*]}{.metadata.name}{' '}{end}");
+    ShellResponse response =
+        execCommand(config, commandList, false).processErrors("Unable to get StatefulSet status");
+
+    String[] statefulSetNames = response.getMessage().trim().split(" ");
+    if (statefulSetNames.length != 1) {
+      throw new RuntimeException(
+          "Error: Multiple or no StatefulSets found for the provided label selector.");
+    }
+    commandList =
+        ImmutableList.of(
+            "kubectl",
+            "--namespace",
+            namespace,
+            "get",
+            "statefulset",
+            statefulSetNames[0],
+            "-o=jsonpath={.status.readyReplicas} {.status.replicas}");
+    response =
+        execCommand(config, commandList, false)
+            .processErrors("Unable to get StatefulSet status for " + statefulSetNames[0]);
+
+    // 2 values in output
+    String[] replicaCounts = response.getMessage().trim().split(" ");
+    boolean isReady = false;
+    if (replicaCounts.length == 2) {
+      int readyReplicas = Integer.parseInt(replicaCounts[0]);
+      int totalReplicas = Integer.parseInt(replicaCounts[1]);
+      if (readyReplicas == totalReplicas && totalReplicas == replicaCount) {
+        isReady = true;
+      }
+    }
+    return isReady;
   }
 
   @Override
@@ -450,6 +561,11 @@ public class ShellKubernetesManager extends KubernetesManager {
       patchSuccess &=
           response.isSuccess() && waitForPVCExpand(universeUUID, config, namespace, pvcName);
     }
+    if (!patchSuccess) {
+      String msg = String.format("Failed expanding PVCs %s to size %s", pvcNames, newDiskSize);
+      throw new RuntimeException(msg);
+    }
+    // this return value is ignored, so can be removed
     return patchSuccess;
   }
 

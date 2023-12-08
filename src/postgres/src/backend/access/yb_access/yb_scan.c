@@ -22,6 +22,7 @@
  */
 
 #include <limits.h>
+#include <math.h>
 #include <string.h>
 #include "postgres.h"
 
@@ -46,6 +47,8 @@
 #include "nodes/relation.h"
 #include "optimizer/cost.h"
 #include "optimizer/var.h"
+#include "pgstat.h"
+#include "postmaster/bgworker_internals.h" /* for MAX_PARALLEL_WORKER_LIMIT */
 #include "utils/datum.h"
 #include "utils/elog.h"
 #include "utils/rel.h"
@@ -388,7 +391,7 @@ static void ybcUpdateFKCache(YbScanDesc ybScan, Datum ybctid)
 	}
 }
 
-static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan, bool is_forward_scan)
+static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan, ScanDirection dir)
 {
 	HeapTuple tuple    = NULL;
 	bool      has_data = false;
@@ -398,65 +401,123 @@ static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan, bool is_forward_scan)
 	bool            *nulls  = (bool *) palloc(tupdesc->natts * sizeof(bool));
 	YBCPgSysColumns syscols;
 
-	/* Execute the select statement. */
-	if (!ybScan->is_exec_done)
+	/*
+	 * In the case of parallel scan we need to obtain boundaries from the pscan
+	 * before the scan is executed. Also empty row from parallel range scan does
+	 * not mean scan is done, it means the range is done and we need to pick up
+	 * next. No rows from parallel range is possible, hence the loop.
+	 */
+	while (true)
 	{
-		HandleYBStatus(YBCPgSetForwardScan(ybScan->handle, is_forward_scan));
-		HandleYBStatus(YBCPgExecSelect(ybScan->handle, ybScan->exec_params));
-		ybScan->is_exec_done = true;
-	}
-
-	/* Fetch one row. */
-	YBCStatus status = YBCPgDmlFetch(ybScan->handle,
-									 tupdesc->natts,
-									 (uint64_t *) values,
-									 nulls,
-									 &syscols,
-									 &has_data);
-
-	if (IsolationIsSerializable())
-		HandleYBStatus(status);
-	else if (status)
-	{
-		if (ybScan->exec_params != NULL && YBCIsTxnConflictError(YBCStatusTransactionError(status)))
+		/* Need to execute the request */
+		if (!ybScan->is_exec_done)
 		{
-			elog(DEBUG2, "Error when trying to lock row. "
-				 "pg_wait_policy=%d docdb_wait_policy=%d txn_errcode=%d message=%s",
-				 ybScan->exec_params->pg_wait_policy,
-				 ybScan->exec_params->docdb_wait_policy,
-				 YBCStatusTransactionError(status),
-				 YBCStatusMessageBegin(status));
-			if (ybScan->exec_params->pg_wait_policy == LockWaitError)
-				ereport(ERROR, (errcode(ERRCODE_LOCK_NOT_AVAILABLE),
-								errmsg("could not obtain lock on row in relation \"%s\"",
-									   RelationGetRelationName(ybScan->relation))));
-			else
-				ereport(ERROR,
-						(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
-						 errmsg("could not serialize access due to concurrent update"),
-						 yb_txn_errcode(YBCGetTxnConflictErrorCode())));
+			/* Parallel mode: pick up parallel block first */
+			if (ybScan->pscan != NULL)
+			{
+				YBParallelPartitionKeys parallel_scan = ybScan->pscan;
+				const char *low_bound;
+				size_t low_bound_size;
+				const char *high_bound;
+				size_t high_bound_size;
+				/*
+				 * If range is found, apply the boundaries, false means the scan
+				 * is done for that worker.
+				 */
+				if (ybParallelNextRange(parallel_scan,
+										&low_bound, &low_bound_size,
+										&high_bound, &high_bound_size))
+				{
+					HandleYBStatus(YBCPgDmlBindRange(
+						ybScan->handle, low_bound, low_bound_size, high_bound,
+						high_bound_size));
+					if (low_bound)
+						pfree((void *) low_bound);
+					if (high_bound)
+						pfree((void *) high_bound);
+				}
+				else
+					return NULL;
+				/*
+				 * Use unlimited fetch.
+				 * Parallel scan range is already of limited size, it is
+				 * unlikely to exceed the message size, but may save some RPCs.
+				 */
+				ybScan->exec_params->limit_use_default = true;
+				ybScan->exec_params->yb_fetch_row_limit = 0;
+				ybScan->exec_params->yb_fetch_size_limit = 0;
+			}
+			/* Set scan direction, if matters */
+			if (ScanDirectionIsForward(dir))
+				HandleYBStatus(YBCPgSetForwardScan(ybScan->handle, true));
+			else if (ScanDirectionIsBackward(dir))
+				HandleYBStatus(YBCPgSetForwardScan(ybScan->handle, false));
+
+			HandleYBStatus(YBCPgExecSelect(ybScan->handle,
+										   ybScan->exec_params));
+			ybScan->is_exec_done = true;
 		}
-		else if (YBCIsTxnSkipLockingError(YBCStatusTransactionError(status)))
-			/* For skip locking, it's correct to simply return no results. */
-			has_data = false;
-		else
+
+		/* Fetch one row. */
+		YBCStatus status = YBCPgDmlFetch(ybScan->handle,
+										 tupdesc->natts,
+										 (uint64_t *) values,
+										 nulls,
+										 &syscols,
+										 &has_data);
+
+		if (IsolationIsSerializable())
 			HandleYBStatus(status);
-	}
-
-	if (has_data)
-	{
-		tuple = heap_form_tuple(tupdesc, values, nulls);
-
-		if (syscols.oid != InvalidOid)
+		else if (status)
 		{
-			HeapTupleSetOid(tuple, syscols.oid);
+			if (ybScan->exec_params != NULL &&
+				YBCIsTxnConflictError(YBCStatusTransactionError(status)))
+			{
+				elog(DEBUG2, "Error when trying to lock row. "
+					 "pg_wait_policy=%d docdb_wait_policy=%d "
+					 "txn_errcode=%d message=%s",
+					 ybScan->exec_params->pg_wait_policy,
+					 ybScan->exec_params->docdb_wait_policy,
+					 YBCStatusTransactionError(status),
+					 YBCStatusMessageBegin(status));
+				if (ybScan->exec_params->pg_wait_policy == LockWaitError)
+					ereport(ERROR,
+							(errcode(ERRCODE_LOCK_NOT_AVAILABLE),
+							 errmsg("could not obtain lock on row in relation \"%s\"",
+									RelationGetRelationName(ybScan->relation))));
+				else
+					ereport(ERROR,
+							(errcode(ERRCODE_T_R_SERIALIZATION_FAILURE),
+							 errmsg("could not serialize access due to concurrent update"),
+							 yb_txn_errcode(YBCGetTxnConflictErrorCode())));
+			}
+			else if (YBCIsTxnSkipLockingError(YBCStatusTransactionError(status)))
+				/* For skip locking, it's correct to simply return no results. */
+				has_data = false;
+			else
+				HandleYBStatus(status);
 		}
-		if (syscols.ybctid != NULL)
+
+		if (has_data)
 		{
-			tuple->t_ybctid = PointerGetDatum(syscols.ybctid);
-			ybcUpdateFKCache(ybScan, tuple->t_ybctid);
+			tuple = heap_form_tuple(tupdesc, values, nulls);
+
+			if (syscols.oid != InvalidOid)
+			{
+				HeapTupleSetOid(tuple, syscols.oid);
+			}
+			if (syscols.ybctid != NULL)
+			{
+				tuple->t_ybctid = PointerGetDatum(syscols.ybctid);
+				ybcUpdateFKCache(ybScan, tuple->t_ybctid);
+			}
+			tuple->t_tableOid = RelationGetRelid(ybScan->relation);
+			break;
 		}
-		tuple->t_tableOid = RelationGetRelid(ybScan->relation);
+		else if (ybScan->pscan != NULL)
+			ybScan->is_exec_done = false;
+		else
+			break;
 	}
 	pfree(values);
 	pfree(nulls);
@@ -465,7 +526,7 @@ static HeapTuple ybcFetchNextHeapTuple(YbScanDesc ybScan, bool is_forward_scan)
 }
 
 static IndexTuple
-ybcFetchNextIndexTuple(YbScanDesc ybScan, bool is_forward_scan)
+ybcFetchNextIndexTuple(YbScanDesc ybScan, ScanDirection dir)
 {
 	IndexTuple tuple    = NULL;
 	bool       has_data = false;
@@ -476,59 +537,113 @@ ybcFetchNextIndexTuple(YbScanDesc ybScan, bool is_forward_scan)
 	bool            *nulls = (bool *) palloc(tupdesc->natts * sizeof(bool));
 	YBCPgSysColumns syscols;
 
-	/* Execute the select statement. */
-	if (!ybScan->is_exec_done)
+	/*
+	 * In the case of parallel scan we need to obtain boundaries from the pscan
+	 * before the scan is executed. Also empty row from parallel range scan does
+	 * not mean scan is done, it means the range is done and we need to pick up
+	 * next. No rows from parallel range is possible, hence the loop.
+	 */
+	while (true)
 	{
-		HandleYBStatus(YBCPgSetForwardScan(ybScan->handle, is_forward_scan));
-		HandleYBStatus(YBCPgExecSelect(ybScan->handle, ybScan->exec_params));
-		ybScan->is_exec_done = true;
-	}
-
-	/* Fetch one row. */
-	HandleYBStatus(YBCPgDmlFetch(ybScan->handle,
-	                             tupdesc->natts,
-	                             (uint64_t *) values,
-	                             nulls,
-	                             &syscols,
-	                             &has_data));
-
-	if (has_data)
-	{
-		/*
-		 * Return the IndexTuple. If this is a primary key, reorder the values first as expected
-		 * in the index's column order first.
-		 */
-		if (index->rd_index->indisprimary)
+		/* Need to execute the request */
+		if (!ybScan->is_exec_done)
 		{
-			Assert(index->rd_index->indnatts <= INDEX_MAX_KEYS);
-
-			Datum ivalues[INDEX_MAX_KEYS];
-			bool  inulls[INDEX_MAX_KEYS];
-
-			for (int i = 0; i < index->rd_index->indnatts; i++)
+			/* Parallel mode: pick up parallel block first */
+			if (ybScan->pscan != NULL)
 			{
-				AttrNumber attno = index->rd_index->indkey.values[i];
-				ivalues[i] = values[attno - 1];
-				inulls[i]  = nulls[attno - 1];
+				YBParallelPartitionKeys parallel_scan = ybScan->pscan;
+				const char *low_bound;
+				size_t low_bound_size;
+				const char *high_bound;
+				size_t high_bound_size;
+				/*
+				 * If range is found, apply the boundaries, false means the scan
+				 * is done for that worker.
+				 */
+				if (ybParallelNextRange(parallel_scan,
+										&low_bound, &low_bound_size,
+										&high_bound, &high_bound_size))
+				{
+					HandleYBStatus(YBCPgDmlBindRange(
+						ybScan->handle, low_bound, low_bound_size, high_bound,
+						high_bound_size));
+					if (low_bound)
+						pfree((void *) low_bound);
+					if (high_bound)
+						pfree((void *) high_bound);
+				}
+				else
+					return NULL;
+				/*
+				 * Use unlimited fetch.
+				 * Parallel scan range is already of limited size, it is
+				 * unlikely to exceed the message size, but may save some RPCs.
+				 */
+				ybScan->exec_params->limit_use_default = true;
+				ybScan->exec_params->yb_fetch_row_limit = 0;
+				ybScan->exec_params->yb_fetch_size_limit = 0;
 			}
+			/* Set scan direction, if matters */
+			if (ScanDirectionIsForward(dir))
+				HandleYBStatus(YBCPgSetForwardScan(ybScan->handle, true));
+			else if (ScanDirectionIsBackward(dir))
+				HandleYBStatus(YBCPgSetForwardScan(ybScan->handle, false));
 
-			tuple = index_form_tuple(RelationGetDescr(index), ivalues, inulls);
-			if (syscols.ybctid != NULL)
-			{
-				tuple->t_ybctid = PointerGetDatum(syscols.ybctid);
-				ybcUpdateFKCache(ybScan, tuple->t_ybctid);
-			}
+			HandleYBStatus(YBCPgExecSelect(ybScan->handle,
+										   ybScan->exec_params));
+			ybScan->is_exec_done = true;
 		}
+
+		/* Fetch one row. */
+		HandleYBStatus(YBCPgDmlFetch(ybScan->handle,
+									 tupdesc->natts,
+									 (uint64_t *) values,
+									 nulls,
+									 &syscols,
+									 &has_data));
+
+		if (has_data)
+		{
+			/*
+			 * Return the IndexTuple. If this is a primary key, reorder the
+			 * values first as expected in the index's column order first.
+			 */
+			if (index->rd_index->indisprimary)
+			{
+				Assert(index->rd_index->indnatts <= INDEX_MAX_KEYS);
+
+				Datum ivalues[INDEX_MAX_KEYS];
+				bool  inulls[INDEX_MAX_KEYS];
+
+				for (int i = 0; i < index->rd_index->indnatts; i++)
+				{
+					AttrNumber attno = index->rd_index->indkey.values[i];
+					ivalues[i] = values[attno - 1];
+					inulls[i]  = nulls[attno - 1];
+				}
+
+				tuple = index_form_tuple(RelationGetDescr(index), ivalues, inulls);
+				if (syscols.ybctid != NULL)
+				{
+					tuple->t_ybctid = PointerGetDatum(syscols.ybctid);
+					ybcUpdateFKCache(ybScan, tuple->t_ybctid);
+				}
+			}
+			else
+			{
+				tuple = index_form_tuple(tupdesc, values, nulls);
+				if (syscols.ybbasectid != NULL)
+				{
+					tuple->t_ybctid = PointerGetDatum(syscols.ybbasectid);
+					ybcUpdateFKCache(ybScan, tuple->t_ybctid);
+				}
+			}
+			break;
+		}
+		else if (ybScan->pscan != NULL)
+			ybScan->is_exec_done = false;
 		else
-		{
-			tuple = index_form_tuple(tupdesc, values, nulls);
-			if (syscols.ybbasectid != NULL)
-			{
-				tuple->t_ybctid = PointerGetDatum(syscols.ybbasectid);
-				ybcUpdateFKCache(ybScan, tuple->t_ybctid);
-			}
-		}
-
+			break;
 	}
 	pfree(values);
 	pfree(nulls);
@@ -779,7 +894,7 @@ static bool
 YbIsNeverTrueNullCond(ScanKey key)
 {
 	return (key->sk_flags & SK_ISNULL) != 0 &&
-	       (key->sk_flags & (SK_SEARCHNULL | SK_SEARCHNOTNULL)) == 0;
+		   (key->sk_flags & (SK_SEARCHNULL | SK_SEARCHNOTNULL)) == 0;
 }
 
 static int
@@ -878,8 +993,8 @@ YbIsUnsatisfiableCondition(int nkeys, ScanKey keys[])
 		 * - row(a, b, c) op row(null, e, f)
 		 */
 		if ((key->sk_strategy == BTEqualStrategyNumber ||
-			 (i > 0 && YbIsRowHeader(keys[i - 1]) &&
-			  key->sk_flags & SK_ROW_MEMBER)) &&
+				(i > 0 && YbIsRowHeader(keys[i - 1]) &&
+				 key->sk_flags & SK_ROW_MEMBER)) &&
 			YbIsNeverTrueNullCond(key))
 		{
 			elog(DEBUG1, "skipping a scan due to unsatisfiable condition");
@@ -2377,7 +2492,8 @@ ybcBeginScan(Relation relation,
 			 PushdownExprs *idx_pushdown,
 			 List *aggrefs,
 			 int distinct_prefixlen,
-			 YBCPgExecParameters *exec_params)
+			 YBCPgExecParameters *exec_params,
+			 bool is_internal_scan)
 {
 	/* Set up Yugabyte scan description */
 	YbScanDesc ybScan = (YbScanDesc) palloc0(sizeof(YbScanDescData));
@@ -2451,12 +2567,15 @@ ybcBeginScan(Relation relation,
 
 	/*
 	 * Set the current syscatalog version (will check that we are up to
-	 * date). Avoid it for syscatalog tables so that we can still use this
-	 * for refreshing the caches when we are behind.
-	 * Note: This works because we do not allow modifying schemas
-	 * (alter/drop) for system catalog tables.
+	 * date). Avoid it for internal syscatalog requests because that is the way
+	 * it has been since the early days of YSQL. For tighter correctness, it
+	 * should be sent for syscatalog requests, but this will result in more
+	 * cases of catalog version mismatch.
+	 * TODO(jason): revisit this for #15080. Condition could instead be
+	 * (!IsBootstrapProcessingMode()) which skips initdb and catalog
+	 * prefetching.
 	 */
-	if (!IsSystemRelation(relation))
+	if (!(is_internal_scan && IsSystemRelation(relation)))
 		YbSetCatalogCacheVersion(ybScan->handle,
 								 YbGetCatalogCacheVersion());
 
@@ -2550,7 +2669,7 @@ YbNeedsRecheck(YbScanDesc ybScan)
 }
 
 HeapTuple
-ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck)
+ybc_getnext_heaptuple(YbScanDesc ybScan, ScanDirection dir, bool *recheck)
 {
 	HeapTuple   tup      = NULL;
 
@@ -2560,8 +2679,7 @@ ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck)
 	*recheck = YbNeedsRecheck(ybScan);
 
 	/* Loop over rows from pggate. */
-	while (HeapTupleIsValid(tup = ybcFetchNextHeapTuple(ybScan,
-														is_forward_scan)))
+	while (HeapTupleIsValid(tup = ybcFetchNextHeapTuple(ybScan, dir)))
 	{
 		/* Do a preliminary check to skip rows we can guarantee don't match. */
 		if (ybIsTupMismatch(tup, ybScan))
@@ -2575,12 +2693,12 @@ ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck)
 }
 
 IndexTuple
-ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck)
+ybc_getnext_indextuple(YbScanDesc ybScan, ScanDirection dir, bool *recheck)
 {
 	if (ybScan->quit_scan)
 		return NULL;
 	*recheck = YbNeedsRecheck(ybScan);
-	return ybcFetchNextIndexTuple(ybScan, is_forward_scan);
+	return ybcFetchNextIndexTuple(ybScan, dir);
 }
 
 bool
@@ -2733,7 +2851,8 @@ SysScanDesc ybc_systable_begin_default_scan(Relation relation,
 								NULL /* idx_pushdown */,
 								NULL /* aggrefs */,
 								0 /* distinct_prefixlen */,
-								NULL /* exec_params */);
+								NULL /* exec_params */,
+								true /* is_internal_scan */);
 
 	scan->base.vtable = &yb_default_scan;
 
@@ -2761,7 +2880,8 @@ HeapScanDesc ybc_heap_beginscan(Relation relation,
 									 NULL /* idx_pushdown */,
 									 NULL /* aggrefs */,
 									 0 /* distinct_prefixlen */,
-									 NULL /* exec_params */);
+									 NULL /* exec_params */,
+									 true /* is_internal_scan */);
 
 	/* Set up Postgres sys table scan description */
 	HeapScanDesc scan_desc = (HeapScanDesc) palloc0(sizeof(HeapScanDescData));
@@ -2794,48 +2914,6 @@ void ybc_heap_endscan(HeapScanDesc scan_desc)
 	if (scan_desc->rs_temp_snap)
 		UnregisterSnapshot(scan_desc->rs_snapshot);
 	pfree(scan_desc);
-}
-
-/*
- * ybc_remote_beginscan
- *   Begin sequential scan of a YB relation.
- * The YbSeqScan uses it directly, not via heap scan interception, so it has
- * more controls on what is passed over to the ybcBeginScan.
- * The HeapScanDesc structure is still being used, in future we may increase
- * the level of integration.
- * The structure is compatible with one the ybc_heap_beginscan returns, so
- * ybc_heap_getnext and ybc_heap_endscan are respectively used to fetch tuples
- * and finish the scan.
- */
-HeapScanDesc
-ybc_remote_beginscan(Relation relation,
-					 Snapshot snapshot,
-					 Scan *pg_scan_plan,
-					 PushdownExprs *pushdown,
-					 List *aggrefs,
-					 YBCPgExecParameters *exec_params)
-{
-	YbScanDesc ybScan = ybcBeginScan(relation,
-									 NULL /* index */,
-									 false /* xs_want_itup */,
-									 0 /* nkeys */,
-									 NULL /* key */,
-									 pg_scan_plan,
-									 pushdown /* rel_pushdown */,
-									 NULL /* idx_pushdown */,
-									 aggrefs,
-									 0 /* distinct_prefixlen */,
-									 exec_params);
-
-	/* Set up Postgres sys table scan description */
-	HeapScanDesc scan_desc = (HeapScanDesc) palloc0(sizeof(HeapScanDescData));
-	scan_desc->rs_rd        = relation;
-	scan_desc->rs_snapshot  = snapshot;
-	scan_desc->rs_temp_snap = false;
-	scan_desc->rs_cblock    = InvalidBlockNumber;
-	scan_desc->ybscan       = ybScan;
-
-	return scan_desc;
 }
 
 /* --------------------------------------------------------------------------------------------- */
@@ -3505,4 +3583,621 @@ ybFetchNext(YBCPgStatement handle,
 	}
 
 	return slot;
+}
+
+/***************************************************************************
+ * Parallel scan on hash partitioned table
+ *
+ * Currently not in use, but may be salvaged
+ ***************************************************************************/
+
+/*
+ * Number of rows per planned parallel range.
+ */
+int yb_parallel_range_rows = 0;
+
+/*
+ * ybParallelWorkers
+ *
+ * Estimate how many parallel workers are needed to scan a relation having
+ * specified number of rows.
+ */
+int
+ybParallelWorkers(double numrows)
+{
+	/* yb_parallel_range_rows set to 0 disables parallelizm */
+	if (yb_parallel_range_rows <= 0)
+		return 0;
+
+	/* Estimate number of parallel workers */
+	double result = ceil(numrows / (double) yb_parallel_range_rows) - 1;
+
+	/*
+	 * Cap it at compile time limit for sanity, later on the value will be
+	 * further capped accoding to the configuration.
+	 */
+	return result > MAX_PARALLEL_WORKER_LIMIT ?
+		MAX_PARALLEL_WORKER_LIMIT : (int) result;
+}
+
+/******************************************************************************
+ * Parallel scan on YB tables regardless of partitioning
+ *
+ * Based on the sequnce of the keys retrieved from the DocDB.
+ * The keys are fetched and put into a cyclic buffer by any worker that finds
+ * the number of keys in the buffer is too low. If not fetching keys, the
+ * workers are continuously scanning ranges between the keys. Worker takes one
+ * key from the buffer as the low range bound, and copies the next key as the
+ * high range bound. A mutex is used to ensure that no more than one worker is
+ * putting or taking rows. The very last key remaining in the buffer can not be
+ * taken until the fetch is complete, because it is used as a starting key when
+ * keys are requested from DocDB.
+ ******************************************************************************/
+
+/*
+ * yb_estimate_parallel_size
+ *
+ * Calculate the size of the shared memory block to exchange information
+ * between the workers.
+ * TODO(#19467) The variable part of the block is a cyclic buffer to store keys.
+ * It is a constant currently, but its size should be estimated before the
+ * parallel scan starts. For normal operation it should hold several keys
+ * (optimal number is TBD and may depend on the number of workers). However, in
+ * the worst case scenario, it is safe to allow keys no longer than 1/3 of
+ * the buffer. The buffer must keep the very last key, and have room before or
+ * after to add one more key. In the worst case the very last key sits in the
+ * middle, and the buffer 3 times bigger than the key ensures that one would
+ * fit.
+ */
+Size
+yb_estimate_parallel_size(void)
+{
+	Size size = sizeof(YBParallelPartitionKeysData);
+	return add_size(size, YB_PARTITION_KEY_DATA_CAPACITY);
+}
+
+/*
+ * yb_init_partition_key_data
+ *
+ * Initialize the YBParallelPartitionKeys structure
+ */
+void
+yb_init_partition_key_data(void *data)
+{
+	YBParallelPartitionKeys ppk = (YBParallelPartitionKeys) data;
+	SpinLockInit(&ppk->mutex);
+	ConditionVariableInit(&ppk->cv_empty);
+	ppk->database_oid = InvalidOid;
+	ppk->table_oid = InvalidOid;
+	ppk->read_time_serial_no = 0;
+	ppk->used_ht_for_read = 0;
+	ppk->fetch_status = FETCH_STATUS_IDLE;
+	ppk->low_offset = 0;
+	ppk->high_offset = 0;
+	ppk->key_count = 0;
+	ppk->total_key_size = 0.0;
+	ppk->total_key_count = 0.0;
+	ppk->key_data_size = 0;
+	ppk->key_data_capacity = YB_PARTITION_KEY_DATA_CAPACITY;
+}
+
+typedef int keylen_t;
+#define KEY_LEN(ppk, key_offset) \
+	(ppk)->key_data + (key_offset)
+#define KEY_DATA(ppk, key_offset) \
+	(ppk)->key_data + (key_offset) + sizeof(keylen_t)
+
+/*
+ * yb_add_key_unsynchronized
+ *
+ * Copy next key into the cyclic buffer. Caller must assure exclusive access to
+ * the YBParallelPartitionKeys structure.
+ * Function checks for the available space in the buffer and returns false if it
+ * is insufficient. Otherwise it appends the key into the buffer.
+ */
+static bool
+yb_add_key_unsynchronized(YBParallelPartitionKeys ppk,
+						  const char *key, keylen_t key_len)
+{
+	/* Only the first key is allowed to be empty */
+	Assert(key_len > 0 || ppk->key_count == 0);
+	/* Special case: initially empty buffer */
+	if (ppk->key_count == 0)
+	{
+		Assert(sizeof(key_len) + key_len <= ppk->key_data_capacity);
+		memcpy(KEY_LEN(ppk, 0), &key_len, sizeof(keylen_t));
+		/* Update counters, etc */
+		if (key_len > 0)
+		{
+			memcpy(KEY_DATA(ppk, 0), key, key_len);
+			ppk->total_key_size += key_len;
+			ppk->total_key_count += 1;
+		}
+		++ppk->key_count;
+		ppk->key_data_size += sizeof(key_len) + key_len;
+	}
+	/* need to check empty space */
+	else if (ppk->high_offset < ppk->low_offset)
+	{
+		/*
+		 * Wrapped around buffer, the available space lays between the end of
+		 * the high key and the beginning of the low key.
+		 */
+		keylen_t high_key_len;
+		memcpy(&high_key_len, KEY_LEN(ppk, ppk->high_offset), sizeof(keylen_t));
+		int free_offset = ppk->high_offset + sizeof(int) + high_key_len;
+		/* Check the room in the buffer */
+		Assert(free_offset <= ppk->low_offset);
+		if (ppk->low_offset - free_offset < sizeof(keylen_t) + key_len)
+			return false;
+		memcpy(KEY_LEN(ppk, free_offset), &key_len, sizeof(keylen_t));
+		memcpy(KEY_DATA(ppk, free_offset), key, key_len);
+		/* Update counters, etc */
+		++ppk->key_count;
+		ppk->high_offset = free_offset;
+		ppk->total_key_size += key_len;
+		ppk->total_key_count += 1;
+	}
+	else /* The low_offset == high_offset iif key_count == 1 */
+	{
+		/*
+		 * In not wrapped around buffer we maintain ppk->key_data_size
+		 * pointing at the beginning of the free space.
+		 */
+		int free_offset = ppk->key_data_size;
+		/* Check for the trailing space capacity */
+		if (ppk->key_data_capacity - free_offset >= sizeof(key_len) + key_len)
+		{
+			memcpy(KEY_LEN(ppk, free_offset), &key_len, sizeof(keylen_t));
+			memcpy(KEY_DATA(ppk, free_offset), key, key_len);
+			/* Update counters, etc */
+			++ppk->key_count;
+			ppk->high_offset = free_offset;
+			ppk->key_data_size += sizeof(key_len) + key_len;
+			ppk->total_key_size += key_len;
+			ppk->total_key_count += 1;
+		}
+		/*
+		 * The key does not fit into remaining space at the end of the buffer,
+		 * but there may be free space at the beginning, so we can wraparoud.
+		 */
+		else if (ppk->low_offset >= sizeof(key_len) + key_len)
+		{
+			memcpy(KEY_LEN(ppk, 0), &key_len, sizeof(keylen_t));
+			memcpy(KEY_DATA(ppk, 0), key, key_len);
+			/* Update counters, etc */
+			++ppk->key_count;
+			ppk->high_offset = 0;
+			ppk->total_key_size += key_len;
+			ppk->total_key_count += 1;
+		}
+		/* No luck, let caller know */
+		else
+			return false;
+	}
+	return true;
+}
+
+/*
+ * yb_remove_key_unsynchronized
+ *
+ * Remove the lowest key from the buffer. Caller must assure exclusive access to
+ * the YBParallelPartitionKeys structure
+ */
+static void
+yb_remove_key_unsynchronized(YBParallelPartitionKeys ppk)
+{
+	Assert(ppk->key_count > 0);
+	keylen_t key_len;
+	--ppk->key_count;
+	memcpy(&key_len, KEY_LEN(ppk, ppk->low_offset), sizeof(keylen_t));
+	/* Find offset of the next element */
+	int next = ppk->low_offset + sizeof(keylen_t) + key_len;
+	if (next == ppk->key_data_size)
+	{
+		/*
+		 * The lowest key is actually the last one in the wrapped around cyclic
+		 * buffer, so the next one starts from the beginning of the buffer data.
+		 */
+		next = 0;
+		/*
+		 * Also we need to update the key_data_size to point to the free space
+		 * after the higest key, which will be the last after the removal,  as
+		 * the buffer will no longer be wrapped around.
+		 * Special case is if the lowest key is the only key in the buffer.
+		 * Empty buffer is not suposed to be used, but it would make no harm
+		 * to reset.
+		 */
+		if (ppk->key_count == 0)
+		{
+			ppk->high_offset = 0;
+			ppk->key_data_size = 0;
+		}
+		else
+		{
+			memcpy(&key_len, KEY_LEN(ppk, ppk->high_offset), sizeof(keylen_t));
+			ppk->key_data_size = ppk->high_offset + sizeof(keylen_t) + key_len;
+		}
+	}
+	ppk->low_offset = next;
+}
+
+/*
+ * Structure to encapsulate ppk_buffer_fetch_callback's state.
+ * When worker fetches next portion of keys the buffer may become full. In such
+ * a case rest of the keys have to be discarded to avoid skipping keys.
+ * There's no way to let caller know about discarded keys, so callback should
+ * remember the fact in its state and ignore the rest of the keys.
+ * The ppk_buffer_initialize_callback changes the fetch status back to IDLE for
+ * the same purpose because it uses the YBParallelPartitionKeys structure
+ * exclusively, but ppk_buffer_fetch_callback may work concurrently with other
+ * workers taking keys from the buffer, and at some point other worker may need
+ * to fetch more and change the fetch state to WORKING. Hence the separate
+ * field, a counter, to be able to report inefficient fetch.
+ */
+typedef struct FetchKeysParam
+{
+	int discarded;
+	YBParallelPartitionKeys ppk;
+} FetchKeysParam;
+
+static void
+ppk_buffer_fetch_callback(void *param, const char *key, size_t key_size)
+{
+	FetchKeysParam *fkp = (FetchKeysParam *) param;
+	YBParallelPartitionKeys ppk = fkp->ppk;
+	/* Once discarded, discard all the keys, just count them */
+	if (fkp->discarded)
+	{
+		++fkp->discarded;
+		return;
+	}
+	if (key_size)
+	{
+		bool added;
+		SpinLockAcquire(&ppk->mutex);
+		/*
+		 * Function is supposed to be called by the worker actively performing
+		 * fetch.
+		 */
+		Assert(ppk->fetch_status == FETCH_STATUS_WORKING);
+		added = yb_add_key_unsynchronized(ppk, key, key_size);
+		SpinLockRelease(&ppk->mutex);
+		/*
+		 * If a value has been successfully added, notify other workers that
+		 * may be waiting for available key. Key may fail to be added because
+		 * the buffer has no room for it. That means the key and all subsequent
+		 * messages of the block have to be discarded.
+		 * Since this fetch cycle is, in fact, done, allow other workers to
+		 * start another fetch, while this worker will be busy for some time
+		 * throwing away remaining keys.
+		 */
+		if (added)
+			ConditionVariableSignal(&ppk->cv_empty);
+		else
+		{
+			ppk->fetch_status = FETCH_STATUS_IDLE;
+			++fkp->discarded;
+		}
+	}
+	else
+	{
+		/* The last key from DocDB */
+		SpinLockAcquire(&ppk->mutex);
+		/* Update fetch status */
+		Assert(ppk->fetch_status == FETCH_STATUS_WORKING);
+		ppk->fetch_status = FETCH_STATUS_DONE;
+		SpinLockRelease(&ppk->mutex);
+		/*
+		 * The fact that fetch is done makes very last key in the buffer
+		 * available, so if there are workers waiting, let them know. One
+		 * worker will be able to grab the last working range, other will be
+		 * able to tell that their work is done.
+		 */
+		ConditionVariableBroadcast(&ppk->cv_empty);
+	}
+}
+
+/*
+ * yb_fetch_partition_keys
+ *
+ * Fetch some keys from the DocDB and put them into the parallel state
+ * buffer. Function estimates how many keys to request, but if there are too
+ * many keys to fit into the buffer, the remaining keys are discarded.
+ */
+static void
+yb_fetch_partition_keys(YBParallelPartitionKeys ppk)
+{
+	const char *lower_bound_key;
+	size_t lower_bound_key_size;
+	uint64_t max_num_ranges;
+	FetchKeysParam fkp = {0, ppk};
+
+	/* Estimate fetch parameter values */
+	SpinLockAcquire(&ppk->mutex);
+	/* Until fetch is done at least one key must remain in the buffer */
+	Assert(ppk->key_count > 0);
+	keylen_t key_len;
+	memcpy(&key_len, KEY_LEN(ppk, ppk->high_offset), sizeof(keylen_t));
+	lower_bound_key_size = key_len;
+	if (lower_bound_key_size)
+		/*
+		 * It is safe to refer the key data in place, since the highest key
+		 * can not be removed until fetch is in progress.
+		 * The bound being referenced here remains the highest key until after
+		 * the request to DocDB is done.
+		 */
+		lower_bound_key = KEY_DATA(ppk, ppk->high_offset);
+	else
+		lower_bound_key = NULL;
+	/*
+	 * Find average key size so far. We expect reasonable number have already
+	 * been received during initialization.
+	 */
+	double average_key_size = ppk->total_key_size / ppk->total_key_count;
+	/* Account for the key length stored in the buffer */
+	average_key_size += sizeof(keylen_t);
+	max_num_ranges =
+		floor(ppk->key_data_capacity / average_key_size) - ppk->key_count;
+	if (max_num_ranges < 16)
+		max_num_ranges = 16;
+	else if (max_num_ranges > 1024)
+		max_num_ranges = 1024;
+	SpinLockRelease(&ppk->mutex);
+
+	/*
+	 * We don't bother to take the lock to read ppk->key_data_capacity because
+	 * it remains constant since its initialization. However, later on we will
+	 * calculate fetch sizes and will take the lock, and capture
+	 * ppk->key_data_capacity under that lock.
+	 */
+	HandleYBStatus(YBCGetTableKeyRanges(
+		ppk->database_oid, ppk->table_oid,
+		lower_bound_key, lower_bound_key_size,
+		NULL /* upper_bound_key */, 0 /* upper_bound_key_size */,
+		max_num_ranges, 1024 * 1024 /* range_size_bytes */, ppk->is_forward,
+		(ppk->key_data_capacity / 3) - sizeof(keylen_t),
+		NULL /* current_tserver_ht */,
+		ppk_buffer_fetch_callback, &fkp));
+	SpinLockAcquire(&ppk->mutex);
+	/* Update fetch status */
+	if (ppk->fetch_status == FETCH_STATUS_WORKING)
+		ppk->fetch_status = FETCH_STATUS_IDLE;
+	else
+		Assert(ppk->fetch_status == FETCH_STATUS_DONE || fkp.discarded);
+	SpinLockRelease(&ppk->mutex);
+	/* Log results for debugging and fine tuning */
+	if (fkp.discarded)
+		elog(LOG, "Had to discard %d keys out of requested %d. Plan better!",
+			 fkp.discarded, (int) max_num_ranges);
+	else
+		elog(LOG, "Fetch of up to %d keys is completed", (int) max_num_ranges);
+	/* All keys are accounted for, log stats */
+	if (ppk->fetch_status == FETCH_STATUS_DONE)
+		elog(LOG, "Fetch is done, received %.0f keys (%.0f bytes)",
+			 ppk->total_key_count, ppk->total_key_size);
+}
+
+static void
+ppk_buffer_initialize_callback(void *param, const char *key, size_t key_size)
+{
+	YBParallelPartitionKeys ppk = (YBParallelPartitionKeys) param;
+	if (ppk->fetch_status != FETCH_STATUS_WORKING)
+	{
+		/*
+		 * Status changes from WORKING to IDLE when buffer is full, in that
+		 * case the remaining keys are ignored.
+		 * Status changes to DONE if the key is empty, indicating the end of
+		 * the keys, callback must not be called after that.
+		 */
+		Assert(ppk->fetch_status == FETCH_STATUS_IDLE);
+		return;
+	}
+	if (key_size == 0)
+	{
+		elog(LOG, "All ranges are fetched at once.");
+		ppk->fetch_status = FETCH_STATUS_DONE;
+	}
+	else if (!yb_add_key_unsynchronized(ppk, key, key_size))
+	{
+		elog(LOG, "Buffer is full after %d initial keys are loaded, "
+			 "discard the rest", ppk->key_count);
+		ppk->fetch_status = FETCH_STATUS_IDLE;
+	}
+}
+
+/*
+ * ybParallelPrepare
+ *
+ * Load initial data into the parallel state structure.
+ * When this function is working, no parallel worker is started yet, so
+ * the parallel state is owned exclusively, no locking is needed.
+ */
+void
+ybParallelPrepare(YBParallelPartitionKeys ppk, Relation relation,
+				  YBCPgExecParameters *exec_params, bool is_forward)
+{
+	/*
+	 * The index scan access method's DSM initialization routines do not
+	 * disclose if DSM is initialized for main process or for the background
+	 * worker. However, it is still guaranteed that background workers do not
+	 * start until main worker DSM initialization is completed.
+	 * Hence we always call ybParallelPrepare and use table_oid as indicator:
+	 * if table_oid is valid, it is a background worker and no initialization is
+	 * needed.
+	 * The table_oid is never changed once initialized, so spinlock is not
+	 * required to check it. The rest of the code still has the
+	 * YBParallelPartitionKeys structure exclusively.
+	 */
+	if (ppk->table_oid == InvalidOid)
+	{
+		/* We expect frershly initialized parallel state */
+		Assert(ppk->fetch_status == FETCH_STATUS_IDLE);
+		Assert(ppk->low_offset == 0);
+		Assert(ppk->high_offset == 0);
+		Assert(ppk->key_count == 0);
+		ppk->database_oid = YBCGetDatabaseOid(relation);
+		ppk->table_oid = YbGetStorageRelid(relation);
+		ppk->is_forward = is_forward;
+		ppk->read_time_serial_no = YBCPgGetReadTimeSerialNo();
+		ppk->used_ht_for_read = *exec_params->stmt_in_txn_limit_ht_for_reads;
+	}
+	else
+	{
+		/*
+		 * Parallel worker should propagate shared session details to the local
+		 * execution environment.
+		 */
+		YBCPgForceReadTimeSerialNo(ppk->read_time_serial_no);
+		*exec_params->stmt_in_txn_limit_ht_for_reads = ppk->used_ht_for_read;
+		return;
+	}
+	/*
+	 * Put empty key as the first to be taken.
+	 * Empty key means lower bound unchanged, so if original request has
+	 * lower bound, it will be used.
+	 * TODO(#19465) Scan conditions may allow to determine boundaries, and we
+	 * have algorithms to do so, however, in practice it happens much later to
+	 * be useful here. We need to move this logic.
+	 */
+	yb_add_key_unsynchronized(ppk, NULL, 0);
+	/* Fetch the first set of keys */
+	ppk->fetch_status = FETCH_STATUS_WORKING;
+	HandleYBStatus(YBCGetTableKeyRanges(
+		ppk->database_oid, ppk->table_oid,
+		NULL /* lower_bound_key */, 0 /* lower_bound_key_size */,
+		NULL /* upper_bound_key */, 0 /* upper_bound_key_size */,
+		YB_PARTITION_KEYS_DEFAULT_FETCH_SIZE,
+		1024 * 1024 /* range_size_bytes */, is_forward,
+		(ppk->key_data_capacity / 3) - sizeof(keylen_t),
+		ppk->used_ht_for_read ? NULL : &ppk->used_ht_for_read,
+		ppk_buffer_initialize_callback, ppk));
+	/* Update fetch status, unless updated by the callback */
+	if (ppk->fetch_status == FETCH_STATUS_WORKING)
+		ppk->fetch_status = FETCH_STATUS_IDLE;
+	/* Key ranges fetch might set new read time, update the local value */
+	if (*exec_params->stmt_in_txn_limit_ht_for_reads == 0)
+		*exec_params->stmt_in_txn_limit_ht_for_reads = ppk->used_ht_for_read;
+}
+
+typedef enum YbNextRangeResult
+{
+	NEXT_RANGE_WAIT,
+	NEXT_RANGE_SUCCESS,
+	NEXT_RANGE_FETCH,
+	NEXT_RANGE_DONE
+} YbNextRangeResult;
+
+/*
+ * yb_copy_key_unsynchronized
+ *
+ * Copy the lowest key from the buffer into newly palloc'ed space and return
+ * pointer to the space in bound parameter.
+ * Return NULL if the key is empty.
+ */
+static void
+yb_copy_key_unsynchronized(YBParallelPartitionKeys ppk,
+						   const char **bound,
+						   size_t *bound_size)
+{
+	keylen_t key_len;
+	memcpy(&key_len, KEY_LEN(ppk, ppk->low_offset), sizeof(keylen_t));
+	*bound_size = key_len;
+	if (key_len > 0) {
+		*bound = (const char *) palloc(key_len);
+		memcpy((void *) *bound, KEY_DATA(ppk, ppk->low_offset), key_len);
+	}
+	else
+		*bound = NULL;
+}
+
+/*
+ * ybParallelNextRange
+ *
+ * Take another range to work on from the parallel state.
+ * If there are too few ybctids in the buffer this function may fetch some
+ * first. Function may block if there are no ybctids available.
+ * Return values low_bound and high_bound are the boundaries for the range.
+ * If they are not NULLs, they are palloc'ed, caller must free them.
+ * Function returns true if next range exists and valid bounds are returned.
+ * If false is returned it means no more ranges and the worker should stop.
+ */
+bool
+ybParallelNextRange(YBParallelPartitionKeys ppk,
+					const char **low_bound,
+					size_t *low_bound_size,
+					const char **high_bound,
+					size_t *high_bound_size)
+{
+	YbNextRangeResult result = NEXT_RANGE_WAIT;
+	while (true)
+	{
+		SpinLockAcquire(&ppk->mutex);
+		/*
+		 * Check if we should fetch key
+		 * TODO(#19469) create config variable for key count triggering the
+		 * fetch or find logic better than the magic number
+		 */
+		if (ppk->fetch_status == FETCH_STATUS_IDLE && ppk->key_count < 4)
+		{
+			/*
+			 * We will fetch more ranges after mutex is released, for now,
+			 * prevent other workers from attempting to fetch.
+			 */
+			ppk->fetch_status = FETCH_STATUS_WORKING;
+			result = NEXT_RANGE_FETCH;
+		}
+		else
+		{
+			/* Have multiple keys, can take one. */
+			if (ppk->key_count > 1)
+			{
+				yb_copy_key_unsynchronized(ppk, low_bound, low_bound_size);
+				yb_remove_key_unsynchronized(ppk);
+				yb_copy_key_unsynchronized(ppk, high_bound, high_bound_size);
+				result = NEXT_RANGE_SUCCESS;
+			}
+			/* If the fetch is completed it is OK to take the last key. */
+			else if (ppk->fetch_status == FETCH_STATUS_DONE)
+			{
+				if (ppk->key_count == 1)
+				{
+					yb_copy_key_unsynchronized(ppk, low_bound, low_bound_size);
+					yb_remove_key_unsynchronized(ppk);
+					/* Last range have empty high bound. */
+					*high_bound = NULL;
+					*high_bound_size = 0;
+					result = NEXT_RANGE_SUCCESS;
+				}
+				else
+				{
+					/* No more data. */
+					result = NEXT_RANGE_DONE;
+				}
+				/* The buffer should be empty now. */
+				Assert(ppk->key_count == 0);
+			}
+			/* Wait otherwise. */
+		}
+		SpinLockRelease(&ppk->mutex);
+		if (result == NEXT_RANGE_SUCCESS || result == NEXT_RANGE_DONE)
+			/* All is done. */
+			break;
+		else if (result == NEXT_RANGE_FETCH)
+			/* Fetch more keys and try again. */
+			yb_fetch_partition_keys(ppk);
+		else /* result == NEXT_RANGE_WAIT */
+		{
+			elog(LOG, "ybParallelNextRange: waiting on empty queue");
+			ConditionVariableSleep(&ppk->cv_empty,
+								   WAIT_EVENT_YB_PARALLEL_SCAN_EMPTY);
+		}
+	}
+	ConditionVariableCancelSleep();
+	/*
+	 * One value has been taken from the buffer, if there is a worker attempting
+	 * to put fetched data it may be able to proceed now.
+	 */
+	Assert(result == NEXT_RANGE_SUCCESS || result == NEXT_RANGE_DONE);
+	return result == NEXT_RANGE_SUCCESS;
 }

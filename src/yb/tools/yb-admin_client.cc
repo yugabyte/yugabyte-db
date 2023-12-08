@@ -99,17 +99,17 @@
 #include "yb/util/flags.h"
 #include "yb/util/tostring.h"
 
-DEFINE_UNKNOWN_bool(wait_if_no_leader_master, false,
+DEFINE_NON_RUNTIME_bool(wait_if_no_leader_master, false,
             "When yb-admin connects to the cluster and no leader master is present, "
             "this flag determines if yb-admin should wait for the entire duration of timeout or"
             "in case a leader master appears in that duration or return error immediately.");
 
-DEFINE_UNKNOWN_string(certs_dir_name, "",
+DEFINE_NON_RUNTIME_string(certs_dir_name, "",
               "Directory with certificates to use for secure server connection.");
 
-DEFINE_UNKNOWN_string(client_node_name, "", "Client node name.");
+DEFINE_NON_RUNTIME_string(client_node_name, "", "Client node name.");
 
-DEFINE_UNKNOWN_bool(disable_graceful_transition, false,
+DEFINE_NON_RUNTIME_bool(disable_graceful_transition, false,
     "During a leader stepdown, disable graceful leadership transfer "
     "to an up to date peer");
 
@@ -778,6 +778,22 @@ Status ClusterAdminClient::GetWalRetentionSecs(const YBTableName& table_name) {
   return Status::OK();
 }
 
+Status ClusterAdminClient::GetAutoFlagsConfig() {
+  master::GetAutoFlagsConfigRequestPB req;
+  master::GetAutoFlagsConfigResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_cluster_proxy_->GetAutoFlagsConfig(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  std::cout << "AutoFlags config:" << std::endl;
+  std::cout << resp.config().DebugString() << std::endl;
+
+  return Status::OK();
+}
+
 Status ClusterAdminClient::PromoteAutoFlags(
     const string& max_flag_class, const bool promote_non_runtime_flags, const bool force) {
   master::PromoteAutoFlagsRequestPB req;
@@ -849,10 +865,10 @@ Status ClusterAdminClient::PromoteSingleAutoFlag(
      return StatusFromPB(resp.error().status());
     }
     if (!resp.flag_promoted()) {
-     std::cout << "AutoFlag " << flag_name << " from process " << process_name
-               << " was not promoted. Check the logs for more information" << std::endl;
-     std::cout << "Current config version: " << resp.new_config_version() << std::endl;
-     return Status::OK();
+      std::cout << "Failed to promote AutoFlag " << flag_name << " from process " << process_name
+                << ". Check the logs for more information" << std::endl;
+      std::cout << "Current config version: " << resp.new_config_version() << std::endl;
+      return Status::OK();
     }
 
     std::cout << "AutoFlag " << flag_name << " from process " << process_name
@@ -880,11 +896,10 @@ Status ClusterAdminClient::DemoteSingleAutoFlag(
      return StatusFromPB(resp.error().status());
     }
     if (!resp.flag_demoted()) {
-     std::cout << "AutoFlag " << flag_name << " from process " << process_name
-               << " was not demoted. Either the flag does not exist or it is not promoted"
-               << std::endl;
-     std::cout << "Current config version: " << resp.new_config_version() << std::endl;
-     return Status::OK();
+      std::cout << "Unable to demote AutoFlag " << flag_name << " from process " << process_name
+                << " because the flag is not in promoted state" << std::endl;
+      std::cout << "Current config version: " << resp.new_config_version() << std::endl;
+      return Status::OK();
     }
 
     std::cout << "AutoFlag " << flag_name << " from process " << process_name
@@ -3729,7 +3744,8 @@ Status ClusterAdminClient::WriteUniverseKeyToFile(
 
 Status ClusterAdminClient::CreateCDCSDKDBStream(
     const TypedNamespaceName& ns, const std::string& checkpoint_type,
-    const cdc::CDCRecordType record_type) {
+    const cdc::CDCRecordType record_type,
+    const std::optional<std::string>& consistent_snapshot_option) {
   HostPort ts_addr = VERIFY_RESULT(GetFirstRpcAddressForTS());
   auto cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(proxy_cache_.get(), ts_addr);
 
@@ -3746,6 +3762,14 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
         req.set_checkpoint_type(cdc::CDCCheckpointType::EXPLICIT);
   } else {
         req.set_checkpoint_type(cdc::CDCCheckpointType::IMPLICIT);
+  }
+
+  if (consistent_snapshot_option.has_value()) {
+    if (*consistent_snapshot_option == "USE_SNAPSHOT") {
+      req.set_cdcsdk_consistent_snapshot_option(CDCSDKSnapshotOption::USE_SNAPSHOT);
+    } else {
+      req.set_cdcsdk_consistent_snapshot_option(CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT);
+    }
   }
 
   RpcController rpc;
@@ -3892,6 +3916,27 @@ Status ClusterAdminClient::GetCDCDBStreamInfo(const std::string& db_stream_id) {
   }
 
   cout << "CDC DB Stream Info: \r\n" << resp.DebugString();
+  return Status::OK();
+}
+
+Status ClusterAdminClient::YsqlBackfillReplicationSlotNameToCDCSDKStream(
+    const std::string& stream_id, const std::string& replication_slot_name) {
+  master::YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB req;
+  master::YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB resp;
+  req.set_stream_id(stream_id);
+  req.set_cdcsdk_ysql_replication_slot_name(replication_slot_name);
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(
+      master_replication_proxy_->YsqlBackfillReplicationSlotNameToCDCSDKStream(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+        cout << "Error CDC stream with replication slot: " << resp.error().status().message()
+             << endl;
+        return StatusFromPB(resp.error().status());
+  }
+
   return Status::OK();
 }
 

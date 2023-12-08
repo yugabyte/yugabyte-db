@@ -493,7 +493,7 @@ Status ExternalMiniCluster::Restart() {
   // Give some more time for the cluster to be ready. If we proceed to run the
   // unit test prematurely before the master/tserver are fully ready, deadlock
   // can happen which leads to test flakiness.
-  SleepFor(2s);
+  SleepFor(2s * kTimeMultiplier);
   running_ = true;
   return Status::OK();
 }
@@ -2006,6 +2006,18 @@ Status ExternalMiniCluster::SetFlagOnTServers(const string& flag, const string& 
   return Status::OK();
 }
 
+void ExternalMiniCluster::AddExtraFlagOnTServers(
+    const std::string& flag, const std::string& value) {
+  for (const auto& tablet_server : tablet_servers_) {
+    tablet_server->AddExtraFlag(flag, value);
+  }
+}
+void ExternalMiniCluster::RemoveExtraFlagOnTServers(const std::string& flag) {
+  for (const auto& tablet_server : tablet_servers_) {
+    tablet_server->RemoveExtraFlag(flag);
+  }
+}
+
 
 uint16_t ExternalMiniCluster::AllocateFreePort() {
   // This will take a file lock ensuring the port does not get claimed by another thread/process
@@ -2608,6 +2620,32 @@ Result<string> ExternalDaemon::GetFlag(const std::string& flag) {
     return STATUS_FORMAT(RemoteError, "Failed to get gflag $0 value.", flag);
   }
   return resp.value();
+}
+
+Result<HybridTime> ExternalDaemon::GetServerTime() {
+  server::GenericServiceProxy proxy(proxy_cache_, bound_rpc_addr());
+
+  rpc::RpcController controller;
+  controller.set_timeout(MonoDelta::FromSeconds(30));
+  server::ServerClockRequestPB req;
+  server::ServerClockResponsePB resp;
+  RETURN_NOT_OK(proxy.ServerClock(req, &resp, &controller));
+  SCHECK(resp.has_hybrid_time(), IllegalState, "No hybrid time in response");
+  HybridTime ht;
+  RETURN_NOT_OK(ht.FromUint64(resp.hybrid_time()));
+
+  return ht;
+}
+
+void ExternalDaemon::AddExtraFlag(const std::string& flag, const std::string& value) {
+  extra_flags_.push_back(Format("--$0=$1", flag, value));
+}
+
+size_t ExternalDaemon::RemoveExtraFlag(const std::string& flag) {
+  const std::string flag_with_prefix = "--" + flag;
+  return std::erase_if(extra_flags_, [&flag_with_prefix](auto&& flag) {
+    return HasPrefixString(flag, flag_with_prefix);
+  });
 }
 
 LogWaiter::LogWaiter(ExternalDaemon* daemon, const std::string& string_to_wait) :

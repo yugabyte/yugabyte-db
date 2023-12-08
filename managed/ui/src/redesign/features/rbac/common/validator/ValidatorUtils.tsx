@@ -57,9 +57,6 @@ export const getErrorBoundary = ({
 }) => (
   <ErrorBoundary>
     <div
-      style={{
-        position: 'relative'
-      }}
       data-testid="rbac-perm-error"
       id="rbac-perm-error"
     >

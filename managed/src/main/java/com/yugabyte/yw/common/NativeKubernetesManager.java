@@ -256,6 +256,17 @@ public class NativeKubernetesManager extends KubernetesManager {
   }
 
   @Override
+  public void deleteUnusedPVCs(
+      Map<String, String> config,
+      String namespace,
+      String helmReleaseName,
+      String appName,
+      boolean newNamingStyle,
+      int replicaCount) {
+    throw new UnsupportedOperationException("Unimplemented method 'deleteAllServerTypePods'");
+  }
+
+  @Override
   public void deleteNamespace(Map<String, String> config, String namespace) {
     try (KubernetesClient client = getClient(config)) {
       client.namespaces().withName(namespace).delete();

@@ -1,3 +1,4 @@
+import { TableType } from '../../redesign/helpers/dtos';
 import { Metrics } from './XClusterTypes';
 
 //------------------------------------------------------------------------------------
@@ -101,6 +102,10 @@ export const XCLUSTER_TABLE_INELIGIBLE_STATUSES: readonly XClusterTableEligibili
   XClusterTableEligibility.INELIGIBLE_NO_MATCH
 ] as const;
 
+export const XCLUSTER_SUPPORTED_TABLE_TYPES = [
+  TableType.PGSQL_TABLE_TYPE,
+  TableType.YQL_TABLE_TYPE
+] as const;
 //------------------------------------------------------------------------------------
 
 //------------------------------------------------------------------------------------
@@ -112,7 +117,7 @@ export const BOOTSTRAP_MIN_FREE_DISK_SPACE_GB = 100;
 
 // Time range selector constants
 
-export const TIME_RANGE_TYPE = {
+export const TimeRangeType = {
   HOURS: 'hours',
   DAYS: 'days',
   CUSTOM: 'custom'
@@ -124,13 +129,13 @@ export const DROPDOWN_DIVIDER = {
 
 export const DEFAULT_METRIC_TIME_RANGE_OPTION = {
   label: 'Last 1 hr',
-  type: TIME_RANGE_TYPE.HOURS,
+  type: TimeRangeType.HOURS,
   value: '1'
 } as const;
 
 export const CUSTOM_METRIC_TIME_RANGE_OPTION = {
   label: 'Custom',
-  type: TIME_RANGE_TYPE.CUSTOM
+  type: TimeRangeType.CUSTOM
 } as const;
 
 /**
@@ -138,10 +143,10 @@ export const CUSTOM_METRIC_TIME_RANGE_OPTION = {
  */
 export const METRIC_TIME_RANGE_OPTIONS = [
   DEFAULT_METRIC_TIME_RANGE_OPTION,
-  { label: 'Last 6 hrs', type: TIME_RANGE_TYPE.HOURS, value: '6' } as const,
-  { label: 'Last 12 hrs', type: TIME_RANGE_TYPE.HOURS, value: '12' } as const,
-  { label: 'Last 24 hrs', type: TIME_RANGE_TYPE.HOURS, value: '24' } as const,
-  { label: 'Last 7 days', type: TIME_RANGE_TYPE.DAYS, value: '7' } as const,
+  { label: 'Last 6 hrs', type: TimeRangeType.HOURS, value: '6' } as const,
+  { label: 'Last 12 hrs', type: TimeRangeType.HOURS, value: '12' } as const,
+  { label: 'Last 24 hrs', type: TimeRangeType.HOURS, value: '24' } as const,
+  { label: 'Last 7 days', type: TimeRangeType.DAYS, value: '7' } as const,
   DROPDOWN_DIVIDER,
   CUSTOM_METRIC_TIME_RANGE_OPTION
 ] as const;
@@ -149,7 +154,7 @@ export const METRIC_TIME_RANGE_OPTIONS = [
 /**
  * Empty metric data to render an empty plotly graph when we are unable to provide real data.
  */
-export const TABLE_LAG_GRAPH_EMPTY_METRIC: Metrics<'tserver_async_replication_lag_micros'> = {
+export const REPLICATION_LAG_GRAPH_EMPTY_METRIC: Metrics<'tserver_async_replication_lag_micros'> = {
   tserver_async_replication_lag_micros: {
     queryKey: 'tserver_async_replication_lag_micros',
     directURLs: [],
@@ -176,27 +181,39 @@ export const TABLE_LAG_GRAPH_EMPTY_METRIC: Metrics<'tserver_async_replication_la
  * Please update as needed.
  */
 export const MetricName = {
-  TSERVER_ASYNC_REPLICATION_LAG_METRIC: 'tserver_async_replication_lag_micros',
+  TSERVER_ASYNC_REPLICATION_LAG: 'tserver_async_replication_lag_micros',
+  CONSUMER_SAFE_TIME_LAG: 'consumer_safe_time_lag',
+  CONSUMER_SAFE_TIME_SKEW: 'consumer_safe_time_skew',
+  ASYNC_REPLICATION_SENT_LAG: 'async_replication_sent_lag',
   DISK_USAGE: 'disk_usage'
 } as const;
 export type MetricName = typeof MetricName[keyof typeof MetricName];
 
 // TODO: Add as type for layout alias keys in Metric type.
 export const MetricTraceName = {
-  [MetricName.TSERVER_ASYNC_REPLICATION_LAG_METRIC]: {
+  [MetricName.TSERVER_ASYNC_REPLICATION_LAG]: {
     COMMITTED_LAG: 'async_replication_committed_lag_micros',
     SENT_LAG: 'async_replication_sent_lag_micros'
-  }
+  },
+  [MetricName.CONSUMER_SAFE_TIME_LAG]: 'consumer_safe_time_lag'
+} as const;
+export type MetricTraceName =
+  | 'async_replication_committed_lag_micros'
+  | 'async_replication_sent_lag_micros'
+  | 'consumer_safe_time_lag';
+
+export const AlertName = {
+  REPLICATION_LAG: 'Replication Lag',
+  REPLICATION_SAFE_TIME_LAG: 'Replication Safe Time Lag'
 } as const;
 
-export const REPLICATION_LAG_ALERT_NAME = 'Replication Lag';
-
 export const PollingIntervalMs = {
+  UNIVERSE_STATE_TRANSITIONS: 10_000,
   DR_CONFIG: 30_000,
   DR_CONFIG_STATE_TRANSITIONS: 10_000,
   XCLUSTER_CONFIG: 30_000,
   XCLUSTER_CONFIG_STATE_TRANSITIONS: 10_000,
-  XCLUSTER_METRICS: 10_000
+  XCLUSTER_METRICS: 15_000
 } as const;
 
 export const XCLUSTER_METRIC_REFETCH_INTERVAL_MS = PollingIntervalMs.XCLUSTER_METRICS;

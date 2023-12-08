@@ -96,7 +96,8 @@ public class RollbackUpgrade extends SoftwareUpgradeTaskBase {
               .setSubTaskGroupType(getTaskSubGroupType());
 
           createUpdateUniverseSoftwareUpgradeStateTask(
-              UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready);
+              UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
+              false /* isSoftwareRollbackAllowed */);
         });
   }
 }

@@ -55,7 +55,8 @@ public class FinalizeUpgrade extends SoftwareUpgradeTaskBase {
               universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
 
           createUpdateUniverseSoftwareUpgradeStateTask(
-              UniverseDefinitionTaskParams.SoftwareUpgradeState.Finalizing);
+              UniverseDefinitionTaskParams.SoftwareUpgradeState.Finalizing,
+              false /* isSoftwareRollbackAllowed */);
 
           if (!confGetter.getConfForScope(universe, UniverseConfKeys.skipUpgradeFinalize)) {
             if (taskParams().upgradeSystemCatalog) {

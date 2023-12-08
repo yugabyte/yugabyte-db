@@ -205,7 +205,7 @@ public class AccessKeyController extends AuthenticatedController {
     LOG.info(
         "Deleting access key {} for customer {}, provider {}", keyCode, customerUUID, providerUUID);
 
-    accessKey.deleteOrThrow();
+    accessKeyHandler.delete(accessKey);
     auditService()
         .createAuditEntry(
             request,

@@ -105,10 +105,16 @@ auto BuildRowOrders(const LWPgsqlResponsePB& response,
                     const PgDocOp::OperationRowOrders& op_row_order,
                     const PgsqlOp& op) {
   std::vector<int64_t> orders;
+  if (op_row_order.empty()) {
+    VLOG(1) << "Unordered results";
+    return orders;
+  }
   const auto& batch_orders = response.batch_orders();
   if (!batch_orders.empty()) {
+    VLOG(1) << "Row orders came from DocDB";
     orders.assign(batch_orders.begin(), batch_orders.end());
   } else {
+    VLOG(1) << "Look up orders in " << op_row_order.size() << " element vector";
     orders.reserve(op_row_order.size());
     for (const auto& i : op_row_order) {
       if (i.operation.lock().get() == &op) {
@@ -387,8 +393,6 @@ Result<std::list<PgDocResult>> PgDocOp::ProcessResponseImpl(
   auto result = VERIFY_RESULT(ProcessCallResponse(*data.response));
 
   if (data.used_in_txn_limit) {
-    VLOG(5) << "Received used_in_txn_limit_ht in resp=" << data.used_in_txn_limit
-            << ", existing in_txn_limit_ht: " << GetInTxnLimitHt();
     GetInTxnLimitHt() = data.used_in_txn_limit.ToUint64();
   }
   RETURN_NOT_OK(CompleteProcessResponse());
@@ -542,7 +546,7 @@ Result<bool> PgDocReadOp::DoCreateRequests() {
   // TODO(GHI 13737): as explained above, explicitly indicate, if operation should return ordered
   // results.
   } else if (req.is_aggregate() ||
-             (!table_->IsRangePartitioned() && !req.where_clauses().empty())) {
+             (!req.has_is_forward_scan() && !req.where_clauses().empty())) {
     return PopulateParallelSelectOps();
 
   } else {
@@ -553,14 +557,14 @@ Result<bool> PgDocReadOp::DoCreateRequests() {
         return false;
       }
     }
-    pgsql_ops_.emplace_back(read_op_);
-    pgsql_ops_.back()->set_active(true);
+    ClonePgsqlOps(1);
+    auto& read_op = GetReadOp(0);
+    read_op.set_active(true);
     active_op_count_ = 1;
     if (req.has_ybctid_column_value()) {
-      const Slice& ybctid =
-        read_op_->read_request().mutable_ybctid_column_value()->mutable_value()->binary_value();
+      const Slice& ybctid = req.ybctid_column_value().value().binary_value();
       const size_t partition = VERIFY_RESULT(table_->FindPartitionIndex(ybctid));
-      return SetLowerUpperBound(&read_op_->read_request(), partition);
+      return SetLowerUpperBound(&read_op.read_request(), partition);
     }
     return true;
   }
@@ -585,7 +589,10 @@ Status PgDocReadOp::DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) {
   // 6- Repeat step 2 thru 5 for the next batch of 1024 ybctids till done.
   InitializeYbctidOperators();
   end_of_data_ = false;
-  batch_row_orders_.reserve(generator.capacity);
+  VLOG(1) << "Row order " << (generator.keep_order ? "is" : "is not") << " important";
+  if (generator.keep_order) {
+    batch_row_orders_.reserve(generator.capacity);
+  }
   while (true) {
     auto ybctid = generator.next();
     if (ybctid.empty()) {
@@ -604,12 +611,13 @@ Status PgDocReadOp::DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) {
     // The "ybctid" values are returned in the same order as the row in the IndexTable. To keep
     // track of this order, each argument is assigned an order-number.
     auto* batch_arg = read_req.add_batch_arguments();
-    batch_arg->set_order(batch_row_ordering_counter_);
+    if (generator.keep_order) {
+      batch_arg->set_order(batch_row_ordering_counter_);
+      // Remember the order number for each request.
+      batch_row_orders_.emplace_back(pgsql_ops_[partition], batch_row_ordering_counter_++);
+    }
     auto* arg_value = batch_arg->mutable_ybctid()->mutable_value();
     arg_value->dup_binary_value(ybctid);
-
-    // Remember the order number for each request.
-    batch_row_orders_.emplace_back(pgsql_ops_[partition], batch_row_ordering_counter_++);
 
     // We must set "ybctid_column_value" in the request for the sake of rolling upgrades.
     // Servers before 2.15 will read only "ybctid_column_value" as they are not aware
@@ -625,7 +633,6 @@ Status PgDocReadOp::DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) {
     // continue till the end of current tablet is reached.
     if (VERIFY_RESULT(SetLowerUpperBound(&read_req, partition))) {
       read_op.set_active(true);
-      read_req.set_is_forward_scan(true);
     }
   }
 
@@ -1390,6 +1397,15 @@ void PgDocReadOp::ResetInactivePgsqlOps() {
           }),
       batch_row_orders_.end());
   }
+}
+
+Status PgDocReadOp::ResetPgsqlOps() {
+  SCHECK_EQ(active_op_count_, 0,
+            IllegalState,
+            "Can't reset operations when some of them are active");
+  pgsql_ops_.clear();
+  request_population_completed_ = false;
+  return Status::OK();
 }
 
 void PgDocReadOp::FormulateRequestForRollingUpgrade(LWPgsqlReadRequestPB *read_req) {

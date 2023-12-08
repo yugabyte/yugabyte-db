@@ -3,7 +3,6 @@ title: Audit account activity
 linkTitle: Audit account activity
 description: Monitor activity in YugabyteDB Managed.
 headcontent: Monitor account and cluster activity in YugabyteDB Managed
-image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:
     identifier: cloud-activity
@@ -12,15 +11,18 @@ menu:
 type: docs
 ---
 
-Audit your account activity using the **Activity** tab on the **Security** page, which lists the source, activity, user, and time of the activity.
+Audit your account activity using the **Activity** tab on the **Security** page. The **Activity** tab provides the following two logs:
+
+- **Console Audit Log** - lists cluster and account activity, including the activity type, who performed the activity, timestamp, and result.
+- **Access History** - lists all login activity, including the client IP address, activity type, number of attempts, timestamp, and result.
 
 Cluster activity is also displayed on the cluster [**Activity** tab](../../cloud-monitor/monitor-activity).
 
 ![Activity tab](/images/yb-cloud/cloud-admin-activity.png)
 
-To view activity details and associated messages, click the right arrow in the list to display the **Activity Details** sheet.
+To view activity details and associated messages, select the activity in the list to display the **Activity Details** sheet.
 
-To filter the activity list, enter a search term. You can also filter the list by Source, Activity, and Date range.
+To filter the activity list, enter a search term. You can also filter the list by Source, Activity, Performed by, Result, and Date range.
 
 <!--
 ## Logged activity

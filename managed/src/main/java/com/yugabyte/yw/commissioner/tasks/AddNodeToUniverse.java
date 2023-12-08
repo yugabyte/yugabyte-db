@@ -123,22 +123,15 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
                     // otherwise running it second time can succeed. This check must be
                     // performed only when a new node is picked as Add after Remove can
                     // leave processes that require sudo access.
-                    String preflightStatus =
-                        performPreflightCheck(
-                            cluster,
-                            currentNode,
-                            EncryptionInTransitUtil.isRootCARequired(taskParams())
-                                ? taskParams().rootCA
-                                : null,
-                            EncryptionInTransitUtil.isClientRootCARequired(taskParams())
-                                ? taskParams().getClientRootCA()
-                                : null);
-                    if (preflightStatus != null) {
-                      throw new RuntimeException(
-                          String.format(
-                              "Node %s (%s) failed preflight check. Error: %s",
-                              node.getNodeName(), node.getNodeUuid(), preflightStatus));
-                    }
+                    performPreflightCheck(
+                        cluster,
+                        currentNode,
+                        EncryptionInTransitUtil.isRootCARequired(taskParams())
+                            ? taskParams().rootCA
+                            : null,
+                        EncryptionInTransitUtil.isClientRootCARequired(taskParams())
+                            ? taskParams().getClientRootCA()
+                            : null);
                   });
         }
       }
@@ -161,10 +154,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       // ignore node status is true because generic callee checks for node state To Be Added.
       boolean isNextFallThrough =
           createCreateNodeTasks(
-              universe,
-              nodeSet,
-              true /* ignoreNodeStatus */,
-              false /* ignoreUseCustomImageConfig */);
+              universe, nodeSet, true /* ignoreNodeStatus */, null /* param customizer */);
 
       boolean addMaster =
           areMastersUnderReplicated(currentNode, universe)
@@ -188,9 +178,12 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
           universe,
           mastersToAdd,
           tServersToAdd,
-          true /* isShellMode */,
           isNextFallThrough /* ignoreNodeStatus */,
-          false /* ignoreUseCustomImageConfig */);
+          installSoftwareParams -> installSoftwareParams.isMasterInShellMode = true,
+          gFlagsParams -> {
+            gFlagsParams.isMasterInShellMode = true;
+            gFlagsParams.resetMasterState = true;
+          });
 
       // Copy the source root certificate to the newly added node.
       createTransferXClusterCertsCopyTasks(

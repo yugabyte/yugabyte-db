@@ -16,6 +16,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTableSpaces;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
 import com.yugabyte.yw.common.NodeUniverseManager;
@@ -133,7 +134,8 @@ public class UniverseTableHandler {
       UUID universeUUID,
       boolean includeParentTableInfo,
       boolean excludeColocatedTables,
-      boolean includeColocatedParentTables) {
+      boolean includeColocatedParentTables,
+      boolean xClusterSupportedOnly) {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
@@ -200,6 +202,17 @@ public class UniverseTableHandler {
       colocatedKeySpaces = getColocatedKeySpaces(tableInfoList);
     }
 
+    Map<String, String> indexTableMainTableMap = new HashMap<>();
+    // For xCluster table list, we need to also include the main table uuid for each index table.
+    if (xClusterSupportedOnly) {
+      XClusterConfigTaskBase.getMainTableIndexTablesMap(
+              this.ybClientService, universe, XClusterConfigTaskBase.getTableIds(tableInfoList))
+          .forEach(
+              (mainTable, indexTables) ->
+                  indexTables.forEach(
+                      indexTable -> indexTableMainTableMap.put(indexTable, mainTable)));
+    }
+
     for (TableInfo table : tableInfoList) {
       TablePartitionInfoKey tableKey =
           new TablePartitionInfoKey(table.getName(), table.getNamespace().getName());
@@ -225,8 +238,19 @@ public class UniverseTableHandler {
       }
       tableInfoRespList.add(
           buildResponseFromTableInfo(
-                  table, partitionInfo, parentPartitionInfo, tableSizes, hasColocationInfo)
+                  table,
+                  partitionInfo,
+                  parentPartitionInfo,
+                  indexTableMainTableMap.get(XClusterConfigTaskBase.getTableId(table)),
+                  tableSizes,
+                  hasColocationInfo)
               .build());
+    }
+    if (xClusterSupportedOnly) {
+      tableInfoRespList =
+          tableInfoRespList.stream()
+              .filter(XClusterConfigTaskBase::isXClusterSupported)
+              .collect(Collectors.toList());
     }
     return tableInfoRespList;
   }
@@ -560,6 +584,7 @@ public class UniverseTableHandler {
       TableInfo table,
       TablePartitionInfo tablePartitionInfo,
       TableInfo parentTableInfo,
+      String mainTableUuid,
       Map<String, TableSizes> tableSizeMap,
       boolean hasColocationInfo) {
     String id = table.getId().toStringUtf8();
@@ -583,6 +608,9 @@ public class UniverseTableHandler {
     }
     if (parentTableInfo != null) {
       builder.parentTableUUID(getUUIDRepresentation(parentTableInfo.getId().toStringUtf8()));
+    }
+    if (mainTableUuid != null) {
+      builder.mainTableUUID(getUUIDRepresentation(mainTableUuid));
     }
     if (table.hasPgschemaName()) {
       builder.pgSchemaName(table.getPgschemaName());

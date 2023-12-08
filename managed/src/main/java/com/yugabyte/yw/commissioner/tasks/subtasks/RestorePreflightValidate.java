@@ -1,8 +1,11 @@
 package com.yugabyte.yw.commissioner.tasks.subtasks;
 
+import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_NFS;
+
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.common.StorageUtilFactory;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
@@ -21,11 +24,15 @@ import org.yb.CommonTypes.TableType;
 public class RestorePreflightValidate extends AbstractTaskBase {
 
   private final CustomerConfigService configService;
+  private final StorageUtilFactory storageUtilFactory;
 
   @Inject
   protected RestorePreflightValidate(
-      BaseTaskDependencies baseTaskDependencies, CustomerConfigService configService) {
+      BaseTaskDependencies baseTaskDependencies,
+      CustomerConfigService configService,
+      StorageUtilFactory storageUtilFactory) {
     super(baseTaskDependencies);
+    this.storageUtilFactory = storageUtilFactory;
     this.configService = configService;
   }
 
@@ -45,6 +52,13 @@ public class RestorePreflightValidate extends AbstractTaskBase {
           taskParams().backupStorageInfoList.parallelStream()
               .map(bSI -> bSI.storageLocation)
               .collect(Collectors.toSet());
+      // Validate NFS mount path + bucket is matching backup location provided.
+      if (storageConfig.getConfigName().equals(NAME_NFS)) {
+        storageUtilFactory
+            .getStorageUtil(NAME_NFS)
+            .validateStorageConfigOnDefaultLocationsList(
+                storageConfig.getDataObject(), backupLocations, true);
+      }
       backupHelper.validateStorageConfigForSuccessMarkerDownloadOnUniverse(
           storageConfig, universe, backupLocations);
     }

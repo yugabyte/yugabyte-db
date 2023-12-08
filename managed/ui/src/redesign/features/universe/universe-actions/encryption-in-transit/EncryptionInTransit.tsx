@@ -224,9 +224,9 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
   }, [isLoading, disableServerCertRotation, setTab, currentTab]);
 
   const isNodeToNodeCaCertChange = rootCA != INITIAL_VALUES.rootCA;
-  const { sourceXClusterConfigs, targetXClusterConfigs } = getXClusterConfigUuids(universe);
+  const { sourceXClusterConfigUuids, targetXClusterConfigUuids } = getXClusterConfigUuids(universe);
   const universeHasXClusterConfig =
-    sourceXClusterConfigs.length > 0 || targetXClusterConfigs.length > 0;
+    sourceXClusterConfigUuids.length > 0 || targetXClusterConfigUuids.length > 0;
   return (
     <YBModal
       open={open}
@@ -338,7 +338,7 @@ export const EncryptionInTransit: FC<EncryptionInTransitProps> = ({ open, onClos
             <Box display="flex" flexDirection="column" gridGap={theme.spacing(2)} marginTop={2}>
               {tlsToggled && <NonRollingBanner />}
               {((universeHasXClusterConfig && tlsToggled) ||
-                (isNodeToNodeCaCertChange && sourceXClusterConfigs.length > 0)) && (
+                (isNodeToNodeCaCertChange && sourceXClusterConfigUuids.length > 0)) && (
                 <YBAlert
                   text={t(
                     `universeActions.encryptionInTransit.${

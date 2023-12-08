@@ -441,7 +441,8 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
     verify(mockNodeManager, times(1)).nodeCommand(any(), any());
     assertThat(
         taskInfo.getErrorMessage(),
-        containsString("failed preflight check. Error: {\"test\": false}"));
+        containsString(
+            "Failed preflight checks for node host-n1. Code: 1. Output: {\"test\": false}"));
 
     // Node must not be reserved on failure.
     assertFalse(NodeInstance.maybeGetByName(DEFAULT_NODE_NAME).isPresent());
@@ -449,7 +450,9 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
 
   @Test
   public void testAddNodeWithUnderReplicatedMaster() {
-    mockGetMasterRegistrationResponse(ImmutableList.of("10.0.0.1"), Collections.emptyList());
+    UniverseModifyBaseTest.mockMasterAndPeerRoles(
+        mockClient, ImmutableList.of("10.0.0.1", "10.0.0.2", "10.0.0.3"));
+
     verify(mockNodeManager, never()).nodeCommand(any(), any());
     Universe.saveDetails(
         defaultUniverse.getUniverseUUID(),
@@ -561,7 +564,8 @@ public class AddNodeToUniverseTest extends UniverseModifyBaseTest {
   @Test
   public void testAddNodeRetries() {
     // This is set up with under-replicated master to execute master addition flow.
-    mockGetMasterRegistrationResponse(ImmutableList.of("10.0.0.1"), Collections.emptyList());
+    UniverseModifyBaseTest.mockMasterAndPeerRoles(
+        mockClient, ImmutableList.of("10.0.0.1", "10.0.0.2", "10.0.0.3"));
     verify(mockNodeManager, never()).nodeCommand(any(), any());
     Universe universe =
         Universe.saveDetails(

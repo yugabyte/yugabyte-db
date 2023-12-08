@@ -6,6 +6,7 @@ import (
 	"context"
 	"crypto"
 	"crypto/x509"
+	"encoding/json"
 	"encoding/pem"
 	"errors"
 	"fmt"
@@ -218,6 +219,50 @@ func PublicKeys(ctx context.Context, config *Config) ([]crypto.PublicKey, error)
 		keys = append(keys, key)
 	}
 	return keys, nil
+}
+
+// IntFromClaims returns the int value for key in the map claims.
+func IntFromClaims(claims *jwt.MapClaims, key string) (int64, bool) {
+	if claims != nil {
+		mp := map[string]interface{}(*claims)
+		if i, ok := mp[key]; ok {
+			switch dType := i.(type) {
+			case float64:
+				return int64(dType), true
+			case json.Number:
+				v, _ := dType.Int64()
+				return v, true
+			default:
+				if v, ok := i.(int64); ok {
+					return v, true
+				}
+			}
+		}
+	}
+	return 0, false
+}
+
+// StringFromClaims returns the string value for key in the map claims.
+func StringFromClaims(claims *jwt.MapClaims, key string) (string, bool) {
+	if claims != nil {
+		mp := map[string]interface{}(*claims)
+		if i, ok := mp[key]; ok {
+			if v, ok := i.(string); ok {
+				return v, true
+			}
+		}
+	}
+	return "", false
+}
+
+// ExtractClaims extracts the claims in the auth token.
+func ExtractClaims(ctx context.Context, config *Config, authToken string) (*jwt.MapClaims, error) {
+	parser := jwt.NewParser()
+	token, _, err := parser.ParseUnverified(authToken, &jwt.MapClaims{})
+	if err != nil {
+		return nil, fmt.Errorf("Invalid token")
+	}
+	return token.Claims.(*jwt.MapClaims), nil
 }
 
 // VerifyJWT verifies the JWT and returns the claims.

@@ -37,6 +37,7 @@ import {
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { Action, Resource } from '../../../redesign/features/rbac';
 import { ControlComp } from '../../../redesign/features/rbac/common/validator/ValidatorUtils';
+import { userhavePermInRoleBindings } from '../../../redesign/features/rbac/common/RbacUtils';
 
 /**
  * This is the header for YB Panel Item.
@@ -372,11 +373,8 @@ export const AlertsList = (props) => {
   const formatAlertTargets = (cell) => {
     if (cell.all) return 'All';
     if (
-      !customPermValidateFunction((userPermissions) => {
-        return (
-          find(userPermissions, { resourceType: Resource.UNIVERSE, actions: Action.READ }) !==
-          undefined
-        );
+      !customPermValidateFunction(() => {
+        return userhavePermInRoleBindings(Resource.UNIVERSE, Action.READ);
       })
     ) {
       return ControlComp({ children: <span>No Universe Perm</span> });

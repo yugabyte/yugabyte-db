@@ -28,7 +28,7 @@ import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
-import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams.BootstarpBackupParams;
+import com.yugabyte.yw.forms.XClusterConfigRestartFormData;
 import com.yugabyte.yw.forms.XClusterConfigSyncFormData;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
@@ -66,12 +66,12 @@ import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.yb.CommonTypes;
 import org.yb.master.MasterDdlOuterClass;
 import org.yb.master.MasterReplicationOuterClass.GetXClusterSafeTimeResponsePB.NamespaceSafeTimePB;
-import org.yb.master.MasterTypes.RelationType;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -153,12 +153,11 @@ public class DrConfigController extends AuthenticatedController {
         getRequestedTableInfoList(createForm.dbs, sourceTableInfoList);
 
     Set<String> tableIds = XClusterConfigTaskBase.getTableIds(requestedTableInfoList);
-    CommonTypes.TableType tableType = XClusterConfigTaskBase.getTableType(requestedTableInfoList);
     Map<String, List<String>> mainTableIndexTablesMap =
         XClusterConfigTaskBase.getMainTableIndexTablesMap(this.ybService, sourceUniverse, tableIds);
 
     XClusterConfigController.xClusterCreatePreChecks(
-        tableIds, tableType, ConfigType.Txn, sourceUniverse, targetUniverse, confGetter);
+        requestedTableInfoList, ConfigType.Txn, sourceUniverse, targetUniverse, confGetter);
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList =
         XClusterConfigTaskBase.getTableInfoList(
@@ -168,7 +167,7 @@ public class DrConfigController extends AuthenticatedController {
             requestedTableInfoList, targetTableInfoList);
 
     BootstrapParams bootstrapParams =
-        getBootstrapParamsFromBootstarpBackupParams(createForm.bootstrapBackupParams, tableIds);
+        getBootstrapParamsFromRestartBootstrapParams(createForm.bootstrapParams, tableIds);
     XClusterConfigController.xClusterBootstrappingPreChecks(
         requestedTableInfoList,
         sourceTableInfoList,
@@ -242,6 +241,12 @@ public class DrConfigController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.DrConfigSetTablesForm",
           paramType = "body",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result setTables(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
     log.info("Received set tables drConfig request");
 
@@ -256,10 +261,9 @@ public class DrConfigController extends AuthenticatedController {
     Universe targetUniverse =
         Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
 
-    BootstrapParams bootstrapParams = new BootstrapParams();
-    bootstrapParams.tables = setTablesForm.tables;
-    bootstrapParams.backupRequestParams = setTablesForm.bootstrapParams.backupRequestParams;
-
+    BootstrapParams bootstrapParams =
+        getBootstrapParamsFromRestartBootstrapParams(
+            setTablesForm.bootstrapParams, setTablesForm.tables);
     XClusterConfigTaskParams taskParams =
         XClusterConfigController.getSetTablesTaskParams(
             ybService,
@@ -306,6 +310,12 @@ public class DrConfigController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.DrConfigRestartForm",
           paramType = "body",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result restart(
       UUID customerUUID, UUID drConfigUuid, boolean isForceDelete, Http.Request request) {
     log.info("Received restart drConfig request");
@@ -400,18 +410,7 @@ public class DrConfigController extends AuthenticatedController {
     Universe newTargetUniverse =
         Universe.getOrBadRequest(replaceReplicaForm.drReplicaUniverseUuid, customer);
 
-    // Todo: Revisit this restriction.
-    if (!xClusterConfig.getStatus().equals(XClusterConfigStatusType.Running)
-        || !xClusterConfig.getTableDetails().stream()
-            .map(XClusterTableConfig::getStatus)
-            .allMatch(tableConfigStatus -> tableConfigStatus.equals(Status.Running))) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          "the underlying xCluster config and all of its replication streams must "
-              + "be running status.");
-    }
-
-    Set<String> tableIds = xClusterConfig.getTableIdsWithReplicationSetup();
+    Set<String> tableIds = xClusterConfig.getTableIds();
 
     // Add index tables.
     Map<String, List<String>> mainTableIndexTablesMap =
@@ -440,8 +439,7 @@ public class DrConfigController extends AuthenticatedController {
             requestedTableInfoList, newTargetTableInfoList);
 
     BootstrapParams bootstrapParams =
-        getBootstrapParamsFromBootstarpBackupParams(
-            replaceReplicaForm.bootstrapParams.backupRequestParams, tableIds);
+        getBootstrapParamsFromRestartBootstrapParams(replaceReplicaForm.bootstrapParams, tableIds);
     XClusterConfigController.xClusterBootstrappingPreChecks(
         requestedTableInfoList,
         sourceTableInfoList,
@@ -507,6 +505,12 @@ public class DrConfigController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.DrConfigSwitchoverForm",
           paramType = "body",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result switchover(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
     log.info("Received switchover drConfig request");
 
@@ -776,6 +780,12 @@ public class DrConfigController extends AuthenticatedController {
       nickname = "syncDrConfig",
       value = "Sync disaster recovery config",
       response = YBPTask.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result sync(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
     log.info("Received sync drConfig request");
 
@@ -921,7 +931,8 @@ public class DrConfigController extends AuthenticatedController {
               formData.sourceUniverseUUID));
     }
     formData.dbs = XClusterConfigTaskBase.convertUuidStringsToIdStringSet(formData.dbs);
-    validateBackupRequestParamsForBootstrapping(formData.bootstrapBackupParams, customerUUID);
+    validateBackupRequestParamsForBootstrapping(
+        formData.bootstrapParams.backupRequestParams, customerUUID);
     return formData;
   }
 
@@ -930,8 +941,10 @@ public class DrConfigController extends AuthenticatedController {
     DrConfigSetTablesForm formData =
         formFactory.getFormDataOrBadRequest(request.body().asJson(), DrConfigSetTablesForm.class);
     formData.tables = XClusterConfigTaskBase.convertUuidStringsToIdStringSet(formData.tables);
-    validateBackupRequestParamsForBootstrapping(
-        formData.bootstrapParams.backupRequestParams, customerUUID);
+    if (Objects.nonNull(formData.bootstrapParams)) {
+      validateBackupRequestParamsForBootstrapping(
+          formData.bootstrapParams.backupRequestParams, customerUUID);
+    }
     return formData;
   }
 
@@ -1007,7 +1020,10 @@ public class DrConfigController extends AuthenticatedController {
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList) {
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
         sourceTableInfoList.stream()
-            .filter(tableInfo -> dbIds.contains(tableInfo.getNamespace().getId().toStringUtf8()))
+            .filter(
+                tableInfo ->
+                    XClusterConfigTaskBase.isXClusterSupported(tableInfo)
+                        && dbIds.contains(tableInfo.getNamespace().getId().toStringUtf8()))
             .collect(Collectors.toList());
     Set<String> foundDBIds =
         requestedTableInfoList.stream()
@@ -1027,11 +1043,15 @@ public class DrConfigController extends AuthenticatedController {
     return requestedTableInfoList;
   }
 
-  private static BootstrapParams getBootstrapParamsFromBootstarpBackupParams(
-      BootstarpBackupParams bootstrapBackupParams, Set<String> tableIds) {
+  private static BootstrapParams getBootstrapParamsFromRestartBootstrapParams(
+      @Nullable XClusterConfigRestartFormData.RestartBootstrapParams restartBootstrapParams,
+      Set<String> tableIds) {
+    if (Objects.isNull(restartBootstrapParams)) {
+      return null;
+    }
     BootstrapParams bootstrapParams = new BootstrapParams();
     bootstrapParams.tables = tableIds;
-    bootstrapParams.backupRequestParams = bootstrapBackupParams;
+    bootstrapParams.backupRequestParams = restartBootstrapParams.backupRequestParams;
     return bootstrapParams;
   }
 
@@ -1074,9 +1094,7 @@ public class DrConfigController extends AuthenticatedController {
                       targetTableInfoList.stream()
                           .filter(
                               tableInfo ->
-                                  !tableInfo
-                                          .getRelationType()
-                                          .equals(RelationType.SYSTEM_TABLE_RELATION)
+                                  XClusterConfigTaskBase.isXClusterSupported(tableInfo)
                                       && tableInfo
                                           .getNamespace()
                                           .getId()

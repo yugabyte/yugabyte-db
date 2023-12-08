@@ -16,7 +16,16 @@
 namespace yb {
 namespace cdc {
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithManyTransactions)) {
+class CDCSDKConsistentStreamTest : public CDCSDKYsqlTest {
+ public:
+  void TestCDCSDKConsistentStreamWithTabletSplit(CDCCheckpointType checkpoint_type);
+
+  void TestCDCSDKMultipleAlter(CDCCheckpointType checkpoint_type);
+};
+
+TEST_F(CDCSDKConsistentStreamTest,
+       YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithManyTransactions)) {
+
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 40;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
@@ -69,7 +78,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithMan
   ASSERT_EQ(30301, get_changes_resp.records.size());
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithForeignKeys)) {
+TEST_F(CDCSDKConsistentStreamTest,
+       YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithForeignKeys)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 30;
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
@@ -146,7 +156,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithFor
   ASSERT_EQ(29281, get_changes_resp.records.size());
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithAbortedTransactions)) {
+TEST_F(CDCSDKConsistentStreamTest,
+       YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithAbortedTransactions)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 30;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_enable_consistent_records) = false;
   ASSERT_OK(SetUpWithParams(3, 1, false));
@@ -207,7 +218,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithAbo
   ASSERT_EQ(36, get_changes_resp.records.size());
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithTserverRestart)) {
+TEST_F(CDCSDKConsistentStreamTest,
+       YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithTserverRestart)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_packed_row) = true;
 
@@ -304,7 +316,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithTse
   ASSERT_EQ(60754, all_records.size());
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithDDLStatements)) {
+TEST_F(CDCSDKConsistentStreamTest,
+       YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithDDLStatements)) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
@@ -381,7 +394,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithDDL
   ASSERT_EQ(60603, get_changes_resp.records.size());
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithLeadershipChange)) {
+TEST_F(CDCSDKConsistentStreamTest,
+       YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithLeadershipChange)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
 
   ASSERT_OK(SetUpWithParams(3, 1, false));
@@ -459,7 +473,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithLea
   }
 
   // Leadership Change.
-  ASSERT_OK(ChangeLeaderOfTablet(first_follower_index, tablets[0].tablet_id()));
+  StartYbAdminClient();
+  ASSERT_OK(StepDownLeader(first_follower_index, tablets[0].tablet_id()));
 
   auto all_pending_changes = GetAllPendingChangesFromCdc(
       stream_id,
@@ -481,7 +496,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithLea
   ASSERT_EQ(60604, all_records.size());
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithColocation)) {
+TEST_F(CDCSDKConsistentStreamTest,
+       YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithColocation)) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
@@ -565,7 +581,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithCol
   ASSERT_EQ(30802, get_changes_resp.records.size());
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithTabletSplit)) {
+void CDCSDKConsistentStreamTest::TestCDCSDKConsistentStreamWithTabletSplit(
+    CDCCheckpointType checkpoint_type) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
@@ -578,7 +595,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithTab
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
-  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
   auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
   ASSERT_FALSE(set_resp.has_error());
 
@@ -651,7 +668,9 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithTab
       ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_id, tablets[0].tablet_id()));
   for (const auto& tablet_checkpoint_pair : get_tablets_resp.tablet_checkpoint_pairs()) {
     auto new_tablet = tablet_checkpoint_pair.tablet_locations();
-    auto new_checkpoint = tablet_checkpoint_pair.cdc_sdk_checkpoint();
+    auto new_checkpoint = (checkpoint_type == CDCCheckpointType::EXPLICIT)
+                              ? parent_get_changes.checkpoint
+                              : tablet_checkpoint_pair.cdc_sdk_checkpoint();
 
     google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
     auto tablet_ptr = tablets.Add();
@@ -672,7 +691,17 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithTab
   }
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKHistoricalMaxOpId)) {
+TEST_F(CDCSDKConsistentStreamTest,
+       YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithTabletSplitExplicit)) {
+  TestCDCSDKConsistentStreamWithTabletSplit(CDCCheckpointType::EXPLICIT);
+}
+
+TEST_F(CDCSDKConsistentStreamTest,
+       YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithTabletSplitImplicit)) {
+  TestCDCSDKConsistentStreamWithTabletSplit(CDCCheckpointType::IMPLICIT);
+}
+
+TEST_F(CDCSDKConsistentStreamTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKHistoricalMaxOpId)) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
@@ -716,7 +745,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKHistoricalMaxOpId)) {
       "historical_max_op_id should change"));
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKHistoricalMaxOpIdWithTserverRestart)) {
+TEST_F(CDCSDKConsistentStreamTest,
+       YB_DISABLE_TEST_IN_TSAN(TestCDCSDKHistoricalMaxOpIdWithTserverRestart)) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
@@ -751,9 +781,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKHistoricalMaxOpIdWithTs
       "historical_max_op_id should be same as before restart"));
 }
 
-TEST_F(
-    CDCSDKYsqlTest,
-    YB_DISABLE_TEST_IN_TSAN(TestCDCSDKHistoricalMaxOpIdTserverRestartWithFlushTables)) {
+TEST_F(CDCSDKConsistentStreamTest,
+       YB_DISABLE_TEST_IN_TSAN(TestCDCSDKHistoricalMaxOpIdTserverRestartWithFlushTables)) {
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
@@ -795,7 +824,8 @@ TEST_F(
       "historical_max_op_id should be same as before restart"));
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKHistoricalMaxOpIdWithTabletSplit)) {
+TEST_F(CDCSDKConsistentStreamTest,
+       YB_DISABLE_TEST_IN_TSAN(TestCDCSDKHistoricalMaxOpIdWithTabletSplit)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables) = true;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
@@ -842,7 +872,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKHistoricalMaxOpIdWithTa
       "historical_max_op_id should change"));
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(CDCSDKMultipleAlter)) {
+void CDCSDKConsistentStreamTest::TestCDCSDKMultipleAlter(CDCCheckpointType checkpoint_type) {
   const int num_tservers = 3;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
@@ -856,7 +886,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(CDCSDKMultipleAlter)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_timestamp_history_retention_interval_sec) = 0;
 
   // Create CDC stream.
-  auto stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
   auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
   ASSERT_FALSE(resp.has_error());
 
@@ -914,9 +944,16 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(CDCSDKMultipleAlter)) {
   ASSERT_GE(seen_ddl_records, 13);
 }
 
-TEST_F(
-    CDCSDKYsqlTest,
-    YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithRandomReqSafeTimeChanges)) {
+TEST_F(CDCSDKConsistentStreamTest, YB_DISABLE_TEST_IN_TSAN(CDCSDKMultipleAlterExplicit)) {
+  TestCDCSDKMultipleAlter(CDCCheckpointType::EXPLICIT);
+}
+
+TEST_F(CDCSDKConsistentStreamTest, YB_DISABLE_TEST_IN_TSAN(CDCSDKMultipleAlterImplicit)) {
+  TestCDCSDKMultipleAlter(CDCCheckpointType::IMPLICIT);
+}
+
+TEST_F(CDCSDKConsistentStreamTest,
+       YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithRandomReqSafeTimeChanges)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_stream_records_threshold_size_bytes) = 64_KB;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
@@ -925,7 +962,7 @@ TEST_F(
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
   ASSERT_EQ(tablets.size(), 1);
-  auto stream_id = ASSERT_RESULT(CreateDBStream(EXPLICIT));
+  auto stream_id = ASSERT_RESULT(CreateDBStreamWithReplicationSlot());
   auto set_resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets, OpId::Min()));
   ASSERT_FALSE(set_resp.has_error());
 
@@ -956,7 +993,8 @@ TEST_F(
   ASSERT_EQ(seen_unique_pk_values.size(), 5000);
 }
 
-TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKMakesProgressWithLongRunningTxn)) {
+TEST_F(CDCSDKConsistentStreamTest,
+       YB_DISABLE_TEST_IN_TSAN(TestCDCSDKMakesProgressWithLongRunningTxn)) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_resolve_intent_lag_threshold_ms) = 10 * 1000;
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));

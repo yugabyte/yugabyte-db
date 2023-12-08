@@ -492,6 +492,12 @@ message CDCStreamOptionsPB {
   optional bytes value = 2;
 }
 
+// The on-disk entry specific to CDCSDK streams
+message CDCSDKStreamEntryPB {
+  optional uint64 snapshot_time = 1;
+  optional CDCSDKSnapshotOption consistent_snapshot_option = 2;
+}
+
 // The data part of a SysRowEntry in the sys.catalog table for a CDC stream.
 message SysCDCStreamEntryPB {
   enum State {
@@ -510,7 +516,10 @@ message SysCDCStreamEntryPB {
   optional string namespace_id = 4;
   optional bool transactional = 5; // [default = false]
   optional string cdcsdk_ysql_replication_slot_name = 6;
+  optional CDCSDKStreamEntryPB cdcsdk_stream_metadata = 7;
 }
+
+
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for snapshots entries.
 message SysSnapshotEntryPB {
@@ -620,6 +629,8 @@ message SysUniverseReplicationEntryPB {
 
   // Set when consistent transactions are enabled for a replication group.
   optional bool transactional = 11; // [default = false]
+
+  optional uint32 validated_local_auto_flags_config_version = 12;
 }
 
 message XClusterSafeTimePB {

@@ -31,6 +31,7 @@ GET     /customer_count                                                        c
 GET     /app_version                                                           com.yugabyte.yw.controllers.SessionController.appVersion()
 GET     /logs/:maxLines                                                        com.yugabyte.yw.controllers.SessionController.getLogs(maxLines: Integer)
 GET     /logs                                                                  com.yugabyte.yw.controllers.SessionController.getFilteredLogs(maxLines: Integer ?= 10000, universeName: String ?= null, queryRegex: String ?= null, startDate: String ?= null, endDate: String ?= null)
+GET     /ha_leader                                                             com.yugabyte.yw.controllers.HANoAuthController.isHALeader(request: Request)
 # --
 
 POST    /logging_config                                                        com.yugabyte.yw.controllers.LoggingConfigController.setLoggingSettings(request: Request)
@@ -388,12 +389,14 @@ POST    /customers/:cUUID/universes/:uniUUID/upgrade/resize_node               c
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/thirdparty_software       com.yugabyte.yw.controllers.UpgradeUniverseController.upgradeThirdpartySoftware(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/reboot                    com.yugabyte.yw.controllers.UpgradeUniverseController.rebootUniverse(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/universes/:uniUUID/audit_log_config                  com.yugabyte.yw.controllers.UpgradeUniverseController.modifyAuditLogging(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
+POST     /customers/:cUUID/universes/:uniUUID/upgrade/software/precheck        com.yugabyte.yw.controllers.UpgradeUniverseController.softwareUpgradePreCheck(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
+GET     /customers/:cUUID/universes/:uniUUID/upgrade/finalize/info             com.yugabyte.yw.controllers.UpgradeUniverseController.finalizeUpgradeInfo(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # Table Management API
-GET     /customers/:cUUID/universes/:uniUUID/tables                            com.yugabyte.yw.controllers.TablesController.listTables(cUUID: java.util.UUID, uniUUID: java.util.UUID, includeParentTableInfo: java.lang.Boolean ?= false, excludeColocatedTables: java.lang.Boolean ?= false, includeColocatedParentTables: java.lang.Boolean ?= false)
+GET     /customers/:cUUID/universes/:uniUUID/tables                            com.yugabyte.yw.controllers.TablesController.listTables(cUUID: java.util.UUID, uniUUID: java.util.UUID, includeParentTableInfo: java.lang.Boolean ?= false, excludeColocatedTables: java.lang.Boolean ?= false, includeColocatedParentTables: java.lang.Boolean ?= false, xClusterSupportedOnly: java.lang.Boolean ?= false)
 GET     /customers/:cUUID/universes/:uniUUID/namespaces                        com.yugabyte.yw.controllers.TablesController.listNamespaces(cUUID: java.util.UUID, uniUUID: java.util.UUID, includeSystemNamespaces: java.lang.Boolean ?= false)
 POST    /customers/:cUUID/universes/:uniUUID/tables                            com.yugabyte.yw.controllers.TablesController.create(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
-GET     /customers/:cUUID/universes/:uniUUID/tables/:tableUUID                 com.yugabyte.yw.controllers.TablesController.describe(cUUID: java.util.UUID, uniUUID: java.util.UUID, tableUUID: java.util.UUID)
+GET     /customers/:cUUID/universes/:uniUUID/tables/:tableUUID                 com.yugabyte.yw.controllers.TablesController.describe(cUUID: java.util.UUID, uniUUID: java.util.UUID, tableUUID: String)
 PUT     /customers/:cUUID/universes/:uniUUID/tables/:tableUUID                 com.yugabyte.yw.controllers.TablesController.alter(cUUID: java.util.UUID, uniUUID: java.util.UUID, tableUUID: java.util.UUID, request: Request)
 DELETE  /customers/:cUUID/universes/:uniUUID/tables/:tableUUID                 com.yugabyte.yw.controllers.TablesController.drop(cUUID: java.util.UUID, uniUUID: java.util.UUID, tableUUID: java.util.UUID, request: Request)
 PUT     /customers/:cUUID/universes/:uniUUID/tables/:tableUUID/bulk_import     com.yugabyte.yw.controllers.TablesController.bulkImport(cUUID: java.util.UUID, uniUUID: java.util.UUID, tableUUID: java.util.UUID, request: Request)
@@ -581,6 +584,7 @@ POST     /customers/:cUUID/cloud/:cloud/buckets                                c
 PUT /customers/:cUUID/universes/:uniUUID/ybc/disable                           com.yugabyte.yw.controllers.YbcController.disable(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 PUT /customers/:cUUID/universes/:uniUUID/ybc/upgrade                           com.yugabyte.yw.controllers.YbcController.upgrade(cUUID: java.util.UUID, uniUUID: java.util.UUID, ybcVersion: String ?= "", request: Request)
 PUT /customers/:cUUID/universes/:uniUUID/ybc/install                           com.yugabyte.yw.controllers.YbcController.install(cUUID: java.util.UUID, uniUUID: java.util.UUID, ybcVersion: String ?= "", request: Request)
+PUT /customers/:cUUID/universes/:uniUUID/ybc/upgrade/gflags                    com.yugabyte.yw.controllers.YbcController.upgradeYbcGflags(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 
 # YB-Controller throttle parameters
 GET  /customers/:cUUID/universes/:uniUUID/ybc_throttle_params                  com.yugabyte.yw.controllers.BackupsController.getThrottleParams(cUUID: java.util.UUID, uniUUID: java.util.UUID)

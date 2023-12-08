@@ -1,9 +1,9 @@
 ---
-title: YBM Performance Advisor
+title: YugabyteDB Managed Performance Advisor
+headerTitle: Performance Advisor
 linkTitle: Performance Advisor
 description: Scan your cluster to discover performance optimizations.
 headcontent: Scan your cluster to discover performance optimizations
-image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:
     identifier: cloud-advisor

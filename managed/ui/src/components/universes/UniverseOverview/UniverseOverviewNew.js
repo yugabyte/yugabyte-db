@@ -30,12 +30,20 @@ import {
   isDedicatedNodePlacement
 } from '../../../utils/UniverseUtils';
 import { FlexContainer, FlexGrow, FlexShrink } from '../../common/flexbox/YBFlexBox';
+import { DBVersionWidget } from '../../../redesign/features/universe/universe-overview/DBVersionWidget';
+import { PreFinalizeBanner } from '../../../redesign/features/universe/universe-actions/rollback-upgrade/components/PreFinalizeBanner';
+import { UpgradeFailedBanner } from '../../../redesign/features/universe/universe-actions/rollback-upgrade/components/UpgradeFailedBanner';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBButton, YBModal } from '../../common/forms/fields';
 import { isEnabled, isDisabled } from '../../../utils/LayoutUtils';
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
+import {
+  SoftwareUpgradeState,
+  getcurrentUniverseFailedTask,
+  SoftwareUpgradeTaskType
+} from '../helpers/universeHelpers';
 
 class DatabasePanel extends PureComponent {
   static propTypes = {
@@ -461,29 +469,43 @@ export default class UniverseOverviewNew extends Component {
       </Col>
     );
   };
-  getPrimaryClusterWidget = (currentUniverse) => {
+
+  getPrimaryClusterWidget = (currentUniverse, isRollBackFeatureEnabled) => {
     const isDedicatedNodes = isDedicatedNodePlacement(currentUniverse);
 
     if (isNullOrEmpty(currentUniverse)) return;
-    return isDedicatedNodes ? (
-      <Col lg={4} sm={8} md={8} xs={12}>
-        <ClusterInfoPanelContainer
-          type={'primary'}
-          universeInfo={currentUniverse}
-          isDedicatedNodes={isDedicatedNodes}
-          runtimeConfigs={this.props.runtimeConfigs}
-        />
-      </Col>
-    ) : (
-      <Col lg={2} sm={6} md={4} xs={8}>
-        <ClusterInfoPanelContainer
-          type={'primary'}
-          universeInfo={currentUniverse}
-          isDedicatedNodes={isDedicatedNodes}
-          runtimeConfigs={this.props.runtimeConfigs}
-        />
-      </Col>
-    );
+    if (isRollBackFeatureEnabled) {
+      return (
+        <Col lg={4} sm={8} md={8} xs={12}>
+          <ClusterInfoPanelContainer
+            type={'primary'}
+            universeInfo={currentUniverse}
+            isDedicatedNodes={isDedicatedNodes}
+            runtimeConfigs={this.props.runtimeConfigs}
+          />
+        </Col>
+      );
+    } else {
+      return isDedicatedNodes ? (
+        <Col lg={4} sm={8} md={8} xs={12}>
+          <ClusterInfoPanelContainer
+            type={'primary'}
+            universeInfo={currentUniverse}
+            isDedicatedNodes={isDedicatedNodes}
+            runtimeConfigs={this.props.runtimeConfigs}
+          />
+        </Col>
+      ) : (
+        <Col lg={2} sm={6} md={4} xs={8}>
+          <ClusterInfoPanelContainer
+            type={'primary'}
+            universeInfo={currentUniverse}
+            isDedicatedNodes={isDedicatedNodes}
+            runtimeConfigs={this.props.runtimeConfigs}
+          />
+        </Col>
+      );
+    }
   };
 
   getReadReplicaClusterWidget = (currentUniverse) => {
@@ -803,8 +825,10 @@ export default class UniverseOverviewNew extends Component {
       universe,
       universe: { currentUniverse },
       alerts,
+      updateAvailable,
       tasks,
-      currentCustomer
+      currentCustomer,
+      runtimeConfigs
     } = this.props;
 
     const universeInfo = currentUniverse.data;
@@ -815,17 +839,51 @@ export default class UniverseOverviewNew extends Component {
     const primaryCluster = getPrimaryCluster(clusters);
     const userIntent = primaryCluster && primaryCluster?.userIntent;
     const dedicatedNodes = userIntent?.dedicatedNodes;
+    const dbVersionValue = userIntent?.ybSoftwareVersion;
+    const failedTask = getcurrentUniverseFailedTask(universeInfo, tasks.customerTaskList);
+    const ybSoftwareUpgradeState = universeDetails?.softwareUpgradeState;
+
+    const isRollBackFeatureEnabled =
+      runtimeConfigs?.data?.configEntries?.find(
+        (c) => c.key === 'yb.upgrade.enable_rollback_support'
+      )?.value === 'true';
 
     const isQueryMonitoringEnabled = localStorage.getItem('__yb_query_monitoring__') === 'true';
     return (
       <Fragment>
+        {isRollBackFeatureEnabled &&
+          ybSoftwareUpgradeState === SoftwareUpgradeState.PRE_FINALIZE && (
+            <Row className="p-16">{<PreFinalizeBanner universeData={universeInfo} />}</Row>
+          )}
+        {isRollBackFeatureEnabled &&
+          [SoftwareUpgradeState.ROLLBACK_FAILED, SoftwareUpgradeState.UPGRADE_FAILED].includes(
+            ybSoftwareUpgradeState
+          ) &&
+          [
+            SoftwareUpgradeTaskType.ROLLBACK_UPGRADE,
+            SoftwareUpgradeTaskType.SOFTWARE_UPGRADE
+          ].includes(failedTask.type) && (
+            <Row className="p-16">
+              <UpgradeFailedBanner universeData={universeInfo} taskDetail={failedTask} />
+            </Row>
+          )}
         <Row>
           {isEnabled(currentCustomer.data.features, 'universes.details.overview.costs') &&
             this.getCostWidget(universeInfo)}
+          {isRollBackFeatureEnabled && (
+            <Col lg={4} md={6} sm={8} xs={12}>
+              <DBVersionWidget
+                dbVersionValue={dbVersionValue}
+                currentUniverse={universeInfo}
+                tasks={tasks}
+                higherVersionCount={updateAvailable}
+              />
+            </Col>
+          )}
         </Row>
         <Row>
-          {this.getDatabaseWidget(universeInfo, tasks)}
-          {this.getPrimaryClusterWidget(universeInfo)}
+          {!isRollBackFeatureEnabled && this.getDatabaseWidget(universeInfo, tasks)}
+          {this.getPrimaryClusterWidget(universeInfo, isRollBackFeatureEnabled)}
           {this.hasReadReplica(universeInfo) && this.getReadReplicaClusterWidget(universeInfo)}
           {this.getCPUWidget(universeInfo)}
           {isDisabled(currentCustomer.data.features, 'universes.details.health')

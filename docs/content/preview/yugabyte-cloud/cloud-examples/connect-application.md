@@ -3,7 +3,6 @@ title: Connect a Spring Data YugabyteDB application
 linkTitle: Connect a Spring application
 description: Connect a Spring Spring Data YugabyteDB application to YugabyteDB Managed.
 headcontent:
-image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:
     identifier: connect-application

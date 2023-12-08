@@ -49,7 +49,7 @@ Status ExternalYbController::Start() {
   CHECK(!process_);
 
   std::vector<string> argv;
-  // First the exe for argv[0]
+  // First the exe for argv[0].
   argv.push_back(BaseName(exe_));
 
   argv.push_back("--log_dir=" + log_dir_);
@@ -71,14 +71,14 @@ Status ExternalYbController::Start() {
   p->PipeParentStdout();
   p->PipeParentStderr();
 
-  LOG(INFO) << "Starting YBC with args " << JoinStrings(argv, "\n");
+  LOG(INFO) << "Starting YB Controller with args: " << JoinStrings(argv, "\n");
 
   RETURN_NOT_OK_PREPEND(p->Start(), Format("Failed to start subprocess $0", exe_));
 
-  // allow some time for server initialisation
+  // Allow some time for server initialisation.
   SleepFor(MonoDelta::FromMilliseconds(500));
 
-  // make sure we can ping the server
+  // Make sure we can ping the server.
   CHECK_OK(ping());
 
   process_.swap(p);
@@ -89,19 +89,19 @@ Status ExternalYbController::Start() {
 Status ExternalYbController::ping() {
   std::vector<string> argv;
 
-  // first the path to yb controller cli tool
+  // First the path to YB Controller CLI tool.
   argv.push_back(GetYbcToolPath("yb-controller-cli"));
-  // command to ping yb controller server
+  // Command to ping YB Controller server.
   argv.push_back("ping");
   argv.push_back("--tserver_ip=" + server_address_);
   argv.push_back(Format("--server_port=$0", server_port_));
   argv.insert(argv.end(), extra_flags_.begin(), extra_flags_.end());
 
-  LOG(INFO) << "Run tool: " << AsString(argv);
+  LOG(INFO) << "Run YB Controller CLI: " << AsString(argv);
   string output;
   RETURN_NOT_OK(Subprocess::Call(argv, &output));
 
-  LOG(INFO) << "YBC ping result: " << output;
+  LOG(INFO) << "YB Controller ping result: " << output;
   CHECK(output.find("Ping successful!") != string::npos)
       << "Pinging YB Controller server unsuccessful";
 
@@ -110,10 +110,10 @@ Status ExternalYbController::ping() {
 
 Status ExternalYbController::Restart() {
   Status status = ping();
-  // Shutdown if server is running
+  // Shutdown if server is running.
   if (status.ok()) {
     Shutdown();
-    // wait some time after shutdown
+    // Wait some time after shutdown.
     SleepFor(MonoDelta::FromMilliseconds(500));
   }
   return Start();
@@ -123,9 +123,29 @@ void ExternalYbController::Shutdown() {
   if (!process_) {
     return;
   }
+  std::vector<string> argv;
+  // First the path to YB Controller CLI tool.
+  argv.push_back(GetYbcToolPath("yb-controller-cli"));
+  // Command to shutdown YB Controller server.
+  argv.push_back("shutdown");
+  argv.push_back("--tserver_ip=" + server_address_);
+  argv.push_back(Format("--server_port=$0", server_port_));
+  argv.push_back("--wait");
+  argv.insert(argv.end(), extra_flags_.begin(), extra_flags_.end());
 
-  LOG(INFO) << "Killing YB Controller process with SIGKILL";
-  WARN_NOT_OK(process_->Kill(SIGKILL), "Killing YB Controller process failed");
+  LOG(INFO) << "Run YB Controller CLI: " << AsString(argv);
+  string output;
+  auto status = Subprocess::Call(argv, &output);
+
+  LOG(INFO) << "YB Controller shutdown result: " << status << ": " << output;
+
+  if (!status.ok()) {
+    LOG(INFO) << "Killing YB Controller process with SIGKILL";
+    WARN_NOT_OK(process_->Kill(SIGKILL), "Killing YB Controller process failed");
+  }
+
+  // Delete the tmp directory.
+  CHECK_OK(Env::Default()->DeleteRecursively(tmp_dir_));
 
   process_ = nullptr;
 }

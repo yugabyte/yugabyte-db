@@ -1,5 +1,5 @@
 ---
-title: General known issues
+title: General guidelines
 linkTitle: General
 headcontent: What to watch out for when migrating data from MySQL, Oracle, or PostgreSQL
 description: Review limitations and suggested workarounds for migrating data from MySQL, Oracle, or PostgreSQL.

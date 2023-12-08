@@ -65,6 +65,9 @@ public class UserTaskDetails {
     // Updating GFlags
     UpdatingGFlags,
 
+    // Updating YBC GFlags
+    UpdatingYbcGFlags,
+
     // Bootstrap Cloud
     BootstrappingCloud,
 
@@ -170,6 +173,9 @@ public class UserTaskDetails {
     // Delete Kubernetes volumes created by helm chart.
     KubernetesVolumeDelete,
 
+    // Delete Kubernetes Volumes for a shell mode master before creating it.
+    KubernetesVolumeDeleteMasterShellMode,
+
     // Delete kubernetes namespace
     KubernetesNamespaceDelete,
 
@@ -246,7 +252,10 @@ public class UserTaskDetails {
     RollbackAutoFlags,
 
     // Validate configurations.
-    ValidateConfigurations
+    ValidateConfigurations,
+
+    // Manage Otel Collector.
+    ManageOtelCollector
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -333,6 +342,10 @@ public class UserTaskDetails {
       case UpdatingGFlags:
         title = "Updating gflags";
         description = "Updating GFlags on provisioned nodes.";
+        break;
+      case UpdatingYbcGFlags:
+        title = "Updating YBC GFlags";
+        description = "Updating YBC GFlags on provisioned nodes.";
         break;
       case UpdatingKubernetesOverrides:
         title = "Updating kubernetes overrides";
@@ -464,6 +477,10 @@ public class UserTaskDetails {
         title = "Delete Kubernetes Volumes";
         description = "Delete Kubernetes Volumes";
         break;
+      case KubernetesVolumeDeleteMasterShellMode:
+        title = "Delete Kubernetes Volumes for a master before creating it in shell mode";
+        description = "Delete Kubernetes Volumes for master pod before creating it in shell mode";
+        break;
       case KubernetesNamespaceDelete:
         title = "Delete Kubernetes Namespace";
         description = "Delete Kubernetes Namespace";
@@ -574,6 +591,10 @@ public class UserTaskDetails {
       case ValidateConfigurations:
         title = "Validating configurations";
         description = "Validating configurations before proceeding";
+        break;
+      case ManageOtelCollector:
+        title = "Managing OpenTelemetry Collector";
+        description = "Managing OpenTelemetry Collector";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

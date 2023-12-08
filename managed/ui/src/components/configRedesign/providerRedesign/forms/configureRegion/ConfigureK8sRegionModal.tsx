@@ -35,6 +35,7 @@ interface ConfigureK8sRegionModalProps extends YBModalProps {
   regionOperation: RegionOperation;
   isProviderFormDisabled: boolean;
 
+  inUseZones?: Set<string>;
   regionSelection?: K8sRegionField;
   vpcSetupType?: VPCSetupType;
 }
@@ -89,6 +90,7 @@ const useStyles = makeStyles((theme) => ({
 export const ConfigureK8sRegionModal = ({
   configuredRegions,
   isProviderFormDisabled,
+  inUseZones = new Set<string>(),
   kubernetesProvider,
   onRegionSubmit,
   onClose,
@@ -160,7 +162,8 @@ export const ConfigureK8sRegionModal = ({
     )
     .sort((regionOptionA, regionOptionB) => (regionOptionA.label > regionOptionB.label ? 1 : -1));
   const isFormDisabled = isProviderFormDisabled || getIsRegionFormDisabled(formMethods.formState);
-
+  const isRegionInUse = inUseZones.size > 0;
+  const isRegionFieldDisabled = isFormDisabled || isRegionInUse;
   return (
     <FormProvider {...formMethods}>
       <YBModal
@@ -187,7 +190,7 @@ export const ConfigureK8sRegionModal = ({
             control={formMethods.control}
             name="regionData"
             options={regionOptions}
-            isDisabled={isFormDisabled}
+            isDisabled={isRegionFieldDisabled}
           />
         </div>
         <div>
@@ -195,6 +198,7 @@ export const ConfigureK8sRegionModal = ({
             className={classes.manageAvailabilityZoneField}
             regionOperation={regionOperation}
             isFormDisabled={isFormDisabled}
+            inUseZones={inUseZones}
           />
           {formMethods.formState.errors.zones?.message && (
             <FormHelperText error={true}>

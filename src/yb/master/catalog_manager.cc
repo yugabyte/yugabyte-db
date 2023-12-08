@@ -69,7 +69,6 @@
 #include <vector>
 
 #include <boost/optional.hpp>
-#include "yb/util/logging.h"
 
 #include "yb/cdc/cdc_state_table.h"
 
@@ -189,6 +188,7 @@
 #include "yb/util/format.h"
 #include "yb/util/hash_util.h"
 #include "yb/util/locks.h"
+#include "yb/util/logging.h"
 #include "yb/util/math_util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
@@ -1249,6 +1249,64 @@ Status CatalogManager::GetTableDiskSize(const GetTableDiskSizeRequestPB* req,
   return Status::OK();
 }
 
+Status CatalogManager::MaybeRestoreInitialSysCatalogSnapshotAndReloadSysCatalog(
+    SysCatalogLoadingState* state) {
+  if (!FLAGS_enable_ysql || FLAGS_initial_sys_catalog_snapshot_path.empty() ||
+      FLAGS_create_initial_sys_catalog_snapshot) {
+    return Status::OK();
+  }
+  if (!master_->fs_manager()->initdb_done_set_after_sys_catalog_restore()) {
+    // Since this field is not set, this means that is an existing cluster created without
+    // D19510. So skip restoring sys catalog.
+    LOG_WITH_PREFIX(INFO)
+        << "This is an existing cluster, not initializing from a sys catalog snapshot.";
+    return Status::OK();
+  }
+  // This is a cluster created with D19510, so check the value of initdb_done.
+  Result<bool> dir_exists = Env::Default()->IsDirectory(FLAGS_initial_sys_catalog_snapshot_path);
+  if (!dir_exists.ok() || !dir_exists.get()) {
+    LOG_WITH_PREFIX(WARNING) << "Initial sys catalog snapshot directory does not exist: "
+                             << FLAGS_initial_sys_catalog_snapshot_path
+                             << (dir_exists.ok() ? ", path is not a directory"
+                                                 : ", status: " + dir_exists.status().ToString());
+    return Status::OK();
+  }
+
+  if (ysql_catalog_config_->LockForRead()->pb.ysql_catalog_config().initdb_done()) {
+    LOG_WITH_PREFIX(INFO) << "initdb has been run before, no need to restore sys catalog from "
+                          << "the initial snapshot";
+    return Status::OK();
+  }
+
+  LOG_WITH_PREFIX(INFO) << "Restoring snapshot in sys catalog";
+  if (GetAtomicFlag(&FLAGS_master_join_existing_universe)) {
+    return STATUS(
+        IllegalState,
+        "Master is joining an existing universe but wants to restore initial sys catalog snapshot. "
+        "This should have been done during initial universe creation.");
+  }
+  RETURN_NOT_OK_PREPEND(
+      RestoreInitialSysCatalogSnapshot(
+          FLAGS_initial_sys_catalog_snapshot_path, sys_catalog_->tablet_peer().get(),
+          state->epoch.leader_term),
+      "Failed restoring snapshot in sys catalog");
+  LOG_WITH_PREFIX(INFO) << "Re-initializing cluster config";
+  cluster_config_.reset();
+  RETURN_NOT_OK(PrepareDefaultClusterConfig(state->epoch.leader_term));
+
+  LOG_WITH_PREFIX(INFO) << "Re-initializing xcluster config";
+  RETURN_NOT_OK(xcluster_manager_->PrepareDefaultXClusterConfig(
+      state->epoch.leader_term, /* recreate = */ true));
+
+  LOG_WITH_PREFIX(INFO) << "Restoring snapshot completed, considering initdb finished";
+  RETURN_NOT_OK(InitDbFinished(Status::OK(), state->epoch.leader_term));
+  // TODO(asrivastava): Can we get rid of this Reset() by calling RunLoaders just once
+  // instead of calling it here and in VisitSysCatalog?
+  state->Reset();
+  RETURN_NOT_OK(RunLoaders(state));
+  return Status::OK();
+}
+
 Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
   // Block new catalog operations, and wait for existing operations to finish.
   int64_t term = state->epoch.leader_term;
@@ -1281,59 +1339,7 @@ Status CatalogManager::VisitSysCatalog(SysCatalogLoadingState* state) {
     // Prepare various default system configurations.
     RETURN_NOT_OK(PrepareDefaultSysConfig(term));
 
-    if (FLAGS_enable_ysql && !FLAGS_initial_sys_catalog_snapshot_path.empty() &&
-        !FLAGS_create_initial_sys_catalog_snapshot) {
-      if (!master_->fs_manager()->initdb_done_set_after_sys_catalog_restore()) {
-        // Since this field is not set, this means that is an existing cluster created without
-        // D19510. So skip restoring sys catalog.
-        LOG_WITH_PREFIX(INFO)
-            << "This is an existing cluster, not initializing from a sys catalog snapshot.";
-      } else {
-        // This is a cluster created with D19510, so check the value of initdb_done.
-        Result<bool> dir_exists =
-            Env::Default()->DoesDirectoryExist(FLAGS_initial_sys_catalog_snapshot_path);
-        if (dir_exists.ok() && *dir_exists) {
-          bool initdb_was_already_done = false;
-          {
-            auto l = ysql_catalog_config_->LockForRead();
-            initdb_was_already_done = l->pb.ysql_catalog_config().initdb_done();
-          }
-          if (initdb_was_already_done) {
-            LOG_WITH_PREFIX(INFO)
-                << "initdb has been run before, no need to restore sys catalog from "
-                << "the initial snapshot";
-          } else {
-            LOG_WITH_PREFIX(INFO) << "Restoring snapshot in sys catalog";
-            Status restore_status = RestoreInitialSysCatalogSnapshot(
-                FLAGS_initial_sys_catalog_snapshot_path, sys_catalog_->tablet_peer().get(), term);
-            if (!restore_status.ok()) {
-              LOG_WITH_PREFIX(ERROR) << "Failed restoring snapshot in sys catalog";
-              return restore_status;
-            }
-
-            LOG_WITH_PREFIX(INFO) << "Re-initializing cluster config";
-            cluster_config_.reset();
-            RETURN_NOT_OK(PrepareDefaultClusterConfig(term));
-
-            LOG_WITH_PREFIX(INFO) << "Re-initializing xcluster config";
-            RETURN_NOT_OK(
-                xcluster_manager_->PrepareDefaultXClusterConfig(term, /* recreate = */ true));
-
-            LOG_WITH_PREFIX(INFO) << "Restoring snapshot completed, considering initdb finished";
-            RETURN_NOT_OK(InitDbFinished(Status::OK(), term));
-            // TODO(asrivastava): Can we get rid of this Reset() by calling RunLoaders just once
-            // instead of calling it here and above?
-            state->Reset();
-            RETURN_NOT_OK(RunLoaders(state));
-          }
-        } else {
-          LOG_WITH_PREFIX(WARNING)
-              << "Initial sys catalog snapshot directory does not exist: "
-              << FLAGS_initial_sys_catalog_snapshot_path
-              << (dir_exists.ok() ? "" : ", status: " + dir_exists.status().ToString());
-        }
-      }
-    }
+    RETURN_NOT_OK(MaybeRestoreInitialSysCatalogSnapshotAndReloadSysCatalog(state));
 
     // Create the system namespaces (created only if they don't already exist).
     RETURN_NOT_OK(PrepareDefaultNamespaces(term));
@@ -1696,6 +1702,13 @@ Result<bool> CatalogManager::StartRunningInitDbIfNeeded(int64_t term) {
   if (!FLAGS_master_auto_run_initdb) {
     LOG(INFO) << "--master_auto_run_initdb is set to false, not running initdb";
     return false;
+  }
+
+  if (GetAtomicFlag(&FLAGS_master_join_existing_universe)) {
+    return STATUS(
+        IllegalState,
+        "Master is joining an existing universe but wants to run initdb. "
+        "This should have been done during initial universe creation.");
   }
 
   LOG(INFO) << "initdb has never been run on this cluster, running it";
@@ -2076,7 +2089,6 @@ Status CatalogManager::InitSysCatalogAsync() {
 
   // Optimistically try to load data from disk.
   Status s = sys_catalog_->Load(master_->fs_manager());
-
   if (s.ok() || !s.IsNotFound()) { return s; }
   LOG(INFO) << "Did not find previous SysCatalogTable data on disk. " << s;
 
@@ -5780,6 +5792,123 @@ Status CatalogManager::GetBackfillJobs(
     auto l = indexed_table->LockForRead();
     resp->mutable_backfill_jobs()->CopyFrom(l->pb.backfill_jobs());
   }
+  return Status::OK();
+}
+
+namespace {
+
+IndexStatusPB::BackfillStatus GetBackfillStatus(IndexPermissions permissions) {
+  switch (permissions) {
+    case INDEX_PERM_READ_WRITE_AND_DELETE:
+      return IndexStatusPB::BACKFILL_SUCCESS;
+    case INDEX_PERM_DELETE_ONLY:                     [[fallthrough]];
+    case INDEX_PERM_WRITE_AND_DELETE:                [[fallthrough]];
+    case INDEX_PERM_DO_BACKFILL:                     [[fallthrough]];
+    case INDEX_PERM_WRITE_AND_DELETE_WHILE_REMOVING: [[fallthrough]];
+    case INDEX_PERM_DELETE_ONLY_WHILE_REMOVING:      [[fallthrough]];
+    case INDEX_PERM_INDEX_UNUSED:                    [[fallthrough]];
+    case INDEX_PERM_NOT_USED:
+      return IndexStatusPB::BACKFILL_UNKNOWN;
+  }
+  FATAL_INVALID_ENUM_VALUE(IndexPermissions, permissions);
+}
+
+} // namespace
+
+Status CatalogManager::GetBackfillStatus(
+    const GetBackfillStatusRequestPB* req,
+    GetBackfillStatusResponsePB* resp,
+    rpc::RpcContext* rpc) {
+  VLOG_WITH_PREFIX_AND_FUNC(1) << "request: " << req->ShortDebugString();
+
+  // Helper lambda to respond with an error for the index table.
+  auto set_table_error = [resp](const TableIdentifierPB& identifier, const Status& status) {
+    auto* index_status = resp->add_index_status();
+    index_status->mutable_index_table()->CopyFrom(identifier);
+    StatusToPB(status, index_status->mutable_error());
+  };
+
+  // The caller expects results for every specified table.
+  resp->mutable_index_status()->Reserve(req->index_tables_size());
+
+  // First step is to group all incoming index tables by indexed table id to lock that particular
+  // indexed table only once. Also it is required to keep input table identifiers to re-use them
+  // in the response as is.
+  using IndexIdentifierMap = std::unordered_map<TableId, const TableIdentifierPB*>;
+  std::unordered_map<TableId, IndexIdentifierMap> indexed_table_to_index_map;
+  for (const auto& index_table_pb : req->index_tables()) {
+    Status status = Status::OK();
+    auto result = FindTable(index_table_pb);
+    if (!result.ok()) {
+      status = result.status();
+    } else {
+      const auto& table_info = *result;
+      const auto indexed_table_id = table_info->indexed_table_id();
+      if (indexed_table_id.empty()) {
+        status = STATUS_FORMAT(InvalidArgument,
+            "Table $0 is not an index table", index_table_pb.ShortDebugString());
+      } else {
+        indexed_table_to_index_map[indexed_table_id].insert({table_info->id(), &index_table_pb});
+      }
+    }
+    if (!status.ok()) {
+      set_table_error(index_table_pb, status);
+      LOG_WITH_PREFIX_AND_FUNC(INFO) << "Failed to get index status for table "
+          << index_table_pb.ShortDebugString() << ", status: " << status;
+    }
+  }
+
+  // Second step is to iterate over indexed_table_map and get the statuses for all required indexes.
+  for (auto& [table_id, index_map] : indexed_table_to_index_map) {
+    // Sanity check, should not happen.
+    if (index_map.empty()) {
+      LOG_WITH_PREFIX(DFATAL) << "No index tables are specified for table " << table_id;
+      continue;
+    }
+
+    auto indexed_table = GetTableInfo(table_id);
+    if (!indexed_table) {
+      // Need to provide a response for all input indexes.
+      const auto status = STATUS_FORMAT(NotFound, "Indexed table $0 is not found", table_id);
+      for (const auto& index : index_map) {
+        set_table_error(*index.second, status);
+      }
+      LOG_WITH_PREFIX_AND_FUNC(INFO) << status;
+      continue;
+    }
+
+    // Denoting the scope for indexed table lock.
+    {
+      auto indexed_table_pb = indexed_table->LockForRead();
+      for (const auto& index_info_pb : indexed_table_pb->pb.indexes()) {
+        auto it = index_map.find(index_info_pb.table_id());
+        if (it == index_map.end()) {
+          continue;
+        }
+
+        auto* index_status = resp->add_index_status();
+        index_status->mutable_index_table()->CopyFrom(*it->second);
+        if (index_info_pb.has_index_permissions()) {
+          index_status->set_backfill_status(
+              master::GetBackfillStatus(index_info_pb.index_permissions()));
+        }
+        VLOG_WITH_PREFIX_AND_FUNC(1) << Format(
+            "Index table $0 permissions: [$1]",
+            index_info_pb.table_id(),
+            index_info_pb.has_index_permissions() ?
+                IndexPermissions_Name(index_info_pb.index_permissions()) : "-");
+
+        // Need to erase from the map to be able to track removed indexes.
+        index_map.erase(it);
+      }
+    }
+
+    // Check remaining indexes, there's a chance it was removed before locking the indexed table.
+    for (const auto& index : index_map) {
+      set_table_error(*index.second, STATUS(NotFound, "Index table is not found"));
+    }
+  }
+
   return Status::OK();
 }
 
@@ -9998,10 +10127,10 @@ Status CatalogManager::InitDbFinished(Status initdb_status, int64_t term) {
   auto l = CHECK_NOTNULL(ysql_catalog_config_.get())->LockForWrite();
   auto* mutable_ysql_catalog_config = l.mutable_data()->pb.mutable_ysql_catalog_config();
   mutable_ysql_catalog_config->set_initdb_done(true);
-  if (!initdb_status.ok()) {
-    mutable_ysql_catalog_config->set_initdb_error(initdb_status.ToString());
-  } else {
+  if (initdb_status.ok()) {
     mutable_ysql_catalog_config->clear_initdb_error();
+  } else {
+    mutable_ysql_catalog_config->set_initdb_error(initdb_status.ToString());
   }
 
   RETURN_NOT_OK(sys_catalog_->Upsert(term, ysql_catalog_config_));
@@ -10576,15 +10705,29 @@ Status CatalogManager::SendAlterTableRequest(
     txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req->transaction().transaction_id()));
   }
 
-  return SendAlterTableRequestInternal(table, txn_id, epoch);
+  return SendAlterTableRequestInternal(table, txn_id, epoch, req);
 }
 
 Status CatalogManager::SendAlterTableRequestInternal(
-    const scoped_refptr<TableInfo>& table, const TransactionId& txn_id, const LeaderEpoch& epoch) {
+    const scoped_refptr<TableInfo>& table, const TransactionId& txn_id, const LeaderEpoch& epoch,
+    const AlterTableRequestPB* req) {
   auto tablets = table->GetTablets();
   for (const scoped_refptr<TabletInfo>& tablet : tablets) {
-    auto call =
-        std::make_shared<AsyncAlterTable>(master_, AsyncTaskPool(), tablet, table, txn_id, epoch);
+     std::shared_ptr<AsyncAlterTable> call;
+
+    // CDC SDK Create Stream context
+    if (req && req->has_cdc_sdk_stream_id()) {
+      LOG(INFO) << " CDC stream id context : " << req->cdc_sdk_stream_id();
+      xrepl::StreamId stream_id =
+        VERIFY_RESULT(xrepl::StreamId::FromString(req->cdc_sdk_stream_id()));
+      call = std::make_shared<AsyncAlterTable>(master_, AsyncTaskPool(), tablet, table,
+                                               txn_id, epoch,
+                                               stream_id,
+                                               req->cdc_sdk_require_history_cutoff());
+    } else {
+      call = std::make_shared<AsyncAlterTable>(master_, AsyncTaskPool(), tablet, table,
+                                               txn_id, epoch);
+    }
     table->AddTask(call);
     if (PREDICT_FALSE(FLAGS_TEST_slowdown_alter_table_rpcs_ms > 0)) {
       LOG(INFO) << "Sleeping for " << tablet->id() << " " << FLAGS_TEST_slowdown_alter_table_rpcs_ms
@@ -12298,8 +12441,12 @@ Status CatalogManager::ValidateReplicationInfo(
   // because they aren't a part of any raft quorum underneath.
   // Technically, it is ok to have even 0 read replica nodes for them upfront.
   // We only need it for the primary cluster replicas.
-  const auto& placement_info = req->replication_info().live_replicas();
+  auto placement_info = req->replication_info().live_replicas();
   TSDescriptorVector ts_descs;
+  // If the placement_info's uuid is empty, set it to be the current cluster's live replica uuid.
+  if (placement_info.placement_uuid().empty()) {
+    placement_info.set_placement_uuid(VERIFY_RESULT(placement_uuid()));
+  }
   GetTsDescsFromPlacementInfo(placement_info, all_ts_descs, &ts_descs);
   Status s = CheckValidPlacementInfo(placement_info, ts_descs, resp);
   if (!s.ok()) {
@@ -13198,6 +13345,28 @@ Status CatalogManager::DemoteSingleAutoFlag(
 
   resp->set_new_config_version(new_config_version);
   resp->set_flag_demoted(outcome);
+  return Status::OK();
+}
+
+Status CatalogManager::ValidateAutoFlagsConfig(
+    const ValidateAutoFlagsConfigRequestPB* req, ValidateAutoFlagsConfigResponsePB* resp) {
+  VLOG_WITH_FUNC(1) << req->ShortDebugString();
+
+  auto min_class = AutoFlagClass::kLocalVolatile;
+  if (req->has_min_flag_class()) {
+    min_class = VERIFY_RESULT_PREPEND(
+        yb::UnderlyingToEnumSlow<yb::AutoFlagClass>(req->min_flag_class()),
+        "Invalid value provided for flag class");
+  }
+
+  auto local_auto_flag_config = master_->GetAutoFlagsConfig();
+  auto valid =
+      VERIFY_RESULT(AreAutoFlagsCompatible(local_auto_flag_config, req->config(), min_class));
+  VLOG_WITH_FUNC(1) << valid;
+
+  resp->set_valid(valid);
+  resp->set_config_version(local_auto_flag_config.config_version());
+
   return Status::OK();
 }
 

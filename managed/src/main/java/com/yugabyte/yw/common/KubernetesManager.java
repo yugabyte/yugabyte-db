@@ -717,4 +717,12 @@ public abstract class KubernetesManager {
   public abstract String getKubeconfigUser(Map<String, String> config);
 
   public abstract String getKubeconfigCluster(Map<String, String> config);
+
+  public abstract void deleteUnusedPVCs(
+      Map<String, String> config,
+      String namespace,
+      String helmReleaseName,
+      String appName,
+      boolean newNamingStyle,
+      int replicaCount);
 }

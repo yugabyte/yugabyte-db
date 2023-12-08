@@ -22,6 +22,8 @@ import java.util.List;
 import java.util.Map;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.tuple.ImmutablePair;
+import org.apache.commons.lang3.tuple.Pair;
 import play.libs.Json;
 
 @Slf4j
@@ -152,16 +154,34 @@ public class CheckFollowerLag extends ServerSubTaskBase {
 
   public boolean followerLagWithinThreshold(
       Map<String, Long> tabletFollowerLagMap, long threshold) {
-    for (Map.Entry<String, Long> entry : tabletFollowerLagMap.entrySet()) {
-      if (entry.getValue() >= threshold) {
-        log.debug(
-            "Tablet: {} has follower lag: {} ms, greater than expected threshold: {} ms",
-            entry.getKey(),
-            entry.getValue(),
-            threshold);
-        return false;
-      }
+
+    Pair<String, Long> maxFollowerLagFound = maxFollowerLag(tabletFollowerLagMap);
+    if (maxFollowerLagFound.getRight() >= threshold) {
+      log.debug(
+          "Tablet: {} has follower lag: {} ms, greater than expected threshold: {} ms",
+          maxFollowerLagFound.getLeft(),
+          maxFollowerLagFound.getRight(),
+          threshold);
+      return false;
     }
     return true;
+  }
+
+  /*
+   * Returns the largest follower lag in ms along with the tablet id associated to it.
+   */
+  private Pair<String, Long> maxFollowerLag(Map<String, Long> tabletFollowerLagMap) {
+    Long maxFollowerLagMs = 0L;
+    String maxFollowerLagTablet = "";
+    for (Map.Entry<String, Long> entry : tabletFollowerLagMap.entrySet()) {
+      if (entry.getValue() > maxFollowerLagMs) {
+        maxFollowerLagMs = entry.getValue();
+        maxFollowerLagTablet = entry.getKey();
+      }
+    }
+
+    log.debug(
+        "Max follower lag: {} ms found on tablet: {}", maxFollowerLagMs, maxFollowerLagTablet);
+    return new ImmutablePair<>(maxFollowerLagTablet, maxFollowerLagMs);
   }
 }

@@ -424,6 +424,13 @@ void SplitStringToIteratorUsing(const StringType& full,
   }
 }
 
+std::vector<std::string> SplitStringUsing(const string& full,
+                                          const char* delim) {
+  vector<string> result;
+  SplitStringUsing(full, delim, &result);
+  return result;
+}
+
 void SplitStringUsing(const string& full,
                       const char* delim,
                       vector<string>* result) {
