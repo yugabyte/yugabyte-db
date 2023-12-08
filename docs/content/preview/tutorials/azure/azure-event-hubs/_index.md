@@ -13,10 +13,6 @@ menu:
     parent: tutorials-azure
 type: indexpage
 ---
-
-
-# Real-Time Data Streaming with YugabyteDB CDC and Azure Event Hubs
-
 The [Azure Event Hubs](https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-about) data streaming service is [Apache Kafka](https://kafka.apache.org/intro) compatible, enabling existing workloads to easily be moved to Azure. With the [Debezium Connector for YugabyteDB](https://docs.yugabyte.com/preview/explore/change-data-capture/debezium-connector-yugabytedb), we can stream changes from a YugabyteDB cluster to a Kafka topic using [Kafka Connect](https://docs.confluent.io/platform/current/connect/index.html#:~:text=Kafka%20Connect%20is%20a%20tool,in%20and%20out%20of%20Kafka.).
 
 In this tutorial, we’ll examine how the [YugabyteDB CDC](https://docs.yugabyte.com/preview/explore/change-data-capture/cdc-overview/) can be used with Azure Event Hubs to stream real-time data for downstream processing.
