@@ -4,7 +4,6 @@ headerTitle: YSQL Connection Manager
 linkTitle: YSQL Connection Manager
 description: Built-in server-side connection pooler for YSQL
 headcontent: Built-in server-side connection pooler for YSQL
-image: <div class="icon"><i class="fa-solid fa-file-invoice"></i></div>
 techPreview: /preview/releases/versioning/#feature-availability
 menu:
   preview:

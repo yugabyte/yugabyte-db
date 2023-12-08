@@ -3,7 +3,6 @@ title: Scale and configure clusters
 linkTitle: Scale and configure clusters
 description: Scale YugabyteDB Managed clusters.
 headcontent: Scale clusters horizontally and vertically
-image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:
     identifier: configure-clusters

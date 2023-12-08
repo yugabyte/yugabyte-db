@@ -3,7 +3,6 @@ title: Docs page structure
 headerTitle: Docs page structure
 linkTitle: Docs page structure
 description: Overview of the Markdown structure of YugabyteDB documentation pages
-image: /images/section_icons/index/quick_start.png
 menu:
   preview:
     identifier: docs-page-structure

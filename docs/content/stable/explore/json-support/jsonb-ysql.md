@@ -4,7 +4,6 @@ headerTitle: JSON support
 linkTitle: JSON support
 description: YSQL JSON Support in YugabyteDB.
 headcontent: Explore YugabyteDB support for JSON data
-image: <div class="icon"><i class="fa-solid fa-file-invoice"></i></div>
 menu:
   stable:
     name: JSON support

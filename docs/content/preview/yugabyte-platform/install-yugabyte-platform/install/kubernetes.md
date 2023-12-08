@@ -3,7 +3,6 @@ title: Install YugabyteDB Anywhere on Kubernetes Overview
 headerTitle: Overview
 linkTitle: Overview
 description: Installing YugabyteDB Anywhere on Kubernetes
-image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-platform:
     identifier: install-2-k8s
