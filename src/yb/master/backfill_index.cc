@@ -29,7 +29,6 @@
 
 #include <boost/optional.hpp>
 #include <boost/preprocessor/cat.hpp>
-#include <glog/logging.h>
 
 #include "yb/common/partial_row.h"
 #include "yb/common/partition.h"
@@ -65,6 +64,7 @@
 
 #include "yb/util/flag_tags.h"
 #include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/math_util.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
@@ -131,6 +131,10 @@ DEFINE_test_flag(int32, slowdown_backfill_alter_table_rpcs_ms, 0,
 DEFINE_test_flag(
     int32, slowdown_backfill_job_deletion_ms, 0,
     "Slows down backfill job deletion so that backfill job can be read by test.");
+
+DEFINE_test_flag(
+    bool, block_do_backfill, false,
+    "Block DoBackfill from proceeding.");
 
 namespace yb {
 namespace master {
@@ -897,6 +901,11 @@ Status BackfillTable::DoLaunchBackfill() {
 }
 
 Status BackfillTable::DoBackfill() {
+  while (FLAGS_TEST_block_do_backfill) {
+    constexpr auto kSpinWait = 100ms;
+    LOG(INFO) << Format("Blocking $0 for $1", __func__, kSpinWait);
+    SleepFor(kSpinWait);
+  }
   VLOG_WITH_PREFIX(1) << "starting backfill with timestamp: "
                       << read_time_for_backfill_;
   auto tablets = indexed_table_->GetTablets();
