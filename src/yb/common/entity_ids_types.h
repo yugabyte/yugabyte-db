@@ -14,6 +14,7 @@
 #pragma once
 
 #include <string>
+#include <unordered_set>
 
 #include "yb/util/strongly_typed_string.h"
 
@@ -48,5 +49,7 @@ using NamespaceIdTableNamePair = std::pair<NamespaceId, TableName>;
 using FlushRequestId = std::string;
 
 using RedisConfigKey = std::string;
+
+using TableIdSet = std::unordered_set<TableId>;
 
 }  // namespace yb

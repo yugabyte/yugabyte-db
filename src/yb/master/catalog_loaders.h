@@ -48,6 +48,13 @@ struct SysCatalogLoadingState {
   std::unordered_map<TableId, std::vector<TableId>> parent_to_child_tables;
   std::vector<std::pair<std::function<void()>, std::string>> post_load_tasks;
 
+  // The tables which require their memory state to write to disk.
+  TableIdSet write_to_disk_tables;
+
+  // Index tables which require backfill status validation (by checking GC delete markers state).
+  // The tables are grouped by the indexed table id for performance reasons.
+  std::unordered_map<TableId, TableIdSet> validate_backfill_status_index_tables;
+
   void AddPostLoadTask(std::function<void()>&& func, std::string&& msg) {
     post_load_tasks.push_back({std::move(func), std::move(msg)});
   }
@@ -55,6 +62,8 @@ struct SysCatalogLoadingState {
   void Reset() {
     parent_to_child_tables.clear();
     post_load_tasks.clear();
+    write_to_disk_tables.clear();
+    validate_backfill_status_index_tables.clear();
   }
 };
 
