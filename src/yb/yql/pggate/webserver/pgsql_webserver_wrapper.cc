@@ -557,6 +557,12 @@ YBCStatus StartWebserver(WebserverWrapper *webserver_wrapper) {
       "/statements-reset", "Reset PG Stat Statements", PgStatStatementsResetHandler, false, false);
   return ToYBCStatus(WithMaskedYsqlSignals([webserver]() { return webserver->Start(); }));
 }
+
+void SetWebserverLogging(
+    WebserverWrapper *webserver_wrapper, bool enable_access_logging, bool enable_tcmalloc_logging) {
+  Webserver *webserver = reinterpret_cast<Webserver *>(webserver_wrapper);
+  webserver->SetLogging(enable_access_logging, enable_tcmalloc_logging);
+}
 }  // extern "C"
 
 }  // namespace yb::pggate
