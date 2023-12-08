@@ -2007,6 +2007,7 @@ TEST_F_EX(
   ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"}, true));
 
   LOG(INFO) << "Creating two indexes that will backfill together";
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "true"));
   // Create 2 indexes that backfill together. One of them will be deleted while the backfill
   // is happening. The deleted index should be successfully deleted, and the other index will
   // be successfully backfilled.
@@ -2029,6 +2030,7 @@ TEST_F_EX(
   ASSERT_OK(session_.ExecuteQuery("drop index test_table_index_by_v1"));
 
   // Wait for the backfill to actually run to completion/failure.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
   SleepFor(MonoDelta::FromSeconds(10));
   res = client_->WaitUntilIndexPermissionsAtLeast(
       table_name, index_table_name1, IndexPermissions::INDEX_PERM_NOT_USED, 50ms /* max_wait */);
