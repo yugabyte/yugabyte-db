@@ -28,7 +28,7 @@ In YugabyteDB, object-level audit logging is implemented by reusing the PG role 
 
 ## Object-level example
 
-In this example object audit logging is used to illustrate how a granular approach may be taken towards logging of SELECT and DML statements.
+In this example, object audit logging is used to illustrate how a granular approach may be taken towards logging of SELECT and DML statements.
 
 ### Setup
 
