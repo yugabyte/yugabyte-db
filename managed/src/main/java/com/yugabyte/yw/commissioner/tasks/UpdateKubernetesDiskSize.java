@@ -11,6 +11,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
 import com.yugabyte.yw.forms.ResizeNodeParams;
@@ -27,7 +28,9 @@ public class UpdateKubernetesDiskSize extends EditKubernetesUniverse {
 
   @Inject
   protected UpdateKubernetesDiskSize(
-      BaseTaskDependencies baseTaskDependencies, KubernetesOperatorStatusUpdater kubernetesStatus) {
+      BaseTaskDependencies baseTaskDependencies,
+      KubernetesOperatorStatusUpdater kubernetesStatus,
+      KubernetesManagerFactory kubernetesManagerFactory) {
     super(baseTaskDependencies, kubernetesStatus);
   }
 
