@@ -2,7 +2,6 @@
 title: Configure audit logging in YSQL
 headerTitle: Configure audit logging in YSQL
 description: Configure audit logging in YSQL.
-image: /images/section_icons/secure/authentication.png
 menu:
   preview:
     name: Configure audit logging

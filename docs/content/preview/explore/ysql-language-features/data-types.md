@@ -3,7 +3,6 @@ title: YSQL data types
 headertitle: Data types
 linkTitle: Data types
 description: Data types in YSQL
-image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
     identifier: explore-ysql-language-features-data-types

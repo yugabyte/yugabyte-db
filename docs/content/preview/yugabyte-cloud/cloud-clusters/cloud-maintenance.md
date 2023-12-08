@@ -3,7 +3,6 @@ title: Maintenance windows
 linkTitle: Maintenance windows
 description: Manage maintenance windows for clusters in YugabyteDB Managed.
 headcontent: Manage cluster maintenance windows and set exclusion periods
-image: /images/section_icons/manage/backup.png
 menu:
   preview_yugabyte-cloud:
     identifier: cloud-maintenance

@@ -4,7 +4,6 @@ headerTitle: Covering indexes
 linkTitle: Covering indexes
 description: Using covering indexes in YSQL
 headContent: Explore covering indexes in YugabyteDB using YSQL
-image: /images/section_icons/secure/create-roles.png
 menu:
   stable:
     identifier: covering-index-ysql

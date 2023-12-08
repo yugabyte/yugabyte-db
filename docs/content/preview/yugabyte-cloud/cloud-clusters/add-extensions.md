@@ -3,7 +3,6 @@ title: Create YSQL extensions
 linkTitle: Create extensions
 description: Add extensions to a YugabyteDB Managed cluster.
 headcontent: Extend the functionality of your cluster using PostgreSQL extensions
-image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:
     identifier: add-extensions
