@@ -747,6 +747,8 @@ class PgApiImpl {
                                 PgStatement **handle);
   Status ExecDropReplicationSlot(PgStatement *handle);
 
+  Result<tserver::PgActiveSessionHistoryResponsePB> ActiveSessionHistory();
+
  private:
   class Interrupter;
 
