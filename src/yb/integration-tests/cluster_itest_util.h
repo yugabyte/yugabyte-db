@@ -61,6 +61,7 @@
 
 #include "yb/consensus/consensus_fwd.h"
 #include "yb/consensus/consensus_types.pb.h"
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/leader_lease.h"
 #include "yb/consensus/metadata.pb.h"
 
@@ -265,7 +266,8 @@ Status GetConsensusState(const TServerDetails* replica,
                          consensus::ConsensusConfigType type,
                          const MonoDelta& timeout,
                          consensus::ConsensusStatePB* consensus_state,
-                         consensus::LeaderLeaseStatus* leader_lease_status = nullptr);
+                         consensus::LeaderLeaseStatus* leader_lease_status = nullptr, 
+                         consensus::ConsensusWatermarksPB* consensus_watermarks_opid_list = nullptr);
 
 // Wait until the number of servers with the specified member type in the committed consensus
 // configuration is equal to config_size.
@@ -346,7 +348,9 @@ Status GetReplicaStatusAndCheckIfLeader(
     const TabletId& tablet_id,
     const MonoDelta& timeout,
     consensus::LeaderLeaseCheckMode lease_check_mode =
-        consensus::LeaderLeaseCheckMode::NEED_LEASE);
+        consensus::LeaderLeaseCheckMode::NEED_LEASE, 
+    consensus::CheckConsensusWatermarksPB check_consensus_watermarks = 
+        consensus::CheckConsensusWatermarksPB::DONT_GET_OP_ID);
 
 // Wait until the specified replica is leader.
 Status WaitUntilLeader(

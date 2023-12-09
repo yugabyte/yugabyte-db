@@ -77,6 +77,14 @@ class TabletServerErrorPB;
 
 namespace consensus {
 
+YB_DEFINE_ENUM(CheckConsensusWatermarksPB,
+  (DONT_GET_OP_ID)
+  (GET_LAST_RECEIVED_OP_ID)
+  (GET_LAST_COMMITTED_OP_ID)
+  (GET_LAST_APPLIED_OP_ID)
+  (GET_ALL_OP_ID)
+);
+
 // After completing bootstrap, some of the results need to be plumbed through
 // into the consensus implementation.
 struct ConsensusBootstrapInfo {

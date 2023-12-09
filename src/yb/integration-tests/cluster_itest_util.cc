@@ -57,6 +57,7 @@
 #include "yb/consensus/consensus.proxy.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/consensus_types.pb.h"
+#include "yb/consensus/consensus.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
 
@@ -110,6 +111,7 @@ using consensus::CONSENSUS_CONFIG_COMMITTED;
 using consensus::ChangeConfigRequestPB;
 using consensus::ChangeConfigResponsePB;
 using consensus::ConsensusStatePB;
+using consensus::ConsensusWatermarksPB;
 using consensus::GetConsensusStateRequestPB;
 using consensus::GetConsensusStateResponsePB;
 using consensus::GetLastOpIdRequestPB;
@@ -555,7 +557,8 @@ Status GetConsensusState(const TServerDetails* replica,
                          consensus::ConsensusConfigType type,
                          const MonoDelta& timeout,
                          ConsensusStatePB* consensus_state,
-                         LeaderLeaseStatus* leader_lease_status) {
+                         LeaderLeaseStatus* leader_lease_status, 
+                         consensus::ConsensusWatermarksPB* consensus_watermarks_opid_list) {
   DCHECK_ONLY_NOTNULL(replica);
 
   GetConsensusStateRequestPB req;
@@ -576,6 +579,7 @@ Status GetConsensusState(const TServerDetails* replica,
         resp.leader_lease_status() :
         LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;  // Could be anything but HAS_LEASE.
   }
+  *consensus_watermarks_opid_list = resp.consensus_watermarks_opid_list();
   return Status::OK();
 }
 
@@ -865,11 +869,14 @@ Status GetReplicaStatus(
 Status GetReplicaStatusAndCheckIfLeader(const TServerDetails* replica,
                                         const string& tablet_id,
                                         const MonoDelta& timeout,
-                                        LeaderLeaseCheckMode lease_check_mode) {
+                                        LeaderLeaseCheckMode lease_check_mode, 
+                                        consensus::CheckConsensusWatermarksPB check_consensus_watermarks) {
   ConsensusStatePB cstate;
   LeaderLeaseStatus leader_lease_status;
+  consensus::ConsensusWatermarksPB consensus_watermarks_opid_list;
   Status s = GetConsensusState(replica, tablet_id, CONSENSUS_CONFIG_ACTIVE,
-                               timeout, &cstate, &leader_lease_status);
+                               timeout, &cstate, &leader_lease_status, 
+                               &consensus_watermarks_opid_list);
   if (PREDICT_FALSE(!s.ok())) {
     VLOG(1) << "Error getting consensus state from replica: "
             << replica->instance_id.permanent_uuid();
