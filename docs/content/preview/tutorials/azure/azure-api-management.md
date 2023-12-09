@@ -32,8 +32,8 @@ In the following sections, we will:
 
 Begin by deploying a multi-region, [geo-partitioned cluster](../../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-geopartition/) in YugabyteDB. This will partition data by region, reducing latencies by fetching data from the closest cluster nodes.
 
-1. A VPC is required for each region when deploying YugabyteDB on Azure. Create separate VPCs in the _eastus_, _westus2_, and _westus3_ regions.
-1. Deploy a 3-node cluster running on Azure, with nodes in the _eastus_, _westus2_, and _westus3_ regions. Under **Data Distribution**, select **Partition by region**.
+1. A VPC is required for each region when deploying YugabyteDB on Azure. [Create separate VPCs](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-vpc/) in the _eastus_, _westus2_, and _westus3_ regions.
+1. Deploy a [3-node partition by region cluster](../../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-geopartition/) running on Azure, with nodes in the _eastus_, _westus2_, and _westus3_ regions. Under **Data Distribution**, select **Partition by region**.
 
     ![Geo-partitioned YugabyteDB deployment on Azure](/images/tutorials/azure/azure-private-link/yb-deployment.png "Geo-partitioned YugabyteDB deployment on Azure")
 
@@ -50,7 +50,7 @@ In a production application, [Azure Private Link](../../../yugabyte-cloud/cloud-
 Connect to your YugabyteDB cluster running on Azure via the [Cloud Shell](../../../yugabyte-cloud/cloud-connect/connect-cloud-shell/) and execute the following commands:
 
 1. Create the _orders_ table and partition it by region.
-1. Create partition tables using the automatically created [regional tablespaces](../../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-geopartition/).
+1. Create partition tables using the automatically created [regional tablespaces](../../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-geopartition/#tablespaces).
 1. Seed the database with some orders. These records will be stored in the appropriate cluster node according to the supplied region.
 
 ## Develop an Azure function
@@ -122,8 +122,6 @@ Let's try again, this time testing the _eastus_ database nodes. The latency is h
 
 By developing a system with Azure API Management service and function instances in the same region as a geo-partitioned YugabyteDB cluster node, we achieved the lowest latency possible. Furthermore, centralizing your APIs with Azure API Management makes it easy for teams to develop, organize, and secure their endpoints.
 
-If you're interested in creating a secure connection between Azure and YugabyteDB, you might want to consider the additional resource:
+To learn how to create a secure connection between Azure and YugabyteDB using Azure Private Link, see [Develop secure applications with Azure Private Link](../azure-private-link/).
 
-- [Link to Azure Private Link tutorial]
-
-If you would like to explore the different deployment options of YugabyteDB (including self-managed, co-managed, fully managed, and open source), explore our [database comparison page](https://www.yugabyte.com/compare-products/).
+If you would like to explore the different deployment options of YugabyteDB (including self-managed, co-managed, fully managed, and open source), see our [database comparison page](https://www.yugabyte.com/compare-products/).

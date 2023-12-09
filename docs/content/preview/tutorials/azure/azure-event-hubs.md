@@ -13,9 +13,9 @@ menu:
 type: docs
 ---
 
-The [Azure Event Hubs](https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-about) data streaming service is [Apache Kafka](https://kafka.apache.org/intro) compatible, enabling existing workloads to easily be moved to Azure. With the [Debezium Connector for YugabyteDB](https://docs.yugabyte.com/preview/explore/change-data-capture/debezium-connector-yugabytedb), we can stream changes from a YugabyteDB cluster to a Kafka topic using [Kafka Connect](https://docs.confluent.io/platform/current/connect/index.html#:~:text=Kafka%20Connect%20is%20a%20tool,in%20and%20out%20of%20Kafka.).
+The [Azure Event Hubs](https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-about) data streaming service is [Apache Kafka](https://kafka.apache.org/intro) compatible, enabling existing workloads to easily be moved to Azure. With the [Debezium Connector for YugabyteDB](../../../explore/change-data-capture/debezium-connector-yugabytedb), we can stream changes from a YugabyteDB cluster to a Kafka topic using [Kafka Connect](https://docs.confluent.io/platform/current/connect/index.html#:~:text=Kafka%20Connect%20is%20a%20tool,in%20and%20out%20of%20Kafka.).
 
-In this tutorial, we'll examine how the [YugabyteDB CDC](https://docs.yugabyte.com/preview/explore/change-data-capture/cdc-overview/) can be used with Azure Event Hubs to stream real-time data for downstream processing.
+In this tutorial, we'll examine how the [YugabyteDB CDC](../../../explore/change-data-capture/cdc-overview/) can be used with Azure Event Hubs to stream real-time data for downstream processing.
 
 ## What you'll build
 
@@ -35,13 +35,13 @@ This application runs a Node.js process to insert order records to a YugabyteDB 
 
 With YugabyteDB downloaded on your machine, create a cluster and seed it with data:
 
-1. Start a single-node cluster using [yugabyted](https://docs.yugabyte.com/preview/reference/configuration/yugabyted/).
+1. Start a single-node cluster using [yugabyted](../../../reference/configuration/yugabyted/).
 
     ```sh
     ./path/to/bin/yugabyted start 
     ```
 
-1. Connect to the cluster using [ysqlsh](https://docs.yugabyte.com/preview/admin/ysqlsh/).
+1. Connect to the cluster using [ysqlsh](../../../admin/ysqlsh/).
 
     ```sh
     ./path/to/bin/ysqlsh -U yugabyte
@@ -180,7 +180,7 @@ A Kafka Connect configuration file is required to provide information about the 
     ./bin/connect-distributed.sh ./bin/event-hubs.config
     ```
 
-1. [Create a CDC stream ID](https://docs.yugabyte.com/preview/admin/yb-admin/#create-change-data-stream) to connect to Kafka Connect.
+1. [Create a CDC stream ID](../../../admin/yb-admin/#create-change-data-stream) to connect to Kafka Connect.
 
     ```sh
     ./bin/yb-admin --master_addresses 127.0.0.1:7100 create_change_data_stream ysql.yugabyte
@@ -277,7 +277,7 @@ We can test this real-time functionality by running a sample application to inse
     start();
     ```
 
-    This application initializes a connection pool to connect to the YugabyteDB cluster using the  [YugabyteDB node-postres Smart Driver](https://docs.yugabyte.com/preview/drivers-orms/nodejs/yugabyte-node-driver/). It then randomly inserts records into the _orders_ table at a regular interval.
+    This application initializes a connection pool to connect to the YugabyteDB cluster using the [YugabyteDB node-postres smart driver](../../../drivers-orms/nodejs/yugabyte-node-driver/). It then randomly inserts records into the _orders_ table at a regular interval.
 
 1. Run the application.
 
@@ -316,4 +316,4 @@ We can test this real-time functionality by running a sample application to inse
 
 YugabyteDB CDC combined with Azure Event Hubs enables real-time application development using a familiar Kafka interface.
 
-If you're interested in real-time data processing on Azure, check out [Azure Synapse Analytics integration using Azure Event Hubs](https://docs.yugabyte.com/preview/explore/change-data-capture/cdc-tutorials/cdc-azure-event-hub/).
+If you're interested in real-time data processing on Azure, check out [Azure Synapse Analytics integration using Azure Event Hubs](../../../explore/change-data-capture/cdc-tutorials/cdc-azure-event-hub/).

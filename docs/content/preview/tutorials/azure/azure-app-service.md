@@ -64,13 +64,13 @@ Now that we've set the foundation on Azure, let's deploy a database cluster for 
 
 For steps on creating a cluster in YugabyteDB Managed, see the [Quick start](../../../yugabyte-cloud/managed-freetrial/).
 
-This example shows a three-node cluster to Azure in the WestUS3 region, which provides fault tolerance across availability zones, but the application also runs fine on the always-free single-node Sandbox cluster.
+This example shows a [three-node cluster](../../../yugabyte-cloud/cloud-basics/create-clusters/create-single-region/) on Azure in the westus3 region, which provides fault tolerance across availability zones, but the application also runs fine on the always-free single-node [Sandbox cluster](../../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/).
 
-![Create free YugabyteDB single-region cluster.](/images/tutorials/azure/azure-app-service/yb-create-cluster.png "Create free YugabyteDB single-region cluster.")
+![Create a YugabyteDB single-region cluster.](/images/tutorials/azure/azure-app-service/yb-create-cluster.png)
 
-Add the [outbound addresses for your web app](https://learn.microsoft.com/en-us/azure/app-service/overview-inbound-outbound-ips), which can be found in the networking tab of the Azure portal. This will ensure that a connection can be made between Azure App Service and YugabyteDB.
+Add the [outbound addresses for your web app](https://learn.microsoft.com/en-us/azure/app-service/overview-inbound-outbound-ips) to your cluster's [IP allow list](../../../yugabyte-cloud/cloud-secure-clusters/add-connections/). Find these addresses in the **Networking** tab of the Azure portal. This will ensure that a connection can be made between Azure App Service and YugabyteDB.
 
-![Locate the outbound IP addresses for your web app in Azure.](/images/tutorials/azure/azure-app-service/azure-outbound-traffic.png "Locate the outbound IP addresses for your web app in Azure.")
+![Locate the outbound IP addresses for your web app in Azure](/images/tutorials/azure/azure-app-service/azure-outbound-traffic.png)
 
 Now that we have a working cluster in YugabyteDB Managed, let's add some data.
 
@@ -78,7 +78,7 @@ Now that we have a working cluster in YugabyteDB Managed, let's add some data.
 
 Now that our cluster is running in the cloud, we can seed it with data using the provided `schema.sql` and `data.sql` files.
 
-1. Use the [YugabyteDB Cloud Shell](https://docs.yugabyte.com/preview/yugabyte-cloud/cloud-connect/connect-cloud-shell/)to connect to your cluster.
+1. Use the [YugabyteDB Cloud Shell](../../../yugabyte-cloud/cloud-connect/connect-cloud-shell/) to connect to your cluster.
 1. Execute the commands in the `schema.sql` script against your cluster.
 1. Execute the commands in the `data.sql` script against your cluster.
 
@@ -101,13 +101,13 @@ First, you need to [configure the application settings](https://learn.microsoft.
 az webapp config appsettings set -g GROUP_NAME -n APPLICATION_NAME --setting DB_HOST=[YB_DB_HOST] DB_USERNAME=admin DB_PASSWORD=[YB_DB_PASSWORD] DB_CERTIFICATE=[BASE_64_ENCODED_DB_CERTIFICATE]
 ```
 
-After you execute this command, you can view the configuration settings in the Azure web portal.
+After you execute this command, you can view the configuration settings in Azure portal.
 
 ![App configuration settings in Azure web portal.](/images/tutorials/azure/azure-app-service/azure-configuration.png "App configuration settings in Azure web portal.")
 
 Next, use the Azure CLI to deploy your application code to the cloud, as follows:
 
-1. In the Azure Deployment Center, configure your Local Git / FTPS Credentials under User Scope
+1. In the **Azure Deployment Center**, configure your Local Git / FTPS Credentials under **User Scope**.
 1. Configure the project for local git deployment as follows:
 
     ```sh
@@ -138,6 +138,4 @@ After pushing code to the remote repository, Azure automatically builds and publ
 
 ## Wrap-up
 
-As you see, moving an application to the cloud with Azure App Service and YugabyteDB Managed doesn't require much additional configuration. For more insight into building Node.js applications with YugabyteDB, check out the following blog:
-
-- [Node.js Smart Drivers for YugabyteDB: Why You Should Care](https://www.yugabyte.com/blog/node-js-smart-drivers-for-yugabytedb/)
+As you see, moving an application to the cloud with Azure App Service and YugabyteDB Managed doesn't require much additional configuration. For more insight into building Node.js applications with YugabyteDB, check out [Node.js Smart Drivers for YugabyteDB: Why You Should Care](https://www.yugabyte.com/blog/node-js-smart-drivers-for-yugabytedb/).

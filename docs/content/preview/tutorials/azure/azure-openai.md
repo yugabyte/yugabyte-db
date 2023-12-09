@@ -32,7 +32,8 @@ The [sample application](https://github.com/YugabyteDB-Samples/yugabytedb-azure-
 - The latest [Node.js version](https://github.com/nodejs/release#release-schedule)
 - The latest version of Docker
 - A YugabyteDB cluster running [v2.19.2 or later](https://download.yugabyte.com/)
-- [psql](https://www.postgresql.org/docs/current/app-psql.html) or [ysqlsh](https://docs.yugabyte.com/preview/admin/ysqlsh/)
+- [psql](https://www.postgresql.org/docs/current/app-psql.html) or [ysqlsh](../../../admin/ysqlsh/)
+- [Docker](https://docs.docker.com/desktop/)
 
 ## Deploy Azure OpenAI models
 
@@ -88,21 +89,21 @@ docker network create custom-network
 docker run -d --name yugabytedb_node1 --net custom-network \
     -p 15433:15433 -p 7001:7000 -p 9001:9000 -p 5433:5433 \
     -v ~/yb_docker_data/node1:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:2.19.2.0-b121 \
+    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
     bin/yugabyted start \
     --base_dir=/home/yugabyte/yb_data --daemon=false
 
 docker run -d --name yugabytedb_node2 --net custom-network \
     -p 15434:15433 -p 7002:7000 -p 9002:9000 -p 5434:5433 \
     -v ~/yb_docker_data/node2:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:2.19.2.0-b121 \
+    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
     bin/yugabyted start --join=yugabytedb_node1 \
     --base_dir=/home/yugabyte/yb_data --daemon=false
 
 docker run -d --name yugabytedb_node3 --net custom-network \
     -p 15435:15433 -p 7003:7000 -p 9003:9000 -p 5435:5433 \
     -v ~/yb_docker_data/node3:/home/yugabyte/yb_data --restart unless-stopped \
-    yugabytedb/yugabyte:2.19.2.0-b121 \
+    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
     bin/yugabyted start --join=yugabytedb_node1 \
     --base_dir=/home/yugabyte/yb_data --daemon=false
 ```
@@ -125,7 +126,7 @@ Navigate to the YugabyteDB UI to confirm that the database is up and running, at
 
 As long as the application provides a lodging recommendation service for San Francisco, you can leverage a publicly available Airbnb data set with over 7500 relevant listings:
 
-1. Create the `airbnb_listing` table (feel free to use [ysqlsh](https://docs.yugabyte.com/preview/admin/ysqlsh/) or another comparable SQL tool instead of psql):
+1. Create the `airbnb_listing` table (feel free to use [ysqlsh](../../../admin/ysqlsh/) or another comparable SQL tool instead of psql):
 
     ```sh
     psql -h 127.0.0.1 -p 5433 -U yugabyte -d yugabyte {project_dir}/sql/0_airbnb_listings.sql
@@ -300,4 +301,4 @@ The Azure OpenAI Service simplifies the process of designing, building, and prod
 
 YugabyteDB enhances the scalability of these applications by distributing data and embeddings across a cluster of nodes, facilitating similarity searches on a large scale.
 
-[Explore Additional Updates to YugabyteDB with Release 2.19](https://www.yugabyte.com/blog/postgresql-turbocharging/).
+To learn more about additional updates to YugabyteDB with release 2.19, check out [Dream Big, Go Bigger: Turbocharging PostgreSQL](https://www.yugabyte.com/blog/postgresql-turbocharging/).

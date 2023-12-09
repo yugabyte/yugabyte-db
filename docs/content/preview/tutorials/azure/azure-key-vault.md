@@ -45,7 +45,7 @@ A reference to the application we'll be developing can be found [on GitHub](http
     npm init -y
     ```
 
-1. Install the [YugabyteDB node-postgres Smart Driver](https://docs.yugabyte.com/preview/drivers-orms/nodejs/yugabyte-node-driver/).
+1. Install the [YugabyteDB node-postgres smart driver](../../../drivers-orms/nodejs/yugabyte-node-driver/).
 
     ```sh
     npm install @yugabytedb/pg
@@ -192,10 +192,12 @@ Thanks to the Azure Key Vault SDK, we've successfully connected to YugabyteDB, u
 
 The Azure Key Vault SDK comes with additional features for interacting with secrets. These include the ability to update, delete, and purge values if required. You can also use the Azure web console to make any necessary changes.
 
-![Editing secrets in Azure Key Vault.](/images/tutorials/azure/azure-key-vault/azure-key-vault.png "Editing secrets in Azure Key Vault.")
+![Editing secrets in Azure Key Vault](/images/tutorials/azure/azure-key-vault/azure-key-vault.png)
 
 ## Wrap-up
 
 We've just scratched the surface with what is possible using Azure SDKs and the surrounding ecosystem. I look forward to developing more applications on Azure in the coming months, as the list of tools continues to expand.
 
 Look out for more of my blogs on Azure and Node.js in the coming weeks. You might also be interested in learning more about [building applications using Azure App Service and YugabyteDB](https://www.yugabyte.com/blog/build-apps-azure-app-service/).
+
+You can also use Azure Key Vault to store customer managed keys for encrypting clusters in YugabyteDB Managed - see [Encryption at rest](../../../yugabyte-cloud/cloud-secure-clusters/managed-ear/).

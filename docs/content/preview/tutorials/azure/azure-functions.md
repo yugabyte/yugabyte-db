@@ -34,31 +34,32 @@ We'll develop and deploy an HTTP trigger function, which connects to YugabyteDB 
 
 ### Prerequisites
 
+- A YugabyteDB Managed account. Sign up for a [free trial](https://cloud.yugabyte.com/signup/).
 - A [Microsoft Azure](http://azure.microsoft.com) subscription, with a resource group and storage account
 - Access to the [Azure Functions](https://azure.microsoft.com/en-us/products/functions) resource
 - [Node.js version](https://github.com/nodejs/release#release-schedule) v18+
 - [Azure Functions Core Tools](https://github.com/Azure/azure-functions-core-tools)
-- A [YugabyteDB Managed](https://cloud.yugabyte.com/) account
+- [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/)
 
 ## Get started on YugabyteDB Managed
 
 See the [Quick start](../../../yugabyte-cloud/cloud-quickstart/) to create a free cluster in YugabyteDB Managed.
 
-For a configuration that provides fault tolerance across availability zones, deploy a three-node cluster to Azure, in the WestUS3 region. However, you can start with an always-free single-node cluster.
+For a configuration that provides fault tolerance across availability zones, deploy a [three-node cluster](../../../yugabyte-cloud/cloud-basics/create-clusters/create-single-region/) on Azure in the westus3 region. However, you can start with an always-free single-node [Sandbox cluster](../../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/).
 
-![Deploy a 3-node YugabyteDB Managed cluster to Azure.](/images/tutorials/azure/azure-functions/yb-cluster.png "Deploy a 3-node YugabyteDB Managed cluster to Azure.")
+![Deploy a 3-node YugabyteDB Managed cluster to Azure](/images/tutorials/azure/azure-functions/yb-cluster.png)
 
-Add the [outbound addresses for your function app](https://learn.microsoft.com/en-us/azure/azure-functions/ip-addresses?tabs=azurecli) to your cluster's [IP allow list](https://docs.yugabyte.com/preview/yugabyte-cloud/cloud-secure-clusters/add-connections/). These addresses can can be found in the networking tab of the Azure portal. This will ensure that a connection can be made between Azure Functions and YugabyteDB.
+Add the [outbound addresses for your function app](https://learn.microsoft.com/en-us/azure/azure-functions/ip-addresses?tabs=azurecli) to your cluster's [IP allow list](../../../yugabyte-cloud/cloud-secure-clusters/add-connections/). Find these addresses in the **Networking** tab of the Azure portal. This will ensure that a connection can be made between Azure Functions and YugabyteDB.
 
-![Locate outbound IP addresses in the Azure web portal.](/images/tutorials/azure/azure-functions/azure-networking.png "Locate outbound IP addresses in the Azure web portal.")
+![Locate outbound IP addresses in the Azure portal](/images/tutorials/azure/azure-functions/azure-networking.png)
 
-In addition to the outbound IP addresses in Azure, add your machine's IP address to the IP Allow List in YugabyteDB Managed, to successfully run your serverless functions locally in development. Now that we have a working cluster in YugabyteDB Managed, let's add some data.
+In addition to the outbound IP addresses in Azure, add your machine's IP address to the IP allow list in YugabyteDB Managed so that you can run your serverless functions locally in development. Now that we have a working cluster in YugabyteDB Managed, let's add some data.
 
 ## Add data to YugabyteDB
 
 Now that our cluster is running in the cloud, we can seed it with data using the provided `schema.sql` and `data.sql` files.
 
-1. Use the [YugabyteDB Cloud Shell](https://docs.yugabyte.com/preview/yugabyte-cloud/cloud-connect/connect-cloud-shell/) to connect to your cluster.
+1. Use the [YugabyteDB Cloud Shell](../../../yugabyte-cloud/cloud-connect/connect-cloud-shell/) to connect to your cluster.
 2. Execute the commands in the `schema.sql` script against your cluster.
 3. Execute the commands in the `data.sql` script against your cluster.
 
@@ -198,6 +199,6 @@ We can deploy our application to Azure using the [Azure CLI](https://learn.micro
 
 ## Wrap-up
 
-As you can see, it's easy to begin developing and publishing database-backed Azure Functions with YugabyteDB. If you're also interested in building a Node.js web application for YB Shoes using Azure App Service and YugabyteDB, check out the following blog:
+As you can see, it's easy to begin developing and publishing database-backed Azure Functions with YugabyteDB.
 
-- [Build Applications Using Azure App Service and YugabyteDB](https://www.yugabyte.com/blog/build-apps-azure-app-service/)
+If you're also interested in building a Node.js web application for YB Shoes using Azure App Service and YugabyteDB, check out the blog [Build Applications Using Azure App Service and YugabyteDB](https://www.yugabyte.com/blog/build-apps-azure-app-service/).
