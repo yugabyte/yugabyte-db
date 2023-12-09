@@ -112,8 +112,8 @@ You should see the following output:
 In the table, note the following:
 
 * The `yugabyte` role is the built-in superuser.
-* The role `john` can login, and hence is a user. Note that `john` is not a superuser.
-* The roles `engineering` and `developer` cannot login.
+* The role `john` can log in, and hence is a user. Note that `john` is not a superuser.
+* The roles `engineering` and `developer` cannot log in.
 * Both `john` and `developer` inherit the role `engineering`.
 
 ## Revoke roles

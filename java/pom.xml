@@ -122,7 +122,8 @@
     </testArgLine>
 
     <yb.collect.tests.only>false</yb.collect.tests.only>
-    <yb.forked.test.process.timeout.sec>3600</yb.forked.test.process.timeout.sec>
+    <!-- By default we allow 32 minutes, slightly more than the 30 minutes inside JUnit. -->
+    <yb.forked.test.process.timeout.sec>1920</yb.forked.test.process.timeout.sec>
   </properties>
 
   <modules>

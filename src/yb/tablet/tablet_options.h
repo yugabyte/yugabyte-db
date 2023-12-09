@@ -17,6 +17,7 @@
 #include <memory>
 #include <vector>
 
+#include "yb/tablet/tablet_retention_policy.h"
 #include "yb/util/env.h"
 #include "yb/util/threadpool.h"
 #include "yb/rocksdb/env.h"
@@ -81,7 +82,7 @@ struct TabletInitData {
   IsSysCatalogTablet is_sys_catalog = IsSysCatalogTablet::kFalse;
   SnapshotCoordinator* snapshot_coordinator = nullptr;
   TabletSplitter* tablet_splitter = nullptr;
-  std::function<HybridTime(RaftGroupMetadata*)> allowed_history_cutoff_provider;
+  AllowedHistoryCutoffProvider allowed_history_cutoff_provider;
   TransactionManagerProvider transaction_manager_provider;
   docdb::LocalWaitingTxnRegistry* waiting_txn_registry = nullptr;
   ThreadPool* wait_queue_pool = nullptr;

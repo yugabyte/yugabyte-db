@@ -475,7 +475,7 @@ TEST_F(CDCServiceTest, TestCompoundKey) {
   ASSERT_OK(GetChangesInitialSchema(change_req, change_req.mutable_from_checkpoint()));
 
   // Now apply two ops with same hash key but different range key in a batch.
-  auto session = client_->NewSession();
+  auto session = client_->NewSession(15s);
   for (int i = 0; i < 2; i++) {
     const auto op = table.NewUpdateOp();
     auto* const req = op->mutable_request();

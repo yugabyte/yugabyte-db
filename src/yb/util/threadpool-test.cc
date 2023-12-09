@@ -368,13 +368,13 @@ TEST_F(TestThreadPool, TestPromises) {
 
 
 METRIC_DEFINE_entity(test_entity);
-METRIC_DEFINE_coarse_histogram(test_entity, queue_length, "queue length",
+METRIC_DEFINE_event_stats(test_entity, queue_length, "queue length",
                         MetricUnit::kTasks, "queue length");
 
-METRIC_DEFINE_coarse_histogram(test_entity, queue_time, "queue time",
+METRIC_DEFINE_event_stats(test_entity, queue_time, "queue time",
                         MetricUnit::kMicroseconds, "queue time");
 
-METRIC_DEFINE_coarse_histogram(test_entity, run_time, "run time",
+METRIC_DEFINE_event_stats(test_entity, run_time, "run time",
                         MetricUnit::kMicroseconds, "run time");
 
 TEST_F(TestThreadPool, TestMetrics) {
@@ -412,17 +412,17 @@ TEST_F(TestThreadPool, TestMetrics) {
   thread_pool->Wait();
 
   // The total counts should reflect the number of submissions to each token.
-  ASSERT_EQ(1, all_metrics[1].queue_length_histogram->TotalCount());
-  ASSERT_EQ(1, all_metrics[1].queue_time_us_histogram->TotalCount());
-  ASSERT_EQ(1, all_metrics[1].run_time_us_histogram->TotalCount());
-  ASSERT_EQ(2, all_metrics[2].queue_length_histogram->TotalCount());
-  ASSERT_EQ(2, all_metrics[2].queue_time_us_histogram->TotalCount());
-  ASSERT_EQ(2, all_metrics[2].run_time_us_histogram->TotalCount());
+  ASSERT_EQ(1, all_metrics[1].queue_length_stats->TotalCount());
+  ASSERT_EQ(1, all_metrics[1].queue_time_us_stats->TotalCount());
+  ASSERT_EQ(1, all_metrics[1].run_time_us_stats->TotalCount());
+  ASSERT_EQ(2, all_metrics[2].queue_length_stats->TotalCount());
+  ASSERT_EQ(2, all_metrics[2].queue_time_us_stats->TotalCount());
+  ASSERT_EQ(2, all_metrics[2].run_time_us_stats->TotalCount());
 
   // And the counts on the pool-wide metrics should reflect all submissions.
-  ASSERT_EQ(6, all_metrics[0].queue_length_histogram->TotalCount());
-  ASSERT_EQ(6, all_metrics[0].queue_time_us_histogram->TotalCount());
-  ASSERT_EQ(6, all_metrics[0].run_time_us_histogram->TotalCount());
+  ASSERT_EQ(6, all_metrics[0].queue_length_stats->TotalCount());
+  ASSERT_EQ(6, all_metrics[0].queue_time_us_stats->TotalCount());
+  ASSERT_EQ(6, all_metrics[0].run_time_us_stats->TotalCount());
 }
 
 // For test cases that should run with both kinds of tokens.

@@ -123,13 +123,28 @@ void PgTabletSplitTestBase::SetUp() {
   proxy_cache_ = std::make_unique<rpc::ProxyCache>(client_->messenger());
 }
 
+Result<TabletId> PgTabletSplitTestBase::GetOnlyTabletId(const TableId& table_id) {
+  const auto tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
+  SCHECK_EQ(
+      tablets.size(), 1, InternalError,
+      Format("Expected single tablet, found $0.", tablets.size()));
+  return tablets.front()->tablet_id();
+}
+
+Status PgTabletSplitTestBase::SplitTablet(const TabletId& tablet_id) {
+  auto epoch = VERIFY_RESULT(catalog_manager())->GetLeaderEpochInternal();
+  return VERIFY_RESULT(catalog_manager())
+      ->SplitTablet(tablet_id, master::ManualSplit::kTrue, epoch);
+}
+
 Status PgTabletSplitTestBase::SplitSingleTablet(const TableId& table_id) {
-  auto tablets = ListTableActiveTabletLeadersPeers(cluster_.get(), table_id);
-  if (tablets.size() != 1) {
-    return STATUS_FORMAT(InternalError, "Expected single tablet, found $0.", tablets.size());
-  }
-  auto tablet_id = tablets.front()->tablet_id();
-  return VERIFY_RESULT(catalog_manager())->SplitTablet(tablet_id, master::ManualSplit::kTrue);
+  return SplitTablet(VERIFY_RESULT(GetOnlyTabletId(table_id)));
+}
+
+Status PgTabletSplitTestBase::SplitSingleTabletAndWaitForActiveChildTablets(
+    const TableId& table_id) {
+  RETURN_NOT_OK(SplitSingleTablet(table_id));
+  return WaitForSplitCompletion(table_id, /* expected_active_leaders = */ 2);
 }
 
 Status PgTabletSplitTestBase::InvokeSplitTabletRpc(const std::string& tablet_id) {
@@ -191,11 +206,21 @@ Status PgTabletSplitTestBase::InvokeSplitsAndWaitForCompletion(
 
 Status PgTabletSplitTestBase::DisableCompaction(std::vector<tablet::TabletPeerPtr>* peers) {
   for (auto& peer : *peers) {
-    RETURN_NOT_OK(peer->tablet()->doc_db().regular->SetOptions({
+    RETURN_NOT_OK(peer->tablet()->regular_db()->SetOptions({
         {"level0_file_num_compaction_trigger", std::to_string(std::numeric_limits<int32>::max())}
     }));
   }
   return Status::OK();
+}
+
+Status PgTabletSplitTestBase::WaitForSplitCompletion(
+    const TableId& table_id, const size_t expected_active_leaders) {
+  return WaitFor(
+      [cluster = cluster_.get(), &table_id, expected_active_leaders]() -> Result<bool> {
+        return ListTableActiveTabletLeadersPeers(cluster, table_id).size() ==
+               expected_active_leaders;
+      },
+      15s * kTimeMultiplier, "Wait for split completion.");
 }
 
 size_t PgTabletSplitTestBase::NumTabletServers() {
@@ -234,7 +259,7 @@ Status PgTabletSplitTestBase::DoInvokeSplitTabletRpcAndWaitForCompletion(
   }
 
   // Wait for new peers are fully compacted.
-  return WaitForPeersAreFullyCompacted(cluster_.get(), new_tablet_ids);
+  return WaitForPeersPostSplitCompacted(cluster_.get(), new_tablet_ids);
 }
 
 PartitionKeyTabletMap GetTabletsByPartitionKey(const master::TableInfoPtr& table) {

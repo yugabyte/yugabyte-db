@@ -9,9 +9,10 @@
 
 import React, { useContext, useEffect } from 'react';
 import Select from 'react-select';
+import { find, has } from 'lodash';
 import { Trans, useTranslation } from 'react-i18next';
 import { Controller, useFormContext } from 'react-hook-form';
-import { Typography, makeStyles } from '@material-ui/core';
+import { Typography, makeStyles, Box } from '@material-ui/core';
 import { components } from 'react-select';
 import { useQuery } from 'react-query';
 import { IGeneralSettings } from './GeneralSettings';
@@ -51,7 +52,7 @@ const useStyles = makeStyles((theme) => ({
 
 const ChooseUniverseConfig = () => {
   const { t } = useTranslation();
-  const { control, watch, setError, clearErrors } = useFormContext<IGeneralSettings>();
+  const { control, watch, setError, clearErrors, setValue } = useFormContext<IGeneralSettings>();
   const classes = useStyles();
   const [{ backupDetails }] = (useContext(RestoreFormContext) as unknown) as RestoreContextMethods;
 
@@ -59,7 +60,21 @@ const ChooseUniverseConfig = () => {
     fetchUniversesList().then((res) => res.data as IUniverse[])
   );
 
-  const { data: kmsConfigs } = useQuery(['kms_configs'], () => getKMSConfigs());
+  const { data: kmsConfigs } = useQuery(['kms_configs'], () => getKMSConfigs(), {
+    onSuccess(kmsConfigList) {
+      if (backupDetails?.commonBackupInfo.kmsConfigUUID) {
+        const kmsUsedDuringBackup = kmsConfigList.find(
+          (kms: any) => kms?.metadata.configUUID === backupDetails?.commonBackupInfo.kmsConfigUUID
+        );
+        if (kmsUsedDuringBackup) {
+          setValue('kmsConfig', {
+            value: kmsUsedDuringBackup.metadata.configUUID,
+            label: kmsUsedDuringBackup.metadata.provider + ' - ' + kmsUsedDuringBackup.metadata.name
+          });
+        }
+      }
+    }
+  });
 
   let sourceUniverseNameAtFirst: IUniverse[] = [];
 
@@ -78,12 +93,31 @@ const ChooseUniverseConfig = () => {
     );
   }
 
-  const kmsConfigList = kmsConfigs
+  let kmsConfigList = kmsConfigs
     ? kmsConfigs.map((config: any) => {
         const labelName = config.metadata.provider + ' - ' + config.metadata.name;
         return { value: config.metadata.configUUID, label: labelName };
       })
     : [];
+
+  const universe = find(universeList, { universeUUID: backupDetails?.universeUUID });
+  let currentActiveKMS = '';
+  if (universe && universe?.universeDetails?.encryptionAtRestConfig?.encryptionAtRestEnabled)
+    currentActiveKMS = universe?.universeDetails?.encryptionAtRestConfig?.kmsConfigUUID;
+
+  //kms config used in the universe while taking backup
+  const isEncryptedBackup = has(backupDetails?.commonBackupInfo, 'kmsConfigUUID');
+  const kmsIdDuringBackup = kmsConfigList.find(
+    (config: Record<string, any>) =>
+      config?.value === backupDetails?.commonBackupInfo?.kmsConfigUUID
+  );
+  if (kmsIdDuringBackup) {
+    //move currently active kms to top of the list
+    kmsConfigList = kmsConfigList.filter(
+      (config: Record<string, any>) => config.value !== kmsIdDuringBackup.value
+    );
+    kmsConfigList.unshift(kmsIdDuringBackup);
+  }
 
   const targetUniverse = watch('targetUniverse')?.value;
 
@@ -176,12 +210,84 @@ const ChooseUniverseConfig = () => {
         <Controller
           control={control}
           name="kmsConfig"
-          render={({ field: { value, onChange } }) => (
+          render={({ field: { value, onChange }, fieldState: { error } }) => (
             <YBLabel
               label={t('newRestoreModal.generalSettings.universeSelection.selectKMSConfig')}
               classOverrides={classes.kmsConfig}
+              meta={{
+                touched: !!error?.message,
+                error: error?.message
+              }}
             >
-              <Select options={kmsConfigList} value={value} onChange={onChange} />
+              <Select
+                options={kmsConfigList}
+                isClearable
+                value={value}
+                components={{
+                  // eslint-disable-next-line react/display-name
+                  Option: (props: any) => {
+                    if (isEncryptedBackup && props.data.value === kmsIdDuringBackup?.value) {
+                      return (
+                        <components.Option {...props} className="active-kms">
+                          <Box display="flex" alignItems="center">
+                            <span className="kms-used">{props.data.label}</span>
+                            <Box mx={1} display="flex">
+                              <StatusBadge
+                                statusType={Badge_Types.DELETED}
+                                customLabel={t(
+                                  'newRestoreModal.generalSettings.universeSelection.usedDuringBackup'
+                                )}
+                              />
+                            </Box>
+                            {props.data.value === currentActiveKMS && (
+                              <StatusBadge
+                                statusType={Badge_Types.COMPLETED}
+                                customLabel={t(
+                                  'newRestoreModal.generalSettings.universeSelection.activeKMS'
+                                )}
+                              />
+                            )}
+                          </Box>
+                        </components.Option>
+                      );
+                    }
+                    return (
+                      <components.Option {...props}>
+                        <Box display="flex" alignItems="center">
+                          <span>{props.data.label}</span>{' '}
+                          <Box mx={1} display="flex">
+                            {props.data.value === currentActiveKMS && (
+                              <StatusBadge
+                                statusType={Badge_Types.COMPLETED}
+                                customLabel={t(
+                                  'newRestoreModal.generalSettings.universeSelection.activeKMS'
+                                )}
+                              />
+                            )}
+                          </Box>
+                        </Box>
+                      </components.Option>
+                    );
+                  },
+                  SingleValue: ({ data }: { data: any }) => {
+                    if (isEncryptedBackup && data.value === kmsIdDuringBackup?.value) {
+                      return (
+                        <>
+                          <span className="storage-cfg-name">{data.label}</span> &nbsp;
+                          <StatusBadge
+                            statusType={Badge_Types.DELETED}
+                            customLabel={t(
+                              'newRestoreModal.generalSettings.universeSelection.usedDuringBackup'
+                            )}
+                          />
+                        </>
+                      );
+                    }
+                    return data.label;
+                  }
+                }}
+                onChange={onChange}
+              />
               <span className={classes.kmsHelpText}>
                 <Trans
                   i18nKey="newRestoreModal.generalSettings.universeSelection.kmsConfigHelpText"

@@ -17,7 +17,7 @@ alter_table_action ::= ADD [ COLUMN ] column_name data_type
                        | FORCE ROW LEVEL SECURITY
                        | NO FORCE ROW LEVEL SECURITY
 
-alter_table_constraint ::= [ CONSTRAINT constraint_name ] 
+alter_table_constraint ::= [ CONSTRAINT constraint_name ]  
                            { CHECK ( expression )
                              | UNIQUE ( column_names ) 
                                index_parameters
@@ -27,7 +27,7 @@ alter_table_constraint ::= [ CONSTRAINT constraint_name ]
                            [ INITIALLY DEFERRED
                              | INITIALLY IMMEDIATE ]
 
-alter_column_constraint ::= [ CONSTRAINT constraint_name ] 
+alter_column_constraint ::= [ CONSTRAINT constraint_name ]  
                             { NOT NULL
                               | NULL
                               | CHECK ( expression )

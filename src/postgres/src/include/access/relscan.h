@@ -209,6 +209,7 @@ typedef struct IndexScanDescData
 	PushdownExprs *yb_idx_pushdown;
 	List *yb_aggrefs;				/* aggregate information for aggregate pushdown */
 	TupleTableSlot *yb_agg_slot;	/* scan slot used by aggregate pushdown */
+	int yb_distinct_prefixlen; /* prefix length, in columns, of a distinct index scan */
 
 	/*
 	 * Result from Yugabyte.

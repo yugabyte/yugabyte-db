@@ -41,6 +41,7 @@
 #include "yb/util/lazy_invoke.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
+#include "yb/util/monotime.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
@@ -106,6 +107,8 @@ class ConflictResolverContext {
   virtual HybridTime GetResolutionHt() = 0;
 
   virtual void MakeResolutionAtLeast(const HybridTime& resolution_ht) = 0;
+
+  virtual tablet::TabletMetrics* GetTabletMetrics() = 0;
 
   virtual bool IgnoreConflictsWith(const TransactionId& other) = 0;
 
@@ -590,6 +593,13 @@ class WaitOnConflictResolver : public ConflictResolver {
 
   ~WaitOnConflictResolver() {
     VLOG(3) << "Wait-on-Conflict resolution complete after " << wait_for_iters_ << " iters.";
+
+    if (wait_start_time_.Initialized()) {
+      const MonoDelta elapsed_time = MonoTime::Now().GetDeltaSince(wait_start_time_);
+      context_->GetTabletMetrics()->Increment(
+          tablet::TabletEventStats::kTotalWaitQueueTime,
+          make_unsigned(elapsed_time.ToMicroseconds()));
+    }
   }
 
   void Run() {
@@ -610,6 +620,12 @@ class WaitOnConflictResolver : public ConflictResolver {
     return true;
   }
 
+  void MaybeSetWaitStartTime() {
+    if (!wait_start_time_.Initialized()) {
+      wait_start_time_ = MonoTime::Now();
+    }
+  }
+
   void TryPreWait() {
     DCHECK(!status_tablet_id_.empty());
     auto did_wait_or_status = wait_queue_->MaybeWaitOnLocks(
@@ -620,6 +636,7 @@ class WaitOnConflictResolver : public ConflictResolver {
     } else if (!*did_wait_or_status) {
       ConflictResolver::Resolve();
     } else {
+      MaybeSetWaitStartTime();
       VLOG(3) << "Wait-on-Conflict resolution entered wait queue in PreWaitOn stage";
     }
   }
@@ -628,7 +645,7 @@ class WaitOnConflictResolver : public ConflictResolver {
     DCHECK_GT(conflict_data_->NumActiveTransactions(), 0);
     VTRACE(3, "Waiting on $0 transactions after $1 tries.",
            conflict_data_->NumActiveTransactions(), wait_for_iters_);
-
+    MaybeSetWaitStartTime();
     return wait_queue_->WaitOn(
         context_->transaction_id(), context_->subtransaction_id(), lock_batch_,
         ConsumeTransactionDataAndReset(), status_tablet_id_, serial_no_,
@@ -668,6 +685,7 @@ class WaitOnConflictResolver : public ConflictResolver {
   uint64_t serial_no_;
   uint32_t wait_for_iters_ = 0;
   TabletId status_tablet_id_;
+  MonoTime wait_start_time_ = MonoTime::kUninitialized;
 };
 
 using IntentTypesContainer = std::map<KeyBuffer, IntentData>;
@@ -857,7 +875,7 @@ class ConflictResolverContextBase : public ConflictResolverContext {
     resolution_ht_.MakeAtLeast(resolution_ht);
   }
 
-  tablet::TabletMetrics* GetTabletMetrics() {
+  tablet::TabletMetrics* GetTabletMetrics() override {
     return &tablet_metrics_;
   }
 

@@ -17,7 +17,6 @@
 
 namespace yb {
 constexpr int kWaitForRowCountTimeout = 5 * kTimeMultiplier;
-const std::string kDatabaseName = "yugabyte";
 
 class XClusterYsqlTestBase : public XClusterTestBase {
  public:
@@ -27,7 +26,7 @@ class XClusterYsqlTestBase : public XClusterTestBase {
 
   static std::string GetCompleteTableName(const client::YBTableName& table);
 
-  static Result<std::string> GetNamespaceId(YBClient* client);
+  Result<std::string> GetNamespaceId(YBClient* client);
   Result<std::string> GetUniverseId(Cluster* cluster);
 
   Result<client::YBTableName> CreateYsqlTable(
@@ -80,10 +79,6 @@ class XClusterYsqlTestBase : public XClusterTestBase {
   static Result<std::vector<xrepl::StreamId>> BootstrapCluster(
       const std::vector<std::shared_ptr<client::YBTable>>& tables,
       XClusterTestBase::Cluster* cluster);
-
- protected:
-  YBTables producer_tables_, consumer_tables_;
-  std::shared_ptr<client::YBTable> producer_table_, consumer_table_;
 
  private:
   // Not thread safe. FLAGS_pgsql_proxy_webserver_port is modified each time this is called so this

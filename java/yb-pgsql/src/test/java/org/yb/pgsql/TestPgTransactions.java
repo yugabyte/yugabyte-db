@@ -53,7 +53,12 @@ public class TestPgTransactions extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestPgTransactions.class);
 
   private static boolean isYBTransactionError(PSQLException ex) {
-    return ex.getSQLState().equals("40001");
+    // TODO: Refactor the function to check for specific error codes instead of checking multiple
+    // errors as few tests that shouldn't encounter a 40P01 would also get through on usage of a
+    // generic check. Refer https://github.com/yugabyte/yugabyte-db/issues/18477 for details.
+    //
+    // Return true on exceptions of kind SERIALIZATION_FAILURE or DEADLOCK_DETECTED.
+    return ex.getSQLState().equals("40001") || ex.getSQLState().equals("40P01");
   }
 
   private static boolean isTransactionAbortedError(PSQLException ex) {

@@ -19,10 +19,14 @@ import {
 } from '../../../utils/constants';
 
 interface K8NodeSpecFieldProps {
-  isDedicatedMasterField?: boolean;
+  isDedicatedMasterField: boolean;
+  isEditMode: boolean;
 }
 
-export const K8NodeSpecField = ({ isDedicatedMasterField }: K8NodeSpecFieldProps): ReactElement => {
+export const K8NodeSpecField = ({
+  isDedicatedMasterField,
+  isEditMode
+}: K8NodeSpecFieldProps): ReactElement => {
   const { control, setValue } = useFormContext<UniverseFormData>();
   const { t } = useTranslation();
   const nodeTypeTag = isDedicatedMasterField ? NodeType.Master : NodeType.TServer;
@@ -38,11 +42,9 @@ export const K8NodeSpecField = ({ isDedicatedMasterField }: K8NodeSpecFieldProps
   const convertToString = (str: string) => str?.toString() ?? '';
 
   //fetch run time configs
-  const {
-    data: providerRuntimeConfigs,
-    refetch: providerConfigsRefetch
-  } = useQuery(QUERY_KEY.fetchProviderRunTimeConfigs, () =>
-    api.fetchRunTimeConfigs(true, provider?.uuid)
+  const { data: providerRuntimeConfigs, refetch: providerConfigsRefetch } = useQuery(
+    QUERY_KEY.fetchProviderRunTimeConfigs,
+    () => api.fetchRunTimeConfigs(true, provider?.uuid)
   );
 
   //update memory and cpu from provider runtime configs
@@ -50,7 +52,16 @@ export const K8NodeSpecField = ({ isDedicatedMasterField }: K8NodeSpecFieldProps
     const getProviderRuntimeConfigs = async () => {
       await providerConfigsRefetch();
       const { memorySize, CPUCores } = getDefaultK8NodeSpec(providerRuntimeConfigs);
-      setValue(UPDATE_FIELD, { memoryGib: memorySize, cpuCoreCount: CPUCores });
+      let nodeSpec = {
+        memoryGib: memorySize,
+        cpuCoreCount: CPUCores
+      };
+
+      if (fieldValue && nodeSpec && isEditMode) {
+        nodeSpec.memoryGib = fieldValue.memoryGib;
+        nodeSpec.cpuCoreCount = fieldValue.cpuCoreCount;
+      }
+      setValue(UPDATE_FIELD, nodeSpec);
     };
     getProviderRuntimeConfigs();
   }, []);
@@ -62,7 +73,8 @@ export const K8NodeSpecField = ({ isDedicatedMasterField }: K8NodeSpecFieldProps
     const numCores = decimalPaces > 2 ? Number(value).toFixed(2) : Number(value);
     setValue(UPDATE_FIELD, {
       ...fieldValue,
-      cpuCoreCount: numCores > maxCPUCores ? maxCPUCores : numCores
+      cpuCoreCount:
+        numCores > maxCPUCores ? maxCPUCores : numCores < minCPUCores ? minCPUCores : numCores
     });
   };
 
@@ -71,7 +83,8 @@ export const K8NodeSpecField = ({ isDedicatedMasterField }: K8NodeSpecFieldProps
     const memory = decimalPaces > 2 ? Number(value).toFixed(2) : Number(value);
     setValue(UPDATE_FIELD, {
       ...fieldValue,
-      memoryGib: memory > maxMemorySize ? maxMemorySize : memory
+      memoryGib:
+        memory > maxMemorySize ? maxMemorySize : memory < minMemorySize ? minMemorySize : memory
     });
   };
 
@@ -98,7 +111,6 @@ export const K8NodeSpecField = ({ isDedicatedMasterField }: K8NodeSpecFieldProps
                       type="number"
                       fullWidth
                       inputProps={{
-                        min: minCPUCores,
                         'data-testid': `K8NodeSpecField-${nodeTypeTag}-NumCoresInput`
                       }}
                       value={convertToString(fieldValue?.cpuCoreCount)}
@@ -121,7 +133,6 @@ export const K8NodeSpecField = ({ isDedicatedMasterField }: K8NodeSpecFieldProps
                       type="number"
                       fullWidth
                       inputProps={{
-                        min: minMemorySize,
                         'data-testid': `K8NodeSpecField-${nodeTypeTag}-MemoryInput`
                       }}
                       value={convertToString(fieldValue?.memoryGib)}

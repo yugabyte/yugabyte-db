@@ -282,6 +282,7 @@ class BackendsCatalogVersionJob : public server::MonitoredTask {
         state_cv_(&state_mutex_),
         database_oid_(database_oid),
         target_version_(target_version),
+        epoch_(LeaderEpoch(1)),
         last_access_(CoarseMonoClock::Now()) {}
 
   std::shared_ptr<BackendsCatalogVersionJob> shared_from_this() {
@@ -302,9 +303,10 @@ class BackendsCatalogVersionJob : public server::MonitoredTask {
   Result<int> HandleTerminalState() EXCLUDES(mutex_);
 
   // Put job in kRunning state and kick off TS RPCs.
-  Status Launch(int64_t term) EXCLUDES(mutex_);
+  Status Launch(LeaderEpoch epoch) EXCLUDES(mutex_);
   // Retry TS RPC.
-  Status LaunchTS(TabletServerId ts_uuid, int num_lagging_backends) EXCLUDES(mutex_);
+  Status LaunchTS(TabletServerId ts_uuid, int num_lagging_backends, const LeaderEpoch& epoch)
+      EXCLUDES(mutex_);
   // Whether the job hasn't been accessed within expiration time.
   bool IsInactive() const EXCLUDES(mutex_);
   // Whether the current sys catalog leader term matches the term recorded at the start of the job.
@@ -352,8 +354,8 @@ class BackendsCatalogVersionJob : public server::MonitoredTask {
 
   const PgOid database_oid_;
   const Version target_version_;
-  // Master sys catalog consensus term when launching the job.
-  int64_t term_ GUARDED_BY(mutex_);
+  // Master sys catalog consensus epoch when launching the job.
+  LeaderEpoch epoch_ GUARDED_BY(mutex_);
   // Last time this job was accessed.  Used to determine when the job should be cleaned up for lack
   // of activity.  No need to guard with mutex since writes are already guarded by
   // YsqlBackendsManager mutex.
@@ -370,7 +372,8 @@ class BackendsCatalogVersionTS : public RetryingTSRpcTask {
   BackendsCatalogVersionTS(
       std::shared_ptr<BackendsCatalogVersionJob> job,
       const std::string& ts_uuid,
-      int prev_num_lagging_backends);
+      int prev_num_lagging_backends,
+      LeaderEpoch epoch);
 
   server::MonitoredTaskType type() const override {
     return server::MonitoredTaskType::kBackendsCatalogVersionTs;

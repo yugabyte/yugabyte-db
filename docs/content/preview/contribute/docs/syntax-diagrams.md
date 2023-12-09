@@ -38,7 +38,7 @@ The nature of your documentation change will determine which selection of the fo
 - Modify existing [_syntax rule(s)_](#syntax-rule).
 - Define new [_syntax rule(s)_](#syntax-rule).
 - Create new [_free-standing generated grammar-diagram pair(s)_](#free-standing-generated-grammar-diagram-pair)
-- Add [_diagram inclusion HTML_](#diagram-inclusion-HTML) to one or more of the content files that you modified or created.
+- Add [_diagram inclusion HTML_](#diagram-inclusion-html) to one or more of the content files that you modified or created.
 
 Very occasionally, you might want to reorganize the hierarchical structure of a part of the overall documentation as the user sees it. (This is the hierarchy that you see and navigate in the left-hand navigation panel.) Such changes involve moving existing  [_humanly typed documentation source_](#humanly-typed-documentation-source) file(s) in the directory tree that starts at the [_content directory_](#content-directory). If you do this, then you must use your favorite editor (a generic plain text editor is best for this purpose) to do manually driven global search and replace to update URL references to moved files at their old locations. However, because you will do this only in the scope of the files that you worked on (most likely, the `/preview/` subtree), you must also establish URL redirects in each moved file to avoid breaking links in other Yugabyte Internet properties, or in third party sites. The _frontmatter_ allows this easily. Here is an example.
 
@@ -75,7 +75,7 @@ Follow this general flow on each local editing cycle.
 1. If necessary, edit the [_diagram definition file_](#diagram-definition-file).
 1. If necessary, create one or more new [_free-standing generated grammar-diagram pairs_](#free-standing-generated-grammar-diagram-pair), using `touch`, on the appropriate directories in the [_syntax resources directory_](#syntax-resources-directory) tree.
 1. If necessary, [_run the generator_](#run-the-generator).
-1. If necessary, add [_diagram inclusion HTML_](#diagram-inclusion-HTML) to one or more of the content files that you modified.
+1. If necessary, add [_diagram inclusion HTML_](#diagram-inclusion-html) to one or more of the content files that you modified.
 1. If necessary, add URL references in other content files to link to your new work. For example, you might need to update an `_index.md` file that implements a table of contents to a set of files to which you've just added one.
 1. If necessary, add (or update) the `aliases` page property in any  [_humanly typed documentation source_](#humanly-typed-documentation-source) file(s) that you relocated.
 1. Manually check the new docs page(s) and index page(s) to make sure that there are no broken links.
@@ -200,7 +200,7 @@ This material is not relevant for the present account.
 
 _Singleton exception:_ The [_diagram definition file_](#diagram-definition-file), on the [_syntax resources directory_](#syntax-resources-directory), is a plain text file that is typed up manually.
 
-Exception class: The [_grammar diagrams file_](#grammar-diagrams-file) and the [_free-standing generated grammar-diagram pairs_](#free-standing-generated-grammar-diagram-pair). These are all located in the syntax resources directory tree. They are all `.md` files. And none is humanly typed. Do not manually edit any of these.
+_Exception class:_ The [_grammar diagrams file_](#grammar-diagrams-file) and the [_free-standing generated grammar-diagram pairs_](#free-standing-generated-grammar-diagram-pair). These are all located in the syntax resources directory tree. They are all `.md` files. And none is humanly typed. Do not manually edit any of these.
 
 With just a few on the [_ysql directory_](#ysql-directory) itself, the [_humanly typed documentation source_](#humanly-typed-documentation-source) files are located in directory trees that start at the _ysql directory._ The top-of-section `_index.md` for the YSQL subsystem is among the few [_humanly typed documentation source_](#humanly-typed-documentation-source) files that are located directly on the [_ysql directory_](#ysql-directory).
 
@@ -216,7 +216,7 @@ With the one exception of the [_diagram definition file_](#diagram-definition-fi
 
 - **The set of files that the [_diagram generator_](#diagram-generator) produces**.
 
-All are located within the [_syntax resources directory_](#syntax-resources-directory) tree. The set minimally includes the [_grammar diagrams file_](#grammar-diagrams-file). It also includes all of the [_free-standing generated grammar-diagram pairs_](#free-standing-generated-grammar-diagram-pair) from this. These will be included within ordinary content `.md` files by URL reference from the [_diagram inclusion HTML_](#diagram-inclusion-HTML) located in the ordinary content `.md` file that wants the [_syntax diagram_](#syntax-diagram).
+All are located within the [_syntax resources directory_](#syntax-resources-directory) tree. The set minimally includes the [_grammar diagrams file_](#grammar-diagrams-file). It also includes all of the [_free-standing generated grammar-diagram pairs_](#free-standing-generated-grammar-diagram-pair) from this. These will be included within ordinary content `.md` files by URL reference from the [_diagram inclusion HTML_](#diagram-inclusion-html) located in the ordinary content `.md` file that wants the [_syntax diagram_](#syntax-diagram).
 
 Notice that there is no garbage collection scheme for unreferenced [_generated documentation source_](#generated-documentation-source) files. Content authors must do this task manually.
 
@@ -268,7 +268,7 @@ The [_free-standing generated grammar-diagram pair_](#free-standing-generated-gr
 
 Suppose that a [_syntax rule_](#syntax-rule) includes a reference to another [_syntax rule_](#syntax-rule). If the referenced [_syntax rule_](#syntax-rule) is included (by virtue of the name of the _diagram-grammar file pair_) in the same [_syntax diagram set_](#syntax-diagram-set), then the name of the [_syntax rule_](#syntax-rule) in the referring [_syntax diagram_](#syntax-diagram) becomes a link to the [_syntax rule_](#syntax-rule) in that same [_syntax diagram set_](#syntax-diagram-set). Otherwise the generated link target of the referring rule is within the [_grammar diagrams file_](#grammar-diagrams-file). The way that this link is spelled depends on the location, within the [_ysql directory_](#ysql-directory) tree, of the `.md` file that includes the generated [_syntax diagram_](#syntax-diagram).
 
-If you don't follow this rule, then (as long as you specify the right path to the [_free-standing generated grammar-diagram pair_](#free-standing-generated-grammar-diagram-pair) in the [_diagram inclusion HTML_](#diagram-inclusion-HTML), you _will_ get the diagram in the `wants-to-include.md`, just as you want it. But the links to diagrams in the [_grammar diagrams file_](#grammar-diagrams-file) for rules that are not defined in the same included diagram will be broken. You should therefore always check manually that these links work when you first confirm that you see the generated [_syntax diagram_](#syntax-diagram) that you want at the location that you want it. And you should check again just before creating a Pull Request.
+If you don't follow this rule, then (as long as you specify the right path to the [_free-standing generated grammar-diagram pair_](#free-standing-generated-grammar-diagram-pair) in the [_diagram inclusion HTML_](#diagram-inclusion-html), you _will_ get the diagram in the `wants-to-include.md`, just as you want it. But the links to diagrams in the [_grammar diagrams file_](#grammar-diagrams-file) for rules that are not defined in the same included diagram will be broken. You should therefore always check manually that these links work when you first confirm that you see the generated [_syntax diagram_](#syntax-diagram) that you want at the location that you want it. And you should check again just before creating a Pull Request.
 
 {{< note title="The 'underscore-index.md' files are special." >}}
 An ordinary humanly typed _.md_ file is, tautologically, considered to live on the directory where it's found. But an _\_index.md_ file is considered to live on the parent directory of the directory where it's found. You must take this into account when an _\_index.md_ file wants to include a **[_free-standing generated grammar-diagram pair_](#free-standing-generated-grammar-diagram-pair)**. You must correspondingly locate the referenced _\*grammar.md_ and _\*diagram.md_ files under the _syntax_resources_ directory in the parent "mirror" directory of where the referring _\_index.md_ file is located. 
@@ -330,6 +330,23 @@ and this:
 
 properly. The rest is entirely boilerplate. You musn't touch it. The construct `../../../` must climb up the proper number of levels (three in this example) to reach the parent [_ysql directory_](#ysql-directory) from `wants-to-include.md`.
 
+Notice these two matching tag pairs:
+
+- _\<a href="#grammar" ..._ with _\<div id="grammar" ..._
+- _\<a href="#diagram" ..._ with _\<div id="diagram" ..._
+
+Sometimes, you'll want to include more than one [_free-standing generated grammar-diagram pair_](#free-standing-generated-grammar-diagram-pair) in a particular [_humanly typed documentation source_](#humanly-typed-documentation-source) `.md` file. In such a case, you must use differently-spelled matching tag pairs for each successive diagram. The convention is to use these pairs for the second grammar-diagram pair:
+
+- _\<a href="#grammar-2" ..._ with _\<div id="grammar-2" ..._
+- _\<a href="#diagram-2" ..._ with _\<div id="diagram-2" ..._
+
+and to use these for the third diagram pair:
+
+- _\<a href="#grammar-3" ..._ with _\<div id="grammar-3" ..._
+- _\<a href="#diagram-3" ..._ with _\<div id="diagram-3" ..._
+
+and so on. If you do this, then _all_ diagram-pairs on the rendered page will switch in lock-step between the _"Grammar"_ tab and the _"Diagram"_ tab when you click the tab to make your choice using _any one_ of the pairs. Failure to follow this rule will mean that the syntax tabs don't display correctly.
+
 ### Diagram generator
 
 - **The program that reads the [_diagram definition file_](#diagram-definition-file) and that repopulates the [_grammar diagrams file_](#grammar-diagrams-file) and the set of existing [_free-standing generated grammar-diagram pairs_](#free-standing-generated-grammar-diagram-pair) for every rule that the [_diagram definition file_](#diagram-definition-file) defines**.
@@ -358,7 +375,7 @@ cd yugabyte-db/docs
 java -jar rrdiagram.jar content/preview/api/ysql/syntax_resources/ysql_grammar.ebnf content/preview/api/ysql/syntax_resources/
 ```
 
-This will (re)generate _all_ of the files that it ought to. You can run this at any time. In the worst case, a typing error somewhere, especially in the [_diagram inclusion HTML_](#diagram-inclusion-HTML), can crash hugo, resulting in the notorious blanked out screen in the browser.
+This will (re)generate _all_ of the files that it ought to. You can run this at any time. In the worst case, a typing error somewhere, especially in the [_diagram inclusion HTML_](#diagram-inclusion-html), can crash hugo, resulting in notorious _Hugo black screen_ in the browser. This point is discussed, and  illustrated with examples, at _Step 4_ in the **[Example use case](#example-use-case)** section at the end.
 
 > **Note:** To see help, run `java -jar rrdiagram.jar` (without arguments).
 
@@ -412,8 +429,126 @@ touch yugabyte-db/docs/content/preview/api/ysql/syntax_resources/exprs/window_fu
 touch yugabyte-db/docs/content/preview/api/ysql/syntax_resources/exprs/window_functions/frame_clause,frame_bounds,frame_bound.grammar.md
 ```
 
-_Step 3:_ Copy a reliable example of the [_diagram inclusion HTML_](#diagram-inclusion-HTML) and paste it into `window-definition.md` at the location where you want the syntax diagram set to appear. Edit the bolded text shown above appropriately.
+_Step 3:_ Copy a reliable example of the [_diagram inclusion HTML_](#diagram-inclusion-html) and paste it into `window-definition.md` at the location where you want the syntax diagram set to appear. Edit the bolded text shown above appropriately.
 
-_Step 4:_ [_Run the generator_](#run-the-generator).
+_Step 4:_ [_Run the generator_](#run-the-generator). This will generate a report on _stdout_. You must inspect this after every run and you should ensure that it is "clean" in that it looks like this:
 
-_Step 5:_ Make sure that you inspect the result immediately in the "hugo" rendering of the [_humanly typed documentation source_](#humanly-typed-documentation-source) into which you just included the [_diagram inclusion HTML_](#diagram-inclusion-HTML).
+```
+INFO: Re-generating diagram file call_procedure,subprogram_arg.diagram.md
+INFO: Re-generating grammar file call_procedure,subprogram_arg.grammar.md
+INFO: Re-generating diagram file group_by_clause,grouping_element.diagram.md
+INFO: Re-generating grammar file group_by_clause,grouping_element.grammar.md
+INFO: Re-generating diagram file having_clause.diagram.md
+INFO: Re-generating grammar file having_clause.grammar.md
+...
+INFO: Re-generating diagram file subprogram_call_signature.diagram.md
+INFO: Re-generating grammar file subprogram_call_signature.grammar.md
+INFO: Re-generating diagram file subprogram_signature,arg_decl,arg_name,arg_mode,arg_type.diagram.md
+INFO: Re-generating grammar file subprogram_signature,arg_decl,arg_name,arg_mode,arg_type.grammar.md
+INFO: Re-generating diagram file unalterable_fn_attribute,unalterable_proc_attribute.diagram.md
+INFO: Re-generating grammar file unalterable_fn_attribute,unalterable_proc_attribute.grammar.md
+WARNING: Ignoring file '/Users/Bllewell/YB-github-repos/yugabyte-db/docs/content/preview/api/ysql/syntax_resources/ysql_grammar.ebnf'. 
+```
+
+In other words, you must ensure that there are no reported errors and just the exactly one reported warning, as shown here. It helps to contrive some example errors, in turn, so that you'll be able immediately to recognize the cause when you get one (as is pretty much guaranteed to happen from time to time).
+
+**Contrived error #1—forget the single-quotes around a keyword:** Look for this syntax rule in the [_diagram definition file_](#diagram-definition-file):
+
+```
+declare = 'DECLARE' cursor_name [ 'BINARY' ] [ 'INSENSITIVE' ] [ [ 'NO' ] 'SCROLL' ] \
+          'CURSOR' [ ( 'WITH' | 'WITHOUT' ) 'HOLD' ] 'FOR' subquery ;
+```
+
+Remove the single quotes that surround `'INSENSITIVE'`. This will change its status in EBNF's grammar from _keyword_ to _syntax rule_. Most people find it hard to spot such a typo just by proof-reading. Now re-run the diagram generator. You won't see any errors reported on _stderr_. But if you look carefully at the _stdout_ report, you'll see this warning:
+
+```
+WARNING: Undefined rules referenced in rule 'declare': [INSENSITIVE]
+```
+
+It's clear what it means. And you must fix it because otherwise a reader of the YSQL documentation will see a semantic error—and will wonder what on earth the _insensitive_ rule is. Fix the problem immediately, re-run the generator. Then see a clean report again. This exercise tells you that it's a very good plan to re-run the generator after every edit to any single grammar rule. You'll know what rule you just edited and so you'll immediately know where to look for the error.
+
+**Contrived error #2—misspell a syntax rule:** Look for this in the [_diagram definition file_](#diagram-definition-file):
+
+```
+savepoint_rollback = ( 'ROLLBACK' ['WORK' | 'TRANSACTION' ] 'TO' [ 'SAVEPOINT' ] name ) ;
+```
+
+Edit it to change, say, the first `]` character to `}`. It's easy to do this typo because these two characters are on the same key and it's hard to see the difference when you use a small font. Now re-run the diagram generator. You'll see this on _stderr_:
+
+```
+Exception in thread "main" java.lang.IllegalStateException: This element must not be nested and should have been processed before entering generation.
+	at net.nextencia.rrdiagram.grammar.rrdiagram.RRBreak.computeLayoutInfo(RRBreak.java:19)
+	at net.nextencia.rrdiagram.grammar.rrdiagram.RRSequence.computeLayoutInfo(RRSequence.java:34)
+	at net.nextencia.rrdiagram.grammar.rrdiagram.RRChoice.computeLayoutInfo(RRChoice.java:30)
+	at net.nextencia.rrdiagram.grammar.rrdiagram.RRSequence.computeLayoutInfo(RRSequence.java:34)
+	at net.nextencia.rrdiagram.grammar.rrdiagram.RRDiagram.toSVG(RRDiagram.java:333)
+	at net.nextencia.rrdiagram.grammar.rrdiagram.RRDiagramToSVG.convert(RRDiagramToSVG.java:30)
+	at net.nextencia.rrdiagram.Main.regenerateReferenceFile(Main.java:139)
+	at net.nextencia.rrdiagram.Main.regenerateFolder(Main.java:72)
+	at net.nextencia.rrdiagram.Main.main(Main.java:54)
+```
+
+The error will cause the notorious _Hugo black screen_ in the browser. It's best to _\<ctrl\>-C_ Hugo now.
+
+This is hardly user-friendly! You'll also see several warnings on _stdout_. Almost all of these are simple consequences of the actual problem and so tell you nothing. Here's the significant information:
+
+```
+WARNING: Exception occurred while exporting rule savepoint_rollback
+WARNING: savepoint_rollback = 'ROLLBACK' [ 'WORK' | 'TRANSACTION' } 'TO' [ 'SAVEPOINT' ] name ) ; ...
+```
+
+You can see that the offending `}` is mentioned. Fix it immediately, re-run the generator, and then see a clean report again. Re-start Hugo. This exercise, too, tells you that you should re-run the generator after every edit to a grammar rule. Here too, you'll know what rule you just edited and so will immediately know where to look for the error.
+
+**Contrived error #3—misspell the name of a [free-standing generated grammar-diagram pair](#free-standing-generated-grammar-diagram-pair):** Change directory thus:
+
+```
+cd <your path>/yugabyte-db/docs/content/preview/api/ysql/syntax_resources/the-sql-language/statements
+```
+
+(The path to _yugabyte-db_ will depend on how you designed your filesystem.) Then make sure that this pair exists:
+
+```
+ls *insert*
+```
+
+You should see these two files:
+
+```
+insert,returning_clause,column_values,conflict_target,conflict_action.diagram.md
+insert,returning_clause,column_values,conflict_target,conflict_action.grammar.md
+```
+
+Contrive a deliberate typo, by replacing _clause_ with _clase_, thus:
+
+```
+mv insert,returning_clause,column_values,conflict_target,conflict_action.diagram.md \
+   insert,returning_clase,column_values,conflict_target,conflict_action.diagram.md
+
+mv insert,returning_clause,column_values,conflict_target,conflict_action.grammar.md \
+   insert,returning_clase,column_values,conflict_target,conflict_action.grammar.md
+
+ls *insert*
+```
+
+You'll see this:
+
+```
+insert,returning_clase,column_values,conflict_target,conflict_action.diagram.md
+insert,returning_clase,column_values,conflict_target,conflict_action.grammar.md
+```
+
+Now re-run the diagram generator. You won't see any errors reported on _stderr_. But if you look at the _stdout_ report, you'll see that it ends with this error:
+
+```
+ERROR: Invalid target rule: returning_clase
+```
+
+This means that one of the free-standing generated grammar-diagram pairs asks to include the syntax for a rule that isn't defined in the **[diagram definition file](#diagram-definition-file)**. This error won't cause the _Hugo black screen_. But if you use your Browser to look at the file that attempts to include this diagram pair:
+
+```
+<your path>/yugabyte-db/docs/content/preview/api/ysql/the-sql-language/statements/dml_insert.md
+```
+
+_i.e._ the page for the _INSERT_ statement, you'll see that, while the _Grammar_ and _Diagram_ tabs are present, no syntax representations are shown. Re-instate the proper file names, re-run the generator, and then see a clean report again. Then look again at the page for the _INSERT_ statement. (You'll need to refresh it.) Now you'll see that the intended syntax representations are back in place.
+
+_Step 5:_ Make sure that you inspect the result immediately in the "hugo" rendering of the [_humanly typed documentation source_](#humanly-typed-documentation-source) into which you just included the [_diagram inclusion HTML_](#diagram-inclusion-html).

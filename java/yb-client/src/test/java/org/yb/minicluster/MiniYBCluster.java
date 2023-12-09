@@ -603,6 +603,7 @@ public class MiniYBCluster implements AutoCloseable {
     if (clusterParameters.startYsqlConnMgr) {
       tsCmdLine.add("--ysql_conn_mgr_port=" + Integer.toString(ysqlConnMgrPort));
       tsCmdLine.add("--enable_ysql_conn_mgr=true");
+      tsCmdLine.add("--allowed_preview_flags_csv=enable_ysql_conn_mgr");
     }
 
     if (tserverFlags != null) {

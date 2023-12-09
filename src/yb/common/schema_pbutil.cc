@@ -36,6 +36,7 @@
 
 #include "yb/common/common.pb.h"
 #include "yb/common/ql_type.h"
+#include "yb/common/ql_value.h"
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.messages.h"
 
@@ -136,6 +137,9 @@ void ColumnSchemaToPB(const ColumnSchema& col_schema, ColumnSchemaPB *pb, int fl
     pb->set_is_key(true);
     pb->set_is_hash_key(true);
   }
+  if (!IsNull(col_schema.missing_value())) {
+    *(pb->mutable_missing_value()) = col_schema.missing_value();
+  }
 }
 
 ColumnSchema ColumnSchemaFromPB(const ColumnSchemaPB& pb) {
@@ -145,7 +149,7 @@ ColumnSchema ColumnSchemaFromPB(const ColumnSchemaPB& pb) {
                     : ColumnKind::VALUE;
   return ColumnSchema(pb.name(), QLType::FromQLTypePB(pb.type()), kind, Nullable(pb.is_nullable()),
                       pb.is_static(), pb.is_counter(), pb.order(), pb.pg_type_oid(),
-                      pb.marked_for_deletion());
+                      pb.marked_for_deletion(), pb.missing_value());
 }
 
 Status ColumnPBsToSchema(const google::protobuf::RepeatedPtrField<ColumnSchemaPB>& column_pbs,

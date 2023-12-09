@@ -80,13 +80,13 @@ class XClusterSafeTimeTest : public XClusterTestBase {
 
     auto producer_cluster_future = std::async(std::launch::async, [&] {
       producer_table_name_ = VERIFY_RESULT(
-          CreateTable(producer_client(), kNamespaceName, kTableName, kTabletCount, &schema));
+          CreateTable(producer_client(), namespace_name, kTableName, kTabletCount, &schema));
       return producer_client()->OpenTable(producer_table_name_, &producer_table_);
     });
 
     auto consumer_cluster_future = std::async(std::launch::async, [&] {
       consumer_table_name_ = VERIFY_RESULT(
-          CreateTable(consumer_client(), kNamespaceName, kTableName, kTabletCount, &schema));
+          CreateTable(consumer_client(), namespace_name, kTableName, kTabletCount, &schema));
       return consumer_client()->OpenTable(consumer_table_name_, &consumer_table_);
     });
 
@@ -129,14 +129,14 @@ class XClusterSafeTimeTest : public XClusterTestBase {
     master::GetNamespaceInfoResponsePB resp;
 
     RETURN_NOT_OK(consumer_client()->GetNamespaceInfo(
-        std::string() /* namespace_id */, kNamespaceName, YQL_DATABASE_CQL, &resp));
+        std::string() /* namespace_id */, namespace_name, YQL_DATABASE_CQL, &resp));
 
     namespace_id_ = resp.namespace_().id();
     return OK();
   }
 
   void WriteWorkload(uint32_t start, uint32_t end, YBClient* client, const YBTableName& table) {
-    auto session = client->NewSession();
+    auto session = client->NewSession(kRpcTimeout * 1s);
     client::TableHandle table_handle;
     ASSERT_OK(table_handle.Open(table, client));
     std::vector<std::shared_ptr<client::YBqlOp>> ops;
@@ -191,7 +191,8 @@ class XClusterSafeTimeTest : public XClusterTestBase {
       auto safe_time = *safe_time_result.get();
       for (auto& tablet : tablet_ptrs) {
         if (tablet->metadata()->namespace_id() == namespace_id_) {
-          ASSERT_EQ(safe_time, ts_manager->AllowedHistoryCutoff(tablet->metadata()));
+          ASSERT_EQ(safe_time, ts_manager->AllowedHistoryCutoff(
+              tablet->metadata()).primary_cutoff_ht);
         }
       }
     }

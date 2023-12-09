@@ -620,8 +620,12 @@ explain (costs off)
                  Index Cond: ((unique1 IS NOT NULL) AND (unique1 < 42))
 (5 rows)
 
--- YB TODO(#16927): uncomment the following query, which crashes
--- select max(unique1) from tenk1 where unique1 < 42;
+select max(unique1) from tenk1 where unique1 < 42;
+ max
+-----
+  41
+(1 row)
+
 explain (costs off)
   select max(unique1) from tenk1 where unique1 > 42;
                                QUERY PLAN
@@ -633,8 +637,12 @@ explain (costs off)
                  Index Cond: ((unique1 IS NOT NULL) AND (unique1 > 42))
 (5 rows)
 
--- YB TODO(#16927): uncomment the following query, which crashes
--- select max(unique1) from tenk1 where unique1 > 42;
+select max(unique1) from tenk1 where unique1 > 42;
+ max
+------
+ 9999
+(1 row)
+
 -- the planner may choose a generic aggregate here if parallel query is
 -- enabled, since that plan will be parallel safe and the "optimized"
 -- plan, which has almost identical cost, will not be.  we want to test
@@ -652,8 +660,12 @@ explain (costs off)
                  Index Cond: ((unique1 IS NOT NULL) AND (unique1 > 42000))
 (5 rows)
 
--- YB TODO(#16927): uncomment the following query, which crashes
--- select max(unique1) from tenk1 where unique1 > 42000;
+select max(unique1) from tenk1 where unique1 > 42000;
+ max
+-----
+
+(1 row)
+
 rollback;
 -- multi-column index (uses tenk1_thous_tenthous)
 explain (costs off)
@@ -709,9 +721,17 @@ explain (costs off)
 -- 1. mainly order by absolute value of f1.
 -- 2. order positives before negatives by adding an offset of -1/+1 using the
 --    sign function.
--- YB TODO(#16927): uncomment the following query, which crashes
--- select f1, (select min(unique1) from tenk1 where unique1 > f1) AS gt
---   from int4_tbl order by abs(f1) - sign(f1);
+select f1, (select min(unique1) from tenk1 where unique1 > f1) AS gt
+  from int4_tbl order by abs(f1) - sign(f1);
+     f1      | gt
+-------------+----
+           0 |  1
+      123456 |
+     -123456 |  0
+  2147483647 |
+ -2147483647 |  0
+(5 rows)
+
 -- check some cases that were handled incorrectly in 8.3.0
 explain (costs off)
   select distinct max(unique2) from tenk1;
@@ -1292,7 +1312,7 @@ create table bytea_test_table(v bytea, PRIMARY KEY (v DESC));
 select string_agg(v, '') from bytea_test_table;
  string_agg
 ------------
- 
+
 (1 row)
 
 insert into bytea_test_table values(decode('ff','hex'));

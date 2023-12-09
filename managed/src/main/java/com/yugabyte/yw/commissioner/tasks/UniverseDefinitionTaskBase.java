@@ -616,11 +616,11 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     createStartMasterProcessTasks(nodeSet);
 
     // Add master to the quorum.
-    createChangeConfigTask(currentNode, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
+    createChangeConfigTasks(currentNode, true /* isAdd */, SubTaskGroupType.ConfigureUniverse);
 
     if (stoppingNode != null && stoppingNode.isMaster) {
       // Perform master change only after the new master is added.
-      createChangeConfigTask(stoppingNode, false /* isAdd */, SubTaskGroupType.ConfigureUniverse);
+      createChangeConfigTasks(stoppingNode, false /* isAdd */, SubTaskGroupType.ConfigureUniverse);
       if (isStoppable) {
         createStopMasterTasks(Collections.singleton(stoppingNode))
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
@@ -694,7 +694,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     NodeDetails newMasterNode = replacementSupplier.get();
     if (newMasterNode == null) {
       log.info("No eligible node found to move master from node {}", currentNode.getNodeName());
-      createChangeConfigTask(
+      createChangeConfigTasks(
           currentNode, false /* isAdd */, SubTaskGroupType.StoppingNodeProcesses);
       // Stop the master process on this node after this current master is removed.
       if (isStoppable) {
@@ -1368,23 +1368,25 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         }
 
         if (confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
-          final Double cpuCoreCount = cluster.userIntent.masterK8SNodeResourceSpec.cpuCoreCount;
-          final Double memoryGib = cluster.userIntent.masterK8SNodeResourceSpec.memoryGib;
-          final boolean isCpuCoreCountOutOfRange =
-              (cpuCoreCount <= UserIntent.MIN_CPU || cpuCoreCount >= UserIntent.MAX_CPU);
-          final boolean isMemoryGibOutOfRange =
-              (memoryGib <= UserIntent.MIN_MEMORY || memoryGib >= UserIntent.MAX_MEMORY);
+          if (cluster.userIntent.masterK8SNodeResourceSpec != null) {
+            final Double cpuCoreCount = cluster.userIntent.masterK8SNodeResourceSpec.cpuCoreCount;
+            final Double memoryGib = cluster.userIntent.masterK8SNodeResourceSpec.memoryGib;
+            final boolean isCpuCoreCountOutOfRange =
+                (cpuCoreCount <= UserIntent.MIN_CPU || cpuCoreCount >= UserIntent.MAX_CPU);
+            final boolean isMemoryGibOutOfRange =
+                (memoryGib <= UserIntent.MIN_MEMORY || memoryGib >= UserIntent.MAX_MEMORY);
 
-          if (isCpuCoreCountOutOfRange || isMemoryGibOutOfRange) {
-            throw new IllegalArgumentException(
-                String.format(
-                    "CPU/Memory provided is out of range. Custom values for CPU should be between "
-                        + "%.2f and %.2f cores. Custom values for Memory should be between "
-                        + "%.2fGiB and %.2fGiB",
-                    UserIntent.MIN_CPU,
-                    UserIntent.MAX_CPU,
-                    UserIntent.MIN_MEMORY,
-                    UserIntent.MAX_MEMORY));
+            if (isCpuCoreCountOutOfRange || isMemoryGibOutOfRange) {
+              throw new IllegalArgumentException(
+                  String.format(
+                      "CPU/Memory provided is out of range. Values for CPU should be between "
+                          + "%.2f and %.2f cores. Custom values for Memory should be between "
+                          + "%.2fGiB and %.2fGiB",
+                      UserIntent.MIN_CPU,
+                      UserIntent.MAX_CPU,
+                      UserIntent.MIN_MEMORY,
+                      UserIntent.MAX_MEMORY));
+            }
           }
         }
       } else {
@@ -1592,20 +1594,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
     // Update the master addresses in memory.
-    createSetFlagInMemoryTasks(
-            tserverNodes,
-            ServerType.TSERVER,
-            true /* force flag update */,
-            null /* no gflag to update */,
-            true /* updateMasterAddr */)
+    createUpdateMasterAddrsInMemoryTasks(tserverNodes, ServerType.TSERVER)
         .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
 
-    createSetFlagInMemoryTasks(
-            masterNodes,
-            ServerType.MASTER,
-            true /* force flag update */,
-            null /* no gflag to update */,
-            true /* updateMasterAddr */)
+    createUpdateMasterAddrsInMemoryTasks(masterNodes, ServerType.MASTER)
         .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
 
     // Update the master addresses on the target universes whose source universe belongs to

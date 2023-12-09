@@ -28,6 +28,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -160,10 +161,75 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
     // Replication for tables that do NOT need bootstrapping.
     Set<String> tableIdsNotNeedBootstrap =
         getTableIdsNotNeedBootstrap(getTableIds(requestedTableInfoList));
+    CommonTypes.TableType tableType = requestedTableInfoList.get(0).getTableType();
     if (!tableIdsNotNeedBootstrap.isEmpty()) {
       log.info(
           "Creating a subtask to set up replication without bootstrap for tables {}",
           tableIdsNotNeedBootstrap);
+
+      // Set up PITRs for txn xCluster.
+      if (xClusterConfig.getType().equals(ConfigType.Txn)) {
+        List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>
+            requestedTableInfoListNotNeedBootstrap =
+                requestedTableInfoList.stream()
+                    .filter(tableInfo -> tableIdsNotNeedBootstrap.contains(getTableId(tableInfo)))
+                    .collect(Collectors.toList());
+        Set<MasterTypes.NamespaceIdentifierPB> namespaces =
+            getNamespaces(requestedTableInfoListNotNeedBootstrap);
+        namespaces.forEach(
+            namespace -> {
+              Optional<PitrConfig> pitrConfigOptional =
+                  PitrConfig.maybeGet(
+                      xClusterConfig.getTargetUniverseUUID(), tableType, namespace.getName());
+
+              if (xClusterConfig.isUsedForDr()) {
+                // For DR, read the parameters from taskParams.
+                if (Objects.isNull(taskParams().getPitrParams())) {
+                  throw new IllegalArgumentException(
+                      "pitrParams in taskParams cannot be null while creating an "
+                          + "xCluster config for DR");
+                }
+                if (pitrConfigOptional.isPresent()) {
+                  // Only delete and recreate if the PITR config parameters differ from taskParams.
+                  if (pitrConfigOptional.get().getRetentionPeriod()
+                          != taskParams().getPitrParams().retentionPeriodSec
+                      || pitrConfigOptional.get().getScheduleInterval()
+                          != taskParams().getPitrParams().snapshotIntervalSec) {
+                    createDeletePitrConfigTask(pitrConfigOptional.get().getUuid());
+
+                    createCreatePitrConfigTask(
+                        namespace.getName(),
+                        tableType,
+                        taskParams().getPitrParams().retentionPeriodSec,
+                        xClusterConfig);
+                  } else {
+                    xClusterConfig.addPitrConfig(pitrConfigOptional.get());
+                  }
+                } else {
+                  createCreatePitrConfigTask(
+                      namespace.getName(),
+                      tableType,
+                      taskParams().getPitrParams().retentionPeriodSec,
+                      xClusterConfig);
+                }
+              } else {
+                if (pitrConfigOptional.isPresent()) {
+                  xClusterConfig.addPitrConfig(pitrConfigOptional.get());
+                } else {
+                  // Create a PITR config using default parameters.
+                  createCreatePitrConfigTask(
+                      namespace.getName(),
+                      tableType,
+                      confGetter
+                          .getConfForScope(
+                              targetUniverse,
+                              UniverseConfKeys.txnXClusterPitrDefaultRetentionPeriod)
+                          .getSeconds(),
+                      xClusterConfig);
+                }
+              }
+            });
+      }
 
       // Set up the replication config.
       createXClusterConfigSetupTask(tableIdsNotNeedBootstrap)
@@ -229,13 +295,8 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
       Optional<PitrConfig> pitrConfigOptional =
           PitrConfig.maybeGet(xClusterConfig.getTargetUniverseUUID(), tableType, namespaceName);
       if (xClusterConfig.getType().equals(ConfigType.Txn)) {
-        if (!pitrConfigOptional.isPresent()) {
-          throw new IllegalStateException(
-              String.format(
-                  "PITR config for keyspace %s.%s not found on universe %s",
-                  tableType, namespaceName, xClusterConfig.getTargetUniverseUUID()));
-        }
-        createDeletePitrConfigTask(pitrConfigOptional.get().getUuid());
+        pitrConfigOptional.ifPresent(
+            pitrConfig -> createDeletePitrConfigTask(pitrConfig.getUuid()));
       }
 
       if (tableType == CommonTypes.TableType.YQL_TABLE_TYPE) {
@@ -293,9 +354,35 @@ public class CreateXClusterConfig extends XClusterConfigTaskBase {
 
       // Recreate the PITR config for txn xCluster.
       if (xClusterConfig.getType().equals(ConfigType.Txn)) {
-        // noinspection OptionalGetWithoutIsPresent: The check has happened in the above code.
-        createCreatePitrConfigTask(
-            namespaceName, tableType, pitrConfigOptional.get().getRetentionPeriod());
+        if (xClusterConfig.isUsedForDr()) {
+          // For DR, read the parameters from taskParams.
+          if (Objects.isNull(taskParams().getPitrParams())) {
+            throw new IllegalArgumentException(
+                "pitrParams in taskParams cannot be null while creating an xCluster config for DR");
+          }
+          createCreatePitrConfigTask(
+              namespaceName,
+              tableType,
+              taskParams().getPitrParams().retentionPeriodSec,
+              xClusterConfig);
+        } else if (pitrConfigOptional.isPresent()) {
+          // Read the parameters from the last existing PITR config.
+          createCreatePitrConfigTask(
+              namespaceName,
+              tableType,
+              pitrConfigOptional.get().getRetentionPeriod(),
+              xClusterConfig);
+        } else {
+          // Use default parameters.
+          createCreatePitrConfigTask(
+              namespaceName,
+              tableType,
+              confGetter
+                  .getConfForScope(
+                      targetUniverse, UniverseConfKeys.txnXClusterPitrDefaultRetentionPeriod)
+                  .getSeconds(),
+              xClusterConfig);
+        }
       }
 
       if (isReplicationConfigCreated) {

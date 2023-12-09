@@ -1,8 +1,8 @@
 ---
-title: The "raise" statement [YSQL]
-headerTitle: The "raise" statement
+title: The PL/pgSQL "raise" statement [YSQL]
+headerTitle: The PL/pgSQL "raise" statement
 linkTitle: >
-  The "raise" statement
+  "raise" statement
 description: Describes the syntax and semantics of the PL/pgSQL "raise" statement. [YSQL].
 menu:
   preview:
@@ -40,6 +40,7 @@ showRightNav: true
 </div>
 
 ## Semantics
+
 The PL/pgSQL _raise_ statement has three distinct purposes:
 
 - _First_, to re-raise the exception that the handler caught (legal only in an exception handler).

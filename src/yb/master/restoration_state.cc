@@ -167,6 +167,31 @@ void RestorationState::PrepareOperations(
   });
 }
 
+Status RestorationState::Abort() {
+  SCHECK(!VERIFY_RESULT(Complete()), IllegalState, "Cannot abort completed restoration");
+  auto tablets_ = tablets();
+  for (auto it = tablets_.begin(); it != tablets_.end(); ++it) {
+    const auto& tablet_id = it->id;
+    auto status = STATUS(
+        Aborted, Format(
+                     "Failed at state $0 for tablet $1: Aborted by user request",
+                     InitialStateName(), tablet_id));
+    tablets_.modify(it, [&status](TabletData& data) {
+      data.aborted = true;
+      data.last_error = status;
+      data.state = SysSnapshotEntryPB::FAILED;
+    });
+
+    // Only decrement if the given tablet is in the initial state and is NOT running. If the task IS
+    // running, the value will be decremented in Done when the task itself finishes.
+    if (it->state == initial_state_ && !it->running) {
+      DecrementTablets();
+    }
+  }
+
+  return Status::OK();
+}
+
 std::optional<SysSnapshotEntryPB::State> RestorationState::GetTerminalStateForStatus(
     const Status& status) {
   if (status.IsAborted() || status.IsNotFound() ||

@@ -546,7 +546,7 @@ public class ImportController extends AuthenticatedController {
                       region,
                       zone,
                       index,
-                      cluster.userIntent.instanceType);
+                      cluster.userIntent.getInstanceType(zone.getUuid()));
 
               node.isMaster = isMaster;
             }

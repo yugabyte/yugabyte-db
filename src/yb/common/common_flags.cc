@@ -12,6 +12,7 @@
 //
 
 #include "yb/common/common_flags.h"
+#include "yb/util/flags.h"
 #include "yb/util/size_literals.h"
 
 using namespace yb::size_literals;
@@ -62,13 +63,9 @@ DEFINE_NON_RUNTIME_bool(enable_wait_queues, kEnableWaitOnConflict,
     "resolution whenever required.");
 TAG_FLAG(enable_wait_queues, evolving);
 
-DEFINE_RUNTIME_bool(ysql_ddl_rollback_enabled, false,
-            "If true, failed YSQL DDL transactions that affect both pg catalog and DocDB schema "
-            "will be rolled back by YB-Master. Note that this is applicable only for few DDL "
-            "operations such as dropping a table, adding a column, renaming a column/table. This "
-            "flag should not be changed in the middle of a DDL operation.");
-TAG_FLAG(ysql_ddl_rollback_enabled, hidden);
-TAG_FLAG(ysql_ddl_rollback_enabled, advanced);
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, ddl_rollback_enabled, false,
+    "If true, upon failure of a YSQL DDL transaction that affects the DocDB syscatalog, the "
+    "YB-Master will rollback the changes made to the DocDB syscatalog.");
 
 DEFINE_test_flag(bool, enable_db_catalog_version_mode, false,
                  "Enable the per database catalog version mode, a DDL statement is assumed to "

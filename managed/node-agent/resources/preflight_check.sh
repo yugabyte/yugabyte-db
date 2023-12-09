@@ -37,8 +37,6 @@ ysql_server_rpc_port="5433"
 node_exporter_port="9300"
 
 preflight_provision_check() {
-
-
   # Check for internet access.
   if [[ "$airgap" = false ]]; then
     # Attempt to run "/dev/tcp" 3 times with a 3 second timeout and return success if any succeed.
@@ -192,6 +190,7 @@ check_package_installed() {
 }
 
 check_binaries_installed() {
+  check_binary_installed "chronyc"
   if [[ "$is_aarch64" = false ]]; then
     check_binary_installed "azcopy" # Optional.
   fi
@@ -202,12 +201,8 @@ check_binaries_installed() {
 
 check_binary_installed() {
   binary_name=$1
-  binary_exists=false
-  result="type -P $binary_name | grep $binary_name"
-  if [[ -n "$result" ]]; then
-    binary_exists=true
-  fi
-  update_result_json "$binary_name" "$binary_exists"
+  command -v $binary_name >/dev/null 2>&1;
+  update_result_json_with_rc "$binary_name" "$?"
 }
 
 preflight_configure_check() {

@@ -2,7 +2,6 @@ package com.yugabyte.yw.common.rbac;
 
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
-import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
 
 import com.yugabyte.yw.common.FakeDBApplication;
@@ -113,7 +112,7 @@ public class RoleBindingUtilTest extends FakeDBApplication {
     for (ResourceDefinition rd : roleBinding.getResourceGroup().getResourceDefinitionSet()) {
       if (rd.isAllowAll()) {
         allowAllCount++;
-        assertNull(rd.getResourceUUIDSet());
+        assertEquals(0, rd.getResourceUUIDSet().size());
       } else {
         assertNotNull(rd.getResourceUUIDSet());
         assertTrue(rd.getResourceUUIDSet().contains(resourceUUID1));
@@ -153,7 +152,7 @@ public class RoleBindingUtilTest extends FakeDBApplication {
     for (ResourceDefinition rd : roleBinding.getResourceGroup().getResourceDefinitionSet()) {
       if (rd.isAllowAll()) {
         allowAllCount++;
-        assertNull(rd.getResourceUUIDSet());
+        assertEquals(0, rd.getResourceUUIDSet().size());
       } else {
         assertNotNull(rd.getResourceUUIDSet());
         assertTrue(rd.getResourceUUIDSet().contains(resourceUUID1));

@@ -13,6 +13,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -50,40 +51,7 @@ public class DeleteXClusterConfig extends XClusterConfigTaskBase {
           lockUniverseForUpdate(targetUniverse.getUniverseUUID(), targetUniverse.getVersion());
         }
 
-        if (!isInMustDeleteStatus(xClusterConfig)) {
-          createXClusterConfigSetStatusTask(XClusterConfig.XClusterConfigStatusType.Updating)
-              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
-        }
-
-        // Create all the subtasks to delete the xCluster config and all the bootstrap ids related
-        // to them if any.
-        createDeleteXClusterConfigSubtasks(xClusterConfig, taskParams().isForced());
-
-        // Fetch all universes that are connected through xCluster config to source and
-        // target universe.
-        Set<Universe> xClusterConnectedUniverseSet = new HashSet<>();
-        Set<UUID> alreadyLockedUniverseUUIDSet = new HashSet<>();
-        if (sourceUniverse != null) {
-          xClusterConnectedUniverseSet.addAll(
-              xClusterUniverseService.getXClusterConnectedUniverses(sourceUniverse));
-          alreadyLockedUniverseUUIDSet.add(sourceUniverse.getUniverseUUID());
-        }
-        if (targetUniverse != null) {
-          xClusterConnectedUniverseSet.addAll(
-              xClusterUniverseService.getXClusterConnectedUniverses(targetUniverse));
-          alreadyLockedUniverseUUIDSet.add(targetUniverse.getUniverseUUID());
-        }
-
-        // Promote auto flags on all connected universes which were blocked
-        // due to the xCluster config.
-        createPromoteAutoFlagsAndLockOtherUniversesForUniverseSet(
-            xClusterConnectedUniverseSet.stream()
-                .map(Universe::getUniverseUUID)
-                .collect(Collectors.toSet()),
-            alreadyLockedUniverseUUIDSet,
-            xClusterUniverseService,
-            Collections.singleton(xClusterConfig.getUuid()),
-            taskParams().isForced());
+        createDeleteXClusterConfigSubtasks(xClusterConfig, sourceUniverse, targetUniverse);
 
         if (targetUniverse != null) {
           createMarkUniverseUpdateSuccessTasks(targetUniverse.getUniverseUUID())
@@ -119,5 +87,45 @@ public class DeleteXClusterConfig extends XClusterConfigTaskBase {
     }
 
     log.info("Completed {}", getName());
+  }
+
+  protected void createDeleteXClusterConfigSubtasks(
+      XClusterConfig xClusterConfig,
+      @Nullable Universe sourceUniverse,
+      @Nullable Universe targetUniverse) {
+    if (!isInMustDeleteStatus(xClusterConfig)) {
+      createXClusterConfigSetStatusTask(XClusterConfig.XClusterConfigStatusType.Updating)
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
+    }
+
+    // Create all the subtasks to delete the xCluster config and all the bootstrap ids related
+    // to them if any.
+    createDeleteXClusterConfigSubtasks(xClusterConfig, taskParams().isForced());
+
+    // Fetch all universes that are connected through xCluster config to source and
+    // target universe.
+    Set<Universe> xClusterConnectedUniverseSet = new HashSet<>();
+    Set<UUID> alreadyLockedUniverseUUIDSet = new HashSet<>();
+    if (sourceUniverse != null) {
+      xClusterConnectedUniverseSet.addAll(
+          xClusterUniverseService.getXClusterConnectedUniverses(sourceUniverse));
+      alreadyLockedUniverseUUIDSet.add(sourceUniverse.getUniverseUUID());
+    }
+    if (targetUniverse != null) {
+      xClusterConnectedUniverseSet.addAll(
+          xClusterUniverseService.getXClusterConnectedUniverses(targetUniverse));
+      alreadyLockedUniverseUUIDSet.add(targetUniverse.getUniverseUUID());
+    }
+
+    // Promote auto flags on all connected universes which were blocked
+    // due to the xCluster config.
+    createPromoteAutoFlagsAndLockOtherUniversesForUniverseSet(
+        xClusterConnectedUniverseSet.stream()
+            .map(Universe::getUniverseUUID)
+            .collect(Collectors.toSet()),
+        alreadyLockedUniverseUUIDSet,
+        xClusterUniverseService,
+        Collections.singleton(xClusterConfig.getUuid()),
+        taskParams().isForced());
   }
 }

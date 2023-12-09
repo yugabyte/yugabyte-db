@@ -15,6 +15,8 @@ import { RuntimeConfigContainer } from '../components/advanced';
 import { HAInstancesContainer } from '../components/ha/instances/HAInstanceContainer';
 
 import ListCACerts from '../components/customCACerts/ListCACerts';
+import { RBACContainer } from '../redesign/features/rbac/RBACContainer';
+import { isCertCAEnabledInRuntimeConfig } from '../components/customCACerts';
 import './Administration.scss';
 
 // very basic redux store definition, just enough to compile without ts errors
@@ -89,6 +91,9 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
     )?.value === 'true' ||
     test['enableRunTimeConfig'] ||
     released['enableRunTimeConfig'];
+
+  const isRBACEnabled = test['enableRBAC'] || released['enableRBAC'];
+
   const configTagFilter = globalRuntimeConfigs?.data?.configEntries?.find(
     (c: any) => c.key === 'yb.runtime_conf_ui.tag_filter'
   )?.value;
@@ -97,10 +102,7 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
     ? AdministrationTabs.HA
     : AdministrationTabs.AC;
 
-  const isCustomCaCertsEnabled =
-    globalRuntimeConfigs?.data?.configEntries?.find(
-      (c: any) => c.key === 'yb.customCATrustStore.enabled'
-    )?.value === 'true';
+  const isCustomCaCertsEnabled = isCertCAEnabledInRuntimeConfig(globalRuntimeConfigs?.data);
 
   useEffect(() => {
     showOrRedirect(currentCustomer.data.features, 'menu.administration');
@@ -196,6 +198,14 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
     );
   };
 
+  const getRbacTab = () => {
+    return (
+      <Tab eventKey="rbac" title="Access Management" key="rbac">
+        <RBACContainer />
+      </Tab>
+    );
+  };
+
   return (
     <div>
       <h2 className="content-title">Platform Configuration</h2>
@@ -211,6 +221,7 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
         {getUserManagementTab()}
         {isCustomCaCertsEnabled && getCustomCACertsTab()}
         {isCongifUIEnabled && getAdvancedTab()}
+        {isRBACEnabled && getRbacTab()}
       </YBTabsWithLinksPanel>
     </div>
   );

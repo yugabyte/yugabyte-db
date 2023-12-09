@@ -251,6 +251,7 @@ Status YsqlBackendsManager::HandleSwapToRunning(
     WaitForYsqlBackendsCatalogVersionResponsePB* resp) {
   SCOPED_LEADER_SHARED_LOCK(l, master_->catalog_manager_impl());
 
+  auto epoch = l.epoch();
   if (job->state() != MonitoredTaskState::kRunning) {
     // The only reason for this to happen is if catalog manager bg thread does AbortAllJobs or
     // AbortInactiveJobs between CompareAndSwapState and SCOPED_LEADER_SHARED_LOCK above.  Any
@@ -269,7 +270,7 @@ Status YsqlBackendsManager::HandleSwapToRunning(
     RETURN_NOT_OK(CheckLeadership(&l, resp));
   }
   master_->catalog_manager_impl()->jobs_tracker_->AddTask(job);
-  RETURN_NOT_OK(job->Launch(master_->catalog_manager()->leader_ready_term()));
+  RETURN_NOT_OK(job->Launch(epoch));
   return Status::OK();
 }
 
@@ -458,7 +459,7 @@ MonitoredTaskState BackendsCatalogVersionJob::AbortAndReturnPrevState(const Stat
   return old_state;
 }
 
-Status BackendsCatalogVersionJob::Launch(int64_t term) {
+Status BackendsCatalogVersionJob::Launch(LeaderEpoch epoch) {
   LOG_WITH_PREFIX_AND_FUNC(INFO) << "launching tserver RPCs";
 
   const auto& descs = master_->ts_manager()->GetAllDescriptors();
@@ -472,7 +473,7 @@ Status BackendsCatalogVersionJob::Launch(int64_t term) {
     std::lock_guard l(mutex_);
 
     // Commit term now.
-    term_ = term;
+    epoch_ = std::move(epoch);
 
     for (const auto& ts_desc : descs) {
       if (!ts_desc->IsLive()) {
@@ -488,15 +489,16 @@ Status BackendsCatalogVersionJob::Launch(int64_t term) {
   }
 
   for (const auto& ts_uuid : ts_uuids) {
-    RETURN_NOT_OK(LaunchTS(ts_uuid, -1 /* num_lagging_backends */));
+    RETURN_NOT_OK(LaunchTS(ts_uuid, -1 /* num_lagging_backends */, epoch_));
   }
 
   return Status::OK();
 }
 
-Status BackendsCatalogVersionJob::LaunchTS(TabletServerId ts_uuid, int num_lagging_backends) {
+Status BackendsCatalogVersionJob::LaunchTS(
+    TabletServerId ts_uuid, int num_lagging_backends, const LeaderEpoch& epoch) {
   auto task = std::make_shared<BackendsCatalogVersionTS>(
-      shared_from_this(), ts_uuid, num_lagging_backends);
+      shared_from_this(), ts_uuid, num_lagging_backends, epoch_);
   Status s = threadpool()->SubmitFunc([this, &ts_uuid, task]() {
     Status s = task->Run();
     if (!s.ok()) {
@@ -529,11 +531,11 @@ bool BackendsCatalogVersionJob::IsInactive() const {
 bool BackendsCatalogVersionJob::IsSameTerm() const {
   const int64_t term = master_->catalog_manager()->leader_ready_term();
   std::lock_guard l(mutex_);
-  if (term_ == term) {
+  if (epoch_.leader_term == term) {
     VLOG_WITH_PREFIX(3) << "Sys catalog term is " << term;
     return true;
   }
-  LOG_WITH_PREFIX(INFO) << "Sys catalog term is " << term << ", job term is " << term_;
+  LOG_WITH_PREFIX(INFO) << "Sys catalog term is " << term << ", job term is " << epoch_.leader_term;
   return false;
 }
 
@@ -613,7 +615,7 @@ void BackendsCatalogVersionJob::Update(TabletServerId ts_uuid, Result<int> num_l
         last_known_num_lagging_backends = ts_map_[ts_uuid];
       }
       // Ignore returned status since it is already logged/handled.
-      (void)LaunchTS(ts_uuid, last_known_num_lagging_backends);
+      (void)LaunchTS(ts_uuid, last_known_num_lagging_backends, epoch_);
     } else {
       LOG_WITH_PREFIX(WARNING) << "got bad status " << s.ToString() << " from TS " << ts_uuid;
       master_->ysql_backends_manager()->TerminateJob(
@@ -642,7 +644,7 @@ void BackendsCatalogVersionJob::Update(TabletServerId ts_uuid, Result<int> num_l
     VLOG_WITH_PREFIX(2) << "still waiting on " << *num_lagging_backends << " backends of TS "
                         << ts_uuid;
     // Ignore returned status since it is already logged/handled.
-    (void)LaunchTS(ts_uuid, *num_lagging_backends);
+    (void)LaunchTS(ts_uuid, *num_lagging_backends, epoch_);
     return;
   }
   DCHECK_EQ(*num_lagging_backends, 0);
@@ -708,11 +710,12 @@ std::string BackendsCatalogVersionJob::LogPrefix() const {
 BackendsCatalogVersionTS::BackendsCatalogVersionTS(
     std::shared_ptr<BackendsCatalogVersionJob> job,
     const std::string& ts_uuid,
-    int prev_num_lagging_backends)
+    int prev_num_lagging_backends, LeaderEpoch epoch)
     : RetryingTSRpcTask(job->master(),
                         job->threadpool(),
                         std::unique_ptr<TSPicker>(new PickSpecificUUID(job->master(), ts_uuid)),
                         nullptr /* table */,
+                        std::move(epoch),
                         nullptr /* async_task_throttler */),
       job_(job),
       prev_num_lagging_backends_(prev_num_lagging_backends) {

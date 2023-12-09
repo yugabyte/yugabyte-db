@@ -13,7 +13,7 @@ type: docs
 
 ## Overview
 
-A YugabyteDB cluster consists of two distributed services - the [YB-TServer](../../architecture/concepts/yb-tserver/) service and the [YB-Master](../../architecture/concepts/yb-master/) service. Since the YB-Master service serves the role of the cluster metadata manager, it should be brought up first followed by the YB-TServer service. In order to bring up these distributed services, the respective servers (YB-Master or YB-TServer) need to be started across different nodes. Below are some considerations and recommendations on starting these services. The *deployment configurations* section below has detailed steps on how to setup YugabyteDB clusters.
+A YugabyteDB cluster consists of two distributed services - the [YB-TServer](../../architecture/concepts/yb-tserver/) service and the [YB-Master](../../architecture/concepts/yb-master/) service. Since the YB-Master service serves the role of the cluster metadata manager, it should be brought up first followed by the YB-TServer service. In order to bring up these distributed services, the respective servers (YB-Master or YB-TServer) need to be started across different nodes. Below are some considerations and recommendations on starting these services. The *deployment configurations* section below has detailed steps on how to set up YugabyteDB clusters.
 
 ## Basics
 

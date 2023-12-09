@@ -28,7 +28,7 @@ from ybops.utils import get_path_from_yb, \
     YB_SUDO_PASS, DEFAULT_MASTER_HTTP_PORT, DEFAULT_MASTER_RPC_PORT, DEFAULT_TSERVER_HTTP_PORT, \
     DEFAULT_TSERVER_RPC_PORT, DEFAULT_CQL_PROXY_RPC_PORT, DEFAULT_REDIS_PROXY_RPC_PORT
 from ansible_vault import Vault
-from ybops.utils.remote_shell import copy_to_tmp, wait_for_server, get_host_port_user
+from ybops.utils.remote_shell import copy_to_tmp, wait_for_server, get_host_port_user, RemoteShell
 from ybops.utils.ssh import wait_for_ssh, format_rsa_key, validated_key_file, \
     generate_rsa_keypair, get_public_key_content, \
     get_ssh_host_port, DEFAULT_SSH_USER, DEFAULT_SSH_PORT
@@ -584,6 +584,8 @@ class ReplaceRootVolumeMethod(AbstractInstancesMethod):
                                 old_disk_url, id))
             raise e
         finally:
+            if args.boot_script is not None:
+                self.cloud.update_user_data(args)
             server_ports = self.get_server_ports_to_check(args)
             self.cloud.start_instance(host_info, server_ports)
 
@@ -1096,6 +1098,8 @@ class ChangeInstanceTypeMethod(AbstractInstancesMethod):
             raise YBOpsRuntimeError('error executing \"instance.modify_attribute\": {}'
                                     .format(repr(e)))
         finally:
+            if args.boot_script is not None:
+                self.cloud.update_user_data(args)
             server_ports = self.get_server_ports_to_check(args)
             self.cloud.start_instance(host_info, server_ports)
             logging.info('Instance {} is started'.format(args.search_pattern))
@@ -1213,6 +1217,12 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                                  help="Reset master state by deleting old files and directories.",
                                  action="store_true",
                                  default=False)
+        self.parser.add_argument("--local_gflag_files_path",
+                                 required=False,
+                                 help="Path to local directory with the gFlags file.")
+        self.parser.add_argument("--remote_gflag_files_path",
+                                 required=False,
+                                 help="Path to remote directory with the gFlags file.")
 
     def get_ssh_user(self):
         # Force the yugabyte user for configuring instances. The configure step performs YB specific
@@ -1486,6 +1496,24 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
                     args.client_key_path,
                     args.certs_location
                 )
+
+        if args.local_gflag_files_path is not None and args.remote_gflag_files_path is not None:
+            # Copy all the files from local gflags file path to remote
+            files = os.listdir(args.local_gflag_files_path)
+            remote_shell = RemoteShell(self.extra_vars)
+            # Delete the gFlag file directory in case already present in remote
+            remote_shell.exec_command("rm -rf {}".format(args.remote_gflag_files_path))
+            # Create the gFlag file directory before copying the file.
+            remote_shell.exec_command("mkdir -p {}".format(args.remote_gflag_files_path))
+            for file in files:
+                src_file = os.path.join(args.local_gflag_files_path, file)
+                dest_file = os.path.join(args.remote_gflag_files_path, file)
+                remote_shell.put_file(src_file, dest_file)
+            # Clean up the local gflag file directory
+            try:
+                os.rmdir(args.local_gflag_files_path)
+            except OSError as e:
+                logging.info("[app] Deletion of local gflag directory failed with {}".format(e))
 
         if args.encryption_key_source_file is not None:
             self.extra_vars["encryption_key_file"] = args.encryption_key_source_file
@@ -1855,11 +1883,40 @@ class RebootInstancesMethod(AbstractInstancesMethod):
             # & we will be returned -1.
             if (isinstance(stderr, list) and len(stderr) > 0):
                 raise YBOpsRecoverableError(f"Failed to connect to {args.search_pattern}")
-
-            self.wait_for_host(args, False)
         else:
             server_ports = self.get_server_ports_to_check(args)
             self.cloud.reboot_instance(host_info, server_ports)
+        self.wait_for_host(args, False)
+
+
+class HardRebootInstancesMethod(AbstractInstancesMethod):
+    def __init__(self, base_command):
+        super(HardRebootInstancesMethod, self).__init__(base_command, "hard_reboot")
+
+    def add_extra_args(self):
+        super(HardRebootInstancesMethod, self).add_extra_args()
+
+    def callback(self, args):
+        instance = self.cloud.get_host_info(args)
+        if not instance:
+            raise YBOpsRuntimeError("Could not find host {} to hard reboot".format(
+                args.search_pattern))
+        host_info = vars(args)
+        host_info.update(instance)
+        instance_state = host_info['instance_state']
+        if instance_state not in self.valid_states:
+            raise YBOpsRuntimeError("Instance is in invalid state '{}' for attempting a hard reboot"
+                                    .format(instance_state))
+        if instance_state in self.valid_stoppable_states:
+            logging.info("Stopping instance {}".format(args.search_pattern))
+            self.cloud.stop_instance(host_info)
+        logging.info("Starting instance {}".format(args.search_pattern))
+        self.update_ansible_vars_with_args(args)
+        if args.boot_script is not None and self.cloud.name == "gcp":
+            # GCP executes boot_script as part of each boot, pause/resume.
+            self.cloud.update_user_data(args)
+        server_ports = self.get_server_ports_to_check(args)
+        self.cloud.start_instance(host_info, server_ports)
 
 
 class RunHooks(AbstractInstancesMethod):

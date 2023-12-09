@@ -71,6 +71,31 @@ Result<std::optional<dockv::SubDocument>> TEST_GetSubDocument(
     const ReadOperationData& read_operation_data,
     const dockv::ReaderProjection* projection = nullptr);
 
+class PackedRowData;
+
+struct DocDBTableReaderData {
+  // Owned by caller.
+  IntentAwareIterator* iter;
+  DeadlineInfo deadline_info;
+  const dockv::ReaderProjection* projection;
+  const TableType table_type;
+  const dockv::SchemaPackingStorage& schema_packing_storage;
+  std::unique_ptr<PackedRowData> packed_row;
+  const Schema& schema;
+
+  std::vector<dockv::KeyBytes> encoded_projection;
+  EncodedDocHybridTime table_tombstone_time{EncodedDocHybridTime::kMin};
+  dockv::Expiration table_expiration;
+
+  DocDBTableReaderData(
+      IntentAwareIterator* iter_, CoarseTimePoint deadline,
+      const dockv::ReaderProjection* projection_,
+      TableType table_type_,
+      std::reference_wrapper<const dockv::SchemaPackingStorage> schema_packing_storage_,
+      std::reference_wrapper<const Schema> schema);
+  ~DocDBTableReaderData();
+};
+
 // This class reads SubDocument instances for a given table. The caller should initialize with
 // UpdateTableTombstoneTime and SetTableTtl, if applicable, before calling Get(). Instances
 // of DocDBTableReader assume, for the lifetime of the instance, that the provided
@@ -81,11 +106,11 @@ Result<std::optional<dockv::SubDocument>> TEST_GetSubDocument(
 // scan.
 class DocDBTableReader {
  public:
-  DocDBTableReader(
-      IntentAwareIterator* iter, CoarseTimePoint deadline,
-      const dockv::ReaderProjection* projection,
-      TableType table_type,
-      std::reference_wrapper<const dockv::SchemaPackingStorage> schema_packing_storage);
+  template<class... Args>
+  explicit DocDBTableReader(Args&&... args) : data_(std::forward<Args>(args)...) {
+    Init();
+  }
+
   ~DocDBTableReader();
 
   // Updates expiration/overwrite data based on table tombstone time.
@@ -113,6 +138,8 @@ class DocDBTableReader {
       KeyBuffer* root_doc_key, const FetchedEntry& fetched_entry, dockv::PgTableRow* result);
 
  private:
+  void Init();
+
   // Initializes the reader to read a row at sub_doc_key by seeking to and reading obsolescence info
   // at that row.
   Status InitForKey(Slice sub_doc_key);
@@ -121,25 +148,7 @@ class DocDBTableReader {
   Result<DocReaderResult> DoGetFlat(
       KeyBuffer* root_doc_key, const FetchedEntry& fetched_entry, Res* result);
 
-  template <bool is_flat_doc, bool ysql, bool check_exists_only>
-  class GetHelperBase;
-  template <class ResultType>
-  class GetHelper;
-  template <class ResultType>
-  class FlatGetHelper;
-
-  class PackedRowData;
-
-  // Owned by caller.
-  IntentAwareIterator* iter_;
-  DeadlineInfo deadline_info_;
-  const dockv::ReaderProjection* projection_;
-  const TableType table_type_;
-  std::unique_ptr<PackedRowData> packed_row_;
-
-  std::vector<dockv::KeyBytes> encoded_projection_;
-  EncodedDocHybridTime table_tombstone_time_{EncodedDocHybridTime::kMin};
-  dockv::Expiration table_expiration_;
+  DocDBTableReaderData data_;
 };
 
 }  // namespace docdb

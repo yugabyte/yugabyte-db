@@ -17,7 +17,7 @@ column_constraint ::= [ CONSTRAINT constraint_name ]
                         | DEFAULT expression
                         | UNIQUE index_parameters
                         | PRIMARY KEY
-                        | references_clause } 
+                        | references_clause }  
                       [ DEFERRABLE | NOT DEFERRABLE ] 
                       [ INITIALLY DEFERRED | INITIALLY IMMEDIATE ]
 
@@ -41,7 +41,7 @@ storage_parameters ::= storage_parameter [ , ... ]
 storage_parameter ::= param_name [ = param_value ]
 
 index_parameters ::= [ INCLUDE ( column_names ) ] 
-                     [ WITH ( storage_parameters ) ] 
+                     [ WITH ( storage_parameters ) ]  
                      [ USING INDEX TABLESPACE tablespace_name ]
 
 references_clause ::= REFERENCES table_name [ column_name [ , ... ] ] 

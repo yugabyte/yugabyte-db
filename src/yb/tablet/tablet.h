@@ -606,6 +606,20 @@ class Tablet : public AbstractTablet,
   Status ForceFullRocksDBCompact(rocksdb::CompactionReason compaction_reason,
       docdb::SkipFlush skip_flush = docdb::SkipFlush::kFalse);
 
+  rocksdb::DB* regular_db() const {
+    return regular_db_.get();
+  }
+
+  rocksdb::DB* intents_db() const {
+    return intents_db_.get();
+  }
+
+  // The only way to make any conclusion that a tablet is a product of a split is to check its key
+  // bounds are initialized as it is supposed that these key bounds are setup during tablet split.
+  const docdb::KeyBounds& key_bounds() const {
+    return key_bounds_;
+  }
+
   docdb::DocDB doc_db(TabletMetrics* metrics = nullptr) const {
     return {
         regular_db_.get(),
@@ -668,14 +682,6 @@ class Tablet : public AbstractTablet,
   HybridTime Get(HybridTime lower_bound);
 
   bool ShouldApplyWrite();
-
-  rocksdb::DB* TEST_db() const {
-    return regular_db_.get();
-  }
-
-  rocksdb::DB* TEST_intents_db() const {
-    return intents_db_.get();
-  }
 
   Status TEST_SwitchMemtable();
 

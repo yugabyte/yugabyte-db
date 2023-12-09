@@ -105,7 +105,6 @@ std::string TEST_SetDifferenceStr(const std::set<T>& expected, const std::set<T>
     } \
   } while (0)
 
-#define ASSERT_NOT_OK(s) ASSERT_FALSE((s).ok())
 #define ASSERT_NOK(s) ASSERT_FALSE((s).ok())
 
 #define ASSERT_OK_PREPEND(status, msg) do { \
@@ -130,7 +129,6 @@ std::string TEST_SetDifferenceStr(const std::set<T>& expected, const std::set<T>
     } \
   } while (0)
 
-#define EXPECT_NOT_OK(s) EXPECT_FALSE((s).ok())
 #define EXPECT_NOK(s) EXPECT_FALSE((s).ok())
 
 // Like the above, but doesn't record successful

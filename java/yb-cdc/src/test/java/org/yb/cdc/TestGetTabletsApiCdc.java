@@ -21,7 +21,7 @@ import org.slf4j.LoggerFactory;
 import org.yb.cdc.CdcService.TabletCheckpointPair;
 import org.yb.cdc.common.CDCBaseClass;
 import org.yb.cdc.util.CDCSubscriber;
-import org.yb.cdc.util.TestUtils;
+import org.yb.cdc.util.CDCTestUtils;
 import org.yb.client.GetTabletListToPollForCDCResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
@@ -161,7 +161,7 @@ public class TestGetTabletsApiCdc extends CDCBaseClass {
     ybClient.flushTable(testSubscriber.getTableId());
 
     // Wait for the flush table command to succeed.
-    TestUtils.waitFor(60 /* seconds to wait */);
+    CDCTestUtils.waitFor(60 /* seconds to wait */);
 
     ybClient.splitTablet(tabletId);
 

@@ -463,10 +463,16 @@ components:
           description: The number of CPU cores per node
           type: integer
           default: 0
+        ram_provisioned_gb:
+          description: The total size of provisioned ram (GB)
+          type: number
+          format: double
+          default: 0
       required:
         - num_cores
         - memory_mb
         - disk_size_gb
+        - ram_provisioned_gb
     ClusterInfo:
       title: Cluster Info
       description: Cluster level information
@@ -1339,10 +1345,13 @@ components:
             title: Cluster table list response
             type: object
             properties:
-              data:
+              tables:
+                $ref: '#/components/schemas/ClusterTableData'
+              indexes:
                 $ref: '#/components/schemas/ClusterTableData'
             required:
-              - data
+              - tables
+              - indexes
     TableInfoResponse:
       description: Information for a single table
       content:

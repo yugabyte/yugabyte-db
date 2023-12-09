@@ -246,6 +246,9 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   virtual Status
       StartRemoteBootstrap(const consensus::StartRemoteBootstrapRequestPB& req) override;
 
+  // Initiate remote snapshot transfer of the specified tablet.
+  Status StartRemoteSnapshotTransfer(const StartRemoteSnapshotTransferRequestPB& req);
+
   // Generate a tablet report.
   //
   // This will report any tablets which have changed since the last acknowleged
@@ -533,7 +536,7 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   void CleanupSplitTablets();
 
-  HybridTime AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata);
+  docdb::HistoryCutoff AllowedHistoryCutoff(tablet::RaftGroupMetadata* metadata);
 
   template <class Key>
   Result<tablet::TabletPeerPtr> DoGetServingTablet(const Key& tablet_id) const;
@@ -552,6 +555,37 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   void FlushDirtySuperblocks();
 
+  // Helper functions to reduce code duplication between RemoteBootstrap and RemoteSnapshotTransfer
+  // flows.
+  typedef std::unordered_map<std::string, int> RemoteSessionSourceAddresses;
+  struct RemoteClients {
+    RemoteSessionSourceAddresses source_addresses_;
+    int32_t num_clients_ = 0;
+  };
+
+  // Registers remote client by incrementing num concurrent clients and adding private_addr to
+  // source address map. Proceeds to call CheckStateAndLookupTabletUnlocked and the callback before
+  // returning the result of the tablet lookup if successful.
+  Result<tablet::TabletPeerPtr> RegisterRemoteClientAndLookupTablet(
+      const TabletId& tablet_id, const std::string& private_addr, const std::string& log_prefix,
+      RemoteClients* remote_clients,
+      std::function<Status()> callback = [] { return Status::OK(); });
+
+  void WaitForRemoteSessionsToEnd(
+      const RemoteClients& remote_clients, const std::string& debug_session_string) const;
+
+  void DecrementRemoteSessionCount(const std::string& private_addr, RemoteClients* remote_clients);
+
+  // Checks ClosingUnlocked and then returns the result of LookupTabletUnlocked.
+  template <class Key>
+  Result<tablet::TabletPeerPtr> CheckStateAndLookupTabletUnlocked(
+      const Key& tablet_id, const std::string& log_prefix) const REQUIRES_SHARED(mutex_);
+
+  template <class RemoteClient>
+  std::unique_ptr<RemoteClient> InitRemoteClient(
+      const std::string& log_prefix, const TabletId& tablet_id, const PeerId& source_uuid,
+      const std::string& source_addr, const std::string& debug_session_string);
+
   const CoarseTimePoint start_time_;
 
   FsManager* const fs_manager_;
@@ -563,8 +597,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
   using TabletMap = std::unordered_map<
       TabletId, std::shared_ptr<tablet::TabletPeer>, StringHash, std::equal_to<void>>;
 
-  // Lock protecting tablet_map_, dirty_tablets_, state_, tablets_blocked_from_lb_ and
-  // tablets_being_remote_bootstrapped_.
+  // Lock protecting tablet_map_, dirty_tablets_, state_, tablets_blocked_from_lb_,
+  // tablets_being_remote_bootstrapped_, remote_bootstrap_clients_ and snapshot_transfer_clients_.
   mutable RWMutex mutex_;
 
   // Map from tablet ID to tablet
@@ -663,9 +697,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   std::shared_ptr<TabletMemoryManager> mem_manager_;
 
-  std::unordered_set<std::string> bootstrap_source_addresses_;
-
-  std::atomic<int32_t> num_tablets_being_remote_bootstrapped_{0};
+  RemoteClients remote_bootstrap_clients_ GUARDED_BY(mutex_);
+  RemoteClients snapshot_transfer_clients GUARDED_BY(mutex_);
 
   // Gauge to monitor applied split operations.
   scoped_refptr<yb::AtomicGauge<uint64_t>> ts_split_op_apply_;

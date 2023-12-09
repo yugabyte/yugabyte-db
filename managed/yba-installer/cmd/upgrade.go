@@ -57,6 +57,10 @@ var upgradeCmd = &cobra.Command{
 			}
 		}
 
+		if err := state.ValidateReconfig(); err != nil {
+			log.Fatal("invalid reconfigure during upgrade: " + err.Error())
+		}
+
 		// Upgrade yba-ctl first.
 		if err := ybaCtl.Install(); err != nil {
 			log.Fatal("failed to upgrade yba-ctl")
@@ -133,6 +137,8 @@ var upgradeCmd = &cobra.Command{
 			}
 			log.Info("Completed restart of component " + name)
 		}
+
+		common.WaitForYBAReady()
 
 		var statuses []common.Status
 		//serviceOrder = append([]string{newDbServiceName}, serviceOrder...)

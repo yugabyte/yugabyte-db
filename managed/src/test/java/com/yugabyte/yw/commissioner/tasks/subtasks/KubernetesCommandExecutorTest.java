@@ -256,7 +256,7 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
 
     if (!instanceType.getInstanceTypeCode().equals("xsmall")
         && !instanceType.getInstanceTypeCode().equals("dev")) {
-      masterResource.put("cpu", 2.0);
+      masterResource.put("cpu", 2);
       masterResource.put("memory", "4Gi");
       masterLimit.put("cpu", 2 * burstVal);
       masterLimit.put("memory", "4Gi");
@@ -545,7 +545,6 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
     Yaml yaml = new Yaml();
     InputStream is = new FileInputStream(new File(expectedOverrideFile.getValue()));
     Map<String, Object> overrides = yaml.loadAs(is, Map.class);
-
     // TODO implement exposeAll false case
     assertEquals(getExpectedOverrides(true), overrides);
   }

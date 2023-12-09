@@ -393,7 +393,7 @@ Status PTLiteralString::ToDecimal(string *value, bool negate) const {
 }
 
 Status PTLiteralString::ToVarInt(string *value, bool negate) const {
-  util::VarInt v;
+  VarInt v;
   if (negate) {
     RETURN_NOT_OK(v.FromString(string("-") + value_->c_str()));
   } else {

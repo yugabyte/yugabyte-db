@@ -4433,35 +4433,28 @@ comparetup_index_btree(const SortTuple *a, const SortTuple *b,
 	}
 
 	/*
-	 * Skip this for YugaByte-based table. In YugaByte, tuples do not have block number
-	 * and offset.
+	 * If key values are equal, we sort on ItemPointer.  This is required for
+	 * btree indexes, since heap TID is treated as an implicit last key
+	 * attribute in order to ensure that all keys in the index are physically
+	 * unique.
 	 */
-	if (!IsYugaByteEnabled())
 	{
-		/*
-		 * If key values are equal, we sort on ItemPointer.  This is required for
-		 * btree indexes, since heap TID is treated as an implicit last key
-		 * attribute in order to ensure that all keys in the index are physically
-		 * unique.
-		 */
-		{
-			BlockNumber blk1 = ItemPointerGetBlockNumber(&tuple1->t_tid);
-			BlockNumber blk2 = ItemPointerGetBlockNumber(&tuple2->t_tid);
+		BlockNumber blk1 = ItemPointerGetBlockNumber(&tuple1->t_tid);
+		BlockNumber blk2 = ItemPointerGetBlockNumber(&tuple2->t_tid);
 
-			if (blk1 != blk2)
-				return (blk1 < blk2) ? -1 : 1;
-		}
-		{
-			OffsetNumber pos1 = ItemPointerGetOffsetNumber(&tuple1->t_tid);
-			OffsetNumber pos2 = ItemPointerGetOffsetNumber(&tuple2->t_tid);
-
-			if (pos1 != pos2)
-				return (pos1 < pos2) ? -1 : 1;
-		}
-
-		/* ItemPointer values should never be equal */
-		Assert(false);
+		if (blk1 != blk2)
+			return (blk1 < blk2) ? -1 : 1;
 	}
+	{
+		OffsetNumber pos1 = ItemPointerGetOffsetNumber(&tuple1->t_tid);
+		OffsetNumber pos2 = ItemPointerGetOffsetNumber(&tuple2->t_tid);
+
+		if (pos1 != pos2)
+			return (pos1 < pos2) ? -1 : 1;
+	}
+
+	/* ItemPointer values should never be equal */
+	Assert(false);
 
 	return 0;
 }

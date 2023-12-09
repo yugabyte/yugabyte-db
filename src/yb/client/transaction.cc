@@ -459,7 +459,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       running_requests_ -= ops.size();
 
       if (status.ok()) {
-        if (used_read_time && metadata_.isolation == IsolationLevel::SNAPSHOT_ISOLATION) {
+        if (used_read_time && metadata_.isolation != IsolationLevel::SERIALIZABLE_ISOLATION) {
           const bool read_point_already_set = static_cast<bool>(read_point_.GetReadTime());
 #ifndef NDEBUG
           if (read_point_already_set) {
@@ -474,7 +474,10 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           LOG_IF_WITH_PREFIX(DFATAL, read_point_already_set)
               << "Read time already picked (" << read_point_.GetReadTime()
               << ", but server replied with used read time: " << used_read_time;
+          // TODO: Update local limit for the tablet id which sent back the used read time
           read_point_.SetReadTime(used_read_time, ConsistentReadPoint::HybridTimeMap());
+          VLOG_WITH_PREFIX(3)
+              << "Update read time from used read time: " << read_point_.GetReadTime();
         }
         const std::string* prev_tablet_id = nullptr;
         for (const auto& op : ops) {
@@ -1083,6 +1086,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     if (!read_point_.GetReadTime() && do_it &&
         (metadata_.isolation == IsolationLevel::SNAPSHOT_ISOLATION ||
          metadata_.isolation == IsolationLevel::READ_COMMITTED)) {
+      VLOG_WITH_PREFIX(2) << "Setting current read time as read point for distributed txn";
       read_point_.SetCurrentReadTime();
     }
   }

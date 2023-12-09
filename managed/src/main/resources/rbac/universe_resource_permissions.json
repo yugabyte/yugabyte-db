@@ -37,5 +37,16 @@
         "permission": "READ"
       }
     ]
+  },
+  {
+    "resource_type": "UNIVERSE",
+    "permission": "PAUSE_RESUME",
+    "description": "Allows user to pause and resume a universe.",
+    "prerequisite_permissions": [
+      {
+        "resource_type": "UNIVERSE",
+        "permission": "READ"
+      }
+    ]
   }
 ]

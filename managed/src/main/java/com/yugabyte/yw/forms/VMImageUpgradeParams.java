@@ -107,7 +107,7 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
           Status.BAD_REQUEST,
           "VM image upgrade is only supported for cloud providers, got: " + provider.toString());
     }
-    if (UniverseDefinitionTaskParams.hasEphemeralStorage(userIntent)) {
+    if (UniverseDefinitionTaskParams.hasEphemeralStorage(universe.getUniverseDetails())) {
       throw new PlatformServiceException(
           Status.BAD_REQUEST, "Cannot upgrade a universe with ephemeral storage.");
     }

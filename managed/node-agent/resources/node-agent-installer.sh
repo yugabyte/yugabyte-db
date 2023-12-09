@@ -66,15 +66,22 @@ setup_node_agent_dir() {
   #Create node-agent directory.
   mkdir -p "$NODE_AGENT_HOME"
   #Change permissions.
-  chmod 754 "$NODE_AGENT_HOME"
+  chmod 755 "$NODE_AGENT_HOME"
   echo "* Changing directory to node agent."
   #Change directory.
   pushd "$NODE_AGENT_HOME"
   echo "* Creating Sub Directories."
   mkdir -p cert config logs release
-  chmod -R 754 .
+  chmod -R 755 .
   popd
   add_path "$NODE_AGENT_PKG_DIR/bin"
+  popd
+}
+
+set_log_dir_permission() {
+  #Change directory.
+  pushd "$NODE_AGENT_HOME"
+  chmod 755 logs
   popd
 }
 
@@ -312,6 +319,7 @@ main() {
   elif [ "$COMMAND" = "upgrade" ]; then
     extract_package > /dev/null
     setup_symlink > /dev/null
+    set_log_dir_permission > /dev/null
   elif [ "$COMMAND" = "install" ]; then
     local NODE_AGENT_CONFIG_ARGS=()
     if [ "$DISABLE_EGRESS" = "false" ]; then

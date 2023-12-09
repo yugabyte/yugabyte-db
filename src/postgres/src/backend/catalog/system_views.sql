@@ -875,13 +875,14 @@ CREATE VIEW pg_stat_activity AS
             S.wait_event,
             S.state,
             S.backend_xid,
-            s.backend_xmin,
+            S.backend_xmin,
             S.query_id,
             S.query,
             S.backend_type,
             yb_pg_stat_get_backend_catalog_version(B.beid) AS catalog_version,
             yb_pg_stat_get_backend_allocated_mem_bytes(B.beid) AS allocated_mem_bytes,
-            yb_pg_stat_get_backend_rss_mem_bytes(B.beid) AS rss_mem_bytes
+            yb_pg_stat_get_backend_rss_mem_bytes(B.beid) AS rss_mem_bytes,
+            S.yb_backend_xid
     FROM pg_stat_get_activity(NULL) AS S
         LEFT JOIN pg_database AS D ON (S.datid = D.oid)
         LEFT JOIN pg_authid AS U ON (S.usesysid = U.oid)

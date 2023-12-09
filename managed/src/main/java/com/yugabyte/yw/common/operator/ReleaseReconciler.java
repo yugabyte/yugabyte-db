@@ -9,6 +9,7 @@ import io.fabric8.kubernetes.client.informers.ResourceEventHandler;
 import io.fabric8.kubernetes.client.informers.SharedIndexInformer;
 import io.fabric8.kubernetes.client.informers.cache.Lister;
 import io.yugabyte.operator.v1alpha1.Release;
+import io.yugabyte.operator.v1alpha1.ReleaseStatus;
 import io.yugabyte.operator.v1alpha1.releasespec.config.DownloadConfig;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.util.Pair;
@@ -20,6 +21,7 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
   private final MixedOperation<Release, KubernetesResourceList<Release>, Resource<Release>>
       resourceClient;
   private final ReleaseManager releaseManager;
+  private final String namespace;
 
   public static Pair<String, ReleaseMetadata> crToReleaseMetadata(Release release) {
     DownloadConfig downloadConfig = release.getSpec().getConfig().getDownloadConfig();
@@ -66,11 +68,13 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
   public ReleaseReconciler(
       SharedIndexInformer<Release> releaseInformer,
       MixedOperation<Release, KubernetesResourceList<Release>, Resource<Release>> resourceClient,
-      ReleaseManager releaseManager) {
+      ReleaseManager releaseManager,
+      String namespace) {
     this.resourceClient = resourceClient;
     this.informer = releaseInformer;
     this.lister = new Lister<>(informer.getIndexer());
     this.releaseManager = releaseManager;
+    this.namespace = namespace;
   }
 
   @Override
@@ -81,6 +85,7 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
       releaseManager.addReleaseWithMetadata(releasePair.getFirst(), releasePair.getSecond());
       releaseManager.addGFlagsMetadataFiles(releasePair.getFirst(), releasePair.getSecond());
       releaseManager.updateCurrentReleases();
+      updateStatus(release, "Available", true);
     } catch (RuntimeException re) {
       log.error("Error in adding release", re);
     }
@@ -116,5 +121,13 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
   public void run() {
     informer.addEventHandler(this);
     informer.run();
+  }
+
+  private void updateStatus(Release release, String status, Boolean success) {
+    ReleaseStatus releaseStatus = new ReleaseStatus();
+    releaseStatus.setMessage(status);
+    releaseStatus.setSuccess(success);
+    release.setStatus(releaseStatus);
+    resourceClient.inNamespace(namespace).resource(release).replaceStatus();
   }
 }

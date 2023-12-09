@@ -30,8 +30,6 @@ public class TestPgWaitQueuesRegress extends BasePgSQLTest {
     flagMap.put("enable_deadlock_detection", "true");
     flagMap.put("yb_enable_read_committed_isolation", "true");
     flagMap.put("auto_promote_nonlocal_transactions_to_global", "false");
-    // Setting the below flag stabilizes tests in yb-lock-status-waiters.
-    flagMap.put("TEST_delay_before_get_old_transactions_heartbeat_intervals", "2");
     return flagMap;
   }
 

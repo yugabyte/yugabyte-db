@@ -30,7 +30,7 @@
     </div>
   </div>
 
-  <div class="card-img">
+  <div class="card-img"{{- if .Params.imageTransparent }} style="background:#fff"{{- end -}}>
     {{- if .Params.imageUrl -}}
       <img src="{{- .Params.imageUrl -}}" {{- if .Params.imageAlt }} alt="{{- .Params.imageAlt -}}" title="{{- .Params.imageAlt -}}"{{- end -}}>
     {{- end -}}

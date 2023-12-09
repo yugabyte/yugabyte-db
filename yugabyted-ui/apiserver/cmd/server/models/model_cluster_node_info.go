@@ -17,4 +17,7 @@ type ClusterNodeInfo struct {
 
     // The number of CPU cores per node
     NumCores int32 `json:"num_cores"`
+
+    // The total size of provisioned ram (GB)
+    RamProvisionedGb float64 `json:"ram_provisioned_gb"`
 }

@@ -242,6 +242,33 @@ create view myview as  select * from mytmp;
 insert into myview values (3, 'foo') on conflict (id) do update set id = myview.id + 1;
 select * from myview;
 
+-- YB batched nested loop join
+CREATE TABLE p3 (a int, b int, c varchar, primary key(a,b));
+INSERT INTO p3 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(0, 599) i WHERE i % 5 = 0;
+ANALYZE p3;
+
+CREATE INDEX p1_b_idx ON p1 (b ASC);
+SET enable_hashjoin = off;
+SET enable_mergejoin = off;
+SET enable_seqscan = off;
+SET enable_material = off;
+SET yb_bnl_batch_size = 3;
+
+SELECT * FROM p1 JOIN p2 ON p1.a = p2.b AND p2.a = p1.b;
+
+SELECT * FROM p3 t3 RIGHT OUTER JOIN (SELECT t1.a as a FROM p1 t1 JOIN p2 t2 ON t1.a = t2.b WHERE t1.b <= 10 AND t2.b <= 15) s ON t3.a = s.a;
+
+CREATE TABLE m1 (a money, primary key(a asc));
+INSERT INTO m1 SELECT i*2 FROM generate_series(1, 2000) i;
+
+CREATE TABLE m2 (a money, primary key(a asc));
+INSERT INTO m2 SELECT i*5 FROM generate_series(1, 2000) i;
+SELECT * FROM m1 t1 JOIN m2 t2 ON t1.a = t2.a WHERE t1.a <= 50::money;
+-- Index on tmp table
+create temp table prtx2 (a integer, b integer, c integer);
+insert into prtx2 select 1 + i%10, i, i from generate_series(1,5000) i, generate_series(1,10) j;
+create index on prtx2 (c);
+
 -- Cleanup
 DROP TABLE IF EXISTS address, address2, emp, emp2, emp_par1, emp_par1_1_100, emp_par2, emp_par3,
   fastpath, myemp, myemp2, myemp2_101_200, myemp2_1_100, p1, p2, pk_range_int_asc,

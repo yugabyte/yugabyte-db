@@ -14,7 +14,7 @@ type: docs
 
 Review activity on your cluster using the **Activity** tab. The tab lists cluster activity, including the activity type, status, and start and end time.
 
-To review activity for your entire cloud, use the [**Activity** tab](../../cloud-secure-clusters/cloud-activity/) on the **Admin** page.
+To review activity for your entire cloud, use the [**Activity** tab](../../cloud-secure-clusters/cloud-activity/) on the **Security** page.
 
 ![Cluster Activity tab](/images/yb-cloud/cloud-clusters-activity.png)
 

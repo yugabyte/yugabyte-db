@@ -79,7 +79,7 @@ Result<YBTableName> XClusterYcqlTestBase::CreateTable(
 Status XClusterYcqlTestBase::CreateTable(
     uint32_t idx, uint32_t num_tablets, YBClient* client, std::vector<YBTableName>* tables) {
   auto table =
-      VERIFY_RESULT(CreateTable(client, kNamespaceName, Format("test_table_$0", idx), num_tablets));
+      VERIFY_RESULT(CreateTable(client, namespace_name, Format("test_table_$0", idx), num_tablets));
   tables->push_back(table);
   return Status::OK();
 }
@@ -88,14 +88,14 @@ Status XClusterYcqlTestBase::CreateTable(
     uint32_t idx, uint32_t num_tablets, YBClient* client, client::YBSchema schema,
     std::vector<YBTableName>* tables) {
   auto table = VERIFY_RESULT(XClusterTestBase::CreateTable(
-      client, kNamespaceName, Format("test_table_$0", idx), num_tablets, &schema));
+      client, namespace_name, Format("test_table_$0", idx), num_tablets, &schema));
   tables->push_back(table);
   return Status::OK();
 }
 
 void XClusterYcqlTestBase::WriteWorkload(
     uint32_t start, uint32_t end, YBClient* client, const YBTableName& table, bool delete_op) {
-  auto session = client->NewSession();
+  auto session = client->NewSession(kRpcTimeout * 1s);
   client::TableHandle table_handle;
   ASSERT_OK(table_handle.Open(table, client));
   std::vector<std::shared_ptr<client::YBqlOp>> ops;
@@ -154,10 +154,12 @@ Status XClusterYcqlTestBase::DoVerifyNumRecords(
 }
 
 Result<std::unique_ptr<XClusterTestBase::Cluster>> XClusterYcqlTestBase::AddCluster(
-    YBClusters* clusters, const std::string& cluster_id, bool is_producer, uint32_t num_tservers) {
-  std::string prefix = is_producer ? "AP" : "AC";
+    YBClusters* clusters, uint32 cluster_id, bool is_producer, uint32_t num_tservers) {
+  auto cluster_id_str =
+      Format("additional_$0_$1", is_producer ? "producer" : "consumer", cluster_id);
+  auto prefix = Format("$0$1", is_producer ? "AP" : "AC", cluster_id);
   std::unique_ptr<Cluster> additional_cluster =
-      VERIFY_RESULT(CreateCluster(cluster_id, prefix, num_tservers));
+      VERIFY_RESULT(CreateCluster(cluster_id_str, prefix, num_tservers));
   additional_cluster->txn_mgr_.emplace(
       additional_cluster->client_.get(), GetClock(), client::LocalTabletFilter());
   clusters->push_back(std::move(additional_cluster.get()));
@@ -168,7 +170,7 @@ Status XClusterYcqlTestBase::CreateAdditionalClusterTables(
     YBClient* client, YBTables* tables, uint32_t num_tablets_per_table, size_t num_tables) {
   for (uint32_t i = 0; i < num_tables; ++i) {
     auto table = VERIFY_RESULT(
-        CreateTable(client, kNamespaceName, Format("test_table_$0", i), num_tablets_per_table));
+        CreateTable(client, namespace_name, Format("test_table_$0", i), num_tablets_per_table));
     std::shared_ptr<client::YBTable> new_table;
     RETURN_NOT_OK(client->OpenTable(table, &new_table));
     tables->push_back(new_table);
@@ -177,7 +179,7 @@ Status XClusterYcqlTestBase::CreateAdditionalClusterTables(
 }
 
 Result<std::unique_ptr<XClusterTestBase::Cluster>> XClusterYcqlTestBase::AddClusterWithTables(
-    YBClusters* clusters, YBTables* tables, const std::string& cluster_id, size_t num_tables,
+    YBClusters* clusters, YBTables* tables, uint32 cluster_id, size_t num_tables,
     uint32_t num_tablets_per_table, bool is_producer, uint32_t num_tservers) {
   std::unique_ptr<Cluster> additional_cluster =
       VERIFY_RESULT(AddCluster(clusters, cluster_id, is_producer, num_tservers));

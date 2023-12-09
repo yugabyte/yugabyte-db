@@ -137,13 +137,15 @@ message TabletLockInfoPB {
     repeated bytes blocking_txn_ids = 3;
   }
 
+  // Lock info for a given transaction at this tablet.
   message TransactionLockInfoPB {
-    repeated LockInfoPB granted_locks = 1;
+    optional bytes id = 1;
 
-    optional WaiterInfoPB waiting_locks = 2;
+    repeated LockInfoPB granted_locks = 2;
+
+    optional WaiterInfoPB waiting_locks = 3;
   }
-  // A map with transaction id as key and the value holding the corresponding lock(s) information.
-  map<string, TransactionLockInfoPB> transaction_locks = 3;
+  repeated TransactionLockInfoPB transaction_locks = 3;
 
   // Awaiting lock info of single shard waiters.
   repeated WaiterInfoPB single_shard_waiters = 4;

@@ -9,9 +9,11 @@ import {
 import {
   Universe,
   KmsConfig,
-  EncryptionAtRestConfig
+  EncryptionAtRestConfig,
+  Certificate
 } from '../features/universe/universe-form/utils/dto';
 import { TaskResponse } from './dtos';
+import { EncryptionInTransitFormValues } from '../features/universe/universe-actions/encryption-in-transit/EncryptionInTransitUtils';
 
 // define unique names to use them as query keys
 export enum QUERY_KEY {
@@ -21,7 +23,9 @@ export enum QUERY_KEY {
   setKMSConfig = 'setKMSConfig',
   editYSQL = 'editYSQL',
   editYCQL = 'editYCQL',
-  rotateDBPassword = 'rotateDBPassword'
+  rotateDBPassword = 'rotateDBPassword',
+  updateTLS = 'updateTLS',
+  getCertificates = 'getCertificates'
 }
 
 class ApiService {
@@ -74,6 +78,16 @@ class ApiService {
   ): Promise<TaskResponse> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeId}/update_db_credentials`;
     return axios.post<TaskResponse>(requestUrl, data).then((resp) => resp.data);
+  };
+
+  updateTLS = (universeId: string, values: Partial<EncryptionInTransitFormValues>) => {
+    const cUUID = localStorage.getItem('customerId');
+    return axios.post(`${ROOT_URL}/customers/${cUUID}/universes/${universeId}/update_tls`, values);
+  };
+
+  getCertificates = (): Promise<Certificate[]> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/certificates`;
+    return axios.get<Certificate[]>(requestUrl).then((resp) => resp.data);
   };
 }
 

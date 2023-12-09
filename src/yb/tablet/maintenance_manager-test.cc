@@ -54,7 +54,7 @@ METRIC_DEFINE_gauge_uint32(test, maintenance_ops_running,
                            "Number of Maintenance Operations Running",
                            yb::MetricUnit::kMaintenanceOperations,
                            "The number of background maintenance operations currently running.");
-METRIC_DEFINE_coarse_histogram(test, maintenance_op_duration,
+METRIC_DEFINE_event_stats(test, maintenance_op_duration,
                         "Maintenance Operation Duration",
                         yb::MetricUnit::kSeconds, "");
 
@@ -186,7 +186,7 @@ class TestMaintenanceOp : public MaintenanceOp {
     perf_improvement_ = perf_improvement;
   }
 
-  scoped_refptr<Histogram> DurationHistogram() const override {
+  scoped_refptr<EventStats> DurationHistogram() const override {
     return maintenance_op_duration_;
   }
 
@@ -203,7 +203,7 @@ class TestMaintenanceOp : public MaintenanceOp {
   uint64_t perf_improvement_;
   MetricRegistry metric_registry_;
   scoped_refptr<MetricEntity> metric_entity_;
-  scoped_refptr<Histogram> maintenance_op_duration_;
+  scoped_refptr<EventStats> maintenance_op_duration_;
   scoped_refptr<AtomicGauge<uint32_t> > maintenance_ops_running_;
 };
 

@@ -494,11 +494,11 @@ int KeyValueTableTest<MiniClusterType>::NumTablets() {
 template <class MiniClusterType>
 YBSessionPtr KeyValueTableTest<MiniClusterType>::CreateSession(
     const YBTransactionPtr& transaction, const server::ClockPtr& clock) {
-  auto session = std::make_shared<YBSession>(client_.get(), clock);
+  auto session =
+      std::make_shared<YBSession>(client_.get(), RegularBuildVsSanitizers(15s, 60s), clock);
   if (transaction) {
     session->SetTransaction(transaction);
   }
-  session->SetTimeout(RegularBuildVsSanitizers(15s, 60s));
   return session;
 }
 

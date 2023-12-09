@@ -79,7 +79,7 @@ ScopedLeaderSharedLock::ScopedLeaderSharedLock(
     : catalog_(DCHECK_NOTNULL(catalog)),
       leader_shared_lock_(catalog->leader_lock_, std::try_to_lock),
       start_(std::chrono::steady_clock::now()),
-      leader_ready_term_(-1),
+      epoch_(LeaderEpoch(-1)),
       file_name_(file_name),
       line_number_(line_number),
       function_name_(function_name) {
@@ -92,8 +92,9 @@ ScopedLeaderSharedLock::ScopedLeaderSharedLock(
           "Catalog manager is not initialized. State: $0", catalog_->state_);
       return;
     }
-    leader_ready_term_ = catalog_->leader_ready_term_;
+    epoch_.leader_term = catalog_->leader_ready_term_;
     catalog_loaded = catalog_->is_catalog_loaded_;
+    epoch_.pitr_count = catalog_->sys_catalog_->pitr_count();
   }
 
   string uuid = catalog_->master_->fs_manager()->uuid();
@@ -123,7 +124,7 @@ ScopedLeaderSharedLock::ScopedLeaderSharedLock(
     leader_status_ = s;
     return;
   }
-  if (PREDICT_FALSE(leader_ready_term_ != cstate.current_term())) {
+  if (PREDICT_FALSE(epoch_.leader_term != cstate.current_term())) {
     // Normally we use LeaderNotReadyToServe to indicate that the leader has not replicated its
     // NO_OP entry or the previous leader's lease has not expired yet, and the handling logic is to
     // to retry on the same server.
@@ -131,7 +132,7 @@ ScopedLeaderSharedLock::ScopedLeaderSharedLock(
         LeaderNotReadyToServe,
         "Leader not yet ready to serve requests: "
         "leader_ready_term_ = $0; cstate.current_term = $1",
-        leader_ready_term_, cstate.current_term());
+        epoch_.leader_term, cstate.current_term());
     return;
   }
   if (PREDICT_FALSE(!leader_shared_lock_.owns_lock())) {
@@ -139,7 +140,7 @@ ScopedLeaderSharedLock::ScopedLeaderSharedLock(
         ServiceUnavailable,
         "Couldn't get leader_lock_ in shared mode. Leader still loading catalog tables."
         "leader_ready_term_ = $0; cstate.current_term = $1",
-        leader_ready_term_, cstate.current_term());
+        epoch_.leader_term, cstate.current_term());
     return;
   }
   if (!catalog_loaded) {
@@ -175,7 +176,7 @@ void ScopedLeaderSharedLock::Unlock() {
   }
 }
 
-int64_t ScopedLeaderSharedLock::GetLeaderReadyTerm() const { return leader_ready_term_; }
+int64_t ScopedLeaderSharedLock::GetLeaderReadyTerm() const { return epoch_.leader_term; }
 
 }  // namespace master
 }  // namespace yb

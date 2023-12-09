@@ -25,6 +25,7 @@
 #include "optimizer/paths.h"
 #include "optimizer/planmain.h"
 #include "optimizer/restrictinfo.h"
+#include "pg_yb_utils.h"
 #include "utils/typcache.h"
 
 /* Hook for plugins to get control in add_paths_to_joinrel() */
@@ -725,10 +726,13 @@ try_nestloop_path(PlannerInfo *root,
 			}
 		}
 
-		if (inner_path->param_info &&
+		if (IsYugaByteEnabled() &&
+			 inner_path->param_info &&
 			 inner_path->param_info->yb_ppi_req_outer_batched)
 		{
-
+			/*
+			 * YB: Check to make sure this is a valid BNL.
+			 */
 			if (yb_has_non_evaluable_bnl_clauses(outer_path,
 															 inner_path,
 															 extra->restrictlist) || 
@@ -738,6 +742,28 @@ try_nestloop_path(PlannerInfo *root,
 															  ->ppi_clauses)))
 			{
 				bms_free(required_outer);
+				return;
+			}
+		}
+
+		if (IsYugaByteEnabled() &&
+			 outer_path->param_info && inner_path->param_info)
+		{
+			/*
+			 * YB: Check to see if there are any conflicting unbatched and batched
+			 * rels.
+			 */
+			Relids unbatched =
+				bms_union(inner_path->param_info->yb_ppi_req_outer_unbatched,
+							 outer_path->param_info->yb_ppi_req_outer_unbatched);
+			Relids batched =
+				bms_union(inner_path->param_info->yb_ppi_req_outer_batched,
+							 outer_path->param_info->yb_ppi_req_outer_batched);
+			if (bms_overlap(unbatched, batched))
+			{
+				bms_free(required_outer);
+				bms_free(unbatched);
+				bms_free(batched);
 				return;
 			}
 		}

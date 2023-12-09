@@ -1,7 +1,6 @@
 import _ from 'lodash';
 import { browserHistory } from 'react-router';
 import { toast } from 'react-toastify';
-import { useSelector } from 'react-redux';
 import {
   CloudType,
   ClusterType,
@@ -188,6 +187,7 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
       enableYEDIS: !!userIntent.enableYEDIS,
       enableEncryptionAtRest: !!encryptionAtRestConfig.encryptionAtRestEnabled,
       kmsConfig: encryptionAtRestConfig?.kmsConfigUUID ?? null,
+      tserverK8SNodeResourceSpec: userIntent.tserverK8SNodeResourceSpec,
       rootCA
     },
     advancedConfig: {
@@ -213,6 +213,13 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
   if (data.cloudConfig.masterPlacement === MasterPlacementMode.DEDICATED) {
     data.instanceConfig.masterInstanceType = userIntent.masterInstanceType;
     data.instanceConfig.masterDeviceInfo = userIntent.masterDeviceInfo;
+  }
+
+   if (
+    data.cloudConfig.provider?.code === CloudType.kubernetes &&
+    data.cloudConfig.masterPlacement === MasterPlacementMode.DEDICATED
+  ) {
+    data.instanceConfig.masterK8SNodeResourceSpec = userIntent.masterK8SNodeResourceSpec;
   }
 
   return data;
@@ -258,6 +265,7 @@ export const getUserIntent = (
     useTimeSync: instanceConfig.useTimeSync,
     enableYEDIS: instanceConfig.enableYEDIS,
     useSpotInstance: instanceConfig.useSpotInstance,
+    tserverK8SNodeResourceSpec: instanceConfig.tserverK8SNodeResourceSpec,
     accessKeyCode: advancedConfig.accessKeyCode,
     ybSoftwareVersion: advancedConfig.ybSoftwareVersion,
     enableIPV6: advancedConfig.enableIPV6,
@@ -298,7 +306,6 @@ export const getUserIntent = (
     cloudConfig.provider?.code === CloudType.kubernetes &&
     cloudConfig.masterPlacement === MasterPlacementMode.DEDICATED
   ) {
-    intent.tserverK8SNodeResourceSpec = instanceConfig.tserverK8SNodeResourceSpec;
     intent.masterK8SNodeResourceSpec = instanceConfig.masterK8SNodeResourceSpec;
   }
 

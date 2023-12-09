@@ -35,7 +35,7 @@ Open the YSQL shell (`ysqlsh`), specifying the `yugabyte` user and prompting for
 $ ./ysqlsh -U yugabyte -W
 ```
 
-When prompted for the password, enter the yugabyte password. You should be able to login and see a response like below.
+When prompted for the password, enter the yugabyte password. You should be able to log in and see a response like below.
 
 ```output
 ysqlsh (11.2-YB-2.5.0.0-b0)

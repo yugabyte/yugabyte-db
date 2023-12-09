@@ -42,23 +42,23 @@ METRIC_DEFINE_gauge_uint64(tablet, log_wal_size, "Size of WAL Files",
                            yb::MetricUnit::kBytes,
                            "Size of wal files");
 
-METRIC_DEFINE_coarse_histogram(table, log_sync_latency, "Log Sync Latency",
+METRIC_DEFINE_event_stats(table, log_sync_latency, "Log Sync Latency",
                                yb::MetricUnit::kMicroseconds,
                                "Microseconds spent on synchronizing the log segment file");
 
-METRIC_DEFINE_coarse_histogram(table, log_append_latency, "Log Append Latency",
+METRIC_DEFINE_event_stats(table, log_append_latency, "Log Append Latency",
                         yb::MetricUnit::kMicroseconds,
                         "Microseconds spent on appending to the log segment file");
 
-METRIC_DEFINE_coarse_histogram(table, log_group_commit_latency, "Log Group Commit Latency",
+METRIC_DEFINE_event_stats(table, log_group_commit_latency, "Log Group Commit Latency",
                         yb::MetricUnit::kMicroseconds,
                         "Microseconds spent on committing an entire group");
 
-METRIC_DEFINE_coarse_histogram(table, log_roll_latency, "Log Roll Latency",
+METRIC_DEFINE_event_stats(table, log_roll_latency, "Log Roll Latency",
                         yb::MetricUnit::kMicroseconds,
                         "Microseconds spent on rolling over to a new log segment file");
 
-METRIC_DEFINE_coarse_histogram(table, log_entry_batches_per_group, "Log Group Commit Batch Size",
+METRIC_DEFINE_event_stats(table, log_entry_batches_per_group, "Log Group Commit Batch Size",
                         yb::MetricUnit::kRequests,
                         "Number of log entry batches in a group commit group");
 

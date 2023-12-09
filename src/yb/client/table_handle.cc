@@ -206,7 +206,7 @@ TableIterator::TableIterator(const TableHandle* table, const TableIteratorOption
     : table_(table), error_handler_(options.error_handler) {
   auto client = table->client();
 
-  session_ = client->NewSession();
+  session_ = client->NewSession(options.timeout);
 
   google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
   REPORT_AND_RETURN_IF_NOT_OK(client->GetTablets(

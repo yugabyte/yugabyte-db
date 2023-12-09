@@ -181,6 +181,8 @@ export const useNodePlacements = (featureFlags: Record<string, any>) => {
     masterPlacement,
     masterDeviceInfo,
     masterInstanceType,
+    tserverK8SNodeResourceSpec,
+    masterK8SNodeResourceSpec,
     useSpotInstance
   });
 
@@ -298,6 +300,8 @@ export const useNodePlacements = (featureFlags: Record<string, any>) => {
       masterPlacement,
       masterDeviceInfo,
       masterInstanceType,
+      tserverK8SNodeResourceSpec,
+      masterK8SNodeResourceSpec,
       useSpotInstance
     };
     if (_.isEmpty(regionList)) {

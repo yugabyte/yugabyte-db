@@ -3,6 +3,7 @@ title: Point-in-time recovery in YugabyteDB Anywhere
 headerTitle: Point-in-time recovery
 linkTitle: Point-in-time recovery
 description: Using Point-in-time recovery in YugabyteDB Anywhere
+headContent: Restore to a point in time
 menu:
   stable_yugabyte-platform:
     parent: back-up-restore-universes
@@ -12,6 +13,12 @@ type: docs
 ---
 
 To prevent data loss, YugabyteDB Anywhere supports [point-in-time recovery](../../../manage/backup-restore/point-in-time-recovery/) (PITR) of the universe data.
+
+{{< note title="Note" >}}
+
+You must initiate and manage PITR using the YugabyteDB Anywhere UI. If you use the yb-admin CLI to make changes to the PITR configuration of a universe managed by YugabyteDB Anywhere, including creating schedules and snapshots, your changes are not reflected in YugabyteDB Anywhere.
+
+{{< /note >}}
 
 ## Create a PITR configuration
 

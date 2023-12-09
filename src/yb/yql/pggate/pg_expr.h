@@ -117,6 +117,11 @@ class PgExpr {
     return false;
   }
 
+  // is expression a system column reference (i.e. oid, ybctid)
+  virtual bool is_system() const {
+    return false;
+  }
+
   // Read the result from input buffer (yb_cursor) that was computed by and sent from DocDB.
   // Write the result to output buffer (pg_cursor) in Postgres format.
   Status ResultToPg(Slice *yb_cursor, Slice *pg_cursor);
@@ -211,6 +216,8 @@ class PgColumnRef : public PgExpr, public PgFetchedTarget {
   GetColumns(PgTable *pg_table) const override;
 
   bool is_ybbasetid() const override;
+
+  bool is_system() const override;
 
   int attr_num() const {
     return attr_num_;

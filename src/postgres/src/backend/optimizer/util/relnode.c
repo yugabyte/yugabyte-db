@@ -1358,8 +1358,26 @@ get_baserel_parampathinfo(PlannerInfo *root, RelOptInfo *baserel,
 															joinrelids,
 															required_outer,
 															baserel));
+
+	List *sel_clauses = pclauses;
+	if (!bms_is_empty(batchedrelids))
+	{
+		List *new_pclauses = NIL;
+		foreach (lc, pclauses)
+		{
+			RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+			RestrictInfo *batched =
+				yb_get_batched_restrictinfo(rinfo, batchedrelids, baserel->relids);
+			if (batched)
+				rinfo = batched;
+			
+			new_pclauses = lappend(new_pclauses, rinfo);
+		}
+		sel_clauses = new_pclauses;
+	}
+
 	/* Estimate the number of rows returned by the parameterized scan */
-	rows = get_parameterized_baserel_size(root, baserel, pclauses);
+	rows = get_parameterized_baserel_size(root, baserel, sel_clauses);
 	/* And now we can build the ParamPathInfo */
 	ppi = makeNode(ParamPathInfo);
 	ppi->ppi_req_outer = required_outer;

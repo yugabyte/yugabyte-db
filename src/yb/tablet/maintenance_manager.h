@@ -54,7 +54,7 @@ namespace yb {
 
 template<class T>
 class AtomicGauge;
-class Histogram;
+class EventStats;
 class MaintenanceManager;
 class MemTracker;
 
@@ -184,7 +184,7 @@ class MaintenanceOp {
   virtual void Perform() = 0;
 
   // Returns the histogram for this op that tracks duration. Cannot be NULL.
-  virtual scoped_refptr<Histogram> DurationHistogram() const = 0;
+  virtual scoped_refptr<EventStats> DurationHistogram() const = 0;
 
   // Returns the gauge for this op that tracks when this op is running. Cannot be NULL.
   virtual scoped_refptr<AtomicGauge<uint32_t> > RunningGauge() const = 0;

@@ -342,7 +342,7 @@ The following steps demonstrate how to create two Java applications, `UniformLoa
         config.validate();
         HikariDataSource hikariDataSource = new HikariDataSource(config);
 
-        System.out.println("Wait for some time for Hikari Pool to setup and create the connections...");
+        System.out.println("Wait for some time for Hikari Pool to set up and create the connections...");
         System.out.println("You can verify the load balancing by visiting http://<host>:13000/rpcz as discussed before.");
         System.out.println("Enter a integer to continue once verified:");
         int x = new Scanner(System.in).nextInt();
@@ -450,7 +450,7 @@ The following steps demonstrate how to create two Java applications, `UniformLoa
         config.validate();
         HikariDataSource hikariDataSource = new HikariDataSource(config);
 
-        System.out.println("Wait for some time for Hikari Pool to setup and create the connections...");
+        System.out.println("Wait for some time for Hikari Pool to set up and create the connections...");
         System.out.println("You can verify the load balancing by visiting http://<host>:13000/rpcz as discussed before.");
         System.out.println("Enter a integer to continue once verified:");
         int x = new Scanner(System.in).nextInt();

@@ -28,6 +28,9 @@ const useStyles = makeStyles((theme) => ({
   },
   error: {
     color: '#e8473f'
+  },
+  deleting: {
+    color: '#FF6347'
   }
 }));
 
@@ -61,6 +64,15 @@ export const ProviderStatusLabel = ({
         <Typography variant={variant}>
           <span className={clsx(classes.label, classes.error)}>
             <i className="fa fa-close" />
+            {ProviderStatusTextLabel[providerStatus]}
+          </span>
+        </Typography>
+      );
+      case ProviderStatus.DELETING:
+      return (
+        <Typography variant={variant}>
+          <span className={clsx(classes.label, classes.deleting)}>
+          <i className="fa fa-spinner fa-spin" />
             {ProviderStatusTextLabel[providerStatus]}
           </span>
         </Typography>

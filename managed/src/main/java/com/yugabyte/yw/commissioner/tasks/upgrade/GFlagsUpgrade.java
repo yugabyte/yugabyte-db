@@ -249,9 +249,8 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
                       nodeList,
                       processType,
                       true,
-                      processType == ServerType.MASTER
-                          ? taskParams().masterGFlags
-                          : taskParams().tserverGFlags,
+                      node ->
+                          GFlagsUtil.getGFlagsForNode(node, processType, newCluster, newClusters),
                       false)
                   .setSubTaskGroupType(getTaskSubGroupType());
             },

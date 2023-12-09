@@ -279,8 +279,18 @@ eqsel_internal(PG_FUNCTION_ARGS, bool negate)
 							 ((Const *) other)->constisnull,
 							 varonleft, negate);
 	else
+	{
+		bool yb_is_batched = IsYugaByteEnabled() && IsA(other, YbBatchedExpr);
+
 		selec = var_eq_non_const(&vardata, operator, collation, other,
 								 varonleft, negate);
+
+		if (yb_is_batched)
+		{
+			selec *= yb_batch_expr_size(root, varRelid, other);
+			CLAMP_PROBABILITY(selec);
+		}
+	}
 
 	ReleaseVariableStats(vardata);
 
@@ -6356,6 +6366,27 @@ get_quals_from_indexclauses(List *indexclauses)
 	return result;
 }
 
+int
+yb_batch_expr_size(PlannerInfo *root, Index path_relid, Node *batched_expr)
+{
+	Assert(IsA(batched_expr, YbBatchedExpr));
+	Node *batched_operand =
+		(Node *) castNode(YbBatchedExpr, batched_expr)->orig_expr;
+	Relids other_varnos = pull_varnos(root, batched_operand);
+	Relids batched_relids = root->yb_cur_batched_relids;
+	root->yb_cur_batched_relids = NULL;
+
+	int num_outer_tuples =
+		get_loop_count(root, path_relid, other_varnos);
+
+	root->yb_cur_batched_relids = batched_relids;
+	int batch_size = yb_bnl_batch_size;
+	if (batch_size > num_outer_tuples)
+		batch_size = num_outer_tuples;
+
+	return batch_size;
+}
+
 /*
  * Compute the total evaluation cost of the comparison operands in a list
  * of index qual expressions.  Since we know these will be evaluated just
@@ -6656,7 +6687,6 @@ add_predicate_to_index_quals(IndexOptInfo *index, List *indexQuals)
 	}
 	return list_concat(predExtraQuals, indexQuals);
 }
-
 
 void
 btcostestimate(PlannerInfo *root, IndexPath *path, double loop_count,

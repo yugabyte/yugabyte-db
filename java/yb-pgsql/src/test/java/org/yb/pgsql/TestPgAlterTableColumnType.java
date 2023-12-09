@@ -324,4 +324,24 @@ public class TestPgAlterTableColumnType extends BasePgSQLTest {
           new Row("SPLIT AT VALUES ((E'test123\"\"''\\\\hi'))"));
     }
   }
+
+  @Test
+  public void testMultipleRewrites() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE test (a float, b varchar(10))");
+      statement.execute("INSERT INTO test VALUES (1.0, 'abc'), (2.0, 'xyz')");
+      // Test multiple ALTER COLUMN TYPE subcommands.
+      statement.execute("ALTER TABLE test ALTER COLUMN a TYPE text USING a::text,"
+        + " ALTER COLUMN b TYPE varchar(5);");
+      assertRowList(statement, "SELECT * FROM test ORDER BY a", Arrays.asList(
+          new Row("1", "abc"),
+          new Row("2", "xyz")));
+      // Test multiple ALTER COLUMN TYPE subcommands with an ADD PRIMARY KEY subcommand.
+      statement.execute("ALTER TABLE test ALTER COLUMN a TYPE varchar(3),"
+        + " ALTER COLUMN b TYPE varchar(4), ADD PRIMARY KEY (b)");
+      assertRowList(statement, "SELECT * FROM test ORDER BY a", Arrays.asList(
+          new Row("1", "abc"),
+          new Row("2", "xyz")));
+    }
+  }
 }

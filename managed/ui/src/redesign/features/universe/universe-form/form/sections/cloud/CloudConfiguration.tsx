@@ -38,7 +38,7 @@ export const CloudConfiguration = ({ runtimeConfigs }: UniverseFormConfiguration
     (c: RunTimeConfigEntry) => c.key === 'yb.ui.enable_dedicated_nodes'
   );
   const useK8CustomResourcesObject = runtimeConfigs?.configEntries?.find(
-    (c: RunTimeConfigEntry) => c.key === 'yb.ui.feature_flags.k8s_custom_resources'
+    (c: RunTimeConfigEntry) => c.key === 'yb.use_k8s_custom_resources'
   );
   const useK8CustomResources = !!(useK8CustomResourcesObject?.value === 'true');
   const isDedicatedNodesEnabled = !!(enableDedicatedNodesObject?.value === 'true');

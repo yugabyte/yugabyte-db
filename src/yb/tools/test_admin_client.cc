@@ -117,7 +117,8 @@ Result<std::vector<master::TabletLocationsPB>> TestAdminClient::GetTabletLocatio
   return GetTabletLocations(tname);
 }
 
-Status TestAdminClient::WaitForTabletFullyCompacted(size_t tserver_idx, const TabletId& tablet_id) {
+Status TestAdminClient::WaitForTabletPostSplitCompacted(
+    size_t tserver_idx, const TabletId& tablet_id) {
   const auto ts = cluster_->tablet_server(tserver_idx);
   return WaitFor(
       [&]() -> Result<bool> {
@@ -127,10 +128,10 @@ Status TestAdminClient::WaitForTabletFullyCompacted(size_t tserver_idx, const Ta
                      << " error: " << resp.error().status().ShortDebugString();
           return false;
         }
-        return resp.tablet_status().has_been_fully_compacted();
+        return resp.tablet_status().parent_data_compacted();
       },
       30s * kTimeMultiplier,
-      Format("Waiting for tablet $0 fully compacted on tserver $1", tablet_id, ts->id()));
+      Format("Waiting for tablet $0 post split compacted on tserver $1", tablet_id, ts->id()));
 }
 
 Status TestAdminClient::FlushTable(const std::string& ns, const std::string& table) {

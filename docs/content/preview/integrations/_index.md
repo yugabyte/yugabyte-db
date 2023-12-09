@@ -29,7 +29,12 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
       Apache Atlas
     </a>
   </li>
-
+  <li>
+    <a href="apache-beam/">
+      <img src="/images/section_icons/develop/ecosystem/beam.png">
+      Apache Beam
+    </a>
+  </li>
   <li>
     <a href="apache-flink/">
       <img src="/images/section_icons/develop/ecosystem/apache-flink.png">
@@ -205,6 +210,13 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
     <a href="prisma/">
       <img src="/images/develop/graphql/prisma/prisma.png">
       Prisma
+    </a>
+  </li>
+
+  <li>
+    <a href="rabbitmq/">
+      <img src="/images/section_icons/develop/ecosystem/rabbitmq.png">
+      RabbitMQ
     </a>
   </li>
 

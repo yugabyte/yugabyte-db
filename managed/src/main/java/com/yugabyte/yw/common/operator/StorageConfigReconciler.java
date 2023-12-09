@@ -83,14 +83,30 @@ public class StorageConfigReconciler implements ResourceEventHandler<StorageConf
     }
     status.setSuccess(success);
     status.setMessage(message);
-    status.setUUID(configUUID);
-    sc.setStatus(status);
+    UUID currentconfigUUID;
+    try {
+      currentconfigUUID = UUID.fromString(sc.getStatus().getUUID());
+    } catch (Exception e) {
+      currentconfigUUID = null;
+    }
+    // Don't overwrite configUUID once set.
 
+    if (currentconfigUUID == null) {
+      status.setUUID(configUUID);
+    }
+
+    sc.setStatus(status);
     resourceClient.inNamespace(namespace).resource(sc).replaceStatus();
   }
 
   @Override
   public void onAdd(StorageConfig sc) {
+    if (sc.getStatus() != null) {
+      if (sc.getStatus().getUUID() != null) {
+        log.info("Early return because Storage Config is already initialized");
+        return;
+      }
+    }
     log.info("Adding a storage config {} ", sc);
     String cuuid;
     String value = sc.getSpec().getConfig_type().getValue();

@@ -53,27 +53,31 @@ METRIC_DEFINE_counter(tablet, insertions_failed_dup_key, "Duplicate Key Inserts"
                       yb::MetricUnit::kRows,
                       "Number of inserts which failed because the key already existed");
 
-METRIC_DEFINE_coarse_histogram(table, ql_write_latency, "Write latency at tserver layer",
+METRIC_DEFINE_event_stats(table, ql_write_latency, "Write latency at tserver layer",
   yb::MetricUnit::kMicroseconds,
   "Time taken to handle a batch of writes at tserver layer");
 
-METRIC_DEFINE_coarse_histogram(table, snapshot_read_inflight_wait_duration,
+METRIC_DEFINE_event_stats(table, snapshot_read_inflight_wait_duration,
   "Time Waiting For Snapshot Reads",
   yb::MetricUnit::kMicroseconds,
   "Time spent waiting for in-flight writes to complete for READ_AT_SNAPSHOT scans.");
 
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     table, ql_read_latency, "Handle ReadRequest latency at tserver layer",
     yb::MetricUnit::kMicroseconds,
     "Time taken to handle the read request at the tserver layer.");
 
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     table, write_lock_latency, "Write lock latency", yb::MetricUnit::kMicroseconds,
     "Time taken to acquire key locks for a write operation");
 
-METRIC_DEFINE_coarse_histogram(
+METRIC_DEFINE_event_stats(
     table, read_time_wait, "Read Time Wait", yb::MetricUnit::kMicroseconds,
     "Number of microseconds read queries spend waiting for safe time");
+
+METRIC_DEFINE_event_stats(
+    table, total_wait_queue_time, "Wait Queue Time", yb::MetricUnit::kMicroseconds,
+    "Number of microseconds spent in the wait queue for requests which enter the wait queue");
 
 METRIC_DEFINE_gauge_uint32(tablet, compact_rs_running,
   "RowSet Compactions Running",
@@ -125,6 +129,12 @@ METRIC_DEFINE_counter(tablet, consistent_prefix_read_requests,
     yb::MetricUnit::kRequests,
     "Number of consistent prefix read requests");
 
+METRIC_DEFINE_counter(tablet, picked_read_time_on_docdb,
+    "Picked read time on docdb",
+    yb::MetricUnit::kRequests,
+    "Number of times, a read time was picked on docdb instead of the query layer for read/write "
+    "requests");
+
 METRIC_DEFINE_counter(tablet, pgsql_consistent_prefix_read_rows,
                       "Consistent Prefix Read Requests",
                       yb::MetricUnit::kRequests,
@@ -173,6 +183,7 @@ constexpr std::pair<uint32_t, TabletCounters> kCounters[] = {
   {pggate::YB_ANALYZE_METRIC_RESTART_READ_REQUESTS, TabletCounters::kRestartReadRequests},
   {pggate::YB_ANALYZE_METRIC_CONSISTENT_PREFIX_READ_REQUESTS,
       TabletCounters::kConsistentPrefixReadRequests},
+  {pggate::YB_ANALYZE_METRIC_PICKED_READ_TIME_ON_DOCDB, TabletCounters::kPickReadTimeOnDocDB},
   {pggate::YB_ANALYZE_METRIC_PGSQL_CONSISTENT_PREFIX_READ_ROWS,
       TabletCounters::kPgsqlConsistentPrefixReadRows},
   {pggate::YB_ANALYZE_METRIC_TABLET_DATA_CORRUPTIONS, TabletCounters::kTabletDataCorruptions},
@@ -195,31 +206,32 @@ class TabletMetricsImpl final : public TabletMetrics {
 
   void IncrementBy(TabletCounters counter, uint64_t amount) override;
 
-  void IncrementBy(TabletHistograms histogram, uint64_t value, uint64_t amount) override;
+  void IncrementBy(TabletEventStats event_stats, uint64_t value, uint64_t amount) override;
 
  private:
-  std::vector<scoped_refptr<Histogram>> histograms_;
-  std::vector<scoped_refptr<yb::Counter>> counters_;
+  std::vector<scoped_refptr<EventStats>> event_stats_;
+  std::vector<scoped_refptr<Counter>> counters_;
 };
 
 TabletMetricsImpl::TabletMetricsImpl(const scoped_refptr<MetricEntity>& table_entity,
                                      const scoped_refptr<MetricEntity>& tablet_entity)
-  : histograms_(kElementsInTabletHistograms),
+  : event_stats_(kElementsInTabletEventStats),
     counters_(kElementsInTabletCounters) {
 
 #define METRIC_INIT(entity, name, metric_array, enum) \
     metric_array[to_underlying(enum)] = METRIC_##name.Instantiate(entity)
-#define HISTOGRAM_INIT(entity, name, enum) \
-    METRIC_INIT(entity, name, histograms_, TabletHistograms::enum)
+#define EVENT_STATS_INIT(entity, name, enum) \
+    METRIC_INIT(entity, name, event_stats_, TabletEventStats::enum)
 #define COUNTER_INIT(entity, name, enum) \
     METRIC_INIT(entity, name, counters_, TabletCounters::enum)
 
-  HISTOGRAM_INIT(table_entity, snapshot_read_inflight_wait_duration,
+  EVENT_STATS_INIT(table_entity, snapshot_read_inflight_wait_duration,
                  kSnapshotReadInflightWaitDuration);
-  HISTOGRAM_INIT(table_entity, ql_read_latency, kQlReadLatency);
-  HISTOGRAM_INIT(table_entity, write_lock_latency, kWriteLockLatency);
-  HISTOGRAM_INIT(table_entity, ql_write_latency, kQlWriteLatency);
-  HISTOGRAM_INIT(table_entity, read_time_wait, kReadTimeWait);
+  EVENT_STATS_INIT(table_entity, ql_read_latency, kQlReadLatency);
+  EVENT_STATS_INIT(table_entity, write_lock_latency, kWriteLockLatency);
+  EVENT_STATS_INIT(table_entity, ql_write_latency, kQlWriteLatency);
+  EVENT_STATS_INIT(table_entity, read_time_wait, kReadTimeWait);
+  EVENT_STATS_INIT(table_entity, total_wait_queue_time, kTotalWaitQueueTime);
 
   COUNTER_INIT(tablet_entity, not_leader_rejections, kNotLeaderRejections);
   COUNTER_INIT(tablet_entity, leader_memory_pressure_rejections, kLeaderMemoryPressureRejections);
@@ -228,6 +240,7 @@ TabletMetricsImpl::TabletMetricsImpl(const scoped_refptr<MetricEntity>& table_en
   COUNTER_INIT(tablet_entity, expired_transactions, kExpiredTransactions);
   COUNTER_INIT(tablet_entity, restart_read_requests, kRestartReadRequests);
   COUNTER_INIT(tablet_entity, consistent_prefix_read_requests, kConsistentPrefixReadRequests);
+  COUNTER_INIT(tablet_entity, picked_read_time_on_docdb, kPickReadTimeOnDocDB);
   COUNTER_INIT(tablet_entity, pgsql_consistent_prefix_read_rows, kPgsqlConsistentPrefixReadRows);
   COUNTER_INIT(tablet_entity, tablet_data_corruptions, kTabletDataCorruptions);
   COUNTER_INIT(tablet_entity, rows_inserted, kRowsInserted);
@@ -238,7 +251,7 @@ TabletMetricsImpl::TabletMetricsImpl(const scoped_refptr<MetricEntity>& table_en
                kDocDBObsoleteKeysFoundPastCutoff);
 
 #undef COUNTER_INIT
-#undef HISTOGRAM_INIT
+#undef EVENT_STATS_INIT
 #undef METRIC_INIT
 }
 
@@ -251,8 +264,8 @@ void TabletMetricsImpl::IncrementBy(TabletCounters counter, uint64_t amount) {
 }
 
 void TabletMetricsImpl::IncrementBy(
-    TabletHistograms histogram, uint64_t value, uint64_t amount) {
-  histograms_[to_underlying(histogram)]->IncrementBy(value, amount);
+    TabletEventStats event_stats, uint64_t value, uint64_t amount) {
+  event_stats_[to_underlying(event_stats)]->IncrementBy(value, amount);
 }
 
 } // namespace
@@ -281,9 +294,9 @@ void ScopedTabletMetrics::IncrementBy(TabletCounters counter, uint64_t amount) {
 }
 
 void ScopedTabletMetrics::IncrementBy(
-    TabletHistograms histogram, uint64_t value, uint64_t amount) {
+    TabletEventStats event_stats, uint64_t value, uint64_t amount) {
   DCHECK_IN_USE();
-  histogram_context_->IncrementBy(histogram, value, amount);
+  histogram_context_->IncrementBy(event_stats, value, amount);
 }
 
 void ScopedTabletMetrics::Prepare() {
@@ -335,12 +348,12 @@ std::unique_ptr<TabletMetrics> CreateTabletMetrics(
 }
 
 ScopedTabletMetricsLatencyTracker::ScopedTabletMetricsLatencyTracker(
-    TabletMetrics* tablet_metrics, TabletHistograms histogram)
-    : metrics_(tablet_metrics), histogram_(histogram), start_time_(MonoTime::Now()) {}
+    TabletMetrics* tablet_metrics, TabletEventStats event_stats)
+    : metrics_(tablet_metrics), event_stats_(event_stats), start_time_(MonoTime::Now()) {}
 
 ScopedTabletMetricsLatencyTracker::~ScopedTabletMetricsLatencyTracker() {
   metrics_->Increment(
-      histogram_,
+      event_stats_,
       MonoTime::Now().GetDeltaSince(start_time_).ToMicroseconds());
 }
 } // namespace tablet

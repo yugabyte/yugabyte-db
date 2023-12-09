@@ -42,7 +42,7 @@ func (db dbConfigCheck) Execute() Result {
 		(!devModeEnabled && !useExistingPostgres && !installPostgres) {
 		res.Status = StatusCritical
 		res.Error = fmt.Errorf(
-			"exactly one of postgres.useExisting.enabled and" +
+			"exactly one of postgres.useExisting.enabled and " +
 				"postgres.install.enabled should be set to true")
 		return res
 	} else if !installYbdb && !useExistingPostgres && !installPostgres {

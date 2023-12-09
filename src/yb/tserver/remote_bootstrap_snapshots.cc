@@ -78,11 +78,18 @@ Status RemoteBootstrapSnapshotsComponent::CreateDirectories(
   return Status::OK();
 }
 
-Status RemoteBootstrapSnapshotsComponent::Download() {
-  return Download(/* snapshot_id = */ nullptr);
-}
+Status RemoteBootstrapSnapshotsComponent::Download() { return DownloadInto(); }
 
 Status RemoteBootstrapSnapshotsComponent::Download(const SnapshotId* snapshot_id) {
+  return DownloadInto(snapshot_id);
+}
+
+Status RemoteBootstrapSnapshotsComponent::DownloadInto(
+    const SnapshotId* snapshot_id, const SnapshotId* new_snapshot_id) {
+  SCHECK(
+      !(snapshot_id == nullptr && new_snapshot_id != nullptr), InvalidArgument,
+      "Cannot specify new_snapshot_id when snapshot_id is unspecified");
+
   const auto& kv_store = new_superblock_.kv_store();
   const string& rocksdb_dir = kv_store.rocksdb_dir();
   const string top_snapshots_dir = tablet::TabletSnapshots::SnapshotsDirName(rocksdb_dir);
@@ -99,7 +106,13 @@ Status RemoteBootstrapSnapshotsComponent::Download(const SnapshotId* snapshot_id
     if (snapshot_id != nullptr && *snapshot_id != file_pb.snapshot_id()) {
       continue;
     }
-    RETURN_NOT_OK(Download(top_snapshots_dir, file_pb, &failed_snapshot_ids));
+
+    // If we specified a snapshot directory to download the files into, otherwise use the file's
+    // snapshot id.
+    const SnapshotId& saved_snapshot_id =
+        new_snapshot_id == nullptr ? file_pb.snapshot_id() : *new_snapshot_id;
+    RETURN_NOT_OK(
+        DownloadFileInto(top_snapshots_dir, file_pb, saved_snapshot_id, &failed_snapshot_ids));
   }
 
   // For the original RBS flow, they intentionally don't return bad status if downloading snapshot
@@ -113,17 +126,17 @@ Status RemoteBootstrapSnapshotsComponent::Download(const SnapshotId* snapshot_id
   return Status::OK();
 }
 
-Status RemoteBootstrapSnapshotsComponent::Download(
+Status RemoteBootstrapSnapshotsComponent::DownloadFileInto(
     const std::string& top_snapshots_dir, const tablet::SnapshotFilePB& file_pb,
-    std::unordered_set<SnapshotId>* failed_snapshot_ids) {
-  CHECK(failed_snapshot_ids != nullptr);
+    const SnapshotId& new_snapshot_id, std::unordered_set<SnapshotId>* failed_snapshot_ids) {
+  SCHECK_NOTNULL(failed_snapshot_ids);
   if (failed_snapshot_ids->find(file_pb.snapshot_id()) != failed_snapshot_ids->end()) {
     LOG(WARNING) << "Skipping download for file " << file_pb.file().name()
                  << " because it is part of failed snapshot " << file_pb.snapshot_id();
     return Status::OK();
   }
 
-  const string snapshot_dir = JoinPathSegments(top_snapshots_dir, file_pb.snapshot_id());
+  const string snapshot_dir = JoinPathSegments(top_snapshots_dir, new_snapshot_id);
   const std::string file_path = JoinPathSegments(snapshot_dir, file_pb.file().name());
 
   RETURN_NOT_OK_PREPEND(fs_manager().CreateDirIfMissingAndSync(top_snapshots_dir),

@@ -35,6 +35,7 @@ using std::string;
 DECLARE_bool(client_suppress_created_logs);
 DECLARE_uint32(change_metadata_backoff_max_jitter_ms);
 DECLARE_uint32(change_metadata_backoff_init_exponent);
+DECLARE_bool(ysql_ddl_rollback_enabled);
 
 DEFINE_test_flag(bool, duplicate_create_table_request, false,
                  "Whether a table creator should send duplicate CreateTableRequestPB to master.");
@@ -302,6 +303,7 @@ Status YBTableCreator::Create() {
 
   if (txn_) {
     txn_->ToPB(req.mutable_transaction());
+    req.set_ysql_ddl_rollback_enabled(FLAGS_ysql_ddl_rollback_enabled);
   }
 
   // Setup the number splits (i.e. number of splits).

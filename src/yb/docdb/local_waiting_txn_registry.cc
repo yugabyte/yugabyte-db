@@ -14,6 +14,7 @@
 #include "yb/docdb/local_waiting_txn_registry.h"
 
 #include <algorithm>
+#include <memory>
 
 #include <boost/optional/optional.hpp>
 #include <glog/logging.h>
@@ -31,6 +32,7 @@
 #include "yb/server/clock.h"
 #include "yb/tserver/tserver_service.fwd.h"
 #include "yb/tserver/tserver_service.pb.h"
+#include "yb/util/atomic.h"
 #include "yb/util/locks.h"
 #include "yb/util/logging.h"
 #include "yb/util/shared_lock.h"
@@ -42,6 +44,10 @@ using namespace std::placeholders;
 using namespace std::literals;
 
 DECLARE_bool(enable_deadlock_detection);
+DEFINE_test_flag(uint64, inject_process_update_resp_delay_ms, 0,
+                 "Injects a delay in the response handler for full wait-for update requests. Used "
+                 "to test that lifetimes of StatusTabletData are valid even if these responses are "
+                 "delayed.");
 
 namespace yb {
 namespace docdb {
@@ -61,10 +67,12 @@ struct WaitingTransactionData {
 };
 
 // Container for holding StatusTabletData and it's corresponding ThreadPoolToken. StatusTabletData
-// instance is automatically destroyed when there are no active waiter transactions waiting on it.
-// This is done by a thread from the wait-queue threadpool that resumes waiter transactions.
+// instance is automatically destroyed when there are no active waiter transactions waiting on it
+// and all shared_ptr references from oustanding RPCs have been released. The corresponding
+// StatusTabletEntry is then removed from the status_tablets_ in the same thread which sends the
+// wait-for graph periodically to the txn coordinator.
 //
-// Note: The same wait-queue threadpool is used to send partial/full wait-for updates from
+// Note: The same wait-queue threadpool is used to send partial wait-for updates from
 // LocalWaitingTxnRegistry. As a result, thread_pool_token cannot be moved to StatusTabletData as it
 // will result in a thread from the wait-queue pool calling Shutdown on another token created from
 // the same pool, leading to a deadlock. Instead, StatusTabletEntry instances are cleared in
@@ -97,7 +105,7 @@ void AttachWaitingTransaction(
 // transactions. WaitingTransactionData data indicates which waiters to report to this status tablet
 // and is weakly held -- WaitingTransactionData instances are kept alive by clients of the
 // LocalWaitingTxnRegistry which returns a wrapped WaitingTransactionData to clients to keep alive.
-class StatusTabletData {
+class StatusTabletData : public std::enable_shared_from_this<StatusTabletData> {
  public:
   explicit StatusTabletData(
       rpc::Rpcs* rpcs, client::YBClient* client, const TabletId& status_tablet_id,
@@ -132,8 +140,8 @@ class StatusTabletData {
             nullptr /* tablet */,
             client_,
             &req,
-            [this, blocked](const auto& status, const auto& req) {
-              rpcs_->Unregister(&blocked->rpc_handle);
+            [shared_this = shared_from(this), blocked](const auto& status, const auto& req) {
+              shared_this->rpcs_->Unregister(&blocked->rpc_handle);
             }), &blocked->rpc_handle),
         Format("Failed to register waiter with transaction coordinator for status tablet $0",
               status_tablet_id_));
@@ -142,7 +150,7 @@ class StatusTabletData {
   Status SendPartialUpdateAsync(const std::weak_ptr<WaitingTransactionData>& waiter,
                                 const HybridTime& now) {
     return thread_pool_token_->SubmitFunc(
-        std::bind(&StatusTabletData::SendPartialUpdate, this, waiter, now));
+        std::bind(&StatusTabletData::SendPartialUpdate, shared_from(this), waiter, now));
   }
 
   void SendFullUpdate(HybridTime now) {
@@ -162,44 +170,46 @@ class StatusTabletData {
       return true;
     }, &waiters);
 
-    // Initiating an rpc call within the scope of the mutex (post reading latest status tablet data)
-    // ensures that this full update contains all data from partial updates that it follows.
-    if (req.waiting_transactions_size() > 0) {
-      DCHECK(!has_pending_request)
-          << "req should only have waiting transactions if there is no pending request.";
-      req.set_tablet_id(status_tablet_id_);
-      req.set_propagated_hybrid_time(now.ToUint64());
-      req.set_tserver_uuid(tserver_uuid_);
-      req.set_is_full_update(true);
-      auto did_send = rpcs_->RegisterAndStart(
-          client::UpdateTransactionWaitingForStatus(
-            TransactionRpcDeadline(),
-            nullptr /* tablet */,
-            client_,
-            &req,
-            [this](const auto& status, const auto& resp) {
-              UniqueLock<decltype(mutex_)> l(mutex_);
-              rpcs_->Unregister(&rpc_handle_);
-            }),
-          &rpc_handle_);
-      if (did_send) {
-        VLOG(1) << "Sent UpdateTransactionWaitingForStatusRequestPB - "
-                << req.ShortDebugString();
-        return;
-      }
-      LOG_WITH_FUNC(WARNING) << "Couldn't send full wait-for update for status tablet "
-          << status_tablet_id_;
+    if (req.waiting_transactions_size() == 0) {
+      VLOG(4)
+          << "Not sending UpdateTransactionWaitingForStatusRequestPB for"
+          << " status_tablet: " << status_tablet_id_
+          << " waiting_transactions_size: " << req.waiting_transactions_size();
       return;
     }
 
-    VLOG(4)
-        << "Not sending UpdateTransactionWaitingForStatusRequestPB for"
-        << " status_tablet: " << status_tablet_id_
-        << " waiting_transactions_size: " << req.waiting_transactions_size();
+    // Initiating an rpc call within the scope of the mutex (post reading latest status tablet data)
+    // ensures that this full update contains all data from partial updates that it follows.
+    DCHECK(!has_pending_request)
+        << "req should only have waiting transactions if there is no pending request.";
+    req.set_tablet_id(status_tablet_id_);
+    req.set_propagated_hybrid_time(now.ToUint64());
+    req.set_tserver_uuid(tserver_uuid_);
+    req.set_is_full_update(true);
+    auto did_send = rpcs_->RegisterAndStart(
+        client::UpdateTransactionWaitingForStatus(
+          TransactionRpcDeadline(),
+          nullptr /* tablet */,
+          client_,
+          &req,
+          [shared_this = shared_from(this)](const auto& status, const auto& resp) {
+            AtomicFlagSleepMs(&FLAGS_TEST_inject_process_update_resp_delay_ms);
+            UniqueLock<decltype(mutex_)> l(shared_this->mutex_);
+            shared_this->rpcs_->Unregister(&shared_this->rpc_handle_);
+          }),
+        &rpc_handle_);
+    if (did_send) {
+      VLOG(1) << "Sent UpdateTransactionWaitingForStatusRequestPB - "
+              << req.ShortDebugString();
+      return;
+    }
+    LOG_WITH_FUNC(WARNING) << "Couldn't send full wait-for update for status tablet "
+        << status_tablet_id_;
   }
 
   Status SendFullUpdateAsync(const HybridTime& now) {
-    return thread_pool_token_->SubmitFunc(std::bind(&StatusTabletData::SendFullUpdate, this, now));
+    return thread_pool_token_->SubmitFunc(
+        std::bind(&StatusTabletData::SendFullUpdate, shared_from(this), now));
   }
 
  private:

@@ -17,7 +17,7 @@ type: docs
 
 This command authenticates a client connection to YugabyteDB's YEDIS API.
 
-YugabyteDB can be setup to require a password for clients to authenticate themselves. The password verification can be enforced by using the `CONFIG` command to set the intended password (See `CONFIG`).
+YugabyteDB can be set up to require a password for clients to authenticate themselves. The password verification can be enforced by using the `CONFIG` command to set the intended password (See `CONFIG`).
 
 YEDIS allows for multiple passwords (up to 2) to be accepted.
 

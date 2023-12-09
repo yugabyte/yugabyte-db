@@ -616,3 +616,115 @@ message XClusterSafeTimePB {
   // Map[Local NamespaceId]: xCluster safe read HybridTime
   map<string, fixed64> safe_time_map = 1;
 }
+
+// The data part of a SysRowEntry in the sys.catalog table for a universe
+// replication record.
+message SysUniverseReplicationBootstrapEntryPB {
+  enum State {
+    // Setting up replication.
+    INITIALIZING = 0;
+
+    // Bootstrapping CDC streams on producer universe.
+    BOOTSTRAP_PRODUCER = 1;
+
+    // Creating snapshot on producer universe.
+    CREATE_PRODUCER_SNAPSHOT = 2;
+
+    // ImportSnapshotMeta on consumer universe.
+    IMPORT_SNAPSHOT = 3;
+
+    // CreateSnapshot on consumer universe, marking it as imported. This is the
+    // same logic that occurs in the yb-admin import_snapshot command.
+    CREATE_CONSUMER_SNAPSHOT = 4;
+
+    // Downloading snapshot files from producer to consumer.
+    TRANSFER_SNAPSHOT = 5;
+
+    // Restore snapshot on consumer universe.
+    RESTORE_SNAPSHOT = 6;
+
+    // Call SetupUniverseReplication on consumer universe.
+    SETUP_REPLICATION = 7;
+
+    // Bootstrap is complete.
+    DONE = 8;
+
+    // Bootstrap failed on some task.
+    FAILED = 9;
+
+    // Deleted.
+    DELETED = 10;
+    // Error while cleaning up state of deleted entry. This indicates that universe replication has
+    // been deleted but there is still some uncleaned up state - for example, there may be left over
+    // CDC streams.
+    DELETED_ERROR = 11;
+
+    // Unfinished Delete
+    DELETING = 12;
+  }
+
+  // The following PBs are used to represent the newly created objects during
+  // CatalogManager::ImportSnapshotMeta. Specifically, these are all the
+  // required fields used in CatalogManager::DeleteNewSnapshotObjects. We store
+  // these PBs in case we need to cleanup on failure.
+  message IdPairPB {
+    optional string old_id = 1;
+    optional string new_id = 2;
+  }
+
+  message TableDataPB {
+    optional IdPairPB ids = 1;
+    optional TableType table_type = 2;
+    optional bytes indexed_table_id = 3; // Indexed table id of this index.
+  }
+
+  message UDTypeDataPB {
+    optional IdPairPB ids = 1;
+    optional bool existing = 2;
+  }
+
+  message NamespaceDataPB {
+    optional IdPairPB ids = 1;
+    optional YQLDatabase db_type = 2;
+    optional bool existing = 3;
+  }
+
+  message NewSnapshotObjectsPB {
+    repeated TableDataPB tables = 1;
+    repeated UDTypeDataPB ud_types = 2;
+    repeated NamespaceDataPB namespaces = 3;
+  }
+
+  optional State state = 1 [ default = INITIALIZING ];
+
+  // There's different cleanup tasks depending on which state the flow failed
+  // on, and so we store this on failure so that we can cleanup properly.
+  optional State failed_on = 2 [ default = INITIALIZING ];
+
+  optional string replication_group_id = 3;
+  repeated HostPortPB producer_master_addresses = 4;
+
+  // producer table ID -> producer CDC stream ID map.
+  map<string, string> table_bootstrap_ids = 5;
+
+  // In the xCluster native bootstrap flow, during the ImportSnapshot step the
+  // consumer universe actually creates its own snapshot with a unique ID. In
+  // this case, old_snapshot_id is the producer snapshot ID and new_snapshot_id
+  // is the consumer snapshot ID.
+  optional bytes old_snapshot_id = 6;
+  optional bytes new_snapshot_id = 7;
+  optional bytes restoration_id = 8;
+
+  // Keeps track of newly created objects in case we need to cleanup on failure.
+  optional NewSnapshotObjectsPB new_snapshot_objects = 9;
+
+  // Set when consistent transactions are enabled for a replication group.
+  optional bool transactional = 10; // [default = false]
+
+  // According to https://phorge.dev.yugabyte.com/D24796, async tasks that
+  // require epoch should retrieve it from the context that initiated the work.
+  // These values store the epoch values passed from the initial RPC call to
+  // SetupNamespaceReplicationWithBootstrap.
+  optional int64 leader_term = 11;
+  optional int32 pitr_count = 12;
+}

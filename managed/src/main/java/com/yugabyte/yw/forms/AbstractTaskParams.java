@@ -9,13 +9,13 @@ import java.util.UUID;
 
 public class AbstractTaskParams implements ITaskParams {
 
-  public String platformVersion = getYbaVersion();
+  private String platformVersion = getYbaVersion();
 
   @ApiModelProperty(value = "Previous task UUID of a retry")
   private UUID previousTaskUUID;
 
   @ApiModelProperty(value = "Error message")
-  public String errorString = null;
+  private String errorString = null;
 
   @Override
   public void setErrorString(String errorString) {

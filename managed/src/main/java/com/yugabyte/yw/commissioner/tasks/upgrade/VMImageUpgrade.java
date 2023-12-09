@@ -20,6 +20,7 @@ import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
 import com.yugabyte.yw.models.HookScope.TriggerType;
 import com.yugabyte.yw.models.ImageBundle;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -121,6 +122,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
     createRootVolumeCreationTasks(nodes).setSubTaskGroupType(getTaskSubGroupType());
 
     Map<UUID, UUID> clusterToImageBundleMap = new HashMap<>();
+    Universe universe = getUniverse();
     for (NodeDetails node : nodes) {
       UUID region = taskParams().nodeToRegion.get(node.nodeUuid);
       String machineImage = "";
@@ -151,11 +153,10 @@ public class VMImageUpgrade extends UpgradeTaskBase {
             machineImage);
         continue;
       }
-
       List<UniverseTaskBase.ServerType> processTypes = new ArrayList<>();
       if (node.isMaster) processTypes.add(ServerType.MASTER);
       if (node.isTserver) processTypes.add(ServerType.TSERVER);
-      if (getUniverse().isYbcEnabled()) processTypes.add(ServerType.CONTROLLER);
+      if (universe.isYbcEnabled()) processTypes.add(ServerType.CONTROLLER);
 
       // The node is going to be stopped. Ignore error because of previous error due to
       // possibly detached root volume.
@@ -189,7 +190,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
 
       // Copy the source root certificate to the node.
       createTransferXClusterCertsCopyTasks(
-          Collections.singleton(node), getUniverse(), SubTaskGroupType.InstallingSoftware);
+          Collections.singleton(node), universe, SubTaskGroupType.InstallingSoftware);
 
       processTypes.forEach(
           processType -> {
@@ -244,7 +245,7 @@ public class VMImageUpgrade extends UpgradeTaskBase {
           });
     }
     // Delete after all the disks are replaced.
-    createDeleteRootVolumesTasks(getUniverse(), nodes, null /* volume Ids */)
+    createDeleteRootVolumesTasks(universe, nodes, null /* volume Ids */)
         .setSubTaskGroupType(getTaskSubGroupType());
   }
 

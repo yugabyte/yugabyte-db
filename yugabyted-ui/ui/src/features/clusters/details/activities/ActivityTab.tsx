@@ -69,15 +69,18 @@ export const ActivityTab: FC = () => {
   const { data: clusterTablesResponseYsql, refetch: refetchYsql } = useGetClusterTablesQuery({
     api: GetClusterTablesApiEnum.Ysql,
   });
-  const ysqlDBList = React.useMemo(
+
+  const tableList = React.useMemo(
     () =>
-      Array.from(
-        (clusterTablesResponseYsql?.data ?? []).reduce(
-          (prev, curr) => prev.add(curr.keyspace),
-          new Set<string>()
-        )
-      ),
-    [clusterTablesResponseYsql?.data]
+      clusterTablesResponseYsql
+        ? [...clusterTablesResponseYsql.tables, ...clusterTablesResponseYsql.indexes]
+        : [],
+    [clusterTablesResponseYsql]
+  );
+
+  const ysqlDBList = React.useMemo(
+    () => Array.from(tableList.reduce((prev, curr) => prev.add(curr.keyspace), new Set<string>())),
+    [tableList]
   );
 
   const [selectedDB, setSelectedDB] = React.useState<string>(ysqlDBList[0] ?? "");

@@ -28,8 +28,6 @@
 
 #include "yb/gutil/ref_counted.h"
 
-#include "yb/server/hybrid_clock.h"
-
 #include "yb/tserver/tserver_util_fwd.h"
 
 #include "yb/util/lw_function.h"
@@ -44,13 +42,11 @@
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 
 YB_STRONGLY_TYPED_BOOL(OpBuffered);
 YB_STRONGLY_TYPED_BOOL(InvalidateOnPgClient);
 YB_STRONGLY_TYPED_BOOL(UseCatalogSession);
-YB_STRONGLY_TYPED_BOOL(EnsureReadTimeIsSet);
 YB_STRONGLY_TYPED_BOOL(ForceNonBufferable);
 
 class PgTxnManager;
@@ -119,10 +115,7 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   PgSession(
       PgClient* pg_client,
       const std::string& database_name,
-      scoped_refptr<PgTxnManager>
-          pg_txn_manager,
-      scoped_refptr<server::HybridClock>
-          clock,
+      scoped_refptr<PgTxnManager> pg_txn_manager,
       const YBCPgCallbacks& pg_callbacks,
       YBCPgExecStatsState* stats_state,
       bool is_binary_upgrade);
@@ -379,11 +372,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   Result<PerformFuture> Perform(BufferableOperations&& ops, PerformOptions&& options);
 
-  void ProcessPerformOnTxnSerialNo(
-      uint64_t txn_serial_no,
-      EnsureReadTimeIsSet force_set_read_time_for_current_txn_serial_no,
-      tserver::PgPerformOptionsPB* options);
-
   template<class Generator>
   Result<PerformFuture> DoRunAsync(
       const Generator& generator, HybridTime in_txn_limit, ForceNonBufferable force_non_bufferable,
@@ -408,8 +396,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   // A transaction manager allowing to begin/abort/commit transactions.
   scoped_refptr<PgTxnManager> pg_txn_manager_;
 
-  const scoped_refptr<server::HybridClock> clock_;
-
   ReadHybridTime catalog_read_time_;
 
   // Execution status.
@@ -432,11 +418,9 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   const YBCPgCallbacks& pg_callbacks_;
   bool has_write_ops_in_ddl_mode_ = false;
-  std::variant<TxnSerialNoPerformInfo> last_perform_on_txn_serial_no_;
 
   // This session is upgrading to PG15.
   const bool upgrade_mode_;
 };
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

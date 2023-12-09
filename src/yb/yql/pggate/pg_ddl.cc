@@ -352,12 +352,17 @@ PgAlterTable::PgAlterTable(PgSession::ScopedRefPtr pg_session,
 
 Status PgAlterTable::AddColumn(const char *name,
                                const YBCPgTypeEntity *attr_type,
-                               int order) {
+                               int order,
+                               YBCPgExpr missing_value) {
   auto& col = *req_.mutable_add_columns()->Add();
   col.set_attr_name(name);
   col.set_attr_ybtype(attr_type->yb_type);
   col.set_attr_num(order);
   col.set_attr_pgoid(attr_type->type_oid);
+  if (missing_value) {
+    auto value = VERIFY_RESULT(missing_value->Eval());
+    value->ToGoogleProtobuf(col.mutable_attr_missing_val());
+  }
   return Status::OK();
 }
 

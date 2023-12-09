@@ -4249,6 +4249,8 @@ YbPlanStateTryGetAggrefs(PlanState *ps)
 			return &castNode(ForeignScanState, ps)->yb_fdw_aggrefs;
 		case T_IndexOnlyScanState:
 			return &castNode(IndexOnlyScanState, ps)->yb_ioss_aggrefs;
+		case T_IndexScanState:
+			return &castNode(IndexScanState, ps)->yb_iss_aggrefs;
 		case T_YbSeqScanState:
 			return &castNode(YbSeqScanState, ps)->aggrefs;
 		default:

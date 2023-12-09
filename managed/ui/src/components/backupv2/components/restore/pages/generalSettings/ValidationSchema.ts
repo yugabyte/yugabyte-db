@@ -8,15 +8,16 @@
  */
 
 import * as yup from 'yup';
+import { TFunction } from 'i18next';
 import { RestoreContext } from '../../RestoreContext';
 import { IGeneralSettings } from './GeneralSettings';
 
-export const getValidationSchema = (restoreContext: RestoreContext) => {
+export const getValidationSchema = (restoreContext: RestoreContext, t: TFunction) => {
   const {
     formData: { preflightResponse }
   } = restoreContext;
 
-  const validationSchema = yup.object<Partial<IGeneralSettings>>({
+  let validationSchema = yup.object<Partial<IGeneralSettings>>({
     forceKeyspaceRename: yup.boolean().required(),
 
     parallelThreads: yup.number(),
@@ -32,14 +33,20 @@ export const getValidationSchema = (restoreContext: RestoreContext) => {
   });
 
   if (preflightResponse?.hasKMSHistory) {
-    validationSchema['kmsConfig'] = yup
-      .object()
-      .shape({
-        label: yup.string(),
-        value: yup.string()
-      })
-      .nullable()
-      .required();
+    validationSchema = validationSchema.shape({
+      kmsConfig: yup
+        .object()
+        .shape({
+          label: yup.string(),
+          value: yup.string()
+        })
+        .nullable()
+        .required(
+          t(
+            'newRestoreModal.generalSettings.universeSelection.validationMessages.kmsConfigRequired'
+          )
+        )
+    });
   }
 
   return validationSchema;

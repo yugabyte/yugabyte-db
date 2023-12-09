@@ -431,10 +431,11 @@ Status CheckLiveReplicasForSplit(
   return Status::OK();
 }
 
-void TabletSplitManager::ScheduleSplits(const std::unordered_set<TabletId>& splits_to_schedule) {
+void TabletSplitManager::ScheduleSplits(
+    const std::unordered_set<TabletId>& splits_to_schedule, const LeaderEpoch& epoch) {
   VLOG_WITH_FUNC(2) << "Start";
   for (const auto& tablet_id : splits_to_schedule) {
-    auto s = driver_->SplitTablet(tablet_id, ManualSplit::kFalse);
+    auto s = driver_->SplitTablet(tablet_id, ManualSplit::kFalse, epoch);
     if (!s.ok()) {
       WARN_NOT_OK(s, Format("Failed to start/restart split for tablet_id: $0.", tablet_id));
     } else {
@@ -637,7 +638,8 @@ class OutstandingSplitState {
 };
 
 void TabletSplitManager::DoSplitting(
-    const std::vector<TableInfoPtr>& tables, const TabletInfoMap& tablet_info_map) {
+    const std::vector<TableInfoPtr>& tables, const TabletInfoMap& tablet_info_map,
+    const LeaderEpoch& epoch) {
   VLOG_WITH_FUNC(2) << "Start";
   // TODO(asrivastava): We might want to loop over all running tables when determining outstanding
   // splits, to avoid missing outstanding splits for tables that have recently become invalid for
@@ -775,7 +777,7 @@ void TabletSplitManager::DoSplitting(
   // schedule as possible (while respecting the limits on ongoing splits).
   state.ProcessCandidates();
   // Schedule any new splits and any splits that need to be restarted.
-  ScheduleSplits(state.GetSplitsToSchedule());
+  ScheduleSplits(state.GetSplitsToSchedule(), epoch);
 }
 
 Status TabletSplitManager::WaitUntilIdle(CoarseTimePoint deadline) {
@@ -820,7 +822,8 @@ bool TabletSplitManager::IsTabletSplittingComplete(
 }
 
 void TabletSplitManager::MaybeDoSplitting(
-    const std::vector<TableInfoPtr>& tables, const TabletInfoMap& tablet_info_map) {
+    const std::vector<TableInfoPtr>& tables, const TabletInfoMap& tablet_info_map,
+    const LeaderEpoch& epoch) {
   if (!FLAGS_enable_automatic_tablet_splitting) {
     VLOG_WITH_FUNC(2) << "Skipping splitting run because enable_automatic_tablet_splitting is not "
                          "set";
@@ -854,7 +857,7 @@ void TabletSplitManager::MaybeDoSplitting(
     return;
   }
 
-  DoSplitting(tables, tablet_info_map);
+  DoSplitting(tables, tablet_info_map, epoch);
   last_run_time_ = CoarseMonoClock::Now();
   automatic_split_manager_time_ms_->set_value(ToMilliseconds(last_run_time_ - start_time));
 }

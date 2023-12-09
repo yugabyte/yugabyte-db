@@ -5,5 +5,5 @@ drop_procedure ::= DROP PROCEDURE [ IF EXISTS ]
 
 subprogram_signature ::= arg_decl [ , ... ]
 
-arg_decl ::= [ arg_name ] [ arg_mode ] arg_type
+arg_decl ::= [ formal_arg ] [ arg_mode ] arg_type
 ```

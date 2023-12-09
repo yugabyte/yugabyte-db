@@ -287,14 +287,13 @@ class AnsibleProcess(object):
                                  env=env)
             stdout, stderr = p.communicate()
             rc = p.returncode
-            stdout = stdout.decode('utf-8')
         if print_output:
-            print(stdout)
+            print(stdout.decode('utf-8'))
 
         if rc != 0:
             errmsg = f"Playbook run of {filename} against {inventory_target} with args " \
                      f"{redacted_process_args} failed with return code {rc} " \
-                     f"and error '{stderr}'"
+                     f"and error '{stderr.decode('utf-8')}'"
 
             if rc == 4:  # host unreachable
                 raise YBOpsRecoverableError(errmsg)

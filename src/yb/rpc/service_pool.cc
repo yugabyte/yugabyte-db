@@ -81,7 +81,7 @@ DEFINE_test_flag(bool, enable_backpressure_mode_for_testing, false,
             "For testing purposes. Enables the rpc's to be considered timed out in the queue even "
             "when we have not had any backpressure in the recent past.");
 
-METRIC_DEFINE_coarse_histogram(server, rpc_incoming_queue_time,
+METRIC_DEFINE_event_stats(server, rpc_incoming_queue_time,
                         "RPC Queue Time",
                         yb::MetricUnit::kMicroseconds,
                         "Number of microseconds incoming RPC requests spend in the worker queue");
@@ -139,7 +139,7 @@ class ServicePoolImpl final : public InboundCallHandler {
           auto id = Format("rpcs_in_queue_$0", service_->service_name());
           EscapeMetricNameForPrometheus(&id);
           string description = id + " metric for ServicePoolImpl";
-          rpcs_in_queue_ = entity->FindOrCreateGauge(
+          rpcs_in_queue_ = entity->FindOrCreateMetric<AtomicGauge<int64_t>>(
               std::unique_ptr<GaugePrototype<int64_t>>(new OwningGaugePrototype<int64_t>(
                   entity->prototype().name(), std::move(id),
                   description, MetricUnit::kRequests, description, MetricLevel::kInfo)),
@@ -403,7 +403,7 @@ class ServicePoolImpl final : public InboundCallHandler {
   ThreadPool& thread_pool_;
   Scheduler& scheduler_;
   ServiceIfPtr service_;
-  scoped_refptr<Histogram> incoming_queue_time_;
+  scoped_refptr<EventStats> incoming_queue_time_;
   scoped_refptr<Counter> rpcs_timed_out_in_queue_;
   scoped_refptr<Counter> rpcs_timed_out_early_in_queue_;
   scoped_refptr<Counter> rpcs_queue_overflow_;

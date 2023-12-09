@@ -212,6 +212,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     defaultUniverse.save();
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
     taskParams.isForceDelete = false;
+    taskParams.isDeleteBackups = false;
     taskParams.customerUUID = defaultCustomer.getUuid();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     TaskInfo taskInfo = submitTask(taskParams);
@@ -264,6 +265,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
         "test-3", xClusterUniv.getUniverseUUID(), xClusterUniv2.getUniverseUUID());
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
     taskParams.isForceDelete = false;
+    taskParams.isDeleteBackups = false;
     taskParams.customerUUID = defaultCustomer.getUuid();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     TaskInfo taskInfo = submitTask(taskParams);
@@ -288,6 +290,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     defaultUniverse.save();
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
     taskParams.isForceDelete = false;
+    taskParams.isDeleteBackups = false;
     taskParams.customerUUID = defaultCustomer.getUuid();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     TaskInfo taskInfo = submitTask(taskParams);
@@ -302,6 +305,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
     defaultUniverse.save();
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
     taskParams.isForceDelete = true;
+    taskParams.isDeleteBackups = false;
     taskParams.customerUUID = defaultCustomer.getUuid();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     TaskInfo taskInfo =
@@ -328,6 +332,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
 
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
     taskParams.isForceDelete = false;
+    taskParams.isDeleteBackups = false;
     taskParams.customerUUID = defaultCustomer.getUuid();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     TaskInfo taskInfo = submitTask(taskParams);
@@ -385,6 +390,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
 
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
     taskParams.isForceDelete = false;
+    taskParams.isDeleteBackups = false;
     taskParams.customerUUID = defaultCustomer.getUuid();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     TaskInfo taskInfo = submitTask(taskParams);
@@ -420,6 +426,7 @@ public class DestroyKubernetesUniverseTest extends CommissionerBaseTest {
 
     DestroyUniverse.Params taskParams = new DestroyUniverse.Params();
     taskParams.isForceDelete = false;
+    taskParams.isDeleteBackups = false;
     taskParams.customerUUID = defaultCustomer.getUuid();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     TaskInfo taskInfo = submitTask(taskParams);

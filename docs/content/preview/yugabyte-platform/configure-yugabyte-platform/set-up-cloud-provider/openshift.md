@@ -225,7 +225,7 @@ yb-tserver-2  2/2   Running  0     5m58s
 
 If any of the pods are in pending state, perform the following:
 
-- Login with an admin account and navigate to **Compute > Machine Sets**.
+- Log in with an admin account and navigate to **Compute > Machine Sets**.
 - Open the Machine Set corresponding to your zone label (us-east4-a).
 - Click **Desired Count** and increase the count by 1 or 2, as shown in the following illustration.
 - Click **Save**.

@@ -17,6 +17,7 @@ import {
   PEER_CERT_SUFFIX
 } from '../modals/ManagePeerCertsModal';
 import { getPromiseState } from '../../../utils/PromiseUtils';
+import { isCertCAEnabledInRuntimeConfig } from '../../customCACerts';
 
 import './HAReplicationView.scss';
 
@@ -125,11 +126,12 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({
   const ybHAWebService: YbHAWebService =
     runtimeConfigs?.data && getPromiseState(runtimeConfigs).isSuccess()
       ? JSON.parse(
-          runtimeConfigs.data.configEntries.find((c: any) => c.key === YB_HA_WS_RUNTIME_CONFIG_KEY)
-            .value
-        )
+        runtimeConfigs.data.configEntries.find((c: any) => c.key === YB_HA_WS_RUNTIME_CONFIG_KEY)
+          .value
+      )
       : EMPTY_YB_HA_WEBSERVICE;
 
+  const isCACertStoreEnabled = isCertCAEnabledInRuntimeConfig(runtimeConfigs?.data);
   // sort by is_leader to show active instance on the very top, then sort other items by address
   const sortedInstances = _.sortBy(config.instances, [(item) => !item.is_leader, 'address']);
   const currentInstance = sortedInstances.find((item) => item.is_local);
@@ -165,15 +167,18 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({
             {currentInstance.is_leader ? (
               <>
                 <YBButton btnText="Edit Configuration" onClick={editConfig} />
-                <YBButton
-                  btnText={`${
-                    getPeerCerts(ybHAWebService).length > 0 ? 'Manage' : 'Add'
-                  } Peer Certificates`}
-                  onClick={(e: any) => {
-                    showAddPeerCertModal();
-                    e.currentTarget.blur();
-                  }}
-                />
+                {
+                  !isCACertStoreEnabled && (
+                    <YBButton
+                      btnText={`${getPeerCerts(ybHAWebService).length > 0 ? 'Manage' : 'Add'
+                        } Peer Certificates`}
+                      onClick={(e: any) => {
+                        showAddPeerCertModal();
+                        e.currentTarget.blur();
+                      }}
+                    />
+                  )
+                }
               </>
             ) : (
               <>
@@ -260,7 +265,7 @@ export const HAReplicationView: FC<HAReplicationViewProps> = ({
             ))}
           </Col>
         </Row>
-        {currentInstance.is_leader && (
+        {!isCACertStoreEnabled && currentInstance.is_leader && (
           <Row className="ha-replication-view__row">
             <Col xs={2} className="ha-replication-view__label">
               Peer Certificates

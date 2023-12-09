@@ -202,14 +202,12 @@ static void copy_generic_path_info(Plan *dest, Path *src);
 static void copy_plan_costsize(Plan *dest, Plan *src);
 static void label_sort_with_costsize(PlannerInfo *root, Sort *plan,
 									 double limit_tuples);
-static SeqScan *make_seqscan(List *qptlist, List *qpqual, Index scanrelid,
-							 YbPathInfo yb_path_info);
+static SeqScan *make_seqscan(List *qptlist, List *qpqual, Index scanrelid);
 static YbSeqScan *make_yb_seqscan(List *qptlist,
 				List *local_quals,
 				List *yb_pushdown_quals,
 				List *yb_pushdown_colrefs,
-				Index scanrelid,
-				YbPathInfo yb_path_info);
+				Index scanrelid);
 static SampleScan *make_samplescan(List *qptlist, List *qpqual, Index scanrelid,
 								   TableSampleClause *tsc);
 static IndexScan *make_indexscan(List *qptlist, List *qpqual,
@@ -219,7 +217,8 @@ static IndexScan *make_indexscan(List *qptlist, List *qpqual,
 								 List *indexqual, List *indexqualorig,
 								 List *indexorderby, List *indexorderbyorig,
 								 List *indexorderbyops, List *indextlist,
-								 ScanDirection indexscandir, YbPathInfo yb_path_info);
+								 ScanDirection indexscandir, double estimated_num_nexts,
+								 double estimated_num_seeks, YbIndexPathInfo yb_path_info);
 static IndexOnlyScan *make_indexonlyscan(List *qptlist, List *qpqual,
 										 List *yb_pushdown_colrefs, List *yb_pushdown_quals,
 										 Index scanrelid, Oid indexid,
@@ -937,7 +936,7 @@ yb_zip_batched_exprs(PlannerInfo *root, List *b_exprs, bool should_sort)
 		/* If there wasn't a single clause relevant to avail_relids, continue. */
 		if (len == 0)
 			continue;
-		
+
 		if (len == 1)
 		{
 			zipped_exprs = lappend(zipped_exprs, exprcols[0]);
@@ -1577,7 +1576,7 @@ create_append_plan(PlannerInfo *root, AppendPath *best_path, int flags)
 															  prmquals,
 															  (Path *) best_path)
           : get_actual_clauses(prmquals);
-			
+
 			prmquals = (List *) replace_nestloop_params(root,
 														(Node *) prmquals);
 
@@ -3904,11 +3903,9 @@ create_seqscan_plan(PlannerInfo *root, Path *best_path,
 	if (best_path->parent->is_yb_relation)
 		scan_plan = (SeqScan *) make_yb_seqscan(tlist, local_quals,
 												remote_quals, colrefs,
-												scan_relid,
-												best_path->yb_path_info);
+												scan_relid);
 	else
-		scan_plan = make_seqscan(tlist, local_quals, scan_relid, 
-								 best_path->yb_path_info);
+		scan_plan = make_seqscan(tlist, local_quals, scan_relid);
 
 	copy_generic_path_info(&scan_plan->scan.plan, best_path);
 
@@ -4276,26 +4273,36 @@ create_indexscan_plan(PlannerInfo *root,
 												best_path->indexscandir);
 		index_only_scan_plan->yb_indexqual_for_recheck =
 			YbBuildIndexqualForRecheck(fixed_indexquals, best_path->indexinfo);
+		index_only_scan_plan->yb_distinct_prefixlen =
+			best_path->yb_index_path_info.yb_distinct_prefixlen;
 
 		scan_plan = (Scan *) index_only_scan_plan;
 	}
 	else
-		scan_plan = (Scan *) make_indexscan(tlist,
-											local_quals,
-											rel_colrefs,
-											rel_remote_quals,
-											idx_colrefs,
-											idx_remote_quals,
-											baserelid,
-											indexoid,
-											fixed_indexquals,
-											stripped_indexquals,
-											fixed_indexorderbys,
-											indexorderbys,
-											indexorderbyops,
-											best_path->indexinfo->indextlist,
-											best_path->indexscandir,
-											best_path->path.yb_path_info);
+	{
+		IndexScan *index_scan_plan;
+		index_scan_plan = make_indexscan(tlist,
+										 local_quals,
+										 rel_colrefs,
+										 rel_remote_quals,
+										 idx_colrefs,
+										 idx_remote_quals,
+										 baserelid,
+										 indexoid,
+										 fixed_indexquals,
+										 stripped_indexquals,
+										 fixed_indexorderbys,
+										 indexorderbys,
+										 indexorderbyops,
+										 best_path->indexinfo->indextlist,
+										 best_path->indexscandir,
+										 best_path->estimated_num_nexts,
+										 best_path->estimated_num_seeks,
+										 best_path->yb_index_path_info);
+		index_scan_plan->yb_distinct_prefixlen =
+			best_path->yb_index_path_info.yb_distinct_prefixlen;
+		scan_plan = (Scan *) index_scan_plan;
+	}
 
 	copy_generic_path_info(&scan_plan->plan, &best_path->path);
 
@@ -5354,8 +5361,6 @@ create_foreignscan_plan(PlannerInfo *root, ForeignPath *best_path,
 		bms_free(attrs_used);
 	}
 
-	scan_plan->scan.yb_lock_mechanism = best_path->path.yb_path_info.yb_lock_mechanism;
-
 	return scan_plan;
 }
 
@@ -5505,7 +5510,7 @@ create_nestloop_plan(PlannerInfo *root,
 		ListCell *l;
 		yb_hashClauseInfos =
 			palloc0(joinrestrictclauses->length * sizeof(YbBNLHashClauseInfo));
-		
+
 		/* YB: This length is later adjusted in setrefs.c. */
 		yb_num_hashClauseInfos = joinrestrictclauses->length;
 
@@ -5519,7 +5524,7 @@ create_nestloop_plan(PlannerInfo *root,
 		foreach(l, joinrestrictclauses)
 		{
 			Oid hashOpno = InvalidOid;
-			RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);	
+			RestrictInfo *rinfo = (RestrictInfo *) lfirst(l);
 			if (!list_member_ptr(joinclauses, rinfo->clause))
 			{
 				yb_num_hashClauseInfos--;
@@ -6252,7 +6257,7 @@ yb_get_fixed_batched_indexquals(PlannerInfo *root, IndexPath *index_path)
 	if (!bms_is_empty(root->yb_cur_batched_relids))
 	{
 		ListCell *lc;
-		
+
 		foreach(lc, index_path->indexclauses)
 		{
 			IndexClause *iclause = lfirst_node(IndexClause, lc);
@@ -6936,8 +6941,7 @@ extract_pushdown_clauses(List *restrictinfo_list,
 static SeqScan *
 make_seqscan(List *qptlist,
 			 List *qpqual,
-			 Index scanrelid,
-			 YbPathInfo yb_path_info)
+			 Index scanrelid)
 {
 	SeqScan    *node = makeNode(SeqScan);
 	Plan	   *plan = &node->scan.plan;
@@ -6946,7 +6950,6 @@ make_seqscan(List *qptlist,
 	plan->qual = qpqual;
 	plan->lefttree = NULL;
 	plan->righttree = NULL;
-	node->scan.yb_lock_mechanism = yb_path_info.yb_lock_mechanism;
 	node->scan.scanrelid = scanrelid;
 
 	return node;
@@ -6957,8 +6960,7 @@ make_yb_seqscan(List *qptlist,
 				List *local_quals,
 				List *yb_pushdown_quals,
 				List *yb_pushdown_colrefs,
-				Index scanrelid,
-				YbPathInfo yb_path_info)
+				Index scanrelid)
 {
 	YbSeqScan  *node = makeNode(YbSeqScan);
 	Plan	   *plan = &node->scan.plan;
@@ -6970,7 +6972,6 @@ make_yb_seqscan(List *qptlist,
 	node->scan.scanrelid = scanrelid;
 	node->yb_pushdown.quals = yb_pushdown_quals;
 	node->yb_pushdown.colrefs = yb_pushdown_colrefs;
-	node->scan.yb_lock_mechanism = yb_path_info.yb_lock_mechanism;
 
 	return node;
 }
@@ -7010,7 +7011,9 @@ make_indexscan(List *qptlist,
 			   List *indexorderbyops,
 			   List *indextlist,
 			   ScanDirection indexscandir,
-			   YbPathInfo yb_path_info)
+			   double estimated_num_nexts,
+			   double estimated_num_seeks,
+			   YbIndexPathInfo yb_path_info)
 {
 	IndexScan  *node = makeNode(IndexScan);
 	Plan	   *plan = &node->scan.plan;
@@ -7028,11 +7031,13 @@ make_indexscan(List *qptlist,
 	node->indexorderbyops = indexorderbyops;
 	node->indextlist = indextlist;
 	node->indexorderdir = indexscandir;
+	node->estimated_num_nexts = estimated_num_nexts;
+	node->estimated_num_seeks = estimated_num_seeks;
 	node->yb_rel_pushdown.colrefs = yb_rel_pushdown_colrefs;
 	node->yb_rel_pushdown.quals = yb_rel_pushdown_quals;
 	node->yb_idx_pushdown.colrefs = yb_idx_pushdown_colrefs;
 	node->yb_idx_pushdown.quals = yb_idx_pushdown_quals;
-	node->scan.yb_lock_mechanism = yb_path_info.yb_lock_mechanism;
+	node->yb_lock_mechanism = yb_path_info.yb_lock_mechanism;
 
 	return node;
 }
@@ -7296,8 +7301,7 @@ make_foreignscan(List *qptlist,
 				 List *fdw_private,
 				 List *fdw_scan_tlist,
 				 List *fdw_recheck_quals,
-				 Plan *outer_plan,
-				 YbPathInfo yb_path_info)
+				 Plan *outer_plan)
 {
 	ForeignScan *node = makeNode(ForeignScan);
 	Plan	   *plan = &node->scan.plan;
@@ -7323,7 +7327,6 @@ make_foreignscan(List *qptlist,
 	node->fs_relids = NULL;
 	/* fsSystemCol will be filled in by create_foreignscan_plan */
 	node->fsSystemCol = false;
-	node->scan.yb_lock_mechanism = yb_path_info.yb_lock_mechanism;
 
 	return node;
 }

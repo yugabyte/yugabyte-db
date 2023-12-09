@@ -24,7 +24,6 @@ ALTER TABLE root_list_parent ADD COLUMN foo text not null DEFAULT 'abc'; -- pass
 
 -- Rename a column belonging to the parent table.
 ALTER TABLE root_list_parent RENAME COLUMN list_part_key TO list_part_key_renamed;
--- Note: Incorrect output here for 'foo' because of #9970.
 SELECT * FROM child_partition ORDER BY foo;
 TRUNCATE root_list_parent;
 

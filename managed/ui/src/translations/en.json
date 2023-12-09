@@ -24,7 +24,8 @@
       "wrong": "Something went wrong.",
       "areYouSure": "Are you sure ?",
       "delete": "Delete",
-      "back": "Back"
+      "back": "Back",
+      "selectAll": "Select All"
     },
     "universeActions": {
       "encryptionAtRest": {
@@ -56,7 +57,9 @@
         "reEnterNewPwd": "Re-enter new password",
         "updateSettingsSuccessMsg": "Updating YSQL configuration is in progress",
         "rotatePwdSuccessMsg": "DB credentials for YSQL updated successfully",
-        "rotateBothYSQLWarning": "Rotating YSQL Password and Editing YSQL settings should be performed at different times."
+        "rotateBothYSQLWarning": "Rotating YSQL Password and Editing YSQL settings should be performed at different times.",
+        "disableYSQLWarning1": "Are you sure you want to disable YSQL endpoint ?",
+        "disableYSQLWarning2": "<b>Note :</b> Once you perform this operation, You cannot enable it again."
       },
       "editYCQLSettings": {
         "modalTitle": "Edit YCQL configuration",
@@ -71,6 +74,27 @@
         "updateSettingsSuccessMsg": "Updating YCQL configuration is in progress",
         "rotatePwdSuccessMsg": "DB credentials for YCQL updated successfully",
         "rotateBothYCQLWarning": "Rotating YCQL Password and Editing YCQL settings should be performed at different times."
+      },
+      "encryptionInTransit": {
+        "title": "Manage encryption in-Transit",
+        "enableEIT": "Enable encryption in transit for this Universe",
+        "certAuthority": "Certificate Authority",
+        "serverCert": "Server Certificate",
+        "useSameCert": "Use the same certificate for “Node to Node” and “Client to Node” encryption",
+        "enableNNEncryption": "Enable “Node to Node” Encryption",
+        "enableCNEncryption": "Enable “Client to Node” Encryption",
+        "enableCNAndNNEncryption": "Enable “Node to Node” and “Client to Node” Encryption",
+        "selectCA": "Select certificate authority",
+        "rotateCA": "Rotate certificate authority",
+        "useRollingUpgrade": "Use rolling upgrade to apply this change",
+        "rollingUpgradeInputTitle": "Set the upgrade delay between servers (Seconds)",
+        "rotateServerCert": "Rotate server certificate",
+        "rotateNToNServerCert": "Rotate “Node to Node” Server Certificate",
+        "rotateCToNServerCert": "Rotate “Client to Node” Server Certificate",
+        "changeCTNCertWarning": "Note! Changing the client to node root certificate may cause the client to loose connection, please update the certificate used in your client application.",
+        "disableEncryptionWarning": "Rotating certificates (Certificate Authority or Server Certificate) and Enabling/Disabling encryption should be performed at different times.",
+        "disableNNRotationWarning": "You have selected a new Certificates Authority for Node to Node encryption. Rotating a Certificates Authority will automatically rotate its associated Server Certificate.",
+        "disableCNRotationWarning": "You have selected a new Certificates Authority for Client to Node encryption. Rotating a Certificates Authority will automatically rotate its associated Server Certificate."
       }
     },
     "commonErrors": {
@@ -199,6 +223,9 @@
         "incorrectFlagValue": "Incorrect flag value",
         "incorrectFlagMsg": "Flag name is incorrect. Remove Flag",
         "masterValue": "MASTER VALUE",
+        "JWKSModalTitle": "Paste the JSON web key set (JWKS):",
+        "JWKSModalNote": "Note: You can obtain JWKS from JWKS URI that is part of OIDC discover end point",
+        "JWKSModalPlaceholder": "e.g. eyJraWQiOiJQQWc0NjVINmxZMC1XR1JwUm1ZbEloeEpXb2s5OG10LVZLcXV3VzNPazg0IiwiYWxnIjoiUlMyNTYifQeyJzdWIiOiIw MHUyYXBxMWNtSFlaM092ZDVkNyIsIm5hbWUiOiJKaW4gWWFuIiwiZW1haWwiOiJqeWFuQHl1Z2FieXRlLmNvbSIsInZlciI6MSwiaXNzIjoi",
         "noFlags": "There are no flags assigned to this universe ",
         "removeFlag": "Remove Flag",
         "removeValue": "Remove Value",
@@ -206,6 +233,7 @@
         "title": "G-Flags",
         "tServerValue": "T-SERVER VALUE",
         "addRow": "Add Row",
+        "addKeyset": "Add JSON web key set(JWKS)",
         "inheritFlagsMsg": "Apply the same Flags to primary cluster and Read Replica.",
         "note": "Note! ",
         "rrWithOnlyTserver": "Read Replicas only have T-Servers",
@@ -225,11 +253,12 @@
         "hbaLDAPConfLocal": "local database user auth-method [auth-options]",
         "hbaLDAPConfHost": "host database user address auth-method [auth-options]",
         "hbaLDAPConfHostSSL": "hostssl database user IP-address auth-method [auth-options]",
-        "identConfLocal": "map-name idp-user/group/role database-username",
-        "InvalidLDAPKey": "Invalid LDAP key or missing '=' between key value pair",
-        "LDAPMissingAttributeValue": "Missing value for the attribute",
-        "LDAPMissingQuote": "Attribute value should be enclosed in quotes",
+        "invalidKey": "Invalid attribute key or missing '=' between key value pair",
+        "uploadKeyset": "Need to upload JWKS keyset",
+        "missingAttributeValue": "Missing value for the attribute key",
+        "missingQuoteAttributeValue": "Missing quotes or having spaces within attribute values",
         "nonASCIIDetected": "Non-ASCII value detected",
+        "identConfLocal": "map-name idp-user/group/role database-username",
         "hbaConfDescription": "Input each record as a new row, then reorder them. The sequential order of the records are significant as they are searched serially for every connection request.",
         "identConfDescriptionFirst": "The flag's configuration follows ",
         "identConfPostgreSQL": "PostgreSQL. ",
@@ -258,7 +287,7 @@
         "ephemeralStorage": "! Selected instance type is with ephemeral storage, If you will pause this universe your data will get lost.",
         "instanceType": "Instance Type",
         "k8NumCores": "Number of Cores",
-        "k8Memory": "Memory (GB)",
+        "k8Memory": "Memory (Gib)",
         "useSpotInstance": "Use Spot Instances",
         "kmsConfig": "Key Management Service Config",
         "kmsConfigPlaceHolder": "Select Configuration",
@@ -383,17 +412,28 @@
             "P90": "P90 Latency",
             "P95": "P95 Latency",
             "P99": "P99 Latency",
+            "appName": "Client Name",
             "calls": "Total Count",
+            "clientHost": "Client Host",
+            "clientPort": "Client Port",
             "datname": "Database",
+            "dbName": "Database",
+            "elapsedMillis": "Elapsed Time",
+            "keyspace": "Keyspace",
             "local_blks_hit": "Tmp tables RAM",
             "local_blks_written": "Tmp tables On Disk",
             "max_time": "Max Exec Time",
             "mean_time": "Avg Exec Time",
             "min_time": "Min Exec Time",
+            "nodeName": "Node Name",
+            "privateIp": "Private IP",
+            "queryStartTime": "Query Start",
             "rolname": "User",
             "rows": "Rows",
+            "sessionStatus": "Session Status",
             "stddev_time": "Stdev Exec Time",
-            "total_time": "Total Time"
+            "total_time": "Total Time",
+            "type": "Type"
           },
           "slowQueryGraph": {
             "title": "Query count by Response Time (ms)"
@@ -543,8 +583,8 @@
     },
     "OIDCJWT": {
       "emailId": "Email ID",
-      "OIDCJWTToken": "JSON Web Token",
-      "errorMessage":"Oops, JWT Token has expired, please login via SSO",
+      "OIDCJWTToken": "JSON Web Token (JWT)",
+      "errorMessage": "Oops, JWT Token has expired, please login via SSO",
       "redirectLinkText": "Back to home page",
       "expirationDate": "Token Expiration Date",
       "ysqlCommandLabel": "Use the following command to authenticate into your database using a JSON web token."
@@ -610,8 +650,11 @@
           "selectKMSConfig": "KMS Configuration",
           "kmsConfigHelpText": "<b>Note!</b> For a successful restore, the KMS configuration used for restore should be the same KMS configuration used during backup creation.",
           "validationMessages": {
-            "ybcNotEnabled": "Cannot restore ybc backup to non-ybc universe"
-          }
+            "ybcNotEnabled": "Cannot restore ybc backup to non-ybc universe",
+            "kmsConfigRequired": "Backup was taken using KMS. Valid KMS configuration is needed for restoring."
+          },
+          "activeKMS": "Active",
+          "usedDuringBackup": "Used during backup"
         },
         "selectKeyspaceForm": {
           "title": "Select Keyspace",
@@ -660,6 +703,61 @@
         "generalSettings": "General Settings",
         "selectTables": "Select Tables",
         "renameKeyspaces": "Rename keyspace/s"
+      }
+    },
+    "rbac": {
+      "roles": {
+        "create": {
+          "title": "Add a role",
+          "edit": "Edit a role",
+          "form": {
+            "name": "Name",
+            "namePlaceholder": "Role Name",
+            "description": "Description (Optional)",
+            "descriptionPlaceholder": "Role description",
+            "selectPermissions": "Select Permissions",
+            "selectPermissionSubText": "Select the permissions you want to include in this role.",
+            "permissions": "Permissions",
+            "editSelection": "Edit Selection"
+          },
+          "successMsg": "\"{{role_name}}\" role was created successfully",
+          "editSuccessMsg": "\"{{role_name}}\" role was edited successfully"
+        },
+        "list": {
+          "rowsCount": "{{count}} Roles",
+          "createRole": "Create Role",
+          "search": "Search by role name",
+          "table": {
+            "name": "Name",
+            "description": "Description",
+            "type": "Type",
+            "users": "Users",
+            "actions": "Actions",
+            "moreActions": {
+              "editRole": "Edit Role",
+              "cloneRole": "Clone Role",
+              "viewUsers": "View assigned users",
+              "deleteRole": "Delete Role"
+            }
+          }
+        },
+        "delete": {
+          "title": "Delete Role",
+          "errMsg": "This operation will delete the following role:<br/><bold>“{{role_name}}”</bold><br/>Enter the role name to continue.",
+          "successMsg": "\"{{role_name}}\" role was deleted successfully"
+        },
+        "edit": {
+          "menu": {
+            "configurations": "Configurations",
+            "users": "Users"
+          },
+          "title": "Edit Role"
+        }
+      },
+      "permissions": {
+        "selectPermissionModal": {
+          "title": "Select Permissions"
+        }
       }
     }
   }

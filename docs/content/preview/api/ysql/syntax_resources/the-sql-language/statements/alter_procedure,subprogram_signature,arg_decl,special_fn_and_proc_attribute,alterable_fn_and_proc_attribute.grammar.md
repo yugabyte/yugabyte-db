@@ -7,7 +7,7 @@ alter_procedure ::= ALTER PROCEDURE subprogram_name (
 
 subprogram_signature ::= arg_decl [ , ... ]
 
-arg_decl ::= [ arg_name ] [ arg_mode ] arg_type
+arg_decl ::= [ formal_arg ] [ arg_mode ] arg_type
 
 special_fn_and_proc_attribute ::= RENAME TO subprogram_name
                                   | OWNER TO 

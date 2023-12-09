@@ -31,7 +31,7 @@
 
 namespace yb::dockv {
 
-// The packed row is encoded in the following format.
+// The packed row V1 is encoded in the following format.
 // Row packing/unpacking is accompanied by SchemaPacking class that is built from schema.
 //
 // We distinguish variable length columns from fixed length column.
@@ -74,13 +74,29 @@ Status ReplaceSchemaVersionInPackedValue(Slice value,
                                          const SchemaVersionMapper& schema_versions_mapper,
                                          ValueBuffer *out);
 
-class RowPacker {
+class PackableValue {
  public:
-  RowPacker(SchemaVersion version, std::reference_wrapper<const SchemaPacking> packing,
-            size_t packed_size_limit, const ValueControlFields& control_fields);
+  // limit - maximal number of bytes that could be packed. If packed value does not fit into this
+  // limit PackTo should do nothing and return false.
+  virtual bool PackTo(size_t limit, ValueBuffer* result) const = 0;
+  virtual std::string ToString() const = 0;
 
-  RowPacker(SchemaVersion version, std::reference_wrapper<const SchemaPacking> packing,
-            size_t packed_size_limit, const Slice& control_fields);
+  virtual ~PackableValue() = default;
+};
+
+class RowPackerBase {
+ public:
+  // packed_size_limit - don't pack column if packed row will be over limit after it.
+  RowPackerBase(
+      std::reference_wrapper<const SchemaPacking> packing, size_t packed_size_limit,
+      const ValueControlFields& row_control_fields, std::reference_wrapper<const Schema> schema);
+
+  RowPackerBase(
+      std::reference_wrapper<const SchemaPacking> packing, size_t packed_size_limit,
+      Slice control_fields, std::reference_wrapper<const Schema> schema);
+
+  RowPackerBase(const RowPackerBase&) = delete;
+  void operator=(const RowPackerBase&) = delete;
 
   bool Empty() const {
     return idx_ == 0;
@@ -88,36 +104,119 @@ class RowPacker {
 
   bool Finished() const;
 
-  void Restart();
+  const SchemaPacking& packing() const {
+    return packing_;
+  }
+
+  const Schema& schema() const {
+    return schema_;
+  }
 
   ColumnId NextColumnId() const;
   Result<const ColumnPackingData&> NextColumnData() const;
 
-  // Returns false when unable to add value due to packed size limit.
+ protected:
+  template <class Traits, class Value>
+  Result<bool> DoAddValueImpl(ColumnId column_id, const Value& value, ssize_t tail_size);
+
+  // Schema packing used.
+  const SchemaPacking& packing_;
+
+  // Don't pack after this limit.
+  const ssize_t packed_size_limit_;
+
+  // Index of next column to be packed.
+  size_t idx_ = 0;
+
+  // Offset of variable header from start of the buffer.
+  size_t var_header_start_;
+
+  // The end prefix, i.e., beginning of column values.
+  size_t prefix_end_;
+
+  // Resulting buffer.
+  ValueBuffer result_;
+
+  const Schema& schema_;
+};
+
+// Packs the row with V1 encoding.
+class RowPackerV1 : public RowPackerBase {
+ public:
+  using PackedValue = PackedValueV1;
+
+  template <class... Args>
+  RowPackerV1(SchemaVersion version, Args&&... args) : RowPackerBase(std::forward<Args>(args)...) {
+    Init(version);
+  }
+
+  // AddValue returns false when unable to add value due to packed size limit.
   // tail_size is added to proposed encoded size, to make decision whether encoded value fits
-  // into bounds or not.
-  Result<bool> AddValue(ColumnId column_id, const Slice& value, ssize_t tail_size);
+  // into bounds or not. Useful during repacking, when we know size of packed columns after this
+  // one.
+  Result<bool> AddValue(ColumnId column_id, PackedValueV1 value, ssize_t tail_size);
+  Result<bool> AddValue(ColumnId column_id, PackedValueV2 value, ssize_t tail_size);
   // Add value consisting of 2 parts - value_prefix+value_suffix.
   Result<bool> AddValue(
-      ColumnId column_id, const Slice& value_prefix, const Slice& value_suffix, ssize_t tail_size);
+      ColumnId column_id, Slice value_prefix, PackedValueV1 value_suffix, ssize_t tail_size);
   Result<bool> AddValue(ColumnId column_id, const QLValuePB& value);
-  Result<bool> AddValue(
-      ColumnId column_id, const Slice& control_fields, const QLValuePB& value);
+  Result<bool> AddValue(ColumnId column_id, const LWQLValuePB& value);
+  Result<bool> AddValue(ColumnId column_id, Slice control_fields, const QLValuePB& value);
 
   Result<Slice> Complete();
+
+  // TODO(packed_row) Remove after full support for packed row v2 is merged.
+  Result<bool> AddValue(ColumnId column_id, Slice value, ssize_t tail_size);
+  Result<bool> AddValue(
+      ColumnId column_id, Slice value_prefix, Slice value_suffix, ssize_t tail_size);
+  void Restart();
 
  private:
   void Init(SchemaVersion version);
 
   template <class Value>
   Result<bool> DoAddValue(ColumnId column_id, const Value& value, ssize_t tail_size);
-
-  const SchemaPacking& packing_;
-  const ssize_t packed_size_limit_;
-  size_t idx_ = 0;
-  size_t prefix_end_;
-  ValueBuffer result_;
-  size_t varlen_write_pos_;
 };
+
+// Packs the row with V2 encoding.
+class RowPackerV2 : public RowPackerBase {
+ public:
+  using PackedValue = PackedValueV2;
+
+  // Flat to mark whether packed row has nulls or not.
+  // When row does not contain nulls, then we don't store null mask in it.
+  static constexpr uint8_t kHasNullsFlag = 1;
+
+  template <class... Args>
+  RowPackerV2(SchemaVersion version, Args&&... args) : RowPackerBase(std::forward<Args>(args)...) {
+    Init(version);
+  }
+
+  // Returns false when unable to add value due to packed size limit.
+  // tail_size is added to proposed encoded size, to make decision whether encoded value fits
+  // into bounds or not.
+  Result<bool> AddValue(ColumnId column_id, PackedValueV2 value, ssize_t tail_size);
+  Result<bool> AddValue(ColumnId column_id, PackedValueV1 value, ssize_t tail_size);
+  // Add value consisting of 2 parts - value_prefix+value_suffix.
+  Result<bool> AddValue(
+      ColumnId column_id, Slice value_prefix, PackedValueV1 value_suffix, ssize_t tail_size);
+  Result<bool> AddValue(ColumnId column_id, const QLValuePB& value);
+  Result<bool> AddValue(ColumnId column_id, const LWQLValuePB& value);
+  Result<bool> AddValue(ColumnId column_id, const PackableValue& value);
+
+  Result<Slice> Complete();
+
+  const Schema& GetSchema();
+
+ private:
+  void Init(SchemaVersion version);
+
+  template <class Value>
+  Result<bool> DoAddValue(ColumnId column_id, const Value& value, ssize_t tail_size);
+};
+
+using RowPackerVariant = std::variant<RowPackerV1, RowPackerV2>;
+
+RowPackerBase& PackerBase(RowPackerVariant* packer_variant);
 
 } // namespace yb::dockv
