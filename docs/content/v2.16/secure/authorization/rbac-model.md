@@ -4,7 +4,6 @@ linkTitle: Overview
 headerTitle: Role-based access overview
 description: Overview of the role-based access control (RBAC) model in YSQL.
 headcontent: How role-based access control works
-image: /images/section_icons/secure/rbac-model.png
 menu:
   v2.16:
     identifier: rbac-model

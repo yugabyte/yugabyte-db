@@ -3,7 +3,6 @@ title: Supported versions
 linkTitle: Supported versions
 description: Supported versions for Go drivers and ORMs
 headcontent: Supported versions for Go drivers and ORMs
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   v2.16:
     identifier: go-compatibility
