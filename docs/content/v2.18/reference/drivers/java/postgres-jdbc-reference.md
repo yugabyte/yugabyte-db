@@ -4,7 +4,6 @@ headerTitle: JDBC Drivers
 linkTitle: JDBC Drivers
 description: Java JDBC Driver for YSQL
 headcontent: JDBC Drivers for YSQL
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   v2.18:
     name: JDBC Drivers

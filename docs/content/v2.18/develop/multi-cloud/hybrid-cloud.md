@@ -4,7 +4,6 @@ headerTitle: Hybrid cloud
 linkTitle: Hybrid cloud
 description: Build applications that run across on-prem datacenters and public clouds
 headcontent: Build applications that run across on-prem datacenters and public clouds
-image: /images/section_icons/develop/api-icon.png
 menu:
   v2.18:
     identifier: multicloud-hybrid-cloud
