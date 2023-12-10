@@ -715,6 +715,8 @@ set(YB_CMAKE_CXX_EXTRA_FLAGS "-Wextra -Wno-unused-parameter")
 set(CMAKE_C_FLAGS "${CMAKE_CXX_FLAGS}")
 
 # C++-only flags.
+ADD_CXX_FLAGS("-Werror=missing-field-initializers")
+
 if ((IS_GCC) AND
     ("${CMAKE_CXX_COMPILER_VERSION}" VERSION_GREATER_EQUAL "7.0"))
   # Used with GCC 7.

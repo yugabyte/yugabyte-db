@@ -454,7 +454,8 @@ class CDCServiceImpl::Impl {
       tablet_checkpoints_.emplace(TabletCheckpointInfo{
         .producer_tablet_info = producer_tablet,
         .cdc_state_checkpoint = commit_checkpoint,
-        .sent_checkpoint = sent_checkpoint
+        .sent_checkpoint = sent_checkpoint,
+        .mem_tracker = nullptr,
       });
     }
 
@@ -569,7 +570,12 @@ class CDCServiceImpl::Impl {
         // Add every tablet in the stream.
         ProducerTabletInfo producer_info{info.universe_uuid, info.stream_id, tablet.tablet_id()};
         tablet_checkpoints_.emplace(TabletCheckpointInfo{
-            .producer_tablet_info = producer_info
+            .producer_tablet_info = producer_info,
+            .cdc_state_checkpoint =
+                TabletCheckpoint{.op_id = {}, .last_update_time = {}, .last_active_time = {}},
+            .sent_checkpoint =
+                TabletCheckpoint{.op_id = {}, .last_update_time = {}, .last_active_time = {}},
+            .mem_tracker = nullptr,
         });
         cdc_state_metadata_.emplace(CDCStateMetadataInfo{
             .producer_tablet_info = producer_info,

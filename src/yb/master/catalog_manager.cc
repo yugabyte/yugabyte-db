@@ -7488,6 +7488,7 @@ Status CatalogManager::ProcessTabletReport(TSDescriptor* ts_desc,
         .tablet_id = tablet_id,
         .info = tablet,
         .report = &report,
+        .tables = {}
       });
       // For colocated tablet, update all the tables that need processing.
       for (const auto& id_to_version : report.table_to_version()) {

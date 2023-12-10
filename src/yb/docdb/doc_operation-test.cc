@@ -356,8 +356,11 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
   redis_write_operation_pb.mutable_key_value()->add_value("xyz");
   RedisWriteOperation redis_write_operation(redis_write_operation_pb);
   auto doc_write_batch = MakeDocWriteBatch();
-  ASSERT_OK(redis_write_operation.Apply(
-      {&doc_write_batch, CoarseTimePoint::max() /* deadline */, ReadHybridTime()}));
+  ASSERT_OK(redis_write_operation.Apply(docdb::DocOperationApplyData{
+      .doc_write_batch = &doc_write_batch,
+      .deadline = CoarseTimePoint::max(),
+      .read_time = ReadHybridTime(),
+      .restart_read_ht = nullptr}));
 
   ASSERT_OK(WriteToRocksDB(doc_write_batch, HybridTime::FromMicros(1000)));
 

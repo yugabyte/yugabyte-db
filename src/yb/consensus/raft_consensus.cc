@@ -961,7 +961,8 @@ Status RaftConsensus::ElectionLostByProtege(const std::string& election_lost_by_
   }
 
   if (start_election) {
-    return StartElection({ElectionMode::NORMAL_ELECTION});
+    return StartElection(LeaderElectionData{
+        .mode = ElectionMode::NORMAL_ELECTION, .must_be_committed_opid = OpId()});
   }
 
   return Status::OK();
@@ -1040,7 +1041,8 @@ void RaftConsensus::ReportFailureDetectedTask() {
 
   // Start an election.
   LOG_WITH_PREFIX(INFO) << "ReportFailDetected: Starting NORMAL_ELECTION...";
-  Status s = StartElection({ElectionMode::NORMAL_ELECTION});
+  Status s = StartElection(LeaderElectionData{
+      .mode = ElectionMode::NORMAL_ELECTION, .must_be_committed_opid = OpId()});
   if (PREDICT_FALSE(!s.ok())) {
     LOG_WITH_PREFIX(WARNING) << "Failed to trigger leader election: " << s.ToString();
   }
@@ -1589,8 +1591,10 @@ Status RaftConsensus::Update(ConsensusRequestPB* request,
   // StartElection will ensure the pending election will be started just once only even if
   // UpdateReplica happens in multiple threads in parallel.
   if (result.start_election) {
-    RETURN_NOT_OK(StartElection(
-        {consensus::ElectionMode::ELECT_EVEN_IF_LEADER_IS_ALIVE, true /* pending_commit */}));
+    RETURN_NOT_OK(StartElection(LeaderElectionData{
+        .mode = consensus::ElectionMode::ELECT_EVEN_IF_LEADER_IS_ALIVE,
+        .pending_commit = true,
+        .must_be_committed_opid = OpId()}));
   }
 
   RETURN_NOT_OK(ExecuteHook(POST_UPDATE));

@@ -282,6 +282,8 @@ Status FsTool::DumpTabletData(const std::string& tablet_id) {
     .transaction_coordinator_context = nullptr,
     .txns_enabled = tablet::TransactionsEnabled::kTrue,
     .is_sys_catalog = tablet::IsSysCatalogTablet(tablet_id == master::kSysCatalogTabletId),
+    .allowed_history_cutoff_provider = {},
+    .transaction_manager_provider = {},
     .full_compaction_pool = nullptr,
     .post_split_compaction_added = nullptr
   };

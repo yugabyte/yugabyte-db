@@ -157,7 +157,12 @@ int fallocate(int fd, int mode, off_t offset, off_t len) {
     // The offset field seems to have no effect; the file is always allocated
     // with space from 0 to the size. This is probably because OS X does not
     // support sparse files.
-    fstore_t store = {F_ALLOCATECONTIG, F_PEOFPOSMODE, 0, size};
+    auto store = fstore_t{
+        .fst_flags = F_ALLOCATECONTIG,
+        .fst_posmode = F_PEOFPOSMODE,
+        .fst_offset = 0,
+        .fst_length = size,
+        .fst_bytesalloc = 0};
     if (fcntl(fd, F_PREALLOCATE, &store) < 0) {
       LOG(INFO) << "Unable to allocate contiguous disk space, attempting non-contiguous allocation";
       store.fst_flags = F_ALLOCATEALL;

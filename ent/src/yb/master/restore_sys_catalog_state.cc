@@ -57,7 +57,8 @@ Status ApplyWriteRequest(
     const Schema& schema, const QLWriteRequestPB& write_request,
     docdb::DocWriteBatch* write_batch) {
   auto doc_read_context = std::make_shared<docdb::DocReadContext>(schema, kSysCatalogSchemaVersion);
-  docdb::DocOperationApplyData apply_data{.doc_write_batch = write_batch};
+  docdb::DocOperationApplyData apply_data{
+      .doc_write_batch = write_batch, .deadline = {}, .read_time = {}, .restart_read_ht = nullptr};
   IndexMap index_map;
   docdb::QLWriteOperation operation(
       write_request, doc_read_context, index_map, nullptr, TransactionOperationContext());

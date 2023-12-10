@@ -327,10 +327,11 @@ Status BulkLoadTask::InsertRow(const string &row,
       req, std::make_shared<docdb::DocReadContext>(schema, schema_version),
       index_map, nullptr /* unique_index_key_schema */, TransactionOperationContext());
   RETURN_NOT_OK(op.Init(&resp));
-  RETURN_NOT_OK(op.Apply({
-      doc_write_batch,
-      CoarseTimePoint::max() /* deadline */,
-      ReadHybridTime::SingleTime(HybridTime::FromMicros(kYugaByteMicrosecondEpoch))}));
+  RETURN_NOT_OK(op.Apply(docdb::DocOperationApplyData{
+      .doc_write_batch = doc_write_batch,
+      .deadline = CoarseTimePoint::max(),
+      .read_time = ReadHybridTime::SingleTime(HybridTime::FromMicros(kYugaByteMicrosecondEpoch)),
+      .restart_read_ht = nullptr}));
   return Status::OK();
 }
 

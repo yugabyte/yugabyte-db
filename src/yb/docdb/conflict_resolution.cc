@@ -270,7 +270,8 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
         if (!context_->IgnoreConflictsWith(transaction_id)) {
           auto p = conflicts_.emplace(transaction_id,
                                       TransactionConflictInfo {
-                                        .wait_policy = wait_policy
+                                        .wait_policy = wait_policy,
+                                        .subtransactions = {},
                                       });
           if (!p.second) {
             p.first->second.wait_policy = VERIFY_RESULT(

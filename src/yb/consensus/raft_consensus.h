@@ -222,10 +222,14 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
 
   void TEST_UpdateMajorityReplicated(
       const OpId& majority_replicated, OpId* committed_index, OpId* last_committed_op_id) {
-    UpdateMajorityReplicated({ majority_replicated,
-                               CoarseTimePoint::min(),
-                               HybridTime::kMin.GetPhysicalValueMicros() },
-                             committed_index, last_committed_op_id);
+    UpdateMajorityReplicated(
+        MajorityReplicatedData{
+            .op_id = majority_replicated,
+            .leader_lease_expiration = CoarseTimePoint::min(),
+            .ht_lease_expiration = HybridTime::kMin.GetPhysicalValueMicros(),
+            .num_sst_files = 0,
+            .peer_got_all_ops = {}},
+        committed_index, last_committed_op_id);
   }
 
   yb::OpId GetLastReceivedOpId() override;

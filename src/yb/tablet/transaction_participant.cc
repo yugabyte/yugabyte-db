@@ -1555,7 +1555,9 @@ class TransactionParticipant::Impl
         .transaction_id = id,
         .isolation = IsolationLevel::NON_TRANSACTIONAL,
         .status_tablet = TabletId(),
-        .priority = 0
+        .priority = 0,
+        .start_time = {},
+        .old_status_tablet = {},
       };
       it = transactions_.insert(std::make_shared<RunningTransaction>(
           metadata, TransactionalBatchData(), OneWayBitmap(), HybridTime::kMax, this)).first;

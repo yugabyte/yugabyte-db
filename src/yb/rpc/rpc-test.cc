@@ -840,8 +840,8 @@ TEST_F(TestRpc, QueueTimeout) {
 struct DisconnectShare {
   Proxy proxy;
   size_t left;
-  std::mutex mutex;
-  std::condition_variable cond;
+  std::mutex mutex{};
+  std::condition_variable cond{};
   std::unordered_map<std::string, size_t> counts;
 };
 
@@ -885,7 +885,8 @@ TEST_F(TestRpc, TestDisconnect) {
   auto client_messenger = CreateAutoShutdownMessengerHolder("Client");
 
   constexpr size_t kRequests = 10000;
-  DisconnectShare share = { { client_messenger.get(), server_addr }, kRequests };
+  auto share = DisconnectShare{
+      .proxy = {client_messenger.get(), server_addr}, .left = kRequests, .counts = {}};
 
   std::vector<DisconnectTask> tasks;
   for (size_t i = 0; i != kRequests; ++i) {
