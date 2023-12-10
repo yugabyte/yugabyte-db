@@ -3,7 +3,6 @@ title: Node.js Drivers
 linkTitle: Node.js Drivers
 description: Node.js Drivers for YSQL
 headcontent: Node.js Drivers for YSQL
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   v2.14:
     name: Node.js Drivers

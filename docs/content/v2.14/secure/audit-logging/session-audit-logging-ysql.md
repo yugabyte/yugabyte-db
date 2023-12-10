@@ -3,7 +3,6 @@ title: Session-level audit logging in YSQL
 headerTitle: Session-level audit logging in YSQL
 linkTitle: Session-level audit logging
 description: Session-level audit logging in YSQL.
-image: /images/section_icons/secure/authentication.png
 menu:
   v2.14:
     identifier: session-audit-logging-1-ysql
