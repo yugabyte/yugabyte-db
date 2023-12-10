@@ -941,15 +941,27 @@ TEST_F(AdminCliTest, DdlLog) {
 
 TEST_F(AdminCliTest, FlushSysCatalog) {
   BuildAndStart();
-  string master_address = ToString(cluster_->master()->bound_rpc_addr());
-  auto client = ASSERT_RESULT(YBClientBuilder().add_master_server_addr(master_address).Build());
+  const auto master_addrs = cluster_->GetMasterAddresses();
+  std::vector<string> master_addr_strs;
+  for (const auto& addr : master_addrs) {
+    master_addr_strs.push_back(ToString(addr));
+  }
+
+  auto client = ASSERT_RESULT(
+      YBClientBuilder().master_server_addrs(master_addr_strs).Build());
   ASSERT_OK(CallAdmin("flush_sys_catalog"));
 }
 
 TEST_F(AdminCliTest, CompactSysCatalog) {
   BuildAndStart();
-  string master_address = ToString(cluster_->master()->bound_rpc_addr());
-  auto client = ASSERT_RESULT(YBClientBuilder().add_master_server_addr(master_address).Build());
+  const auto master_addrs = cluster_->GetMasterAddresses();
+  std::vector<string> master_addr_strs;
+  for (const auto& addr : master_addrs) {
+    master_addr_strs.push_back(ToString(addr));
+  }
+  
+  auto client = ASSERT_RESULT(
+      YBClientBuilder().master_server_addrs(master_addr_strs).Build());
   ASSERT_OK(CallAdmin("compact_sys_catalog"));
 }
 
