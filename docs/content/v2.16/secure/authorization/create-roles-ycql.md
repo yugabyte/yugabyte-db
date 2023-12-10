@@ -4,7 +4,6 @@ headerTitle: Manage users and roles
 linkTitle: Manage users and roles
 description: Manage users and roles in YCQL
 headcontent: Manage users and roles
-image: /images/section_icons/secure/create-roles.png
 menu:
   v2.16:
     identifier: create-roles-ycql

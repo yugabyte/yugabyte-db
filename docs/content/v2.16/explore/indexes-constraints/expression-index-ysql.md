@@ -2,7 +2,6 @@
 title: Expression indexes
 linkTitle: Expression indexes
 description: Using expression indexes in YSQL
-image: /images/section_icons/secure/create-roles.png
 menu:
   v2.16:
     identifier: expression-index-ysql
