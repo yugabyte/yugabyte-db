@@ -947,8 +947,7 @@ TEST_F(AdminCliTest, FlushSysCatalog) {
     master_addr_strs.push_back(ToString(addr));
   }
 
-  auto client = ASSERT_RESULT(
-      YBClientBuilder().master_server_addrs(master_addr_strs).Build());
+  auto client = ASSERT_RESULT(YBClientBuilder().master_server_addrs(master_addr_strs).Build());
   ASSERT_OK(CallAdmin("flush_sys_catalog"));
 }
 
@@ -960,8 +959,7 @@ TEST_F(AdminCliTest, CompactSysCatalog) {
     master_addr_strs.push_back(ToString(addr));
   }
   
-  auto client = ASSERT_RESULT(
-      YBClientBuilder().master_server_addrs(master_addr_strs).Build());
+  auto client = ASSERT_RESULT(YBClientBuilder().master_server_addrs(master_addr_strs).Build());
   ASSERT_OK(CallAdmin("compact_sys_catalog"));
 }
 
