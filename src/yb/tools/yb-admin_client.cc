@@ -1932,17 +1932,39 @@ Status ClusterAdminClient::CompactionStatus(const YBTableName& table_name, bool 
 }
 
 Status ClusterAdminClient::FlushSysCatalog() {
+  // Get list of masters.
+  const auto list_resp = VERIFY_RESULT(InvokeRpc(
+      &master::MasterClusterProxy::ListMasters, *master_cluster_proxy_,
+      ListMastersRequestPB()));
+
+  // Instantiate proxies and invoke flush sys catalog for all masters.
   master::FlushSysCatalogRequestPB req;
-  auto res = InvokeRpc(
-      &master::MasterAdminProxy::FlushSysCatalog, *master_admin_proxy_, req);
-  return res.ok() ? Status::OK() : res.status();
+  for (const auto& master : list_resp.masters()) {
+    HostPortPB hp_pb = master.registration().private_rpc_addresses(0);
+    master::MasterAdminProxy proxy(proxy_cache_.get(), HostPortFromPB(hp_pb));
+    RETURN_NOT_OK(InvokeRpc(
+        &master::MasterAdminProxy::FlushSysCatalog, proxy, req));
+  }
+
+  return Status::OK();
 }
 
 Status ClusterAdminClient::CompactSysCatalog() {
+  // Get list of masters.
+  const auto list_resp = VERIFY_RESULT(InvokeRpc(
+      &master::MasterClusterProxy::ListMasters, *master_cluster_proxy_,
+      ListMastersRequestPB()));
+
+  // Instantiate proxies and invoke compaction sys catalog for all masters.
   master::CompactSysCatalogRequestPB req;
-  auto res = InvokeRpc(
-      &master::MasterAdminProxy::CompactSysCatalog, *master_admin_proxy_, req);
-  return res.ok() ? Status::OK() : res.status();
+  for (const auto& master : list_resp.masters()) {
+    HostPortPB hp_pb = master.registration().private_rpc_addresses(0);
+    master::MasterAdminProxy proxy(proxy_cache_.get(), HostPortFromPB(hp_pb));
+    RETURN_NOT_OK(InvokeRpc(
+        &master::MasterAdminProxy::CompactSysCatalog, proxy, req));
+  }
+
+  return Status::OK();
 }
 
 Status ClusterAdminClient::WaitUntilMasterLeaderReady() {
