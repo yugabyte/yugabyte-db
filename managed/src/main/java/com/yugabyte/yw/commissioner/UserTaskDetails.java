@@ -170,6 +170,9 @@ public class UserTaskDetails {
     // Delete Kubernetes volumes created by helm chart.
     KubernetesVolumeDelete,
 
+    // Delete Kubernetes Volumes for a shell mode master before creating it.
+    KubernetesVolumeDeleteMasterShellMode,
+
     // Delete kubernetes namespace
     KubernetesNamespaceDelete,
 
@@ -457,6 +460,10 @@ public class UserTaskDetails {
       case KubernetesVolumeDelete:
         title = "Delete Kubernetes Volumes";
         description = "Delete Kubernetes Volumes";
+        break;
+      case KubernetesVolumeDeleteMasterShellMode:
+        title = "Delete Kubernetes Volumes for a master before creating it in shell mode";
+        description = "Delete Kubernetes Volumes for master pod before creating it in shell mode";
         break;
       case KubernetesNamespaceDelete:
         title = "Delete Kubernetes Namespace";
