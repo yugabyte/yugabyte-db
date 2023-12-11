@@ -167,7 +167,7 @@ Read more about enabling [column-level encryption](../../../secure/column-level-
 
 ## Auditing
 
-Use audit logging to produce audit logs needed to comply with government, financial, or ISO certifications. YugabyteDB YSQL uses the PostgreSQL Audit Extension (`pgAudit`) to provide detailed session and object audit logging via YugabyteDB YB-TServer logging.
+Use audit logging to produce audit logs needed to comply with government, financial, or ISO certifications. YugabyteDB YSQL uses the PostgreSQL Audit Extension (`pgaudit`) to provide detailed session and object audit logging via YugabyteDB YB-TServer logging.
 
 You enable audit logging using the `--ysql_pg_conf_csv` YB-TServer flag.
 
