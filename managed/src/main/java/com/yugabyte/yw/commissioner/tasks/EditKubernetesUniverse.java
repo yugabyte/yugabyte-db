@@ -19,7 +19,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckVolumeExpansion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
-import com.yugabyte.yw.common.KubernetesManager;
+import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesPostExpansionCheckVolume;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -36,7 +36,6 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
-import io.fabric8.kubernetes.api.model.Quantity;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -602,33 +601,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 
-  /** Check if PVC needs expansion before launching tasks disk resize in the AZ. */
-  protected boolean needsExpandPVC(
-      String universeName,
-      String namespace,
-      String helmReleaseName,
-      String appName,
-      boolean newNamingStyle,
-      String newDiskSizeGi,
-      Map<String, String> config) {
-    KubernetesManager k8s = kubernetesManagerFactory.getManager();
-    List<Quantity> pvcSizeList =
-        k8s.getPVCSizeList(config, namespace, helmReleaseName, appName, newNamingStyle);
-    // Go through each PVCsize and check that its different from newDiskSize, if yes return true.
-    boolean expand = false;
-    log.info("incoming pvc size", newDiskSizeGi);
-    Quantity newDiskSizeQty = new Quantity(newDiskSizeGi);
-    for (Quantity pvcSize : pvcSizeList) {
-      log.info("Existing pvc size", pvcSize.toString());
-      if (!pvcSize.equals(newDiskSizeQty)) {
-        expand = true;
-        break; // Exit the loop as soon as a difference is found
-      }
-    }
-    log.info("All PVCs have been expanded");
-    return expand;
-  }
-
   /**
    * Add disk resize tasks for each AZ in given cluster placement. Call this for each cluster of the
    * universe.
@@ -670,14 +642,14 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               taskParams().nodePrefix, universeName, azName, isReadOnlyCluster, newNamingStyle);
 
       boolean needsExpandPVCInZone =
-          needsExpandPVC(
-              universeName,
+          KubernetesUtil.needsExpandPVC(
               namespace,
               helmReleaseName,
               "yb-tserver",
               newNamingStyle,
               newDiskSizeGi,
-              config);
+              config,
+              kubernetesManagerFactory);
       if (!needsExpandPVCInZone) {
         log.info("PVC size is unchanged, will not schedule resize tasks");
         continue;
@@ -749,6 +721,14 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           false,
           enableYbc,
           ybcSoftwareVersion);
+      createPostExpansionValidateTask(
+          universeName,
+          azConfig,
+          azName,
+          isReadOnlyCluster,
+          newNamingStyle,
+          providerUUID,
+          newDiskSizeGi);
     }
   }
 
@@ -782,6 +762,45 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             isReadOnlyCluster,
             taskParams().useNewHelmNamingStyle);
     KubernetesCheckVolumeExpansion task = createTask(KubernetesCheckVolumeExpansion.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  private void createPostExpansionValidateTask(
+      String universeName,
+      Map<String, String> config,
+      String azName,
+      boolean isReadOnlyCluster,
+      boolean newNamingStyle,
+      UUID providerUUID,
+      String newDiskSizeGi) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor()
+            .createSubTaskGroup(KubernetesPostExpansionCheckVolume.getSubTaskGroupName());
+    KubernetesPostExpansionCheckVolume.Params params =
+        new KubernetesPostExpansionCheckVolume.Params();
+    params.config = config;
+    params.newNamingStyle = newNamingStyle;
+    if (config != null) {
+      params.namespace =
+          KubernetesUtil.getKubernetesNamespace(
+              taskParams().nodePrefix,
+              azName,
+              config,
+              taskParams().useNewHelmNamingStyle,
+              isReadOnlyCluster);
+    }
+    params.providerUUID = providerUUID;
+    params.newDiskSizeGi = newDiskSizeGi;
+    params.helmReleaseName =
+        KubernetesUtil.getHelmReleaseName(
+            taskParams().nodePrefix,
+            universeName,
+            azName,
+            isReadOnlyCluster,
+            taskParams().useNewHelmNamingStyle);
+    KubernetesPostExpansionCheckVolume task = createTask(KubernetesPostExpansionCheckVolume.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
