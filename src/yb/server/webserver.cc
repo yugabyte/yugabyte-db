@@ -78,6 +78,7 @@
 #include "yb/util/shared_lock.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
+#include "yb/util/tcmalloc_util.h"
 #include "yb/util/url-coding.h"
 #include "yb/util/zlib.h"
 
@@ -137,6 +138,9 @@ class Webserver::Impl {
   Status GetBoundAddresses(std::vector<Endpoint>* addrs) const;
 
   Status GetInputHostPort(HostPort* hp) const;
+
+  bool access_logging_enabled = false;
+  bool tcmalloc_logging_enabled = false;
 
   void RegisterPathHandler(const std::string& path, const std::string& alias,
                                    const PathHandlerCallback& callback,
@@ -538,8 +542,24 @@ sq_callback_result_t Webserver::Impl::BeginRequestCallback(struct sq_connection*
     handler = it->second;
   }
 
+  if (access_logging_enabled) {
+    string params = request_info->query_string ? Format("?$0", request_info->query_string) : "";
+    LOG(INFO) << "webserver request: " << request_info->uri << params;
+  }
+
   sq_callback_result_t result = RunPathHandler(*handler, connection, request_info);
   MemTracker::GcTcmallocIfNeeded();
+
+#if YB_TCMALLOC_ENABLED
+  if (tcmalloc_logging_enabled)
+    LOG(INFO) << "webserver tcmalloc stats:"
+              << " heap size bytes: " << GetTCMallocPhysicalBytesUsed()
+              << ", total physical bytes: " << GetTCMallocCurrentHeapSizeBytes()
+              << ", current allocated bytes: " << GetTCMallocCurrentAllocatedBytes()
+              << ", page heap free bytes: " << GetTCMallocPageHeapFreeBytes()
+              << ", page heap unmapped bytes: " << GetTCMallocPageHeapUnmappedBytes();
+#endif
+
   return result;
 }
 
@@ -786,6 +806,11 @@ Status Webserver::GetBoundAddresses(std::vector<Endpoint>* addrs) const {
 
 Status Webserver::GetInputHostPort(HostPort* hp) const {
   return impl_->GetInputHostPort(hp);
+}
+
+void Webserver::SetLogging(bool enable_access_logging, bool enable_tcmalloc_logging) {
+  impl_->access_logging_enabled = enable_access_logging;
+  impl_->tcmalloc_logging_enabled = enable_tcmalloc_logging;
 }
 
 void Webserver::RegisterPathHandler(const std::string& path,
