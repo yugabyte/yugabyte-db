@@ -5868,10 +5868,6 @@
     "LdapUnivSyncFormData" : {
       "description" : "Config to sync universe roles with ldap users",
       "properties" : {
-        "allowDropSuperuser" : {
-          "description" : "Allow the API to drop a superuser role which is not an LDAP group",
-          "type" : "boolean"
-        },
         "createGroups" : {
           "description" : "Allow the API to create the LDAP groups as DB superusers",
           "type" : "boolean"
