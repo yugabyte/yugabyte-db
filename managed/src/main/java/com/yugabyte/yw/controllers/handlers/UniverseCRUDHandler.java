@@ -205,6 +205,7 @@ public class UniverseCRUDHandler {
           || PlacementInfoUtil.didAffinitizedLeadersChange(
               currentCluster.placementInfo, cluster.placementInfo)
           || isRegionListUpdate(cluster, currentCluster)
+          || cluster.userIntent.replicationFactor != currentCluster.userIntent.replicationFactor
           || isKubernetesVolumeUpdate(cluster, currentCluster)) {
         result.add(UniverseDefinitionTaskParams.UpdateOptions.UPDATE);
       } else if (GFlagsUtil.checkGFlagsByIntentChange(
