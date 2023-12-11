@@ -20,9 +20,9 @@ type: docs
   </li>
 </ul>
 
-## Enable session-level audit
+Session logging is enabled on a per user session basis.
 
-Session logging is enabled for per user session basis. Enable session logging for all DML and DDL statements and log all relations in DML statements.
+To enable session logging for all DML and DDL statements and log all relations in DML statements, you would enter the following commands:
 
 ```sql
 set pgaudit.log = 'write, ddl';
@@ -31,50 +31,37 @@ set pgaudit.log_relation = on;
 
 Enable session logging for all commands except MISC and raise audit log messages as NOTICE.
 
-## Example
+## Session-level example
 
 In this example, session audit logging is used for logging DDL and SELECT statements. Note that the insert statement is not logged because the WRITE class is not enabled.
 
 SQL statements are shown below.
 
-### Step 1. Connect using `ysql`
+### Setup
 
-Open the YSQL shell (ysqlsh), specifying the `yugabyte` user and prompting for the password.
+{{% explore-setup-single %}}
 
-```sh
-$ ./ysqlsh -U yugabyte -W
-```
-
-When prompted for the password, enter the yugabyte password. You should be able to log in and see a response similar to the following:
-
-```output
-ysqlsh (11.2-YB-2.5.0.0-b0)
-Type "help" for help.
-
-yugabyte=#
-```
-
-### Step 2. Enable `pgaudit` extension
-
-Enable `pgaudit` extension on the YugabyteDB cluster.
+Connect to the database using ysqlsh and enable the `pgaudit` extension on the YugabyteDB cluster as follows:
 
 ```sql
 \c yugabyte yugabyte;
 CREATE EXTENSION IF NOT EXISTS pgaudit;
 ```
 
-### Step 3. Enable session audit logging
+### Enable session audit logging
 
-Enable session audit logging in YugabyteDB cluster.
+Enable session audit logging in the YugabyteDB cluster as follows:
 
 ```sql
-set pgaudit.log = 'read, ddl';
+SET pgaudit.log = 'read, ddl';
 ```
 
-### Step 4. Perform statements
+### Perform statements
+
+Run some statements as follows:
 
 ```sql
-create table account
+CREATE TABLE account
 (
     id int,
     name text,
@@ -82,16 +69,15 @@ create table account
     description text
 );
 
-insert into account (id, name, password, description)
-             values (1, 'user1', 'HASH1', 'blah, blah');
+INSERT INTO account (id, name, password, description)
+             VALUES (1, 'user1', 'HASH1', 'blah, blah');
 
-select *
-    from account;
+SELECT * FROM account;
 ```
 
-### Step 5. Verify output
+### Verify output
 
-You should output similar to the following in the logs:
+You should see output similar to the following in the logs:
 
 ```output
 2020-11-09 19:19:09.262 UTC [3710] LOG:  AUDIT: SESSION,1,1,DDL,CREATE
