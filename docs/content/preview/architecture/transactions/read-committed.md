@@ -16,9 +16,9 @@ rightNav:
 
 Read Committed is one of the three isolation levels in PostgreSQL, and also its default. A unique property of this isolation level is that, for transactions running with this isolation, clients do not need to retry or handle serialization errors (40001) in application logic. The other two isolation levels (Serializable and Repeatable Read) require applications to have retry logic for serialization errors. Also, each statement in a read committed transactions works on a new latest snapshot of the database, implying that any data committed before the statement was issued, is visible to the statement.
 
-A read committed transaction in PostgreSQL doesn't throw serialization errors because it internally retries conflicting rows in the statement's execution as off the latest versions of those rows as soon as conflicting concurrent transactions have finished. This mechanism allows single statements to work on an inconsistent snapshot (in other words, non-conflicting rows are read as of the statement's snapshot, but conflicting rows are re-attempted on the latest version of the row once the conflicting transactions have finished).
+A read committed transaction in PostgreSQL doesn't raise serialization errors because it internally retries conflicting rows in the statement's execution as of the latest versions of those rows, as soon as conflicting concurrent transactions have finished. This mechanism allows single statements to work on an inconsistent snapshot (in other words, non-conflicting rows are read as of the statement's snapshot, but conflicting rows are re-attempted on the latest version of the row after the conflicting transactions are complete).
 
-YugabyteDB's Read Committed isolation provides slightly stronger guarantees than PostgreSQL's read committed, while providing the same semantics and benefits i.e., a user doesn't have to retry serialization errors in the application logic (modulo [limitation 2](#limitations) around `ysql_output_buffer_size` which is not of relevance for most OLTP workloads). In YugabyteDB, a read committed transaction retries the whole statement instead of retrying only the conflicting rows. This leads to a stronger guarantee: each statement in a YugabyteDB read committed transaction will always use a consistent snapshot of the database while in PostgreSQL an inconsistent snapshot can be used for statements when conflicts are present. See [Stronger guarantees in YugabyteDB's read committed isolation](#stronger-guarantees-in-yugabytedb-s-read-committed-isolation) for a detailed example.
+YugabyteDB's Read Committed isolation provides slightly stronger guarantees than PostgreSQL's read committed, while providing the same semantics and benefits, that is, a user doesn't have to retry serialization errors in the application logic (modulo [limitation 2](#limitations) around `ysql_output_buffer_size` which is not of relevance for most OLTP workloads). In YugabyteDB, a read committed transaction retries the whole statement instead of retrying only the conflicting rows. This leads to a stronger guarantee where each statement in a YugabyteDB read committed transaction always uses a consistent snapshot of the database, while in PostgreSQL an inconsistent snapshot can be used for statements when conflicts are present. For a detailed example, see [Stronger guarantees in YugabyteDB's read committed isolation](#yugabytedb-s-implementation-with-a-stronger-guarantee).
 
 ## Implementation and semantics (as in PostgreSQL)
 
@@ -58,8 +58,8 @@ The validation steps are as follows:
 
 Note that the implementation in PostgreSQL (discussed above) can theoretically lead to two different visible semantics:
 
-1. One is the common case which uses an inconsistent snapshot of the database for the same statement's execution.
-1. the other is a degenerate situation that is highly unlikely to be seen in practice, but is nevertheless possible and provides a stronger guarantee by using a consistent snapshot for the whole statement while still upholding the semantics of Read Committed isolation.
+* A common case which uses an inconsistent snapshot of the database for the same statement's execution.
+* A degenerate situation that is highly unlikely to be seen in practice, but is nevertheless possible and provides a stronger guarantee by using a consistent snapshot for the whole statement while still upholding the semantics of Read Committed isolation.
 
 ### Common case in PostgreSQL
 
@@ -201,7 +201,9 @@ select * from test;
 </tbody>
 </table>
 
-As seen above, the UPDATE from transaction 2 first picks the latest snapshot of the database which only has the row (2, 5). The row satisfies the `UPDATE` statement's `WHERE` clause and hence the transaction 2 tries to update the value of `v` from 5 to 100. However, due to an existing conflicting write from transaction 1, it waits for transaction 1 to end. Once transaction 1 commits, it re-reads the latest version of only the conflicting row, and re-evaluates the `WHERE` clause. The clause is still satisfied by the new row (2, 10) and so the value is updated to 100. Note that the newly inserted row (5, 5) isn't updated even though it satisfies the `WHERE` clause of transaction 2's `UPDATE`, because it was not part of the snapshot originally picked by transaction 2's `UPDATE` statement. Hence, it is clear that, to avoid serialization errors, PostgreSQL only retries the conflicting rows based on their latest versions, hence allowing a single statement to run on an inconsistent snapshot. In other words, one snapshot is picked for the statement to read all data and process all non-coonflicting rows, and a latest version is used for the conflicting rows.
+As seen above, the UPDATE from transaction 2 first picks the latest snapshot of the database which only has the row (2, 5). The row satisfies the `UPDATE` statement's `WHERE` clause and hence the transaction 2 tries to update the value of `v` from 5 to 100. However, due to an existing conflicting write from transaction 1, it waits for transaction 1 to end. Once transaction 1 commits, it re-reads the latest version of only the conflicting row, and re-evaluates the `WHERE` clause. The clause is still satisfied by the new row (2, 10) and so the value is updated to 100. Note that the newly inserted row (5, 5) isn't updated even though it satisfies the `WHERE` clause of transaction 2's `UPDATE`, because it was not part of the snapshot originally picked by transaction 2's `UPDATE` statement.
+
+So, to avoid serialization errors, PostgreSQL only retries the conflicting rows based on their latest versions, thereby allowing a single statement to run on an inconsistent snapshot. In other words, one snapshot is picked for the statement to read all data and process all non-conflicting rows, and a latest version is used for the conflicting rows.
 
 ### The unlikely case in PostgreSQL
 
@@ -303,7 +305,7 @@ select * from test;
 </tbody>
 </table>
 
-The preceding outcome can occur via the following unlikely chance occurence: until Client 1 commits, PostgreSQL on Client 2 for some reason is busy/ slow and hasn't yet picked a snapshot for execution. Only after Client 1 commits, transaction on Client 2 picks a snapshot based off the current time for the statement. This leads to both rows being read as part of the snapshot and updated without any observable conflicts.
+The preceding outcome can occur via the following unlikely chance: until Client 1 commits, PostgreSQL on Client 2 for some reason is busy or slow, and hasn't yet picked a snapshot for execution. Only after Client 1 commits, transaction on Client 2 picks a snapshot based off the current time for the statement. This leads to both rows being read as part of the snapshot and updated without any observable conflicts.
 
 Both the `common case` and `unlikely` outcome are valid and satisfy the semantics of Read Committed isolation level. And theoretically, the user cannot figure out which one will be seen because the user cannot differentiate between a pause due to waiting for a conflicting transaction or a pause due to the database just being busy or slow. Moreover, the `unlikely` case provides a stronger and more intuitive guarantee: the whole statement runs off a single snapshot.
 
