@@ -22,7 +22,7 @@ jobs:
     build_opts: YB_LINKING_TYPE=full-lto
     release_artifact: true
 
-  - os: alma8
+  - os: centos7
     compiler: clang16
     build_type: release
     architecture: aarch64
