@@ -229,6 +229,20 @@ struct PGPROC
 	bool		ybTerminationStarted;
 
 	/*
+	 * True when we are in a critical section. Set by START_CRIT_SECTION and
+	 * reset by END_CRIT_SECTION when we leave our last critical section.
+	 *
+	 * There may be cases where MyProc is NULL and we enter a critical section.
+	 * These cases should be caught by ybInitializationCompleted and cause a
+	 * postmaster restart anyway.
+	 *
+	 * In critical sections, ERRORs are escalated to PANICs, causing a
+	 * postmaster restart. We also restart the postmaster if a process dies
+	 * while in a critical section.
+	 */
+	bool		ybEnteredCriticalSection;
+
+	/*
 	 * yb_ash_metadata is protected by yb_ash_metadata_lock instead of
 	 * backendLock.
 	 */
