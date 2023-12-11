@@ -383,6 +383,7 @@ InitProcess(void)
 	*/
 	MyProc->ybInitializationCompleted = false;
 	MyProc->ybTerminationStarted = false;
+	MyProc->ybEnteredCriticalSection = false;
 
 	/*
 	 * Initialize all fields of MyProc, except for those previously
