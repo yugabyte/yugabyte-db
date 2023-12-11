@@ -14,6 +14,9 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
+import io.swagger.annotations.ApiModelProperty;
 import java.util.Set;
 import play.mvc.Http.Status;
 
@@ -23,6 +26,12 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
 
   public String ybSoftwareVersion = null;
   public boolean upgradeSystemCatalog = true;
+
+  @ApiModelProperty(
+      value = "YbaApi Internal. Enable rollback support after software upgrade",
+      hidden = true)
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.2.0")
+  public boolean rollbackSupport = true;
 
   public SoftwareUpgradeParams() {}
 
