@@ -28,7 +28,7 @@ public class RollbackUpgradeParams extends UpgradeTaskParams {
           "YbaApi Internal. Target software version during rollback which will be set by YBA itself"
               + " and overridden in case user provides it.",
       accessMode = AccessMode.READ_ONLY)
-  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.21.0.0")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.2.0")
   public String ybSoftwareVersion = null;
 
   public RollbackUpgradeParams() {}

@@ -129,7 +129,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
                 "commandType",
                 KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name(),
                 "ybSoftwareVersion",
-                "new-version")),
+                YB_SOFTWARE_VERSION_NEW)),
         Json.toJson(
             ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
         Json.toJson(ImmutableMap.of()),
@@ -139,7 +139,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
                 "commandType",
                 KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name(),
                 "ybSoftwareVersion",
-                "new-version")),
+                YB_SOFTWARE_VERSION_NEW)),
         Json.toJson(
             ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
         Json.toJson(ImmutableMap.of()),
@@ -149,7 +149,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
                 "commandType",
                 KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name(),
                 "ybSoftwareVersion",
-                "new-version")),
+                YB_SOFTWARE_VERSION_NEW)),
         Json.toJson(
             ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
         Json.toJson(ImmutableMap.of()),
@@ -162,7 +162,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
                 "commandType",
                 KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name(),
                 "ybSoftwareVersion",
-                "new-version",
+                YB_SOFTWARE_VERSION_NEW,
                 "namespace",
                 namespace)),
         Json.toJson(
@@ -177,7 +177,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
                 "commandType",
                 KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name(),
                 "ybSoftwareVersion",
-                "new-version")),
+                YB_SOFTWARE_VERSION_NEW)),
         Json.toJson(
             ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
         Json.toJson(ImmutableMap.of()),
@@ -190,7 +190,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
                 "commandType",
                 KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name(),
                 "ybSoftwareVersion",
-                "new-version")),
+                YB_SOFTWARE_VERSION_NEW)),
         Json.toJson(
             ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
         Json.toJson(ImmutableMap.of()),
@@ -220,7 +220,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     String overrideFileRegex = "(.*)" + defaultUniverse.getUniverseUUID() + "(.*).yml";
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
-    taskParams.ybSoftwareVersion = "new-version";
+    taskParams.ybSoftwareVersion = YB_SOFTWARE_VERSION_NEW;
     TaskInfo taskInfo = submitTask(taskParams);
 
     verify(mockKubernetesManager, times(6))
@@ -305,7 +305,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     String overrideFileRegex = "(.*)" + defaultUniverse.getUniverseUUID() + "(.*).yml";
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
-    taskParams.ybSoftwareVersion = "new-version";
+    taskParams.ybSoftwareVersion = YB_SOFTWARE_VERSION_NEW;
     taskParams.upgradeSystemCatalog = false;
     TaskInfo taskInfo = submitTask(taskParams);
 
@@ -330,7 +330,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     String overrideFileRegex = "(.*)" + defaultUniverse.getUniverseUUID() + "(.*).yml";
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
-    taskParams.ybSoftwareVersion = "new-version";
+    taskParams.ybSoftwareVersion = YB_SOFTWARE_VERSION_NEW;
     TaskInfo taskInfo = submitTask(taskParams);
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
@@ -350,7 +350,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     softwareKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
     setupUniverseSingleAZ(false, true);
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
-    taskParams.ybSoftwareVersion = "new-version";
+    taskParams.ybSoftwareVersion = YB_SOFTWARE_VERSION_NEW;
 
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 2;

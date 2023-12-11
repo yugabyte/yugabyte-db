@@ -83,6 +83,11 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
           createUpdateSoftwareVersionTask(taskParams().ybSoftwareVersion)
               .setSubTaskGroupType(getTaskSubGroupType());
 
+          if (!taskParams().rollbackSupport) {
+            createFinalizeUpgradeTasks(taskParams().upgradeSystemCatalog);
+            return;
+          }
+
           boolean upgradeRequireFinalize;
           try {
             upgradeRequireFinalize =

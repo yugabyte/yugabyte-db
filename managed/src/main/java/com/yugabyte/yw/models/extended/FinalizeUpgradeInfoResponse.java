@@ -20,6 +20,6 @@ public class FinalizeUpgradeInfoResponse {
           "WARNING: This is a preview API that could change. Set of xCluster connected universes"
               + " uuids to be impacted ",
       accessMode = AccessMode.READ_ONLY)
-  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.21.0.0")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.2.0")
   private Set<UUID> impactedXClusterConnectedUniverse;
 }

@@ -377,6 +377,7 @@ GET     /customers/:cUUID/dr_configs/:drUUID/safetime                          c
 # Universe upgrade API
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/restart                   com.yugabyte.yw.controllers.UpgradeUniverseController.restartUniverse(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/software                  com.yugabyte.yw.controllers.UpgradeUniverseController.upgradeSoftware(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
+POST    /customers/:cUUID/universes/:uniUUID/upgrade/db_version                com.yugabyte.yw.controllers.UpgradeUniverseController.upgradeDBVersion(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/finalize                  com.yugabyte.yw.controllers.UpgradeUniverseController.finalizeUpgrade(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/rollback                  com.yugabyte.yw.controllers.UpgradeUniverseController.rollbackUpgrade(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/universes/:uniUUID/upgrade/gflags                    com.yugabyte.yw.controllers.UpgradeUniverseController.upgradeGFlags(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
