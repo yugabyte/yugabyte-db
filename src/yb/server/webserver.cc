@@ -76,6 +76,7 @@
 #include "yb/util/shared_lock.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
+#include "yb/util/tcmalloc_util.h"
 #include "yb/util/url-coding.h"
 #include "yb/util/zlib.h"
 
@@ -378,8 +379,24 @@ int Webserver::BeginRequestCallback(struct sq_connection* connection,
     handler = it->second;
   }
 
+  if (access_logging_enabled) {
+    string params = request_info->query_string ? Format("?$0", request_info->query_string) : "";
+    LOG(INFO) << "webserver request: " << request_info->uri << params;
+  }
+
   int result = RunPathHandler(*handler, connection, request_info);
   MemTracker::GcTcmallocIfNeeded();
+
+#if YB_TCMALLOC_ENABLED
+  if (tcmalloc_logging_enabled)
+    LOG(INFO) << "webserver tcmalloc stats:"
+              << " heap size bytes: " << GetTCMallocPhysicalBytesUsed()
+              << ", total physical bytes: " << GetTCMallocCurrentHeapSizeBytes()
+              << ", current allocated bytes: " << GetTCMallocCurrentAllocatedBytes()
+              << ", page heap free bytes: " << GetTCMallocPageHeapFreeBytes()
+              << ", page heap unmapped bytes: " << GetTCMallocPageHeapUnmappedBytes();
+#endif
+
   return result;
 }
 
@@ -507,6 +524,11 @@ int Webserver::RunPathHandler(const PathHandler& handler,
   // Make sure to use sq_write for printing the body; sq_printf truncates at 8kb
   sq_write(connection, str.c_str(), str.length());
   return 1;
+}
+
+void Webserver::SetLogging(bool enable_access_logging, bool enable_tcmalloc_logging) {
+  access_logging_enabled = enable_access_logging;
+  tcmalloc_logging_enabled = enable_tcmalloc_logging;
 }
 
 void Webserver::RegisterPathHandler(const string& path,

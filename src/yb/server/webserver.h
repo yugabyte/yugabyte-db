@@ -84,6 +84,8 @@ class Webserver : public WebCallbackRegistry {
   // Return the single HostPort that this server was asked to bind on
   Status GetInputHostPort(HostPort* hp) const;
 
+  void SetLogging(bool enable_access_logging, bool enable_tcmalloc_logging);
+
   virtual void RegisterPathHandler(const std::string& path, const std::string& alias,
                                    const PathHandlerCallback& callback,
                                    bool is_styled = true,
@@ -95,6 +97,9 @@ class Webserver : public WebCallbackRegistry {
 
   // True if serving all traffic over SSL, false otherwise
   bool IsSecure() const;
+
+  bool access_logging_enabled = false;
+  bool tcmalloc_logging_enabled = false;
 
  private:
   // Container class for a list of path handler callbacks for a single URL.
