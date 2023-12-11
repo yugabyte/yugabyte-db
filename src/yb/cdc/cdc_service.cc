@@ -601,26 +601,27 @@ class CDCServiceImpl::Impl {
 
   Status AddEntriesForChildrenTabletsOnSplitOp(
       const ProducerTabletInfo& info,
-      const std::array<const master::TabletLocationsPB*, 2>& tablets,
-      const OpId& split_op_id) {
+      const std::array<TabletId, 2>& tablets,
+      const OpId& children_op_id) {
     std::lock_guard l(mutex_);
+
     for (const auto& tablet : tablets) {
       ProducerTabletInfo producer_info{
-          info.replication_group_id, info.stream_id, tablet->tablet_id()};
+          info.replication_group_id, info.stream_id, tablet};
       tablet_checkpoints_.emplace(TabletCheckpointInfo{
           .producer_tablet_info = producer_info,
           .cdc_state_checkpoint =
               TabletCheckpoint{
-                  .op_id = split_op_id, .last_update_time = {}, .last_active_time = {}},
+                  .op_id = children_op_id, .last_update_time = {}, .last_active_time = {}},
           .sent_checkpoint =
               TabletCheckpoint{
-                  .op_id = split_op_id, .last_update_time = {}, .last_active_time = {}},
+                  .op_id = children_op_id, .last_update_time = {}, .last_active_time = {}},
           .mem_tracker = nullptr,
       });
       cdc_state_metadata_.emplace(CDCStateMetadataInfo{
           .producer_tablet_info = producer_info,
           .commit_timestamp = {},
-          .last_streamed_op_id = split_op_id,
+          .last_streamed_op_id = children_op_id,
           .schema_details_map = {},
           .mem_tracker = nullptr,
       });
@@ -1774,6 +1775,8 @@ void CDCServiceImpl::GetChanges(
     }
     // This specific error indicates that a tablet split occured on the tablet.
     if (status.IsTabletSplit()) {
+      LOG(INFO) << "Updating children tablets on detected split on tablet "
+                << producer_tablet.tablet_id;
       status = UpdateChildrenTabletsOnSplitOpForCDCSDK(producer_tablet);
       RPC_STATUS_RETURN_ERROR(status, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
@@ -3963,13 +3966,15 @@ void CDCServiceImpl::IsBootstrapRequired(
 
 Status CDCServiceImpl::UpdateChildrenTabletsOnSplitOpForCDCSDK(const ProducerTabletInfo& info) {
   auto tablets = VERIFY_RESULT(GetTablets(info.stream_id, true /* ignore_errors */));
+
+  // Initializing the children to 0.0 to prevent garbage collection on them.
   const OpId& children_op_id = OpId();
 
-  std::array<const master::TabletLocationsPB*, 2> children_tablets;
+  std::array<TabletId, 2> children;
   uint found_children = 0;
   for (auto const& tablet : tablets) {
     if (tablet.has_split_parent_tablet_id() && tablet.split_parent_tablet_id() == info.tablet_id) {
-      children_tablets[found_children] = &tablet;
+      children[found_children] = tablet.tablet_id();
       found_children += 1;
 
       if (found_children == 2) {
@@ -3977,15 +3982,16 @@ Status CDCServiceImpl::UpdateChildrenTabletsOnSplitOpForCDCSDK(const ProducerTab
       }
     }
   }
-  LOG_IF(DFATAL, found_children != 2)
-      << "Could not find the two split children for the tablet: " << info.tablet_id;
 
-  // Add the entries for the children tablets in 'cdc_state_metadata_' and 'tablet_checkpoints_'.
+  RSTATUS_DCHECK(
+      found_children == 2, InternalError,
+      Format("Could not find the two split children for tablet: $0", info.tablet_id));
+
   RETURN_NOT_OK_SET_CODE(
-      impl_->AddEntriesForChildrenTabletsOnSplitOp(info, children_tablets, children_op_id),
+      impl_->AddEntriesForChildrenTabletsOnSplitOp(info, children, children_op_id),
       CDCError(CDCErrorPB::INTERNAL_ERROR));
-  VLOG(1) << "Added entries for children tablets: " << children_tablets[0]->tablet_id() << " and "
-          << children_tablets[1]->tablet_id() << ", of parent tablet: " << info.tablet_id
+  VLOG(1) << "Added entries for children tablets: " << children[0] << " and "
+          << children[1] << ", of parent tablet: " << info.tablet_id
           << ", to 'cdc_state_metadata_' and 'tablet_checkpoints_'";
 
   return Status::OK();
