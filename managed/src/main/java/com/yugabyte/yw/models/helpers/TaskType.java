@@ -502,6 +502,11 @@ public enum TaskType {
 
   PromoteAutoFlags(com.yugabyte.yw.commissioner.tasks.subtasks.PromoteAutoFlags.class),
 
+  RollbackAutoFlags(com.yugabyte.yw.commissioner.tasks.subtasks.RollbackAutoFlags.class),
+
+  StoreAutoFlagConfigVersion(
+      com.yugabyte.yw.commissioner.tasks.subtasks.StoreAutoFlagConfigVersion.class),
+
   CheckUpgrade(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckUpgrade.class),
 
   ResizeNode(com.yugabyte.yw.commissioner.tasks.upgrade.ResizeNode.class),
@@ -581,6 +586,8 @@ public enum TaskType {
 
   FinalizeUpgrade(com.yugabyte.yw.commissioner.tasks.upgrade.FinalizeUpgrade.class),
 
+  RollbackUpgrade(com.yugabyte.yw.commissioner.tasks.upgrade.RollbackUpgrade.class),
+
   ReprovisionNode(com.yugabyte.yw.commissioner.tasks.ReprovisionNode.class),
 
   LdapUniverseSync(com.yugabyte.yw.commissioner.tasks.LdapUnivSync.class),
@@ -637,6 +644,7 @@ public enum TaskType {
           .put(UpdateKubernetesDiskSize, 49)
           .put(UpgradeKubernetesUniverse, 50)
           .put(FinalizeUpgrade, 51)
+          .put(RollbackUpgrade, 52)
           // Node operations (70-89):
           .put(AddNodeToUniverse, 70)
           .put(DeleteNodeFromUniverse, 71)

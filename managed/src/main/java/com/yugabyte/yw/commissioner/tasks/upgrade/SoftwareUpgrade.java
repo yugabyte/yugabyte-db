@@ -7,6 +7,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -38,6 +39,10 @@ public class SoftwareUpgrade extends SoftwareUpgradeTaskBase {
   @Override
   public void validateParams() {
     taskParams().verifyParams(getUniverse());
+  }
+
+  protected SoftwareUpgradeParams taskParams() {
+    return (SoftwareUpgradeParams) taskParams;
   }
 
   @Override
@@ -78,7 +83,11 @@ public class SoftwareUpgrade extends SoftwareUpgradeTaskBase {
           // Download software to all nodes.
           createDownloadTasks(allNodes, newVersion);
           // Install software on nodes.
-          createUpgradeTaskFlowTasks(nodes, newVersion, reProvisionRequired);
+          createUpgradeTaskFlowTasks(
+              nodes,
+              newVersion,
+              getUpgradeContext(taskParams().ybSoftwareVersion),
+              reProvisionRequired);
 
           if (taskParams().installYbc) {
             createYbcInstallTask(universe, new ArrayList<>(allNodes), newVersion);

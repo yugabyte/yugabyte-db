@@ -1214,6 +1214,17 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
   }
 
+  @ApiModelProperty("Previous software version related data")
+  public PrevYBSoftwareConfig prevYBSoftwareConfig;
+
+  @Data
+  public static class PrevYBSoftwareConfig {
+
+    @ApiModelProperty private String softwareVersion;
+
+    @ApiModelProperty private int autoFlagConfigVersion;
+  }
+
   // XCluster: All the xCluster related code resides in this section.
   // --------------------------------------------------------------------------------
   @ApiModelProperty("XCluster related states in this universe")

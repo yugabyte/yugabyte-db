@@ -243,7 +243,10 @@ public class UserTaskDetails {
     InstallingThirdPartySoftware,
 
     // Promote Auto Flags
-    PromoteAutoFlags
+    PromoteAutoFlags,
+
+    // Rollback Auto Flags
+    RollbackAutoFlags
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -567,6 +570,10 @@ public class UserTaskDetails {
       case PromoteAutoFlags:
         title = "Promote Auto flags";
         description = "Promote Auto flags for a universe";
+        break;
+      case RollbackAutoFlags:
+        title = "Rollback Auto flags";
+        description = "Rollback Auto flags for a universe";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

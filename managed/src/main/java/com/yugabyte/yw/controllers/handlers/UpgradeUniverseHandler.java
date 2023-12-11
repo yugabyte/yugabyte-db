@@ -26,10 +26,12 @@ import com.yugabyte.yw.common.gflags.GFlagDiffEntry;
 import com.yugabyte.yw.common.gflags.GFlagsAuditPayload;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.CertsRotateParams;
+import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
+import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.SystemdUpgradeParams;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
@@ -172,12 +174,24 @@ public class UpgradeUniverseHandler {
   }
 
   public UUID finalizeUpgrade(
-      SoftwareUpgradeParams requestParams, Customer customer, Universe universe) {
+      FinalizeUpgradeParams requestParams, Customer customer, Universe universe) {
     // TODO(vbansal): Add validations for finalize based on universe state.
     // Will add them in subsequent diffs.
     return submitUpgradeTask(
         TaskType.FinalizeUpgrade,
         CustomerTask.TaskType.FinalizeUpgrade,
+        requestParams,
+        customer,
+        universe);
+  }
+
+  public UUID rollbackUpgrade(
+      RollbackUpgradeParams requestParams, Customer customer, Universe universe) {
+    // TODO(vbansal): Add validations for finalize based on universe state.
+    // Will add them in subsequent diffs.
+    return submitUpgradeTask(
+        TaskType.RollbackUpgrade,
+        CustomerTask.TaskType.RollbackUpgrade,
         requestParams,
         customer,
         universe);
