@@ -17,7 +17,7 @@ In this tutorial we'll walk you through the steps to build and deploy a scalable
 
 Deploying to Azure App Service allows developers to leverage cloud infrastructure and build more scalable and available applications. Connecting these applications to YugabyteDB extends this scalability and reliability into the data layer!
 
-In this tutorial you will:
+In the following sections, you will:
 
 1. Examine YB Shoes, a sample eCommerce dashboard application.
 1. Create a web application on Azure App Service.
@@ -34,11 +34,11 @@ In this tutorial you will:
 
 Let's start by introducing YB Shoes and its functionality. YB Shoes is an eCommerce dashboard that displays current shoe inventory and recent sales. YB Shoes is backed by a Node.js server which connects to YugabyteDB Managed. The queried inventory and sales data is displayed on a ReactJS frontend.
 
-First, visit GitHub for the [web application](https://github.com/YugabyteDB-Samples/yugabytedb-azure-app-service-demo-nodejs) you will be deploying to Azure App Service.
+Visit GitHub to download the [web application](https://github.com/YugabyteDB-Samples/yugabytedb-azure-app-service-demo-nodejs) you will be deploying to Azure App Service.
 
 Here's the application in action, after deploying to Azure App Service.
 
-![Azure App Service web application displaying shoe inventory and recent sales from YugabyteDB](/images/tutorials/azure/azure-app-service/yb-shoes.png "Azure App Service web application displaying shoe inventory and recent sales from YugabyteDB")
+![Azure App Service web application displaying shoe inventory and recent sales from YugabyteDB](/images/tutorials/azure/azure-app-service/yb-shoes.png)
 
 Let's cover the components required to build and deploy this application.
 
@@ -48,7 +48,7 @@ With Azure App Service, developers can deploy applications in a variety of progr
 
 From the Azure portal, under **App Services**, create a web app with Node.js as the runtime stack. This allows Azure to configure the runtime environment with Node.js and the dependencies required to run the application.
 
-![Create a web app with the Node.js runtime in Azure App Service.](/images/tutorials/azure/azure-app-service/azure-web-app.png)
+![Create a web app with the Node.js runtime in Azure App Service](/images/tutorials/azure/azure-app-service/azure-web-app.png)
 
 As we're deploying our application to Azure from a local repository on our machine, we can forego all settings related to continuous deployment and GitHub Actions. However, for production applications, these integrations greatly improve the development process by deploying applications to Azure automatically when the repository is updated, without the need for manual intervention.
 
@@ -56,7 +56,7 @@ Additionally, by selecting a free or basic tier of Azure App Service, we will de
 
 After creating your application, visit the associated URL to confirm it's up and running!
 
-![Application running in Azure and waiting for content.](/images/tutorials/azure/azure-app-service/azure-app-running.png "Application running in Azure and waiting for content.")
+![Application running in Azure and waiting for content](/images/tutorials/azure/azure-app-service/azure-app-running.png)
 
 Now that we've set the foundation on Azure, let's deploy a database cluster for YB Shoes on YugabyteDB Managed.
 
@@ -86,8 +86,6 @@ Now that your cluster is seeded with data, it's time to deploy and run the appli
 
 ## Deploy YB Shoes to Azure App Service
 
-Azure provides multiple deployment methods for your applications.
-
 As we're deploying the application from a local git repository, let's use the [Azure CLI](https://learn.microsoft.com/en-us/cli/azure/). It's also worth noting that Azure has a powerful extension for Visual Studio Code, which can execute the same commands.
 
 First, you need to [configure the application settings](https://learn.microsoft.com/en-us/cli/azure/webapp/config/appsettings?view=azure-cli-latest) in Azure:
@@ -103,7 +101,7 @@ az webapp config appsettings set -g GROUP_NAME -n APPLICATION_NAME --setting DB_
 
 After you execute this command, you can view the configuration settings in Azure portal.
 
-![App configuration settings in Azure web portal.](/images/tutorials/azure/azure-app-service/azure-configuration.png "App configuration settings in Azure web portal.")
+![App configuration settings in Azure portal](/images/tutorials/azure/azure-app-service/azure-configuration.png)
 
 Next, use the Azure CLI to deploy your application code to the cloud, as follows:
 

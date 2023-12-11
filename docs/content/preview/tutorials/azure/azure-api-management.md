@@ -17,7 +17,7 @@ type: docs
 
 In this tutorial, we'll walk through the steps required to develop and deploy an API using Azure API Management with Node.js and [YugabyteDB Managed](https://www.yugabyte.com/yugabytedb/). It covers the deployment of a geo-partitioned YugabyteDB cluster, the development of Azure Functions for database queries, and the creation of an API using Azure API Management.
 
-In the following sections, we will:
+In the following sections, you will:
 
 1. Deploy and configure a geo-partitioned YugabyteDB cluster.
 1. Develop and provision an Azure Function to connect to and query our database in a specific region.

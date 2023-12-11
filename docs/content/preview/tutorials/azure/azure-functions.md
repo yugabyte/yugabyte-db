@@ -17,7 +17,7 @@ In this tutorial, we'll guide you through the steps required to develop and depl
 
 Serverless functions serve many different use cases, including API endpoints, scheduled jobs, and file processing. Azure Functions work with a number of [triggers and bindings](https://learn.microsoft.com/en-us/azure/azure-functions/functions-triggers-bindings?tabs=isolated-process%2Cpython-v2&pivots=programming-language-javascript), which allow developers to define precisely when a function will be invoked and how it will interact with other services.
 
-In the following sections, we will:
+In the following sections, you will:
 
 1. Cover the prerequisites for developing an Azure Function backed by our fully managed DBaaS, [YugabyteDB Managed](https://www.yugabyte.com/managed/).
 1. Deploy a database cluster to Azure on YugabyteDB Managed.

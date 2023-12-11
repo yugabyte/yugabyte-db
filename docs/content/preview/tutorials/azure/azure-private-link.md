@@ -17,6 +17,13 @@ YugabyteDB provides multiple networking options to ensure security, reliability,
 
 In Azure, you can achieve a similar result using [Private Service Endpoints](../../../yugabyte-cloud/cloud-basics/cloud-vpcs/cloud-add-endpoint/). To illustrate this point, let's securely connect a Node.js application in Azure to a cluster running in YugabyteDB Managed.
 
+In the following sections, you will:
+
+1. Deploy and configure a YugabyteDB cluster in a VNet in Azure.
+1. Create and configure a virtual machine in a VNet in Azure.
+1. Set up the private link between the application and database.
+1. Run a Node.js application in the virtual machine in Azure.
+
 ## Prerequisites
 
 - A YugabyteDB Managed account. Sign up for a [free trial](https://cloud.yugabyte.com/signup/).

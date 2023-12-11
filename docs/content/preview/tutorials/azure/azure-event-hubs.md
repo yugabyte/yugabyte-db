@@ -17,6 +17,13 @@ The [Azure Event Hubs](https://learn.microsoft.com/en-us/azure/event-hubs/event-
 
 In this tutorial, we'll examine how the [YugabyteDB CDC](../../../explore/change-data-capture/cdc-overview/) can be used with Azure Event Hubs to stream real-time data for downstream processing.
 
+In the following sections, you will:
+
+1. Deploy and configure a single-node YugabyteDB cluster.
+1. Configure Azure Event Hubs with an access policy.
+1. Set up Kafka Connect to connect the YugabyteDB CDC to the Event Hubs.
+1. Create an application to insert orders in our database and view the changes downstream.
+
 ## What you'll build
 
 [Find the full project on GitHub](https://github.com/YugabyteDB-Samples/yugabytedb-azure-event-hubs-demo-nodejs). The project uses an eCommerce application and DB schema along with YugabyteDB CDC functionality to send data to Azure Event Hubs via Kafka Connect.
@@ -104,7 +111,7 @@ With YugabyteDB downloaded on your machine, create a cluster and seed it with da
 
 1. [Create an Azure Event Hubs Namespace](https://learn.microsoft.com/en-us/azure/event-hubs/event-hubs-create#create-an-event-hubs-namespace) in the Azure Web Portal.
 
-    ![Create Azure Event Hubs Namespace](/images/tutorials/azure/azure-event-hubs/azure-event-hubs-namespace-config.png "Create Azure Event Hubs Namespace")
+    ![Create Azure Event Hubs Namespace](/images/tutorials/azure/azure-event-hubs/azure-event-hubs-namespace-config.png)
 
     {{< note title="Note" >}}
 The **Standard** pricing tier is required for Kafka compatibility.
@@ -115,7 +122,7 @@ An Event Hubs instance will be created automatically by Debezium when Kafka Conn
 
 1. Create a new Shared Access Policy in the Event Hubs Namespace with **Manage** access. This is a best practice, as opposed to using the root access key for the namespace to securely send and receive events.
 
-    ![Create a new Shared Access Policy](/images/tutorials/azure/azure-event-hubs/azure-event-hubs-shared-access-key.png "Create a new Shared Access Policy")
+    ![Create a new Shared Access Policy](/images/tutorials/azure/azure-event-hubs/azure-event-hubs-shared-access-key.png)
 
 ## Configure Kafka Connect
 

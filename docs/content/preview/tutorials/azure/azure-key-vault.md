@@ -17,6 +17,12 @@ In this tutorial, we'll explore how you can leverage [Azure SDKs](https://azure.
 
 The Azure SDKs are developed in a modular fashion. They provide developers with hooks into the services that their applications rely on, without bloating bundle sizes. The SDKs are developed for parity across many programming languages, but in this example we will use the [JavaScript SDK](https://learn.microsoft.com/en-us/azure/developer/javascript/core/use-azure-sdk) for Node.js.
 
+In the following sections, you will:
+
+1. Create a node.js application that uses the Azure Key Vault SDK.
+1. Connect to the Azure Key Store from the application.
+1. Connect to the YugabyteDB database using the credentials stored in the key vault.
+
 ## Prerequisites
 
 - A [Microsoft Azure](http://azure.microsoft.com) subscription, with [authentication](https://learn.microsoft.com/en-us/azure/developer/javascript/sdk/authentication/local-development-environment-service-principal?tabs=azure-portal)
