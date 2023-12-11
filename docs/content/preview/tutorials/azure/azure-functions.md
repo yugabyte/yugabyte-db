@@ -19,10 +19,10 @@ Serverless functions serve many different use cases, including API endpoints, sc
 
 In the following sections, we will:
 
-1. Cover the prerequisites for developing an Azure Function backed by our fully managed DBaaS, [YugabyteDB Managed](https://www.yugabyte.com/managed/)
-1. Deploy a database cluster to Azure on YugabyteDB Managed
-1. Develop an Azure Function using an HTTP trigger
-1. Deploy this serverless function to Azure
+1. Cover the prerequisites for developing an Azure Function backed by our fully managed DBaaS, [YugabyteDB Managed](https://www.yugabyte.com/managed/).
+1. Deploy a database cluster to Azure on YugabyteDB Managed.
+1. Develop an Azure Function using an HTTP trigger.
+1. Deploy this serverless function to Azure.
 
 Let's begin by installing the dependencies required to begin effectively developing Azure Functions.
 
@@ -43,7 +43,7 @@ We'll develop and deploy an HTTP trigger function, which connects to YugabyteDB 
 
 ## Get started on YugabyteDB Managed
 
-See the [Quick start](../../../yugabyte-cloud/cloud-quickstart/) to create a free cluster in YugabyteDB Managed.
+For steps on creating a cluster in YugabyteDB Managed, see the [Quick start](../../../yugabyte-cloud/cloud-quickstart/).
 
 For a configuration that provides fault tolerance across availability zones, deploy a [three-node cluster](../../../yugabyte-cloud/cloud-basics/create-clusters/create-single-region/) on Azure in the westus3 region. However, you can start with an always-free single-node [Sandbox cluster](../../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-free/).
 

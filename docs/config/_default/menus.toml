@@ -416,7 +416,7 @@
 
 [[preview]]
   name = "Tutorials"
-  weight = 6
+  weight = 7
   identifier = "tutorials"
   [preview.params]
     showSection = true
@@ -431,7 +431,7 @@
 
 [[preview]]
   name = "Secure"
-  weight = 7
+  weight = 8
   identifier = "secure"
   url = "/preview/secure/"
   [preview.params]
@@ -439,7 +439,7 @@
 
 [[preview]]
   name = "Launch and Manage"
-  weight = 8
+  weight = 9
   identifier = "launch-and-manage"
   url = "/preview/launch-and-manage/"
   [preview.params]
@@ -447,7 +447,7 @@
 
 [[preview]]
   name = "Benchmark"
-  weight = 9
+  weight = 10
   identifier = "benchmark"
   url = "/preview/benchmark/"
   [preview.params]

@@ -29,7 +29,7 @@ This application runs a Node.js process to insert order records to a YugabyteDB 
 - [Download Apache Kafka](https://kafka.apache.org/downloads) version 2.12-3.2.0
 - [Download YugabyteDB](https://download.yugabyte.com/#/) version 2.16.8.0
 - [Download Debezium Connector for YugabyteDB](https://github.com/yugabyte/debezium-connector-yugabytedb/tree/v1.9.5.y.15) version 1.9.5.y.15
-- Node.js version 18
+- [Node.js](https://github.com/nodejs/release#release-schedule) version 18
 
 ## Get started with YugabyteDB
 
@@ -184,9 +184,10 @@ A Kafka Connect configuration file is required to provide information about the 
 
     ```sh
     ./bin/yb-admin --master_addresses 127.0.0.1:7100 create_change_data_stream ysql.yugabyte
+    ```
 
-    # Example output:                   
-    # CDC Stream ID: efb6cd0ed21346e5b0ed4bb69497dfc3
+    ```output
+    CDC Stream ID: efb6cd0ed21346e5b0ed4bb69497dfc3
     ```
 
 1. POST a connector for YugabyteDB with the generated CDC stream ID value.
@@ -277,7 +278,7 @@ We can test this real-time functionality by running a sample application to inse
     start();
     ```
 
-    This application initializes a connection pool to connect to the YugabyteDB cluster using the [YugabyteDB node-postres smart driver](../../../drivers-orms/nodejs/yugabyte-node-driver/). It then randomly inserts records into the _orders_ table at a regular interval.
+    This application initializes a connection pool to connect to the YugabyteDB cluster using the [YugabyteDB node-postgres smart driver](../../../drivers-orms/nodejs/yugabyte-node-driver/). It then randomly inserts records into the _orders_ table at a regular interval.
 
 1. Run the application.
 

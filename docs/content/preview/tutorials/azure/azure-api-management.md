@@ -83,7 +83,7 @@ Create the service as follows:
 
 ## Design a REST API in Azure
 
-Azure's API Management service provides multiple options for API design. Users can create an API from scratch, create or import an API definition, or create an API from an existing Azure resource.
+Azure's API Management service provides multiple options for API design. You can create an API from scratch, create or import an API definition, or create an API from an existing Azure resource.
 
 ![Designing an API in API Management instance](/images/tutorials/azure/azure-api-management/azure-api-mgmt-designing-api.png "Designing an API in API Management instance")
 

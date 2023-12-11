@@ -30,10 +30,9 @@ The [sample application](https://github.com/YugabyteDB-Samples/yugabytedb-azure-
 - A [Microsoft Azure](http://azure.microsoft.com) subscription
 - Access to the [Azure OpenAI Service](https://azure.microsoft.com/en-us/products/ai-services/openai-service) resource
 - The latest [Node.js version](https://github.com/nodejs/release#release-schedule)
-- The latest version of Docker
+- The latest version of [Docker](https://docs.docker.com/desktop/)
 - A YugabyteDB cluster running [v2.19.2 or later](https://download.yugabyte.com/)
-- [psql](https://www.postgresql.org/docs/current/app-psql.html) or [ysqlsh](../../../admin/ysqlsh/)
-- [Docker](https://docs.docker.com/desktop/)
+- [ysqlsh](../../../admin/ysqlsh/) or [psql](https://www.postgresql.org/docs/current/app-psql.html)
 
 ## Deploy Azure OpenAI models
 
@@ -42,7 +41,7 @@ This application employs both the GPT and Embeddings models to showcase the dist
 Follow the [Microsoft OpenAI guide](https://learn.microsoft.com/en-us/azure/ai-services/openai/how-to/create-resource) to:
 
 - Create the Azure OpenAI resource under your subscription.
-- Deploy a GPT model of **gpt-35-turbo** (or later). Name the deployment `gpt-model`.
+- Deploy a GPT model of **gpt-3.5-turbo** (or later). Name the deployment `gpt-model`.
 - Deploy an Embedding model of **text-embedding-ada-002** version. Name it `embeddings-model`.
 
 After the resources are provisioned, you'll see them in your Azure OpenAI Studio:
@@ -70,10 +69,12 @@ Download the application and provide settings specific to your Azure OpenAI Serv
 
 1. Open the `{project_dir}/application.properties.ini` file and provide the Azure OpenAI specific settings:
 
+    ```config
     AZURE_OPENAI_KEY= # Your Azure OpenAI API key
     AZURE_OPENAI_ENDPOINT= # Your Azure OpenaAI endpoint for the Language APIs
     AZURE_GPT_MODEL_DEPLOYMENT_NAME = gpt-model
     AZURE_EMBEDDING_MODEL_DEPLOYMENT_NAME = embeddings-model
+    ```
 
 ## Set up YugabyteDB
 
@@ -126,7 +127,7 @@ Navigate to the YugabyteDB UI to confirm that the database is up and running, at
 
 As long as the application provides a lodging recommendation service for San Francisco, you can leverage a publicly available Airbnb data set with over 7500 relevant listings:
 
-1. Create the `airbnb_listing` table (feel free to use [ysqlsh](../../../admin/ysqlsh/) or another comparable SQL tool instead of psql):
+1. Create the `airbnb_listing` table (you can use [ysqlsh](../../../admin/ysqlsh/) or another comparable SQL tool instead of psql):
 
     ```sh
     psql -h 127.0.0.1 -p 5433 -U yugabyte -d yugabyte {project_dir}/sql/0_airbnb_listings.sql
@@ -167,7 +168,7 @@ Start the generator using the following command:
 node {project_dir}/backend/embeddings_generator.js
 ```
 
-Note, it can take 10+ minutes to generate embeddings for over 7500 Airbnb properties. You'll see the message below after the process is completed:
+Note that it can take 10+ minutes to generate embeddings for more than 7500 Airbnb properties. You should see the following message after the process is completed:
 
 ```output
 Processing rows starting from 34746755
@@ -200,7 +201,7 @@ The application UI should display, and is available at the address <http://local
 
 ### Explore the Azure OpenAI chat mode
 
-The Azure OpenAI Chat mode of the application relies on the [Azure Chat Completions API](https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#completions). In this mode, the app's behavior is similar to that of ChatGPT. You can interact with it in much the same way. Type in your prompt and it will be sent as-is to the neural network that returns the requested information.
+The Azure OpenAI Chat mode of the application relies on the [Azure Chat Completions API](https://learn.microsoft.com/en-us/azure/ai-services/openai/reference#completions). In this mode, the app's behavior is similar to that of ChatGPT. Type in your prompt and it will be sent as-is to the neural network that returns the requested information.
 
 For example, send the following prompt to the GPT model to get a few recommendations:
 

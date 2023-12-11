@@ -46,9 +46,9 @@ Let's cover the components required to build and deploy this application.
 
 With Azure App Service, developers can deploy applications in a variety of programming languages and application architectures. For YB Shoes, we will create a web app using Node.js.
 
-From the Azure portal, create a web app with Node.js as the runtime stack. This allows Azure to configure the runtime environment with Node.js and the dependencies required to run our application.
+From the Azure portal, under **App Services**, create a web app with Node.js as the runtime stack. This allows Azure to configure the runtime environment with Node.js and the dependencies required to run the application.
 
-![Create a web app with the Node.js runtime in Azure App Service.](/images/tutorials/azure/azure-app-service/azure-web-app.png "Create a web app with the Node.js runtime in Azure App Service.")
+![Create a web app with the Node.js runtime in Azure App Service.](/images/tutorials/azure/azure-app-service/azure-web-app.png)
 
 As we're deploying our application to Azure from a local repository on our machine, we can forego all settings related to continuous deployment and GitHub Actions. However, for production applications, these integrations greatly improve the development process by deploying applications to Azure automatically when the repository is updated, without the need for manual intervention.
 
