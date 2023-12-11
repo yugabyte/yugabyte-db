@@ -1247,19 +1247,19 @@ typedef struct Path
  */
 typedef struct IndexPath
 {
-	Path				path;
-	IndexOptInfo	   *indexinfo;
-	List			   *indexclauses;
-	List			   *indexquals;
-	List			   *indexqualcols;
-	List			   *indexorderbys;
-	List			   *indexorderbycols;
-	ScanDirection		indexscandir;
-	Cost				indextotalcost;
-	Selectivity			indexselectivity;
-	double				yb_estimated_num_nexts;
-	double				yb_estimated_num_seeks;
-	YbIndexPathInfo		yb_index_path_info;	/* fields used for YugabyteDB */
+	Path		path;
+	IndexOptInfo *indexinfo;
+	List	   *indexclauses;
+	List	   *indexquals;
+	List	   *indexqualcols;
+	List	   *indexorderbys;
+	List	   *indexorderbycols;
+	ScanDirection indexscandir;
+	Cost		indextotalcost;
+	Selectivity indexselectivity;
+	double		yb_estimated_num_nexts;
+	double		yb_estimated_num_seeks;
+	YbIndexPathInfo yb_index_path_info;	/* fields used for YugabyteDB */
 } IndexPath;
 
 /*

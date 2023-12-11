@@ -4,7 +4,6 @@ headerTitle: Security
 linkTitle: Security
 description: Overview of security in YugabyteDB.
 headcontent: Security in YugabyteDB.
-image: /images/section_icons/index/secure.png
 menu:
   v2.16:
     identifier: explore-security

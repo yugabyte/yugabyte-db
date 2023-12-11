@@ -295,7 +295,8 @@ extern YbScanDesc ybcBeginScan(Relation relation,
 							   PushdownExprs *idx_pushdown,
 							   List *aggrefs,
 							   int distinct_prefixlen,
-							   YBCPgExecParameters *exec_params);
+							   YBCPgExecParameters *exec_params,
+							   bool is_internal_scan);
 
 /* Returns whether the given populated ybScan needs PG-side recheck. */
 extern bool YbNeedsRecheck(YbScanDesc ybScan);

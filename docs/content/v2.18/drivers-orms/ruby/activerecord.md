@@ -3,7 +3,6 @@ title: Active Record ORM
 headerTitle: Use an ORM
 linkTitle: Use an ORM
 description: Ruby Active Record ORM support for YugabyteDB
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   v2.18:
     identifier: activerecord-orm

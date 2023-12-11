@@ -3,7 +3,6 @@ title: YugabyteDB Scala Java Driver for YCQL
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Scala application using YugabyteDB Java Driver for YCQL
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   stable:
     identifier: ycql-scala-driver

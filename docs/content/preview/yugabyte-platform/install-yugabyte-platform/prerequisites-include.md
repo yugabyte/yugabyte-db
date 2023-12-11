@@ -337,9 +337,9 @@ Installing YugabyteDB Anywhere on Airgapped hosts, without access to any Interne
 
 - Ensuring that Docker Engine version 20.10.n is available. If it is not installed, you need to follow the procedure described in [Installing Docker in airgapped](https://www.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/).
 - Ensuring that the following ports are open on the YugabyteDB Anywhere host:
-  - `8800` – HTTP access to the Replicated UI
-  - `80` – HTTP access to the YugabyteDB Anywhere UI
-  - `22` – SSH
+  - 8800 – HTTP access to the Replicated UI
+  - 80 or 443 – HTTP and HTTPS access to the YugabyteDB Anywhere UI, respectively
+  - 22 – SSH
 - Ensuring that the attached disk storage (such as persistent EBS volumes on AWS) is 100 GB minimum.
 - Having YugabyteDB Anywhere airgapped install package. Contact Yugabyte Support for more information.
 - Signing the Yugabyte license agreement. Contact Yugabyte Support for more information.

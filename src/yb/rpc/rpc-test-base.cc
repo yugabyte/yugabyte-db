@@ -175,17 +175,25 @@ void GenericCalculatorService::DoSendStrings(InboundCall* incoming) {
 }
 
 void GenericCalculatorService::DoSleep(InboundCall* incoming) {
-  Slice param(incoming->serialized_request());
   SleepRequestPB req;
-  if (!req.ParseFromArray(param.data(), narrow_cast<int>(param.size()))) {
-    incoming->RespondFailure(ErrorStatusPB::ERROR_INVALID_REQUEST,
-        STATUS(InvalidArgument, "Couldn't parse pb",
-            req.InitializationErrorString()));
-    return;
+  if (incoming->IsLocalCall()) {
+    auto* local = down_cast<LocalYBInboundCall*>(incoming);
+    if (auto outbound_call = local->outbound_call()) {
+      req = yb::down_cast<const SleepRequestPB&>(*outbound_call->request().protobuf());
+    }
+  } else {
+    Slice param(incoming->serialized_request());
+    if (!req.ParseFromArray(param.data(), narrow_cast<int>(param.size()))) {
+      incoming->RespondFailure(
+          ErrorStatusPB::ERROR_INVALID_REQUEST,
+          STATUS(InvalidArgument, "Couldn't parse pb", req.InitializationErrorString()));
+      return;
+    }
   }
 
   LOG(INFO) << "got call: " << req.ShortDebugString();
   SleepFor(MonoDelta::FromMicroseconds(req.sleep_micros()));
+  LOG(INFO) << "done sleeping";
   SleepResponsePB resp;
   down_cast<YBInboundCall*>(incoming)->RespondSuccess(AnyMessageConstPtr(&resp));
 }

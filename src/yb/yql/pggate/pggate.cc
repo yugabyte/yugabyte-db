@@ -489,7 +489,8 @@ Result<dockv::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
 
 PgApiImpl::PgApiImpl(
     PgApiContext context, const YBCPgTypeEntity *YBCDataTypeArray, int count,
-    YBCPgCallbacks callbacks, std::optional<uint64_t> session_id)
+    YBCPgCallbacks callbacks, std::optional<uint64_t> session_id,
+    const YBCAshMetadata *ash_metadata)
     : metric_registry_(std::move(context.metric_registry)),
       metric_entity_(std::move(context.metric_entity)),
       mem_tracker_(std::move(context.mem_tracker)),
@@ -511,7 +512,7 @@ PgApiImpl::PgApiImpl(
 
   CHECK_OK(pg_client_.Start(
       proxy_cache_.get(), &messenger_holder_.messenger->scheduler(),
-      tserver_shared_object_, session_id));
+      tserver_shared_object_, session_id, ash_metadata));
 }
 
 PgApiImpl::~PgApiImpl() {

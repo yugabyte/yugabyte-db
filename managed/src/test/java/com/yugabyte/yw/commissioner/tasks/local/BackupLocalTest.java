@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.FileUtils;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -37,6 +38,11 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
 
   private static List<String> ybcDirectoriesCleanupList = ImmutableList.of("yugabyte_backup");
 
+  @Override
+  protected Pair<Integer, Integer> getIpRange() {
+    return new Pair<>(90, 120);
+  }
+
   @After
   public void tearDown() {
     for (String dirName : ybcDirectoriesCleanupList) {
@@ -44,7 +50,6 @@ public class BackupLocalTest extends LocalProviderUniverseTestBase {
       File directory = new File(path);
       FileUtils.deleteDirectory(directory);
     }
-    super.tearDown();
   }
 
   public Map<String, String> getYbcGFlags(UniverseDefinitionTaskParams.UserIntent userIntent) {

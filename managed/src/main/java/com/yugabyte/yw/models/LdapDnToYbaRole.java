@@ -13,10 +13,10 @@ package com.yugabyte.yw.models;
 import com.yugabyte.yw.models.Users.Role;
 import io.ebean.Finder;
 import io.ebean.Model;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
 import java.util.UUID;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
 import lombok.EqualsAndHashCode;
 
 @Entity

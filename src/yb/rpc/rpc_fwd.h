@@ -95,49 +95,50 @@ using RpcEndpointMap = std::unordered_map<
     Slice, std::pair<RpcServicePtr, size_t>, boost::hash<Slice>>;
 
 class RpcCommand;
-typedef std::shared_ptr<RpcCommand> RpcCommandPtr;
+using RpcCommandPtr = std::shared_ptr<RpcCommand>;
 
 class Connection;
 class ConnectionContext;
-typedef std::shared_ptr<Connection> ConnectionPtr;
-typedef std::weak_ptr<Connection> ConnectionWeakPtr;
+using ConnectionPtr = std::shared_ptr<Connection>;
+using ConnectionWeakPtr = std::weak_ptr<Connection>;
 
 class InboundCall;
-typedef std::shared_ptr<InboundCall> InboundCallPtr;
+using InboundCallPtr = std::shared_ptr<InboundCall>;
+using InboundCallWeakPtr = std::weak_ptr<InboundCall>;
 
 class Messenger;
 
 class OutboundCall;
-typedef std::shared_ptr<OutboundCall> OutboundCallPtr;
-typedef std::weak_ptr<OutboundCall> OutboundCallWeakPtr;
+using OutboundCallPtr = std::shared_ptr<OutboundCall>;
+using OutboundCallWeakPtr = std::weak_ptr<OutboundCall>;
 
 class OutboundData;
-typedef std::shared_ptr<OutboundData> OutboundDataPtr;
+using OutboundDataPtr = std::shared_ptr<OutboundData>;
 
 class ServerEventList;
-typedef std::shared_ptr<ServerEventList> ServerEventListPtr;
+using ServerEventListPtr = std::shared_ptr<ServerEventList>;
 
 class ServiceIf;
-typedef std::shared_ptr<ServiceIf> ServiceIfPtr;
+using ServiceIfPtr = std::shared_ptr<ServiceIf>;
 
-typedef std::function<int(const std::string&, const std::string&)> Publisher;
+using Publisher = std::function<int(const std::string&, const std::string&)>;
 
 using ConnectionFilter = std::function<bool(const ConnectionPtr&)>;
 
 // SteadyTimePoint is something like MonoTime, but 3rd party libraries know it and don't know about
 // our private MonoTime.
-typedef std::chrono::steady_clock::time_point SteadyTimePoint;
+using SteadyTimePoint = std::chrono::steady_clock::time_point;
 
 class ConnectionContextFactory;
-typedef std::shared_ptr<ConnectionContextFactory> ConnectionContextFactoryPtr;
+using ConnectionContextFactoryPtr = std::shared_ptr<ConnectionContextFactory>;
 
 class StreamFactory;
-typedef std::shared_ptr<StreamFactory> StreamFactoryPtr;
+using StreamFactoryPtr = std::shared_ptr<StreamFactory>;
 
 YB_STRONGLY_TYPED_BOOL(ReadBufferFull);
 YB_STRONGLY_TYPED_BOOL(Queue);
 
-typedef int64_t ScheduledTaskId;
+using ScheduledTaskId = int64_t;
 constexpr ScheduledTaskId kInvalidTaskId = -1;
 
 using ProxyPtr = std::shared_ptr<Proxy>;

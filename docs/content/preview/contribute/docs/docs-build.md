@@ -3,7 +3,6 @@ title: Build the YugabyteDB docs locally
 headerTitle: Build the docs
 linkTitle: Build the docs
 description: Build the YugabyteDB docs locally
-image: /images/section_icons/index/quick_start.png
 menu:
   preview:
     identifier: docs-build

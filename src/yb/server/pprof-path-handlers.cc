@@ -174,8 +174,8 @@ static void PprofHeapHandler(const Webserver::WebRequest& req,
 #endif  // YB_TCMALLOC_ENABLED
 }
 
-static void PprofHeapSnapshotHandler(const Webserver::WebRequest& req,
-                                     Webserver::WebResponse* resp) {
+void PprofHeapSnapshotHandler(const Webserver::WebRequest& req,
+                              Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
 #if !YB_TCMALLOC_ENABLED
   (*output) << "Heap snapshot is only available if tcmalloc is enabled.";

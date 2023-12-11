@@ -202,6 +202,17 @@ public class UniverseTableHandler {
       colocatedKeySpaces = getColocatedKeySpaces(tableInfoList);
     }
 
+    Map<String, String> indexTableMainTableMap = new HashMap<>();
+    // For xCluster table list, we need to also include the main table uuid for each index table.
+    if (xClusterSupportedOnly) {
+      XClusterConfigTaskBase.getMainTableIndexTablesMap(
+              this.ybClientService, universe, XClusterConfigTaskBase.getTableIds(tableInfoList))
+          .forEach(
+              (mainTable, indexTables) ->
+                  indexTables.forEach(
+                      indexTable -> indexTableMainTableMap.put(indexTable, mainTable)));
+    }
+
     for (TableInfo table : tableInfoList) {
       TablePartitionInfoKey tableKey =
           new TablePartitionInfoKey(table.getName(), table.getNamespace().getName());
@@ -227,7 +238,12 @@ public class UniverseTableHandler {
       }
       tableInfoRespList.add(
           buildResponseFromTableInfo(
-                  table, partitionInfo, parentPartitionInfo, tableSizes, hasColocationInfo)
+                  table,
+                  partitionInfo,
+                  parentPartitionInfo,
+                  indexTableMainTableMap.get(XClusterConfigTaskBase.getTableId(table)),
+                  tableSizes,
+                  hasColocationInfo)
               .build());
     }
     if (xClusterSupportedOnly) {
@@ -568,6 +584,7 @@ public class UniverseTableHandler {
       TableInfo table,
       TablePartitionInfo tablePartitionInfo,
       TableInfo parentTableInfo,
+      String mainTableUuid,
       Map<String, TableSizes> tableSizeMap,
       boolean hasColocationInfo) {
     String id = table.getId().toStringUtf8();
@@ -591,6 +608,9 @@ public class UniverseTableHandler {
     }
     if (parentTableInfo != null) {
       builder.parentTableUUID(getUUIDRepresentation(parentTableInfo.getId().toStringUtf8()));
+    }
+    if (mainTableUuid != null) {
+      builder.mainTableUUID(getUUIDRepresentation(mainTableUuid));
     }
     if (table.hasPgschemaName()) {
       builder.pgSchemaName(table.getPgschemaName());

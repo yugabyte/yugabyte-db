@@ -236,6 +236,7 @@ InitProcGlobal(void)
 			procs[i].sem = PGSemaphoreCreate();
 			InitSharedLatch(&(procs[i].procLatch));
 			LWLockInitialize(&(procs[i].backendLock), LWTRANCHE_PROC);
+			LWLockInitialize(&(procs[i].yb_ash_metadata_lock), LWTRANCHE_YB_ASH_METADATA);
 		}
 		procs[i].pgprocno = i;
 
@@ -448,6 +449,14 @@ InitProcess(void)
 
 	MyProc->ybLWLockAcquired = false;
 	MyProc->ybSpinLocksAcquired = 0;
+
+	MemSet(MyProc->yb_ash_metadata.root_request_id, 0,
+		   sizeof(MyProc->yb_ash_metadata.root_request_id));
+	MyProc->yb_ash_metadata.query_id = 0;
+	MemSet(MyProc->yb_ash_metadata.client_addr, 0,
+		   sizeof(MyProc->yb_ash_metadata.client_addr));
+	MyProc->yb_ash_metadata.client_port = 0;
+	MyProc->yb_ash_metadata.addr_family = AF_UNSPEC;
 
 	/*
 	 * Acquire ownership of the PGPROC's latch, so that we can use WaitLatch

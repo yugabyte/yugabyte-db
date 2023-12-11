@@ -25,10 +25,15 @@ import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.PersistenceContextScope;
 import io.ebean.Query;
-import io.ebean.annotation.CreatedTimestamp;
 import io.ebean.annotation.EnumValue;
-import io.ebean.annotation.UpdatedTimestamp;
+import io.ebean.annotation.WhenCreated;
+import io.ebean.annotation.WhenModified;
 import io.swagger.annotations.ApiModel;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Id;
 import java.text.SimpleDateFormat;
 import java.util.Date;
 import java.util.HashSet;
@@ -40,11 +45,6 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.EnumType;
-import javax.persistence.Enumerated;
-import javax.persistence.Id;
 import lombok.Getter;
 import lombok.Setter;
 import org.apache.commons.collections.CollectionUtils;
@@ -139,13 +139,15 @@ public class Restore extends Model {
   @Column(nullable = false)
   private boolean alterLoadBalancer = true;
 
-  @CreatedTimestamp private Date createTime;
+  @WhenCreated private Date createTime;
 
-  @UpdatedTimestamp private Date updateTime;
+  @WhenModified private Date updateTime;
 
   @Column private Date backupCreatedOnDate;
 
-  @Column private TableType backupType;
+  @Column
+  @Enumerated(EnumType.STRING)
+  private TableType backupType;
 
   private static final Multimap<State, State> ALLOWED_TRANSITIONS =
       ImmutableMultimap.<State, State>builder()

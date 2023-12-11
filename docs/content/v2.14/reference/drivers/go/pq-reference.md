@@ -3,7 +3,6 @@ title: Go Drivers
 linkTitle: Go Drivers
 description: Go Drivers for YSQL
 headcontent: Go Drivers for YSQL
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   v2.14:
     name: Go Drivers

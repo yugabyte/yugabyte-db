@@ -2,7 +2,6 @@
 title: Triggers
 linkTitle: Triggers
 description: Triggers in YSQL
-image: /images/section_icons/secure/create-roles.png
 menu:
   v2.16:
     identifier: explore-ysql-language-features-triggers

@@ -3,7 +3,6 @@ title: YugabyteDB coding style
 headerTitle: YugabyteDB coding style
 linkTitle: Coding style
 description: YugabyteDB coding style
-image: /images/section_icons/index/quick_start.png
 headcontent: YugabyteDB coding style
 menu:
   preview:

@@ -175,7 +175,7 @@ Status YBInboundConnectionContext::HandleCall(
     return s;
   }
 
-  s = Store(call.get());
+  s = Store(call);
   if (!s.ok()) {
     return s;
   }
@@ -262,7 +262,7 @@ YBInboundCall::YBInboundCall(RpcMetrics* rpc_metrics, const RemoteMethod& remote
   header_.remote_method = remote_method.serialized_body();
 }
 
-YBInboundCall::~YBInboundCall() {}
+YBInboundCall::~YBInboundCall() = default;
 
 CoarseTimePoint YBInboundCall::GetClientDeadline() const {
   if (header_.timeout_ms == 0) {

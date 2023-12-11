@@ -10,6 +10,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import java.util.List;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.atomic.AtomicBoolean;
 import play.mvc.Action;
 import play.mvc.Http.Request;
 import play.mvc.Result;
@@ -25,7 +26,8 @@ public class AuditAction extends Action.Simple {
 
   @Override
   public CompletionStage<Result> call(Request request) {
-    RequestContext.put(IS_AUDITED, false);
+    AtomicBoolean isAudited = new AtomicBoolean(false);
+    RequestContext.put(IS_AUDITED, isAudited);
     try {
       if (!confGetter.getGlobalConf(GlobalConfKeys.auditVerifyLogging)) {
         return delegate.call(request);
@@ -35,8 +37,6 @@ public class AuditAction extends Action.Simple {
             .thenApply(
                 result -> {
                   if (result.status() == 200) {
-                    boolean isAudited = RequestContext.getOrDefault(IS_AUDITED, false);
-
                     // modifiers are to be added in v1.routes file
                     List<String> modifiers =
                         request.attrs().get(Router.Attrs.HANDLER_DEF).getModifiers();
@@ -55,7 +55,7 @@ public class AuditAction extends Action.Simple {
                       shouldBeAudited = true;
                     }
 
-                    if (isAudited != shouldBeAudited) {
+                    if (isAudited.get() != shouldBeAudited) {
                       throw new PlatformServiceException(
                           INTERNAL_SERVER_ERROR,
                           " Mismatch in Audit Logging intent for "

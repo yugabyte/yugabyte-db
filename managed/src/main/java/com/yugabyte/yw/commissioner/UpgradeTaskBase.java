@@ -11,6 +11,8 @@ import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ManageOtelCollector;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterUserIntent;
+import com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareUpgrade;
+import com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareUpgradeYB;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -86,65 +88,68 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   public abstract NodeState getNodeState();
 
   public void runUpgrade(Runnable upgradeLambda) {
-    super.runUpdateTasks(
-        () -> {
-          try {
-            Set<NodeDetails> nodeList = fetchAllNodes(taskParams().upgradeOption);
+    checkUniverseVersion();
+    lockAndFreezeUniverseForUpdate(taskParams().expectedUniverseVersion, null /* Txn callback */);
+    try {
+      Set<NodeDetails> nodeList = fetchAllNodes(taskParams().upgradeOption);
 
-            // Run the pre-upgrade hooks
-            createHookTriggerTasks(nodeList, true, false);
+      // Run the pre-upgrade hooks
+      createHookTriggerTasks(nodeList, true, false);
 
-            // Execute the lambda which populates subTaskGroupQueue
-            upgradeLambda.run();
+      // Execute the lambda which populates subTaskGroupQueue
+      upgradeLambda.run();
 
-            // Run the post-upgrade hooks
-            createHookTriggerTasks(nodeList, false, false);
+      // Run the post-upgrade hooks
+      createHookTriggerTasks(nodeList, false, false);
 
-            // Marks update of this universe as a success only if all the tasks before it succeeded.
-            createMarkUniverseUpdateSuccessTasks()
-                .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      // Marks update of this universe as a success only if all the tasks before it succeeded.
+      createMarkUniverseUpdateSuccessTasks()
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-            // Run all the tasks.
-            getRunnableTask().runSubTasks();
-          } catch (Throwable t) {
-            log.error("Error executing task {} with error: ", getName(), t);
+      // Run all the tasks.
+      getRunnableTask().runSubTasks();
+    } catch (Throwable t) {
+      log.error("Error executing task {} with error: ", getName(), t);
 
-            if (taskParams().getUniverseSoftwareUpgradeStateOnFailure() != null) {
-              Universe universe = getUniverse();
-              if (!UniverseDefinitionTaskParams.IN_PROGRESS_UNIV_SOFTWARE_UPGRADE_STATES.contains(
-                  universe.getUniverseDetails().softwareUpgradeState)) {
-                log.debug("Skipping universe upgrade state as actual task was not started.");
-              } else {
-                universe.updateUniverseSoftwareUpgradeState(
-                    taskParams().getUniverseSoftwareUpgradeStateOnFailure());
-                log.debug(
-                    "Updated universe {} software upgrade state to  {}.",
-                    taskParams().getUniverseUUID(),
-                    taskParams().getUniverseSoftwareUpgradeStateOnFailure());
-              }
-            }
+      if (taskParams().getUniverseSoftwareUpgradeStateOnFailure() != null) {
+        Universe universe = getUniverse();
+        if (!UniverseDefinitionTaskParams.IN_PROGRESS_UNIV_SOFTWARE_UPGRADE_STATES.contains(
+            universe.getUniverseDetails().softwareUpgradeState)) {
+          log.debug("Skipping universe upgrade state as actual task was not started.");
+        } else {
+          universe.updateUniverseSoftwareUpgradeState(
+              taskParams().getUniverseSoftwareUpgradeStateOnFailure());
+          log.debug(
+              "Updated universe {} software upgrade state to  {}.",
+              taskParams().getUniverseUUID(),
+              taskParams().getUniverseSoftwareUpgradeStateOnFailure());
+        }
+      }
 
-            // If the task failed, we don't want the loadbalancer to be
-            // disabled, so we enable it again in case of errors.
-            if (!isLoadBalancerOn) {
-              setTaskQueueAndRun(
-                  () -> {
-                    createLoadBalancerStateChangeTask(true)
-                        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-                  });
-            }
-            throw t;
-          } finally {
-            try {
-              if (hasRollingUpgrade) {
-                setTaskQueueAndRun(
-                    () -> clearLeaderBlacklistIfAvailable(SubTaskGroupType.ConfigureUniverse));
-              }
-            } finally {
-              unlockXClusterUniverses(lockedXClusterUniversesUuidSet, false /* ignoreErrors */);
-            }
-          }
-        });
+      // If the task failed, we don't want the loadbalancer to be
+      // disabled, so we enable it again in case of errors.
+      if (!isLoadBalancerOn) {
+        setTaskQueueAndRun(
+            () -> {
+              createLoadBalancerStateChangeTask(true)
+                  .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+            });
+      }
+      throw t;
+    } finally {
+      try {
+        if (hasRollingUpgrade) {
+          setTaskQueueAndRun(
+              () -> clearLeaderBlacklistIfAvailable(SubTaskGroupType.ConfigureUniverse));
+        }
+      } finally {
+        try {
+          unlockXClusterUniverses(lockedXClusterUniversesUuidSet, false /* ignoreErrors */);
+        } finally {
+          unlockUniverseForUpdate();
+        }
+      }
+    }
     log.info("Finished {} task.", getName());
   }
 
@@ -817,7 +822,12 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   // Get the TriggerType for the given situation and trigger the hooks
   private void createHookTriggerTasks(
       Collection<NodeDetails> nodes, boolean isPre, boolean isRolling) {
-    String triggerName = (isPre ? "Pre" : "Post") + this.getClass().getSimpleName();
+    String className = this.getClass().getSimpleName();
+    if (this.getClass().equals(SoftwareUpgradeYB.class)) {
+      // use same hook for new upgrade task which was added for old upgrade task.
+      className = SoftwareUpgrade.class.getSimpleName();
+    }
+    String triggerName = (isPre ? "Pre" : "Post") + className;
     if (isRolling) triggerName += "NodeUpgrade";
     Optional<TriggerType> optTrigger = TriggerType.maybeResolve(triggerName);
     if (optTrigger.isPresent())

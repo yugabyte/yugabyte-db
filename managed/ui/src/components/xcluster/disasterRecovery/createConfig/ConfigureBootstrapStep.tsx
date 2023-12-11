@@ -1,110 +1,88 @@
-import { Field, FormikProps } from 'formik';
-import { useSelector } from 'react-redux';
-import { components } from 'react-select';
-import { groupBy } from 'lodash';
+import { makeStyles, Typography } from '@material-ui/core';
+import { Trans, useTranslation } from 'react-i18next';
+import { useFormContext } from 'react-hook-form';
 
-import { YBFormSelect, YBNumericInput } from '../../../common/forms/fields';
-import {
-  Badge_Types as BackupConfigBadgeType,
-  StatusBadge as BackupStatusBadge
-} from '../../../common/badge/StatusBadge';
+import { YBTooltip } from '../../../../redesign/components';
+import { ReactComponent as InfoIcon } from '../../../../redesign/assets/info-message.svg';
+import { ReactSelectStorageConfigField } from '../../sharedComponents/ReactSelectStorageConfig';
 import { CreateDrConfigFormValues } from './CreateConfigModal';
-
-import { IStorageConfig as BackupStorageConfig } from '../../../backupv2';
-
-import styles from './ConfigureBootstrapStep.module.scss';
+import { DR_DROPDOWN_SELECT_INPUT_WIDTH } from '../constants';
 
 interface ConfigureBootstrapStepProps {
-  formik: React.MutableRefObject<FormikProps<CreateDrConfigFormValues>>;
+  isFormDisabled: boolean;
 }
 
-export const ConfigureBootstrapStep = ({ formik }: ConfigureBootstrapStepProps) => {
-  const storageConfigs: BackupStorageConfig[] = useSelector((reduxState: any) =>
-    reduxState?.customer?.configs?.data.filter(
-      (storageConfig: BackupStorageConfig) => storageConfig.type === 'STORAGE'
-    )
-  );
-  const { values, setFieldValue } = formik.current;
+const useStyles = makeStyles((theme) => ({
+  stepContainer: {
+    '& ol': {
+      paddingLeft: theme.spacing(2),
+      listStylePosition: 'outside',
+      '& li::marker': {
+        fontWeight: 'bold'
+      }
+    }
+  },
+  instruction: {
+    marginBottom: theme.spacing(4)
+  },
+  formSectionDescription: {
+    marginBottom: theme.spacing(3)
+  },
+  fieldLabel: {
+    display: 'flex',
+    gap: theme.spacing(1),
+    alignItems: 'center',
 
-  if (storageConfigs.length === 1 && values.storageConfig === undefined) {
-    const { configUUID, configName, name, data } = storageConfigs[0];
-    setFieldValue('storageConfig', {
-      value: configUUID,
-      label: configName,
-      name: name,
-      regions: data?.REGION_LOCATIONS
-    });
+    marginBottom: theme.spacing(1)
+  },
+  infoIcon: {
+    '&:hover': {
+      cursor: 'pointer'
+    }
   }
+}));
 
-  const storageConfigsOptions = storageConfigs.map((storageConfig) => {
-    return {
-      value: storageConfig.configUUID,
-      label: storageConfig.configName,
-      name: storageConfig.name,
-      regions: storageConfig.data?.REGION_LOCATIONS
-    };
-  });
+const TRANSLATION_KEY_PREFIX =
+  'clusterDetail.disasterRecovery.config.createModal.step.configureBootstrap';
 
-  const groupedStorageConfigOptions = Object.entries(
-    groupBy(storageConfigsOptions, (configOption) => configOption.name)
-  ).map(([label, options]) => ({ label, options }));
+export const ConfigureBootstrapStep = ({ isFormDisabled }: ConfigureBootstrapStepProps) => {
+  const { control } = useFormContext<CreateDrConfigFormValues>();
+  const classes = useStyles();
+  const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   return (
-    <>
-      <div className={styles.formInstruction}>3. Configure bootstrap</div>
-      <div className={styles.formFieldContainer}>
-        <Field
-          name="storageConfig"
-          component={YBFormSelect}
-          label="Select the storage config you want to use for your backup"
-          options={groupedStorageConfigOptions}
-          components={{
-            // eslint-disable-next-line react/display-name
-            SingleValue: ({ data }: { data: any }) => (
-              <>
-                <span className={styles.backupConfigLabelName}>{data.label}</span>
-                <BackupStatusBadge
-                  statusType={BackupConfigBadgeType.DELETED}
-                  customLabel={data.name}
-                />
-              </>
-            ),
-            // eslint-disable-next-line react/display-name
-            Option: (props: any) => {
-              return (
-                <components.Option {...props}>
-                  <div className={styles.backupConfigOptionLabel}>{props.data.label}</div>
-                  <div className={styles.backupConfigOptionMeta}>
-                    <span>{`${props.data.name}${props.data.regions?.length > 0 ? ',' : ''}`}</span>
-                    {props.data.regions?.length > 0 && <span>Multi-region support</span>}
-                  </div>
-                </components.Option>
-              );
-            }
-          }}
-          styles={{
-            singleValue: (props: any) => {
-              return { ...props, display: 'flex' };
-            }
-          }}
-        />
-      </div>
-      <div className={styles.note}>
-        <p>
-          <b>Note!</b>
-        </p>
-        <p>
-          Bootstrapping is a <b>time intensive</b> process that involves creating a checkpoint on
-          the source, deleting the data on target, creating a copy of the source data using backup,
-          and replicating the data to target using restore.
-        </p>
-        <p>
-          <b>Data</b> on the target cluster <b>will be deleted</b> during bootstrapping. Queries to
-          these temporarily deleted tables will error out.
-        </p>
-        <p>
-          We recommend <b>bootstrapping during off-peak hours.</b>
-        </p>
-      </div>
-    </>
+    <div className={classes.stepContainer}>
+      <ol start={3}>
+        <li>
+          <Typography variant="body1" className={classes.instruction}>
+            {t('instruction')}
+          </Typography>
+          <div className={classes.formSectionDescription}>
+            <Typography variant="body2">{t('infoText')}</Typography>
+          </div>
+          <div className={classes.fieldLabel}>
+            <Typography variant="body2">{t('backupStorageConfig.label')}</Typography>
+            <YBTooltip
+              title={
+                <Typography variant="body2">
+                  <Trans
+                    i18nKey={`${TRANSLATION_KEY_PREFIX}.backupStorageConfig.tooltip`}
+                    components={{ paragraph: <p />, bold: <b /> }}
+                  />
+                </Typography>
+              }
+            >
+              <InfoIcon className={classes.infoIcon} />
+            </YBTooltip>
+          </div>
+          <ReactSelectStorageConfigField
+            control={control}
+            name="storageConfig"
+            width={DR_DROPDOWN_SELECT_INPUT_WIDTH}
+            rules={{ required: t('error.backupStorageConfigRequired') }}
+            isDisabled={isFormDisabled}
+          />
+        </li>
+      </ol>
+    </div>
   );
 };

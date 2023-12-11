@@ -35,7 +35,7 @@ class PerformFuture {
   };
 
   PerformFuture() = default;
-  PerformFuture(std::future<PerformResult> future, PgSession* session, PgObjectIds&& relations);
+  PerformFuture(PerformResultFuture future, PgSession* session, PgObjectIds&& relations);
   PerformFuture(PerformFuture&&) = default;
   PerformFuture& operator=(PerformFuture&&) = default;
   ~PerformFuture();
@@ -45,7 +45,7 @@ class PerformFuture {
   Result<Data> Get();
 
  private:
-  std::future<PerformResult> future_;
+  PerformResultFuture future_;
   PgSession* session_ = nullptr;
   PgObjectIds relations_;
 };

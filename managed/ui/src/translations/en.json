@@ -733,33 +733,29 @@
             "title": "Configure Active-Active Single-Master Disaster Recovery (DR)",
             "step": {
               "selectTargetUniverse": {
-                "instruction": "1. Select a universe to use as the DR replica.",
+                "instruction": "Select a universe to use as the DR replica",
                 "submitButton": "Next: Select databases",
-                "drReplica": "DR Replica Universe"
+                "drReplica": "DR Replica Universe",
+                "error": {
+                  "targetUniverseRequired": "Required.",
+                  "mismatchedNodeToNodeEncryption": "The source and target universe must have matching TLS enable/disable setting."
+                }
               },
               "selectDatabases": {
-                "instruction": "2. Select the databases to enable disaster recovery for.",
+                "instruction": "Select the databases to enable disaster recovery for",
                 "submitButton": "Next: Configure boostrap",
-                "databases": "Databases",
-                "sizeGb": "Size (GB)",
-                "ysqlDatabasesSelected": "YSQL: {{selectedDatabaseCount}} out of {totalDatabaseCount}} selected.",
-                "pitrSetUpNote": "Note: Point-in-time Recovery will be enabled for the selected databases on the DR Replica."
+                "pitrSetUpNote": "<bold>Note:</bold> Point-in-time Recovery will be enabled for the selected databases on the DR Replica."
               },
               "configureBootstrap": {
-                "instruction": "3. Configure bootstrap.",
+                "instruction": "Choose the storage config to use for performing the initial copy",
+                "infoText": "Initial full copy is required when the database contains data. Performing an initial full copy requires a backup storage config as an intermediate third party storage, and is time and resource intensive. This is also referred to as bootstrapping or initial seeding.",
                 "submitButton": "Set up and Enable Disaster Recovery",
-                "backupStorageConfig": "Select the backup storage config to use for bootstrapping.",
-                "parallelThreads": "Parallel threads",
-                "bootstrapOffPeakNote": "Note: We recommend setting up Disaster Recovery during off-peak hours if bootstrap is required."
-              },
-              "configureAlert": {
-                "instruction": "4. Specify replication lag threshold to receive alerts. (Optional)",
-                "submitButton": "Set up and Enable Disaster Recovery",
-                "maxAcceptableLag": "Max Acceptable Lag",
-                "duration": {
-                  "second": "Second",
-                  "minute": "Minute",
-                  "hour": "Hour"
+                "backupStorageConfig": {
+                  "label": "Backup Storage Config",
+                  "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both source and target universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>"
+                },
+                "error": {
+                  "backupStorageConfigRequired": "Required."
                 }
               }
             },
@@ -839,10 +835,7 @@
             "instruction": "Select the databases to enable disaster recovery for",
             "step": {
               "selectTables": {
-                "nextButton": "Next: Configure bootstrap",
-                "error": {
-                  "validationMinimumTableUuids": "Select at least one table to proceed."
-                }
+                "nextButton": "Next: Configure bootstrap"
               },
               "configureBootstrap": {
                 "infoText": "<paragraph>The selected databases and/or tables contain <bold>data that is not yet replicated</bold> for DR. To enable DR for these databases and/or tables, a bootstrap will be required before aynchronous replication from the DR primary universe to the DR replica universe can be established.</paragraph><paragraph>Are you sure you want to <bold>bootstrap</bold> and add these databases and/or tables?</paragraph>",
@@ -898,7 +891,7 @@
           },
           "warning": {
             "insufficientDiskSpace": {
-              "title": "Insufficient disk space.",
+              "title": "Warning: You may need additional disk space.",
               "body": "Some selected tables require bootstrapping. We recommend having at least {{bootstrapMinFreeDiskSpaceGb}} GB of free disk space in the source universe."
             }
           }
@@ -1114,6 +1107,7 @@
       "errorMessage": "Failed to fetch list of providers"
     },
     "storageConfig": {
+      "createBackupStorageConfigPrompt": "You do not have any backup storage configs set up. Please <createStorageConfigLink>create a backup storage</createStorageConfigLink> config before trying again.",
       "pill": {
         "multiRegionSupport": "Multi-region support"
       }
@@ -1310,7 +1304,7 @@
       },
       "permissions": {
         "title": "User Roles",
-        "connectOnly": "Users without a role are automatically assigned the '<b>Connect Only</b>' role, limiting access to login and view their profile page",
+        "connectOnly": "Users without any built-in role are automatically assigned the '<b>Connect Only</b>' role, allowing access to login and view their profile page",
         "noUniverses": "There are no Universes deployed in this account. Selected roles will be applied to all future Universes by default. You can modify role's scope after deployment.",
         "role": "Role",
         "for": "for",
