@@ -15,6 +15,7 @@
 #include "yb/client/client.h"
 #include "yb/client/session.h"
 
+#include "yb/client/yb_table_name.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_reader.h"
 #include "yb/consensus/raft_consensus.h"
@@ -38,6 +39,7 @@
 
 using namespace std::literals;
 
+DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_int32(retryable_request_timeout_secs);
 DECLARE_bool(TEST_asyncrpc_finished_set_timedout);
 DECLARE_bool(TEST_pause_before_replicate_batch);
@@ -81,7 +83,43 @@ class RetryableRequestTest : public YBTableTestBase {
   }
 };
 
-TEST_F(RetryableRequestTest, TestRetryableRequestTooOld) {
+class SingleServerRetryableRequestTest : public RetryableRequestTest {
+ protected:
+  void BeforeStartCluster() override {
+    RetryableRequestTest::BeforeStartCluster();
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_retryable_request_timeout_secs) = 10;
+  }
+
+  size_t num_tablet_servers() override { return 1; }
+};
+
+TEST_F_EX(RetryableRequestTest, YqlRequestTimeoutSecs, SingleServerRetryableRequestTest) {
+  auto* tablet_server = mini_cluster()->mini_tablet_server(0);
+  DeleteTable();
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retryable_request_timeout_secs) = 660;
+
+  // YQL table's retryable request timeout is
+  // Min(FLAGS_retryable_request_timeout_secs, FLAGS_client_read_write_timeout_ms).
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 60000;
+  CreateTable();
+  OpenTable();
+  auto tablet_id = ASSERT_RESULT(GetOnlyTabletId(table_.name()));
+  tablet::TabletPeerPtr tablet_peer;
+  ASSERT_OK(tablet_server->server()->tablet_manager()->GetTabletPeer(tablet_id, &tablet_peer));
+  ASSERT_EQ(tablet_peer->shared_raft_consensus()->TEST_RetryableRequestTimeoutSecs(), 60);
+  DeleteTable();
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 661000;
+  CreateTable();
+  OpenTable();
+  tablet_id = ASSERT_RESULT(GetOnlyTabletId(table_.name()));
+  ASSERT_OK(tablet_server->server()->tablet_manager()->GetTabletPeer(tablet_id, &tablet_peer));
+  ASSERT_EQ(tablet_peer->shared_raft_consensus()->TEST_RetryableRequestTimeoutSecs(), 660);
+  DeleteTable();
+}
+
+TEST_F_EX(RetryableRequestTest, TestRetryableRequestTooOld, SingleServerRetryableRequestTest) {
   auto* tablet_server = mini_cluster()->mini_tablet_server(0);
   const auto tablet_id = ASSERT_RESULT(GetOnlyTabletId(table_.name()));
   tablet::TabletPeerPtr tablet_peer;

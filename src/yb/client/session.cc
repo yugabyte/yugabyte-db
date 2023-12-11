@@ -28,6 +28,7 @@
 #include "yb/tserver/tserver_error.h"
 
 #include "yb/util/debug-util.h"
+#include "yb/util/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/metrics.h"
 #include "yb/util/status_log.h"
@@ -36,6 +37,15 @@ using namespace std::literals;
 using namespace std::placeholders;
 
 DEFINE_int32(client_read_write_timeout_ms, 60000, "Timeout for client read and write operations.");
+
+DEFINE_int32(ysql_client_read_write_timeout_ms, -1,
+    "Timeout for YSQL's yb-client read/write "
+    "operations. Falls back on max(client_read_write_timeout_ms, 600s) if set to -1." );
+
+DEFINE_int32(retryable_request_timeout_secs, 660,
+    "Maximum amount of time to keep write request in index, to prevent duplicate writes."
+    "If the client timeout is less than this value, then use the client timeout instead.");
+TAG_FLAG(retryable_request_timeout_secs, runtime);
 
 namespace yb {
 namespace client {
@@ -393,6 +403,19 @@ bool ShouldSessionRetryError(const Status& status) {
   return IsRetryableClientError(status) ||
          tserver::TabletServerError(status) == tserver::TabletServerErrorPB::TABLET_SPLIT ||
          consensus::ConsensusError(status) == consensus::ConsensusErrorPB::TABLET_SPLIT;
+}
+
+int YsqlClientReadWriteTimeoutMs() {
+  return (FLAGS_ysql_client_read_write_timeout_ms < 0
+      ? std::max(FLAGS_client_read_write_timeout_ms, 600000)
+      : FLAGS_ysql_client_read_write_timeout_ms);
+}
+
+int RetryableRequestTimeoutSecs(TableType table_type) {
+  const int client_timeout_ms = table_type == TableType::PGSQL_TABLE_TYPE
+      ? YsqlClientReadWriteTimeoutMs()
+      : FLAGS_client_read_write_timeout_ms;
+  return std::min(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs), client_timeout_ms / 1000);
 }
 
 } // namespace client

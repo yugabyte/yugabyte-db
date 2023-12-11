@@ -3682,6 +3682,14 @@ RetryableRequestsCounts RaftConsensus::TEST_CountRetryableRequests() {
   return state_->TEST_CountRetryableRequests();
 }
 
+int RaftConsensus::TEST_RetryableRequestTimeoutSecs() const {
+  auto lock = state_->LockForRead();
+  if(state_->state() != ReplicaState::kRunning) {
+    return 0;
+  }
+  return state_->retryable_requests().request_timeout_secs();
+}
+
 void RaftConsensus::TrackOperationMemory(const yb::OpId& op_id) {
   queue_->TrackOperationsMemory({op_id});
 }

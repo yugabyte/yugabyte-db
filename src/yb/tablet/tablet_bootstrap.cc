@@ -42,6 +42,8 @@
 #include "yb/common/schema.h"
 #include "yb/common/wire_protocol.h"
 
+#include "yb/client/session.h"
+
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_meta.h"
@@ -539,6 +541,11 @@ class TabletBootstrap {
     }
 
     const bool has_blocks = VERIFY_RESULT(OpenTablet());
+
+    if (data_.retryable_requests) {
+      data_.retryable_requests->SetRequestTimeout(
+          client::RetryableRequestTimeoutSecs(tablet_->table_type()));
+    }
 
     if (FLAGS_TEST_dump_docdb_before_tablet_bootstrap) {
       LOG_WITH_PREFIX(INFO) << "DEBUG: DocDB dump before tablet bootstrap:";
@@ -1113,15 +1120,19 @@ class TabletBootstrap {
   //   in practice the flushed OpId of the intents RocksDB should also be less than or equal to the
   //   flushed OpId of the regular RocksDB or this would be an invariant violation.
   //
-  // - The "restart safe time" of the first operation in the segment that we choose to start the
-  //   replay with must be such that we guarantee that at least FLAGS_retryable_request_timeout_secs
-  //   seconds worth of latest log records are replayed. This is needed to allow deduplicating
+  // - The first OpId of the segment is less than or equal to persisted retryable requests
+  //   file's last_flushed_op_id_ or the "restart safe time" of the first operation in the segment
+  //   we choose to start the replay with is older than retryable_request_timeout seconds.
+  //   The value of retryable_request_timeout depends on table type of the tablet, which is 60s
+  //   for YCQL tables and 600s for YSQL tables by default (see RetryableRequestTimeoutSecs).
+  //   This can guarantee that retryable requests started no later than retryable_request_timeout
+  //   seconds ago can be rebuilt in memory. This is needed to allow deduplicating
   //   automatic retries from YCQL and YSQL query layer and avoid Jepsen-type consistency
   //   violations. We satisfy this constraint by taking the last segment's first operation's
-  //   restart-safe time, subtracting FLAGS_retryable_request_timeout_secs seconds from it, and
+  //   restart-safe time, subtracting retryable_request_timeout seconds from it, and
   //   finding a segment that has that time or earlier as its first operation's restart-safe time.
   //   This also means we are never allowed to start replay with the last segment, as long as
-  //   FLAGS_retryable_request_timeout_secs is greater than 0.
+  //   retryable_request_timeout is greater than 0.
   //
   //   This "restart safe time" is similar to the regular Linux monotonic clock time, but is
   //   maintained across tablet server restarts. See RestartSafeCoarseMonoClock for details.
@@ -1153,9 +1164,10 @@ class TabletBootstrap {
     // Time point of the first entry of the last WAL segment, and how far back in time from it we
     // should retain other entries.
     boost::optional<RestartSafeCoarseTimePoint> replay_from_this_or_earlier_time;
-    const RestartSafeCoarseDuration min_seconds_to_retain_logs = data_.bootstrap_retryable_requests
-        ? std::chrono::seconds(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs))
-        : 0s;
+    const RestartSafeCoarseDuration min_seconds_to_retain_logs =
+        data_.bootstrap_retryable_requests && data_.retryable_requests
+          ? std::chrono::seconds(data_.retryable_requests->request_timeout_secs())
+          : 0s;
 
     auto iter = segments.end();
     while (iter != segments.begin()) {
