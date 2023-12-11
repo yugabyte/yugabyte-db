@@ -106,7 +106,7 @@ DECLARE_bool(allow_insecure_connections);
 DECLARE_int32(async_replication_idle_delay_ms);
 DECLARE_uint32(async_replication_max_idle_wait);
 DECLARE_int32(async_replication_polling_delay_ms);
-DECLARE_int32(cdc_wal_retention_time_secs);
+DECLARE_uint32(cdc_wal_retention_time_secs);
 DECLARE_string(certs_dir);
 DECLARE_string(certs_for_cdc_dir);
 DECLARE_bool(check_bootstrap_required);

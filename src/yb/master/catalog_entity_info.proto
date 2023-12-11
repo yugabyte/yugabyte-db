@@ -509,6 +509,7 @@ message SysCDCStreamEntryPB {
   optional State state = 3 [default = ACTIVE];
   optional string namespace_id = 4;
   optional bool transactional = 5; // [default = false]
+  optional string cdcsdk_ysql_replication_slot_name = 6;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for snapshots entries.

@@ -61,7 +61,7 @@ DECLARE_bool(enable_log_retention_by_op_idx);
 DECLARE_bool(enable_ysql);
 DECLARE_int32(cdc_max_apply_batch_num_records);
 DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
-DECLARE_int32(cdc_wal_retention_time_secs);
+DECLARE_uint32(cdc_wal_retention_time_secs);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_int32(log_min_segments_to_retain);
 DECLARE_int32(transaction_table_num_tablets);

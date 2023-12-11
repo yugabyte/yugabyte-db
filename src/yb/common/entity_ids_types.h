@@ -38,6 +38,7 @@ using TablegroupId = std::string;
 using TablespaceId = std::string;
 
 YB_STRONGLY_TYPED_STRING(KvStoreId);
+YB_STRONGLY_TYPED_STRING(ReplicationSlotName);
 
 // TODO(#79): switch to YB_STRONGLY_TYPED_STRING
 using RaftGroupId = std::string;
