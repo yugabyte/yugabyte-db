@@ -1328,9 +1328,14 @@ class YBBackup:
         parser.add_argument(
             '--restore_time', required=False,
             help='The Unix microsecond timestamp to which to restore the snapshot.')
+
+        parser.add_argument(
+            '--ignore_existing_tablespaces', required=False, action='store_true', default=False,
+            help='Whether to skip tablespace creation if tablespace already exists.')
         parser.add_argument(
             '--use_tablespaces', required=False, action='store_true', default=False,
             help='Backup/restore YSQL TABLESPACE objects into/from the backup.')
+
         parser.add_argument('--upload', dest='upload', action='store_true', default=True)
         # Please note that we have to use this weird naming (i.e. underscore in the argument name)
         # style to keep it in sync with YB processes G-flags.
@@ -3042,7 +3047,8 @@ class YBBackup:
             if sql_tbsp_dump_path:
                 logging.info("[app] Creating ysql dump for tablespaces to {}".format(
                     sql_tbsp_dump_path))
-                self.run_ysql_dumpall(['--tablespaces-only', '--file=' + sql_tbsp_dump_path])
+                self.run_ysql_dumpall(['--tablespaces-only', '--include-yb-metadata',
+                                       '--file=' + sql_tbsp_dump_path])
                 dump_files.append(sql_tbsp_dump_path)
             else:
                 ysql_dump_args.append('--no-tablespaces')
@@ -3495,6 +3501,9 @@ class YBBackup:
                 self.run_ssh_cmd(cmd, self.get_main_host_ip())
 
         ysql_shell_args = ['--echo-all', '--file=' + dump_file_path]
+
+        if self.args.ignore_existing_tablespaces:
+            ysql_shell_args.append('--variable=ignore_existing_tablespaces=1')
 
         if on_error_stop:
             logging.info(
