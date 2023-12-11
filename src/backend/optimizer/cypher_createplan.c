@@ -122,7 +122,7 @@ Plan *plan_cypher_set_path(PlannerInfo *root, RelOptInfo *rel,
 }
 
 /*
- * Coverts the Scan node representing the delete clause
+ * Coverts the Scan node representing the DELETE clause
  * to the delete Plan node
  */
 Plan *plan_cypher_delete_path(PlannerInfo *root, RelOptInfo *rel,
@@ -168,7 +168,7 @@ Plan *plan_cypher_delete_path(PlannerInfo *root, RelOptInfo *rel,
     // child plan nodes are here, Postgres processed them for us.
     cs->custom_plans = custom_plans;
     cs->custom_exprs = NIL;
-    // transfer delete metadata needed by the delete clause.
+    // transfer delete metadata needed by the DELETE clause.
     cs->custom_private = best_path->custom_private;
     /*
      * the scan list of the delete node's children, used for ScanTupleSlot
@@ -183,7 +183,7 @@ Plan *plan_cypher_delete_path(PlannerInfo *root, RelOptInfo *rel,
 }
 
 /*
- * Coverts the Scan node representing the delete clause
+ * Coverts the Scan node representing the MERGE clause
  * to the merge Plan node
  */
 Plan *plan_cypher_merge_path(PlannerInfo *root, RelOptInfo *rel,
@@ -206,7 +206,7 @@ Plan *plan_cypher_merge_path(PlannerInfo *root, RelOptInfo *rel,
 
     cs->scan.plan.plan_node_id = 0; // Set later in set_plan_refs
     /*
-     * the scan list of the delete node, used for its ScanTupleSlot used
+     * the scan list of the merge node, used for its ScanTupleSlot used
      * by its parent in the execution phase.
      */
     cs->scan.plan.targetlist = tlist;
@@ -229,7 +229,7 @@ Plan *plan_cypher_merge_path(PlannerInfo *root, RelOptInfo *rel,
     // child plan nodes are here, Postgres processed them for us.
     cs->custom_plans = custom_plans;
     cs->custom_exprs = NIL;
-    // transfer delete metadata needed by the delete clause.
+    // transfer delete metadata needed by the MERGE clause.
     cs->custom_private = best_path->custom_private;
     /*
      * the scan list of the merge node's children, used for ScanTupleSlot

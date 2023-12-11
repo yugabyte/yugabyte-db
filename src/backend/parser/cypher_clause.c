@@ -279,7 +279,8 @@ static Node *transform_clause_for_join(cypher_parsestate *cpstate,
                                        Alias* alias);
 static cypher_clause *convert_merge_to_match(cypher_merge *merge);
 static void
-transform_cypher_merge_mark_tuple_position(List *target_list,
+transform_cypher_merge_mark_tuple_position(cypher_parsestate *cpstate,
+                                           List *target_list,
                                            cypher_create_path *path);
 static cypher_target_node *get_referenced_variable(ParseState *pstate,
                                                    Node *node,
@@ -6262,7 +6263,7 @@ static Query *transform_cypher_merge(cypher_parsestate *cpstate,
          * For the metadata need to create paths, find the tuple position that
          * will represent the entity in the execution phase.
          */
-        transform_cypher_merge_mark_tuple_position(query->targetList,
+        transform_cypher_merge_mark_tuple_position(cpstate, query->targetList,
                                                    merge_path);
     }
 
@@ -6413,7 +6414,7 @@ transform_merge_make_lateral_join(cypher_parsestate *cpstate, Query *query,
      * For the metadata need to create paths, find the tuple position that
      * will represent the entity in the execution phase.
      */
-    transform_cypher_merge_mark_tuple_position(query->targetList,
+    transform_cypher_merge_mark_tuple_position(cpstate, query->targetList,
                                                merge_path);
 
     return merge_path;
@@ -6425,7 +6426,8 @@ transform_merge_make_lateral_join(cypher_parsestate *cpstate, Query *query,
  * function to keep the optimizer from removing the TargetEntry.
  */
 static void
-transform_cypher_merge_mark_tuple_position(List *target_list,
+transform_cypher_merge_mark_tuple_position(cypher_parsestate *cpstate,
+                                           List *target_list,
                                            cypher_create_path *path)
 {
     ListCell *lc = NULL;
@@ -6460,6 +6462,64 @@ transform_cypher_merge_mark_tuple_position(List *target_list,
 
         // Mark the tuple position the target_node is for.
         node->tuple_position = te->resno;
+    }
+
+    /* Iterate through the entities wrapping Var nodes with the volatile
+     * wrapper, if not already done.
+     *
+     * NOTE: add_volatile_wrapper function will not wrap itself so the following
+     *       is safe to do.
+     *
+     * TODO: This ideally needs to be rewritten using a walker, to be more
+     *       selective. However, walkers are tricky and take time to set up. For
+     *       now, we brute force it. It is already restricted to explicitly
+     *       named variables.
+     *
+     * TODO: We need to understand why add_volatile_wrapper is needed. Meaning,
+     *       we need to understand why variables are removed by the function
+     *       remove_unused_subquery_outputs. It "appears" that some linkage may
+     *       not be set up properly, not allowing the PG logic to see that a
+     *       variable is used from a previous clause. Right now, the volatile
+     *       wrapper will suffice, but it is still a hack imho.
+     *
+     * TODO: There may be other locations where something similar may need to be
+     *       done. This needs to be researched.
+     */
+    foreach (lc, cpstate->entities)
+    {
+        transform_entity *te = lfirst(lc);
+        Node *node = (Node*) te->entity.node;
+        char *name = NULL;
+
+        if (is_ag_node(node, cypher_node))
+        {
+            name = te->entity.node->parsed_name;
+        }
+        else if (is_ag_node(node, cypher_relationship))
+        {
+            name = te->entity.rel->parsed_name;
+        }
+        else if (is_ag_node(node, cypher_path))
+        {
+            name = te->entity.path->parsed_var_name;
+        }
+        else
+        {
+            ereport(ERROR,
+                    (errcode(ERRCODE_DATA_EXCEPTION),
+                     errmsg("unexpected transform_entity entity type")));
+        }
+
+        /* node needs to have a parsed_name, meaning a name from the query */
+        if (name != NULL)
+        {
+            TargetEntry *tle = findTarget(target_list, name);
+
+            if (tle != NULL && IsA(tle->expr, Var))
+            {
+                tle->expr = add_volatile_wrapper(tle->expr);
+            }
+        }
     }
 }
 

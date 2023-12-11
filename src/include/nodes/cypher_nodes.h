@@ -133,6 +133,7 @@ typedef struct cypher_path
     ExtensibleNode extensible;
     List *path; // [ node ( , relationship , node , ... ) ]
     char *var_name;
+    char *parsed_var_name;
     int location;
 } cypher_path;
 
@@ -141,6 +142,7 @@ typedef struct cypher_node
 {
     ExtensibleNode extensible;
     char *name;
+    char *parsed_name;
     char *label;
     char *parsed_label;
     Node *props; // map or parameter
@@ -159,6 +161,7 @@ typedef struct cypher_relationship
 {
     ExtensibleNode extensible;
     char *name;
+    char *parsed_name;
     char *label;
     char *parsed_label;
     Node *props; // map or parameter

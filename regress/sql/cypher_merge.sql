@@ -524,6 +524,36 @@ SELECT * FROM cypher('cypher_merge', $$ MERGE p=(x:r)-[y:E]->(x)-[p]->(x) $$) AS
 SELECT * FROM cypher('cypher_merge', $$ MERGE p=(x:r)-[y:E]->(x)-[p:E]->(x) $$) AS (x agtype);
 SELECT * FROM cypher('cypher_merge', $$ MERGE p=(x:r)-[y:E]->(p)-[x]->(y) $$) AS (x agtype);
 
+-- issue 1219
+SELECT * FROM create_graph('issue_1219');
+SELECT * FROM cypher('issue_1219', $$ CREATE (x:Label1{arr:[1,2,3,4]}) RETURN x $$) as (a agtype);
+SELECT * FROM cypher('issue_1219', $$
+    MATCH (x:Label1{arr:[1,2,3,4]}) MERGE (y:Label2{key1:2, key2:x.arr, key3:3}) RETURN y
+$$) as (result agtype);
+SELECT * FROM cypher('issue_1219', $$
+    MATCH (x:Label1{arr:[1,2,3,4]}) MERGE (y:Label2{key2:id(x)}) RETURN y
+$$) as (result agtype);
+SELECT * FROM cypher('issue_1219', $$ MATCH (x) RETURN x $$) as (a agtype);
+-- these shouldn't create more
+SELECT * FROM cypher('issue_1219', $$
+    MATCH (x:Label1{arr:[1,2,3,4]}) MERGE (y:Label2{key1:2, key2:x.arr, key3:3}) RETURN y
+$$) as (result agtype);
+SELECT * FROM cypher('issue_1219', $$
+    MATCH (x:Label1{arr:[1,2,3,4]}) MERGE (y:Label2{key2:id(x)}) RETURN y
+$$) as (result agtype);
+SELECT * FROM cypher('issue_1219', $$ MATCH (x) RETURN x $$) as (a agtype);
+-- create a path
+SELECT * FROM cypher('issue_1219', $$
+    CREATE (u:Label1{name: "John"})-[e:knows]->(v:Label1{name: "Jane"})
+$$) as (result agtype);
+SELECT * FROM cypher('issue_1219', $$
+    MATCH (u:Label1{name:"John"})-[e:knows]->(v:Label1{name: "Jane"})
+    MERGE (y:Label2{start_id:id(u), edge_id:id(e), end_id:id(v)}) RETURN y
+$$) as (result agtype);
+SELECT * FROM cypher('issue_1219', $$ MATCH (x) RETURN x $$) as (result agtype);
+SELECT * FROM cypher('issue_1219', $$ MATCH ()-[e]->() RETURN e $$) as (result agtype);
+SELECT drop_graph('issue_1219', true);
+
 --clean up
 SELECT * FROM cypher('cypher_merge', $$MATCH (n) DETACH DELETE n $$) AS (a agtype);
 
