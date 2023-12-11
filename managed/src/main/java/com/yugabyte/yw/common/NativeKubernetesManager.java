@@ -466,6 +466,16 @@ public class NativeKubernetesManager extends KubernetesManager {
   }
 
   @Override
+  public List<Quantity> getPVCSizeList(
+      Map<String, String> config,
+      String namespace,
+      String helmReleaseName,
+      String appName,
+      boolean newNamingStyle) {
+    throw new UnsupportedOperationException("Unimplemented method 'getPVCNames'");
+  }
+
+  @Override
   public List<Pod> getPods(
       Map<String, String> config,
       String namespace,

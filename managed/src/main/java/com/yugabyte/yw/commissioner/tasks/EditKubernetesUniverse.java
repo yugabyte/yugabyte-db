@@ -16,6 +16,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckVolumeExpansion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
+import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesPostExpansionCheckVolume;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
@@ -604,6 +605,14 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           false,
           enableYbc,
           ybcSoftwareVersion);
+      createPostExpansionValidateTask(
+          universeName,
+          azConfig,
+          azName,
+          isReadOnlyCluster,
+          newNamingStyle,
+          providerUUID,
+          newDiskSizeGi);
     }
   }
 
@@ -637,6 +646,45 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             isReadOnlyCluster,
             taskParams().useNewHelmNamingStyle);
     KubernetesCheckVolumeExpansion task = createTask(KubernetesCheckVolumeExpansion.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  private void createPostExpansionValidateTask(
+      String universeName,
+      Map<String, String> config,
+      String azName,
+      boolean isReadOnlyCluster,
+      boolean newNamingStyle,
+      UUID providerUUID,
+      String newDiskSizeGi) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor()
+            .createSubTaskGroup(KubernetesPostExpansionCheckVolume.getSubTaskGroupName());
+    KubernetesPostExpansionCheckVolume.Params params =
+        new KubernetesPostExpansionCheckVolume.Params();
+    params.config = config;
+    params.newNamingStyle = newNamingStyle;
+    if (config != null) {
+      params.namespace =
+          KubernetesUtil.getKubernetesNamespace(
+              taskParams().nodePrefix,
+              azName,
+              config,
+              taskParams().useNewHelmNamingStyle,
+              isReadOnlyCluster);
+    }
+    params.providerUUID = providerUUID;
+    params.newDiskSizeGi = newDiskSizeGi;
+    params.helmReleaseName =
+        KubernetesUtil.getHelmReleaseName(
+            taskParams().nodePrefix,
+            universeName,
+            azName,
+            isReadOnlyCluster,
+            taskParams().useNewHelmNamingStyle);
+    KubernetesPostExpansionCheckVolume task = createTask(KubernetesPostExpansionCheckVolume.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);

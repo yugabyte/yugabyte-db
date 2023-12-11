@@ -17,6 +17,7 @@ import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
 import com.yugabyte.yw.models.helpers.provider.KubernetesInfo;
+import io.fabric8.kubernetes.api.model.Quantity;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -459,5 +460,27 @@ public class KubernetesUtil {
       }
     }
     return k8sInfos;
+  }
+
+  /** Returns true if actual PVC size in k8s cluster is not the same as given newDiskSizeGi. */
+  public static boolean needsExpandPVC(
+      String namespace,
+      String helmReleaseName,
+      String appName,
+      boolean newNamingStyle,
+      String newDiskSizeGi,
+      Map<String, String> config,
+      KubernetesManagerFactory kubernetesManagerFactory) {
+    KubernetesManager k8s = kubernetesManagerFactory.getManager();
+    List<Quantity> pvcSizeList =
+        k8s.getPVCSizeList(config, namespace, helmReleaseName, appName, newNamingStyle);
+    // Go through each PVCsize and check that its different from newDiskSize, if yes return true.
+    Quantity newDiskSizeQty = new Quantity(newDiskSizeGi);
+    for (Quantity pvcSize : pvcSizeList) {
+      if (!pvcSize.equals(newDiskSizeQty)) {
+        return true; // Exit the loop as soon as a difference is found
+      }
+    }
+    return false;
   }
 }
