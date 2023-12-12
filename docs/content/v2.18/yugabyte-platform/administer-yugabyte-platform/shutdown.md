@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-If you need to perform maintenance on the server hosting your YugabyteDB Anywhere installation requiring a shutdown or restart, you should shut YugabytedB Anywhere down gracefully.
+If you need to perform maintenance on the server hosting your YugabyteDB Anywhere installation requiring a shutdown or restart, you should shut YugabyteDB Anywhere down gracefully.
 
 ## YBA Installer
 
