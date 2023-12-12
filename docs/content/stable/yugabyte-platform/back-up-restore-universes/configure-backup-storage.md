@@ -125,6 +125,8 @@ For more details, see [Use Workload Identity](https://cloud.google.com/kubernete
 
 To enable this feature when installing YBA, refer to [Enable GKE Service Account based IAM](../../install-yugabyte-platform/install-software/kubernetes/#enable-gke-service-account-based-iam).
 
+To enable this feature during universe creation, refer to [Configure Helm overrides](../../create-deployments/create-universe-multi-zone-kubernetes/#configure-helm-overrides) on create a multi-zone universe with Kubernetes page.
+
 To upgrade an existing universe with this feature, refer to [Upgrade universes for GKE Service Account based IAM support](../../manage-deployments/edit-helm-overrides/#upgrade-universes-for-gke-service-account-based-iam-support).
 
 ## Azure Storage
