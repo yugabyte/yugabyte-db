@@ -23,6 +23,8 @@ import com.yugabyte.yw.forms.RuntimeConfigFormData;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.common.KeyFromURI;
+import com.yugabyte.yw.models.common.SynchronizedController;
 import io.ebean.annotation.Transactional;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
@@ -127,6 +129,7 @@ public class RuntimeConfController extends AuthenticatedController {
           dataType = "java.lang.String",
           required = true))
   @Transactional
+  @SynchronizedController(keyFromURI = @KeyFromURI(pathIndices = {3, 5}))
   public Result setKey(UUID customerUUID, UUID scopeUUID, String path, Http.Request request) {
     String contentType = request.contentType().orElse("UNKNOWN");
     if (!contentType.equals("text/plain")) {
