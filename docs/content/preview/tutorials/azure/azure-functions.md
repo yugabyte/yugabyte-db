@@ -201,7 +201,9 @@ We can deploy our application to Azure using the [Azure CLI](https://learn.micro
 
     ```sh
     curl https://ybazurefunctions.azurewebsites.net/api/GetShoeInventory
+    ```
 
+    ```output
     [{"quantity":24,"model":"speedgoat 5","brand":"hoka one one"},{"quantity":74,"model":"adizero adios pro 3","brand":"adidas"},{"quantity":13,"model":"torrent 2","brand":"hoka one one"},{"quantity":99,"model":"vaporfly 3","brand":"nike"}]
     ```
 
