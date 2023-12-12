@@ -10,8 +10,8 @@ aliases:
 menu:
   preview:
     identifier: build-apps
-    parent: develop
-    weight: 150
+    parent: tutorials
+    weight: 10
 type: indexpage
 ---
 

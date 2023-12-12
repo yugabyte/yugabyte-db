@@ -418,6 +418,7 @@
   name = "Tutorials"
   weight = 7
   identifier = "tutorials"
+  url = "/preview/tutorials/"
   [preview.params]
     showSection = true
 
