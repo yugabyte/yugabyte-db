@@ -1,7 +1,6 @@
 baseurl = 'https://docs.yugabyte.com'
 languageCode = 'en-us'
 title = 'YugabyteDB Docs'
-googleAnalytics = 'UA-104956980-3'
 # Highlighting config (Pygments)
 pygmentsCodefences = true
 pygmentsStyle = 'pygments'
@@ -32,4 +31,3 @@ enableGitInfo = true
 
 [markup.goldmark.parser.attribute]
     block = true
-

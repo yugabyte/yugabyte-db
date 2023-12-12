@@ -2,10 +2,7 @@ cmake_minimum_required(VERSION 3.10)
 
 project(odyssey C)
 
-add_compile_options(${OD_EXTRA_COMPILER_FLAGS})
-set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} ${OD_EXTRA_EXE_LINKER_FLAGS}")
-
-# End of YugabyteDB changes
+add_extra_yb_flags_in_odyssey()
 
 set(CMAKE_MODULE_PATH ${CMAKE_MODULE_PATH}
     ${CMAKE_CURRENT_SOURCE_DIR}/cmake)

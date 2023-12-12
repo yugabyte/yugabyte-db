@@ -60,6 +60,27 @@ type: docs
 
 To run a YugabyteDB on a private cloud, you need to prepare one computer to run YugabyteDB Anywhere. This computer is in turn used to install and manage the nodes onto which you will deploy YugabyteDB universes.
 
-For information on the requirements for the node running YugabyteDB Anywhere, refer to [Prerequisites](../../prerequisites/default/).
+For information on the requirements for the node running YugabyteDB Anywhere, refer to [YBA prerequisites](../../prerequisites/installer/).
 
 For information on preparing the nodes onto which you will deploy universes, refer to [Prepare nodes for on-premises deployment](../../prepare-on-prem-nodes/).
+
+<!--
+A YugabyteDB Anywhere node has the following requirements:
+
+* Hardware requirements:
+  * Nodes: 1 Virtual Machine
+  * Cores: 8 Cores
+  * RAM: 16 GB
+* Storage Disk: 100GB (minimum) (confirm SSD)
+* Docker Engine: supported version 19.03.n. If not installed, see [Installing Docker in airgapped](https://www.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/).
+* The following ports should be open on the YugabyteDB Anywhere host:
+  * 8800 – HTTP access to the Replicated UI.
+  * 80 – HTTP access to the YugabyteDB Anywhere UI.
+  * 443 – HTTPs access to the YugabyteDB Anywhere UI.
+  * 22 – SSH.
+  * 9090 – Prometheus metrics.
+
+  For more information on ports used by YugabyteDB, refer to [Default ports](../../../../reference/configuration/default-ports).
+
+* Ability to connect from the YugabyteDB Anywhere host to all YugabyteDB data nodes.
+-->

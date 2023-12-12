@@ -3,7 +3,6 @@ title: Cluster costs
 linkTitle: Cluster costs
 description: YugabyteDB Managed cluster configuration costs.
 headcontent: YugabyteDB Managed cluster configuration costs
-image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:
     identifier: cloud-billing-costs
@@ -12,7 +11,7 @@ menu:
 type: docs
 ---
 
-There are no set-up charges or commitments to begin using YugabyteDB Managed. At the end of the month, you are automatically charged for that month's usage. You can view your charges for the current billing period at any time by selecting the **Invoices** tab on the **Billing** page. Refer to [Manage your billing profile and payment method](../cloud-billing-profile/).
+There are no set-up charges or commitments to begin using YugabyteDB Managed. At the end of the month, you are automatically charged for that month's usage. You can view your charges for the current billing period at any time by selecting the **Invoices** tab on the **Usage & Billing** page. Refer to [Manage your billing profile and payment method](../cloud-billing-profile/).
 
 Your bill is calculated based on your usage of the following dimensions:
 
@@ -133,7 +132,7 @@ Total disk storage cost/month
 
 ## Backup storage costs
 
-Backup storage costs are tied to the cost of storing the backup snapshots in the underlying IaaS storage services (that is, S3 on AWS or GCS on Google cloud). It's purely a function of total data backed up from your cluster and the retention period.
+Backup storage costs are tied to the cost of storing the backup snapshots in the underlying IaaS storage services (that is, S3 on AWS, blob on Azure, or GCS on Google cloud). It's purely a function of total data backed up from your cluster and the retention period.
 
 {{< tip title="Rate card" >}}
 

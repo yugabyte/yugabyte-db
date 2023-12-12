@@ -1,5 +1,6 @@
 import algoliasearch from 'algoliasearch';
 
+/* eslint no-underscore-dangle: 0 */
 (function () {
   const ignoreClickOnMeElement = document.querySelector('body:not(.td-searchpage) .search-area');
   const searchInput = document.getElementById('search-query');
@@ -22,11 +23,11 @@ import algoliasearch from 'algoliasearch';
     if (history.pushState) {
       let addQueryParams = '';
       if (searchText && searchText.trim().length > 0) {
-        document.getElementById('search-query').classList.add('have-text');
+        searchInput.classList.add('have-text');
         addQueryParams = `?query=${searchText.trim()}`;
       } else {
         addQueryParams = '/search/';
-        document.getElementById('search-query').classList.remove('have-text');
+        searchInput.classList.remove('have-text');
       }
 
       if (document.querySelector('body').classList.contains('td-searchpage')) {
@@ -37,6 +38,28 @@ import algoliasearch from 'algoliasearch';
         window.history.pushState({}, '', addQueryParams);
       }
     }
+  }
+
+  /**
+   * Generate Heading ID based on the heading text.
+   */
+  function generateHeadingIDs(headingText) {
+    let headingHash = '';
+    let headingId = '';
+
+    headingId = headingText.toLowerCase().trim();
+    if (headingId !== '') {
+      headingId = headingId.replace(/<em>|<\/em>/g, '')
+        .replace(/[^a-zA-Z0-9]/g, '-')
+        .replace(/[-]+/g, '-')
+        .replace(/^[-]|[-]$/g, '');
+
+      if (headingId !== '') {
+        headingHash = `#${headingId}`;
+      }
+    }
+
+    return headingHash;
   }
 
   /**
@@ -59,16 +82,57 @@ import algoliasearch from 'algoliasearch';
   function docsSection(hitIs) {
     let content = '';
     hitIs.forEach(hit => {
-      const hitLevel0 = hit.hierarchy.lvl0;
-      if (!hitLevel0) {
+      let pageBreadcrumb = '';
+      let pageHash = '';
+      let pageTitle = '';
+      let subHead = '';
+
+      if (hit.title) {
+        pageTitle = hit.title;
+      } else if (hit.headers[0]) {
+        pageTitle = hit.headers[0];
+      } else {
         return;
+      }
+
+      if (hit.breadcrumb) {
+        pageBreadcrumb = hit.breadcrumb;
+      }
+
+      if (hit._highlightResult.title.matchLevel !== 'full' && hit._highlightResult.description.matchLevel !== 'full') {
+        let partialHeaderMatched = 0;
+        if (hit._highlightResult.headers) {
+          hit._highlightResult.headers.every(pageHeader => {
+            if (pageHeader.matchLevel) {
+              if (pageHeader.matchLevel === 'full') {
+                pageHash = generateHeadingIDs(pageHeader.value);
+                subHead = pageHeader.value.replace(/<em>|<\/em>/g, '');
+              } else if (pageHeader.matchLevel === 'partial' && pageHeader.matchedWords.length > partialHeaderMatched) {
+                partialHeaderMatched = pageHeader.matchedWords.length;
+                pageHash = generateHeadingIDs(pageHeader.value);
+                subHead = pageHeader.value.replace(/<em>|<\/em>/g, '');
+              }
+
+              if (pageHeader.matchLevel === 'full') {
+                return false;
+              }
+            }
+
+            return true;
+          });
+        }
+      }
+
+      if (pageTitle === subHead) {
+        subHead = '';
       }
 
       content += `<li>
         <div class="search-title">
-          <a href="${hit.url.replace(/^(?:\/\/|[^/]+)*\//, '/')}">
-            <span class="search-title-inner">${hitLevel0}</span>
-            <div class="breadcrumb-item">${hit.breadcrumb}</div>
+          <a href="${hit.url.replace(/^(?:\/\/|[^/]+)*\//, '/')}${pageHash}">
+            <span class="search-title-inner">${pageTitle}</span>
+            <div class="search-subhead-inner">${subHead}</div>
+            <div class="breadcrumb-item">${pageBreadcrumb}</div>
           </a>
         </div>
       </li>`;
@@ -180,6 +244,9 @@ import algoliasearch from 'algoliasearch';
     const searchValue = searchInput.value.trim();
     if (searchValue.length > 0) {
       document.querySelector('.search-result').style.display = 'block';
+      setTimeout(() => {
+        document.querySelector('.search-result').style.display = 'block';
+      }, 800);
     } else {
       emptySearch();
       return;
@@ -190,14 +257,13 @@ import algoliasearch from 'algoliasearch';
       perPageCount = 10;
     }
 
-    const client = algoliasearch('UMBCUJCBE8', 'e2f160cd7efe96b0ada15fd27f297d66');
-    const index = client.initIndex('yugabyte_docs');
+    const client = algoliasearch('UMBCUJCBE8', 'b6c4bdb11b865250add6fecc38d8ebdf');
+    const index = client.initIndex('yugabytedb_docs');
     const pageItems = searchURLParameter('page');
     const searchpagerparent = document.querySelector('#pagination-docs');
     const searchOptions = {
       hitsPerPage: perPageCount,
       page: 0,
-      filters: 'version:"preview"',
     };
 
     if (pageItems && pageItems > 0) {
@@ -211,7 +277,7 @@ import algoliasearch from 'algoliasearch';
         let pagerDetails = {};
         let sectionHTML = '';
         sectionHTML += docsSection(hits);
-        if (hits.length > 0) {
+        if (hits.length > 0 && sectionHTML !== '') {
           document.getElementById('doc-hit').innerHTML = sectionHTML;
         } else {
           document.getElementById('doc-hit').innerHTML = `<li class="no-result">0 results found for <b>"${searchValue}"</b></li>`;

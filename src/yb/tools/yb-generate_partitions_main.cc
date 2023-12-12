@@ -11,7 +11,6 @@
 // under the License.
 //
 
-#include <glog/logging.h>
 #include <boost/algorithm/string.hpp>
 
 #include "yb/client/yb_table_name.h"
@@ -20,9 +19,10 @@
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
 
-DEFINE_UNKNOWN_string(master_addresses, "", "Comma-separated list of YB Master server addresses");
-DEFINE_UNKNOWN_string(table_name, "", "Name of the table to generate partitions for");
-DEFINE_UNKNOWN_string(namespace_name, "", "Namespace of the table");
+DEFINE_NON_RUNTIME_string(master_addresses, "",
+    "Comma-separated list of YB Master server addresses");
+DEFINE_NON_RUNTIME_string(table_name, "", "Name of the table to generate partitions for");
+DEFINE_NON_RUNTIME_string(namespace_name, "", "Namespace of the table");
 
 using std::string;
 

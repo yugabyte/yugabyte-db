@@ -99,16 +99,21 @@ ADD_YB_LIBRARY(
 
 set(CDC_SRCS
   cdc_service.cc
-  cdc_metrics.cc
+  xrepl_metrics.cc
   xcluster_producer.cc
   xcluster_producer_bootstrap.cc
   cdcsdk_producer.cc
   xcluster_rpc.cc
   cdc_state_table.cc
-  xrepl_stream_metadata.cc)
+  xrepl_stream_metadata.cc
+  xrepl_stream_stats.cc)
 
 ADD_YB_LIBRARY(
     cdc
     SRCS ${CDC_SRCS}
     DEPS protobuf cdc_service_proto cdc_util master_proto consensus_proto log_proto log consensus
          yrpc server_common server_process tablet yb_util ql_util gutil yb_client)
+
+# Tests
+set(YB_TEST_LINK_LIBS integration-tests ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(xcluster_producer-test)

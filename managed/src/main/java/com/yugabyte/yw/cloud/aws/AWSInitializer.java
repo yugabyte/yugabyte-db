@@ -320,7 +320,7 @@ public class AWSInitializer extends AbstractInitializer {
       // Make sure it is the base instance type.
       include &= matches(productAttrs, "preInstalledSw", FilterOp.Equals, "NA");
       // Make sure instance type is supported.
-      include &= isInstanceTypeSupported(productAttrs);
+      include &= isInstanceTypeSupported(region.getProvider(), productAttrs);
 
       if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching)) {
         // Make sure architecture matches.
@@ -452,7 +452,7 @@ public class AWSInitializer extends AbstractInitializer {
       // Make sure it is the base instance type.
       include &= matches(productAttrs, "preInstalledSw", FilterOp.Equals, "NA");
       // Make sure instance type is supported.
-      include &= isInstanceTypeSupported(productAttrs);
+      include &= isInstanceTypeSupported(region.getProvider(), productAttrs);
 
       if (!runtimeConfGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching)) {
         // Make sure architecture matches.
@@ -522,7 +522,7 @@ public class AWSInitializer extends AbstractInitializer {
     Provider provider = context.getProvider();
     // First reset all the JSON details of all supported instance entries in the table, as we are
     // about to refresh it.
-    InstanceType.resetInstanceTypeDetailsForProvider(provider, config, false);
+    InstanceType.resetInstanceTypeDetailsForProvider(provider, runtimeConfGetter, false);
     String instanceTypeCode;
 
     for (Map<String, String> productAttrs : context.getAvailableInstances()) {
@@ -653,8 +653,9 @@ public class AWSInitializer extends AbstractInitializer {
     }
   }
 
-  private boolean isInstanceTypeSupported(Map<String, String> productAttributes) {
-    return InstanceType.getAWSInstancePrefixesSupported(config).stream()
+  private boolean isInstanceTypeSupported(
+      Provider provider, Map<String, String> productAttributes) {
+    return InstanceType.getAWSInstancePrefixesSupported(provider, runtimeConfGetter).stream()
         .anyMatch(productAttributes.getOrDefault("instanceType", "")::startsWith);
   }
 }

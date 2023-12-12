@@ -162,8 +162,8 @@ Status QLRocksDBStorage::GetIteratorForYbctid(
         kEmptyVec, /* hashed_components */
         kEmptyVec /* range_components */,
         nullptr /* condition */,
-        boost::none /* hash_code */,
-        boost::none /* max_hash_code */,
+        std::nullopt /* hash_code */,
+        std::nullopt /* max_hash_code */,
         lower_doc_key,
         true /* is_forward_scan */,
         lower_doc_key,
@@ -208,11 +208,10 @@ Status QLRocksDBStorage::GetIterator(
                        request.hash_code(),
                        std::move(hashed_components),
                        std::move(range_components)),
-            request.has_hash_code() ? boost::make_optional<int32_t>(request.hash_code())
-                                        : boost::none,
-            request.has_max_hash_code() ? boost::make_optional<int32_t>(
-                                            request.max_hash_code())
-                                        : boost::none,
+            request.has_hash_code() ? std::make_optional<int32_t>(request.hash_code())
+                                    : std::nullopt,
+            request.has_max_hash_code() ? std::make_optional<int32_t>(request.max_hash_code())
+                                        : std::nullopt,
             start_doc_key,
             request.is_forward_scan(),
             request.prefix_length()),
@@ -254,8 +253,8 @@ Status QLRocksDBStorage::GetIterator(
             range_components,
             request.has_condition_expr() ? &request.condition_expr().condition() : nullptr,
             request.hash_code(),
-            request.has_max_hash_code() ? boost::make_optional<int32_t>(request.max_hash_code())
-                                        : boost::none,
+            request.has_max_hash_code() ? std::make_optional<int32_t>(request.max_hash_code())
+                                        : std::nullopt,
             start_doc_key,
             request.is_forward_scan(),
             lower_doc_key,
@@ -266,6 +265,10 @@ Status QLRocksDBStorage::GetIterator(
 
   *iter = std::move(doc_iter);
   return Status::OK();
+}
+
+std::string QLRocksDBStorage::ToString() const {
+  return doc_db_.regular->GetName();
 }
 
 }  // namespace yb::docdb

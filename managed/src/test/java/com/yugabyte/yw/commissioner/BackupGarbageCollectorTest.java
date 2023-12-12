@@ -37,6 +37,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -98,6 +99,8 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     List<String> backupLocations = new ArrayList<>();
     backupLocations.add(backup.getBackupInfo().storageLocation);
     when(mockStorageUtilFactory.getCloudUtil(anyString())).thenReturn(mockAWSUtil);
+    when(mockAWSUtil.deleteKeyIfExists(any(), anyString())).thenReturn(true);
+    when(mockAWSUtil.deleteStorage(any(), any())).thenReturn(true);
     backupGC.scheduleRunner();
     assertThrows(
         PlatformServiceException.class,
@@ -115,6 +118,8 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     List<String> backupLocations = new ArrayList<>();
     when(mockStorageUtilFactory.getCloudUtil(anyString())).thenReturn(mockGCPUtil);
     backupLocations.add(backup.getBackupInfo().storageLocation);
+    when(mockGCPUtil.deleteKeyIfExists(any(), anyString())).thenReturn(true);
+    when(mockGCPUtil.deleteStorage(any(), any())).thenReturn(true);
     backupGC.scheduleRunner();
     assertThrows(
         PlatformServiceException.class,
@@ -132,6 +137,8 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     List<String> backupLocations = new ArrayList<>();
     when(mockStorageUtilFactory.getCloudUtil(anyString())).thenReturn(mockAZUtil);
     backupLocations.add(backup.getBackupInfo().storageLocation);
+    when(mockAZUtil.deleteKeyIfExists(any(), anyString())).thenReturn(true);
+    when(mockAZUtil.deleteStorage(any(), any())).thenReturn(true);
     backupGC.scheduleRunner();
     assertThrows(
         PlatformServiceException.class,
@@ -250,6 +257,8 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     when(mockStorageUtilFactory.getCloudUtil(anyString())).thenReturn(mockAWSUtil);
     List<String> backupLocations = new ArrayList<>();
     backupLocations.add(backup.getBackupInfo().storageLocation);
+    when(mockAWSUtil.deleteKeyIfExists(any(), anyString())).thenReturn(true);
+    when(mockAWSUtil.deleteStorage(any(), any())).thenReturn(true);
     backupGC.scheduleRunner();
     assertThrows(
         PlatformServiceException.class,
@@ -302,7 +311,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
 
   @Test
   public void testDeleteExpiredBackups() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.DeleteBackup);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Backup backup =
         ModelFactory.createBackupWithExpiry(
@@ -337,8 +346,9 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
 
   @Test
   public void testDeleteExpiredChildIncrementalBackup() {
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    UUID fakeTaskUUID1 = buildTaskInfo(null, TaskType.DeleteBackup);
+    UUID fakeTaskUUID2 = buildTaskInfo(null, TaskType.DeleteBackup);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID1, fakeTaskUUID2);
 
     Backup backup =
         ModelFactory.createBackupWithExpiry(
@@ -357,7 +367,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
     backup2.save();
 
     backupGC.scheduleRunner();
-    CustomerTask task = CustomerTask.get(defaultCustomer.getUuid(), fakeTaskUUID);
+    CustomerTask task = CustomerTask.get(defaultCustomer.getUuid(), fakeTaskUUID1);
     assertEquals(1, Backup.getCompletedExpiredBackups().get(defaultCustomer.getUuid()).size());
     assertEquals(CustomerTask.TaskType.Delete, task.getType());
     verify(mockCommissioner, times(1)).submit(any(), any());
@@ -371,7 +381,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
 
   @Test
   public void testDeleteExpiredBackups_universeDeleted() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.DeleteBackup);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
 
     Backup backup =
@@ -392,8 +402,11 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
 
   @Test
   public void testDeleteExpiredBackupsCreatedFromSchedule() {
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    UUID fakeTaskUUID1 = buildTaskInfo(null, TaskType.DeleteBackup);
+    UUID fakeTaskUUID2 = buildTaskInfo(null, TaskType.DeleteBackup);
+    UUID fakeTaskUUID3 = buildTaskInfo(null, TaskType.DeleteBackup);
+    when(mockCommissioner.submit(any(), any()))
+        .thenReturn(fakeTaskUUID1, fakeTaskUUID2, fakeTaskUUID3);
     Schedule s =
         ModelFactory.createScheduleBackup(
             defaultCustomer.getUuid(),
@@ -426,8 +439,11 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
 
   @Test
   public void testDeleteExpiredBackupsCreatedFromDeletedSchedule() {
-    UUID fakeTaskUUID = UUID.randomUUID();
-    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    UUID fakeTaskUUID1 = buildTaskInfo(null, TaskType.DeleteBackup);
+    UUID fakeTaskUUID2 = buildTaskInfo(null, TaskType.DeleteBackup);
+    UUID fakeTaskUUID3 = buildTaskInfo(null, TaskType.DeleteBackup);
+    when(mockCommissioner.submit(any(), any()))
+        .thenReturn(fakeTaskUUID1, fakeTaskUUID2, fakeTaskUUID3);
     UUID fakeScheduleUUID = UUID.randomUUID();
     for (int i = 0; i < 5; i++) {
       Backup backup =
@@ -462,7 +478,7 @@ public class BackupGarbageCollectorTest extends FakeDBApplication {
             s3StorageConfig.getConfigUUID());
     backup.transitionState(Backup.BackupState.Completed);
 
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.DeleteBackup);
     when(mockTaskManager.isDeleteBackupTaskAlreadyPresent(
             defaultCustomer.getUuid(), backup.getBackupUUID()))
         .thenReturn(true);

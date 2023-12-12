@@ -3,8 +3,7 @@ title: JSON Support in YCQL
 headerTitle: JSON Support
 linkTitle: JSON support
 description: YCQL JSON Support in YugabyteDB.
-headcontent: JSON Support in YugabyteDB
-image: <div class="icon"><i class="fa-solid fa-file-invoice"></i></div>
+headcontent: Explore YugabyteDB YCQL support for JSON data
 menu:
   stable:
     name: JSON support
@@ -38,7 +37,9 @@ JSON data types are for storing JSON (JavaScript Object Notation) data, as speci
 
 JSON functionality in YCQL is **a subset** of the [JSON functionality in PostgreSQL](https://www.postgresql.org/docs/11/datatype-json.html).
 
-YCQL supports the JSONB data type.
+YCQL supports the JSONB data type. JSONB stores JSON data in binary format. JSONB does not preserve white space, does not preserve the order of object keys, and does not keep duplicate object keys. If duplicate keys are specified in the input, only the last value is kept.
+
+The following sections describe different operations on JSONB columns with some examples.
 
 ## Create a table
 
@@ -69,7 +70,7 @@ INSERT INTO store.books (id, details) VALUES
 
 ## Query JSON documents
 
-You can list all the row inserted using the command below.
+You can list all the rows inserted using the following command:
 
 ```sql
 ycqlsh> SELECT * FROM store.books;
@@ -86,6 +87,8 @@ ycqlsh> SELECT * FROM store.books;
 ```
 
 ### Using `->` and `->>`
+
+`->` and `->>` are supported JSONB operators that can be used to access attributes of a JSON object.
 
 Select with condition on JSONB object value:
 
@@ -196,6 +199,24 @@ ycqlsh> SELECT * FROM store.books WHERE id = 4;
  id | details
 ----+-------------------------------------------------------------------------------------------------------------------------------------------------
   4 | {"author":{"first_name":"John","last_name":"Doe"},"editors":["Robert","Jack","Melisa"],"genre":"novel","name":"Great Expectations","year":1950}
+```
+
+### Add a new attribute via Update
+
+To add a new attribute via Update, do the following:
+
+```cql
+ycqlsh> UPDATE store.books SET details->'language' = '"English"' WHERE id = 4;
+```
+
+```cql
+ycqlsh> SELECT * FROM store.books WHERE id = 4;
+```
+
+```output
+ id | details
+----+------------------------------------------------------------------------------------------------------------------------------------------------------
+  4 | {"author":{"first_name":"Steve","last_name":"Dickens"},"editors":["Robert","Jack","Melisa"],"genre":"novel","language":"English","name":"Great Expectations","year":1950}
 ```
 
 ## Upserts

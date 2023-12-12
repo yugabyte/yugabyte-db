@@ -20,6 +20,7 @@ import static org.hamcrest.Matchers.hasSize;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.doCallRealMethod;
 import static org.mockito.Mockito.when;
 import static play.mvc.Http.Status.BAD_REQUEST;
@@ -43,6 +44,7 @@ import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.configs.StubbedCustomerConfigValidator;
 import com.yugabyte.yw.models.configs.data.CustomerConfigPasswordPolicyData;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
@@ -74,7 +76,10 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
             app.injector().instanceOf(RuntimeConfGetter.class),
             mockAWSUtil,
             mockGCPUtil));
-    doCallRealMethod().when(mockAWSUtil).getConfigLocationInfo(any());
+    doCallRealMethod().when(mockAWSUtil).getRegionLocationsMap(any());
+    doCallRealMethod()
+        .when(mockAWSUtil)
+        .getCloudLocationInfo(nullable(String.class), any(), nullable(String.class));
   }
 
   @Test
@@ -248,7 +253,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST11").getConfigUUID();
     Backup backup =
         ModelFactory.createBackup(defaultCustomer.getUuid(), UUID.randomUUID(), configUUID);
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.DeleteDrConfig);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     backup.transitionState(Backup.BackupState.Completed);
     String url =
@@ -261,7 +266,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     assertOk(result);
     CustomerTask customerTask = CustomerTask.findByTaskUUID(fakeTaskUUID);
     assertEquals(customerTask.getTargetUUID(), configUUID);
-    fakeTaskUUID = UUID.randomUUID();
+    fakeTaskUUID = buildTaskInfo(null, TaskType.DeleteDrConfig);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
 
     // Set http context
@@ -473,8 +478,8 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     Result result = assertPlatformException(() -> testPasswordPolicy(8, 3, 3, 2, 1));
     assertBadRequest(
         result,
-        "{\"data\":[\"Minimal length should be not less than"
-            + " the sum of minimal counts for upper case, lower case, digits and special characters\"]}");
+        "{\"data\":[\"Minimal length should be not less than the sum of minimal counts for upper"
+            + " case, lower case, digits and special characters\"]}");
     assertEquals(0, CustomerConfig.getAll(defaultCustomer.getUuid()).size());
     assertAuditEntry(0, defaultCustomer.getUuid());
   }
@@ -518,7 +523,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST18").getConfigUUID();
     Backup backup =
         ModelFactory.createBackup(defaultCustomer.getUuid(), UUID.randomUUID(), configUUID);
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.DeleteDrConfig);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     backup.transitionState(Backup.BackupState.Completed);
     String url =
@@ -532,7 +537,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
   @Test
   public void testDeleteStorageConfigYbWithoutDeleteBackups() {
     UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST18").getConfigUUID();
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.DeleteDrConfig);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     String url =
         "/api/customers/" + defaultCustomer.getUuid() + "/configs/" + configUUID + "/delete";
@@ -547,7 +552,7 @@ public class CustomerConfigControllerTest extends FakeDBApplication {
     UUID configUUID = ModelFactory.createS3StorageConfig(defaultCustomer, "TEST19").getConfigUUID();
     Backup backup =
         ModelFactory.createBackup(defaultCustomer.getUuid(), UUID.randomUUID(), configUUID);
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.DeleteDrConfig);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     backup.transitionState(Backup.BackupState.Completed);
     String url =

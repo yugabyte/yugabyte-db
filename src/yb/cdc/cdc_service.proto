@@ -88,6 +88,8 @@ message CDCErrorPB {
     INTERNAL_ERROR = 9;
     INVALID_REQUEST = 10;
     TABLET_SPLIT = 12;
+    OPERATION_DISALLOWED = 13;
+    AUTO_FLAGS_CONFIG_VERSION_MISMATCH = 14;
   }
 
   // The error code.
@@ -100,10 +102,37 @@ message CDCErrorPB {
 }
 
 enum CDCRecordType {
+  // CHANGE: Default type, only the changed columns as new image, no old image except DELETE
   CHANGE = 1;
+
+  // ALL: [Old type that is no longer allowed to be created] same as PG_FULL
   ALL = 3;
+
+  // FULL_ROW_NEW_IMAGE: [Old type that is no longer allowed to be created] Entire updated row as
+  // new image, entire row as old image for DELETE
   FULL_ROW_NEW_IMAGE = 4;
+
+  // MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES: [Old type that is no longer allowed to be created]
+  // same as CHANGE_OLD_NEW
   MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES = 5;
+
+  // PG_FULL: Both old and new images of the entire row
+  PG_FULL = 6;
+
+  // PG_CHANGE_OLD_NEW: Both old and new image only of the modified columns
+  PG_CHANGE_OLD_NEW = 7;
+
+  // PG_DEFAULT: Entire updated row as new image, only key as old image for DELETE
+  PG_DEFAULT = 8;
+
+  // PG_NOTHING: No old image for any operation
+  PG_NOTHING = 9;
+
+  // Difference between CHANGE and PG_NOTHING:
+  // CHANGE: Only modified columns of the updated record. No columns of the old record except in
+  // case of DELETE where we send the primary key of the old record
+  // PG_NOTHING: All columns of the updated record. No columns of the old record even in case of
+  // DELETE which is the PG behavior
 }
 
 enum CDCRecordFormat {
@@ -129,9 +158,10 @@ message CreateCDCStreamRequestPB {
   optional CDCRecordFormat record_format = 3 [default = JSON];
   optional string namespace_name = 4;
   optional CDCRequestSource source_type = 5 [default = XCLUSTER];
-  optional CDCCheckpointType checkpoint_type = 6 [default = IMPLICIT];
+  optional CDCCheckpointType checkpoint_type = 6;
   optional bool transactional = 7; // [default = false]
   optional YQLDatabase db_type = 8 [default = YQL_DATABASE_PGSQL] ;
+  optional CDCSDKSnapshotOption cdcsdk_consistent_snapshot_option = 9;
 }
 
 message CreateCDCStreamResponsePB {
@@ -218,6 +248,9 @@ message GetChangesRequestPB {
 
   // index used to filter out the records we've already streamed.
   optional int32 wal_segment_index = 12 [default = 0];
+
+  // Used only in xCluster streams.
+  optional uint32 auto_flags_config_version = 13;
 }
 
 message KeyValuePairPB {
@@ -422,6 +455,9 @@ message GetChangesResponsePB {
 
   // index used to filter out the records we've already streamed.
   optional int32 wal_segment_index = 11 [default = 0];
+
+  // Only set in xCluster streams when error is AUTO_FLAGS_CONFIG_VERSION_MISMATCH.
+  optional uint32 auto_flags_config_version = 12;
 }
 
 message GetCheckpointRequestPB {

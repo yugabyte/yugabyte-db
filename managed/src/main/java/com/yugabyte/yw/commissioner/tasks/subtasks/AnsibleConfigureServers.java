@@ -28,6 +28,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
+import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
@@ -40,9 +41,8 @@ import org.apache.commons.lang3.StringUtils;
 public class AnsibleConfigureServers extends NodeTaskBase {
 
   @Inject
-  protected AnsibleConfigureServers(
-      BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected AnsibleConfigureServers(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   public static class Params extends NodeTaskParams {
@@ -89,6 +89,13 @@ public class AnsibleConfigureServers extends NodeTaskBase {
     // Set it to clean previous master state on restart. It is just a hint to clean
     // old master state but may not be used if it is illegal.
     public boolean resetMasterState = false;
+
+    // This sets the flag master_join_existing_universe to true by default in the conf file, unless
+    // it is overridden e.g in CreateUniverse.
+    public boolean masterJoinExistingCluster = true;
+
+    public AuditLogConfig auditLogConfig = null;
+    public Map<String, String> ybcGflags = new HashMap<>();
   }
 
   @Override

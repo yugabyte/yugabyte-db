@@ -108,10 +108,15 @@ service TabletServerService {
   // Returns the schema version on the XCluster consumer side that is
   // compatible with the schema provided in the request.
   rpc GetCompatibleSchemaVersion(GetCompatibleSchemaVersionRequestPB)
-  returns (GetCompatibleSchemaVersionResponsePB);
+      returns (GetCompatibleSchemaVersionResponsePB);
 
   rpc StartRemoteSnapshotTransfer(StartRemoteSnapshotTransferRequestPB)
       returns (StartRemoteSnapshotTransferResponsePB);
+
+  rpc GetTabletKeyRanges(GetTabletKeyRangesRequestPB) returns (GetTabletKeyRangesResponsePB);
+
+  rpc CheckTserverTabletHealth(CheckTserverTabletHealthRequestPB)
+      returns (CheckTserverTabletHealthResponsePB);
 }
 
 // Note: Either among transactions_by_tablet or transaction_ids should be set. Both the fields
@@ -250,6 +255,9 @@ message GetTransactionStatusResponsePB {
 
   // Status containing deadlock info if the transaction was aborted due to deadlock. Else, it is
   // set to Status::OK().
+  //
+  // Note: The field might not be present on older versions of YB and hence its existence
+  // should be checked before usage by the reader.
   repeated AppStatusPB deadlock_reason = 8;
 }
 

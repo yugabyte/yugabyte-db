@@ -1,4 +1,0 @@
-#### reset_stmt
-
-<svg class="rrdiagram" version="1.1" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns="http://www.w3.org/2000/svg" width="285" height="65" viewbox="0 0 285 65"><path class="connector" d="M0 22h15m59 0h30m146 0h20m-181 0q5 0 5 5v20q0 5 5 5h5m42 0h109q5 0 5-5v-20q0-5 5-5m5 0h15"/><polygon points="0,29 5,22 0,15" style="fill:black;stroke-width:0"/><rect class="literal" x="15" y="5" width="59" height="25" rx="7"/><text class="text" x="25" y="22">RESET</text><a xlink:href="../../../syntax_resources/grammar_diagrams#run-time-parameter"><rect class="rule" x="104" y="5" width="146" height="25"/><text class="text" x="114" y="22">run_time_parameter</text></a><rect class="literal" x="104" y="35" width="42" height="25" rx="7"/><text class="text" x="114" y="52">ALL</text><polygon points="281,29 285,29 285,15 281,15" style="fill:black;stroke-width:0"/></svg>
-

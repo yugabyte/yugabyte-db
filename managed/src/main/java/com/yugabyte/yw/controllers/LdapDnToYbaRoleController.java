@@ -10,11 +10,6 @@
 
 package com.yugabyte.yw.controllers;
 
-import static io.ebean.Ebean.beginTransaction;
-import static io.ebean.Ebean.commitTransaction;
-import static io.ebean.Ebean.endTransaction;
-import static io.ebean.Ebean.saveAll;
-
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
@@ -29,6 +24,7 @@ import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
 import com.yugabyte.yw.rbac.annotations.Resource;
 import com.yugabyte.yw.rbac.enums.SourceType;
+import io.ebean.DB;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -106,7 +102,9 @@ public class LdapDnToYbaRoleController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+            @PermissionAttribute(
+                resourceType = ResourceType.OTHER,
+                action = Action.SUPER_ADMIN_ACTIONS),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result update(UUID customerUUID, Http.Request request) {
@@ -115,7 +113,7 @@ public class LdapDnToYbaRoleController extends AuthenticatedController {
     LdapDnToYbaRoleData data = parseJsonAndValidate(request, LdapDnToYbaRoleData.class);
     data.validate();
 
-    beginTransaction();
+    DB.getDefault().beginTransaction();
 
     LdapDnToYbaRole.find.query().delete();
 
@@ -139,11 +137,11 @@ public class LdapDnToYbaRoleController extends AuthenticatedController {
               ldapMappingsMap.get(distinguishedName).ybaRole = Role.union(role, dnRole);
             });
 
-    saveAll(ldapMappingsMap.values());
+    DB.getDefault().saveAll(ldapMappingsMap.values());
 
-    commitTransaction();
+    DB.getDefault().commitTransaction();
 
-    endTransaction();
+    DB.getDefault().endTransaction();
 
     auditService().createAuditEntry(request, request.body().asJson(), Audit.ActionType.Set);
 

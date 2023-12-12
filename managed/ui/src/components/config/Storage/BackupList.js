@@ -16,6 +16,11 @@ import { FlexContainer, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { YBPanelItem } from '../../panels';
 
 import { StorageConfigDeleteModal } from './StorageConfigDeleteModal';
+import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { userhavePermInRoleBindings } from '../../../redesign/features/rbac/common/RbacUtils';
+import { Action, Resource } from '../../../redesign/features/rbac';
+
 
 /**
  * This method is used to return the current in-use status
@@ -48,9 +53,14 @@ const header = (currTab, onCreateBackup) => (
     <h2 className="table-container-title pull-left">Backup List</h2>
     <FlexContainer className="pull-right">
       <FlexShrink>
-        <Button bsClass="btn btn-orange btn-config" onClick={onCreateBackup}>
-          Create {currTab} Backup
-        </Button>
+        <RbacValidator
+          accessRequiredOn={ApiPermissionMap.CREATE_CUSTOMER_CONFIG}
+          isControl
+        >
+          <Button bsClass="btn btn-orange btn-config" onClick={onCreateBackup}>
+            Create {currTab} Backup
+          </Button>
+        </RbacValidator>
       </FlexShrink>
     </FlexContainer>
   </>
@@ -86,36 +96,61 @@ export const BackupList = (props) => {
           id="bg-nested-dropdown"
           pullRight
         >
-          <MenuItem onClick={() => onEditConfig(row)}>Edit Configuration</MenuItem>
+          <RbacValidator
+            accessRequiredOn={ApiPermissionMap.EDIT_CUSTOMER_CONFIG}
+            isControl
+            overrideStyle={{ display: 'block' }}
+          >
+            <MenuItem
+              onClick={() => {
+                onEditConfig(row);
+              }}
+              data-testid={`${currTab}-BackupList-EditConfiguration`}
+            >
+              Edit Configuration
+            </MenuItem>
+          </RbacValidator>
           <MenuItem
             onClick={(e) => {
+              if (!hasNecessaryPerm(ApiPermissionMap.GET_BACKUP)) {
+                return;
+              }
               e.stopPropagation();
               setShowAssociatedBackups(true);
               setConfigData({ configUUID, configName });
             }}
+            disabled={!hasNecessaryPerm(ApiPermissionMap.GET_BACKUP)}
+            data-testid={`${currTab}-BackupList-ShowAssociatedBackups`}
           >
             Show associated backups
           </MenuItem>
-          <MenuItem
-            disabled={inUse}
-            onClick={() => {
-              if (!inUse) {
-                setConfigData(configUUID);
-                showDeleteStorageConfig(configName);
-              }
-            }}
+          <RbacValidator
+            accessRequiredOn={ApiPermissionMap.DELETE_CUSTOMER_CONFIG}
+            isControl
+            overrideStyle={{ display: 'block' }}
           >
-            {!inUse && <>Delete Configuration</>}
+            <MenuItem
+              disabled={inUse}
+              onClick={() => {
+                if (!inUse) {
+                  setConfigData(configUUID);
+                  showDeleteStorageConfig(configName);
+                }
+              }}
+              data-testid={`${currTab}-BackupList-DeleteConfiguration`}
+            >
+              {!inUse && <>Delete Configuration</>}
 
-            {inUse && (
-              <YBInfoTip
-                content="Storage configuration is in use and cannot be deleted until associated resources are removed."
-                placement="top"
-              >
-                <span className="disable-delete">Delete Configuration</span>
-              </YBInfoTip>
-            )}
-          </MenuItem>
+              {inUse && (
+                <YBInfoTip
+                  content="Storage configuration is in use and cannot be deleted until associated resources are removed."
+                  placement="top"
+                >
+                  <span className="disable-delete">Delete Configuration</span>
+                </YBInfoTip>
+              )}
+            </MenuItem>
+          </RbacValidator>
           <StorageConfigDeleteModal
             visible={visibleModal === 'delete' + configName + 'StorageConfig'}
             onHide={hideDeleteStorageConfig}
@@ -125,15 +160,22 @@ export const BackupList = (props) => {
               deleteStorageConfig(configData);
             }}
           />
-          <MenuItem
-            onClick={() => {
-              setConfigData(configName);
-              setUniverseDetails([...universeDetails]);
-              setIsUniverseVisible(true);
-            }}
+          <RbacValidator
+            customValidateFunction={() => userhavePermInRoleBindings(Resource.UNIVERSE, Action.READ)}
+            isControl
+            overrideStyle={{ display: 'block' }}
           >
-            Show Universes
-          </MenuItem>
+            <MenuItem
+              onClick={() => {
+                setConfigData(configName);
+                setUniverseDetails([...universeDetails]);
+                setIsUniverseVisible(true);
+              }}
+              data-testid={`${currTab}-BackupList-ShowUniverses`}
+            >
+              Show Universes
+            </MenuItem>
+          </RbacValidator>
         </DropdownButton>
       </>
     );

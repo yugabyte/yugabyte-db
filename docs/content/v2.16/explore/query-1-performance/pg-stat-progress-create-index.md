@@ -3,7 +3,6 @@ title: View CREATE INDEX status with pg_stat_progress_create_index
 linkTitle: View CREATE INDEX status
 description: Use pg_stat_progress_create_index to get the CREATE INDEX command status, including the status of an ongoing concurrent index backfill, and the index build's progress reports.
 headerTitle: View CREATE INDEX status with pg_stat_progress_create_index
-image: /images/section_icons/index/develop.png
 menu:
   v2.16:
     identifier: pg-stat-progress-create-index

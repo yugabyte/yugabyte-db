@@ -12,6 +12,8 @@ menu:
 type: docs
 ---
 
+Before you can back up universes, you need to configure a storage location for your backups.
+
 Depending on your environment, you can save your YugabyteDB universe data to a variety of storage solutions.
 
 ## Amazon S3
@@ -119,7 +121,7 @@ You can configure Azure as your backup target, as follows:
 
 1. Generate an SAS Token, as follows:
 
-    - Navigate to **Storage account > Shared access signature**, as shown in the following illustration.
+    - Navigate to **Storage account > Shared access signature**, as shown in the following illustration. (NOTE: the SAS Token must be generated on the Storage Account, not the Container. Generating the SAS Token on the container will prevent the configuration from being applied.)
     - Under **Allowed resource types**, select **Container** and **Object**.
     - Click **Generate SAS and connection string** and copy the SAS token. Note that the token should start with `?sv=`.
 

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import AceEditor from 'react-ace';
 import { YBModal } from '../../common/forms/fields';
 //Icons

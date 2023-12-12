@@ -21,11 +21,17 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.*;
+import com.yugabyte.yw.models.helpers.audit.*;
+import io.ebean.annotation.EnumValue;
+import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
 import java.io.File;
@@ -43,6 +49,7 @@ import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.builder.HashCodeBuilder;
 import play.data.validation.Constraints;
 import play.libs.Json;
 
@@ -73,6 +80,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   public static final String UPDATING_TASK_UUID_FIELD = "updatingTaskUUID";
   public static final String PLACEMENT_MODIFICATION_TASK_UUID_FIELD =
       "placementModificationTaskUuid";
+
+  public static final Set<SoftwareUpgradeState> IN_PROGRESS_UNIV_SOFTWARE_UPGRADE_STATES =
+      ImmutableSet.of(
+          SoftwareUpgradeState.Upgrading,
+          SoftwareUpgradeState.RollingBack,
+          SoftwareUpgradeState.Finalizing);
 
   @Constraints.Required()
   @Size(min = 1)
@@ -136,6 +149,34 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // UUID of last failed task that applied modification to cluster state.
   @ApiModelProperty public UUID placementModificationTaskUuid = null;
 
+  @ApiModelProperty public SoftwareUpgradeState softwareUpgradeState = SoftwareUpgradeState.Ready;
+
+  // Set to true when software rollback is allowed.
+  @ApiModelProperty(
+      value = "Available since YBA version 2.21.0.0.",
+      accessMode = AccessMode.READ_ONLY)
+  @YbaApi(visibility = YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.21.0.0")
+  public boolean isSoftwareRollbackAllowed = false;
+
+  public enum SoftwareUpgradeState {
+    @EnumValue("Ready")
+    Ready,
+    @EnumValue("Upgrading")
+    Upgrading,
+    @EnumValue("UpgradeFailed")
+    UpgradeFailed,
+    @EnumValue("PreFinalize")
+    PreFinalize,
+    @EnumValue("Finalizing")
+    Finalizing,
+    @EnumValue("FinalizeFailed")
+    FinalizeFailed,
+    @EnumValue("RollingBack")
+    RollingBack,
+    @EnumValue("RollbackFailed")
+    RollbackFailed
+  }
+
   // The next cluster index to be used when a new read-only cluster is added.
   @ApiModelProperty public int nextClusterIndex = 1;
 
@@ -176,6 +217,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // Override the default DB present in pre-built Ami
   @ApiModelProperty(hidden = true)
   public boolean overridePrebuiltAmiDBVersion = false;
+
   // if we want to use a different SSH_USER instead of  what is defined in the accessKey
   // Use imagebundle to overwrite the sshPort
   @Nullable @ApiModelProperty @Deprecated public String sshUserOverride;
@@ -234,6 +276,15 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   @ApiModelProperty public Set<UpdateOptions> updateOptions = new HashSet<>();
 
+  @ApiModelProperty(hidden = true)
+  @Getter
+  @Setter
+  private KubernetesResourceDetails kubernetesResourceDetails;
+
+  @ApiModelProperty(value = "YbaApi Internal. OpenTelemetry Collector enabled for universe")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
+  public boolean otelCollectorEnabled = false;
+
   /** A wrapper for all the clusters that will make up the universe. */
   @JsonInclude(value = JsonInclude.Include.NON_NULL)
   public static class Cluster {
@@ -277,7 +328,20 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       this.userIntent = userIntent;
     }
 
-    public boolean equals(Cluster other) {
+    @Override
+    public int hashCode() {
+      return new HashCodeBuilder(17, 37).append(uuid).toHashCode();
+    }
+
+    @Override
+    public boolean equals(Object obj) {
+      if (this == obj) {
+        return true;
+      }
+      if (obj == null || obj.getClass() != getClass()) {
+        return false;
+      }
+      Cluster other = (Cluster) obj;
       return uuid.equals(other.uuid);
     }
 
@@ -462,6 +526,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   }
 
   // TODO: We can migrate masterDeviceInfo, masterInstanceType here
+  @ApiModel(description = "YbaApi Internal: Used by YBM")
   @Data
   public static class OverridenDetails {
     @ApiModelProperty private String instanceType;
@@ -495,12 +560,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
   }
 
+  @ApiModel(description = "YbaApi Internal: Used by YBM")
   @Data
   public static class AZOverrides extends OverridenDetails
       implements PerProcessOverrides<OverridenDetails> {
     @ApiModelProperty private Map<UniverseTaskBase.ServerType, OverridenDetails> perProcess;
   }
 
+  @ApiModel(description = "YbaApi Internal: Used by YBM")
   @Data
   public static class UserIntentOverrides implements PerProcessOverrides<OverridenDetails> {
     @ApiModelProperty private Map<UniverseTaskBase.ServerType, OverridenDetails> perProcess;
@@ -653,13 +720,24 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // Info of all the gflags that the user would like to save to the universe. These will be
     // used during edit universe, for example, to set the flags on new nodes to match
     // existing nodes' settings.
-    @ApiModelProperty public Map<String, String> masterGFlags = new HashMap<>();
-    @ApiModelProperty public Map<String, String> tserverGFlags = new HashMap<>();
+    @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.18.6.0")
+    @Deprecated
+    @ApiModelProperty(
+        "User-defined gflags for master. "
+            + "Deprecated since YBA version 2.18.6.0, use specificGFlags")
+    public Map<String, String> masterGFlags = new HashMap<>();
+
+    @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.18.6.0")
+    @Deprecated
+    @ApiModelProperty(
+        "User-defined gflags for tserver. "
+            + "Deprecated since YBA version 2.18.6.0, use specificGFlags")
+    public Map<String, String> tserverGFlags = new HashMap<>();
 
     // Flags for YB-Controller.
     @ApiModelProperty public Map<String, String> ybcFlags = new HashMap<>();
 
-    // Instance tags (used for AWS only).
+    // Instance tags
     @ApiModelProperty public Map<String, String> instanceTags = new HashMap<>();
 
     // True if user wants to have dedicated nodes for master and tserver processes.
@@ -672,57 +750,55 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @Nullable @ApiModelProperty public DeviceInfo masterDeviceInfo;
 
     // New version of gflags. If present - replaces old masterGFlags/tserverGFlags thing
-    @ApiModelProperty public SpecificGFlags specificGFlags;
+    @ApiModelProperty("User-defined gflags for all processes.")
+    public SpecificGFlags specificGFlags;
 
     // Overrides for some of user intent values per AZ or/and process type.
-    @Getter @Setter @ApiModelProperty private UserIntentOverrides userIntentOverrides;
+    @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.19.3.0")
+    @Getter
+    @Setter
+    @ApiModelProperty("YbaApi Internal: Used by YBM")
+    private UserIntentOverrides userIntentOverrides;
 
     // Amount of memory to limit the postgres process to via the ysql cgroup (in megabytes)
     // 0 will not set any cgroup limits.
     // For read replica null or -1 value means use that of from primary cluster.
     @Getter @Setter @ApiModelProperty private Integer cgroupSize;
 
+    // Audit Logging Config
+    @ApiModelProperty(value = "YbaApi Internal. Audit Logging configuration")
+    @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
+    public AuditLogConfig auditLogConfig;
+
+    public AuditLogConfig getAuditLogConfig() {
+      return auditLogConfig;
+    }
+
     @Override
     public String toString() {
-      return "UserIntent "
-          + "for universe="
-          + universeName
-          + " type="
-          + instanceType
-          + ", spotInstance="
-          + useSpotInstance
-          + ", spotPrice="
-          + spotPrice
-          + ", numNodes="
-          + numNodes
-          + ", prov="
-          + provider
-          + ", provType="
-          + providerType
-          + ", RF="
-          + replicationFactor
-          + ", regions="
-          + regionList
-          + ", pref="
-          + preferredRegion
-          + ", ybVersion="
-          + ybSoftwareVersion
-          + ", accessKey="
-          + accessKeyCode
-          + ", deviceInfo='"
-          + deviceInfo
-          + "', timeSync="
-          + useTimeSync
-          + ", publicIP="
-          + assignPublicIP
-          + ", staticPublicIP="
-          + assignStaticPublicIP
-          + ", tags="
-          + instanceTags
-          + ", masterInstanceType="
-          + masterInstanceType
-          + ", kubernetesOperatorVersion="
-          + kubernetesOperatorVersion;
+      StringBuilder sb = new StringBuilder();
+      sb.append("UserIntent for universe=").append(universeName);
+      sb.append(", type=").append(instanceType);
+      sb.append(", spotInstance=").append(useSpotInstance);
+      sb.append(", useSpotInstance=").append(useSpotInstance);
+      sb.append(", spotPrice=").append(spotPrice);
+      sb.append(", useSpotInstance=").append(useSpotInstance);
+      sb.append(", numNodes=").append(numNodes);
+      sb.append(", prov=").append(provider);
+      sb.append(", provType=").append(providerType);
+      sb.append(", RF=").append(replicationFactor);
+      sb.append(", regions=").append(regionList);
+      sb.append(", pref=").append(preferredRegion);
+      sb.append(", ybVersion=").append(ybSoftwareVersion);
+      sb.append(", accessKey=").append(accessKeyCode);
+      sb.append(", deviceInfo=").append(deviceInfo);
+      sb.append(", timeSync=").append(useTimeSync);
+      sb.append(", publicIP=").append(assignPublicIP);
+      sb.append(", staticPublicIP=").append(assignStaticPublicIP);
+      sb.append(", tags=").append(instanceTags);
+      sb.append(", masterInstanceType=").append(masterInstanceType);
+      sb.append(", kubernetesOperatorVersion=").append(kubernetesOperatorVersion);
+      return sb.toString();
     }
 
     @Override
@@ -732,7 +808,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.provider = provider;
       newUserIntent.providerType = providerType;
       newUserIntent.replicationFactor = replicationFactor;
-      newUserIntent.regionList = new ArrayList<>(regionList);
+      if (regionList != null) {
+        newUserIntent.regionList = new ArrayList<>(regionList);
+      }
       newUserIntent.preferredRegion = preferredRegion;
       newUserIntent.instanceType = instanceType;
       newUserIntent.numNodes = numNodes;
@@ -859,8 +937,42 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       return deviceInfo;
     }
 
+    @Override
+    public int hashCode() {
+      return new HashCodeBuilder(17, 37)
+          .append(universeName)
+          .append(provider)
+          .append(providerType)
+          .append(replicationFactor)
+          .append(regionList)
+          .append(preferredRegion)
+          .append(instanceType)
+          .append(numNodes)
+          .append(ybSoftwareVersion)
+          .append(accessKeyCode)
+          .append(assignPublicIP)
+          .append(useSpotInstance)
+          .append(spotPrice)
+          .append(assignStaticPublicIP)
+          .append(useTimeSync)
+          .append(useSystemd)
+          .append(dedicatedNodes)
+          .append(masterInstanceType)
+          .append(masterInstanceType)
+          .append(userIntentOverrides)
+          .build();
+    }
+
     // NOTE: If new fields are checked, please add them to the toString() as well.
-    public boolean equals(UserIntent other) {
+    @Override
+    public boolean equals(Object obj) {
+      if (this == obj) {
+        return true;
+      }
+      if (obj == null || obj.getClass() != getClass()) {
+        return false;
+      }
+      UserIntent other = (UserIntent) obj;
       if (universeName.equals(other.universeName)
           && provider.equals(other.provider)
           && providerType == other.providerType
@@ -1157,6 +1269,22 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     return nodeDetailsSet.stream().filter(n -> n.isInPlacement(uuid)).collect(Collectors.toSet());
   }
 
+  /**
+   * Helper API to retrieve tserver nodes that are in a specified cluster.
+   *
+   * @param uuid UUID of the cluster that we want tserver nodes from.
+   * @return A Set of NodeDetails that are in the specified cluster.
+   */
+  @JsonIgnore
+  public Set<NodeDetails> getTserverNodesInCluster(UUID uuid) {
+    if (nodeDetailsSet == null) {
+      return null;
+    }
+    return nodeDetailsSet.stream()
+        .filter(n -> n.isInPlacement(uuid) && n.isTserver)
+        .collect(Collectors.toSet());
+  }
+
   @JsonIgnore
   public Cluster getClusterByNodeUUID(UUID nodeUUID) {
     NodeDetails node =
@@ -1206,6 +1334,17 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
       return taskParams;
     }
+  }
+
+  @ApiModelProperty("Previous software version related data")
+  public PrevYBSoftwareConfig prevYBSoftwareConfig;
+
+  @Data
+  public static class PrevYBSoftwareConfig {
+
+    @ApiModelProperty private String softwareVersion;
+
+    @ApiModelProperty private int autoFlagConfigVersion;
   }
 
   // XCluster: All the xCluster related code resides in this section.

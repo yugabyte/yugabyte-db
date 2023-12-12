@@ -27,9 +27,8 @@ import lombok.extern.slf4j.Slf4j;
 public class AnsibleDestroyServer extends NodeTaskBase {
 
   @Inject
-  protected AnsibleDestroyServer(
-      BaseTaskDependencies baseTaskDependencies, NodeManager nodeManager) {
-    super(baseTaskDependencies, nodeManager);
+  protected AnsibleDestroyServer(BaseTaskDependencies baseTaskDependencies) {
+    super(baseTaskDependencies);
   }
 
   public static class Params extends NodeTaskParams {

@@ -19,7 +19,8 @@
         {{ $arrowImage = "/icons/arrow-tritiery.svg" }}
         {{ $buttonType = "tritiery-btn" }}
       {{- end -}}
-      <a class="{{ $buttonType }}" href="{{ .Params.buttonUrl }}" title="{{- .Params.buttonText -}}">
+
+      <a class="{{ $buttonType }}" href="{{ .Params.buttonUrl }}" title="{{- .Params.buttonText -}}"{{- if .Params.buttonTarget }} target="_blank" rel="noopener"{{- end -}}>
         {{ .Params.buttonText }}
         {{- if ne .Params.buttonArrow false -}}
           <img src="{{ $arrowImage }}" width="24" height="24">

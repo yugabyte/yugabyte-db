@@ -1394,8 +1394,8 @@ Status PgsqlWriteOperation::UpdateIterator(
       /* hashed_components= */ kEmptyVec,
       /* range_components= */ kEmptyVec,
       /* condition= */ nullptr ,
-      /* hash_code= */ boost::none,
-      /* max_hash_code= */ boost::none,
+      /* hash_code= */ std::nullopt,
+      /* max_hash_code= */ std::nullopt,
       key,
       /* is_forward_scan= */ true ,
       key,
@@ -1713,7 +1713,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(
   auto response_size_limit = std::numeric_limits<std::size_t>::max();
 
   if (request_.has_size_limit() && request_.size_limit() > 0) {
-    response_size_limit = request_.size_limit() * 1_KB;
+    response_size_limit = request_.size_limit();
   }
 
   VLOG(4) << "Row count limit: " << row_count_limit << ", size limit: " << response_size_limit;
@@ -1832,7 +1832,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
   auto response_size_limit = std::numeric_limits<std::size_t>::max();
 
   if (request_.has_size_limit() && request_.size_limit() > 0) {
-    response_size_limit = request_.size_limit() * 1_KB;
+    response_size_limit = request_.size_limit();
   }
 
   auto projection = CreateProjection(doc_read_context.schema(), request_);
@@ -1870,7 +1870,8 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
           RETURN_NOT_OK(EvalAggregate(row));
         } else {
           RETURN_NOT_OK(PopulateResultSet(row, result_buffer));
-          response_.add_batch_orders(batch_argument.order());
+          if (batch_argument.has_order())
+            response_.add_batch_orders(batch_argument.order());
           ++fetched_rows;
         }
         break;

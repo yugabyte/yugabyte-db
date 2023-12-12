@@ -175,10 +175,11 @@ public class BootstrapProducer extends XClusterConfigTaskBase {
           throw new RuntimeException(errMsg);
         }
       }
+
       xClusterConfig.update();
 
       if (HighAvailabilityConfig.get().isPresent()) {
-        getUniverse(true).incrementVersion();
+        getUniverse().incrementVersion();
       }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());

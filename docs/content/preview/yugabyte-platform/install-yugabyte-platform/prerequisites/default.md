@@ -8,7 +8,7 @@ menu:
   preview_yugabyte-platform:
     identifier: prerequisites
     parent: install-yugabyte-platform
-    weight: 20
+    weight: 30
 type: docs
 ---
 
@@ -16,15 +16,20 @@ You can install YugabyteDB Anywhere (YBA) using the following methods:
 
 | Method | Using | Use If |
 | :--- | :--- | :--- |
-| Replicated | Docker containers | You're able to use Docker containers. |
+| YBA Installer | yba-ctl CLI | You are performing a new installation. |
+| Replicated | Docker containers | Your installation already uses Replicated. |
 | Kubernetes | Helm chart | You're deploying in Kubernetes. |
-| YBA Installer | yba-ctl CLI | You can't use Docker containers.<br/>(Note: in Early Access, contact {{% support-platform %}}) |
 
 All installation methods support installing YBA with and without (airgapped) Internet connectivity.
 
-Licensing (such as a license file in the case of Replicated, or appropriate repository access in the case of Kubernetes) may be required prior to installation.  Contact {{% support-platform %}} for assistance.
+Licensing (such as a license file in the case of YBA Installer or Replicated, or appropriate repository access in the case of Kubernetes) may be required prior to installation. Contact {{% support-platform %}} for assistance.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+
+   <li>
+    <a href="../installer/" class="nav-link">
+      <i class="fa-solid fa-building" aria-hidden="true"></i>YBA Installer</a>
+  </li>
 
   <li>
     <a href="../default/" class="nav-link active">
@@ -34,11 +39,6 @@ Licensing (such as a license file in the case of Replicated, or appropriate repo
   <li>
     <a href="../kubernetes/" class="nav-link">
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>Kubernetes</a>
-  </li>
-
-  <li>
-    <a href="../installer/" class="nav-link">
-      <i class="fa-solid fa-building" aria-hidden="true"></i>YBA Installer</a>
   </li>
 
 </ul>
@@ -97,8 +97,8 @@ Installing YugabyteDB Anywhere on airgapped hosts (without access to any Interne
         ```
 
 - Ensure that the following ports are open on the YugabyteDB Anywhere host:
-  - `8800` – HTTP access to the Replicated UI
-  - `80` – HTTP access to the YugabyteDB Anywhere UI
-  - `22` – SSH
+  - 8800 – HTTP access to the Replicated UI
+  - 80 or 443 – HTTP and HTTPS access to the YugabyteDB Anywhere UI, respectively
+  - 22 – SSH
 - Obtain the YugabyteDB Anywhere airgapped install package. Contact {{% support-platform %}} for more information.
 - Sign the Yugabyte license agreement. Contact {{% support-platform %}} for more information.

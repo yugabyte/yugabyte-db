@@ -3,7 +3,6 @@ title: Row-level geo-partitioning
 linkTitle: Row-level geo-partitioning
 description: Row-level geo-partitioning in YSQL
 headcontent: Pin data to regions for compliance and lower latencies
-image: /images/section_icons/secure/create-roles.png
 menu:
   stable:
     identifier: explore-multi-region-geo-partitioning
@@ -76,6 +75,12 @@ First, create tablespaces for each geographic region you wish to partition data 
       {"cloud":"aws","region":"ap-south-1","zone":"ap-south-1c","min_num_replicas":1}]}'
     );
     ```
+
+To view your tablespaces, you can enter the following command:
+
+```sql
+SELECT * FROM pg_tablespace;
+```
 
 ## Step 2. Create table with partitions
 

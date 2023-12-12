@@ -194,6 +194,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
                   << SysTabletsEntryPB::State_Name(metadata.state())
                   << ", unknown table for this tablet: " << metadata.table_id();
     }
+    catalog_manager_->deleted_tablets_loaded_from_sys_catalog_.insert(tablet_id);
     return Status::OK();
   }
 
@@ -214,7 +215,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
     auto inserted = tablet_map_checkout->emplace(tablet->tablet_id(), tablet).second;
     if (!inserted) {
       return STATUS_FORMAT(
-          IllegalState, "Loaded tablet that already in map: $0", tablet->tablet_id());
+          IllegalState, "Loaded tablet already in tablet map: $0", tablet->tablet_id());
     }
 
     if (metadata.hosted_tables_mapped_by_parent_id()) {
@@ -239,6 +240,10 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
 
     tablet_deleted = l.mutable_data()->is_deleted();
     listed_as_hidden = l.mutable_data()->ListedAsHidden();
+
+    if (tablet_deleted) {
+      catalog_manager_->deleted_tablets_loaded_from_sys_catalog_.insert(tablet_id);
+    }
 
     // Assume we need to delete this tablet until we find an active table using this tablet.
     bool should_delete_tablet = !tablet_deleted;
@@ -327,6 +332,7 @@ Status TabletLoader::Visit(const TabletId& tablet_id, const SysTabletsEntryPB& m
       string deletion_msg = "Tablet deleted at " + LocalTimeAsString();
       l.mutable_data()->set_state(SysTabletsEntryPB::DELETED, deletion_msg);
       needs_async_write_to_sys_catalog = true;
+      catalog_manager_->deleted_tablets_loaded_from_sys_catalog_.insert(tablet_id);
     }
 
     l.Commit();
@@ -574,29 +580,6 @@ Status ClusterConfigLoader::Visit(
 }
 
 ////////////////////////////////////////////////////////////
-// XCluster Config Loader
-////////////////////////////////////////////////////////////
-
-Status XClusterConfigLoader::Visit(
-    const std::string& unused_id, const SysXClusterConfigEntryPB& metadata) {
-  // Debug confirm that there is no xcluster_config_ set.
-  DCHECK(!catalog_manager_->xcluster_config_) << "Already have config data!";
-
-  // Prepare the config object.
-  std::shared_ptr<XClusterConfigInfo> config = std::make_shared<XClusterConfigInfo>();
-  {
-    auto l = config->LockForWrite();
-    l.mutable_data()->pb.CopyFrom(metadata);
-
-    // Update in memory state.
-    catalog_manager_->xcluster_config_ = config;
-    l.Commit();
-  }
-
-  return Status::OK();
-}
-
-////////////////////////////////////////////////////////////
 // Redis Config Loader
 ////////////////////////////////////////////////////////////
 
@@ -661,24 +644,6 @@ Status SysConfigLoader::Visit(const string& config_type, const SysConfigEntryPB&
   }
 
   LOG(INFO) << "Loaded sys config type " << config_type;
-  return Status::OK();
-}
-
-////////////////////////////////////////////////////////////
-// XClusterSafeTime Loader
-////////////////////////////////////////////////////////////
-
-Status XClusterSafeTimeLoader::Visit(
-    const std::string& unused_id, const XClusterSafeTimePB& metadata) {
-  // Debug confirm that there is no xcluster_safe_time_info_ set. This also ensures that this does
-  // not visit multiple rows.
-  auto l = catalog_manager_->xcluster_safe_time_info_.LockForWrite();
-  DCHECK(l->pb.safe_time_map().empty()) << "Already have XCluster Safe Time data!";
-
-  VLOG_WITH_FUNC(2) << "Loading XCluster Safe Time data: " << metadata.DebugString();
-  l.mutable_data()->pb.CopyFrom(metadata);
-  l.Commit();
-
   return Status::OK();
 }
 

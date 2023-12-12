@@ -170,8 +170,11 @@ class WriteQuery {
   bool CqlCheckSchemaVersion();
   bool PgsqlCheckSchemaVersion();
 
+  void IncrementActiveWriteQueryObjectsBy(int64_t value);
+
   Result<TabletPtr> tablet_safe() const;
 
+  TabletWeakPtr tablet_;
   std::unique_ptr<WriteOperation> operation_;
 
   // The QL write operations that return rowblocks that need to be returned as RPC sidecars
@@ -219,6 +222,9 @@ class WriteQuery {
   IsolationLevel isolation_level_;
   docdb::PrepareDocWriteOperationResult prepare_result_;
   std::unique_ptr<WriteQuery> self_; // Keep self while Execute is performed.
+  // Indicates whether this WriteQuery object is currently contributing to the
+  // 'kActiveWriteQueryObjects' tablet metric.
+  bool did_update_active_write_queries_metric_ = false;
 };
 
 }  // namespace tablet

@@ -42,6 +42,8 @@
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 
+#include "yb/client/session.h"
+
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/consensus.pb.h"
 #include "yb/consensus/consensus_meta.h"
@@ -97,9 +99,10 @@
 #include "yb/util/monotime.h"
 #include "yb/util/opid.h"
 #include "yb/util/scope_exit.h"
-#include "yb/util/status.h"
 #include "yb/util/status_format.h"
+#include "yb/util/status.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/to_stream.h"
 
 DEFINE_UNKNOWN_bool(skip_remove_old_recovery_dir, false,
             "Skip removing WAL recovery dir after startup. (useful for debugging)");
@@ -407,61 +410,6 @@ struct ReplayDecision {
   }
 };
 
-ReplayDecision ShouldReplayOperation(
-    consensus::OperationType op_type,
-    const int64_t index,
-    const int64_t regular_flushed_index,
-    const int64_t intents_flushed_index,
-    const int64_t metadata_flushed_index,
-    TransactionStatus txn_status,
-    bool write_op_has_transaction) {
-  if (op_type == consensus::UPDATE_TRANSACTION_OP) {
-    if (txn_status == TransactionStatus::APPLYING && index <= regular_flushed_index) {
-      // TODO: Replaying even transactions that are flushed to both regular and intents RocksDB is a
-      // temporary change. The long term change is to track write and apply operations separately
-      // instead of a tracking a single "intents_flushed_index".
-      VLOG_WITH_FUNC(3) << "index: " << index << " "
-                        << "regular_flushed_index: " << regular_flushed_index
-                        << " intents_flushed_index: " << intents_flushed_index;
-      return {true, AlreadyAppliedToRegularDB::kTrue};
-    }
-    // For other types of transaction updates, we ignore them if they have been flushed to the
-    // regular RocksDB.
-    VLOG_WITH_FUNC(3) << "index: " << index << " > "
-                      << "regular_flushed_index: " << regular_flushed_index;
-    return {index > regular_flushed_index};
-  }
-
-  if (metadata_flushed_index >= 0 && op_type == consensus::CHANGE_METADATA_OP) {
-    VLOG_WITH_FUNC(3) << "CHANGE_METADATA_OP - index: " << index
-                      << " metadata_flushed_index: " << metadata_flushed_index;
-    return {index > metadata_flushed_index};
-  }
-  // For upgrade scenarios where metadata_flushed_index < 0, follow the pre-existing logic.
-
-  // In most cases we assume that intents_flushed_index <= regular_flushed_index but here we are
-  // trying to be resilient to violations of that assumption.
-  if (index <= std::min(regular_flushed_index, intents_flushed_index)) {
-    // Never replay anyting that is flushed to both regular and intents RocksDBs in a transactional
-    // table.
-    VLOG_WITH_FUNC(3) << "index: " << index << " "
-                      << "regular_flushed_index: " << regular_flushed_index
-                      << " intents_flushed_index: " << intents_flushed_index;
-    return {false};
-  }
-
-  if (op_type == consensus::WRITE_OP && write_op_has_transaction) {
-    // Write intents that have not been flushed into the intents DB.
-    VLOG_WITH_FUNC(3) << "index: " << index << " > "
-                      << "intents_flushed_index: " << intents_flushed_index;
-    return {index > intents_flushed_index};
-  }
-
-  VLOG_WITH_FUNC(3) << "index: " << index << " > "
-                    << "regular_flushed_index: " << regular_flushed_index;
-  return {index > regular_flushed_index};
-}
-
 bool WriteOpHasTransaction(const consensus::LWReplicateMsg& replicate) {
   if (!replicate.has_write()) {
     return false;
@@ -552,6 +500,8 @@ class TabletBootstrap {
     if (data_.retryable_requests_manager) {
       data_.retryable_requests_manager->retryable_requests().SetMetricEntity(
           tablet_->GetTabletMetricsEntity());
+      data_.retryable_requests_manager->retryable_requests().SetRequestTimeout(
+          client::RetryableRequestTimeoutSecs(tablet_->table_type()));
     }
 
     // Load retryable requests after metrics entity has been instantiated.
@@ -652,8 +602,15 @@ class TabletBootstrap {
   // Sets result to true if there was any data on disk for this tablet.
   Result<bool> OpenTablet() {
     CleanupSnapshots();
-
-    auto tablet = std::make_shared<Tablet>(data_.tablet_init_data);
+    // Use operator new instead of make_shared for creating the shared_ptr. That way, we would have
+    // the shared_ptr's control block hold a raw pointer to the Tablet object as opposed to the
+    // object itself being allocated on the control block.
+    //
+    // Since we create weak_ptr from this shared_ptr and store it in other classes like WriteQuery,
+    // any leaked weak_ptr wouldn't prevent the underlying object's memory deallocation after the
+    // reference count drops to 0. With make_shared, there's a risk of a leaked weak_ptr holding up
+    // the object's memory even after all shared_ptrs go out of scope.
+    std::shared_ptr<Tablet> tablet(new Tablet(data_.tablet_init_data));
     // Doing nothing for now except opening a tablet locally.
     LOG_TIMING_PREFIX(INFO, LogPrefix(), "opening tablet") {
       RETURN_NOT_OK(tablet->Open());
@@ -1108,6 +1065,64 @@ class TabletBootstrap {
     }
   }
 
+  ReplayDecision ShouldReplayOperation(
+      consensus::OperationType op_type,
+      const int64_t index,
+      const int64_t regular_flushed_index,
+      const int64_t intents_flushed_index,
+      const int64_t metadata_flushed_index,
+      TransactionStatus txn_status,
+      bool write_op_has_transaction) {
+    if (op_type == consensus::UPDATE_TRANSACTION_OP) {
+      if (txn_status == TransactionStatus::APPLYING && index <= regular_flushed_index) {
+        // This was added as part of D17730 / #12730 to ensure we don't clean up transactions
+        // before they are replicated to the CDC destination.
+        //
+        // TODO: Replaying even transactions that are flushed to both regular and intents RocksDB is
+        // a temporary change. The long term change is to track write and apply operations
+        // separately instead of a tracking a single "intents_flushed_index".
+        VLOG_WITH_PREFIX_AND_FUNC(3) << "index: " << index << " "
+                                     << "regular_flushed_index: " << regular_flushed_index
+                                     << " intents_flushed_index: " << intents_flushed_index;
+        return {true, AlreadyAppliedToRegularDB::kTrue};
+      }
+      // For other types of transaction updates, we ignore them if they have been flushed to the
+      // regular RocksDB.
+      VLOG_WITH_PREFIX_AND_FUNC(3) << "index: " << index << " > "
+                                   << "regular_flushed_index: " << regular_flushed_index;
+      return {index > regular_flushed_index};
+    }
+
+    if (metadata_flushed_index >= 0 && op_type == consensus::CHANGE_METADATA_OP) {
+      VLOG_WITH_PREFIX_AND_FUNC(3) << "CHANGE_METADATA_OP - index: " << index
+                                   << " metadata_flushed_index: " << metadata_flushed_index;
+      return {index > metadata_flushed_index};
+    }
+    // For upgrade scenarios where metadata_flushed_index < 0, follow the pre-existing logic.
+
+    // In most cases we assume that intents_flushed_index <= regular_flushed_index but here we are
+    // trying to be resilient to violations of that assumption.
+    if (index <= std::min(regular_flushed_index, intents_flushed_index)) {
+      // Never replay anything that is flushed to both regular and intents RocksDBs in a
+      // transactional table.
+      VLOG_WITH_PREFIX_AND_FUNC(3) << "index: " << index << " "
+                                   << "regular_flushed_index: " << regular_flushed_index
+                                   << " intents_flushed_index: " << intents_flushed_index;
+      return {false};
+    }
+
+    if (op_type == consensus::WRITE_OP && write_op_has_transaction) {
+      // Write intents that have not been flushed into the intents DB.
+      VLOG_WITH_PREFIX_AND_FUNC(3) << "index: " << index << " > "
+                                   << "intents_flushed_index: " << intents_flushed_index;
+      return {index > intents_flushed_index};
+    }
+
+    VLOG_WITH_PREFIX_AND_FUNC(3) << "index: " << index << " > "
+                                 << "regular_flushed_index: " << regular_flushed_index;
+    return {index > regular_flushed_index};
+  }
+
   // Performs various checks based on the OpId, and decides whether to replay the given operation.
   // If so, calls PlayAnyRequest, or sometimes calls PlayUpdateTransactionRequest directly.
   Status MaybeReplayCommittedEntry(
@@ -1187,15 +1202,19 @@ class TabletBootstrap {
   //   in practice the flushed OpId of the intents RocksDB should also be less than or equal to the
   //   flushed OpId of the regular RocksDB or this would be an invariant violation.
   //
-  // - The "restart safe time" of the first operation in the segment that we choose to start the
-  //   replay with must be such that we guarantee that at least FLAGS_retryable_request_timeout_secs
-  //   seconds worth of latest log records are replayed. This is needed to allow deduplicating
+  // - The first OpId of the segment is less than or equal to persisted retryable requests
+  //   file's last_flushed_op_id_ or the "restart safe time" of the first operation in the segment
+  //   we choose to start the replay with is older than retryable_request_timeout seconds.
+  //   The value of retryable_request_timeout depends on table type of the tablet, which is 60s
+  //   for YCQL tables and 600s for YSQL tables by default (see RetryableRequestTimeoutSecs).
+  //   This can guarantee that retryable requests started no later than retryable_request_timeout
+  //   seconds ago can be rebuilt in memory. This is needed to allow deduplicating
   //   automatic retries from YCQL and YSQL query layer and avoid Jepsen-type consistency
   //   violations. We satisfy this constraint by taking the last segment's first operation's
-  //   restart-safe time, subtracting FLAGS_retryable_request_timeout_secs seconds from it, and
+  //   restart-safe time, subtracting retryable_request_timeout seconds from it, and
   //   finding a segment that has that time or earlier as its first operation's restart-safe time.
   //   This also means we are never allowed to start replay with the last segment, as long as
-  //   FLAGS_retryable_request_timeout_secs is greater than 0.
+  //   retryable_request_timeout is greater than 0.
   //
   //   This "restart safe time" is similar to the regular Linux monotonic clock time, but is
   //   maintained across tablet server restarts. See RestartSafeCoarseMonoClock for details.
@@ -1241,7 +1260,8 @@ class TabletBootstrap {
 
     RestartSafeCoarseDuration retryable_requests_retain_interval =
         data_.bootstrap_retryable_requests && data_.retryable_requests_manager
-            ? std::chrono::seconds(GetAtomicFlag(&FLAGS_retryable_request_timeout_secs))
+            ? std::chrono::seconds(
+                  data_.retryable_requests_manager->retryable_requests().request_timeout_secs())
             : 0s;
     RestartSafeCoarseDuration min_duration_to_retain_logs = 0s;
 
@@ -1320,13 +1340,14 @@ class TabletBootstrap {
 
       const auto common_details_str = [&]() {
         std::ostringstream ss;
-        ss << EXPR_VALUE_FOR_LOG(op_id_replay_lowest) << ", "
-           << EXPR_VALUE_FOR_LOG(last_op_id_in_retryable_requests) << ", "
-           << EXPR_VALUE_FOR_LOG(first_op_time) << ", "
-           << EXPR_VALUE_FOR_LOG(const_min_duration_to_retain_logs) << ", "
-           << EXPR_VALUE_FOR_LOG(retryable_requests_retain_interval) << ", "
-           << EXPR_VALUE_FOR_LOG(*retryable_requests_replay_from_this_or_earlier_time) << ", "
-           << EXPR_VALUE_FOR_LOG(*replay_from_this_or_earlier_time);
+        ss << YB_EXPR_TO_STREAM_COMMA_SEPARATED(
+            op_id_replay_lowest,
+            last_op_id_in_retryable_requests,
+            first_op_time,
+            const_min_duration_to_retain_logs,
+            retryable_requests_retain_interval,
+            *retryable_requests_replay_from_this_or_earlier_time,
+            *replay_from_this_or_earlier_time);
         return ss.str();
       };
 
@@ -1337,8 +1358,9 @@ class TabletBootstrap {
             !is_first_op_id_low_enough_for_retryable_requests &&
                 is_first_op_time_early_enough_for_retryable_requests)
             << "Retryable requests file is too old, ignore the expired retryable requests. "
-            << EXPR_VALUE_FOR_LOG(is_first_op_id_low_enough_for_retryable_requests) << ","
-            << EXPR_VALUE_FOR_LOG(is_first_op_time_early_enough_for_retryable_requests);
+            << YB_EXPR_TO_STREAM_COMMA_SEPARATED(
+                is_first_op_id_low_enough_for_retryable_requests,
+                is_first_op_time_early_enough_for_retryable_requests);
         LOG_WITH_PREFIX(INFO)
             << kBootstrapOptimizerLogPrefix
             << "found first mandatory segment op id: " << op_id << ", "
@@ -1354,12 +1376,13 @@ class TabletBootstrap {
                   ? "However, this is already the earliest segment so we have to start replay "
                     "here. We should probably investigate how we got into this situation. "
                   : "Continuing to earlier segments.")
-          << EXPR_VALUE_FOR_LOG(op_id) << ", "
+          << YB_EXPR_TO_STREAM(op_id) << ", "
           << common_details_str() << ", "
-          << EXPR_VALUE_FOR_LOG(is_first_op_id_low_enough_for_retryable_requests) << ","
-          << EXPR_VALUE_FOR_LOG(is_first_op_time_early_enough_for_retryable_requests) << ","
-          << EXPR_VALUE_FOR_LOG(is_first_op_id_low_enough) << ", "
-          << EXPR_VALUE_FOR_LOG(is_first_op_time_early_enough);
+          << YB_EXPR_TO_STREAM_COMMA_SEPARATED(
+              is_first_op_id_low_enough_for_retryable_requests,
+              is_first_op_time_early_enough_for_retryable_requests,
+              is_first_op_id_low_enough,
+              is_first_op_time_early_enough);
     }
 
     LOG_WITH_PREFIX(INFO)
@@ -1676,6 +1699,7 @@ class TabletBootstrap {
 
     ChangeMetadataOperation operation(tablet_, log_.get(), request);
     operation.set_op_id(op_id);
+    RETURN_NOT_OK(operation.Prepare(tablet::IsLeaderSide::kFalse));
 
     Status s;
     RETURN_NOT_OK(operation.Apply(OpId::kUnknownTerm, &s));

@@ -1,5 +1,5 @@
 ---
-title: user resource
+title: ybm CLI user resource
 headerTitle: ybm user
 linkTitle: user
 description: YugabyteDB Managed CLI reference user resource.

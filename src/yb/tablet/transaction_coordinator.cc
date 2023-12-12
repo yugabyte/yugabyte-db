@@ -113,7 +113,8 @@ DEFINE_test_flag(bool, fail_abort_request_with_try_again, false,
                  "When enabled, the txn coordinator responds to all abort transaction requests "
                  "with TryAgain error status, for the set of transactions it hosts.");
 
-DECLARE_bool(enable_deadlock_detection);
+DECLARE_bool(enable_wait_queues);
+DECLARE_bool(disable_deadlock_detection);
 DECLARE_int32(rpc_workers_limit);
 
 using namespace std::literals;
@@ -308,11 +309,14 @@ class TransactionState {
         case TransactionStatus::APPLIED_IN_ALL_INVOLVED_TABLETS:
           ClearRequests(STATUS(AlreadyPresent, "Transaction committed"));
           break;
-        case TransactionStatus::ABORTED:
-          ClearRequests(
-              STATUS(Expired, "Transaction aborted",
-                     TransactionError(TransactionErrorCode::kAborted)));
+        case TransactionStatus::ABORTED: {
+          auto s = data.state.deadlock_reason().code() != AppStatusPB::OK
+              ? StatusFromPB(data.state.deadlock_reason())
+              : STATUS(Expired, "Transaction aborted",
+                       TransactionError(TransactionErrorCode::kAborted));
+          ClearRequests(s);
           break;
+        }
         case TransactionStatus::CREATED: FALLTHROUGH_INTENDED;
         case TransactionStatus::PENDING: FALLTHROUGH_INTENDED;
         case TransactionStatus::SEALED: FALLTHROUGH_INTENDED;
@@ -714,7 +718,11 @@ class TransactionState {
 
   void SubmitUpdateStatus(TransactionStatus status) {
     VLOG_WITH_PREFIX(4) << "SubmitUpdateStatus(" << TransactionStatus_Name(status) << ")";
-
+    // TODO(wait-queues): If the transaction is being aborted due to a deadlock, replicate the
+    // deadlock specific info on status tablet followers. That would help return a consistent
+    // error message on deadlock, across status tablet leadership changes.
+    //
+    // Refer https://github.com/yugabyte/yugabyte-db/issues/19257 for more details.
     auto state = rpc::MakeSharedMessage<LWTransactionStatePB>();
     state->dup_transaction_id(id_.AsSlice());
     state->set_status(status);
@@ -1471,6 +1479,14 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
         } else {
           lock.unlock();
           status = status.CloneAndAddErrorCode(TransactionError(TransactionErrorCode::kAborted));
+          // If the transaction was involved in a deadlock, the deadlock error takes precedence
+          // over a generic status of type Expired.
+          if (status.IsExpired()) {
+            auto s = deadlock_detector_.GetTransactionDeadlockStatus(*id);
+            if (!s.ok()) {
+              status = std::move(s);
+            }
+          }
           request->CompleteWithStatus(status);
           return;
         }
@@ -1518,7 +1534,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       DeadlockDetectorRpcCallback&& callback) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << req.ShortDebugString();
 
-    if (!ANNOTATE_UNPROTECTED_READ(FLAGS_enable_deadlock_detection)) {
+    if (!FLAGS_enable_wait_queues || PREDICT_FALSE(FLAGS_disable_deadlock_detection)) {
       YB_LOG_EVERY_N(WARNING, 100)
           << "Received wait-for report at node with deadlock detection disabled. "
           << "This should only happen during rolling restart.";
@@ -1532,7 +1548,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       const tserver::ProbeTransactionDeadlockRequestPB&req,
       tserver::ProbeTransactionDeadlockResponsePB* resp,
       DeadlockDetectorRpcCallback&& callback) {
-    if (!ANNOTATE_UNPROTECTED_READ(FLAGS_enable_deadlock_detection)) {
+    if (!FLAGS_enable_wait_queues || PREDICT_FALSE(FLAGS_disable_deadlock_detection)) {
       YB_LOG_EVERY_N(WARNING, 100)
           << "Received probe at node with deadlock detection disabled. "
           << "This should only happen during rolling restart.";
@@ -1758,7 +1774,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
   }
 
   void PollDeadlockDetector() {
-    if (ANNOTATE_UNPROTECTED_READ(FLAGS_enable_deadlock_detection)) {
+    if (FLAGS_enable_wait_queues && !PREDICT_FALSE(FLAGS_disable_deadlock_detection)) {
       deadlock_detector_.TriggerProbes();
     }
   }

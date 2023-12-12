@@ -3,7 +3,7 @@ title: Read Committed isolation level
 headerTitle: Read Committed isolation level
 linkTitle: Read Committed
 description: Details about the Read Committed isolation level
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+techPreview: /preview/releases/versioning/#feature-availability
 menu:
   v2.14:
     identifier: architecture-read-committed

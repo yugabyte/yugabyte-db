@@ -11,16 +11,22 @@
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckVolumeExpansion;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
+import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesPostExpansionCheckVolume;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
-import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
@@ -28,11 +34,13 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -42,16 +50,22 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@Abortable
+@Retryable
 public class EditKubernetesUniverse extends KubernetesTaskBase {
 
   static final int DEFAULT_WAIT_TIME_MS = 10000;
-  private final KubernetesOperatorStatusUpdater kubernetesStatus;
+  private final OperatorStatusUpdater kubernetesStatus;
+  private final KubernetesManagerFactory kubernetesManagerFactory;
 
   @Inject
   protected EditKubernetesUniverse(
-      BaseTaskDependencies baseTaskDependencies, KubernetesOperatorStatusUpdater kubernetesStatus) {
+      BaseTaskDependencies baseTaskDependencies,
+      OperatorStatusUpdaterFactory statusUpdaterFactory,
+      KubernetesManagerFactory kubernetesManagerFactory) {
     super(baseTaskDependencies);
-    this.kubernetesStatus = kubernetesStatus;
+    this.kubernetesStatus = statusUpdaterFactory.create();
+    this.kubernetesManagerFactory = kubernetesManagerFactory;
   }
 
   @Override
@@ -61,17 +75,19 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       checkUniverseVersion();
       // Verify the task params.
       verifyParams(UniverseOpType.EDIT);
-
+      // TODO: Would it make sense to have a precheck k8s task that does
+      // some precheck operations to verify kubeconfig, svcaccount, connectivity to universe here ?
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-      kubernetesStatus.createYBUniverseEventStatus(universe, getName(), getUserTaskUUID());
+      kubernetesStatus.createYBUniverseEventStatus(
+          universe, taskParams().getKubernetesResourceDetails(), getName(), getUserTaskUUID());
+      // Reset any state from previous tasks if this is a new invocation.
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-
       // This value is used by subsequent calls to helper methods for
       // creating KubernetesCommandExecutor tasks. This value cannot
       // be changed once set during the Universe creation, so we don't
       // allow users to modify it later during edit, upgrade, etc.
       taskParams().useNewHelmNamingStyle = universeDetails.useNewHelmNamingStyle;
-
+      // Only cancelling health checks idempotent.
       preTaskActions();
       Cluster primaryCluster = taskParams().getPrimaryCluster();
       if (primaryCluster == null) { // True in case of only readcluster edit.
@@ -108,7 +124,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           new KubernetesPlacement(primaryPI, /*isReadOnlyCluster*/ false);
 
       boolean newNamingStyle = taskParams().useNewHelmNamingStyle;
-
       String masterAddresses =
           KubernetesUtil.computeMasterAddresses(
               primaryPI,
@@ -126,9 +141,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       }
 
       // Update the user intent.
-      // This writes placement info and user intent of all clusters to DB.
-      writeUserIntentToUniverse();
-
+      // This writes new state of nodes to DB.
+      updateUniverseNodesAndSettings(universe, taskParams(), false);
       // primary cluster edit.
       boolean mastersAddrChanged =
           editCluster(
@@ -137,6 +151,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               universeDetails.getPrimaryCluster(),
               masterAddresses,
               false /* restartAllPods */);
+      // Updating cluster in DB
+      createUpdateUniverseIntentTask(taskParams().getPrimaryCluster());
 
       // read cluster edit.
       for (Cluster cluster : taskParams().clusters) {
@@ -147,6 +163,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               universeDetails.getClusterByUuid(cluster.uuid),
               masterAddresses,
               mastersAddrChanged);
+          // Updating cluster in DB
+          createUpdateUniverseIntentTask(cluster);
         }
       }
 
@@ -163,7 +181,12 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       th = t;
       throw t;
     } finally {
-      kubernetesStatus.updateYBUniverseStatus(getUniverse(), getName(), getUserTaskUUID(), th);
+      kubernetesStatus.updateYBUniverseStatus(
+          getUniverse(),
+          taskParams().getKubernetesResourceDetails(),
+          getName(),
+          getUserTaskUUID(),
+          th);
       unlockUniverseForUpdate();
     }
     log.info("Finished {} task.", getName());
@@ -261,7 +284,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         restartAllPods = true;
       }
     }
-
     Set<NodeDetails> mastersToAdd =
         getPodsToAdd(
             newPlacement.masters,
@@ -297,15 +319,36 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     for (UUID currAZs : curPlacement.configs.keySet()) {
       PlacementInfoUtil.addPlacementZone(currAZs, activeZones);
     }
-
-    // Bring up new masters and update the configs.
-    // No need to check mastersToRemove as total number of masters is invariant.
     if (!mastersToAdd.isEmpty()) {
-      // If starting new masters, we want them to come up in shell-mode.
+      // Bring up new masters and update the configs.
+      // No need to check mastersToRemove as total number of masters is invariant.
+      // Handle previously executed 'Add' operations on master nodes. To avoid
+      // re-initializing these masters, a separate local structure is used for
+      // storing a filtered list of uninitialized masters. Note: 'mastersToAdd'
+      // is not modified directly to maintain control flow for downstream code.
+
+      Set<NodeDetails> newMasters = new HashSet<>(mastersToAdd); // Make a copy
+      // Filter the copy only on a retry.
+      if (!isFirstTry()) {
+        Set<NodeDetails> toRemove = new HashSet<>();
+        for (NodeDetails node : newMasters) {
+          if (node.cloudInfo == null) {
+            // We didn't even bring this node up yet,
+            // so no need to check ChangeMasterConfigDone.
+            continue;
+          }
+          String ipToUse = node.cloudInfo.private_ip;
+          boolean alreadyAdded = isChangeMasterConfigDone(universe, node, true, ipToUse);
+          if (alreadyAdded) {
+            toRemove.add(node);
+          }
+        }
+        newMasters.removeAll(toRemove);
+      }
       restartAllPods = true;
       startNewPods(
           universe.getName(),
-          mastersToAdd,
+          newMasters,
           ServerType.MASTER,
           activeZones,
           isReadOnlyCluster,
@@ -313,7 +356,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           newPlacement,
           curPlacement);
 
-      // Update master addresses to the latest required ones.
+      // Update master addresses to the latest required ones,
+      // We use the original unfiltered mastersToAdd which is determined from pi.
       createMoveMasterTasks(new ArrayList<>(mastersToAdd), new ArrayList<>(mastersToRemove));
     }
 
@@ -335,13 +379,16 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             universe.getName(),
             tserversToAdd,
             isReadOnlyCluster,
-            universe.getUniverseDetails().getYbcSoftwareVersion());
+            universe.getUniverseDetails().getYbcSoftwareVersion(),
+            isReadOnlyCluster
+                ? universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.ybcFlags
+                : universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags);
         createWaitForYbcServerTask(tserversToAdd);
       }
     }
 
     // Update the blacklist servers on master leader.
-    createPlacementInfoTask(tserversToRemove)
+    createPlacementInfoTask(tserversToRemove, taskParams().clusters)
         .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
     // If the tservers have been removed, move the data.
@@ -428,6 +475,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
         KubernetesCommandExecutor.CommandType.POD_INFO,
         newPI,
         isReadOnlyCluster);
+    if (!tserversToAdd.isEmpty()) {
+      installThirdPartyPackagesTaskK8s(
+          universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType.JWT_JWKS);
+    }
 
     if (!mastersToAdd.isEmpty()) {
       // Update the master addresses on the target universes whose source universe belongs to
@@ -474,13 +525,25 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       List<NodeDetails> mastersToAdd, List<NodeDetails> mastersToRemove) {
 
     UserTaskDetails.SubTaskGroupType subTask = SubTaskGroupType.WaitForDataMigration;
-
+    // Get Universe from DB to confirm latest state.
+    Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
     // Perform adds.
     for (int idx = 0; idx < mastersToAdd.size(); idx++) {
       createChangeConfigTasks(mastersToAdd.get(idx), true, subTask);
     }
     // Perform removes.
     for (int idx = 0; idx < mastersToRemove.size(); idx++) {
+      // if node is removed in a previous iteration, don't create ChangeConfigTasks
+      if (!isFirstTry()) {
+        String nodeName = mastersToRemove.get(idx).nodeName;
+        log.info("checking if node needs to be removed: " + nodeName);
+        if (universe.getNode(nodeName) == null) {
+          log.info(
+              "Node is already removed, not creating change master config for removal of node ",
+              nodeName);
+          continue;
+        }
+      }
       createChangeConfigTasks(mastersToRemove.get(idx), false, subTask);
     }
     // Wait for master leader.
@@ -568,13 +631,37 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
     String softwareVersion = userIntent.ybSoftwareVersion;
     UUID providerUUID = UUID.fromString(userIntent.provider);
     Provider provider = Provider.getOrBadRequest(providerUUID);
-
+    Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
     for (Entry<UUID, Map<String, String>> entry : placement.configs.entrySet()) {
+
       UUID azUUID = entry.getKey();
       String azName =
           PlacementInfoUtil.isMultiAZ(provider)
               ? AvailabilityZone.getOrBadRequest(azUUID).getCode()
               : null;
+
+      String namespace =
+          KubernetesUtil.getKubernetesNamespace(
+              taskParams().nodePrefix, azName, config, newNamingStyle, isReadOnlyCluster);
+
+      String helmReleaseName =
+          KubernetesUtil.getHelmReleaseName(
+              taskParams().nodePrefix, universeName, azName, isReadOnlyCluster, newNamingStyle);
+
+      boolean needsExpandPVCInZone =
+          KubernetesUtil.needsExpandPVC(
+              namespace,
+              helmReleaseName,
+              "yb-tserver",
+              newNamingStyle,
+              newDiskSizeGi,
+              config,
+              kubernetesManagerFactory);
+      if (!needsExpandPVCInZone) {
+        log.info("PVC size is unchanged, will not schedule resize tasks");
+        continue;
+      }
+
       Map<String, String> azConfig = entry.getValue();
       PlacementInfo azPI = new PlacementInfo();
       int rf = placement.masters.getOrDefault(azUUID, 0);
@@ -641,6 +728,14 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           false,
           enableYbc,
           ybcSoftwareVersion);
+      createPostExpansionValidateTask(
+          universeName,
+          azConfig,
+          azName,
+          isReadOnlyCluster,
+          newNamingStyle,
+          providerUUID,
+          newDiskSizeGi);
     }
   }
 
@@ -674,6 +769,45 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
             isReadOnlyCluster,
             taskParams().useNewHelmNamingStyle);
     KubernetesCheckVolumeExpansion task = createTask(KubernetesCheckVolumeExpansion.class);
+    task.initialize(params);
+    subTaskGroup.addSubTask(task);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
+  private void createPostExpansionValidateTask(
+      String universeName,
+      Map<String, String> config,
+      String azName,
+      boolean isReadOnlyCluster,
+      boolean newNamingStyle,
+      UUID providerUUID,
+      String newDiskSizeGi) {
+    SubTaskGroup subTaskGroup =
+        getTaskExecutor()
+            .createSubTaskGroup(KubernetesPostExpansionCheckVolume.getSubTaskGroupName());
+    KubernetesPostExpansionCheckVolume.Params params =
+        new KubernetesPostExpansionCheckVolume.Params();
+    params.config = config;
+    params.newNamingStyle = newNamingStyle;
+    if (config != null) {
+      params.namespace =
+          KubernetesUtil.getKubernetesNamespace(
+              taskParams().nodePrefix,
+              azName,
+              config,
+              taskParams().useNewHelmNamingStyle,
+              isReadOnlyCluster);
+    }
+    params.providerUUID = providerUUID;
+    params.newDiskSizeGi = newDiskSizeGi;
+    params.helmReleaseName =
+        KubernetesUtil.getHelmReleaseName(
+            taskParams().nodePrefix,
+            universeName,
+            azName,
+            isReadOnlyCluster,
+            taskParams().useNewHelmNamingStyle);
+    KubernetesPostExpansionCheckVolume task = createTask(KubernetesPostExpansionCheckVolume.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);

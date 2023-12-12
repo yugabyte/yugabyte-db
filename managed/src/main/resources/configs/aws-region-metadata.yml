@@ -3,17 +3,17 @@ us-west-1:
   name: US West (N. California)
   latitude: 36.778261
   longitude: -119.417932
-  availabilty_zones: [us-west-1a, us-west-1b]
+  availabilty_zones: [us-west-1a, us-west-1b, us-west-1c]
 us-west-2:
   name: US West (Oregon)
   latitude: 43.804133
   longitude: -120.554201
-  availabilty_zones: [us-west-2a, us-west-2b, us-west-2c]
+  availabilty_zones: [us-west-2a, us-west-2b, us-west-2c, us-west-2d, us-west-2-den-1a, us-west-2-las-1a, us-west-2-lax-1a, us-west-2-lax-1b, us-west-2-sea-1a]
 us-east-1:
   name: US East (N. Virginia)
   latitude: 37.478397
   longitude: -76.453077
-  availabilty_zones: [us-east-1a, us-east-1b, us-east-1c, us-east-1d, us-east-1e, us-east-1f]
+  availabilty_zones: [us-east-1a, us-east-1b, us-east-1c, us-east-1d, us-east-1e, us-east-1f, us-east-1-atl-1a]
 us-east-2:
   name: US East (Ohio)
   latitude: 40.367474
@@ -64,11 +64,16 @@ ap-south-1:
   latitude: 19.0825223
   longitude: 72.7411014
   availabilty_zones: [ap-south-1a, ap-south-1b, ap-south-1c]
+ap-south-2:
+  name: Asia Pacific (Hyderabad)
+  latitude: 17.3850
+  longitude: 78.4867
+  availabilty_zones: [ap-south-2a, ap-south-2b, ap-south-2c]
 ca-central-1:
   name: Montreal (Canada)
   latitude: 45.5580421
   longitude: -73.7303025
-  availabilty_zones: [ca-central-1a, ca-central-1b]
+  availabilty_zones: [ca-central-1a, ca-central-1b, ca-central-1c, ca-central-1d]
 # TODO: not currently supported in x-region VPC.
 ap-northeast-2:
  name: Asia Pacific (Seoul)

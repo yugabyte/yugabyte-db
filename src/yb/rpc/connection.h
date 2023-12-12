@@ -54,7 +54,7 @@
 
 #include <ev++.h>
 #include "yb/util/flags.h"
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/ref_counted.h"
 
@@ -134,13 +134,14 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   // Fail any calls which are currently queued or awaiting response.
   // Prohibits any future calls (they will be failed immediately with this
   // same Status).
-  void Shutdown(const Status& status) ON_REACTOR_THREAD;
+  void Shutdown(const Status& status) ON_REACTOR_THREAD EXCLUDES(outbound_data_queue_mtx_);
 
   // Queue a new call to be made. If the queuing fails, the call will be
   // marked failed.
   // Takes ownership of the 'call' object regardless of whether it succeeds or fails.
   // This may be called from a non-reactor thread.
-  void QueueOutboundCall(const OutboundCallPtr& call) ON_REACTOR_THREAD;
+  void QueueOutboundCall(const OutboundCallPtr& call) ON_REACTOR_THREAD
+      EXCLUDES(outbound_data_queue_mtx_);
 
   // The address of the remote end of the connection.
   const Endpoint& remote() const;
@@ -170,9 +171,10 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   //
   // In case is called outside of the reactor thread, it might return an error if it fails to submit
   // a task to the reactor thread, e.g. when the reactor is shutting down.
-  Status QueueOutboundData(OutboundDataPtr outbound_data);
+  Status QueueOutboundData(OutboundDataPtr outbound_data) EXCLUDES(outbound_data_queue_mtx_);
 
-  void QueueOutboundDataBatch(const OutboundDataBatch& batch) ON_REACTOR_THREAD;
+  void QueueOutboundDataBatch(const OutboundDataBatch& batch) ON_REACTOR_THREAD
+      EXCLUDES(outbound_data_queue_mtx_);
 
   Reactor* reactor() const { return reactor_; }
 
@@ -180,7 +182,7 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
 
   // Do appropriate actions after adding outbound call. If the connection is shutting down,
   // returns the connection's shutdown status.
-  Status OutboundQueued() ON_REACTOR_THREAD;
+  Status OutboundQueued() ON_REACTOR_THREAD EXCLUDES(outbound_data_queue_mtx_);
 
   // An incoming packet has completed on the client side. This parses the
   // call response, looks up the CallAwaitingResponse, and calls the
@@ -201,7 +203,7 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   }
 
   // Returns the connection's shutdown status, or OK if shutdown has not happened yet.
-  Status ShutdownStatus() const;
+  Status ShutdownStatus() const EXCLUDES(outbound_data_queue_mtx_);
 
   bool shutdown_initiated() const {
     return shutdown_initiated_.load(std::memory_order_acquire);
@@ -228,9 +230,10 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   //
   // Returns the handle corresponding to the queued call, or std::numeric_limits<size_t>::max() in
   // case the handle is unknown, or an error in case the connection is shutting down.
-  Result<size_t> DoQueueOutboundData(OutboundDataPtr call, bool batch) ON_REACTOR_THREAD;
+  Result<size_t> DoQueueOutboundData(OutboundDataPtr call, bool batch) ON_REACTOR_THREAD
+      EXCLUDES(outbound_data_queue_mtx_);
 
-  void ProcessResponseQueue() ON_REACTOR_THREAD;
+  void ProcessResponseQueue() ON_REACTOR_THREAD EXCLUDES(outbound_data_queue_mtx_);
 
   // Stream context implementation
   void UpdateLastRead() override;
@@ -241,12 +244,13 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   void Destroy(const Status& status) ON_REACTOR_THREAD override;
   Result<size_t> ProcessReceived(ReadBufferFull read_buffer_full)
       ON_REACTOR_THREAD override;
-  void Connected() override;
+  Status Connected() override;
   StreamReadBuffer& ReadBuffer() override;
 
   void CleanupExpirationQueue(CoarseTimePoint now) ON_REACTOR_THREAD;
   // call_ptr is used only for logging to correlate with OutboundCall trace.
-  void DumpConnectionState(int32_t call_id, const void* call_ptr) const ON_REACTOR_THREAD;
+  void DumpConnectionState(int32_t call_id, const void* call_ptr) const ON_REACTOR_THREAD
+      EXCLUDES(outbound_data_queue_mtx_);
 
   std::string LogPrefix() const;
 

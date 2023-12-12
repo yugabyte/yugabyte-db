@@ -86,18 +86,10 @@ class TransactionLoader::Executor {
     Status status;
 
     auto se = ScopeExit([this, &status] {
-      auto pending_applies = std::move(pending_applies_);
-      TransactionLoaderContext& context = loader_.context_;
+      loader_.FinishLoad(status);
+      // Destroy this executor object. Must be the last statement before we return from the Execute
+      // function.
       loader_.executor_.reset();
-
-      if (status.ok()) {
-        context.LoadFinished(pending_applies);
-        return;
-      }
-
-      std::lock_guard lock(loader_.mutex_);
-      loader_.load_status_ = status;
-      loader_.state_.store(TransactionLoaderState::kLoadFailed, std::memory_order_release);
     });
 
     LOG_WITH_PREFIX(INFO) << "Load transactions start";
@@ -109,12 +101,20 @@ class TransactionLoader::Executor {
     status = LoadTransactions();
   }
 
-  Status LoadTransactions() {
+  Status CheckForShutdown() {
+    if (loader_.shutdown_requested_.load(std::memory_order_acquire)) {
+      return STATUS(IllegalState, "Shutting down");
+    }
+    return Status::OK();
+  }
+
+  Status LoadTransactions() EXCLUDES(loader_.pending_applies_mtx_) {
     size_t loaded_transactions = 0;
     TransactionId id = TransactionId::Nil();
     docdb::AppendTransactionKeyPrefix(id, &current_key_);
     intents_iterator_.Seek(current_key_.AsSlice());
     while (intents_iterator_.Valid()) {
+      RETURN_NOT_OK(CheckForShutdown());
       auto key = intents_iterator_.key();
       if (!key.TryConsumeByte(dockv::KeyEntryTypeAsChar::kTransactionId)) {
         break;
@@ -143,24 +143,25 @@ class TransactionLoader::Executor {
 
     intents_iterator_.Reset();
 
+    RETURN_NOT_OK(CheckForShutdown());
     context().CompleteLoad([this] {
-      loader_.state_.store(TransactionLoaderState::kLoadCompleted, std::memory_order_release);
+      loader_.state_ = TransactionLoaderState::kLoadCompleted;
     });
     {
       // We need to lock and unlock the mutex here to avoid missing a notification in WaitLoaded
       // and WaitAllLoaded. The waiting loop in those functions is equivalent to the following,
       // after locking the mutex (and of course wait(...) releases the mutex while waiting):
       //
-      // 1 while (!all_loaded_.load(std::memory_order_acquire)) {
+      // 1 while (!all_loaded_) {
       // 2   load_cond_.wait(lock);
       // 3 }
       //
       // If we did not have the lock/unlock here, it would be possible that all_loaded_ would be set
       // to true and notify_all() would be called between lines 1 and 2, and we would miss the
       // notification and wait indefinitely at line 2. With lock/unlock this is no longer possible
-      // because if we set all_loaded_ to true between lines 1 and 2, the only time we would be able
-      // to send a notification at line 2 as wait(...) releases the mutex, but then we would check
-      // all_loaded_ and exit the loop at line 1.
+      // because if we set all_loaded_ to true between lines 1 and 2, the next opportunity for this
+      // thread to send a notification would be at line 2 after wait(...) releases the mutex, but
+      // after that we would check all_loaded_ and exit the loop at line 1.
       std::lock_guard lock(loader_.mutex_);
     }
     loader_.load_cond_.notify_all();
@@ -168,13 +169,16 @@ class TransactionLoader::Executor {
     return Status::OK();
   }
 
-  Status LoadPendingApplies() {
+  Status LoadPendingApplies() EXCLUDES(loader_.pending_applies_mtx_) {
+    std::lock_guard lock(loader_.pending_applies_mtx_);
+
     std::array<char, 1 + sizeof(TransactionId) + 1> seek_buffer;
     seek_buffer[0] = dockv::KeyEntryTypeAsChar::kTransactionApplyState;
     seek_buffer[seek_buffer.size() - 1] = dockv::KeyEntryTypeAsChar::kMaxByte;
     regular_iterator_.Seek(Slice(seek_buffer.data(), 1));
 
     while (regular_iterator_.Valid()) {
+      RETURN_NOT_OK(CheckForShutdown());
       auto key = regular_iterator_.key();
       if (!key.TryConsumeByte(dockv::KeyEntryTypeAsChar::kTransactionApplyState)) {
         break;
@@ -203,7 +207,7 @@ class TransactionLoader::Executor {
           continue;
         }
 
-        auto it = pending_applies_.emplace(*txn_id, ApplyStateWithCommitHt {
+        auto it = loader_.pending_applies_.emplace(*txn_id, ApplyStateWithCommitHt {
           .state = state.get(),
           .commit_ht = HybridTime(pb->commit_ht())
         }).first;
@@ -224,7 +228,7 @@ class TransactionLoader::Executor {
   }
 
   // id - transaction id to load.
-  Status LoadTransaction(const TransactionId& id) {
+  Status LoadTransaction(const TransactionId& id) EXCLUDES(loader_.pending_applies_mtx_) {
     metric_transaction_load_attempts_->Increment();
     VLOG_WITH_PREFIX(1) << "Loading transaction: " << id;
 
@@ -254,10 +258,10 @@ class TransactionLoader::Executor {
     }
     status_resolver_->Add(metadata->status_tablet, id);
 
-    auto pending_apply_it = pending_applies_.find(id);
+    auto pending_apply = loader_.GetPendingApply(id);
     context().LoadTransaction(
         std::move(*metadata), std::move(last_batch_data), std::move(replicated_batches),
-        pending_apply_it != pending_applies_.end() ? &pending_apply_it->second : nullptr);
+        pending_apply ? &*pending_apply : nullptr);
     {
       std::lock_guard lock(loader_.mutex_);
       loader_.last_loaded_ = id;
@@ -361,8 +365,6 @@ class TransactionLoader::Executor {
 
   TransactionStatusResolver* status_resolver_ = nullptr;
 
-  ApplyStatesMap pending_applies_;
-
   scoped_refptr<Counter> metric_transaction_load_attempts_;
 };
 
@@ -407,21 +409,58 @@ Status TransactionLoader::WaitLoaded(const TransactionId& id) NO_THREAD_SAFETY_A
 
 // Disable thread safety analysis because std::unique_lock is used.
 Status TransactionLoader::WaitAllLoaded() NO_THREAD_SAFETY_ANALYSIS {
-  if (state_.load(std::memory_order_acquire) == TransactionLoaderState::kLoadCompleted) {
+  // Read state_ with sequential consistency to prevent subtle bugs with operation reordering.
+  // WaitAllLoaded is only invoked when opening a tablet.
+  if (state_ == TransactionLoaderState::kLoadCompleted) {
     return Status::OK();
   }
   // Defensively wake up at least once a second to avoid deadlock due to any issue similar to #8696.
   std::unique_lock<std::mutex> lock(mutex_);
-  while (state_.load(std::memory_order_acquire) == TransactionLoaderState::kLoadNotFinished) {
+  while (state_ == TransactionLoaderState::kLoadNotFinished) {
     load_cond_.wait_for(lock, kWaitLoadedWakeUpInterval);
   }
   return load_status_;
 }
 
-void TransactionLoader::Shutdown() {
+std::optional<ApplyStateWithCommitHt> TransactionLoader::GetPendingApply(
+    const TransactionId& id) const {
+  if (pending_applies_removed_.load(std::memory_order_acquire)) {
+    return std::nullopt;
+  }
+  std::lock_guard lock(pending_applies_mtx_);
+  auto it = pending_applies_.find(id);
+  if (it == pending_applies_.end()) {
+    return std::nullopt;
+  }
+  return it->second;
+}
+
+void TransactionLoader::StartShutdown() {
+  std::lock_guard lock(mutex_);
+  shutdown_requested_ = true;
+}
+
+void TransactionLoader::CompleteShutdown() {
   if (load_thread_) {
     load_thread_->Join();
   }
+}
+
+void TransactionLoader::FinishLoad(Status status) {
+  if (status.ok()) {
+    context_.LoadFinished();
+    return;
+  }
+
+  std::lock_guard lock(mutex_);
+  load_status_ = status;
+  state_.store(TransactionLoaderState::kLoadFailed, std::memory_order_release);
+}
+
+ApplyStatesMap TransactionLoader::MovePendingApplies() {
+  std::lock_guard lock(pending_applies_mtx_);
+  pending_applies_removed_ = true;
+  return std::move(pending_applies_);
 }
 
 } // namespace tablet

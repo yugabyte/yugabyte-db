@@ -33,6 +33,7 @@
 #include "access/twophase.h"
 #include "access/xact.h"
 #include "access/xlog_internal.h"
+#include "access/yb_scan.h"
 #include "catalog/namespace.h"
 #include "catalog/pg_authid.h"
 #include "commands/async.h"
@@ -94,7 +95,6 @@
 #include "utils/tzparser.h"
 #include "utils/varlena.h"
 #include "utils/xml.h"
-
 #include "pg_yb_utils.h"
 
 #ifndef PG_KRB_SRVTAB
@@ -583,6 +583,7 @@ static bool integer_datetimes;
 static bool assert_enabled;
 static char *yb_effective_transaction_isolation_level_string;
 static char *yb_xcluster_consistency_level_string;
+static char *yb_read_time_string;
 
 /* should be static, but commands/variable.c needs to get at this */
 char	   *role_string;
@@ -1056,7 +1057,17 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&yb_prefer_bnl,
-		false,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"yb_enable_batchednl", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables the planner's use of batched nested-loop "
+							 "join plans."),
+			NULL
+		},
+		&yb_enable_batchednl,
+		true,
 		NULL, NULL, NULL
 	},
 	{
@@ -1988,6 +1999,21 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_silence_advisory_locks_not_supported_error", PGC_USERSET, LOCK_MANAGEMENT,
+			gettext_noop("Silence the advisory locks not supported error message."),
+			gettext_noop(
+					"Enable this with high caution. It was added to avoid disruption for users who were "
+					"already using advisory locks but seeing success messages without the lock really being "
+					"acquired. Such users should take the necessary steps to modify their application to "
+					"remove usage of advisory locks."),
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_silence_advisory_locks_not_supported_error,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"data_sync_retry", PGC_POSTMASTER, ERROR_HANDLING_OPTIONS,
 			gettext_noop("Whether to continue running after a failure to sync data files."),
 		},
@@ -2072,6 +2098,17 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"TEST_ysql_yb_enable_replication_commands", PGC_SUSET, REPLICATION,
+			gettext_noop("Enable the replication commands for Publication and Replication Slots."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_enable_replication_commands,
+		true,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"ysql_upgrade_mode", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enter a special mode designed specifically for YSQL cluster upgrades. "
 						 "Allows creating new system tables with given relation and type OID. "
@@ -2116,6 +2153,19 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_test_fail_next_ddl,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_test_fail_next_inc_catalog_version", PGC_USERSET,DEVELOPER_OPTIONS,
+			gettext_noop("When set, the next increment catalog version will "
+						 "fail right before it's done. This only works when "
+						 "catalog version is stored in pg_yb_catalog_version."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_fail_next_inc_catalog_version,
 		false,
 		NULL, NULL, NULL
 	},
@@ -2333,6 +2383,18 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_explain_hide_non_deterministic_fields", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("If set, all fields that vary from run to run are hidden from "
+						 "the output of EXPLAIN"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_explain_hide_non_deterministic_fields,
+		false,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
@@ -2370,7 +2432,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_bnl_batch_size,
-		1, 1, INT_MAX,
+		1024, 1, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -3092,7 +3154,7 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&max_replication_slots,
 		10, 0, MAX_BACKENDS /* XXX? */ ,
-		NULL, NULL, NULL
+		NULL, yb_assign_max_replication_slots, NULL
 	},
 
 	{
@@ -3731,10 +3793,20 @@ static struct config_int ConfigureNamesInt[] =
 	{
 		{"yb_fetch_size_limit", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Maximum size of a fetch response. 0 = No limit"),
-			NULL, GUC_UNIT_KB
+			NULL, GUC_UNIT_BYTE
 		},
 		&yb_fetch_size_limit,
-		0, 0, MAX_KILOBYTES,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_parallel_range_rows", PGC_USERSET, QUERY_TUNING,
+			gettext_noop("The number of rows to plan per parallel worker"),
+			NULL
+		},
+		&yb_parallel_range_rows,
+		0, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -4401,6 +4473,24 @@ static struct config_string ConfigureNamesString[] =
 		&yb_xcluster_consistency_level_string,
 		"database",
 		check_yb_xcluster_consistency_level, assign_yb_xcluster_consistency_level, NULL
+	},
+
+	{
+		{"yb_read_time", PGC_SUSET, CLIENT_CONN_STATEMENT,
+			gettext_noop(
+				"Allows querying the database as of a point in time in the past."
+				" Takes a unix timestamp in microseconds."
+				" Zero means reading data as of current time."),
+			gettext_noop(
+				"User should set this variable with caution. Currently, it can"
+				" only read old data without schema changes. In other words, it should not be"
+				" set to a timestamp before a DDL operation has been performed."
+				" Potential corruption can happen in case (1) the variable is set to a timestamp"
+				" before most recent DDL. (2) DDL is performed while it is set to nonzero.")
+		},
+		&yb_read_time_string,
+		"0", 
+		check_yb_read_time, assign_yb_read_time, NULL
 	},
 
 	{
@@ -12257,6 +12347,15 @@ check_transaction_priority_lower_bound(double *newval, void **extra, GucSource s
 		return false;
 	}
 
+	if (IsYBReadCommitted() || YBIsWaitQueueEnabled())
+	{
+		ereport(NOTICE,
+						(errmsg("priorities don't exist for read committed isolation transations, the "
+										"transaction will wait for conflicting transactions to commit before "
+										"proceeding"),
+						 errdetail("this also applies to other isolation levels if using Wait-on-Conflict "
+											"concurrency control")));
+	}
 	return true;
 }
 
@@ -12269,6 +12368,15 @@ check_transaction_priority_upper_bound(double *newval, void **extra, GucSource s
 		return false;
 	}
 
+	if (IsYBReadCommitted() || YBIsWaitQueueEnabled())
+	{
+		ereport(NOTICE,
+						(errmsg("priorities don't exist for read committed isolation transations, the "
+										"transaction will wait for conflicting transactions to commit before "
+										"proceeding"),
+						 errdetail("this also applies to other isolation levels if using Wait-on-Conflict "
+											"concurrency control")));
+	}
 	return true;
 }
 

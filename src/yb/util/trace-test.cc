@@ -50,6 +50,7 @@
 
 // Need to add rapidjson.h to the list of recognized third-party libraries in our linter.
 
+DECLARE_uint32(trace_max_dump_size);
 
 using yb::debug::TraceLog;
 using yb::debug::TraceResultBuffer;
@@ -89,6 +90,132 @@ TEST_F(TraceTest, TestBasic) {
             result);
 }
 
+std::string GetLongString(size_t size) {
+  std::stringstream out;
+  std::string_view repeated_string("0123456789");
+  while (size > 0) {
+    size_t prefix_len = std::min(repeated_string.length(), size);
+    out << repeated_string.substr(0, prefix_len);
+    size -= prefix_len;
+  }
+  return out.str();
+}
+
+TEST_F(TraceTest, TestDumpLargeTrace) {
+  const size_t kGlogMessageSizeLimit = google::LogMessage::kMaxLogMessageLen;
+
+  class LogSink : public google::LogSink {
+   public:
+    void send(
+        google::LogSeverity severity, const char* full_filename, const char* base_filename,
+        int line, const struct ::tm* tm_time, const char* message, size_t message_len) {
+      logged_bytes_ += message_len;
+    }
+
+    size_t logged_bytes() const { return logged_bytes_; }
+
+   private:
+    std::atomic<size_t> logged_bytes_{0};
+  } log_sink;
+
+  google::AddLogSink(&log_sink);
+  size_t size_before_logging;
+  size_t size_after_logging;
+
+  // Glog has a weird behavior of eating up the ending `\n` when sending the
+  // message to LogSink
+  string message_no_newline = "xy";
+  size_before_logging = log_sink.logged_bytes();
+  LOG(INFO) << message_no_newline;
+  size_after_logging = log_sink.logged_bytes();
+  ASSERT_EQ(size_after_logging - size_before_logging, message_no_newline.length());
+
+  string small_message_with_newline = "x\n";
+  size_before_logging = log_sink.logged_bytes();
+  LOG(INFO) << small_message_with_newline;
+  size_after_logging = log_sink.logged_bytes();
+  // GLog eats up the last '\n' while passing the message to the LogSink.
+  // This needs to be accounted for while calculating the expected size.
+  ASSERT_EQ(size_after_logging - size_before_logging, small_message_with_newline.length() - 1);
+
+  scoped_refptr<Trace> tsmall(new Trace);
+  TRACE_TO(tsmall, "A very small line");
+  const string kSmallTraceDump = tsmall->DumpToString(true);
+  size_t kSmallTraceDumpSize = kSmallTraceDump.size();
+  // DumpToString has a '\n' at the end
+  ASSERT_EQ(kSmallTraceDump[kSmallTraceDumpSize - 1], '\n');
+  size_before_logging = log_sink.logged_bytes();
+  LOG(INFO) << kSmallTraceDump;
+  size_after_logging = log_sink.logged_bytes();
+  // GLog eats up the last '\n' while passing the message to the LogSink.
+  // This needs to be accounted for while calculating the expected size.
+  ASSERT_EQ(size_after_logging - size_before_logging, kSmallTraceDumpSize - 1);
+
+  scoped_refptr<Trace> t(new Trace);
+  constexpr int kNumLines = 100;
+  const string kLongLine = GetLongString(1000);
+  const string kVeryLongLine = GetLongString(40000);
+  for (int i = 1; i <= kNumLines; i++) {
+    TRACE_TO(t, "Line $0 : $1", i, kLongLine);
+  }
+  TRACE_TO(t, "A very long line : $0", kVeryLongLine);
+
+  const string kContinuationMarker("\ntrace continues ...");
+  const string kTraceDump = t->DumpToString(true);
+  size_t kTraceDumpSize = kTraceDump.size();
+  // DumpToString has a '\n' at the end
+  ASSERT_EQ(kTraceDump[kTraceDumpSize - 1], '\n');
+
+  LOG(INFO) << "Dumping DumpToString may result in the trace getting truncated after ~30 lines";
+  size_before_logging = log_sink.logged_bytes();
+  LOG(INFO) << t->DumpToString(true);
+  size_after_logging = log_sink.logged_bytes();
+  ASSERT_LE(size_after_logging - size_before_logging, kGlogMessageSizeLimit);
+  ASSERT_LT(size_after_logging - size_before_logging, kTraceDumpSize);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_trace_max_dump_size) = std::numeric_limits<uint32>::max();
+  LOG(INFO) << "DumpToLogInfo should not be truncated";
+  size_before_logging = log_sink.logged_bytes();
+  t->DumpToLogInfo(true);
+  size_after_logging = log_sink.logged_bytes();
+  ASSERT_GT(size_after_logging - size_before_logging, kGlogMessageSizeLimit);
+  constexpr size_t kNumExpectedParts = 6;
+  constexpr size_t kNumNewLinesRemovedByDumpToLogInfo = 4;
+  // We expect the output to be split into kNumExpectedParts lines.
+  // kNumNewLinesRemovedByDumpToLogInfo newlines will be removed while printing.
+  // the last newline will be eaten up by LogSink/glog.
+  // (kNumExpectedParts - 1) continuation markers added.
+  ASSERT_EQ(
+      size_after_logging - size_before_logging,
+      kTraceDumpSize - 1 + (kNumExpectedParts - 1) * kContinuationMarker.size() -
+          kNumNewLinesRemovedByDumpToLogInfo);
+
+  LOG(INFO) << "with trace_max_dump_size=30000 DumpToLogInfo should be truncated";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_trace_max_dump_size) = 30000;
+  size_before_logging = log_sink.logged_bytes();
+  t->DumpToLogInfo(true);
+  size_after_logging = log_sink.logged_bytes();
+  ASSERT_LE(size_after_logging - size_before_logging, kGlogMessageSizeLimit);
+  ASSERT_LT(size_after_logging - size_before_logging, kTraceDumpSize);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_trace_max_dump_size) = 0;
+  LOG(INFO) << "with trace_max_dump_size=0 DumpToLogInfo should not be truncated";
+  size_before_logging = log_sink.logged_bytes();
+  t->DumpToLogInfo(true);
+  size_after_logging = log_sink.logged_bytes();
+  ASSERT_GT(size_after_logging - size_before_logging, kGlogMessageSizeLimit);
+  // We expect the output to be split into kNumExpectedParts lines.
+  // kNumNewLinesRemovedByDumpToLogInfo newlines will be removed while printing.
+  // the last newline will be eaten up by LogSink/glog.
+  // (kNumExpectedParts - 1) continuation markers added.
+  ASSERT_EQ(
+      size_after_logging - size_before_logging,
+      kTraceDumpSize - 1 + (kNumExpectedParts - 1) * kContinuationMarker.size() -
+          kNumNewLinesRemovedByDumpToLogInfo);
+
+  google::RemoveLogSink(&log_sink);
+}
+
 TEST_F(TraceTest, TestAttach) {
   scoped_refptr<Trace> traceA(new Trace);
   scoped_refptr<Trace> traceB(new Trace);
@@ -120,12 +247,14 @@ TEST_F(TraceTest, TestChildTrace) {
   TRACE("hello from traceA");
   {
     ADOPT_TRACE(traceB.get());
-    TRACE("hello from traceB");
+    TRACE("hello from traceB\nhello again from traceB");
   }
-  EXPECT_EQ("XXXX XX:XX:XX.XXXXXX trace-test.cc:XXX] hello from traceA\n"
-            "..  Related trace:\n"
-            "..  XXXX XX:XX:XX.XXXXXX trace-test.cc:XXX] hello from traceB\n",
-            XOutDigits(traceA->DumpToString(false)));
+  EXPECT_EQ(
+      "XXXX XX:XX:XX.XXXXXX trace-test.cc:XXX] hello from traceA\n"
+      "..  Related trace:\n"
+      "..  XXXX XX:XX:XX.XXXXXX trace-test.cc:XXX] hello from traceB\n"
+      "..  ..  hello again from traceB\n",
+      XOutDigits(traceA->DumpToString(false)));
 }
 
 static void GenerateTraceEvents(int thread_id,

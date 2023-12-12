@@ -27,7 +27,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.protobuf.ByteString;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.TestUtils;
-import com.yugabyte.yw.common.gflags.GFlagDetails;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
@@ -197,13 +197,13 @@ public class CreateXClusterConfigTest extends CommissionerBaseTest {
       lenient()
           .when(mockAutoFlagUtil.getPromotedAutoFlags(any(), any(), anyInt()))
           .thenReturn(Set.of("FLAG_1"));
-      GFlagDetails flagDetails = new GFlagDetails();
-      flagDetails.name = "FLAG_1";
-      flagDetails.target = "value";
-      flagDetails.initial = "initial";
-      flagDetails.tags = "auto";
-      when(mockGFlagsValidation.listAllAutoFlags(anyString(), anyString()))
-          .thenReturn(Collections.singletonList(flagDetails));
+      GFlagsValidation.AutoFlagDetails autoFlagDetails = new GFlagsValidation.AutoFlagDetails();
+      autoFlagDetails.name = "FLAG_1";
+      GFlagsValidation.AutoFlagsPerServer autoFlagsPerServer =
+          new GFlagsValidation.AutoFlagsPerServer();
+      autoFlagsPerServer.autoFlagDetails = Collections.singletonList(autoFlagDetails);
+      when(mockGFlagsValidation.extractAutoFlags(anyString(), anyString()))
+          .thenReturn(autoFlagsPerServer);
     } catch (Exception ignored) {
     }
   }

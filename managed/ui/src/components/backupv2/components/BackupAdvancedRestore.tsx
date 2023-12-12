@@ -156,13 +156,13 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
 
   const groupedStorageConfigs = useMemo(() => {
     // if user has only one storage config, select it by default
-    if (storageConfigs.data.length === 1) {
+    if (storageConfigs?.data?.length === 1) {
       const { configUUID, configName, name } = storageConfigs.data[0];
       initialValues['storage_config'] = { value: configUUID, label: configName, name: name };
     }
 
-    const configs = storageConfigs.data
-      .filter((c: IStorageConfig) => c.type === 'STORAGE')
+    const configs = storageConfigs?.data
+      ?.filter((c: IStorageConfig) => c.type === 'STORAGE')
       .map((c: IStorageConfig) => {
         return { value: c.configUUID, label: c.configName, name: c.name };
       });
@@ -205,7 +205,10 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
     })
   });
 
-  const doRestore = (values: typeof initialValues) => {
+  const doRestore = (
+    values: typeof initialValues,
+    setSubmitting: (isSubmitting: boolean) => void
+  ) => {
     values['keyspaces'] = [
       values['should_rename_keyspace'] ? values['new_keyspace_name'] : values['keyspace_name']
     ];
@@ -228,7 +231,10 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
         ]
       } as any
     };
-    restore.mutateAsync({ backup_details: backup as any, values });
+    restore.mutate(
+      { backup_details: backup as any, values },
+      { onSettled: () => setSubmitting(false) }
+    );
   };
 
   if (!visible) return null;
@@ -246,12 +252,15 @@ export const BackupAdvancedRestore: FC<RestoreModalProps> = ({
       validationSchema={validationSchema}
       dialogClassName="advanced-restore-modal"
       submitLabel={overrideSubmitLabel ?? STEPS[currentStep].submitLabel}
-      onFormSubmit={(values: any, { setSubmitting }: { setSubmitting: Function }) => {
-        setSubmitting(false);
+      onFormSubmit={(
+        values: any,
+        { setSubmitting }: { setSubmitting: (isSubmitting: boolean) => void }
+      ) => {
         if (values['should_rename_keyspace'] && currentStep < STEPS.length - 1) {
           setCurrentStep(currentStep + 1);
+          setSubmitting(false);
         } else {
-          doRestore(values);
+          doRestore(values, setSubmitting);
         }
       }}
       headerClassName={clsx({

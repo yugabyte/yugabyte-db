@@ -56,6 +56,8 @@
 #include "yb/gutil/map-util.h"
 #include "yb/gutil/stringprintf.h"
 
+#include "yb/master/sys_catalog_constants.h"
+
 #include "yb/rpc/messenger.h"
 #include "yb/rpc/periodic.h"
 #include "yb/rpc/rpc_controller.h"
@@ -2279,7 +2281,7 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
   // Lock ordering: The update lock must be acquired before the ReplicaState lock.
   std::unique_lock<decltype(update_mutex_)> update_guard(update_mutex_, std::defer_lock);
   if (FLAGS_enable_leader_failure_detection) {
-    update_guard.try_lock();
+    auto try_lock_result [[maybe_unused]] = update_guard.try_lock();  // NOLINT
   } else {
     // If failure detection is not enabled, then we can't just reject the vote,
     // because there will be no automatic retry later. So, block for the lock.
@@ -2417,9 +2419,8 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
 }
 
 Status RaftConsensus::IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type,
-                                                           const string& server_uuid) {
+                                                           const std::string& server_uuid) {
   const RaftConfigPB& active_config = state_->GetActiveConfigUnlocked();
-
   // Check that all the following requirements are met:
   // 1. We are required by Raft to reject config change operations until we have
   //    committed at least one operation in our current term as leader.
@@ -2438,7 +2439,53 @@ Status RaftConsensus::IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type
                              state_->GetPendingConfigUnlocked().ShortDebugString() : "",
                          state_->GetCurrentTermUnlocked(), state_->GetCommittedOpIdUnlocked());
   }
-
+  // For sys catalog tablet, additionally ensure that there are no servers currently in transition.
+  // If not, it could lead to data loss.
+  // For instance, assuming that we allow processing of ChangeConfig requests for sys catalog amidst
+  // transition (like with the other tablets), consider a full master move operation where we want
+  // to go from  A,B,C -> D,E,F. Let's assume that D,E,F are added but get stuck in PRE_VOTER state.
+  // The initial remove requests for B and C would succeed and we would end up in the state A,D,E,F.
+  // Though the removal of A would throw an error, if the operator mistakenly assumes that D,E,F are
+  // caught up and overrides the master server conf file, the new peers would form a quorum and kick
+  // out A, thus leading to orphaned tablet cleanup resulting in data loss.
+  //
+  // We have this additional safeguard in place for sys catalog tablet since the config change ops
+  // are driver by the user/admin, and the safeguard helps prevent us from going into the state
+  // described above.
+  //
+  // We don't have similar restrictions for user tablets since the config change operations are run
+  // by the load balancer. Additionally, we explicitly prevent raft from kicking out an unavailable
+  // VOTER peer if it leads to < 2 VOTERS in the new config. Hence it is okay for the leader to
+  // process new config change operations for user tablets even when a peer is in transition hoping
+  // that it would expedite the process.
+  //
+  // TODO(#19453): A more optimized approach would be to allow changes amidst sys catalog transition
+  // while ensuring we have >= rf/2 + 1 VOTERS in the new config.
+  if (tablet_id() == master::kSysCatalogTabletId) {
+      size_t servers_in_transition = 0;
+      if (type == ADD_SERVER) {
+        servers_in_transition = CountServersInTransition(active_config);
+      } else if (type == REMOVE_SERVER) {
+        // If we are trying to remove the server in transition, then servers_in_transition shouldn't
+        // count it so we can proceed with the operation.
+        servers_in_transition = CountServersInTransition(active_config, server_uuid);
+      }
+      if (servers_in_transition != 0) {
+        return STATUS_FORMAT(IllegalState,
+                             "Leader is not ready for Config Change, there is already one server "
+                             "in transition. Try again once the transition completes or remove the "
+                             "server in transition. Type: $0. Has opid: $1. Committed config: $2. "
+                             "Pending config: $3. Current term: $4. Committed op id: $5. "
+                             "Num peers in transit: $6",
+                             ChangeConfigType_Name(type),
+                             active_config.has_opid_index(),
+                             state_->GetCommittedConfigUnlocked().ShortDebugString(),
+                             state_->IsConfigChangePendingUnlocked() ?
+                                 state_->GetPendingConfigUnlocked().ShortDebugString() : "",
+                             state_->GetCurrentTermUnlocked(), state_->GetCommittedOpIdUnlocked(),
+                             servers_in_transition);
+      }
+  }
   return Status::OK();
 }
 
@@ -2453,6 +2500,13 @@ Status RaftConsensus::ChangeConfig(const ChangeConfigRequestPB& req,
     *error_code = TabletServerErrorPB::INVALID_CONFIG;
     return STATUS(InvalidArgument, "Must specify 'server' argument to ChangeConfig()",
                                    req.ShortDebugString());
+  }
+  if (PREDICT_FALSE(req.tablet_id() != tablet_id())) {
+    *error_code = TabletServerErrorPB::INVALID_CONFIG;
+    return STATUS_SUBSTITUTE(
+        InvalidArgument,
+        "ChangeConfig request received for a different tablet at RaftConsensus serving tablet $0. "
+        "ChangeConfigRequestPB: $1", tablet_id(), req.ShortDebugString());
   }
   YB_LOG_EVERY_N(INFO, FLAGS_TEST_log_change_config_every_n)
       << "Received ChangeConfig request " << req.ShortDebugString();
@@ -2780,6 +2834,10 @@ Status RaftConsensus::UnsafeChangeConfig(
     s = StatusFromPB(consensus_resp.error().status());
   }
   return s;
+}
+
+std::vector<FollowerCommunicationTime> RaftConsensus::GetFollowerCommunicationTimes() {
+  return queue_->GetFollowerCommunicationTimes();
 }
 
 void RaftConsensus::Shutdown() {
@@ -3622,12 +3680,24 @@ Status RaftConsensus::CopyRetryableRequestsTo(const std::string &dest_path) {
   return state_->CopyRetryableRequestsTo(dest_path);
 }
 
+int64_t RaftConsensus::follower_lag_ms() const {
+  return follower_last_update_time_ms_metric_->lag_ms();
+}
+
 bool RaftConsensus::TEST_HasRetryableRequestsOnDisk() const {
   return state_->TEST_HasRetryableRequestsOnDisk();
 }
 
 RetryableRequestsCounts RaftConsensus::TEST_CountRetryableRequests() {
   return state_->TEST_CountRetryableRequests();
+}
+
+int RaftConsensus::TEST_RetryableRequestTimeoutSecs() const {
+  auto lock = state_->LockForRead();
+  if(state_->state() != ReplicaState::kRunning) {
+    return 0;
+  }
+  return state_->retryable_requests().request_timeout_secs();
 }
 
 void RaftConsensus::TrackOperationMemory(const yb::OpId& op_id) {

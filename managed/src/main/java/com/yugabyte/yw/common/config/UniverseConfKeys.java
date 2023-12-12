@@ -29,14 +29,6 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Default threshold for Clock Skew alert",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Boolean> cloudEnabled =
-      new ConfKeyInfo<>(
-          "yb.cloud.enabled",
-          ScopeType.UNIVERSE,
-          "Cloud Enabled",
-          "Enables YBM specific features",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> healthLogOutput =
       new ConfKeyInfo<>(
           "yb.health.logOutput",
@@ -167,15 +159,6 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Minimum available memory required on DB nodes for software upgrade.",
           ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-
-  public static final ConfKeyInfo<Boolean> granularMetrics =
-      new ConfKeyInfo<>(
-          "yb.ui.feature_flags.granular_metrics",
-          ScopeType.UNIVERSE,
-          "Granular level metrics",
-          "View granular level metrics when user selects specific time period in a chart",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
 
   public static final ConfKeyInfo<Boolean> pgBasedBackup =
       new ConfKeyInfo<>(
@@ -751,6 +734,22 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Controls the max time out when performing follower lag checks",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> followerLagMaxThreshold =
+      new ConfKeyInfo<>(
+          "yb.checks.follower_lag.max_threshold",
+          ScopeType.UNIVERSE,
+          "Max threshold for follower lag",
+          "The maximum time that we allow a tserver to be behind its peers",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Duration> waitForServerReadyTimeout =
+      new ConfKeyInfo<>(
+          "yb.checks.wait_for_server_ready.timeout",
+          ScopeType.UNIVERSE,
+          "Wait for server ready timeout",
+          "Controls the max time for server to finish locally bootstrapping",
+          ConfDataType.DurationType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Long> checkMemoryTimeoutSecs =
       new ConfKeyInfo<>(
           "yb.dbmem.checks.timeout",
@@ -775,7 +774,8 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "yb.backup.use_server_broadcast_address_for_yb_backup",
           ScopeType.UNIVERSE,
           "Use server broadcast address for yb_backup",
-          "Controls whether server_broadcast_address entry should be used during yb_backup.py backup/restore",
+          "Controls whether server_broadcast_address entry should be used during yb_backup.py"
+              + " backup/restore",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Long> slowQueryTimeoutSecs =
@@ -849,6 +849,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Enable Yugabyte DB Rollback support",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> allowGFlagsOverrideDuringPreFinalize =
+      new ConfKeyInfo<>(
+          "yb.gflags.allow_during_prefinalize",
+          ScopeType.UNIVERSE,
+          "Allow editing GFlags for a universe in pre-finalize state",
+          "Allow editing GFlags for a universe in pre-finalize state",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> txnXClusterPitrDefaultRetentionPeriod =
       new ConfKeyInfo<>(
           "yb.xcluster.transactional.pitr.default_retention_period",
@@ -910,4 +918,64 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Skip backup metadata based validation during restore",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> alwaysBackupTablespaces =
+      new ConfKeyInfo<>(
+          "yb.backup.always_backup_tablespaces",
+          ScopeType.UNIVERSE,
+          "Always backup tablespaces when taking YSQL backup",
+          "Always backup tablespaces when taking ysql backups. This is a UI flag"
+              + " used to appropriately send 'useTablespaces' parameter to backend in API.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> allowVolumeDecrease =
+      new ConfKeyInfo<>(
+          "yb.edit.allow_volume_decrease",
+          ScopeType.UNIVERSE,
+          "Allow decrease volume size",
+          "Allow decrease volume size for universe during full move",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Integer> nodeAgentReinstallParallelism =
+      new ConfKeyInfo<>(
+          "yb.node_agent.reinstall_parallelism",
+          ScopeType.UNIVERSE,
+          "Parallelism for Node Agent Reinstallation",
+          "Number of parallel node agent reinstallations at a time",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> ldapUniverseSync =
+      new ConfKeyInfo<>(
+          "yb.security.ldap.ldap_universe_sync",
+          ScopeType.UNIVERSE,
+          "To perform sync of user-groups between the Universe DB nodes and LDAP Server",
+          "If configured, this feature allows users to synchronise user groups configured"
+              + " on the upstream LDAP Server with user roles in YBDB nodes associated"
+              + " with the universe.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> notifyPeerOnRemoval =
+      new ConfKeyInfo<>(
+          "yb.gflags.notify_peer_of_removal_from_cluster",
+          ScopeType.UNIVERSE,
+          "Notify Peers in Cluster on Node Removal",
+          "Notify peers in cluster on a master node removal",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> alwaysWaitForDataMove =
+      new ConfKeyInfo<>(
+          "yb.always_wait_for_data_move",
+          ScopeType.UNIVERSE,
+          "Always wait for data move on remove node",
+          "Always run wait for data move during remove node",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> skipConfigBasedPreflightValidation =
+      new ConfKeyInfo<>(
+          "yb.backup.skip_config_based_preflight_validation",
+          ScopeType.UNIVERSE,
+          "Skip storage config backup/restore preflight validation",
+          "Skip preflight validation before backup/scheduled backups/incremental backups/restores."
+              + " This skips the storage config/success marker based validations done before B/R.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

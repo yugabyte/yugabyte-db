@@ -3,7 +3,6 @@ title: Tablespaces
 linkTitle: Tablespaces
 description: Tablespaces in YSQL
 headcontent: Control the placement of data
-image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
     identifier: going-beyond-sql-tablespaces
@@ -92,6 +91,7 @@ The topology is shown in the following illustration:
 By default, creating any tables in the preceding cluster spreads all of its data across all regions. Using tablespaces, you can constrain table data in a single zone. The placement policy is illustrated using the following diagram:
 
 ![Single Zone Table](/images/explore/tablespaces/single_zone_table.png)
+
 Create a tablespace outlining the preceding placement policy and a table associated with that tablespace:
 
 ```sql
@@ -103,9 +103,15 @@ CREATE TABLE single_zone_table (id INTEGER, field text)
   TABLESPACE us_east_1a_zone_tablespace SPLIT INTO 1 TABLETS;
 ```
 
+To view your tablespaces, you can enter the following command:
+
+```sql
+SELECT * FROM pg_tablespace;
+```
+
 Note from the preceding cluster configuration that the nodes in us-east-1a were 172.152.29.181, 172.152.27.126, and 172.152.22.180. By navigating to the table view in the YB-Master UI, you can verify that the tablet created for this table was indeed placed in us_east_1a_zone:
 
-![YB-Master UI: Tablets of single_zone_table](/images/explore/tablespaces/single_zone_table_tablet_distribution.png)
+![YB-Master UI: Tablets of the single zone table](/images/explore/tablespaces/single_zone_table_tablet_distribution.png)
 
 To measure the latencies incurred for INSERTs and SELECTs on this table, where the client is in us-east-1a zone, enter the following command:
 

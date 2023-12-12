@@ -6,41 +6,29 @@ import { useQuery } from 'react-query';
 import { useSelector } from 'react-redux';
 
 import { getAlertConfigurations } from '../../../actions/universe';
-import { queryLagMetricsForTable } from '../../../actions/xClusterReplication';
+import { fetchReplicationLag } from '../../../actions/xClusterReplication';
+import { alertConfigQueryKey, metricQueryKey } from '../../../redesign/helpers/api';
 import { YBButtonLink } from '../../common/forms/fields';
 import { YBErrorIndicator } from '../../common/indicators';
 import { MetricsPanelOld } from '../../metrics';
 import { CustomDatePicker } from '../../metrics/CustomDatePicker/CustomDatePicker';
 import {
+  AlertName,
   DEFAULT_METRIC_TIME_RANGE_OPTION,
   MetricName,
   METRIC_TIME_RANGE_OPTIONS,
-  REPLICATION_LAG_ALERT_NAME,
-  TABLE_LAG_GRAPH_EMPTY_METRIC,
-  TIME_RANGE_TYPE
+  PollingIntervalMs,
+  REPLICATION_LAG_GRAPH_EMPTY_METRIC,
+  TimeRangeType
 } from '../constants';
+import { getMaxNodeLagMetric, getMetricTimeRange } from '../ReplicationUtils';
 
-import {
-  MetricTimeRange,
-  MetricTimeRangeOption,
-  StandardMetricTimeRangeOption,
-  Metrics,
-  XClusterTable
-} from '../XClusterTypes';
+import { MetricTimeRangeOption, Metrics, XClusterTable } from '../XClusterTypes';
 
 import styles from './TableLagGraph.module.scss';
-import { getMaxNodeLagMetric } from '../ReplicationUtils';
 
-const TABLE_LAG_METRICS_REFETCH_INTERVAL = 60_000;
 const GRAPH_WIDTH = 850;
 const GRAPH_HEIGHT = 600;
-
-const getTimeRange = (metricTimeRangeOption: StandardMetricTimeRangeOption): MetricTimeRange => {
-  return {
-    startMoment: moment().subtract(metricTimeRangeOption.value, metricTimeRangeOption.type),
-    endMoment: moment()
-  };
-};
 
 interface Props {
   tableDetails: XClusterTable;
@@ -51,61 +39,60 @@ interface Props {
 }
 
 export const TableLagGraph: FC<Props> = ({
-  tableDetails: { tableName, tableUUID, streamId },
+  tableDetails: { tableName, tableUUID: tableId, streamId },
   universeUUID,
   queryEnabled,
   nodePrefix
 }) => {
-  const { currentUser } = useSelector((state: any) => state.customer);
-  const { prometheusQueryEnabled } = useSelector((state: any) => state.graph);
-
   const [selectedTimeRangeOption, setSelectedTimeRangeOption] = useState<MetricTimeRangeOption>(
     DEFAULT_METRIC_TIME_RANGE_OPTION
   );
-
   const [customStartMoment, setCustomStartMoment] = useState(
-    getTimeRange(DEFAULT_METRIC_TIME_RANGE_OPTION).startMoment
+    getMetricTimeRange(DEFAULT_METRIC_TIME_RANGE_OPTION).startMoment
   );
   const [customEndMoment, setCustomEndMoment] = useState(
-    getTimeRange(DEFAULT_METRIC_TIME_RANGE_OPTION).endMoment
+    getMetricTimeRange(DEFAULT_METRIC_TIME_RANGE_OPTION).endMoment
   );
-
+  const { currentUser } = useSelector((state: any) => state.customer);
+  const { prometheusQueryEnabled } = useSelector((state: any) => state.graph);
+  const isCustomTimeRange = selectedTimeRangeOption.type === TimeRangeType.CUSTOM;
+  const metricTimeRange = isCustomTimeRange
+    ? { startMoment: customStartMoment, endMoment: customEndMoment }
+    : getMetricTimeRange(selectedTimeRangeOption);
+  // At the moment, we don't support a custom time range which uses the 'current time' as the end time.
+  // Thus, all custom time ranges are fixed.
+  const isFixedTimeRange = isCustomTimeRange;
+  const replciationLagMetricRequestParams = {
+    streamId,
+    tableId,
+    nodePrefix,
+    start: metricTimeRange.startMoment.format('X'),
+    end: metricTimeRange.endMoment.format('X')
+  };
   const tableMetricsQuery = useQuery(
-    ['xClusterMetric', nodePrefix, tableUUID, streamId, selectedTimeRangeOption],
-    () => {
-      if (selectedTimeRangeOption.type === TIME_RANGE_TYPE.CUSTOM) {
-        return queryLagMetricsForTable(
-          streamId,
-          tableUUID,
-          nodePrefix,
-          customStartMoment.format('X'),
-          customEndMoment.format('X')
-        );
-      }
-
-      const timeRange = getTimeRange(selectedTimeRangeOption);
-
-      return queryLagMetricsForTable(
-        streamId,
-        tableUUID,
-        nodePrefix,
-        timeRange.startMoment.format('X'),
-        timeRange.endMoment.format('X')
-      );
-    },
+    isFixedTimeRange
+      ? metricQueryKey.detail(replciationLagMetricRequestParams)
+      : metricQueryKey.latest(
+          replciationLagMetricRequestParams,
+          selectedTimeRangeOption.value,
+          selectedTimeRangeOption.type
+        ),
+    () => fetchReplicationLag(replciationLagMetricRequestParams),
     {
       enabled: queryEnabled && !!nodePrefix,
-      refetchInterval: TABLE_LAG_METRICS_REFETCH_INTERVAL
+      // It is unnecessary to refetch metric traces when the interval is fixed as subsequent
+      // queries will return the same data.
+      staleTime: isFixedTimeRange ? Infinity : 0,
+      refetchInterval: isFixedTimeRange ? false : PollingIntervalMs.XCLUSTER_METRICS
     }
   );
 
-  const configurationFilter = {
-    name: REPLICATION_LAG_ALERT_NAME,
+  const alertConfigFilter = {
+    name: AlertName.REPLICATION_LAG,
     targetUuid: universeUUID
   };
-
-  const alertConfigQuery = useQuery(['alert', 'configurations', configurationFilter], () =>
-    getAlertConfigurations(configurationFilter)
+  const alertConfigQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
+    getAlertConfigurations(alertConfigFilter)
   );
   const maxAcceptableLag = Math.min(
     ...alertConfigQuery.data.map(
@@ -171,7 +158,7 @@ export const TableLagGraph: FC<Props> = ({
     );
   });
 
-  const graphMetric = _.cloneDeep(tableMetricsQuery.data ?? TABLE_LAG_GRAPH_EMPTY_METRIC);
+  const graphMetric = _.cloneDeep(tableMetricsQuery.data ?? REPLICATION_LAG_GRAPH_EMPTY_METRIC);
   setTracesToPlot(graphMetric);
 
   return (
@@ -180,10 +167,10 @@ export const TableLagGraph: FC<Props> = ({
         <YBButtonLink
           btnIcon={'fa fa-refresh'}
           btnClass="btn btn-default refresh-btn"
-          disabled={selectedTimeRangeOption.type === TIME_RANGE_TYPE.CUSTOM}
+          disabled={selectedTimeRangeOption.type === TimeRangeType.CUSTOM}
           onClick={tableMetricsQuery.refetch}
         />
-        {selectedTimeRangeOption.type === TIME_RANGE_TYPE.CUSTOM && (
+        {selectedTimeRangeOption.type === TimeRangeType.CUSTOM && (
           <CustomDatePicker
             startMoment={customStartMoment}
             endMoment={customEndMoment}
@@ -204,7 +191,7 @@ export const TableLagGraph: FC<Props> = ({
       <MetricsPanelOld
         className={styles.graphContainer}
         currentUser={currentUser}
-        metricKey={`${MetricName.TSERVER_ASYNC_REPLICATION_LAG_METRIC}_${tableName}`}
+        metricKey={`${MetricName.TSERVER_ASYNC_REPLICATION_LAG}_${tableName}`}
         metric={_.cloneDeep(graphMetric.tserver_async_replication_lag_micros)}
         width={GRAPH_WIDTH}
         height={GRAPH_HEIGHT}

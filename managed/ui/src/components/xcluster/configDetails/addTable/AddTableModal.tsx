@@ -9,8 +9,6 @@ import { TableTypeLabel, Universe, YBTable } from '../../../../redesign/helpers/
 import { assertUnreachableCase, handleServerError } from '../../../../utils/errorHandlingUtils';
 import { YBButton, YBModal } from '../../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
-import { isYbcEnabledUniverse } from '../../../../utils/UniverseUtils';
-import { ParallelThreads } from '../../../backupv2/common/BackupUtils';
 import { YBModalForm } from '../../../common/forms';
 import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
 import {
@@ -18,16 +16,19 @@ import {
   XClusterConfigAction,
   XClusterConfigType
 } from '../../constants';
-import { getTablesForBootstrapping, parseFloatIfDefined } from '../../ReplicationUtils';
+import {
+  getTablesForBootstrapping,
+  getXClusterConfigTableType,
+  parseFloatIfDefined
+} from '../../ReplicationUtils';
 import {
   editXClusterConfigTables,
   fetchUniverseDiskUsageMetric,
   fetchTaskUntilItCompletes,
   fetchTablesInUniverse
 } from '../../../../actions/xClusterReplication';
-import { TableSelect } from '../../common/tableSelect/TableSelect';
-
-import { XClusterConfig, XClusterTableType } from '../..';
+import { TableSelect } from '../../sharedComponents/tableSelect/TableSelect';
+import { XClusterConfig } from '../../dtos';
 
 import styles from './AddTableModal.module.scss';
 
@@ -35,28 +36,26 @@ export interface AddTableFormValues {
   tableUUIDs: string[];
   // Bootstrap fields
   storageConfig: { label: string; name: string; regions: any[]; value: string };
-  parallelThreads: number;
 }
 
 export interface AddTableFormErrors {
   tableUUIDs: { title: string; body: string };
   // Bootstrap fields
   storageConfig: string;
-  parallelThreads: string;
 }
 
 export interface AddTableFormWarnings {
   tableUUIDs?: { title: string; body: string };
   // Bootstrap fields
   storageConfig?: string;
-  parallelThreads?: string;
 }
 
 interface AddTableModalProps {
   isVisible: boolean;
   onHide: () => void;
   xClusterConfig: XClusterConfig;
-  configTableType: XClusterTableType;
+
+  isDrInterface?: boolean;
 }
 
 const MODAL_TITLE = 'Add Tables to Replication';
@@ -71,9 +70,7 @@ export type FormStep = typeof FormStep[keyof typeof FormStep];
 const FIRST_FORM_STEP = FormStep.SELECT_TABLES;
 
 const INITIAL_VALUES: Partial<AddTableFormValues> = {
-  tableUUIDs: [],
-  // Bootstrap fields
-  parallelThreads: ParallelThreads.XCLUSTER_DEFAULT
+  tableUUIDs: []
 };
 
 /**
@@ -83,7 +80,7 @@ export const AddTableModal = ({
   isVisible,
   onHide,
   xClusterConfig,
-  configTableType
+  isDrInterface = false
 }: AddTableModalProps) => {
   const [currentStep, setCurrentStep] = useState<FormStep>(FIRST_FORM_STEP);
   const [formWarnings, setFormWarnings] = useState<AddTableFormWarnings>();
@@ -97,17 +94,19 @@ export const AddTableModal = ({
   const formik = useRef({} as FormikProps<AddTableFormValues>);
 
   const sourceUniverseQuery = useQuery<Universe>(
-    ['universe', xClusterConfig.sourceUniverseUUID],
+    universeQueryKey.detail(xClusterConfig.sourceUniverseUUID),
     () => api.fetchUniverse(xClusterConfig.sourceUniverseUUID)
   );
 
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
     universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, {
-      excludeColocatedTables: true
+      excludeColocatedTables: true,
+      xClusterSupportedOnly: true
     }),
     () =>
       fetchTablesInUniverse(xClusterConfig.sourceUniverseUUID, {
-        excludeColocatedTables: true
+        excludeColocatedTables: true,
+        xClusterSupportedOnly: true
       }).then((response) => response.data)
   );
 
@@ -118,10 +117,7 @@ export const AddTableModal = ({
           ? {
               tables: bootstrapRequiredTableUUIDs,
               backupRequestParams: {
-                storageConfigUUID: formValues.storageConfig.value,
-                parallelism: formValues.parallelThreads,
-                sse: formValues.storageConfig.name === 'S3',
-                universeUUID: null
+                storageConfigUUID: formValues.storageConfig.value
               }
             }
           : undefined;
@@ -133,18 +129,14 @@ export const AddTableModal = ({
         closeModal();
 
         fetchTaskUntilItCompletes(
-          response.data.taskUUID,
+          response.taskUUID,
           (err: boolean) => {
             if (err) {
               toast.error(
                 <span className={styles.alertMsg}>
                   <i className="fa fa-exclamation-circle" />
                   <span>{`Add table to xCluster config failed: ${xClusterConfig.name}`}</span>
-                  <a
-                    href={`/tasks/${response.data.taskUUID}`}
-                    rel="noopener noreferrer"
-                    target="_blank"
-                  >
+                  <a href={`/tasks/${response.taskUUID}`} rel="noopener noreferrer" target="_blank">
                     View Details
                   </a>
                 </span>
@@ -247,7 +239,12 @@ export const AddTableModal = ({
     );
   }
 
-  if (sourceUniverseQuery.isError || sourceUniverseTablesQuery.isError) {
+  const xClusterConfigTableType = getXClusterConfigTableType(xClusterConfig);
+  if (
+    sourceUniverseQuery.isError ||
+    sourceUniverseTablesQuery.isError ||
+    !xClusterConfigTableType
+  ) {
     return (
       <YBModal
         size="large"
@@ -305,26 +302,26 @@ export const AddTableModal = ({
             return (
               <>
                 <div className={styles.formInstruction}>
-                  {`1. Select the ${TableTypeLabel[configTableType]} tables you want to add to the xCluster configuration.`}
+                  {`1. Select the ${TableTypeLabel[xClusterConfigTableType]} tables you want to add to the xCluster configuration.`}
                 </div>
                 <TableSelect
                   {...{
                     configAction: XClusterConfigAction.ADD_TABLE,
-                    xClusterConfigUUID: xClusterConfig.uuid,
-                    sourceUniverseUUID: xClusterConfig.sourceUniverseUUID,
-                    targetUniverseUUID: xClusterConfig.targetUniverseUUID,
-                    currentStep,
-                    setCurrentStep,
+                    isDrInterface,
+                    isFixedTableType: true,
+                    initialNamespaceUuids: [],
+                    selectedNamespaceUuids: selectedKeyspaces,
                     selectedTableUUIDs: formik.current.values.tableUUIDs,
+                    selectionError: errors.tableUUIDs,
+                    selectionWarning: formWarnings?.tableUUIDs,
+                    setSelectedNamespaceUuids: setSelectedKeyspaces,
                     setSelectedTableUUIDs: (tableUUIDs: string[]) =>
                       setSelectedTableUUIDs(tableUUIDs, formik.current),
-                    tableType: configTableType,
-                    isFixedTableType: true,
                     setTableType: (_) => null,
-                    selectedKeyspaces,
-                    setSelectedKeyspaces,
-                    selectionError: errors.tableUUIDs,
-                    selectionWarning: formWarnings?.tableUUIDs
+                    sourceUniverseUUID: xClusterConfig.sourceUniverseUUID,
+                    tableType: xClusterConfigTableType,
+                    targetUniverseUUID: xClusterConfig.targetUniverseUUID,
+                    xClusterConfigUUID: xClusterConfig.uuid
                   }}
                 />
               </>
@@ -434,13 +431,6 @@ const validateForm = async (
       const errors: Partial<AddTableFormErrors> = {};
       if (!values.storageConfig) {
         errors.storageConfig = 'Backup storage configuration is required.';
-      }
-      const shouldValidateParallelThread =
-        values.parallelThreads && isYbcEnabledUniverse(sourceUniverse?.universeDetails);
-      if (shouldValidateParallelThread && values.parallelThreads > ParallelThreads.MAX) {
-        errors.parallelThreads = `Parallel threads must be less than or equal to ${ParallelThreads.MAX}`;
-      } else if (shouldValidateParallelThread && values.parallelThreads < ParallelThreads.MIN) {
-        errors.parallelThreads = `Parallel threads must be greater than or equal to ${ParallelThreads.MIN}`;
       }
 
       throw errors;

@@ -6,14 +6,15 @@ import { isNonAvailable, isNotHidden, showOrRedirect } from '../../utils/LayoutU
 import UserProfileForm from './UserProfileForm';
 import { YBLoading } from '../common/indicators';
 import { getPromiseState } from '../../utils/PromiseUtils';
+import { isRbacEnabled, RBAC_USER_MNG_ROUTE } from '../../redesign/features/rbac/common/RbacUtils';
 
 const BannerContent = () => (
   <>
     <b>Note!</b> “Users” page has moved. You can now{' '}
-    <Link className="p-page-banner-link" to="/admin/user-management">
+    <Link className="p-page-banner-link" to={ isRbacEnabled() ? RBAC_USER_MNG_ROUTE : "/admin/user-management"}>
       access Users page
     </Link>{' '}
-    from the User Management section under Admin menu.
+    from the {isRbacEnabled ? "Access" : "User"} Management section under Admin menu.
   </>
 );
 
@@ -50,9 +51,10 @@ export default class CustomerProfile extends Component {
         (c) => c.key === 'yb.security.oidc_feature_enhancements'
       ).value === 'true';
 
-    if (getPromiseState(customer).isLoading() || getPromiseState(customer).isInit()) {
+    if (!isRbacEnabled() && (getPromiseState(customer).isLoading() || getPromiseState(customer).isInit())) {
       return <YBLoading />;
     }
+
     showOrRedirect(customer.data.features, 'main.profile');
 
     let profileUpdateStatus = <span />;

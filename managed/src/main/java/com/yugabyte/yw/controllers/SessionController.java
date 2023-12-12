@@ -32,6 +32,9 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.password.PasswordPolicyService;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
+import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.controllers.handlers.SessionHandler;
 import com.yugabyte.yw.controllers.handlers.ThirdPartyLoginHandler;
@@ -42,11 +45,20 @@ import com.yugabyte.yw.models.Audit.ActionType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.Users.Role;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigPasswordPolicyData;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.rbac.ResourceGroup;
+import com.yugabyte.yw.models.rbac.Role;
+import com.yugabyte.yw.models.rbac.RoleBinding;
+import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
+import db.migration.default_.common.R__Sync_System_Roles;
 import io.ebean.annotation.Transactional;
 import io.swagger.annotations.*;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
@@ -119,6 +131,8 @@ public class SessionController extends AbstractPlatformController {
 
   @Inject private RuntimeConfGetter confGetter;
 
+  @Inject private RoleBindingUtil roleBindingUtil;
+
   private final ApiHelper apiHelper;
 
   private final RuntimeConfigFactory runtimeConfigFactory;
@@ -170,10 +184,10 @@ public class SessionController extends AbstractPlatformController {
   public Result getSessionInfo(Http.Request request) {
     Users user = CommonUtils.getUserFromContext();
     Customer cust = Customer.get(user.getCustomerUUID());
-    Cookie authCookie = request.cookie(AUTH_TOKEN);
+    Optional<Cookie> authCookie = request.cookie(AUTH_TOKEN);
     SessionInfo sessionInfo =
         new SessionInfo(
-            authCookie == null ? null : authCookie.value(),
+            authCookie.isPresent() ? authCookie.get().value() : null,
             user.getOrCreateApiToken(),
             user.getApiTokenVersion(),
             cust.getUuid(),
@@ -204,7 +218,12 @@ public class SessionController extends AbstractPlatformController {
 
   @ApiOperation(value = "getLogs", response = LogData.class)
   @With(TokenAuthenticator.class)
-  @AuthzPath
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result getLogs(Integer maxLines) {
     String appHomeDir = config.getString("application.home");
     String logDir = config.getString("log.override.path");
@@ -232,7 +251,12 @@ public class SessionController extends AbstractPlatformController {
 
   @ApiOperation(value = "getFilteredLogs", produces = "text/plain", response = String.class)
   @With(TokenAuthenticator.class)
-  @AuthzPath
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result getFilteredLogs(
       Integer maxLines,
       String universeName,
@@ -306,7 +330,7 @@ public class SessionController extends AbstractPlatformController {
     String authToken = user.createAuthToken();
     SessionInfo sessionInfo =
         new SessionInfo(authToken, null, null, cust.getUuid(), user.getUuid());
-    RequestContext.put(IS_AUDITED, true);
+    RequestContext.update(IS_AUDITED, val -> val.set(true));
     Audit.create(
         user,
         request.path(),
@@ -354,7 +378,7 @@ public class SessionController extends AbstractPlatformController {
             user.getApiTokenVersion(),
             cust.getUuid(),
             user.getUuid());
-    RequestContext.put(IS_AUDITED, true);
+    RequestContext.update(IS_AUDITED, val -> val.set(true));
     Audit.create(
         user,
         request.path(),
@@ -390,7 +414,7 @@ public class SessionController extends AbstractPlatformController {
 
     Customer cust = Customer.get(user.getCustomerUUID());
 
-    RequestContext.put(IS_AUDITED, true);
+    RequestContext.update(IS_AUDITED, val -> val.set(true));
     Audit.create(
         user,
         request.path(),
@@ -509,7 +533,7 @@ public class SessionController extends AbstractPlatformController {
       SessionInfo sessionInfo =
           new SessionInfo(
               null, apiToken, user.getApiTokenVersion(), user.getCustomerUUID(), user.getUuid());
-      RequestContext.put(IS_AUDITED, true);
+      RequestContext.update(IS_AUDITED, val -> val.set(true));
       Audit.create(
           user,
           request.path(),
@@ -534,6 +558,7 @@ public class SessionController extends AbstractPlatformController {
   // Any changes to security should be authenticated.
   @ApiOperation(value = "UI_ONLY", hidden = true)
   @With(TokenAuthenticator.class)
+  @AuthzPath
   public Result set_security(UUID customerUUID, Http.Request request) {
     Form<SetSecurityFormData> formData =
         formFactory.getFormDataOrBadRequest(request, SetSecurityFormData.class);
@@ -569,6 +594,7 @@ public class SessionController extends AbstractPlatformController {
 
   @With(TokenAuthenticator.class)
   @ApiOperation(value = "UI_ONLY", hidden = true, response = SessionInfo.class)
+  @AuthzPath
   public Result api_token(UUID customerUUID, Long apiTokenVersion, Http.Request request) {
     Users user = CommonUtils.getUserFromContext();
 
@@ -642,15 +668,16 @@ public class SessionController extends AbstractPlatformController {
     throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Failed to get validation policy");
   }
 
+  @Transactional
   private Result registerCustomer(
       CustomerRegisterFormData data,
       boolean isSuper,
       boolean generateApiToken,
       Http.Request request) {
     Customer cust = Customer.create(data.getCode(), data.getName());
-    Role role = Role.Admin;
+    Users.Role role = Users.Role.Admin;
     if (isSuper) {
-      role = Role.SuperAdmin;
+      role = Users.Role.SuperAdmin;
     }
     passwordPolicyService.checkPasswordPolicy(cust.getUuid(), data.getPassword());
 
@@ -658,6 +685,35 @@ public class SessionController extends AbstractPlatformController {
     alertConfigurationService.createDefaultConfigs(cust);
 
     Users user = Users.createPrimary(data.getEmail(), data.getPassword(), role, cust.getUuid());
+
+    boolean useNewAuthz =
+        runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.rbac.use_new_authz");
+
+    if (useNewAuthz) {
+      // Sync all the built-in roles when a new customer is created.
+      // After the Customer.create() step.
+      R__Sync_System_Roles.syncSystemRoles();
+      Role newRbacRole = Role.get(cust.getUuid(), role.name());
+
+      // Now add the role binding for the above user.
+      ResourceGroup resourceGroup =
+          ResourceGroup.getSystemDefaultResourceGroup(cust.getUuid(), user);
+      // Create a single role binding for the user.
+      RoleBinding createdRoleBinding =
+          roleBindingUtil.createRoleBinding(
+              user.getUuid(), newRbacRole.getRoleUUID(), RoleBindingType.System, resourceGroup);
+
+      log.info(
+          "Created new system role binding for user '{}' (email '{}') of new customer '{}', "
+              + "with role '{}' (name '{}'), and default role binding '{}'.",
+          user.getUuid(),
+          user.getEmail(),
+          cust.getUuid(),
+          newRbacRole.getRoleUUID(),
+          newRbacRole.getName(),
+          createdRoleBinding.toString());
+    }
+
     String authToken = user.createAuthToken();
     String apiToken = generateApiToken ? user.getOrCreateApiToken() : null;
     SessionInfo sessionInfo =
@@ -683,6 +739,7 @@ public class SessionController extends AbstractPlatformController {
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
   @With(TokenAuthenticator.class)
+  @AuthzPath
   public Result logout() {
     Users user = CommonUtils.getUserFromContext();
     if (user != null) {
@@ -702,6 +759,7 @@ public class SessionController extends AbstractPlatformController {
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
   @With(TokenAuthenticator.class)
+  @AuthzPath
   public CompletionStage<Result> proxyRequest(
       UUID universeUUID, String requestUrl, Http.Request request) {
 
@@ -790,8 +848,19 @@ public class SessionController extends AbstractPlatformController {
     private final String htmlMessage;
   }
 
-  @ApiOperation(value = "getAdminNotifications", response = AdminNotifications.class)
+  @ApiOperation(
+      value =
+          "WARNING: This is a preview API that could change."
+              + " Returns the current list of notifications for admin",
+      response = AdminNotifications.class)
   @With(TokenAuthenticator.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.0.0")
   public Result getAdminNotifications(UUID customerUUID) {
     // Validate Customer UUID
     Customer.getOrBadRequest(customerUUID);

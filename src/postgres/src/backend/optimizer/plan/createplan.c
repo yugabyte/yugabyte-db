@@ -190,7 +190,9 @@ static YbSeqScan *make_yb_seqscan(List *qptlist,
 				List *local_quals,
 				List *yb_pushdown_quals,
 				List *yb_pushdown_colrefs,
-				Index scanrelid);
+				Index scanrelid,
+				double yb_estimated_num_nexts,
+				double yb_estimated_num_seeks);
 static SampleScan *make_samplescan(List *qptlist, List *qpqual, Index scanrelid,
 				TableSampleClause *tsc);
 static IndexScan *make_indexscan(List *qptlist, List *qpqual,
@@ -200,15 +202,15 @@ static IndexScan *make_indexscan(List *qptlist, List *qpqual,
 			   List *indexqual, List *indexqualorig,
 			   List *indexorderby, List *indexorderbyorig,
 			   List *indexorderbyops, List *indextlist,
-			   ScanDirection indexscandir, double estimated_num_nexts,
-			   double estimated_num_seeks, YbIndexPathInfo yb_path_info);
+			   ScanDirection indexscandir, double yb_estimated_num_nexts,
+			   double yb_estimated_num_seeks, YbIndexPathInfo yb_path_info);
 static IndexOnlyScan *make_indexonlyscan(List *qptlist, List *qpqual,
 				   List *yb_pushdown_colrefs, List *yb_pushdown_quals,
 				   Index scanrelid, Oid indexid,
 				   List *indexqual, List *indexorderby,
 				   List *indextlist,
-				   ScanDirection indexscandir, double estimated_num_nexts,
-				   double estimated_num_seeks);
+				   ScanDirection indexscandir, double yb_estimated_num_nexts,
+				   double yb_estimated_num_seeks);
 static BitmapIndexScan *make_bitmap_indexscan(Index scanrelid, Oid indexid,
 					  List *indexqual,
 					  List *indexqualorig);
@@ -1011,6 +1013,13 @@ use_physical_tlist(PlannerInfo *root, Path *path, int flags)
 	 * create_append_plan instructs its children to return an exact tlist).
 	 */
 	if (rel->reloptkind != RELOPT_BASEREL)
+		return false;
+
+	/*
+	 * Exact tlist is beneficial for YB relations, in this case only referenced
+	 * columns are fetched from remote tserver.
+	 */
+	if (rel->is_yb_relation)
 		return false;
 
 	/*
@@ -3464,7 +3473,9 @@ create_seqscan_plan(PlannerInfo *root, Path *best_path,
 	if (best_path->parent->is_yb_relation)
 		scan_plan = (SeqScan *) make_yb_seqscan(tlist, local_quals,
 												remote_quals, colrefs,
-												scan_relid);
+												scan_relid,
+												best_path->yb_estimated_num_nexts,
+												best_path->yb_estimated_num_seeks);
 	else
 		scan_plan = make_seqscan(tlist, local_quals, scan_relid);
 
@@ -3818,8 +3829,8 @@ create_indexscan_plan(PlannerInfo *root,
 												fixed_indexorderbys,
 												best_path->indexinfo->indextlist,
 												best_path->indexscandir,
-												best_path->estimated_num_nexts,
-												best_path->estimated_num_seeks);
+												best_path->yb_estimated_num_nexts,
+												best_path->yb_estimated_num_seeks);
 		index_only_scan_plan->yb_indexqual_for_recheck =
 			YbBuildIndexqualForRecheck(fixed_indexquals, best_path->indexinfo);
 		index_only_scan_plan->yb_distinct_prefixlen =
@@ -3845,8 +3856,8 @@ create_indexscan_plan(PlannerInfo *root,
 										 indexorderbyops,
 										 best_path->indexinfo->indextlist,
 										 best_path->indexscandir,
-										 best_path->estimated_num_nexts,
-										 best_path->estimated_num_seeks,
+										 best_path->yb_estimated_num_nexts,
+										 best_path->yb_estimated_num_seeks,
 										 best_path->yb_index_path_info);
 		index_scan_plan->yb_distinct_prefixlen =
 			best_path->yb_index_path_info.yb_distinct_prefixlen;
@@ -4887,6 +4898,11 @@ create_nestloop_plan(PlannerInfo *root,
 
 	if (yb_is_batched)
 	{
+		/* No rels supplied to inner from outer should be unbatched. */
+		Relids inner_unbatched =
+			YB_PATH_REQ_OUTER_UNBATCHED(best_path->innerjoinpath);
+		Assert(!bms_overlap(inner_unbatched, outerrelids));
+		(void)inner_unbatched;
 		/* Add the available batched outer rels. */
 		root->yb_availBatchedRelids =
 			lcons(outerrelids, root->yb_availBatchedRelids);
@@ -4922,14 +4938,14 @@ create_nestloop_plan(PlannerInfo *root,
 			}
 
 			if (rinfo->can_join &&
-				 OidIsValid(rinfo->hashjoinoperator) &&
-				 yb_can_batch_rinfo(rinfo, batched_outerrelids, inner_relids))
+				OidIsValid(rinfo->hashjoinoperator) &&
+				yb_can_batch_rinfo(rinfo, batched_outerrelids, inner_relids))
 			{
 				/* if nlhash can process this */
 				Assert(is_opclause(rinfo->clause));
 				RestrictInfo *batched_rinfo =
-					yb_get_batched_restrictinfo(rinfo,batched_outerrelids,
-											 			 inner_relids);
+					yb_get_batched_restrictinfo(rinfo, batched_outerrelids,
+											 	inner_relids);
 
 				hashOpno = ((OpExpr *) batched_rinfo->clause)->opno;
 			}
@@ -5573,19 +5589,21 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 			Oid scalar_type = InvalidOid;
 			Oid collid = InvalidOid;
 
-			Expr *inner_expr = (Expr*) linitial(opexpr->args);
+			Expr *inner_expr = (Expr *) linitial(opexpr->args);
 			saop->args = lappend(saop->args, inner_expr);
 
-			if(IsA(inner_expr, RowExpr))
+			Expr *outer_expr = (Expr *) lsecond(opexpr->args);
+			outer_expr = ((YbBatchedExpr *) outer_expr)->orig_expr;
+
+			if(IsA(outer_expr, RowExpr))
 			{
-				RowExpr *rowexpr = (RowExpr *) inner_expr;
+				RowExpr *rowexpr = (RowExpr *) outer_expr;
 				scalar_type = rowexpr->row_typeid;
 			}
 			else
 			{
-				Assert(IsA(inner_expr, Var) || IsA(inner_expr, RelabelType));
-				scalar_type = exprType((Node*) inner_expr);
-				collid = exprCollation((Node*)inner_expr);
+				scalar_type = exprType((Node*) outer_expr);
+				collid = exprCollation((Node*) outer_expr);
 			}
 
 			ArrayExpr *arrexpr = makeNode(ArrayExpr);
@@ -6372,7 +6390,9 @@ make_yb_seqscan(List *qptlist,
 				List *local_quals,
 				List *yb_pushdown_quals,
 				List *yb_pushdown_colrefs,
-				Index scanrelid)
+				Index scanrelid,
+				double yb_estimated_num_nexts,
+				double yb_estimated_num_seeks)
 {
 	YbSeqScan  *node = makeNode(YbSeqScan);
 	Plan	   *plan = &node->scan.plan;
@@ -6382,6 +6402,8 @@ make_yb_seqscan(List *qptlist,
 	plan->lefttree = NULL;
 	plan->righttree = NULL;
 	node->scan.scanrelid = scanrelid;
+	node->yb_estimated_num_nexts = yb_estimated_num_nexts;
+	node->yb_estimated_num_seeks = yb_estimated_num_seeks;
 	node->yb_pushdown.quals = yb_pushdown_quals;
 	node->yb_pushdown.colrefs = yb_pushdown_colrefs;
 
@@ -6423,8 +6445,8 @@ make_indexscan(List *qptlist,
 			   List *indexorderbyops,
 			   List *indextlist,
 			   ScanDirection indexscandir,
-			   double estimated_num_nexts,
-			   double estimated_num_seeks,
+			   double yb_estimated_num_nexts,
+			   double yb_estimated_num_seeks,
 			   YbIndexPathInfo yb_path_info)
 {
 	IndexScan  *node = makeNode(IndexScan);
@@ -6443,8 +6465,8 @@ make_indexscan(List *qptlist,
 	node->indexorderbyops = indexorderbyops;
 	node->indextlist = indextlist;
 	node->indexorderdir = indexscandir;
-	node->estimated_num_nexts = estimated_num_nexts;
-	node->estimated_num_seeks = estimated_num_seeks;
+	node->yb_estimated_num_nexts = yb_estimated_num_nexts;
+	node->yb_estimated_num_seeks = yb_estimated_num_seeks;
 	node->yb_rel_pushdown.colrefs = yb_rel_pushdown_colrefs;
 	node->yb_rel_pushdown.quals = yb_rel_pushdown_quals;
 	node->yb_idx_pushdown.colrefs = yb_idx_pushdown_colrefs;
@@ -6465,8 +6487,8 @@ make_indexonlyscan(List *qptlist,
 				   List *indexorderby,
 				   List *indextlist,
 				   ScanDirection indexscandir,
-				   double estimated_num_nexts,
-				   double estimated_num_seeks)
+				   double yb_estimated_num_nexts,
+				   double yb_estimated_num_seeks)
 {
 	IndexOnlyScan *node = makeNode(IndexOnlyScan);
 	Plan	   *plan = &node->scan.plan;
@@ -6483,8 +6505,8 @@ make_indexonlyscan(List *qptlist,
 	node->indexorderdir = indexscandir;
 	node->yb_pushdown.colrefs = yb_pushdown_colrefs;
 	node->yb_pushdown.quals = yb_pushdown_quals;
-	node->estimated_num_nexts = estimated_num_nexts;
-	node->estimated_num_seeks = estimated_num_seeks;
+	node->yb_estimated_num_nexts = yb_estimated_num_nexts;
+	node->yb_estimated_num_seeks = yb_estimated_num_seeks;
 
 	return node;
 }

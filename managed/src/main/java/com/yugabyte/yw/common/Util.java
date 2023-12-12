@@ -32,9 +32,18 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModel;
-import java.io.*;
+import java.io.BufferedInputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
 import java.math.BigDecimal;
-import java.net.*;
+import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.MalformedURLException;
+import java.net.Socket;
+import java.net.URL;
+import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -44,7 +53,18 @@ import java.security.MessageDigest;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.Duration;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Base64;
+import java.util.Collection;
+import java.util.Date;
+import java.util.HashMap;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Map;
+import java.util.Optional;
+import java.util.Set;
+import java.util.TimeZone;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.regex.Matcher;
@@ -61,6 +81,7 @@ import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.archivers.tar.TarArchiveOutputStream;
 import org.apache.commons.io.IOUtils;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.validator.routines.InetAddressValidator;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -93,6 +114,7 @@ public class Util {
   public static final String CUSTOMERS = "customers";
   public static final String UNIVERSES = "universes";
   public static final String USERS = "users";
+  public static final String ROLE = "role";
   public static final String UNIVERSE_UUID = "universeUUID";
 
   public static final String AVAILABLE_MEMORY = "MemAvailable";
@@ -142,6 +164,7 @@ public class Util {
   public static void setYbaVersion(String version) {
     YBA_VERSION = version;
   }
+
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
    */
@@ -863,7 +886,7 @@ public class Util {
   }
 
   public static String getYbcNodeIp(Universe universe) {
-    List<NodeDetails> nodeList = universe.getLiveTServersInPrimaryCluster();
+    List<NodeDetails> nodeList = universe.getRunningTserversInPrimaryCluster();
     return nodeList.get(0).cloudInfo.private_ip;
   }
 
@@ -878,7 +901,8 @@ public class Util {
     MessageDigest md = MessageDigest.getInstance(checksumAlgorithm);
     try (DigestInputStream dis =
         new DigestInputStream(new FileInputStream(filePath.toFile()), md)) {
-      while (dis.read() != -1) ; // Empty loop to clear the data
+      while (dis.read() != -1)
+        ; // Empty loop to clear the data
       md = dis.getMessageDigest();
       // Convert the digest to String.
       StringBuilder result = new StringBuilder();
@@ -993,5 +1017,19 @@ public class Util {
       }
     }
     return dataDirPath;
+  }
+
+  public static String extractRegexValue(String input, String patternStr) {
+    Pattern pattern = Pattern.compile(patternStr);
+    Matcher matcher = pattern.matcher(input);
+    if (matcher.find()) {
+      return matcher.group(1);
+    }
+    return null;
+  }
+
+  public static boolean isIpAddress(String maybeIp) {
+    InetAddressValidator ipValidator = InetAddressValidator.getInstance();
+    return ipValidator.isValidInet4Address(maybeIp) || ipValidator.isValidInet6Address(maybeIp);
   }
 }

@@ -12,7 +12,6 @@ package com.yugabyte.yw.common;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
-import com.google.protobuf.ByteString;
 import com.yugabyte.yw.controllers.RequestContext;
 import com.yugabyte.yw.controllers.TokenAuthenticator;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -20,12 +19,9 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.UUID;
 import org.apache.commons.io.IOUtils;
-import org.yb.VersionInfo;
-import org.yb.WireProtocol;
-import org.yb.client.GetStatusResponse;
-import org.yb.server.ServerBase;
 import play.libs.Json;
 
 public class TestUtils {
@@ -68,25 +64,10 @@ public class TestUtils {
     RequestContext.put(TokenAuthenticator.USER, new UserWithFeatures().setUser(user));
   }
 
-  public static GetStatusResponse prepareGetStatusResponse(
-      String versionNumber, String buildNumber) {
-    return new GetStatusResponse(
-        0,
-        "uuid",
-        ServerBase.GetStatusResponsePB.newBuilder()
-            .setStatus(
-                ServerBase.ServerStatusPB.newBuilder()
-                    .setNodeInstance(
-                        WireProtocol.NodeInstancePB.newBuilder()
-                            .setInstanceSeqno(1)
-                            .setPermanentUuid(ByteString.copyFromUtf8("ab")))
-                    .setVersionInfo(
-                        VersionInfo.VersionInfoPB.newBuilder()
-                            .setVersionNumber(versionNumber)
-                            .setBuildNumber(buildNumber)
-                            .build())
-                    .build())
-            .build());
+  public static String generateLongString(int length) {
+    char[] chars = new char[length];
+    Arrays.fill(chars, 'A');
+    return new String(chars);
   }
 
   public static UniverseDefinitionTaskParams.UserIntentOverrides composeAZOverrides(

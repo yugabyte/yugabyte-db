@@ -11,11 +11,15 @@ import com.yugabyte.yw.forms.NodeAgentForm;
 import com.yugabyte.yw.forms.NodeAgentResp;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
+import com.yugabyte.yw.forms.PlatformResults.YBPTask;
+import com.yugabyte.yw.forms.ReinstallNodeAgentForm;
 import com.yugabyte.yw.forms.paging.NodeAgentPagedApiQuery;
 import com.yugabyte.yw.forms.paging.NodeAgentPagedApiResponse;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.NodeAgent;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.paging.NodeAgentPagedQuery;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
@@ -131,6 +135,12 @@ public class NodeAgentController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.NodeAgentForm",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result updateState(UUID customerUuid, UUID nodeUuid, Http.Request request) {
     NodeAgentForm payload = parseJsonAndValidate(request, NodeAgentForm.class);
     NodeAgent nodeAgent = nodeAgentHandler.updateState(customerUuid, nodeUuid, payload);
@@ -148,6 +158,12 @@ public class NodeAgentController extends AuthenticatedController {
       response = YBPSuccess.class,
       hidden = true,
       nickname = "UnregisterNodeAgent")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result unregister(UUID customerUuid, UUID nodeUuid, Http.Request request) {
     NodeAgent.getOrBadRequest(customerUuid, nodeUuid);
     nodeAgentHandler.unregister(nodeUuid);
@@ -165,6 +181,12 @@ public class NodeAgentController extends AuthenticatedController {
       response = String.class,
       produces = "application/gzip, application/x-sh",
       nickname = "DownloadNodeAgentInstaller")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result download(String downloadType, String os, String arch) {
     NodeAgentDownloadFile fileToDownload =
         nodeAgentHandler.validateAndGetDownloadFile(downloadType, os, arch);
@@ -172,5 +194,43 @@ public class NodeAgentController extends AuthenticatedController {
         .withHeader(
             "Content-Disposition", "attachment; filename=" + fileToDownload.getContentType())
         .as(fileToDownload.getContentType());
+  }
+
+  @ApiOperation(
+      value = "Reinstall Node Agent",
+      response = NodeAgent.class,
+      nickname = "ReinstallNodeAgent")
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "ReinstallNodeAgentForm",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.ReinstallNodeAgentForm",
+          required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  public Result reinstall(UUID customerUuid, UUID universeUuid, Http.Request request) {
+    Customer customer = Customer.getOrBadRequest(customerUuid);
+    Universe universe = Universe.getOrBadRequest(universeUuid, customer);
+    ReinstallNodeAgentForm payload = parseJsonAndValidate(request, ReinstallNodeAgentForm.class);
+    UUID taskUuid = nodeAgentHandler.reinstall(customerUuid, universeUuid, payload);
+    CustomerTask.create(
+        customer,
+        universeUuid,
+        taskUuid,
+        CustomerTask.TargetType.NodeAgent,
+        CustomerTask.TaskType.Install,
+        universe.getName());
+    auditService()
+        .createAuditEntry(
+            request,
+            Audit.TargetType.Universe,
+            universeUuid.toString(),
+            Audit.ActionType.Delete,
+            taskUuid);
+    return new YBPTask(taskUuid, universeUuid).asResult();
   }
 }

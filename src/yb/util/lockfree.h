@@ -108,6 +108,12 @@ class MPSCQueue {
     return result;
   }
 
+  void Drain() {
+    while (auto* entry = Pop()) {
+      delete entry;
+    }
+  }
+
  private:
   void PreparePop() {
     T* current = push_head_.exchange(nullptr, std::memory_order_acq_rel);
@@ -226,7 +232,9 @@ class WriteOnceWeakPtr {
     }
     // Only one thread will ever get here.
     weak_ptr_ = p;
-    state_.store(State::kSet, std::memory_order_release);
+    // Use sequential consistency here to prevent unexpected reorderings of future operations before
+    // this one.
+    state_ = State::kSet;
     return true;
   }
 

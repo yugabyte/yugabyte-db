@@ -405,14 +405,13 @@ SELECT DISTINCT r1, r2 FROM t WHERE r1 IN (1, 2) AND r2 = 2;
 -- LSM indexes support IN index clauses on lower key columns and still support
 -- sorting.
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1, r2 FROM t WHERE r2 IN (1, 2) ORDER BY r1, r2;
-                                QUERY PLAN
----------------------------------------------------------------------------
- Result (actual rows=4 loops=1)
-   ->  Unique (actual rows=4 loops=1)
-         ->  Distinct Index Scan using t_pkey on t (actual rows=5 loops=1)
-               Index Cond: (r2 = ANY ('{1,2}'::integer[]))
-               Distinct Prefix: 2
-(5 rows)
+                             QUERY PLAN
+---------------------------------------------------------------------
+ Unique (actual rows=4 loops=1)
+   ->  Distinct Index Scan using t_pkey on t (actual rows=5 loops=1)
+         Index Cond: (r2 = ANY ('{1,2}'::integer[]))
+         Distinct Prefix: 2
+(4 rows)
 
 SELECT DISTINCT r1, r2 FROM t WHERE r2 IN (1, 2) ORDER BY r1, r2;
  r1 | r2
@@ -702,14 +701,13 @@ SELECT DISTINCT v FROM t LIMIT 10;
 -- Check if ORDER BY works as usual with DISTINCT.
 -- Might as well fish for a backwards scan.
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT v FROM t ORDER BY v DESC;
-                                       QUERY PLAN
-----------------------------------------------------------------------------------------
- Result (actual rows=335 loops=1)
-   ->  Unique (actual rows=335 loops=1)
-         ->  Distinct Index Only Scan Backward using irv on t (actual rows=335 loops=1)
-               Distinct Prefix: 1
-               Heap Fetches: 0
-(5 rows)
+                                    QUERY PLAN
+----------------------------------------------------------------------------------
+ Unique (actual rows=335 loops=1)
+   ->  Distinct Index Only Scan Backward using irv on t (actual rows=335 loops=1)
+         Distinct Prefix: 1
+         Heap Fetches: 0
+(4 rows)
 
 SELECT DISTINCT v FROM t ORDER BY v DESC LIMIT 10;
   v
@@ -876,3 +874,22 @@ SELECT DISTINCT r1 FROM t t1 JOIN t t2 USING (r1) WHERE t2.r1 = 1 AND t2.r2 = 1 
 (1 row)
 
 DROP TABLE t;
+CREATE TABLE sample(a int, b int, primary key(a asc, b asc));
+INSERT INTO sample VALUES (1,1), (1,2);
+DELETE FROM sample where b = 1;
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT a FROM sample WHERE a > 0;
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ Unique (actual rows=1 loops=1)
+   ->  Distinct Index Scan using sample_pkey on sample (actual rows=1 loops=1)
+         Index Cond: (a > 0)
+         Distinct Prefix: 1
+(4 rows)
+
+SELECT DISTINCT a FROM sample WHERE a > 0;
+ a
+---
+ 1
+(1 row)
+
+DROP TABLE sample;

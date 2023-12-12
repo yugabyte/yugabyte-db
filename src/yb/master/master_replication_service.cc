@@ -15,6 +15,7 @@
 #include "yb/master/master_replication.service.h"
 #include "yb/master/master_service_base.h"
 #include "yb/master/master_service_base-internal.h"
+#include "yb/master/xcluster/xcluster_manager.h"
 
 namespace yb {
 namespace master {
@@ -40,10 +41,10 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (IsSetupNamespaceReplicationWithBootstrapDone)
     (UpdateConsumerOnProducerSplit)
     (UpdateConsumerOnProducerMetadata)
+    (XClusterReportNewAutoFlagConfigVersion)
     (ListCDCStreams)
     (IsObjectPartOfXRepl)
     (SetUniverseReplicationEnabled)
-    (PauseResumeXClusterProducerStreams)
     (SetupNamespaceReplicationWithBootstrap)
     (SetupUniverseReplication)
     (UpdateCDCStream)
@@ -55,9 +56,14 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (GetTableSchemaFromSysCatalog)
     (ChangeXClusterRole)
     (BootstrapProducer)
+    (YsqlBackfillReplicationSlotNameToCDCSDKStream)
   )
 
-  MASTER_SERVICE_IMPL_ON_LEADER_WITHOUT_LOCK(CatalogManager, (GetXClusterSafeTime))
+  MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(
+      XClusterManager,
+      (GetXClusterSafeTime)
+      (PauseResumeXClusterProducerStreams)
+  )
 };
 
 } // namespace

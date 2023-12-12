@@ -35,7 +35,7 @@
 #
 # Environment variables may be used to customize operation:
 #   BUILD_TYPE: Default: debug
-#     Maybe be one of asan|tsan|debug|release|coverage|lint
+#     May be one of asan|tsan|debug|fastdebug|release|coverage|lint
 #
 #   YB_BUILD_CPP
 #   Default: 1
@@ -49,6 +49,10 @@
 #   YB_BUILD_JAVA
 #   Default: 1
 #     Build and test java code if this is set to 1.
+#
+#   YB_BUILD_OPTS
+#   Default:
+#     YB_* environment settings
 #
 #   DONT_DELETE_BUILD_ROOT
 #   Default: 0 (meaning build root will be deleted) on Jenkins, 1 (don't delete) locally.
@@ -127,6 +131,11 @@ build_cpp_code() {
     )
   fi
 
+  # Static check of bash scripts need only be done during one phase of the build.
+  yb_build_args+=( "--shellcheck" )
+
+  log "Building cpp code with options: ${yb_build_args[*]}"
+
   time "$YB_SRC_ROOT/yb_build.sh" ${remote_opt} "${yb_build_args[@]}"
 
   log "Finished building C++ code (see timing information above)"
@@ -158,15 +167,16 @@ log "Removing old JSON-based test report files"
 activate_virtualenv
 set_pythonpath
 
-# shellcheck source=build-support/jenkins/common-lto.sh
-. "${BASH_SOURCE%/*}/common-lto.sh"
-
 # -------------------------------------------------------------------------------------------------
 # Build root setup and build directory cleanup
 # -------------------------------------------------------------------------------------------------
-
+# shellcheck source=build-support/jenkins/common-lto.sh
+. "${BASH_SOURCE%/*}/common-lto.sh"
+log "Setting build_root"
 # shellcheck disable=SC2119
 set_build_root
+
+log "BUILD_ROOT: ${BUILD_ROOT}"
 
 set_common_test_paths
 
@@ -310,28 +320,6 @@ if [[ $YB_RUN_AFFECTED_TESTS_ONLY == "1" ]]; then
     # Remove the compilation command file, even if we have not deleted the build root.
     rm -f "$BUILD_ROOT/compile_commands.json"
   )
-fi
-
-if [[ ${YB_ENABLE_STATIC_ANALYZER:-auto} == "auto" ]]; then
-  if is_clang &&
-     is_linux &&
-     [[ $build_type =~ ^(debug|release)$ ]] &&
-     is_jenkins_master_build
-  then
-    if true; then
-      log "Not enabling Clang static analyzer. Will enable in clang/Linux builds in the future."
-    else
-      # TODO: re-enable this when we have time to sift through analyzer warnings.
-      export YB_ENABLE_STATIC_ANALYZER=1
-      log "Enabling Clang static analyzer (this is a clang Linux $build_type build)"
-    fi
-  else
-    log "Not enabling Clang static analyzer (this is not a clang Linux debug/release build):" \
-        "OSTYPE=$OSTYPE, YB_COMPILER_TYPE=$YB_COMPILER_TYPE, build_type=$build_type"
-  fi
-else
-  log "YB_ENABLE_STATIC_ANALYZER is already set to $YB_ENABLE_STATIC_ANALYZER," \
-      "not setting automatically"
 fi
 
 # We have a retry loop around CMake because it sometimes fails due to NFS unavailability.
@@ -488,7 +476,7 @@ if [[ ${YB_BUILD_JAVA} == "1" && ${YB_SKIP_BUILD} != "1" ]]; then
     else
       log "Java code build in directory '${java_project_dir}' SUCCEEDED"
     fi
-    popd
+    popd +0
   done
 
   if [[ ${java_build_failed} == "true" ]]; then
@@ -536,7 +524,7 @@ if [[ ${YB_SKIP_CREATING_RELEASE_PACKAGE:-} != "1" &&
     "${YB_SRC_ROOT}/yb_release"
     --build "${build_type}"
     --build_root "${BUILD_ROOT}"
-    --build_args="--skip-build"
+    "--build_args=--skip-build"
     --save_release_path_to_file "${package_path_file}"
     --commit "${current_git_commit}"
     --force

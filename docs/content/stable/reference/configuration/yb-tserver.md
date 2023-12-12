@@ -350,9 +350,9 @@ Default: `-1`, where the number of shards is determined at runtime, as follows:
   - For servers with 4 CPU cores or less, the number of tablets for each table doesn't depend on the number of YB-TServers. Instead, for 2 CPU cores or less, 1 tablet per cluster is created; for 4 CPU cores or less, 2 tablets per cluster are created.
 
 - If `enable_automatic_tablet_splitting` is `false`
-  - For servers with up to two CPU cores, the default value is considered as 2.
-  - For servers with three or four CPU cores, the default value is considered as 4.
-  - Beyond four cores, the default value is considered as 8.
+  - For servers with up to two CPU cores, the default value is considered as `2`.
+  - For servers with three or four CPU cores, the default value is considered as `4`.
+  - Beyond four cores, the default value is considered as `8`.
 
 Local cluster installations created using `yb-ctl` and `yb-docker-ctl` use a default value of `2` for this flag.
 
@@ -384,24 +384,89 @@ This value must match on all `yb-master` and `yb-tserver` configurations of a Yu
 
 {{< /note >}}
 
-
 ##### --post_split_trigger_compaction_pool_max_threads
 
-The maximum number of threads allowed for post-split compactions (that is, compactions that remove irrelevant data from new tablets after splits).
-
-Default: `1`
+Deprecated. Use `full_compaction_pool_max_threads`.
 
 ##### --post_split_trigger_compaction_pool_max_queue_size
 
-The maximum number of post-split compaction tasks that can be queued simultaneously (compactions that remove irrelevant data from new tablets after splits).
+Deprecated. Use `full_compaction_pool_max_queue_size`.
 
-Default: `16`
+##### --full_compaction_pool_max_threads
+
+The maximum number of threads allowed for non-admin full compactions. This includes post-split compactions (compactions that remove irrelevant data from new tablets after splits) and scheduled full compactions.
+
+Default: `1`
+
+##### --full_compaction_pool_max_queue_size
+
+The maximum number of full compaction tasks that can be queued simultaneously. This includes post-split compactions (compactions that remove irrelevant data from new tablets after splits) and scheduled full compactions.
+
+Default: `200`
+
+##### --auto_compact_check_interval_sec
+
+The interval at which the full compaction task will check for tablets eligible for compaction (both for the statistics-based full compaction and scheduled full compaction features). `0` indicates that the statistics-based full compactions feature is disabled.
+
+Default: `60`
+
+##### --auto_compact_stat_window_seconds
+
+Window of time in seconds over which DocDB read statistics are analyzed for the purpose of triggering full compactions to improve read performance. Both `auto_compact_percent_obsolete` and `auto_compact_min_obsolete_keys_found` are evaluated over this period of time.
+
+`auto_compact_stat_window_seconds` must be evaluated as a multiple of `auto_compact_check_interval_sec`, and will be rounded up to meet this constraint. For example, if `auto_compact_stat_window_seconds` is set to `100` and `auto_compact_check_interval_sec` is set to `60`, it will be rounded up to `120` at runtime.
+
+Default: `300`
+
+##### --auto_compact_percent_obsolete
+
+The percentage of obsolete keys (over total keys) read over the `auto_compact_stat_window_seconds` window of time required to trigger an automatic full compaction on a tablet. Only keys that are past their history retention (and thus can be garbage collected) are counted towards this threshold.
+
+For example, if the flag is set to `99` and 100000 keys are read over that window of time, and 99900 of those are obsolete and past their history retention, a full compaction will be triggered (subject to other conditions).
+
+Default: `99`
+
+##### --auto_compact_min_obsolete_keys_found
+
+Minimum number of keys that must be read over the last `auto_compact_stat_window_seconds` to trigger a statistics-based full compaction.
+
+Default: `10000`
+
+##### --auto_compact_min_wait_between_seconds
+
+Minimum wait time between statistics-based and scheduled full compactions. To be used if statistics-based compactions are triggering too frequently.
+
+Default: `0`
+
+##### --scheduled_full_compaction_frequency_hours
+
+The frequency with which full compactions should be scheduled on tablets. `0` indicates that the feature is disabled. Recommended value: `720` hours or greater (that is, 30 days).
+
+Default: `0`
+
+##### --scheduled_full_compaction_jitter_factor_percentage
+
+Percentage of `scheduled_full_compaction_frequency_hours` to be used as jitter when determining full compaction schedule per tablet. Must be a value between `0` and `100`. Jitter is introduced to prevent many tablets from being scheduled for full compactions at the same time.
+
+Jitter is deterministically computed when scheduling a compaction, between 0 and (frequency * jitter factor) hours. Once computed, the jitter is subtracted from the intended compaction frequency to determine the tablet's next compaction time.
+
+Example: If `scheduled_full_compaction_frequency_hours` is `720` hours (that is, 30 days), and `scheduled_full_compaction_jitter_factor_percentage` is `33` percent, each tablet will be scheduled for compaction every `482` hours to `720` hours.
+
+Default: `33`
 
 ##### --automatic_compaction_extra_priority
 
 Assigns an extra priority to automatic (minor) compactions when automatic tablet splitting is enabled. This deprioritizes post-split compactions and ensures that smaller compactions are not starved. Suggested values are between 0 and 50.
 
 Default: `50`
+
+##### --ysql_colocate_database_by_default
+
+When enabled, all databases created in the cluster are colocated by default. If you enable the flag after creating a cluster, you need to restart the YB-Master and YB-TServer services.
+
+For more details, see [clusters in colocated tables](../../../architecture/docdb-sharding/colocated-tables/#clusters).
+
+Default: `false`
 
 ## Geo-distribution flags
 
@@ -569,9 +634,15 @@ Default: Uses the YSQL display format.
 
 ##### --ysql_max_connections
 
-Specifies the maximum number of concurrent YSQL connections.
+Specifies the maximum number of concurrent YSQL connections per node.
 
-Default: 300 for superusers. Non-superuser roles see only the connections available for use, while superusers see all connections, including those reserved for superusers.
+This is a maximum per server, so a 3-node cluster will have a default of 900 available connections, globally.
+
+Any active, idle in transaction, or idle in session connection counts toward the connection limit.
+
+Some connections are reserved for superusers. The total number of superuser connections is determined by the `superuser_reserved_connections` [PostgreSQL server parameter](#postgresql-server-options). Connections available to non-superusers is equal to `ysql_max_connections` - `superuser_reserved_connections`.
+
+Default: If `ysql_max_connections` is not set, the database startup process will determine the highest number of connections the system can support, from a minimum of 50 to a maximum of 300 (per node).
 
 ##### --ysql_default_transaction_isolation
 
@@ -581,7 +652,7 @@ Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNC
 
 Default: `READ COMMITTED`<sup>$</sup>
 
-<sup>$</sup> Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag). Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+<sup>$</sup> Read Committed support is currently in [Tech Preview](/preview/releases/versioning/#feature-availability). Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
 ##### --ysql_disable_index_backfill
 
@@ -617,7 +688,7 @@ Default: `100`
 
 Specifies the types of YSQL statements that should be logged.
 
-Valid values: `none` (off), `ddl` (only data definition queries, such as create/alter/drop), `mod` (all modifying/write statements, includes DDLs plus insert/update/delete/trunctate, etc), and `all` (all statements).
+Valid values: `none` (off), `ddl` (only data definition queries, such as create/alter/drop), `mod` (all modifying/write statements, includes DDLs plus insert/update/delete/truncate, etc), and `all` (all statements).
 
 Default: `none`
 
@@ -749,7 +820,12 @@ Default: `4`
 
 Maximum number of threads to do background compactions (used when compactions need to catch up.) Unless `rocksdb_disable_compactions=true`, this cannot be set to zero.
 
-Default: `-1` (the value is calculated at runtime). For servers with up to 4 CPU cores, the default value is considered as `1`. For servers with up to 8 CPU cores, the default value is considered as `2`. For servers with up to 32 CPU cores, the default value is considered as `3`. Beyond 32 cores, the default value is considered as `4`.
+Default: `-1`, where the value is calculated at runtime as follows:
+
+- For servers with up to 4 CPU cores, the default value is considered as `1`.
+- For servers with up to 8 CPU cores, the default value is considered as `2`.
+- For servers with up to 32 CPU cores, the default value is considered as `3`.
+- Beyond 32 cores, the default value is considered as `4`.
 
 ##### --rocksdb_compaction_size_threshold_bytes
 
@@ -780,6 +856,24 @@ Default: `900` (15 minutes)
 Rate control across all tablets being remote bootstrapped from or to this process.
 
 Default: `256MB` (256 MB/second)
+
+##### --remote_bootstrap_from_leader_only
+
+Based on the value (`true`/`false`) of the flag, the leader decides whether to instruct the new peer to attempt bootstrap from a closest caught-up peer. The leader too could be the closest peer depending on the new peer's geographic placement. Setting the flag to false will enable the feature of remote bootstrapping from a closest caught-up peer. The number of bootstrap attempts from a non-leader peer is limited by the flag [max_remote_bootstrap_attempts_from_non_leader](#max-remote-bootstrap-attempts-from-non-leader).
+
+Default: `false`
+
+{{< note title="Note" >}}
+
+The code for the feature is present from version 2.16 and later, and can be enabled explicitly if needed. Starting from version 2.19, the feature is on by default.
+
+{{< /note >}}
+
+##### --max_remote_bootstrap_attempts_from_non_leader
+
+When the flag [remote_bootstrap_from_leader_only](#remote-bootstrap-from-leader-only) is set to `false` (enabling the feature of bootstrapping from a closest peer), the number of attempts where the new peer tries to bootstrap from a non-leader peer is limited by the flag. After these failed bootstrap attempts for the new peer, the leader peer sets itself as the bootstrap source.
+
+Default: `5`
 
 ## Network compression flags
 
@@ -915,15 +1009,19 @@ In addition, as this setting does not propagate to PostgreSQL, it is recommended
 --ysql_pg_conf_csv="ssl_min_protocol_version=TLSv1.2"
 ```
 
-## Packed row flags (Beta)
+## Packed row flags
 
-To learn about the packed row feature, see [Packed row format](../../../architecture/docdb/persistence/#packed-row-format-beta) in the architecture section.
+Packed row format support is currently in [Early Access](/preview/releases/versioning/#feature-availability).
+
+To learn about the packed row feature, see [Packed row format](../../../architecture/docdb/persistence/#packed-row-format) in the architecture section.
 
 ##### --ysql_enable_packed_row
 
 Whether packed row is enabled for YSQL.
 
 Default: `false`
+
+Packed Row for YSQL can be used from version 2.16.4 in production environments if the cluster is not used in xCluster settings. For xCluster scenarios, use version 2.18.1 and later. Starting from version 2.19 and later, the flag default is true for new clusters.
 
 ##### --ysql_packed_row_size_limit
 
@@ -932,6 +1030,8 @@ Packed row size limit for YSQL. The default value is 0 (use block size as limit)
 Default: `0`
 
 ##### --ycql_enable_packed_row
+
+YCQL packed row support is currently in [Tech Preview](/preview/releases/versioning/#feature-availability).
 
 Whether packed row is enabled for YCQL.
 
@@ -977,7 +1077,7 @@ Number of records fetched in a single batch of snapshot operation of CDC.
 
 Default: `250`
 
-##### --cdc_min_replicated_index_considered_stale_seconds
+##### --cdc_min_replicated_index_considered_stale_secs
 
 If `cdc_min_replicated_index` hasn't been replicated in this amount of time, we reset its value to max int64 to avoid retaining any logs.
 
@@ -1091,6 +1191,23 @@ Default: `false`
 Use of this flag can potentially result in expiration of live data. Use at your discretion.
 {{< /warning >}}
 
+## Metric export flags
+
+##### --export_help_and_type_in_prometheus_metrics
+
+YB-TServer metrics are available in Prometheus format at
+`http://localhost:9000/prometheus-metrics`.  This flag controls whether
+#TYPE and #HELP information is included as part of the Prometheus
+metrics output by default.
+
+To override this flag on a per-scrape basis, set the URL parameter
+`show_help` to `true` to include or to `false` to not include type and
+help information.  For example, querying
+`http://localhost:9000/prometheus-metrics?show_help=true` will return
+type and help information regardless of the setting of this flag.
+
+Default: `true`
+
 ## PostgreSQL server options
 
 YugabyteDB uses PostgreSQL server configuration parameters to apply server configuration settings to new server instances.
@@ -1170,21 +1287,21 @@ Default: `1GB`
 
 The Admin UI for the YB-TServer is available at `http://localhost:9000`.
 
-### Home
-
-Home page of the YB-TServer (`yb-tserver`) that gives a high level overview of this specific instance.
-
-![tserver-home](/images/admin/tserver-home.png)
-
 ### Dashboards
 
-Here's a list of all dashboards to review the ongoing operations:
+List of all dashboards to review ongoing operations.
 
 ![tserver-dashboards](/images/admin/tserver-dashboards.png)
 
+### Tables
+
+List of all tables managed by this specific instance, sorted by [namespace](../yb-master/#namespaces).
+
+![tserver-tablets](/images/admin/tserver-tables.png)
+
 ### Tablets
 
-List of all tablets managed by this specific instance, sorted by the table name.
+List of all tablets managed by this specific instance.
 
 ![tserver-tablets](/images/admin/tserver-tablets.png)
 

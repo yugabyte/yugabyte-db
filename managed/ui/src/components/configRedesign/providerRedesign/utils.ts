@@ -5,8 +5,6 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { makeStyles } from '@material-ui/core';
-
 import { YBAHost } from '../../../redesign/helpers/constants';
 import { HostInfo, Universe } from '../../../redesign/helpers/dtos';
 import {
@@ -102,6 +100,47 @@ export const getLinkedUniverses = (providerUUID: string, universes: Universe[]) 
     return linkedUniverses;
   }, []);
 
+/**
+ * Returns a region code to availability zone mapping which captures all zones in which linked universes
+ * have deployed instances.
+ *
+ * Assumptions:
+ * - The universes are all created using the same provider.
+ */
+export const getRegionToInUseAz = (
+  providerUuid: string,
+  linkedUniverses: UniverseItem[]
+): Map<string, Set<string>> => {
+  const regionToInUseAz = new Map<string, Set<string>>();
+  linkedUniverses.forEach((linkedUniverse) =>
+    linkedUniverse.linkedClusters.forEach((linkedCluster) =>
+      linkedCluster.placementInfo.cloudList
+        .find((provider) => provider.uuid === providerUuid)
+        ?.regionList.forEach((region) => {
+          const azNames = regionToInUseAz.get(region.code);
+          if (azNames === undefined) {
+            regionToInUseAz.set(
+              region.code,
+              new Set<string>(region.azList.map((zone) => zone.name))
+            );
+          } else {
+            region.azList.forEach((zone) => azNames.add(zone.name));
+          }
+        })
+    )
+  );
+  return regionToInUseAz;
+};
+
+export const getInUseAzs = (
+  providerUuid: string,
+  linkedUniverses: UniverseItem[],
+  regionCode: string | undefined
+) => {
+  const regionToInUseAz = getRegionToInUseAz(providerUuid, linkedUniverses);
+  return (regionCode !== undefined && regionToInUseAz.get(regionCode)) || new Set<string>();
+};
+
 export const getLatestAccessKey = (accessKeys: AccessKey[]) =>
   accessKeys.reduce((latestAccessKey: null | AccessKey, currentAccessKey) => {
     if (!latestAccessKey) {
@@ -173,15 +212,3 @@ export const getDeletedZones = <
         .map((zone) => deleteZone(zone))
     : [];
 };
-
-export const usePillStyles = makeStyles((theme) => ({
-  pill: {
-    padding: '4px 6px',
-    height: 'fit-content',
-    width: 'fit-content',
-
-    fontSize: '10px',
-    borderRadius: '6px',
-    backgroundColor: theme.palette.grey[200]
-  }
-}));

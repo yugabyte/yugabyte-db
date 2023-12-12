@@ -63,7 +63,6 @@ $YB_SRC_ROOT/python/yugabyte/gen_initial_sys_catalog_snapshot.py
   export YB_SCRIPT_PATH_IS_SAME_PATH=$YB_SRC_ROOT/python/yugabyte/is_same_path.py
   export YB_SCRIPT_PATH_KILL_LONG_RUNNING_MINICLUSTER_DAEMONS=\
 $YB_SRC_ROOT/python/yugabyte/kill_long_running_minicluster_daemons.py
-  export YB_SCRIPT_PATH_MAKE_RPATH_RELATIVE=$YB_SRC_ROOT/python/yugabyte/make_rpath_relative.py
   export YB_SCRIPT_PATH_PARSE_TEST_FAILURE=$YB_SRC_ROOT/python/yugabyte/parse_test_failure.py
   export YB_SCRIPT_PATH_POSTPROCESS_TEST_RESULT=\
 $YB_SRC_ROOT/python/yugabyte/postprocess_test_result.py
@@ -80,6 +79,8 @@ $YB_SRC_ROOT/python/yugabyte/split_long_command_line.py
 $YB_SRC_ROOT/python/yugabyte/update_test_result_xml.py
   export YB_SCRIPT_PATH_YB_RELEASE_CORE_DB=$YB_SRC_ROOT/python/yugabyte/yb_release_core_db.py
   export YB_SCRIPT_PATH_LIST_PACKAGED_TARGETS=$YB_SRC_ROOT/python/yugabyte/list_packaged_targets.py
+  export YB_SCRIPT_PATH_VALIDATE_BUILD_ROOT=$YB_SRC_ROOT/python/yugabyte/validate_build_root.py
+  export YB_SCRIPT_PATH_ANALYZE_TEST_RESULTS=$YB_SRC_ROOT/python/yugabyte/analyze_test_results.py
 }
 
 set_yb_src_root() {
@@ -140,7 +141,7 @@ initialize_yugabyte_bash_common() {
       exit 1
     fi
   fi
-  popd >/dev/null
+  popd +0 >/dev/null
 }
 
 # This script is expected to be in build-support, a subdirectory of the repository root directory.
@@ -228,6 +229,7 @@ readonly -a VALID_COMPILER_TYPES=(
   gcc
   gcc11
   gcc12
+  gcc13
   clang
   clang14
   clang15
@@ -311,7 +313,7 @@ readonly -a MVN_OPTS_TO_DOWNLOAD_ALL_DEPS=(
   dependency:go-offline
   dependency:resolve
   dependency:resolve-plugins
-  -DoutputFile=/dev/null
+  "-DoutputFile=/dev/null"
 )
 
 # -------------------------------------------------------------------------------------------------
@@ -359,6 +361,15 @@ is_apple_silicon=""  # Will be set to true or false when necessary.
 # Functions
 # -------------------------------------------------------------------------------------------------
 
+# Usage: expect_no_args "$#"
+# Alternative to expect_num_args 0 "$@", because it will trigger
+# https://www.shellcheck.net/wiki/SC2119 when passing no arguments.
+expect_no_args() {
+  if (( $1 != 0 )); then
+    fatal "${FUNCNAME[1]} expects at least zero arguments. Got: $1"
+  fi
+}
+
 yb_activate_debug_mode() {
   PS4='[${BASH_SOURCE[0]}:${LINENO} ${FUNCNAME[0]:-}] '
   set -x
@@ -388,13 +399,8 @@ decide_whether_to_use_linuxbrew() {
       if [[ ${predefined_build_root##*/} == *-linuxbrew-* ]]; then
         YB_USE_LINUXBREW=1
       fi
-    elif [[ -n ${YB_LINUXBREW_DIR:-} ||
-            ( ${YB_COMPILER_TYPE} =~ ^clang[0-9]+$ &&
-               $build_type =~ ^(release|prof_(gen|use))$ &&
-              "$( uname -m )" == "x86_64" &&
-              ${OSTYPE} =~ ^linux.*$ ) ]] && ! is_ubuntu; then
-      YB_USE_LINUXBREW=1
     fi
+    # Default is no linuxbrew
     export YB_USE_LINUXBREW=${YB_USE_LINUXBREW:-0}
   fi
 }
@@ -411,7 +417,7 @@ set_build_root() {
     local -r make_build_root_readonly=true
   fi
 
-  expect_num_args 0 "$@"
+  expect_no_args "$#"
   normalize_build_type
   readonly build_type
 
@@ -646,10 +652,14 @@ set_cmake_build_type_and_compiler_type() {
 
   if [[ -z ${build_type:-} ]]; then
     if [[ ${YB_LINKING_TYPE:-} == *-lto ]]; then
-      log "Setting build type to 'release' by default (YB_LINKING_TYPE=${YB_LINKING_TYPE})"
+      if [[ ${yb_set_build_type_quietly:-} != "true" ]]; then
+        log "Setting build type to 'release' by default (YB_LINKING_TYPE=${YB_LINKING_TYPE})"
+      fi
       build_type=release
     else
-      log "Setting build type to 'debug' by default"
+      if [[ ${yb_set_build_type_quietly:-} != "true" ]]; then
+        log "Setting build type to 'debug' by default"
+      fi
       build_type=debug
     fi
   fi
@@ -928,7 +938,7 @@ build_yb_java_code_in_all_dirs() {
       return 1
     fi
     # shellcheck disable=SC2119
-    popd
+    popd +0
   done
 }
 
@@ -996,7 +1006,7 @@ log_diagnostics_about_local_thirdparty() {
 # use custom gcc and clang installations. Sets cc_executable and cxx_executable variables. This is
 # used in compiler-wrapper.sh.
 find_compiler_by_type() {
-  expect_num_args 0 "$@"
+  expect_no_args "$#"
   expect_vars_to_be_set YB_COMPILER_TYPE
   if [[ -n ${YB_RESOLVED_C_COMPILER:-} && -n ${YB_RESOLVED_CXX_COMPILER:-} ]]; then
     cc_executable=$YB_RESOLVED_C_COMPILER
@@ -1133,7 +1143,7 @@ find_compiler_by_type() {
               "(possibly applying 'which' expansion): $compiler_path" \
               "(trying to use compiler type '$YB_COMPILER_TYPE')."
       fi
-      eval $compiler_var_name=\"$compiler_path\"
+      eval $compiler_var_name=\""$compiler_path"\"
     fi
   done
 
@@ -1619,7 +1629,7 @@ detect_num_cpus() {
 # Gets a random build worker host name. Output variable: build_workers (array).
 # shellcheck disable=SC2120
 get_build_worker_list() {
-  expect_num_args 0 "$@"
+  expect_no_args "$#"
   if [[ -z ${YB_BUILD_WORKERS_LIST_URL:-} ]]; then
     fatal "YB_BUILD_WORKERS_LIST_URL not set"
   fi
@@ -1637,7 +1647,9 @@ get_build_worker_list() {
     if [[ -n ${YB_BUILD_WORKERS_FILE:-} ]]; then
       build_workers=( $( cat "$YB_BUILD_WORKERS_FILE" ))
     else
-      build_workers=( $( curl -s "$YB_BUILD_WORKERS_LIST_URL" ) )
+      build_workers=( $( curl -s "$YB_BUILD_WORKERS_LIST_URL" ) ) \
+        || fatal "Failed to curl $YB_BUILD_WORKERS_LIST_URL: check your network connection or use" \
+                 "--no-remote"
     fi
     if [[ ${#build_workers[@]} -eq 0 ]]; then
       log "Got an empty list of build workers from $YB_BUILD_WORKERS_LIST_URL," \
@@ -2024,7 +2036,7 @@ handle_predefined_build_root_quietly=false
 
 # shellcheck disable=SC2120
 handle_predefined_build_root() {
-  expect_num_args 0 "$@"
+  expect_no_args "$#"
   if [[ -z ${predefined_build_root:-} ]]; then
     return
   fi
@@ -2040,7 +2052,7 @@ handle_predefined_build_root() {
   if [[ $predefined_build_root != $YB_BUILD_INTERNAL_PARENT_DIR/* && \
         $predefined_build_root != $YB_BUILD_EXTERNAL_PARENT_DIR/* ]]; then
     # Sometimes $predefined_build_root contains symlinks on its path.
-    "$YB_SRC_ROOT/build-support/validate_build_root.py" \
+    "$YB_SCRIPT_PATH_VALIDATE_BUILD_ROOT" \
       "$predefined_build_root" \
       "$YB_BUILD_INTERNAL_PARENT_DIR" \
       "$YB_BUILD_EXTERNAL_PARENT_DIR"
@@ -2183,7 +2195,7 @@ set_test_invocation_id() {
 # Kills any processes that have YB_TEST_INVOCATION_ID in their command line. Sets
 # killed_stuck_processes=true in case that happens.
 kill_stuck_processes() {
-  expect_num_args 0 "$@"
+  expect_no_args "$#"
   killed_stuck_processes=false
   if [[ -z ${YB_TEST_INVOCATION_ID:-} ]]; then
     return
@@ -2255,39 +2267,38 @@ check_python_script_syntax() {
     | grep -v '^S' \
     | sed 's/^[[:alpha:]] //' \
     | xargs -P 8 -n 1 "$YB_SCRIPT_PATH_CHECK_PYTHON_SYNTAX"
-  popd
+  popd +0
 }
 
 run_shellcheck() {
+  pushd "$YB_SRC_ROOT"
   local scripts_to_check=(
-    bin/release_package_docker_test.sh
-    build-support/common-build-env.sh
-    build-support/common-cli-env.sh
-    build-support/common-test-env.sh
-    build-support/compiler-wrappers/compiler-wrapper.sh
-    build-support/find_linuxbrew.sh
-    build-support/jenkins/build.sh
-    build-support/jenkins/common-lto.sh
-    build-support/jenkins/test.sh
-    build-support/jenkins/yb-jenkins-build.sh
-    build-support/jenkins/yb-jenkins-test.sh
-    build-support/run-test.sh
+    bin/*.sh
+    build-support/*.sh
+    build-support/jenkins/*.sh
     yb_build.sh
     yugabyted-ui/build.sh
   )
-  pushd "$YB_SRC_ROOT"
   local script_path
   local shellcheck_had_errors=false
+  if shellcheck --version | grep -q '^version: 0.3'; then
+    # Centos7 distro has old version of shellcheck that does not support --external-sources.
+    log "Warning: Skipping shellcheck. Requires at least version 0.4.0."
+    popd +0
+    return 0
+  fi
+  # We skip errors 2030 and 2031 that say that a variable has been modified in a subshell and that
+  # the modification is local to the subshell. Seeing a lot of false positivies for these with
+  # the version 0.7.2 of Shellcheck.
+  # SC2230 (avoid 'which" command) is supposed to be optional check, but enabled in some distros.
+  local excodes="2030,2031,2230"
   for script_path in "${scripts_to_check[@]}"; do
-    # We skip errors 2030 and 2031 that say that a variable has been modified in a subshell and that
-    # the modification is local to the subshell. Seeing a lot of false positivies for these with
-    # the version 0.7.2 of Shellcheck.
-    if ! ( set -x; shellcheck --external-sources --exclude=2030,2031 --shell=bash "$script_path" )
+    if ! ( set -x; shellcheck --external-sources --exclude="$excodes" --shell=bash "$script_path" )
     then
       shellcheck_had_errors=true
     fi
   done
-  popd
+  popd +0
   if [[ $shellcheck_had_errors == "true" ]]; then
     exit 1
   fi
@@ -2381,7 +2392,7 @@ activate_virtualenv() {
   if [[ ${yb_readonly_virtualenv} == "false" ]]; then
     local requirements_file_path="$YB_SRC_ROOT/requirements_frozen.txt"
     local installed_requirements_file_path=$virtualenv_dir/${requirements_file_path##*/}
-    pip3 install --upgrade pip
+    "$pip_executable" --retries 0 install --upgrade pip
     if ! cmp --silent "$requirements_file_path" "$installed_requirements_file_path"; then
       run_with_retries 10 0.5 "$pip_executable" install -r "$requirements_file_path" \
         $pip_no_cache
@@ -2592,7 +2603,7 @@ set_prebuilt_thirdparty_url() {
       local thirdparty_tool_cmd_line=(
         "$YB_BUILD_SUPPORT_DIR/thirdparty_tool"
         --save-thirdparty-url-to-file "$thirdparty_url_file_path"
-        --compiler-type "$YB_COMPILER_TYPE"
+        --compiler-type "${YB_COMPILER_TYPE_FOR_THIRDPARTY:-$YB_COMPILER_TYPE}"
       )
       if [[ -n ${YB_USE_LINUXBREW:-} ]]; then
         # See arg_str_to_bool in Python code for how the boolean parameter is interpreted.

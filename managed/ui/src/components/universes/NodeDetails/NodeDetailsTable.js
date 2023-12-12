@@ -8,6 +8,7 @@ import pluralize from 'pluralize';
 import { YBPanelItem } from '../../panels';
 import { NodeAction } from '../../universes';
 import { setCookiesFromLocalStorage } from '../../../routes';
+import { YBTooltip } from '../../../redesign/components';
 import { NodeType } from '../../../redesign/utils/dtos';
 import { CloudType } from '../../../redesign/features/universe/universe-form/utils/dto';
 import { isDefinedNotNull, isNonEmptyString } from '../../../utils/ObjectUtils';
@@ -59,7 +60,8 @@ export default class NodeDetailsTable extends Component {
       customer,
       currentUniverse,
       providers,
-      isDedicatedNodes
+      isDedicatedNodes,
+      isKubernetesCluster
     } = this.props;
     const successIcon = <i className="fa fa-check-circle yb-success-color" />;
     const warningIcon = <i className="fa fa-warning yb-fail-color" />;
@@ -70,12 +72,16 @@ export default class NodeDetailsTable extends Component {
 
     if (isDedicatedNodes && clusterType === 'primary') {
       if (this.state.nodeTypeDropdownValue === NodeType.Master) {
-        sortedNodeDetails = sortedNodeDetails.filter(
-          (nodeDetails) => nodeDetails.dedicatedTo === NodeType.Master.toUpperCase()
+        sortedNodeDetails = sortedNodeDetails.filter((nodeDetails) =>
+          isKubernetesCluster
+            ? nodeDetails.isMasterProcess
+            : nodeDetails.dedicatedTo === NodeType.Master.toUpperCase()
         );
       } else if (this.state.nodeTypeDropdownValue === NodeType.TServer) {
-        sortedNodeDetails = sortedNodeDetails.filter(
-          (nodeDetails) => nodeDetails.dedicatedTo === NodeType.TServer.toUpperCase()
+        sortedNodeDetails = sortedNodeDetails.filter((nodeDetails) =>
+          isKubernetesCluster
+            ? nodeDetails.isTServerProcess
+            : nodeDetails.dedicatedTo === NodeType.TServer.toUpperCase()
         );
       }
     }
@@ -90,18 +96,38 @@ export default class NodeDetailsTable extends Component {
         isMaster ? row.masterPort : row.tserverPort
       );
       const isAlive = isMaster ? row.isMasterAlive : row.isTserverAlive;
+      const universeStatus = getUniverseStatus(currentUniverse.data);
+      const isUniverseStatusGood = universeStatus.state === UniverseState.GOOD;
+
+      const nodeProcess = (
+        <a
+          href={href}
+          onClick={setCookiesFromLocalStorage}
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          {isMaster ? NodeType.Master : NodeType.TServer}
+        </a>
+      );
+
+      const nodeProcessWithStatus = (
+        <YBTooltip
+          title={isMaster ? row.masterUUID : row.uuid}
+          placement={isMaster ? 'top' : 'bottom'}
+        >
+          {nodeProcess}
+        </YBTooltip>
+      );
+
       return (
         <div>
           {isAlive ? successIcon : warningIcon}&nbsp;
           {isNotHidden(customer.currentCustomer.data.features, 'universes.proxyIp') ? (
-            <a
-              href={href}
-              onClick={setCookiesFromLocalStorage}
-              target="_blank"
-              rel="noopener noreferrer"
-            >
-              {isMaster ? NodeType.Master : NodeType.TServer}
-            </a>
+            isUniverseStatusGood ? (
+              nodeProcessWithStatus
+            ) : (
+              nodeProcess
+            )
           ) : (
             <span>{isMaster ? NodeType.Master : NodeType.TServer}</span>
           )}
@@ -111,14 +137,26 @@ export default class NodeDetailsTable extends Component {
     };
 
     const getIpPortLinks = (cell, row) => {
+      const cluster =
+        clusterType === 'primary'
+          ? getPrimaryCluster(currentUniverse.data?.universeDetails?.clusters)
+          : getReadOnlyCluster(currentUniverse.data?.universeDetails?.clusters);
+      const isKubernetes = cluster?.userIntent?.providerType === 'kubernetes';
+
       return (
         <Fragment>
-          {row.dedicatedTo === NodeType.Master.toUpperCase() &&
+          {isDedicatedNodes &&
+            !isKubernetes &&
+            row.dedicatedTo === NodeType.Master.toUpperCase() &&
             formatIpPort(row.isMaster, row, NodeType.Master.toLowerCase())}
-          {row.dedicatedTo === NodeType.TServer.toUpperCase() &&
+          {isDedicatedNodes &&
+            !isKubernetes &&
+            row.dedicatedTo === NodeType.TServer.toUpperCase() &&
             formatIpPort(row.isTServer, row, NodeType.TServer.toLowerCase())}
-          {!row.dedicatedTo && formatIpPort(row.isMaster, row, NodeType.Master.toLowerCase())}
-          {!row.dedicatedTo && formatIpPort(row.isTServer, row, NodeType.TServer.toLowerCase())}
+          {(!isDedicatedNodes || isKubernetes) &&
+            formatIpPort(row.isMaster, row, NodeType.Master.toLowerCase())}
+          {(!isDedicatedNodes || isKubernetes) &&
+            formatIpPort(row.isTServer, row, NodeType.TServer.toLowerCase())}
         </Fragment>
       );
     };
@@ -301,7 +339,6 @@ export default class NodeDetailsTable extends Component {
       !this.props.isReadOnlyUniverse &&
       universeStatus.state !== UniverseState.PAUSED &&
       isNotHidden(customer.currentCustomer.data.features, 'universes.tableActions');
-
     return (
       <div className="node-details-table-container">
         <YBPanelItem

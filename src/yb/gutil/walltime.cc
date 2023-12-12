@@ -47,7 +47,7 @@
 
 #include <memory>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #if defined(__APPLE__)
 namespace walltime_internal {

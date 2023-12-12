@@ -28,6 +28,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import org.apache.commons.lang3.StringUtils;
+import org.apache.commons.lang3.builder.HashCodeBuilder;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -39,6 +40,7 @@ import org.slf4j.LoggerFactory;
 @ApiModel(description = "Details of a cloud node")
 public class NodeDetails {
   public static final Logger LOG = LoggerFactory.getLogger(NodeDetails.class);
+
   // The id of the node. This is usually present in the node name.
   @ApiModelProperty(value = "Node ID")
   public int nodeIdx = -1;
@@ -100,6 +102,10 @@ public class NodeDetails {
     SoftwareInstalled(START, DELETE, ADD),
     // Set after the YB software is upgraded via Rolling Restart.
     UpgradeSoftware(),
+    // set when software version is rollback.
+    RollbackUpgrade(),
+    // set when software version is finalized after upgrade.
+    FinalizeUpgrade(),
     // Set after the YB specific GFlags are updated via Rolling Restart.
     UpdateGFlags(),
     // Set after all the services (master, tserver, etc) on a node are successfully running.
@@ -250,6 +256,9 @@ public class NodeDetails {
   @ApiModelProperty(value = "Node exporter port")
   public int nodeExporterPort = 9300;
 
+  @ApiModelProperty(value = "Otel collector metrics port")
+  public int otelCollectorMetricsPort = 8888;
+
   // True if cronjobs were properly configured for this node.
   @ApiModelProperty(value = "True if cron jobs were properly configured for this node")
   public boolean cronsActive = true;
@@ -294,6 +303,32 @@ public class NodeDetails {
     clone.disksAreMountedByUUID = this.disksAreMountedByUUID;
     clone.dedicatedTo = this.dedicatedTo;
     return clone;
+  }
+
+  @Override
+  public int hashCode() {
+    return new HashCodeBuilder(17, 37).append(getNodeUuid()).append(getNodeName()).toHashCode();
+  }
+
+  @Override
+  public boolean equals(Object obj) {
+    if (this == obj) {
+      return true;
+    }
+    if (obj == null || obj.getClass() != getClass()) {
+      return false;
+    }
+    NodeDetails other = (NodeDetails) obj;
+    UUID thisNodeUuid = getNodeUuid();
+    if (thisNodeUuid != null) {
+      return thisNodeUuid.equals(other.getNodeUuid());
+    }
+    String thisNodeName = getNodeName();
+    if (thisNodeName != null) {
+      return thisNodeName.equals(other.getNodeName());
+    }
+    // They are not equal as equality cannot be determined.
+    return false;
   }
 
   @Override
@@ -354,6 +389,13 @@ public class NodeDetails {
   }
 
   @JsonIgnore
+  public boolean isSoftwareDeleted() {
+    return state == NodeState.Decommissioned
+        || state == NodeState.Terminating // Software can be partially removed during this state.
+        || state == NodeState.Terminated;
+  }
+
+  @JsonIgnore
   public boolean isActive() {
     // TODO For some reason ToBeAdded node is treated as 'Active', which it's not the case.
     // Need to better figure out the meaning of 'Active' - and it's usage - as currently it's used
@@ -373,6 +415,8 @@ public class NodeDetails {
   @JsonIgnore
   public boolean isQueryable() {
     return (state == NodeState.UpgradeSoftware
+        || state == NodeState.FinalizeUpgrade
+        || state == NodeState.RollbackUpgrade
         || state == NodeState.UpdateGFlags
         || state == NodeState.Live
         || state == NodeState.ToBeRemoved
@@ -380,6 +424,11 @@ public class NodeDetails {
         || state == NodeState.Stopping
         || state == NodeState.UpdateCert
         || state == NodeState.ToggleTls);
+  }
+
+  @JsonIgnore
+  public boolean isConsideredRunning() {
+    return (state == NodeState.Live || state == NodeState.ToBeRemoved);
   }
 
   @JsonIgnore

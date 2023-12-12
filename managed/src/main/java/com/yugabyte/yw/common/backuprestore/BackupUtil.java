@@ -3,7 +3,6 @@
 package com.yugabyte.yw.common.backuprestore;
 
 import static com.cronutils.model.CronType.UNIX;
-import static java.lang.Math.abs;
 import static java.lang.Math.max;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.PRECONDITION_FAILED;
@@ -48,11 +47,11 @@ import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
 import com.yugabyte.yw.models.helpers.TaskType;
 import io.swagger.annotations.ApiModelProperty;
-import java.text.SimpleDateFormat;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -86,6 +85,8 @@ public class BackupUtil {
   public static final int TS_FMT_LENGTH = 19;
   public static final int UNIV_PREFIX_LENGTH = 6;
   public static final int UUID_LENGTH = 36;
+  public static final int UUID_WITHOUT_HYPHENS_LENGTH = 32;
+  public static final int FULL_BACKUP_PREFIX = 6; /* /full/ */
   public static final long MIN_SCHEDULE_DURATION_IN_SECS = 3600L;
   public static final long MIN_SCHEDULE_DURATION_IN_MILLIS = MIN_SCHEDULE_DURATION_IN_SECS * 1000L;
   public static final long MIN_INCREMENTAL_SCHEDULE_DURATION_IN_MILLIS = 1800000L;
@@ -189,6 +190,18 @@ public class BackupUtil {
     @ApiModelProperty(value = "Keyspace and tables list for given backup location")
     @Builder.Default
     private PerBackupLocationKeyspaceTables perBackupLocationKeyspaceTables = null;
+
+    @ApiModelProperty(value = "List of tablespaces in backup")
+    @Builder.Default
+    private TablespaceResponse tablespaceResponse = null;
+  }
+
+  @Data
+  @Builder
+  public static class TablespaceResponse {
+    private boolean containsTablespaces;
+    @Builder.Default private List<String> unsupportedTablespaces = null;
+    @Builder.Default private List<String> conflictingTablespaces = null;
   }
 
   @Data
@@ -212,9 +225,7 @@ public class BackupUtil {
       tables.addAll(tableNameList);
       if (MapUtils.isNotEmpty(tablesWithIndexesMap)) {
         Set<String> indexes =
-            tablesWithIndexesMap
-                .values()
-                .parallelStream()
+            tablesWithIndexesMap.values().parallelStream()
                 .flatMap(tI -> tI.parallelStream())
                 .collect(Collectors.toSet());
         tables.addAll(indexes);
@@ -227,9 +238,7 @@ public class BackupUtil {
       Set<String> indexes = new HashSet<>();
       if (MapUtils.isNotEmpty(tablesWithIndexesMap)) {
         indexes =
-            tablesWithIndexesMap
-                .entrySet()
-                .parallelStream()
+            tablesWithIndexesMap.entrySet().parallelStream()
                 .filter(tWE -> parentTables.contains(tWE.getKey()))
                 .flatMap(tWE -> tWE.getValue().parallelStream())
                 .collect(Collectors.toSet());
@@ -341,7 +350,8 @@ public class BackupUtil {
             .hasIncrementalBackups(hasIncrements)
             .lastIncrementalBackupTime(lastIncrementDate)
             .lastBackupState(lastBackupState)
-            .scheduleName(backup.getScheduleName());
+            .scheduleName(backup.getScheduleName())
+            .useTablespaces(backup.getBackupInfo().useTablespaces);
     return builder.build();
   }
 
@@ -362,8 +372,7 @@ public class BackupUtil {
         .tableByTableBackup(backup.getBackupInfo().tableByTableBackup);
     List<BackupTableParams> backupParams = backup.getBackupParamsCollection();
     Set<KeyspaceTablesList> kTLists =
-        backupParams
-            .parallelStream()
+        backupParams.parallelStream()
             .map(
                 b -> {
                   return KeyspaceTablesList.builder()
@@ -390,50 +399,47 @@ public class BackupUtil {
     return backupChain.stream().map(BackupUtil::getCommonBackupInfo).collect(Collectors.toList());
   }
 
-  // For creating new backup we would set the storage location based on
-  // universe UUID and backup UUID.
-  // univ-<univ_uuid>/backup-<timestamp>-<something_to_disambiguate_from_yugaware>/table-keyspace
-  // .table_name.table_uuid
+  /**
+   * Generates YBA metadata based suffix for Backup. The format will be: {@code
+   * univ-<univ_uuid>/backup-<base_backup_uuid>-<timestamp>/
+   * multi-table-<keyspace>_<subtask_param_uuid>}
+   *
+   * @param params The backup subtask BackupTableParams object
+   * @param isYbc If the backup is YBC based
+   * @param version Backup version(V1 or V2)
+   * @return The suffix generated using metadata
+   */
   public static String formatStorageLocation(
-      BackupTableParams params, boolean isYbc, BackupVersion version) {
-    SimpleDateFormat tsFormat = new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss");
+      BackupTableParams params, boolean isYbc, BackupVersion version, String backupLocationTS) {
     String updatedLocation;
     String backupLabel = isYbc ? YBC_BACKUP_IDENTIFIER : "backup";
+    String fullOrIncrementalLabel =
+        params.backupUuid.equals(params.baseBackupUUID) ? "full" : "incremental";
+    String backupSubDir =
+        String.format(
+            "%s-%s/%s/%s",
+            backupLabel,
+            params.baseBackupUUID.toString().replace("-", ""),
+            fullOrIncrementalLabel,
+            backupLocationTS);
+    String universeSubDir = String.format("univ-%s", params.getUniverseUUID());
+    String prefix = String.format("%s/%s", universeSubDir, backupSubDir);
     if (params.tableUUIDList != null) {
-      updatedLocation =
-          String.format(
-              "univ-%s/%s-%s-%d/multi-table-%s",
-              params.getUniverseUUID(),
-              backupLabel,
-              tsFormat.format(new Date()),
-              abs(params.backupUuid.hashCode()),
-              params.getKeyspace());
+      updatedLocation = String.format("%s/multi-table-%s", prefix, params.getKeyspace());
     } else if (params.getTableName() == null && params.getKeyspace() != null) {
-      updatedLocation =
-          String.format(
-              "univ-%s/%s-%s-%d/keyspace-%s",
-              params.getUniverseUUID(),
-              backupLabel,
-              tsFormat.format(new Date()),
-              abs(params.backupUuid.hashCode()),
-              params.getKeyspace());
+      updatedLocation = String.format("%s/keyspace-%s", prefix, params.getKeyspace());
     } else {
       updatedLocation =
-          String.format(
-              "univ-%s/%s-%s-%d/table-%s.%s",
-              params.getUniverseUUID(),
-              backupLabel,
-              tsFormat.format(new Date()),
-              abs(params.backupUuid.hashCode()),
-              params.getKeyspace(),
-              params.getTableName());
+          String.format("%s/table-%s.%s", prefix, params.getKeyspace(), params.getTableName());
       if (params.tableUUID != null) {
         updatedLocation =
             String.format("%s-%s", updatedLocation, params.tableUUID.toString().replace("-", ""));
       }
     }
     if (version.equals(BackupVersion.V2)) {
-      updatedLocation = String.format("%s_%s", updatedLocation, params.backupParamsIdentifier);
+      updatedLocation =
+          String.format(
+              "%s_%s", updatedLocation, params.backupParamsIdentifier.toString().replace("-", ""));
     }
     return updatedLocation;
   }
@@ -460,10 +466,14 @@ public class BackupUtil {
   }
 
   public static void updateDefaultStorageLocation(
-      BackupTableParams params, UUID customerUUID, BackupCategory category, BackupVersion version) {
+      BackupTableParams params,
+      UUID customerUUID,
+      BackupCategory category,
+      BackupVersion version,
+      String backupLocationTS) {
     CustomerConfig customerConfig = CustomerConfig.get(customerUUID, params.storageConfigUUID);
     boolean isYbc = category.equals(BackupCategory.YB_CONTROLLER);
-    params.storageLocation = formatStorageLocation(params, isYbc, version);
+    params.storageLocation = formatStorageLocation(params, isYbc, version, backupLocationTS);
     if (customerConfig != null) {
       String backupLocation = null;
       if (customerConfig.getName().equals(Util.NFS)) {
@@ -540,20 +550,34 @@ public class BackupUtil {
   }
 
   /**
-   * Returns a list of locations in the backup.
+   * Returns a map of region-"list of locations" across params in the backup.
    *
    * @param backup The backup to get all locations of.
-   * @return List of locations( defaul and regional) for the backup.
+   * @return Map of region-"list of locations" for the backup.
    */
-  public static List<String> getBackupLocations(Backup backup) {
-    List<String> backupLocations = new ArrayList<>();
+  public static Map<String, List<String>> getBackupLocations(Backup backup) {
+    Map<String, List<String>> backupLocationsMap = new HashMap<>();
     Map<String, String> locationsMap = new HashMap<>();
     List<BackupTableParams> bParams = backup.getBackupParamsCollection();
     for (BackupTableParams params : bParams) {
       locationsMap = getLocationMap(params);
-      locationsMap.values().forEach(l -> backupLocations.add(l));
+      locationsMap.entrySet().stream()
+          .forEach(
+              e -> {
+                backupLocationsMap.computeIfAbsent(
+                    e.getKey(),
+                    k -> {
+                      return new ArrayList<>(Arrays.asList(e.getValue()));
+                    });
+                backupLocationsMap.computeIfPresent(
+                    e.getKey(),
+                    (k, v) -> {
+                      v.add(e.getValue());
+                      return v;
+                    });
+              });
     }
-    return backupLocations;
+    return backupLocationsMap;
   }
 
   /**
@@ -615,7 +639,8 @@ public class BackupUtil {
   public static Map<String, PerLocationBackupInfo> getBackupLocationBackupInfoMap(
       List<BackupTableParams> backupParamsList,
       boolean selectiveRestoreYbcCheck,
-      boolean filterIndexes) {
+      boolean filterIndexes,
+      Map<String, TablespaceResponse> tablespaceResponsesMap) {
     Map<String, PerLocationBackupInfo> backupLocationTablesMap = new HashMap<>();
     backupParamsList.stream()
         .forEach(
@@ -633,7 +658,8 @@ public class BackupUtil {
                   .isYSQLBackup(isYSQLBackup)
                   .perBackupLocationKeyspaceTables(perLocationKTables)
                   .backupLocation(bP.storageLocation)
-                  .isSelectiveRestoreSupported(selectiveRestoreYbcCheck && !isYSQLBackup);
+                  .isSelectiveRestoreSupported(selectiveRestoreYbcCheck && !isYSQLBackup)
+                  .tablespaceResponse(tablespaceResponsesMap.get(bP.storageLocation));
               backupLocationTablesMap.put(bP.storageLocation, bInfoBuilder.build());
             });
     return backupLocationTablesMap;
@@ -748,6 +774,8 @@ public class BackupUtil {
             bSI -> {
               PerLocationBackupInfo bInfo =
                   preflightResponse.getPerLocationBackupInfoMap().get(bSI.storageLocation);
+
+              // YSQL/YCQL backup category section
               boolean isYSQLBackup = bInfo.getIsYSQLBackup();
               if (!backupTypeMatch(
                   isYSQLBackup, /*To verify*/
@@ -757,6 +785,29 @@ public class BackupUtil {
                     PRECONDITION_FAILED,
                     String.format("Backup category mismatch for location %s", bSI.storageLocation));
               }
+
+              // Tablespaces section
+              if (restoreParams.useTablespaces) {
+                if (bInfo.tablespaceResponse != null) {
+                  List<String> unsupportedTablespaces =
+                      bInfo.tablespaceResponse.unsupportedTablespaces;
+                  List<String> conflictingTablespaces =
+                      bInfo.tablespaceResponse.conflictingTablespaces;
+                  if (CollectionUtils.isNotEmpty(unsupportedTablespaces)) {
+                    LOG.warn(
+                        "Attempting tablespaces restore with unsupported topology: {}",
+                        unsupportedTablespaces);
+                  }
+                  if (CollectionUtils.isNotEmpty(conflictingTablespaces)) {
+                    LOG.warn(
+                        "Attempting tablespaces restore which already exist on target Universe: {}."
+                            + "Note that these will not be overwritten.",
+                        unsupportedTablespaces);
+                  }
+                }
+              }
+
+              // Selective table restore section
               if (bSI.selectiveTableRestore) {
                 if (!bInfo.getIsSelectiveRestoreSupported()) {
                   throw new PlatformServiceException(

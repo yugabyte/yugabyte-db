@@ -15,6 +15,7 @@ package org.yb.util;
 
 import java.nio.ByteOrder;
 import java.util.UUID;
+import org.yb.CommonTypes;
 
 // Class to track common info provided by master or tablet server.
 public class ServerInfo {
@@ -24,13 +25,20 @@ public class ServerInfo {
   // Note: Need not be set when there is no leader (eg., when all tablet servers are listed).
   private boolean isLeader;
   private String state;
+  private CommonTypes.PeerRole peerRole;
 
   public ServerInfo(String uuid, String host, int port, boolean isLeader, String state) {
+    this(uuid, host, port, isLeader, state, null);
+  }
+
+  public ServerInfo(String uuid, String host, int port, boolean isLeader, String state,
+                    CommonTypes.PeerRole peerRole) {
     this.uuid = uuid;
     this.host = host;
     this.port = port;
     this.isLeader = isLeader;
     this.state = state;
+    this.peerRole = peerRole;
   }
 
   public String getHost() {
@@ -51,6 +59,10 @@ public class ServerInfo {
 
   public String getState() {
     return state;
+  }
+
+  public CommonTypes.PeerRole getPeerRole() {
+    return peerRole;
   }
 
   // Converts a UUID to string in host byte-order, which is how UUIDs are shown in web server and
@@ -81,6 +93,8 @@ public class ServerInfo {
         + ", isLeader="
         + isLeader
         + ", state="
-        + state;
+        + state
+        + ", peerRole="
+        + peerRole;
   }
 }

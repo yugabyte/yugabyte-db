@@ -274,5 +274,78 @@ class PgAlterTable : public PgDdl {
   tserver::PgAlterTableRequestPB req_;
 };
 
+//--------------------------------------------------------------------------------------------------
+// DROP SEQUENCE
+//--------------------------------------------------------------------------------------------------
+
+class PgDropSequence : public PgDdl {
+ public:
+  PgDropSequence(PgSession::ScopedRefPtr pg_session,
+                 PgOid database_oid,
+                 PgOid sequence_oid);
+  virtual ~PgDropSequence();
+
+  StmtOp stmt_op() const override { return StmtOp::STMT_DROP_SEQUENCE; }
+
+  // Execute.
+  Status Exec();
+
+ private:
+  PgOid database_oid_;
+  PgOid sequence_oid_;
+};
+
+class PgDropDBSequences : public PgDdl {
+ public:
+  PgDropDBSequences(PgSession::ScopedRefPtr pg_session,
+                    PgOid database_oid);
+  virtual ~PgDropDBSequences();
+
+  StmtOp stmt_op() const override { return StmtOp::STMT_DROP_DB_SEQUENCES; }
+
+  // Execute.
+  Status Exec();
+
+ private:
+  PgOid database_oid_;
+};
+
+// CREATE REPLICATION SLOT
+//--------------------------------------------------------------------------------------------------
+
+class PgCreateReplicationSlot : public PgDdl {
+ public:
+  PgCreateReplicationSlot(PgSession::ScopedRefPtr pg_session,
+                          const char *slot_name,
+                          PgOid database_oid);
+
+  Status Exec();
+
+  virtual ~PgCreateReplicationSlot();
+
+  StmtOp stmt_op() const override { return StmtOp::STMT_CREATE_REPLICATION_SLOT; }
+
+ private:
+  tserver::PgCreateReplicationSlotRequestPB req_;
+};
+
+// DROP REPLICATION SLOT
+//--------------------------------------------------------------------------------------------------
+
+class PgDropReplicationSlot : public PgDdl {
+ public:
+  PgDropReplicationSlot(PgSession::ScopedRefPtr pg_session,
+                        const char *slot_name);
+
+  Status Exec();
+
+  virtual ~PgDropReplicationSlot();
+
+  StmtOp stmt_op() const override { return StmtOp::STMT_DROP_REPLICATION_SLOT; }
+
+ private:
+  tserver::PgDropReplicationSlotRequestPB req_;
+};
+
 }  // namespace pggate
 }  // namespace yb

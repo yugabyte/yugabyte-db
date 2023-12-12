@@ -464,9 +464,9 @@ Default: `-1`, where the number of shards is determined at runtime, as follows:
   - For servers with 4 CPU cores or less, the number of tablets for each table doesn't depend on the number of YB-TServers. Instead, for 2 CPU cores or less, 1 tablet per cluster is created; for 4 CPU cores or less, 2 tablets per cluster are created.
 
 - If `enable_automatic_tablet_splitting` is `false`
-  - For servers with up to two CPU cores, the default value is considered as 2.
-  - For servers with three or four CPU cores, the default value is considered as 4.
-  - Beyond four cores, the default value is considered as 8.
+  - For servers with up to two CPU cores, the default value is considered as `2`.
+  - For servers with three or four CPU cores, the default value is considered as `4`.
+  - Beyond four cores, the default value is considered as `8`.
 
 Local cluster installations created using `yb-ctl` and `yb-docker-ctl` use a default value of `2` for this flag.
 
@@ -479,6 +479,14 @@ Clusters created using `yugabyted` always use a default value of `1`.
 - The [`CREATE TABLE ...SPLIT INTO`](../../../api/ysql/the-sql-language/statements/ddl_create_table/#split-into) clause can be used on a per-table basis to override the `ysql_num_shards_per_tserver` value.
 
 {{< /note >}}
+
+##### --ysql_colocate_database_by_default
+
+When enabled, all databases created in the cluster are colocated by default. If you enable the flag after creating a cluster, you need to restart the YB-Master and YB-TServer services.
+
+For more details, see [clusters in colocated tables](../../../architecture/docdb-sharding/colocated-tables/#clusters).
+
+Default: `false`
 
 ## Tablet splitting flags
 
@@ -726,6 +734,23 @@ WAL retention time, in seconds, to be used for tables for which a CDC stream was
 
 Default: `14400` (4 hours)
 
+## Metric export flags
+
+##### --export_help_and_type_in_prometheus_metrics
+
+YB-Master metrics are available in Prometheus format at
+`http://localhost:7000/prometheus-metrics`.  This flag controls whether
+#TYPE and #HELP information is included as part of the Prometheus
+metrics output by default.
+
+To override this flag on a per-scrape basis, set the URL parameter
+`show_help` to `true` to include or to `false` to not include type and
+help information.  For example, querying
+`http://localhost:7000/prometheus-metrics?show_help=true` will return
+type and help information regardless of the setting of this flag.
+
+Default: `true`
+
 ## Admin UI
 
 The Admin UI for YB-Master is available at <http://localhost:7000>.
@@ -735,6 +760,12 @@ The Admin UI for YB-Master is available at <http://localhost:7000>.
 Home page of the YB-Master server that gives a high level overview of the cluster. Not all YB-Master servers in a cluster show identical information.
 
 ![master-home](/images/admin/master-home-binary-with-tables.png)
+
+### Namespaces
+
+List of namespaces present in the cluster.
+
+![master-namespaces](/images/admin/master-namespaces.png)
 
 ### Tables
 

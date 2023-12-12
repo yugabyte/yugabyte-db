@@ -3,7 +3,6 @@ title: Billing and invoices
 linkTitle: Manage billing
 description: Manage your YugabyteDB Managed billing profile and payment methods and view invoices.
 headcontent: Manage your billing profile and payment method
-image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:
     identifier: cloud-billing-profile
@@ -12,21 +11,30 @@ menu:
 type: docs
 ---
 
-Review your charges and manage your billing profile and payment methods using the **Billing** page.
+Review your usage and charges, and manage your billing profile and payment methods using the **Usage & Billing** page.
 
 Yugabyte bills for its services as follows:
 
 - Charges by the minute for your YugabyteDB Managed clusters.
 - Tabulates costs daily.
-- Displays your current monthly costs under **Invoices** on the **Billing** page.
+- Displays your current monthly costs under **Invoices** on the **Usage & Billing** page.
 
 **Invoices are sent to the email provided in the Billing Profile**.
 
 For information on YugabyteDB Managed pricing, refer to the [YugabyteDB Managed Standard Price List](https://www.yugabyte.com/yugabyte-cloud-standard-price-list/). For a description of how cluster configurations are costed, refer to [Cluster costs](../cloud-billing-costs/).
 
-![Billing tab](/images/yb-cloud/cloud-admin-billing.png)
+![Usage & Billing tab](/images/yb-cloud/cloud-admin-billing.png)
 
-The **Billing** page has the following tabs: **Profile and Payment Methods**, and **Invoices**.
+The **Usage & Billing** page has the following tabs: **Usage**, **Profile and Payment Methods**, and **Invoices**.
+
+## Usage
+
+Use this section to review your usage by cluster over time. You can view cumulative and daily usage of the following:
+
+- cluster compute (vCPU hours)
+- disk storage
+- cloud backup storage
+- data transfer
 
 ## Profile and Payment Methods
 
@@ -40,7 +48,7 @@ If you want to switch from paying by credit card to another method, contact {{% 
 
 To add or change your billing profile:
 
-1. On the **Billing** page, select **Profile and Payment Methods** and click **Edit Billing Profile** to display the **Edit Billing Profile** sheet. If you haven't yet created a billing profile, click **Create Billing Profile**.
+1. On the **Usage & Billing** page, select **Profile and Payment Methods** and click **Edit Billing Profile** to display the **Edit Billing Profile** sheet. If you haven't yet created a billing profile, click **Create Billing Profile**.
 1. Edit your contact information.
 1. If you are creating your billing profile, enter your credit card details. For other payment methods, set the **Billing Options** to **Other**. You can only set the **Billing Options** if you are creating your profile.
 1. Click **Save**.
@@ -49,7 +57,7 @@ To add or change your billing profile:
 
 To add a credit card:
 
-1. On the **Billing** page, select **Profile and Payment Methods** and click **Add Card** to display the **Add Credit Card** dialog.
+1. On the **Usage & Billing** page, select **Profile and Payment Methods** and click **Add Card** to display the **Add Credit Card** dialog.
 1. Enter your credit card details.
 1. To use the card as the default for payment, choose **Set as default credit card**.
 1. Click **Save**.

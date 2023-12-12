@@ -7,7 +7,7 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React, { FC, useState } from 'react';
+import { FC, useState } from 'react';
 import { DropdownButton, MenuItem, Tab } from 'react-bootstrap';
 import { withRouter } from 'react-router';
 import { useSelector } from 'react-redux';
@@ -19,7 +19,10 @@ import { PointInTimeRecovery } from '../pitr/PointInTimeRecovery';
 import { isYbcInstalledInUniverse, getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { BackupThrottleParameters } from '../components/BackupThrottleParameters';
 import { BackupAdvancedRestore } from '../components/BackupAdvancedRestore';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+
 import './UniverseLevelBackup.scss';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 interface UniverseBackupProps {
   params: {
@@ -69,66 +72,91 @@ const UniverseBackup: FC<UniverseBackupProps> = ({ params: { uuid } }) => {
           currentUniverseUUID={uuid}
         />
       )}
-      <YBTabsPanel id="backup-tab-panel" defaultTab="backupList">
-        <Tab eventKey="backupList" title="Backups" unmountOnExit>
-          <BackupList allowTakingBackup universeUUID={uuid} />
-        </Tab>
-        <Tab eventKey="backupSchedule" title="Scheduled Backup Policies" unmountOnExit>
-          <ScheduledBackup universeUUID={uuid} />
-        </Tab>
-        {enablePITR && (
-          <Tab eventKey="point-in-time-recovery" title="Point-in-time Recovery" unmountOnExit>
-            <PointInTimeRecovery universeUUID={uuid} />
+      <RbacValidator
+        accessRequiredOn={{
+          ...ApiPermissionMap.GET_BACKUPS_BY_PAGE,
+          onResource: uuid
+        }}
+      >
+        <YBTabsPanel id="backup-tab-panel" defaultTab="backupList">
+          <Tab eventKey="backupList" title="Backups" unmountOnExit>
+            <BackupList allowTakingBackup universeUUID={uuid} />
           </Tab>
-        )}
-        {(featureFlags.test.enableRestore || featureFlags.released.enableRestore) && (
-          <Tab eventKey="restore" title="Restore History" unmountOnExit>
-            <Restore type="UNIVERSE_LEVEL" universeUUID={uuid} />
+          <Tab eventKey="backupSchedule" title="Scheduled Backup Policies" unmountOnExit>
+            <ScheduledBackup universeUUID={uuid} />
           </Tab>
-        )}
-        <Tab
-          tabClassName="advanced_configs"
-          title={
-            <DropdownButton
-              pullRight
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-              }}
-              title={
-                <span>
-                  <i className="fa fa-gear" />
-                  Advanced
-                </span>
-              }
-              id="advanced_config_but"
-            >
-              <MenuItem
+          {enablePITR && (
+            <Tab eventKey="point-in-time-recovery" title="Point-in-time Recovery" unmountOnExit>
+              <PointInTimeRecovery universeUUID={uuid} />
+            </Tab>
+          )}
+          {(featureFlags.test.enableRestore || featureFlags.released.enableRestore) && (
+            <Tab eventKey="restore" title="Restore History" unmountOnExit>
+              <Restore type="UNIVERSE_LEVEL" universeUUID={uuid} />
+            </Tab>
+          )}
+          <Tab
+            tabClassName="advanced_configs"
+            title={
+              <DropdownButton
+                pullRight
                 onClick={(e) => {
+                  e.preventDefault();
                   e.stopPropagation();
-                  if (currentUniverse?.data?.universeDetails?.universePaused) return;
-                  setShowAdvancedRestore(true);
                 }}
-                disabled={currentUniverse?.data?.universeDetails?.universePaused}
+                title={
+                  <span>
+                    <i className="fa fa-gear" />
+                    Advanced
+                  </span>
+                }
+                id="advanced_config_but"
               >
-                Advanced Restore
-              </MenuItem>
-              {YBCInstalled && (
-                <MenuItem
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    if (currentUniverse?.data?.universeDetails?.universePaused) return;
-                    setShowThrottleParametersModal(true);
+                <RbacValidator
+                  isControl
+                  accessRequiredOn={{
+                    onResource: uuid,
+                    ...ApiPermissionMap.RESTORE_BACKUP
                   }}
-                  disabled={currentUniverse?.data?.universeDetails?.universePaused}
                 >
-                  Configure Throttle Parameters
-                </MenuItem>
-              )}
-            </DropdownButton>
-          }
-        ></Tab>
-      </YBTabsPanel>
+                  <MenuItem
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (currentUniverse?.data?.universeDetails?.universePaused) return;
+                      setShowAdvancedRestore(true);
+                    }}
+                    disabled={currentUniverse?.data?.universeDetails?.universePaused}
+                    data-testid="UniverseBackup-AdvancedRestore"
+                  >
+                    Advanced Restore
+                  </MenuItem>
+                </RbacValidator>
+                {YBCInstalled && (
+                  <RbacValidator
+                    isControl
+                    accessRequiredOn={{
+                      onResource: uuid,
+                      ...ApiPermissionMap.MODIFY_BACKUP_THROTTLE_PARAMS
+                    }}
+                  >
+                    <MenuItem
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (currentUniverse?.data?.universeDetails?.universePaused) return;
+                        setShowThrottleParametersModal(true);
+                      }}
+                      disabled={currentUniverse?.data?.universeDetails?.universePaused}
+                      data-testid="UniverseBackup-ConfigureThrottle"
+                    >
+                      Configure Throttle Parameters
+                    </MenuItem>
+                  </RbacValidator>
+                )}
+              </DropdownButton>
+            }
+          ></Tab>
+        </YBTabsPanel>
+      </RbacValidator>
     </>
   );
 };

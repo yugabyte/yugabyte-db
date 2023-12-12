@@ -16,6 +16,9 @@
 
 namespace yb::cdc {
 
+Result<bool> IsBootstrapRequiredForTablet(
+    tablet::TabletPeerPtr tablet_peer, const OpId& min_op_id, const CoarseTimePoint& deadline);
+
 class XClusterProducerBootstrap {
  public:
   XClusterProducerBootstrap(

@@ -4,12 +4,15 @@ package com.yugabyte.yw.commissioner;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import com.typesafe.config.Config;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ManageOtelCollector;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterUserIntent;
+import com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareUpgrade;
+import com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareUpgradeYB;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
@@ -24,6 +27,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
+import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
 import java.util.Arrays;
 import java.util.Collection;
 import java.util.Collections;
@@ -76,20 +80,17 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     return (UpgradeTaskParams) taskParams;
   }
 
+  @Deprecated
+  // TODO This cannot serve all the stages in the upgrade because this gives only one fixed type.
   public abstract SubTaskGroupType getTaskSubGroupType();
 
   // State set on node while it is being upgraded
   public abstract NodeState getNodeState();
 
-  // Wrapper that takes care of common pre and post upgrade tasks and user has
-  // flexibility to manipulate subTaskGroupQueue through the lambda passed in parameter
   public void runUpgrade(Runnable upgradeLambda) {
+    checkUniverseVersion();
+    lockAndFreezeUniverseForUpdate(taskParams().expectedUniverseVersion, null /* Txn callback */);
     try {
-      checkUniverseVersion();
-      // Update the universe DB with the update to be performed and set the
-      // 'updateInProgress' flag to prevent other updates from happening.
-      lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-
       Set<NodeDetails> nodeList = fetchAllNodes(taskParams().upgradeOption);
 
       // Run the pre-upgrade hooks
@@ -108,7 +109,22 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       // Run all the tasks.
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
-      log.error("Error executing task {} with error={}.", getName(), t);
+      log.error("Error executing task {} with error: ", getName(), t);
+
+      if (taskParams().getUniverseSoftwareUpgradeStateOnFailure() != null) {
+        Universe universe = getUniverse();
+        if (!UniverseDefinitionTaskParams.IN_PROGRESS_UNIV_SOFTWARE_UPGRADE_STATES.contains(
+            universe.getUniverseDetails().softwareUpgradeState)) {
+          log.debug("Skipping universe upgrade state as actual task was not started.");
+        } else {
+          universe.updateUniverseSoftwareUpgradeState(
+              taskParams().getUniverseSoftwareUpgradeStateOnFailure());
+          log.debug(
+              "Updated universe {} software upgrade state to  {}.",
+              taskParams().getUniverseUUID(),
+              taskParams().getUniverseSoftwareUpgradeStateOnFailure());
+        }
+      }
 
       // If the task failed, we don't want the loadbalancer to be
       // disabled, so we enable it again in case of errors.
@@ -119,7 +135,6 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
                   .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
             });
       }
-
       throw t;
     } finally {
       try {
@@ -143,6 +158,16 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       Pair<List<NodeDetails>, List<NodeDetails>> mastersAndTServers,
       UpgradeContext context,
       boolean isYbcPresent) {
+    createUpgradeTaskFlow(
+        lambda, mastersAndTServers, context, isYbcPresent, false /* processTServersFirst */);
+  }
+
+  public void createUpgradeTaskFlow(
+      IUpgradeSubTask lambda,
+      Pair<List<NodeDetails>, List<NodeDetails>> mastersAndTServers,
+      UpgradeContext context,
+      boolean isYbcPresent,
+      boolean processTServersFirst) {
     switch (taskParams().upgradeOption) {
       case ROLLING_UPGRADE:
         createRollingUpgradeTaskFlow(lambda, mastersAndTServers, context, isYbcPresent);
@@ -175,6 +200,12 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       List<NodeDetails> tServerNodes,
       UpgradeContext context,
       boolean isYbcPresent) {
+
+    if (context.processTServersFirst) {
+      createRollingUpgradeTaskFlow(
+          rollingUpgradeLambda, tServerNodes, ServerType.TSERVER, context, true, isYbcPresent);
+    }
+
     createRollingUpgradeTaskFlow(
         rollingUpgradeLambda, masterNodes, ServerType.MASTER, context, true, isYbcPresent);
     if (context.processInactiveMaster) {
@@ -186,8 +217,11 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
           false,
           isYbcPresent);
     }
-    createRollingUpgradeTaskFlow(
-        rollingUpgradeLambda, tServerNodes, ServerType.TSERVER, context, true, isYbcPresent);
+
+    if (!context.processTServersFirst) {
+      createRollingUpgradeTaskFlow(
+          rollingUpgradeLambda, tServerNodes, ServerType.TSERVER, context, true, isYbcPresent);
+    }
   }
 
   /**
@@ -259,10 +293,16 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
     for (NodeDetails node : nodes) {
       Set<ServerType> processTypes = typesByNode.get(node);
+      if ((processTypes.equals(ImmutableSet.of(ServerType.MASTER))
+              && context.nodesToSkipMasterActions.contains(node))
+          || (processTypes.equals(ImmutableSet.of(ServerType.TSERVER))
+              && context.nodesToSkipTServerActions.contains(node))) {
+        continue;
+      }
       List<NodeDetails> singletonNodeList = Collections.singletonList(node);
       createSetNodeStateTask(node, nodeState).setSubTaskGroupType(subGroupType);
 
-      createNodePrecheckTasks(node, processTypes, subGroupType);
+      createNodePrecheckTasks(node, processTypes, subGroupType, context.targetSoftwareVersion);
 
       // Run pre node upgrade hooks
       createHookTriggerTasks(singletonNodeList, true, true);
@@ -313,7 +353,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
         }
         if (isFollowerLagCheckEnabled()) {
           for (ServerType processType : processTypes) {
-            createWaitForFollowerLagTask(node, processType).setSubTaskGroupType(subGroupType);
+            createCheckFollowerLagTask(node, processType).setSubTaskGroupType(subGroupType);
           }
         }
         if (isYbcPresent) {
@@ -359,6 +399,10 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       List<NodeDetails> tServerNodes,
       UpgradeContext context,
       boolean isYbcPresent) {
+    if (context.processTServersFirst) {
+      createNonRollingUpgradeTaskFlow(
+          nonRollingUpgradeLambda, tServerNodes, ServerType.TSERVER, context, true, isYbcPresent);
+    }
 
     createNonRollingUpgradeTaskFlow(
         nonRollingUpgradeLambda, masterNodes, ServerType.MASTER, context, true, isYbcPresent);
@@ -372,8 +416,11 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
           false,
           isYbcPresent);
     }
-    createNonRollingUpgradeTaskFlow(
-        nonRollingUpgradeLambda, tServerNodes, ServerType.TSERVER, context, true, isYbcPresent);
+
+    if (!context.processTServersFirst) {
+      createNonRollingUpgradeTaskFlow(
+          nonRollingUpgradeLambda, tServerNodes, ServerType.TSERVER, context, true, isYbcPresent);
+    }
   }
 
   private List<NodeDetails> getInactiveMasters(
@@ -395,6 +442,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       UpgradeContext context,
       boolean activeRole,
       boolean isYbcPresent) {
+    nodes = filterNodesForUpgrade(nodes, processType, context);
     if ((nodes == null) || nodes.isEmpty()) {
       return;
     }
@@ -455,10 +503,19 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       List<NodeDetails> masterNodes,
       List<NodeDetails> tServerNodes,
       UpgradeContext context) {
+
+    if (context.processTServersFirst) {
+      createNonRestartUpgradeTaskFlow(
+          nonRestartUpgradeLambda, tServerNodes, ServerType.TSERVER, context);
+    }
+
     createNonRestartUpgradeTaskFlow(
         nonRestartUpgradeLambda, masterNodes, ServerType.MASTER, context);
-    createNonRestartUpgradeTaskFlow(
-        nonRestartUpgradeLambda, tServerNodes, ServerType.TSERVER, context);
+
+    if (!context.processTServersFirst) {
+      createNonRestartUpgradeTaskFlow(
+          nonRestartUpgradeLambda, tServerNodes, ServerType.TSERVER, context);
+    }
   }
 
   protected void createNonRestartUpgradeTaskFlow(
@@ -466,6 +523,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       List<NodeDetails> nodes,
       ServerType processType,
       UpgradeContext context) {
+    nodes = filterNodesForUpgrade(nodes, processType, context);
     if ((nodes == null) || nodes.isEmpty()) {
       return;
     }
@@ -517,7 +575,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
 
     UpdateClusterUserIntent updateClusterUserIntentTask = createTask(UpdateClusterUserIntent.class);
     updateClusterUserIntentTask.initialize(updateClusterUserIntentParams);
-    updateClusterUserIntentTask.setUserTaskUUID(userTaskUUID);
+    updateClusterUserIntentTask.setUserTaskUUID(getUserTaskUUID());
     subTaskGroup.addSubTask(updateClusterUserIntentTask);
 
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -537,7 +595,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     params.gflagsToRemove = GFlagsUtil.getDeletedGFlags(oldGflags, newGflags);
     AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
     task.initialize(params);
-    task.setUserTaskUUID(userTaskUUID);
+    task.setUserTaskUUID(getUserTaskUUID());
     return task;
   }
 
@@ -582,19 +640,55 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 
+  protected void createManageOtelCollectorTasks(
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      List<NodeDetails> nodes,
+      boolean installOtelCollector,
+      AuditLogConfig auditLogConfig,
+      Function<NodeDetails, Map<String, String>> nodeToGflags) {
+    // If the node list is empty, we don't need to do anything.
+    if (nodes.isEmpty()) {
+      return;
+    }
+    String subGroupDescription =
+        String.format(
+            "AnsibleConfigureServers (%s) for: %s",
+            SubTaskGroupType.ManageOtelCollector, taskParams().nodePrefix);
+    TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
+    for (NodeDetails node : nodes) {
+      ManageOtelCollector.Params params = new ManageOtelCollector.Params();
+      params.nodeName = node.nodeName;
+      params.setUniverseUUID(taskParams().getUniverseUUID());
+      params.azUuid = node.azUuid;
+      params.installOtelCollector = installOtelCollector;
+      params.otelCollectorEnabled =
+          installOtelCollector || getUniverse().getUniverseDetails().otelCollectorEnabled;
+      params.auditLogConfig = auditLogConfig;
+      params.deviceInfo = userIntent.getDeviceInfoForNode(node);
+      params.gflags = nodeToGflags.apply(node);
+
+      ManageOtelCollector task = createTask(ManageOtelCollector.class);
+      task.initialize(params);
+      task.setUserTaskUUID(getUserTaskUUID());
+      subTaskGroup.addSubTask(task);
+    }
+    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ManageOtelCollector);
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+  }
+
   protected void checkForbiddenToOverrideGFlags(
       NodeDetails node,
       UniverseDefinitionTaskParams.UserIntent userIntent,
       Universe universe,
       ServerType processType,
-      Map<String, String> newGFlags,
-      Config config) {
+      Map<String, String> newGFlags) {
     AnsibleConfigureServers.Params params =
         getAnsibleConfigureServerParams(
             userIntent, node, processType, UpgradeTaskType.GFlags, UpgradeTaskSubType.None);
 
     String errorMsg =
-        GFlagsUtil.checkForbiddenToOverride(node, params, userIntent, universe, newGFlags, config);
+        GFlagsUtil.checkForbiddenToOverride(
+            node, params, userIntent, universe, newGFlags, config, confGetter);
     if (errorMsg != null) {
       throw new PlatformServiceException(
           BAD_REQUEST,
@@ -627,10 +721,11 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   }
 
   public LinkedHashSet<NodeDetails> fetchNodesForCluster() {
+    Universe universe = getUniverse();
     return toOrderedSet(
         new ImmutablePair<>(
-            filterForClusters(fetchMasterNodes(taskParams().upgradeOption)),
-            filterForClusters(fetchTServerNodes(taskParams().upgradeOption))));
+            filterForClusters(fetchMasterNodes(universe, taskParams().upgradeOption)),
+            filterForClusters(fetchTServerNodes(universe, taskParams().upgradeOption))));
   }
 
   public LinkedHashSet<NodeDetails> fetchAllNodes(UpgradeOption upgradeOption) {
@@ -643,18 +738,26 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   }
 
   public List<NodeDetails> fetchMasterNodes(UpgradeOption upgradeOption) {
-    List<NodeDetails> masterNodes = getUniverse().getMasters();
+    return fetchMasterNodes(getUniverse(), upgradeOption);
+  }
+
+  private List<NodeDetails> fetchMasterNodes(Universe universe, UpgradeOption upgradeOption) {
+    List<NodeDetails> masterNodes = universe.getMasters();
     if (upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
-      final String leaderMasterAddress = getUniverse().getMasterLeaderHostText();
+      final String leaderMasterAddress = universe.getMasterLeaderHostText();
       return sortMastersInRestartOrder(leaderMasterAddress, masterNodes);
     }
     return masterNodes;
   }
 
   public List<NodeDetails> fetchTServerNodes(UpgradeOption upgradeOption) {
-    List<NodeDetails> tServerNodes = getUniverse().getTServers();
+    return fetchTServerNodes(getUniverse(), upgradeOption);
+  }
+
+  private List<NodeDetails> fetchTServerNodes(Universe universe, UpgradeOption upgradeOption) {
+    List<NodeDetails> tServerNodes = universe.getTServers();
     if (upgradeOption == UpgradeOption.ROLLING_UPGRADE) {
-      return sortTServersInRestartOrder(getUniverse(), tServerNodes);
+      return sortTServersInRestartOrder(universe, tServerNodes);
     }
     return tServerNodes;
   }
@@ -719,11 +822,35 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
   // Get the TriggerType for the given situation and trigger the hooks
   private void createHookTriggerTasks(
       Collection<NodeDetails> nodes, boolean isPre, boolean isRolling) {
-    String triggerName = (isPre ? "Pre" : "Post") + this.getClass().getSimpleName();
+    String className = this.getClass().getSimpleName();
+    if (this.getClass().equals(SoftwareUpgradeYB.class)) {
+      // use same hook for new upgrade task which was added for old upgrade task.
+      className = SoftwareUpgrade.class.getSimpleName();
+    }
+    String triggerName = (isPre ? "Pre" : "Post") + className;
     if (isRolling) triggerName += "NodeUpgrade";
     Optional<TriggerType> optTrigger = TriggerType.maybeResolve(triggerName);
     if (optTrigger.isPresent())
       HookInserter.addHookTrigger(optTrigger.get(), this, taskParams(), nodes);
+  }
+
+  private List<NodeDetails> filterNodesForUpgrade(
+      List<NodeDetails> nodes, ServerType processType, UpgradeContext context) {
+    if (nodes == null || nodes.isEmpty()) {
+      return nodes;
+    }
+    if (processType.equals(ServerType.MASTER) && context.nodesToSkipMasterActions != null) {
+      return nodes.stream()
+          .filter(node -> !context.nodesToSkipMasterActions.contains(node))
+          .collect(Collectors.toList());
+    } else if (processType.equals(ServerType.TSERVER)
+        && context.nodesToSkipTServerActions != null) {
+      return nodes.stream()
+          .filter(node -> !context.nodesToSkipTServerActions.contains(node))
+          .collect(Collectors.toList());
+    } else {
+      return nodes;
+    }
   }
 
   @Value
@@ -732,10 +859,14 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     boolean reconfigureMaster;
     boolean runBeforeStopping;
     boolean processInactiveMaster;
+    @Builder.Default boolean processTServersFirst = false;
     // Set this field to access client userIntent during runtime as
     // usually universeDetails are updated only at the end of task.
     UniverseDefinitionTaskParams.UserIntent userIntent;
     @Builder.Default boolean skipStartingProcesses = false;
+    String targetSoftwareVersion;
     Consumer<NodeDetails> postAction;
+    @Builder.Default Set<NodeDetails> nodesToSkipMasterActions = new HashSet<>();
+    @Builder.Default Set<NodeDetails> nodesToSkipTServerActions = new HashSet<>();
   }
 }

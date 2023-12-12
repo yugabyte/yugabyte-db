@@ -104,6 +104,9 @@ DECLARE_int64(transaction_abort_check_timeout_ms);
 
 DECLARE_int64(cdc_intent_retention_ms);
 
+DECLARE_uint64(transaction_heartbeat_usec);
+DECLARE_int32(clear_deadlocked_txns_info_older_than_heartbeats);
+
 METRIC_DEFINE_simple_counter(
     tablet, transaction_not_found, "Total number of missing transactions during load",
     yb::MetricUnit::kTransactions);
@@ -126,6 +129,9 @@ METRIC_DEFINE_event_stats(tablet, conflict_resolution_num_keys_scanned,
 DEFINE_test_flag(int32, txn_participant_inject_latency_on_apply_update_txn_ms, 0,
                  "How much latency to inject when a update txn operation is applied.");
 
+DEFINE_test_flag(int32, txn_participant_inject_delay_on_start_shutdown_ms, 0,
+                 "How much delay to inject before starting participant shutdown.");
+
 namespace yb {
 namespace tablet {
 
@@ -134,6 +140,8 @@ namespace {
 YB_STRONGLY_TYPED_BOOL(PostApplyCleanup);
 
 } // namespace
+
+using DeadlockInfo = std::pair<Status, CoarseTimePoint>;
 
 constexpr size_t kRunningTransactionSize = sizeof(RunningTransaction);
 const std::string kParentMemTrackerId = "Transactions";
@@ -195,10 +203,13 @@ class TransactionParticipant::Impl
   }
 
   bool StartShutdown() {
+    AtomicFlagSleepMs(&FLAGS_TEST_txn_participant_inject_delay_on_start_shutdown_ms);
     bool expected = false;
     if (!closing_.compare_exchange_strong(expected, true)) {
       return false;
     }
+
+    loader_.StartShutdown();
 
     wait_queue_poller_.Shutdown();
     if (wait_queue_) {
@@ -217,14 +228,13 @@ class TransactionParticipant::Impl
     return true;
   }
 
-  void CompleteShutdown() {
+  void CompleteShutdown() EXCLUDES(mutex_, status_resolvers_mutex_) {
     LOG_IF_WITH_PREFIX(DFATAL, !Closing()) << __func__ << " w/o StartShutdown";
 
     if (wait_queue_) {
       wait_queue_->CompleteShutdown();
     }
 
-    decltype(status_resolvers_) status_resolvers;
     {
       UniqueLock lock(mutex_);
       WaitOnConditionVariable(
@@ -235,12 +245,18 @@ class TransactionParticipant::Impl
       DumpClear(RemoveReason::kShutdown);
       transactions_.clear();
       TransactionsModifiedUnlocked(&min_running_notifier);
-      status_resolvers.swap(status_resolvers_);
+
       mem_tracker_->UnregisterFromParent();
     }
 
+    decltype(status_resolvers_) status_resolvers;
+    {
+      std::lock_guard lock(status_resolvers_mutex_);
+      status_resolvers.swap(status_resolvers_);
+    }
+
     rpcs_.Shutdown();
-    loader_.Shutdown();
+    loader_.CompleteShutdown();
     for (auto& resolver : status_resolvers) {
       resolver.Shutdown();
     }
@@ -268,6 +284,7 @@ class TransactionParticipant::Impl
     }
     if (WasTransactionRecentlyRemoved(metadata.transaction_id) ||
         cleanup_cache_.Erase(metadata.transaction_id) != 0) {
+      RETURN_NOT_OK(GetTransactionDeadlockStatusUnlocked(metadata.transaction_id));
       auto status = STATUS_EC_FORMAT(
           TryAgain, PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE),
           "Transaction was recently aborted: $0", metadata.transaction_id);
@@ -277,8 +294,21 @@ class TransactionParticipant::Impl
 
     VLOG_WITH_PREFIX(3) << "Adding a new transaction txn_id: " << metadata.transaction_id
                         << " with begin_time: " << metadata.start_time.ToUint64();
-    transactions_.insert(std::make_shared<RunningTransaction>(
-        metadata, TransactionalBatchData(), OneWayBitmap(), metadata.start_time, this));
+
+    auto txn = std::make_shared<RunningTransaction>(
+        metadata, TransactionalBatchData(), OneWayBitmap(), metadata.start_time, this);
+
+    {
+      // Some transactions might not have metadata flushed into intents DB, but may have apply state
+      // stored in regular DB. This can only happen during bootstrap.
+      auto pending_apply = loader_.GetPendingApply(metadata.transaction_id);
+      if (pending_apply) {
+        txn->SetLocalCommitData(pending_apply->commit_ht, pending_apply->state.aborted);
+        txn->SetApplyData(pending_apply->state);
+      }
+    }
+
+    transactions_.insert(txn);
     mem_tracker_->Consume(kRunningTransactionSize);
     TransactionsModifiedUnlocked(&min_running_notifier);
     return true;
@@ -352,6 +382,7 @@ class TransactionParticipant::Impl
       if (it != transactions_.end()) {
         RETURN_NOT_OK((**it).CheckAborted());
       } else if (WasTransactionRecentlyRemoved(metadata.transaction_id)) {
+        RETURN_NOT_OK(GetTransactionDeadlockStatusUnlocked(metadata.transaction_id));
         return MakeAbortedStatus(metadata.transaction_id);
       }
       return metadata;
@@ -364,9 +395,11 @@ class TransactionParticipant::Impl
     auto lock_and_iterator = VERIFY_RESULT(LockAndFind(
         id, "metadata"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist}));
     if (!lock_and_iterator.found()) {
-      return STATUS(TryAgain,
-                    Format("Unknown transaction, could be recently aborted: $0", id), Slice(),
-                    PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE));
+      return lock_and_iterator.did_txn_deadlock()
+          ? lock_and_iterator.deadlock_status
+          : STATUS(TryAgain,
+                   Format("Unknown transaction, could be recently aborted: $0", id), Slice(),
+                   PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE));
     }
     RETURN_NOT_OK(lock_and_iterator.transaction().CheckAborted());
     return lock_and_iterator.transaction().metadata();
@@ -380,6 +413,9 @@ class TransactionParticipant::Impl
     auto lock_and_iterator = VERIFY_RESULT(LockAndFind(
         id, "metadata with write id"s, TransactionLoadFlags{TransactionLoadFlag::kMustExist}));
     if (!lock_and_iterator.found()) {
+      if (lock_and_iterator.did_txn_deadlock()) {
+        return lock_and_iterator.deadlock_status;
+      }
       return boost::none;
     }
     auto& transaction = lock_and_iterator.transaction();
@@ -406,8 +442,13 @@ class TransactionParticipant::Impl
       return;
     }
     if (!lock_and_iterator_result->found()) {
-      request.callback(
-          STATUS_FORMAT(NotFound, "Request status of unknown transaction: $0", *request.id));
+      if (lock_and_iterator_result->did_txn_deadlock()) {
+        request.callback(
+            TransactionStatusResult::Deadlocked(lock_and_iterator_result->deadlock_status));
+      } else {
+        request.callback(
+            STATUS_FORMAT(NotFound, "Request status of unknown transaction: $0", *request.id));
+      }
       return;
     }
     lock_and_iterator_result->transaction().RequestStatusAt(
@@ -554,7 +595,7 @@ class TransactionParticipant::Impl
                             << " checkpoint opid is: " << checkpoint_op_id.ToString()
                             << " txn id: " << id;
         (**it).ScheduleRemoveIntents(*it, front.reason);
-        RemoveTransaction(it, front.reason, min_running_notifier);
+        RemoveTransaction(it, front.reason, min_running_notifier, front.expected_deadlock_status);
       }
       VLOG_WITH_PREFIX(2) << "Cleaned from queue: " << id;
       queue->pop_front();
@@ -599,7 +640,9 @@ class TransactionParticipant::Impl
     auto lock_and_iterator =
         VERIFY_RESULT(LockAndFind(id, "check aborted"s, TransactionLoadFlags{}));
     if (!lock_and_iterator.found()) {
-      return MakeAbortedStatus(id);
+      return lock_and_iterator.did_txn_deadlock()
+          ? lock_and_iterator.deadlock_status
+          : MakeAbortedStatus(id);
     }
     return lock_and_iterator.transaction().CheckAborted();
   }
@@ -798,7 +841,8 @@ class TransactionParticipant::Impl
     if (lock_and_iterator.found()) {
       lock_and_iterator.transaction().SetApplyOpId(data.op_id);
       if (!apply_state.active()) {
-        RemoveUnlocked(lock_and_iterator.iterator, RemoveReason::kApplied, &min_running_notifier);
+        RemoveUnlocked(
+            lock_and_iterator.iterator, RemoveReason::kApplied, &min_running_notifier);
       } else {
         lock_and_iterator.transaction().SetApplyData(apply_state, &data, operation);
       }
@@ -888,7 +932,8 @@ class TransactionParticipant::Impl
       return Status::OK();
     }
 
-    if (!RemoveUnlocked(it, RemoveReason::kProcessCleanup, &min_running_notifier)) {
+    auto did_remove = RemoveUnlocked(it, RemoveReason::kProcessCleanup, &min_running_notifier);
+    if (!did_remove) {
       VLOG_WITH_PREFIX(2) << "Have added aborted txn to cleanup queue: "
                           << data.transaction_id;
     }
@@ -1015,7 +1060,7 @@ class TransactionParticipant::Impl
           &participant_context_, &rpcs_, FLAGS_max_transactions_in_status_request,
           [this, resolve_at, &recheck_ids, &committed_ids](
               const std::vector <TransactionStatusInfo>& status_infos) {
-            std::vector<TransactionId> aborted;
+            std::vector<TransactionStatusInfo> aborted;
             for (const auto& info : status_infos) {
               VLOG_WITH_PREFIX(4) << "Transaction status: " << info.ToString();
               if (info.status == TransactionStatus::COMMITTED) {
@@ -1025,7 +1070,7 @@ class TransactionParticipant::Impl
                   committed_ids.push_back(info.transaction_id);
                 }
               } else if (info.status == TransactionStatus::ABORTED) {
-                aborted.push_back(info.transaction_id);
+                aborted.push_back(info);
               } else {
                 LOG_IF_WITH_PREFIX(DFATAL, info.status != TransactionStatus::PENDING)
                     << "Transaction is in unexpected state: " << info.ToString();
@@ -1037,8 +1082,20 @@ class TransactionParticipant::Impl
             if (!aborted.empty()) {
               MinRunningNotifier min_running_notifier(&applier_);
               std::lock_guard lock(mutex_);
-              for (const auto& id : aborted) {
-                EnqueueRemoveUnlocked(id, RemoveReason::kStatusReceived, &min_running_notifier);
+              for (const auto& info : aborted) {
+                // TODO: Refactor so that the clean up code can use the established iterator
+                // instead of executing find again.
+                auto it = transactions_.find(info.transaction_id);
+                if (it != transactions_.end() && (*it)->status_tablet() != info.status_tablet) {
+                  VLOG_WITH_PREFIX(2) << "Dropping Aborted status for txn "
+                                      << info.transaction_id.ToString()
+                                      << " from old status tablet " << info.status_tablet
+                                      << ". New status tablet " << (*it)->status_tablet();
+                  continue;
+                }
+                EnqueueRemoveUnlocked(
+                    info.transaction_id, RemoveReason::kStatusReceived, &min_running_notifier,
+                    info.expected_deadlock_status);
               }
             }
           });
@@ -1090,7 +1147,7 @@ class TransactionParticipant::Impl
     return Status::OK();
   }
 
-  size_t TEST_GetNumRunningTransactions() {
+  size_t GetNumRunningTransactions() {
     std::lock_guard lock(mutex_);
     auto txn_to_id = [](const RunningTransactionPtr& txn) {
       return txn->id();
@@ -1210,6 +1267,8 @@ class TransactionParticipant::Impl
       }
 
       auto& transaction = *it;
+      RETURN_NOT_OK_SET_CODE(transaction->CheckPromotionAllowed(),
+                             PgsqlError(YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE));
       metadata = transaction->metadata();
       VLOG_WITH_PREFIX(2) << "Update transaction status location for transaction: "
                           << metadata.transaction_id << " from tablet " << metadata.status_tablet
@@ -1265,7 +1324,7 @@ class TransactionParticipant::Impl
     TransactionsModifiedUnlocked(&min_running_notifier);
   }
 
-  void LoadFinished(const ApplyStatesMap& pending_applies) override {
+  void LoadFinished() EXCLUDES(status_resolvers_mutex_) override {
     // The start_latch will be hit either from a CountDown from Start, or from Shutdown, so make
     // sure that at the end of Load, we unblock shutdown.
     auto se = ScopeExit([&] {
@@ -1273,6 +1332,7 @@ class TransactionParticipant::Impl
     });
     start_latch_.Wait();
     std::vector<ScopedRWOperation> operations;
+    auto pending_applies = loader_.MovePendingApplies();
     operations.reserve(pending_applies.size());
     for (;;) {
       if (Closing()) {
@@ -1357,14 +1417,15 @@ class TransactionParticipant::Impl
   }
 
   void EnqueueRemoveUnlocked(
-      const TransactionId& id, RemoveReason reason,
-      MinRunningNotifier* min_running_notifier) REQUIRES(mutex_) override {
+      const TransactionId& id, RemoveReason reason, MinRunningNotifier* min_running_notifier,
+      const Status& expected_deadlock_status) REQUIRES(mutex_) override {
     auto now = participant_context_.Now();
     VLOG_WITH_PREFIX_AND_FUNC(4) << id << " at " << now << ", reason: " << AsString(reason);
-    remove_queue_.emplace_back(RemoveQueueEntry{
+    remove_queue_.emplace_back(RemoveQueueEntry {
       .id = id,
       .time = now,
       .reason = reason,
+      .expected_deadlock_status = expected_deadlock_status,
     });
     ProcessRemoveQueueUnlocked(min_running_notifier);
   }
@@ -1417,7 +1478,8 @@ class TransactionParticipant::Impl
           break;
         }
         VLOG_WITH_PREFIX(4) << "Removing from remove queue: " << front.ToString();
-        RemoveUnlocked(front.id, front.reason, min_running_notifier);
+        RemoveUnlocked(
+            it, front.reason, min_running_notifier, front.expected_deadlock_status);
         remove_queue_.pop_front();
       }
     }
@@ -1438,14 +1500,15 @@ class TransactionParticipant::Impl
 
   bool RemoveUnlocked(
       const Transactions::iterator& it, RemoveReason reason,
-      MinRunningNotifier* min_running_notifier) REQUIRES(mutex_) {
+      MinRunningNotifier* min_running_notifier,
+      const Status& expected_deadlock_status = Status::OK()) REQUIRES(mutex_) {
     TransactionId txn_id = (**it).id();
     OpId checkpoint_op_id = GetLatestCheckPoint();
     OpId op_id = (**it).GetApplyOpId();
 
     if (running_requests_.empty() && op_id < checkpoint_op_id) {
       (**it).ScheduleRemoveIntents(*it, reason);
-      RemoveTransaction(it, reason, min_running_notifier);
+      RemoveTransaction(it, reason, min_running_notifier, expected_deadlock_status);
       VLOG_WITH_PREFIX(2) << "Cleaned transaction: " << txn_id << ", reason: " << reason
                           << " , apply record op_id: " << op_id
                           << ", checkpoint_op_id: " << checkpoint_op_id
@@ -1464,6 +1527,7 @@ class TransactionParticipant::Impl
       .request_id = request_serial_,
       .transaction_id = (**it).id(),
       .reason = reason,
+      .expected_deadlock_status = expected_deadlock_status,
     });
     VLOG_WITH_PREFIX(2) << "Queued for cleanup: " << (**it).id() << ", reason: " << reason;
     return false;
@@ -1475,8 +1539,16 @@ class TransactionParticipant::Impl
       return empty_transactions.end();
     }
 
+    static LockAndFindResult Deadlocked(Status deadlock_status) {
+      DCHECK(!deadlock_status.ok());
+      auto res = LockAndFindResult{};
+      res.deadlock_status = deadlock_status;
+      return res;
+    }
+
     std::unique_lock<std::mutex> lock;
     Transactions::const_iterator iterator = UninitializedIterator();
+    Status deadlock_status = Status::OK();
 
     bool found() const {
       return lock.owns_lock();
@@ -1485,14 +1557,19 @@ class TransactionParticipant::Impl
     RunningTransaction& transaction() const {
       return **iterator;
     }
+
+    bool did_txn_deadlock() const {
+      return !deadlock_status.ok();
+    }
   };
 
   Result<LockAndFindResult> LockAndFind(
       const TransactionId& id, const std::string& reason, TransactionLoadFlags flags) {
     RETURN_NOT_OK(loader_.WaitLoaded(id));
     bool recently_removed;
+    Status deadlock_status;
     {
-      std::unique_lock<std::mutex> lock(mutex_);
+      UniqueLock<std::mutex> lock(mutex_);
       auto it = transactions_.find(id);
       if (it != transactions_.end()) {
         if ((**it).start_ht() <= ignore_all_transactions_started_before_) {
@@ -1501,13 +1578,17 @@ class TransactionParticipant::Impl
               << ignore_all_transactions_started_before_ << ", txn: " << AsString(**it);
           return LockAndFindResult{};
         }
-        return LockAndFindResult{ std::move(lock), it };
+        return LockAndFindResult{std::move(GetLockForCondition(&lock)), it};
       }
       recently_removed = WasTransactionRecentlyRemoved(id);
+      deadlock_status = GetTransactionDeadlockStatusUnlocked(id);
     }
     if (recently_removed) {
       VLOG_WITH_PREFIX(1)
           << "Attempt to load recently removed transaction: " << id << ", for: " << reason;
+      if (!deadlock_status.ok()) {
+        return LockAndFindResult::Deadlocked(deadlock_status);
+      }
       return LockAndFindResult{};
     }
     metric_transaction_not_found_->Increment();
@@ -1524,6 +1605,9 @@ class TransactionParticipant::Impl
           &participant_context_, &applier_, RemoveReason::kNotFound, id);
       cleanup_task->Prepare(cleanup_task);
       participant_context_.StrandEnqueue(cleanup_task.get());
+    }
+    if (!deadlock_status.ok()) {
+      return LockAndFindResult::Deadlocked(deadlock_status);
     }
     return LockAndFindResult{};
   }
@@ -1567,12 +1651,13 @@ class TransactionParticipant::Impl
         static_cast<uint8_t>(reason));
   }
 
-  void RemoveTransaction(Transactions::iterator it, RemoveReason reason,
-                         MinRunningNotifier* min_running_notifier)
-      REQUIRES(mutex_) {
+  void RemoveTransaction(
+      Transactions::iterator it, RemoveReason reason, MinRunningNotifier* min_running_notifier,
+      const Status& expected_deadlock_status = Status::OK()) REQUIRES(mutex_) {
     auto now = CoarseMonoClock::now();
     CleanupRecentlyRemovedTransactions(now);
     auto& transaction = **it;
+    UpdateDeadlockedTransactionsMapUnlocked(transaction.id(), expected_deadlock_status);
     DumpRemove(transaction, reason);
     recently_removed_transactions_cleanup_queue_.push_back({transaction.id(), now + 15s});
     LOG_IF_WITH_PREFIX(DFATAL, !recently_removed_transactions_.insert(transaction.id()).second)
@@ -1615,11 +1700,12 @@ class TransactionParticipant::Impl
         continue;
       }
       if ((**it).UpdateStatus(
-          info.status, info.status_ht, info.coordinator_safe_time, info.aborted_subtxn_set,
-          info.expected_deadlock_status)) {
+          info.status_tablet, info.status, info.status_ht, info.coordinator_safe_time,
+          info.aborted_subtxn_set, info.expected_deadlock_status)) {
         NotifyAbortedTransactionIncrement(info.transaction_id);
         EnqueueRemoveUnlocked(
-            info.transaction_id, RemoveReason::kStatusReceived, &min_running_notifier);
+            info.transaction_id, RemoveReason::kStatusReceived, &min_running_notifier,
+            info.expected_deadlock_status);
       } else {
         CHECK(transactions_.modify(it, [now](const auto& txn) {
           txn->UpdateAbortCheckHT(now, UpdateAbortCheckHTMode::kStatusResponseReceived);
@@ -1667,7 +1753,7 @@ class TransactionParticipant::Impl
         .commit_ht = HybridTime(),
         .log_ht = HybridTime(),
         .sealed = operation->request()->sealed(),
-        .status_tablet = std::string()
+        .status_tablet = std::string(),
     };
     WARN_NOT_OK(ProcessCleanup(data, cleanup_type), "Process cleanup failed");
     operation->CompleteWithStatus(Status::OK());
@@ -1711,6 +1797,7 @@ class TransactionParticipant::Impl
         .status_tablet = TabletId(),
         .priority = 0,
         .start_time = {},
+        .pg_txn_start_us = {},
         .old_status_tablet = {},
       };
       it = transactions_.insert(std::make_shared<RunningTransaction>(
@@ -1732,6 +1819,7 @@ class TransactionParticipant::Impl
 
       ProcessRemoveQueueUnlocked(&min_running_notifier);
       CleanTransactionsQueue(&graceful_cleanup_queue_, &min_running_notifier);
+      CleanDeadlockedTransactionsMapUnlocked();
     }
 
     if (ANNOTATE_UNPROTECTED_READ(FLAGS_transactions_poll_check_aborted)) {
@@ -1796,10 +1884,41 @@ class TransactionParticipant::Impl
     return status_resolvers_.back();
   }
 
+  void UpdateDeadlockedTransactionsMapUnlocked(const TransactionId& id, const Status& status)
+      REQUIRES(mutex_) {
+    if (TransactionError::ValueFromStatus(status) == TransactionErrorCode::kDeadlock) {
+      recently_deadlocked_txns_info_.emplace(id, DeadlockInfo(status, CoarseMonoClock::Now()));
+    }
+  }
+
+  // Returns Status::OK() if the transaction isn't in the recently deadlocked transactions list.
+  Status GetTransactionDeadlockStatusUnlocked(const TransactionId& id) {
+    auto it = recently_deadlocked_txns_info_.find(id);
+    return it == recently_deadlocked_txns_info_.end() ? Status::OK() : it->second.first;
+  }
+
+  void CleanDeadlockedTransactionsMapUnlocked() REQUIRES(mutex_) {
+    auto interval = FLAGS_clear_deadlocked_txns_info_older_than_heartbeats *
+        FLAGS_transaction_heartbeat_usec * 1us;
+    auto expired_cutoff_time = CoarseMonoClock::Now() - interval;
+    for (auto it = recently_deadlocked_txns_info_.begin();
+         it != recently_deadlocked_txns_info_.end();) {
+      const auto& deadlock_time = it->second.second;
+      if (deadlock_time < expired_cutoff_time) {
+        VLOG_WITH_PREFIX(1) << "Cleaning up deadlocked txn at participant " << it->first.ToString();
+        it = recently_deadlocked_txns_info_.erase(it);
+      } else {
+        it++;
+      }
+    }
+  }
+
   struct ImmediateCleanupQueueEntry {
     int64_t request_id;
     TransactionId transaction_id;
     RemoveReason reason;
+    // Status containing deadlock info if the transaction was aborted due to deadlock.
+    Status expected_deadlock_status = Status::OK();
 
     bool Ready(TransactionParticipantContext* participant_context, HybridTime* safe_time) const {
       return true;
@@ -1811,6 +1930,8 @@ class TransactionParticipant::Impl
     TransactionId transaction_id;
     RemoveReason reason;
     HybridTime required_safe_time;
+    // Status containing deadlock info if the transaction was aborted due to deadlock.
+    Status expected_deadlock_status = Status::OK();
 
     bool Ready(TransactionParticipantContext* participant_context, HybridTime* safe_time) const {
       if (!*safe_time) {
@@ -1849,9 +1970,11 @@ class TransactionParticipant::Impl
     TransactionId id;
     HybridTime time;
     RemoveReason reason;
+    // Status containing deadlock info if the transaction was aborted due to deadlock.
+    Status expected_deadlock_status = Status::OK();
 
     std::string ToString() const {
-      return YB_STRUCT_TO_STRING(id, time, reason);
+      return YB_STRUCT_TO_STRING(id, time, reason, expected_deadlock_status);
     }
   };
 
@@ -1890,6 +2013,10 @@ class TransactionParticipant::Impl
   std::atomic<bool> shutdown_done_{false};
 
   LRUCache<TransactionId> cleanup_cache_{FLAGS_transactions_cleanup_cache_size};
+
+  // Guarded by RunningTransactionContext::mutex_
+  std::unordered_map<TransactionId, DeadlockInfo, TransactionIdHash>
+      recently_deadlocked_txns_info_;
 
   rpc::Poller poller_;
 
@@ -2034,8 +2161,8 @@ Status TransactionParticipant::ResolveIntents(HybridTime resolve_at, CoarseTimeP
   return impl_->ResolveIntents(resolve_at, deadline);
 }
 
-size_t TransactionParticipant::TEST_GetNumRunningTransactions() const {
-  return impl_->TEST_GetNumRunningTransactions();
+size_t TransactionParticipant::GetNumRunningTransactions() const {
+  return impl_->GetNumRunningTransactions();
 }
 
 OneWayBitmap TransactionParticipant::TEST_TransactionReplicatedBatches(

@@ -211,14 +211,15 @@ DEALLOCATE s;
 CREATE TABLE pushdown_lookup(k int primary key, tag text);
 INSERT INTO pushdown_lookup VALUES (1, 'foo'), (2, 'bar'), (3, 'baz');
 EXPLAIN (COSTS FALSE) SELECT t.t1 FROM pushdown_test t, pushdown_lookup l WHERE t.k = l.k AND l.tag = 'foo';
-                          QUERY PLAN
---------------------------------------------------------------
- Nested Loop
+                           QUERY PLAN
+----------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t.k = l.k)
    ->  Seq Scan on pushdown_lookup l
          Filter: (tag = 'foo'::text)
    ->  Index Scan using pushdown_test_pkey on pushdown_test t
-         Index Cond: (k = l.k)
-(5 rows)
+         Index Cond: (k = ANY (ARRAY[l.k, $1, $2, ..., $1023]))
+(6 rows)
 
 SELECT t.t1 FROM pushdown_test t, pushdown_lookup l WHERE t.k = l.k AND l.tag = 'foo';
    t1

@@ -238,7 +238,7 @@ class AzureCloud(AbstractCloud):
     def start_instance(self, host_info, server_ports):
         vm_name = host_info['name']
         vm_status = self.get_admin().get_vm_status(vm_name)
-        if vm_status != 'VM deallocated':
+        if vm_status != 'deallocated' and vm_status != 'stopped':
             logging.warning("Host {} is not stopped, VM status is {}".format(
                 vm_name, vm_status))
         else:

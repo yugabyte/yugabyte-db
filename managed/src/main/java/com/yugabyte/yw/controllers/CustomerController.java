@@ -28,9 +28,9 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
-import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
+import com.yugabyte.yw.controllers.handlers.CustomerHandler;
 import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.forms.AlertingFormData;
 import com.yugabyte.yw.forms.CustomerDetailsData;
@@ -45,7 +45,8 @@ import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.models.filters.AlertFilter;
@@ -85,13 +86,13 @@ public class CustomerController extends AuthenticatedController {
 
   @Inject private AlertService alertService;
 
-  @Inject private MetricService metricService;
-
   @Inject private MetricQueryHelper metricQueryHelper;
 
   @Inject private CloudQueryHelper cloudQueryHelper;
 
   @Inject private CustomerConfigService customerConfigService;
+
+  @Inject private CustomerHandler customerHandler;
 
   @Deprecated
   @ApiOperation(
@@ -144,12 +145,7 @@ public class CustomerController extends AuthenticatedController {
       value = "Get a customer's details",
       response = CustomerDetailsData.class,
       nickname = "CustomerDetail")
-  @AuthzPath({
-    @RequiredPermissionOnResource(
-        requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
-  })
+  @AuthzPath
   public Result index(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
@@ -310,19 +306,7 @@ public class CustomerController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result delete(UUID customerUUID, Http.Request request) {
-    Customer customer = Customer.getOrBadRequest(customerUUID);
-
-    List<Users> users = Users.getAll(customerUUID);
-    for (Users user : users) {
-      user.delete();
-    }
-
-    if (!customer.delete()) {
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Unable to delete Customer UUID: " + customerUUID);
-    }
-
-    metricService.markSourceRemoved(customerUUID, null);
+    customerHandler.deleteCustomer(customerUUID);
 
     auditService()
         .createAuditEntry(
@@ -373,7 +357,7 @@ public class CustomerController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Add metrics to a customer",
+      value = "YbaApi Internal. Add metrics to a customer",
       response = Object.class,
       responseContainer = "Map")
   @ApiResponses(
@@ -395,6 +379,7 @@ public class CustomerController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.8.0.0")
   public Result metrics(UUID customerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 

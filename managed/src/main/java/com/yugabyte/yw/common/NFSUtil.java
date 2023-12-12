@@ -10,8 +10,6 @@ import com.google.inject.Singleton;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.backuprestore.BackupUtil.PerLocationBackupInfo;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil;
-import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
-import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse.ResponseCloudStoreSpec.BucketLocation;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.RestorePreflightParams;
 import com.yugabyte.yw.forms.RestorePreflightResponse;
@@ -34,6 +32,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -55,7 +54,7 @@ public class NFSUtil implements StorageUtil {
       String commonDir,
       String previousBackupLocation,
       CustomerConfigData configData) {
-    String cloudDir = BackupUtil.appendSlash(commonDir);
+    String cloudDir = StringUtils.isNotBlank(commonDir) ? BackupUtil.appendSlash(commonDir) : "";
     String previousCloudDir = "";
     if (StringUtils.isNotBlank(previousBackupLocation)) {
       previousCloudDir =
@@ -114,7 +113,7 @@ public class NFSUtil implements StorageUtil {
   }
 
   public void validateDirectory(CustomerConfigData customerConfigData, Universe universe) {
-    for (NodeDetails node : universe.getTServersInPrimaryCluster()) {
+    for (NodeDetails node : universe.getRunningTserversInPrimaryCluster()) {
       String backupDirectory = ((CustomerConfigStorageNFSData) customerConfigData).backupLocation;
       if (!backupDirectory.endsWith("/")) {
         backupDirectory += "/";
@@ -139,7 +138,24 @@ public class NFSUtil implements StorageUtil {
   }
 
   @Override
-  public void validateStorageConfigOnUniverse(CustomerConfig config, Universe universe) {
+  public void checkStoragePrefixValidity(
+      CustomerConfigData configData,
+      @Nullable String region,
+      String backupLocation,
+      boolean checkBucket) {
+    region = StringUtils.isBlank(region) ? YbcBackupUtil.DEFAULT_REGION_STRING : region;
+    String configLocation = getRegionLocationsMap(configData).get(region);
+    if (!StringUtils.startsWith(backupLocation, configLocation)) {
+      throw new PlatformServiceException(
+          PRECONDITION_FAILED,
+          String.format(
+              "Matching failed for config-location %s and backup-location %s",
+              configLocation, backupLocation));
+    }
+  }
+
+  @Override
+  public void validateStorageConfigOnUniverseNonRpc(CustomerConfig config, Universe universe) {
     validateDirectory(config.getDataObject(), universe);
   }
 
@@ -151,17 +167,16 @@ public class NFSUtil implements StorageUtil {
       UUID universeUUID,
       boolean checkExistsOnAll) {
     List<String> absoluteLocationsList =
-        locations
-            .parallelStream()
+        locations.parallelStream()
             .map(l -> BackupUtil.getPathWithPrefixSuffixJoin(l, fileName))
             .collect(Collectors.toList());
     Map<String, Boolean> locationsFileCheckResultMap =
         bulkCheckFilesExistWithAbsoluteLocations(
             Universe.getOrBadRequest(universeUUID), absoluteLocationsList);
     if (checkExistsOnAll) {
-      return locationsFileCheckResultMap.values().contains(true);
+      return locationsFileCheckResultMap.values().stream().allMatch(b -> b.equals(true));
     }
-    return locationsFileCheckResultMap.values().parallelStream().allMatch(b -> b.equals(true));
+    return locationsFileCheckResultMap.values().contains(true);
   }
 
   // Method accepts list of absolute file locations, performs a search on primary cluster node for
@@ -170,15 +185,13 @@ public class NFSUtil implements StorageUtil {
   public Map<String, Boolean> bulkCheckFilesExistWithAbsoluteLocations(
       Universe universe, List<String> absoluteLocationsList) {
     Map<String, Boolean> bulkCheckFileExistsMap = new HashMap<>();
-    NodeDetails node = universe.getLiveTServersInPrimaryCluster().get(0);
+    NodeDetails node = universe.getRunningTserversInPrimaryCluster().get(0);
     String identifierUUID = UUID.randomUUID().toString();
-    String sourceFilesToCheckFilename =
-        identifierUUID + "-" + "bulk_check_files_node" + "-" + node.getNodeUuid().toString();
+    String sourceFilesToCheckFilename = identifierUUID + "-" + "bulk_check_files_node";
     String sourceFilesToCheckPath =
         BackupUtil.getPathWithPrefixSuffixJoin(
             nodeUniverseManager.getLocalTmpDir(), sourceFilesToCheckFilename);
-    String targetLocalFilename =
-        identifierUUID + "-" + "bulk_check_files_output_node" + "-" + node.getNodeUuid().toString();
+    String targetLocalFilename = identifierUUID + "-" + "bulk_check_files_output_node";
     String targetLocalFilepath =
         BackupUtil.getPathWithPrefixSuffixJoin(
             nodeUniverseManager.getLocalTmpDir(), targetLocalFilename);
@@ -278,9 +291,7 @@ public class NFSUtil implements StorageUtil {
 
     // Check SnapshotInfoPB file exists on all locations.
     boolean snapshotFileDoesNotExist =
-        cloudLocationsFileExistenceMap
-            .entrySet()
-            .parallelStream()
+        cloudLocationsFileExistenceMap.entrySet().parallelStream()
             .anyMatch(
                 bLEntry ->
                     bLEntry.getKey().endsWith(BackupUtil.SNAPSHOT_PB)
@@ -291,9 +302,7 @@ public class NFSUtil implements StorageUtil {
 
     // Check KMS history
     boolean hasKMSHistory =
-        cloudLocationsFileExistenceMap
-            .entrySet()
-            .parallelStream()
+        cloudLocationsFileExistenceMap.entrySet().parallelStream()
             .filter(
                 bLEntry ->
                     bLEntry.getKey().endsWith(BackupUtil.BACKUP_KEYS_JSON)
@@ -319,31 +328,6 @@ public class NFSUtil implements StorageUtil {
     return restorePreflightResponseBuilder.build();
   }
 
-  @Override
-  public void validateStorageConfigOnSuccessMarker(
-      CustomerConfigData configData, YbcBackupResponse successMarker) {
-    Map<String, String> configRegionBucketMap = getRegionBucketMap(configData);
-    Map<String, BucketLocation> successMarkerBucketLocationMap =
-        successMarker.responseCloudStoreSpec.getBucketLocationsMap();
-    successMarkerBucketLocationMap.entrySet().stream()
-        .forEach(
-            sME -> {
-              if (!configRegionBucketMap.containsKey(sME.getKey())) {
-                throw new PlatformServiceException(
-                    PRECONDITION_FAILED,
-                    String.format("Storage config does not contain region %s", sME.getKey()));
-              }
-              String configBucket = configRegionBucketMap.get(sME.getKey());
-              if (!configBucket.equals(sME.getValue().bucket)) {
-                throw new PlatformServiceException(
-                    PRECONDITION_FAILED,
-                    String.format(
-                        "Unknown bucket %s found for region %s, wanted: %s",
-                        configBucket, sME.getKey(), sME.getValue().bucket));
-              }
-            });
-  }
-
   public List<BackupServiceNfsDirDeleteRequest> getBackupServiceNfsDirDeleteRequest(
       List<BackupTableParams> bParamsList, CustomerConfigData configData) {
     List<BackupServiceNfsDirDeleteRequest> nfsDirDelRequestList = new ArrayList<>();
@@ -359,7 +343,8 @@ public class NFSUtil implements StorageUtil {
                       r -> {
                         if (!regionBucketMap.containsKey(r) || !regionLocationsMap.containsKey(r)) {
                           throw new RuntimeException(
-                              "NFS backup delete failed: Config does not contain all regions used in backup.");
+                              "NFS backup delete failed: Config does not contain all regions used"
+                                  + " in backup.");
                         }
                         String nfsDir = regionLocationsMap.get(r);
                         String bucket = regionBucketMap.get(r);

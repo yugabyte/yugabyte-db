@@ -46,6 +46,7 @@ var replicatedToYbaCtl = map[string]string{
 	"db_external_port":             "postgres.install.port",
 	"dbuser":                       "postgres.install.username",
 	"dbldapauth":                   "postgres.install.ldap_enabled",
+	"dbpass":                       "postgres.install.password",
 	"ldap_server":                  "postgres.install.ldap_server",
 	"ldap_dn_prefix":               "postgres.install.ldap_prefix",
 	"ldap_base_dn":                 "postgres.install.ldap_suffix",
@@ -57,6 +58,10 @@ var replicatedToYbaCtl = map[string]string{
 	"prometheus_query_max_samples": "prometheus.maxSamples",
 	"prometheus_query_concurrency": "prometheus.maxConcurrency",
 	"prometheus_external_port":     "prometheus.port",
+	"prometheus_enable_https":      "prometheus.enableHttps",
+	"prometheus_enable_auth":       "prometheus.enableAuth",
+	"prometheus_username":          "prometheus.authUsername",
+	"prometheus_password":          "prometheus.authPassword",
 	"support_origin_url":           "platform.support_origin_url",
 }
 
@@ -69,7 +74,7 @@ func (ce ConfigEntry) Bool() (bool, error) {
 		return true, nil
 	default:
 		return false, fmt.Errorf(
-			"%w: %s cannot be converted from string to bool", ErrorConfigType, ce.Name)
+			"%w: %s '%s'cannot be converted from string to bool", ErrorConfigType, ce.Name, ce.Value)
 	}
 }
 
@@ -77,7 +82,8 @@ func (ce ConfigEntry) Bool() (bool, error) {
 func (ce ConfigEntry) Int() (int, error) {
 	i, err := strconv.Atoi(ce.Value)
 	if err != nil {
-		return i, fmt.Errorf("%w: %s cannot be converted to an int", ErrorConfigType, ce.Name)
+		return i, fmt.Errorf("%w: %s '%s' cannot be converted to an int", ErrorConfigType, ce.Name,
+			ce.Value)
 	}
 	return i, nil
 }
@@ -160,12 +166,12 @@ func (r *ReplicatedCtl) AppConfigExport() (AppConfig, error) {
 func (ac *AppConfig) ExportYbaCtl() error {
 	if _, err := os.Stat(common.InputFile()); !errors.Is(err, os.ErrNotExist) {
 		prompt := fmt.Sprintf("Found existing config file at %s. Proceed with those settings?",
-													common.InputFile())
+			common.InputFile())
 		if common.UserConfirm(prompt, common.DefaultYes) {
 			return nil
 		}
 		return fmt.Errorf("found existing config file and asked not to proceed. " +
-											"please delete the config file to migrate replicated settings")
+			"please delete the config file to migrate replicated settings")
 	}
 	config.WriteDefaultConfig()
 	for _, e := range ac.EntriesAsSlice() {

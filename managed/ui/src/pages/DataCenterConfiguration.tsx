@@ -5,12 +5,22 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 import { useQuery } from 'react-query';
-
+import { Suspense, lazy } from 'react';
 import DataCenterConfigurationContainer from '../components/config/ConfigProvider/DataCenterConfigurationContainer';
-import { DataCenterConfigRedesign } from '../components/configRedesign/DataCenterConfigRedesign';
-import { YBErrorIndicator, YBLoading } from '../components/common/indicators';
+import { YBErrorIndicator, YBLoading, YBLoadingCircleIcon } from '../components/common/indicators';
 import { api, runtimeConfigQueryKey } from '../redesign/helpers/api';
 import { RuntimeConfigKey } from '../redesign/helpers/constants';
+import { hasNecessaryPerm } from '../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../redesign/features/rbac/ApiAndUserPermMapping';
+import { getWrappedChildren } from '../redesign/features/rbac/common/validator/ValidatorUtils';
+
+const DataCenterConfigRedesignComponent = lazy(() =>
+  import('../components/configRedesign/DataCenterConfigRedesign').then(
+    ({ DataCenterConfigRedesign }) => ({
+      default: DataCenterConfigRedesign
+    })
+  )
+);
 
 export const DataCenterConfiguration = (props: any) => {
   const customerUUID = localStorage.getItem('customerId') ?? '';
@@ -18,6 +28,12 @@ export const DataCenterConfiguration = (props: any) => {
     runtimeConfigQueryKey.customerScope(customerUUID),
     () => api.fetchRuntimeConfigs(customerUUID, true)
   );
+
+  const hasViewProviderPerm = hasNecessaryPerm(ApiPermissionMap.GET_PROVIDERS);
+
+  if (!hasViewProviderPerm) {
+    return getWrappedChildren({ overrideStyle: { marginTop: '150px' } });
+  }
 
   if (customerRuntimeConfigQuery.isLoading || customerRuntimeConfigQuery.isIdle) {
     return <YBLoading />;
@@ -30,13 +46,17 @@ export const DataCenterConfiguration = (props: any) => {
   const runtimeConfigEntries = customerRuntimeConfigQuery.data.configEntries ?? [];
   const shouldShowRedesignedUI = runtimeConfigEntries.some(
     (config: any) =>
-      config.key === RuntimeConfigKey.PROVIDER_REDESIGN_FEATURE_FLAG && config.value === 'true'
+      config.key === RuntimeConfigKey.PROVIDER_REDESIGN_UI_FEATURE_FLAG && config.value === 'true'
   );
 
   return (
     <>
       {shouldShowRedesignedUI ? (
-        <DataCenterConfigRedesign {...props} />
+        <>
+          <Suspense fallback={YBLoadingCircleIcon}>
+            <DataCenterConfigRedesignComponent {...props} />
+          </Suspense>
+        </>
       ) : (
         <DataCenterConfigurationContainer {...props} />
       )}

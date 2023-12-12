@@ -16,18 +16,18 @@ import io.ebean.Finder;
 import io.ebean.Model;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
+import jakarta.persistence.Transient;
 import java.util.Collection;
 import java.util.Date;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Id;
-import javax.persistence.Transient;
 import lombok.Getter;
 import lombok.Setter;
 import org.slf4j.Logger;
@@ -42,6 +42,7 @@ import play.libs.Json;
 public class Customer extends Model {
 
   public static final Logger LOG = LoggerFactory.getLogger(Customer.class);
+
   // A globally unique UUID for the customer.
   @Column(nullable = false, unique = true)
   @ApiModelProperty(value = "Customer UUID", accessMode = READ_ONLY)

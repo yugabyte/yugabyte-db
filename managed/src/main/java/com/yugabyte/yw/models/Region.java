@@ -18,7 +18,8 @@ import com.google.common.base.Strings;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.models.common.YBADeprecated;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.ProviderAndRegion;
 import com.yugabyte.yw.models.helpers.provider.region.AWSRegionCloudInfo;
@@ -38,6 +39,13 @@ import io.ebean.annotation.Encrypted;
 import io.ebean.annotation.Where;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.ManyToOne;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.Transient;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashSet;
@@ -48,13 +56,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import javax.persistence.CascadeType;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.ManyToOne;
-import javax.persistence.OneToMany;
-import javax.persistence.Transient;
 import lombok.Getter;
 import lombok.Setter;
 import org.apache.commons.collections.CollectionUtils;
@@ -89,10 +90,10 @@ public class Region extends Model {
       accessMode = READ_ONLY)
   private String name;
 
-  @YBADeprecated(sinceDate = "2023-02-11", sinceYBAVersion = "2.17.2.0")
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.17.2.0")
   @ApiModelProperty(
       value =
-          "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, "
+          "Deprecated since YBA version 2.17.2.0, "
               + "Moved to details.cloudInfo aws/gcp/azure ybImage property",
       example = "TODO",
       accessMode = READ_WRITE)
@@ -142,7 +143,8 @@ public class Region extends Model {
   public long getNodeCount() {
     Set<UUID> azUUIDs = getZones().stream().map(az -> az.getUuid()).collect(Collectors.toSet());
     return Customer.get(getProvider().getCustomerUUID())
-        .getUniversesForProvider(getProvider().getUuid()).stream()
+        .getUniversesForProvider(getProvider().getUuid())
+        .stream()
         .flatMap(u -> u.getUniverseDetails().nodeDetailsSet.stream())
         .filter(nd -> azUUIDs.contains(nd.azUuid))
         .count();
@@ -160,11 +162,11 @@ public class Region extends Model {
     }
   }
 
-  @YBADeprecated(sinceDate = "2023-02-11", sinceYBAVersion = "2.17.2.0")
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.17.2.0")
   @ApiModelProperty(
       required = false,
       value =
-          "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, "
+          "Deprecated since YBA version 2.17.2.0, "
               + "Moved to regionDetails.cloudInfo aws/azure securityGroupId property")
   public String getSecurityGroupId() {
     Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(this);
@@ -187,11 +189,11 @@ public class Region extends Model {
     }
   }
 
-  @YBADeprecated(sinceDate = "2023-02-11", sinceYBAVersion = "2.17.2.0")
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.17.2.0")
   @ApiModelProperty(
       required = false,
       value =
-          "Deprecated: sinceDate=2023-02-11, sinceYBAVersion=2.17.2.0, "
+          "Deprecated since YBA version 2.17.2.0, "
               + "Moved to regionDetails.cloudInfo aws/azure vnet property")
   public String getVnetName() {
     Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(this);

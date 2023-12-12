@@ -56,7 +56,7 @@
 
 #include <boost/algorithm/string.hpp>
 #include <cds/init.h>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <squeasel.h>
 
 #include "yb/gutil/dynamic_annotations.h"
@@ -71,12 +71,14 @@
 
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
+#include "yb/util/mem_tracker.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status.h"
 #include "yb/util/status_format.h"
+#include "yb/util/tcmalloc_util.h"
 #include "yb/util/url-coding.h"
 #include "yb/util/zlib.h"
 
@@ -133,6 +135,9 @@ class Webserver::Impl {
   Status GetBoundAddresses(std::vector<Endpoint>* addrs) const;
 
   Status GetInputHostPort(HostPort* hp) const;
+
+  bool access_logging_enabled = false;
+  bool tcmalloc_logging_enabled = false;
 
   void RegisterPathHandler(const std::string& path, const std::string& alias,
                                    const PathHandlerCallback& callback,
@@ -554,7 +559,25 @@ sq_callback_result_t Webserver::Impl::BeginRequestCallback(struct sq_connection*
     handler = it->second;
   }
 
-  return RunPathHandler(*handler, connection, request_info);
+  if (access_logging_enabled) {
+    string params = request_info->query_string ? Format("?$0", request_info->query_string) : "";
+    LOG(INFO) << "webserver request: " << request_info->uri << params;
+  }
+
+  sq_callback_result_t result = RunPathHandler(*handler, connection, request_info);
+  MemTracker::GcTcmallocIfNeeded();
+
+#if YB_TCMALLOC_ENABLED
+  if (tcmalloc_logging_enabled)
+    LOG(INFO) << "webserver tcmalloc stats:"
+              << " heap size bytes: " << GetTCMallocPhysicalBytesUsed()
+              << ", total physical bytes: " << GetTCMallocCurrentHeapSizeBytes()
+              << ", current allocated bytes: " << GetTCMallocCurrentAllocatedBytes()
+              << ", page heap free bytes: " << GetTCMallocPageHeapFreeBytes()
+              << ", page heap unmapped bytes: " << GetTCMallocPageHeapUnmappedBytes();
+#endif
+
+  return result;
 }
 
 sq_callback_result_t Webserver::Impl::RunPathHandler(const PathHandler& handler,
@@ -771,6 +794,7 @@ void Webserver::Impl::BootstrapPageFooter(stringstream* output) {
 
 int Webserver::Impl::EnterWorkerThreadCallbackStatic() {
   try {
+    cds::Initialize();
     cds::threading::Manager::attachThread();
   } catch (const std::system_error&) {
     return 1;
@@ -780,6 +804,7 @@ int Webserver::Impl::EnterWorkerThreadCallbackStatic() {
 
 void Webserver::Impl::LeaveWorkerThreadCallbackStatic() {
   cds::threading::Manager::detachThread();
+  cds::Terminate();
 }
 
 Webserver::Webserver(const WebserverOptions& opts, const std::string& server_name)
@@ -802,6 +827,11 @@ Status Webserver::GetBoundAddresses(std::vector<Endpoint>* addrs) const {
 
 Status Webserver::GetInputHostPort(HostPort* hp) const {
   return impl_->GetInputHostPort(hp);
+}
+
+void Webserver::SetLogging(bool enable_access_logging, bool enable_tcmalloc_logging) {
+  impl_->access_logging_enabled = enable_access_logging;
+  impl_->tcmalloc_logging_enabled = enable_tcmalloc_logging;
 }
 
 void Webserver::RegisterPathHandler(const std::string& path,

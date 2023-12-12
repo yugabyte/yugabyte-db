@@ -9,25 +9,38 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.operator.annotations.BlockOperatorResource;
+import com.yugabyte.yw.common.operator.annotations.OperatorResourceTypes;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
+import com.yugabyte.yw.controllers.handlers.GFlagsAuditHandler;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
+import com.yugabyte.yw.forms.AuditLogConfigParams;
 import com.yugabyte.yw.forms.CertsRotateParams;
+import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
+import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
+import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
+import com.yugabyte.yw.forms.RollbackUpgradeParams;
+import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.SystemdUpgradeParams;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
+import com.yugabyte.yw.models.extended.FinalizeUpgradeInfoResponse;
+import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoRequest;
+import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoResponse;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
@@ -40,7 +53,6 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
-import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Http.Request;
 import play.mvc.Result;
@@ -56,6 +68,10 @@ public class UpgradeUniverseController extends AuthenticatedController {
   @Inject RuntimeConfigFactory runtimeConfigFactory;
 
   @Inject RuntimeConfGetter confGetter;
+
+  @Inject GFlagsAuditHandler gFlagsAuditHandler;
+
+  public static final String rollbackSupportRuntimeFlagPath = "yb.upgrade.enable_rollback_support";
 
   /**
    * API that restarts all nodes in the universe. Supports rolling and non-rolling restart
@@ -82,6 +98,7 @@ public class UpgradeUniverseController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result restartUniverse(UUID customerUuid, UUID universeUuid, Http.Request request) {
     return requestHandler(
         request,
@@ -118,12 +135,93 @@ public class UpgradeUniverseController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result upgradeSoftware(UUID customerUuid, UUID universeUuid, Http.Request request) {
     return requestHandler(
         request,
         upgradeUniverseHandler::upgradeSoftware,
         SoftwareUpgradeParams.class,
         Audit.ActionType.UpgradeSoftware,
+        customerUuid,
+        universeUuid);
+  }
+
+  /**
+   * API that finalize YugabyteDB software version upgrade on a universe.
+   *
+   * @param customerUuid ID of customer
+   * @param universeUuid ID of universe
+   * @return Result of update operation with task id
+   */
+  @YbaApi(
+      visibility = YbaApiVisibility.PREVIEW,
+      sinceYBAVersion = "2.21.0.0-b1",
+      runtimeConfig = rollbackSupportRuntimeFlagPath,
+      runtimeConfigScope = ScopeType.UNIVERSE)
+  @ApiOperation(
+      value = "WARNING: This is a preview API that could change. Finalize Upgrade.",
+      notes = "Queues a task to finalize upgrade in a universe.",
+      nickname = "finalizeUpgrade",
+      response = YBPTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "finalize_upgrade_params",
+          value = "Finalize Upgrade Params",
+          dataType = "com.yugabyte.yw.forms.FinalizeUpgradeParams",
+          required = true,
+          paramType = "body"))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  public Result finalizeUpgrade(UUID customerUuid, UUID universeUuid, Http.Request request) {
+    return requestHandler(
+        request,
+        upgradeUniverseHandler::finalizeUpgrade,
+        FinalizeUpgradeParams.class,
+        Audit.ActionType.FinalizeUpgrade,
+        customerUuid,
+        universeUuid);
+  }
+
+  /**
+   * API that Rollback YugabyteDB software version upgrade on a universe.
+   *
+   * @param customerUuid ID of customer
+   * @param universeUuid ID of universe
+   * @return Result of update operation with task id
+   */
+  @YbaApi(
+      visibility = YbaApiVisibility.PREVIEW,
+      sinceYBAVersion = "2.21.0.0-b1",
+      runtimeConfig = rollbackSupportRuntimeFlagPath,
+      runtimeConfigScope = ScopeType.UNIVERSE)
+  @ApiOperation(
+      value = "WARNING: This is a preview API that could change. Rollback Upgrade",
+      notes = "Queues a task to rollback upgrade in a universe.",
+      nickname = "rollbackUpgrade",
+      response = YBPTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "rollback_upgrade_params",
+          value = "RollBack Upgrade Params",
+          dataType = "com.yugabyte.yw.forms.RollbackUpgradeParams",
+          required = true,
+          paramType = "body"))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  public Result rollbackUpgrade(UUID customerUuid, UUID universeUuid, Http.Request request) {
+    return requestHandler(
+        request,
+        upgradeUniverseHandler::rollbackUpgrade,
+        RollbackUpgradeParams.class,
+        Audit.ActionType.RollbackUpgrade,
         customerUuid,
         universeUuid);
   }
@@ -154,11 +252,21 @@ public class UpgradeUniverseController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result upgradeGFlags(UUID customerUuid, UUID universeUuid, Http.Request request) {
+    Customer customer = Customer.getOrBadRequest(customerUuid);
+    Universe universe = Universe.getOrBadRequest(universeUuid, customer);
+    Class<? extends GFlagsUpgradeParams> flagParamType;
+    if (Util.isKubernetesBasedUniverse(universe)) {
+      flagParamType = KubernetesGFlagsUpgradeParams.class;
+    } else {
+      flagParamType = GFlagsUpgradeParams.class;
+    }
+
     return requestHandler(
         request,
         upgradeUniverseHandler::upgradeGFlags,
-        GFlagsUpgradeParams.class,
+        flagParamType,
         Audit.ActionType.UpgradeGFlags,
         customerUuid,
         universeUuid);
@@ -189,6 +297,7 @@ public class UpgradeUniverseController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result upgradeKubernetesOverrides(
       UUID customerUuid, UUID universeUuid, Http.Request request) {
     return requestHandler(
@@ -226,6 +335,7 @@ public class UpgradeUniverseController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result upgradeCerts(UUID customerUuid, UUID universeUuid, Http.Request request) {
     return requestHandler(
         request,
@@ -262,12 +372,50 @@ public class UpgradeUniverseController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result upgradeTls(UUID customerUuid, UUID universeUuid, Http.Request request) {
     return requestHandler(
         request,
         upgradeUniverseHandler::toggleTls,
         TlsToggleParams.class,
         Audit.ActionType.ToggleTls,
+        customerUuid,
+        universeUuid);
+  }
+
+  /**
+   * API to modify the audit logging configuration for a universe.
+   *
+   * @param customerUuid ID of the customer
+   * @param universeUuid ID of the universe
+   * @param request HTTP request object
+   * @return Result indicating the success of the modification operation
+   */
+  @ApiOperation(
+      value = "YbaApi Internal. Modify Audit Logging Configuration",
+      notes = "Modifies the audit logging configuration for a universe.",
+      nickname = "modifyAuditLogging",
+      response = YBPTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "auditLoggingConfig",
+          value = "Audit Logging Configuration",
+          dataType = "com.yugabyte.yw.forms.AuditLogConfigParams",
+          required = true,
+          paramType = "body"))
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  public Result modifyAuditLogging(UUID customerUuid, UUID universeUuid, Http.Request request) {
+    return requestHandler(
+        request,
+        upgradeUniverseHandler::modifyAuditLoggingConfig,
+        AuditLogConfigParams.class,
+        Audit.ActionType.ModifyAuditLogging,
         customerUuid,
         universeUuid);
   }
@@ -297,6 +445,7 @@ public class UpgradeUniverseController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result resizeNode(UUID customerUuid, UUID universeUuid, Http.Request request) {
     return requestHandler(
         request,
@@ -369,13 +518,14 @@ public class UpgradeUniverseController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result upgradeVMImage(UUID customerUuid, UUID universeUuid, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUuid);
     Universe universe = Universe.getOrBadRequest(universeUuid, customer);
 
     // TODO yb.cloud.enabled is redundant here because many tests set it during runtime,
     // to enable this method in cloud. Clean it up later when the tests are fixed.
-    if (!runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled")
+    if (!runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")
         && !confGetter.getConfForScope(universe, UniverseConfKeys.ybUpgradeVmImage)) {
       throw new PlatformServiceException(METHOD_NOT_ALLOWED, "VM image upgrade is disabled.");
     }
@@ -415,6 +565,7 @@ public class UpgradeUniverseController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result upgradeSystemd(UUID customerUUID, UUID universeUUID, Http.Request request) {
     return requestHandler(
         request,
@@ -450,6 +601,7 @@ public class UpgradeUniverseController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result rebootUniverse(UUID customerUUID, UUID universeUUID, Http.Request request) {
     return requestHandler(
         request,
@@ -458,6 +610,75 @@ public class UpgradeUniverseController extends AuthenticatedController {
         Audit.ActionType.RebootUniverse,
         customerUUID,
         universeUUID);
+  }
+
+  /**
+   * API that performs pre-check and provides pre-upgrade info in the universe.
+   *
+   * @param customerUUID ID of customer
+   * @param universeUUID ID of universe
+   * @return Pre upgrade info
+   */
+  @YbaApi(
+      visibility = YbaApiVisibility.PREVIEW,
+      sinceYBAVersion = "2.21.0.0-b1",
+      runtimeConfig = rollbackSupportRuntimeFlagPath,
+      runtimeConfigScope = ScopeType.UNIVERSE)
+  @ApiOperation(
+      value =
+          "WARNING: This is a preview API that could change. Software Upgrade universe pre-check",
+      notes = "Performs pre-checks and provides pre-upgrade info",
+      nickname = "softwareUpgradePreCheck",
+      response = SoftwareUpgradeInfoResponse.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "software_upgrade_info_request",
+          value = "Software Upgrade Info Request",
+          dataType = "com.yugabyte.yw.models.extended.SoftwareUpgradeInfoRequest",
+          required = true,
+          paramType = "body"))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  public Result softwareUpgradePreCheck(
+      UUID customerUUID, UUID universeUUID, Http.Request request) {
+    SoftwareUpgradeInfoRequest infoRequest =
+        parseJsonAndValidate(request, SoftwareUpgradeInfoRequest.class);
+    SoftwareUpgradeInfoResponse result =
+        upgradeUniverseHandler.softwareUpgradeInfo(customerUUID, universeUUID, infoRequest);
+    return PlatformResults.withData(result);
+  }
+
+  /**
+   * API that provides pre-finalize upgrade info in the universe.
+   *
+   * @param customerUUID ID of customer
+   * @param universeUUID ID of universe
+   * @return Pre Finalize upgrade info
+   */
+  @YbaApi(
+      visibility = YbaApiVisibility.PREVIEW,
+      sinceYBAVersion = "2.21.0.0-b1",
+      runtimeConfig = rollbackSupportRuntimeFlagPath,
+      runtimeConfigScope = ScopeType.UNIVERSE)
+  @ApiOperation(
+      value = "WARNING: This is a preview API that could change. Finalize Software Upgrade info",
+      notes = "Provides pre-finalize software upgrade info",
+      nickname = "preFinalizeSoftwareUpgradeInfo",
+      response = FinalizeUpgradeInfoResponse.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  public Result finalizeUpgradeInfo(UUID customerUUID, UUID universeUUID) {
+    FinalizeUpgradeInfoResponse response =
+        upgradeUniverseHandler.finalizeUpgradeInfo(customerUUID, universeUUID);
+    return PlatformResults.withData(response);
   }
 
   private <T extends UpgradeTaskParams> Result requestHandler(
@@ -477,19 +698,13 @@ public class UpgradeUniverseController extends AuthenticatedController {
         universe.getName(),
         universe.getUniverseUUID(),
         customer.getUuid());
-
-    // prevent race condition in the case userIntent updates before we createAuditEntry
-    UserIntent userIntent =
-        Json.fromJson(
-            Json.toJson(universe.getUniverseDetails().getPrimaryCluster().userIntent),
-            UserIntent.class);
-    UUID taskUuid = serviceMethod.upgrade(requestParams, customer, universe);
     JsonNode additionalDetails = null;
-    if (type.equals(GFlagsUpgradeParams.class)) {
+    if (GFlagsUpgradeParams.class.isAssignableFrom(type)) {
+      log.debug("setting up gflag audit logging");
       additionalDetails =
-          upgradeUniverseHandler.constructGFlagAuditPayload(
-              (GFlagsUpgradeParams) requestParams, userIntent);
+          gFlagsAuditHandler.constructGFlagAuditPayload((GFlagsUpgradeParams) requestParams);
     }
+    UUID taskUuid = serviceMethod.upgrade(requestParams, customer, universe);
     auditService()
         .createAuditEntryWithReqBody(
             request,

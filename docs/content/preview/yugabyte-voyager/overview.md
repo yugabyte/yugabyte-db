@@ -5,7 +5,7 @@ linkTitle: Overview
 headcontent: Migrate your database using YugabyteDB Voyager
 cascade:
   unversioned: true
-description: YugabyteDB Voyager is a powerful open-source data migration engine that helps you migrate your database to YugabyteDB quickly and securely.
+description: Migrate your database to YugabyteDB using YugabyteDB Voyager.
 type: docs
 showRightNav: true
 menu:
@@ -27,22 +27,23 @@ YugabyteDB Voyager has the following features:
 
 - Free and completely open source.
 - Supports widely-used databases for migration and, in most cases, doesn't require changes to the [source databases](#source-databases).
-- Supports all YugabyteDB products as the [target database](#target-database). The target needs to be running YugabyteDB stable versions 2.14.5.0 and later, and preview versions 2.17.0.0 and later.
+- Supports all YugabyteDB products as the [target database](#target-database).
 - [Unified CLI](../reference/yb-voyager-cli/) experience for all different source databases.
 - [Auto-tuneable](../performance/) based on workloads, by analyzing the target cluster capacity; runs parallel jobs by default.
 - Progress monitoring, including the expected time for data export and import to complete, using progress bars.
 - In case of failures, data import can be resumed.
 - Parallelism of data across tables.
 - Support for direct data import from CSV or TEXT format files present on local disk or on any cloud storage.
-- Live migration with fall-forward is supported for Oracle (Tech Preview).
+- Live migration of Oracle databases with fall-forward and fall-back. {{<badge/tp>}}
 
 ## Migration types
 
 You can perform migration by choosing one of the following options:
 
 - [Offline migration](../migrate/migrate-steps/) - Take your applications offline to perform the migration.
-- [Live migration](../migrate/live-migrate/) [Tech Preview] - Migrate your data while your application is running (currently Oracle only).
-- [Live migration with fall-forward](../migrate/live-fall-forward/) [Tech Preview] - Add a fall-forward database for your live migration (currently Oracle only).
+- [Live migration](../migrate/live-migrate/) {{<badge/tp>}} - Migrate your data while your application is running (currently Oracle only).
+- [Live migration with fall-forward](../migrate/live-fall-forward/) {{<badge/tp>}} - Fall forward to the source-replica database for your live migration (currently Oracle only).
+- [Live migration with fall-back](../migrate/live-fall-back/) {{<badge/tp>}} - Fall back to the source database for your live migration (currently Oracle only).
 
 ## Source databases
 
@@ -56,18 +57,10 @@ YugabyteDB Voyager supports migrating schema and data from your existing RDBMS, 
 
 ## Target database
 
-The following table describes the supported target databases based on your migration choice.
+The following table shows the target database support for each migration type.
 
 | Migration type | Supported YugabyteDB Versions | Supported products |
 | :------------- | :--------------------------- | ------------------ |
-| Offline | Stable 2.14.5.0 or later<br>Preview 2.17.0.0 or later | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/)<br>[YugabyteDB Managed](../../yugabyte-cloud/cloud-basics/) |
-| Live | Stable 2.14.5.0 or later<br>Preview 2.17.0.0 or later | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/)<br>[YugabyteDB Managed](../../yugabyte-cloud/cloud-basics/) |
-| Live with fall-forward | Stable 2.18.0.0 or later | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/) |
-
-
-<!--
-| Product | Deployment instructions |
-| :--- | :--- |
-| YugabyteDB | [Deploy YugabyteDB](../../deploy/) |
-| YugabyteDB Anywhere | [Deploy a universe](../../yugabyte-platform/create-deployments/) |
-| YugabyteDB Managed | [Deploy a cluster](../../yugabyte-cloud/cloud-basics/) | -->
+| Offline | v2.16<br>v2.18<br>v2.19 | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/)<br>[YugabyteDB Managed](../../yugabyte-cloud/cloud-basics/) |
+| Live | v2.16<br>v2.18<br>v2.19 | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/)<br>[YugabyteDB Managed](../../yugabyte-cloud/cloud-basics/) |
+| Live with fall-forward <br> Live with fall-back | v2.18.2.x | [YugabyteDB](../../deploy/)<br>[YugabyteDB Anywhere](../../yugabyte-platform/create-deployments/) |

@@ -205,9 +205,7 @@ public class AWSCloudImpl implements CloudAPI {
         new Filter().withName("instance-type").withValues(instanceTypesFilter);
     // TODO: get rid of parallelStream in favour of async api using aws sdk 2.x
     List<DescribeInstanceTypeOfferingsResult> results =
-        azByRegionMap
-            .entrySet()
-            .parallelStream()
+        azByRegionMap.entrySet().parallelStream()
             .map(
                 regionAZListEntry -> {
                   Filter locationFilter =
@@ -299,7 +297,6 @@ public class AWSCloudImpl implements CloudAPI {
     List<LoadBalancer> lbs = null;
     try {
       lbs = lbClient.describeLoadBalancers(request).getLoadBalancers();
-      System.out.print(lbs);
       if (lbs.size() > 1) {
         throw new Exception("Failure: More than one load balancer with name \"" + lbName + "\"!");
       } else if (lbs.size() == 0) {
@@ -1040,8 +1037,7 @@ public class AWSCloudImpl implements CloudAPI {
       AmazonEC2 ec2Client = getEC2Client(provider, region.getCode());
       DescribeSecurityGroupsRequest request =
           new DescribeSecurityGroupsRequest()
-              .withGroupIds(
-                  Arrays.asList(region.getSecurityGroupId().replaceAll(",", "").split(" ")));
+              .withGroupIds(Arrays.asList(region.getSecurityGroupId().split("\\s*,\\s*")));
       DescribeSecurityGroupsResult result = ec2Client.describeSecurityGroups(request);
       return result.getSecurityGroups();
     } catch (AmazonServiceException e) {

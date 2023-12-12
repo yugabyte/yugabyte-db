@@ -37,8 +37,6 @@
 #include <string>
 #include <vector>
 
-#include <glog/logging.h>
-
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
@@ -227,7 +225,7 @@ METRIC_DEFINE_gauge_uint64(server, ts_split_op_added, "Split OPs Added to Leader
                            yb::MetricUnit::kOperations,
                            "Number of split operations added to the leader's Raft log.");
 
-DECLARE_bool(TEST_enable_db_catalog_version_mode);
+DECLARE_bool(ysql_enable_db_catalog_version_mode);
 
 DEFINE_test_flag(bool, skip_aborting_active_transactions_during_schema_change, false,
                  "Skip aborting active transactions during schema change");
@@ -238,6 +236,14 @@ DEFINE_test_flag(
 
 DEFINE_test_flag(
     uint64, wait_row_mark_exclusive_count, 0, "Number of row mark exclusive reads to wait for.");
+
+DEFINE_test_flag(
+    int32, set_tablet_follower_lag_ms, 0,
+    "What to report for tablet follower lag on this tserver in CheckTserverTabletHealth.");
+
+DEFINE_test_flag(
+    bool, pause_before_tablet_health_response, false,
+    "Whether to pause before responding to CheckTserverTabletHealth.");
 
 double TEST_delay_create_transaction_probability = 0;
 
@@ -950,7 +956,17 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
   }
   auto operation = std::make_unique<ChangeMetadataOperation>(
       tablet.tablet, tablet.peer->log());
-  operation->AllocateRequest()->CopyFrom(*req);
+  auto request = operation->AllocateRequest();
+  request->CopyFrom(*req);
+
+  // CDC SDK Create Stream Context
+  if (req->has_retention_requester_id()) {
+    auto status = SetupCDCSDKRetention(req, resp, tablet.peer);
+    if (!status.ok()) {
+      SetupErrorAndRespond(resp->mutable_error(), status, &context);
+      return;
+    }
+  }
 
   operation->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
@@ -959,6 +975,45 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
   // Submit the alter schema op. The RPC will be responded to asynchronously.
   tablet.peer->Submit(std::move(operation), tablet.leader_term);
 }
+
+Status TabletServiceAdminImpl::SetupCDCSDKRetention(const tablet::ChangeMetadataRequestPB* req,
+                                                    ChangeMetadataResponsePB* resp,
+                                                    const TabletPeerPtr& tablet_peer) {
+
+  tablet::RemoveIntentsData data;
+  auto s = tablet_peer->GetLastReplicatedData(&data);
+  if (s.ok()) {
+    LOG_WITH_PREFIX(INFO) << "Proposed cdc_sdk_snapshot_safe_op_id: " << data.op_id
+                          << ", time: " << data.log_ht;
+    resp->mutable_cdc_sdk_snapshot_safe_op_id()->set_term(data.op_id.term);
+    resp->mutable_cdc_sdk_snapshot_safe_op_id()->set_index(data.op_id.index);
+  } else {
+    LOG_WITH_PREFIX(WARNING) << "CDCSDK Create Stream context: "
+                             << "Could not get snapshot_safe_opid: "
+                             << s;
+    return s;
+  }
+
+  // Check if there is a valid CDC History cutoff requirement.
+  // Else, get the current time and set that as history cutoff
+  // Now, from this point on, till the Followers Apply the ChangeMetadataOperation,
+  // any proposed history cutoff they process can only be less than Now()
+  if (req->has_cdc_sdk_require_history_cutoff() && req->cdc_sdk_require_history_cutoff()) {
+    if (tablet_peer->get_cdc_sdk_safe_time() == HybridTime::kInvalid) {
+      auto s = tablet_peer->set_cdc_sdk_safe_time(server_->Clock()->Now());
+
+      // If there was an error while setting the history cutoff, respond with an error
+      if (!s.ok()) {
+        LOG_WITH_PREFIX(WARNING) << "CDCSDK Create Stream context: "
+                                 << "Unable to set history cutoff: "
+                                 << s;
+        return s;
+      }
+    }
+  }
+  return Status::OK();
+}
+
 
 #define VERIFY_RESULT_OR_RETURN(expr) RESULT_CHECKER_HELPER( \
     expr, \
@@ -1593,8 +1648,8 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
   TRACE_EVENT1("tserver", "FlushTablets",
                "TS: ", req->dest_uuid());
 
-  LOG(INFO) << "Processing FlushTablets from " << context.requestor_string();
-  VLOG(1) << "Full FlushTablets request: " << req->DebugString();
+  LOG_WITH_PREFIX(INFO) << "Processing FlushTablets from " << context.requestor_string();
+  VLOG_WITH_PREFIX(1) << "Full FlushTablets request: " << req->DebugString();
   TabletPeers tablet_peers;
   TSTabletManager::TabletPtrs tablet_ptrs;
 
@@ -1612,10 +1667,14 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
     }
   }
   switch (req->operation()) {
-    case FlushTabletsRequestPB::FLUSH:
+    case FlushTabletsRequestPB::FLUSH: {
+      auto flush_flags = req->regular_only() ? tablet::FlushFlags::kRegular
+                                             : tablet::FlushFlags::kAllDbs;
+      VLOG_WITH_PREFIX(1) << "flush_flags: " << to_underlying(flush_flags);
       for (const tablet::TabletPtr& tablet : tablet_ptrs) {
         resp->set_failed_tablet_id(tablet->tablet_id());
-        RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->Flush(tablet::FlushMode::kAsync), resp, &context);
+        RETURN_UNKNOWN_ERROR_IF_NOT_OK(
+            tablet->Flush(tablet::FlushMode::kAsync, flush_flags), resp, &context);
         if (!FLAGS_TEST_skip_force_superblock_flush) {
           RETURN_UNKNOWN_ERROR_IF_NOT_OK(
               tablet->FlushSuperblock(tablet::OnlyIfDirty::kTrue), resp, &context);
@@ -1630,6 +1689,7 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
         resp->clear_failed_tablet_id();
       }
       break;
+    }
     case FlushTabletsRequestPB::COMPACT:
       RETURN_UNKNOWN_ERROR_IF_NOT_OK(
           server_->tablet_manager()->TriggerAdminCompaction(tablet_ptrs, true /* should_wait */),
@@ -1840,7 +1900,7 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
       [catalog_version, database_oid, this, &ts_catalog_version]() -> Result<bool> {
         // TODO(jason): using the gflag to determine per-db mode may not work for initdb, so make
         // sure to handle that case if initdb ever goes through this codepath.
-        if (FLAGS_TEST_enable_db_catalog_version_mode) {
+        if (FLAGS_ysql_enable_db_catalog_version_mode) {
           server_->get_ysql_db_catalog_version(
               database_oid, &ts_catalog_version, nullptr /* last_breaking_catalog_version */);
         } else {
@@ -1894,7 +1954,7 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
   s = Wait(
       [&]() -> Result<bool> {
         num_lagging_backends = narrow_cast<int>(VERIFY_RESULT(
-            conn.FetchValue<pgwrapper::PGUint64>(num_lagging_backends_query)));
+            conn.FetchRow<pgwrapper::PGUint64>(num_lagging_backends_query)));
         if (num_lagging_backends != prev_num_lagging_backends) {
           SCHECK((prev_num_lagging_backends == -1 ||
                   prev_num_lagging_backends > num_lagging_backends),
@@ -2081,8 +2141,8 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
         static CountDownLatch row_mark_exclusive_latch(FLAGS_TEST_wait_row_mark_exclusive_count);
         row_mark_exclusive_latch.CountDown();
         row_mark_exclusive_latch.Wait();
-        TEST_SYNC_POINT("TabletServiceImpl::Read::RowMarkExclusive:1");
-        TEST_SYNC_POINT("TabletServiceImpl::Read::RowMarkExclusive:2");
+        DEBUG_ONLY_TEST_SYNC_POINT("TabletServiceImpl::Read::RowMarkExclusive:1");
+        DEBUG_ONLY_TEST_SYNC_POINT("TabletServiceImpl::Read::RowMarkExclusive:2");
         break;
       }
     }
@@ -2206,6 +2266,10 @@ void ConsensusServiceImpl::UpdateConsensus(const consensus::LWConsensusRequestPB
 
   CompleteUpdateConsensusResponse(tablet_peer, resp);
 
+  auto trace = Trace::CurrentTrace();
+  if (trace && req->trace_requested()) {
+    resp->dup_trace_buffer(trace->DumpToString(true));
+  }
   context.RespondSuccess();
 }
 
@@ -2739,6 +2803,41 @@ void TabletServiceImpl::ListMasterServers(const ListMasterServersRequestPB* req,
   context.RespondSuccess();
 }
 
+void TabletServiceImpl::CheckTserverTabletHealth(const CheckTserverTabletHealthRequestPB* req,
+                                                CheckTserverTabletHealthResponsePB* resp,
+                                                rpc::RpcContext context) {
+  TRACE("CheckTserverTabletHealth");
+  for (auto& tablet_id : req->tablet_ids()) {
+    auto res = LookupTabletPeer(server_->tablet_manager(), tablet_id);
+    if (!res.ok()) {
+      LOG_WITH_FUNC(INFO) << "Failed lookup for tablet " << tablet_id;
+      continue;
+    }
+
+    auto consensus = GetConsensusOrRespond(res->tablet_peer, resp, &context);
+    if (!consensus) {
+      LOG_WITH_FUNC(INFO) << "Could not find consensus for tablet " << tablet_id;
+      continue;
+    }
+
+    auto* tablet_health = resp->add_tablet_healths();
+    tablet_health->set_tablet_id(tablet_id);
+
+    auto role = consensus->role();
+    tablet_health->set_role(role);
+
+    if (FLAGS_TEST_set_tablet_follower_lag_ms != 0) {
+      tablet_health->set_follower_lag_ms(FLAGS_TEST_set_tablet_follower_lag_ms);
+      continue;
+    }
+    if (role != PeerRole::LEADER) {
+      tablet_health->set_follower_lag_ms(consensus->follower_lag_ms());
+    }
+  }
+  TEST_PAUSE_IF_FLAG(TEST_pause_before_tablet_health_response);
+  context.RespondSuccess();
+}
+
 void TabletServiceImpl::GetLockStatus(const GetLockStatusRequestPB* req,
                                       GetLockStatusResponsePB* resp,
                                       rpc::RpcContext context) {
@@ -2950,12 +3049,27 @@ void TabletServiceImpl::StartRemoteSnapshotTransfer(
   context.RespondSuccess();
 }
 
+void TabletServiceImpl::GetTabletKeyRanges(
+    const GetTabletKeyRangesRequestPB* req, GetTabletKeyRangesResponsePB* resp,
+    rpc::RpcContext context) {
+  PerformAtLeader(
+      req, resp, &context,
+      [req, &context](const LeaderTabletPeer& leader_tablet_peer) -> Status {
+        const auto& tablet = leader_tablet_peer.tablet;
+        RETURN_NOT_OK(tablet->GetTabletKeyRanges(
+            req->lower_bound_key(), req->upper_bound_key(), req->max_num_ranges(),
+            req->range_size_bytes(), tablet::IsForward(req->is_forward()), req->max_key_length(),
+            &context.sidecars().Start()));
+        return Status::OK();
+      });
+}
+
 void TabletServiceAdminImpl::TestRetry(
     const TestRetryRequestPB* req, TestRetryResponsePB* resp, rpc::RpcContext context) {
   if (!CheckUuidMatchOrRespond(server_->tablet_manager(), "TestRetry", req, resp, &context)) {
     return;
   }
-  auto num_calls = num_test_retry_calls.fetch_add(1) + 1;
+  auto num_calls = TEST_num_test_retry_calls_.fetch_add(1) + 1;
   if (num_calls < req->num_retries()) {
     SetupErrorAndRespond(
         resp->mutable_error(),

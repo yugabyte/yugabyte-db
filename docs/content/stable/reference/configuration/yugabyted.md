@@ -2,7 +2,7 @@
 title: yugabyted reference
 headerTitle: yugabyted
 linkTitle: yugabyted
-description: Use yugabyted to run single-node YugabyteDB clusters.
+description: Use yugabyted to deploy YugabyteDB clusters.
 menu:
   stable:
     identifier: yugabyted
@@ -13,25 +13,21 @@ rightNav:
   hideH4: true
 ---
 
-YugabyteDB uses a two-server architecture, with [YB-TServers](../yb-tserver/) managing the data and [YB-Masters](../yb-master/) managing the metadata. However, this can introduce a burden on new users who want to get started right away. To manage YugabyteDB for testing and learning purposes, you can use yugabyted. yugabyted acts as a parent server across the YB-TServer and YB-Masters servers. yugabyted also provides a UI similar to the YugabyteDB Anywhere UI, with a data placement map and metrics dashboard.
+YugabyteDB uses a two-server architecture, with [YB-TServers](../yb-tserver/) managing the data and [YB-Masters](../yb-master/) managing the metadata. However, this can introduce a burden on new users who want to get started right away. To manage YugabyteDB, you can use yugabyted. yugabyted acts as a parent server across the YB-TServer and YB-Masters servers. yugabyted also provides a UI similar to the YugabyteDB Anywhere UI, with a data placement map and metrics dashboard.
+
+{{< youtube id="ah_fPDpZjnc" title="How to Start YugabyteDB on Your Laptop" >}}
 
 The `yugabyted` executable file is located in the YugabyteDB home's `bin` directory.
 
-Using yugabyted, you can create single-node clusters. To create multi-node clusters, you would need to use the `--join` flag in the `start` command.
+For examples of using yugabyted to deploy single- and multi-node clusters, see [Examples](#examples).
 
-{{<note title="Not recommended for production">}}
-Note that yugabyted is not recommended for production deployments. For production deployments with fully-distributed multi-node clusters, use [`yb-tserver`](../yb-tserver/) and [`yb-master`](../yb-master/) directly. Refer to [Deploy YugabyteDB](../../../deploy).
+{{<note title="Production deployments">}}
+You can use yugabyted for production deployments (v2.18.4 and later). You can also administer [`yb-tserver`](../yb-tserver/) and [`yb-master`](../yb-master/) directly (refer to [Deploy YugabyteDB](../../../deploy/)).
 {{</note>}}
 
-{{% note title="macOS Monterey" %}}
+{{% note title="Running on macOS" %}}
 
-macOS Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail. Use the [--master_webserver_port flag](#advanced-flags) when you start the cluster to change the default port number, as follows:
-
-```sh
-./bin/yugabyted start --master_webserver_port=9999
-```
-
-Alternatively, you can disable AirPlay receiving, then start YugabyteDB normally, and then, optionally, re-enable AirPlay receiving.
+Running YugabyteDB on macOS requires additional settings. For more information, refer to [Running on macOS](#running-on-macos).
 
 {{% /note %}}
 
@@ -150,7 +146,7 @@ Examples:
 : Determines the fault tolerance constraint to be applied on the data placement policy of the YugabyteDB cluster. This flag can accept the following values: none, zone, region, cloud.
 
 --ui *bool*
-: Enable or disable the webserver UI. Default: `false`
+: Enable or disable the webserver UI (available at <http://localhost:15433>). Default: `true`
 
 --secure
 : Enable [encryption in transit](../../../secure/tls-encryption/) and [authentication](../../../secure/enable-authentication/ysql/) for the node.
@@ -680,6 +676,29 @@ The following are combinations of environment variables and their uses:
 ## Examples
 
 To deploy any type of secure cluster (that is, using the `--secure` flag) or use encryption at rest, OpenSSL must be installed on your machine.
+
+### Running on macOS
+
+#### Port conflicts
+
+macOS Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail. Use the [--master_webserver_port flag](#advanced-flags) when you start the cluster to change the default port number, as follows:
+
+```sh
+./bin/yugabyted start --master_webserver_port=9999
+```
+
+Alternatively, you can disable AirPlay receiving, then start YugabyteDB normally, and then, optionally, re-enable AirPlay receiving.
+
+#### Loopback addresses
+
+On macOS, every additional node after the first needs a loopback address configured to simulate the use of multiple hosts or nodes. For example, for a three-node cluster, you add two additional addresses as follows:
+
+```sh
+sudo ifconfig lo0 alias 127.0.0.2
+sudo ifconfig lo0 alias 127.0.0.3
+```
+
+The loopback addresses do not persist upon rebooting your computer.
 
 ### Destroy a local cluster
 

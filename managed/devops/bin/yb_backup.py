@@ -25,7 +25,7 @@ import signal
 import sys
 
 from argparse import RawDescriptionHelpFormatter
-from datetime import timedelta
+from datetime import datetime, timedelta
 from multiprocessing.pool import ThreadPool
 from contextlib import contextmanager
 
@@ -66,6 +66,9 @@ ACCESS_TOKEN_REDACT_RE = r'\g<1>--access_token=REDACT\g<2>'
 
 STARTED_SNAPSHOT_CREATION_RE = re.compile(r'[\S\s]*Started snapshot creation: (?P<uuid>.*)')
 YSQL_CATALOG_VERSION_RE = re.compile(r'[\S\s]*Version: (?P<version>.*)')
+
+YSQL_SHELL_ERROR_RE = re.compile('.*ERROR.*')
+ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR = False
 
 ROCKSDB_PATH_PREFIX = '/yb-data/tserver/data/rocksdb'
 
@@ -148,6 +151,11 @@ class YbAdminOpNotSupportedException(BackupException):
     pass
 
 
+class YsqlDumpApplyFailedException(BackupException):
+    """Exception raised if 'ysqlsh' tool failed to apply the YSQL dump file."""
+    pass
+
+
 def split_by_tab(line):
     return [item.replace(' ', '') for item in line.split("\t")]
 
@@ -223,12 +231,16 @@ class SingleArgParallelCmd:
                            Thread-3: -> fn(c)
     """
 
-    def __init__(self, fn, args):
+    def __init__(self, fn, args, verbose):
         self.fn = fn
         self.args = args
+        self.verbose = verbose
 
     def run(self, pool):
         fn_args = sorted(set(self.args))
+        if self.verbose:
+            utc_time = datetime.utcfromtimestamp(time.time())
+            logging.info(f'Method {self.fn.__name__} with args {fn_args} queued at {utc_time}')
         return self._run_internal(self.fn, fn_args, fn_args, pool)
 
     def _run_internal(self, internal_fn, internal_fn_srgs, fn_args, pool):
@@ -252,9 +264,10 @@ class MultiArgParallelCmd(SingleArgParallelCmd):
                            Thread-2: -> fn(b1, b2)
     """
 
-    def __init__(self, fn):
+    def __init__(self, fn, verbose):
         self.fn = fn
         self.args = []
+        self.verbose = verbose
 
     def add_args(self, *args_tuple):
         assert isinstance(args_tuple, tuple)
@@ -263,6 +276,10 @@ class MultiArgParallelCmd(SingleArgParallelCmd):
     def run(self, pool):
         def internal_fn(args_tuple):
             # One tuple - one function run.
+            if self.verbose:
+                utc_time = datetime.utcfromtimestamp(time.time())
+                logging.info(f'Method {self.fn.__name__} with args {args_tuple} \
+                             queued at {utc_time}')
             return self.fn(*args_tuple)
 
         fn_args = sorted(set(self.args))
@@ -286,13 +303,14 @@ class SequencedParallelCmd(SingleArgParallelCmd):
                            Thread-2: -> fn(c1, c2); fn(d1, d2)
     """
 
-    def __init__(self, fn, preprocess_args_fn=None, handle_errors=False):
+    def __init__(self, fn, preprocess_args_fn=None, handle_errors=False, verbose=False):
         self.fn = fn
         self.args = []
         self.preprocess_args_fn = preprocess_args_fn
         # Whether or not we will throw an error on a cmd failure, or handle it and return a
         # tuple: ('failed-cmd', handle).
         self.handle_errors = handle_errors
+        self.verbose = verbose
 
     # Handle is returned on failed command if handle_errors=true.
     # Example handle is a tuple of (tablet_id, tserver_ip).
@@ -308,6 +326,10 @@ class SequencedParallelCmd(SingleArgParallelCmd):
 
     def run(self, pool):
         def internal_fn(list_of_arg_tuples):
+            if self.verbose:
+                utc_time = datetime.utcfromtimestamp(time.time())
+                logging.info(f'Method {self.fn.__name__} with args {list_of_arg_tuples} \
+                            queued at {utc_time}')
             assert isinstance(list_of_arg_tuples, list)
             # First entry is the handle.
             handle = list_of_arg_tuples[0]
@@ -1194,8 +1216,14 @@ class YBBackup:
             '--remote_ysql_shell_binary', default=DEFAULT_REMOTE_YSQL_SHELL_PATH,
             help="Path to the remote ysql shell binary")
         parser.add_argument(
-            '--pg_based_backup', action='store_true', default=False, help="Use it to trigger "
-                                                                          "pg based backup.")
+            '--pg_based_backup', action='store_true', default=False,
+            help="Use it to trigger pg based backup.")
+        parser.add_argument(
+            '--ysql_ignore_restore_errors', action='store_true', default=False,
+            help="Do NOT use ON_ERROR_STOP mode when applying YSQL dumps in backup-restore.")
+        parser.add_argument(
+            '--ysql_disable_db_drop_on_restore_errors', action='store_true', default=False,
+            help="Do NOT drop just created (or existing) YSQL DB if YSQL dump apply failed.")
         parser.add_argument(
             '--disable_xxhash_checksum', action='store_true', default=False,
             help="Disables xxhash algorithm for checksum computation.")
@@ -1321,6 +1349,13 @@ class YBBackup:
             help="Use server_broadcast_address if available, otherwise use rpc_bind_address. Note "
                  "that broadcast address is overwritten by 'ts_secondary_ip_map' if available."
         )
+        # Do not include indexes when creating snapshots.
+        parser.add_argument(
+            '--skip_indexes', required=False, action='store_true',
+            default=False,
+            help="Don't snapshot or backup Indexes. This gives the user an option to "
+            "avoid the overheads of snapshotting and uploading indexes. Instead, pay the cost "
+            "of index backfills at the time of restore. Applicable only for YCQL.")
 
         """
         Test arguments
@@ -1348,6 +1383,11 @@ class YBBackup:
         parser.add_argument(
             '--TEST_never_fsync', required=False, action='store_true',
             default=False, help=argparse.SUPPRESS)
+
+        parser.add_argument(
+            '--TEST_drop_table_before_upload', required=False, action='store_true',
+            default=False, help=argparse.SUPPRESS)
+
         self.args = parser.parse_args()
 
     def post_process_arguments(self):
@@ -1364,7 +1404,8 @@ class YBBackup:
             with terminating(ThreadPool(self.args.parallelism)) as pool:
                 self.pools.append(pool)
                 tserver_ips = self.get_live_tservers()
-                SingleArgParallelCmd(self.find_nfs_storage, tserver_ips).run(pool)
+                SingleArgParallelCmd(self.find_nfs_storage,
+                                     tserver_ips, verbose=self.args.verbose).run(pool)
 
         self.args.backup_location = self.args.backup_location or self.args.s3bucket
         options = BackupOptions(self.args)
@@ -1388,6 +1429,9 @@ class YBBackup:
 
                 host_base_cfg = 'host_base = ' + host_base + '\n' \
                                 'host_bucket = ' + bucket + '\n'
+
+                if host_base.startswith("http://"):
+                    host_base_cfg += 'use_https = false \n'
             else:
                 host_base_cfg = ''
             if not os.getenv('AWS_SECRET_ACCESS_KEY') and not os.getenv('AWS_ACCESS_KEY_ID'):
@@ -1495,7 +1539,7 @@ class YBBackup:
                         xxh64_bin = XXH64_X86_BIN
                     self.xxhash_checksum_path = os.path.join(xxhash_tool_path, xxh64_bin)
                 except Exception:
-                    logging.warn("[app] xxhsum tool missing on the host, continuing with sha256")
+                    logging.warning("[app] xxhsum tool missing on the host, continuing with sha256")
             else:
                 raise BackupException("No Live TServer exists. "
                                       "Check the TServer nodes status & try again.")
@@ -1804,7 +1848,7 @@ class YBBackup:
         return self.run_dump_tool(self.args.local_ysql_dumpall_binary,
                                   self.args.remote_ysql_dumpall_binary, cmd_line_args)
 
-    def run_ysql_shell(self, cmd_line_args):
+    def run_ysql_shell(self, cmd_line_args, db_name="template1"):
         """
         Runs the ysql shell utility from the configured location.
         :param cmd_line_args: command-line arguments to ysql shell
@@ -1820,7 +1864,7 @@ class YBBackup:
             # Passing dbname template1 explicitly as ysqlsh fails to connect if
             # yugabyte database is deleted. We assume template1 will always be there
             # in ysqlsh.
-            self.get_ysql_dump_std_args() + ['--dbname=template1'],
+            self.get_ysql_dump_std_args() + ['--dbname={}'.format(db_name)],
             cmd_line_args,
             run_ip=run_at_ip)
 
@@ -1865,6 +1909,8 @@ class YBBackup:
             yb_admin_args = ['create_database_snapshot', self.args.keyspace[0]]
         else:
             yb_admin_args = ['create_keyspace_snapshot', self.args.keyspace[0]]
+            if self.args.skip_indexes:
+                yb_admin_args.append("skip_indexes")
 
         output = self.run_yb_admin(yb_admin_args)
         # Ignores any string before and after the creation string + uuid.
@@ -2076,9 +2122,17 @@ class YBBackup:
         return output
 
     def upload_cloud_config(self, server_ip):
+        start_time = datetime.utcfromtimestamp(time.time())
+        if self.args.verbose:
+            logging.info(f'upload_cloud_config with args {server_ip} started at {start_time}')
         if server_ip not in self.server_ips_with_uploaded_cloud_cfg:
             self.server_ips_with_uploaded_cloud_cfg[server_ip] = self.upload_local_file_to_server(
                 server_ip, self.cloud_cfg_file_path, self.get_tmp_dir())
+        end_time = datetime.utcfromtimestamp(time.time())
+        time_taken = end_time - start_time
+        if self.args.verbose:
+            logging.info(f'upload_cloud_config with args {server_ip} finished at {end_time}. \
+                        Time taken = {time_taken.total_seconds():.6f}s.')
 
     def upload_file_from_local(self, dest_ip, src, dest):
         output = ''
@@ -2324,6 +2378,9 @@ class YBBackup:
         :param tserver_ip: tablet server ip
         :return: a list of top-level YB data directories
         """
+        start_time = datetime.utcfromtimestamp(time.time())
+        if self.args.verbose:
+            logging.info(f'find_data_dirs with args {tserver_ip} started at {start_time}')
         (ts_config_ip, ts_config) = self.get_ts_config_detail(tserver_ip)
         if self.secondary_to_primary_ip_map:
             ts_config_ip = self.secondary_to_primary_ip_map.get(ts_config_ip,
@@ -2339,6 +2396,11 @@ class YBBackup:
         # entry to self.ts_cfgs for tserver_ip with the same YBTSConfig object.
         if tserver_ip != ts_config_ip:
             self.ts_cfgs.setdefault(tserver_ip, ts_config)
+        end_time = datetime.utcfromtimestamp(time.time())
+        time_taken = end_time - start_time
+        if self.args.verbose:
+            logging.info(f'find_data_dirs with args {tserver_ip} finished at {end_time}. \
+                     Time taken = {time_taken.total_seconds():.6f}s.')
         return ts_config.data_dirs()
 
     def generate_snapshot_dirs(self, data_dir_by_tserver, snapshot_id,
@@ -2440,6 +2502,11 @@ class YBBackup:
         :param tserver_ip: tablet server IP or host name
         :return: a list of absolute paths of remote snapshot directories for the given snapshot
         """
+        start_time = datetime.utcfromtimestamp(time.time())
+        if self.args.verbose:
+            logging.info(
+                f'find_snapshot_directories with args {data_dir, snapshot_id, tserver_ip} \
+                started at {start_time}')
         output = self.run_ssh_cmd(
             ['find', data_dir] +
             ([] if self.args.mac else ['!', '-readable', '-prune', '-o']) +
@@ -2447,6 +2514,13 @@ class YBBackup:
              '-wholename', SNAPSHOT_DIR_GLOB,
              '-print'],
             tserver_ip)
+        end_time = datetime.utcfromtimestamp(time.time())
+        time_taken = end_time - start_time
+        if self.args.verbose:
+            logging.info(
+                f'find_snapshot_directories with args {data_dir, snapshot_id, tserver_ip} \
+                finished at {end_time}. \
+                Time taken = {time_taken.total_seconds():.6f}s.')
         return [line.strip() for line in output.split("\n") if line.strip()]
 
     def upload_snapshot_directories(self, tablet_leaders, snapshot_id, snapshot_bucket):
@@ -2477,9 +2551,11 @@ class YBBackup:
             # Upload config to every TS here to prevent parallel uploading of the config
             # in 'find_snapshot_directories' below.
             if self.has_cfg_file():
-                SingleArgParallelCmd(self.upload_cloud_config, tserver_ips).run(pool)
+                SingleArgParallelCmd(self.upload_cloud_config,
+                                     tserver_ips, verbose=self.args.verbose).run(pool)
 
-            parallel_find_snapshots = MultiArgParallelCmd(self.find_snapshot_directories)
+            parallel_find_snapshots = MultiArgParallelCmd(self.find_snapshot_directories,
+                                                          verbose=self.args.verbose)
             tservers_processed = []
             while len(tserver_ips) > len(tservers_processed):
                 for tserver_ip in list(tserver_ips):
@@ -2507,8 +2583,14 @@ class YBBackup:
                              "dirs.")
                 time.sleep(TEST_SLEEP_AFTER_FIND_SNAPSHOT_DIRS_SEC)
 
+            if self.args.TEST_drop_table_before_upload:
+                logging.info("Dropping table mytbl before uploading snapshot")
+                db_name = keyspace_name(self.args.keyspace[0])
+                drop_table_cmd = ['--command=drop table mytbl']
+                self.run_ysql_shell(drop_table_cmd, db_name)
+
             parallel_uploads = SequencedParallelCmd(
-                self.run_ssh_cmd, preprocess_args_fn=self.join_ssh_cmds)
+                self.run_ssh_cmd, preprocess_args_fn=self.join_ssh_cmds, verbose=self.args.verbose)
             self.prepare_cloud_ssh_cmds(
                 parallel_uploads, leader_ip_to_tablet_id_to_snapshot_dirs, location_by_tablet,
                 snapshot_id, tablets_by_leader_ip, upload=True, snapshot_metadata=None)
@@ -2859,8 +2941,16 @@ class YBBackup:
         raise exception
         :param tserver_ip: tablet server ip
         """
+        start_time = datetime.utcfromtimestamp(time.time())
+        if self.args.verbose:
+            logging.info(f'find_nfs_storage with args {tserver_ip} started at {start_time}')
         try:
             self.run_ssh_cmd(['ls', self.args.nfs_storage_path], tserver_ip)
+            end_time = datetime.utcfromtimestamp(time.time())
+            time_taken = end_time - start_time
+            if self.args.verbose:
+                logging.info(f'find_nfs_storage with args {tserver_ip} finished at {end_time}. \
+                            Time taken = {time_taken.total_seconds():.6f}s.')
         except Exception as ex:
             raise BackupException(
                 ('Did not find nfs backup storage path: %s mounted on tablet server %s'
@@ -3113,7 +3203,9 @@ class YBBackup:
                 raise BackupException(
                     "Only one keyspace supported. Found {} --keyspace keys.".
                     format(len(self.args.keyspace)))
-
+            if self.is_ysql_keyspace() and self.args.skip_indexes:
+                raise BackupException(
+                    "skip_indexes is only supported for YCQL keyspaces.")
             logging.info('[app] Backing up keyspace: {} to {}'.format(
                          self.args.keyspace[0], self.args.backup_location))
 
@@ -3351,8 +3443,12 @@ class YBBackup:
         """
         Import the YSQL dump using the provided file.
         """
-        new_db_name = None
-        if self.args.keyspace:
+        on_error_stop = (not self.args.ysql_ignore_restore_errors and
+                         ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR)
+
+        old_db_name = None
+        if self.args.keyspace or on_error_stop:
+            # Get YSQL DB name from the dump file.
             cmd = get_db_name_cmd(dump_file_path)
 
             if self.args.local_yb_admin_binary:
@@ -3365,6 +3461,8 @@ class YBBackup:
                 # ssh_librabry(yugabyte-db/managed/devops/opscli/ybops/utils/ssh.py).
                 old_db_name = old_db_name.splitlines()[-1].strip()
 
+        new_db_name = None
+        if self.args.keyspace:
             if old_db_name:
                 new_db_name = keyspace_name(self.args.keyspace[0])
                 if new_db_name == old_db_name:
@@ -3394,7 +3492,45 @@ class YBBackup:
             else:
                 self.run_ssh_cmd(cmd, self.get_main_host_ip())
 
-        self.run_ysql_shell(['--echo-all', '--file=' + dump_file_path])
+        ysql_shell_args = ['--echo-all', '--file=' + dump_file_path]
+
+        if on_error_stop:
+            logging.info(
+                "[app] Enable ON_ERROR_STOP mode when applying '{}'".format(dump_file_path))
+            ysql_shell_args.append('--variable=ON_ERROR_STOP=1')
+            error_msg = None
+            try:
+                self.run_ysql_shell(ysql_shell_args)
+            except subprocess.CalledProcessError as ex:
+                output = str(ex.output.decode('utf-8', errors='replace')
+                                      .encode("ascii", "ignore")
+                                      .decode("ascii"))
+                errors = []
+                for line in output.splitlines():
+                    if YSQL_SHELL_ERROR_RE.match(line):
+                        errors.append(line)
+
+                error_msg = "Failed to apply YSQL dump '{}' with RC={}: {}".format(
+                    dump_file_path, ex.returncode, '; '.join(errors))
+            except Exception as ex:
+                error_msg = "Failed to apply YSQL dump '{}': {}".format(dump_file_path, ex)
+
+            if error_msg:
+                logging.error("[app] {}".format(error_msg))
+                db_name_to_drop = new_db_name if new_db_name else old_db_name
+                if db_name_to_drop:
+                    logging.info("[app] YSQL DB '{}' will be deleted at exit...".format(
+                                 db_name_to_drop))
+                    atexit.register(self.delete_created_ysql_db, db_name_to_drop)
+                else:
+                    logging.warning("[app] Skip new YSQL DB drop because YSQL DB name "
+                                    "was not found in file '{}'".format(dump_file_path))
+
+                raise YsqlDumpApplyFailedException(error_msg)
+        else:
+            logging.warning("[app] Ignoring YSQL errors when applying '{}'".format(dump_file_path))
+            self.run_ysql_shell(ysql_shell_args)
+
         return new_db_name
 
     def import_snapshot(self, metadata_file_path):
@@ -3481,7 +3617,7 @@ class YBBackup:
         parallelism = min(16, (self.args.parallelism + 1) // 2)
         pool = ThreadPool(parallelism)
         self.pools.append(pool)
-        parallel_find_tservers = MultiArgParallelCmd(self.run_yb_admin)
+        parallel_find_tservers = MultiArgParallelCmd(self.run_yb_admin, verbose=self.args.verbose)
 
         # First construct all the yb-admin commands to send.
         for new_tablet_id in snapshot_metadata['tablet']:
@@ -3569,7 +3705,9 @@ class YBBackup:
             self.pools.append(pool)
             self.timer.log_new_phase("Find all table/tablet data dirs on all tservers")
             tserver_ips = list(tablets_by_tserver_to_download.keys())
-            data_dir_by_tserver = SingleArgParallelCmd(self.find_data_dirs, tserver_ips).run(pool)
+            data_dir_by_tserver = SingleArgParallelCmd(self.find_data_dirs,
+                                                       tserver_ips,
+                                                       verbose=self.args.verbose).run(pool)
 
             if self.args.verbose:
                 logging.info('Found data directories: {}'.format(data_dir_by_tserver))
@@ -3585,7 +3723,8 @@ class YBBackup:
 
             self.timer.log_new_phase("Download data")
             parallel_downloads = SequencedParallelCmd(
-                self.run_ssh_cmd, preprocess_args_fn=self.join_ssh_cmds, handle_errors=True)
+                self.run_ssh_cmd, preprocess_args_fn=self.join_ssh_cmds,
+                handle_errors=True, verbose=self.args.verbose)
             self.prepare_cloud_ssh_cmds(
                 parallel_downloads, tserver_to_tablet_to_snapshot_dirs,
                 None, snapshot_id, tablets_by_tserver_to_download,
@@ -3790,6 +3929,21 @@ class YBBackup:
             logging.info("Deleting snapshot %s ...", snapshot_id)
 
         return self.run_yb_admin(['delete_snapshot', snapshot_id])
+
+    def delete_created_ysql_db(self, db_name):
+        """
+        Callback run on exit to delete incomplete/partly created YSQL DB.
+        """
+        if db_name:
+            if self.args.ysql_disable_db_drop_on_restore_errors:
+                logging.warning("[app] Skip YSQL DB '{}' drop because "
+                                "the clean-up is disabled".format(db_name))
+            else:
+                ysql_shell_args = ['-c', 'DROP DATABASE {};'.format(db_name)]
+                logging.info("[app] Do clean-up due to previous error: "
+                             "'{}'".format(' '.join(ysql_shell_args)))
+                output = self.run_ysql_shell(ysql_shell_args)
+                logging.info("YSQL DB drop result: {}".format(output.replace('\n', ' ')))
 
     def TEST_yb_admin_unsupported_commands(self):
         try:

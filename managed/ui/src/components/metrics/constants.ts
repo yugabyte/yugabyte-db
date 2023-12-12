@@ -37,7 +37,8 @@ export const MetricTypesWithOperations = {
     title: 'YCQL',
     metrics: [
       'cql_server_rpc_per_second',
-      'cql_sql_latency', 'cql_server_rpc_p99',
+      'cql_sql_latency',
+      'cql_server_rpc_p99',
       'cql_sql_latency_breakdown',
       'cql_yb_local_vs_remote',
       'cql_yb_latency',
@@ -119,6 +120,7 @@ export const MetricTypesWithOperations = {
       'tserver_rpc_queue_size_tserver',
       'tserver_cpu_util_secs',
       'tserver_yb_rpc_connections',
+      'tserver_live_tablet_peers',
       'raft_leader'
     ]
   },
@@ -141,7 +143,8 @@ export const MetricTypesWithOperations = {
       'master_multiraft_consensus_update_latency',
       'master_table_ops',
       'master_cpu_util_secs',
-      'master_yb_rpc_connections'
+      'master_yb_rpc_connections',
+      'master_leaderless_and_underreplicated_tablets'
     ]
   },
   master_advanced: {
@@ -200,7 +203,8 @@ export const MetricTypesWithOperations = {
       'container_cpu_usage',
       'container_memory_usage',
       'container_volume_stats',
-      'container_volume_usage_percent']
+      'container_volume_usage_percent'
+    ]
   },
   tserver_table: {
     title: 'Tablet Server',
@@ -320,18 +324,7 @@ export const NodeType = {
 export enum MetricMeasure {
   OVERALL = 'Overall',
   OUTLIER = 'Outlier',
-  OUTLIER_TABLES = "Outlier_Tables"
-}
-
-export enum SplitType {
-  NODE = 'NODE',
-  TABLE = 'TABLE'
-}
-
-export enum NodeAggregation {
-  AVERAGE = 'AVG',
-  MAX = 'MAX',
-  MIN = 'MIN'
+  OUTLIER_TABLES = 'Outlier_Tables'
 }
 
 export const DEFAULT_OUTLIER_NUM_NODES = 3;

@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner;
 import static com.yugabyte.yw.common.PlatformExecutorFactory.SHUTDOWN_TIMEOUT_MINUTES;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.base.Supplier;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.typesafe.config.Config;
@@ -34,6 +35,8 @@ import java.util.UUID;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Function;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import play.Application;
@@ -51,10 +54,10 @@ public abstract class AbstractTaskBase implements ITask {
   protected ITaskParams taskParams;
 
   // The UUID of this task.
-  protected UUID taskUUID;
+  private UUID taskUUID;
 
   // The UUID of the top-level user-facing task at the top of Task tree. Eg. CreateUniverse, etc.
-  protected UUID userTaskUUID;
+  private UUID userTaskUUID;
 
   // A field used to send additional information with prometheus metric associated with this task
   public String taskInfo = "";
@@ -73,6 +76,7 @@ public abstract class AbstractTaskBase implements ITask {
   protected final TableManagerYb tableManagerYb;
   private final PlatformExecutorFactory platformExecutorFactory;
   private final TaskExecutor taskExecutor;
+  private final Commissioner commissioner;
   protected final HealthChecker healthChecker;
   protected final NodeManager nodeManager;
   protected final BackupHelper backupHelper;
@@ -94,6 +98,7 @@ public abstract class AbstractTaskBase implements ITask {
     this.tableManagerYb = baseTaskDependencies.getTableManagerYb();
     this.platformExecutorFactory = baseTaskDependencies.getExecutorFactory();
     this.taskExecutor = baseTaskDependencies.getTaskExecutor();
+    this.commissioner = baseTaskDependencies.getCommissioner();
     this.healthChecker = baseTaskDependencies.getHealthChecker();
     this.nodeManager = baseTaskDependencies.getNodeManager();
     this.backupHelper = baseTaskDependencies.getBackupHelper();
@@ -162,8 +167,11 @@ public abstract class AbstractTaskBase implements ITask {
 
   @Override
   public boolean isFirstTry() {
-    return taskParams().getPreviousTaskUUID() == null;
+    return taskParams() == null || taskParams().getPreviousTaskUUID() == null;
   }
+
+  @Override
+  public void validateParams(boolean isFirstTry) {}
 
   /**
    * We would try to parse the shell response message as JSON and return JsonNode
@@ -195,6 +203,10 @@ public abstract class AbstractTaskBase implements ITask {
 
   protected TaskExecutor getTaskExecutor() {
     return taskExecutor;
+  }
+
+  protected Commissioner getCommissioner() {
+    return commissioner;
   }
 
   // Returns the RunnableTask instance to which SubTaskGroup instances can be added and run.
@@ -238,6 +250,31 @@ public abstract class AbstractTaskBase implements ITask {
   // signal is received. It can be a replacement for Thread.sleep in subtasks.
   protected void waitFor(Duration duration) {
     getRunnableTask().waitFor(duration);
+  }
+
+  protected boolean doWithExponentialTimeout(
+      long minDelayMs, long maxDelayMs, long totalDelayMs, Supplier<Boolean> funct) {
+    AtomicInteger iteration = new AtomicInteger();
+    return doWithModifyingTimeout(
+        (prevDelay) ->
+            Util.getExponentialBackoffDelayMs(minDelayMs, maxDelayMs, iteration.getAndIncrement()),
+        totalDelayMs,
+        funct);
+  }
+
+  protected boolean doWithModifyingTimeout(
+      Function<Long, Long> delayFunct, long totalDelayMs, Supplier<Boolean> funct) {
+    long currentDelayMs = 0;
+    do {
+      if (funct.get()) {
+        return true;
+      }
+      currentDelayMs = delayFunct.apply(currentDelayMs);
+      log.debug("Waiting for {} ms between retries", currentDelayMs);
+      waitFor(Duration.ofMillis(currentDelayMs));
+      totalDelayMs -= currentDelayMs;
+    } while (totalDelayMs > 0);
+    return false;
   }
 
   protected UUID getUserTaskUUID() {

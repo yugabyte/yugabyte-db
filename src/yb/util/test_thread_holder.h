@@ -14,6 +14,7 @@
 #pragma once
 
 #include <thread>
+#include <cds/init.h>
 
 #include "yb/util/monotime.h"
 #include "yb/util/status.h"
@@ -40,9 +41,12 @@ void WaitStopped(const CoarseDuration& duration, std::atomic<bool>* stop);
 // Holds vector of threads, and provides convenient utilities. Such as JoinAll, Wait etc.
 class TestThreadHolder {
  public:
+  TestThreadHolder() { cds::Initialize(); }
+
   ~TestThreadHolder() {
     stop_flag_.store(true, std::memory_order_release);
     JoinAll();
+    cds::Terminate();
   }
 
   template <class... Args>

@@ -59,8 +59,13 @@ public class BackupReconciler implements ResourceEventHandler<Backup>, Runnable 
       status = new BackupStatus();
     }
     status.setMessage(message);
-    status.setResourceUUID(backupUUID);
-    status.setTaskUUID(taskUUID);
+    // Don't override the Backup resource and task UUID once set.
+    if (status.getResourceUUID() == null) {
+      status.setResourceUUID(backupUUID);
+    }
+    if (status.getTaskUUID() == null) {
+      status.setTaskUUID(taskUUID);
+    }
     backup.setStatus(status);
 
     resourceClient.inNamespace(namespace).resource(backup).replaceStatus();
@@ -112,6 +117,8 @@ public class BackupReconciler implements ResourceEventHandler<Backup>, Runnable 
     BackupRequestParams backupRequestParams = null;
     try {
       backupRequestParams = getBackupTaskParamsFromCr(backup);
+      backupRequestParams.setKubernetesResourceDetails(
+          KubernetesResourceDetails.fromResource(backup));
     } catch (Exception e) {
       log.error("Got Exception in converting to backup params {}", e);
     }

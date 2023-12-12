@@ -175,7 +175,7 @@ PgTxnManager::~PgTxnManager() {
   WARN_NOT_OK(AbortTransaction(), "Failed to abort transaction in dtor");
 }
 
-Status PgTxnManager::BeginTransaction() {
+Status PgTxnManager::BeginTransaction(int64_t start_time) {
   VLOG_TXN_STATE(2);
   if (YBCIsInitDbModeEnvVarSet()) {
     return Status::OK();
@@ -183,6 +183,7 @@ Status PgTxnManager::BeginTransaction() {
   if (IsTxnInProgress()) {
     return STATUS(IllegalState, "Transaction is already in progress");
   }
+  pg_txn_start_us_ = start_time;
   return RecreateTransaction(SavePriority::kFalse);
 }
 
@@ -255,7 +256,7 @@ Status PgTxnManager::SetDeferrable(bool deferrable) {
 
 uint64_t PgTxnManager::NewPriority(TxnPriorityRequirement txn_priority_requirement) {
   if (txn_priority_requirement == kHighestPriority) {
-    return txn_priority_highpri_upper_bound;
+    return yb::kHighPriTxnUpperBound;
   }
 
   if (txn_priority_requirement == kHigherPriorityRange) {
@@ -324,8 +325,8 @@ Status PgTxnManager::CalculateIsolation(
     }
     isolation_level_ = docdb_isolation;
 
-    VLOG_TXN_STATE(2) << "effective isolation level: "
-                      << IsolationLevel_Name(docdb_isolation)
+    VLOG_TXN_STATE(2) << "effective isolation level: " << IsolationLevel_Name(docdb_isolation)
+                      << " priority_: " << priority_
                       << "; transaction started successfully.";
   }
 
@@ -391,7 +392,7 @@ Status PgTxnManager::FinishTransaction(Commit commit) {
   }
 
   VLOG_TXN_STATE(2) << (commit ? "Committing" : "Aborting") << " transaction.";
-  Status status = client_->FinishTransaction(commit, DdlType::NonDdl);
+  Status status = client_->FinishTransaction(commit);
   VLOG_TXN_STATE(2) << "Transaction " << (commit ? "commit" : "abort") << " status: " << status;
   ResetTxnAndSession();
   return status;
@@ -418,7 +419,7 @@ Status PgTxnManager::EnterSeparateDdlTxnMode() {
   RSTATUS_DCHECK(!IsDdlMode(), IllegalState,
                  "EnterSeparateDdlTxnMode called when already in a DDL transaction");
   VLOG_TXN_STATE(2);
-  ddl_type_ = DdlType::DdlWithoutDocdbSchemaChanges;
+  ddl_mode_.emplace();
   VLOG_TXN_STATE(2);
   return Status::OK();
 }
@@ -429,20 +430,20 @@ Status PgTxnManager::ExitSeparateDdlTxnMode(Commit commit) {
     RSTATUS_DCHECK(!commit, IllegalState, "Commit ddl txn called when not in a DDL transaction");
     return Status::OK();
   }
-  RETURN_NOT_OK(client_->FinishTransaction(commit, ddl_type_));
-  ddl_type_ = DdlType::NonDdl;
+  RETURN_NOT_OK(client_->FinishTransaction(commit, ddl_mode_));
+  ddl_mode_.reset();
   return Status::OK();
 }
 
 void PgTxnManager::SetDdlHasSyscatalogChanges() {
   if (IsDdlMode()) {
-    ddl_type_ = DdlType::DdlWithDocdbSchemaChanges;
+    ddl_mode_->has_docdb_schema_changes = true;
     return;
   }
   // There are only 2 cases where we may be performing DocDB schema changes outside of DDL mode:
   // 1. During initdb, when we do not use a transaction at all.
   // 2. When yb_non_ddl_txn_for_sys_tables_allowed is set. Here we would use a regular transaction.
-  // DdlWithDocdbSchemaChanges is mainly used for DDL atomicity, which is disabled for the PG
+  // has_docdb_schema_changes is mainly used for DDL atomicity, which is disabled for the PG
   // system catalog tables. Both cases above are primarily used for modifying the system catalog,
   // so there is no need to set this flag here.
   DCHECK(YBCIsInitDbModeEnvVarSet() ||
@@ -451,7 +452,7 @@ void PgTxnManager::SetDdlHasSyscatalogChanges() {
 
 std::string PgTxnManager::TxnStateDebugStr() const {
   return YB_CLASS_TO_STRING(
-      ddl_type,
+      ddl_mode,
       read_only,
       deferrable,
       txn_in_progress,
@@ -466,6 +467,7 @@ void PgTxnManager::SetupPerformOptions(
   }
   options->set_isolation(isolation_level_);
   options->set_ddl_mode(IsDdlMode());
+  options->set_yb_non_ddl_txn_for_sys_tables_allowed(yb_non_ddl_txn_for_sys_tables_allowed);
   options->set_trace_requested(enable_tracing_);
   options->set_txn_serial_no(txn_serial_no_);
   options->set_read_time_serial_no(read_time_serial_no_);
@@ -491,6 +493,8 @@ void PgTxnManager::SetupPerformOptions(
     options->set_read_time_manipulation(
         GetActualReadTimeManipulator(isolation_level_, read_time_manipulation_, ensure_read_time));
     read_time_manipulation_ = tserver::ReadTimeManipulation::NONE;
+    // pg_txn_start_us is similarly only used for kPlain transactions.
+    options->set_pg_txn_start_us(pg_txn_start_us_);
   }
   if (read_time_for_follower_reads_) {
     ReadHybridTime::SingleTime(read_time_for_follower_reads_).ToPB(options->mutable_read_time());

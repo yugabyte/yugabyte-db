@@ -37,12 +37,13 @@
 #include <atomic>
 #include <string>
 
-#include <glog/logging.h>
 #include <gtest/gtest.h>
 
+#include "yb/util/enums.h"
 #include "yb/util/env.h"
 #include "yb/util/monotime.h"
 #include "yb/util/port_picker.h"
+#include "yb/util/logging.h"
 #include "yb/util/test_macros.h" // For convenience
 
 #define ASSERT_EVENTUALLY(expr) do { \
@@ -102,8 +103,6 @@ bool AllowSlowTests();
 //
 void OverrideFlagForSlowTests(const std::string& flag_name,
                               const std::string& new_value);
-
-Status EnableVerboseLoggingForModule(const std::string& module, int level);
 
 // Call srand() with a random seed based on the current time, reporting
 // that seed to the logs. The time-based seed may be overridden by passing
@@ -192,7 +191,16 @@ inline std::string GetPgToolPath(const std::string& tool_name) {
   return GetToolPath("../postgres/bin", tool_name);
 }
 
+// For now this assumes that YB Controller binaries are present in build/latest/ybc.
+inline std::string GetYbcToolPath(const std::string& tool_name) {
+  return GetToolPath("../../latest/ybc", tool_name);
+}
+
 std::string GetCertsDir();
+
+// Read YB_TEST_YB_CONTROLLER from env.
+// If true, spawn YBC servers for backup operations.
+bool UseYbController();
 
 int CalcNumTablets(size_t num_tablet_servers);
 
@@ -236,10 +244,14 @@ class StopOnFailure {
   std::atomic<bool>& stop_;
 };
 
+YB_DEFINE_ENUM(CorruptionType, (kZero)(kXor55));
+
 // Corrupt bytes_to_corrupt bytes at specified offset. If offset is negative, treats it as
 // an offset relative to the end of file. Also fixes specified region to not exceed the file before
 // corrupting data.
-Status CorruptFile(const std::string& file_path, int64_t offset, size_t bytes_to_corrupt);
+Status CorruptFile(
+    const std::string& file_path, int64_t offset, size_t bytes_to_corrupt,
+    CorruptionType corruption_type);
 
 } // namespace yb
 

@@ -73,8 +73,6 @@ void ParseCommandLineFlags(vector<string> arguments) {
 }  // namespace
 
 TEST(AutoFlagsTest, TestPromote) {
-  ASSERT_NOK(PromoteAutoFlag("Invalid_flag"));
-
   ASSERT_EQ(FLAGS_test_auto_flag, 0);
   VerifyFlagDefault(0);
 
@@ -85,17 +83,18 @@ TEST(AutoFlagsTest, TestPromote) {
   ASSERT_EQ(FLAGS_test_auto_double, 1);
   ASSERT_EQ(FLAGS_test_auto_string, "false");
 
-  ASSERT_OK(PromoteAutoFlag(kFlagName));
+  const auto* flag_desc = GetAutoFlagDescription(kFlagName);
+  ASSERT_NO_FATALS(PromoteAutoFlag(*flag_desc));
   ASSERT_EQ(FLAGS_test_auto_flag, 100);
   VerifyFlagDefault(100);
 
-  // Override should still work
+  // Setting an override should take precedence.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_test_auto_flag) = 10;
   ASSERT_EQ(FLAGS_test_auto_flag, 10);
   VerifyFlagDefault(100);
 
   // Promote should not modify overridden values
-  ASSERT_OK(PromoteAutoFlag(kFlagName));
+  ASSERT_NO_FATALS(PromoteAutoFlag(*flag_desc));
   ASSERT_EQ(FLAGS_test_auto_flag, 10);
 }
 
@@ -113,7 +112,8 @@ TEST(AutoFlagsTest, TestAutoPromoted) {
   ASSERT_EQ(FLAGS_test_auto_string, "true");
 
   // promote again should be no-op
-  ASSERT_OK(PromoteAutoFlag(kFlagName));
+  const auto* flag_desc = GetAutoFlagDescription(kFlagName);
+  ASSERT_NO_FATALS(PromoteAutoFlag(*flag_desc));
   ASSERT_EQ(FLAGS_test_auto_flag, 100);
   VerifyFlagDefault(100);
 }
@@ -171,6 +171,100 @@ TEST(AutoFlagsTest, TestGetFlagsEligibleForPromotion) {
   ASSERT_EQ(eligible_flags.size(), 3);
   ASSERT_TRUE(eligible_flags.contains("p3"));
   ASSERT_EQ(eligible_flags["p3"].size(), 2);
+}
+
+TEST(AutoFlagsTest, TestDemote) {
+  ASSERT_EQ(FLAGS_test_auto_flag, 0);
+  VerifyFlagDefault(0);
+
+  const auto* flag_desc = GetAutoFlagDescription(kFlagName);
+  ASSERT_NO_FATALS(PromoteAutoFlag(*flag_desc));
+  ASSERT_EQ(FLAGS_test_auto_flag, 100);
+  VerifyFlagDefault(100);
+
+  ASSERT_NO_FATALS(DemoteAutoFlag(*flag_desc));
+  ASSERT_EQ(FLAGS_test_auto_flag, 0);
+  VerifyFlagDefault(0);
+
+  // Setting an override should take precedence.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_test_auto_flag) = 10;
+  ASSERT_EQ(FLAGS_test_auto_flag, 10);
+  VerifyFlagDefault(0);
+
+  // Promote should not modify overridden values.
+  ASSERT_NO_FATALS(PromoteAutoFlag(*flag_desc));
+  ASSERT_EQ(FLAGS_test_auto_flag, 10);
+  VerifyFlagDefault(100);
+
+  // Demote should not modify overridden values.
+  ASSERT_NO_FATALS(DemoteAutoFlag(*flag_desc));
+  ASSERT_EQ(FLAGS_test_auto_flag, 10);
+  VerifyFlagDefault(0);
+}
+
+// to_check_flags is compatible to base_flags when all flags with class equal to or above
+// min_class in base_flags exist in to_check_flags.
+TEST(AutoFlagsTest, AreAutoFlagsCompatible) {
+  const string kProcess1 = "p1", kProcess2 = "p2", kProcess3 = "p3";
+  const string kLocalVolatileFlag = "LV1", kLocalPersistedFlag = "LP1", kExternalFlag = "E1",
+               kNewInstallsOnlyFlag = "NI1";
+  AutoFlagsInfoMap flag_infos;
+  flag_infos[kProcess1].emplace_back(
+      kLocalVolatileFlag, AutoFlagClass::kLocalVolatile, RuntimeAutoFlag::kTrue);
+  flag_infos[kProcess2].emplace_back(
+      kLocalPersistedFlag, AutoFlagClass::kLocalPersisted, RuntimeAutoFlag::kTrue);
+  flag_infos[kProcess3].emplace_back(
+      kExternalFlag, AutoFlagClass::kExternal, RuntimeAutoFlag::kFalse);
+  flag_infos[kProcess3].emplace_back(
+      kNewInstallsOnlyFlag, AutoFlagClass::kNewInstallsOnly, RuntimeAutoFlag::kTrue);
+
+  AutoFlagsNameMap base_flags;
+  AutoFlagsNameMap to_check_flags;
+
+  auto are_flags_compatible = [&](const AutoFlagClass min_class) {
+    return AutoFlagsUtil::AreAutoFlagsCompatible(base_flags, to_check_flags, flag_infos, min_class);
+  };
+
+  // Invalid process in the base map.
+  base_flags["x1"].emplace(kLocalVolatileFlag);
+  ASSERT_NOK(are_flags_compatible(AutoFlagClass::kLocalVolatile));
+  base_flags.clear();
+
+  // Invalid flag in the base map.
+  base_flags[kProcess1].emplace("x1");
+  ASSERT_NOK(are_flags_compatible(AutoFlagClass::kLocalVolatile));
+  base_flags.clear();
+
+  // base_flags has more kLocalVolatile flags.
+  base_flags[kProcess1].emplace(kLocalVolatileFlag);
+  ASSERT_FALSE(ASSERT_RESULT(are_flags_compatible(AutoFlagClass::kLocalVolatile)));
+  ASSERT_TRUE(ASSERT_RESULT(are_flags_compatible(AutoFlagClass::kLocalPersisted)));
+
+  // Matching kLocalVolatile flags.
+  to_check_flags[kProcess1].emplace(kLocalVolatileFlag);
+  ASSERT_TRUE(ASSERT_RESULT(are_flags_compatible(AutoFlagClass::kLocalVolatile)));
+
+  // to_check_flags has more kLocalVolatile flags.
+  to_check_flags[kProcess1].emplace("LV2");
+  ASSERT_TRUE(ASSERT_RESULT(are_flags_compatible(AutoFlagClass::kLocalVolatile)));
+
+  // base_flags has more kLocalPersisted flags.
+  base_flags[kProcess2].emplace(kLocalPersistedFlag);
+  ASSERT_FALSE(ASSERT_RESULT(are_flags_compatible(AutoFlagClass::kLocalPersisted)));
+  ASSERT_TRUE(ASSERT_RESULT(are_flags_compatible(AutoFlagClass::kExternal)));
+
+  // to_check_flags has kLocalPersisted in different process.
+  to_check_flags[kProcess3].emplace(kLocalPersistedFlag);
+  ASSERT_FALSE(ASSERT_RESULT(are_flags_compatible(AutoFlagClass::kLocalPersisted)));
+
+  // to_check_flags has extra kNewInstallsOnly and kExternal.
+  to_check_flags[kProcess3].emplace(kExternalFlag);
+  to_check_flags[kProcess3].emplace(kNewInstallsOnlyFlag);
+  ASSERT_FALSE(ASSERT_RESULT(are_flags_compatible(AutoFlagClass::kLocalPersisted)));
+
+  // Add the missing flag to to_check_flags.
+  to_check_flags[kProcess2].emplace(kLocalPersistedFlag);
+  ASSERT_TRUE(ASSERT_RESULT(are_flags_compatible(AutoFlagClass::kNewInstallsOnly)));
 }
 
 }  // namespace yb

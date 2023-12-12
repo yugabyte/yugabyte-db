@@ -64,7 +64,8 @@ const DEFAULT_MIN_NUM_NODE = 1;
 export const PlacementsField = ({
   isPrimary,
   isEditMode,
-  isGeoPartitionEnabled
+  isGeoPartitionEnabled,
+  disabled
 }: PlacementsFieldProps): ReactElement => {
   const { control, setValue, getValues } = useFormContext<UniverseFormData>();
   const { t } = useTranslation();
@@ -140,7 +141,7 @@ export const PlacementsField = ({
           <Box className={helperClasses.nameColumn}>
             <YBSelect
               fullWidth
-              disabled={isLoading}
+              disabled={isLoading || disabled}
               value={field.name}
               inputProps={{
                 'data-testid': `PlacementsField-AZName${index}`
@@ -166,7 +167,7 @@ export const PlacementsField = ({
                   type="number"
                   fullWidth
                   inputRef={ref}
-                  disabled={isLoading}
+                  disabled={isLoading || disabled}
                   onChange={(e) => {
                     if (!e.target.value || Number(e.target.value) < getMinCountAZ(index))
                       onChange(getMinCountAZ(index));
@@ -191,7 +192,7 @@ export const PlacementsField = ({
                 }}
                 defaultChecked={field.isAffinitized}
                 value={field.isAffinitized}
-                disabled={isLoading}
+                disabled={isLoading || disabled}
                 label=""
                 inputProps={{
                   'data-testid': `PlacementsField-PrefferedCheckbox${index}`
@@ -203,7 +204,11 @@ export const PlacementsField = ({
             <IconButton
               color="default"
               size="medium"
-              disabled={isLoading || getTotalNodesinAZ() - field.numNodesInAZ < replicationFactor}
+              disabled={
+                isLoading ||
+                disabled ||
+                getTotalNodesinAZ() - field.numNodesInAZ < replicationFactor
+              }
               data-testid={`PlacementsField-RemoveButton${index}`}
               onClick={() => {
                 remove(index);
@@ -230,9 +235,15 @@ export const PlacementsField = ({
           <Box flexShrink={1} mr={3}>
             <Typography variant="h4">{t('universeForm.cloudConfig.azHeader')}</Typography>
           </Box>
-          <YBButton variant="secondary" onClick={() => setValue(RESET_AZ_FIELD, true)}>
-            {t('universeForm.cloudConfig.resetAZLabel')}
-          </YBButton>
+          {!disabled && (
+            <YBButton
+              variant="primary"
+              size="medium"
+              onClick={() => setValue(RESET_AZ_FIELD, true)}
+            >
+              {t('universeForm.cloudConfig.resetAZLabel')}
+            </YBButton>
+          )}
         </Box>
         {renderHeader}
         {renderPlacements()}

@@ -1348,7 +1348,7 @@ pg_get_indexdef_worker(Oid indexrelid, int colno,
 		if (!isConstraint)
 			appendStringInfo(&buf, "CREATE %sINDEX %s%s ON %s%s USING %s (",
 							 idxrec->indisunique ? "UNIQUE " : "",
-							 useNonconcurrently ? "NONCONCURRENTLY " : "",
+							 useNonconcurrently || includeYbMetadata ? "NONCONCURRENTLY " : "",
 							 quote_identifier(NameStr(idxrelrec->relname)),
 							 idxrelrec->relkind == RELKIND_PARTITIONED_INDEX
 							 && !inherits ? "ONLY " : "",
@@ -8242,11 +8242,38 @@ get_rule_expr(Node *node, deparse_context *context,
 					appendStringInfoChar(buf, ')');
 
 				/*
-				 * Get and print the field name.
+				 * YB: Skip deparsing fieldname for YB BNL batched
+				 * index condition expression.
+				 * Take this index condition as one example:
+				 * Index Cond: (a = ANY (ARRAY[func.b, $1, $2, ..., $1023])
+				 * We only want to resolve the field name b for the first
+				 * batched expression and skip resolving the fieldname for
+				 * all other batched expressions ($1, $2, ...). The dollar sign
+				 * indicates we cannot find what an execution parameter refers
+				 * to. See get_parameter() in ruleutils.c.
 				 */
-				fieldname = get_name_for_var_field((Var *) arg, fno,
-												   0, context);
-				appendStringInfo(buf, ".%s", quote_identifier(fieldname));
+				bool yb_skip_deparsing_fieldname_for_param = false;
+				if (IsA(arg, Param))
+				{
+					Node       *expr;
+					deparse_namespace *dpns;
+					ListCell   *ancestor_cell;
+					expr = find_param_referent((Param *) arg, context, &dpns,
+											   &ancestor_cell);
+					if (!expr && ((Param *) arg)->paramkind == PARAM_EXEC)
+					{
+						yb_skip_deparsing_fieldname_for_param = true;
+					}
+				}
+				if (!yb_skip_deparsing_fieldname_for_param)
+				{
+					/*
+					 * Get and print the field name.
+					 */
+					fieldname = get_name_for_var_field((Var *) arg, fno,
+													   0, context);
+					appendStringInfo(buf, ".%s", quote_identifier(fieldname));
+				}
 			}
 			break;
 

@@ -27,6 +27,7 @@ import com.yugabyte.yw.forms.paging.MaintenanceWindowPagedApiQuery;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.MaintenanceWindow;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.filters.MaintenanceWindowFilter;
 import com.yugabyte.yw.models.paging.MaintenanceWindowPagedQuery;
 import com.yugabyte.yw.models.paging.MaintenanceWindowPagedResponse;
@@ -58,13 +59,18 @@ public class MaintenanceController extends AuthenticatedController {
     this.maintenanceService = maintenanceService;
   }
 
-  @ApiOperation(value = "Get details of a maintenance window", response = MaintenanceWindow.class)
+  @ApiOperation(
+      value =
+          "WARNING: This is a preview API that could change. "
+              + "Get details of a maintenance window",
+      response = MaintenanceWindow.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
   public Result get(UUID customerUUID, UUID windowUUID) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -73,7 +79,7 @@ public class MaintenanceController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "List maintenance windows",
+      value = "WARNING: This is a preview API that could change. " + "List maintenance windows",
       response = MaintenanceWindow.class,
       responseContainer = "List",
       nickname = "listOfMaintenanceWindows")
@@ -83,6 +89,7 @@ public class MaintenanceController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
   public Result list(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -95,7 +102,9 @@ public class MaintenanceController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "List maintenance windows (paginated)",
+      value =
+          "WARNING: This is a preview API that could change. "
+              + "List maintenance windows (paginated)",
       response = MaintenanceWindowPagedResponse.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -109,6 +118,7 @@ public class MaintenanceController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
   public Result page(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -125,7 +135,9 @@ public class MaintenanceController extends AuthenticatedController {
     return PlatformResults.withData(windows);
   }
 
-  @ApiOperation(value = "Create maintenance window", response = MaintenanceWindow.class)
+  @ApiOperation(
+      value = "WARNING: This is a preview API that could change. " + "Create maintenance window",
+      response = MaintenanceWindow.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "CreateMaintenanceWindowRequest",
@@ -138,6 +150,7 @@ public class MaintenanceController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
   public Result create(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 
@@ -158,7 +171,9 @@ public class MaintenanceController extends AuthenticatedController {
     return PlatformResults.withData(window);
   }
 
-  @ApiOperation(value = "Update maintenance window", response = MaintenanceWindow.class)
+  @ApiOperation(
+      value = "WARNING: This is a preview API that could change. " + "Update maintenance window",
+      response = MaintenanceWindow.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
           name = "UpdateMaintenanceWindowRequest",
@@ -171,6 +186,7 @@ public class MaintenanceController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
   public Result update(UUID customerUUID, UUID windowUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     maintenanceService.getOrBadRequest(customerUUID, windowUUID);
@@ -197,13 +213,16 @@ public class MaintenanceController extends AuthenticatedController {
     return PlatformResults.withData(window);
   }
 
-  @ApiOperation(value = "Delete maintenance window", response = YBPSuccess.class)
+  @ApiOperation(
+      value = "WARNING: This is a preview API that could change. " + "Delete maintenance window",
+      response = YBPSuccess.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.8.0.0")
   public Result delete(UUID customerUUID, UUID windowUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
 

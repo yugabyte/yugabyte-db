@@ -10,9 +10,12 @@ https://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL
 package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.KubernetesUtil;
-import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -23,12 +26,16 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@Abortable
+@Retryable
 public class UpdateKubernetesDiskSize extends EditKubernetesUniverse {
 
   @Inject
   protected UpdateKubernetesDiskSize(
-      BaseTaskDependencies baseTaskDependencies, KubernetesOperatorStatusUpdater kubernetesStatus) {
-    super(baseTaskDependencies, kubernetesStatus);
+      BaseTaskDependencies baseTaskDependencies,
+      OperatorStatusUpdaterFactory statusUpdaterFactory,
+      KubernetesManagerFactory kubernetesManagerFactory) {
+    super(baseTaskDependencies, statusUpdaterFactory, kubernetesManagerFactory);
   }
 
   @Override

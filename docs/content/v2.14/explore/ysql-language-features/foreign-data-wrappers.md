@@ -2,7 +2,6 @@
 title: Foreign Data Wrappers
 linkTitle: Foreign Data Wrappers
 description: Foreign Data Wrappers in YSQL
-image: /images/section_icons/secure/create-roles.png
 menu:
   v2.14:
     identifier: explore-ysql-language-features-foreign-data-wrappers

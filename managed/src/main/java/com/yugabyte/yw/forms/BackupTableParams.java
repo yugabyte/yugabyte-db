@@ -6,6 +6,7 @@ import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.models.Backup.StorageConfigType;
+import com.yugabyte.yw.models.backuprestore.Tablespace;
 import com.yugabyte.yw.models.helpers.TimeUnit;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -169,6 +170,11 @@ public class BackupTableParams extends TableManagerParams {
   @ApiModelProperty(value = "Time unit for backup expiry time")
   public TimeUnit expiryTimeUnit = TimeUnit.DAYS;
 
+  @ApiModelProperty(value = "Tablespaces info")
+  @Getter
+  @Setter
+  private List<Tablespace> tablespacesList = null;
+
   // For each list item
   public long timeTakenPartial = 0L;
 
@@ -198,8 +204,7 @@ public class BackupTableParams extends TableManagerParams {
 
   @JsonIgnore
   public void initializeBackupDBStates() {
-    this.backupList
-        .parallelStream()
+    this.backupList.parallelStream()
         .forEach(
             paramsEntry ->
                 this.backupDBStates.put(
@@ -207,6 +212,11 @@ public class BackupTableParams extends TableManagerParams {
   }
 
   @JsonIgnore
+  /**
+   * Use for backup parent task params
+   *
+   * @param backupRequestParams
+   */
   public BackupTableParams(BackupRequestParams backupRequestParams) {
     this.customerUuid = backupRequestParams.customerUUID;
     // Todo: Should it always be set to true?
@@ -231,6 +241,11 @@ public class BackupTableParams extends TableManagerParams {
   }
 
   @JsonIgnore
+  /**
+   * Use for backup subtask params
+   *
+   * @param backupRequestParams
+   */
   public BackupTableParams(BackupRequestParams backupRequestParams, String keySpace) {
     this(backupRequestParams);
     this.setKeyspace(keySpace);
@@ -241,6 +256,11 @@ public class BackupTableParams extends TableManagerParams {
   }
 
   @JsonIgnore
+  /**
+   * Use for backup subtask params
+   *
+   * @param tableParams
+   */
   public BackupTableParams(BackupTableParams tableParams) {
     this.customerUuid = tableParams.customerUuid;
     this.backupUuid = tableParams.backupUuid;
@@ -273,6 +293,13 @@ public class BackupTableParams extends TableManagerParams {
   }
 
   @JsonIgnore
+  /**
+   * Use for backup subtask params
+   *
+   * @param tableParams
+   * @param tableUUID
+   * @param tableName
+   */
   public BackupTableParams(BackupTableParams tableParams, UUID tableUUID, String tableName) {
     this(tableParams);
     this.tableUUIDList = Arrays.asList(tableUUID);

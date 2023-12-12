@@ -18,9 +18,10 @@ import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.gflags.GFlagDetails;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.models.Universe;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Set;
 import org.junit.Before;
 import org.junit.Test;
@@ -53,18 +54,15 @@ public class CheckXUniverseAutoFlagsTest extends CommissionerBaseTest {
   public void testAutoFlagCheckSuccess() throws Exception {
     when(mockAutoFlagUtil.getPromotedAutoFlags(any(), any(), anyInt()))
         .thenReturn(Set.of("FLAG_1", "FLAG_2"));
-    GFlagDetails flagDetails = new GFlagDetails();
-    flagDetails.name = "FLAG_1";
-    flagDetails.target = "target";
-    flagDetails.initial = "initial";
-    flagDetails.tags = "auto";
-    GFlagDetails flagDetails2 = new GFlagDetails();
-    flagDetails2.name = "FLAG_2";
-    flagDetails2.target = "target";
-    flagDetails2.initial = "initial";
-    flagDetails2.tags = "auto";
-    when(mockGFlagsValidation.listAllAutoFlags(anyString(), anyString()))
-        .thenReturn(Arrays.asList(flagDetails, flagDetails2));
+    GFlagsValidation.AutoFlagDetails autoFlagDetails = new GFlagsValidation.AutoFlagDetails();
+    autoFlagDetails.name = "FLAG_1";
+    GFlagsValidation.AutoFlagDetails autoFlagDetails2 = new GFlagsValidation.AutoFlagDetails();
+    autoFlagDetails2.name = "FLAG_2";
+    GFlagsValidation.AutoFlagsPerServer autoFlagsPerServer =
+        new GFlagsValidation.AutoFlagsPerServer();
+    autoFlagsPerServer.autoFlagDetails = Arrays.asList(autoFlagDetails2, autoFlagDetails);
+    when(mockGFlagsValidation.extractAutoFlags(anyString(), anyString()))
+        .thenReturn(autoFlagsPerServer);
     CheckXUniverseAutoFlags task = AbstractTaskBase.createTask(CheckXUniverseAutoFlags.class);
     CheckXUniverseAutoFlags.Params params = new CheckXUniverseAutoFlags.Params();
     params.sourceUniverseUUID = sourceUniverse.getUniverseUUID();
@@ -77,18 +75,13 @@ public class CheckXUniverseAutoFlagsTest extends CommissionerBaseTest {
   public void testAutoFlagFailure() throws Exception {
     when(mockAutoFlagUtil.getPromotedAutoFlags(any(), any(), anyInt()))
         .thenReturn(Set.of("FLAG_1", "FLAG_2"));
-    GFlagDetails flagDetails = new GFlagDetails();
-    flagDetails.name = "FLAG_1";
-    flagDetails.target = "target";
-    flagDetails.initial = "initial";
-    flagDetails.tags = "auto";
-    GFlagDetails flagDetails2 = new GFlagDetails();
-    flagDetails2.name = "FLAG_2";
-    flagDetails2.target = "target";
-    flagDetails2.initial = "initial";
-    flagDetails2.tags = "auto";
-    when(mockGFlagsValidation.listAllAutoFlags(anyString(), anyString()))
-        .thenReturn(Arrays.asList(flagDetails));
+    GFlagsValidation.AutoFlagDetails autoFlagDetails = new GFlagsValidation.AutoFlagDetails();
+    autoFlagDetails.name = "FLAG_1";
+    GFlagsValidation.AutoFlagsPerServer autoFlagsPerServer =
+        new GFlagsValidation.AutoFlagsPerServer();
+    autoFlagsPerServer.autoFlagDetails = Collections.singletonList(autoFlagDetails);
+    when(mockGFlagsValidation.extractAutoFlags(anyString(), anyString()))
+        .thenReturn(autoFlagsPerServer);
     CheckXUniverseAutoFlags task = AbstractTaskBase.createTask(CheckXUniverseAutoFlags.class);
     CheckXUniverseAutoFlags.Params params = new CheckXUniverseAutoFlags.Params();
     params.sourceUniverseUUID = sourceUniverse.getUniverseUUID();

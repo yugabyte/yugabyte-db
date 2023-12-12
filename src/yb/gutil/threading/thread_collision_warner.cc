@@ -18,7 +18,7 @@
 //
 #include "yb/gutil/threading/thread_collision_warner.h"
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #ifdef __linux__
 #include "yb/gutil/linux_syscall_support.h"

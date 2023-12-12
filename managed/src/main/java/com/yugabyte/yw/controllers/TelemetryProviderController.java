@@ -4,12 +4,21 @@ package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.TelemetryProvider;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -27,7 +36,16 @@ public class TelemetryProviderController extends AuthenticatedController {
 
   @Inject private TelemetryProviderService telemetryProviderService;
 
-  @ApiOperation(value = "Get Telemetry Provider", response = TelemetryProvider.class)
+  @ApiOperation(
+      value = "YbaApi Internal. Get Telemetry Provider",
+      response = TelemetryProvider.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result getTelemetryProvider(UUID customerUUID, UUID providerUUID) {
     Customer.getOrBadRequest(customerUUID);
     TelemetryProvider provider =
@@ -36,10 +54,17 @@ public class TelemetryProviderController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "List All Telemetry Providers",
+      value = "YbaApi Internal. List All Telemetry Providers",
       response = TelemetryProvider.class,
       responseContainer = "List",
       nickname = "listAllTelemetryProviders")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result listTelemetryProviders(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     List<TelemetryProvider> providers = telemetryProviderService.list(customerUUID);
@@ -47,7 +72,7 @@ public class TelemetryProviderController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Create Telemetry Provider",
+      value = "YbaApi Internal. Create Telemetry Provider",
       response = TelemetryProvider.class,
       nickname = "createTelemetry")
   @ApiImplicitParams(
@@ -56,12 +81,20 @@ public class TelemetryProviderController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.models.TelemetryProvider",
           required = true,
           paramType = "body"))
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result createTelemetryProvider(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     TelemetryProvider provider = parseJson(request, TelemetryProvider.class);
     if (provider.getUuid() != null) {
       throw new PlatformServiceException(BAD_REQUEST, "Can't create provider with uuid set");
     }
+    provider.setCustomerUUID(customerUUID);
     provider = telemetryProviderService.save(provider);
     auditService()
         .createAuditEntryWithReqBody(
@@ -72,7 +105,14 @@ public class TelemetryProviderController extends AuthenticatedController {
     return PlatformResults.withData(provider);
   }
 
-  @ApiOperation(value = "Delete a telemetry provider", response = YBPSuccess.class)
+  @ApiOperation(value = "YbaApi Internal. Delete a telemetry provider", response = YBPSuccess.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result deleteTelemetryProvider(
       UUID customerUUID, UUID providerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);

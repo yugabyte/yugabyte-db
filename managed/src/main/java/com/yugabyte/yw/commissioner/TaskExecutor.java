@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.yugabyte.yw.models.helpers.CommonUtils.getDurationSeconds;
+import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -319,6 +320,15 @@ public class TaskExecutor {
    */
   public RunnableTask createRunnableTask(ITask task) {
     checkNotNull(task, "Task must be set");
+    try {
+      task.validateParams(task.isFirstTry());
+    } catch (PlatformServiceException e) {
+      log.error("Params validation failed for task " + task, e);
+      throw e;
+    } catch (Exception e) {
+      log.error("Params validation failed for task " + task, e);
+      throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
+    }
     TaskInfo taskInfo = createTaskInfo(task);
     taskInfo.setPosition(-1);
     taskInfo.save();
@@ -392,9 +402,10 @@ public class TaskExecutor {
    * found.
    *
    * @param taskUUID UUID of the task.
+   * @param force skip some checks like abortable if it is set.
    * @return returns an optional TaskInfo that is present if the task is already found running.
    */
-  public Optional<TaskInfo> abort(UUID taskUUID) {
+  public Optional<TaskInfo> abort(UUID taskUUID, boolean force) {
     log.info("Aborting task {}", taskUUID);
     Optional<RunnableTask> optional = maybeGetRunnableTask(taskUUID);
     if (!optional.isPresent()) {
@@ -403,7 +414,7 @@ public class TaskExecutor {
     }
     RunnableTask runnableTask = optional.get();
     ITask task = runnableTask.getTask();
-    if (!isTaskAbortable(task.getClass())) {
+    if (!force && !isTaskAbortable(task.getClass())) {
       throw new RuntimeException("Task " + task.getName() + " is not abortable");
     }
     // Signal abort to the task.
@@ -503,7 +514,7 @@ public class TaskExecutor {
    */
   @FunctionalInterface
   public interface TaskExecutionListener {
-    default void beforeTask(TaskInfo taskInfo) {};
+    default void beforeTask(TaskInfo taskInfo) {}
 
     void afterTask(TaskInfo taskInfo, Throwable t);
   }

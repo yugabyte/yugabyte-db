@@ -4,7 +4,6 @@ headerTitle: JDBC Drivers
 linkTitle: JDBC Drivers
 description: YugabyteDB JDBC Smart Driver for YSQL reference
 headcontent: JDBC Drivers for YSQL
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   stable:
     name: JDBC Drivers

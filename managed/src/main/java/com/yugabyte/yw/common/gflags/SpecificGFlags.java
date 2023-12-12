@@ -8,7 +8,6 @@ import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.TSE
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
-import com.yugabyte.yw.models.helpers.NodeDetails;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
@@ -21,6 +20,7 @@ import java.util.UUID;
 import javax.annotation.Nullable;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
+import org.apache.commons.collections.MapUtils;
 
 @Data
 @ApiModel(description = "GFlags for current cluster")
@@ -29,6 +29,11 @@ public class SpecificGFlags {
   @EqualsAndHashCode
   public static class PerProcessFlags {
     public Map<UniverseTaskBase.ServerType, Map<String, String>> value = new HashMap<>();
+
+    @Override
+    public String toString() {
+      return value.toString();
+    }
   }
 
   @ApiModelProperty private boolean inheritFromPrimary;
@@ -39,15 +44,7 @@ public class SpecificGFlags {
   @ApiModelProperty(value = "Overrides for gflags per availability zone")
   private Map<UUID, PerProcessFlags> perAZ = new HashMap<>();
 
-  @JsonIgnore
-  public Map<String, String> getGFlags(
-      NodeDetails nodeDetails, UniverseTaskBase.ServerType process) {
-    UUID azUUID = nodeDetails == null ? null : nodeDetails.azUuid;
-    return getGFlags(azUUID, process);
-  }
-
-  private Map<String, String> getGFlags(
-      @Nullable UUID azUuid, UniverseTaskBase.ServerType process) {
+  public Map<String, String> getGFlags(@Nullable UUID azUuid, UniverseTaskBase.ServerType process) {
     Map<String, String> result = new HashMap<>();
     if (perProcessFlags != null) {
       result.putAll(perProcessFlags.value.getOrDefault(process, new HashMap<>()));
@@ -77,10 +74,12 @@ public class SpecificGFlags {
     SpecificGFlags newValue = new SpecificGFlags();
     newValue.setInheritFromPrimary(inheritFromPrimary);
     newValue.perProcessFlags = clone(perProcessFlags);
-    perAZ.forEach(
-        (k, v) -> {
-          newValue.perAZ.put(k, clone(v));
-        });
+    if (perAZ != null) {
+      perAZ.forEach(
+          (k, v) -> {
+            newValue.perAZ.put(k, clone(v));
+          });
+    }
     return newValue;
   }
 
@@ -91,6 +90,18 @@ public class SpecificGFlags {
         perProcessFlags.value.getOrDefault(serverType, new HashMap<>()).remove(gflagKey);
       }
     }
+  }
+
+  public boolean hasPerAZOverrides() {
+    if (MapUtils.isEmpty(perAZ)) {
+      return false;
+    }
+    for (PerProcessFlags value : perAZ.values()) {
+      if (value != null && !MapUtils.isEmpty(value.value)) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private PerProcessFlags clone(PerProcessFlags perProcessFlags) {
@@ -106,8 +117,13 @@ public class SpecificGFlags {
     if (specificGFlags == null) {
       return true;
     }
-    List<PerProcessFlags> allGflags = new ArrayList<>(specificGFlags.perAZ.values());
-    allGflags.add(specificGFlags.getPerProcessFlags());
+    List<PerProcessFlags> allGflags = new ArrayList<>();
+    if (specificGFlags.perAZ != null) {
+      allGflags.addAll(specificGFlags.perAZ.values());
+    }
+    if (specificGFlags.getPerProcessFlags() != null) {
+      allGflags.add(specificGFlags.getPerProcessFlags());
+    }
     for (PerProcessFlags flags : allGflags) {
       if (flags != null && flags.value != null) {
         for (Map<String, String> value : flags.value.values()) {
@@ -130,5 +146,11 @@ public class SpecificGFlags {
             TSERVER, tserverGFlags);
     result.setPerProcessFlags(perProcessFlags);
     return result;
+  }
+
+  public static SpecificGFlags constructInherited() {
+    SpecificGFlags specificGFlags = new SpecificGFlags();
+    specificGFlags.setInheritFromPrimary(true);
+    return specificGFlags;
   }
 }

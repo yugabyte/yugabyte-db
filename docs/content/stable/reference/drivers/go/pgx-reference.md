@@ -4,7 +4,6 @@ headerTitle: Go Drivers
 linkTitle: Go Drivers
 description: Go PGX Driver for YSQL
 headcontent: Go Drivers for YSQL
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   stable:
     name: Go Drivers
@@ -41,6 +40,8 @@ type: docs
 The [PGX driver](https://github.com/jackc/pgx/) is one of the most popular and actively maintained drivers for PostgreSQL.
 
 The driver allows Go programmers to connect to YugabyteDB to execute DMLs and DDLs using the PGX APIs. It also supports the standard `database/sql` package.
+
+For a tutorial on building a sample Go application with PGX, see [Connect an application](../../../../drivers-orms/go/pgx/).
 
 ## Fundamentals
 

@@ -21,15 +21,13 @@ import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 import static play.test.Helpers.contentAsString;
 
-import akka.stream.javadsl.FileIO;
-import akka.stream.javadsl.Source;
-import akka.util.ByteString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
@@ -42,12 +40,16 @@ import com.yugabyte.yw.models.Hook.ExecutionLang;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.File;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import org.apache.pekko.stream.javadsl.FileIO;
+import org.apache.pekko.stream.javadsl.Source;
+import org.apache.pekko.util.ByteString;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
@@ -351,7 +353,7 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
 
   @Test
   public void testRunApiTriggeredHooks() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.RunHooks);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Universe universe = ModelFactory.createUniverse();
     String uri =
@@ -373,7 +375,7 @@ public class HookControllerTest extends PlatformGuiceApplicationBaseTest {
 
   @Test
   public void runApiTriggeredHooksForCluster() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.RunHooks);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     Universe universe = ModelFactory.createUniverse();
     UUID clusterUUID = universe.getUniverseDetails().clusters.get(0).uuid;

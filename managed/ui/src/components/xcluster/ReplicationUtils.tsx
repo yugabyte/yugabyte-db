@@ -2,22 +2,24 @@ import { useQuery } from 'react-query';
 import moment from 'moment';
 
 import { getAlertConfigurations } from '../../actions/universe';
-import {
-  isBootstrapRequired,
-  queryLagMetricsForTable,
-  queryLagMetricsForUniverse
-} from '../../actions/xClusterReplication';
+import { fetchReplicationLag, isBootstrapRequired } from '../../actions/xClusterReplication';
 import { formatLagMetric } from '../../utils/Formatters';
 import {
   MetricName,
   MetricTraceName,
   XClusterConfigAction,
   XClusterConfigStatus,
-  REPLICATION_LAG_ALERT_NAME,
   BROKEN_XCLUSTER_CONFIG_STATUSES,
-  XClusterConfigType
+  XClusterConfigType,
+  XClusterTableEligibility,
+  AlertName
 } from './constants';
-import { api } from '../../redesign/helpers/api';
+import {
+  alertConfigQueryKey,
+  api,
+  metricQueryKey,
+  universeQueryKey
+} from '../../redesign/helpers/api';
 import { getUniverseStatus } from '../universes/helpers/universeHelpers';
 import { UnavailableUniverseStates, YBTableRelationType } from '../../redesign/helpers/constants';
 import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
@@ -25,12 +27,13 @@ import { SortOrder } from '../../redesign/helpers/constants';
 
 import {
   Metrics,
-  MetricTrace,
-  XClusterConfig,
+  MetricTimeRange,
+  StandardMetricTimeRangeOption,
   XClusterTable,
-  XClusterTableDetails
+  XClusterTableCandidate
 } from './XClusterTypes';
-import { TableType, Universe, YBTable } from '../../redesign/helpers/dtos';
+import { XClusterConfig, XClusterTableDetails } from './dtos';
+import { MetricTrace, TableType, Universe, YBTable } from '../../redesign/helpers/dtos';
 
 import './ReplicationUtils.scss';
 
@@ -41,10 +44,10 @@ export const MaxAcceptableLag = ({
   currentUniverseUUID: string | undefined;
 }) => {
   const alertConfigFilter = {
-    name: REPLICATION_LAG_ALERT_NAME,
+    name: AlertName.REPLICATION_LAG,
     targetUuid: currentUniverseUUID
   };
-  const maxAcceptableLagQuery = useQuery(['alert', 'configurations', alertConfigFilter], () =>
+  const maxAcceptableLagQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
     getAlertConfigurations(alertConfigFilter)
   );
 
@@ -65,45 +68,41 @@ export const MaxAcceptableLag = ({
 
 // TODO: Rename, refactor and pull into separate file
 export const CurrentReplicationLag = ({
-  xClusterConfigUUID,
+  xClusterConfigUuid,
   xClusterConfigStatus,
-  sourceUniverseUUID
+  sourceUniverseUuid
 }: {
-  xClusterConfigUUID: string;
+  xClusterConfigUuid: string;
   xClusterConfigStatus: XClusterConfigStatus;
-  sourceUniverseUUID: string | undefined;
+  sourceUniverseUuid: string | undefined;
 }) => {
-  const currentUniverseQuery = useQuery(['universe', sourceUniverseUUID], () =>
-    api.fetchUniverse(sourceUniverseUUID)
+  const sourceUniverseQuery = useQuery(universeQueryKey.detail(sourceUniverseUuid), () =>
+    api.fetchUniverse(sourceUniverseUuid)
   );
+
+  const replciationLagMetricRequestParams = {
+    nodePrefix: sourceUniverseQuery.data?.universeDetails.nodePrefix,
+    replicationUuid: xClusterConfigUuid
+  };
   const universeLagQuery = useQuery(
-    [
-      'xcluster-metric',
-      xClusterConfigUUID,
-      currentUniverseQuery.data?.universeDetails.nodePrefix,
-      'metric'
-    ],
-    () =>
-      queryLagMetricsForUniverse(
-        currentUniverseQuery.data?.universeDetails.nodePrefix,
-        xClusterConfigUUID
-      ),
+    metricQueryKey.latest(replciationLagMetricRequestParams, '1', 'hour'),
+    () => fetchReplicationLag(replciationLagMetricRequestParams),
     {
-      enabled: !!currentUniverseQuery.data
+      enabled: !!sourceUniverseQuery.data
     }
   );
 
   const alertConfigFilter = {
-    name: REPLICATION_LAG_ALERT_NAME,
-    targetUuid: sourceUniverseUUID
+    name: AlertName.REPLICATION_LAG,
+    targetUuid: sourceUniverseUuid
   };
-  const maxAcceptableLagQuery = useQuery(['alert', 'configurations', alertConfigFilter], () =>
+  const maxAcceptableLagQuery = useQuery(alertConfigQueryKey.list(alertConfigFilter), () =>
     getAlertConfigurations(alertConfigFilter)
   );
 
   if (
-    currentUniverseQuery.isLoading ||
-    currentUniverseQuery.isIdle ||
+    sourceUniverseQuery.isLoading ||
+    sourceUniverseQuery.isIdle ||
     universeLagQuery.isLoading ||
     universeLagQuery.isIdle ||
     maxAcceptableLagQuery.isLoading ||
@@ -114,7 +113,7 @@ export const CurrentReplicationLag = ({
 
   if (
     BROKEN_XCLUSTER_CONFIG_STATUSES.includes(xClusterConfigStatus) ||
-    currentUniverseQuery.isError ||
+    sourceUniverseQuery.isError ||
     universeLagQuery.isError ||
     maxAcceptableLagQuery.isError
   ) {
@@ -149,34 +148,39 @@ export const CurrentReplicationLag = ({
 
 // TODO: Rename, refactor and pull into separate file
 export const CurrentTableReplicationLag = ({
-  tableUUID,
+  tableId,
   streamId,
   queryEnabled,
   nodePrefix,
   sourceUniverseUUID,
   xClusterConfigStatus
 }: {
-  tableUUID: string;
+  tableId: string;
   streamId: string;
   queryEnabled: boolean;
   nodePrefix: string | undefined;
   sourceUniverseUUID: string | undefined;
   xClusterConfigStatus: XClusterConfigStatus;
 }) => {
+  const replciationLagMetricRequestParams = {
+    nodePrefix,
+    streamId,
+    tableId
+  };
   const tableLagQuery = useQuery(
-    ['xcluster-metric', nodePrefix, tableUUID, streamId, 'metric'],
-    () => queryLagMetricsForTable(streamId, tableUUID, nodePrefix),
+    metricQueryKey.latest(replciationLagMetricRequestParams, '1', 'hour'),
+    () => fetchReplicationLag(replciationLagMetricRequestParams),
     {
       enabled: queryEnabled
     }
   );
 
   const alertConfigFilter = {
-    name: REPLICATION_LAG_ALERT_NAME,
+    name: AlertName.REPLICATION_LAG,
     targetUuid: sourceUniverseUUID
   };
   const maxAcceptableLagQuery = useQuery(
-    ['alert', 'configurations', alertConfigFilter],
+    alertConfigQueryKey.list(alertConfigFilter),
     () => getAlertConfigurations(alertConfigFilter),
     {
       enabled: queryEnabled
@@ -230,7 +234,7 @@ export const getLatestMaxNodeLag = (metric: Metrics<'tserver_async_replication_l
   const lagMetric = metric.tserver_async_replication_lag_micros;
   const traceAlias =
     lagMetric.layout.yaxis.alias[
-      MetricTraceName[MetricName.TSERVER_ASYNC_REPLICATION_LAG_METRIC].COMMITTED_LAG
+      MetricTraceName[MetricName.TSERVER_ASYNC_REPLICATION_LAG].COMMITTED_LAG
     ];
   const traces = lagMetric.data.filter((trace) => trace.name === traceAlias);
   const latestLags = traces.reduce((latestLags: number[], trace) => {
@@ -249,7 +253,7 @@ export const getMaxNodeLagMetric = (
   const lagMetric = metric.tserver_async_replication_lag_micros;
   const traceAlias =
     lagMetric.layout.yaxis.alias[
-      MetricTraceName[MetricName.TSERVER_ASYNC_REPLICATION_LAG_METRIC].COMMITTED_LAG
+      MetricTraceName[MetricName.TSERVER_ASYNC_REPLICATION_LAG].COMMITTED_LAG
     ];
   const traces = lagMetric.data.filter((trace) => trace.name === traceAlias);
   if (!traces.length) {
@@ -269,6 +273,31 @@ export const getMaxNodeLagMetric = (
     name: `Max ${traceAlias}`,
     y: maxY
   };
+};
+
+// Improvement: Consider if we can do this data transform on the server.
+export const adaptMetricDataForRecharts = (
+  metricTraces: MetricTrace[],
+  getUniqueTraceName: (trace: MetricTrace) => string
+): { [dataKey: string]: number | null }[] => {
+  const combinedDataPoints = new Map<number, { x: number; [dataKey: string]: number | null }>();
+  metricTraces.forEach((trace) => {
+    const traceName = getUniqueTraceName(trace);
+    trace.x.forEach((x, index) => {
+      // `null` values will be reflected as a gap in the chart unless we ask
+      // Recharts to connect gaps.
+      const y = parseFloatIfDefined(trace.y[index]) ?? null;
+      const combinedY = combinedDataPoints.get(x);
+      if (combinedY !== undefined) {
+        combinedY[traceName] = y;
+      } else {
+        combinedDataPoints.set(x, { x, [traceName]: y });
+      }
+    });
+  });
+  return Array.from(combinedDataPoints.values()).sort(
+    (dataPointA, dataPointB) => dataPointA.x - dataPointB.x
+  );
 };
 
 export const getMasterNodeAddress = (nodeDetailsSet: Array<any>) => {
@@ -302,6 +331,16 @@ export const formatBytes = function (sizeInBytes: any) {
 };
 
 /**
+ * Returns an object containing the start and end moment for a given time range option.
+ */
+export const getMetricTimeRange = (
+  metricTimeRangeOption: StandardMetricTimeRangeOption
+): MetricTimeRange => ({
+  startMoment: moment().subtract(metricTimeRangeOption.value, metricTimeRangeOption.type),
+  endMoment: moment()
+});
+
+/**
  * Wraps parseFloat and lets undefined and number type values pass through.
  */
 export const parseFloatIfDefined = (input: string | number | undefined) => {
@@ -309,14 +348,6 @@ export const parseFloatIfDefined = (input: string | number | undefined) => {
     return input;
   }
   return parseFloat(input);
-};
-
-export const findUniverseName = function (universeList: Array<any>, universeUUID: string): string {
-  return universeList.find((universe: any) => universe.universeUUID === universeUUID)?.name;
-};
-
-export const getUniverseByUUID = (universeList: Universe[], uuid: string) => {
-  return universeList.find((universes) => universes.universeUUID === uuid);
 };
 
 export const getEnabledConfigActions = (
@@ -342,6 +373,7 @@ export const getEnabledConfigActions = (
       return [
         replication.paused ? XClusterConfigAction.RESUME : XClusterConfigAction.PAUSE,
         XClusterConfigAction.ADD_TABLE,
+        XClusterConfigAction.MANAGE_TABLE,
         XClusterConfigAction.DB_SYNC,
         XClusterConfigAction.DELETE,
         XClusterConfigAction.EDIT,
@@ -360,10 +392,18 @@ export const getEnabledConfigActions = (
 /**
  * Returns the UUIDs for all xCluster configs associated with the provided universe.
  */
-export const getAllXClusterConfigs = (universe: Universe) => [
-  ...(universe.universeDetails?.xclusterInfo?.sourceXClusterConfigs ?? []),
-  ...(universe.universeDetails?.xclusterInfo?.targetXClusterConfigs ?? [])
-];
+export const getXClusterConfigUuids = (universe: Universe | undefined) => ({
+  sourceXClusterConfigUuids: universe?.universeDetails?.xclusterInfo?.sourceXClusterConfigs ?? [],
+  targetXClusterConfigUuids: universe?.universeDetails?.xclusterInfo?.targetXClusterConfigs ?? []
+});
+
+export const hasLinkedXClusterConfig = (universes: Universe[]) =>
+  universes.some((universe) => {
+    const { sourceXClusterConfigUuids, targetXClusterConfigUuids } = getXClusterConfigUuids(
+      universe
+    );
+    return sourceXClusterConfigUuids.length > 0 || targetXClusterConfigUuids.length > 0;
+  });
 
 /**
  * Returns the UUIDs for all xCluster configs with the provided source and target universe.
@@ -379,12 +419,22 @@ export const getSharedXClusterConfigs = (sourceUniverse: Universe, targetUnivers
 };
 
 /**
- * Adapt tableUUID to the format required for xCluster work.
- * - tableUUID is given in XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX format from
- *   /customers/<customerUUID>/universes/<universeUUID>/tables endpoint
- * - tableUUID used in xCluster endpoints have the '-' stripped away
+ * Adapt UUID to the format required for xCluster work.
+ * - UUIDs are generally given in XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX format
+ * - UUIDs used in xCluster endpoints often have the '-' stripped away
  */
-export const adaptTableUUID = (tableUUID: string) => tableUUID.replaceAll('-', '');
+export const formatUuidForXCluster = (tableUuid: string) => tableUuid.replaceAll('-', '');
+
+/**
+ * Adapt UUID from format required for xCluster work to the common format with dashes.
+ * - UUIDs are generally given in XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX format
+ * - UUIDs used in xCluster endpoints often have the '-' stripped away
+ */
+export const formatUuidFromXCluster = (tableUuid: string) =>
+  tableUuid.replace(
+    /^([0-9a-f]{8})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{12})$/,
+    '$1-$2-$3-$4-$5'
+  );
 
 export const tableSort = <RowType,>(
   a: RowType,
@@ -396,7 +446,7 @@ export const tableSort = <RowType,>(
   let ord = 0;
 
   ord = a[sortField] < b[sortField] ? -1 : 1;
-  // Break ties with the provided tie breaker field in ascending order.
+  // Break ties with the provided tiebreaker field in ascending order.
   if (a[sortField] === b[sortField]) {
     return a[tieBreakerField] < b[tieBreakerField] ? -1 : 1;
   }
@@ -404,35 +454,42 @@ export const tableSort = <RowType,>(
   return sortOrder === SortOrder.ASCENDING ? ord : ord * -1;
 };
 
-// TODO:
-// Investigate whether we can store table type as a property of xCluster config.
-// This will help reduce complexity and avoid filtering through all source universe tables.
-// JIRA: https://yugabyte.atlassian.net/browse/PLAT-6095
 /**
- * - Return the `tableType` of any table in an xCluster config.
- *   - The underlying assumption is that tables within an xCluster config should all have the same `tableType`.
- * - Returns undefined if no source universe tables exist in the xCluster config (Error/Unexpected case)
+ * Return the `tableType` of any table in an xCluster config.
  */
-export const getXClusterConfigTableType = (
-  xClusterConfig: XClusterConfig,
-  sourceUniverseTables: YBTable[]
+export const getXClusterConfigTableType = (xClusterConfig: XClusterConfig) => {
+  switch (xClusterConfig.tableType) {
+    case 'YSQL':
+      return TableType.PGSQL_TABLE_TYPE;
+    case 'YCQL':
+      return TableType.YQL_TABLE_TYPE;
+    case 'UNKNOWN':
+      return undefined;
+  }
+};
+
+/**
+ * Returns whether the provided table can be added/removed from the xCluster config.
+ */
+export const isTableToggleable = (
+  table: XClusterTableCandidate,
+  xClusterConfigAction: XClusterConfigAction
 ) =>
-  sourceUniverseTables.find((table) =>
-    xClusterConfig.tables.includes(adaptTableUUID(table.tableUUID))
-  )?.tableType;
+  table.eligibilityDetails.status === XClusterTableEligibility.ELIGIBLE_UNUSED ||
+  (xClusterConfigAction === XClusterConfigAction.MANAGE_TABLE &&
+    table.eligibilityDetails.status === XClusterTableEligibility.ELIGIBLE_IN_CURRENT_CONFIG);
 
 /**
  * Returns array of XClusterTable by augmenting YBTable with XClusterTableDetails
  */
 export const augmentTablesWithXClusterDetails = (
   ybTable: YBTable[],
-  xClusterConfigTables: XClusterTableDetails[],
-  txnTableDetails: XClusterTableDetails | undefined
+  xClusterConfigTables: XClusterTableDetails[]
 ): XClusterTable[] => {
   const ybTableMap = new Map<string, YBTable>();
   ybTable.forEach((table) => {
     const { tableUUID, ...tableDetails } = table;
-    const adaptedTableUUID = adaptTableUUID(tableUUID);
+    const adaptedTableUUID = formatUuidForXCluster(tableUUID);
     ybTableMap.set(adaptedTableUUID, { ...tableDetails, tableUUID: adaptedTableUUID });
   });
   const tables = xClusterConfigTables.reduce((tables: XClusterTable[], table) => {
@@ -447,20 +504,6 @@ export const augmentTablesWithXClusterDetails = (
     }
     return tables;
   }, []);
-  if (txnTableDetails) {
-    const { tableId: txnTableId, ...txnTable } = txnTableDetails;
-    tables.push({
-      isIndexTable: false,
-      keySpace: 'system',
-      pgSchemaName: '',
-      relationType: YBTableRelationType.SYSTEM_TABLE_RELATION,
-      sizeBytes: -1,
-      tableName: 'transactions',
-      tableType: TableType.TRANSACTION_STATUS_TABLE_TYPE,
-      tableUUID: txnTableId,
-      ...txnTable
-    });
-  }
   return tables;
 };
 
@@ -481,7 +524,7 @@ export const getTablesForBootstrapping = async (
   bootstrapTest = await isBootstrapRequired(
     sourceUniverseUUID,
     targetUniverseUUID,
-    selectedTableUUIDs.map(adaptTableUUID),
+    selectedTableUUIDs.map(formatUuidForXCluster),
     xClusterConfigType
   );
 
@@ -499,14 +542,14 @@ export const getTablesForBootstrapping = async (
       }
       const tableUUIDs = ysqlKeyspaceToTableUUIDs.get(table.keySpace);
       if (tableUUIDs !== undefined) {
-        tableUUIDs.add(adaptTableUUID(table.tableUUID));
+        tableUUIDs.add(formatUuidForXCluster(table.tableUUID));
       } else {
         ysqlKeyspaceToTableUUIDs.set(
           table.keySpace,
-          new Set<string>([adaptTableUUID(table.tableUUID)])
+          new Set<string>([formatUuidForXCluster(table.tableUUID)])
         );
       }
-      ysqlTableUUIDToKeyspace.set(adaptTableUUID(table.tableUUID), table.keySpace);
+      ysqlTableUUIDToKeyspace.set(formatUuidForXCluster(table.tableUUID), table.keySpace);
     });
 
     Object.entries(bootstrapTest).forEach(([tableUUID, bootstrapRequired]) => {

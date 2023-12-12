@@ -13,6 +13,7 @@
 
 #include "yb/util/stack_trace.h"
 
+#include <execinfo.h>
 #include <signal.h>
 
 #ifdef __linux__
@@ -23,17 +24,23 @@
 #include <mutex>
 
 #include "yb/gutil/casts.h"
+#include "yb/gutil/hash/city.h"
 #include "yb/gutil/linux_syscall_support.h"
 
 #include "yb/util/flags.h"
+#include "yb/util/libbacktrace_util.h"
 #include "yb/util/lockfree.h"
 #include "yb/util/monotime.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
+#include "yb/util/symbolize.h"
 #include "yb/util/thread.h"
 
 #if YB_GOOGLE_TCMALLOC
 #include <tcmalloc/malloc_extension.h>
 #endif
+
+using std::string;
 
 using namespace std::literals;
 
@@ -43,6 +50,12 @@ typedef sig_t sighandler_t;
 
 DEFINE_test_flag(bool, disable_thread_stack_collection_wait, false,
     "When set to true, ThreadStacks() will not wait for threads to respond");
+
+// A hack to grab a function from glog.
+// For source see e.g. https://github.com/yugabyte/glog/blob/v0.4.0-yb-5/src/stacktrace.h#L57
+namespace google {
+extern int GetStackTrace(void** result, int max_depth, int skip_count);
+}  // namespace google
 
 namespace yb {
 
@@ -269,6 +282,103 @@ bool InitSignalHandlerUnlocked(int signum) {
 }
 
 } // namespace
+
+// ------------------------------------------------------------------------------------------------
+// StackTrace class
+// ------------------------------------------------------------------------------------------------
+
+void StackTrace::Collect(int skip_frames) {
+  static thread_local bool is_collecting_stack = false;
+
+  if (is_collecting_stack) {
+    // It is unsafe to call backtrace recursively. Return an empty stack trace.
+    // A thread can get here if while it was collecting its own stack, it got interrupted by a
+    // StackTraceSignal request from another thread.
+    return;
+  }
+
+  is_collecting_stack = true;
+  auto se = ScopeExit([]() { is_collecting_stack = false; });
+
+#if THREAD_SANITIZER || ADDRESS_SANITIZER
+  num_frames_ = google::GetStackTrace(frames_, arraysize(frames_), skip_frames);
+#else
+  int max_frames = skip_frames + arraysize(frames_);
+  void** buffer = static_cast<void**>(alloca((max_frames) * sizeof(void*)));
+  num_frames_ = backtrace(buffer, max_frames);
+  if (num_frames_ > skip_frames) {
+    num_frames_ -= skip_frames;
+    memmove(frames_, buffer + skip_frames, num_frames_ * sizeof(void*));
+  } else {
+    num_frames_ = 0;
+  }
+#endif
+}
+
+void StackTrace::StringifyToHex(char* buf, size_t size, int flags) const {
+  char* dst = buf;
+
+  // Reserve kHexEntryLength for the first iteration of the loop, 1 byte for a
+  // space (which we may not need if there's just one frame), and 1 for a nul
+  // terminator.
+  char* limit = dst + size - kHexEntryLength - 2;
+  for (int i = 0; i < num_frames_ && dst < limit; i++) {
+    if (i != 0) {
+      *dst++ = ' ';
+    }
+    // See note in Symbolize() below about why we subtract 1 from each address here.
+    uintptr_t addr = reinterpret_cast<uintptr_t>(frames_[i]);
+    if (!(flags & NO_FIX_CALLER_ADDRESSES)) {
+      addr--;
+    }
+    FastHex64ToBuffer(addr, dst);
+    dst += kHexEntryLength;
+  }
+  *dst = '\0';
+}
+
+std::string StackTrace::ToHexString(int flags) const {
+  // Each frame requires kHexEntryLength, plus a space
+  // We also need one more byte at the end for '\0'
+  char buf[kMaxFrames * (kHexEntryLength + 1) + 1];
+  StringifyToHex(buf, arraysize(buf), flags);
+  return std::string(buf);
+}
+
+// Symbolization function borrowed from glog and modified to use libbacktrace on Linux.
+std::string StackTrace::Symbolize(
+    const StackTraceLineFormat stack_trace_line_format, StackTraceGroup* group) const {
+  std::string buf;
+  auto* global_backtrace_state = libbacktrace::GetGlobalBacktraceState();
+
+  if (group) {
+    *group = StackTraceGroup::kActive;
+  }
+
+  for (int i = 0; i < num_frames_; i++) {
+    void* const pc = frames_[i];
+
+    SymbolizeAddress(stack_trace_line_format, pc, &buf, group, global_backtrace_state);
+  }
+
+  return buf;
+}
+
+string StackTrace::ToLogFormatHexString() const {
+  string buf;
+  for (int i = 0; i < num_frames_; i++) {
+    void* pc = frames_[i];
+    StringAppendF(&buf, "    @ %*p\n", kPrintfPointerFieldWidth, pc);
+  }
+  return buf;
+}
+
+uint64_t StackTrace::HashCode() const {
+  return util_hash::CityHash64(reinterpret_cast<const char*>(frames_),
+                               sizeof(frames_[0]) * num_frames_);
+}
+
+// ------------------------------------------------------------------------------------------------
 
 Result<StackTrace> ThreadStack(ThreadIdForStack tid) {
   return ThreadStacks({tid}).front();

@@ -78,12 +78,16 @@
 #include "utils/timeout.h"
 #include "utils/tqual.h"
 
+#include <arpa/inet.h>
 #include "pg_yb_utils.h"
 #include "catalog/pg_yb_catalog_version.h"
 #include "catalog/pg_yb_profile.h"
 #include "catalog/pg_yb_role_profile.h"
 #include "catalog/pg_yb_tablegroup.h"
 #include "catalog/yb_catalog_version.h"
+#include "common/ip.h"
+#include "utils/builtins.h"
+#include "utils/yb_inheritscache.h"
 
 static HeapTuple GetDatabaseTuple(const char *dbname);
 static HeapTuple GetDatabaseTupleByOid(Oid dboid);
@@ -97,6 +101,8 @@ static void IdleInTransactionSessionTimeoutHandler(void);
 static bool ThereIsAtLeastOneRole(void);
 static void process_startup_options(Port *port, bool am_superuser);
 static void process_settings(Oid databaseid, Oid roleid);
+
+static void YbSetAshClientAddrAndPort();
 
 /*** InitPostgres support ***/
 
@@ -580,13 +586,18 @@ BaseInit(void)
  * As of PostgreSQL 8.2, we expect InitProcess() was already called, so we
  * already have a PGPROC struct ... but it's not completely filled in yet.
  *
+ * YB extension: session_id. If greater than zero, connect local YbSession
+ * to existing YbClientSession instance in TServer, rather than requesting new.
+ * Helpful to initialize background worker backends that need to share state.
+ *
  * Note:
  *		Be very careful with the order of calls in the InitPostgres function.
  * --------------------------------
  */
 static void
 InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
-				 Oid useroid, char *out_dbname, bool override_allow_connections)
+				 Oid useroid, char *out_dbname, uint64_t *session_id,
+				 bool override_allow_connections)
 {
 	bool		bootstrap = IsBootstrapProcessingMode();
 	bool		am_superuser;
@@ -636,6 +647,8 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 	 */
 	InitBufferPoolBackend();
 
+	MyProc->ybInitializationCompleted = true;
+
 	/*
 	 * Initialize local process's access to XLOG.
 	 */
@@ -670,6 +683,9 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 	InitCatalogCache();
 	InitPlanCache();
 
+	if (YBIsEnabledInPostgresEnvVar())
+		YbInitPgInheritsCache();
+
 	/* Initialize portal manager */
 	EnablePortalManager();
 
@@ -679,9 +695,16 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 
 	/* Connect to YugaByte cluster. */
 	if (bootstrap)
-		YBInitPostgresBackend("postgres", "", username);
+		YBInitPostgresBackend("postgres", "", username, session_id);
 	else
-		YBInitPostgresBackend("postgres", in_dbname, username);
+		YBInitPostgresBackend("postgres", in_dbname, username, session_id);
+
+	/*
+	 * Set client_addr and client_host which will remain constant
+	 * throughout the session.
+	 */
+	if (IsYugaByteEnabled() && YBEnableAsh())
+		YbSetAshClientAddrAndPort();
 
 	if (IsYugaByteEnabled() && !bootstrap)
 	{
@@ -689,32 +712,23 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 										YbRoleProfileRelationId,
 										&YbLoginProfileCatalogsExist));
 
-		const uint64_t catalog_master_version =
-			YbGetCatalogCacheVersionForTablePrefetching();
-
-		/*
-		 * Call YBIsDBCatalogVersionMode before prefetching is started
-		 * to initialize its static variables.
+		/* TODO (dmitry): Next call of the YBIsDBCatalogVersionMode function is
+		 * kind of a hack and must be removed. This function is called before
+		 * starting prefetching because for now switching into DB catalog
+		 * version mode is impossible in case prefething is started.
 		 */
-		bool is_db_catalog_version_mode = YBIsDBCatalogVersionMode();
-		ereport(DEBUG3,
-				(errmsg("is_db_catalog_version_mode=%d",
-						is_db_catalog_version_mode)));
-
+		YBIsDBCatalogVersionMode();
 		YBCPgResetCatalogReadTime();
-		YBCStartSysTablePrefetching(
-			catalog_master_version, YB_YQL_PREFETCHER_NO_CACHE);
-		YbRegisterSysTableForPrefetching(
-			AuthIdRelationId);        // pg_authid
-		YbRegisterSysTableForPrefetching(
-			DatabaseRelationId);      // pg_database
+		YBCStartSysTablePrefetchingNoCache();
+		YbRegisterSysTableForPrefetching(AuthIdRelationId);   // pg_authid
+		YbRegisterSysTableForPrefetching(DatabaseRelationId); // pg_database
 
 		if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
 		{
 			YbRegisterSysTableForPrefetching(
-				YbProfileRelationId);		// pg_yb_profile
+				YbProfileRelationId);     // pg_yb_profile
 			YbRegisterSysTableForPrefetching(
-				YbRoleProfileRelationId);	// pg_yb_role_profile
+				YbRoleProfileRelationId); // pg_yb_role_profile
 		}
 		YbTryRegisterCatalogVersionTableForPrefetching();
 
@@ -1098,7 +1112,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 	 * least the minimum set of "nailed-in" cache entries.
 	 */
 	// See if tablegroup catalog exists - needs to happen before cache fully initialized.
-	if (IsYugaByteEnabled())
+	if (IsYugaByteEnabled() && !bootstrap)
 		HandleYBStatus(YBCPgTableExists(
 			MyDatabaseId, YbTablegroupRelationId, &YbTablegroupCatalogExists));
 
@@ -1171,12 +1185,13 @@ YbEnsureSysTablePrefetchingStopped()
 
 void
 InitPostgres(const char *in_dbname, Oid dboid, const char *username,
-             Oid useroid, char *out_dbname, bool override_allow_connections)
+			 Oid useroid, char *out_dbname, uint64_t *session_id,
+			 bool override_allow_connections)
 {
 	PG_TRY();
 	{
 		InitPostgresImpl(
-			in_dbname, dboid, username, useroid, out_dbname,
+			in_dbname, dboid, username, useroid, out_dbname, session_id,
 			override_allow_connections);
 	}
 	PG_CATCH();
@@ -1367,4 +1382,68 @@ ThereIsAtLeastOneRole(void)
 	heap_close(pg_authid_rel, AccessShareLock);
 
 	return result;
+}
+
+/*
+ * Sets the client address and port for ASH metadata.
+ * If the address family is not AF_INET or AF_INET6, then the PGPPROC ASH metadata
+ * fields for client address and port don't mean anything. Otherwise, if
+ * pg_getnameinfo_all returns non-zero value, a warning is printed with the error
+ * code and ASH keeps working without client address and port for the current PG
+ * backend.
+ */
+static void
+YbSetAshClientAddrAndPort()
+{
+	Assert(MyProcPort != NULL);
+
+	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
+
+	/* Set the address family and null the client_addr and client_port */
+	MyProc->yb_ash_metadata.addr_family = MyProcPort->raddr.addr.ss_family;
+	MemSet(MyProc->yb_ash_metadata.client_addr, 0, 16);
+	MyProc->yb_ash_metadata.client_port = 0;
+
+	switch (MyProcPort->raddr.addr.ss_family)
+	{
+		case AF_INET:
+#ifdef HAVE_IPV6
+		case AF_INET6:
+#endif
+			break;
+		default:
+			LWLockRelease(&MyProc->yb_ash_metadata_lock);
+			return;
+	}
+
+	char		remote_host[NI_MAXHOST];
+	int			ret;
+
+	ret = pg_getnameinfo_all(&MyProcPort->raddr.addr, MyProcPort->raddr.salen,
+							 remote_host, sizeof(remote_host),
+							 NULL, 0,
+							 NI_NUMERICHOST | NI_NUMERICSERV);
+
+	if (ret != 0)
+	{
+		ereport(WARNING,
+				(errmsg("pg_getnameinfo_all while setting ash metadata failed"),
+				 errdetail("%s\naddress family: %u",
+						   gai_strerror(ret),
+						   MyProcPort->raddr.addr.ss_family)));
+
+		LWLockRelease(&MyProc->yb_ash_metadata_lock);
+		return;
+	}
+
+	clean_ipv6_addr(MyProcPort->raddr.addr.ss_family, remote_host);
+
+	/* Setting ip address */
+	inet_pton(MyProcPort->raddr.addr.ss_family, remote_host,
+			  MyProc->yb_ash_metadata.client_addr);
+
+	/* Setting port */
+	MyProc->yb_ash_metadata.client_port = atoi(MyProcPort->remote_port);
+
+	LWLockRelease(&MyProc->yb_ash_metadata_lock);
 }

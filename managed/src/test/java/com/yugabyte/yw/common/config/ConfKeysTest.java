@@ -1,3 +1,5 @@
+// Copyright (c) YugaByte, Inc.
+
 package com.yugabyte.yw.common.config;
 
 import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
@@ -11,30 +13,32 @@ import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
 import com.yugabyte.yw.common.rbac.Permission;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
+import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig.ScopeType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
-import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
 import com.yugabyte.yw.models.rbac.Role;
-import com.yugabyte.yw.models.rbac.Role.RoleType;
 import com.yugabyte.yw.models.rbac.RoleBinding;
 import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
+import db.migration.default_.common.R__Sync_System_Roles;
 import java.lang.reflect.Field;
 import java.lang.reflect.Modifier;
 import java.util.Arrays;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import org.junit.Before;
 import org.junit.Test;
@@ -64,20 +68,17 @@ public class ConfKeysTest extends FakeDBApplication {
     defaultProvider = ModelFactory.kubernetesProvider(defaultCustomer);
     Users user = ModelFactory.testUser(defaultCustomer, Users.Role.SuperAdmin);
     authToken = user.createAuthToken();
-    Role role1 =
-        Role.create(
-            defaultCustomer.getUuid(),
-            "FakeRole2",
-            "testDescription",
-            RoleType.Custom,
-            new HashSet<>(Arrays.asList(permission1, permission2, permission3, permission4)));
-    ResourceDefinition rd3 =
-        ResourceDefinition.builder()
-            .resourceType(ResourceType.OTHER)
-            .resourceUUIDSet(new HashSet<>(Arrays.asList(defaultCustomer.getUuid())))
-            .build();
-    ResourceGroup rG = new ResourceGroup(new HashSet<>(Arrays.asList(rd3)));
-    RoleBinding.create(user, RoleBindingType.Custom, role1, rG);
+
+    // Run the system roles sync migration to validate the UseNewRbacAuthzListener.
+    // Required for the "yb.rbac.use_new_authz" runtime config.
+    R__Sync_System_Roles.syncSystemRoles();
+
+    Role role1 = Role.get(defaultCustomer.getUuid(), Users.Role.SuperAdmin.name());
+    RoleBinding.create(
+        user,
+        RoleBindingType.System,
+        role1,
+        ResourceGroup.getSystemDefaultResourceGroup(defaultCustomer.getUuid(), user));
   }
 
   private Result setKey(String path, String newVal, UUID scopeUUID) {
@@ -197,5 +198,76 @@ public class ConfKeysTest extends FakeDBApplication {
         }
       }
     }
+  }
+
+  @Test
+  public void testFeatureFlagRuntimeConfigEntries() throws Exception {
+    Map<Class<? extends RuntimeConfigKeysModule>, ScopeType> modules =
+        ImmutableMap.of(
+            GlobalConfKeys.class,
+            ScopeType.GLOBAL,
+            CustomerConfKeys.class,
+            ScopeType.CUSTOMER,
+            UniverseConfKeys.class,
+            ScopeType.UNIVERSE,
+            ProviderConfKeys.class,
+            ScopeType.PROVIDER);
+    for (Map.Entry<Class<? extends RuntimeConfigKeysModule>, ScopeType> entry :
+        modules.entrySet()) {
+      scanConfKeys(
+          entry.getKey(),
+          entry.getValue(),
+          keyInfo -> {
+            if (keyInfo.getTags().contains(ConfKeyTags.FEATURE_FLAG)) {
+              if (ScopeType.GLOBAL == keyInfo.scope) {
+                // Check that all global ConfKeyInfo which have the tag FEATURE_FLAG are of type
+                // boolean.
+                if (ConfDataType.BooleanType != keyInfo.getDataType()) {
+                  fail(
+                      String.format(
+                          "ConfKeyInfo '%s' can only be boolean as it is marked with tag"
+                              + " 'FEATURE_FLAG'.",
+                          keyInfo.toString()));
+                }
+              } else {
+                fail(
+                    String.format(
+                        "ConfKeyInfo '%s' cannot have tag 'FEATURE_FLAG' as it is not in global"
+                            + " scope.",
+                        keyInfo.toString()));
+              }
+            }
+          });
+    }
+  }
+
+  // This scans and verifies if each ConfKeyInfo is declared in its respective file.
+  private void scanConfKeys(
+      Class<? extends RuntimeConfigKeysModule> moduleClass,
+      ScopeType scopeType,
+      Consumer<ConfKeyInfo<?>> consumer) {
+    Arrays.stream(moduleClass.getDeclaredFields())
+        .filter(f -> Modifier.isStatic(f.getModifiers()))
+        .filter(f -> Modifier.isPublic(f.getModifiers()))
+        .forEach(
+            f -> {
+              try {
+                Object obj = f.get(null);
+                if (obj instanceof ConfKeyInfo) {
+                  ConfKeyInfo<?> keyInfo = (ConfKeyInfo<?>) obj;
+                  if (keyInfo.getScope() != scopeType) {
+                    fail(
+                        String.format(
+                            "Wrong scope type %s defined in %s for %s",
+                            keyInfo.getScope(), moduleClass.getSimpleName(), f.getName()));
+                  }
+                  if (consumer != null) {
+                    consumer.accept(keyInfo);
+                  }
+                }
+              } catch (Exception e) {
+                fail(e.getMessage());
+              }
+            });
   }
 }

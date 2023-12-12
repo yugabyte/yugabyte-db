@@ -4,8 +4,10 @@ package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.common.AssertHelper.assertAuditEntry;
 import static com.yugabyte.yw.common.AssertHelper.assertBadRequest;
+import static com.yugabyte.yw.common.AssertHelper.assertPlatformException;
 import static com.yugabyte.yw.common.AssertHelper.assertValue;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
+import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static com.yugabyte.yw.models.helpers.CommonUtils.datePlus;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.equalTo;
@@ -15,12 +17,13 @@ import static org.hamcrest.CoreMatchers.nullValue;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.core.StringContains.containsString;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
-import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.Mockito.doAnswer;
 import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.verify;
@@ -39,11 +42,15 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.CloudProviderDelete;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.metrics.MetricService;
+import com.yugabyte.yw.controllers.handlers.CustomerHandler;
 import com.yugabyte.yw.forms.AlertingData;
 import com.yugabyte.yw.forms.PlatformResults.YBPError;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -53,14 +60,19 @@ import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.Alert.State;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.FileData;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.TaskType;
+import java.io.File;
 import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Date;
@@ -74,6 +86,8 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Captor;
+import org.mockito.InjectMocks;
+import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
 import org.mockito.junit.MockitoJUnitRunner;
 import play.libs.Json;
@@ -87,6 +101,9 @@ public class CustomerControllerTest extends FakeDBApplication {
 
   private Customer customer;
   private Users user;
+  @Mock MetricService mockMetricService;
+  @Mock CloudProviderDelete mockCloudProviderDelete;
+  @InjectMocks private CustomerHandler customerHandler;
 
   @Captor private ArgumentCaptor<ArrayList<MetricSettings>> metricKeys;
 
@@ -536,15 +553,98 @@ public class CustomerControllerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCustomerDELETEWithValidUUID() {
-    String authToken = user.createAuthToken();
-    Http.Cookie validCookie = Http.Cookie.builder("authToken", authToken).build();
-    Result result =
-        route(fakeRequest("DELETE", baseRoute + customer.getUuid()).cookie(validCookie));
-    assertEquals(OK, result.status());
-    JsonNode json = Json.parse(contentAsString(result));
-    assertTrue(json.get("success").asBoolean());
-    assertAuditEntry(1, customer.getUuid());
+  public void testCustomerDELETEWithoutProvider() {
+    String licensePath =
+        createTempFile(
+            AppConfigHelper.getStoragePath() + "/licenses/" + customer.getUuid(),
+            UUID.randomUUID().toString(),
+            "CUSTOMER-LICENSES");
+    String certsPath =
+        createTempFile(
+            AppConfigHelper.getStoragePath() + "/certs/" + customer.getUuid(),
+            UUID.randomUUID().toString(),
+            "CUSTOMER-CERTS");
+    String nodeAgentCertsPath =
+        createTempFile(
+            AppConfigHelper.getStoragePath() + "/node-agent/certs/" + customer.getUuid(),
+            UUID.randomUUID().toString(),
+            "CUSTOMER-NODE-AGENT/CERTS");
+
+    UUID taskUUID = buildTaskInfo(null, TaskType.DeleteCustomerConfig);
+    CustomerTask.create(
+        customer,
+        UUID.randomUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.Create,
+        "Test");
+
+    customerHandler.deleteCustomer(customer.getUuid());
+
+    assertFalse(new File(licensePath).getParentFile().exists());
+    assertFalse(new File(certsPath).getParentFile().exists());
+    assertFalse(new File(nodeAgentCertsPath).getParentFile().exists());
+    assertEquals(0, Users.getAll(customer.getUuid()).size());
+    Result result = assertPlatformException(() -> TaskInfo.getOrBadRequest(taskUUID));
+    assertBadRequest(result, "Invalid task info UUID: " + taskUUID);
+    assertEquals(0, CustomerTask.getByCustomerUUID(customer.getUuid()).size());
+  }
+
+  @Test
+  public void testCustomerDELETEWithProvider() {
+    Provider defProv = ModelFactory.gcpProvider(customer);
+    Region.create(defProv, "us-west-2", "us-west-2", "yb-image");
+
+    doAnswer(
+            inv -> {
+              String keyFileBasePath =
+                  AppConfigHelper.getStoragePath() + "/keys/" + inv.getArgument(1);
+              FileData.deleteFiles(keyFileBasePath, true);
+              return null;
+            })
+        .when(mockCloudProviderDelete)
+        .deleteRelevantFilesForProvider(any(), any());
+
+    String accessKeyPath =
+        createTempFile(
+            AppConfigHelper.getStoragePath() + "/keys/" + defProv.getUuid(),
+            UUID.randomUUID().toString(),
+            "ACCESS-KEYS");
+    String licensePath =
+        createTempFile(
+            AppConfigHelper.getStoragePath() + "/licenses/" + customer.getUuid(),
+            UUID.randomUUID().toString(),
+            "CUSTOMER-LICENSES");
+    String certsPath =
+        createTempFile(
+            AppConfigHelper.getStoragePath() + "/certs/" + customer.getUuid(),
+            UUID.randomUUID().toString(),
+            "CUSTOMER-CERTS");
+    String nodeAgentCertsPath =
+        createTempFile(
+            AppConfigHelper.getStoragePath() + "/node-agent/certs/" + customer.getUuid(),
+            UUID.randomUUID().toString(),
+            "CUSTOMER-NODE-AGENT/CERTS");
+
+    UUID taskUUID = buildTaskInfo(null, TaskType.DeleteCustomerConfig);
+    CustomerTask.create(
+        customer,
+        UUID.randomUUID(),
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.Create,
+        "Test");
+
+    customerHandler.deleteCustomer(customer.getUuid());
+
+    assertFalse(new File(accessKeyPath).getParentFile().exists());
+    assertFalse(new File(licensePath).getParentFile().exists());
+    assertFalse(new File(certsPath).getParentFile().exists());
+    assertFalse(new File(nodeAgentCertsPath).getParentFile().exists());
+    assertEquals(0, Users.getAll(customer.getUuid()).size());
+    Result result = assertPlatformException(() -> TaskInfo.getOrBadRequest(taskUUID));
+    assertBadRequest(result, "Invalid task info UUID: " + taskUUID);
+    assertEquals(0, CustomerTask.getByCustomerUUID(customer.getUuid()).size());
   }
 
   @Test

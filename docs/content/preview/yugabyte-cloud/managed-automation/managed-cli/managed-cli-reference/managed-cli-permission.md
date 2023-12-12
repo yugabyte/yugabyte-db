@@ -1,5 +1,5 @@
 ---
-title: permission resource
+title: ybm CLI permission resource
 headerTitle: ybm permission
 linkTitle: permission
 description: YugabyteDB Managed CLI reference Permission resource.

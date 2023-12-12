@@ -47,6 +47,7 @@
 
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/io_thread_pool.h"
+#include "yb/rpc/local_call.h"
 #include "yb/rpc/proxy_context.h"
 #include "yb/rpc/scheduler.h"
 
@@ -343,6 +344,7 @@ class Messenger : public ProxyContext {
   RpcEndpointMap rpc_endpoints_;
 
   std::vector<std::unique_ptr<Reactor>> reactors_;
+  LocalYBInboundCallTracker local_call_tracker_;
 
   const scoped_refptr<MetricEntity> metric_entity_;
   const scoped_refptr<Histogram> outgoing_queue_time_;

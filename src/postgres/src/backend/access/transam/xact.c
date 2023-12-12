@@ -1939,7 +1939,7 @@ YBInitializeTransaction(void)
 {
 	if (YBTransactionsEnabled())
 	{
-		HandleYBStatus(YBCPgBeginTransaction());
+		HandleYBStatus(YBCPgBeginTransaction(xactStartTimestamp));
 
 		HandleYBStatus(
 			YBCPgSetTransactionIsolationLevel(YBGetEffectivePggateIsolationLevel()));
@@ -2691,15 +2691,13 @@ AbortTransaction(void)
 	AtAbort_Memory();
 	AtAbort_ResourceOwner();
 
-	if (YBIsPgLockingEnabled()) {
-		/*
-		* Release any LW locks we might be holding as quickly as possible.
-		* (Regular locks, however, must be held till we finish aborting.)
-		* Releasing LW locks is critical since we might try to grab them again
-		* while cleaning up!
-		*/
-		LWLockReleaseAll();
-	}
+	/*
+	 * Release any LW locks we might be holding as quickly as possible.
+	 * (Regular locks, however, must be held till we finish aborting.)
+	 * Releasing LW locks is critical since we might try to grab them again
+	 * while cleaning up!
+	 */
+	LWLockReleaseAll();
 
 	/* Clear wait information and command progress indicator */
 	pgstat_report_wait_end();
@@ -3069,49 +3067,7 @@ void
 CommitTransactionCommand(void)
 {
 	TransactionState s = CurrentTransactionState;
-
-	/* Update the session parameter to the shared memory */
-	if (YbIsClientYsqlConnMgr())
-	{
-		/*
-		 * At the end of a single query transaction (when autocommit is enabled)
-		 * the blockState will be TBLOCK_STARTED.
-		 * At the end of a normal transaction (when autocommit is disabled)
-		 * the blockState will be TBLOCK_END.
-		 * So in the case of TBLOCK_ENDand TBLOCK_STARTED,
-		 *
-		 * UpdateSharedMemory is called at the end of a transaction.
-		 * i.e. TBLOCK_END and TBLOCK_STARTED, not TBLOCK_BEGIN.
-		 * This is done to update the shared memory in case any
-		 * session parameter might have changed.
-		 *
-		 * YbCleanChangedSessionParameter is called both at the beginning
-		 * and at the end of the transaction (after updating shared memory) .
-		 * YbCleanChangedSessionParameter basically cleans the local cach, so
-		 * when a logical connection is attached to a new physical connection,
-		 * the cach needs to be cleaned. Also once this cach has been used to
-		 * update the shared memory (YbUpdateSharedMemory) this cach should be
-		 * cleaned.
-		 */
-		switch (s->blockState)
-		{
-			case TBLOCK_END:	 /* COMMIT received */
-			case TBLOCK_STARTED: /* running single-query transaction */
-				/* Copy the session parameter from the local memory to the
-				 * shared memory */
-				YbUpdateSharedMemory();
-
-				YbCleanChangedSessionParameters();
-				break;
-			case TBLOCK_BEGIN:
-				YbCleanChangedSessionParameters();
-				break;
-			default:
-				/* do nothing for sub transaction, process changed session
-				 * parameters only at the end of the transaction. */
-				break;
-		}
-	}
+	TBlockState prevState = s->blockState;
 
 	switch (s->blockState)
 	{
@@ -3342,6 +3298,49 @@ CommitTransactionCommand(void)
 				s->blockState = TBLOCK_SUBINPROGRESS;
 			}
 			break;
+	}
+
+	/* Update the session parameter values in the shared memory */
+	if (YbIsClientYsqlConnMgr())
+	{
+		/*
+		 * At the end of a single query transaction (when autocommit is enabled)
+		 * the blockState will be TBLOCK_STARTED.
+		 * At the end of a normal transaction (when autocommit is disabled)
+		 * the blockState will be TBLOCK_END.
+		 * So in the case of TBLOCK_ENDand TBLOCK_STARTED,
+		 *
+		 * UpdateSharedMemory is called at the end of a transaction.
+		 * i.e. TBLOCK_END and TBLOCK_STARTED, not TBLOCK_BEGIN.
+		 * This is done to update the shared memory in case any
+		 * session parameter might have changed.
+		 *
+		 * YbCleanChangedSessionParameter is called both at the beginning
+		 * and at the end of the transaction (after updating shared memory) .
+		 * YbCleanChangedSessionParameter basically cleans the local cach, so
+		 * when a logical connection is attached to a new physical connection,
+		 * the cach needs to be cleaned. Also once this cach has been used to
+		 * update the shared memory (YbUpdateSharedMemory) this cach should be
+		 * cleaned.
+		 */
+		switch (prevState)
+		{
+			case TBLOCK_END:	 /* COMMIT received */
+			case TBLOCK_STARTED: /* running single-query transaction */
+				/* Copy the session parameter from the local memory to the
+				 * shared memory */
+				YbUpdateSharedMemory();
+
+				YbCleanChangedSessionParameters();
+				break;
+			case TBLOCK_BEGIN:
+				YbCleanChangedSessionParameters();
+				break;
+			default:
+				/* do nothing for sub transaction, process changed session
+				 * parameters only at the end of the transaction. */
+				break;
+		}
 	}
 }
 
@@ -4972,7 +4971,7 @@ StartSubTransaction(void)
 
 	ShowTransactionState("StartSubTransaction");
 
-	/* 
+	/*
 	 * Update the value of the sticky objects from parent transaction
 	 */
 	if(CurrentTransactionState->parent)
@@ -5457,9 +5456,17 @@ SerializeTransactionState(Size maxsize, char *start_address)
 	{
 		if (TransactionIdIsValid(s->transactionId))
 			workspace[i++] = s->transactionId;
-		memcpy(&workspace[i], s->childXids,
-			   s->nChildXids * sizeof(TransactionId));
-		i += s->nChildXids;
+		/*
+		 * In Yugabyte it is valid if childXids is NULL, but memcpy's arguments
+		 * are supposed to be not null. Even when Yugabyte is not enabled,
+		 * if s->nChildXids is 0, it is good to skip those no-op lines.
+		 */
+		if (s->nChildXids)
+		{
+			memcpy(&workspace[i], s->childXids,
+				s->nChildXids * sizeof(TransactionId));
+			i += s->nChildXids;
+		}
 	}
 	Assert(i == nxids);
 

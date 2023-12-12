@@ -13,8 +13,10 @@ import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.impl.EnableRollbackSupportKeyValidator;
 import com.yugabyte.yw.common.config.impl.MetricCollectionLevelValidator;
 import com.yugabyte.yw.common.config.impl.SSH2EnabledKeyValidator;
+import com.yugabyte.yw.common.config.impl.UseNewRbacAuthzValidator;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -42,9 +44,21 @@ public class RuntimeConfigPreChangeNotifier {
   @Inject
   public RuntimeConfigPreChangeNotifier(
       SSH2EnabledKeyValidator ssh2EnabledKeyValidator,
-      MetricCollectionLevelValidator metricCollectionLevelValidator) {
+      MetricCollectionLevelValidator metricCollectionLevelValidator,
+      UseNewRbacAuthzValidator useNewRbacAuthzValidator,
+      EnableRollbackSupportKeyValidator enableRollbackSupportKeyValidator) {
     addListener(ssh2EnabledKeyValidator);
     addListener(metricCollectionLevelValidator);
+    addListener(useNewRbacAuthzValidator);
+    addListener(enableRollbackSupportKeyValidator);
+  }
+
+  public void notifyListenersDeleteConfig(UUID scopeUUID, String path) {
+    if (!listenerMap.containsKey(path)) {
+      return;
+    }
+    RuntimeConfigPreChangeValidator listener = listenerMap.get(path);
+    listener.validateDeleteConfig(scopeUUID, path);
   }
 
   public void notifyListeners(UUID scopeUUID, String path, String newValue) {

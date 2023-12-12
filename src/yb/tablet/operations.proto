@@ -18,6 +18,7 @@ option java_package = "org.yb.tablet";
 
 import "yb/common/common.proto";
 import "yb/common/transaction.proto";
+import "yb/common/wire_protocol.proto";
 import "yb/docdb/docdb.proto";
 import "yb/rpc/lightweight_message.proto";
 import "yb/tablet/metadata.proto";
@@ -57,6 +58,9 @@ message TransactionStatePB {
 
   // Stores the uuid of the node hosting the transaction at the query layer.
   optional string host_node_uuid = 11;
+
+  // Status containing deadlock info if the transaction was aborted due to deadlock.
+  optional AppStatusPB deadlock_reason = 12;
 }
 
 message TruncatePB {
@@ -123,6 +127,10 @@ message ChangeMetadataRequestPB {
 
   // Used for AlterTable to determine if active transactions on the tablet needs to be aborted.
   optional bool should_abort_active_txns = 16 [ default = false ];
+
+  // For CDCSDK Stream creation with consistent snapshot
+  optional bytes retention_requester_id = 18;
+  optional bool cdc_sdk_require_history_cutoff = 19;
 }
 
 message SplitTabletRequestPB {

@@ -606,6 +606,38 @@ yb-admin \
 
 To verify that the new status tablet has been created, run the [`list_tablets`](#list-tablets) command.
 
+#### flush_table
+
+Flush the memstores of the specified table on all tablet servers to disk.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    flush_table <table_name> | <table_id> <db_type>.<namespace> [timeout_in_seconds] [ADD_INDEXES]
+```
+
+* *master_addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *db_type*: The type of database. Valid values include ysql, ycql, yedis, and unknown.
+* *namespace*: The name of the database (for YSQL) or keyspace (for YCQL).
+* *table_name*: The name of the table to flush.
+* *table_id*: The unique UUID of the table to flush.
+* *timeout_in_seconds*: Specifies duration, in seconds when the cli timeouts waiting for flushing to end. Default value is `20`.
+* *ADD_INDEXES*: If the DB should also flush the secondary indexes associated with the table. Default is `false`.
+
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses $MASTER_RPC_ADDRS \
+    flush_table ysql.yugabyte table_name
+    
+```
+```output
+Flushed [yugabyte.table_name] tables.
+```
 ---
 
 ### Backup and snapshot commands
@@ -1319,7 +1351,7 @@ Suppose you have a deployment in the following regions: `gcp.us-west1.us-west1-a
 curl -s http://<any-master-ip>:7000/cluster-config
 ```
 
-Here is a sample configuration:
+The following is a sample configuration:
 
 ```output
 replication_info {
@@ -1456,8 +1488,9 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *placement_info*: A comma-delimited list of placements for *cloud*.*region*.*zone*. Default value is `cloud1.datacenter1.rack1`.
-* *replication_factor*: The number of replicas.
+* *placement_info*: A comma-delimited list of read replica placements for *cloud*.*region*.*zone*, using the format `<cloud1.region1.zone1>:<num_replicas_in_zone1>,<cloud2.region2.zone2>:<num_replicas_in_zone2>,...`. Default value is `cloud1.datacenter1.rack1`.
+    Read replica availability zones must be uniquely different from the primary availability zones. To use the same cloud, region, and availability zone for a read replica as a primary cluster, you can suffix the zone with `_rr` (for read replica). For example, `c1.r1.z1` vs `c1.r1.z1_rr:1`.
+* *replication_factor*: The total number of read replicas.
 * *placement_id*: The identifier of the read replica cluster, which can be any unique string. If not set, a randomly-generated ID will be used. Primary and read replica clusters must use different placement IDs.
 
 #### modify_read_replica_placement_info
@@ -2126,20 +2159,20 @@ table id: 000030ad000030008000000000004000, CDC bootstrap id: dd5ea73b5d384b2c9e
 The CDC bootstrap ids are the ones that should be used with [`setup_universe_replication`](#setup-universe-replication) and [`alter_universe_replication`](#alter-universe-replication).
 {{< /note >}}
 
----
-
 #### get_replication_status
 
-Returns the replication status of all consumer streams. If *producer_universe_uuid* is provided, this will only return streams that belong to an associated universe key.
+Returns the replication status of all consumer streams. If *source_universe_uuid* is provided, this will only return streams that belong to an associated universe key. If *replication_name* is provided, this will only return the stream that belongs to the specified replication.
 
 **Syntax**
 
 ```sh
 yb-admin \
-    -master_addresses <master-addresses> get_replication_status [ <producer_universe_uuid> ]
+    -master_addresses <master-addresses> \
+    get_replication_status [ <source_universe_uuid>_<replication_name> ]
 ```
 
-* *producer_universe_uuid*: Optional universe-unique identifier (can be any string, such as a string of a UUID).
+* *source_universe_uuid*: (Optional) The UUID of the source universe.
+* *replication_name*: (Optional) The name of the replication stream.
 
 **Example**
 
@@ -2159,6 +2192,8 @@ statuses {
   }
 }
 ```
+
+---
 
 ### Decommissioning commands
 
@@ -2383,9 +2418,62 @@ yb-admin \
 
 Refer to [Upgrade a deployment](../../manage/upgrade-deployment/) to learn about how to upgrade a YugabyteDB cluster.
 
+For information on AutoFlags and how it secures upgrades with new data formats, refer to [AutoFlags](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md).
+
+#### get_auto_flags_config
+
+Returns the current AutoFlags configuration of the universe.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    get_auto_flags_config
+```
+
+**Example**
+
+```sh
+./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 get_auto_flags_config
+```
+
+If the operation is successful you should see output similar to the following:
+
+```output
+AutoFlags config:
+config_version: 1
+promoted_flags {
+  process_name: "yb-master"
+  flags: "enable_automatic_tablet_splitting"
+  flags: "master_enable_universe_uuid_heartbeat_check"
+  flag_infos {
+    promoted_version: 1
+  }
+  flag_infos {
+    promoted_version: 1
+  }
+}
+promoted_flags {
+  process_name: "yb-tserver"
+  flags: "regular_tablets_data_block_key_value_encoding"
+  flags: "remote_bootstrap_from_leader_only"
+  flags: "ysql_yb_enable_expression_pushdown"
+  flag_infos {
+    promoted_version: 1
+  }
+  flag_infos {
+    promoted_version: 1
+  }
+  flag_infos {
+    promoted_version: 1
+  }
+}
+```
+
 #### promote_auto_flags
 
-[AutoFlags](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md) protect new features that modify the format of data sent over the wire or stored on-disk. After all YugabyteDB processes have been upgraded to the new version, these features can be enabled by promoting their AutoFlags.
+After all YugabyteDB processes have been upgraded to the new version, these features can be enabled by promoting their AutoFlags.
 
 **Syntax**
 
@@ -2397,7 +2485,7 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *max_flags_class*: The maximum AutoFlag class to promote. Allowed values are `kLocalVolatile`, `kLocalPersisted`, `kExternal`, `kNewInstallsOnly`. Default value is `kExternal`.
+* *max_flags_class*: The maximum AutoFlag class to promote. Allowed values are `kLocalVolatile`, `kLocalPersisted` and `kExternal`. Default value is `kExternal`.
 * *promote_non_runtime_flags*: Weather to promote non-runtime flags. Allowed values are `true` and `false`. Default value is `true`.
 * *force*: Forces the generation of a new AutoFlag configuration and sends it to all YugabyteDB processes even if there are no new AutoFlags to promote.
 

@@ -89,13 +89,21 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Custom script to run on VM boot during universe provisioning",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-  public static final ConfKeyInfo<Integer> minPyVer =
+  public static final ConfKeyInfo<String> minPyVer =
       new ConfKeyInfo<>(
           "yb.node_agent.preflight_checks.min_python_version",
           ScopeType.PROVIDER,
-          "Min Python Version",
+          "Min Python Version (inclusive)",
           "",
-          ConfDataType.IntegerType,
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<String> maxPyVer =
+      new ConfKeyInfo<>(
+          "yb.node_agent.preflight_checks.max_python_version",
+          ScopeType.PROVIDER,
+          "Max Python Version (exclusive)",
+          "",
+          ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.BETA));
   public static final ConfKeyInfo<Integer> defaultAwsVolumeCount =
       new ConfKeyInfo<>(
@@ -249,27 +257,27 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.BETA));
-  public static final ConfKeyInfo<Integer> ulimitOpenFiles =
+  public static final ConfKeyInfo<String> ulimitOpenFiles =
       new ConfKeyInfo<>(
           "yb.node_agent.preflight_checks.ulimit_open_files",
           ScopeType.PROVIDER,
           "ulimit open files",
           "",
-          ConfDataType.IntegerType,
+          ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.BETA));
-  public static final ConfKeyInfo<Integer> ulimitUserProcesses =
+  public static final ConfKeyInfo<String> ulimitUserProcesses =
       new ConfKeyInfo<>(
           "yb.node_agent.preflight_checks.ulimit_user_processes",
           ScopeType.PROVIDER,
           "ulimit user processes",
           "",
-          ConfDataType.IntegerType,
+          ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.BETA));
-  public static final ConfKeyInfo<Integer> swapiness =
+  public static final ConfKeyInfo<Integer> swappiness =
       new ConfKeyInfo<>(
           "yb.node_agent.preflight_checks.swappiness",
           ScopeType.PROVIDER,
-          "swapiness",
+          "swappiness",
           "",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.BETA));
@@ -277,7 +285,7 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
       new ConfKeyInfo<>(
           "yb.node_agent.preflight_checks.ssh_timeout",
           ScopeType.PROVIDER,
-          "ssh timeout",
+          "SSH connection timeout",
           "",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.BETA));
@@ -328,7 +336,8 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "yb.filepaths.remoteTmpDirectory",
           ScopeType.PROVIDER,
           "Remote tmp directory",
-          "A remote temporary directory should be used for performing operations on nodes within the provider scope.",
+          "A remote temporary directory should be used for performing operations on nodes within"
+              + " the provider scope.",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> operationStatusPollingInterval =
@@ -396,5 +405,23 @@ public class ProviderConfKeys extends RuntimeConfigKeysModule {
           "Enable ybops fault injection",
           "Enable ybobs fault injection for module paths with failure rate.",
           ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<Boolean> otelCollectorEnabled =
+      new ConfKeyInfo<>(
+          "yb.universe.otel_collector_enabled",
+          ScopeType.PROVIDER,
+          "Enable OpenTelemetry Collector",
+          "Enables OpenTelemetry Collector installation on DB nodes",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<Duration> waitForYQLRetryDuration =
+      new ConfKeyInfo<>(
+          "yb.wait_for_yqlserver_retry",
+          ScopeType.PROVIDER,
+          "Duration between retries while waiting for ysql to come up",
+          "Duration between retries while waiting for ysql to come up",
+          ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
 }

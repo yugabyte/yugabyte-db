@@ -14,6 +14,7 @@
 #pragma once
 
 #include <condition_variable>
+#include <optional>
 #include <thread>
 
 #include "yb/common/transaction.h"
@@ -57,7 +58,7 @@ class TransactionLoaderContext {
       TransactionalBatchData&& last_batch_data,
       OneWayBitmap&& replicated_batches,
       const ApplyStateWithCommitHt* pending_apply) = 0;
-  virtual void LoadFinished(const ApplyStatesMap& pending_applies) = 0;
+  virtual void LoadFinished() = 0;
 };
 
 YB_DEFINE_ENUM(TransactionLoaderState, (kLoadNotFinished)(kLoadCompleted)(kLoadFailed));
@@ -78,11 +79,21 @@ class TransactionLoader {
   Status WaitLoaded(const TransactionId& id);
   Status WaitAllLoaded();
 
-  void Shutdown();
+  std::optional<ApplyStateWithCommitHt> GetPendingApply(const TransactionId& id) const
+      EXCLUDES(pending_applies_mtx_);
+
+  void StartShutdown() EXCLUDES(mutex_);
+  void CompleteShutdown();
+
+  // Moves the pending applies map to the result. Should only be called after the tablet has
+  // started.
+  ApplyStatesMap MovePendingApplies();
 
  private:
   class Executor;
   friend class Executor;
+
+  void FinishLoad(Status status);
 
   TransactionLoaderContext& context_;
   const scoped_refptr<MetricEntity> entity_;
@@ -94,7 +105,12 @@ class TransactionLoader {
   TransactionId last_loaded_ GUARDED_BY(mutex_) = TransactionId::Nil();
   Status load_status_ GUARDED_BY(mutex_);
   std::atomic<TransactionLoaderState> state_{TransactionLoaderState::kLoadNotFinished};
+  std::atomic<bool> shutdown_requested_{false};
   scoped_refptr<Thread> load_thread_;
+
+  mutable std::mutex pending_applies_mtx_;
+  ApplyStatesMap pending_applies_ GUARDED_BY(pending_applies_mtx_);
+  std::atomic<bool> pending_applies_removed_{false};
 };
 
 } // namespace tablet

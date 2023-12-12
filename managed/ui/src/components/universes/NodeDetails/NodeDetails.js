@@ -30,8 +30,8 @@ export default class NodeDetails extends Component {
       const uuid = currentUniverse.data.universeUUID;
       this.props.getUniversePerNodeStatus(uuid);
       this.props.resetNodeDetails();
-      this.props.getMasterLeader(uuid);
       if (hasLiveNodes(currentUniverse.data)) {
+        this.props.getMasterNodesInfo(uuid);
         this.props.getUniversePerNodeMetrics(uuid);
       }
 
@@ -63,7 +63,7 @@ export default class NodeDetails extends Component {
         universePerNodeStatus,
         universeNodeDetails,
         universePerNodeMetrics,
-        universeMasterLeader
+        universeMasterNodes
       },
       customer,
       providers
@@ -91,6 +91,16 @@ export default class NodeDetails extends Component {
       let masterAlive = false;
       let tserverAlive = false;
       let isLoading = universeCreated;
+      const privateIP = nodeDetail.cloudInfo.private_ip;
+      const hasMasterNodes =
+        getPromiseState(universeMasterNodes).isSuccess() &&
+        isNonEmptyArray(universeMasterNodes.data);
+      const masterNode =
+        hasMasterNodes &&
+        universeMasterNodes.data?.filter((masterNode) => masterNode.host === privateIP);
+      const masterUUID = masterNode?.[0]?.masterUUID;
+      const isMasterLeader = masterNode?.[0]?.isLeader;
+
       let allowedNodeActions = nodeDetail.allowedActions;
       const nodeName = nodeDetail.nodeName;
       const hasUniverseNodeDetails =
@@ -123,7 +133,7 @@ export default class NodeDetails extends Component {
       let instanceName = '';
 
       if (isDefinedNotNull(nodeInstanceList)) {
-        const matchingInstance = nodeInstanceList.data.filter(
+        const matchingInstance = nodeInstanceList.data?.filter(
           (instance) => instance.nodeName === nodeName
         );
         instanceName = _.get(matchingInstance, '[0]details.instanceName', '');
@@ -136,11 +146,6 @@ export default class NodeDetails extends Component {
         instanceName = _.get(matchingInstance, '[0]details.instanceName', '');
       }
 
-      const isMasterLeader =
-        nodeDetail.isMaster &&
-        isDefinedNotNull(universeMasterLeader) &&
-        getPromiseState(universeMasterLeader).isSuccess() &&
-        universeMasterLeader.data.privateIP === nodeDetail.cloudInfo.private_ip;
       const metricsData = nodesMetrics
         ? nodesMetrics[`${nodeDetail.cloudInfo.private_ip}:${nodeDetail.tserverHttpPort}`]
         : {
@@ -156,7 +161,8 @@ export default class NodeDetails extends Component {
             uptime_seconds: null,
             user_tablets_leaders: null,
             user_tablets_total: null,
-            write_ops_per_sec: null
+            write_ops_per_sec: null,
+            uuid: null
           };
       return {
         nodeIdx: nodeDetail.nodeIdx,
@@ -167,10 +173,12 @@ export default class NodeDetails extends Component {
         regionItem: `${nodeDetail.cloudInfo.region}`,
         azItem: `${nodeDetail.cloudInfo.az}`,
         isMaster: nodeDetail.isMaster ? 'Details' : '-',
+        isMasterProcess: nodeDetail.isMaster,
         isMasterLeader: isMasterLeader,
         masterPort: nodeDetail.masterHttpPort,
         tserverPort: nodeDetail.tserverHttpPort,
         isTServer: nodeDetail.isTserver ? 'Details' : '-',
+        isTServerProcess: nodeDetail.isTserver,
         privateIP: nodeDetail.cloudInfo.private_ip,
         publicIP: nodeDetail.cloudInfo.public_ip,
         nodeStatus,
@@ -181,6 +189,7 @@ export default class NodeDetails extends Component {
         isTserverAlive: tserverAlive,
         placementUUID: nodeDetail.placementUuid,
         dedicatedTo: nodeDetail.dedicatedTo,
+        masterUUID,
         ...metricsData
       };
     });

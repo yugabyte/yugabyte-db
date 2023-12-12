@@ -20,7 +20,7 @@
 
 #pragma once
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/docdb/docdb_types.h"
 

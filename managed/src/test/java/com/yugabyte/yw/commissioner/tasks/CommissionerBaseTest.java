@@ -4,11 +4,21 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertTrue;
+import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.endsWith;
+import static org.mockito.Mockito.endsWith;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ArrayNode;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.CloudAPI;
 import com.yugabyte.yw.cloud.aws.AWSInitializer;
@@ -19,12 +29,15 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.DefaultExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.ExecutorServiceProvider;
 import com.yugabyte.yw.commissioner.TaskExecutor;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckFollowerLag;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
 import com.yugabyte.yw.common.AccessManager;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.CloudQueryHelper;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.LdapUtil;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NetworkManager;
 import com.yugabyte.yw.common.NodeManager;
@@ -45,6 +58,7 @@ import com.yugabyte.yw.common.alerts.AlertConfigurationService;
 import com.yugabyte.yw.common.alerts.AlertDefinitionService;
 import com.yugabyte.yw.common.alerts.AlertService;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
+import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
@@ -52,10 +66,14 @@ import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.metrics.MetricService;
+import com.yugabyte.yw.common.nodeui.DumpEntitiesResponse;
+import com.yugabyte.yw.common.nodeui.DumpEntitiesResponse.Replica;
+import com.yugabyte.yw.common.nodeui.DumpEntitiesResponse.Tablet;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponentFactory;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -63,28 +81,38 @@ import com.yugabyte.yw.models.CustomerTask.TargetType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
+import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import kamon.instrumentation.play.GuiceModule;
+import lombok.extern.slf4j.Slf4j;
 import org.jboss.logging.MDC;
 import org.junit.Before;
 import org.mockito.Mockito;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
+import org.slf4j.LoggerFactory;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
 import play.Application;
 import play.Environment;
 import play.inject.guice.GuiceApplicationBuilder;
+import play.libs.Json;
 
+@Slf4j
 public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseTest {
-  private static final int MAX_RETRY_COUNT = 2000;
+  protected static final int MAX_RETRY_COUNT = 4000;
   protected static final String ENABLE_CUSTOM_HOOKS_PATH =
       "yb.security.custom_hooks.enable_custom_hooks";
   protected static final String ENABLE_SUDO_PATH = "yb.security.custom_hooks.enable_sudo";
@@ -115,6 +143,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected AlertConfigurationService alertConfigurationService;
   protected YcqlQueryExecutor mockYcqlQueryExecutor;
   protected YsqlQueryExecutor mockYsqlQueryExecutor;
+  protected LdapUtil mockLdapUtil;
   protected NodeUniverseManager mockNodeUniverseManager;
   protected TaskExecutor taskExecutor;
   protected EncryptionAtRestManager mockEARManager;
@@ -126,6 +155,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected ProviderEditRestrictionManager providerEditRestrictionManager;
   protected BackupHelper mockBackupHelper;
   protected PrometheusConfigManager mockPrometheusConfigManager;
+  protected YbcManager mockYbcManager;
 
   protected BaseTaskDependencies mockBaseTaskDependencies =
       Mockito.mock(BaseTaskDependencies.class);
@@ -187,6 +217,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getTaskExecutor()).thenReturn(taskExecutor);
     when(mockBaseTaskDependencies.getHealthChecker()).thenReturn(mockHealthChecker);
     when(mockBaseTaskDependencies.getNodeManager()).thenReturn(mockNodeManager);
+    when(mockBaseTaskDependencies.getBackupHelper()).thenReturn(mockBackupHelper);
+    when(mockBaseTaskDependencies.getCommissioner()).thenReturn(commissioner);
   }
 
   @Override
@@ -212,6 +244,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockMetricQueryHelper = mock(MetricQueryHelper.class);
     mockYcqlQueryExecutor = mock(YcqlQueryExecutor.class);
     mockYsqlQueryExecutor = mock(YsqlQueryExecutor.class);
+    mockLdapUtil = mock(LdapUtil.class);
     mockNodeUniverseManager = mock(NodeUniverseManager.class);
     mockEARManager = mock(EncryptionAtRestManager.class);
     mockSupportBundleComponent = mock(SupportBundleComponent.class);
@@ -221,6 +254,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockReleaseManager = mock(ReleaseManager.class);
     mockCloudAPIFactory = mock(CloudAPI.Factory.class);
     mockBackupHelper = mock(BackupHelper.class);
+    mockYbcManager = mock(YbcManager.class);
     mockPrometheusConfigManager = mock(PrometheusConfigManager.class);
 
     return configureApplication(
@@ -253,6 +287,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                         .toInstance(mockSupportBundleComponentFactory))
                 .overrides(bind(YcqlQueryExecutor.class).toInstance(mockYcqlQueryExecutor))
                 .overrides(bind(YsqlQueryExecutor.class).toInstance(mockYsqlQueryExecutor))
+                .overrides(bind(LdapUtil.class).toInstance(mockLdapUtil))
                 .overrides(bind(NodeUniverseManager.class).toInstance(mockNodeUniverseManager))
                 .overrides(
                     bind(ExecutorServiceProvider.class).to(DefaultExecutorServiceProvider.class))
@@ -261,6 +296,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                 .overrides(bind(AutoFlagUtil.class).toInstance(mockAutoFlagUtil))
                 .overrides(bind(NodeUIApiHelper.class).toInstance(mockNodeUIApiHelper))
                 .overrides(bind(BackupHelper.class).toInstance(mockBackupHelper))
+                .overrides(bind(YbcManager.class).toInstance(mockYbcManager))
                 .overrides(
                     bind(PrometheusConfigManager.class).toInstance(mockPrometheusConfigManager))
                 .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager)))
@@ -281,7 +317,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
           new GetMasterClusterConfigResponse(0, "", configBuilder.build(), null);
       when(mockClient.getMasterClusterConfig()).thenReturn(gcr);
     } catch (Exception e) {
-      e.printStackTrace();
+      fail(e.getMessage());
     }
   }
 
@@ -299,6 +335,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
 
   public static TaskInfo waitForTask(UUID taskUUID) throws InterruptedException {
     int numRetries = 0;
+    TaskInfo taskInfo = null;
     while (numRetries < MAX_RETRY_COUNT) {
       // Here is a hack to decrease amount of accidental problems for tests using this
       // function:
@@ -306,7 +343,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       // inside the get() request. We are not afraid of such exception as the next
       // request will succeeded.
       try {
-        TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+        taskInfo = TaskInfo.getOrBadRequest(taskUUID);
         if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
           // Also, ensure task details are set before returning.
           if (taskInfo.getDetails() != null) {
@@ -318,8 +355,61 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       Thread.sleep(100);
       numRetries++;
     }
+
+    String runningTasks =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskState() == State.Running)
+            .map(t -> getBriefTaskInfo(t))
+            .collect(Collectors.joining(","));
+
     throw new RuntimeException(
         "WaitFor task exceeded maxRetries! Task state is "
+            + taskInfo.getTaskState()
+            + ".\n Running subtasks: "
+            + runningTasks);
+  }
+
+  private static String getBriefTaskInfo(TaskInfo taskInfo) {
+    StringBuilder sb = new StringBuilder();
+    sb.append(taskInfo.getTaskType());
+    if (taskInfo.getDetails().has("nodeName")) {
+      sb.append("(");
+      sb.append(taskInfo.getDetails().get("nodeName").textValue());
+      if (taskInfo.getDetails().has("serverType")) {
+        sb.append(" ").append(taskInfo.getDetails().get("serverType").textValue());
+      }
+      if (taskInfo.getDetails().has("process")) {
+        sb.append(" ").append(taskInfo.getDetails().get("process").textValue());
+      }
+      if (taskInfo.getDetails().has("command")) {
+        sb.append(" ").append(taskInfo.getDetails().get("command").textValue());
+      }
+      sb.append(")");
+    }
+    return sb.toString();
+  }
+
+  public boolean waitForTaskRunning(UUID taskUUID) throws InterruptedException {
+    int numRetries = 0;
+    while (numRetries < MAX_RETRY_COUNT) {
+      // Here is a hack to decrease amount of accidental problems for tests using this
+      // function:
+      // Surrounding the next block with try {} catch {} as sometimes h2 raises NPE
+      // inside the get() request. We are not afraid of such exception as the next
+      // request will succeeded.
+      boolean isRunning = commissioner.isTaskRunning(taskUUID);
+      if (isRunning) {
+        return isRunning;
+      }
+      TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+      if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
+        return false;
+      }
+      Thread.sleep(100);
+      numRetries++;
+    }
+    throw new RuntimeException(
+        "WaitFor task running exceeded maxRetries! Task state is "
             + TaskInfo.getOrBadRequest(taskUUID).getTaskState());
   }
 
@@ -355,6 +445,47 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     MDC.remove(Commissioner.SUBTASK_PAUSE_POSITION_PROPERTY);
   }
 
+  public void verifyTaskRetries(
+      Customer customer,
+      CustomerTask.TaskType customerTaskType,
+      TargetType targetType,
+      UUID targetUuid,
+      TaskType taskType,
+      ITaskParams taskParams) {
+    verifyTaskRetries(
+        customer, customerTaskType, targetType, targetUuid, taskType, taskParams, true);
+  }
+
+  /** This method returns all the subtasks of a task. */
+  private Map<Integer, List<TaskInfo>> getSubtasks(UUID taskUuid) throws Exception {
+    // Pause at the beginning to capture the sub-tasks to be executed.
+    waitForTaskPaused(taskUuid);
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUuid);
+    Optional<Integer> optionalIdx =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskType() == TaskType.FreezeUniverse)
+            .map(TaskInfo::getPosition)
+            .findFirst();
+    if (optionalIdx.isPresent()) {
+      // Resume the task to get past the freeze subtask so that all the sub-tasks are created.
+      setPausePosition(optionalIdx.get() + 1);
+      commissioner.resumeTask(taskUuid);
+      waitForTaskPaused(taskUuid);
+      taskInfo.refresh();
+    }
+    // Fetch the original list of sub-tasks to be executed before any retry.
+    Map<Integer, List<TaskInfo>> subtaskMap =
+        taskInfo.getSubTasks().stream()
+            .collect(
+                Collectors.groupingBy(
+                    TaskInfo::getPosition, () -> new TreeMap<>(), Collectors.toList()));
+    // Verify that it has some subtasks after FreezeUniverse if it is present.
+    assertTrue(
+        "At least some real subtasks must be present",
+        subtaskMap.size() > (optionalIdx.isPresent() ? optionalIdx.get() + 1 : 1));
+    return subtaskMap;
+  }
+
   /**
    * This method aborts before every sub-task starting from position 0 and retries to make sure no
    * pending subtasks from the first attempt are skipped on every retry. This mainly verifies that
@@ -367,45 +498,75 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       TargetType targetType,
       UUID targetUuid,
       TaskType taskType,
-      ITaskParams taskParams) {
+      ITaskParams taskParams,
+      boolean checkStrictOrdering) {
     try {
-      // Pause at the beginning to capture the sub-tasks to be executed.
+
+      // Turning off logs for task retry tests as we're doing 194 retries in this test sometimes,
+      // and it spams logs like crazy - which will cause OOMs in Jenkins
+      // - as Jenkins caches stdout in memory until test finishes.
+      ch.qos.logback.classic.Logger rootLogger =
+          (ch.qos.logback.classic.Logger)
+              LoggerFactory.getLogger(ch.qos.logback.classic.Logger.ROOT_LOGGER_NAME);
+      rootLogger.detachAppender("ASYNCSTDOUT");
+
       setPausePosition(0);
       UUID taskUuid = commissioner.submit(taskType, taskParams);
       CustomerTask.create(
           customer, targetUuid, taskUuid, targetType, customerTaskType, "fake-name");
-      waitForTaskPaused(taskUuid);
-      TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUuid);
-      // Fetch the original list of sub-tasks to be executed before any retry.
-      Map<Integer, List<TaskInfo>> expectedSubTaskMap =
-          taskInfo.getSubTasks().stream()
-              .collect(
-                  Collectors.groupingBy(
-                      TaskInfo::getPosition, () -> new TreeMap<>(), Collectors.toList()));
+      Map<Integer, List<TaskInfo>> expectedSubTaskMap = getSubtasks(taskUuid);
       List<TaskType> expectedSubTaskTypes =
           expectedSubTaskMap.values().stream()
               .map(l -> l.get(0).getTaskType())
               .collect(Collectors.toList());
+      int freezeIdx = expectedSubTaskTypes.indexOf(TaskType.FreezeUniverse);
       // Number of sub-tasks to be executed on any run.
       int totalSubTaskCount = expectedSubTaskMap.size();
-      int pendingSubTaskCount = totalSubTaskCount;
+      int pendingSubTaskCount =
+          freezeIdx >= 0 ? totalSubTaskCount - (freezeIdx + 1) : totalSubTaskCount;
       int retryCount = 0;
       while (pendingSubTaskCount > 0) {
+        clearAbortOrPausePositions();
         // Abort starts from the first sub-task until there is no more sub-task left.
         int abortPosition = totalSubTaskCount - pendingSubTaskCount;
         if (pendingSubTaskCount > 1) {
+          log.info(
+              "Abort position at {} in the original subtasks {}",
+              expectedSubTaskTypes.size() - pendingSubTaskCount,
+              expectedSubTaskMap);
           setAbortPosition(abortPosition);
-        } else {
-          // Let the last sub-task complete.
-          clearAbortOrPausePositions();
         }
+
+        // mock db version during upgrade and rollback task to take action on all nodes.
+        if (taskType.equals(TaskType.SoftwareUpgradeYB)
+            || taskType.equals(TaskType.RollbackUpgrade)) {
+          Universe universe = Universe.getOrBadRequest(targetUuid);
+          int masterTserverNodesCount =
+              universe.getMasters().size() + universe.getTServers().size();
+          String oldVersion =
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+          if (pendingSubTaskCount <= 1) {
+            String version;
+            if (taskType.equals(TaskType.SoftwareUpgradeYB)) {
+              SoftwareUpgradeParams params = (SoftwareUpgradeParams) taskParams;
+              version = params.ybSoftwareVersion;
+            } else {
+              version = universe.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion();
+            }
+            mockDBServerVersion(version, masterTserverNodesCount);
+          } else {
+            mockDBServerVersion(oldVersion, masterTserverNodesCount);
+          }
+        }
+
         // Resume task will resume and abort it if any abort position is set.
         commissioner.resumeTask(taskUuid);
         // Wait for the task to abort.
-        taskInfo = waitForTask(taskUuid);
+        TaskInfo taskInfo = waitForTask(taskUuid);
         if (pendingSubTaskCount <= 1) {
           assertEquals(State.Success, taskInfo.getTaskState());
         } else {
+          assertEquals(State.Aborted, taskInfo.getTaskState());
           // Before retry, set the pause position to capture the list of subtasks
           // for the next abort in the next iteration.
           setPausePosition(0);
@@ -414,29 +575,29 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
           retryCount++;
           // New task UUID for the retry.
           taskUuid = customerTask.getTaskUUID();
-          waitForTaskPaused(taskUuid);
           // Get the task and sub-tasks that are to be executed on retry.
-          taskInfo = TaskInfo.getOrBadRequest(taskUuid);
-          Map<Integer, List<TaskInfo>> retrySubTaskMap =
-              taskInfo.getSubTasks().stream()
-                  .collect(
-                      Collectors.groupingBy(
-                          TaskInfo::getPosition, () -> new TreeMap<>(), Collectors.toList()));
+          Map<Integer, List<TaskInfo>> retrySubTaskMap = getSubtasks(taskUuid);
+          log.info(
+              "Validating subtasks for next abort position at {} in the original subtasks {}",
+              expectedSubTaskTypes.size() - pendingSubTaskCount + 1,
+              expectedSubTaskMap);
           List<TaskType> retryTaskTypes =
               retrySubTaskMap.values().stream()
                   .map(l -> l.get(0).getTaskType())
                   .collect(Collectors.toList());
           // Get the tail-end of the sub-tasks with size equal to the pending sub-task count.
           List<TaskType> expectedTailTaskTypes =
-              expectedSubTaskTypes.subList(
-                  expectedSubTaskTypes.size() - pendingSubTaskCount, expectedSubTaskTypes.size());
+              new ArrayList<>(
+                  expectedSubTaskTypes.subList(
+                      expectedSubTaskTypes.size() - pendingSubTaskCount,
+                      expectedSubTaskTypes.size()));
           // The number of sub-tasks to be executed must be at least the pending sub-tasks as some
           // sub-tasks can be re-executed.
           if (retryTaskTypes.size() < pendingSubTaskCount) {
             throw new RuntimeException(
                 String.format(
-                    "Some subtasks are skipped on retry %d. At least %d sub-tasks are expected, "
-                        + "but only %d are found. Expected(at least): %s, found: %s",
+                    "Some subtasks are skipped on retry %d. At least %d sub-tasks are expected, but"
+                        + " only %d are found. Expected(at least): %s, found: %s",
                     retryCount,
                     pendingSubTaskCount,
                     retryTaskTypes.size(),
@@ -444,14 +605,19 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                     retryTaskTypes));
           }
           List<TaskType> tailTaskTypes =
-              retryTaskTypes.subList(
-                  retryTaskTypes.size() - pendingSubTaskCount, retryTaskTypes.size());
+              new ArrayList<>(
+                  retryTaskTypes.subList(
+                      retryTaskTypes.size() - pendingSubTaskCount, retryTaskTypes.size()));
+          if (!checkStrictOrdering) {
+            Collections.sort(expectedTailTaskTypes);
+            Collections.sort(tailTaskTypes);
+          }
           // The tail sublist of sub-subtasks must be exactly equal.
           if (!expectedTailTaskTypes.equals(tailTaskTypes)) {
             throw new RuntimeException(
                 String.format(
-                    "Mismatched order detected in subtasks (pending %d/%d) on retry %d. "
-                        + "Expected: %s, found: %s",
+                    "Mismatched order detected in subtasks (pending %d/%d) on retry %d. Expected:"
+                        + " %s, found: %s",
                     retryCount,
                     pendingSubTaskCount,
                     expectedSubTaskTypes.size(),
@@ -469,5 +635,66 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     } finally {
       clearAbortOrPausePositions();
     }
+  }
+
+  public void setFollowerLagMock() {
+    ObjectMapper mapper = new ObjectMapper();
+    ArrayNode followerLagJson = mapper.createArrayNode();
+    when(mockNodeUIApiHelper.getRequest(endsWith(CheckFollowerLag.URL_SUFFIX)))
+        .thenReturn(followerLagJson);
+  }
+
+  public void setUnderReplicatedTabletsMock() {
+    ObjectNode underReplicatedTabletsJson = Json.newObject();
+    underReplicatedTabletsJson.put("underreplicated_tablets", Json.newArray());
+    when(mockNodeUIApiHelper.getRequest(endsWith(CheckUnderReplicatedTablets.URL_SUFFIX)))
+        .thenReturn(underReplicatedTabletsJson);
+  }
+
+  public void setDumpEntitiesMock(Universe universe, String nodeName, boolean hasTablets) {
+    NodeDetails node = universe.getNode(nodeName);
+    Replica replica = new Replica();
+    replica.setAddr(node.cloudInfo.private_ip + ":" + node.tserverRpcPort);
+    Tablet tablet = new Tablet();
+    tablet.setTabletId("Tablet id 1");
+    if (hasTablets) {
+      tablet.setReplicas(Arrays.asList(replica));
+    } else {
+      tablet.setReplicas(new ArrayList<Replica>());
+    }
+
+    DumpEntitiesResponse response = new DumpEntitiesResponse();
+    response.setTablets(Arrays.asList(tablet));
+    ObjectNode dumpEntitiesJson = (ObjectNode) Json.toJson(response);
+    when(mockNodeUIApiHelper.getRequest(endsWith(RemoveNodeFromUniverse.DUMP_ENTITIES_URL_SUFFIX)))
+        .thenReturn(dumpEntitiesJson);
+  }
+
+  public void mockDBServerVersion(String oldVersion, String newVersion, int count) {
+    mockDBServerVersion(oldVersion, count, newVersion, count);
+  }
+
+  public void mockDBServerVersion(String version, int count) {
+    List<Optional<String>> response = new ArrayList<>();
+    for (int i = 1; i < count; i++) {
+      response.add(Optional.of(version));
+    }
+    Optional<String>[] resp = response.toArray(new Optional[0]);
+    when(mockYBClient.getServerVersion(any(), anyString(), anyInt()))
+        .thenReturn(Optional.of(version), resp);
+  }
+
+  public void mockDBServerVersion(
+      String oldVersion, int oldVersionCount, String newVersion, int newVersionCount) {
+    List<Optional<String>> response = new ArrayList<>();
+    for (int i = 1; i < oldVersionCount; i++) {
+      response.add(Optional.of(oldVersion));
+    }
+    for (int i = 0; i < newVersionCount; i++) {
+      response.add(Optional.of(newVersion));
+    }
+    Optional<String>[] resp = response.toArray(new Optional[0]);
+    when(mockYBClient.getServerVersion(any(), anyString(), anyInt()))
+        .thenReturn(Optional.of(oldVersion), resp);
   }
 }

@@ -2691,7 +2691,7 @@ TEST_F(ClientTest, BadMasterAddress) {
     master_addr->push_back({HostPort(host, 2)});
     opts.SetMasterAddresses(master_addr);
 
-    AsyncClientInitialiser async_init(
+    AsyncClientInitializer async_init(
         "test-client", /* timeout= */ 1s, "UUID", &opts,
         /* metric_entity= */ nullptr, /* parent_mem_tracker= */ nullptr, messenger.get());
     async_init.Start();
@@ -2855,17 +2855,15 @@ TEST_F(ColocationClientTest, ColocatedTablesLookupTablet) {
   auto conn = ASSERT_RESULT(ConnectToDB());
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH COLOCATION = true", kPgsqlKeyspaceName));
   conn = ASSERT_RESULT(ConnectToDB(kPgsqlKeyspaceName));
-  auto res = ASSERT_RESULT(conn.FetchFormat(
-                                    "SELECT oid FROM pg_database WHERE datname = '$0'",
-                                    kPgsqlKeyspaceName));
-  uint32_t database_oid = ASSERT_RESULT(pgwrapper::GetInt32(res.get(), 0, 0));
+  auto database_oid = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(Format(
+      "SELECT oid FROM pg_database WHERE datname = '$0'", kPgsqlKeyspaceName)));
 
   std::vector<TableId> table_ids;
   for (auto i = 0; i < kNumTables; ++i) {
     const auto name = Format("table_$0", i);
     ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (key BIGINT PRIMARY KEY, value BIGINT)", name));
-    res = ASSERT_RESULT(conn.FetchFormat("SELECT oid FROM pg_class WHERE relname = '$0'", name));
-    uint32_t table_oid = ASSERT_RESULT(pgwrapper::GetInt32(res.get(), 0, 0));
+    auto table_oid = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(Format(
+        "SELECT oid FROM pg_class WHERE relname = '$0'", name)));
     table_ids.push_back(GetPgsqlTableId(database_oid, table_oid));
   }
 

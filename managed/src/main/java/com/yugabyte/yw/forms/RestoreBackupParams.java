@@ -3,6 +3,7 @@ package com.yugabyte.yw.forms;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.models.Backup.BackupCategory;
+import com.yugabyte.yw.models.common.YBADeprecated;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
@@ -75,6 +76,7 @@ public class RestoreBackupParams extends UniverseTaskParams {
   public Boolean disableChecksum = false;
 
   @ApiModelProperty(value = "Is tablespaces information included")
+  @YBADeprecated(sinceDate = "2023-08-28", sinceYBAVersion = "2.20.0")
   public Boolean useTablespaces = false;
 
   @ApiModelProperty(value = "Disable multipart upload")
@@ -115,6 +117,11 @@ public class RestoreBackupParams extends UniverseTaskParams {
 
     @ApiModelProperty(value = "Is selective table restore")
     public boolean selectiveTableRestore = false;
+
+    @ApiModelProperty(value = "Use tablespaces during restore")
+    @Getter
+    @Setter
+    private boolean useTablespaces = false;
   }
 
   public RestoreBackupParams(
@@ -127,6 +134,10 @@ public class RestoreBackupParams extends UniverseTaskParams {
     this.parallelism = otherParams.parallelism;
     this.actionType = actionType;
     this.backupStorageInfoList = new ArrayList<>();
+    // Deprecating parent level useTablespaces, so need to set backupStorageInfo
+    // level useTablespaces here.
+    backupStorageInfo.useTablespaces =
+        backupStorageInfo.useTablespaces || otherParams.useTablespaces;
     this.backupStorageInfoList.add(backupStorageInfo);
     this.disableChecksum = otherParams.disableChecksum;
     this.useTablespaces = otherParams.useTablespaces;

@@ -1,17 +1,17 @@
 ---
 title: Manage YugabyteDB universe deployments
-headerTitle: Manage YugabyteDB universe deployments
-linkTitle: Manage deployments
+headerTitle: Manage universes
+linkTitle: Manage universes
 description: Manage YugabyteDB universe deployments
 image: /images/section_icons/quick_start/sample_apps.png
 menu:
   stable_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: manage-deployments
-    weight: 644
+    weight: 630
 type: indexpage
 ---
-YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtual machines, pods, machines, and so on, provided by IaaS), logically grouped together to form one distributed database. Each universe includes one primary cluster and, optionally, any number of replica clusters. All instances belonging to a cluster run on the same type of cloud provider instance type.
+To see your deployed universes, navigate to **Dashboard** or **Universes**. To view a universe, select it in the list.
 
 <div class="row">
 <!--
@@ -104,7 +104,7 @@ YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtua
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="delete-universe/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/enterprise/edit_universe.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/manage/enterprise/delete_universe.png" aria-hidden="true" />
         <div class="title">Delete a universe</div>
       </div>
       <div class="body">
@@ -128,7 +128,7 @@ YugabyteDB Anywhere can create a YugabyteDB universe with many instances (virtua
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="upgrade-software/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/manage/enterprise/upgrade_universe.png" aria-hidden="true" />
         <div class="title">Upgrade YugabyteDB software</div>
       </div>
       <div class="body">

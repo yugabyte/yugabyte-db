@@ -33,6 +33,12 @@ platform:
    # the running Platform instance for HTTPS. Defaults to 443, override
    # if you want to use a different port.
    port: 443
+   hsts_enabled: true
+   # In case client wants to enable the additional headers to the YBA's http response
+   # Previously, it was possible via nginx, but given that we no longer have it, we can
+   # expose the same as application config/runtime config.
+   # Example: ["X-Content-Type-Options: nosniff", "Keep-Alive: timeout=5, max=1000"]
+   custom_headers: []
 
    # OAuth related settings
    # useOauth: The boolean that determine if OIDC SSO needs to be
@@ -145,6 +151,7 @@ postgres:
    install:
       enabled: true # yba-ctl will set up its own postgres
       username: postgres # user to connect to yugaware db
+      password: ""
       port: 5432
       restartSeconds: 10 # restart interval on exit
       locale: en_US.UTF8 # Locale for initdb
@@ -171,16 +178,20 @@ postgres:
 # Config parameters for Prometheus
 # Format for specifying timing information can be found at
 # https://prometheus.io/docs/prometheus/latest/configuration/configuration/#configuration-file
+# h/m/d syntax not supported by golang time parse function https://pkg.go.dev/time#ParseDuration.
+# If you want to use that syntax skip the prometheus preflight check.
 # ================================
 
 prometheus:
     port: 9090
-    restartSeconds: 10     # time (in seconds) to sleep before restarting prometheus service
-    scrapeInterval: 10s    # time between prometheus data scrapes
-    scrapeTimeout: 10s     # time before a scrape request times out
-    maxConcurrency: 20     # max number of queries to execute concurrently
-    maxSamples: 5000000    # max number of samples prometheus can load to process single query
-    timeout: 30s           # time before a query times out
-    retentionTime: 15d     # time to retain metrics
-
-
+    restartSeconds: 10        # time (in seconds) to sleep before restarting prometheus service
+    scrapeInterval: 10s       # time between prometheus data scrapes
+    scrapeTimeout: 10s        # time before a scrape request times out
+    maxConcurrency: 20        # max number of queries to execute concurrently
+    maxSamples: 5000000       # max number of samples prometheus can load to process single query
+    timeout: 30s              # time before a query times out
+    retentionTime: 15d        # time to retain metrics
+    enableHttps: false        # enable HTTPS for prometheus web UI
+    enableAuth: false         # enable authentication for prometheus
+    authUsername: prometheus  # username to authenticate to prometheus (if enableAuth)
+    authPassword: ""          # password to authenticate to prometheus (if enableAuth)

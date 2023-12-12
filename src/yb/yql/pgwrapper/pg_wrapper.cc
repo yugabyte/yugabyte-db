@@ -26,6 +26,7 @@
 #include <boost/algorithm/string.hpp>
 
 #include "yb/tserver/tablet_server_interface.h"
+
 #include "yb/util/debug/sanitizer_scopes.h"
 #include "yb/util/env_util.h"
 #include "yb/util/errno.h"
@@ -41,15 +42,22 @@
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/thread.h"
+#include "yb/util/to_stream.h"
+
+#include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
+
+DECLARE_bool(enable_ysql_conn_mgr);
 
 DEFINE_UNKNOWN_string(pg_proxy_bind_address, "", "Address for the PostgreSQL proxy to bind to");
 DEFINE_UNKNOWN_string(postmaster_cgroup, "", "cgroup to add postmaster process to");
 DEFINE_UNKNOWN_bool(pg_transactions_enabled, true,
             "True to enable transactions in YugaByte PostgreSQL API.");
-DEFINE_UNKNOWN_string(yb_backend_oom_score_adj, "900",
+DEFINE_NON_RUNTIME_string(yb_backend_oom_score_adj, "900",
               "oom_score_adj of postgres backends in linux environments");
-DEFINE_UNKNOWN_bool(yb_pg_terminate_child_backend, false,
+DEFINE_NON_RUNTIME_string(yb_webserver_oom_score_adj, "900",
+              "oom_score_adj of YSQL webserver in linux environments");
+DEFINE_NON_RUNTIME_bool(yb_pg_terminate_child_backend, false,
             "Terminate other active server processes when a backend is killed");
 DEFINE_UNKNOWN_bool(pg_verbose_error_log, false,
             "True to enable verbose logging of errors in PostgreSQL server");
@@ -167,7 +175,7 @@ DEFINE_RUNTIME_PG_FLAG(int32, yb_wait_for_backends_catalog_version_timeout, 5 * 
     " wait_for_ysql_backends_catalog_version_client_master_rpc_timeout_ms. Setting to zero or less"
     " results in no timeout. Currently used by concurrent CREATE INDEX.");
 
-DEFINE_RUNTIME_PG_FLAG(int32, yb_bnl_batch_size, 1,
+DEFINE_RUNTIME_PG_FLAG(int32, yb_bnl_batch_size, 1024,
     "Batch size of nested loop joins.");
 
 DEFINE_RUNTIME_PG_FLAG(string, yb_xcluster_consistency_level, "database",
@@ -204,6 +212,13 @@ DEFINE_RUNTIME_PG_FLAG(uint64, yb_fetch_size_limit, 0,
 DEFINE_NON_RUNTIME_bool(enable_ysql_conn_mgr_stats, true,
   "Enable stats collection from Ysql Connection Manager. These stats will be "
   "displayed at the endpoint '<ip_address_of_cluster>:13000/connections'");
+
+// TODO(#19211): Convert this to an auto-flag.
+DEFINE_test_flag(bool, ysql_yb_enable_replication_commands, false,
+    "Enable logical replication commands for Publication and Replication Slots");
+
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(int32, yb_parallel_range_rows, 0,
+    "The number of rows to plan per parallel worker, zero disables the feature");
 
 static bool ValidateXclusterConsistencyLevel(const char* flagname, const std::string& value) {
   if (value != "database" && value != "tablet") {
@@ -383,6 +398,9 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   metricsLibs.push_back("yb_pg_metrics");
   metricsLibs.push_back("pgaudit");
   metricsLibs.push_back("pg_hint_plan");
+  if (FLAGS_TEST_yb_enable_ash) {
+    metricsLibs.push_back("yb_ash");
+  }
 
   vector<string> lines;
   string line;
@@ -548,10 +566,11 @@ Status PgWrapper::Start() {
 
   bool log_to_file = !FLAGS_logtostderr && !FLAGS_log_dir.empty() && !conf_.force_disable_log_file;
   VLOG(1) << "Deciding whether the child postgres process should to file: "
-          << EXPR_VALUE_FOR_LOG(FLAGS_logtostderr) << ", "
-          << EXPR_VALUE_FOR_LOG(FLAGS_log_dir.empty()) << ", "
-          << EXPR_VALUE_FOR_LOG(conf_.force_disable_log_file) << ": "
-          << EXPR_VALUE_FOR_LOG(log_to_file);
+          << YB_EXPR_TO_STREAM_COMMA_SEPARATED(
+              FLAGS_logtostderr,
+              FLAGS_log_dir.empty(),
+              conf_.force_disable_log_file,
+              log_to_file);
 
   vector<string> argv {};
 
@@ -639,6 +658,7 @@ Status PgWrapper::Start() {
   proc_->SetEnv("FLAGS_yb_pg_terminate_child_backend",
                 FLAGS_yb_pg_terminate_child_backend ? "true" : "false");
   proc_->SetEnv("FLAGS_yb_backend_oom_score_adj", FLAGS_yb_backend_oom_score_adj);
+  proc_->SetEnv("FLAGS_yb_webserver_oom_score_adj", FLAGS_yb_webserver_oom_score_adj);
 
   // Pass down custom temp path through environment variable.
   if (!VERIFY_RESULT(Env::Default()->DoesDirectoryExist(FLAGS_tmp_dir))) {
@@ -964,8 +984,12 @@ void PgSupervisor::DeregisterPgFlagChangeNotifications() {
 std::shared_ptr<ProcessWrapper> PgSupervisor::CreateProcessWrapper() {
   auto pgwrapper = std::make_shared<PgWrapper>(conf_);
 
-  if (FLAGS_enable_ysql_conn_mgr_stats)
-    CHECK_OK(pgwrapper->SetYsqlConnManagerStatsShmKey(GetYsqlConnManagerStatsShmkey()));
+  if (FLAGS_enable_ysql_conn_mgr) {
+    if (FLAGS_enable_ysql_conn_mgr_stats)
+      CHECK_OK(pgwrapper->SetYsqlConnManagerStatsShmKey(GetYsqlConnManagerStatsShmkey()));
+  } else {
+    FLAGS_enable_ysql_conn_mgr_stats = false;
+  }
 
   return pgwrapper;
 }

@@ -2,13 +2,13 @@
 
 package com.yugabyte.yw.common;
 
-import akka.actor.ActorSystem;
-import akka.actor.Cancellable;
 import java.time.Duration;
 import java.util.concurrent.atomic.AtomicBoolean;
 import javax.inject.Inject;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.pekko.actor.ActorSystem;
+import org.apache.pekko.actor.Cancellable;
 import scala.concurrent.ExecutionContext;
 
 /** For easy creation of scheduler that will shutdown on app shutdown. */

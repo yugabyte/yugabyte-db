@@ -361,7 +361,7 @@ ybcinbeginscan(Relation rel, int nkeys, int norderbys)
 	/* get the scan */
 	scan = RelationGetIndexScan(rel, nkeys, norderbys);
 	scan->opaque = NULL;
-	pgstat_count_index_scan(rel);
+
 	return scan;
 }
 
@@ -370,7 +370,10 @@ ybcinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,	ScanKey orderbys
 {
 	if (scan->opaque)
 	{
+		YbScanDesc ybScan = (YbScanDesc) scan->opaque;
 		/* For rescan, end the previous scan. */
+		if (ybScan->pscan)
+			yb_init_partition_key_data(ybScan->pscan);
 		ybcinendscan(scan);
 		scan->opaque = NULL;
 	}
@@ -380,8 +383,33 @@ ybcinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,	ScanKey orderbys
 									 scan->yb_scan_plan, scan->yb_rel_pushdown,
 									 scan->yb_idx_pushdown, scan->yb_aggrefs,
 									 scan->yb_distinct_prefixlen,
-									 scan->yb_exec_params);
+									 scan->yb_exec_params,
+									 false /* is_internal_scan */);
 	scan->opaque = ybScan;
+	if (scan->parallel_scan)
+	{
+		ParallelIndexScanDesc target = scan->parallel_scan;
+		ScanDirection direction = ForwardScanDirection;
+		ybScan->pscan = (YBParallelPartitionKeys)
+			OffsetToPointer(target, target->ps_offset);
+		Relation rel = scan->indexRelation;
+		/* If scan is by the PK, use the main relation instead */
+		if (scan->heapRelation &&
+			scan->heapRelation->rd_pkindex == RelationGetRelid(rel))
+		{
+			elog(LOG, "Scan is by PK, get parallel ranges from the main table");
+			rel = scan->heapRelation;
+		}
+		if (scan->yb_scan_plan)
+		{
+			if IsA(scan->yb_scan_plan, IndexScan)
+				direction = ((IndexScan *) scan->yb_scan_plan)->indexorderdir;
+			else if IsA(scan->yb_scan_plan, IndexOnlyScan)
+				direction = ((IndexOnlyScan *) scan->yb_scan_plan)->indexorderdir;
+		}
+		ybParallelPrepare(ybScan->pscan, rel, scan->yb_exec_params,
+						  !ScanDirectionIsBackward(direction));
+	}
 }
 
 /*
@@ -396,15 +424,15 @@ ybcinrescan(IndexScanDesc scan, ScanKey scankey, int nscankeys,	ScanKey orderbys
 static bool
 ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 {
-	Assert(dir == ForwardScanDirection || dir == BackwardScanDirection);
-	const bool is_forward_scan = (dir == ForwardScanDirection);
-
 	YbScanDesc ybscan = (YbScanDesc) scan->opaque;
 	ybscan->exec_params = scan->yb_exec_params;
 	/* exec_params can be NULL in case of systable_getnext, for example. */
 	if (ybscan->exec_params)
 		ybscan->exec_params->work_mem = work_mem;
 
+	if (!ybscan->is_exec_done)
+		pgstat_count_index_scan(scan->indexRelation);
+    
 	/* Special case: aggregate pushdown. */
 	if (scan->yb_aggrefs)
 	{
@@ -413,24 +441,79 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 		 * ybc_getnext_indextuple.
 		 */
 		if (ybscan->quit_scan)
-			return NULL;
+			return false;
 
 		scan->xs_recheck = YbNeedsRecheck(ybscan);
-		if (!ybscan->is_exec_done)
-		{
-			HandleYBStatus(YBCPgSetForwardScan(ybscan->handle,
-											   is_forward_scan));
-			HandleYBStatus(YBCPgExecSelect(ybscan->handle,
-										   ybscan->exec_params));
-			ybscan->is_exec_done = true;
-		}
-
 		/*
-		 * Aggregate pushdown directly modifies the scan slot rather than
-		 * passing it through xs_hitup or xs_itup.
+		 * In the case of parallel scan we need to obtain boundaries from the
+		 * pscan before the scan is executed. Also empty row from parallel range
+		 * scan does not mean scan is done, it means the range is done and we
+		 * need to pick up next. No rows from parallel range is possible, hence
+		 * the loop.
 		 */
-		return ybc_getnext_aggslot(scan, ybscan->handle,
-								   ybscan->prepare_params.index_only_scan);
+		while (true)
+		{
+			/* Need to execute the request */
+			if (!ybscan->is_exec_done)
+			{
+				/* Parallel mode: pick up parallel block first */
+				if (ybscan->pscan != NULL)
+				{
+					YBParallelPartitionKeys parallel_scan = ybscan->pscan;
+					const char *low_bound;
+					size_t low_bound_size;
+					const char *high_bound;
+					size_t high_bound_size;
+					/*
+					 * If range is found, apply the boundaries, false means the
+					 * scan * is done for that worker.
+					 */
+					if (ybParallelNextRange(parallel_scan,
+											&low_bound, &low_bound_size,
+											&high_bound, &high_bound_size))
+					{
+						HandleYBStatus(YBCPgDmlBindRange(
+							ybscan->handle, low_bound, low_bound_size,
+							high_bound, high_bound_size));
+						if (low_bound)
+							pfree((void *) low_bound);
+						if (high_bound)
+							pfree((void *) high_bound);
+					}
+					else
+						return false;
+					/*
+					 * Use unlimited fetch.
+					 * Parallel scan range is already of limited size, it is
+					 * unlikely to exceed the
+					 * message size, but may save some RPCs.
+					 */
+					ybscan->exec_params->limit_use_default = true;
+					ybscan->exec_params->yb_fetch_row_limit = 0;
+					ybscan->exec_params->yb_fetch_size_limit = 0;
+				}
+				/* Request with aggregates does not care of scan direction */
+				HandleYBStatus(YBCPgExecSelect(ybscan->handle,
+											   ybscan->exec_params));
+				ybscan->is_exec_done = true;
+			}
+
+			/*
+			 * Aggregate pushdown directly modifies the scan slot rather than
+			 * passing it through xs_hitup or xs_itup.
+			 */
+			if (ybc_getnext_aggslot(scan, ybscan->handle,
+									ybscan->prepare_params.index_only_scan))
+				return true;
+			/*
+			 * Parallel scan needs to pick next range and reexecute, done
+			 * otherwise.
+			 */
+			if (ybscan->pscan)
+				ybscan->is_exec_done = false;
+			else
+				return false;
+		}
 	}
 
 	/*
@@ -440,7 +523,7 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 	bool has_tuple = false;
 	if (ybscan->prepare_params.index_only_scan)
 	{
-		IndexTuple tuple = ybc_getnext_indextuple(ybscan, is_forward_scan, &scan->xs_recheck);
+		IndexTuple tuple = ybc_getnext_indextuple(ybscan, dir, &scan->xs_recheck);
 		if (tuple)
 		{
 			scan->xs_itup = tuple;
@@ -450,7 +533,7 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 	}
 	else
 	{
-		HeapTuple tuple = ybc_getnext_heaptuple(ybscan, is_forward_scan, &scan->xs_recheck);
+		HeapTuple tuple = ybc_getnext_heaptuple(ybscan, dir, &scan->xs_recheck);
 		if (tuple)
 		{
 			scan->xs_ctup.t_ybctid = tuple->t_ybctid;
@@ -491,7 +574,7 @@ ybcinhandler(PG_FUNCTION_ARGS)
 	amroutine->amstorage = false;
 	amroutine->amclusterable = true;
 	amroutine->ampredlocks = true;
-	amroutine->amcanparallel = false; /* TODO: support parallel scan */
+	amroutine->amcanparallel = true;
 	amroutine->amcaninclude = true;
 	amroutine->amkeytype = InvalidOid;
 
@@ -512,8 +595,8 @@ ybcinhandler(PG_FUNCTION_ARGS)
 	amroutine->amendscan = ybcinendscan;
 	amroutine->ammarkpos = NULL; /* TODO: support mark/restore pos with ordering */
 	amroutine->amrestrpos = NULL;
-	amroutine->amestimateparallelscan = NULL; /* TODO: support parallel scan */
-	amroutine->aminitparallelscan = NULL;
+	amroutine->amestimateparallelscan = yb_estimate_parallel_size;
+	amroutine->aminitparallelscan = yb_init_partition_key_data;
 	amroutine->amparallelrescan = NULL;
 	amroutine->yb_aminsert = ybcininsert;
 	amroutine->yb_amdelete = ybcindelete;

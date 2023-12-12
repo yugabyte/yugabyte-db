@@ -1,13 +1,13 @@
 ---
-title: Transactions in YSQL
+title: ACID Transactions in YSQL
 headerTitle: Transactions
-linkTitle: 4. Transactions
+linkTitle: Transactions
 description: Learn how to use Transactions in YSQL on YugabyteDB.
 menu:
   stable:
     identifier: acid-transactions-1-ysql
     parent: learn
-    weight: 566
+    weight: 140
 rightNav:
   hideH4: true
 type: docs

@@ -39,6 +39,8 @@ bool yb_run_with_explain_analyze = false;
 
 bool yb_enable_add_column_missing_default = true;
 
+bool yb_enable_replication_commands = false;
+
 // If this is set in the user's session to a positive value, it will supersede the gflag
 // ysql_session_max_batch_size.
 int ysql_session_max_batch_size = 0;
@@ -54,3 +56,5 @@ int yb_fetch_size_limit = 0;
 int yb_locks_min_txn_age = 1000;
 
 int yb_locks_max_transactions = 16;
+
+uint64_t yb_read_time = 0;

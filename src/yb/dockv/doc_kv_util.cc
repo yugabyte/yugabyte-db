@@ -117,7 +117,7 @@ inline void TerminateEncodedKeyStr(KeyBuffer *dest) {
 template<char kEndOfString, class Out>
 Result<const char*> DecodeEncodedStr(const char* p, const char* end, Out* result) {
   static_assert(kEndOfString == '\0' || kEndOfString == '\xff',
-                "Invalid kEndOfString character. Only '\0' and '\xff' accepted");
+                "Invalid kEndOfString character. Only 0x00 and 0xff accepted");
   constexpr char kEndOfStringEscape = kEndOfString ^ 1;
   auto old_size = result->size();
 

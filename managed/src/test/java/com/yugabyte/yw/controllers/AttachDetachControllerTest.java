@@ -22,8 +22,6 @@ import static play.mvc.Http.Status.METHOD_NOT_ALLOWED;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsBytes;
 
-import akka.stream.javadsl.FileIO;
-import akka.stream.javadsl.Source;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -46,6 +44,7 @@ import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.UniverseSpec;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.AWSCloudInfo;
 import java.io.File;
 import java.nio.file.Files;
@@ -59,6 +58,8 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import org.apache.commons.io.FileUtils;
+import org.apache.pekko.stream.javadsl.FileIO;
+import org.apache.pekko.stream.javadsl.Source;
 import org.junit.Before;
 import org.junit.Test;
 import org.yb.CommonTypes;
@@ -186,7 +187,7 @@ public class AttachDetachControllerTest extends FakeDBApplication {
 
   @Test
   public void testInvalidXClusterDetach() {
-    UUID taskUUID = UUID.randomUUID();
+    UUID taskUUID = buildTaskInfo(null, TaskType.EditXClusterConfig);
     when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
 
     // Set up simple xcluster config.
@@ -416,8 +417,9 @@ public class AttachDetachControllerTest extends FakeDBApplication {
     assertThrows(PlatformServiceException.class, () -> Universe.getOrBadRequest(mainUniverseUUID));
 
     // Import universe spec tarball.
-    List<Http.MultipartFormData.Part<Source<akka.util.ByteString, ?>>> bodyData = new ArrayList<>();
-    Source<akka.util.ByteString, ?> uploadedFile = FileIO.fromFile(tarFile);
+    List<Http.MultipartFormData.Part<Source<org.apache.pekko.util.ByteString, ?>>> bodyData =
+        new ArrayList<>();
+    Source<org.apache.pekko.util.ByteString, ?> uploadedFile = FileIO.fromFile(tarFile);
     bodyData.add(
         new Http.MultipartFormData.FilePart<>(
             "spec", "test.tar.gz", "application/gzip", uploadedFile));
@@ -465,7 +467,7 @@ public class AttachDetachControllerTest extends FakeDBApplication {
   }
 
   private Result attachUniverse(
-      List<Http.MultipartFormData.Part<Source<akka.util.ByteString, ?>>> bodyData) {
+      List<Http.MultipartFormData.Part<Source<org.apache.pekko.util.ByteString, ?>>> bodyData) {
     return doRequestWithMultipartData("POST", attachEndpoint, bodyData, mat);
   }
 }

@@ -99,8 +99,13 @@ public class CheckXUniverseAutoFlags extends ServerSubTaskBase {
     String targetUniverseVersion =
         targetUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
     Set<String> supportedAutoFlags =
-        gFlagsValidation.listAllAutoFlags(targetUniverseVersion, serverType.name()).stream()
-            .map(flagDetails -> flagDetails.name)
+        gFlagsValidation
+            .extractAutoFlags(
+                targetUniverseVersion,
+                serverType.equals(ServerType.MASTER) ? "yb-master" : "yb-tserver")
+            .autoFlagDetails
+            .stream()
+            .map(flag -> flag.name)
             .collect(Collectors.toSet());
     promotedAndModifiedAutoFlags.forEach(
         flag -> {

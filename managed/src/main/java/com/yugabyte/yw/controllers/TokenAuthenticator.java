@@ -8,12 +8,15 @@ import com.google.common.collect.ImmutableSet;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfigCache;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.user.UserService;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
+import com.yugabyte.yw.models.rbac.Role;
+import com.yugabyte.yw.models.rbac.RoleBinding;
 import java.time.Duration;
 import java.util.Arrays;
 import java.util.Collections;
@@ -80,6 +83,8 @@ public class TokenAuthenticator extends Action.Simple {
 
   private final RuntimeConfigFactory runtimeConfigFactory;
 
+  private final RuntimeConfigCache runtimeConfigCache;
+
   private final JWTVerifier jwtVerifier;
 
   @Inject
@@ -88,11 +93,13 @@ public class TokenAuthenticator extends Action.Simple {
       PlaySessionStore sessionStore,
       UserService userService,
       RuntimeConfigFactory runtimeConfigFactory,
+      RuntimeConfigCache runtimeConfigCache,
       JWTVerifier jwtVerifier) {
     this.config = config;
     this.sessionStore = sessionStore;
     this.userService = userService;
     this.runtimeConfigFactory = runtimeConfigFactory;
+    this.runtimeConfigCache = runtimeConfigCache;
     this.jwtVerifier = jwtVerifier;
   }
 
@@ -119,7 +126,7 @@ public class TokenAuthenticator extends Action.Simple {
         // Defaulting to regular flow to support dual login.
         token = fetchToken(request, false /* isApiToken */);
         user = Users.authWithToken(token, getAuthTokenExpiry());
-        if (user != null && !user.getRole().equals(Role.SuperAdmin)) {
+        if (user != null && !user.getRole().equals(Users.Role.SuperAdmin)) {
           user = null; // We want to only allow SuperAdmins access.
         }
       }
@@ -143,6 +150,10 @@ public class TokenAuthenticator extends Action.Simple {
 
   @Override
   public CompletionStage<Result> call(Http.Request request) {
+    boolean useNewAuthz = runtimeConfigCache.getBoolean(GlobalConfKeys.useNewRbacAuthz.getKey());
+    if (useNewAuthz) {
+      return delegate.call(request);
+    }
     try {
       String endPoint = "";
       String path = request.path();
@@ -196,7 +207,7 @@ public class TokenAuthenticator extends Action.Simple {
     }
   }
 
-  public boolean checkAuthentication(Http.Request request, Set<Role> roles) {
+  public boolean checkAuthentication(Http.Request request, Set<Users.Role> roles) {
     String token = fetchToken(request, true);
     Users user = null;
     if (token != null) {
@@ -207,12 +218,24 @@ public class TokenAuthenticator extends Action.Simple {
     }
     if (user != null) {
       boolean foundRole = false;
-      if (roles.contains(user.getRole())) {
-        // So we can audit any super admin actions.
-        // If there is a use case also lookup customer and put it in context
-        UserWithFeatures userWithFeatures = new UserWithFeatures().setUser(user);
-        RequestContext.put(USER, userWithFeatures);
-        foundRole = true;
+      boolean useNewAuthz = runtimeConfigCache.getBoolean(GlobalConfKeys.useNewRbacAuthz.getKey());
+      if (!useNewAuthz) {
+        if (roles.contains(user.getRole())) {
+          // So we can audit any super admin actions.
+          // If there is a use case also lookup customer and put it in context
+          UserWithFeatures userWithFeatures = new UserWithFeatures().setUser(user);
+          RequestContext.put(USER, userWithFeatures);
+          foundRole = true;
+        }
+      } else {
+        for (Users.Role usersRole : roles) {
+          Role role = Role.get(user.getCustomerUUID(), usersRole.name());
+          if (RoleBinding.checkUserHasRole(user.getUuid(), role.getRoleUUID())) {
+            UserWithFeatures userWithFeatures = new UserWithFeatures().setUser(user);
+            RequestContext.put(USER, userWithFeatures);
+            foundRole = true;
+          }
+        }
       }
       return foundRole;
     }
@@ -220,13 +243,15 @@ public class TokenAuthenticator extends Action.Simple {
   }
 
   public boolean superAdminAuthentication(Http.Request request) {
-    return checkAuthentication(request, new HashSet<>(Collections.singletonList(Role.SuperAdmin)));
+    return checkAuthentication(
+        request, new HashSet<>(Collections.singletonList(Users.Role.SuperAdmin)));
   }
 
   // Calls that require admin authentication should allow
   // both admins and super-admins.
   public boolean adminAuthentication(Http.Request request) {
-    return checkAuthentication(request, new HashSet<>(Arrays.asList(Role.Admin, Role.SuperAdmin)));
+    return checkAuthentication(
+        request, new HashSet<>(Arrays.asList(Users.Role.Admin, Users.Role.SuperAdmin)));
   }
 
   public void adminOrThrow(Http.Request request) {
@@ -279,13 +304,13 @@ public class TokenAuthenticator extends Action.Simple {
     }
 
     // If the user is ConnectOnly, then don't get any further access
-    if (user.getRole() == Role.ConnectOnly) {
+    if (user.getRole() == Users.Role.ConnectOnly) {
       return false;
     }
 
     // Allow only superadmins to change LDAP Group Mappings.
     if (endPoint.endsWith("/ldap_mappings") && requestType.equals("PUT")) {
-      return user.getRole() == Role.SuperAdmin;
+      return user.getRole() == Users.Role.SuperAdmin;
     }
 
     // All users have access to get, metrics and setting an API token.
@@ -300,7 +325,7 @@ public class TokenAuthenticator extends Action.Simple {
     if (endPoint.endsWith("/update_profile")) return true;
 
     // If the user is readonly, then don't get any further access.
-    if (user.getRole() == Role.ReadOnly) {
+    if (user.getRole() == Users.Role.ReadOnly) {
       return false;
     }
     // All users other than read only get access to backup endpoints.
@@ -318,7 +343,7 @@ public class TokenAuthenticator extends Action.Simple {
       return true;
     }
     // If the user is backupAdmin, they don't get further access.
-    return user.getRole() != Role.BackupAdmin;
+    return user.getRole() != Users.Role.BackupAdmin;
     // If the user has reached here, they have complete access.
   }
 

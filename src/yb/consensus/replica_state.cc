@@ -811,6 +811,7 @@ void ReplicaState::SetLastCommittedIndexUnlocked(const yb::OpId& committed_op_id
 }
 
 Status ReplicaState::InitCommittedOpIdUnlocked(const yb::OpId& committed_op_id) {
+  TRACE_FUNC();
   if (!last_committed_op_id_.empty()) {
     return STATUS_FORMAT(
         IllegalState,
@@ -879,6 +880,7 @@ Result<bool> ReplicaState::AdvanceCommittedOpIdUnlocked(
 
 Status ReplicaState::ApplyPendingOperationsUnlocked(
     const yb::OpId& committed_op_id, CouldStop could_stop) {
+  TRACE_BEGIN_END_FUNC();
   DCHECK(IsLocked());
   VLOG_WITH_PREFIX(1) << "Last triggered apply was: " <<  last_committed_op_id_;
 

@@ -18,7 +18,7 @@
         (test -e /usr/bin/python3 && ! test -e /usr/bin/python) &&
         (ln -s /usr/bin/python3 /usr/bin/python) ||
         (echo "Not creating soft-link from /usr/bin/python3 to /usr/bin/python")
-      when: ansible_distribution == 'SLES' or
+      when: ansible_os_family == 'Suse' or
             ansible_distribution == 'Ubuntu'
       tags: yb-prebuilt-ami
 
@@ -77,6 +77,10 @@
 
       - name: Update apt cache
         raw: apt-get -y update
+        register: apt_status
+        until: apt_status is succeeded
+        retries: 25
+        delay: 5
 
       # Needed for /usr/bin/python as Python 2.7
       - name: Install python-minimal

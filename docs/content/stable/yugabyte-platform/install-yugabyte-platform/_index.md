@@ -9,7 +9,7 @@ menu:
   stable_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: install-yugabyte-platform
-weight: 641
+weight: 600
 type: indexpage
 ---
 
@@ -28,7 +28,7 @@ type: indexpage
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="prerequisites/default/">
+    <a class="section-link icon-offset" href="prerequisites/installer/">
       <div class="head">
         <img class="icon" src="/images/section_icons/deploy/checklist.png" aria-hidden="true" />
         <div class="title">Prerequisites</div>
@@ -52,7 +52,7 @@ type: indexpage
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="install-software/default/">
+    <a class="section-link icon-offset" href="install-software/installer/">
       <div class="head">
         <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
         <div class="title">Install software</div>

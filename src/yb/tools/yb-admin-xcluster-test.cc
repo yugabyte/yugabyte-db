@@ -42,7 +42,7 @@
 #include "yb/util/tsan_util.h"
 
 DECLARE_uint64(TEST_yb_inbound_big_calls_parse_delay_ms);
-DECLARE_bool(allow_ycql_transactional_xcluster);
+DECLARE_bool(TEST_allow_ycql_transactional_xcluster);
 DECLARE_bool(check_bootstrap_required);
 DECLARE_int64(rpc_throttle_threshold_bytes);
 
@@ -143,7 +143,7 @@ class XClusterAdminCliTest : public AdminCliTestBase {
     master::GetUniverseReplicationResponsePB resp;
     return WaitFor(
         [proxy, &req, &resp, producer_uuid]() -> Result<bool> {
-          req.set_producer_id(producer_uuid);
+          req.set_replication_group_id(producer_uuid);
           RpcController rpc;
           Status s = proxy->GetUniverseReplication(req, &resp, &rpc);
 
@@ -982,7 +982,7 @@ TEST_F(XClusterAdminCliTest, SetupTransactionalReplicationWithYCQLTable) {
 TEST_F(XClusterAdminCliTest, AllowAddTransactionTablet) {
   // We normally disable setting up transactional replication for CQL tables because the
   // implementation isn't quite complete yet.  It's fine to use it in tests, however.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_ycql_transactional_xcluster) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_allow_ycql_transactional_xcluster) = true;
 
   // Create an identical table on the producer.
   client::TableHandle producer_table;

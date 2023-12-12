@@ -15,8 +15,11 @@
 #include "yb/gutil/macros.h"
 
 #include "yb/util/atomic.h"
+#include "yb/util/strongly_typed_bool.h"
 
 namespace yb {
+
+YB_STRONGLY_TYPED_BOOL(PreserveTotalStats);
 
 // Tracks min/max/sum/count.
 // This class is thread-safe.
@@ -29,13 +32,13 @@ class AggregateStats {
 
   // Record new data.
   void Increment(int64_t value) { IncrementBy(value, 1); }
-  void IncrementBy(int64_t value, int64_t count);
+  void IncrementBy(int64_t value, uint64_t count);
 
   // Sum of all events recorded.
   int64_t TotalSum() const { return total_sum_.Load() + current_sum_.Load(); }
 
   // Count of all events recorded.
-  int64_t TotalCount() const { return total_count_.Load() + current_count_.Load(); }
+  uint64_t TotalCount() const { return total_count_.Load() + current_count_.Load(); }
 
   // Sum of all events recorded since last Reset. Resets to 0 after
   // Reset().
@@ -43,7 +46,7 @@ class AggregateStats {
 
   // Count of all events recorded since last Reset. Resets to 0 after
   // Reset().
-  int64_t CurrentCount() const { return current_count_.Load(); }
+  uint64_t CurrentCount() const { return current_count_.Load(); }
 
   // Get the minimum value,
   int64_t MinValue() const;
@@ -54,18 +57,22 @@ class AggregateStats {
   // Get the mean value of all recorded values.
   double MeanValue() const;
 
-  // Resets min/mean/max. Preserves the values for TotalSum and TotalCount.
-  void Reset();
+  // Resets min/mean/max. Preserves the values for TotalSum and TotalCount if preserve_total
+  // is true.
+  void Reset(PreserveTotalStats preserve_total = PreserveTotalStats::kTrue);
+
+  // Add data from another AggregateStats object. other must not be Reset() concurrently.
+  void Add(const AggregateStats& other);
 
   size_t DynamicMemoryUsage() const { return sizeof(*this); }
 
  private:
   // Non-resetting sum and counts.
   AtomicInt<int64_t> total_sum_;
-  AtomicInt<int64_t> total_count_;
+  AtomicInt<uint64_t> total_count_;
   // Resetting values
   AtomicInt<int64_t> current_sum_;
-  AtomicInt<int64_t> current_count_;
+  AtomicInt<uint64_t> current_count_;
   AtomicInt<int64_t> min_value_;
   AtomicInt<int64_t> max_value_;
 

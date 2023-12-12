@@ -27,19 +27,18 @@ Each read replica cluster can have its own [replication factor](../../../archite
 
 You can delete, modify, and scale read replicas. Adding or removing nodes incurs a load on the replica. Perform scaling operations when the replica isn't experiencing heavy traffic. Scaling during times of heavy traffic can temporarily degrade performance and increase the length of time of the scaling operation.
 
-The **Regions** section on the cluster **Settings** tab summarizes the cluster configuration, including the number of nodes, vCPUs, memory, and disk per node, and VPC for each region of the primary cluster and its replicas.
+The **Regions** section on the cluster **Settings > Infrastructure** tab summarizes the cluster configuration, including the number of nodes, vCPUs, memory, and disk per node, and VPC for each region of the primary cluster and its replicas.
 
 ## Prerequisites
 
 Read replicas require the following:
 
-- Primary cluster that is deployed in a VPC, in AWS or GCP.
+- Primary cluster that is deployed in a VPC.
 - Read replicas must be deployed in a VPC. Create a VPC for each region where you want to deploy a read replica. Refer to [VPC networking](../../cloud-basics/cloud-vpcs/).
 
 ## Limitations
 
 - Partition-by-region clusters do not support read replicas.
-- Read replicas currently need to use the same instance type and node size for all read replica regions.
 - If another [locking cluster operation](../#locking-operations) is already running, you must wait for it to finish.
 
 ## Add or edit read replicas
@@ -62,11 +61,17 @@ To add or edit read-replicas:
 
     **Nodes** - Choose the number of nodes to deploy in the region. The number of nodes can't be less than the replication factor.
 
-1. To add a read replica, click **Add Region**. To delete a read replica, click the Trash icon.
+    **vCPU/Node**: Enter the number of virtual CPUs per node.
 
-1. Enter the vCPUs per node, disk size in GB per node, and disk input output (I/O) operations per second (IOPS) per node (AWS only) for the read replicas. Node size is the same for all replicas. Memory per node depends on the [instance type](../../cloud-basics/create-clusters-overview/#instance-types) available for the selected regions.
+    **Disk size/Node**: Enter the disk size per node in GB.
+
+    **Disk IOPS/Node** (AWS only): Enter the disk input output (I/O) operations per second (IOPS) per node. The node throughput will be scaled according to this IOPS value.
+
+    Memory per node depends on the [instance type](../../cloud-basics/create-clusters-overview/#instance-types) available for the selected region.
 
     Monthly total costs for the cluster are based on the number of vCPUs and estimated automatically. **+ Usage** refers to any potential overages from exceeding the free allowances for disk storage, backup storage, and data transfer. For information on how clusters are costed, refer to [Cluster costs](../../cloud-admin/cloud-billing-costs/).
+
+1. To add a read replica, click **Add Region**. To delete a read replica, click the Trash icon.
 
 1. Click **Confirm and Save Changes** when you are done.
 

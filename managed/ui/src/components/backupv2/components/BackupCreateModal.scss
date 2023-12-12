@@ -1,7 +1,12 @@
 @use '../../../_style/colors.scss';
 
+.row {
+  margin-left: 0;
+  margin-right: 0;
+}
+
 .backup-configuration-form {
-  & > .row {
+  &>.row {
     margin-bottom: 24px;
   }
 
@@ -39,6 +44,7 @@
       display: flex;
       align-items: center;
       margin-bottom: 8px;
+
       span {
         margin-top: 4px;
       }
@@ -55,6 +61,7 @@
       color: #545454;
       margin-bottom: 10px;
     }
+
     .incremental-interval-ctrls {
       margin-top: 8px;
     }
@@ -122,8 +129,21 @@
     margin-bottom: 6px;
     color: #67666c;
 
-    > span {
+    >span {
       margin-right: 10px;
+    }
+  }
+
+  .tablespaces {
+    border-radius: 8px;
+    border: 1px solid #E5E5E9;
+    background: #FFF;
+    padding: 10px !important;
+    label: {
+      margin-right: 8px;
+    }
+    .tablespaces-subText{
+      color: #67666C;
     }
   }
 }

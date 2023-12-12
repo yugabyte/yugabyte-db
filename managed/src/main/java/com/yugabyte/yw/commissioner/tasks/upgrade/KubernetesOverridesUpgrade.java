@@ -3,6 +3,8 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -12,6 +14,8 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
 import javax.inject.Inject;
 
+@Abortable
+@Retryable
 public class KubernetesOverridesUpgrade extends KubernetesUpgradeTaskBase {
 
   @Inject
@@ -35,21 +39,21 @@ public class KubernetesOverridesUpgrade extends KubernetesUpgradeTaskBase {
         () -> {
           Universe universe = getUniverse();
           Cluster cluster = universe.getUniverseDetails().getPrimaryCluster();
-          // Persist new overrides in the DB.
-          addPersistKubernetesOverridesTask().setSubTaskGroupType(getTaskSubGroupType());
           // Set overrides to primary cluster so that they will be picked up in upgrade tasks.
           cluster.userIntent.universeOverrides = taskParams().universeOverrides;
           cluster.userIntent.azOverrides = taskParams().azOverrides;
 
           // Create Kubernetes Upgrade Task.
           createUpgradeTask(
-              getUniverse(),
+              universe,
               cluster.userIntent.ybSoftwareVersion,
               // We don't know which overrides can affect masters or tservers so set both to true.
               /* isMasterChanged */ true,
               /* isTServerChanged */ true,
               universe.isYbcEnabled(),
               universe.getUniverseDetails().getYbcSoftwareVersion());
+          // Persist new overrides in the DB.
+          addPersistKubernetesOverridesTask().setSubTaskGroupType(getTaskSubGroupType());
         });
   }
 

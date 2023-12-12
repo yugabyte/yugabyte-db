@@ -103,7 +103,6 @@ void ActiveCallExpired(
   auto erase = false;
   if (!call->IsFinished()) {
     call->SetTimedOut();
-    reactor->FinalizeTrackedCall(call);
     if (handle != kUnknownCallHandle) {
       erase = stream->Cancelled(handle);
     }
@@ -190,7 +189,7 @@ void Connection::Shutdown(const Status& provided_status) {
       if (shutdown_initiated_.exchange(true, std::memory_order_release)) {
         LOG_WITH_PREFIX(WARNING)
             << "Connection shutdown invoked multiple times. Previously with status "
-            << ShutdownStatus() << " and now with status " << provided_status
+            << shutdown_status_ << " and now with status " << provided_status
             << ", completed=" << shutdown_completed() << ". Skipping repeated shutdown.";
         return;
       }
@@ -216,7 +215,6 @@ void Connection::Shutdown(const Status& provided_status) {
     if (v.call) {
       if (!v.call->IsFinished()) {
         v.call->SetFailed(status);
-        reactor_->FinalizeTrackedCall(v.call);
       }
       v.call->SetActiveCallState(ActiveCallState::kErasedOnConnectionShutdown);
     }
@@ -521,7 +519,7 @@ void Connection::DumpConnectionState(int32_t call_id, const void* call_ptr) cons
       /* $4 */ call_ptr,
       /* $5 */ call_id,
       /* $6 */ found_call_id,
-      /* $7 */ shutdown_status_,
+      /* $7 */ ShutdownStatus(),
       /* $8 */ ToStringRelativeToNow(shutdown_time_, now),
       /* $9 */ calls_queued_after_shutdown_.load(std::memory_order_acquire),
       /* $10 */ responses_queued_after_shutdown_.load(std::memory_order_acquire));
@@ -645,8 +643,8 @@ Status Connection::Start(ev::loop_ref* loop) {
   return context_->AssignConnection(self);
 }
 
-void Connection::Connected() {
-  context_->Connected(shared_from_this());
+Status Connection::Connected() {
+  return context_->Connected(shared_from_this());
 }
 
 StreamReadBuffer& Connection::ReadBuffer() {
@@ -685,7 +683,6 @@ void Connection::ForceCallExpiration(const OutboundCallPtr& call) {
     ActiveCallExpired(active_calls_, it, reactor_, stream_.get());
   } else if (!call->IsFinished()) {
     call->SetTimedOut();
-    reactor_->FinalizeTrackedCall(call);
   }
 }
 

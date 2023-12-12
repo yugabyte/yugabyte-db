@@ -195,24 +195,6 @@ bool MetricRegistry::TabletHasBeenShutdown(const scoped_refptr<MetricEntity> ent
     return false;
 }
 
-bool MetricRegistry::HasRegexFilterChanged(const MetricPrometheusOptions& opts) const {
-  return cached_server_blacklist_ != opts.server_blacklist ||
-         cached_server_whitelist_ != opts.server_whitelist ||
-         cached_table_blacklist_ != opts.table_blacklist ||
-         cached_table_whitelist_ != opts.table_whitelist;
-}
-
-// Replace all cached regex filter.
-void MetricRegistry::UpdateCachedRegexFilter(
-    const MetricPrometheusOptions& opts,
-    const MetricAggregationMap& metric_filter) {
-  cached_server_blacklist_ = opts.server_blacklist;
-  cached_server_whitelist_ = opts.server_whitelist;
-  cached_table_blacklist_ = opts.table_blacklist;
-  cached_table_whitelist_ = opts.table_whitelist;
-  metric_filter_ = metric_filter;
-}
-
 Status MetricRegistry::WriteAsJson(JsonWriter* writer,
                                    const MetricJsonOptions& opts) const {
   EntityMap entities;
@@ -243,20 +225,11 @@ Status MetricRegistry::WriteAsJson(JsonWriter* writer,
 }
 
 Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
-                                          MetricPrometheusOptions opts) {
+                                          const MetricPrometheusOptions& opts) const {
   EntityMap entities;
-  MetricAggregationMap metric_filter;
-  opts.CreateRegexs();
-  bool new_regex_filter;
   {
     std::lock_guard l(lock_);
     entities = entities_;
-    new_regex_filter = HasRegexFilterChanged(opts);
-    // If the incoming filters the same as cached filters,
-    // reuse cached metric_filter. Otherwise, rebuild the metric_filter.
-    if (!new_regex_filter) {
-      metric_filter = metric_filter_;
-    }
   }
 
   for (const EntityMap::value_type& e : entities) {
@@ -264,14 +237,10 @@ Status MetricRegistry::WriteForPrometheus(PrometheusWriter* writer,
       continue;
     }
 
-    WARN_NOT_OK(e.second->WriteForPrometheus(writer, opts, &metric_filter),
+    WARN_NOT_OK(e.second->WriteForPrometheus(writer, opts),
                 Substitute("Failed to write entity $0 as Prometheus", e.second->id()));
   }
 
-  if (opts.cache_filters && new_regex_filter) {
-    std::lock_guard l(lock_);
-    UpdateCachedRegexFilter(opts, metric_filter);
-  }
   RETURN_NOT_OK(writer->FlushAggregatedValues());
 
   // Rather than having a thread poll metrics periodically to retire old ones,
@@ -498,8 +467,9 @@ Status Counter::WriteForPrometheus(
 
   return writer->WriteSingleEntry(attr, prototype_->name(), value(),
                                   prototype()->aggregation_function(),
+                                  aggregation_levels,
                                   MetricType::PrometheusType(prototype_->type()),
-                                  prototype_->description(), aggregation_levels);
+                                  prototype_->description());
 }
 
 //
@@ -544,8 +514,9 @@ Status MillisLag::WriteForPrometheus(
 
   return writer->WriteSingleEntry(attr, prototype_->name(), lag_ms(),
                                   prototype()->aggregation_function(),
+                                  aggregation_levels,
                                   MetricType::PrometheusType(prototype_->type()),
-                                  prototype_->description(), aggregation_levels);
+                                  prototype_->description());
 }
 
 AtomicMillisLag::AtomicMillisLag(const MillisLagPrototype* proto)
@@ -650,10 +621,12 @@ Status BaseStats<Stats>::WriteForPrometheus(
   // histogram doesn't really get exported as histograms.
   RETURN_NOT_OK(writer->WriteSingleEntry(
         copy_of_attr, hist_name + "_sum", TotalSum(),
-        prototype()->aggregation_function(), counter_type, description, aggregation_levels));
+        prototype()->aggregation_function(), aggregation_levels,
+        counter_type, description));
   RETURN_NOT_OK(writer->WriteSingleEntry(
         copy_of_attr, hist_name + "_count", TotalCount(),
-        prototype()->aggregation_function(), counter_type, description, aggregation_levels));
+        prototype()->aggregation_function(), aggregation_levels,
+        counter_type, description));
 
   if (FLAGS_expose_metric_histogram_percentiles) {
     RETURN_NOT_OK(static_cast<const Stats*>(this)->WritePercentilesForPrometheus(
@@ -735,34 +708,34 @@ Status Histogram::WritePercentilesForPrometheus(
   RETURN_NOT_OK(writer->WriteSingleEntry(attr, hist_name,
                                          underlying()->ValueAtPercentile(50),
                                          prototype()->aggregation_function(),
-                                         gauge_type, description, aggregation_levels));
+                                         aggregation_levels, gauge_type, description));
   attr["quantile"] = "p95";
   RETURN_NOT_OK(writer->WriteSingleEntry(attr, hist_name,
                                          underlying()->ValueAtPercentile(95),
                                          prototype()->aggregation_function(),
-                                         gauge_type, description, aggregation_levels));
+                                         aggregation_levels, gauge_type, description));
   attr["quantile"] = "p99";
   RETURN_NOT_OK(writer->WriteSingleEntry(attr, hist_name,
                                          underlying()->ValueAtPercentile(99),
                                          prototype()->aggregation_function(),
-                                         gauge_type, description, aggregation_levels));
+                                         aggregation_levels, gauge_type, description));
 
   attr["quantile"] = "mean";
   RETURN_NOT_OK(writer->WriteSingleEntry(attr, hist_name,
                                          underlying()->MeanValue(),
                                          prototype()->aggregation_function(),
-                                         gauge_type, description, aggregation_levels));
+                                         aggregation_levels, gauge_type, description));
   attr["quantile"] = "max";
   RETURN_NOT_OK(writer->WriteSingleEntry(attr, hist_name,
                                          underlying()->MaxValue(),
                                          prototype()->aggregation_function(),
-                                         gauge_type, description, aggregation_levels));
+                                         aggregation_levels, gauge_type, description));
 
   attr["quantile"] = "min";
   RETURN_NOT_OK(writer->WriteSingleEntry(attr, hist_name,
                                          underlying()->MinValue(),
                                          prototype()->aggregation_function(),
-                                         gauge_type, description, aggregation_levels));
+                                         aggregation_levels, gauge_type, description));
   return Status::OK();
 }
 

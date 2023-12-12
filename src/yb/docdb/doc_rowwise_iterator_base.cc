@@ -19,6 +19,7 @@
 #include <string>
 #include <vector>
 
+#include "yb/docdb/doc_ql_filefilter.h"
 #include "yb/docdb/docdb_compaction_context.h"
 #include "yb/docdb/scan_choices.h"
 
@@ -175,41 +176,44 @@ Status DocRowwiseIteratorBase::Init(const qlexpr::YQLScanSpec& doc_spec, SkipSee
 
   VLOG(4) << "Initializing iterator direction: " << (is_forward_scan_ ? "FORWARD" : "BACKWARD");
 
-  auto lower_doc_key = VERIFY_RESULT(doc_spec.LowerBound());
-  auto upper_doc_key = VERIFY_RESULT(doc_spec.UpperBound());
-  VLOG(4) << "DocKey Bounds " << DocKey::DebugSliceToString(lower_doc_key.AsSlice()) << ", "
-          << DocKey::DebugSliceToString(upper_doc_key.AsSlice());
+  auto bounds = doc_spec.bounds();
+  VLOG(4) << "DocKey Bounds " << DocKey::DebugSliceToString(bounds.lower.AsSlice()) << ", "
+          << DocKey::DebugSliceToString(bounds.upper.AsSlice());
 
   // TODO(bogdan): decide if this is a good enough heuristic for using blooms for scans.
   const bool is_fixed_point_get =
-      !lower_doc_key.empty() &&
-      VERIFY_RESULT(HashedOrFirstRangeComponentsEqual(lower_doc_key, upper_doc_key));
+      !bounds.lower.empty() &&
+      VERIFY_RESULT(HashedOrFirstRangeComponentsEqual(bounds.lower, bounds.upper));
   const auto mode = is_fixed_point_get ? BloomFilterMode::USE_BLOOM_FILTER
                                        : BloomFilterMode::DONT_USE_BLOOM_FILTER;
 
   if (is_forward_scan_) {
-    has_bound_key_ = !upper_doc_key.empty();
+    has_bound_key_ = !bounds.upper.empty();
     if (has_bound_key_) {
-      bound_key_ = std::move(upper_doc_key);
+      bound_key_ = bounds.upper;
     }
   } else {
-    has_bound_key_ = !lower_doc_key.empty();
+    has_bound_key_ = !bounds.lower.empty();
     if (has_bound_key_) {
-      bound_key_ = std::move(lower_doc_key);
+      bound_key_ = bounds.lower;
     }
   }
 
-  InitIterator(mode, lower_doc_key.AsSlice(), doc_spec.QueryId(), doc_spec.CreateFileFilter());
+  InitIterator(mode, bounds.lower.AsSlice(), doc_spec.QueryId(), CreateFileFilter(doc_spec));
 
-  scan_choices_ = ScanChoices::Create(
-      *schema_, doc_spec,
-      !is_forward_scan_ && has_bound_key_ ? bound_key_ : lower_doc_key,
-      is_forward_scan_ && has_bound_key_ ? bound_key_ : upper_doc_key);
+  if (has_bound_key_) {
+    if (is_forward_scan_) {
+      bounds.upper = bound_key_;
+    } else {
+      bounds.lower = bound_key_;
+    }
+  }
+  scan_choices_ = ScanChoices::Create(*schema_, doc_spec, bounds);
   if (!skip_seek) {
     if (is_forward_scan_) {
-      Seek(lower_doc_key);
+      Seek(bounds.lower);
     } else {
-      PrevDocKey(upper_doc_key);
+      PrevDocKey(bounds.upper);
     }
   }
 

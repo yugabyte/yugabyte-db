@@ -42,10 +42,12 @@
 #include "yb/tserver/xcluster_context.h"
 
 #include "yb/util/coding_consts.h"
+#include "yb/util/enums.h"
 #include "yb/util/locks.h"
+#include "yb/util/strongly_typed_bool.h"
 #include "yb/util/thread.h"
 
-DECLARE_bool(TEST_enable_db_catalog_version_mode);
+DECLARE_bool(ysql_enable_db_catalog_version_mode);
 
 namespace yb {
 class ConsistentReadPoint;
@@ -59,13 +61,16 @@ class PgMutationCounter;
     (AlterTable) \
     (BackfillIndex) \
     (CreateDatabase) \
+    (CreateReplicationSlot) \
     (CreateTable) \
     (CreateTablegroup) \
     (DeleteDBSequences) \
     (DeleteSequenceTuple) \
     (DropDatabase) \
+    (DropReplicationSlot) \
     (DropTable) \
     (DropTablegroup) \
+    (FetchData) \
     (FetchSequenceTuple) \
     (FinishTransaction) \
     (InsertSequenceTuple) \
@@ -77,11 +82,26 @@ class PgMutationCounter;
     (WaitForBackendsCatalogVersion) \
     /**/
 
+// These methods may respond with Status::OK() and continue async processing (including network
+// operations). In this case it is their responsibility to fill response and call
+// context.RespondSuccess asynchronously.
+// If such method responds with error Status, it will be handled by the upper layer that will fill
+// response with error status and call context.RespondSuccess.
+#define PG_CLIENT_SESSION_ASYNC_METHODS \
+    (GetTableKeyRanges) \
+    /**/
+
 using PgClientSessionOperations = std::vector<std::shared_ptr<client::YBPgsqlOp>>;
 
 YB_DEFINE_ENUM(PgClientSessionKind, (kPlain)(kDdl)(kCatalog)(kSequence));
 
-class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
+YB_STRONGLY_TYPED_BOOL(IsDDL);
+
+class PgClientSession {
+  using TransactionBuilder = std::function<
+      client::YBTransactionPtr(IsDDL, client::ForceGlobalTransaction, CoarseTimePoint)>;
+  using SharedThisSource = std::shared_ptr<void>;
+
  public:
   struct UsedReadTime {
     simple_spinlock lock;
@@ -97,19 +117,18 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
   using UsedReadTimePtr = std::weak_ptr<UsedReadTime>;
 
   PgClientSession(
-      uint64_t id, client::YBClient* client, const scoped_refptr<ClockBase>& clock,
-      std::reference_wrapper<const TransactionPoolProvider> transaction_pool_provider,
-      PgTableCache* table_cache, const std::optional<XClusterContext>& xcluster_context,
+      TransactionBuilder&& transaction_builder, SharedThisSource shared_this_source, uint64_t id,
+      client::YBClient* client,
+      const scoped_refptr<ClockBase>& clock, PgTableCache* table_cache,
+      const std::optional<XClusterContext>& xcluster_context,
       PgMutationCounter* pg_node_level_mutation_counter, PgResponseCache* response_cache,
       PgSequenceCache* sequence_cache);
 
-  uint64_t id() const;
+  uint64_t id() const { return id_; }
 
   Status Perform(PgPerformRequestPB* req, PgPerformResponsePB* resp, rpc::RpcContext* context);
 
   std::shared_ptr<CountDownLatch> ProcessSharedRequest(size_t size, SharedExchange* exchange);
-
-  const TransactionId* GetTransactionId() const;
 
   #define PG_CLIENT_SESSION_METHOD_DECLARE(r, data, method) \
   Status method( \
@@ -117,7 +136,16 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
       BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)* resp, \
       rpc::RpcContext* context);
 
+  #define PG_CLIENT_SESSION_ASYNC_METHOD_DECLARE(r, data, method) \
+  void method( \
+      const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)& req, \
+      BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)* resp, \
+      rpc::RpcContext context);
+
   BOOST_PP_SEQ_FOR_EACH(PG_CLIENT_SESSION_METHOD_DECLARE, ~, PG_CLIENT_SESSION_METHODS);
+  BOOST_PP_SEQ_FOR_EACH(PG_CLIENT_SESSION_ASYNC_METHOD_DECLARE, ~, PG_CLIENT_SESSION_ASYNC_METHODS);
+
+  size_t SaveData(const RefCntBuffer& buffer);
 
  private:
   std::string LogPrefix();
@@ -190,7 +218,7 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
            InvalidArgument, "Wrong catalog versions: $0 and $1",
            in_req.ysql_catalog_version(), in_req.ysql_db_catalog_version());
     if (in_req.ysql_db_catalog_version()) {
-      CHECK(FLAGS_TEST_enable_db_catalog_version_mode);
+      CHECK(FLAGS_ysql_enable_db_catalog_version_mode);
       out_req->set_ysql_db_catalog_version(in_req.ysql_db_catalog_version());
       out_req->set_ysql_db_oid(narrow_cast<uint32_t>(in_req.db_oid()));
     } else if (in_req.ysql_catalog_version()) {
@@ -209,10 +237,18 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
   // session.
   PgClientSession::UsedReadTimePtr ResetReadPoint(PgClientSessionKind kind);
 
+  // NOTE: takes ownership of paging_state.
+  void GetTableKeyRanges(
+      client::YBSessionPtr session, const std::shared_ptr<client::YBTable>& table,
+      Slice lower_bound_key, Slice upper_bound_key, uint64_t max_num_ranges,
+      uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length, rpc::Sidecars* sidecars,
+      PgsqlPagingStatePB* paging_state, std::function<void(Status)> callback);
+
+  const std::weak_ptr<PgClientSession> shared_this_;
   const uint64_t id_;
   client::YBClient& client_;
   scoped_refptr<ClockBase> clock_;
-  const TransactionPoolProvider& transaction_pool_provider_;
+  const TransactionBuilder transaction_builder_;
   PgTableCache& table_cache_;
   const std::optional<XClusterContext> xcluster_context_;
   PgMutationCounter* pg_node_level_mutation_counter_;
@@ -225,6 +261,9 @@ class PgClientSession : public std::enable_shared_from_this<PgClientSession> {
   std::optional<uint64_t> saved_priority_;
   TransactionMetadata ddl_txn_metadata_;
   UsedReadTime plain_session_used_read_time_;
+
+  simple_spinlock pending_data_mutex_;
+  std::vector<RefCntBuffer> pending_data_ GUARDED_BY(pending_data_mutex_);
 };
 
 }  // namespace tserver

@@ -266,6 +266,8 @@ class MultiLevelIterator final : public InternalIterator {
         && handle.compare(*child_index_block_handle) == 0) {
       // wrapper is already set to iterator for this handle, no need to change.
     } else {
+      // TODO(index_iter): consider updating existing iterator rather than recreating, measure
+      // potential perf impact.
       InternalIterator* iter = state_->NewSecondaryIterator(handle);
       handle.CopyToBuffer(child_index_block_handle);
       SetSubIterator(sub_iter, iter);

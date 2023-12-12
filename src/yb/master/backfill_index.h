@@ -163,7 +163,7 @@ class BackfillTable : public std::enable_shared_from_this<BackfillTable> {
   void LaunchBackfillOrAbort();
   Status WaitForTabletSplitting();
   Status DoLaunchBackfill();
-  Status LaunchComputeSafeTimeForRead();
+  Status LaunchComputeSafeTimeForRead() EXCLUDES(mutex_);
   Status DoBackfill();
 
   Status MarkAllIndexesAsFailed();
@@ -306,16 +306,16 @@ class BackfillTablet : public std::enable_shared_from_this<BackfillTablet> {
   std::atomic_bool done_{false};
 };
 
-class GetSafeTimeForTablet : public RetryingTSRpcTask {
+class GetSafeTimeForTablet : public RetryingTSRpcTaskWithTable {
  public:
   GetSafeTimeForTablet(
       std::shared_ptr<BackfillTable> backfill_table,
       const scoped_refptr<TabletInfo>& tablet,
       HybridTime min_cutoff,
       LeaderEpoch epoch)
-      : RetryingTSRpcTask(
+      : RetryingTSRpcTaskWithTable(
             backfill_table->master(), backfill_table->threadpool(),
-            std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)), tablet->table().get(),
+            std::unique_ptr<TSPicker>(new PickLeaderReplica(tablet)), tablet->table(),
             std::move(epoch),
             /* async_task_throttler */ nullptr),
         backfill_table_(backfill_table),
@@ -356,7 +356,7 @@ class GetSafeTimeForTablet : public RetryingTSRpcTask {
 
 // A background task which is responsible for backfilling rows in the partitions
 // [start, end) on the indexed table.
-class BackfillChunk : public RetryingTSRpcTask {
+class BackfillChunk : public RetryingTSRpcTaskWithTable {
  public:
   BackfillChunk(std::shared_ptr<BackfillTablet> backfill_tablet,
                 const std::string& start_key,

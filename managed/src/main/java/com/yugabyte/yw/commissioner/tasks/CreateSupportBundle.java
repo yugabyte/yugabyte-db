@@ -9,7 +9,8 @@ import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.Util;
-import com.yugabyte.yw.common.operator.KubernetesOperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponentFactory;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
@@ -43,7 +44,7 @@ public class CreateSupportBundle extends AbstractTaskBase {
   @Inject private SupportBundleComponentFactory supportBundleComponentFactory;
   @Inject private SupportBundleUtil supportBundleUtil;
   @Inject private Config config;
-  @Inject private KubernetesOperatorStatusUpdater kubernetesStatusUpdater;
+  @Inject private OperatorStatusUpdaterFactory statusUpdaterFactory;
 
   @Inject
   protected CreateSupportBundle(BaseTaskDependencies baseTaskDependencies) {
@@ -58,14 +59,17 @@ public class CreateSupportBundle extends AbstractTaskBase {
   @Override
   public void run() {
     SupportBundle supportBundle = taskParams().supportBundle;
+    OperatorStatusUpdater kubernetesStatusUpdater = statusUpdaterFactory.create();
     try {
       Path gzipPath = generateBundle(supportBundle);
       supportBundle.setPathObject(gzipPath);
       supportBundle.setStatus(SupportBundleStatusType.Success);
-      kubernetesStatusUpdater.markSupportBundleFinished(supportBundle, gzipPath);
+      kubernetesStatusUpdater.markSupportBundleFinished(
+          supportBundle, taskParams().getKubernetesResourceDetails(), gzipPath);
     } catch (Exception e) {
       taskParams().supportBundle.setStatus(SupportBundleStatusType.Failed);
-      kubernetesStatusUpdater.markSupportBundleFailed(supportBundle);
+      kubernetesStatusUpdater.markSupportBundleFailed(
+          supportBundle, taskParams().getKubernetesResourceDetails());
       Throwables.throwIfUnchecked(e);
       throw new RuntimeException(e);
     } finally {
@@ -78,6 +82,7 @@ public class CreateSupportBundle extends AbstractTaskBase {
     Customer customer = taskParams().customer;
     Universe universe = taskParams().universe;
     Path bundlePath = generateBundlePath(universe);
+    supportBundle.setPathObject(bundlePath);
     Files.createDirectories(bundlePath);
     Path gzipPath =
         Paths.get(bundlePath.toAbsolutePath().toString().concat(".tar.gz")); // test this path
@@ -118,11 +123,13 @@ public class CreateSupportBundle extends AbstractTaskBase {
           supportBundleComponent.downloadComponentBetweenDates(
               customer, universe, nodeComponentsDirPath, startDate, endDate, node);
         } catch (Exception e) {
-          log.error("Error occurred in support bundle collection", e);
-          throw new RuntimeException(
-              String.format(
-                  "Error while trying to download the node level component files : %s",
-                  e.getMessage()));
+          // Log the error and continue with the rest of support bundle collection.
+          log.error(
+              "Error occurred in node level support bundle collection for component '{} on node"
+                  + " '{}''.",
+              componentType,
+              node.getNodeName(),
+              e);
         }
       }
     }
@@ -141,11 +148,11 @@ public class CreateSupportBundle extends AbstractTaskBase {
         supportBundleComponent.downloadComponentBetweenDates(
             customer, universe, globalComponentsDirPath, startDate, endDate, null);
       } catch (Exception e) {
-        log.error("Error occurred in support bundle collection", e);
-        throw new RuntimeException(
-            String.format(
-                "Error while trying to download the global level component files : %s",
-                e.getMessage()));
+        // Log the error and continue with the rest of support bundle collection.
+        log.error(
+            "Error occurred in global level support bundle collection for component '{}'.",
+            componentType,
+            e);
       }
     }
 

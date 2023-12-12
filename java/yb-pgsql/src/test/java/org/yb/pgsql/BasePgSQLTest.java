@@ -117,6 +117,7 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   // Non-standard PSQL states defined in yb_pg_errcodes.h
   protected static final String SERIALIZATION_FAILURE_PSQL_STATE = "40001";
   protected static final String SNAPSHOT_TOO_OLD_PSQL_STATE = "72000";
+  protected static final String DEADLOCK_DETECTED_PSQL_STATE = "40P01";
 
   // Postgres flags.
   private static final String MASTERS_FLAG = "FLAGS_pggate_master_addresses";
@@ -284,6 +285,10 @@ public class BasePgSQLTest extends BaseMiniClusterTest {
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     super.customizeMiniClusterBuilder(builder);
     builder.enableYsql(true);
+    String enableYsqlConnMgr = System.getenv("YB_ENABLE_YSQL_CONN_MGR_IN_TESTS");
+    if ((enableYsqlConnMgr != null) && enableYsqlConnMgr.equalsIgnoreCase("true")){
+      builder.enableYsqlConnMgr(true);
+    }
   }
 
   @Before

@@ -7,6 +7,9 @@ import * as Yup from 'yup';
 import 'react-bootstrap-multiselect/css/bootstrap-multiselect.css';
 import { YBModal, YBFormToggle, YBFormSelect } from '../../common/forms/fields';
 import { isNonEmptyObject } from '../../../utils/ObjectUtils';
+import { hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { RBAC_ERR_MSG_NO_PERM } from '../../../redesign/features/rbac/common/validator/ValidatorUtils';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import './SecurityModal.scss';
 
 const ALERT_MESSAGES = {
@@ -112,6 +115,11 @@ export default class EncryptionKeyModal extends Component {
       })
     });
 
+    const canEditEAR = hasNecessaryPerm({
+      onResource: universeUUID,
+      ...ApiPermissionMap.SET_ENCRYPTION_KEY
+    });
+
     return (
       <Formik
         initialValues={initialValues}
@@ -120,6 +128,12 @@ export default class EncryptionKeyModal extends Component {
         onSubmit={(values) => {
           this.handleSubmitForm(values);
         }}
+        buttonProps={{
+          primary: {
+            disabled: !canEditEAR
+          }
+        }}
+        submitButtonTooltip={!canEditEAR ? RBAC_ERR_MSG_NO_PERM : ''}
       >
         {(props) => (
           <YBModal

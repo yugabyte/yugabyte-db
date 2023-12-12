@@ -65,7 +65,7 @@
 
 [[redirects]]
   from = "/:version/deploy/docker-swarm/*"
-  to = "/v2.8/deploy/docker/docker-swarm/"
+  to = "https://docs-archive.yugabyte.com/v2.8/deploy/docker/docker-swarm/"
   force = true
 
 ##########################################################
@@ -478,7 +478,7 @@
 
 [[redirects]]
   from = "/preview/manage/enterprise-edition/schedule-data-backup/"
-  to = "/preview/yugabyte-platform/back-up-restore-universes/schedule-data-backups/ysql/"
+  to = "/preview/yugabyte-platform/back-up-restore-universes/schedule-data-backups/"
 
 [[redirects]]
   from = "/preview/reference/default-ports/"
@@ -494,7 +494,7 @@
 
 [[redirects]]
   from = "/preview/releases/release-notes/preview-release/"
-  to = "/preview/releases/release-notes/v2.17/"
+  to = "/preview/releases/release-notes/"
 
 [[redirects]]
   from = "/preview/secure/authentication/client-authentication/"
@@ -614,96 +614,23 @@
 # A few redirects to head off issues with version_menu_pagelinks
 
 [[redirects]]
-  from = "/v2.12/explore/ysql-language-features/sql-feature-support/*"
-  to = "/v2.12/explore/ysql-language-features/"
-  force = true
-
-[[redirects]]
-  from = "/v2.8/explore/ysql-language-features/sql-feature-support/*"
-  to = "/v2.8/explore/ysql-language-features/"
-  force = true
-
-[[redirects]]
-  from = "/v2.12/explore/ysql-language-features/postgresql-compatibility/*"
-  to = "/v2.12/explore/ysql-language-features/"
-  force = true
-
-[[redirects]]
-  from = "/v2.8/explore/ysql-language-features/postgresql-compatibility/*"
-  to = "/v2.8/explore/ysql-language-features/"
-  force = true
-
-[[redirects]]
-  from = "/v2.12/develop/quality-of-service/*"
-  to = "/v2.12/develop/"
-  force = true
-
-[[redirects]]
-  from = "/v2.8/develop/quality-of-service/*"
-  to = "/v2.8/develop/"
-  force = true
-
-[[redirects]]
   from = "/v2.14/develop/build-apps/*"
   to = "/v2.14/develop/learn/"
   force = true
 
 [[redirects]]
-  from = "/v2.12/develop/build-apps/*"
-  to = "/v2.12/develop/learn/"
+  from = "/v2.14/tutorials/*"
+  to = "/preview/tutorials/azure/"
+  force = true
+[[redirects]]
+  from = "/v2.16/tutorials/*"
+  to = "/preview/tutorials/azure/"
+  force = true
+[[redirects]]
+  from = "/v2.18/tutorials/*"
+  to = "/preview/tutorials/azure/"
   force = true
 
-[[redirects]]
-  from = "/v2.8/develop/build-apps/*"
-  to = "/v2.8/develop/learn/"
-  force = true
-
-[[redirects]]
-  from = "/v2.12/drivers-orms/*"
-  to = "/v2.12/reference/drivers/"
-  force = true
-
-[[redirects]]
-  from = "/v2.8/drivers-orms/*"
-  to = "/v2.8/reference/drivers/"
-  force = true
-
-[[redirects]]
-  from = "/v2.12/explore/ysql-language-features/pg-extensions/*"
-  to = "/v2.12/api/ysql/extensions/"
-  force = true
-
-[[redirects]]
-  from = "/v2.8/explore/ysql-language-features/pg-extensions/*"
-  to = "/v2.8/api/ysql/extensions/"
-  force = true
-
-[[redirects]]
-  from = "/v2.12/yugabyte-platform/troubleshoot/cloud-provider-config-issues/*"
-  to = "/v2.12/yugabyte-platform/troubleshoot/"
-  force = true
-[[redirects]]
-  from = "/v2.8/yugabyte-platform/troubleshoot/cloud-provider-config-issues/*"
-  to = "/v2.8/yugabyte-platform/troubleshoot/"
-  force = true
-
-[[redirects]]
-  from = "/v2.12/yugabyte-platform/upgrade/upgrade-yp-kubernetes/"
-  to = "/v2.12/yugabyte-platform/upgrade/"
-  force = true
-[[redirects]]
-  from = "/v2.8/yugabyte-platform/upgrade/upgrade-yp-kubernetes/"
-  to = "/v2.8/yugabyte-platform/upgrade/"
-  force = true
-
-[[redirects]]
-  from = "/v2.12/yugabyte-platform/configure-yugabyte-platform/supported-os-and-arch/"
-  to = "/v2.12/yugabyte-platform/install-yugabyte-platform/"
-  force = true
-[[redirects]]
-  from = "/v2.8/yugabyte-platform/configure-yugabyte-platform/supported-os-and-arch/"
-  to = "/v2.8/yugabyte-platform/install-yugabyte-platform/"
-  force = true
 
 [[redirects]]
   from = "/preview/yugabyte-platform/manage-deployments/high-availability/"
@@ -721,13 +648,52 @@
   from = "/v2.14/yugabyte-platform/administer-yugabyte-platform/high-availability/"
   to = "/v2.14/yugabyte-platform/manage-deployments/high-availability/"
   force = true
+
+# Build an app was in quick-start, now in develop
+
 [[redirects]]
-  from = "/v2.12/yugabyte-platform/administer-yugabyte-platform/high-availability/"
-  to = "/v2.12/yugabyte-platform/manage-deployments/high-availability/"
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-add-ip/"
+  to = "/preview/develop/build-apps/cloud-add-ip/"
   force = true
 [[redirects]]
-  from = "/v2.8/yugabyte-platform/administer-yugabyte-platform/high-availability/"
-  to = "/v2.8/yugabyte-platform/manage-deployments/high-availability/"
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-c/*"
+  to = "/preview/develop/build-apps/c/cloud-ysql-c/"
+  force = true
+[[redirects]]
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-csharp/*"
+  to = "/preview/develop/build-apps/csharp/cloud-ysql-csharp/"
+  force = true
+[[redirects]]
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-cpp/*"
+  to = "/preview/develop/build-apps/cpp/cloud-ysql-cpp/"
+  force = true
+[[redirects]]
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-go/*"
+  to = "/preview/develop/build-apps/go/cloud-ysql-go/"
+  force = true
+[[redirects]]
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-yb-jdbc/*"
+  to = "/preview/develop/build-apps/java/cloud-ysql-jdbc/"
+  force = true
+[[redirects]]
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-node/*"
+  to = "/preview/develop/build-apps/nodejs/cloud-ysql-node/"
+  force = true
+[[redirects]]
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-php/*"
+  to = "/preview/develop/build-apps/php/cloud-ysql-php/"
+  force = true
+[[redirects]]
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-python/*"
+  to = "/preview/develop/build-apps/python/cloud-ysql-python/"
+  force = true
+[[redirects]]
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-ruby/*"
+  to = "/preview/develop/build-apps/ruby/cloud-ysql-ruby/"
+  force = true
+[[redirects]]
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-rust/*"
+  to = "/preview/develop/build-apps/rust/cloud-ysql-rust/"
   force = true
 
 # Redirect old cloud docs to root of current
@@ -749,7 +715,7 @@
 
 [[redirects]]
   from = "/:version/yugabyte-cloud/*"
-  to = "/preview/yugabyte-cloud/"
+  to = "/preview/yugabyte-cloud/:splat"
   force = true
 
 # Redirect EOL docs to the archive site
@@ -800,56 +766,14 @@
   to = "https://docs-archive.yugabyte.com/v2.6/"
   force = true
 
-# [[redirects]]
-#   from = "/v2.6/*"
-#   to = "https://docs-archive.yugabyte.com/v2.6/"
-#   force = true
-
-# Build an app was in quick-start, now in develop
+[[redirects]]
+  from = "/v2.8/*"
+  to = "https://docs-archive.yugabyte.com/v2.8/"
+  force = true
 
 [[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-add-ip/"
-  to = "/preview/develop/build-apps/cloud-add-ip/"
-  force = true
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-c/*"
-  to = "/preview/develop/build-apps/c/cloud-ysql-c/"
-  force = true
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-csharp/*"
-  to = "/preview/develop/build-apps/csharp/cloud-ysql-csharp/"
-  force = true
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-cpp/*"
-  to = "/preview/develop/build-apps/cpp/cloud-ysql-cpp/"
-  force = true
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-go/*"
-  to = "/preview/develop/build-apps/go/cloud-ysql-go/"
-  force = true
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-yb-jdbc/*"
-  to = "/preview/develop/build-apps/java/cloud-ysql-jdbc/"
-  force = true
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-node/*"
-  to = "/preview/develop/build-apps/nodejs/cloud-ysql-node/"
-  force = true
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-php/*"
-  to = "/preview/develop/build-apps/php/cloud-ysql-php/"
-  force = true
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-python/*"
-  to = "/preview/develop/build-apps/python/cloud-ysql-python/"
-  force = true
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-ruby/*"
-  to = "/preview/develop/build-apps/ruby/cloud-ysql-ruby/"
-  force = true
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-rust/*"
-  to = "/preview/develop/build-apps/rust/cloud-ysql-rust/"
+  from = "/v2.12/*"
+  to = "https://docs-archive.yugabyte.com/v2.12/"
   force = true
 
 [[redirects]]

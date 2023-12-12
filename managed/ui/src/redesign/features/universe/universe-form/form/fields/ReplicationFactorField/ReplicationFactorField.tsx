@@ -1,23 +1,24 @@
 import { ChangeEvent, ReactElement } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useFormContext, useController } from 'react-hook-form';
-import { ButtonGroup, Box, makeStyles } from '@material-ui/core';
+import { Box, makeStyles } from '@material-ui/core';
 import { toast } from 'react-toastify';
-import { YBButton, YBLabel, YBInputField } from '../../../../../../components';
+import { YBButtonGroup, YBLabel, YBInputField } from '../../../../../../components';
 import { UniverseFormData } from '../../../utils/dto';
 import { REPLICATION_FACTOR_FIELD, TOAST_AUTO_DISMISS_INTERVAL } from '../../../utils/constants';
-import { themeVariables } from '../../../../../../theme/variables';
 import { useFormFieldStyles } from '../../../universeMainStyle';
 
 interface ReplicationFactorProps {
   disabled?: boolean;
   isPrimary: boolean;
+  isViewMode: boolean;
 }
 
-const useStyles = makeStyles(() => ({
-  rfButton: {
-    height: themeVariables.inputHeight,
-    borderWidth: '0.5px !important'
+const useStyles = makeStyles((theme) => ({
+  overrideMuiInput: {
+    '& .MuiInput-root': {
+      minWidth: '80px'
+    }
   }
 }));
 
@@ -27,7 +28,8 @@ const ASYNC_RF_MAX = 15;
 
 export const ReplicationFactor = ({
   disabled,
-  isPrimary
+  isPrimary,
+  isViewMode
 }: ReplicationFactorProps): ReactElement => {
   const { control, setValue } = useFormContext<UniverseFormData>();
   const { t } = useTranslation();
@@ -70,38 +72,31 @@ export const ReplicationFactor = ({
       </YBLabel>
       <Box flex={1} className={fieldClasses.defaultTextBox}>
         {isPrimary ? (
-          <ButtonGroup variant="contained" color="default">
-            {PRIMARY_RF.map((factor) => {
-              return (
-                <YBButton
-                  key={factor}
-                  className={classes.rfButton}
-                  data-testid={`ReplicationFactor-option${factor}`}
-                  disabled={factor !== value && disabled}
-                  variant={factor === value ? 'primary' : 'secondary'}
-                  onClick={(e: any) => {
-                    if (disabled) e.preventDefault();
-                    else handleSelect(factor);
-                  }}
-                >
-                  {factor}
-                </YBButton>
-              );
-            })}
-          </ButtonGroup>
-        ) : (
-          <YBInputField
-            control={control}
-            name={REPLICATION_FACTOR_FIELD}
-            fullWidth
-            type="number"
-            inputProps={{
-              'data-testid': 'ReplicationFactor-Input',
-              min: ASYNC_RF_MIN,
-              max: ASYNC_RF_MAX
-            }}
-            onChange={handleChange}
+          <YBButtonGroup
+            dataTestId={'ReplicationFactor'}
+            variant={'contained'}
+            color={'default'}
+            values={PRIMARY_RF}
+            selectedNum={value}
+            disabled={disabled || isViewMode}
+            handleSelect={handleSelect}
           />
+        ) : (
+          <Box>
+            <YBInputField
+              control={control}
+              name={REPLICATION_FACTOR_FIELD}
+              type="number"
+              inputProps={{
+                'data-testid': 'ReplicationFactor-Input',
+                min: ASYNC_RF_MIN,
+                max: ASYNC_RF_MAX
+              }}
+              disabled={isViewMode}
+              className={classes.overrideMuiInput}
+              onChange={handleChange}
+            />
+          </Box>
         )}
       </Box>
     </Box>

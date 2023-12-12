@@ -73,6 +73,7 @@ Status GetChangesForCDCSDK(
     SchemaDetailsMap* cached_schema_details,
     OpId* last_streamed_op_id,
     const int64_t& safe_hybrid_time_req,
+    const std::optional<uint64_t> consistent_snapshot_time,
     const int& wal_segment_index_req,
     int64_t* last_readable_opid_index = nullptr,
     const TableId& colocated_table_id = "",

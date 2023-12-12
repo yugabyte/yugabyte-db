@@ -40,7 +40,7 @@ YRPC_GENERATE(
   PROTO_FILES
       master_admin.proto master_client.proto master_cluster.proto master_dcl.proto
       master_encryption.proto master_heartbeat.proto master_replication.proto
-      master_backup.proto
+      master_backup.proto master_test.proto
   MESSAGES_PROTO_FILES
       master_ddl.proto
   NO_SERVICE_MESSAGES_PROTO_FILES
@@ -91,6 +91,7 @@ set(MASTER_SRCS
   flush_manager.cc
   master.cc
   master_admin_service.cc
+  tablet_health_manager.cc
   master_backup_service.cc
   master_client_service.cc
   master_cluster_service.cc
@@ -102,6 +103,7 @@ set(MASTER_SRCS
   master_options.cc
   master_service_base.cc
   master_tablet_service.cc
+  master_test_service.cc
   master_tserver.cc
   master-path-handlers.cc
   mini_master.cc
@@ -118,15 +120,21 @@ set(MASTER_SRCS
   sys_catalog_writer.cc
   system_tablet.cc
   table_index.cc
+  tablet_limits.cc
   tablet_split_manager.cc
   tasks_tracker.cc
+  test_async_rpc_manager.cc
   ts_descriptor.cc
   ts_manager.cc
   universe_key_registry_service.cc
   util/yql_vtable_helpers.cc
   xcluster/add_table_to_xcluster_task.cc
+  xcluster/xcluster_catalog_entity.cc
+  xcluster/xcluster_config.cc
   xcluster/xcluster_consumer_metrics.cc
   xcluster/xcluster_safe_time_service.cc
+  xcluster/xcluster_manager.cc
+  xcluster/xcluster_replication_group.cc
   xrepl_catalog_manager.cc
   yql_aggregates_vtable.cc
   yql_auth_resource_role_permissions_index.cc
@@ -221,17 +229,19 @@ set(YB_TEST_LINK_LIBS master
   ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(catalog_entity_info-test)
 ADD_YB_TEST(catalog_manager-test)
-ADD_YB_TEST(load_balancer_mocked-test)
-ADD_YB_TEST(flush_manager-test)
-ADD_YB_TEST(master-test)
-ADD_YB_TEST(sys_catalog-test)
-Add_YB_TEST(table_index-test)
-ADD_YB_TEST(xcluster/xcluster_safe_time_service-test)
-ADD_YB_TEST(stateful_service-test)
-ADD_YB_TEST(restore_sys_catalog_state_test)
+ADD_YB_TEST(catalog_manager_mini_cluster_test)
 ADD_YB_TEST(cluster_balance_preferred_leader-test)
+ADD_YB_TEST(flush_manager-test)
+ADD_YB_TEST(load_balancer_mocked-test)
+ADD_YB_TEST(master-test)
 ADD_YB_TEST(master_xrepl-test)
+ADD_YB_TEST(restore_sys_catalog_state_test)
+ADD_YB_TEST(stateful_service-test)
+ADD_YB_TEST(sys_catalog-test)
 ADD_YB_TEST(sys_catalog_xrepl-test)
+ADD_YB_TEST(table_index_test)
+ADD_YB_TEST(tablet_limits_test)
+ADD_YB_TEST(xcluster/xcluster_safe_time_service-test)
 
 # Actual master executable. In LTO mode, can also act as the tablet server if executed through a
 # symlink named as the tablet server executable.

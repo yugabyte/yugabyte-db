@@ -55,10 +55,12 @@
 #include "yb/gutil/stringprintf.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/integration-tests/external_yb_controller.h"
 #include "yb/integration-tests/mini_cluster_base.h"
 
 #include "yb/server/server_fwd.h"
 
+#include "yb/tserver/tserver_admin.proxy.h"
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_types.pb.h"
 
@@ -80,6 +82,7 @@ class ExternalDaemon;
 class ExternalMaster;
 class ExternalTabletServer;
 class HostPort;
+class HybridTime;
 class OpIdPB;
 class NodeInstancePB;
 class Subprocess;
@@ -200,6 +203,8 @@ struct ExternalMiniClusterOptions {
   void AdjustMasterRpcPorts();
 };
 
+YB_STRONGLY_TYPED_BOOL(RequireExitCode0);
+
 // A mini-cluster made up of subprocesses running each of the daemons separately. This is useful for
 // black-box or grey-box failure testing purposes -- it provides the ability to forcibly kill or
 // stop particular cluster participants, which isn't feasible in the normal MiniCluster.  On the
@@ -243,7 +248,9 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   // Shuts down the whole cluster or part of it, depending on the selected 'mode'.  Currently, this
   // uses SIGKILL on each daemon for a non-graceful shutdown.
-  void Shutdown(NodeSelectionMode mode = ALL);
+  void Shutdown(
+      NodeSelectionMode mode = ALL,
+      RequireExitCode0 require_exit_code_0 = RequireExitCode0::kFalse);
 
   // Waits for the master to finishing running initdb.
   Status WaitForInitDb();
@@ -325,6 +332,11 @@ class ExternalMiniCluster : public MiniClusterBase {
   // This API waits for the commit indices of all the master peers to reach the target index.
   Status WaitForMastersToCommitUpTo(int64_t target_index);
 
+  // This API waits for the commit indices of the given master peers to reach the target index.
+  Status WaitForMastersToCommitUpTo(
+      int64_t target_index, const std::vector<ExternalMaster*>& masters,
+      MonoDelta timeout = MonoDelta());
+
   Status WaitForAllIntentsApplied(const MonoDelta& timeout);
 
   Status WaitForAllIntentsApplied(ExternalTabletServer* ts, const MonoDelta& timeout);
@@ -355,6 +367,9 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   // Return all tablet servers.
   std::vector<ExternalTabletServer*> tserver_daemons() const;
+
+  // Return all YBController servers.
+  std::vector<ExternalYbController*> yb_controller_daemons() const;
 
   // Get tablet server host.
   HostPort pgsql_hostport(int node_index) const;
@@ -441,7 +456,7 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   Status FlushTabletsOnSingleTServer(
       ExternalTabletServer* ts, const std::vector<yb::TabletId> tablet_ids,
-      bool is_compaction);
+      tserver::FlushTabletsRequestPB_Operation operation);
 
   Status WaitForTSToCrash(const ExternalTabletServer* ts,
                           const MonoDelta& timeout = MonoDelta::FromSeconds(60));
@@ -461,6 +476,14 @@ class ExternalMiniCluster : public MiniClusterBase {
   Status SetFlagOnMasters(const std::string& flag, const std::string& value);
   // Sets the given flag on all tablet servers.
   Status SetFlagOnTServers(const std::string& flag, const std::string& value);
+
+  // Adds the given flag to the extra flags on all tablet servers. A restart is required
+  // to get any effect of that change.
+  void AddExtraFlagOnTServers(const std::string& flag, const std::string& value);
+
+  // Removes the given flag from the extra flags on all tablet servers. A restart is required
+  // to get any effect of that change.
+  void RemoveExtraFlagOnTServers(const std::string& flag);
 
   // Allocates a free port and stores a file lock guarding access to that port into an internal
   // array of file locks.
@@ -541,10 +564,11 @@ class ExternalMiniCluster : public MiniClusterBase {
   Status CheckPortAndMasterSizes() const;
 
   // Return the list of opid's for all master's in this cluster.
-  Status GetLastOpIdForEachMasterPeer(
+  Status GetLastOpIdForMasterPeers(
       const MonoDelta& timeout,
       consensus::OpIdType opid_type,
-      std::vector<OpIdPB>* op_ids);
+      std::vector<OpIdPB>* op_ids,
+      const std::vector<ExternalMaster*>& masters);
 
   // Ensure that the leader server is allowed to process a config change (by having at least one
   // commit in the current term as leader).
@@ -568,6 +592,8 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   std::vector<scoped_refptr<ExternalMaster> > masters_;
   std::vector<scoped_refptr<ExternalTabletServer> > tablet_servers_;
+
+  std::vector<scoped_refptr<ExternalYbController>> yb_controller_servers_;
 
   rpc::Messenger* messenger_ = nullptr;
   std::unique_ptr<rpc::Messenger> messenger_holder_;
@@ -626,11 +652,13 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
 
   // Return true if the process is still running.  This may return false if the process crashed,
   // even if we didn't explicitly call Shutdown().
-  bool IsProcessAlive() const;
+  bool IsProcessAlive(RequireExitCode0 require_exit_code_0 = RequireExitCode0::kFalse) const;
 
   bool IsProcessPaused() const;
 
-  virtual void Shutdown(SafeShutdown safe_shutdown = SafeShutdown::kFalse);
+  virtual void Shutdown(
+      SafeShutdown safe_shutdown = SafeShutdown::kFalse,
+      RequireExitCode0 require_exit_code_0 = RequireExitCode0::kFalse);
 
   std::vector<std::string> GetDataDirs() const { return data_dirs_; }
 
@@ -750,6 +778,13 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
 
   // Get the current value of the flag for the given daemon.
   Result<std::string> GetFlag(const std::string& flag);
+  Result<HybridTime> GetServerTime();
+
+  // Add a flag to the extra flags. A restart is required to get any effect of that change.
+  void AddExtraFlag(const std::string& flag, const std::string& value);
+
+  // Remove a flag from the extra flags. A restart is required to get any effect of that change.
+  size_t RemoveExtraFlag(const std::string& flag);
 
  protected:
   friend class RefCountedThreadSafe<ExternalDaemon>;

@@ -485,6 +485,8 @@ public class TestPgSelect extends BasePgSQLTest {
     String createIndex = "CREATE INDEX ON %s(b %s)";
 
     try (Statement statement = connection.createStatement()) {
+      // We want to test planner under classical PG nodes.
+      statement.execute("set yb_bnl_batch_size = 1");
       statement.execute(String.format(createTable, "t1", colOrder));
       statement.execute(String.format(createTable, "t2", colOrder));
       statement.execute("insert into t1 values (1,1), (2,2), (3,3)");

@@ -48,7 +48,9 @@ set(INTEGRATION_TESTS_SRCS
   cluster_verifier.cc
   create-table-itest-base.cc
   external_mini_cluster.cc
+  external_yb_controller.cc
   external_mini_cluster_fs_inspector.cc
+  external_mini_cluster_validator.cc
   load_balancer_test_util.cc
   load_generator.cc
   mini_cluster.cc
@@ -60,6 +62,7 @@ set(INTEGRATION_TESTS_SRCS
   ts_itest-base.cc
   yb_mini_cluster_test_base.cc
   yb_table_test_base.cc
+  xcluster/xcluster_external_mini_cluster_base.cc
   xcluster/xcluster_test_base.cc
   cdcsdk_test_base.cc
   cdcsdk_ysql_test_base.cc
@@ -142,6 +145,7 @@ ADD_YB_TEST(are_leaders_on_preferred_only-itest)
 ADD_YB_TEST(compaction-test)
 ADD_YB_TEST(compressed_stream-test)
 ADD_YB_TEST(logging-test)
+ADD_YB_TEST(tablet_health_manager-itest)
 ADD_YB_TEST(master_replication-itest)
 ADD_YB_TEST(master_sysnamespace-itest)
 ADD_YB_TEST(master_path_handlers-itest)
@@ -190,19 +194,23 @@ ADD_YB_TEST(cql-backup-test)
 ADD_YB_TEST(snapshot-test)
 ADD_YB_TEST(cdc_service-int-test)
 ADD_YB_TEST(cdc_service-txn-test)
+ADD_YB_TEST(cdc_state_table-test)
 ADD_YB_TEST(cdcsdk_stream-test)
 ADD_YB_TEST(cdcsdk_ysql-test)
 ADD_YB_TEST(cdcsdk_before_image-test)
 ADD_YB_TEST(cdcsdk_consistent_stream-test)
 ADD_YB_TEST(cdcsdk_snapshot-test)
 ADD_YB_TEST(cdcsdk_tablet_split-test)
+ADD_YB_TEST(cdcsdk_consistent_snapshot-test)
 ADD_YB_TEST(transaction-test)
 ADD_YB_TEST(encryption-test)
 ADD_YB_TEST(secure_connection_test)
 ADD_YB_TEST(xcluster/xcluster_consistency-test)
 ADD_YB_TEST(xcluster/xcluster_dr-itest)
+ADD_YB_TEST(xcluster/xcluster_upgrade-test)
 ADD_YB_TEST(xcluster/xcluster_safe_time-itest)
 ADD_YB_TEST(xcluster/xcluster_topologies-test)
+ADD_YB_TEST(xcluster/xcluster_ysql_colocated-test)
 ADD_YB_TEST(xcluster/xcluster_ysql_index-test)
 ADD_YB_TEST(xcluster/xcluster_ysql-test)
 ADD_YB_TEST(xcluster/xcluster-tablet-split-itest)
@@ -236,5 +244,6 @@ ADD_YB_CQL_TEST(cql-tablet-split-test)
 ADD_YB_CQL_TEST(cql-test)
 ADD_YB_CQL_TEST(cql_geo_transactions-test)
 ADD_YB_CQL_TEST(external_mini_cluster_secure_test)
+ADD_YB_CQL_TEST(tablet_limits_integration_test)
 
 set(YB_TEST_LINK_LIBS ${YB_TEST_LINK_LIBS_SAVED})

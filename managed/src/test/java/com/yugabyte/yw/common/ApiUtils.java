@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
@@ -276,7 +277,9 @@ public class ApiUtils {
       @Override
       public void run(Universe universe) {
         UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-        UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+        final UniverseDefinitionTaskParams.Cluster primaryCluster =
+            universeDetails.getPrimaryCluster();
+        UserIntent userIntent = primaryCluster.userIntent;
         // Add a desired number of nodes.
         universeDetails.nodeDetailsSet = new HashSet<>();
         userIntent.numNodes = userIntent.replicationFactor;
@@ -286,12 +289,14 @@ public class ApiUtils {
                   idx,
                   NodeDetails.NodeState.Live,
                   setMasters && idx <= userIntent.replicationFactor);
+          node.placementUuid = primaryCluster.uuid;
           universeDetails.nodeDetailsSet.add(node);
         }
         universeDetails.upsertPrimaryCluster(userIntent, null);
 
         NodeDetails node =
             getDummyNodeDetails(userIntent.numNodes + 1, NodeDetails.NodeState.Removed);
+        node.placementUuid = primaryCluster.uuid;
         universeDetails.nodeDetailsSet.add(node);
         universeDetails.nodePrefix = "host";
         universe.setUniverseDetails(universeDetails);
@@ -502,6 +507,8 @@ public class ApiUtils {
     ui.numNodes = numNodes;
     ui.instanceType = i.getInstanceTypeCode();
     ui.deviceInfo = getDummyDeviceInfo(1, 100);
+    ui.tserverK8SNodeResourceSpec = new K8SNodeResourceSpec();
+    ui.masterK8SNodeResourceSpec = new K8SNodeResourceSpec();
     return ui;
   }
 

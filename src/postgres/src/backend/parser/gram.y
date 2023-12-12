@@ -918,6 +918,7 @@ stmt :
 			| AlterOpFamilyStmt
 			| AlterOwnerStmt
 			| AlterPolicyStmt
+			| AlterPublicationStmt
 			| AlterRoleSetStmt
 			| AlterRoleStmt
 			| AlterSeqStmt
@@ -939,6 +940,7 @@ stmt :
 			| CreateOpClassStmt
 			| CreateOpFamilyStmt
 			| CreatePolicyStmt
+			| CreatePublicationStmt
 			| CreateRoleStmt
 			| CreateSchemaStmt
 			| CreateStatsStmt
@@ -1019,14 +1021,12 @@ stmt :
 			| AlterSystemStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterTblSpcStmt { parser_ybc_signal_unsupported(@1, "This statement", 1153); }
 			| AlterCompositeTypeStmt { parser_ybc_not_support(@1, "This statement"); }
-			| AlterPublicationStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterTSDictionaryStmt { parser_ybc_not_support(@1, "This statement"); }
 			| ClusterStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateAmStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateAssertStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateConversionStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CreatePublicationStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateTransformStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropAssertStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -3390,23 +3390,27 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->tablegroupname = $14;
 					if ($13 && $2 == RELPERSISTENCE_TEMP)
 					{
-						ereport(WARNING, (errmsg("Split options on TEMP table will be ignored")));
+						ereport(WARNING,
+								(errmsg("split options on TEMP table will be ignored")));
 					}
 					if ($14 && $2 == RELPERSISTENCE_TEMP)
 					{
-						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-										errmsg("Cannot use TABLEGROUP with TEMP table.")));
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("cannot use TABLEGROUP with TEMP table")));
 					}
 					if ($12 && $14)
 					{
-						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-										errmsg("Cannot use TABLEGROUP with TABLESPACE."),
-										errdetail("The tablespace of the tablegroup will be used.")));
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("cannot use TABLEGROUP with TABLESPACE"),
+								 errdetail("The tablespace of the tablegroup will be used.")));
 					}
 					if ($13 && $14)
 					{
-						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-										errmsg("cannot use TABLEGROUP with SPLIT")));
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("cannot use TABLEGROUP with SPLIT")));
 					}
 					$$ = (Node *)n;
 				}
@@ -3430,23 +3434,27 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->tablegroupname = $17;
 					if ($16 && $2 == RELPERSISTENCE_TEMP)
 					{
-						ereport(WARNING, (errmsg("Split options on TEMP table will be ignored")));
+						ereport(WARNING,
+								(errmsg("split options on TEMP table will be ignored")));
 					}
 					if ($17 && $2 == RELPERSISTENCE_TEMP)
 					{
-						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-										errmsg("Cannot use TABLEGROUP with TEMP table.")));
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("cannot use TABLEGROUP with TEMP table")));
 					}
 					if ($15 && $17)
 					{
-						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-										errmsg("Cannot use TABLEGROUP with TABLESPACE."),
-										errdetail("The tablespace of the tablegroup will be used.")));
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("cannot use TABLEGROUP with TABLESPACE"),
+								 errdetail("The tablespace of the tablegroup will be used.")));
 					}
 					if ($16 && $17)
 					{
-						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-										errmsg("cannot use TABLEGROUP with SPLIT")));
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("cannot use TABLEGROUP with SPLIT")));
 					}
 					$$ = (Node *)n;
 				}
@@ -3471,23 +3479,27 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->tablegroupname = $13;
 					if ($12 && $2 == RELPERSISTENCE_TEMP)
 					{
-						ereport(WARNING, (errmsg("Split options on TEMP table will be ignored")));
+						ereport(WARNING,
+								(errmsg("split options on TEMP table will be ignored")));
 					}
 					if ($13 && $2 == RELPERSISTENCE_TEMP)
 					{
-						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-										errmsg("Cannot use TABLEGROUP with TEMP table.")));
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("cannot use TABLEGROUP with TEMP table")));
 					}
 					if ($11 && $13)
 					{
-						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-										errmsg("Cannot use TABLEGROUP with TABLESPACE."),
-										errdetail("The tablespace of the tablegroup will be used.")));
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("cannot use TABLEGROUP with TABLESPACE"),
+								 errdetail("The tablespace of the tablegroup will be used.")));
 					}
 					if ($12 && $13)
 					{
-						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-										errmsg("cannot use TABLEGROUP with SPLIT")));
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("cannot use TABLEGROUP with SPLIT")));
 					}
 					$$ = (Node *)n;
 				}
@@ -3512,23 +3524,27 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->tablegroupname = $16;
 					if ($15 && $2 == RELPERSISTENCE_TEMP)
 					{
-						ereport(WARNING, (errmsg("Split options on TEMP table will be ignored")));
+						ereport(WARNING,
+								(errmsg("split options on TEMP table will be ignored")));
 					}
 					if ($16 && $2 == RELPERSISTENCE_TEMP)
 					{
-						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-										errmsg("Cannot use TABLEGROUP with TEMP table.")));
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("cannot use TABLEGROUP with TEMP table")));
 					}
 					if ($14 && $16)
 					{
-						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-										errmsg("Cannot use TABLEGROUP with TABLESPACE."),
-										errdetail("The tablespace of the tablegroup will be used.")));
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("cannot use TABLEGROUP with TABLESPACE"),
+								 errdetail("The tablespace of the tablegroup will be used.")));
 					}
 					if ($15 && $16)
 					{
-						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-										errmsg("cannot use TABLEGROUP with SPLIT")));
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("cannot use TABLEGROUP with SPLIT")));
 					}
 					$$ = (Node *)n;
 				}
@@ -3552,7 +3568,8 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->split_options = $14;
 					if ($14 && $2 == RELPERSISTENCE_TEMP)
 					{
-						ereport(WARNING, (errmsg("Split options on TEMP table will be ignored")));
+						ereport(WARNING,
+								(errmsg("split options on TEMP table will be ignored")));
 					}
 					$$ = (Node *)n;
 				}
@@ -3576,7 +3593,8 @@ CreateStmt:	CREATE OptTemp TABLE qualified_name '(' OptTableElementList ')'
 					n->split_options = $17;
 					if ($17 && $2 == RELPERSISTENCE_TEMP)
 					{
-						ereport(WARNING, (errmsg("Split options on TEMP table will be ignored")));
+						ereport(WARNING,
+								(errmsg("split options on TEMP table will be ignored")));
 					}
 					$$ = (Node *)n;
 				}
@@ -3798,9 +3816,10 @@ ColConstraintElem:
 				{
 					if ($4)
 					{
-						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-								errmsg("Cannot set TABLESPACE for PRIMARY KEY INDEX."),
-								errdetail("The tablespace of the indexed table will be used.")));
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("cannot set TABLESPACE for PRIMARY KEY INDEX"),
+								 errdetail("The tablespace of the indexed table will be used.")));
 					}
 					Constraint *n = makeNode(Constraint);
 					n->contype = CONSTR_PRIMARY;
@@ -4031,9 +4050,10 @@ ConstraintElem:
 					n->indexname = NULL;
 					if ($8)
 					{
-						ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
-								errmsg("Cannot set TABLESPACE for PRIMARY KEY INDEX."),
-								errdetail("The tablespace of the indexed table will be used.")));
+						ereport(ERROR,
+								(errcode(ERRCODE_SYNTAX_ERROR),
+								 errmsg("cannot set TABLESPACE for PRIMARY KEY INDEX"),
+								 errdetail("The tablespace of the indexed table will be used.")));
 					}
 					n->indexspace = $8;
 					processCASbits($9, @9, "PRIMARY KEY",
@@ -6923,7 +6943,7 @@ drop_type_name:
 				{
 					$$ = OBJECT_FDW;
 				}
-			| PUBLICATION	{ parser_ybc_not_support(@1, "DROP PUBLICATION"); $$ = OBJECT_PUBLICATION; }
+			| PUBLICATION	{ $$ = OBJECT_PUBLICATION; }
 			| SCHEMA { $$ = OBJECT_SCHEMA; }
 			| SERVER { $$ = OBJECT_FOREIGN_SERVER; }
 			| TABLEGROUP
@@ -9448,7 +9468,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER PUBLICATION name RENAME TO name
 				{
-					parser_ybc_not_support(@1, "ALTER PUBLICATION");
 					RenameStmt *n = makeNode(RenameStmt);
 					n->renameType = OBJECT_PUBLICATION;
 					n->object = (Node *) makeString($3);
@@ -10437,7 +10456,6 @@ AlterOwnerStmt: ALTER AGGREGATE aggregate_with_argtypes OWNER TO RoleSpec
 CreatePublicationStmt:
 			CREATE PUBLICATION name opt_publication_for_tables opt_definition
 				{
-					parser_ybc_not_support(@1, "CREATE PUBLICATION");
 					CreatePublicationStmt *n = makeNode(CreatePublicationStmt);
 					n->pubname = $3;
 					n->options = $5;
@@ -10486,7 +10504,6 @@ publication_for_tables:
 AlterPublicationStmt:
 			ALTER PUBLICATION name SET definition
 				{
-					parser_ybc_not_support(@1, "ALTER PUBLICATION <name>");
 					AlterPublicationStmt *n = makeNode(AlterPublicationStmt);
 					n->pubname = $3;
 					n->options = $5;
@@ -10494,7 +10511,6 @@ AlterPublicationStmt:
 				}
 			| ALTER PUBLICATION name ADD_P TABLE relation_expr_list
 				{
-					parser_ybc_not_support(@1, "ALTER PUBLICATION ADD TABLE");
 					AlterPublicationStmt *n = makeNode(AlterPublicationStmt);
 					n->pubname = $3;
 					n->tables = $6;
@@ -10503,7 +10519,6 @@ AlterPublicationStmt:
 				}
 			| ALTER PUBLICATION name SET TABLE relation_expr_list
 				{
-					parser_ybc_not_support(@1, "ALTER PUBLICATION SET TABLE");
 					AlterPublicationStmt *n = makeNode(AlterPublicationStmt);
 					n->pubname = $3;
 					n->tables = $6;
@@ -10512,7 +10527,6 @@ AlterPublicationStmt:
 				}
 			| ALTER PUBLICATION name DROP TABLE relation_expr_list
 				{
-					parser_ybc_not_support(@1, "ALTER PUBLICATION DROP TABLE");
 					AlterPublicationStmt *n = makeNode(AlterPublicationStmt);
 					n->pubname = $3;
 					n->tables = $6;
@@ -17554,7 +17568,7 @@ static void
 ybc_deprecated_feature_warning(int pos, core_yyscan_t yyscanner, const char *feature)
 {
 	ereport(WARNING,
-		(errcode(ERRCODE_WARNING_DEPRECATED_FEATURE),
-		 errmsg("'%s' feature is deprecated and will be removed in a future release", feature),
-		 parser_errposition(pos)));
+			(errcode(ERRCODE_WARNING_DEPRECATED_FEATURE),
+			 errmsg("'%s' feature is deprecated and will be removed in a future release", feature),
+			 parser_errposition(pos)));
 }

@@ -7,6 +7,7 @@ import static com.yugabyte.yw.common.AWSUtil.AWS_SECRET_ACCESS_KEY_FIELDNAME;
 import static com.yugabyte.yw.common.AZUtil.AZURE_STORAGE_SAS_TOKEN_FIELDNAME;
 import static com.yugabyte.yw.common.GCPUtil.GCS_CREDENTIALS_JSON_FIELDNAME;
 import static com.yugabyte.yw.common.ThrownMatcher.thrown;
+import static com.yugabyte.yw.models.configs.CustomerConfig.ALERTS_PREFERENCES;
 import static com.yugabyte.yw.models.helpers.BaseBeanValidator.fieldFullName;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.NAME_AZURE;
@@ -16,6 +17,7 @@ import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_FIELDNA
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_LOCATIONS_FIELDNAME;
 import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_LOCATION_FIELDNAME;
 import static org.hamcrest.MatcherAssert.assertThat;
+import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyString;
 import static org.mockito.Mockito.doAnswer;
@@ -46,12 +48,8 @@ import com.google.cloud.storage.BlobId;
 import com.google.cloud.storage.Storage;
 import com.google.cloud.storage.StorageException;
 import com.google.common.collect.ImmutableList;
-import com.yugabyte.yw.common.AZUtil;
-import com.yugabyte.yw.common.BeanValidator;
-import com.yugabyte.yw.common.CloudUtil;
+import com.yugabyte.yw.common.*;
 import com.yugabyte.yw.common.CloudUtil.ExtraPermissionToValidate;
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.CustomerConfig.ConfigType;
@@ -96,8 +94,14 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
             mockAWSUtil,
             mockGCPUtil);
     when(mockStorageUtilFactory.getCloudUtil("AZ")).thenReturn(mockAZUtil);
-    doCallRealMethod().when(mockAWSUtil).getConfigLocationInfo(any());
-    doCallRealMethod().when(mockGCPUtil).getConfigLocationInfo(any());
+    doCallRealMethod().when(mockAWSUtil).getRegionLocationsMap(any());
+    doCallRealMethod().when(mockGCPUtil).getRegionLocationsMap(any());
+    doCallRealMethod()
+        .when(mockAWSUtil)
+        .getCloudLocationInfo(nullable(String.class), any(), nullable(String.class));
+    doCallRealMethod()
+        .when(mockGCPUtil)
+        .getCloudLocationInfo(nullable(String.class), any(), nullable(String.class));
   }
 
   @Test
@@ -1075,6 +1079,40 @@ public class CustomerConfigValidatorTest extends FakeDBApplication {
     } else {
       customerConfigValidator.validateConfig(config);
     }
+  }
+
+  @Parameters(method = "testValidateAlertsPreferencesEmailsParams")
+  @Test
+  public void testValidateAlertsPreferencesEmails(
+      String emailAddresses, @Nullable String expectedMessage) {
+    ObjectNode data = Json.newObject();
+    data.put("alertingEmail", emailAddresses);
+    CustomerConfig config = createConfig(ConfigType.ALERTS, ALERTS_PREFERENCES, data);
+    if ((expectedMessage != null) && !expectedMessage.equals("")) {
+      assertThat(
+          () -> customerConfigValidator.validateConfig(config),
+          thrown(
+              PlatformServiceException.class,
+              "errorJson: {\""
+                  + fieldFullName("alertingEmail")
+                  + "\":[\""
+                  + expectedMessage
+                  + "\"]}"));
+    } else {
+      customerConfigValidator.validateConfig(config);
+    }
+  }
+
+  private Object[][] testValidateAlertsPreferencesEmailsParams() {
+    return new Object[][] {
+      {null, null},
+      {"", null},
+      {TestUtils.generateLongString(4001), "size must be between 0 and 4000"},
+      {"qweqwe", "invalid email address qweqwe"},
+      {"qwe@asd.com", null},
+      {"qwe@asd.com,qweqwe", "invalid email address qweqwe"},
+      {"qwe@asd.com,qwe1@asd.com", null}
+    };
   }
 
   private CustomerConfig createConfig(ConfigType type, String name, ObjectNode data) {

@@ -4,7 +4,6 @@ headerTitle: Enable server-to-server encryption
 linkTitle: Enable server-to-server encryption
 description: Enable server-to-server encryption (using TLS) for intranode communication.
 headcontent: Enable server-to-server encryption (using TLS) for intranode communication.
-image: /images/section_icons/secure/tls-encryption/server-to-server.png
 menu:
   stable:
     identifier: server-to-server
@@ -25,7 +24,7 @@ Flag                           | Node                  | Description            
 -------------------------------|--------------------------|------------------------------|
 `use_node_to_node_encryption`  | YB-Master, YB-TServer | Set to `true` to enable encryption between YugabyteDB nodes. Default value is `false`. |
 `allow_insecure_connections`   | YB-Master, YB-TServer | Set to `false` to disallow any service with unencrypted communication from joining this cluster. Default value is `true`. Note that this flag requires `--use_node_to_node_encryption` to be enabled. |
-`certs_dir`                    | YB-Master, YB-TServer | Optional. This directory should contain the configuration that was prepared in the a step for this node to perform encrypted communication with the other nodes. Default value for YB-Masters is `<data drive>/yb-data/master/data/certs` and for YB-TServers this location is `<data drive>/yb-data/tserver/data/certs` |
+`certs_dir`                    | YB-Master, YB-TServer | Optional. Directory containing the certificates created for this node to perform encrypted communication with the other nodes. See [Create server certificates](../server-certificates). Default for YB-Masters is `<data drive>/yb-data/master/data/certs` and for YB-TServers is `<data drive>/yb-data/tserver/data/certs`. |
 
 ## Start the YB-Masters
 

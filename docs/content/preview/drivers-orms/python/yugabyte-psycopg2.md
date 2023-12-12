@@ -3,7 +3,6 @@ title: YugabyteDB Psycopg2 Smart Driver for YSQL
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Python application using YugabyteDB Psycopg2 Smart Driver for YSQL
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
     identifier: yugabyte-psycopg2-driver
@@ -38,6 +37,14 @@ type: docs
       PostgreSQL Psycopg2 Driver
     </a>
   </li>
+
+  <li >
+    <a href="../aiopg" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      aiopg
+    </a>
+  </li>
+
 </ul>
 
 The [Yugabyte Psycopg2 smart driver](https://github.com/yugabyte/psycopg2) is a Python driver for [YSQL](../../../api/ysql/) built on the [PostgreSQL psycopg2 driver](https://github.com/psycopg/psycopg2), with additional [connection load balancing](../../smart-drivers/) features.

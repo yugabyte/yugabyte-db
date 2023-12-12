@@ -14,16 +14,22 @@ spec:
         properties:
           spec:
             type: object
+            x-kubernetes-validations:
+              - message: replicationFactor <= numNodes
+                rule: self.replicationFactor <= self.numNodes
             properties:
               universeName:
                 type: string
                 x-kubernetes-validations:
-                - message: universeName is required once set
+                - message: universeName cannot be changed once set.
                   rule: self == oldSelf
               numNodes:
                 type: integer
               replicationFactor:
                 type: integer
+                x-kubernetes-validations:
+                - message: Replication Factor is cannot be changed
+                  rule: self == oldSelf
               instanceType:
                 type: string
               assignPublicIP:
@@ -41,26 +47,53 @@ spec:
                 type: boolean
               enableYSQL:
                 type: boolean
+                x-kubernetes-validations:
+                - message: enableYSQL cannot be changed
+                  rule: self == oldSelf
               enableYEDIS:
                 type: boolean
+                x-kubernetes-validations:
+                - message: enableYEDIS cannot be changed
+                  rule: self == oldSelf
               enableNodeToNodeEncrypt:
                 type: boolean
+                x-kubernetes-validations:
+                - message: enableNodeToNodeEncrypt cannot be changed
+                  rule: self == oldSelf
               enableClientToNodeEncrypt:
                 type: boolean
+                x-kubernetes-validations:
+                - message: enableClientToNodeEncrypt cannot be changed
+                  rule: self == oldSelf
               enableVolumeEncryption:
                 type: boolean
+                x-kubernetes-validations:
+                - message: enableVolumeEncryption cannot be changed
+                  rule: self == oldSelf
               ybSoftwareVersion:
                 type: string
               providerName:
                 type: string
+                x-kubernetes-validations:
+                - message: providerName cannot be changed
+                  rule: self == oldSelf
               zoneFilter:
                 type: array
+                x-kubernetes-validations:
+                - message: zoneFilter cannot be changed
+                  rule: self == oldSelf
                 items:
                   type: string
               enableYSQLAuth:
                 type: boolean
+                x-kubernetes-validations:
+                  - message: enableYSQL auth cannot be changed once set.
+                    rule: self == oldSelf
               ysqlPassword:
                 type: object
+                x-kubernetes-validations:
+                - message: ysqlPassword cannot be changed once set.
+                  rule: self == oldSelf
                 properties:
                   secretName:
                     type: string
@@ -68,10 +101,22 @@ spec:
                 - secretName
               enableYCQL:
                 type: boolean
+                x-kubernetes-validations:
+                - message: enableYCQL cannot be changed once set.
+                  rule: self == oldSelf
+
               enableYCQLAuth:
                 type: boolean
+                x-kubernetes-validations:
+                - message: enableYCQLAuth cannot be changed once set.
+                  rule: self == oldSelf
+
               ycqlPassword:
                 type: object
+                x-kubernetes-validations:
+                - message:  ycqlPassword cannot be changed once set.
+                  rule: self == oldSelf
+
                 properties:
                   secretName:
                     type: string
@@ -79,16 +124,19 @@ spec:
                 - secretName
               enableIPV6:
                 type: boolean
+                x-kubernetes-validations:
+                - message:   enableIPV6 cannot be changed once set.
+                  rule: self == oldSelf
               enableExposingService:
                 type: string
+                x-kubernetes-validations:
+                - message:   enableExposingService cannot be changed once set.
+                  rule: self == oldSelf
               accessKeyCode:
                 type: string
-              replicationFactor:
-                type: integer
-              useSystemd:
-                type: boolean
-              dedicatedNodes:
-                type: boolean
+                x-kubernetes-validations:
+                  - message:   AccessKeycode cannot be changed once set.
+                    rule: self == oldSelf
               deviceInfo:
                 properties:
                   volumeSize:
@@ -97,12 +145,24 @@ spec:
                     type: integer
                   diskIops:
                     type: integer
+                    x-kubernetes-validations:
+                      - message:   DiskIops cannot be changed once set.
+                        rule: self == oldSelf
                   throughput:
                     type: integer
+                    x-kubernetes-validations:
+                    - message:   thoughput cannot be changed once set.
+                      rule: self == oldSelf
                   storageClass:
                     type: string
+                    x-kubernetes-validations:
+                      - message:   StorageClass cannot be changed once set.
+                        rule: self == oldSelf
                   mountPoints:
                     type: string
+                    x-kubernetes-validations:
+                      - message:   mountPoints cannot be changed once set.
+                        rule: self == oldSelf
                   storageType:
                     enum:
                     - IO1
@@ -117,6 +177,9 @@ spec:
                     - iopsProvisioning
                     - throughputProvisioning
                     type: string
+                    x-kubernetes-validations:
+                      - message:   StroageType cannot be changed once set.
+                        rule: self == oldSelf
                 type: object
               kubernetesOverrides:
                 type: object

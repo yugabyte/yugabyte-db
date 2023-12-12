@@ -30,23 +30,30 @@
 namespace yb {
 
 struct SampleInfo {
-  int64_t bytes;
-  int64_t count;
+  // The sum of the sizes of all sampled allocations for this call stack.
+  int64_t sampled_allocated_bytes;
+  // The number of sampled allocations for this call stack.
+  int64_t sampled_count;
+
+  // The expected value of how many bytes were allocated from this call stack.
+  // The sum of this value across all call stacks should be approximately equal to the memory used
+  // by the process.
+  std::optional<int64_t> estimated_bytes;
+
+  // The expected value of how many times we allocated from this call stack.
+  std::optional<int64_t> estimated_count;
 };
 
 using SampleStack = std::string;
 typedef std::pair<SampleStack, SampleInfo> Sample;
 
-YB_DEFINE_ENUM(SampleOrder, (kCount)(kBytes));
+YB_DEFINE_ENUM(SampleOrder, (kSampledCount)(kSampledBytes)(kEstimatedBytes));
 
 #if YB_GOOGLE_TCMALLOC
 
-tcmalloc::Profile GetAllocationProfile(int seconds, int64_t sample_freq_bytes);
+Result<tcmalloc::Profile> GetHeapProfile(int seconds, int64_t sample_freq_bytes);
 
-enum HeapSnapshotType {
-  CURRENT_HEAP,
-  PEAK_HEAP
-};
+YB_DEFINE_ENUM(HeapSnapshotType, (kCurrentHeap)(kPeakHeap));
 
 // If peak_heap is set, gets the snapshot of the heap at peak memory usage.
 tcmalloc::Profile GetHeapSnapshot(HeapSnapshotType snapshot_type);
@@ -63,6 +70,6 @@ std::vector<Sample> GetAggregateAndSortHeapSnapshot(SampleOrder order);
 #endif // YB_GPERFTOOLS_TCMALLOC
 
 void GenerateTable(std::stringstream* output, const std::vector<Sample>& samples,
-    const std::string& title, size_t max_call_stacks);
+    const std::string& title, size_t max_call_stacks, SampleOrder order);
 
 } // namespace yb

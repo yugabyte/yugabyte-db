@@ -30,4 +30,4 @@ packages=(
   pkg-config
   unzip
 )
-sudo apt-get install -y ${packages[@]}
+sudo apt-get install -y "${packages[@]}"

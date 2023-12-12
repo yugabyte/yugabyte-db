@@ -920,6 +920,31 @@ public class TestPgAlterTableChangePrimaryKey extends BasePgSQLTest {
     }
   }
 
+  /** Altered table referenced by a partitioned FK table. */
+  @Test
+  public void foreignKeys3() throws Exception {
+    try (Statement stmt = connection.createStatement()) {
+      stmt.executeUpdate("CREATE TABLE test (id int unique)");
+      stmt.executeUpdate("CREATE TABLE test_part (id int REFERENCES test(id))"
+        + " PARTITION BY RANGE(id)");
+      stmt.executeUpdate("CREATE TABLE test_part_1 PARTITION OF test_part"
+        + " FOR VALUES FROM (1) TO (100)");
+      stmt.executeUpdate("INSERT INTO test VALUES (1)");
+      stmt.executeUpdate("INSERT INTO test_part VALUES (1)");
+
+      alterAddPrimaryKeyId(stmt, "test");
+
+      assertQuery(stmt, "SELECT * FROM test", new Row(1));
+      assertQuery(stmt, "SELECT * FROM test_part ORDER BY id", new Row(1));
+
+      // Verify that the foreign key constraints are preserved.
+      runInvalidQuery(stmt, "INSERT INTO test_part VALUES (2)",
+        "violates foreign key constraint \"test_part_id_fkey\"");
+      runInvalidQuery(stmt, "INSERT INTO test_part_1 VALUES (2)",
+        "violates foreign key constraint \"test_part_id_fkey\"");
+    }
+  }
+
   @Test
   public void otherConstraintsAndIndexes() throws Exception {
     try (Statement stmt = connection.createStatement()) {
@@ -1004,6 +1029,9 @@ public class TestPgAlterTableChangePrimaryKey extends BasePgSQLTest {
 
   private void policiesAndPermissionsVerification(Statement stmt1,
                                                   Statement stmt2) throws Exception {
+    assertQuery(stmt1,
+        "SELECT relrowsecurity, relforcerowsecurity FROM pg_class WHERE relname = 'nopk'",
+        new Row(true, true));
     assertQuery(stmt1, "SELECT * FROM nopk", new Row(2, "user1"));
     runInvalidQuery(stmt2, "SELECT * FROM nopk", "permission denied for table nopk");
     assertQuery(stmt2, "SELECT id FROM nopk", new Row(3));
@@ -1026,6 +1054,7 @@ public class TestPgAlterTableChangePrimaryKey extends BasePgSQLTest {
       stmt.executeUpdate("CREATE POLICY p ON nopk FOR SELECT TO user1, user2 USING" +
                          "(username = CURRENT_USER)");
       stmt.executeUpdate("ALTER TABLE nopk ENABLE ROW LEVEL SECURITY");
+      stmt.executeUpdate("ALTER TABLE nopk FORCE ROW LEVEL SECURITY");
       stmt.executeUpdate("ALTER TABLE nopk DROP COLUMN drop_me");
       try (Connection conn1 = getConnectionBuilder().withUser("user1").connect();
            Connection conn2 = getConnectionBuilder().withUser("user2").connect();) {

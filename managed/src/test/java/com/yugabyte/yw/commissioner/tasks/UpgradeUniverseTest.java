@@ -226,6 +226,8 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
     successResponse.message = "YSQL successfully upgraded to the latest version";
     when(mockNodeUniverseManager.runYbAdminCommand(any(), any(), any(), anyList(), anyLong()))
         .thenReturn(successResponse);
+
+    setFollowerLagMock();
   }
 
   private TaskInfo submitTask(UpgradeUniverse.Params taskParams, UpgradeTaskType taskType) {
@@ -411,7 +413,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.ChangeMasterConfig,
-          TaskType.WaitForFollowerLag,
+          TaskType.CheckFollowerLag,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForServer,
           TaskType.SetNodeState);
@@ -1060,7 +1062,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
           if (rf == 1) {
             // Don't change master config for RF1
             if (RESIZE_NODE_UPGRADE_TASK_SEQUENCE_IS_MASTER.get(j) == TaskType.ChangeMasterConfig
-                || RESIZE_NODE_UPGRADE_TASK_SEQUENCE_IS_MASTER.get(j) == TaskType.WaitForFollowerLag
+                || RESIZE_NODE_UPGRADE_TASK_SEQUENCE_IS_MASTER.get(j) == TaskType.CheckFollowerLag
                 || RESIZE_NODE_UPGRADE_TASK_SEQUENCE_IS_MASTER.get(j)
                     == TaskType.WaitForMasterLeader) {
               continue;
@@ -1113,8 +1115,7 @@ public class UpgradeUniverseTest extends CommissionerBaseTest {
 
   @Test
   public void testResizeNodeUpgradeRF3() {
-    UniverseModifyBaseTest.mockGetMasterRegistrationResponses(
-        mockClient, ImmutableList.of("10.0.0.1", "10.0.0.2", "10.0.0.3"));
+    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
     testResizeNodeUpgrade(3, 29);
   }
 

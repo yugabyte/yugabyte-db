@@ -276,11 +276,12 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   struct YbctidGenerator {
     using Next = LWFunction<Slice()>;
 
-    YbctidGenerator(const Next& next_, size_t capacity_)
-        : next(next_), capacity(capacity_) {}
+    YbctidGenerator(const Next& next_, size_t capacity_, bool keep_order_)
+        : next(next_), capacity(capacity_), keep_order(keep_order_) {}
 
     const Next& next;
     const size_t capacity;
+    const bool keep_order;
   };
 
   // This operation is requested internally within PgGate, and that request does not go through
@@ -410,6 +411,8 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
 
   Status SendRequestImpl(ForceNonBufferable force_non_bufferable);
 
+  void RecordRequestMetrics();
+
   Result<std::list<PgDocResult>> ProcessResponse(const Result<PgDocResponse::Data>& data);
 
   Result<std::list<PgDocResult>> ProcessResponseImpl(const Result<PgDocResponse::Data>& data);
@@ -469,6 +472,8 @@ class PgDocReadOp : public PgDocOp {
   }
 
   Status DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) override;
+
+  Status ResetPgsqlOps();
 
  private:
   // Create protobuf requests using template_op_.

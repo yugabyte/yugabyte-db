@@ -2,6 +2,7 @@ package com.yugabyte.yw.common.operator;
 
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.client.dsl.MixedOperation;
 import io.fabric8.kubernetes.client.dsl.Resource;
@@ -21,13 +22,13 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
   private final MixedOperation<Release, KubernetesResourceList<Release>, Resource<Release>>
       resourceClient;
   private final ReleaseManager releaseManager;
+  private final GFlagsValidation gFlagsValidation;
   private final String namespace;
 
   public static Pair<String, ReleaseMetadata> crToReleaseMetadata(Release release) {
     DownloadConfig downloadConfig = release.getSpec().getConfig().getDownloadConfig();
     String version = release.getSpec().getConfig().getVersion();
     ReleaseMetadata metadata = ReleaseMetadata.create(version);
-
     if (downloadConfig.getS3() != null) {
       metadata.s3 = new ReleaseMetadata.S3Location();
       metadata.s3.paths = new ReleaseMetadata.PackagePaths();
@@ -69,12 +70,14 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
       SharedIndexInformer<Release> releaseInformer,
       MixedOperation<Release, KubernetesResourceList<Release>, Resource<Release>> resourceClient,
       ReleaseManager releaseManager,
+      GFlagsValidation gFlagsValidation,
       String namespace) {
     this.resourceClient = resourceClient;
     this.informer = releaseInformer;
     this.lister = new Lister<>(informer.getIndexer());
     this.releaseManager = releaseManager;
     this.namespace = namespace;
+    this.gFlagsValidation = gFlagsValidation;
   }
 
   @Override
@@ -83,11 +86,12 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
     Pair<String, ReleaseMetadata> releasePair = crToReleaseMetadata(release);
     try {
       releaseManager.addReleaseWithMetadata(releasePair.getFirst(), releasePair.getSecond());
-      releaseManager.addGFlagsMetadataFiles(releasePair.getFirst(), releasePair.getSecond());
+      gFlagsValidation.addDBMetadataFiles(releasePair.getFirst(), releasePair.getSecond());
       releaseManager.updateCurrentReleases();
       updateStatus(release, "Available", true);
     } catch (RuntimeException re) {
       log.error("Error in adding release", re);
+      updateStatus(release, "Failed to Download", false);
     }
     log.info("Added release {} ", release);
   }
@@ -96,12 +100,31 @@ public class ReleaseReconciler implements ResourceEventHandler<Release>, Runnabl
   public void onUpdate(Release oldRelease, Release newRelease) {
     Pair<String, ReleaseMetadata> releasePair = crToReleaseMetadata(newRelease);
     try {
-      releaseManager.updateReleaseMetadata(releasePair.getFirst(), releasePair.getSecond());
+      String version = releasePair.getFirst();
+      ReleaseMetadata metadata = releasePair.getSecond();
+      // copy chartPath because it already exists.
+      ReleaseMetadata existing_rm = releaseManager.getReleaseByVersion(version);
+      if (existing_rm != null) {
+        if (existing_rm.chartPath != null) {
+          log.info("Updating the chartPath because existing metadata has chart path");
+          metadata.chartPath = existing_rm.chartPath;
+        } else {
+          log.info("No existing chart path found, downloading chart");
+          releaseManager.downloadYbHelmChart(version, metadata);
+        }
+      } else {
+        log.info("No existing metadata found, adding new release metadata");
+        // We never downloaded the helm chart for the previous release, so lets add the releasee
+        releaseManager.addReleaseWithMetadata(version, metadata);
+      }
+      releaseManager.updateReleaseMetadata(version, metadata);
       releaseManager.updateCurrentReleases();
+      updateStatus(newRelease, "Available", true);
     } catch (RuntimeException re) {
+      updateStatus(newRelease, "Failed to Download", false);
       log.error("Error in updating release", re);
     }
-    log.info("finished update release old: {}, new: {}", oldRelease, newRelease);
+    log.info("finished update CR release old: {}, new: {}", oldRelease, newRelease);
   }
 
   @Override

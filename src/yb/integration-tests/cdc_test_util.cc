@@ -15,6 +15,7 @@
 
 #include <gtest/gtest.h>
 
+#include "yb/cdc/cdc_service.pb.h"
 #include "yb/consensus/log.h"
 
 #include "yb/rpc/rpc_controller.h"
@@ -22,7 +23,7 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 
-#include "yb/tserver/xcluster_consumer.h"
+#include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/tserver/ts_tablet_manager.h"
@@ -30,6 +31,8 @@
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/result.h"
 #include "yb/util/test_macros.h"
+
+#include "yb/cdc/cdc_service.h"
 
 namespace yb {
 namespace cdc {
@@ -51,6 +54,7 @@ Result<xrepl::StreamId> CreateCDCStream(
   CreateCDCStreamResponsePB resp;
   req.set_table_id(table_id);
   req.set_source_type(source_type);
+  req.set_checkpoint_type(IMPLICIT);
 
   rpc::RpcController rpc;
   RETURN_NOT_OK(cdc_proxy->CreateCDCStream(req, &resp, &rpc));
@@ -104,7 +108,7 @@ size_t NumProducerTabletsPolled(MiniCluster* cluster) {
   for (const auto& mini_tserver : cluster->mini_tablet_servers()) {
     size_t new_size = 0;
     auto* tserver = mini_tserver->server();
-    tserver::XClusterConsumer* xcluster_consumer;
+    tserver::XClusterConsumerIf* xcluster_consumer;
     if (tserver && (xcluster_consumer = tserver->GetXClusterConsumer()) &&
         mini_tserver->is_started()) {
       auto tablets_running = xcluster_consumer->TEST_producer_tablets_running();
@@ -136,5 +140,20 @@ Status CorrectlyPollingAllTablets(
       timeout, "Num producer tablets being polled");
 }
 
+Result<std::shared_ptr<xrepl::XClusterTabletMetrics>> GetXClusterTabletMetrics(
+    cdc::CDCServiceImpl& cdc_service, const TabletId& tablet_id, const xrepl::StreamId stream_id,
+    cdc::CreateMetricsEntityIfNotFound create) {
+  auto tablet_peer = VERIFY_RESULT(cdc_service.GetServingTablet(tablet_id));
+  SCHECK(tablet_peer, IllegalState, "Tablet not found", tablet_id);
+  return cdc_service.GetXClusterTabletMetrics(*tablet_peer.get(), stream_id, create);
+}
+
+Result<std::shared_ptr<xrepl::CDCSDKTabletMetrics>> GetCDCSDKTabletMetrics(
+    cdc::CDCServiceImpl& cdc_service, const TabletId& tablet_id, const xrepl::StreamId stream_id,
+    cdc::CreateMetricsEntityIfNotFound create) {
+  auto tablet_peer = VERIFY_RESULT(cdc_service.GetServingTablet(tablet_id));
+  SCHECK(tablet_peer, IllegalState, "Tablet not found", tablet_id);
+  return cdc_service.GetCDCSDKTabletMetrics(*tablet_peer.get(), stream_id, create);
+}
 } // namespace cdc
 } // namespace yb

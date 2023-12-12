@@ -275,24 +275,36 @@ drop table atacc1;
 -- test dropping primary key constraints
 CREATE TABLE with_simple_pk_i (i int PRIMARY KEY);
 ALTER TABLE with_simple_pk_i DROP CONSTRAINT with_simple_pk_i_pkey;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 INSERT INTO with_simple_pk_i VALUES (1);
 INSERT INTO with_simple_pk_i VALUES (1);
 DROP TABLE with_simple_pk_i;
 --
 CREATE TABLE with_simple_pk_ij (i int, j int, PRIMARY KEY(i, j));
 ALTER TABLE with_simple_pk_ij DROP CONSTRAINT with_simple_pk_ij_pkey;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 INSERT INTO with_simple_pk_ij VALUES (1, 1);
 INSERT INTO with_simple_pk_ij VALUES (1, 1);
 DROP TABLE with_simple_pk_ij;
 --
 CREATE TABLE with_named_pk_i (i int CONSTRAINT named_pk_i PRIMARY KEY);
 ALTER TABLE with_named_pk_i DROP CONSTRAINT named_pk_i;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 INSERT INTO with_named_pk_i VALUES (1);
 INSERT INTO with_named_pk_i VALUES (1);
 DROP TABLE with_named_pk_i;
 --
 CREATE TABLE with_named_pk_ij (i int, j int, CONSTRAINT named_pk_ij PRIMARY KEY (i HASH, j ASC));
 ALTER TABLE with_named_pk_ij DROP CONSTRAINT named_pk_ij;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 INSERT INTO with_named_pk_ij VALUES (1, 1);
 INSERT INTO with_named_pk_ij VALUES (1, 1);
 DROP TABLE with_named_pk_ij;
@@ -732,18 +744,42 @@ select * from test_alter_column_type;
 alter table test_alter_column_type alter column a type varchar(1);
 alter table test_alter_column_type alter column a type varchar(5);
 alter table test_alter_column_type alter column a type varchar(1);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 alter table test_alter_column_type alter column a type char(10);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 alter table test_alter_column_type alter column b type name;
 alter table test_alter_column_type alter column b type varchar(100);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 alter table test_alter_column_type alter column c type text;
 alter table test_alter_column_type alter column c type varchar(100);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 alter table test_alter_column_type alter column d type char(1);
 alter table test_alter_column_type alter column d type varchar(100);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 alter table test_alter_column_type alter column d type char(100);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 alter table test_alter_column_type alter column e type varbit(1);
 alter table test_alter_column_type alter column e type varbit(5);
 alter table test_alter_column_type alter column e type varbit(1);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 alter table test_alter_column_type alter column f type varchar(100);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 alter table test_alter_column_type alter column f type varbit(100); --fails
 ERROR:  column "f" cannot be cast automatically to type bit varying
 HINT:  You might need to specify "USING f::bit varying(100)".
@@ -752,9 +788,15 @@ ERROR:  column "f" cannot be cast automatically to type integer
 HINT:  You might need to specify "USING f::integer".
 alter table test_alter_column_type alter column g type varchar;
 alter table test_alter_column_type alter column g type varchar(5);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 alter table test_alter_column_type alter column g type text;
 alter table test_alter_column_type alter column h type varbit;
 alter table test_alter_column_type alter column h type varbit(5);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 insert into test_alter_column_type values ('abcde', '-', '-', '-', B'10101', 0, '-', B'0'); --fails
 ERROR:  bit string too long for type bit varying(1)
 insert into test_alter_column_type values ('abcde', '-', '-', '-', B'1', 0, '-', B'0');
@@ -779,6 +821,9 @@ select * from test_alter_column_type order by a;
  h      | bit varying(5)         |           |          |
 
 alter table test_alter_column_type alter column a type varchar;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 alter table test_alter_column_type alter column e type varbit;
 \d test_alter_column_type
               Table "public.test_alter_column_type"

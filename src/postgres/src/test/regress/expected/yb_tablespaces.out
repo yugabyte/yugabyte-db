@@ -184,10 +184,10 @@ Tablespace: "regress_tblspace"
 SET default_tablespace TO '';
 -- Verify that USING INDEX TABLESPACE is not supported for primary keys.
 CREATE TABLE testschema.using_index1 (a int PRIMARY KEY USING INDEX TABLESPACE regress_tblspace);
-ERROR:  Cannot set TABLESPACE for PRIMARY KEY INDEX.
+ERROR:  cannot set TABLESPACE for PRIMARY KEY INDEX
 DETAIL:  The tablespace of the indexed table will be used.
 CREATE TABLE testschema.using_index1 (a int, PRIMARY KEY(a) USING INDEX TABLESPACE regress_tblspace);
-ERROR:  Cannot set TABLESPACE for PRIMARY KEY INDEX.
+ERROR:  cannot set TABLESPACE for PRIMARY KEY INDEX
 DETAIL:  The tablespace of the indexed table will be used.
 -- Verify that USING INDEX TABLESPACE is supported for other constraints.
 CREATE TABLE testschema.using_index2 (a int UNIQUE USING INDEX TABLESPACE regress_tblspace);
@@ -244,6 +244,9 @@ CREATE TEMPORARY TABLE temptest (a INT);
 -- Fail, cannot set tablespaces for temp tables
 ALTER TABLE temptest SET TABLESPACE regress_tblspace;
 ERROR:  cannot set tablespaces for temporary tables
+-- Fail, cannot set tablespace for temp indexes
+CREATE INDEX temp_idx_tblspc ON temptest(a) TABLESPACE regress_tblspace;
+ERROR:  cannot set tablespace for temporary index
 DROP TABLE temptest;
 -- Fail, cannot set tablespaces for temp tables
 CREATE TEMPORARY TABLE tempparttest (a int) PARTITION BY LIST (a) TABLESPACE regress_tblspace;
@@ -314,6 +317,9 @@ SELECT * FROM testschema.test_default_tab;
 
 -- tablespace should not change even if there is an index rewrite
 ALTER TABLE testschema.test_default_tab ALTER id TYPE int;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 \d testschema.test_index1
     Index "testschema.test_index1"
  Column |  Type   | Key? | Definition
@@ -358,6 +364,9 @@ Tablespace: "regress_tblspace"
 
 -- tablespace should not change even if there is an index rewrite
 ALTER TABLE testschema.test_default_tab ALTER id TYPE bigint;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 \d testschema.test_index1
    Index "testschema.test_index1"
  Column |  Type  | Key? | Definition
@@ -382,6 +391,9 @@ SET default_tablespace TO regress_tblspace;
 ALTER TABLE testschema.test_tab ADD CONSTRAINT test_tab_unique UNIQUE (id);
 SET default_tablespace TO '';
 ALTER TABLE testschema.test_tab ADD CONSTRAINT test_tab_pkey PRIMARY KEY (id);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 \d testschema.test_tab_unique
   Index "testschema.test_tab_unique"
  Column |  Type   | Key? | Definition

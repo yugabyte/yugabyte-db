@@ -13,7 +13,7 @@ type: docs
 
 A YugabyteDB universe is a group of nodes (virtual machines, physical machines, or containers) that collectively function as a resilient and scalable distributed database.
 
-Depending on business requirements and latency considerations, a universe can be deployed in a variety of configurations, such as the following: 
+Depending on business requirements and latency considerations, a universe can be deployed in a variety of configurations, such as the following:
 
 - Single availability zone.
 - Multiple availability zones in a region.
@@ -62,4 +62,3 @@ A YugabyteDB universe is comprised of one primary cluster and zero or more read 
 - Read replica clusters can perform only reads; writes sent to read replica clusters get automatically rerouted to the primary cluster of the universe. These clusters enable reads in regions that are far away from the primary cluster with timeline-consistent data. This ensures low latency reads for geo-distributed applications. Data is brought into the read replica clusters through asynchronous replication from the primary cluster. In other words, nodes in a read replica cluster act as Raft observers that do not participate in the write path involving the Raft leader and Raft followers present in the primary cluster.
 
 For more information about read replica clusters, see [Read replicas](../../docdb-replication/read-replicas/).
-

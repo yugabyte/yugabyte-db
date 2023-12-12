@@ -230,6 +230,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "TODO - Leave this for feature owners to fill in",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<String> auditLogFileNamePrefix =
+      new ConfKeyInfo<>(
+          "yb.audit.log.fileNamePrefix",
+          ScopeType.GLOBAL,
+          "Audit Log File Name Prefix",
+          "Flag to set a custom prefix for the audit log files. "
+              + "Can only be set through audit_logging_config API.",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.BETA, ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> supportBundleK8sEnabled =
       new ConfKeyInfo<>(
           "yb.support_bundle.k8s_enabled",
@@ -757,7 +766,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Whether YBA supports transactional xCluster configs",
           "It indicates whether YBA should support transactional xCluster configs",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> disasterRecoveryEnabled =
       new ConfKeyInfo<>(
           "yb.xcluster.dr.enabled",
@@ -765,7 +774,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable disaster recovery",
           "It indicates whether creating disaster recovery configs are enabled",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Boolean> enableYbcForXCluster =
       new ConfKeyInfo<>(
           "yb.xcluster.use_ybc",
@@ -833,6 +842,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enables extra logging for task params and request body",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<String> applicationLogFileNamePrefix =
+      new ConfKeyInfo<>(
+          "yb.logging.fileNamePrefix",
+          ScopeType.GLOBAL,
+          "Application Log File Name Prefix",
+          "Flag to set a custom prefix for the application log files. "
+              + "Can only be set through logging_config API.",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.BETA, ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> fixDatabaseFullPaths =
       new ConfKeyInfo<>(
           "yb.fixPaths",
@@ -1041,7 +1059,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "New RBAC Authz feature",
           "New RBAC Authz feature with custom role creation",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.INTERNAL, ConfKeyTags.FEATURE_FLAG));
   public static final ConfKeyInfo<Boolean> enableVMOSPatching =
       new ConfKeyInfo<>(
           "yb.provider.vm_os_patching",
@@ -1050,4 +1068,79 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enables VM OS Patching with image bundles",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> ybaApiStrictMode =
+      new ConfKeyInfo<>(
+          "yb.api.mode.strict",
+          ScopeType.GLOBAL,
+          "Enable strict mode to ignore deprecated YBA APIs",
+          "Will ignore deprecated APIs",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> ybaApiSafeMode =
+      new ConfKeyInfo<>(
+          "yb.api.mode.safe",
+          ScopeType.GLOBAL,
+          "Enable safe mode to ignore preview YBA APIs",
+          "Will ignore preview APIs",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> ybcDiagThreadDumpsGCSEnabled =
+      new ConfKeyInfo<>(
+          "yb.diag.thread_dumps.gcs.enabled",
+          ScopeType.GLOBAL,
+          "Enable publishing thread dumps to GCS",
+          "Enable publishing thread dumps to GCS",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> blockOperatorApiResources =
+      new ConfKeyInfo<>(
+          "yb.kubernetes.operator.block_api_operator_owned_resources",
+          ScopeType.GLOBAL,
+          "Operator owned resources api block",
+          "A resource controlled by the kubernetes operator cannot be updated using the REST API",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<List> devTagsMap =
+      new ConfKeyInfo<>(
+          "yb.universe.user_tags.dev_tags",
+          ScopeType.GLOBAL,
+          "Default Dev Tags List",
+          "A list of default dev tags during universe creation. "
+              + " Ex: [\"yb_task:dev\",\"yb_owner:dev\",\"yb_dept:eng\"]",
+          ConfDataType.StringListType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> granularMetrics =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.granular_metrics",
+          ScopeType.GLOBAL,
+          "Granular level metrics",
+          "View granular level metrics when user selects specific time period in a chart",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> gflagMultilineConf =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.gflag_multiline_conf",
+          ScopeType.GLOBAL,
+          "Enable multiline option for GFlag conf.",
+          "Allows user to enter postgres hba rules and ident map rules in multiple rows",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> haDisableCertValidation =
+      new ConfKeyInfo<>(
+          "yb.ha.ws.ssl.loose.acceptAnyCertificate",
+          ScopeType.GLOBAL,
+          "Disable all cert validation for HA communication",
+          "When set, https certs will not be validated for HA communication."
+              + " Communication will still be encrypted.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> haDisableCertHostValidation =
+      new ConfKeyInfo<>(
+          "yb.ha.ws.ssl.loose.disableHostnameVerification",
+          ScopeType.GLOBAL,
+          "Disable hostname cert validation for HA communication",
+          "When set, the hostname in https certs will not be validated for HA communication."
+              + " Communication will still be encrypted.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

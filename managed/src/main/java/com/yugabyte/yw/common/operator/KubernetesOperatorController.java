@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
@@ -27,7 +28,6 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
@@ -58,7 +58,8 @@ import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.stream.Collectors;
-import javax.inject.Inject;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.util.Pair;
@@ -82,11 +83,12 @@ public class KubernetesOperatorController {
   private final UniverseCRUDHandler universeCRUDHandler;
   private final UpgradeUniverseHandler upgradeUniverseHandler;
   private final CloudProviderHandler cloudProviderHandler;
+  private final TaskExecutor taskExecutor;
   private Map<String, Deque<Pair<Field, UserIntent>>> pendingTasks = new HashMap<>();
 
   public static final Logger LOG = LoggerFactory.getLogger(KubernetesOperatorController.class);
 
-  @Inject KubernetesOperatorStatusUpdater kubernetesStatusUpdater;
+  OperatorStatusUpdater kubernetesStatusUpdater;
 
   public enum OperatorAction {
     CREATED,
@@ -102,7 +104,9 @@ public class KubernetesOperatorController {
       String namespace,
       UniverseCRUDHandler universeCRUDHandler,
       UpgradeUniverseHandler upgradeUniverseHandler,
-      CloudProviderHandler cloudProviderHandler) {
+      CloudProviderHandler cloudProviderHandler,
+      TaskExecutor taskExecutor,
+      OperatorStatusUpdaterFactory statusUpdaterFactory) {
     this.kubernetesClient = kubernetesClient;
     this.ybUniverseClient = ybUniverseClient;
     this.ybUniverseLister = new Lister<>(ybUniverseInformer.getIndexer());
@@ -112,6 +116,8 @@ public class KubernetesOperatorController {
     this.universeCRUDHandler = universeCRUDHandler;
     this.upgradeUniverseHandler = upgradeUniverseHandler;
     this.cloudProviderHandler = cloudProviderHandler;
+    this.taskExecutor = taskExecutor;
+    this.kubernetesStatusUpdater = statusUpdaterFactory.create();
     addEventHandlersToSharedIndexInformers();
   }
 
@@ -189,35 +195,42 @@ public class KubernetesOperatorController {
           if (ybUniStatus == null) {
             return;
           }
-          String status = ybUniStatus.getUniverseStatus();
-          if (status.contains("DestroyKubernetesUniverse Success")
-              && canDeleteProvider(cust, universeName)
-              && isRunningInKubernetes()) {
-            LOG.info("Status is: " + status);
-            LOG.info("Deleting provider now");
-            Result deleteProvider = deleteProvider(cust.getUuid(), universeName);
-            // Removing finalizer so we can delete the custom resource
-            // This only happens after we remove the corresponding provider
-            ObjectMeta objectMeta = ybUniverse.getMetadata();
-            objectMeta.setFinalizers(Collections.emptyList());
-            ybUniverseClient
-                .inNamespace(namespace)
-                .withName(ybUniverse.getMetadata().getName())
-                .patch(ybUniverse);
+
+          // Add thread to delete provider and remove finalizer
+          ObjectMeta objectMeta = ybUniverse.getMetadata();
+          if (CollectionUtils.isNotEmpty(objectMeta.getFinalizers())) {
+            UUID customerUUID = cust.getUuid();
+            Thread universeDeletionFinalizeThread =
+                new Thread(
+                    () -> {
+                      try {
+                        if (canDeleteProvider(cust, universeName)) {
+                          try {
+                            UUID deleteProviderTaskUUID =
+                                deleteProvider(customerUUID, universeName);
+                            taskExecutor.waitForTask(deleteProviderTaskUUID);
+                          } catch (Exception e) {
+                            LOG.error("Got error in deleting provider", e);
+                          }
+                        }
+                        LOG.info("Removing finalizers...");
+                        if (ybUniverse.getStatus() != null) {
+                          objectMeta.setFinalizers(Collections.emptyList());
+                          ybUniverseClient
+                              .inNamespace(namespace)
+                              .withName(universeName)
+                              .patch(ybUniverse);
+                        }
+                      } catch (Exception e) {
+                        LOG.info("Got error in finalizing Universe {} delete", universeName);
+                      }
+                    });
+            universeDeletionFinalizeThread.start();
           }
         } else {
           Universe universe = Universe.getOrBadRequest(universeResp.universeUUID);
           UUID universeUUID = universe.getUniverseUUID();
-          Result task = deleteUniverse(cust.getUuid(), universeUUID);
-
-          if (!isRunningInKubernetes()) {
-            ObjectMeta objectMeta = ybUniverse.getMetadata();
-            objectMeta.setFinalizers(Collections.emptyList());
-            ybUniverseClient
-                .inNamespace(namespace)
-                .withName(ybUniverse.getMetadata().getName())
-                .patch(ybUniverse);
-          }
+          Result task = deleteUniverse(cust.getUuid(), universeUUID, ybUniverse);
           if (task != null) {
             LOG.info("Deleted Universe using KubernetesOperator");
             LOG.info(task.toString());
@@ -259,7 +272,7 @@ public class KubernetesOperatorController {
     }
   }
 
-  private Result deleteUniverse(UUID customerUUID, UUID universeUUID) {
+  private Result deleteUniverse(UUID customerUUID, UUID universeUUID, YBUniverse ybUniverse) {
     LOG.info("Deleting universe using operator");
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
@@ -270,7 +283,10 @@ public class KubernetesOperatorController {
 
     /* customer, universe, isForceDelete, isDeleteBackups, isDeleteAssociatedCerts */
     if (!universe.getUniverseDetails().updateInProgress) {
-      UUID taskUUID = universeCRUDHandler.destroy(customer, universe, false, false, false);
+      KubernetesResourceDetails resourceDetails =
+          KubernetesResourceDetails.fromResource(ybUniverse);
+      UUID taskUUID =
+          universeCRUDHandler.destroy(customer, universe, false, false, false, resourceDetails);
       return new YBPTask(taskUUID, universeUUID).asResult();
     } else {
       LOG.info("Delete in progress, not deleting universe");
@@ -278,20 +294,19 @@ public class KubernetesOperatorController {
     }
   }
 
-  private Result deleteProvider(UUID customerUUID, String universeName) {
+  private UUID deleteProvider(UUID customerUUID, String universeName) {
     LOG.info("Deleting provider using operator");
     Customer customer = Customer.getOrBadRequest(customerUUID);
     String providerName = getProviderName(universeName);
     Provider provider = Provider.get(customer.getUuid(), providerName, CloudType.kubernetes);
-    UUID taskUUID = cloudProviderHandler.delete(customer, provider.getUuid());
-    return new YBPTask(taskUUID, provider.getUuid()).asResult();
+    return cloudProviderHandler.delete(customer, provider.getUuid());
   }
 
   private boolean canDeleteProvider(Customer customer, String universeName) {
     LOG.info("Checking if provider can be deleted");
     String providerName = getProviderName(universeName);
     Provider provider = Provider.get(customer.getUuid(), providerName, CloudType.kubernetes);
-    return (customer.getUniversesForProvider(provider.getUuid()).size() == 0);
+    return (provider != null) && (customer.getUniversesForProvider(provider.getUuid()).size() == 0);
   }
 
   private Result createUniverse(
@@ -358,7 +373,7 @@ public class KubernetesOperatorController {
           String startingTask =
               String.format("Starting task on universe %s", currentUserIntent.universeName);
           kubernetesStatusUpdater.doKubernetesEventUpdate(
-              currentUserIntent.universeName, startingTask);
+              KubernetesResourceDetails.fromResource(ybUniverse), startingTask);
           if (!incomingIntent.universeOverrides.equals(currentUserIntent.universeOverrides)) {
             LOG.info("Updating Kubernetes Overrides");
             updateOverridesYbUniverse(
@@ -530,26 +545,7 @@ public class KubernetesOperatorController {
     taskParams.creatingUser = users.get(0);
     // CommonUtils.getUserFromContext(ctx);
     taskParams.expectedUniverseVersion = -1; // -1 skips the version check
-    return taskParams;
-  }
-
-  private UniverseConfigureTaskParams createTaskParams(UserIntent userIntent) throws Exception {
-    LOG.info("Creating task params from userIntent");
-    UniverseConfigureTaskParams taskParams = new UniverseConfigureTaskParams();
-    Cluster cluster = new Cluster(ClusterType.PRIMARY, userIntent);
-    taskParams.clusters.add(cluster);
-    List<Customer> custList = Customer.getAll();
-    Customer cust = custList.get(0);
-    List<Users> users = Users.getAll(cust.getUuid());
-    if (users.isEmpty()) {
-      LOG.error("Users list is of size 0!");
-      throw new Exception("Need at least one user");
-    } else {
-      LOG.info("Taking first user for customer");
-    }
-    taskParams.creatingUser = users.get(0);
-    // CommonUtils.getUserFromContext(ctx);
-    taskParams.expectedUniverseVersion = -1; // -1 skips the version check
+    taskParams.setKubernetesResourceDetails(KubernetesResourceDetails.fromResource(ybUniverse));
     return taskParams;
   }
 
@@ -676,76 +672,93 @@ public class KubernetesOperatorController {
         });
   }
 
+  private Provider createAutoProvider(
+      YBUniverse ybUniverse, String providerName, UUID customerUUID) {
+    List<String> zonesFilter = ybUniverse.getSpec().getZoneFilter();
+    KubernetesProviderFormData providerData = cloudProviderHandler.suggestedKubernetesConfigs();
+    providerData.regionList =
+        providerData.regionList.stream()
+            .map(
+                r -> {
+                  if (zonesFilter != null) {
+                    List<KubernetesProviderFormData.RegionData.ZoneData> filteredZones =
+                        r.zoneList.stream()
+                            .filter(z -> zonesFilter.contains(z.name))
+                            .collect(Collectors.toList());
+
+                    r.zoneList = filteredZones;
+                  }
+                  r.zoneList =
+                      r.zoneList.stream()
+                          .map(
+                              z -> {
+                                HashMap<String, String> tempMap = new HashMap<>(z.config);
+                                tempMap.put("STORAGE_CLASS", "yb-standard");
+                                z.config = tempMap;
+                                return z;
+                              })
+                          .collect(Collectors.toList());
+                  return r;
+                })
+            .collect(Collectors.toList());
+    providerData.name = providerName;
+    Provider autoProvider =
+        cloudProviderHandler.createKubernetes(Customer.getOrBadRequest(customerUUID), providerData);
+    // Fetch created provider from DB.
+    return Provider.get(customerUUID, providerName, CloudType.kubernetes);
+  }
+
+  private Provider filterProviders(YBUniverse ybUniverse, UUID customerUUID) {
+    Provider provider = null;
+    List<Provider> providers =
+        Provider.getAll(customerUUID).stream()
+            .filter(p -> p.getCloudCode() == CloudType.kubernetes)
+            .collect(Collectors.toList());
+    if (!providers.isEmpty()) {
+      if (!CollectionUtils.isNotEmpty(ybUniverse.getSpec().getZoneFilter())) {
+        LOG.error("Zone filter is not supported with pre-existing providers, ignoring zone filter");
+      }
+      provider = providers.get(0);
+    }
+    return provider;
+  }
+
   private Provider getProvider(UUID customerUUID, YBUniverse ybUniverse) {
-    try {
-      // If the provider already exists, don't create another
-      String providerName = getProviderName(ybUniverse.getMetadata().getName());
-      // Check if need to filter zones.
-      List<String> zonesFilter = ybUniverse.getSpec().getZoneFilter();
-      List<Provider> providers =
-          Provider.getAll(customerUUID).stream()
-              .filter(
-                  p -> p.getCloudCode() == CloudType.kubernetes && p.getName().equals(providerName))
-              .collect(Collectors.toList());
-      Provider autoProvider = null;
-      if (!providers.isEmpty()) {
-        if (!zonesFilter.isEmpty()) {
-          LOG.error(
-              "Zone filter is not supported with pre-existing providers, ignoring zone filter");
+    Provider provider = null;
+    // Check if provider name available in Cr
+    String providerName = ybUniverse.getSpec().getProviderName();
+    if (StringUtils.isNotBlank(providerName)) {
+      // Case when provider name is available: Use that, or fail.
+      provider = Provider.get(customerUUID, providerName, CloudType.kubernetes);
+      if (provider != null) {
+        LOG.info("Using provider from custom resource spec.");
+        return provider;
+      } else {
+        throw new RuntimeException(
+            "Could not find provider " + providerName + " in the list of providers.");
+      }
+    } else {
+      // Case when provider name is not available in spec
+      providerName = getProviderName(ybUniverse.getMetadata().getName());
+      provider = Provider.get(customerUUID, providerName, CloudType.kubernetes);
+      if (provider != null) {
+        // If auto-provider with the same name found return it.
+        LOG.info("Found auto-provider existing with same name {}", providerName);
+        return provider;
+      } else {
+        // If not found:
+        if (isRunningInKubernetes()) {
+          // Create auto-provider for Kubernetes based installation
+          LOG.info("Creating auto-provider with name {}", providerName);
+          try {
+            return createAutoProvider(ybUniverse, providerName, customerUUID);
+          } catch (Exception e) {
+            throw new RuntimeException("Unable to create auto-provider", e);
+          }
+        } else {
+          throw new RuntimeException("No usable providers found!");
         }
       }
-
-      if (providers.isEmpty() && isRunningInKubernetes()) {
-        KubernetesProviderFormData providerData = cloudProviderHandler.suggestedKubernetesConfigs();
-        providerData.regionList =
-            providerData.regionList.stream()
-                .map(
-                    r -> {
-                      if (zonesFilter != null) {
-                        List<KubernetesProviderFormData.RegionData.ZoneData> filteredZones =
-                            r.zoneList.stream()
-                                .filter(z -> zonesFilter.contains(z.name))
-                                .collect(Collectors.toList());
-
-                        r.zoneList = filteredZones;
-                      }
-                      r.zoneList =
-                          r.zoneList.stream()
-                              .map(
-                                  z -> {
-                                    HashMap<String, String> tempMap = new HashMap<>(z.config);
-                                    tempMap.put("STORAGE_CLASS", "yb-standard");
-                                    z.config = tempMap;
-                                    return z;
-                                  })
-                              .collect(Collectors.toList());
-                      return r;
-                    })
-                .collect(Collectors.toList());
-        providerData.name = providerName;
-        autoProvider =
-            cloudProviderHandler.createKubernetes(
-                Customer.getOrBadRequest(customerUUID), providerData);
-        CloudInfoInterface.mayBeMassageResponse(autoProvider);
-      } else {
-        LOG.info("Provider is already created, using that...");
-        autoProvider = providers.get(0);
-      }
-      return Provider.getAll(customerUUID).stream()
-          .filter(p -> p.getCloudCode() == CloudType.kubernetes && p.getName().equals(providerName))
-          .collect(Collectors.toList())
-          .get(0);
-    } catch (Exception e) {
-      if (isRunningInKubernetes()) {
-        LOG.error("Running in k8s but no provider created", e);
-      } else {
-        LOG.info("Not running in k8s");
-      }
-      LOG.info("No automatic provider found, using first in provider list...");
-      return Provider.getAll(customerUUID).stream()
-          .filter(p -> p.getCloudCode() == CloudType.kubernetes)
-          .collect(Collectors.toList())
-          .get(0);
     }
   }
 

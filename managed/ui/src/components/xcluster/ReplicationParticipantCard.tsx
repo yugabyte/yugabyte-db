@@ -1,7 +1,7 @@
 import clsx from 'clsx';
 
 import { YBLoadingCircleIcon } from '../common/indicators';
-import { usePillStyles } from '../configRedesign/providerRedesign/utils';
+import { usePillStyles } from '../../redesign/styles/styles';
 import { XClusterConfigType } from './constants';
 
 import styles from './ReplicationParticipantCard.module.scss';

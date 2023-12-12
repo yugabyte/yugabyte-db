@@ -3,7 +3,6 @@ title: Optimize YSQL queries using pg_hint_plan
 linkTitle: Optimize YSQL queries
 description: Query optimization of YSQL queries using pg_hint_plan
 headerTitle: Optimize YSQL queries using pg_hint_plan
-image: /images/section_icons/index/develop.png
 menu:
   stable:
     identifier: pg_hint_plan
@@ -47,6 +46,7 @@ yugabyte=# SET pg_hint_plan.enable_hint=ON;
 {{<note title="Enable pg_hint_plan for all sessions">}}
 You can enable `pg_hint_plan` in different levels like [all PostgreSQL options can](../../../reference/configuration/yb-tserver/#postgresql-options).
 {{</note>}}
+
 
 ### Turn on debug output
 

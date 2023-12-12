@@ -72,6 +72,7 @@
 #include "yb/master/master_encryption.proxy.h"
 #include "yb/master/master_error.h"
 #include "yb/master/master_replication.proxy.h"
+#include "yb/master/master_test.proxy.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog.h"
@@ -98,17 +99,17 @@
 #include "yb/util/flags.h"
 #include "yb/util/tostring.h"
 
-DEFINE_UNKNOWN_bool(wait_if_no_leader_master, false,
+DEFINE_NON_RUNTIME_bool(wait_if_no_leader_master, false,
             "When yb-admin connects to the cluster and no leader master is present, "
             "this flag determines if yb-admin should wait for the entire duration of timeout or"
             "in case a leader master appears in that duration or return error immediately.");
 
-DEFINE_UNKNOWN_string(certs_dir_name, "",
+DEFINE_NON_RUNTIME_string(certs_dir_name, "",
               "Directory with certificates to use for secure server connection.");
 
-DEFINE_UNKNOWN_string(client_node_name, "", "Client node name.");
+DEFINE_NON_RUNTIME_string(client_node_name, "", "Client node name.");
 
-DEFINE_UNKNOWN_bool(disable_graceful_transition, false,
+DEFINE_NON_RUNTIME_bool(disable_graceful_transition, false,
     "During a leader stepdown, disable graceful leadership transfer "
     "to an up to date peer");
 
@@ -661,6 +662,9 @@ void ClusterAdminClient::ResetMasterProxy(const HostPort& leader_addr) {
 
   master_replication_proxy_ = std::make_unique<master::MasterReplicationProxy>(
       proxy_cache_.get(), leader_addr_);
+
+  master_test_proxy_ = std::make_unique<master::MasterTestProxy>(
+      proxy_cache_.get(), leader_addr_);
 }
 
 Status ClusterAdminClient::MasterLeaderStepDown(
@@ -774,6 +778,22 @@ Status ClusterAdminClient::GetWalRetentionSecs(const YBTableName& table_name) {
   return Status::OK();
 }
 
+Status ClusterAdminClient::GetAutoFlagsConfig() {
+  master::GetAutoFlagsConfigRequestPB req;
+  master::GetAutoFlagsConfigResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(master_cluster_proxy_->GetAutoFlagsConfig(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  std::cout << "AutoFlags config:" << std::endl;
+  std::cout << resp.config().DebugString() << std::endl;
+
+  return Status::OK();
+}
+
 Status ClusterAdminClient::PromoteAutoFlags(
     const string& max_flag_class, const bool promote_non_runtime_flags, const bool force) {
   master::PromoteAutoFlagsRequestPB req;
@@ -785,26 +805,108 @@ Status ClusterAdminClient::PromoteAutoFlags(
   req.set_force(force);
   RETURN_NOT_OK(master_cluster_proxy_->PromoteAutoFlags(req, &resp, &rpc));
   if (resp.has_error()) {
-    const auto status = StatusFromPB(resp.error().status());
-    if (!status.IsAlreadyPresent()) {
-      return status;
-    }
+    return StatusFromPB(resp.error().status());
   }
 
-  std::cout << "PromoteAutoFlags status: " << std::endl;
-  if (!resp.has_new_config_version()) {
-    std::cout << "No new AutoFlags to promote";
-  } else {
-    std::cout << "New AutoFlags were promoted. Config version: " << resp.new_config_version();
-    if (resp.non_runtime_flags_promoted()) {
-      std::cout << std::endl;
-      std::cout << "All YbMaster and YbTserver processes need to be restarted to apply the "
-                   "promoted AutoFlags";
+  std::cout << "PromoteAutoFlags completed successfully" << std::endl;
+  if (!resp.flags_promoted()) {
+    std::cout << "No new AutoFlags eligible to promote" << std::endl;
+    if (resp.has_new_config_version()) {
+      std::cout << "Current config version: " << resp.new_config_version() << std::endl;
     }
+    return Status::OK();
   }
-  std::cout << std::endl;
+    std::cout << "New AutoFlags were promoted" << std::endl;
+    std::cout << "New config version: " << resp.new_config_version() << std::endl;
+    if (resp.non_runtime_flags_promoted()) {
+      std::cout << "All yb-master and yb-tserver processes need to be restarted in order to apply "
+                   "the promoted AutoFlags"
+                << std::endl;
+    }
 
   return Status::OK();
+}
+
+Status ClusterAdminClient::RollbackAutoFlags(uint32_t rollback_version) {
+  master::RollbackAutoFlagsRequestPB req;
+  master::RollbackAutoFlagsResponsePB resp;
+  rpc::RpcController rpc;
+  rpc.set_timeout(timeout_);
+  req.set_rollback_version(rollback_version);
+  RETURN_NOT_OK(master_cluster_proxy_->RollbackAutoFlags(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  std::cout << "RollbackAutoFlags completed successfully" << std::endl;
+  if (!resp.flags_rolledback()) {
+    std::cout << "No AutoFlags have been promoted since version " << rollback_version << std::endl;
+    std::cout << "Current config version: " << resp.new_config_version() << std::endl;
+    return Status::OK();
+  }
+
+    std::cout << "AutoFlags that were promoted after config version " << rollback_version
+              << " were successfully rolled back" << std::endl;
+    std::cout << "New config version: " << resp.new_config_version() << std::endl;
+
+    return Status::OK();
+}
+
+Status ClusterAdminClient::PromoteSingleAutoFlag(
+    const std::string& process_name, const std::string& flag_name) {
+    master::PromoteSingleAutoFlagRequestPB req;
+    master::PromoteSingleAutoFlagResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(timeout_);
+    req.set_process_name(process_name);
+    req.set_auto_flag_name(flag_name);
+    RETURN_NOT_OK(master_cluster_proxy_->PromoteSingleAutoFlag(req, &resp, &rpc));
+    if (resp.has_error()) {
+     return StatusFromPB(resp.error().status());
+    }
+    if (!resp.flag_promoted()) {
+      std::cout << "Failed to promote AutoFlag " << flag_name << " from process " << process_name
+                << ". Check the logs for more information" << std::endl;
+      std::cout << "Current config version: " << resp.new_config_version() << std::endl;
+      return Status::OK();
+    }
+
+    std::cout << "AutoFlag " << flag_name << " from process " << process_name
+              << " was successfully promoted" << std::endl;
+    std::cout << "New config version: " << resp.new_config_version() << std::endl;
+    if (resp.non_runtime_flag_promoted()) {
+     std::cout << "All yb-master and yb-tserver processes need to be restarted in order to apply "
+                  "the promoted AutoFlag"
+               << std::endl;
+    }
+
+    return Status::OK();
+}
+
+Status ClusterAdminClient::DemoteSingleAutoFlag(
+    const std::string& process_name, const std::string& flag_name) {
+    master::DemoteSingleAutoFlagRequestPB req;
+    master::DemoteSingleAutoFlagResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(timeout_);
+    req.set_process_name(process_name);
+    req.set_auto_flag_name(flag_name);
+    RETURN_NOT_OK(master_cluster_proxy_->DemoteSingleAutoFlag(req, &resp, &rpc));
+    if (resp.has_error()) {
+     return StatusFromPB(resp.error().status());
+    }
+    if (!resp.flag_demoted()) {
+      std::cout << "Unable to demote AutoFlag " << flag_name << " from process " << process_name
+                << " because the flag is not in promoted state" << std::endl;
+      std::cout << "Current config version: " << resp.new_config_version() << std::endl;
+      return Status::OK();
+    }
+
+    std::cout << "AutoFlag " << flag_name << " from process " << process_name
+              << " was successfully demoted" << std::endl;
+    std::cout << "New config version: " << resp.new_config_version() << std::endl;
+
+    return Status::OK();
 }
 
 Status ClusterAdminClient::ParseChangeType(
@@ -2393,7 +2495,8 @@ Result<ListSnapshotsResponsePB> ClusterAdminClient::ListSnapshots(const ListSnap
 }
 
 Status ClusterAdminClient::CreateSnapshot(
-    const vector<YBTableName>& tables, const bool add_indexes, const int flush_timeout_secs) {
+    const vector<YBTableName>& tables, std::optional<int32_t> retention_duration_hours,
+    const bool add_indexes, const int flush_timeout_secs) {
   if (flush_timeout_secs > 0) {
         const auto status = FlushTables(tables, add_indexes, flush_timeout_secs, false);
         if (status.IsTimedOut()) {
@@ -2413,6 +2516,11 @@ Status ClusterAdminClient::CreateSnapshot(
     req.set_add_indexes(add_indexes);
     req.set_add_ud_types(true);  // No-op for YSQL.
     req.set_transaction_aware(true);
+    if (retention_duration_hours && *retention_duration_hours <= 0) {
+      req.set_retention_duration_hours(-1);
+    } else if (retention_duration_hours) {
+      req.set_retention_duration_hours(*retention_duration_hours);
+    }
     return master_backup_proxy_->CreateSnapshot(req, &resp, rpc);
   }));
 
@@ -2420,7 +2528,9 @@ Status ClusterAdminClient::CreateSnapshot(
   return Status::OK();
 }
 
-Status ClusterAdminClient::CreateNamespaceSnapshot(const TypedNamespaceName& ns) {
+Status ClusterAdminClient::CreateNamespaceSnapshot(
+    const TypedNamespaceName& ns, std::optional<int32_t> retention_duration_hours,
+    bool add_indexes) {
   ListTablesResponsePB resp;
   RETURN_NOT_OK(RequestMasterLeader(&resp, [&](RpcController* rpc) {
     ListTablesRequestPB req;
@@ -2429,7 +2539,9 @@ Status ClusterAdminClient::CreateNamespaceSnapshot(const TypedNamespaceName& ns)
     req.mutable_namespace_()->set_database_type(ns.db_type);
     req.set_exclude_system_tables(true);
     req.add_relation_type_filter(master::USER_TABLE_RELATION);
-    req.add_relation_type_filter(master::INDEX_TABLE_RELATION);
+    if (add_indexes) {
+      req.add_relation_type_filter(master::INDEX_TABLE_RELATION);
+    }
     req.add_relation_type_filter(master::MATVIEW_TABLE_RELATION);
     return master_ddl_proxy_->ListTables(req, &resp, rpc);
   }));
@@ -2460,7 +2572,7 @@ Status ClusterAdminClient::CreateNamespaceSnapshot(const TypedNamespaceName& ns)
                 YQLDatabase_Name(table.namespace_().database_type())));
   }
 
-  return CreateSnapshot(tables, /* add_indexes */ false);
+  return CreateSnapshot(tables, retention_duration_hours, /* add_indexes */ false);
 }
 
 Result<ListSnapshotRestorationsResponsePB> ClusterAdminClient::ListSnapshotRestorations(
@@ -3632,7 +3744,8 @@ Status ClusterAdminClient::WriteUniverseKeyToFile(
 
 Status ClusterAdminClient::CreateCDCSDKDBStream(
     const TypedNamespaceName& ns, const std::string& checkpoint_type,
-    const std::string& record_type) {
+    const cdc::CDCRecordType record_type,
+    const std::optional<std::string>& consistent_snapshot_option) {
   HostPort ts_addr = VERIFY_RESULT(GetFirstRpcAddressForTS());
   auto cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(proxy_cache_.get(), ts_addr);
 
@@ -3641,15 +3754,7 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
 
   req.set_namespace_name(ns.name);
   req.set_db_type(ns.db_type);
-  if (record_type == yb::ToString("ALL")) {
-    req.set_record_type(cdc::CDCRecordType::ALL);
-  } else if (record_type == yb::ToString("FULL_ROW_NEW_IMAGE")) {
-    req.set_record_type(cdc::CDCRecordType::FULL_ROW_NEW_IMAGE);
-  } else if (record_type == yb::ToString("MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES")) {
-    req.set_record_type(cdc::CDCRecordType::MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES);
-  } else {
-    req.set_record_type(cdc::CDCRecordType::CHANGE);
-  }
+  req.set_record_type(record_type);
 
   req.set_record_format(cdc::CDCRecordFormat::PROTO);
   req.set_source_type(cdc::CDCRequestSource::CDCSDK);
@@ -3657,6 +3762,14 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
         req.set_checkpoint_type(cdc::CDCCheckpointType::EXPLICIT);
   } else {
         req.set_checkpoint_type(cdc::CDCCheckpointType::IMPLICIT);
+  }
+
+  if (consistent_snapshot_option.has_value()) {
+    if (*consistent_snapshot_option == "USE_SNAPSHOT") {
+      req.set_cdcsdk_consistent_snapshot_option(CDCSDKSnapshotOption::USE_SNAPSHOT);
+    } else {
+      req.set_cdcsdk_consistent_snapshot_option(CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT);
+    }
   }
 
   RpcController rpc;
@@ -3806,10 +3919,31 @@ Status ClusterAdminClient::GetCDCDBStreamInfo(const std::string& db_stream_id) {
   return Status::OK();
 }
 
+Status ClusterAdminClient::YsqlBackfillReplicationSlotNameToCDCSDKStream(
+    const std::string& stream_id, const std::string& replication_slot_name) {
+  master::YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB req;
+  master::YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB resp;
+  req.set_stream_id(stream_id);
+  req.set_cdcsdk_ysql_replication_slot_name(replication_slot_name);
+
+  RpcController rpc;
+  rpc.set_timeout(timeout_);
+  RETURN_NOT_OK(
+      master_replication_proxy_->YsqlBackfillReplicationSlotNameToCDCSDKStream(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+        cout << "Error CDC stream with replication slot: " << resp.error().status().message()
+             << endl;
+        return StatusFromPB(resp.error().status());
+  }
+
+  return Status::OK();
+}
+
 Status ClusterAdminClient::WaitForSetupUniverseReplicationToFinish(
     const string& replication_group_id) {
   master::IsSetupUniverseReplicationDoneRequestPB req;
-  req.set_producer_id(replication_group_id);
+  req.set_replication_group_id(replication_group_id);
   for (;;) {
         master::IsSetupUniverseReplicationDoneResponsePB resp;
         RpcController rpc;
@@ -3942,7 +4076,7 @@ Status ClusterAdminClient::SetupUniverseReplication(
     bool transactional) {
   master::SetupUniverseReplicationRequestPB req;
   master::SetupUniverseReplicationResponsePB resp;
-  req.set_producer_id(replication_group_id);
+  req.set_replication_group_id(replication_group_id);
   req.set_transactional(transactional);
 
   req.mutable_producer_master_addresses()->Reserve(narrow_cast<int>(producer_addresses.size()));
@@ -3987,10 +4121,10 @@ Status ClusterAdminClient::SetupUniverseReplication(
 }
 
 Status ClusterAdminClient::DeleteUniverseReplication(
-    const std::string& producer_id, bool ignore_errors) {
+    const std::string& replication_group_id, bool ignore_errors) {
   master::DeleteUniverseReplicationRequestPB req;
   master::DeleteUniverseReplicationResponsePB resp;
-  req.set_producer_id(producer_id);
+  req.set_replication_group_id(replication_group_id);
   req.set_ignore_errors(ignore_errors);
 
   RpcController rpc;
@@ -4015,16 +4149,13 @@ Status ClusterAdminClient::DeleteUniverseReplication(
 }
 
 Status ClusterAdminClient::AlterUniverseReplication(
-    const std::string& replication_group_id,
-    const std::vector<std::string>& producer_addresses,
-    const std::vector<TableId>& add_tables,
-    const std::vector<TableId>& remove_tables,
+    const std::string& replication_group_id, const std::vector<std::string>& producer_addresses,
+    const std::vector<TableId>& add_tables, const std::vector<TableId>& remove_tables,
     const std::vector<std::string>& producer_bootstrap_ids_to_add,
-    const std::string& new_producer_universe_id,
-    bool remove_table_ignore_errors) {
+    const std::string& new_replication_group_id, bool remove_table_ignore_errors) {
   master::AlterUniverseReplicationRequestPB req;
   master::AlterUniverseReplicationResponsePB resp;
-  req.set_producer_id(replication_group_id);
+  req.set_replication_group_id(replication_group_id);
   req.set_remove_table_ignore_errors(remove_table_ignore_errors);
 
   if (!producer_addresses.empty()) {
@@ -4066,8 +4197,8 @@ Status ClusterAdminClient::AlterUniverseReplication(
         }
   }
 
-  if (!new_producer_universe_id.empty()) {
-        req.set_new_producer_universe_id(new_producer_universe_id);
+  if (!new_replication_group_id.empty()) {
+    req.set_new_replication_group_id(new_replication_group_id);
   }
 
   RpcController rpc;
@@ -4109,10 +4240,10 @@ Status ClusterAdminClient::ChangeXClusterRole(cdc::XClusterRole role) {
 }
 
 Status ClusterAdminClient::SetUniverseReplicationEnabled(
-    const std::string& producer_id, bool is_enabled) {
+    const std::string& replication_group_id, bool is_enabled) {
   master::SetUniverseReplicationEnabledRequestPB req;
   master::SetUniverseReplicationEnabledResponsePB resp;
-  req.set_producer_id(producer_id);
+  req.set_replication_group_id(replication_group_id);
   req.set_is_enabled(is_enabled);
   const string toggle = (is_enabled ? "enabl" : "disabl");
 
@@ -4257,7 +4388,7 @@ Status ClusterAdminClient::SetupNSUniverseReplication(
 
   master::SetupNSUniverseReplicationRequestPB req;
   master::SetupNSUniverseReplicationResponsePB resp;
-  req.set_producer_id(replication_group_id);
+  req.set_replication_group_id(replication_group_id);
   req.set_producer_ns_name(producer_namespace.name);
   req.set_producer_ns_type(producer_namespace.db_type);
 
@@ -4281,12 +4412,12 @@ Status ClusterAdminClient::SetupNSUniverseReplication(
   return Status::OK();
 }
 
-Status ClusterAdminClient::GetReplicationInfo(const std::string& universe_uuid) {
+Status ClusterAdminClient::GetReplicationInfo(const std::string& replication_group_id) {
   master::GetReplicationStatusRequestPB req;
   master::GetReplicationStatusResponsePB resp;
 
-  if (!universe_uuid.empty()) {
-        req.set_universe_id(universe_uuid);
+  if (!replication_group_id.empty()) {
+        req.set_replication_group_id(replication_group_id);
   }
 
   RpcController rpc;

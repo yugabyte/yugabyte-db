@@ -119,6 +119,7 @@ enum class YBTableType;
 
 YB_DEFINE_ENUM(GrantRevokeStatementType, (GRANT)(REVOKE));
 YB_STRONGLY_TYPED_BOOL(ForceConsistentRead);
+YB_STRONGLY_TYPED_BOOL(ForceGlobalTransaction);
 YB_STRONGLY_TYPED_BOOL(Initial);
 YB_STRONGLY_TYPED_BOOL(UseCache);
 
@@ -163,7 +164,7 @@ typedef Result<std::tuple<
     HybridTime /* bootstrap_time */>>
     BootstrapProducerResult;
 typedef std::function<void(BootstrapProducerResult)> BootstrapProducerCallback;
-class AsyncClientInitialiser;
+class AsyncClientInitializer;
 
 } // namespace client
 } // namespace yb

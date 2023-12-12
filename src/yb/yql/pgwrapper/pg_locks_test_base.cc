@@ -34,7 +34,6 @@
 
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_bool(enable_wait_queues);
-DECLARE_bool(enable_deadlock_detection);
 
 using namespace std::literals;
 using std::string;
@@ -50,9 +49,12 @@ using tserver::TabletServerServiceProxy;
 void PgLocksTestBase::SetUp() {
   // Enable wait-queues and deadlock detection.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_deadlock_detection) = true;
 
   PgMiniTestBase::SetUp();
+  InitTransactionManagerAndPool();
+  // Wait for system.transactions to be created.
+  WaitForStatusTabletsVersion(1);
+
   InitTSProxies();
   InitPgClientProxies();
 }

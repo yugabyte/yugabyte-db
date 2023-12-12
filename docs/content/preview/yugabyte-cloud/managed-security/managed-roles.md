@@ -4,7 +4,6 @@ headertitle: Manage account roles
 linkTitle: Manage account roles
 description: Manage user roles using RBAC in YugabyteDB Managed accounts.
 headcontent: Create custom roles for team members
-image: /images/section_icons/secure/create-roles.png
 aliases:
   - /preview/yugabyte-cloud/cloud-admin/managed-roles/
 menu:
@@ -58,7 +57,7 @@ You can't delete or edit built-in roles.
 
 To create a custom role, do the following:
 
-1. Navigate to **Admin > Access Control > Roles**, then click **Create a Role** to display the **Create a Role** dialog.
+1. Navigate to **Security > Access Control > Roles**, then click **Create a Role** to display the **Create a Role** dialog.
 1. Enter a name for the role.
 1. Enter a description for the role.
 1. Click **Select Permissions**.
@@ -67,7 +66,7 @@ To create a custom role, do the following:
 
 To create a custom role from an existing role, do the following:
 
-1. Navigate to **Admin > Access Control > Roles**, then select the role to clone to display the **Role Details** sheet.
+1. Navigate to **Security > Access Control > Roles**, then select the role to clone to display the **Role Details** sheet.
 1. For a built-in role, click **Clone Role**; for a custom role, click **Actions** and choose **Clone Role**.
 1. Enter a name for the role.
 1. Enter a description for the role.
@@ -79,7 +78,7 @@ To create a custom role from an existing role, do the following:
 
 You can only edit custom roles. To edit a custom role, do the following:
 
-1. Navigate to **Admin > Access Control > Roles**, then select the custom role to modify to display the **Role Details** sheet.
+1. Navigate to **Security > Access Control > Roles**, then select the custom role to modify to display the **Role Details** sheet.
 1. Click **Actions** and **Edit Role**.
 1. Edit the name of the role.
 1. Edit the description of the role.
@@ -93,6 +92,6 @@ You can only delete custom roles, and only if the role is not assigned to any us
 
 To delete a custom role, do the following:
 
-1. Navigate to **Admin > Access Control > Roles**, then select the custom role to delete to display the **Role Details** sheet.
+1. Navigate to **Security > Access Control > Roles**, then select the custom role to delete to display the **Role Details** sheet.
 1. Click **Actions** and **Delete Role**.
 1. Enter the role name and click **Delete Role**.

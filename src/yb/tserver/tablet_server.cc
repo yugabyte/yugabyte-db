@@ -36,10 +36,6 @@
 #include <limits>
 #include <list>
 #include <thread>
-#include <utility>
-#include <vector>
-
-#include <glog/logging.h>
 
 #include "yb/client/auto_flags_manager.h"
 #include "yb/client/client.h"
@@ -88,7 +84,7 @@
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver-path-handlers.h"
 #include "yb/tserver/tserver_service.proxy.h"
-#include "yb/tserver/xcluster_consumer.h"
+#include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/backup_service.h"
 
 #include "yb/cdc/cdc_service.h"
@@ -100,6 +96,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/net/sockaddr.h"
+#include "yb/util/pg_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/size_literals.h"
 #include "yb/util/status.h"
@@ -233,8 +230,7 @@ DEFINE_NON_RUNTIME_uint32(ysql_conn_mgr_port, yb::pgwrapper::PgProcessConf::kDef
     "Ysql Connection Manager port to which clients will connect. This must be different from the "
     "postgres port set via pgsql_proxy_bind_address. Default is 5433.");
 
-namespace yb {
-namespace tserver {
+namespace yb::tserver {
 
 namespace {
 
@@ -289,11 +285,15 @@ class CDCServiceContextImpl : public cdc::CDCServiceContext {
 
   const std::string& permanent_uuid() const override { return tablet_server_.permanent_uuid(); }
 
-  std::unique_ptr<client::AsyncClientInitialiser> MakeClientInitializer(
+  std::unique_ptr<client::AsyncClientInitializer> MakeClientInitializer(
       const std::string& client_name, MonoDelta default_timeout) const override {
-    return std::make_unique<client::AsyncClientInitialiser>(
+    return std::make_unique<client::AsyncClientInitializer>(
         client_name, default_timeout, tablet_server_.permanent_uuid(), &tablet_server_.options(),
         tablet_server_.metric_entity(), tablet_server_.mem_tracker(), tablet_server_.messenger());
+  }
+
+  Result<uint32> GetAutoFlagsConfigVersion() const override {
+    return tablet_server_.ValidateAndGetAutoFlagsConfigVersion();
   }
 
  private:
@@ -305,14 +305,14 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
     : DbServerBase("TabletServer", opts, "yb.tabletserver", server::CreateMemTrackerForServer()),
       fail_heartbeats_for_tests_(false),
       opts_(opts),
-      auto_flags_manager_(new AutoFlagsManager("yb-tserver", fs_manager_.get())),
+      auto_flags_manager_(new AutoFlagsManager("yb-tserver", clock(), fs_manager_.get())),
       tablet_manager_(new TSTabletManager(fs_manager_.get(), this, metric_registry())),
       path_handlers_(new TabletServerPathHandlers(this)),
       maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
       master_config_index_(0) {
   SetConnectionContextFactory(rpc::CreateConnectionContextFactory<rpc::YBInboundConnectionContext>(
       FLAGS_inbound_rpc_memory_limit, mem_tracker()));
-  if (FLAGS_TEST_enable_db_catalog_version_mode) {
+  if (FLAGS_ysql_enable_db_catalog_version_mode) {
     ysql_db_catalog_version_index_used_ =
       std::make_unique<std::array<bool, TServerSharedData::kMaxNumDbCatalogVersions>>();
     ysql_db_catalog_version_index_used_->fill(false);
@@ -335,7 +335,7 @@ MonoDelta TabletServer::default_client_timeout() {
   return std::chrono::milliseconds(FLAGS_tserver_yb_client_default_timeout_ms);
 }
 
-void TabletServer::SetupAsyncClientInit(client::AsyncClientInitialiser* async_client_init) {
+void TabletServer::SetupAsyncClientInit(client::AsyncClientInitializer* async_client_init) {
   // If enabled, creates a proxy to call this tablet server locally.
   if (FLAGS_enable_direct_local_tablet_server_call) {
     proxy_ = std::make_shared<TabletServerServiceProxy>(proxy_cache_.get(), HostPort());
@@ -500,13 +500,17 @@ Status TabletServer::Init() {
     shared_object().SetPostgresAuthKey(RandomUniformInt<uint64_t>());
   }
 
+  shared_object().SetTserverUuid(fs_manager()->uuid());
+
   return Status::OK();
 }
 
 Status TabletServer::InitAutoFlags() {
+  RETURN_NOT_OK(auto_flags_manager_->Init(options_.HostsString()));
+
   if (!VERIFY_RESULT(auto_flags_manager_->LoadFromFile())) {
-    RETURN_NOT_OK(auto_flags_manager_->LoadFromMaster(
-        options_.HostsString(), *opts_.GetMasterAddresses(), ApplyNonRuntimeAutoFlags::kTrue));
+    RETURN_NOT_OK(
+        auto_flags_manager_->LoadFromMaster(options_.HostsString(), *opts_.GetMasterAddresses()));
   }
 
   return RpcAndWebServerBase::InitAutoFlags();
@@ -520,9 +524,13 @@ uint32_t TabletServer::GetAutoFlagConfigVersion() const {
   return auto_flags_manager_->GetConfigVersion();
 }
 
-Status TabletServer::SetAutoFlagConfig(const AutoFlagsConfigPB new_config) {
-  return auto_flags_manager_->LoadFromConfig(
-      std::move(new_config), ApplyNonRuntimeAutoFlags::kFalse);
+void TabletServer::HandleMasterHeartbeatResponse(
+    HybridTime heartbeat_sent_time, std::optional<AutoFlagsConfigPB> new_config) {
+  auto_flags_manager_->HandleMasterHeartbeatResponse(heartbeat_sent_time, std::move(new_config));
+}
+
+Result<uint32> TabletServer::ValidateAndGetAutoFlagsConfigVersion() const {
+  return auto_flags_manager_->ValidateAndGetConfigVersion();
 }
 
 AutoFlagsConfigPB TabletServer::TEST_GetAutoFlagConfig() const {
@@ -609,6 +617,7 @@ Status TabletServer::RegisterServices() {
   auto remote_bootstrap_service = std::make_shared<RemoteBootstrapServiceImpl>(
           fs_manager_.get(), tablet_manager_.get(), metric_entity(), this->MakeCloudInfoPB(),
           &this->proxy_cache());
+  remote_bootstrap_service_ = remote_bootstrap_service;
   LOG(INFO) << "yb::tserver::RemoteBootstrapServiceImpl created at " <<
     remote_bootstrap_service.get();
   RETURN_NOT_OK(RegisterService(
@@ -616,7 +625,8 @@ Status TabletServer::RegisterServices() {
   auto pg_client_service = std::make_shared<PgClientServiceImpl>(
       *this, tablet_manager_->client_future(), clock(),
       std::bind(&TabletServer::TransactionPool, this), mem_tracker(), metric_entity(),
-      &messenger()->scheduler(), XClusterContext(xcluster_safe_time_map_, xcluster_read_only_mode_),
+      messenger(), permanent_uuid(), &options(),
+      XClusterContext(xcluster_safe_time_map_, xcluster_read_only_mode_),
       &pg_node_level_mutation_counter_);
   pg_client_service_ = pg_client_service;
   LOG(INFO) << "yb::tserver::PgClientServiceImpl created at " << pg_client_service.get();
@@ -1142,8 +1152,8 @@ Status TabletServer::SetupMessengerBuilder(rpc::MessengerBuilder* builder) {
   return Status::OK();
 }
 
-XClusterConsumer* TabletServer::GetXClusterConsumer() const {
-  std::lock_guard l(cdc_consumer_mutex_);
+XClusterConsumerIf* TabletServer::GetXClusterConsumer() const {
+  std::lock_guard l(xcluster_consumer_mutex_);
   return xcluster_consumer_.get();
 }
 
@@ -1158,14 +1168,9 @@ Status TabletServer::SetUniverseKeyRegistry(
   return Status::OK();
 }
 
-Status TabletServer::CreateCDCConsumer() {
-  auto is_leader_clbk = [this](const string& tablet_id) {
-    auto tablet_peer = tablet_manager_->LookupTablet(tablet_id);
-    if (!tablet_peer) {
-      return false;
-    }
-    return tablet_peer->LeaderStatus() == consensus::LeaderStatus::LEADER_AND_READY;
-  };
+Status TabletServer::CreateXClusterConsumer() {
+  std::lock_guard l(xcluster_consumer_mutex_);
+  SCHECK(!xcluster_consumer_, IllegalState, "XCluster consumer already exists");
 
   auto get_leader_term = [this](const TabletId& tablet_id) {
     auto tablet_peer = tablet_manager_->LookupTablet(tablet_id);
@@ -1175,27 +1180,80 @@ Status TabletServer::CreateCDCConsumer() {
     return tablet_peer->LeaderTerm();
   };
 
-  xcluster_consumer_ = VERIFY_RESULT(XClusterConsumer::Create(
-      std::move(is_leader_clbk), std::move(get_leader_term), proxy_cache_.get(), this));
+  xcluster_consumer_ = VERIFY_RESULT(
+      tserver::CreateXClusterConsumer(std::move(get_leader_term), proxy_cache_.get(), this));
   return Status::OK();
 }
 
-Status TabletServer::SetConfigVersionAndConsumerRegistry(
-    int32_t cluster_config_version, const cdc::ConsumerRegistryPB* consumer_registry) {
-  std::lock_guard l(cdc_consumer_mutex_);
+Status TabletServer::XClusterHandleMasterHeartbeatResponse(
+    const master::TSHeartbeatResponsePB& resp) {
+  auto* xcluster_consumer = GetXClusterConsumer();
 
-  // Only create a cdc consumer if consumer_registry is not null.
-  if (!xcluster_consumer_ && consumer_registry) {
-    RETURN_NOT_OK(CreateCDCConsumer());
+  // Only create a xcluster consumer if consumer_registry is not null.
+  const cdc::ConsumerRegistryPB* consumer_registry = nullptr;
+  if (resp.has_consumer_registry()) {
+    consumer_registry = &resp.consumer_registry();
+
+    if (!xcluster_consumer) {
+      RETURN_NOT_OK(CreateXClusterConsumer());
+      xcluster_consumer = GetXClusterConsumer();
+    }
+
+    SetXClusterDDLOnlyMode(consumer_registry->role() != cdc::XClusterRole::ACTIVE);
   }
-  if (xcluster_consumer_) {
-    xcluster_consumer_->RefreshWithNewRegistryFromMaster(consumer_registry, cluster_config_version);
+
+  if (xcluster_consumer) {
+    int32_t cluster_config_version = -1;
+    if (!resp.has_cluster_config_version()) {
+      YB_LOG_EVERY_N_SECS(WARNING, 30)
+          << "Invalid heartbeat response without a cluster config version";
+    } else {
+      cluster_config_version = resp.cluster_config_version();
+    }
+
+    xcluster_consumer->HandleMasterHeartbeatResponse(consumer_registry, cluster_config_version);
   }
+
+  // Check whether the cluster is a producer of a CDC stream.
+  if (resp.has_xcluster_enabled_on_producer() && resp.xcluster_enabled_on_producer()) {
+    RETURN_NOT_OK(SetCDCServiceEnabled());
+  }
+
+  if (resp.has_xcluster_producer_registry() && resp.has_xcluster_config_version()) {
+    RETURN_NOT_OK(SetPausedXClusterProducerStreams(
+        resp.xcluster_producer_registry().paused_producer_stream_ids(),
+        resp.xcluster_config_version()));
+  }
+
   return Status::OK();
+}
+
+Status TabletServer::ValidateAndMaybeSetUniverseUuid(const UniverseUuid& universe_uuid) {
+  auto instance_universe_uuid_str = VERIFY_RESULT(
+      fs_manager_->GetUniverseUuidFromTserverInstanceMetadata());
+  auto instance_universe_uuid = VERIFY_RESULT(UniverseUuid::FromString(instance_universe_uuid_str));
+  if (!instance_universe_uuid.IsNil()) {
+    // If there is a mismatch between the received uuid and instance uuid, return an error.
+    SCHECK_EQ(universe_uuid, instance_universe_uuid, IllegalState,
+        Format("Received mismatched universe_uuid $0 from master when instance metadata "
+               "uuid is $1", universe_uuid.ToString(), instance_universe_uuid.ToString()));
+    return Status::OK();
+  }
+  return fs_manager_->SetUniverseUuidOnTserverInstanceMetadata(universe_uuid);
+}
+
+SchemaVersion TabletServer::GetMinXClusterSchemaVersion(const TableId& table_id,
+      const ColocationId& colocation_id) const {
+  std::lock_guard l(xcluster_consumer_mutex_);
+  if (!xcluster_consumer_) {
+    return cdc::kInvalidSchemaVersion;
+  }
+
+  return xcluster_consumer_->GetMinXClusterSchemaVersion(table_id, colocation_id);
 }
 
 int32_t TabletServer::cluster_config_version() const {
-  std::lock_guard l(cdc_consumer_mutex_);
+  std::lock_guard l(xcluster_consumer_mutex_);
   // If no CDC consumer, we will return -1, which will force the master to send the consumer
   // registry if one exists. If we receive one, we will create a new CDC consumer in
   // SetConsumerRegistry.
@@ -1232,7 +1290,7 @@ Status TabletServer::ReloadKeysAndCertificates() {
       server::SecureContextType::kInternal,
       options_.HostsString()));
 
-  std::lock_guard l(cdc_consumer_mutex_);
+  std::lock_guard l(xcluster_consumer_mutex_);
   if (xcluster_consumer_) {
     RETURN_NOT_OK(xcluster_consumer_->ReloadCertificates());
   }
@@ -1267,5 +1325,4 @@ void TabletServer::SetXClusterDDLOnlyMode(bool is_xcluster_read_only_mode) {
   xcluster_read_only_mode_.store(is_xcluster_read_only_mode, std::memory_order_release);
 }
 
-}  // namespace tserver
-}  // namespace yb
+}  // namespace yb::tserver

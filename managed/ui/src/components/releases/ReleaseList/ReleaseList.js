@@ -11,6 +11,9 @@ import { YBLoadingCircleIcon } from '../../../components/common/indicators';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { isAvailable, showOrRedirect } from '../../../utils/LayoutUtils';
 
+import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { isRbacEnabled } from '../../../redesign/features/rbac/common/RbacUtils';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import './ReleaseList.scss';
 
 const versionReg = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)-(\S*)$/;
@@ -147,6 +150,18 @@ export default class ReleaseList extends Component {
         return;
       }
 
+      const canToggleStatus = hasNecessaryPerm(ApiPermissionMap.MODIFY_RELEASE);
+
+      const canDeleteRelease = hasNecessaryPerm(ApiPermissionMap.DELETE_RELEASE_BY_NAME);
+
+      const getDisabledStatus = (action) => {
+        if (!isRbacEnabled) {
+          return !isAvailable(currentCustomer.data.features, 'universes.actions');
+        }
+        if (action === 'DELETE') return !canDeleteRelease;
+        return !canToggleStatus;
+      };
+
       return (
         <DropdownButton
           className="btn btn-default"
@@ -162,7 +177,7 @@ export default class ReleaseList extends Component {
                 currentRow={row}
                 actionType={actionType}
                 onModalSubmit={self.onModalSubmit}
-                disabled={!isAvailable(currentCustomer.data.features, 'universes.actions')}
+                disabled={getDisabledStatus()}
               />
             );
           })}
@@ -190,14 +205,22 @@ export default class ReleaseList extends Component {
                   onClick={this.refreshRelease}
                   disabled={!isAvailable(currentCustomer.data.features, 'universes.actions')}
                 />
-                <TableAction
-                  className="table-action"
-                  btnClass={'btn-default'}
-                  actionType="import-release"
-                  isMenuItem={false}
-                  onSubmit={self.onModalSubmit}
-                  disabled={!isAvailable(currentCustomer.data.features, 'universes.actions')}
-                />
+                <RbacValidator
+                  accessRequiredOn={ApiPermissionMap.CREATE_RELEASE}
+                  isControl
+                  overrideStyle={{
+                    float: 'right',
+                  }}
+                >
+                  <TableAction
+                    className="table-action"
+                    btnClass={'btn-default'}
+                    actionType="import-release"
+                    isMenuItem={false}
+                    onSubmit={self.onModalSubmit}
+                    disabled={!isAvailable(currentCustomer.data.features, 'universes.actions') || !hasNecessaryPerm(ApiPermissionMap.CREATE_RELEASE)}
+                  />
+                </RbacValidator>
               </div>
             </div>
             <h2 className="content-title">{title}</h2>

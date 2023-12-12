@@ -16,29 +16,10 @@ Use the `ALTER SEQUENCE` statement to change the definition of a sequence in the
 
 ## Syntax
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammar Icon">
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <img src="/icons/diagram.svg" alt="Diagram Icon">
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_sequence,name,alter_sequence_options.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/alter_sequence,name,alter_sequence_options.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  alter_sequence,
+  alter_sequence_options
+{{%/ebnf%}}
 
 ## Semantics
 
@@ -50,35 +31,39 @@ Specify the name of the sequence (*sequence_name*). An error is raised if a sequ
 
 ### *sequence_options*
 
-#### AS *datatype*
+#### AS *seq_data_type*
 
 Changes the data type of a sequence. This automatically changes the minimum and maximum values of the sequence if the previous values were beyond what the new type allows. Valid types are `smallint`, `integer`, and `bigint`.
 
-#### INCREMENT BY *increment*
+#### INCREMENT BY *int_literal*
 
 Specify the difference between consecutive values in the sequence. Default is `1`.
 
-#### MINVALUE *minvalue* | NO MINVALUE
+#### MINVALUE *int_literal* | NO MINVALUE
 
  Specify the minimum value allowed in the sequence. If this value is reached (in a sequence with a negative increment), `nextval()` will return an error. If `NO MINVALUE` is specified, the default value will be used. Default is 1.
 
-#### MAXVALUE *maxvalue* | NO MAXVALUE
+#### MAXVALUE *int_literal* | NO MAXVALUE
 
 Specify the maximum value allowed in the sequence. If this value is reached, `nextval()` will return an error. If `NO MAXVALUE` is specified, the default will be used. Default is `2⁶³-1`.
 
-#### START WITH *start*
+#### START WITH *int_literal*
 
 Specify the first value in the sequence. `start` cannot be less than `minvalue`. Default is `1`.
 
-#### RESTART [ [ WITH ] *restart* ] ]
+#### RESTART [ [ WITH ] *int_literal* ] ]
 
 Change the current value of the sequence. If no value is specified, the current value will be set to the last value specified with `START [ WITH ]` when the sequence was created or altered.
 
-#### CACHE *cache*
+#### CACHE *int_literal*
 
 Specify how many numbers from the sequence to cache in the client. Default is `1`.
 
 When YB-TServer [ysql_sequence_cache_minval](../../../../../reference/configuration/yb-tserver/#ysql-sequence-cache-minval) configuration flag is not explicitly turned off (set to `0`), the maximum value of the flag and the cache clause will be used.
+
+#### [ NO ] CYCLE
+
+If `CYCLE` is specified, the sequence will wrap around once it has reached `minvalue` or `maxvalue`. If `maxvalue` was reached, `minvalue` will be the next number in the sequence. If `minvalue` was reached (for a descending sequence), `maxvalue` will be the next number in a sequence. `NO CYCLE` is the default.
 
 #### OWNED BY *table_name.table_column* | NONE
 

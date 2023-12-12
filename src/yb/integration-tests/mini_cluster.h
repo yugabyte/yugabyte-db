@@ -45,6 +45,7 @@
 
 #include "yb/gutil/macros.h"
 
+#include "yb/integration-tests/external_yb_controller.h"
 #include "yb/integration-tests/mini_cluster_base.h"
 
 #include "yb/master/master_fwd.h"
@@ -160,6 +161,14 @@ class MiniCluster : public MiniClusterBase {
   Status AddTServerToLeaderBlacklist(const tserver::MiniTabletServer& ts);
   Status ClearBlacklist();
 
+  Status AddTServerToBlacklist(size_t idx) {
+    return AddTServerToBlacklist(*mini_tablet_server(idx));
+  }
+
+  Status AddTServerToLeaderBlacklist(size_t idx) {
+    return AddTServerToLeaderBlacklist(*mini_tablet_server(idx));
+  }
+
   // If this cluster is configured for a single non-distributed
   // master, return the single master. Exits with a CHECK failure if
   // there are multiple masters.
@@ -198,6 +207,8 @@ class MiniCluster : public MiniClusterBase {
 
   std::string GetTabletServerFsRoot(size_t idx);
 
+  std::string GetYbControllerServerFsRoot(size_t idx);
+
   std::string GetTabletServerDrive(size_t idx, int drive_index);
 
   // The comma separated string of the master adresses host/ports from current list of masters.
@@ -223,8 +234,9 @@ class MiniCluster : public MiniClusterBase {
   // count. Returns Status::TimedOut if the desired count is not achieved
   // within kRegistrationWaitTimeSeconds.
   Status WaitForTabletServerCount(size_t count);
-  Status WaitForTabletServerCount(
-      size_t count, std::vector<std::shared_ptr<master::TSDescriptor>>* descs);
+  Status WaitForTabletServerCount(size_t count,
+                                  std::vector<std::shared_ptr<master::TSDescriptor>>* descs,
+                                  bool live_only = false);
 
   // Wait for all tablet servers to be registered. Returns Status::TimedOut if the desired count is
   // not achieved within kRegistrationWaitTimeSeconds.
@@ -266,6 +278,8 @@ class MiniCluster : public MiniClusterBase {
 
   MiniMasters mini_masters_;
   MiniTabletServers mini_tablet_servers_;
+
+  std::vector<scoped_refptr<ExternalYbController>> yb_controllers_;
 
   PortPicker port_picker_;
 };
@@ -404,8 +418,10 @@ Status WaitForPeersPostSplitCompacted(
     MonoDelta timeout = MonoDelta::FromSeconds(15) * kTimeMultiplier);
 
 Status WaitForTableIntentsApplied(
-    MiniCluster* cluster, const TableId& table_id,
-    MonoDelta timeout = MonoDelta::FromSeconds(30));
+    MiniCluster* cluster, const TableId& table_id, MonoDelta timeout = MonoDelta::FromSeconds(30));
+
+Status WaitForAllIntentsApplied(
+    MiniCluster* cluster, MonoDelta timeout = MonoDelta::FromSeconds(30));
 
 // Activate compaction time logging on existing cluster tablet server.
 // Multiple calls will result in duplicate logging.

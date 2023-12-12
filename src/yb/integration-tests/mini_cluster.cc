@@ -258,6 +258,32 @@ Status MiniCluster::StartAsync(
     }
   }
 
+  if (UseYbController()) {
+    // We need 1 yb controller server for each tserver.
+    // YB Controller uses the same IP as corresponding tserver.
+    yb_controllers_.reserve(options_.num_tablet_servers);
+    // All YB Controller servers need to be on the same port.
+    const auto server_port = port_picker_.AllocateFreePort();
+    for (size_t i = 0; i < options_.num_tablet_servers; ++i) {
+      const auto yb_controller_log_dir = JoinPathSegments(GetYbControllerServerFsRoot(i), "logs");
+      const auto yb_controller_tmp_dir = JoinPathSegments(GetYbControllerServerFsRoot(i), "tmp");
+      RETURN_NOT_OK(Env::Default()->CreateDirs(yb_controller_log_dir));
+      RETURN_NOT_OK(Env::Default()->CreateDirs(yb_controller_tmp_dir));
+      const auto server_address = mini_tablet_servers_[i]->bound_http_addr().address().to_string();
+      scoped_refptr<ExternalYbController> yb_controller = new ExternalYbController(
+          yb_controller_log_dir, yb_controller_tmp_dir, server_address, GetToolPath("yb-admin"),
+          GetToolPath("../../../bin", "yb-ctl"), GetToolPath("../../../bin", "ycqlsh"),
+          GetPgToolPath("ysql_dump"), GetPgToolPath("ysql_dumpall"), GetPgToolPath("ysqlsh"),
+          server_port, master_web_ports_[0], tserver_web_ports_[i], server_address,
+          GetYbcToolPath("yb-controller-server"), /*extra_flags*/ {});
+
+      RETURN_NOT_OK_PREPEND(
+          yb_controller->Start(),
+          "Failed to start YB Controller at index " + std::to_string(i + 1));
+      yb_controllers_.push_back(yb_controller);
+    }
+  }
+
   running_ = true;
   return Status::OK();
 }
@@ -326,6 +352,14 @@ Status MiniCluster::RestartSync() {
     LOG(INFO) << "Waiting for catalog manager at " << master_server->permanent_uuid();
     CHECK_OK(master_server->WaitForCatalogManagerInit());
   }
+
+  if (UseYbController()) {
+    LOG(INFO) << "Restart YB Controller server(s)...";
+    for (const auto& yb_controller : yb_controllers_) {
+      CHECK_OK(yb_controller->Restart());
+    }
+  }
+
   LOG(INFO) << string(80, '-');
   LOG(INFO) << __FUNCTION__ << " done";
   LOG(INFO) << string(80, '-');
@@ -373,7 +407,9 @@ Status MiniCluster::AddTabletServer(const tserver::TabletServerOptions& extra_op
   if (options_.ts_env) {
     tablet_server->options()->env = options_.ts_env;
   }
+
   RETURN_NOT_OK(tablet_server->Start(tserver::WaitTabletsBootstrapped::kFalse));
+
   mini_tablet_servers_.push_back(tablet_server);
   return Status::OK();
 }
@@ -575,6 +611,11 @@ void MiniCluster::Shutdown() {
   }
   mini_masters_.clear();
 
+  for (const auto& yb_controller : yb_controllers_) {
+    yb_controller->Shutdown();
+  }
+  yb_controllers_.clear();
+
   running_ = false;
 }
 
@@ -638,6 +679,10 @@ string MiniCluster::GetTabletServerFsRoot(size_t idx) {
   return JoinPathSegments(fs_root_, Substitute("ts-$0-root", idx + 1));
 }
 
+string MiniCluster::GetYbControllerServerFsRoot(size_t idx) {
+  return JoinPathSegments(fs_root_, Substitute("ybc-$0-root", idx + 1));
+}
+
 string MiniCluster::GetTabletServerDrive(size_t idx, int drive_index) {
   if (options_.num_drives == 1) {
     return GetTabletServerFsRoot(idx);
@@ -690,18 +735,19 @@ Status MiniCluster::WaitForAllTabletServers() {
 
 Status MiniCluster::WaitForTabletServerCount(size_t count) {
   vector<shared_ptr<master::TSDescriptor> > descs;
-  return WaitForTabletServerCount(count, &descs);
+  return WaitForTabletServerCount(count, &descs, false);
 }
 
 Status MiniCluster::WaitForTabletServerCount(size_t count,
-                                             vector<shared_ptr<TSDescriptor> >* descs) {
+                                             vector<shared_ptr<TSDescriptor> >* descs,
+                                             bool live_only) {
   Stopwatch sw;
   sw.start();
   while (sw.elapsed().wall_seconds() < FLAGS_TEST_mini_cluster_registration_wait_time_sec) {
     auto leader = GetLeaderMiniMaster();
     if (leader.ok()) {
       (*leader)->ts_manager().GetAllDescriptors(descs);
-      if (descs->size() == count) {
+      if (live_only || descs->size() == count) {
         // GetAllDescriptors() may return servers that are no longer online.
         // Do a second step of verification to verify that the descs that we got
         // are aligned (same uuid/seqno) with the TSs that we have in the cluster.
@@ -711,7 +757,9 @@ Status MiniCluster::WaitForTabletServerCount(size_t count,
             auto ts = mini_tablet_server->server();
             if (ts->instance_pb().permanent_uuid() == desc->permanent_uuid() &&
                 ts->instance_pb().instance_seqno() == desc->latest_seqno()) {
-              match_count++;
+              if (!live_only || desc->IsLive()) {
+                match_count++;
+              }
               break;
             }
           }
@@ -925,6 +973,8 @@ std::vector<tablet::TabletPeerPtr> ListTabletPeers(
     auto peers = server->tablet_manager()->GetTabletPeers();
     for (const auto& peer : peers) {
       WARN_NOT_OK(
+          // Checking for consensus is not enough here, we also need to not wait for peers
+          // which are being shut down -- these peers are being filtered out by next statement.
           WaitFor(
               [peer] { return peer->GetConsensus() || peer->IsShutdownStarted(); },
               5s,
@@ -1458,6 +1508,10 @@ Status WaitForTableIntentsApplied(
       return IsActive(*peer) && IsForTable(*peer, table_id);
     });
   }, timeout, "Did not apply write transactions from intents db in time.");
+}
+
+Status WaitForAllIntentsApplied(MiniCluster* cluster, MonoDelta timeout) {
+  return WaitForTableIntentsApplied(cluster, /* table_id = */ "", timeout);
 }
 
 void ActivateCompactionTimeLogging(MiniCluster* cluster) {

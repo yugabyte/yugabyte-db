@@ -3,7 +3,6 @@ title: C libpq Driver for YSQL
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a C application using libpq driver
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   stable:
     identifier: libpq-c-driver
@@ -29,6 +28,10 @@ type: docs
   </li>
 </ul>
 
+[libpq](https://www.postgresql.org/docs/11/libpq.html) is the C client library for connecting to and interacting with PostgreSQL databases. libpq is also the underlying engine used in other PostgreSQL application interfaces. The libpq client library supports the [SCRAM-SHA-256 authentication method](../../../secure/authentication/password-authentication/#scram-sha-256).
+
+For details and documentation, refer to [libpq - C Library](https://www.postgresql.org/docs/11/libpq.html) for PostgreSQL 11 (on which YugabyteDB is based).
+
 ## Prerequisites
 
 The tutorial assumes that you have:
@@ -45,7 +48,7 @@ The `libpq` C driver is included in the YugabyteDB installation. You can use it 
 $ export LD_LIBRARY_PATH=<yugabyte-install-dir>/postgres/lib
 ```
 
-Alternatively, you can download the PostgreSQL binaries and source from the [PostgreSQL Downloads](https://www.postgresql.org/download/) page.
+Alternatively, you can download the PostgreSQL binaries and source from the [PostgreSQL Downloads](https://www.postgresql.org/download/) page, and Homebrew users on macOS can install libpq using `brew install libpq`.
 
 ## Create the sample C application
 

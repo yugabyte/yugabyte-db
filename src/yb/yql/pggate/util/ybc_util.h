@@ -114,6 +114,11 @@ extern bool yb_enable_hash_batch_in;
 extern bool yb_enable_add_column_missing_default;
 
 /*
+ * Guc variable that enables replication commands.
+ */
+extern bool yb_enable_replication_commands;
+
+/*
  * xcluster consistency level
  */
 #define XCLUSTER_CONSISTENCY_TABLET 0
@@ -124,6 +129,13 @@ extern bool yb_enable_add_column_missing_default;
  * to the visibility of all data in the database.
  */
 extern int yb_xcluster_consistency_level;
+
+/*
+ * Allows user to query a databases as of the point in time.
+ * yb_read_time is UNIX timestamp in microsecond.
+ * Zero value means reading data as of current time.
+ */
+extern uint64_t yb_read_time;
 
 /*
  * Allows for customizing the number of rows to be prefetched.
@@ -137,6 +149,8 @@ bool YBCStatusIsNotFound(YBCStatus s);
 bool YBCStatusIsDuplicateKey(YBCStatus s);
 bool YBCStatusIsSnapshotTooOld(YBCStatus s);
 bool YBCStatusIsTryAgain(YBCStatus s);
+bool YBCStatusIsAlreadyPresent(YBCStatus s);
+bool YBCStatusIsReplicationSlotLimitReached(YBCStatus s);
 uint32_t YBCStatusPgsqlError(YBCStatus s);
 uint16_t YBCStatusTransactionError(YBCStatus s);
 void YBCFreeStatus(YBCStatus s);
@@ -235,6 +249,8 @@ const char* YBCGetStackTrace();
 void YBCInitThreading();
 
 double YBCEvalHashValueSelectivity(int32_t hash_low, int32_t hash_high);
+
+void YBCGenerateAshRootRequestId(unsigned char *root_request_id);
 
 #ifdef __cplusplus
 } // extern "C"

@@ -3,7 +3,6 @@ title: Tablespaces
 linkTitle: Tablespaces
 description: Tablespaces in YSQL
 headcontent: Control the placement of data
-image: /images/section_icons/secure/create-roles.png
 menu:
   stable:
     identifier: going-beyond-sql-tablespaces
@@ -101,6 +100,12 @@ CREATE TABLESPACE us_east_1a_zone_tablespace
 
 CREATE TABLE single_zone_table (id INTEGER, field text)
   TABLESPACE us_east_1a_zone_tablespace SPLIT INTO 1 TABLETS;
+```
+
+To view your tablespaces, you can enter the following command:
+
+```sql
+SELECT * FROM pg_tablespace;
 ```
 
 Note from the preceding cluster configuration that the nodes in us-east-1a were 172.152.29.181, 172.152.27.126, and 172.152.22.180. By navigating to the table view in the YB-Master UI, you can verify that the tablet created for this table was indeed placed in us_east_1a_zone:

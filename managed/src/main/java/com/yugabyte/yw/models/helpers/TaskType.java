@@ -169,6 +169,9 @@ public enum TaskType {
   KubernetesCheckVolumeExpansion(
       com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckVolumeExpansion.class),
 
+  KubernetesPostExpansionCheckVolume(
+      com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesPostExpansionCheckVolume.class),
+
   StartMasterOnNode(com.yugabyte.yw.commissioner.tasks.StartMasterOnNode.class),
 
   DeleteXClusterConfig(com.yugabyte.yw.commissioner.tasks.DeleteXClusterConfig.class),
@@ -183,13 +186,23 @@ public enum TaskType {
 
   RestartXClusterConfig(com.yugabyte.yw.commissioner.tasks.RestartXClusterConfig.class),
 
+  RestartDrConfig(com.yugabyte.yw.commissioner.tasks.RestartXClusterConfig.class),
+
+  SyncDrConfig(com.yugabyte.yw.commissioner.tasks.SyncXClusterConfig.class),
+
+  SetTablesDrConfig(com.yugabyte.yw.commissioner.tasks.EditXClusterConfig.class),
+
   CreateDrConfig(com.yugabyte.yw.commissioner.tasks.CreateDrConfig.class),
 
   DeleteDrConfig(com.yugabyte.yw.commissioner.tasks.DeleteDrConfig.class),
 
   FailoverDrConfig(com.yugabyte.yw.commissioner.tasks.FailoverDrConfig.class),
 
+  SwitchoverDrConfig(com.yugabyte.yw.commissioner.tasks.SwitchoverDrConfig.class),
+
   EditDrConfig(com.yugabyte.yw.commissioner.tasks.EditDrConfig.class),
+
+  ReinstallNodeAgent(com.yugabyte.yw.commissioner.tasks.ReinstallNodeAgent.class),
 
   // Tasks belonging to subtasks classpath
   AddAuthorizedKey(com.yugabyte.yw.commissioner.tasks.subtasks.AddAuthorizedKey.class),
@@ -252,6 +265,8 @@ public enum TaskType {
   CheckUnderReplicatedTablets(
       com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets.class),
 
+  CheckFollowerLag(com.yugabyte.yw.commissioner.tasks.subtasks.CheckFollowerLag.class),
+
   ManipulateDnsRecordTask(
       com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask.class),
 
@@ -278,6 +293,9 @@ public enum TaskType {
 
   UpdateUniverseYbcDetails(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseYbcDetails.class),
+
+  UpdateUniverseYbcGflagsDetails(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseYbcGflagsDetails.class),
 
   VerifyNodeSSHAccess(com.yugabyte.yw.commissioner.tasks.subtasks.VerifyNodeSSHAccess.class),
 
@@ -333,6 +351,9 @@ public enum TaskType {
   DeleteXClusterConfigEntry(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteXClusterConfigEntry.class),
 
+  DeleteXClusterTableConfigEntry(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteXClusterTableConfigEntry.class),
+
   DeleteDrConfigEntry(com.yugabyte.yw.commissioner.tasks.subtasks.DeleteDrConfigEntry.class),
 
   WaitForReplicationDrain(
@@ -345,6 +366,8 @@ public enum TaskType {
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetReplicationPaused.class),
 
   ChangeXClusterRole(com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ChangeXClusterRole.class),
+
+  SetDrStates(com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetDrStates.class),
 
   SetRestoreTime(com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetRestoreTime.class),
 
@@ -417,6 +440,12 @@ public enum TaskType {
 
   RestoreUniverseKeysYbc(com.yugabyte.yw.commissioner.tasks.subtasks.RestoreUniverseKeysYbc.class),
 
+  RestorePreflightValidate(
+      com.yugabyte.yw.commissioner.tasks.subtasks.RestorePreflightValidate.class),
+
+  BackupPreflightValidate(
+      com.yugabyte.yw.commissioner.tasks.subtasks.BackupPreflightValidate.class),
+
   WaitForLeadersOnPreferredOnly(
       com.yugabyte.yw.commissioner.tasks.subtasks.WaitForLeadersOnPreferredOnly.class),
 
@@ -476,6 +505,11 @@ public enum TaskType {
 
   PromoteAutoFlags(com.yugabyte.yw.commissioner.tasks.subtasks.PromoteAutoFlags.class),
 
+  RollbackAutoFlags(com.yugabyte.yw.commissioner.tasks.subtasks.RollbackAutoFlags.class),
+
+  StoreAutoFlagConfigVersion(
+      com.yugabyte.yw.commissioner.tasks.subtasks.StoreAutoFlagConfigVersion.class),
+
   CheckUpgrade(com.yugabyte.yw.commissioner.tasks.subtasks.check.CheckUpgrade.class),
 
   ResizeNode(com.yugabyte.yw.commissioner.tasks.upgrade.ResizeNode.class),
@@ -496,6 +530,14 @@ public enum TaskType {
   ThirdpartySoftwareUpgrade(
       com.yugabyte.yw.commissioner.tasks.upgrade.ThirdpartySoftwareUpgrade.class),
 
+  ModifyAuditLoggingConfig(
+      com.yugabyte.yw.commissioner.tasks.upgrade.ModifyAuditLoggingConfig.class),
+
+  ManageOtelCollector(com.yugabyte.yw.commissioner.tasks.subtasks.ManageOtelCollector.class),
+
+  UpdateAndPersistAuditLoggingConfig(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistAuditLoggingConfig.class),
+
   MarkUniverseForHealthScriptReUpload(
       com.yugabyte.yw.commissioner.tasks.subtasks.MarkUniverseForHealthScriptReUpload.class),
 
@@ -515,6 +557,8 @@ public enum TaskType {
       com.yugabyte.yw.commissioner.tasks.subtasks.InstallYbcSoftwareOnK8s.class),
 
   UpgradeUniverseYbc(com.yugabyte.yw.commissioner.tasks.UpgradeUniverseYbc.class),
+
+  UpgradeYbcGFlags(com.yugabyte.yw.commissioner.tasks.UpgradeYbcGFlags.class),
 
   DisableYbc(com.yugabyte.yw.commissioner.tasks.DisableYbc.class),
 
@@ -542,6 +586,9 @@ public enum TaskType {
   UpdateClusterAPIDetails(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterAPIDetails.class),
 
+  UpdateUniverseState(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseSoftwareUpgradeState.class),
+
   UpdateUniverseCommunicationPorts(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseCommunicationPorts.class),
 
@@ -553,7 +600,28 @@ public enum TaskType {
 
   SoftwareUpgradeYB(com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareUpgradeYB.class),
 
-  ReprovisionNode(com.yugabyte.yw.commissioner.tasks.ReprovisionNode.class);
+  SoftwareKubernetesUpgradeYB(
+      com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareKubernetesUpgradeYB.class),
+
+  FinalizeUpgrade(com.yugabyte.yw.commissioner.tasks.upgrade.FinalizeUpgrade.class),
+
+  RollbackUpgrade(com.yugabyte.yw.commissioner.tasks.upgrade.RollbackUpgrade.class),
+
+  RollbackKubernetesUpgrade(
+      com.yugabyte.yw.commissioner.tasks.upgrade.RollbackKubernetesUpgrade.class),
+
+  ReprovisionNode(com.yugabyte.yw.commissioner.tasks.ReprovisionNode.class),
+
+  UpdateUniverseIntent(com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseIntent.class),
+
+  FreezeUniverse(com.yugabyte.yw.commissioner.tasks.subtasks.FreezeUniverse.class),
+
+  LdapUniverseSync(com.yugabyte.yw.commissioner.tasks.LdapUnivSync.class),
+
+  // Tasks belonging to subtasks.ldap classpath
+  QueryLdapServer(com.yugabyte.yw.commissioner.tasks.subtasks.ldapsync.QueryLdapServer.class),
+
+  DbLdapSync(com.yugabyte.yw.commissioner.tasks.subtasks.ldapsync.DbLdapSync.class);
 
   private final Class<? extends ITask> taskClass;
 
@@ -601,6 +669,11 @@ public enum TaskType {
           .put(SoftwareKubernetesUpgrade, 48)
           .put(UpdateKubernetesDiskSize, 49)
           .put(UpgradeKubernetesUniverse, 50)
+          .put(FinalizeUpgrade, 51)
+          .put(RollbackUpgrade, 52)
+          .put(SoftwareKubernetesUpgradeYB, 53)
+          .put(RollbackKubernetesUpgrade, 54)
+          .put(ModifyAuditLoggingConfig, 55)
           // Node operations (70-89):
           .put(AddNodeToUniverse, 70)
           .put(DeleteNodeFromUniverse, 71)
@@ -640,6 +713,8 @@ public enum TaskType {
           .put(RunApiTriggeredHooks, 134)
           .put(SetUniverseKey, 135)
           .put(UpdateLoadBalancerConfig, 136)
+          .put(LdapUniverseSync, 137)
+          .put(UpgradeYbcGFlags, 138)
           .build();
 
   TaskType(Class<? extends ITask> taskClass) {

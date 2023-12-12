@@ -4,7 +4,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonProperty;
+import com.yugabyte.yw.common.DrConfigStates.State;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.XClusterConfig.ConfigType;
 import com.yugabyte.yw.models.XClusterConfig.TableType;
@@ -14,6 +14,10 @@ import io.ebean.Model;
 import io.ebean.annotation.Transactional;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.OneToMany;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -23,10 +27,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import javax.persistence.CascadeType;
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.OneToMany;
 import lombok.Getter;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
@@ -61,6 +61,13 @@ public class DrConfig extends Model {
   @JsonIgnore
   private List<XClusterConfig> xClusterConfigs;
 
+  /**
+   * In the application logic, <em>NEVER<em/> read from the following variable. This is only used
+   * for UI purposes.
+   */
+  @ApiModelProperty(value = "The state of the DR config")
+  private State state;
+
   @Transactional
   public static DrConfig create(
       String name, UUID sourceUniverseUUID, UUID targetUniverseUUID, Set<String> tableIds) {
@@ -68,6 +75,7 @@ public class DrConfig extends Model {
     drConfig.name = name;
     drConfig.setCreateTime(new Date());
     drConfig.setModifyTime(new Date());
+    drConfig.setState(State.Initializing);
 
     // Create a corresponding xCluster object.
     XClusterConfig xClusterConfig =
@@ -97,7 +105,7 @@ public class DrConfig extends Model {
     return xClusterConfig;
   }
 
-  @JsonProperty("xClusterConfig")
+  @JsonIgnore
   public XClusterConfig getActiveXClusterConfig() {
     if (xClusterConfigs.isEmpty()) {
       throw new IllegalStateException(
@@ -113,7 +121,7 @@ public class DrConfig extends Model {
         .orElseThrow(() -> new IllegalStateException("No active xCluster config found"));
   }
 
-  @JsonProperty("failoverXClusterConfig")
+  @JsonIgnore
   public XClusterConfig getFailoverXClusterConfig() {
     return xClusterConfigs.stream().filter(XClusterConfig::isSecondary).findFirst().orElse(null);
   }

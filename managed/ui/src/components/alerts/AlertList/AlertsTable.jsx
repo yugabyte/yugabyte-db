@@ -9,11 +9,13 @@ import AlertDetails from './AlertDetails';
 import { YBButton } from '../../common/forms/fields';
 import { isAvailable } from '../../../utils/LayoutUtils';
 
-import './AlertsTable.scss';
 import { toast } from 'react-toastify';
 import { Label } from 'react-bootstrap';
 import { timeFormatter } from '../../../utils/TableFormatters';
 import { useSearchParam } from 'react-use';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import './AlertsTable.scss';
 
 const DEFAULT_SORT_COLUMN = 'createTime';
 const DEFAULT_SORT_DIRECTION = 'DESC';
@@ -192,15 +194,21 @@ export default function AlertsTable({ filters, customer }) {
                       return '';
                     }
                     return (
-                      <YBButton
-                        btnText="Acknowledge"
-                        btnStyle="link"
-                        btnClass="acknowledge-link-button"
-                        onClick={(e) => {
-                          e.preventDefault();
-                          acknowledge.mutateAsync(row);
-                        }}
-                      />
+                      <RbacValidator
+                        accessRequiredOn={ApiPermissionMap.ACKNOWLEDGE_ALERT}
+                        isControl
+                      >
+                        <YBButton
+                          btnText="Acknowledge"
+                          btnStyle="link"
+                          btnClass="acknowledge-link-button"
+                          onClick={(e) => {
+                            e.preventDefault();
+                            acknowledge.mutateAsync(row);
+                          }}
+                          data-testid="Acknowledge-Alert"
+                        />
+                      </RbacValidator>
                     );
                   }}
                 >

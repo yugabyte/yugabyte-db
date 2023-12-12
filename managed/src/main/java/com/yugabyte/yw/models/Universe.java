@@ -19,6 +19,8 @@ import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.concurrent.KeyLock;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
+import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -35,6 +37,15 @@ import io.ebean.SqlQuery;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.Transactional;
 import io.ebean.annotation.TxIsolation;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.PostRemove;
+import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
+import jakarta.persistence.UniqueConstraint;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -48,17 +59,13 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
-import javax.persistence.CascadeType;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.OneToMany;
-import javax.persistence.Table;
-import javax.persistence.Transient;
-import javax.persistence.UniqueConstraint;
+import lombok.Builder;
+import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -80,6 +87,9 @@ public class Universe extends Model {
   public static final String IS_MULTIREGION = "isMultiRegion";
   // Flag for whether we have https on for master/tserver UI
   public static final String HTTPS_ENABLED_UI = "httpsEnabledUI";
+  // Whether all the Kubernetes resources are labeled with universe
+  // name, zone name, etc.
+  public static final String LABEL_K8S_RESOURCES = "labelK8sResources";
 
   // This is a key lock for Universe by UUID.
   public static final KeyLock<UUID> UNIVERSE_KEY_LOCK = new KeyLock<UUID>();
@@ -281,7 +291,9 @@ public class Universe extends Model {
    * @return list of UUIDs of all universes
    */
   public static Set<UUID> getAllUUIDs(Customer customer) {
-    return ImmutableSet.copyOf(find.query().where().eq("customer_id", customer.getId()).findIds());
+    List<UUID> universeList = find.query().where().eq("customer_id", customer.getId()).findIds();
+    Set<UUID> universeUUIDs = new HashSet<UUID>(universeList);
+    return universeUUIDs;
   }
 
   public static Set<UUID> getAllUUIDs() {
@@ -427,6 +439,23 @@ public class Universe extends Model {
    */
   public interface UniverseUpdater {
     void run(Universe universe);
+
+    // Returns the config associated with this updater.
+    default UniverseUpdaterConfig getConfig() {
+      return UniverseUpdaterConfig.builder().build();
+    }
+  }
+
+  /** Config parameters for the universe updater. */
+  @Builder
+  @Data
+  public static class UniverseUpdaterConfig {
+    @Builder.Default private int expectedUniverseVersion = -1;
+    private boolean checkSuccess;
+    private boolean forceUpdate;
+    @Builder.Default private boolean freezeUniverse = true;
+    private boolean ignoreAbsence;
+    private Consumer<Universe> callback;
   }
 
   /**
@@ -482,6 +511,14 @@ public class Universe extends Model {
    */
   public Collection<NodeDetails> getNodes() {
     return getUniverseDetails().nodeDetailsSet;
+  }
+
+  /** Returns the list of nodes based on the placement/cluster uuid for this universe. */
+  @JsonIgnore
+  public List<NodeDetails> getNodesByCluster(UUID placementUuid) {
+    return getNodes().stream()
+        .filter(n -> n.placementUuid.equals(placementUuid))
+        .collect(Collectors.toList());
   }
 
   /**
@@ -543,7 +580,9 @@ public class Universe extends Model {
   public NodeDetails getNodeByPrivateIP(String nodeIP) {
     Collection<NodeDetails> nodes = getNodes();
     for (NodeDetails node : nodes) {
-      if (node.cloudInfo.private_ip.equals(nodeIP)) {
+      if (node.cloudInfo != null
+          && StringUtils.isNotBlank(node.cloudInfo.private_ip)
+          && node.cloudInfo.private_ip.equals(nodeIP)) {
         return node;
       }
     }
@@ -599,6 +638,19 @@ public class Universe extends Model {
     if (filteredServers.isEmpty()) {
       LOG.trace(
           "No live nodes for getLiveTServersInPrimaryCluster in universe {}", getUniverseUUID());
+    }
+    return filteredServers;
+  }
+
+  public List<NodeDetails> getRunningTserversInPrimaryCluster() {
+    List<NodeDetails> servers = getTServersInPrimaryCluster();
+    List<NodeDetails> filteredServers =
+        servers.stream().filter(NodeDetails::isConsideredRunning).collect(Collectors.toList());
+
+    if (filteredServers.isEmpty()) {
+      LOG.trace(
+          "No Running nodes for getRunningTserversInPrimaryCluster in universe {}",
+          getUniverseUUID());
     }
     return filteredServers;
   }
@@ -990,6 +1042,17 @@ public class Universe extends Model {
     return masterLeader.getHost();
   }
 
+  public void updateUniverseSoftwareUpgradeState(
+      UniverseDefinitionTaskParams.SoftwareUpgradeState state) {
+    Universe.UniverseUpdater updater =
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          universeDetails.softwareUpgradeState = state;
+          universe.setUniverseDetails(universeDetails);
+        };
+    Universe.saveDetails(universeUUID, updater, false);
+  }
+
   public boolean universeIsLocked() {
     return getUniverseDetails().updateInProgress;
   }
@@ -999,9 +1062,7 @@ public class Universe extends Model {
   }
 
   public boolean nodeExists(String host, int port) {
-    return getUniverseDetails()
-        .nodeDetailsSet
-        .parallelStream()
+    return getUniverseDetails().nodeDetailsSet.parallelStream()
         .anyMatch(
             n ->
                 n.cloudInfo.private_ip != null
@@ -1056,7 +1117,12 @@ public class Universe extends Model {
   }
 
   static Set<UUID> getUniverseUUIDsForCustomer(Long customerId) {
-    return find.query().select("universeUUID").where().eq("customer_id", customerId).findList()
+    return find
+        .query()
+        .select("universeUUID")
+        .where()
+        .eq("customer_id", customerId)
+        .findList()
         .stream()
         .map(Universe::getUniverseUUID)
         .collect(Collectors.toSet());
@@ -1111,5 +1177,10 @@ public class Universe extends Model {
       return TaskInfo.maybeGet(getUniverseDetails().updatingTaskUUID);
     }
     return Optional.empty();
+  }
+
+  @PostRemove
+  public void cleanupUniverse() {
+    RoleBindingUtil.cleanupRoleBindings(ResourceType.UNIVERSE, this.getUniverseUUID());
   }
 }

@@ -13,6 +13,8 @@ menu:
     weight: 102
 ---
 
+You can perform migration by taking your applications offline to perform the migration, migrate your data while your application is running (currently Oracle only), or add a fall-forward database for your live migration (currently Oracle only).
+
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
@@ -46,7 +48,29 @@ menu:
         <div class="title">Live migration with fall-forward</div>
       </div>
       <div class="body">
-        Add a fall-forward database for your live migration.
+       Fall forward to a source-replica database for your live migration.
+      </div>
+    </a>
+  </div>
+    <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="live-fall-back/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <div class="title">Live migration with fall-back</div>
+      </div>
+      <div class="body">
+        Fall back to the source database for your live migration.
+      </div>
+    </a>
+  </div>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="bulk-data-load/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <div class="title">Bulk data load from files</div>
+      </div>
+      <div class="body">
+        Bulk load data from flat files stored locally or in cloud storage.
       </div>
     </a>
   </div>

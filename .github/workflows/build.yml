@@ -7,7 +7,6 @@ on:
     branches:
       - master
     paths-ignore:
-      # TODO: how to avoid duplicating this list?
       - README.md
       - 'docs/**'
       - 'architecture/**'
@@ -18,8 +17,9 @@ on:
   pull_request:
     branches:
       - master
+    # Duplicated list because github does not support YAML anchors.
+    # https://github.com/actions/runner/issues/1182
     paths-ignore:
-      # TODO: how to avoid duplicating this list?
       - README.md
       - 'docs/**'
       - 'architecture/**'
@@ -34,40 +34,28 @@ jobs:
     runs-on: ubuntu-20.04
     name: ${{ matrix.name }}
 
-    # Grab the latest CentOS 7 image from here:
-    # https://hub.docker.com/r/yugabyteci/yb_build_infra_centos7/tags?page=1&ordering=last_updated
+    # Grab the latest docker images from here:
+    # https://hub.docker.com/r/yugabyteci/
 
     strategy:
       fail-fast: false
+      # This should be a sub-set of the build flavors in jenkins_jobs.yml.
       matrix:
         include:
-          - name: "Clang 16, debug, CentOS 7"
-            os: ubuntu-20.04
-            yb_build_args: --clang16 debug --no-linuxbrew
-
-          - name: "Clang 16, fastdebug, CentOS 7"
-            os: ubuntu-20.04
-            yb_build_args: --clang16 fastdebug --no-linuxbrew
-
-          - name: "Clang 16, release, CentOS 7"
-            os: ubuntu-20.04
-            yb_build_args: --clang16 release --no-linuxbrew
-
-          - name: "Clang 16, release, CentOS 7, Linuxbrew glibc"
-            os: ubuntu-20.04
-            yb_build_args: --clang16 release --linuxbrew
-
-          - name: "GCC 11, debug, CentOS 7"
+          - name: "GCC 11, debug, Almalinux 8"
             os: ubuntu-20.04
             yb_build_args: --gcc11 debug --no-linuxbrew
+            docker_image:  yugabyteci/yb_build_infra_almalinux8_x86_64:v2023-10-25T03_33_01
 
-          - name: "GCC 11, fastdebug, CentOS 7"
+          - name: "Clang 16, release, Almalinux 8"
             os: ubuntu-20.04
-            yb_build_args: --gcc11 fastdebug --no-linuxbrew
+            yb_build_args: --clang16 release --no-linuxbrew
+            docker_image:  yugabyteci/yb_build_infra_almalinux8_x86_64:v2023-10-25T03_33_01
 
-          - name: "GCC 11, release, CentOS 7"
+          - name: "Clang 16, debug, Ubuntu 22.04"
             os: ubuntu-20.04
-            yb_build_args: --gcc11 release --no-linuxbrew
+            yb_build_args: --clang16 debug --no-linuxbrew
+            docker_image:  yugabyteci/yb_build_infra_ubuntu2204_x86_64:v2023-10-25T03_33_00
     if: >
       (github.event_name == 'push' &&
        !contains(github.event.head_commit.message, 'skip ci') &&
@@ -92,10 +80,11 @@ jobs:
           if [[ $OSTYPE == linux* ]]; then
             build_dir_in_container=/opt/yb-build/yugabyte-db
             docker run \
+              --user root \
               -i \
               "-w=$build_dir_in_container" \
               --mount type=bind,source="$PWD",target="$build_dir_in_container" \
-              "yugabyteci/yb_build_infra_centos7:v2022-05-05T04_49_22" \
+              "${{ matrix.docker_image }}" \
               bash -c '
                 set -euo pipefail -x
                 echo "OSTYPE (inside Docker): $OSTYPE"

@@ -100,12 +100,10 @@ class LoadBalancerColocatedTablesTest : public YBTableTestBase {
                                    tbl_name));
 
       // Get the colocated database oid and the colocated table oid.
-      res = ASSERT_RESULT(conn.FetchFormat("SELECT oid FROM pg_database WHERE datname = '$0'",
-                                            dbname));
-      const uint32_t db_oid = ASSERT_RESULT(pgwrapper::GetInt32(res.get(), 0, 0));
-      res = ASSERT_RESULT(conn.FetchFormat("SELECT oid FROM pg_class WHERE relname = '$0'",
-                                            tbl_name));
-      const uint32_t table_oid = ASSERT_RESULT(pgwrapper::GetInt32(res.get(), 0, 0));
+      const auto db_oid = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(Format(
+          "SELECT oid FROM pg_database WHERE datname = '$0'", dbname)));
+      const auto table_oid = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(Format(
+          "SELECT oid FROM pg_class WHERE relname = '$0'", tbl_name)));
       table_names_.emplace_back(YQL_DATABASE_PGSQL,
                                 GetPgsqlNamespaceId(db_oid),
                                 dbname,

@@ -32,7 +32,7 @@ services:
 
             {{if eq (yamlPath "postgres.install.enabled") "true" }}
             username="{{ yamlPath "postgres.install.username" }}"
-            password=""
+            password="{{ yamlPath "postgres.install.password" }}"
             host="localhost"
             port="{{ yamlPath "postgres.install.port" }}"
             dbname="yugaware"
@@ -82,7 +82,18 @@ services:
         devops.home = "{{ installRoot }}/yb-platform/devops"
         swamper.targetPath = "{{ baseInstall }}/data/prometheus/swamper_targets"
         swamper.rulesPath = "{{ baseInstall }}/data/prometheus/swamper_rules"
-        metrics.url = "http://127.0.0.1:{{ yamlPath "prometheus.port" }}/api/v1"
+        {{ if eq (yamlPath "prometheus.enableHttps") "true" }}
+        metrics.protocol = https
+        metrics.url = "https://{{ yamlPath "host" }}:{{ yamlPath "prometheus.port" }}/api/v1"
+        {{ else }}
+        metrics.protocol = http
+        metrics.url = "http://{{ yamlPath "host" }}:{{ yamlPath "prometheus.port" }}/api/v1"
+        {{ end }}
+        {{ if eq (yamlPath "prometheus.enableAuth") "true" }}
+        metrics.auth = true
+        metrics.auth_username = "{{ yamlPath "prometheus.authUsername" }}"
+        metrics.auth_password = "{{ yamlPath "prometheus.authPassword" }}"
+        {{ end }}
         storage.path = "{{ .DataDir }}"
         seedData = false
         multiTenant = false
@@ -93,6 +104,14 @@ services:
         # Interval at which to send a status report email. Default: 12 hours.
         health.status_interval_ms = 43200000
         installation = "yba-installer"
+        security {
+          headers {
+            {{ if eq (yamlPath "platform.hsts_enabled") "true" }}
+              hsts_enabled = true
+            {{ end }}
+            custom_headers = {{ yamlPathSlice "platform.custom_headers" }}
+          }
+        }
         # If SSO needs to be enabled on the platform.
         security.use_oauth = false
         security.use_oauth = "{{ yamlPath "platform.useOauth" }}"
@@ -180,7 +199,7 @@ services:
       Environment="YB_OIDC_SECRET={{ yamlPath "platform.ybOidcSecret" }}"
       Environment="PLATFORM_APP_SECRET={{ yamlPath "platform.appSecret" }}"
 
-      {{if eq (yamlPath "platform.proxy.enabled") "true" }}
+      {{- if eq (yamlPath "platform.proxy.enable") "true" -}}
       Environment="HTTP_PROXY={{ yamlPath "platform.proxy.http_proxy" }}"
       Environment="HTTPS_PROXY={{ yamlPath "platform.proxy.https_proxy" }}"
       Environment="NO_PROXY={{ yamlPath "platform.proxy.no_proxy"}}"
@@ -189,7 +208,7 @@ services:
       Environment="no_proxy={{ yamlPath "platform.proxy.no_proxy"}}"
       {{end}}
 
-      {{if eq (yamlPath "postgres.useExisting.enabled") "true" }}
+      {{- if eq (yamlPath "postgres.useExisting.enabled") "true"  -}}
       Environment="DB_PASSWORD={{ yamlPath "postgres.useExisting.password" }}"
       Environment="DB_USERNAME={{ yamlPath "postgres.useExisting.username" }}"
       {{end}}
@@ -197,12 +216,11 @@ services:
       ExecStart={{ installRoot }}/yb-platform/yugaware/bin/yugaware \
         -Dconfig.file={{ .ConfFileLocation }} \
         -Dhttp.port=disabled \
-        -Dhttps.port={{ yamlPath "platform.port" }}
-        {{if eq (yamlPath "platform.proxy.enabled") "true" }}
-        -Dhttp.nonProxyHost={{ yamlPath "platform.proxy.java_non_proxy" }}
-        -Dhttp.proxyHost={{ yamlPath "platform.proxy.java_http_proxy_host" }}
-        -Dhttp.proxyPort={{ yamlPath "platform.proxy.java_http_proxy_port" }}
-        -Dhttps.proxyHost={{ yamlPath "platform.proxy.java_https_proxy_host" }}
+        -Dhttps.port={{ yamlPath "platform.port" }}{{- if eq (yamlPath "platform.proxy.enable") "true"}} \
+        -Dhttp.nonProxyHosts={{ yamlPath "platform.proxy.java_non_proxy" }} \
+        -Dhttp.proxyHost={{ yamlPath "platform.proxy.java_http_proxy_host" }} \
+        -Dhttp.proxyPort={{ yamlPath "platform.proxy.java_http_proxy_port" }} \
+        -Dhttps.proxyHost={{ yamlPath "platform.proxy.java_https_proxy_host" }} \
         -Dhttps.proxyPort={{ yamlPath "platform.proxy.java_https_proxy_port" }}
         {{end}}
 

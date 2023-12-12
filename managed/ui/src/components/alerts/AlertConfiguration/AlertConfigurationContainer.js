@@ -34,6 +34,7 @@ import { fetchUniverseList, fetchUniverseListResponse } from '../../../actions/u
 import { AlertConfiguration } from './AlertConfiguration';
 import { createErrorMessage } from '../../../utils/ObjectUtils';
 import { handleCACertErrMsg } from '../../customCACerts';
+import { isRbacEnabled } from '../../../redesign/features/rbac/common/RbacUtils';
 
 const mapStateToProps = (state) => {
   return {
@@ -53,6 +54,7 @@ const mapDispatchToProps = (dispatch) => {
     alertConfigs: (payload) => {
       return dispatch(alertConfigs(payload)).then((response) => {
         if (response.error) {
+          if(isRbacEnabled() && response?.payload?.response?.status === 401) return;
           toast.error(createErrorMessage(response.payload));
           return;
         }
@@ -62,6 +64,7 @@ const mapDispatchToProps = (dispatch) => {
     alertDestinations: () => {
       return dispatch(alertDestinations()).then((response) => {
         if (response.error) {
+          if(isRbacEnabled() && response?.payload?.response?.status === 401) return;
           toast.error(createErrorMessage(response.payload));
           return;
         }
@@ -71,6 +74,7 @@ const mapDispatchToProps = (dispatch) => {
     getTargetMetrics: (payload) => {
       return dispatch(getTargetMetrics(payload)).then((response) => {
         if (response.error) {
+          if(isRbacEnabled() && response?.payload?.response?.status === 401) return;
           toast.error(createErrorMessage(response.payload));
           return;
         }
@@ -83,8 +87,10 @@ const mapDispatchToProps = (dispatch) => {
     updateCustomerDetails: (values) => {
       dispatch(updateProfile(values)).then((response) => {
         if (response.payload.status !== 200) {
+          toast.error('Configuration failed to update');
           dispatch(updateProfileFailure(response.payload));
         } else {
+          toast.success('Configuration updated successfully');
           dispatch(updateProfileSuccess(response.payload));
         }
       });
@@ -92,7 +98,7 @@ const mapDispatchToProps = (dispatch) => {
     createAlertChannel: (payload) => {
       return dispatch(createAlertChannel(payload)).then((response) => {
         if (response.error) {
-          if(handleCACertErrMsg(response.payload)){
+          if (handleCACertErrMsg(response.payload)) {
             return;
           }
           toast.error(createErrorMessage(response.payload));
@@ -105,6 +111,7 @@ const mapDispatchToProps = (dispatch) => {
     getAlertChannels: () => {
       return dispatch(getAlertChannels()).then((response) => {
         if (response.error) {
+          if(isRbacEnabled() && response?.payload?.response?.status === 401) return;
           toast.error(createErrorMessage(response.payload));
           return;
         }
@@ -142,14 +149,16 @@ const mapDispatchToProps = (dispatch) => {
       });
     },
     sendTestAlert: (uuid) => {
-      sendTestAlert(uuid).then((response) => {
-        toast.success(response.data.message);
-      }).catch((error) => {
-        if(handleCACertErrMsg(error)){
-          return;
-        }
-        toast.error(createErrorMessage(error));
-      });
+      sendTestAlert(uuid)
+        .then((response) => {
+          toast.success(response.data.message);
+        })
+        .catch((error) => {
+          if (handleCACertErrMsg(error)) {
+            return;
+          }
+          toast.error(createErrorMessage(error));
+        });
     },
     updateAlertDestination: (payload, uuid) => {
       return dispatch(updateAlertDestination(payload, uuid)).then((response) => {

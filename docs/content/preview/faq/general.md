@@ -88,7 +88,7 @@ YugabyteDB feature highlights are listed below.
 
 - [Global data distribution](../../explore/multi-region-deployments/) that brings consistent data close to users through multi-region and multi-cloud deployments. Optional two-region multi-master and master-follower configurations powered by CDC-driven asynchronous replication.
 
-- [Auto-sharding and auto-rebalancing](../../explore/linear-scalability/sharding-data/) to ensure uniform load across all nodes even for very large clusters.
+- [Auto-sharding and auto-rebalancing](../../architecture/docdb-sharding/sharding/) to ensure uniform load across all nodes even for very large clusters.
 
 #### Cloud native
 
@@ -108,6 +108,7 @@ YugabyteDB feature highlights are listed below.
 
 YugabyteDB has had the following major (stable) releases:
 
+- [v2.20](https://www.yugabyte.com/blog/release-220-announcement/) in November 2023
 - [v2.18](https://www.yugabyte.com/blog/release-218-announcement/) in May 2023
 - [v2.16](https://www.yugabyte.com/blog/yugabytedb-216/) in December 2022
 - [v2.14](https://www.yugabyte.com/blog/announcing-yugabytedb-2-14-higher-performance-and-security/) in July 2022.

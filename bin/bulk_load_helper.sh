@@ -97,38 +97,38 @@ IFS=',' read -ra REPLICAS <<< "$replicas"
 ssh_cmd_prefix="ssh -o 'StrictHostKeyChecking no' -p $ssh_port -i $ssh_key_file $ssh_user_name"
 for replica in "${REPLICAS[@]}"; do
   # Find the data dirs for the tserver
-  data_dirs=$(eval $ssh_cmd_prefix@$replica "grep fs_data_dirs $TSERVER_CONF_FILE | cut -d'=' -f2"\
-  2>/dev/null)
+  data_dirs="$(eval "$ssh_cmd_prefix@$replica" "grep fs_data_dirs $TSERVER_CONF_FILE | \
+               cut -d'=' -f2" 2>/dev/null)"
   IFS=',' read -ra data_dir_arr <<< "$data_dirs"
 
   # Now find the tablet in the data dirs.
   remote_tablet_data_dir=""
   for data_dir in "${data_dir_arr[@]}"; do
-    remote_tablet_data_dir=$(eval $ssh_cmd_prefix@$replica \
-    "find $data_dir/yb-data/tserver/data/rocksdb/ -name \"*$tablet_id\"")
-    if [[ ! -z $remote_tablet_data_dir ]]; then
+    remote_tablet_data_dir="$(eval "$ssh_cmd_prefix@$replica" \
+    "find $data_dir/yb-data/tserver/data/rocksdb/ -name \"*$tablet_id\"")"
+    if [[ -n $remote_tablet_data_dir ]]; then
       break;
     fi
   done
 
   if [[ -z $remote_tablet_data_dir ]]; then
     echo "ERROR: Couldn't find tablet: $tablet_id on replica $replica, tried data directories:
-    ${data_dir_arr[@]}" >&2
+    ${data_dir_arr[*]}" >&2
     exit 1
   fi
 
   echo "Found tablet dir $remote_tablet_data_dir on replica $replica" >&2
-  tablet_parent=$(dirname $remote_tablet_data_dir)
+  tablet_parent="$(dirname "$remote_tablet_data_dir")"
   staging_dir="$tablet_parent/tablet-$tablet_id.bulk_load_staging"
 
   # Create staging directory and copy files over to remote tserver.
   echo "Creating staging directory $staging_dir on $replica" >&2
-  $(eval $ssh_cmd_prefix@$replica "\"mkdir -p $staging_dir\"")
+  eval "$ssh_cmd_prefix@$replica" "\"mkdir -p $staging_dir\""
 
   echo "Copying tablet data from $tablet_data_dir to $remote_tablet_data_dir on $replica" >&2
-  scp -q -o 'StrictHostKeyChecking no' -P $ssh_port -i $ssh_key_file $tablet_data_dir/* \
-  $ssh_user_name@$replica:$staging_dir/
+  scp -q -o 'StrictHostKeyChecking no' -P "$ssh_port" -i "$ssh_key_file" "$tablet_data_dir/*" \
+  "$ssh_user_name@$replica:$staging_dir/"
 
   # Output the replica and staging directory location for other tools to process.
-  echo $replica,$staging_dir
+  echo "$replica,$staging_dir"
 done

@@ -17,10 +17,8 @@ public class PreflightNodeCheck extends NodeTaskBase {
 
   @Inject
   protected PreflightNodeCheck(
-      BaseTaskDependencies baseTaskDependencies,
-      NodeManager nodeManager,
-      NodeConfigValidator nodeConfigValidator) {
-    super(baseTaskDependencies, nodeManager);
+      BaseTaskDependencies baseTaskDependencies, NodeConfigValidator nodeConfigValidator) {
+    super(baseTaskDependencies);
     this.nodeConfigValidator = nodeConfigValidator;
   }
 
@@ -42,7 +40,12 @@ public class PreflightNodeCheck extends NodeTaskBase {
         getNodeManager().nodeCommand(NodeManager.NodeCommandType.Precheck, taskParams());
     try {
       PrecheckNodeDetached.processPreflightResponse(
-          nodeConfigValidator, taskParams().getProvider(), taskParams().nodeUuid, false, response);
+          nodeConfigValidator,
+          taskParams().getProvider(),
+          taskParams().nodeUuid,
+          taskParams().getNodeName(),
+          false,
+          response);
     } catch (RuntimeException e) {
       log.error(
           "Failed preflight checks for node {}:\n{}", taskParams().nodeName, response.message);

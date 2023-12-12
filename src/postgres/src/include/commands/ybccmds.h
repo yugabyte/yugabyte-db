@@ -97,5 +97,21 @@ extern TupleDesc YbBackfillIndexResultDesc(BackfillIndexStmt *stmt);
 
 extern void YbDropAndRecreateIndex(Oid indexOid, Oid relId, Relation oldRel, AttrNumber *newToOldAttmap);
 
+extern void YBCDropSequence(Oid sequence_oid);
+
 /*  System Validation -------------------------------------------------------------------------- */
 extern void YBCValidatePlacement(const char *placement_info);
+
+/*  Replication Slot Functions ------------------------------------------------------------------ */
+
+extern void YBCCreateReplicationSlot(const char *slot_name);
+
+extern void
+YBCListReplicationSlots(YBCReplicationSlotDescriptor **replication_slots,
+						size_t *numreplicationslots);
+
+extern void 
+YBCGetReplicationSlotStatus(const char *slot_name, 
+							bool *active);
+
+extern void YBCDropReplicationSlot(const char *slot_name);

@@ -367,7 +367,7 @@ TabletSplitITest::TabletSplitITest() = default;
 TabletSplitITest::~TabletSplitITest() = default;
 
 void TabletSplitITest::SetUp() {
-  ASSERT_OK(EnableVerboseLoggingForModule("tablet_split_manager", 2));
+  google::SetVLOGLevel("tablet_split_manager", 2);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cleanup_split_tablets_interval_sec) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_validate_all_tablet_candidates) = true;
@@ -833,7 +833,10 @@ Status TabletSplitExternalMiniClusterITest::SplitTablet(const std::string& table
 Status TabletSplitExternalMiniClusterITest::FlushTabletsOnSingleTServer(
     size_t tserver_idx, const std::vector<yb::TabletId> tablet_ids, bool is_compaction) {
   auto tserver = cluster_->tablet_server(tserver_idx);
-  RETURN_NOT_OK(cluster_->FlushTabletsOnSingleTServer(tserver, tablet_ids, is_compaction));
+  auto flush_op_type = is_compaction ?
+      tserver::FlushTabletsRequestPB::COMPACT :
+      tserver::FlushTabletsRequestPB::FLUSH;
+  RETURN_NOT_OK(cluster_->FlushTabletsOnSingleTServer(tserver, tablet_ids, flush_op_type));
   return Status::OK();
 }
 

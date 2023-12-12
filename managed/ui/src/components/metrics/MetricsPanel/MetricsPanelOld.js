@@ -3,7 +3,7 @@
 import React, { Component } from 'react';
 import PropTypes from 'prop-types';
 import _ from 'lodash';
-import moment from 'moment';
+import moment from 'moment-timezone';
 import { OverlayTrigger, Tooltip } from 'react-bootstrap';
 
 import {
@@ -16,7 +16,7 @@ import {
   timeFormatXAxis
 } from '../../../utils/ObjectUtils';
 import { METRIC_FONT } from '../MetricsConfig';
-import prometheusIcon from '../images/prometheus-icon.svg';
+import prometheusIcon from '../../../redesign/assets/prometheus-icon.svg';
 
 import './MetricsPanel.scss';
 
@@ -203,8 +203,10 @@ export default class MetricsPanelOld extends Component {
               target="_blank"
               rel="noopener noreferrer"
               className="prometheus-link"
-              href={getMetricsUrl(this.props.metric.directURLs[0],
-               this.props.metric.metricsLinkUseBrowserFqdn)}
+              href={getMetricsUrl(
+                this.props.metric.directURLs[0],
+                this.props.metric.metricsLinkUseBrowserFqdn
+              )}
             >
               <img
                 className="prometheus-link-icon"

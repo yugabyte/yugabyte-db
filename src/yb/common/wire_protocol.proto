@@ -86,6 +86,7 @@ message AppStatusPB {
     DEPRECATED_HOST_UNREACHABLE = 31;
     CACHE_MISS_ERROR = 32;
     TABLET_SPLIT = 33;
+    REPLICATION_SLOT_LIMIT_REACHED = 34;
   }
 
   required ErrorCode code = 1;
@@ -153,14 +154,24 @@ message ServerEntryPB {
   optional PeerRole role = 4;
 }
 
-// AutoFlags configuration
+message PromotedFlagInfoPB {
+  required uint32 promoted_version = 1;
+}
+
 message PromotedFlagsPerProcessPB {
   // Ex: yb-master, yb-tserver.
   required string process_name = 1;
   repeated string flags = 2;
+  // flag_infos is only populated after version 2.20.
+  // AutoFlags that were promoted before this version will be backfilled with
+  // default values.
+  repeated PromotedFlagInfoPB flag_infos = 3;
 }
 
 message AutoFlagsConfigPB {
   required uint32 config_version = 1;
   repeated PromotedFlagsPerProcessPB promoted_flags = 2;
+
+  // Physical time at which the new config should be applied.
+  optional fixed64 config_apply_time = 3;
 }

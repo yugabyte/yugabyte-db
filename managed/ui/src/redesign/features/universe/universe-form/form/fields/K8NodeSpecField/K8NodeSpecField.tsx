@@ -21,11 +21,13 @@ import {
 interface K8NodeSpecFieldProps {
   isDedicatedMasterField: boolean;
   isEditMode: boolean;
+  disabled: boolean;
 }
 
 export const K8NodeSpecField = ({
   isDedicatedMasterField,
-  isEditMode
+  isEditMode,
+  disabled
 }: K8NodeSpecFieldProps): ReactElement => {
   const { control, setValue } = useFormContext<UniverseFormData>();
   const { t } = useTranslation();
@@ -42,9 +44,11 @@ export const K8NodeSpecField = ({
   const convertToString = (str: string) => str?.toString() ?? '';
 
   //fetch run time configs
-  const { data: providerRuntimeConfigs, refetch: providerConfigsRefetch } = useQuery(
-    QUERY_KEY.fetchProviderRunTimeConfigs,
-    () => api.fetchRunTimeConfigs(true, provider?.uuid)
+  const {
+    data: providerRuntimeConfigs,
+    refetch: providerConfigsRefetch
+  } = useQuery(QUERY_KEY.fetchProviderRunTimeConfigs, () =>
+    api.fetchRunTimeConfigs(true, provider?.uuid)
   );
 
   //update memory and cpu from provider runtime configs
@@ -64,7 +68,7 @@ export const K8NodeSpecField = ({
       setValue(UPDATE_FIELD, nodeSpec);
     };
     getProviderRuntimeConfigs();
-  }, []);
+  }, [provider?.uuid]);
 
   const { minMemorySize, maxMemorySize } = getK8MemorySizeRange(providerRuntimeConfigs);
   const { minCPUCores, maxCPUCores } = getK8CPUCoresRange(providerRuntimeConfigs);
@@ -114,6 +118,7 @@ export const K8NodeSpecField = ({
                         'data-testid': `K8NodeSpecField-${nodeTypeTag}-NumCoresInput`
                       }}
                       value={convertToString(fieldValue?.cpuCoreCount)}
+                      disabled={disabled}
                       onChange={(event) => onNumCoresChanged(event.target.value)}
                       inputMode="numeric"
                     />
@@ -136,6 +141,7 @@ export const K8NodeSpecField = ({
                         'data-testid': `K8NodeSpecField-${nodeTypeTag}-MemoryInput`
                       }}
                       value={convertToString(fieldValue?.memoryGib)}
+                      disabled={disabled}
                       onChange={(event) => onMemoryChanged(event.target.value)}
                       inputMode="numeric"
                     />

@@ -19,7 +19,7 @@
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index_container.hpp>
 #include <boost/range/iterator_range_core.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/casts.h"
 
@@ -65,7 +65,7 @@ class StateWithTablets {
   bool PassedSinceCompletion(const MonoDelta& duration) const;
   std::vector<TabletId> TabletIdsInState(SysSnapshotEntryPB::State state);
   void Done(const TabletId& tablet_id, Status status);
-  bool AllInState(SysSnapshotEntryPB::State state);
+  bool AllInState(SysSnapshotEntryPB::State state) const;
   bool HasInState(SysSnapshotEntryPB::State state);
   void SetInitialTabletsState(SysSnapshotEntryPB::State state);
 

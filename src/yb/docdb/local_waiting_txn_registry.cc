@@ -17,7 +17,6 @@
 #include <memory>
 
 #include <boost/optional/optional.hpp>
-#include <glog/logging.h>
 #include <glog/vlog_is_on.h>
 
 #include "yb/common/common_fwd.h"
@@ -43,7 +42,8 @@
 using namespace std::placeholders;
 using namespace std::literals;
 
-DECLARE_bool(enable_deadlock_detection);
+DECLARE_bool(enable_wait_queues);
+DECLARE_bool(disable_deadlock_detection);
 DEFINE_test_flag(uint64, inject_process_update_resp_delay_ms, 0,
                  "Injects a delay in the response handler for full wait-for update requests. Used "
                  "to test that lifetimes of StatusTabletData are valid even if these responses are "
@@ -120,7 +120,7 @@ class StatusTabletData : public std::enable_shared_from_this<StatusTabletData> {
   }
 
   void SendPartialUpdate(std::weak_ptr<WaitingTransactionData> waiter, HybridTime now) {
-    if (!FLAGS_enable_deadlock_detection) {
+    if (!FLAGS_enable_wait_queues || PREDICT_FALSE(FLAGS_disable_deadlock_detection)) {
       return;
     }
     auto blocked = waiter.lock();
@@ -264,7 +264,7 @@ class LocalWaitingTxnRegistry::Impl {
   }
 
   void SendWaitForGraph() EXCLUDES(mutex_) {
-    if (!FLAGS_enable_deadlock_detection) {
+    if (!FLAGS_enable_wait_queues || PREDICT_FALSE(FLAGS_disable_deadlock_detection)) {
       return;
     }
 

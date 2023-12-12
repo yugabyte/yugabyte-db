@@ -1,5 +1,5 @@
 ---
-title: backup resource
+title: ybm CLI backup resource
 headerTitle: ybm backup
 linkTitle: backup
 description: YugabyteDB Managed CLI reference backup resource.

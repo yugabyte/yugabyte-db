@@ -23,6 +23,8 @@ import { Badge_Types, StatusBadge } from '../../../../../common/badge/StatusBadg
 import { getKMSConfigs } from '../../../../common/BackupAPI';
 import { YBLabel } from '../../../../../common/descriptors';
 import { isYBCEnabledInUniverse } from '../../RestoreUtils';
+import { hasNecessaryPerm } from '../../../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 const useStyles = makeStyles((theme) => ({
   root: {},
@@ -160,7 +162,11 @@ const ChooseUniverseConfig = () => {
                 options={sourceUniverseNameAtFirst?.map((universe: IUniverse) => {
                   return {
                     label: universe.name,
-                    value: universe.universeUUID
+                    value: universe.universeUUID,
+                    isDisabled: !hasNecessaryPerm({
+                      onResource: universe.universeUUID,
+                      ...ApiPermissionMap.UNIVERSE_RESTORE_BACKUP
+                    })
                   };
                 })}
                 onChange={onChange}

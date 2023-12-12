@@ -7,16 +7,15 @@ import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.TSE
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.RestartTaskParams;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.HashMap;
@@ -29,7 +28,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnitRunner;
-import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class RestartUniverseTest extends UpgradeTaskTest {
@@ -45,7 +43,7 @@ public class RestartUniverseTest extends UpgradeTaskTest {
           TaskType.WaitForServer,
           TaskType.WaitForServerReady,
           TaskType.WaitForEncryptionKeyInMemory,
-          TaskType.WaitForFollowerLag,
+          TaskType.CheckFollowerLag,
           TaskType.RunHooks,
           TaskType.SetNodeState);
 
@@ -62,7 +60,7 @@ public class RestartUniverseTest extends UpgradeTaskTest {
           TaskType.WaitForServerReady,
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.ModifyBlackList,
-          TaskType.WaitForFollowerLag,
+          TaskType.CheckFollowerLag,
           TaskType.RunHooks,
           TaskType.SetNodeState);
 
@@ -74,9 +72,8 @@ public class RestartUniverseTest extends UpgradeTaskTest {
     restartUniverse.setUserTaskUUID(UUID.randomUUID());
     attachHooks("RestartUniverse");
 
-    ObjectNode bodyJson = Json.newObject();
-    bodyJson.put("underreplicated_tablets", Json.newArray());
-    when(mockNodeUIApiHelper.getRequest(anyString())).thenReturn(bodyJson);
+    setUnderReplicatedTabletsMock();
+    setFollowerLagMock();
   }
 
   private TaskInfo submitTask(RestartTaskParams requestParams) {
@@ -121,13 +118,31 @@ public class RestartUniverseTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks); // PreUpgrade hooks
     position = assertSequence(subTasksByPosition, MASTER, position);
     assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList);
     position = assertSequence(subTasksByPosition, TSERVER, position);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks); // PostUpgrade hooks
-    assertEquals(75, position);
+    assertEquals(76, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
+  }
+
+  @Test
+  public void testRollingRestartRetries() {
+    RestartTaskParams taskParams = new RestartTaskParams();
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.creatingUser = defaultUser;
+    TestUtils.setFakeHttpContext(defaultUser);
+    super.verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.RestartUniverse,
+        CustomerTask.TargetType.Universe,
+        defaultUniverse.getUniverseUUID(),
+        TaskType.RestartUniverse,
+        taskParams,
+        false);
   }
 }

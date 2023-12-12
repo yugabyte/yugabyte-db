@@ -27,6 +27,12 @@ import io.ebean.Model;
 import io.ebean.annotation.DbJson;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Id;
+import jakarta.persistence.Transient;
 import java.io.File;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
@@ -40,12 +46,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.EnumType;
-import javax.persistence.Enumerated;
-import javax.persistence.Id;
-import javax.persistence.Transient;
 import lombok.Getter;
 import lombok.Setter;
 import org.slf4j.Logger;
@@ -479,7 +479,8 @@ public class CertificateInfo extends Model {
 
   @ApiModelProperty(
       value =
-          "Indicates whether the certificate is in use. This value is `true` if the universe contains a reference to the certificate.",
+          "Indicates whether the certificate is in use. This value is `true` if the universe"
+              + " contains a reference to the certificate.",
       accessMode = READ_ONLY)
   // Returns if there is an in use reference to the object.
   public boolean getInUse() {

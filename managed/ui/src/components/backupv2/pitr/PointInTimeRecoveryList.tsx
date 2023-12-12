@@ -24,8 +24,11 @@ import { YBTable } from '../../common/YBTable';
 import { PointInTimeRecoveryModal } from './PointInTimeRecoveryModal';
 import { TableTypeLabel } from '../../../redesign/helpers/dtos';
 import { PointInTimeRecoveryDisableModal } from './PointInTimeRecoveryDisableModal';
-import './PointInTimeRecoveryList.scss';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
+import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+
+import './PointInTimeRecoveryList.scss';
 
 const DEFAULT_SORT_COLUMN = 'dbName';
 const DEFAULT_SORT_DIRECTION = 'ASC';
@@ -67,27 +70,49 @@ export const PointInTimeRecoveryList = ({ universeUUID }: { universeUUID: string
         pullRight
         onClick={(e: any) => e.stopPropagation()}
       >
-        <MenuItem
-          onClick={(e: any) => {
-            e.stopPropagation();
-            row.minRecoverTimeInMillis && setRecoveryItem(_.cloneDeep(row));
+        <RbacValidator
+          accessRequiredOn={{
+            onResource: universeUUID,
+            ...ApiPermissionMap.RESTORE_PITR_SNAPSHOT
           }}
-          disabled={!row.minRecoverTimeInMillis}
-          data-testid="PitrRecoveryAction"
-        >
-          Recover to a Point in Time
-        </MenuItem>
-        <MenuItem
-          onClick={(e: any) => {
-            e.stopPropagation();
-            row.minRecoverTimeInMillis && setItemToDisable(_.cloneDeep(row));
+          isControl
+          overrideStyle={{
+            display: 'unset'
           }}
-          className="action-danger"
-          disabled={!row.minRecoverTimeInMillis}
-          data-testid="PitrDisableAction"
         >
-          Disable Point-in-time Recovery
-        </MenuItem>
+          <MenuItem
+            onClick={(e: any) => {
+              e.stopPropagation();
+              row.minRecoverTimeInMillis && setRecoveryItem(_.cloneDeep(row));
+            }}
+            disabled={!row.minRecoverTimeInMillis}
+            data-testid="PitrRecoveryAction"
+          >
+            Recover to a Point in Time
+          </MenuItem>
+        </RbacValidator>
+        <RbacValidator
+          accessRequiredOn={{
+            onResource: universeUUID,
+            ...ApiPermissionMap.DELETE_PITR_CONFIG
+          }}
+          overrideStyle={{
+            display: 'unset'
+          }}
+          isControl
+        >
+          <MenuItem
+            onClick={(e: any) => {
+              e.stopPropagation();
+              row.minRecoverTimeInMillis && setItemToDisable(_.cloneDeep(row));
+            }}
+            className="action-danger"
+            disabled={!row.minRecoverTimeInMillis}
+            data-testid="PitrDisableAction"
+          >
+            Disable Point-in-time Recovery
+          </MenuItem>
+        </RbacValidator>
       </DropdownButton>
     );
   };
@@ -108,107 +133,117 @@ export const PointInTimeRecoveryList = ({ universeUUID }: { universeUUID: string
   );
 
   return (
-    <Row className="point-in-time-recovery">
-      {configs.length === 0 && (
-        <PointInTimeRecoveryEmpty onActionButtonClick={() => setShowEnableModal(true)} />
-      )}
-      {configs.length > 0 && (
-        <>
-          <div className="pitr-actions">
-            <YBSearchInput
-              placeHolder="Search Database/Keyspace name, API type"
-              onValueChanged={(e: React.ChangeEvent<HTMLInputElement>) => {
-                setSearchText(e.target.value);
+    <RbacValidator accessRequiredOn={{ ...ApiPermissionMap.GET_PITR_CONFIG, onResource: universeUUID }}
+    >
+      <Row className="point-in-time-recovery">
+        {configs.length === 0 && (
+          <PointInTimeRecoveryEmpty onActionButtonClick={() => setShowEnableModal(true)} disabled={!hasNecessaryPerm({ onResource: universeUUID, ...ApiPermissionMap.CREATE_PITR_CONFIG })} />
+        )}
+        {configs.length > 0 && (
+          <>
+            <div className="pitr-actions">
+              <YBSearchInput
+                placeHolder="Search Database/Keyspace name, API type"
+                onValueChanged={(e: React.ChangeEvent<HTMLInputElement>) => {
+                  setSearchText(e.target.value);
+                }}
+              />
+              <RbacValidator accessRequiredOn={{
+                onResource: universeUUID,
+                ...ApiPermissionMap.CREATE_PITR_CONFIG
               }}
-            />
-            <YBButton
-              btnClass="btn btn-orange backup-empty-button"
-              btnText="Enable Point-In-Time Recovery"
-              onClick={() => setShowEnableModal(true)}
-              id="EnablePitrBtn"
-            />
-          </div>
-          <div className="info-text">Databases/Keyspaces with Point-In-Time Recovery Enabled</div>
-          <YBTable
-            data={pitr_list}
-            options={{
-              sizePerPage,
-              onSizePerPageList: setSizePerPage,
-              page,
-              prePage: 'Prev',
-              nextPage: 'Next',
-              onPageChange: (page) => setPage(page),
-              defaultSortOrder: DEFAULT_SORT_DIRECTION.toLowerCase() as SortOrder,
-              defaultSortName: DEFAULT_SORT_COLUMN
-            }}
-            pagination={true}
-            remote={(remoteObj: RemoteObjSpec) => {
-              return {
-                ...remoteObj,
-                pagination: true
-              };
-            }}
-            fetchInfo={{ dataTotalSize: pitr_list?.length }}
-            hover
-          >
-            <TableHeaderColumn dataField="backupUUID" isKey={true} hidden={true} />
-            <TableHeaderColumn dataField="dbName" dataSort>
-              Database/Keyspace Name
-            </TableHeaderColumn>
-            <TableHeaderColumn
-              dataField="tableType"
-              dataFormat={(tableType) => TableTypeLabel[tableType]}
-              dataSort
-            >
-              API Type
-            </TableHeaderColumn>
-            <TableHeaderColumn
-              dataField="retentionPeriod"
-              dataFormat={(retentionPeriod) => {
-                const retentionDays = retentionPeriod / (24 * 60 * 60);
-                return `${retentionDays} Day${retentionDays > 1 ? 's' : ''}`;
+                isControl
+              >
+                <YBButton
+                  btnClass="btn btn-orange backup-empty-button"
+                  btnText="Enable Point-In-Time Recovery"
+                  onClick={() => setShowEnableModal(true)}
+                  id="EnablePitrBtn"
+                />
+              </RbacValidator>
+            </div>
+            <div className="info-text">Databases/Keyspaces with Point-In-Time Recovery Enabled</div>
+            <YBTable
+              data={pitr_list}
+              options={{
+                sizePerPage,
+                onSizePerPageList: setSizePerPage,
+                page,
+                prePage: 'Prev',
+                nextPage: 'Next',
+                onPageChange: (page) => setPage(page),
+                defaultSortOrder: DEFAULT_SORT_DIRECTION.toLowerCase() as SortOrder,
+                defaultSortName: DEFAULT_SORT_COLUMN
               }}
-              dataSort
-            >
-              Retention Period
-            </TableHeaderColumn>
-            <TableHeaderColumn
-              dataField="minRecoverTimeInMillis"
-              dataFormat={(minTime) => {
-                return minTime ? ybFormatDate(minTime) : '';
+              pagination={true}
+              remote={(remoteObj: RemoteObjSpec) => {
+                return {
+                  ...remoteObj,
+                  pagination: true
+                };
               }}
-              dataSort
+              fetchInfo={{ dataTotalSize: pitr_list?.length }}
+              hover
             >
-              Earliest Recoverable Time
-            </TableHeaderColumn>
-            <TableHeaderColumn
-              dataField="actions"
-              dataAlign="right"
-              dataFormat={(_: any, row: any) => getActions(row)}
-              columnClassName="yb-actions-cell no-border"
-              width="10%"
-            />
-          </YBTable>
-        </>
-      )}
-      <PointInTimeRecoveryEnableModal
-        universeUUID={universeUUID}
-        visible={showEnableModal}
-        onHide={() => setShowEnableModal(false)}
-      />
-      <PointInTimeRecoveryModal
-        onHide={() => setRecoveryItem(null)}
-        visible={!!recoveryItem}
-        config={recoveryItem}
-        universeUUID={universeUUID}
-      />
+              <TableHeaderColumn dataField="backupUUID" isKey={true} hidden={true} />
+              <TableHeaderColumn dataField="dbName" dataSort>
+                Database/Keyspace Name
+              </TableHeaderColumn>
+              <TableHeaderColumn
+                dataField="tableType"
+                dataFormat={(tableType) => TableTypeLabel[tableType]}
+                dataSort
+              >
+                API Type
+              </TableHeaderColumn>
+              <TableHeaderColumn
+                dataField="retentionPeriod"
+                dataFormat={(retentionPeriod) => {
+                  const retentionDays = retentionPeriod / (24 * 60 * 60);
+                  return `${retentionDays} Day${retentionDays > 1 ? 's' : ''}`;
+                }}
+                dataSort
+              >
+                Retention Period
+              </TableHeaderColumn>
+              <TableHeaderColumn
+                dataField="minRecoverTimeInMillis"
+                dataFormat={(minTime) => {
+                  return minTime ? ybFormatDate(minTime) : '';
+                }}
+                dataSort
+              >
+                Earliest Recoverable Time
+              </TableHeaderColumn>
+              <TableHeaderColumn
+                dataField="actions"
+                dataAlign="right"
+                dataFormat={(_: any, row: any) => getActions(row)}
+                columnClassName="yb-actions-cell no-border"
+                width="10%"
+              />
+            </YBTable>
+          </>
+        )}
+        <PointInTimeRecoveryEnableModal
+          universeUUID={universeUUID}
+          visible={showEnableModal}
+          onHide={() => setShowEnableModal(false)}
+        />
+        <PointInTimeRecoveryModal
+          onHide={() => setRecoveryItem(null)}
+          visible={!!recoveryItem}
+          config={recoveryItem}
+          universeUUID={universeUUID}
+        />
 
-      <PointInTimeRecoveryDisableModal
-        onHide={() => setItemToDisable(null)}
-        visible={!!itemToDisable}
-        config={itemToDisable}
-        universeUUID={universeUUID}
-      />
-    </Row>
+        <PointInTimeRecoveryDisableModal
+          onHide={() => setItemToDisable(null)}
+          visible={!!itemToDisable}
+          config={itemToDisable}
+          universeUUID={universeUUID}
+        />
+      </Row>
+    </RbacValidator>
   );
 };

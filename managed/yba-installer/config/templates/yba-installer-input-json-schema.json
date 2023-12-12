@@ -86,15 +86,7 @@
                   "type": "string"
                 },
                 "java_non_proxy": {
-                  "anyOf": [
-                    {
-                      "type": "string",
-                      "maxLength": 0
-                    },
-                    {
-                      "type": "integer"
-                    }
-                  ]
+                  "type": "string"
                 }
               }
             },
@@ -158,6 +150,12 @@
             },
             "port": {
               "type": "integer"
+            },
+            "hsts_enabled": {
+              "type": "boolean"
+            },
+            "custom_headers": {
+              "type": "array"
             },
             "keyStorePassword": {
               "type": "string"

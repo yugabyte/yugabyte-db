@@ -55,13 +55,13 @@ import com.yugabyte.yw.models.helpers.provider.ProviderValidator;
 import io.ebean.annotation.Transactional;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.client.utils.Serialization;
+import jakarta.persistence.PersistenceException;
 import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import javax.inject.Singleton;
-import javax.persistence.PersistenceException;
 import org.apache.commons.lang3.RandomStringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -201,7 +201,8 @@ public class CloudProviderHandler {
             }
           } else if (!hasConfig) {
             LOG.warn(
-                "No Kubeconfig found at any level, in-cluster service account credentials will be used.");
+                "No Kubeconfig found at any level, in-cluster service account credentials will be"
+                    + " used.");
           }
         }
       }

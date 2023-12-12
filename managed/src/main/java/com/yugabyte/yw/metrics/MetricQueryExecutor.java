@@ -130,11 +130,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
         if (metricSettings.isReturnAggregatedValue()) {
           try {
             MetricQueryContext aggregatedContext =
-                context
-                    .toBuilder()
-                    .removeGroupBy(context.getAdditionalGroupBy())
-                    .additionalGroupBy(Collections.emptySet())
-                    .build();
+                context.toBuilder().secondLevelAggregation(true).build();
             aggregatedQueries = configDefinition.getQueries(this.metricSettings, aggregatedContext);
           } catch (Exception e) {
             log.error("Error while generating aggregated queries for " + metricName, e);
@@ -212,17 +208,18 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
     return configDefinition.getQueries(this.metricSettings, context);
   }
 
-  private Set<String> getAdditionalGroupBy(MetricSettings metricSettings) {
+  public static Set<String> getAdditionalGroupBy(MetricSettings metricSettings) {
     switch (metricSettings.getSplitType()) {
       case NODE:
         return ImmutableSet.of(MetricQueryHelper.EXPORTED_INSTANCE);
       case TABLE:
         return ImmutableSet.of(
             MetricQueryHelper.NAMESPACE_NAME,
+            MetricQueryHelper.NAMESPACE_ID,
             MetricQueryHelper.TABLE_ID,
             MetricQueryHelper.TABLE_NAME);
       case NAMESPACE:
-        return ImmutableSet.of(MetricQueryHelper.NAMESPACE_NAME);
+        return ImmutableSet.of(MetricQueryHelper.NAMESPACE_NAME, MetricQueryHelper.NAMESPACE_ID);
       default:
         return Collections.emptySet();
     }

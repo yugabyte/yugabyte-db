@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"strings"
 	"testing"
 )
 
@@ -80,5 +81,64 @@ func TestUnmarshalling(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// This test validates that all status enums are defined correctly - both with a valid String and
+// toStatus implementation
+func TestStatusEnum(t *testing.T) {
+	for i := NoStatus; i < endStatus; i++ {
+		str := i.String()
+		if strings.Contains(str, "unknown") {
+			t.Errorf("found unknown status - %s: %s", i, str)
+		}
+		if _, ok := toStatus[str]; !ok {
+			t.Errorf("cannot convert string '%s' to status", str)
+		}
+	}
+}
+
+// Test common state transitions
+func TestTransitions(t *testing.T) {
+	tests := []struct {
+		Begin, End status
+		Succeed    bool
+		Name       string
+	}{
+		{UninstalledStatus, InstallingStatus, true, "Install"},
+		{UninstalledStatus, UpgradingStatus, false, "Upgrade from uninstalled"},
+		{UninstalledStatus, MigratingStatus, true, "Start replicated migration"},
+		{InstallingStatus, InstalledStatus, true, "Finish install"},
+		{InstallingStatus, CleaningStatus, true, "clean from installing"},
+		{InstallingStatus, InstallingStatus, true, "installing retry"},
+		{InstallingStatus, UpgradingStatus, false, "block upgrade from installing"},
+		{InstalledStatus, UpgradingStatus, true, "upgrade"},
+		{InstalledStatus, MigrateStatus, false, "block migrate on existing install"},
+		{InstalledStatus, InstallingStatus, false, "block reinstall"},
+		{UpgradingStatus, InstalledStatus, true, "finish upgrade"},
+		{UpgradingStatus, UpgradingStatus, true, "upgrading retry"},
+		{UpgradingStatus, CleaningStatus, true, "clean from upgrading"},
+		{CleaningStatus, SoftCleanStatus, true, "soft clean"},
+		{CleaningStatus, InstalledStatus, false, "clean must finish"},
+		{MigratingStatus, MigrateStatus, true, "migrate start"},
+		{MigratingStatus, RollbackStatus, true, "rollback failed migrate"},
+		{MigratingStatus, MigratingStatus, true, "migrating retry"},
+		{MigratingStatus, CleaningStatus, false, "migrating must rollback"},
+		{MigrateStatus, RollbackStatus, true, "rollback from migrate"},
+		{MigrateStatus, FinishingStatus, true, "finish migration"},
+		{MigrateStatus, CleaningStatus, false, "migrate must rollback"},
+		{FinishingStatus, InstalledStatus, true, "finishing to installed"},
+		{FinishingStatus, RollbackStatus, false, "finish must complete"},
+		{FinishingStatus, FinishingStatus, true, "finishing retry"},
+	}
+	for ii, test := range tests {
+		t.Run(
+			fmt.Sprintf("%s:%s-%d", t.Name(), test.Name, ii),
+			func(t *testing.T) {
+				result := test.Begin.TransitionValid(test.End)
+				if result != test.Succeed {
+					t.Errorf("expected %v, got %v", test.Succeed, result)
+				}
+			})
 	}
 }

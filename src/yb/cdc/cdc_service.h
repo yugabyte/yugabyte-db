@@ -16,7 +16,7 @@
 
 #include "yb/cdc/cdc_fwd.h"
 #include "yb/cdc/cdc_error.h"
-#include "yb/cdc/cdc_metrics.h"
+#include "yb/cdc/xrepl_metrics.h"
 #include "yb/cdc/cdc_producer.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_service.service.h"
@@ -55,6 +55,12 @@ class TableHandle;
 
 }
 
+namespace xrepl {
+
+struct StreamTabletStats;
+
+}  // namespace xrepl
+
 namespace cdc {
 
 class CDCStateTable;
@@ -63,7 +69,7 @@ struct CDCStateTableEntry;
 typedef std::unordered_map<HostPort, std::shared_ptr<CDCServiceProxy>, HostPortHash>
     CDCServiceProxyMap;
 
-YB_STRONGLY_TYPED_BOOL(CreateCDCMetricsEntity);
+YB_STRONGLY_TYPED_BOOL(CreateMetricsEntityIfNotFound);
 
 static const char* const kRecordType = "record_type";
 static const char* const kRecordFormat = "record_format";
@@ -183,24 +189,17 @@ class CDCServiceImpl : public CDCServiceIf {
   // Gets the associated metrics entity object stored in the additional metadata of the tablet.
   // If the metrics object is not present, then create it if create == true (eg if we have just
   // moved leaders) and not else (used to not recreate deleted metrics).
-  std::shared_ptr<void> GetCDCTabletMetrics(
-      const ProducerTabletInfo& producer,
-      std::shared_ptr<tablet::TabletPeer> tablet_peer = nullptr,
-      CDCRequestSource source_type = XCLUSTER,
-      CreateCDCMetricsEntity create = CreateCDCMetricsEntity::kTrue);
+  Result<std::shared_ptr<xrepl::XClusterTabletMetrics>> GetXClusterTabletMetrics(
+      const tablet::TabletPeer& tablet_peer, const xrepl::StreamId& stream_id,
+      CreateMetricsEntityIfNotFound create = CreateMetricsEntityIfNotFound::kTrue);
+  Result<std::shared_ptr<xrepl::CDCSDKTabletMetrics>> GetCDCSDKTabletMetrics(
+      const tablet::TabletPeer& tablet_peer, const xrepl::StreamId& stream_id,
+      CreateMetricsEntityIfNotFound create = CreateMetricsEntityIfNotFound::kTrue);
 
-  void RemoveCDCTabletMetrics(
-      const ProducerTabletInfo& producer, std::shared_ptr<tablet::TabletPeer> tablet_peer);
+  void RemoveXReplTabletMetrics(
+      const xrepl::StreamId& stream_id, std::shared_ptr<tablet::TabletPeer> tablet_peer);
 
-  void UpdateCDCTabletMetrics(
-      const GetChangesResponsePB* resp,
-      const ProducerTabletInfo& producer_tablet,
-      const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
-      const OpId& op_id,
-      const CDCRequestSource source_type,
-      int64_t last_readable_index);
-
-  std::shared_ptr<CDCServerMetrics> GetCDCServerMetrics() { return server_metrics_; }
+  std::shared_ptr<xrepl::CDCServerMetrics> GetCDCServerMetrics() { return server_metrics_; }
 
   // Returns true if this server is a producer of a valid replication stream.
   bool CDCEnabled();
@@ -220,6 +219,23 @@ class CDCServiceImpl : public CDCServiceIf {
       uint32_t xcluster_config_version);
 
   uint32_t GetXClusterConfigVersion() const;
+  std::vector<xrepl::StreamTabletStats> GetAllStreamTabletStats() const EXCLUDES(mutex_);
+
+  Result<tablet::TabletPeerPtr> GetServingTablet(const TabletId& tablet_id) const;
+
+  void UpdateTabletMetrics(
+      const GetChangesResponsePB& resp, const ProducerTabletInfo& producer_tablet,
+      const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const OpId& op_id,
+      const CDCRequestSource source_type, int64_t last_readable_index);
+
+  void UpdateTabletXClusterMetrics(
+      const GetChangesResponsePB& resp, const ProducerTabletInfo& producer_tablet,
+      const std::shared_ptr<tablet::TabletPeer>& tablet_peer, const OpId& op_id,
+      int64_t last_readable_index);
+
+  void UpdateTabletCDCSDKMetrics(
+      const GetChangesResponsePB& resp, const ProducerTabletInfo& producer_tablet,
+      const std::shared_ptr<tablet::TabletPeer>& tablet_peer);
 
  private:
   friend class XClusterProducerBootstrap;
@@ -272,7 +288,8 @@ class CDCServiceImpl : public CDCServiceIf {
       const TableId& colocated_table_id, const CDCSDKCheckpointPB& cdc_sdk_checkpoint);
 
   Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> GetTablets(
-      const xrepl::StreamId& stream_id);
+      const xrepl::StreamId& stream_id,
+      bool ignore_errors = false);
 
   Status CreateCDCStreamForTable(
       const TableId& table_id,
@@ -338,13 +355,24 @@ class CDCServiceImpl : public CDCServiceIf {
       const TabletId& tablet_id, const TabletCDCCheckpointInfo& cdc_checkpoint_min,
       bool ignore_failures = true);
 
-  void ComputeLagMetric(
-      int64_t last_replicated_micros, int64_t metric_last_timestamp_micros,
-      int64_t cdc_state_last_replication_time_micros, scoped_refptr<AtomicGauge<int64_t>> metric);
+  struct ChildrenTabletMeta {
+    ProducerTabletInfo parent_tablet_info;
+    uint64_t last_replication_time;
+    std::shared_ptr<yb::xrepl::XClusterTabletMetrics> tablet_metric;
+  };
+  using EmptyChildrenTabletMap =
+      std::unordered_map<ProducerTabletInfo, ChildrenTabletMeta, ProducerTabletInfo::Hash>;
+  using TabletInfoToLastReplicationTimeMap =
+      std::unordered_map<ProducerTabletInfo, std::optional<uint64_t>, ProducerTabletInfo::Hash>;
+  // Helper function for processing metrics of children tablets. We need to find an ancestor tablet
+  // that has a last replicated time and use that with our latest op's time to find the full lag.
+  void ProcessMetricsForEmptyChildrenTablets(
+      const EmptyChildrenTabletMap& empty_children_tablets,
+      TabletInfoToLastReplicationTimeMap* cdc_state_tablets_to_last_replication_time);
 
   // Update metrics async_replication_sent_lag_micros and async_replication_committed_lag_micros.
   // Called periodically default 1s.
-  void UpdateCDCMetrics();
+  void UpdateMetrics();
 
   // This method is used to read the cdc_state table to find the minimum replicated index for each
   // tablet and then update the peers' log objects. Also used to update lag metrics.
@@ -364,7 +392,7 @@ class CDCServiceImpl : public CDCServiceIf {
 
   MicrosTime GetLastReplicatedTime(const std::shared_ptr<tablet::TabletPeer>& tablet_peer);
 
-  bool ShouldUpdateCDCMetrics(MonoTime time_since_update_metrics);
+  bool ShouldUpdateMetrics(MonoTime time_since_update_metrics);
 
   client::YBClient* client();
 
@@ -393,9 +421,8 @@ class CDCServiceImpl : public CDCServiceIf {
       const std::shared_ptr<tablet::TabletPeer>& tablet_peer,
       HybridTime cdc_sdk_safe_time = HybridTime::kInvalid);
 
-  Status UpdateChildrenTabletsOnSplitOp(
-      const ProducerTabletInfo& producer_tablet,
-      const consensus::ReplicateMsg& split_op_msg);
+  Status UpdateChildrenTabletsOnSplitOpForXCluster(
+      const ProducerTabletInfo& producer_tablet, const consensus::ReplicateMsg& split_op_msg);
 
   Status UpdateChildrenTabletsOnSplitOpForCDCSDK(const ProducerTabletInfo& info);
 
@@ -422,10 +449,14 @@ class CDCServiceImpl : public CDCServiceIf {
   Result<CompositeAttsMap> UpdateCompositeMapInCacheUnlocked(const NamespaceName& ns_name)
       REQUIRES(mutex_);
 
-  Result<bool> IsBootstrapRequiredForTablet(
-      tablet::TabletPeerPtr tablet_peer, const OpId& min_op_id, const CoarseTimePoint& deadline);
-
   void AddTabletCheckpoint(OpId op_id, const xrepl::StreamId& stream_id, const TabletId& tablet_id);
+
+  // Validates the passed in AutoFlags config version and returns error if it does not match the
+  // local universe. Returns true if the check passed, and false if it failed. Sets
+  // AUTO_FLAGS_CONFIG_VERSION_MISMATCH error and the local_auto_flags_config_version in the resp
+  // when the config version does not match.
+  bool ValidateAutoFlagsConfigVersion(
+      const GetChangesRequestPB& req, GetChangesResponsePB& resp, rpc::RpcContext& context);
 
   rpc::Rpcs rpcs_;
 
@@ -433,7 +464,7 @@ class CDCServiceImpl : public CDCServiceIf {
 
   MetricRegistry* metric_registry_;
 
-  std::shared_ptr<CDCServerMetrics> server_metrics_;
+  std::shared_ptr<xrepl::CDCServerMetrics> server_metrics_;
 
   // Prevents GetChanges "storms" by rejecting when all permits have been acquired.
   Semaphore get_changes_rpc_sem_;

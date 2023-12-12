@@ -1,9 +1,9 @@
 ---
-title: Alerts
+title: Alerts in YugabyteDB Managed
+headerTitle: Alerts
 linkTitle: Alerts
 description: Set alerts for activity in your account.
 headcontent: Set alerts for activity in your account
-image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:
     identifier: cloud-alerts

@@ -37,46 +37,46 @@ Although these attributes are present in all `handler_latency` metrics, they may
 
 YSQL query processing metrics represent the total inclusive time it takes YugabyteDB to process a YSQL statement after the query processing layer begins execution. These metrics include the time taken to parse and execute the SQL statement, replicate over the network, the time spent in the storage layer, and so on. The preceding metrics do not capture the time to deserialize the network bytes and parse the query.
 
-The following are key metrics for evaluating YSQL query processing.
+The following are key metrics for evaluating YSQL query processing. All metrics are counters and units are microseconds.
 
-| Metric | Unit | Type | Description |
-| :--- | :--- | :--- | :--- |
-| `handler_latency_yb_ysqlserver_SQLProcessor_InsertStmt` | microseconds | counter | Time to parse and execute INSERT statement.
-| `handler_latency_yb_ysqlserver_SQLProcessor_SelectStmt` | microseconds | counter | Time to parse and execute SELECT statement.
-| `handler_latency_yb_ysqlserver_SQLProcessor_UpdateStmt` | microseconds | counter | Time to parse and execute UPDATE statement.
-| `handler_latency_yb_ysqlserver_SQLProcessor_BeginStmt` | microseconds | counter | Time to parse and execute transaction BEGIN statement.
-| `handler_latency_yb_ysqlserver_SQLProcessor_CommitStmt` | microseconds | counter | Time to parse and execute transaction COMMIT statement.
-| `handler_latency_yb_ysqlserver_SQLProcessor_RollbackStmt` | microseconds | counter | Time to parse and execute transaction ROLLBACK statement.
-| `handler_latency_yb_ysqlserver_SQLProcessor_OtherStmts` | microseconds | counter | Time to parse and execute all other statements apart from the preceding ones listed in this table. Includes statements like PREPARE, RELEASE SAVEPOINT, and so on.
-| `handler_latency_yb_ysqlserver_SQLProcessor_Transactions` | microseconds | counter | Time to execute any of the statements in this table.
+| Metric (Counter \| microseconds) | Description |
+| :--- | :--- |
+| `handler_latency_yb_ysqlserver_SQLProcessor_InsertStmt` | Time to parse and execute INSERT statement.
+| `handler_latency_yb_ysqlserver_SQLProcessor_SelectStmt` | Time to parse and execute SELECT statement.
+| `handler_latency_yb_ysqlserver_SQLProcessor_UpdateStmt` | Time to parse and execute UPDATE statement.
+| `handler_latency_yb_ysqlserver_SQLProcessor_BeginStmt` | Time to parse and execute transaction BEGIN statement.
+| `handler_latency_yb_ysqlserver_SQLProcessor_CommitStmt` | Time to parse and execute transaction COMMIT statement.
+| `handler_latency_yb_ysqlserver_SQLProcessor_RollbackStmt` | Time to parse and execute transaction ROLLBACK statement.
+| `handler_latency_yb_ysqlserver_SQLProcessor_OtherStmts` | Time to parse and execute all other statements apart from the preceding ones listed in this table. Includes statements like PREPARE, RELEASE SAVEPOINT, and so on.
+| `handler_latency_yb_ysqlserver_SQLProcessor_Transactions` | Time to execute any of the statements in this table.
 
 The YSQL throughput can be viewed as an aggregate across the whole cluster, per table, and per node by applying the appropriate aggregations.
 
 <!-- | Metrics | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
-| `handler_latency_yb_ysqlserver_SQLProcessor_InsertStmt` | microseconds | counter | The time in microseconds to parse and execute INSERT statement |
-| `handler_latency_yb_ysqlserver_SQLProcessor_SelectStmt` | microseconds | counter | The time in microseconds to parse and execute SELECT statement |
-| `handler_latency_yb_ysqlserver_SQLProcessor_UpdateStmt` | microseconds | counter | The time in microseconds to parse and execute UPDATE statement |
-| `handler_latency_yb_ysqlserver_SQLProcessor_BeginStmt` | microseconds | counter | The time in microseconds to parse and execute transaction BEGIN statement |
-| `handler_latency_yb_ysqlserver_SQLProcessor_CommitStmt` | microseconds | counter | The time in microseconds to parse and execute transaction COMMIT statement |
-| `handler_latency_yb_ysqlserver_SQLProcessor_RollbackStmt` | microseconds | counter | The time in microseconds to parse and execute transaction ROLLBACK statement |
-| `handler_latency_yb_ysqlserver_SQLProcessor_OtherStmts` | microseconds | counter | The time in microseconds to parse and execute all other statements apart from the preceding ones listed in this table. This includes statements like PREPARE, RELEASE SAVEPOINT, and so on. |
-| `handler_latency_yb_ysqlserver_SQLProcessor_Transactions` | microseconds | counter | The time in microseconds to execute any of the statements in this table.| -->
+| `handler_latency_yb_ysqlserver_SQLProcessor_InsertStmt` | The time in microseconds to parse and execute INSERT statement |
+| `handler_latency_yb_ysqlserver_SQLProcessor_SelectStmt` | The time in microseconds to parse and execute SELECT statement |
+| `handler_latency_yb_ysqlserver_SQLProcessor_UpdateStmt` | The time in microseconds to parse and execute UPDATE statement |
+| `handler_latency_yb_ysqlserver_SQLProcessor_BeginStmt` | The time in microseconds to parse and execute transaction BEGIN statement |
+| `handler_latency_yb_ysqlserver_SQLProcessor_CommitStmt` | The time in microseconds to parse and execute transaction COMMIT statement |
+| `handler_latency_yb_ysqlserver_SQLProcessor_RollbackStmt` | The time in microseconds to parse and execute transaction ROLLBACK statement |
+| `handler_latency_yb_ysqlserver_SQLProcessor_OtherStmts` | The time in microseconds to parse and execute all other statements apart from the preceding ones listed in this table. This includes statements like PREPARE, RELEASE SAVEPOINT, and so on. |
+| `handler_latency_yb_ysqlserver_SQLProcessor_Transactions` | The time in microseconds to execute any of the statements in this table.| -->
 
 ## Database IOPS (reads and writes)
 
 The [YB-TServer](../../../../architecture/concepts/yb-tserver/) is responsible for the actual I/O of client requests in a YugabyteDB cluster. Each node in the cluster has a YB-TServer, and each hosts one or more tablet peers.
 
-The following are key metrics for evaluating database IOPS.
+The following are key metrics for evaluating database IOPS. All metrics are counters and units are microseconds.
 
-| Metric | Unit | Type | Description |
-| :--- | :--- | :--- | :--- |
-| `handler_latency_yb_tserver_TabletServerService_Read` | microseconds | counter | Time to perform WRITE operations at a tablet level.
-| `handler_latency_yb_tserver_TabletServerService_Write` | microseconds | counter | Time to perform READ operations at a tablet level.
+| Metric (Counter \| microseconds) | Description |
+| :--- | :--- |
+| `handler_latency_yb_tserver_TabletServerService_Read` | Time to perform READ operations at a tablet level.
+| `handler_latency_yb_tserver_TabletServerService_Write` | Time to perform WRITE operations at a tablet level.
 
 <!-- | Metrics | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |
-| `handler_latency_yb_tserver_TabletServerService_Read` | microseconds | counter | Time in microseconds to perform WRITE operations at a tablet level |
-| `handler_latency_yb_tserver_TabletServerService_Write` | microseconds | counter | Time in microseconds to perform READ operations at a tablet level | -->
+| `handler_latency_yb_tserver_TabletServerService_Read` | Time in microseconds to perform READ operations at a tablet level |
+| `handler_latency_yb_tserver_TabletServerService_Write` | Time in microseconds to perform WRITE operations at a tablet level | -->
 
 These metrics can be viewed as an aggregate across the whole cluster, per table, and per node by applying the appropriate aggregations.

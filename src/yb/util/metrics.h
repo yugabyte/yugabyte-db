@@ -519,7 +519,7 @@ class MetricRegistry {
   // See the MetricPrometheusOptions struct definition above for options changing the
   // output of this function.
   Status WriteForPrometheus(PrometheusWriter* writer,
-                            MetricPrometheusOptions opts);
+                            const MetricPrometheusOptions& opts) const;
 
   // For each registered entity, retires orphaned metrics. If an entity has no more
   // metrics and there are no external references, entities are removed as well.
@@ -551,14 +551,6 @@ class MetricRegistry {
   void get_all_prototypes(std::set<std::string>&) const;
 
  private:
-  std::string cached_table_whitelist_ GUARDED_BY(lock_);
-  std::string cached_table_blacklist_ GUARDED_BY(lock_);
-  std::string cached_server_whitelist_ GUARDED_BY(lock_);
-  std::string cached_server_blacklist_ GUARDED_BY(lock_);
-
-  // Map from metric name to aggregation_levels.
-  MetricAggregationMap metric_filter_ GUARDED_BY(lock_);
-
   typedef std::unordered_map<std::string, scoped_refptr<MetricEntity> > EntityMap;
   EntityMap entities_ GUARDED_BY(lock_);
 
@@ -566,15 +558,6 @@ class MetricRegistry {
 
   // Set of tablets that have been shutdown. Protected by tablets_shutdown_lock_.
   std::set<std::string> tablets_shutdown_;
-
-  // True if regex filters in opts doesn't match with cached filters. Otherwise, return false.
-  bool HasRegexFilterChanged(const MetricPrometheusOptions& opts) const REQUIRES(lock_);
-
-  // We need to update cached regex filter and metric_filter_map_ at the same time
-  // to ensure correctness.
-  void UpdateCachedRegexFilter(
-    const MetricPrometheusOptions& opts,
-    const MetricAggregationMap& metric_filter) REQUIRES(lock_);
 
   // Returns whether a tablet has been shutdown.
   bool TabletHasBeenShutdown(const scoped_refptr<MetricEntity> entity) const;
@@ -772,8 +755,9 @@ class AtomicGauge : public Gauge {
 
     return writer->WriteSingleEntry(attr, prototype_->name(), value(),
                                     prototype()->aggregation_function(),
+                                    aggregation_levels,
                                     MetricType::PrometheusType(prototype_->type()),
-                                    prototype_->description(), aggregation_levels);
+                                    prototype_->description());
   }
 
  protected:
@@ -873,8 +857,9 @@ class FunctionGauge : public Gauge {
 
     return writer->WriteSingleEntry(attr, prototype_->name(), value(),
                                     prototype()->aggregation_function(),
+                                    aggregation_levels,
                                     MetricType::PrometheusType(prototype_->type()),
-                                    prototype_->description(), aggregation_levels);
+                                    prototype_->description());
   }
 
  private:
@@ -1012,8 +997,9 @@ class AtomicMillisLag : public MillisLag {
 
     return writer->WriteSingleEntry(attr, prototype_->name(), this->lag_ms(),
                                     prototype()->aggregation_function(),
+                                    aggregation_levels,
                                     MetricType::PrometheusType(prototype_->type()),
-                                    prototype_->description(), aggregation_levels);
+                                    prototype_->description());
   }
 
  protected:
@@ -1162,6 +1148,8 @@ using HistogramPtr = scoped_refptr<Histogram>;
 class EventStats : public BaseStats<EventStats> {
  public:
   const AggregateStats* underlying() const { return stats_.get(); }
+
+  void Add(const AggregateStats& other) { stats_->Add(other); }
 
   size_t DynamicMemoryUsage() const { return stats_->DynamicMemoryUsage() + sizeof(*this); }
 

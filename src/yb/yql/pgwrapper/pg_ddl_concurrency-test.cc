@@ -62,7 +62,9 @@ TEST_F(PgDDLConcurrencyTest, IndexCreation) {
     thread_holder.AddThreadFunctor(
         [this, &stop = thread_holder.stop_flag(), idx = i, &start_latch] {
           const auto table_name = Format("t$0", idx);
-          auto conn = ASSERT_RESULT(Connect());
+          // TODO (#19975): Enable read committed isolation
+          auto conn = ASSERT_RESULT(SetDefaultTransactionIsolation(
+              Connect(), IsolationLevel::SNAPSHOT_ISOLATION));
           start_latch.CountDown();
           start_latch.Wait();
           while (!stop.load(std::memory_order_acquire)) {
@@ -72,7 +74,9 @@ TEST_F(PgDDLConcurrencyTest, IndexCreation) {
   }
 
   const std::string table_name("t");
-  auto conn = ASSERT_RESULT(Connect());
+  // TODO (#19975): Enable read committed isolation
+  auto conn = ASSERT_RESULT(SetDefaultTransactionIsolation(
+      Connect(), IsolationLevel::SNAPSHOT_ISOLATION));
   start_latch.CountDown();
   start_latch.Wait();
   for (size_t i = 0; i < 3; ++i) {

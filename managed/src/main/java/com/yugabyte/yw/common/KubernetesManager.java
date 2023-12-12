@@ -20,6 +20,7 @@ import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodCondition;
 import io.fabric8.kubernetes.api.model.PodStatus;
+import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.events.v1.Event;
@@ -116,6 +117,7 @@ public abstract class KubernetesManager {
     ShellResponse response = execCommand(config, commandList);
     processHelmResponse(config, helmReleaseName, namespace, response);
   }
+
   // Log a diff before applying helm upgrade.
   public void diff(Map<String, String> config, String inputYamlFilePath) {
     List<String> diffCommandList =
@@ -578,7 +580,9 @@ public abstract class KubernetesManager {
   public abstract PodStatus getPodStatus(
       Map<String, String> config, String namespace, String podName);
 
-  /** @return the first that exists of loadBalancer.hostname, loadBalancer.ip, clusterIp */
+  /**
+   * @return the first that exists of loadBalancer.hostname, loadBalancer.ip, clusterIp
+   */
   public abstract String getPreferredServiceIP(
       Map<String, String> config,
       String universePrefix,
@@ -617,6 +621,13 @@ public abstract class KubernetesManager {
       String helmReleaseName,
       String appName,
       String newDiskSize,
+      boolean newNamingStyle);
+
+  public abstract List<Quantity> getPVCSizeList(
+      Map<String, String> config,
+      String namespace,
+      String helmReleaseName,
+      String appName,
       boolean newNamingStyle);
 
   public abstract List<PersistentVolumeClaim> getPVCs(
@@ -706,4 +717,12 @@ public abstract class KubernetesManager {
   public abstract String getKubeconfigUser(Map<String, String> config);
 
   public abstract String getKubeconfigCluster(Map<String, String> config);
+
+  public abstract void deleteUnusedPVCs(
+      Map<String, String> config,
+      String namespace,
+      String helmReleaseName,
+      String appName,
+      boolean newNamingStyle,
+      int replicaCount);
 }

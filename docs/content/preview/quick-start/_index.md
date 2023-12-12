@@ -112,7 +112,7 @@ kern.maxprocperuid=2500
 kern.maxfilesperproc=1048576
 ```
 
-If this file does not exist, create the following two files:
+If this file does not exist, create the following two files (this will require sudo access):
 
 - `/Library/LaunchDaemons/limit.maxfiles.plist` and insert the following:
 
@@ -166,14 +166,14 @@ If this file does not exist, create the following two files:
 
 Ensure that the `plist` files are owned by `root:wheel` and have permissions `-rw-r--r--`. To take effect, you need to reboot your computer or run the following commands:
 
-  ```sh
+```sh
 sudo launchctl load -w /Library/LaunchDaemons/limit.maxfiles.plist
 sudo launchctl load -w /Library/LaunchDaemons/limit.maxproc.plist
-  ```
+```
 
 You might need to `unload` the service before loading it.
 
-### Download YugabyteDB
+### Download
 
 You download YugabyteDB as follows:
 
@@ -190,6 +190,8 @@ You download YugabyteDB as follows:
     ```
 
 ## Create a local cluster
+
+Use the [yugabyted](../reference/configuration/yugabyted/) utility to create and manage universes.
 
 {{< tabpane text=true >}}
 
@@ -217,74 +219,7 @@ Alternatively, you can disable AirPlay receiving, then start YugabyteDB normally
 
 {{< /tabpane >}}
 
-### Check the cluster status
-
-Execute the following command to check the cluster status:
-
-```sh
-./bin/yugabyted status
-```
-
-Expect an output similar to the following:
-
-```output
-+--------------------------------------------------------------------------------------------------+
-|                                            yugabyted                                             |
-+--------------------------------------------------------------------------------------------------+
-| Status              : Running.                                                                   |
-| Replication Factor  : 1                                                                          |
-| Web console         : http://127.0.0.1:7000                                                      |
-| JDBC                : jdbc:postgresql://127.0.0.1:5433/yugabyte?user=yugabyte&password=yugabyte  |
-| YSQL                : bin/ysqlsh   -U yugabyte -d yugabyte                                       |
-| YCQL                : bin/ycqlsh   -u cassandra                                                  |
-| Data Dir            : /Users/myuser/var/data                                                     |
-| Log Dir             : /Users/myuser/var/logs                                                     |
-| Universe UUID       : fad6c687-e1dc-4dfd-af4b-380021e19be3                                       |
-+--------------------------------------------------------------------------------------------------+
-```
-
-After the cluster has been created, clients can [connect to the YSQL and YCQL APIs](#connect-to-the-database) at `http://localhost:5433` and `http://localhost:9042` respectively. You can also check `~/var/data` to see the data directory and `~/var/logs` to see the logs directory.
-
-If you have previously installed YugabyteDB version 2.8 or later and created a cluster on the same computer, you may need to [upgrade the YSQL system catalog](../manage/upgrade-deployment/#upgrade-the-ysql-system-catalog) to run the latest features.
-
-### Use the Admin UI
-
-The cluster you have created consists of two processes: [YB-Master](../architecture/concepts/yb-master/) which keeps track of various metadata (list of tables, users, roles, permissions, and so on) and [YB-TServer](../architecture/concepts/yb-tserver/) which is responsible for the actual end-user requests for data updates and queries.
-
-Each of the processes exposes its own Admin UI that can be used to check the status of the corresponding process, as well as perform certain administrative operations. The [YB-Master Admin UI](../reference/configuration/yb-master/#admin-ui) is available at [http://127.0.0.1:7000](http://127.0.0.1:7000) (replace the port number if you've started `yugabyted` with the `--master_webserver_port` flag) and the [YB-TServer Admin UI](../reference/configuration/yb-tserver/#admin-ui) is available at [http://127.0.0.1:9000](http://127.0.0.1:9000).
-
-#### Overview and YB-Master status
-
-The following illustration shows the YB-Master home page with a cluster with a replication factor of 1, a single node, and no tables. The YugabyteDB version is also displayed.
-
-![master-home](/images/admin/master-home-binary-rf1.png)
-
-The **Masters** section displays the 1 YB-Master along with its corresponding cloud, region, and zone placement.
-
-#### YB-TServer status
-
-Click **See all nodes** to open the **Tablet Servers** page that lists the YB-TServer along with the time since it last connected to the YB-Master using regular heartbeats. Because there are no user tables, **User Tablet-Peers / Leaders** is 0. As tables are added, new tablets (also known as shards) will be created automatically and distributed evenly across all the available tablet servers.
-
-![master-home](/images/admin/master-tservers-list-binary-rf1.png)
-
-## Connect to the database
-
-Using the YugabyteDB SQL shell, [ysqlsh](../admin/ysqlsh/), you can connect to your cluster and interact with it using distributed SQL. ysqlsh is installed with YugabyteDB and is located in the bin directory of the YugabyteDB home directory.
-
-To open the YSQL shell, run `ysqlsh`.
-
-```sh
-./bin/ysqlsh
-```
-
-```output
-ysqlsh (11.2-YB-2.1.0.0-b0)
-Type "help" for help.
-
-yugabyte=#
-```
-
-To load sample data and explore an example using ysqlsh, refer to [Retail Analytics](../sample-data/retail-analytics/).
+{{% includeMarkdown "./include-connect.md" %}}
 
 ## Build an application
 

@@ -7,10 +7,12 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import React, { FC } from 'react';
+import { FC } from 'react';
 import { Grid, makeStyles } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 import { YBButton } from '../../redesign/components';
+import { RbacValidator } from '../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../redesign/features/rbac/ApiAndUserPermMapping';
 
 type CACertsEmptyProps = {
   onUpload: () => void;
@@ -46,14 +48,19 @@ export const CACertsEmpty: FC<CACertsEmptyProps> = ({ onUpload }) => {
 
   const { t } = useTranslation();
   const classes = useStyles();
-  
+
   return (
     <Grid className={classes.root} container>
       <Grid item>{UPLOAD_ICON}</Grid>
       <Grid item>
-        <YBButton variant="primary" onClick={() => onUpload()} data-testid="uploadCACertBut">
-          {t('customCACerts.uploadCACertModal.title')}
-        </YBButton>
+        <RbacValidator
+          accessRequiredOn={ApiPermissionMap.CREATE_CA_CERT}
+          isControl
+        >
+          <YBButton variant="primary" onClick={() => onUpload()} data-testid="uploadCACertBut">
+            {t('customCACerts.uploadCACertModal.title')}
+          </YBButton>
+        </RbacValidator>
       </Grid>
       <Grid item>{t('customCACerts.listing.caCertsListEmpty')}</Grid>
     </Grid>

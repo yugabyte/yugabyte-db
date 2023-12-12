@@ -44,6 +44,8 @@ import {
   GET_MASTER_LEADER,
   GET_MASTER_LEADER_RESPONSE,
   RESET_MASTER_LEADER,
+  GET_MASTER_NODES_INFO,
+  GET_MASTER_NODES_INFO_RESPONSE,
   PERFORM_UNIVERSE_NODE_ACTION,
   PERFORM_UNIVERSE_NODE_ACTION_RESPONSE,
   FETCH_UNIVERSE_BACKUPS,
@@ -93,6 +95,7 @@ const INITIAL_STATE = {
   error: null,
   formSubmitSuccess: false,
   universeConfigTemplate: getInitialState({}),
+  universeMasterNodes: getInitialState([]),
   universeResourceTemplate: getInitialState({}),
   currentPlacementStatus: null,
   fetchUniverseMetadata: false,
@@ -111,7 +114,7 @@ const INITIAL_STATE = {
   healthCheck: getInitialState({}),
   alertsConfig: getInitialState({}),
   backupState: getInitialState({}),
-  supportedReleases: getInitialState({})
+  supportedReleases: getInitialState([])
 };
 
 export default function (state = INITIAL_STATE, action) {
@@ -165,7 +168,7 @@ export default function (state = INITIAL_STATE, action) {
     case FETCH_UNIVERSE_INFO_RESPONSE:
       return setPromiseResponse(state, 'currentUniverse', action);
     case FETCH_SUPPORTED_RELEASES:
-      return setLoadingState(state, 'supportedReleases', {});
+      return setLoadingState(state, 'supportedReleases', []);
     case FETCH_SUPPORTED_RELEASES_RESPONSE:
       return setPromiseResponse(state, 'supportedReleases', action);
     case RESET_UNIVERSE_INFO:
@@ -202,6 +205,10 @@ export default function (state = INITIAL_STATE, action) {
       return setPromiseResponse(state, 'universeMasterLeader', action);
     case RESET_MASTER_LEADER:
       return { ...state, universeMasterLeader: getInitialState({}) };
+    case GET_MASTER_NODES_INFO:
+      return setLoadingState(state, 'universeMasterNodes', []);
+    case GET_MASTER_NODES_INFO_RESPONSE:
+      return setPromiseResponse(state, 'universeMasterNodes', action);
     case GET_NODE_INSTANCE_LIST:
       return setLoadingState(state, 'nodeInstanceList', []);
     case GET_NODE_INSTANCE_LIST_RESPONSE:

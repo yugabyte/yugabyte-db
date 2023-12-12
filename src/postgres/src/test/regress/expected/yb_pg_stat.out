@@ -243,13 +243,14 @@ insert into table2 (c1, c2) values (8, 'bob');
 create index table2_index on table2 (c2) include (c1);
 /*+IndexScan(table2) */
 explain (costs off) select maintable.c1, table2.c1, table2.c2 from maintable, table2 where table2.c2=maintable.c2;
-                  QUERY PLAN
------------------------------------------------
- Nested Loop
+                                QUERY PLAN
+--------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (maintable.c2 = table2.c2)
    ->  Seq Scan on maintable
    ->  Index Scan using table2_index on table2
-         Index Cond: (c2 = maintable.c2)
-(4 rows)
+         Index Cond: (c2 = ANY (ARRAY[maintable.c2, $1, $2, ..., $1023]))
+(5 rows)
 
 /*+IndexScan(table2) */
 select maintable.c1, table2.c1, table2.c2 from maintable, table2 where table2.c2=maintable.c2;
@@ -273,13 +274,14 @@ select indexrelname,idx_scan from pg_stat_user_indexes where indexrelname in ('m
 
 /*+IndexScan(maintable)*/
 explain (costs off) select table2.c1, table2.c2, maintable.c1 from table2, maintable where table2.c2=maintable.c2;
-                    QUERY PLAN
----------------------------------------------------
- Nested Loop
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (table2.c2 = maintable.c2)
    ->  Seq Scan on table2
    ->  Index Scan using maintable_idx on maintable
-         Index Cond: (c2 = table2.c2)
-(4 rows)
+         Index Cond: (c2 = ANY (ARRAY[table2.c2, $1, $2, ..., $1023]))
+(5 rows)
 
 /*+IndexScan(maintable)*/
 select table2.c1, table2.c2, maintable.c1 from table2, maintable where table2.c2=maintable.c2;
@@ -367,6 +369,9 @@ select indexrelname,idx_scan from pg_stat_user_indexes where indexrelname ~ 'bas
 (2 rows)
 
 alter table basic_table add primary key (c1);
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 select pg_sleep(1);
  pg_sleep
 ----------

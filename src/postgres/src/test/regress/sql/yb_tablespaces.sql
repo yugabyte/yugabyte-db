@@ -149,6 +149,8 @@ CREATE TEMPORARY TABLE temptest (a INT) TABLESPACE regress_tblspace;
 CREATE TEMPORARY TABLE temptest (a INT);
 -- Fail, cannot set tablespaces for temp tables
 ALTER TABLE temptest SET TABLESPACE regress_tblspace;
+-- Fail, cannot set tablespace for temp indexes
+CREATE INDEX temp_idx_tblspc ON temptest(a) TABLESPACE regress_tblspace;
 DROP TABLE temptest;
 
 -- Fail, cannot set tablespaces for temp tables

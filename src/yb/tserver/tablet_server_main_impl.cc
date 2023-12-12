@@ -36,7 +36,6 @@
 #include <iostream>
 
 #include <boost/optional/optional.hpp>
-#include <glog/logging.h>
 
 #include "yb/common/termination_monitor.h"
 #include "yb/common/llvm_profile_dumper.h"
@@ -48,6 +47,7 @@
 
 #include "yb/yql/cql/cqlserver/cql_server.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
+#include "yb/yql/process_wrapper/process_wrapper.h"
 #include "yb/yql/redis/redisserver/redis_server.h"
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_wrapper.h"
 
@@ -59,6 +59,7 @@
 #include "yb/server/skewed_clock.h"
 #include "yb/server/secure.h"
 #include "yb/tserver/factory.h"
+#include "yb/tserver/metrics_snapshotter.h"
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/flags.h"
@@ -132,6 +133,7 @@ DECLARE_bool(enable_ysql_conn_mgr);
 DECLARE_bool(enable_ysql);
 DECLARE_bool(enable_ysql_conn_mgr_stats);
 DECLARE_uint32(ysql_conn_mgr_port);
+DECLARE_bool(ysql_conn_mgr_use_unix_conn);
 
 
 namespace yb {
@@ -187,6 +189,35 @@ void SetProxyAddresses() {
   LOG(INFO) << "ysql connection manager is enabled";
   LOG(INFO) << "Using pgsql_proxy_bind_address = " << FLAGS_pgsql_proxy_bind_address;
   LOG(INFO) << "Using ysql_connection_manager port = " << FLAGS_ysql_conn_mgr_port;
+}
+
+Status SetSslConf(const std::unique_ptr<TabletServer> &server,
+    yb::ProcessWrapperCommonConfig* config) {
+    config->certs_dir = FLAGS_certs_dir.empty()
+       ? server::DefaultCertsDir(*server->fs_manager())
+       : FLAGS_certs_dir;
+    config->certs_for_client_dir = FLAGS_certs_for_client_dir.empty()
+       ? config->certs_dir
+       : FLAGS_certs_for_client_dir;
+    config->enable_tls = FLAGS_use_client_to_server_encryption;
+
+    // Follow the same logic as elsewhere, check FLAGS_cert_node_filename then
+    // server_broadcast_addresses then rpc_bind_addresses.
+    if (!FLAGS_cert_node_filename.empty()) {
+      config->cert_base_name = FLAGS_cert_node_filename;
+    } else {
+      const auto server_broadcast_addresses =
+          HostPort::ParseStrings(server->options().server_broadcast_addresses, 0);
+      RETURN_NOT_OK(server_broadcast_addresses);
+      const auto rpc_bind_addresses =
+          HostPort::ParseStrings(server->options().rpc_opts.rpc_bind_addresses, 0);
+      RETURN_NOT_OK(rpc_bind_addresses);
+      config->cert_base_name = !server_broadcast_addresses->empty()
+                                           ? server_broadcast_addresses->front().host()
+                                           : rpc_bind_addresses->front().host();
+    }
+
+  return Status::OK();
 }
 
 // Runs the IO service in a loop until it is stopped. Invokes trigger_termination_fn if there is an
@@ -250,9 +281,6 @@ int TabletServerMain(int argc, char** argv) {
   call_home = std::make_unique<TserverCallHome>(server.get());
   call_home->ScheduleCallHome();
 
-  if(!FLAGS_enable_ysql_conn_mgr)
-    FLAGS_enable_ysql_conn_mgr_stats = false;
-
   std::unique_ptr<PgSupervisor> pg_supervisor;
   if (FLAGS_start_pgsql_proxy || FLAGS_enable_ysql) {
     auto pg_process_conf_result = PgProcessConf::CreateValidateAndRunInitDb(
@@ -263,46 +291,40 @@ int TabletServerMain(int argc, char** argv) {
     LOG_AND_RETURN_FROM_MAIN_NOT_OK(docdb::DocPgInit());
     auto& pg_process_conf = *pg_process_conf_result;
     pg_process_conf.master_addresses = tablet_server_options->master_addresses_flag;
-    pg_process_conf.certs_dir = FLAGS_certs_dir.empty()
-       ? server::DefaultCertsDir(*server->fs_manager())
-       : FLAGS_certs_dir;
-    pg_process_conf.certs_for_client_dir = FLAGS_certs_for_client_dir.empty()
-       ? pg_process_conf.certs_dir
-       : FLAGS_certs_for_client_dir;
-    pg_process_conf.enable_tls = FLAGS_use_client_to_server_encryption;
+    LOG_AND_RETURN_FROM_MAIN_NOT_OK(SetSslConf(server, &pg_process_conf));
+    LOG(INFO) << "Starting PostgreSQL server listening on "
+              << pg_process_conf.listen_addresses << ", port " << pg_process_conf.pg_port;
 
-    // Follow the same logic as elsewhere, check FLAGS_cert_node_filename then
-    // server_broadcast_addresses then rpc_bind_addresses.
-    if (!FLAGS_cert_node_filename.empty()) {
-      pg_process_conf.cert_base_name = FLAGS_cert_node_filename;
-    } else {
-      const auto server_broadcast_addresses =
-          HostPort::ParseStrings(server->options().server_broadcast_addresses, 0);
-      LOG_AND_RETURN_FROM_MAIN_NOT_OK(server_broadcast_addresses);
-      const auto rpc_bind_addresses =
-          HostPort::ParseStrings(server->options().rpc_opts.rpc_bind_addresses, 0);
-      LOG_AND_RETURN_FROM_MAIN_NOT_OK(rpc_bind_addresses);
-      pg_process_conf.cert_base_name = !server_broadcast_addresses->empty()
-                                           ? server_broadcast_addresses->front().host()
-                                           : rpc_bind_addresses->front().host();
-    }
-      LOG(INFO) << "Starting PostgreSQL server listening on "
-                << pg_process_conf.listen_addresses << ", port " << pg_process_conf.pg_port;
-
-      pg_supervisor = std::make_unique<PgSupervisor>(pg_process_conf, server.get());
-      LOG_AND_RETURN_FROM_MAIN_NOT_OK(pg_supervisor->Start());
+    pg_supervisor = std::make_unique<PgSupervisor>(pg_process_conf, server.get());
+    LOG_AND_RETURN_FROM_MAIN_NOT_OK(pg_supervisor->Start());
   }
 
   std::unique_ptr<ysql_conn_mgr_wrapper::YsqlConnMgrSupervisor> ysql_conn_mgr_supervisor;
   if (FLAGS_enable_ysql_conn_mgr) {
     LOG(INFO) << "Starting Ysql Connection Manager on port " << FLAGS_ysql_conn_mgr_port;
 
+    ysql_conn_mgr_wrapper::YsqlConnMgrConf ysql_conn_mgr_conf =
+        ysql_conn_mgr_wrapper::YsqlConnMgrConf(
+          tablet_server_options->fs_opts.data_paths.front());
+
+    LOG_AND_RETURN_FROM_MAIN_NOT_OK(SetSslConf(server, &ysql_conn_mgr_conf));
+
+    if (FLAGS_use_client_to_server_encryption && !FLAGS_ysql_conn_mgr_use_unix_conn)
+      LOG(FATAL) << "Client to server encryption can not be enabled "
+                 << " in Ysql Connection Manager with ysql_conn_mgr_use_unix_conn"
+                 << " disabled.";
+
     // Construct the config file for the Ysql Connection Manager process.
+    const auto conn_mgr_shmem_key =
+        FLAGS_enable_ysql_conn_mgr_stats ? pg_supervisor->GetYsqlConnManagerStatsShmkey() : 0;
     ysql_conn_mgr_supervisor = std::make_unique<ysql_conn_mgr_wrapper::YsqlConnMgrSupervisor>(
-        ysql_conn_mgr_wrapper::YsqlConnMgrConf(tablet_server_options->fs_opts.data_paths.front()),
-        FLAGS_enable_ysql_conn_mgr_stats ? pg_supervisor->GetYsqlConnManagerStatsShmkey() : 0);
+        ysql_conn_mgr_conf,
+        conn_mgr_shmem_key);
 
     LOG_AND_RETURN_FROM_MAIN_NOT_OK(ysql_conn_mgr_supervisor->Start());
+
+    // Set the shared memory key for tserver so it can access stats as well.
+    server->SetYsqlConnMgrStatsShmemKey(conn_mgr_shmem_key);
   }
 
   std::unique_ptr<RedisServer> redis_server;
@@ -383,7 +405,9 @@ int TabletServerMain(int argc, char** argv) {
     ysql_conn_mgr_supervisor->Stop();
   }
 
-  call_home.reset();
+  if (call_home) {
+    call_home->Shutdown();
+  }
 
   LOG(WARNING) << "Stopping Tablet server";
   server->Shutdown();

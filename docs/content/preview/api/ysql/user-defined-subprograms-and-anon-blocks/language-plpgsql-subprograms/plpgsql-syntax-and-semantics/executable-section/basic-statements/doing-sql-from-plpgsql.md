@@ -195,7 +195,7 @@ $body$;
 call s.p(5);
 ```
 
-It finishes silently, showing that the *assert* holds.
+It finishes silently, showing that the _assert_ holds.
 
 Of course, the SQL statement text can be a DDL, too. Dynamic DDLs are especially useful when you don't know identifier names until run-time. Indeed, this is the canonical, and overwhelmingly common, use of Dynamic DDLs.
 
@@ -248,6 +248,7 @@ where
   r.rolname = :quoted_u and
   n.nspname ~'^My';
 ```
+
 This is the result:
 
 ```output
@@ -340,7 +341,7 @@ You must _always_ use the _format()_ built-in SQL function when you need to defi
 
 _[See the syntax rule above](./#plpgsql-perform-stmt)_
 
-he _perform_ statement lets you execute a select statement that, as a top-level SQL statement, would produce one or many rows. But, critically, it lets you avoid using the _select into_ statement for one row or the _[query for loop](../../compound-statements/loop-exit-continue/query-for-loop/)_ (or the _[infinite loop](../../compound-statements/loop-exit-continue/infinite-and-while-loops/#infinite-loop-over-cursor-results)_) for many rows. It's the moral equivalent of this:
+The _perform_ statement lets you execute a select statement that, as a top-level SQL statement, would produce one or many rows. But, critically, it lets you avoid using the _select into_ statement for one row or the _[query for loop](../../compound-statements/loop-exit-continue/query-for-loop/)_ (or the _[infinite loop](../../compound-statements/loop-exit-continue/infinite-and-while-loops/#infinite-loop-over-cursor-results)_) for many rows. It's the moral equivalent of this:
 
 ```output
 select ... into null;
@@ -391,7 +392,7 @@ It finishes silently without error.
 
 This _do_ statement immediately above shows the general case, where the _select_ statement whose results you want to throw away must use a _with clause_.
 
- This need arises, for example, when you perform multi-table _insert_, _update_ or _delete_ by encapsulating these statements each with a pro-forma _returning_ clause, and in its own _[CTE](../../../../../../syntax_resources/grammar_diagrams/#common-table-expression)_. Then you cause them to execute by selecting the union of these pro-forma results  from the various _CTEs_. But the results are of no interest. They were simply a necessary device.
+This need arises, for example, when you perform multi-table _insert_, _update_ or _delete_ by encapsulating these statements each with a pro-forma _returning_ clause, and in its own _[CTE](../../../../../../syntax_resources/grammar_diagrams/#common-table-expression)_. Then you cause them to execute by selecting the union of these pro-forma results  from the various _CTEs_. But the results are of no interest. They were simply a necessary device.
 
 <!--- _to_do_ --->
 {{< note title="Coming soon" >}}

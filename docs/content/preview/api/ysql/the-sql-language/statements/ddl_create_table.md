@@ -16,29 +16,20 @@ Use the `CREATE TABLE` statement to create a table in a database. It defines the
 
 ## Syntax
 
-<ul class="nav nav-tabs nav-tabs-yb">
-  <li >
-    <a href="#grammar" class="nav-link" id="grammar-tab" data-toggle="tab" role="tab" aria-controls="grammar" aria-selected="true">
-      <img src="/icons/file-lines.svg" alt="Grammar Icon">
-      Grammar
-    </a>
-  </li>
-  <li>
-    <a href="#diagram" class="nav-link active" id="diagram-tab" data-toggle="tab" role="tab" aria-controls="diagram" aria-selected="false">
-      <img src="/icons/diagram.svg" alt="Diagram Icon">
-      Diagram
-    </a>
-  </li>
-</ul>
-
-<div class="tab-content">
-  <div id="grammar" class="tab-pane fade" role="tabpanel" aria-labelledby="grammar-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_table,table_elem,column_constraint,table_constraint,key_columns,hash_columns,range_columns,storage_parameters,storage_parameter,index_parameters,references_clause,split_row.grammar.md" %}}
-  </div>
-  <div id="diagram" class="tab-pane fade show active" role="tabpanel" aria-labelledby="diagram-tab">
-  {{% includeMarkdown "../../syntax_resources/the-sql-language/statements/create_table,table_elem,column_constraint,table_constraint,key_columns,hash_columns,range_columns,storage_parameters,storage_parameter,index_parameters,references_clause,split_row.diagram.md" %}}
-  </div>
-</div>
+{{%ebnf%}}
+  create_table,
+  table_elem,
+  column_constraint,
+  table_constraint,
+  key_columns,
+  hash_columns,
+  range_columns,
+  storage_parameters,
+  storage_parameter,
+  index_parameters,
+  references_clause,
+  split_row
+{{%/ebnf%}}
 
 ## Semantics
 
@@ -47,12 +38,13 @@ Create a table with *table_name*. If `qualified_name` already exists in the spec
 ### Primary key
 
 Primary key can be defined in either `column_constraint` or `table_constraint`, but not in both.
+
 There are two types of primary key columns:
 
 - `Hash primary key columns`: The primary key may have zero or more leading hash-partitioned columns.
 By default, only the first column is treated as the hash-partition column. But this behavior can be modified by explicit use of the HASH annotation.
 
-- `Range primary key columns`: A table can have zero or more range primary key columns and it controls the top-level ordering of rows within a table (if there are no hash partition columns) or the ordering of rows among rows that share a common set of hash partitioned column values. By default, the range primary key columns are stored in ascending order. But this behavior can be controlled by explicit use of `ASC` or `DESC`.
+- `Range primary key columns`: A table can have zero or more range primary key columns and it controls the top-level ordering of rows in a table (if there are no hash partition columns) or the ordering of rows among rows that share a common set of hash partitioned column values. By default, the range primary key columns are stored in ascending order. But this behavior can be controlled by explicit use of `ASC` or `DESC`.
 
 For example, if the primary key specification is `PRIMARY KEY ((a, b) HASH, c DESC)`, then columns `a` & `b` are used together to hash partition the table, and rows that share the same values for `a` and `b` are stored in descending order of their value for `c`.
 
@@ -60,12 +52,11 @@ If the primary key specification is `PRIMARY KEY(a, b)`, then column `a` is used
 
 {{<note title="Tables always have a primary key">}}
 
-PostgreSQL's table storage is heap-oriented—so a table with no primary key is viable. 
-But YugabyteDB's table storage is index-oriented (see [DocDB Persistence](../../../../../architecture/docdb/persistence/))—so a table isn't viable without a primary key. 
+PostgreSQL's table storage is heap-oriented—so a table with no primary key is viable. However YugabyteDB's table storage is index-oriented (see [DocDB Persistence](../../../../../architecture/docdb/persistence/)), so a table isn't viable without a primary key.
+
 Therefore, if you don't specify a primary key at table-creation time, YugabyteDB will use the internal `ybrowid` column as `PRIMARY KEY` and the table will be sharded on `ybrowid HASH`.
 
 {{</note>}}
-
 
 ### Foreign key
 

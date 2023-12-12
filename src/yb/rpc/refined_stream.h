@@ -69,7 +69,7 @@ class RefinedStream : public Stream, public StreamContext {
 
   // Implementation StreamContext
   Result<CallHandle> ProcessReceived(ReadBufferFull read_buffer_full) ON_REACTOR_THREAD override;
-  void Connected() ON_REACTOR_THREAD override;
+  Status Connected() ON_REACTOR_THREAD override;
 
   void UpdateLastActivity() override;
   void UpdateLastRead() override;

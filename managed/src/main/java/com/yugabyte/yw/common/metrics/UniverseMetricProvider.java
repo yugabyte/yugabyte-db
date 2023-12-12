@@ -20,12 +20,17 @@ import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.util.KeyProvider;
 import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.*;
+import com.yugabyte.yw.models.ImageBundle.ImageBundleType;
 import com.yugabyte.yw.models.KmsHistoryId.TargetType;
 import com.yugabyte.yw.models.filters.MetricFilter;
+import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.KnownAlertLabels;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlatformMetrics;
@@ -48,9 +53,13 @@ public class UniverseMetricProvider implements MetricsProvider {
 
   @Inject AccessManager accessManager;
 
+  @Inject ImageBundleUtil imageBundleUtil;
+
   @Inject Environment environment;
 
   @Inject Config config;
+
+  @Inject RuntimeConfGetter confGetter;
 
   private static final List<PlatformMetrics> UNIVERSE_METRICS =
       ImmutableList.of(
@@ -76,24 +85,14 @@ public class UniverseMetricProvider implements MetricsProvider {
         KmsConfig.listAllKMSConfigs().stream()
             .collect(Collectors.toMap(config -> config.getConfigUUID(), Function.identity()));
     Map<AccessKeyId, AccessKey> allAccessKeys = accessKeyRotationUtil.createAllAccessKeysMap();
+    boolean vmOsPatchingEnabled = confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching);
+    Map<UUID, ImageBundle> imageBundleMap = null;
+    if (vmOsPatchingEnabled) {
+      imageBundleMap = imageBundleUtil.collectUniversesImageBundles();
+    }
 
-    Map<String, InstanceType> mapInstanceTypes = new HashMap<String, InstanceType>();
     String ybaVersion = ConfigHelper.getCurrentVersion(environment);
     for (Customer customer : Customer.getAll()) {
-      /*
-      To prevent excessive memory usage when dealing with multiple providers
-      and a large instanceType table, we load only a small subset of instanceTypes
-      with each iteration & clear the map during next iteration.
-      */
-      mapInstanceTypes.clear();
-      // Get all providers for the customer
-      List<Provider> providers = Provider.getAll(customer.getUuid());
-      // Build instanceTypeMap.
-      for (Provider provider : providers) {
-        for (InstanceType instanceType : InstanceType.findByProvider(provider, config)) {
-          mapInstanceTypes.put(instanceType.getIdKey().toString(), instanceType);
-        }
-      }
       Map<UUID, NodeInstance> nodeInstances =
           NodeInstance.listByCustomer(customer.getUuid()).stream()
               .collect(Collectors.toMap(NodeInstance::getNodeUuid, Function.identity()));
@@ -168,6 +167,30 @@ public class UniverseMetricProvider implements MetricsProvider {
                       universe,
                       PlatformMetrics.UNIVERSE_SSH_KEY_EXPIRY_DAY,
                       sshKeyExpiryDays));
+            }
+          }
+          if (vmOsPatchingEnabled) {
+            // Assumption both the primary & rr cluster uses the same provider.
+            UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
+            if (userIntent != null) {
+              UUID imageBundleUUID = userIntent.imageBundleUUID;
+              int universeOSUpdateRequired = 0;
+              if (imageBundleMap != null && imageBundleMap.containsKey(imageBundleUUID)) {
+                ImageBundle bundle = ImageBundle.get(imageBundleUUID);
+                if (bundle != null
+                    && bundle.getMetadata() != null
+                    && bundle.getMetadata().getType() != null
+                    && bundle.getMetadata().getType() == ImageBundleType.YBA_DEPRECATED) {
+                  universeOSUpdateRequired = 1;
+                }
+              }
+
+              universeGroup.metric(
+                  createUniverseMetric(
+                      customer,
+                      universe,
+                      PlatformMetrics.UNIVERSE_OS_UPDATE_REQUIRED,
+                      universeOSUpdateRequired));
             }
           }
 
@@ -284,9 +307,10 @@ public class UniverseMetricProvider implements MetricsProvider {
               if (nodeDetails.placementUuid != null) {
                 UniverseDefinitionTaskParams.Cluster cluster =
                     universe.getCluster(nodeDetails.placementUuid);
-                if (cluster != null && cluster.userIntent.deviceInfo != null) {
-                  Integer iops = cluster.userIntent.deviceInfo.diskIops;
-                  Integer throughput = cluster.userIntent.deviceInfo.throughput;
+                if (cluster != null && cluster.userIntent != null) {
+                  DeviceInfo deviceInfo = cluster.userIntent.getDeviceInfoForNode(nodeDetails);
+                  Integer iops = deviceInfo.diskIops;
+                  Integer throughput = deviceInfo.throughput;
                   if (iops != null) {
                     universeGroup.metric(
                         createNodeMetric(
@@ -312,31 +336,19 @@ public class UniverseMetricProvider implements MetricsProvider {
                             throughput));
                   }
                   if (isK8SUniverse) {
-                    // Cluster cluster = universe.getCluster(nodeDetails.placementUuid);
-                    InstanceType instanceType =
-                        mapInstanceTypes.get(
-                            InstanceTypeKey.create(
-                                    cluster.userIntent.instanceType,
-                                    UUID.fromString(cluster.userIntent.provider))
-                                .toString());
-                    if (instanceType == null) {
-                      log.warn(
-                          "Matching instance type is not found for cluster:  ",
-                          cluster.uuid,
-                          cluster.userIntent.instanceType,
-                          cluster.userIntent.provider);
-                      continue;
-                    } else {
-                      // After PLAT-1584 is completed, read core count from user intent.
-                      universeGroup.metric(
-                          createContainerMetric(
-                              customer,
-                              universe,
-                              PlatformMetrics.CONTAINER_RESOURCE_REQUESTS_CPU_CORES,
-                              nodeDetails,
-                              KubernetesUtil.getCoreCountFromInstanceType(
-                                  instanceType, nodeDetails.isMaster)));
-                    }
+                    UserIntent userIntent =
+                        universe.getUniverseDetails().getPrimaryCluster().userIntent;
+                    double cpuCoreCount =
+                        nodeDetails.isTserver
+                            ? userIntent.tserverK8SNodeResourceSpec.cpuCoreCount
+                            : userIntent.masterK8SNodeResourceSpec.cpuCoreCount;
+                    universeGroup.metric(
+                        createContainerMetric(
+                            customer,
+                            universe,
+                            PlatformMetrics.CONTAINER_RESOURCE_REQUESTS_CPU_CORES,
+                            nodeDetails,
+                            cpuCoreCount));
                   }
                 }
               }
@@ -388,6 +400,10 @@ public class UniverseMetricProvider implements MetricsProvider {
             .setLabel(KnownAlertLabels.EXPORT_TYPE, exportType)
             .setLabel(KnownAlertLabels.NODE_NAME, nodeDetails.nodeName)
             .setLabel(KnownAlertLabels.NODE_ADDRESS, nodeDetails.cloudInfo.private_ip)
+            .setLabel(KnownAlertLabels.NODE_REGION, nodeDetails.cloudInfo.region)
+            .setLabel(
+                KnownAlertLabels.NODE_CLUSTER_TYPE,
+                universe.getCluster(nodeDetails.placementUuid).clusterType.name())
             .setValue(value);
     if (nodeInstance != null && StringUtils.isNotEmpty(nodeInstance.getDetails().instanceName)) {
       template.setLabel(KnownAlertLabels.NODE_IDENTIFIER, nodeInstance.getDetails().instanceName);

@@ -46,11 +46,15 @@
 -- i.e., kHighPriTxnUpperBound, then a single value "Highest priority transaction" is returned
 -- without any float.
 SET yb_transaction_priority_lower_bound = 0.4;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
 SET yb_transaction_priority_upper_bound = 0.4;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
 CREATE TABLE test (k int primary key, v varchar(100));
 INSERT INTO test values (1, '1');
 -- (1) Check that transaction priority is 0 until a distributed txn is started.
-BEGIN TRANSACTION;
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 SELECT yb_get_current_transaction_priority(); -- 0 since a distributed transaction hasn't started
     yb_get_current_transaction_priority
 -------------------------------------------
@@ -106,7 +110,7 @@ SELECT yb_get_current_transaction_priority();
 (1 row)
 
 -- (3) Normal priority
-BEGIN TRANSACTION;
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 INSERT INTO test (k, v) SELECT 3, yb_get_current_transaction_priority(); -- starts a distributed transaction
 SELECT yb_get_current_transaction_priority();
     yb_get_current_transaction_priority
@@ -147,7 +151,7 @@ SELECT * FROM test ORDER BY k;
 
 COMMIT;
 -- (4) High priority
-BEGIN TRANSACTION;
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 SELECT * FROM test WHERE k = 1 FOR UPDATE; -- starts a distributed transaction in high pri bucket
  k | v
 ---+---
@@ -204,8 +208,12 @@ SELECT * FROM test ORDER BY k;
 COMMIT;
 -- (5) Highest priority
 SET yb_transaction_priority_upper_bound = 1;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
 SET yb_transaction_priority_lower_bound = 1;
-BEGIN TRANSACTION;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
+BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 SELECT * FROM test WHERE k = 1 FOR UPDATE;
  k | v
 ---+---

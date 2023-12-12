@@ -118,7 +118,7 @@ FlushJob::FlushJob(const std::string& dbname, ColumnFamilyData* cfd,
       event_logger_(event_logger) {
   // Update the thread status to indicate flush.
   ReportStartedFlush();
-  TEST_SYNC_POINT("FlushJob::FlushJob()");
+  DEBUG_ONLY_TEST_SYNC_POINT("FlushJob::FlushJob()");
 }
 
 FlushJob::~FlushJob() {
@@ -192,7 +192,7 @@ Result<FileNumbersHolder> FlushJob::Run(FileMetaData* file_meta) {
   if (!fnum.ok()) {
     cfd_->imm()->RollbackMemtableFlush(mems, meta.fd.GetNumber());
   } else {
-    TEST_SYNC_POINT("FlushJob::InstallResults");
+    DEBUG_ONLY_TEST_SYNC_POINT("FlushJob::InstallResults");
     // Replace immutable memtable with the generated Table
     Status s = cfd_->imm()->InstallMemtableFlushResults(
         cfd_, mutable_cf_options_, mems, versions_, db_mutex_,
@@ -278,10 +278,10 @@ Result<FileNumbersHolder> FlushJob::WriteLevel0Table(
           "[%s] [JOB %d] Level-0 flush table #%" PRIu64 ": started",
           cfd_->GetName().c_str(), job_context_->job_id, meta->fd.GetNumber());
 
-      TEST_SYNC_POINT_CALLBACK("FlushJob::WriteLevel0Table:output_compression",
-                               &output_compression_);
+      DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK(
+          "FlushJob::WriteLevel0Table:output_compression", &output_compression_);
       s = BuildTable(dbname_,
-                     db_options_.env,
+                     db_options_,
                      *cfd_->ioptions(),
                      env_options_,
                      cfd_->table_cache(),
@@ -296,7 +296,6 @@ Result<FileNumbersHolder> FlushJob::WriteLevel0Table(
                      cfd_->ioptions()->compression_opts,
                      mutable_cf_options_.paranoid_file_checks,
                      cfd_->internal_stats(),
-                     db_options_.boundary_extractor.get(),
                      yb::IOPriority::kHigh,
                      &table_properties_);
       info.table_properties = table_properties_;
@@ -322,13 +321,13 @@ Result<FileNumbersHolder> FlushJob::WriteLevel0Table(
       EventHelpers::LogAndNotifyTableFileCreation(
           event_logger_, db_options_.listeners,
           meta->fd, info);
-      TEST_SYNC_POINT("FlushJob::LogAndNotifyTableFileCreation()");
+      DEBUG_ONLY_TEST_SYNC_POINT("FlushJob::LogAndNotifyTableFileCreation()");
     }
 
     if (!db_options_.disableDataSync && output_file_directory_ != nullptr) {
       RETURN_NOT_OK(output_file_directory_->Fsync());
     }
-    TEST_SYNC_POINT("FlushJob::WriteLevel0Table");
+    DEBUG_ONLY_TEST_SYNC_POINT("FlushJob::WriteLevel0Table");
     db_mutex_->Lock();
   }
 

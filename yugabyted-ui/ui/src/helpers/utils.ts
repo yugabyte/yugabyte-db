@@ -1,4 +1,12 @@
-import { differenceInDays, Interval, intervalToDuration, intlFormat, subDays, subHours } from 'date-fns';
+import {
+    differenceInDays,
+    Interval,
+    intervalToDuration,
+    intlFormat,
+    subDays,
+    subHours,
+    subMinutes
+} from 'date-fns';
 import { PASSWORD_MIN_LENGTH } from '@app/helpers/const';
 import {
   ClusterFaultTolerance
@@ -68,6 +76,7 @@ export const areIdArraysEqual = (a: number[], b: number[]): boolean => {
 // };
 
 export enum RelativeInterval {
+  Last5Minutes = 'last5minutes',
   LastHour = 'lasthour',
   Last6Hours = 'last6hours',
   Last12hours = 'last12hours',
@@ -82,6 +91,9 @@ export const getInterval = (relativeInterval: RelativeInterval): Interval => {
   let start: Date;
   const end = new Date();
   switch (relativeInterval) {
+    case RelativeInterval.Last5Minutes:
+      start = subMinutes(end, 5);
+      break;
     case RelativeInterval.LastHour:
       start = subHours(end, 1);
       break;

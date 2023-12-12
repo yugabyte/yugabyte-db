@@ -37,7 +37,7 @@
 #include <memory>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/client/auto_flags_manager.h"
 #include "yb/client/async_initializer.h"
@@ -62,6 +62,7 @@
 #include "yb/master/master_tablet_service.h"
 #include "yb/master/master_util.h"
 #include "yb/master/sys_catalog_constants.h"
+#include "yb/master/test_async_rpc_manager.h"
 #include "yb/master/ysql_backends_manager.h"
 
 #include "yb/rpc/messenger.h"
@@ -156,7 +157,7 @@ DECLARE_int64(inbound_rpc_memory_limit);
 
 DECLARE_int32(master_ts_rpc_timeout_ms);
 
-DECLARE_bool(TEST_enable_db_catalog_version_mode);
+DECLARE_bool(ysql_enable_db_catalog_version_mode);
 
 namespace yb {
 namespace master {
@@ -164,12 +165,14 @@ namespace master {
 Master::Master(const MasterOptions& opts)
     : DbServerBase("Master", opts, "yb.master", server::CreateMemTrackerForServer()),
       state_(kStopped),
-      auto_flags_manager_(new AutoFlagsManager("yb-master", fs_manager_.get())),
+      auto_flags_manager_(new AutoFlagsManager("yb-master", clock(), fs_manager_.get())),
       ts_manager_(new TSManager()),
       catalog_manager_(new CatalogManager(this)),
       ysql_backends_manager_(new YsqlBackendsManager(this, catalog_manager_->AsyncTaskPool())),
       path_handlers_(new MasterPathHandlers(this)),
       flush_manager_(new FlushManager(this, catalog_manager())),
+      tablet_health_manager_(new TabletHealthManager(this, catalog_manager())),
+      test_async_rpc_manager_(new TestAsyncRpcManager(this, catalog_manager())),
       init_future_(init_status_.get_future()),
       opts_(opts),
       maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
@@ -211,7 +214,7 @@ Status Master::Init() {
     shared_object().SetHostEndpoint(bound_addresses.front(), get_hostname());
   }
 
-  cdc_state_client_init_ = std::make_unique<client::AsyncClientInitialiser>(
+  cdc_state_client_init_ = std::make_unique<client::AsyncClientInitializer>(
       "cdc_state_client",
       default_client_timeout(),
       "" /* tserver_uuid */,
@@ -232,16 +235,18 @@ Status Master::Init() {
 }
 
 Status Master::InitAutoFlags() {
+  RETURN_NOT_OK(auto_flags_manager_->Init(options_.HostsString()));
+
   if (!VERIFY_RESULT(auto_flags_manager_->LoadFromFile())) {
     if (fs_manager_->LookupTablet(kSysCatalogTabletId)) {
       // Pre-existing cluster
-      RETURN_NOT_OK(CreateEmptyAutoFlagsConfig(auto_flags_manager_.get()));
+      RETURN_NOT_OK(CreateEmptyAutoFlagsConfig(*auto_flags_manager_.get()));
     } else if (!opts().AreMasterAddressesProvided()) {
       // New master in Shell mode
       LOG(INFO) << "AutoFlags initialization delayed as master is in Shell mode.";
     } else {
       // New cluster
-      RETURN_NOT_OK(CreateAutoFlagsConfigForNewCluster(auto_flags_manager_.get()));
+      RETURN_NOT_OK(CreateAutoFlagsConfigForNewCluster(*auto_flags_manager_.get()));
     }
   }
 
@@ -258,7 +263,7 @@ Status Master::InitAutoFlagsFromMasterLeader(const HostPort& leader_address) {
       "Cannot load AutoFlags from another master when not in shell mode.");
 
   return auto_flags_manager_->LoadFromMaster(
-      options_.HostsString(), {{leader_address}}, ApplyNonRuntimeAutoFlags::kTrue);
+      options_.HostsString(), {{leader_address}});
 }
 
 MonoDelta Master::default_client_timeout() {
@@ -266,11 +271,10 @@ MonoDelta Master::default_client_timeout() {
 }
 
 const std::string& Master::permanent_uuid() const {
-  static std::string empty_uuid;
-  return empty_uuid;
+  return fs_manager_->uuid();
 }
 
-void Master::SetupAsyncClientInit(client::AsyncClientInitialiser* async_client_init) {
+void Master::SetupAsyncClientInit(client::AsyncClientInitializer* async_client_init) {
   async_client_init->builder()
       .set_master_address_flag_name("master_addresses")
       .default_admin_operation_timeout(MonoDelta::FromMilliseconds(FLAGS_master_rpc_timeout_ms))
@@ -304,6 +308,7 @@ Status Master::RegisterServices() {
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterEncryptionService(this)));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterHeartbeatService(this)));
   RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterReplicationService(this)));
+  RETURN_NOT_OK(RegisterService(FLAGS_master_svc_queue_length, MakeMasterTestService(this)));
 
   RETURN_NOT_OK(RegisterService(
       FLAGS_master_tserver_svc_queue_length,
@@ -325,7 +330,7 @@ Status Master::RegisterServices() {
       std::make_shared<tserver::PgClientServiceImpl>(
           *master_tablet_server_, client_future(), clock(),
           std::bind(&Master::TransactionPool, this), mem_tracker(), metric_entity(),
-          &messenger()->scheduler(), std::nullopt /* xcluster_context */)));
+          messenger(), fs_manager_->uuid(), &options(), std::nullopt /* xcluster_context */)));
 
   return Status::OK();
 }
@@ -604,6 +609,14 @@ CatalogManagerIf* Master::catalog_manager() const {
   return catalog_manager_.get();
 }
 
+XClusterManagerIf* Master::xcluster_manager() const {
+  return catalog_manager_->GetXClusterManager();
+}
+
+XClusterManager* Master::xcluster_manager_impl() const {
+  return catalog_manager_->GetXClusterManagerImpl();
+}
+
 SysCatalogTable& Master::sys_catalog() const {
   return *catalog_manager_->sys_catalog();
 }
@@ -626,7 +639,7 @@ Status Master::get_ysql_db_oid_to_cat_version_info_map(
     const tserver::GetTserverCatalogVersionInfoRequestPB& req,
     tserver::GetTserverCatalogVersionInfoResponsePB *resp) const {
   DCHECK(FLAGS_create_initial_sys_catalog_snapshot);
-  DCHECK(FLAGS_TEST_enable_db_catalog_version_mode);
+  DCHECK(FLAGS_ysql_enable_db_catalog_version_mode);
   // This function can only be called during initdb time.
   DbOidToCatalogVersionMap versions;
   // We do not use cache/fingerprint which is only used for filling heartbeat

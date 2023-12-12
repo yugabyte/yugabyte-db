@@ -11,8 +11,8 @@ menu:
 type: docs
 ---
 
-  <ul class="nav nav-tabs-alt nav-tabs-yb">
-<li>
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
     <a href="../create-universe-multi-zone/" class="nav-link">
       <i class="fa-solid fa-building" aria-hidden="true"></i>
 Generic</a>
@@ -46,7 +46,6 @@ To start, click **Create Universe** and complete the first two fields of the **C
 - In the **Name** field, enter the name for the YugabyteDB universe using lowercase characters (for example, yb-k8s).
 
 - Use the **Provider** field to select the appropriate Kubernetes cloud (for example, multilane-k8s-portal-yb). Notice that additional fields appear.
-
 
 Complete the rest of the **Cloud Configuration** section as follows:
 
@@ -88,7 +87,7 @@ Optionally, complete the **G-Flags** section as follows:
 
 - Click **Add Flags > Add to Master** to specify YB-Master servers parameters, one parameter per field.
 
-- Click **Add Flags > Add to T-Server** to specify YB-TServer servers parameters, one parameter per field.<br>
+- Click **Add Flags > Add to T-Server** to specify YB-TServer servers parameters, one parameter per field.
 
   For details, see the following:
 
@@ -160,4 +159,3 @@ You can create a connection to a node as follows:
 ## Connect to the universe
 
 For information on how to connect to the universe from the Kubernetes cluster, as well as remotely, see [Connect YugabyteDB clusters](../../../deploy/kubernetes/clients/#connect-tls-secured-yugabytedb-cluster-deployed-by-helm-charts).
-

@@ -1,21 +1,27 @@
 ---
-title: Back up and restore YugabyteDB Anywhere on Kubernetes
-headerTitle: Back up and restore YugabyteDB Anywhere on Kubernetes
+title: Back up and restore YugabyteDB Anywhere
+headerTitle: Back up and restore YugabyteDB Anywhere
 description: Use a script to back up and restore YugabyteDB Anywhere on Kubernetes.
 linkTitle: Back up YugabyteDB Anywhere
 menu:
   stable_yugabyte-platform:
     identifier: back-up-restore-k8s
     parent: administer-yugabyte-platform
-    weight: 20
+    weight: 30
 type: docs
 ---
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li>
+    <a href="../back-up-restore-installer/" class="nav-link">
+      <i class="fa-solid fa-building"></i>
+      YBA Installer</a>
+  </li>
+
   <li >
     <a href="../back-up-restore-yp/" class="nav-link">
       <i class="fa-solid fa-cloud"></i>
-      Default
+      Replicated
     </a>
   </li>
 
@@ -27,7 +33,7 @@ type: docs
   </li>
 </ul>
 
-<br>YugabyteDB Anywhere installations include configuration settings, certificates and keys, and other components required for creating and managing YugabyteDB universes.
+YugabyteDB Anywhere installations include configuration settings, certificates and keys, and other components required for creating and managing YugabyteDB universes.
 
 You can use the YugabyteDB Anywhere `yb_platform_backup.sh` script to back up an existing YugabyteDB Anywhere server and restore it, when needed, for disaster recovery or migrating to a new server.
 
@@ -41,10 +47,10 @@ You cannot back up and restore Prometheus metrics data.
 
 Download the version of the backup script that corresponds to the version of YugabyteDB Anywhere that you are backing up and restoring.
 
-For example, if you are running version {{< yb-version version="stable">}}, you can copy the `yb_platform_backup.sh` script from the `yugabyte-db` repository using the following `wget` command:
+For example, if you are running version {{< yb-version version="preview">}}, you can copy the `yb_platform_backup.sh` script from the `yugabyte-db` repository using the following `wget` command:
 
 ```sh
-wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/v{{< yb-version version="stable">}}/managed/devops/bin/yb_platform_backup.sh
+wget https://raw.githubusercontent.com/yugabyte/yugabyte-db/v{{< yb-version version="preview">}}/managed/devops/bin/yb_platform_backup.sh
 ```
 
 If you are running a different version of YugabyteDB Anywhere, replace the version number in the command with the correct version number.

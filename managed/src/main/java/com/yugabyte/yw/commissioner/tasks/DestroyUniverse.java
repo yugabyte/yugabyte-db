@@ -17,35 +17,47 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCertificate;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RemoveUniverseEntry;
 import com.yugabyte.yw.common.DnsManager;
+import com.yugabyte.yw.common.SupportBundleUtil;
+import com.yugabyte.yw.common.UniverseInProgressException;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.DrConfig;
+import com.yugabyte.yw.models.SupportBundle;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import io.swagger.annotations.ApiModelProperty;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.inject.Inject;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 public class DestroyUniverse extends UniverseTaskBase {
 
   private final XClusterUniverseService xClusterUniverseService;
+  private final SupportBundleUtil supportBundleUtil;
 
   @Inject
   public DestroyUniverse(
-      BaseTaskDependencies baseTaskDependencies, XClusterUniverseService xClusterUniverseService) {
+      BaseTaskDependencies baseTaskDependencies,
+      XClusterUniverseService xClusterUniverseService,
+      SupportBundleUtil supportBundleUtil) {
     super(baseTaskDependencies);
     this.xClusterUniverseService = xClusterUniverseService;
+    this.supportBundleUtil = supportBundleUtil;
   }
 
   public static class Params extends UniverseTaskParams {
@@ -53,10 +65,26 @@ public class DestroyUniverse extends UniverseTaskBase {
     public Boolean isForceDelete;
     public Boolean isDeleteBackups;
     public Boolean isDeleteAssociatedCerts;
+
+    @ApiModelProperty(hidden = true)
+    @Getter
+    @Setter
+    KubernetesResourceDetails kubernetesResourceDetails;
   }
 
   public Params params() {
     return (Params) taskParams;
+  }
+
+  @Override
+  protected void validateUniverseState(Universe universe) {
+    try {
+      super.validateUniverseState(universe);
+    } catch (UniverseInProgressException e) {
+      if (!params().isForceDelete) {
+        throw e;
+      }
+    }
   }
 
   @Override
@@ -66,9 +94,9 @@ public class DestroyUniverse extends UniverseTaskBase {
       // to prevent other updates from happening.
       Universe universe;
       if (params().isForceDelete) {
-        universe = forceLockUniverseForUpdate(-1, true);
+        universe = forceLockUniverseForUpdate(-1);
       } else {
-        universe = lockUniverseForUpdate(-1, true);
+        universe = lockUniverseForUpdate(-1);
       }
 
       // Delete xCluster configs involving this universe and put the locked universes to
@@ -91,6 +119,9 @@ public class DestroyUniverse extends UniverseTaskBase {
         createDeleteBackupYbTasks(backupList, params().customerUUID)
             .setSubTaskGroupType(SubTaskGroupType.DeletingBackup);
       }
+
+      // cleanup the supportBundles if any
+      deleteSupportBundle(universe.getUniverseUUID());
 
       preTaskActions();
 
@@ -149,11 +180,14 @@ public class DestroyUniverse extends UniverseTaskBase {
       // Run all the tasks.
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
-      // If for any reason destroy fails we would just unlock the universe for update
-      try {
-        unlockUniverseForUpdate();
-      } catch (Throwable t1) {
-        // Ignore the error
+      Optional<Universe> optional = Universe.maybeGet(taskParams().getUniverseUUID());
+      if (optional.isPresent()) {
+        // If for any reason destroy fails we would just unlock the universe for update
+        try {
+          unlockUniverseForUpdate();
+        } catch (Throwable t1) {
+          // Ignore the error
+        }
       }
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;
@@ -309,6 +343,15 @@ public class DestroyUniverse extends UniverseTaskBase {
         throw new RuntimeException(e);
       } else {
         log.debug("Error ignored because isForceDelete is true");
+      }
+    }
+  }
+
+  protected void deleteSupportBundle(UUID universeUUID) {
+    List<SupportBundle> supportBundles = SupportBundle.getAll(universeUUID);
+    if (!supportBundles.isEmpty()) {
+      for (SupportBundle supportBundle : supportBundles) {
+        supportBundleUtil.deleteFile(supportBundle.getPathObject());
       }
     }
   }

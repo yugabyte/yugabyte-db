@@ -4,7 +4,6 @@ headerTitle: JDBC Drivers
 linkTitle: JDBC Drivers
 description: Java JDBC Driver for YSQL
 headcontent: JDBC Drivers for YSQL
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
     name: JDBC Drivers
@@ -32,22 +31,26 @@ type: docs
 
 </ul>
 
-The [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) is the official JDBC driver for PostgreSQL, and can be used for connecting to YugabyteDB YSQL. YugabyteDB YSQL has full compatibility with the PostgreSQL JDBC Driver, allowing Java programmers to connect to YugabyteDB database to execute DMLs and DDLs using the JDBC APIs.
+The [PostgreSQL JDBC driver](https://jdbc.postgresql.org/) is the official JDBC driver for PostgreSQL, and can be used for connecting to YugabyteDB YSQL. YugabyteDB YSQL has full compatibility with the PostgreSQL JDBC Driver, allowing Java programmers to connect to YugabyteDB database to execute DMLs and DDLs using the JDBC APIs. The driver supports the [SCRAM-SHA-256 authentication method](../../../../secure/authentication/password-authentication/#scram-sha-256).
+
+For building a sample Java application with the PostgreSQL JDBC driver, see [Connect an application](../../../../drivers-orms/java/postgres-jdbc/).
 
 ## Download the driver dependency
+
+To download binary JAR files, go to [PostgreSQL JDBC driver – Downloads](https://jdbc.postgresql.org/download/). Because Java is platform neutral, download the appropriate JAR file and drop it into the classpath.
 
 PostgreSQL JDBC Driver is available as a maven dependency, and you can download the driver by adding the following dependency into the Java project.
 
 ### Maven dependency
 
-To get the driver from Maven, add the following dependencies to the Maven project:
+To get the driver from [Maven](https://maven.apache.org), add the following dependencies to the Maven project:
 
 ```xml
 <!-- https://mvnrepository.com/artifact/org.postgresql/postgresql -->
 <dependency>
   <groupId>org.postgresql</groupId>
   <artifactId>postgresql</artifactId>
-  <version>42.2.14</version>
+  <version>42.3.4</version>
 </dependency>
 ```
 

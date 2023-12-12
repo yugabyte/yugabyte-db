@@ -177,6 +177,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
       const UnsafeChangeConfigRequestPB& req,
       boost::optional<tserver::TabletServerErrorPB::Code>* error_code) override;
 
+  std::vector<FollowerCommunicationTime> GetFollowerCommunicationTimes() override;
+
   PeerRole GetRoleUnlocked() const;
 
   PeerRole role() const override;
@@ -296,7 +298,10 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   Status CopyRetryableRequestsTo(const std::string& dest_path);
   OpId GetLastFlushedOpIdInRetryableRequests();
 
+  int64_t follower_lag_ms() const;
+
   bool TEST_HasRetryableRequestsOnDisk() const;
+  int TEST_RetryableRequestTimeoutSecs() const;
 
  protected:
   // As a leader, append a new ConsensusRound to the queue.
@@ -574,11 +579,12 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
   // The maximum delta is capped by 'FLAGS_leader_failure_exp_backoff_max_delta_ms'.
   MonoDelta LeaderElectionExpBackoffDeltaUnlocked();
 
-  // Checks if the leader is ready to process a change config request (one requirement for this is
-  // for it to have at least one committed op in the current term). Also checks that there are no
-  // voters in transition in the active config state. Status OK() implies leader is ready.
-  // server_uuid is the uuid of the server that we are trying to remove, add, or change its
-  // role.
+  // Checks if the leader is ready to process a change config request
+  // 1. has at least one committed op in the current term
+  // 2. has no pending change config request
+  //
+  // For sys catalog tablet, the function additionally ensures that there are no servers
+  // currently amidst transition.
   Status IsLeaderReadyForChangeConfigUnlocked(ChangeConfigType type,
                                               const std::string& server_uuid);
 

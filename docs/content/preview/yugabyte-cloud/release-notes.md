@@ -4,7 +4,6 @@ headerTitle: What's new in YugabyteDB Managed
 linkTitle: Change log
 description: YugabyteDB Managed Change Log and known issues.
 headcontent: New features and known issues
-image: /images/section_icons/index/quick_start.png
 menu:
   preview_yugabyte-cloud:
     identifier: yugabytedb-managed-releases
@@ -19,6 +18,56 @@ On this page:
 [Known issues](#known-issues)
 
 ## Change log
+
+### December 4, 2023
+
+**New Features**
+
+- Support for [federated authentication](../managed-security/managed-authentication/), which allows you to use an identity provider to manage access to your YugabyteDB Managed account. Initial support includes the Microsoft Entra ID (Azure AD) platform, providing single sign-on access for your account users using their Microsoft identities.
+- Added ability to [audit account login activity](../cloud-secure-clusters/cloud-activity/). Navigate to **Security > Activity > Access History** to review the access history, including the client IP address, activity type, number of attempts, timestamp, and result.
+- Added ability to use different instance types and node sizes for different [read replica regions](../cloud-clusters/managed-read-replica/) in a cluster. Specify higher vCPU and disk size per node for replicas in high traffic regions, and vice-versa for lower traffic regions.
+- Support for Azure Key Vault for enabling and disabling YugabyteDB [encryption at rest](../cloud-secure-clusters/managed-ear/) using a customer managed key.
+
+**Database**
+
+- Production track updated to 2.14.14.0.
+
+### November 16, 2023
+
+**New Features**
+
+- [Product Labs](../../yugabyte-cloud/managed-labs/) provides an interactive, in-product learning experience. Learn about YugabyteDB features using real-world applications running on live YugabyteDB clusters. The first lab, Create Global Applications, demonstrates how to manage latencies using three different deployment strategies.
+- Support for [exporting cluster metrics](../cloud-monitor/metrics-export/) to Sumo Logic.
+
+**Database**
+
+- Innovation track updated to 2.18.4.1.
+
+### November 3, 2023
+
+**New Features**
+
+- Ability to track usage per cluster over time. Navigate to **Usage & Billing > Usage** to view cumulative and daily usage of cluster compute, disk storage, cloud backup storage, and data transfer.
+- For Azure, all regions that are supported for single-region clusters are now available for multi-region clusters (including Virginia useast2, Tokyo, Seoul, Johannesburg, Texas, and Dubai).
+
+**Database**
+
+- Production track updated to 2.14.13.0.
+- Preview track updated to 2.19.3.0.
+
+### October 5, 2023
+
+**New Features**
+
+- Support for creating [private service endpoints](../cloud-basics/cloud-vpcs/cloud-add-endpoint/) (PSEs) in the YugabyteDB Managed UI (this feature was previously only available using the YBM CLI). Add PSEs to clusters to connect to your application VPC over a secure private link. Supports AWS PrivateLink and Azure Private Link.
+- Support for [exporting cluster metrics](../cloud-monitor/metrics-export/) to Grafana.
+
+### September 22, 2023
+
+**Database**
+
+- Preview track updated to 2.19.2.0.
+- Production track updated to 2.14.12.0.
 
 ### September 12, 2023
 
@@ -180,7 +229,7 @@ On this page:
 **New Features**
 
 - Ability to add IP addresses to the cluster IP allow list during cluster creation. The **Create Cluster** wizard includes the new **Networking** page to configure connectivity for your cluster. Automatically detect and add your current IP address or the addresses of any peered VPC to the cluster.
-- Ability to connect to clusters deployed in VPCs from public IP addresses. For clusters deployed in VPCs, enable **Public Access** on the **Settings** tab to connect from addresses outside the peered network. When enabled, a public IP address is added to each region of the cluster. You can view the private and public host addresses under **Connection Parameters** on the cluster **Settings** tab.
+- Ability to connect to clusters deployed in VPCs from public IP addresses. For clusters deployed in VPCs, enable **Public Access** on the **Settings > Network Access** tab to connect from addresses outside the peered network. When enabled, a public IP address is added to each region of the cluster. You can view the private and public host addresses under **Connection Parameters** on the cluster **Settings > Infrastructure** tab.
 
 **Database**
 
@@ -281,7 +330,7 @@ On this page:
 
 **New Features**
 
-- Support for social logins. Sign up and log in to YugabyteDB Managed using your existing Google, LinkedIn, or GitHub account. Admin users can manage the available login methods from the **Users** tab on the **Security** page.
+- Support for social logins. Sign up and log in to YugabyteDB Managed using your existing Google, LinkedIn, or GitHub account. Admin users can manage the available login methods from the **Authentication** tab on the **Security** page.
 
 **Database**
 
@@ -381,7 +430,7 @@ On this page:
   - allow list changes
 
 - Support for multiple Admin users on your account, and Admin users can now change the role of existing users. You can also invite multiple users at once, and assign them a role (Developer or Admin) when you invite them. You manage users using the **Users** tab on the **Security** page.
-- Additional charts on the **Invoices** on the **Billing** page, which break costs down by cluster and infrastructure (instance costs, storage, and data transfer) so that you can quickly evaluate your costs.
+- Additional charts on the **Invoices** on the **Usage & Billing** page, which break costs down by cluster and infrastructure (instance costs, storage, and data transfer) so that you can quickly evaluate your costs.
 
 **Fixes**
 
@@ -421,9 +470,9 @@ This release includes the following features:
 - **Clusters** - No support for scaling vCPUs on single node clusters.
 - **Metrics** - The **View Full Screen** option in charts on the cluster **Overview** and **Performance Metrics** pages does not work in some versions of Safari 14.0 (Big Sur).
 - **Metrics** - Some clusters in European regions may show occasional spikes in the YSQL Operations/sec chart. This is due to cluster health checks and can be ignored.
+- **Metrics** - For a cluster with read replicas with different IOPS provisioned (AWS only), the provisioned IOPS metric shows the same IOPS across all replicas.
 - **Widely-dispersed regions** - For multi-region clusters with widely-dispersed regions, Performance Advisor, Slow Queries, and some metrics may not return any results.
-- **Read replicas**
-  - For clusters in AWS, removed read replicas can't be added back to the same region if the cluster has other read replicas. To add a read replica back to the same region, first remove all the read replicas and then add them all back.
+- **Maximum number of regions** - Multi-region clusters and their read replicas are limited to a maximum of 8 regions.
 
 ### Known issues in Cloud Shell
 

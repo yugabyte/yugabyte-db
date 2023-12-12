@@ -8,7 +8,7 @@ menu:
   stable_yugabyte-platform:
     identifier: prerequisites
     parent: install-yugabyte-platform
-    weight: 20
+    weight: 30
 type: docs
 ---
 
@@ -16,15 +16,20 @@ You can install YugabyteDB Anywhere (YBA) using the following methods:
 
 | Method | Using | Use If |
 | :--- | :--- | :--- |
-| Replicated | Docker containers | You're able to use Docker containers. |
+| YBA Installer | yba-ctl CLI | You are performing a new installation. |
+| Replicated | Docker containers | Your installation already uses Replicated. |
 | Kubernetes | Helm chart | You're deploying in Kubernetes. |
-| YBA Installer | yba-ctl CLI | You can't use Docker containers.<br/>(Note: in Early Access, contact {{% support-platform %}}) |
 
 All installation methods support installing YBA with and without (airgapped) Internet connectivity.
 
-Licensing (such as a license file in the case of Replicated, or appropriate repository access in the case of Kubernetes) may be required prior to installation.  Contact {{% support-platform %}} for assistance.
+Licensing (such as a license file in the case of YBA Installer or Replicated, or appropriate repository access in the case of Kubernetes) may be required prior to installation. Contact {{% support-platform %}} for assistance.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
+
+   <li>
+    <a href="../installer/" class="nav-link">
+      <i class="fa-solid fa-building" aria-hidden="true"></i>YBA Installer</a>
+  </li>
 
   <li>
     <a href="../default/" class="nav-link active">
@@ -34,11 +39,6 @@ Licensing (such as a license file in the case of Replicated, or appropriate repo
   <li>
     <a href="../kubernetes/" class="nav-link">
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>Kubernetes</a>
-  </li>
-
-  <li>
-    <a href="../installer/" class="nav-link">
-      <i class="fa-solid fa-building" aria-hidden="true"></i>YBA Installer</a>
   </li>
 
 </ul>
@@ -54,6 +54,7 @@ YugabyteDB Anywhere is supported on all Linux distributions that Replicated supp
 - Ubuntu 20
 - RedHat Enterprise Linux 7
 - RedHat Enterprise Linux 8
+- SUSE Linux Enterprise Server (SLES) 15 SP4 (Tech Preview)
 
 ## Hardware requirements
 
@@ -68,8 +69,6 @@ A node running YugabyteDB Anywhere is expected to meet the following requirement
 YugabyteDB Anywhere uses [Replicated scheduler](https://www.replicated.com/) for software distribution and container management. You need to ensure that the host can pull containers from the [Replicated Docker Registries](https://help.replicated.com/docs/native/getting-started/docker-registries/).
 
 Replicated installs a compatible Docker version if it is not pre-installed on the host. The currently supported Docker version is 20.10.n.
-
-Installing on airgapped hosts requires additional configurations, as described in [Airgapped hosts](#airgapped-hosts).
 
 ### Airgapped hosts
 

@@ -4,7 +4,7 @@ CREATE DATABASE base_scans_cost_model WITH COLOCATION = TRUE;
 SET yb_enable_base_scans_cost_model = ON;
 SET yb_enable_optimizer_statistics = ON;
 
--- #18689 : Occasional SIGSEGV in queries with inequality filters on multiple 
+-- #18689 : Occasional SIGSEGV in queries with inequality filters on multiple
 --          index columns
 CREATE TABLE test_18689 (k1 INT, k2 INT, k3 INT, PRIMARY KEY (k1, k2, k3));
 INSERT INTO test_18689 (SELECT s, s, s FROM generate_series(1, 10000) s);

@@ -40,7 +40,7 @@ func Install(version string) {
 	os.Chdir(GetBinaryDir())
 
 	// set default values for unspecified config values
-	fixConfigValues()
+	FixConfigValues()
 
 	createYugabyteUser()
 
@@ -55,12 +55,12 @@ func Install(version string) {
 
 func createInstallDirs() {
 	createDirs := []string{
-		GetBaseInstall(),
 		GetSoftwareRoot(),
 		dm.WorkingDirectory(),
 		filepath.Join(GetBaseInstall(), "data"),
 		filepath.Join(GetBaseInstall(), "data/logs"),
 		GetInstallerSoftwareDir(),
+		GetBaseInstall(),
 	}
 
 	for _, dir := range createDirs {
@@ -107,13 +107,14 @@ func createUpgradeDirs() {
 
 // Copies over necessary files for all services from yba_installer_full to the GetSoftwareRoot()
 func copyBits(vers string) {
-	yugabundleBinary := "yugabundle-" + GetVersion() + "-centos-x86_64.tar.gz"
+	yugabundleBinary := "yugabundle-" + vers + "-centos-x86_64.tar.gz"
 	neededFiles := []string{GoBinaryName, VersionMetadataJSON, yugabundleBinary,
 		GetJavaPackagePath(), GetPostgresPackagePath()}
 
 	for _, file := range neededFiles {
-		if err := Copy(file, GetInstallerSoftwareDir(), false, true); err != nil {
-			log.Fatal("failed to copy " + file + ": " + err.Error())
+		fp := AbsoluteBundlePath(file)
+		if err := Copy(fp, GetInstallerSoftwareDir(), false, true); err != nil {
+			log.Fatal("failed to copy " + fp + ": " + err.Error())
 		}
 	}
 
@@ -348,11 +349,13 @@ func renameThirdPartyDependencies() {
 	RenameOrFail(GetInstallerSoftwareDir()+"/thirdparty", GetInstallerSoftwareDir()+"/third-party")
 }
 
-func fixConfigValues() {
+// FixConfigValues sets any mandatory config defaults not set by user (generally passwords)
+func FixConfigValues() {
 
 	if len(viper.GetString("service_username")) == 0 {
 		log.Info(fmt.Sprintf("Systemd services will be run as user %s", DefaultServiceUser))
 		SetYamlValue(InputFile(), "service_username", DefaultServiceUser)
+		InitViper()
 	}
 
 	if len(viper.GetString("platform.appSecret")) == 0 {
@@ -374,11 +377,33 @@ func fixConfigValues() {
 		InitViper()
 	}
 
+	var serverCertPath, serverKeyPath string
 	if len(viper.GetString("server_cert_path")) == 0 {
 		log.Info("Generating self-signed server certificates")
-		serverCertPath, serverKeyPath := generateSelfSignedCerts()
+		serverCertPath, serverKeyPath = generateSelfSignedCerts()
 		SetYamlValue(InputFile(), "server_cert_path", serverCertPath)
 		SetYamlValue(InputFile(), "server_key_path", serverKeyPath)
+		InitViper()
+	}
+
+	if viper.GetBool("postgres.install.enabled") &&
+		len(viper.GetString("postgres.install.password")) == 0 {
+		log.Info("Generating default password for postgres")
+		SetYamlValue(InputFile(), "postgres.install.password", GenerateRandomStringURLSafe(32))
+		InitViper()
+	}
+
+	if viper.GetBool("prometheus.enableAuth") &&
+		len(viper.GetString("prometheus.authPassword")) == 0 {
+		log.Info("Generating default password for prometheus")
+		SetYamlValue(InputFile(), "prometheus.authPassword", GenerateRandomStringURLSafe(32))
+		InitViper()
+	}
+
+	if viper.GetBool("prometheus.enableHttps") {
+		// Default to YBA certs
+		SetYamlValue(InputFile(), "prometheus.httpsCertPath", viper.GetString("server_cert_path"))
+		SetYamlValue(InputFile(), "prometheus.httpsKeyPath", viper.GetString("server_key_path"))
 		InitViper()
 	}
 
@@ -410,7 +435,8 @@ func generateSelfSignedCerts() (string, string) {
 
 }
 
-func WaitForYBAReady() {
+// WaitForYBAReady waits for a YBA to be running with specified version
+func WaitForYBAReady(version string) {
 	log.Info("Waiting for YBA ready.")
 
 	// Needed to access https URL without x509: certificate signed by unknown authority error
@@ -444,9 +470,9 @@ func WaitForYBAReady() {
 		if err == nil {
 			var result map[string]string
 			json.NewDecoder(resp.Body).Decode(&result)
-			if result["version"] != GetVersion() {
+			if result["version"] != version {
 				log.Fatal(fmt.Sprintf("Running YBA version %s does not match expected version %s",
-					result["version"], GetVersion()))
+					result["version"], version))
 			}
 		} else {
 			log.Fatal(fmt.Sprintf("Error waiting for YBA ready: %s", err.Error()))

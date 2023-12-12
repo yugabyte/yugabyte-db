@@ -49,13 +49,15 @@ public class RuntimeConfigFormData {
 
     @ApiModelProperty(value = "Scope UIID")
     public final UUID uuid;
+
     /**
      * global scope is mutable only if user is super admin other scopes can be mutated by the
      * customer
      */
     @ApiModelProperty(
         value =
-            "Mutability of the scope. Only super admin users can change global scope; other scopes are customer-mutable.")
+            "Mutability of the scope. Only super admin users can change global scope; other scopes"
+                + " are customer-mutable.")
     public final boolean mutableScope;
 
     @ApiModelProperty(value = "List of configurations")

@@ -41,17 +41,15 @@ struct XClusterOutputClientResponse {
   std::shared_ptr<cdc::GetChangesResponsePB> get_changes_response;
 };
 
-class XClusterConsumer;
+class XClusterPoller;
 struct XClusterClient;
 
 class XClusterOutputClient : public XClusterAsyncExecutor {
  public:
   XClusterOutputClient(
-      XClusterConsumer* xcluster_consumer, const cdc::ConsumerTabletInfo& consumer_tablet_info,
+      XClusterPoller* xcluster_poller, const cdc::ConsumerTabletInfo& consumer_tablet_info,
       const cdc::ProducerTabletInfo& producer_tablet_info,
       const std::shared_ptr<XClusterClient>& local_client, ThreadPool* thread_pool, rpc::Rpcs* rpcs,
-      std::function<void(const XClusterOutputClientResponse& response)> apply_changes_clbk,
-      std::function<void(const std::string& reason, const Status& status)> mark_fail_clbk,
       bool use_local_tserver, rocksdb::RateLimiter* rate_limiter);
   ~XClusterOutputClient();
   void StartShutdown() override;
@@ -75,7 +73,10 @@ class XClusterOutputClient : public XClusterAsyncExecutor {
         consumer_tablet_info_.table_id, consumer_tablet_info_.tablet_id);
   }
   bool IsOffline() override { return shutdown_; }
-  void MarkFailed(const std::string& reason, const Status& status = Status::OK()) override;
+  void MarkFailed(const std::string& reason, const Status& status = Status::OK()) override
+      EXCLUDES(lock_);
+  void MarkFailedUnlocked(const std::string& reason, const Status& status = Status::OK())
+      REQUIRES(lock_);
 
   // Process all records in get_changes_resp_ starting from the start index. If we find a ddl
   // record, then we process the current changes first, wait for those to complete, then process
@@ -118,23 +119,20 @@ class XClusterOutputClient : public XClusterAsyncExecutor {
   // Returns true if all records are processed, false if there are still some pending records.
   bool IncProcessedRecordCount() REQUIRES(lock_);
 
-  XClusterOutputClientResponse PrepareResponse() REQUIRES(lock_);
-  void SendResponse(const XClusterOutputClientResponse& resp) EXCLUDES(lock_);
-
   void HandleResponse() EXCLUDES(lock_);
   void HandleError(const Status& s) EXCLUDES(lock_);
 
   bool UseLocalTserver();
 
-  XClusterConsumer* xcluster_consumer_;
+  // Even though this is a const we guard it with a lock, since it is unsafe to use after shutdown.
+  // TODO: Once we move the async execution logic to the Poller, it will guarantee that our lifetime
+  // is less than the pollers lifetime, making this always safe to use.
+  XClusterPoller* const xcluster_poller_ GUARDED_BY(lock_);
   const cdc::ConsumerTabletInfo consumer_tablet_info_;
   const cdc::ProducerTabletInfo producer_tablet_info_;
   cdc::XClusterSchemaVersionMap schema_versions_ GUARDED_BY(lock_);
   cdc::ColocatedSchemaVersionMap colocated_schema_version_map_ GUARDED_BY(lock_);
   std::shared_ptr<XClusterClient> local_client_;
-
-  std::function<void(const XClusterOutputClientResponse& response)> apply_changes_clbk_;
-  std::function<void(const std::string& reason, const Status& status)> mark_fail_clbk_;
 
   bool use_local_tserver_;
 
@@ -169,11 +167,9 @@ class XClusterOutputClient : public XClusterAsyncExecutor {
 };
 
 std::shared_ptr<XClusterOutputClient> CreateXClusterOutputClient(
-    XClusterConsumer* xcluster_consumer, const cdc::ConsumerTabletInfo& consumer_tablet_info,
+    XClusterPoller* xcluster_poller, const cdc::ConsumerTabletInfo& consumer_tablet_info,
     const cdc::ProducerTabletInfo& producer_tablet_info,
     const std::shared_ptr<XClusterClient>& local_client, ThreadPool* thread_pool, rpc::Rpcs* rpcs,
-    std::function<void(const XClusterOutputClientResponse& response)> apply_changes_clbk,
-    std::function<void(const std::string& reason, const Status& status)> mark_fail_clbk,
     bool use_local_tserver, rocksdb::RateLimiter* rate_limiter);
 
 } // namespace tserver

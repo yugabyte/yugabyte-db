@@ -3,6 +3,8 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
@@ -14,6 +16,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert.Update
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseConfig;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.NodeManager.CertRotateAction;
+import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.utils.Version;
 import com.yugabyte.yw.forms.CertsRotateParams;
@@ -33,6 +36,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
 
 @Slf4j
+@Abortable
+@Retryable
 public class CertsRotate extends UpgradeTaskBase {
 
   @Inject
@@ -56,49 +61,55 @@ public class CertsRotate extends UpgradeTaskBase {
   }
 
   @Override
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    Universe universe = getUniverse();
+    taskParams().verifyParams(universe, isFirstTry);
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
+          Universe universe = getUniverse();
           Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodes(taskParams().upgradeOption);
           Set<NodeDetails> allNodes = toOrderedSet(nodes);
-          // Verify the request params and fail if invalid
-          taskParams().verifyParams(getUniverse());
           // For rootCA root certificate rotation, we would need to do it in three rounds
-          // so that node to node communications are not disturbed during the upgrade
-          // For other cases we can do it in one round by updating respective certs
+          // so that node to node communications are not disturbed during the upgrade.
+          // For other cases we can do it in one round by updating respective certs.
           if (taskParams().upgradeOption == UpgradeOption.ROLLING_UPGRADE
               && taskParams().rootCARotationType == CertRotationType.RootCert) {
-            // Update the rootCA in platform to have both old cert and new cert
+            // Update the rootCA in platform to have both old cert and new cert.
             createUniverseUpdateRootCertTask(UpdateRootCertAction.MultiCert);
-            // Append new root cert to the existing ca.crt
+            // Append new root cert to the existing ca.crt.
             createCertUpdateTasks(allNodes, CertRotateAction.APPEND_NEW_ROOT_CERT);
 
             // Add task to use the updated certs
-            createActivateCertsTask(getUniverse(), nodes, UpgradeOption.ROLLING_UPGRADE, false);
+            createActivateCertsTask(universe, nodes, UpgradeOption.ROLLING_UPGRADE, false);
 
-            // Copy new server certs to all nodes
+            // Copy new server certs to all nodes.
             createCertUpdateTasks(allNodes, CertRotateAction.ROTATE_CERTS);
 
-            // Add task to use the updated certs
+            // Add task to use the updated certs.
             createActivateCertsTask(getUniverse(), nodes, UpgradeOption.ROLLING_UPGRADE, false);
 
-            // Remove old root cert from the ca.crt
+            // Remove old root cert from the ca.crt.
             createCertUpdateTasks(allNodes, CertRotateAction.REMOVE_OLD_ROOT_CERT);
-            // Update gflags of cert directories
+            // Update gflags of cert directories.
             createUpdateCertDirsTask(nodes.getLeft(), ServerType.MASTER);
             createUpdateCertDirsTask(nodes.getRight(), ServerType.TSERVER);
 
-            // Reset the old rootCA content in platform
+            // Reset the old rootCA content in platform.
             createUniverseUpdateRootCertTask(UpdateRootCertAction.Reset);
-            // Update universe details with new cert values
+            // Update universe details with new cert values.
             createUniverseSetTlsParamsTask(getTaskSubGroupType());
 
-            // Add task to use the updated certs
+            // Add task to use the updated certs.
             createActivateCertsTask(
                 getUniverse(), nodes, UpgradeOption.ROLLING_UPGRADE, taskParams().isYbcInstalled());
 
           } else {
-            // Update the rootCA in platform to have both old cert and new cert
+            // Update the rootCA in platform to have both old cert and new cert.
             if (taskParams().rootCARotationType == CertRotationType.RootCert) {
               createUniverseUpdateRootCertTask(UpdateRootCertAction.MultiCert);
             }
@@ -109,16 +120,23 @@ public class CertsRotate extends UpgradeTaskBase {
                 taskParams().rootCARotationType,
                 taskParams().clientRootCARotationType);
 
-            // Add task to use the updated certs
+            // Add task to use the updated certs.
             createActivateCertsTask(
                 getUniverse(), nodes, taskParams().upgradeOption, taskParams().isYbcInstalled());
 
-            // Reset the old rootCA content in platform
+            // Reset the old rootCA content in platform.
             if (taskParams().rootCARotationType == CertRotationType.RootCert) {
               createUniverseUpdateRootCertTask(UpdateRootCertAction.Reset);
             }
-            // Update universe details with new cert values
+            // Update universe details with new cert values.
             createUniverseSetTlsParamsTask(getTaskSubGroupType());
+          }
+
+          // Restart is scheduled to happen, so 'client cert dir' gflag will be added
+          // So configure cert reloading on universe, if not already.
+          if (!isCertReloadConfigured(universe)) {
+            createCertReloadConfigTask(universe);
+            log.info("cert reload configuration task scheduled for this universe");
           }
         });
   }
@@ -151,8 +169,8 @@ public class CertsRotate extends UpgradeTaskBase {
   }
 
   // TODO: sort out the mess with rootAndClientRootCASame silently shadowing its namesake
-  // in UniverseDefinitionTaskParams
-  // (referencing them through taskParams() may cause subtle bugs)
+  // in UniverseDefinitionTaskParams.
+  // (referencing them through taskParams() may cause subtle bugs).
   @Override
   protected UniverseSetTlsParams.Params createSetTlsParams(SubTaskGroupType subTaskGroupType) {
     UniverseSetTlsParams.Params params = super.createSetTlsParams(subTaskGroupType);
@@ -185,7 +203,7 @@ public class CertsRotate extends UpgradeTaskBase {
 
   /**
    * compare the universe version against the versions where cert rotate is supported and
-   * appropriately call 'cert rotate' for newer universes or 'restart nodes' for older universes
+   * appropriately call 'cert rotate' for newer universes or 'restart nodes' for older universes.
    *
    * @param universe
    * @param nodes nodes which are to be activated with new certs
@@ -198,22 +216,16 @@ public class CertsRotate extends UpgradeTaskBase {
       UpgradeOption upgradeOption,
       boolean ybcInstalled) {
 
-    if (isCertReloadable(universe)) {
-      // cert reload can be performed
+    boolean n2nCertExpired = CertificateHelper.checkNode2NodeCertsExpiry(universe);
+    if (isCertReloadable(universe) && !n2nCertExpired) {
+      // cert reload can be performed.
       log.info("adding cert rotate via reload task ...");
-      createCertReloadTask(nodes, universe.getUniverseUUID(), userTaskUUID);
+      createCertReloadTask(nodes, universe.getUniverseUUID(), getUserTaskUUID());
 
     } else {
-      // Do a restart to rotate certificate
+      // Do a restart to rotate certificate.
       log.info("adding a cert rotate via restart task ...");
       createRestartTasks(nodes, upgradeOption, ybcInstalled);
-
-      // Restart is scheduled to happen, so 'client cert dir' gflag will be added
-      // So configure cert reloading on universe, if not already
-      if (!isCertReloadConfigured(universe)) {
-        createCertReloadConfigTask(universe);
-        log.info("cert reload configuration task scheduled for this universe");
-      }
     }
   }
 
@@ -247,7 +259,7 @@ public class CertsRotate extends UpgradeTaskBase {
   }
 
   private boolean isCertReloadConfigured(Universe universe) {
-    // universe should have been configured for performing 'hot cert reload'
+    // universe should have been configured for performing 'hot cert reload'.
     return Boolean.parseBoolean(
         universe
             .getConfig()
@@ -258,7 +270,7 @@ public class CertsRotate extends UpgradeTaskBase {
       Pair<List<NodeDetails>, List<NodeDetails>> nodesPair, UUID universeUuid, UUID userTaskUuid) {
 
     if (nodesPair == null) {
-      return; // nothing to do if node details are missing
+      return; // nothing to do if node details are missing.
     }
     log.debug("creating certReloadTaskCreator ...");
 

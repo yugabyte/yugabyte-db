@@ -35,6 +35,7 @@ import com.yugabyte.yw.commissioner.TaskExecutor.TaskExecutionListener;
 import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.RedactingService;
 import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
@@ -79,9 +80,12 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
   private final Set<TaskType> RETRYABLE_TASKS =
       ImmutableSet.of(
           TaskType.CreateKubernetesUniverse,
+          TaskType.InstallYbcSoftwareOnK8s,
           TaskType.DestroyKubernetesUniverse,
+          TaskType.UpdateKubernetesDiskSize,
           TaskType.CreateUniverse,
           TaskType.EditUniverse,
+          TaskType.EditKubernetesUniverse,
           TaskType.ReadOnlyClusterCreate,
           TaskType.AddNodeToUniverse,
           TaskType.RemoveNodeFromUniverse,
@@ -93,7 +97,28 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.ResizeNode,
           TaskType.StartNodeInUniverse,
           TaskType.StopNodeInUniverse,
-          TaskType.CloudProviderDelete);
+          TaskType.CloudProviderDelete,
+          TaskType.ReinstallNodeAgent,
+          TaskType.CloudBootstrap,
+          TaskType.KubernetesOverridesUpgrade,
+          TaskType.GFlagsKubernetesUpgrade,
+          TaskType.SoftwareKubernetesUpgrade,
+          TaskType.SoftwareKubernetesUpgradeYB,
+          TaskType.FinalizeUpgrade,
+          TaskType.RollbackUpgrade,
+          TaskType.RollbackKubernetesUpgrade,
+          TaskType.SoftwareUpgrade,
+          TaskType.SoftwareUpgradeYB,
+          TaskType.VMImageUpgrade,
+          TaskType.GFlagsUpgrade,
+          TaskType.RebootUniverse,
+          TaskType.RestartUniverse,
+          TaskType.RestartUniverseKubernetesUpgrade,
+          TaskType.ThirdpartySoftwareUpgrade,
+          TaskType.FinalizeUpgrade,
+          TaskType.CertsRotate,
+          TaskType.SystemdUpgrade,
+          TaskType.ModifyAuditLoggingConfig);
 
   @Override
   protected Application provideApplication() {
@@ -289,7 +314,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
     UUID taskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
     try {
-      assertThrows(RuntimeException.class, () -> taskExecutor.abort(taskUUID));
+      assertThrows(RuntimeException.class, () -> taskExecutor.abort(taskUUID, false));
     } finally {
       latch.countDown();
     }
@@ -339,7 +364,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
     assertEquals(TaskInfo.State.Running, taskInfo.getTaskState());
     // Stop the task
-    taskExecutor.abort(taskUUID);
+    taskExecutor.abort(taskUUID, false);
     latch2.countDown();
 
     taskInfo = waitForTask(taskUUID);
@@ -552,7 +577,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     UUID taskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
     taskUUIDRef.set(taskUUID);
     latch.await();
-    taskExecutor.abort(taskUUID);
+    taskExecutor.abort(taskUUID, false);
     TaskInfo taskInfo = waitForTask(taskUUID);
     verify(subTask).setUserTaskUUID(eq(taskUUID));
     assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
@@ -620,5 +645,12 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     verify(subTask, times(1)).setTaskUUID(any());
     assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
     assertEquals(TaskInfo.State.Success, subTaskInfos.get(0).getTaskState());
+  }
+
+  @Test
+  public void testTaskValidationFailure() {
+    ITask task = mockTaskCommon(false);
+    doThrow(new RuntimeException("Validation failed")).when(task).validateParams(true);
+    assertThrows(PlatformServiceException.class, () -> taskExecutor.createRunnableTask(task));
   }
 }

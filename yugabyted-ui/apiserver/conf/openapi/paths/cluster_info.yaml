@@ -296,7 +296,7 @@
     parameters:
       - name: node_address
         in: query
-        description: Specify the node ip-address from where gflags are retrieved
+        description: Specify the node ip-address from where alerts are retrieved
         required: true
         style: form
         explode: false
@@ -316,9 +316,46 @@
     operationId: getClusterAlerts
     tags:
       - cluster-info
+    parameters:
+      - name: node_address
+        in: query
+        description: Specify the node ip-address from where gflags are retrieved
+        required: true
+        style: form
+        explode: false
+        schema:
+          type: string
     responses:
       '200':
         $ref: '../responses/_index.yaml#/AlertsResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+/connections:
+  get:
+    summary: Get YSQL connection manager stats for every node of the cluster
+    description: Get YSQL connection manager stats for every node of the cluster
+    operationId: getClusterConnections
+    tags:
+      - cluster-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/ConnectionsResponse'
+      '400':
+        $ref: '../responses/_index.yaml#/ApiError'
+      '500':
+        $ref: '../responses/_index.yaml#/ApiError'
+/node_address:
+  get:
+    summary: Get the node address for the current node
+    description: Get the node address for the current node
+    operationId: getNodeAddress
+    tags:
+      - cluster-info
+    responses:
+      '200':
+        $ref: '../responses/_index.yaml#/NodeAddressResponse'
       '400':
         $ref: '../responses/_index.yaml#/ApiError'
       '500':

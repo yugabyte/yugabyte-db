@@ -168,6 +168,7 @@ public class TestPgAlterTableColumnType extends BasePgSQLTest {
   @Test
   public void testForeignKey() throws Exception {
     try (Statement statement = connection.createStatement()) {
+      // Test that altering the type of a foreign key column is not allowed.
       statement.execute("CREATE TABLE fk_table(c1 int, c2 int references int4_table(id))");
       statement.execute("ALTER TABLE fk_table ALTER c1 TYPE varchar");
 
@@ -178,6 +179,30 @@ public class TestPgAlterTableColumnType extends BasePgSQLTest {
         "ERROR: Altering type of foreign key is not supported");
 
       statement.execute("DROP TABLE fk_table");
+    }
+  }
+
+  @Test
+  public void testForeignKey2() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      // Test that foreign key constraints are preserved when the type of a column is altered.
+      statement.executeUpdate("CREATE TABLE test (id int unique, col1 text)");
+      statement.execute("CREATE TABLE test_part (id int REFERENCES test(id))"
+        + " PARTITION BY RANGE(id)");
+      statement.executeUpdate("CREATE TABLE test_part_1 PARTITION OF test_part"
+        + " FOR VALUES FROM (1) TO (100)");
+      statement.execute("INSERT INTO test VALUES (1, 'hi')");
+      statement.execute("INSERT INTO test_part VALUES (1)");
+      statement.execute("ALTER TABLE test ALTER COLUMN col1 TYPE int USING length(col1)");
+
+      assertQuery(statement, "SELECT * FROM test", new Row(1, 2));
+      assertQuery(statement, "SELECT * FROM test_part", new Row(1));
+
+      // Verify that the foreign key constraints are preserved.
+      runInvalidQuery(statement, "INSERT INTO test_part VALUES (2)",
+        "violates foreign key constraint \"test_part_id_fkey\"");
+      runInvalidQuery(statement, "INSERT INTO test_part_1 VALUES (2)",
+        "violates foreign key constraint \"test_part_id_fkey\"");
     }
   }
 
@@ -203,6 +228,49 @@ public class TestPgAlterTableColumnType extends BasePgSQLTest {
       runInvalidQuery(statement, "INSERT INTO check_table VALUES (-3.0)",
           "new row for relation \"check_table\" violates check constraint " +
               "\"check_table_c1_check\"");
+    }
+  }
+
+  @Test
+  public void testNotNullConstraints() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      // Test that we can't perform ALTER TYPE ... USING null when the column is not nullable.
+      statement.execute("CREATE TABLE not_null_table(c1 int not null)");
+      statement.execute("INSERT INTO not_null_table VALUES (1), (2)");
+      runInvalidQuery(statement, "ALTER TABLE not_null_table ALTER c1 TYPE float USING null",
+        "ERROR: column \"c1\" contains null values");
+      statement.execute("ALTER TABLE not_null_table ALTER c1 TYPE float USING 0");
+      assertRowList(statement, "SELECT * from not_null_table", Arrays.asList(
+          new Row(0.0),
+          new Row(0.0)));
+      // Verify that not null constraints are preserved after an ALTER TYPE operation.
+      runInvalidQuery(statement, "INSERT INTO not_null_table VALUES (null)",
+        "ERROR: null value in column \"c1\" violates not-null constraint");
+      // Test that we can perform ALTER TYPE ... USING null when the column is nullable.
+      statement.execute("ALTER TABLE not_null_table ALTER c1 DROP NOT NULL");
+      statement.execute("ALTER TABLE not_null_table ALTER c1 TYPE float USING null");
+      assertRowList(statement, "SELECT * from not_null_table", Arrays.asList(
+          new Row(new Object[]{null}),
+          new Row(new Object[]{null})));
+    }
+  }
+
+  @Test
+  public void testUniqueConstraints() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      // Test that we can't perform ALTER TYPE when the operation would result in duplicate values
+      // in a unique column.
+      statement.execute("CREATE TABLE unique_table(c1 text unique)");
+      statement.execute("INSERT INTO unique_table VALUES ('row1'), ('row2')");
+      runInvalidQuery(statement, "ALTER TABLE unique_table ALTER c1 TYPE int USING length(c1)",
+        "ERROR: duplicate key value violates unique constraint \"unique_table_c1_key\"");
+      statement.execute("DELETE FROM unique_table WHERE c1 = 'row2'");
+      statement.execute("ALTER TABLE unique_table ALTER c1 TYPE int USING length(c1)");
+      assertRowList(statement, "SELECT * from unique_table ORDER BY c1 ASC", Arrays.asList(
+          new Row(4)));
+      // Verify that unique constraints are preserved after an ALTER TYPE operation.
+      runInvalidQuery(statement, "INSERT INTO unique_table VALUES (4)",
+        "ERROR: duplicate key value violates unique constraint \"unique_table_c1_key\"");
     }
   }
 
@@ -325,6 +393,19 @@ public class TestPgAlterTableColumnType extends BasePgSQLTest {
   }
 
   @Test
+  public void testRangeKey() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE range_key_table(id text, PRIMARY KEY(id asc))");
+      statement.execute("INSERT INTO range_key_table(id) VALUES ('abc'), ('abcd')");
+      statement.execute("CREATE INDEX ON range_key_table(id ASC)");
+      statement.execute("ALTER TABLE range_key_table ALTER id TYPE int USING length(id)");
+      assertRowList(statement, "SELECT * FROM range_key_table ORDER BY id", Arrays.asList(
+          new Row(3),
+          new Row(4)));
+    }
+  }
+
+  @Test
   public void testMultipleRewrites() throws Exception {
     try (Statement statement = connection.createStatement()) {
       statement.execute("CREATE TABLE test (a float, b varchar(10))");
@@ -341,6 +422,23 @@ public class TestPgAlterTableColumnType extends BasePgSQLTest {
       assertRowList(statement, "SELECT * FROM test ORDER BY a", Arrays.asList(
           new Row("1", "abc"),
           new Row("2", "xyz")));
+    }
+  }
+
+  @Test
+  public void testTempTables() throws Exception {
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TEMP TABLE test_table (col1 text UNIQUE)");
+      statement.execute("INSERT INTO test_table VALUES ('1'), ('01')");
+      runInvalidQuery(statement,
+          "ALTER TABLE test_table ALTER COLUMN col1 TYPE integer using col1::int",
+          "ERROR: could not create unique index \"test_table_col1_key\"" +
+              "\n  Detail: Key (col1)=(1) is duplicated.");
+      statement.execute("ALTER TABLE test_table DROP CONSTRAINT test_table_col1_key");
+      statement.execute("ALTER TABLE test_table ALTER COLUMN col1 TYPE integer using col1::int");
+      assertRowList(statement, "SELECT * FROM test_table", Arrays.asList(
+          new Row(1),
+          new Row(1)));
     }
   }
 }

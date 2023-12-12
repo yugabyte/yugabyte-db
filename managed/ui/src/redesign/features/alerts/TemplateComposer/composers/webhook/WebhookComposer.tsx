@@ -43,6 +43,8 @@ import { HTMLSerializer } from '../../../../../components/YBEditor/serializers';
 import { convertHTMLToText } from '../../../../../components/YBEditor/transformers/HTMLToTextTransform';
 import { createErrorMessage } from '../../../../universe/universe-form/utils/helpers';
 import { Info } from '@material-ui/icons';
+import { RbacValidator } from '../../../../rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../../rbac/ApiAndUserPermMapping';
 
 const useStyles = makeStyles((theme) => ({
   composers: {
@@ -90,7 +92,7 @@ const WebhookComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<I
 
     const createTemplate = useMutation(
       async ({ textTemplate }: { textTemplate: string }) => {
-        let invalidVariables = findInvalidVariables(textTemplate, alertVariables!.data);
+        const invalidVariables = findInvalidVariables(textTemplate, alertVariables!.data);
 
         if (invalidVariables.length > 0) {
           return Promise.reject({
@@ -242,15 +244,20 @@ const WebhookComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<I
             alignItems="center"
             justifyContent="space-between"
           >
-            <YBButton
-              variant="secondary"
-              onClick={() => {
-                setShowPreviewModal(true);
-              }}
-              data-testid="preview-webhook-button"
+            <RbacValidator
+              accessRequiredOn={ApiPermissionMap.PREVIEW_ALERT_NOTIFICATION}
+              isControl
             >
-              {t('alertCustomTemplates.composer.previewTemplateButton')}
-            </YBButton>
+              <YBButton
+                variant="secondary"
+                onClick={() => {
+                  setShowPreviewModal(true);
+                }}
+                data-testid="preview-webhook-button"
+              >
+                {t('alertCustomTemplates.composer.previewTemplateButton')}
+              </YBButton>
+            </RbacValidator>
             <div>
               <YBButton
                 variant="secondary"
@@ -261,25 +268,30 @@ const WebhookComposer = React.forwardRef<IComposerRef, React.PropsWithChildren<I
               >
                 {t('common.cancel')}
               </YBButton>
-              <YBButton
-                variant="primary"
-                type="submit"
-                disabled={!isEditorDirty(bodyEditorRef.current) && !isRollbackedToDefaultTemplate}
-                autoFocus
-                className={composerStyles.submitButton}
-                onClick={() => {
-                  if (bodyEditorRef.current) {
-                    const bodyText = new HTMLSerializer(bodyEditorRef.current).serialize();
-
-                    createTemplate.mutate({
-                      textTemplate: convertHTMLToText(bodyText)
-                    });
-                  }
-                }}
-                data-testid="save-webhook-button"
+              <RbacValidator
+                accessRequiredOn={ApiPermissionMap.CREATE_ALERT_CHANNEL_TEMPLATE}
+                isControl
               >
-                {t('common.save')}
-              </YBButton>
+                <YBButton
+                  variant="primary"
+                  type="submit"
+                  disabled={!isEditorDirty(bodyEditorRef.current) && !isRollbackedToDefaultTemplate}
+                  autoFocus
+                  className={composerStyles.submitButton}
+                  onClick={() => {
+                    if (bodyEditorRef.current) {
+                      const bodyText = new HTMLSerializer(bodyEditorRef.current).serialize();
+
+                      createTemplate.mutate({
+                        textTemplate: convertHTMLToText(bodyText)
+                      });
+                    }
+                  }}
+                  data-testid="save-webhook-button"
+                >
+                  {t('common.save')}
+                </YBButton>
+              </RbacValidator>
             </div>
           </Grid>
         </Grid>

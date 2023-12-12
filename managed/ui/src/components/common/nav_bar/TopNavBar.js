@@ -4,13 +4,12 @@ import { Component } from 'react';
 import 'react-fa';
 import { MenuItem, NavDropdown, Navbar, Nav } from 'react-bootstrap';
 import { Link } from 'react-router';
-import YBLogo from '../YBLogo/YBLogo';
-import './stylesheets/TopNavBar.scss';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { LinkContainer } from 'react-router-bootstrap';
 import { isNotHidden, isDisabled } from '../../../utils/LayoutUtils';
 import { clearCredentials } from '../../../routes';
-
+import './stylesheets/TopNavBar.scss';
+import YBLogo from '../YBLogo/YBLogo';
 class YBMenuItem extends Component {
   render() {
     const { disabled, to, id, className, onClick } = this.props;

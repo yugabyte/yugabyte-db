@@ -16,6 +16,12 @@ import (
 // Python checks to ensure the correct version of python exists
 var Python = &pythonCheck{"python", false}
 
+var pythonBinaryNames = []string{
+	"python", "python3", "python3.8", "python3.9", "python3.10", "python3.11",
+}
+
+var pythonVersionRegex = regexp.MustCompile(`Python 3.8|Python 3.9|Python 3.10|Python 3.11`)
+
 type pythonCheck struct {
 	name        string
 	skipAllowed bool
@@ -38,20 +44,22 @@ func (p pythonCheck) Execute() Result {
 		Status: StatusPassed,
 	}
 
-	out := shell.Run("python3", "--version")
-
-	outputTrimmed := strings.TrimSuffix(out.StdoutString(), "\n")
-
-	re := regexp.MustCompile(`Python 3.6|Python 3.7|Python 3.8|Python 3.9|Python 3.10|Python 3.11`)
-
-	if !re.MatchString(outputTrimmed) {
-		res.Error = fmt.Errorf("System does not meet Python requirements. Please install any " +
-			"version of Python between 3.6 and 3.11.")
-		res.Status = StatusCritical
-		return res
-	} else {
-		log.Info("System meets Python installation requirements.")
+	for _, binary := range pythonBinaryNames {
+		log.Debug("checking for python binary " + binary)
+		out := shell.Run(binary, "--version")
+		if !out.Succeeded() {
+			log.Debug("python binary " + binary + " failed, trying next")
+			continue
+		}
+		outputTrimmed := strings.TrimSuffix(out.StdoutString(), "\n")
+		if pythonVersionRegex.MatchString(outputTrimmed) {
+			log.Info("System meets Python installation requirements with version " + outputTrimmed)
+			return res
+		}
 	}
 
+	res.Error = fmt.Errorf("System does not meet Python requirements. Please install any " +
+		"version of Python between 3.8 and 3.11.")
+	res.Status = StatusCritical
 	return res
 }

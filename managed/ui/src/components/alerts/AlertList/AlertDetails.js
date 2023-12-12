@@ -4,7 +4,12 @@ import { isNonAvailable } from '../../../utils/LayoutUtils';
 import { getSeverityLabel } from './AlertUtils';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 
-import prometheusIcon from '../../metrics/images/prometheus-icon.svg';
+import prometheusIcon from '../../../redesign/assets/prometheus-icon.svg';
+import {
+  RbacValidator,
+  hasNecessaryPerm
+} from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import './AlertDetails.scss';
 
 const findValueforlabel = (labels, labelToFind) => {
@@ -138,15 +143,24 @@ export default class AlertDetails extends Component {
                   <Col lg={6} className="no-padding">
                     <ButtonGroup>
                       <DropdownButton id="alert-mark-as-button" title="Mark as">
-                        <MenuItem
-                          eventKey="1"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            onAcknowledge();
-                          }}
+                        <RbacValidator
+                          accessRequiredOn={ApiPermissionMap.ACKNOWLEDGE_ALERT}
+                          isControl
                         >
-                          Acknowledged
-                        </MenuItem>
+                          <MenuItem
+                            eventKey="1"
+                            disabled={!hasNecessaryPerm(ApiPermissionMap.ACKNOWLEDGE_ALERT)}
+                            onClick={(e) => {
+                              if (!hasNecessaryPerm(ApiPermissionMap.ACKNOWLEDGE_ALERT)) {
+                                return;
+                              }
+                              e.stopPropagation();
+                              onAcknowledge();
+                            }}
+                          >
+                            Acknowledged
+                          </MenuItem>
+                        </RbacValidator>
                       </DropdownButton>
                     </ButtonGroup>
                   </Col>

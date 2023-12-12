@@ -18,6 +18,8 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "yb/yql/pggate/pg_metrics_list.h"
+
 #ifdef __cplusplus
 
 #define YB_DEFINE_HANDLE_TYPE(name) \
@@ -28,8 +30,11 @@
     } \
     typedef class yb::pggate::name *YBC##name;
 
+#define YB_PGGATE_IDENTIFIER(name) yb::pggate::name
+
 #else
 #define YB_DEFINE_HANDLE_TYPE(name) typedef struct name *YBC##name;
+#define YB_PGGATE_IDENTIFIER(name) name
 #endif  // __cplusplus
 
 #ifdef __cplusplus
@@ -381,6 +386,8 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_minimal_catalog_caches_preload;
   const bool*     ysql_enable_create_database_oid_collision_retry;
   const char*     ysql_catalog_preload_additional_table_list;
+  const bool*     ysql_use_relcache_file;
+  const bool*     ysql_enable_pg_per_database_oid_allocator;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {
@@ -435,6 +442,11 @@ typedef struct PgExecReadWriteStats {
   uint64_t read_wait;
 } YBCPgExecReadWriteStats;
 
+typedef struct PgExecEventMetric {
+  int64_t sum;
+  int64_t count;
+} YBCPgExecEventMetric;
+
 typedef struct PgExecStats {
   YBCPgExecReadWriteStats tables;
   YBCPgExecReadWriteStats indices;
@@ -442,11 +454,23 @@ typedef struct PgExecStats {
 
   uint64_t num_flushes;
   uint64_t flush_wait;
+
+  uint64_t storage_gauge_metrics[YB_PGGATE_IDENTIFIER(YB_STORAGE_GAUGE_COUNT)];
+  int64_t storage_counter_metrics[YB_PGGATE_IDENTIFIER(YB_STORAGE_COUNTER_COUNT)];
+  YBCPgExecEventMetric
+      storage_event_metrics[YB_PGGATE_IDENTIFIER(YB_STORAGE_EVENT_COUNT)];
 } YBCPgExecStats;
+
+// Make sure this is in sync with PgsqlMetricsCaptureType in pgsql_protocol.proto.
+typedef enum PgMetricsCaptureType {
+  YB_YQL_METRICS_CAPTURE_NONE = 0,
+  YB_YQL_METRICS_CAPTURE_ALL = 1,
+} YBCPgMetricsCaptureType;
 
 typedef struct PgExecStatsState {
   YBCPgExecStats stats;
   bool is_timing_required;
+  YBCPgMetricsCaptureType metrics_capture;
 } YBCPgExecStatsState;
 
 typedef struct PgUuid {
@@ -492,9 +516,66 @@ static const int32_t kYBCMaxNumDbCatalogVersions = 10000;
 typedef enum PgSysTablePrefetcherCacheMode {
   YB_YQL_PREFETCHER_TRUST_CACHE,
   YB_YQL_PREFETCHER_RENEW_CACHE_SOFT,
-  YB_YQL_PREFETCHER_RENEW_CACHE_HARD,
-  YB_YQL_PREFETCHER_NO_CACHE
+  YB_YQL_PREFETCHER_RENEW_CACHE_HARD
 } YBCPgSysTablePrefetcherCacheMode;
+
+typedef struct PgLastKnownCatalogVersionInfo {
+  uint64_t version;
+  bool is_db_catalog_version_mode;
+} YBCPgLastKnownCatalogVersionInfo;
+
+typedef enum PgTransactionSetting {
+  // Single shard transactions can use a fast path to give full ACID guarantees without the overhead
+  // of a distributed transaction.
+  YB_SINGLE_SHARD_TRANSACTION,
+  // Force non-transactional semantics to avoid overhead of a distributed transaction. This is used
+  // in the following cases as of today:
+  //   (1) Index backfill
+  //   (2) COPY with ysql_non_txn_copy=true
+  //   (3) For normal DML writes if yb_disable_transactional_writes is set by the user
+  YB_NON_TRANSACTIONAL,
+  // Use a distributed transaction for full ACID semantics (common case).
+  YB_TRANSACTIONAL
+} YBCPgTransactionSetting;
+
+typedef struct PgReplicationSlotDescriptor {
+  const char *slot_name;
+  const char *stream_id;
+  YBCPgOid database_oid;
+  bool active;
+} YBCReplicationSlotDescriptor;
+
+// Active Session History metadata struct.
+// yql_endpoint_tserver_uuid is not stored here as it's going to be the same for all the
+// PG backends of a given node. It's stored in the shared tserver object.
+// rpc_request_id is same as the last 8 bytes of root_request_id in PG, so it's not stored
+// here.
+typedef struct AshMetadata {
+  // A unique id corresponding to a YSQL query in bytes.
+  unsigned char root_request_id[16];
+
+  // Query id as seen on pg_stat_statements to identify identical
+  // normalized queries. There might be many queries with different
+  // root_request_id but with the same query_id.
+  uint64_t query_id;
+
+  // If addr_family is AF_INET (ipv4) or AF_INET6 (ipv6), client_addr stores
+  // the ipv4/ipv6 address and client_port stores the port of the PG process
+  // where the YSQL query originated. In case of AF_INET, the first 4 bytes
+  // of client_addr is used to store the ipv4 address as raw bytes.
+  // In case of AF_INET6, all the 16 bytes is used to store the ipv6 address
+  // as raw bytes.
+  // If addr_family is AF_UNIX, client_addr and client_port do not store
+  // anything meaningful.
+  unsigned char client_addr[16];
+  uint16_t client_port;
+  uint8_t addr_family;
+
+  // We don't set metadata for catalog requests yet, so this is used to decide
+  // whether we have set the metadata and should we send it with Perform RPCs.
+  // TODO: remove this once we start tracking catalog requests
+  bool is_set;
+} YBCAshMetadata;
 
 #ifdef __cplusplus
 }  // extern "C"

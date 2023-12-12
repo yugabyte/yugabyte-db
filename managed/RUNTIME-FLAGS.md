@@ -9,6 +9,9 @@
 | "Show costs in UI" | "yb.ui.show_cost" | "CUSTOMER" | "Option to enable/disable costs in UI" | "Boolean" |
 | "Helm chart http download timeout" | "yb.releases.download_helm_chart_http_timeout" | "CUSTOMER" | "The timeout for downloading the Helm chart while importing a release using HTTP" | "Duration" |
 | "Use Redesigned Provider UI" | "yb.ui.feature_flags.provider_redesign" | "CUSTOMER" | "The redesigned provider UI adds a provider list view, a provider details view and improves the provider creation form for AWS, AZU, GCP, and K8s" | "Boolean" |
+| "Enable partial editing of in use providers" | "yb.ui.feature_flags.edit_in_use_provider" | "CUSTOMER" | "A subset of fields from in use providers can be edited. Users can edit in use providers directly through the YBA API. This config is used to enable this functionality through YBA UI as well." | "Boolean" |
+| "Show disaster recovery UI" | "yb.ui.feature_flags.disaster_recovery" | "CUSTOMER" | "YBA provides an active-active single-master disaster recovery (DR) solution through the API. This runtime config exposes a user interface for managing DR configurations." | "Boolean" |
+| "Show underlying xCluster configs from DR setup" | "yb.ui.xcluster.dr.show_xcluster_config" | "CUSTOMER" | "YBA creates an underlying transactional xCluster config when setting up an active-active single-master disaster recovery (DR) config. During regular operation you should manage the DR config through the DR UI instead of the xCluster UI. This feature flag serves as a way to expose the underlying xCluster config for troubleshooting." | "Boolean" |
 | "Enforce User Tags" | "yb.universe.user_tags.is_enforced" | "CUSTOMER" | "Prevents universe creation when the enforced tags are not provided." | "Boolean" |
 | "Enforced User Tags List" | "yb.universe.user_tags.enforced_tags" | "CUSTOMER" | "A list of enforced user tag and accepted value pairs during universe creation. Pass '*' to accept all values for a tag. Ex: [\"yb_task:dev\",\"yb_task:test\",\"yb_owner:*\",\"yb_dept:eng\",\"yb_dept:qa\", \"yb_dept:product\", \"yb_dept:sales\"]" | "Key Value SetMultimap" |
 | "Allow Unsupported Instances" | "yb.internal.allow_unsupported_instances" | "PROVIDER" | "Enabling removes supported instance type filtering on AWS providers." | "Boolean" |
@@ -82,6 +85,8 @@
 | "Task Garbage Collector Check Interval" | "yb.taskGC.gc_check_interval" | "GLOBAL" | "How frequently do we check for completed tasks in database" | "Duration" |
 | "API support for backward compatible date fields" | "yb.api.backward_compatible_date" | "GLOBAL" | "Enable when a client to the YBAnywhere API wants to continue using the older date  fields in non-ISO format. Default behaviour is to not populate such deprecated API fields and only return newer date fields." | "Boolean" |
 | "Allow universes to be detached/attached" | "yb.attach_detach.enabled" | "GLOBAL" | "Allow universes to be detached from a source platform and attached to dest platform" | "Boolean" |
+| "Whether YBA supports transactional xCluster configs" | "yb.xcluster.transactional.enabled" | "GLOBAL" | "It indicates whether YBA should support transactional xCluster configs" | "Boolean" |
+| "Enable disaster recovery" | "yb.xcluster.dr.enabled" | "GLOBAL" | "It indicates whether creating disaster recovery configs are enabled" | "Boolean" |
 | "Enable YBC for xCluster" | "yb.xcluster.use_ybc" | "GLOBAL" | "Enable YBC to take backup and restore during xClsuter bootstrap" | "Boolean" |
 | "Whether installation of YugabyteDB version higher than YBA version is allowed" | "yb.allow_db_version_more_than_yba_version" | "GLOBAL" | "It indicates whether the installation of YugabyteDB with a version higher than YBA version is allowed on universe nodes" | "Boolean" |
 | "Path to pg_dump on the YBA node" | "db.default.pg_dump_path" | "GLOBAL" | "Set during yba-installer for both custom postgres and version specific postgres installation" | "String" |
@@ -98,6 +103,13 @@
 | "Prometheus auth username" | "yb.metrics.auth_username" | "GLOBAL" | "Username, used for request authentication against embedded Prometheus" | "String" |
 | "Prometheus auth password" | "yb.metrics.auth_password" | "GLOBAL" | "Password, used for request authentication against embedded Prometheus" | "String" |
 | "Force YBC Shutdown during upgrade" | "ybc.upgrade.force_shutdown" | "GLOBAL" | "For YBC Shutdown during upgrade" | "Boolean" |
+| "Enable strict mode to ignore deprecated YBA APIs" | "yb.api.mode.strict" | "GLOBAL" | "Will ignore deprecated APIs" | "Boolean" |
+| "Enable safe mode to ignore preview YBA APIs" | "yb.api.mode.safe" | "GLOBAL" | "Will ignore preview APIs" | "Boolean" |
+| "Enable publishing thread dumps to GCS" | "yb.diag.thread_dumps.gcs.enabled" | "GLOBAL" | "Enable publishing thread dumps to GCS" | "Boolean" |
+| "Granular level metrics" | "yb.ui.feature_flags.granular_metrics" | "GLOBAL" | "View granular level metrics when user selects specific time period in a chart" | "Boolean" |
+| "Enable multiline option for GFlag conf." | "yb.ui.feature_flags.gflag_multiline_conf" | "GLOBAL" | "Allows user to enter postgres hba rules and ident map rules in multiple rows" | "Boolean" |
+| "Disable all cert validation for HA communication" | "yb.ha.ws.ssl.loose.acceptAnyCertificate" | "GLOBAL" | "When set, https certs will not be validated for HA communication. Communication will still be encrypted." | "Boolean" |
+| "Disable hostname cert validation for HA communication" | "yb.ha.ws.ssl.loose.disableHostnameVerification" | "GLOBAL" | "When set, the hostname in https certs will not be validated for HA communication. Communication will still be encrypted." | "Boolean" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |
 | "Node Checkout Time" | "yb.health.nodeCheckTimeoutSec" | "UNIVERSE" | "The timeout (in seconds) for node check operation as part of universe health check" | "Integer" |
@@ -172,6 +184,8 @@
 | "Enabling Master config change result check" | "yb.checks.change_master_config.enabled" | "UNIVERSE" | "Controls whether or not to wait for master config change to finish" | "Boolean" |
 | "Enabling follower lag check" | "yb.checks.follower_lag.enabled" | "UNIVERSE" | "Controls whether or not to perform the follower lag checks" | "Boolean" |
 | "Follower lag check timeout" | "yb.checks.follower_lag.timeout" | "UNIVERSE" | "Controls the max time out when performing follower lag checks" | "Duration" |
+| "Max threshold for follower lag" | "yb.checks.follower_lag.max_threshold" | "UNIVERSE" | "The maximum time that we allow a tserver to be behind its peers" | "Duration" |
+| "Wait for server ready timeout" | "yb.checks.wait_for_server_ready.timeout" | "UNIVERSE" | "Controls the max time for server to finish locally bootstrapping" | "Duration" |
 | "Memory check timeout" | "yb.dbmem.checks.timeout" | "UNIVERSE" | "Timeout for memory check in secs" | "Long" |
 | "Wait time before doing restore during xCluster setup task" | "yb.xcluster.sleep_time_before_restore" | "UNIVERSE" | "The amount of time to sleep (wait) before executing restore subtask during xCluster setup; it is useful because xCluster setup also drops the database before restore and the sleep makes sure the drop operation has reached all the nodes" | "Duration" |
 | "Use server broadcast address for yb_backup" | "yb.backup.use_server_broadcast_address_for_yb_backup" | "UNIVERSE" | "Controls whether server_broadcast_address entry should be used during yb_backup.py backup/restore" | "Boolean" |
@@ -185,3 +199,5 @@
 | "Default PITR retention period for txn xCluster" | "yb.xcluster.transactional.pitr.default_retention_period" | "UNIVERSE" | "The default retention period used to create PITR configs for transactional xCluster replication; it will be used when there is no existing PITR configs and it is not specified in the task parameters" | "Duration" |
 | "Default PITR snapshot interval for txn xCluster" | "yb.xcluster.transactional.pitr.default_snapshot_interval" | "UNIVERSE" | "The default snapshot interval used to create PITR configs for transactional xCluster replication; it will be used when there is no existing PITR configs and it is not specified in the task parameters" | "Duration" |
 | "Skip backup metadata validation" | "yb.backup.skip_metadata_validation" | "UNIVERSE" | "Skip backup metadata based validation during restore" | "Boolean" |
+| "Parallelism for Node Agent Reinstallation" | "yb.node_agent.reinstall_parallelism" | "UNIVERSE" | "Number of parallel node agent reinstallations at a time" | "Integer" |
+| "To perform sync of user-groups between the Universe DB nodes and LDAP Server" | "yb.security.ldap.ldap_universe_sync" | "UNIVERSE" | "If configured, this feature allows users to synchronise user groups configured on the upstream LDAP Server with user roles in YBDB nodes associated with the universe." | "Boolean" |

@@ -43,6 +43,7 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ReleaseManager;
@@ -165,7 +166,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
   @Test
   public void testUniverseCreateWithRuntimeFlagsSet() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
     when(mockCommissioner.submit(
             ArgumentMatchers.any(TaskType.class),
             ArgumentMatchers.any(UniverseDefinitionTaskParams.class)))
@@ -226,7 +227,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
   @Test
   public void testUniverseCreateWithSingleAvailabilityZones() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
     when(mockCommissioner.submit(
             ArgumentMatchers.any(TaskType.class),
             ArgumentMatchers.any(UniverseDefinitionTaskParams.class)))
@@ -277,7 +278,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
   @Test
   public void testUniverseCreateWithYsqlEnabled() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
     when(mockCommissioner.submit(
             ArgumentMatchers.any(TaskType.class),
             ArgumentMatchers.any(UniverseDefinitionTaskParams.class)))
@@ -354,7 +355,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
   @Test
   public void testUniverseCreateWithContradictoryGflags() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
     when(mockCommissioner.submit(
             ArgumentMatchers.any(TaskType.class),
             ArgumentMatchers.any(UniverseDefinitionTaskParams.class)))
@@ -405,7 +406,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
   @Test
   public void testUniverseCreateWithBothEndPointsDisabled() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
     when(mockCommissioner.submit(
             ArgumentMatchers.any(TaskType.class),
             ArgumentMatchers.any(UniverseDefinitionTaskParams.class)))
@@ -460,7 +461,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
       boolean rootAndClientRootCASame,
       boolean enableNodeToNodeEncrypt,
       boolean enableClientToNodeEncrypt) {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
     when(mockCommissioner.submit(
             ArgumentMatchers.any(TaskType.class),
             ArgumentMatchers.any(UniverseDefinitionTaskParams.class)))
@@ -569,7 +570,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
     when(mockRuntimeConfig.getBoolean("yb.use_new_helm_naming")).thenReturn(true);
     ArgumentCaptor<UniverseDefinitionTaskParams> expectedTaskParams =
         ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
     when(mockCommissioner.submit(
             ArgumentMatchers.any(TaskType.class), expectedTaskParams.capture()))
         .thenReturn(fakeTaskUUID);
@@ -608,7 +609,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
   @Test
   public void testUniverseCreateWithDisabledYedis() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
     when(mockCommissioner.submit(
             ArgumentMatchers.any(TaskType.class),
             ArgumentMatchers.any(UniverseDefinitionTaskParams.class)))
@@ -670,7 +671,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
       Integer throughput,
       String mountPoints,
       String errorMessage) {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
     when(mockCommissioner.submit(
             ArgumentMatchers.any(TaskType.class),
             ArgumentMatchers.any(UniverseDefinitionTaskParams.class)))
@@ -760,7 +761,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
   @Test
   public void testCreateUniverseEncryptionAtRestNoKMSConfig() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
     when(mockCommissioner.submit(
             ArgumentMatchers.any(TaskType.class),
             ArgumentMatchers.any(UniverseDefinitionTaskParams.class)))
@@ -831,7 +832,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
   @Test
   public void testCreateUniverseEncryptionAtRestWithKMSConfigExists() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
     when(mockCommissioner.submit(
             ArgumentMatchers.any(TaskType.class),
             ArgumentMatchers.any(UniverseDefinitionTaskParams.class)))
@@ -1285,7 +1286,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
   @Test
   public void testCustomConfigureCreateWithMultiAZMultiRegion() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
     when(mockCommissioner.submit(
             ArgumentMatchers.any(TaskType.class),
             ArgumentMatchers.any(UniverseDefinitionTaskParams.class)))
@@ -1385,7 +1386,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
 
   @Test
   public void testUniverseCreateWithIncorrectNodes() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
     when(mockCommissioner.submit(
             ArgumentMatchers.any(TaskType.class),
             ArgumentMatchers.any(UniverseDefinitionTaskParams.class)))
@@ -1478,7 +1479,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
   }
 
   protected Result createUniverseWithoutYcqlPasswordAndYcqlEnabled() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
     when(mockCommissioner.submit(
             ArgumentMatchers.any(TaskType.class),
             ArgumentMatchers.any(UniverseDefinitionTaskParams.class)))
@@ -1516,7 +1517,7 @@ public abstract class UniverseCreateControllerTestBase extends UniverseControlle
   }
 
   protected Result createUniverseWithoutYsqlPasswordAndYsqlEnabled() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CreateUniverse);
     when(mockCommissioner.submit(
             ArgumentMatchers.any(TaskType.class),
             ArgumentMatchers.any(UniverseDefinitionTaskParams.class)))

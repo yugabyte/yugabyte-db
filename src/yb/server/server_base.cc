@@ -78,6 +78,7 @@
 #include "yb/util/net/sockaddr.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/rolling_log.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/spinlock_profiling.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
@@ -296,6 +297,8 @@ Status RpcServerBase::Init() {
     RETURN_NOT_OK_PREPEND(clock_->Init(), "Cannot initialize clock");
   }
 
+  RETURN_NOT_OK(InitAutoFlags());
+
   // Create the Messenger.
   rpc::MessengerBuilder builder(name_);
   builder.UseDefaultConnectionContextFactory(mem_tracker());
@@ -508,8 +511,6 @@ Status RpcAndWebServerBase::Init() {
     return STATUS(NetworkError, "Simulated port conflict error");
   }
 
-  RETURN_NOT_OK(InitAutoFlags());
-
   RETURN_NOT_OK(RpcServerBase::Init());
 
   return Status::OK();
@@ -628,8 +629,9 @@ void RpcAndWebServerBase::DisplayGeneralInfoIcons(std::stringstream* output) {
   // GFlags.
   DisplayIconTile(output, "fa-flag-o", "GFlags", "/varz");
   // Metrics.
-  DisplayIconTile(output, "fa-line-chart", "Metrics",
-      "/prometheus-metrics?reset_histograms=false&cache_filters=false");
+  DisplayIconTile(
+      output, "fa-line-chart", "Metrics",
+      "/prometheus-metrics?reset_histograms=false&show_help=true");
   // Threads.
   DisplayIconTile(output, "fa-microchip", "Threads", "/threadz");
   // Drives.
@@ -643,15 +645,24 @@ void RpcAndWebServerBase::DisplayMemoryIcons(std::stringstream* output) {
   DisplayIconTile(output, "fa-bar-chart", "Memory Breakdown", "/mem-trackers");
   // Total memory.
   DisplayIconTile(output, "fa-cog", "Total Memory", "/memz");
-  // Heap snapshot.
+
+#if YB_GPERFTOOLS_TCMALLOC
   DisplayIconTile(output, "fa-camera", "Heap Snapshot",
       "/pprof/heap_snapshot?peak_heap=false&order_by=count");
+#endif // YB_GPERFTOOLS_TCMALLOC
+
 #if YB_GOOGLE_TCMALLOC
+  DisplayIconTile(output, "fa-camera", "Heap Snapshot",
+      "/pprof/heap_snapshot?peak_heap=false&order_by=estimated_bytes");
+
   // Heap profile. Set the defaults very conservatively to avoid adverse affects to DB when a user
   // clicks this endpoint without thinking.
+  const auto default_profiling_sample_freq_bytes = 10_MB;
   DisplayIconTile(output, "fa-pencil-square-o", "Heap Profile",
-      "/pprof/heap?only_growth=false&seconds=1&sample_freq_bytes=10000000&order_by=count");
-#endif
+      "/pprof/heap?only_growth=false&seconds=1&sample_freq_bytes=" +
+      std::to_string(default_profiling_sample_freq_bytes) +
+      "&order_by=estimated_bytes");
+#endif // YB_GOOGLE_TCMALLOC
 }
 
 Status RpcAndWebServerBase::DisplayRpcIcons(std::stringstream* output) {

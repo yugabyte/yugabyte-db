@@ -457,6 +457,7 @@ SELECT 'fixed', NULL FROM ft1 t1 WHERE c1 = 1;
 -- Test forcing the remote server to produce sorted data for a merge join.
 SET enable_hashjoin TO false;
 SET enable_nestloop TO false;
+SET yb_enable_batchednl TO false;
 -- inner join; expressions in the clauses appear in the equivalence class list
 EXPLAIN (VERBOSE, COSTS OFF)
 	SELECT t1.c1, t2."C 1" FROM ft2 t1 JOIN "S 1"."T 1" t2 ON (t1.c1 = t2."C 1") OFFSET 100 LIMIT 10;
@@ -2187,21 +2188,9 @@ SELECT t1c1, avg(t1c1 + t2c1) FROM (SELECT t1.c1, t2.c1 FROM ft1 t1 JOIN ft2 t2 
 -- join with lateral reference
 --EXPLAIN (VERBOSE, COSTS OFF)
 --SELECT t1."C 1" FROM "S 1"."T 1" t1, LATERAL (SELECT DISTINCT t2.c1, t3.c1 FROM ft1 t2, ft2 t3 WHERE t2.c1 = t3.c1 AND t2.c2 = t1.c2) q ORDER BY t1."C 1" OFFSET 10 LIMIT 10;
-SELECT t1."C 1" FROM "S 1"."T 1" t1, LATERAL (SELECT DISTINCT t2.c1, t3.c1 FROM ft1 t2, ft2 t3 WHERE t2.c1 = t3.c1 AND t2.c2 = t1.c2) q ORDER BY t1."C 1" OFFSET 10 LIMIT 10;
- C 1
------
-   1
-   1
-   1
-   1
-   1
-   1
-   1
-   1
-   1
-   1
-(10 rows)
-
+-- YB note: This is commented out as it ends up doing rescans on a remote relation
+-- which uses an unsupported MOVE BACKWARD ALL IN command. See issue #11422.
+--SELECT t1."C 1" FROM "S 1"."T 1" t1, LATERAL (SELECT DISTINCT t2.c1, t3.c1 FROM ft1 t2, ft2 t3 WHERE t2.c1 = t3.c1 AND t2.c2 = t1.c2) q ORDER BY t1."C 1" OFFSET 10 LIMIT 10;
 -- non-Var items in targetlist of the nullable rel of a join preventing
 -- push-down in some cases
 -- unable to push {ft1, ft2}
@@ -2262,6 +2251,7 @@ SELECT ft5, ft5.c1, ft5.c2, ft5.c3, ft4.c1, ft4.c2 FROM ft5 left join ft4 on ft5
 -- multi-way join involving multiple merge joins
 -- (this case used to have EPQ-related planning problems)
 SET enable_nestloop TO false;
+SET yb_enable_batchednl TO false;
 SET enable_hashjoin TO false;
 --EXPLAIN (VERBOSE, COSTS OFF)
 --SELECT * FROM ft1, ft2, ft4, ft5 WHERE ft1.c1 = ft2.c1 AND ft1.c2 = ft4.c1
@@ -2989,8 +2979,8 @@ FROM
     ) AS subq_1
 WHERE ref_0."C 1" < 10 AND subq_1.c3 = '00001'
 ORDER BY ref_0."C 1";
-                                                  QUERY PLAN
----------------------------------------------------------------------------------------------------------------
+                                       QUERY PLAN
+-----------------------------------------------------------------------------------------
  Sort
    Output: ref_0.c2, ref_0."C 1", (ref_0.c2), ref_1.c3, ref_0."C 1"
    Sort Key: ref_0."C 1"
@@ -2999,7 +2989,7 @@ ORDER BY ref_0."C 1";
          ->  Nested Loop
                Output: ref_0.c2, ref_0."C 1", ref_1.c3, (ref_0.c2)
                ->  Seq Scan on "S 1"."T 1" ref_0
-                     Output: ref_0."C 1", ref_0.c2, ref_0.c3, ref_0.c4, ref_0.c5, ref_0.c6, ref_0.c7, ref_0.c8
+                     Output: ref_0.c2, ref_0."C 1"
                      Remote Filter: (ref_0."C 1" < 10)
                ->  Foreign Scan on public.ft1 ref_1
                      Output: ref_1.c3, ref_0.c2

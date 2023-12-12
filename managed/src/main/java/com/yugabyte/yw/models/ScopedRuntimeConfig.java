@@ -3,9 +3,9 @@ package com.yugabyte.yw.models;
 import com.google.common.annotations.VisibleForTesting;
 import io.ebean.Finder;
 import io.ebean.Model;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
 import java.util.UUID;
-import javax.persistence.Entity;
-import javax.persistence.Id;
 import lombok.Getter;
 import lombok.Setter;
 import org.slf4j.Logger;
@@ -42,6 +42,7 @@ public class ScopedRuntimeConfig extends Model {
   private final UUID universeUUID;
 
   private final UUID providerUUID;
+
   // End foreign key fields
   // ====================================================
 

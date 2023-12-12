@@ -7,11 +7,13 @@ import { CreateXClusterConfigFormValues } from './CreateConfigModal';
 import { Universe } from '../../../redesign/helpers/dtos';
 import { Field, FormikProps } from 'formik';
 import { getUniverseStatus } from '../../universes/helpers/universeHelpers';
-import { fetchUniversesList } from '../../../actions/xClusterReplication';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
-import { CollapsibleNote } from '../common/CollapsibleNote';
 import { UnavailableUniverseStates } from '../../../redesign/helpers/constants';
+import { CollapsibleNote } from '../sharedComponents/CollapsibleNote';
+import { api, universeQueryKey } from '../../../redesign/helpers/api';
 
+import { hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import styles from './SelectTargetUniverseStep.module.scss';
 
 const YB_ADMIN_XCLUSTER_DOCUMENTATION_URL =
@@ -54,8 +56,8 @@ export const SelectTargetUniverseStep = ({
   formik,
   currentUniverseUUID
 }: SelectTargetUniverseStepProps) => {
-  const universeListQuery = useQuery<Universe[]>(['universeList'], () =>
-    fetchUniversesList().then((res) => res.data)
+  const universeListQuery = useQuery<Universe[]>(universeQueryKey.ALL, () =>
+    api.fetchUniverseList()
   );
 
   if (universeListQuery.isLoading || universeListQuery.isIdle) {
@@ -84,7 +86,8 @@ export const SelectTargetUniverseStep = ({
             .filter(
               (universe) =>
                 universe.universeUUID !== currentUniverseUUID &&
-                !UnavailableUniverseStates.includes(getUniverseStatus(universe).state)
+                !UnavailableUniverseStates.includes(getUniverseStatus(universe).state) &&
+                hasNecessaryPerm({ ...ApiPermissionMap.CREATE_XCLUSTER_REPLICATION, onResource: universe.universeUUID})
             )
             .map((universe) => {
               return {

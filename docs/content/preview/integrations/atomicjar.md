@@ -5,7 +5,7 @@ description: Use AtomicJar Testcontainers with YSQL API
 menu:
   preview_integrations:
     identifier: ysql-atomicjar
-    parent: integrations
+    parent: application-frameworks
     weight: 571
 type: docs
 ---

@@ -9,6 +9,8 @@ import { YBPanelItem } from '../../panels';
 import { timeFormatter, successStringFormatter } from '../../../utils/TableFormatters';
 import { YBConfirmModal } from '../../modals';
 
+import { hasNecessaryPerm, RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import './TasksList.scss';
 
 export default class TaskListTable extends Component {
@@ -28,7 +30,7 @@ export default class TaskListTable extends Component {
     }
 
     function typeFormatter(cell, row) {
-      return row.correlationId ? (
+      return row.correlationId && hasNecessaryPerm(ApiPermissionMap.GET_LOGS) ? (
         <Link to={`/logs/?queryRegex=${row.correlationId}&startDate=${row.createTime}`}>
           {row.typeName} {row.target}
         </Link>
@@ -38,7 +40,7 @@ export default class TaskListTable extends Component {
     }
 
     const abortTaskClicked = (taskUUID) => {
-      this.props.abortCurrentTask(taskUUID).then((response) => {
+      this.props.abortTask(taskUUID).then((response) => {
         const taskResponse = response?.payload?.response;
         // eslint-disable-next-line no-empty
         if (taskResponse && (taskResponse.status === 200 || taskResponse.status === 201)) {
@@ -78,9 +80,14 @@ export default class TaskListTable extends Component {
             >
               Are you sure you want to abort the task?
             </YBConfirmModal>
-            <div className="task-abort-view yb-pending-color" onClick={showTaskAbortModal}>
-              Abort Task
-            </div>
+            <RbacValidator
+              accessRequiredOn={{ ...ApiPermissionMap.ABORT_TASK, onResource: row.targetUUID }}
+              isControl
+            >
+              <div className="task-abort-view yb-pending-color" onClick={showTaskAbortModal}>
+                Abort Task
+              </div>
+            </RbacValidator>
           </>
         );
       } else {
@@ -89,77 +96,81 @@ export default class TaskListTable extends Component {
     };
     const tableBodyContainer = { marginBottom: '1%', paddingBottom: '1%' };
     return (
-      <YBPanelItem
-        header={<h2 className="task-list-header content-title">{title}</h2>}
-        body={
-          <BootstrapTable
-            data={taskList}
-            bodyStyle={tableBodyContainer}
-            pagination={true}
-            search
-            multiColumnSearch
-            searchPlaceholder="Search by Name or Type"
-          >
-            <TableHeaderColumn dataField="id" isKey={true} hidden={true} />
-            <TableHeaderColumn
-              dataField="type"
-              dataFormat={typeFormatter}
-              columnClassName="no-border name-column"
-              className="no-border"
+      <RbacValidator
+        accessRequiredOn={ApiPermissionMap.GET_TASKS_LIST}
+      >
+        <YBPanelItem
+          header={<h2 className="task-list-header content-title">{title}</h2>}
+          body={
+            <BootstrapTable
+              data={taskList}
+              bodyStyle={tableBodyContainer}
+              pagination={true}
+              search
+              multiColumnSearch
+              searchPlaceholder="Search by Name or Type"
             >
-              Type
-            </TableHeaderColumn>
-            <TableHeaderColumn
-              dataField="title"
-              dataFormat={nameFormatter}
-              dataSort
-              columnClassName="no-border name-column"
-              className="no-border"
-            >
-              Name
-            </TableHeaderColumn>
-            <TableHeaderColumn
-              dataField="percentComplete"
-              dataSort
-              columnClassName="no-border name-column"
-              className="no-border"
-              dataFormat={successStringFormatter}
-            >
-              Status
-            </TableHeaderColumn>
-            <TableHeaderColumn
-              dataField="userEmail"
-              dataSort
-              columnClassName="no-border name-column"
-              className="no-border"
-            >
-              User
-            </TableHeaderColumn>
-            <TableHeaderColumn
-              dataField="createTime"
-              dataFormat={timeFormatter}
-              dataSort
-              columnClassName="no-border "
-              className="no-border"
-              dataAlign="left"
-            >
-              Start Time
-            </TableHeaderColumn>
-            <TableHeaderColumn
-              dataField="completionTime"
-              dataFormat={timeFormatter}
-              dataSort
-              columnClassName="no-border name-column"
-              className="no-border"
-            >
-              End Time
-            </TableHeaderColumn>
-            <TableHeaderColumn dataField="id" dataFormat={taskDetailLinkFormatter} dataSort>
-              Notes
-            </TableHeaderColumn>
-          </BootstrapTable>
-        }
-      />
+              <TableHeaderColumn dataField="id" isKey={true} hidden={true} />
+              <TableHeaderColumn
+                dataField="type"
+                dataFormat={typeFormatter}
+                columnClassName="no-border name-column"
+                className="no-border"
+              >
+                Type
+              </TableHeaderColumn>
+              <TableHeaderColumn
+                dataField="title"
+                dataFormat={nameFormatter}
+                dataSort
+                columnClassName="no-border name-column"
+                className="no-border"
+              >
+                Name
+              </TableHeaderColumn>
+              <TableHeaderColumn
+                dataField="percentComplete"
+                dataSort
+                columnClassName="no-border name-column"
+                className="no-border"
+                dataFormat={successStringFormatter}
+              >
+                Status
+              </TableHeaderColumn>
+              <TableHeaderColumn
+                dataField="userEmail"
+                dataSort
+                columnClassName="no-border name-column"
+                className="no-border"
+              >
+                User
+              </TableHeaderColumn>
+              <TableHeaderColumn
+                dataField="createTime"
+                dataFormat={timeFormatter}
+                dataSort
+                columnClassName="no-border "
+                className="no-border"
+                dataAlign="left"
+              >
+                Start Time
+              </TableHeaderColumn>
+              <TableHeaderColumn
+                dataField="completionTime"
+                dataFormat={timeFormatter}
+                dataSort
+                columnClassName="no-border name-column"
+                className="no-border"
+              >
+                End Time
+              </TableHeaderColumn>
+              <TableHeaderColumn dataField="id" dataFormat={taskDetailLinkFormatter} dataSort>
+                Notes
+              </TableHeaderColumn>
+            </BootstrapTable>
+          }
+        />
+      </RbacValidator>
     );
   }
 }

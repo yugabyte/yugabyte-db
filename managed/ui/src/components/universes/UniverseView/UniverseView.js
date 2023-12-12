@@ -8,7 +8,7 @@ import { useQuery } from 'react-query';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { useSelector } from 'react-redux';
 import moment from 'moment';
-import _ from 'lodash';
+import _, { find } from 'lodash';
 
 import {
   getUniversePendingTask,
@@ -52,10 +52,15 @@ import { isEphemeralAwsStorageInstance } from '../UniverseDetail/UniverseDetail'
 import { YBMenuItem } from '../UniverseDetail/compounds/YBMenuItem';
 import ellipsisIcon from '../../common/media/more.svg';
 
-import 'react-bootstrap-table/css/react-bootstrap-table.css';
-import './UniverseView.scss';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { UniverseAlertBadge } from '../YBUniverseItem/UniverseAlertBadge';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { customPermValidateFunction, RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { Action, Resource } from '../../../redesign/features/rbac';
+import { getWrappedChildren } from '../../../redesign/features/rbac/common/validator/ValidatorUtils';
+import { userhavePermInRoleBindings } from '../../../redesign/features/rbac/common/RbacUtils';
+import './UniverseView.scss';
+import 'react-bootstrap-table/css/react-bootstrap-table.css';
 
 /**
  * The tableData key allows us to use a different field from the universe
@@ -285,36 +290,52 @@ export const UniverseView = (props) => {
           {isPausableUniverse(row) &&
             !isEphemeralAwsStorage &&
             (featureFlags.test['pausedUniverse'] || featureFlags.released['pausedUniverse']) && (
-              <YBMenuItem
-                onClick={() => {
-                  setFocusedUniverse(row);
-                  showToggleUniverseStateModal();
+              <RbacValidator
+                isControl
+                accessRequiredOn={{
+                  onResource: row.universeUUID,
+                  ...ApiPermissionMap.RESUME_UNIVERSE
                 }}
-                availability={getFeatureState(
-                  currentCustomer.data.features,
-                  'universes.details.overview.pausedUniverse'
-                )}
               >
-                <YBLabelWithIcon
-                  icon={universePaused ? 'fa fa-play-circle-o' : 'fa fa-pause-circle-o'}
+                <YBMenuItem
+                  onClick={() => {
+                    setFocusedUniverse(row);
+                    showToggleUniverseStateModal();
+                  }}
+                  availability={getFeatureState(
+                    currentCustomer.data.features,
+                    'universes.details.overview.pausedUniverse'
+                  )}
                 >
-                  {universePaused ? 'Resume Universe' : 'Pause Universe'}
-                </YBLabelWithIcon>
-              </YBMenuItem>
+                  <YBLabelWithIcon
+                    icon={universePaused ? 'fa fa-play-circle-o' : 'fa fa-pause-circle-o'}
+                  >
+                    {universePaused ? 'Resume Universe' : 'Pause Universe'}
+                  </YBLabelWithIcon>
+                </YBMenuItem>
+              </RbacValidator>
             )}
-
-          <YBMenuItem
-            onClick={() => {
-              setFocusedUniverse(row);
-              showDeleteUniverseModal();
+          <RbacValidator
+            isControl
+            accessRequiredOn={{
+              onResource: row.universeUUID,
+              ...ApiPermissionMap.DELETE_UNIVERSE
             }}
-            availability={getFeatureState(
-              currentCustomer.data.features,
-              'universes.details.overview.deleteUniverse'
-            )}
+            overrideStyle={{ display: 'block' }}
           >
-            <YBLabelWithIcon icon="fa fa-trash-o fa-fw">Delete Universe</YBLabelWithIcon>
-          </YBMenuItem>
+            <YBMenuItem
+              onClick={() => {
+                setFocusedUniverse(row);
+                showDeleteUniverseModal();
+              }}
+              availability={getFeatureState(
+                currentCustomer.data.features,
+                'universes.details.overview.deleteUniverse'
+              )}
+            >
+              <YBLabelWithIcon icon="fa fa-trash-o fa-fw">Delete Universe</YBLabelWithIcon>
+            </YBMenuItem>
+          </RbacValidator>
         </Dropdown.Menu>
       </Dropdown>
     );
@@ -502,26 +523,26 @@ export const UniverseView = (props) => {
   let universes =
     _.isObject(universeList) && isNonEmptyArray(universeList.data)
       ? universeList.data.map((universeBase) => {
-          const universe = _.cloneDeep(universeBase);
-          universe.pricePerMonth = universe.pricePerHour * 24 * moment().daysInMonth();
+        const universe = _.cloneDeep(universeBase);
+        universe.pricePerMonth = universe.pricePerHour * 24 * moment().daysInMonth();
 
-          const clusterProviderUUIDs = getClusterProviderUUIDs(universe.universeDetails.clusters);
-          const clusterProviders = props.providers.data.filter((p) =>
-            clusterProviderUUIDs.includes(p.uuid)
-          );
-          universe.providerTypes = clusterProviders.map((provider) => {
-            return getProviderMetadata(provider).name;
-          });
-          universe.providerNames = clusterProviders.map((provider) => provider.name);
+        const clusterProviderUUIDs = getClusterProviderUUIDs(universe.universeDetails.clusters);
+        const clusterProviders = props.providers.data.filter((p) =>
+          clusterProviderUUIDs.includes(p.uuid)
+        );
+        universe.providerTypes = clusterProviders.map((provider) => {
+          return getProviderMetadata(provider).name;
+        });
+        universe.providerNames = clusterProviders.map((provider) => provider.name);
 
-          const universeStatus = getUniverseStatus(
-            universe,
-            universePendingTasks[universe.universeUUID]
-          );
-          universe.status = universeStatus.state;
-          universe.statusText = universeStatus.state.text;
-          return universe;
-        })
+        const universeStatus = getUniverseStatus(
+          universe,
+          universePendingTasks[universe.universeUUID]
+        );
+        universe.status = universeStatus.state;
+        universe.statusText = universeStatus.state.text;
+        return universe;
+      })
       : [];
 
   const statusFilterTokens = curStatusFilter.map((status) => ({
@@ -560,6 +581,13 @@ export const UniverseView = (props) => {
     });
   }
 
+
+  if (!customPermValidateFunction(() => {
+    return userhavePermInRoleBindings(Resource.UNIVERSE, Action.READ);
+  })) {
+    return getWrappedChildren({});
+  }
+
   return (
     <React.Fragment>
       <DeleteUniverseContainer
@@ -588,14 +616,22 @@ export const UniverseView = (props) => {
           onSubmitSearchTerms={handleSearchTokenChange}
         />
         {isNotHidden(currentCustomer.data.features, 'universe.create') && (
-          <Link to="/universes/create">
-            <YBButton
-              btnClass="universe-button btn btn-lg btn-orange"
-              disabled={isDisabled(currentCustomer.data.features, 'universe.create')}
-              btnText="Create Universe"
-              btnIcon="fa fa-plus"
-            />
-          </Link>
+          <RbacValidator
+            accessRequiredOn={{
+              ...ApiPermissionMap.CREATE_UNIVERSE
+            }}
+            isControl
+          >
+            <Link to="/universes/create">
+              <YBButton
+                btnClass="universe-button btn btn-lg btn-orange"
+                disabled={isDisabled(currentCustomer.data.features, 'universe.create')}
+                btnText="Create Universe"
+                btnIcon="fa fa-plus"
+                data-testid="UniverseList-CreateUniverse"
+              />
+            </Link>
+          </RbacValidator>
         )}
       </div>
       <div className="universes-stats-container">

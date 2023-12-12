@@ -107,7 +107,8 @@ delete_log_files() {
   local log_dir=$1
   local find_regex=$2
   local permitted_usage=$3
-  local logs_disk_usage_bytes=$(find "${log_dir}" -type f -name "${find_regex}" -print0 | \
+  local logs_disk_usage_bytes
+  logs_disk_usage_bytes=$(find "${log_dir}" -type f -name "${find_regex}" -print0 | \
     xargs -0 -r stat -c '%s' | \
     awk '{sum+=$1;}END{print sum;}')
   if [[ -z "${logs_disk_usage_bytes}" ]]; then
@@ -118,11 +119,13 @@ delete_log_files() {
   echo "Disk usage by $find_regex files in kb: ${logs_disk_usage_kb}"
 
   # get all the gz files.
-  local gz_files=$(find_and_sort "${log_dir}" "${find_regex}.gz")
+  local gz_files
+  local file_size
+  gz_files=$(find_and_sort "${log_dir}" "${find_regex}.gz")
   for file in ${gz_files}; do
     # If usage exceeds permitted, delete the old gz files.
     if [[ "${logs_disk_usage_kb}" -gt "${permitted_usage}" ]]; then
-      local file_size=$(du -k "${file}" | awk '{print $1}')
+      file_size=$(du -k "${file}" | awk '{print $1}')
       logs_disk_usage_kb=$(( logs_disk_usage_kb - file_size ))
       echo "Delete file ${file}"
       rm "${file}"
@@ -137,18 +140,21 @@ delete_log_files() {
   fi
 
   # All the non-gz files
-  local files=$(find_and_sort "${log_dir}" "${find_regex}")
+  local files
+  local current_file
+  files="$(find_and_sort "${log_dir}" "${find_regex}")"
   # Remove the current log files from the list
   for log_regex in ${log_regexes}; do
-    local current_file=$(find_and_sort "${log_dir}" "${log_regex}" | tail -n1)
+    current_file="$(find_and_sort "${log_dir}" "${log_regex}" | tail -n1)"
     # double quotes around files are import
     # https://stackoverflow.com/a/4651495
-    files=$(echo "${files}" | grep -v -E "^${current_file}$")
+    files="$(echo "${files}" | grep -v -E "^${current_file}$")"
   done
+  local file_size
   for file in ${files}; do
     # If usage exceeds permitted, delete the old files.
     if [[ "${logs_disk_usage_kb}" -gt "${permitted_usage}" ]]; then
-      local file_size=$(du -k $file | awk '{print $1}')
+      file_size=$(du -k "$file" | awk '{print $1}')
       logs_disk_usage_kb=$(( logs_disk_usage_kb - file_size ))
       echo "Delete file ${file}"
       rm "${file}"
@@ -161,19 +167,22 @@ delete_log_files() {
 delete_core_dump_files () {
   local core_dump_dir=$1
   local permitted_usage=$2
-  local disk_usage_kb=$(du -sk "${core_dump_dir}" | awk '{print $1}')
+  local disk_usage_kb
+  disk_usage_kb="$(du -sk "${core_dump_dir}" | awk '{print $1}')"
   echo "Permitted disk usage for core dump files in kb: ${permitted_usage}"
   echo "Disk usage by core dump files in kb: ${disk_usage_kb}"
 
   # Sort by time: oldest first
-  local files=$(ls -Acr "${core_dump_dir}")
+  local files
+  files="$(ls -Acr "${core_dump_dir}")"
   # Handle space in a file name
   IFS=$'\n'
+  local file_size
   for file in ${files}; do
     file="${core_dump_dir}/${file}"
     # If usage exceeds permitted, delete the old files.
     if [[ "${disk_usage_kb}" -gt "${permitted_usage}" ]]; then
-      local file_size=$(du -k "${file}" | awk '{print $1}')
+      file_size=$(du -k "${file}" | awk '{print $1}')
       disk_usage_kb=$(( disk_usage_kb - file_size ))
       echo "Deleting core file ${file}"
       rm "${file}"

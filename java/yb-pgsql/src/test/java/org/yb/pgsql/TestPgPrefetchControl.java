@@ -27,6 +27,7 @@ import java.util.List;
 
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.pgsql.ExplainAnalyzeUtils.checkReadRequests;
+import static org.yb.pgsql.ExplainAnalyzeUtils.setRowAndSizeLimit;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_ONLY_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_LIMIT;
@@ -90,13 +91,6 @@ public class TestPgPrefetchControl extends BasePgSQLTest {
     }
   }
 
-  private void setRowAndSizeLimit(Statement statement, int rowLimit, int sizeLimit)
-      throws Exception {
-    LOG.info(String.format("Row limit = %d, Size limit = %d", rowLimit, sizeLimit));
-    statement.execute(String.format("SET yb_fetch_row_limit = %d", rowLimit));
-    statement.execute(String.format("SET yb_fetch_size_limit = %d", sizeLimit));
-  }
-
   @Test
   public void testSizeBasedFetch() throws Exception {
     try (Statement statement = connection.createStatement()) {
@@ -117,7 +111,7 @@ public class TestPgPrefetchControl extends BasePgSQLTest {
       String indexScanQuery = String.format("SELECT * FROM %s WHERE k > 0", tableName);
       String indexOnlyScanQuery = String.format("SELECT v FROM %s WHERE v > ''", tableName);
 
-      setRowAndSizeLimit(statement, 1024, 0);
+      ExplainAnalyzeUtils.setRowAndSizeLimit(statement, 1024, 0);
       checkReadRequests(statement, seqScanQuery, NODE_SEQ_SCAN,
                         Checkers.equal(98), tableRowCount);
       checkReadRequests(statement, indexScanQuery, NODE_INDEX_SCAN,
@@ -125,7 +119,7 @@ public class TestPgPrefetchControl extends BasePgSQLTest {
       checkReadRequests(statement, indexOnlyScanQuery, NODE_INDEX_ONLY_SCAN,
                         Checkers.equal(98), tableRowCount);
 
-      setRowAndSizeLimit(statement, 0, 0);
+      ExplainAnalyzeUtils.setRowAndSizeLimit(statement, 0, 0);
       checkReadRequests(statement, seqScanQuery, NODE_SEQ_SCAN,
                         Checkers.equal(1), tableRowCount);
       checkReadRequests(statement, indexScanQuery, NODE_INDEX_SCAN,
@@ -134,7 +128,7 @@ public class TestPgPrefetchControl extends BasePgSQLTest {
                         Checkers.equal(1), tableRowCount);
 
       // row buffer fills up faster in YbSeqScan
-      setRowAndSizeLimit(statement, 0, 512);
+      ExplainAnalyzeUtils.setRowAndSizeLimit(statement, 0, 512 * 1024);
       checkReadRequests(statement, seqScanQuery, NODE_SEQ_SCAN,
                         Checkers.equal(25), tableRowCount);
       checkReadRequests(statement, indexScanQuery, NODE_INDEX_SCAN,
@@ -142,7 +136,7 @@ public class TestPgPrefetchControl extends BasePgSQLTest {
       checkReadRequests(statement, indexOnlyScanQuery, NODE_INDEX_ONLY_SCAN,
                         Checkers.equal(23), tableRowCount);
 
-      setRowAndSizeLimit(statement, 0, 1024);
+      ExplainAnalyzeUtils.setRowAndSizeLimit(statement, 0, 1024 * 1024);
       checkReadRequests(statement, seqScanQuery, NODE_SEQ_SCAN,
                         Checkers.equal(13), tableRowCount);
       checkReadRequests(statement, indexScanQuery, NODE_INDEX_SCAN,
@@ -164,7 +158,7 @@ public class TestPgPrefetchControl extends BasePgSQLTest {
     String tableName1 = "tb1";
     String tableName2 = "tb2";
     String query = String.format(
-        "/*+ Set(yb_bnl_batch_size 1024) NestLoop(t1 t2) */ " +
+        "/*+ Set(yb_bnl_batch_size 1024) YbBatchedNL(t1 t2) */ " +
         "SELECT t1.a, t2.b FROM %s AS t1 JOIN %s AS t2 ON t1.a = t2.a LIMIT %d",
         tableName1, tableName2, limitCount);
     int innerTableRequests = 1;
@@ -203,14 +197,12 @@ public class TestPgPrefetchControl extends BasePgSQLTest {
           .build();
 
       // Test with row limit (and no size limit) - this is default behaviour
-      statement.execute("SET yb_fetch_size_limit = 0");
-      statement.execute("SET yb_fetch_row_limit = 1024");
+      ExplainAnalyzeUtils.setRowAndSizeLimit(statement, 1024, 0);
       ExplainAnalyzeUtils.testExplain(statement, query, checker);
 
       // Test with size limit (and no row limit). 1MB is large enough that we can expect the same
       // behaviour as with the row limit.
-      statement.execute("SET yb_fetch_size_limit = 1024");
-      statement.execute("SET yb_fetch_row_limit = 0");
+      ExplainAnalyzeUtils.setRowAndSizeLimit(statement, 0, 1024 * 1024);
       ExplainAnalyzeUtils.testExplain(statement, query, checker);
     }
   }

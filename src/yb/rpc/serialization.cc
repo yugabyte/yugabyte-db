@@ -269,7 +269,7 @@ auto sidecar_offsets(const ResponseHeader& header) {
 template <class Header>
 Status DoParseYBMessage(
     const CallData& call_data, Header* header, Slice* serialized_pb, ReceivedSidecars* sidecars) {
-  auto entire_message = VERIFY_RESULT(ParseYBHeader(call_data.buffer().AsSlice(), header));
+  auto entire_message = VERIFY_RESULT(ParseYBHeader(call_data.AsSlice(), header));
 
   // Use information from header to extract the payload slices.
   auto offsets = sidecar_offsets(*header);

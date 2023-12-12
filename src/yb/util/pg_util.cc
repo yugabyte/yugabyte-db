@@ -16,7 +16,7 @@
 #include <algorithm>
 #include <string>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/util/format.h"
 #include "yb/util/hash_util.h"

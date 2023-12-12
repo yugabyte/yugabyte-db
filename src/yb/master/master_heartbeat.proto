@@ -18,6 +18,7 @@ option java_package = "org.yb.master";
 
 import "yb/cdc/cdc_consumer.proto";
 import "yb/cdc/xcluster_producer.proto";
+import "yb/common/common_types.proto";
 import "yb/common/wire_protocol.proto";
 import "yb/consensus/metadata.proto";
 import "yb/consensus/consensus_types.proto";
@@ -107,11 +108,21 @@ message TabletLeaderMetricsPB {
   optional fixed64 ht_lease_expiration = 3;
 }
 
-message TabletReplicationStatusPB {
-  required bytes tablet_id = 1;
+message XClusterConsumerStreamTabletStatusPB {
+  required bytes producer_tablet_id = 1;
+  required int64 consumer_term = 2;
+  required ReplicationErrorPb error = 3;
+}
 
-  // Maps a stream id -> replication status.
-  map<string, StreamReplicationStatusPB> stream_replication_statuses = 2;
+message XClusterConsumerTableStatusPB {
+  required bytes consumer_table_id = 1;
+  repeated XClusterConsumerStreamTabletStatusPB stream_tablet_status = 2;
+}
+
+message XClusterConsumerReplicationStatusPB {
+  // ReplicationGroupId type represented in bytes.
+  required bytes replication_group_id = 1;
+  repeated XClusterConsumerTableStatusPB table_status = 2;
 }
 
 message FullCompactionStatusPB {
@@ -221,8 +232,8 @@ message TSHeartbeatRequestPB {
   // Tablet server has at least one faulty drive.
   optional bool faulty_drive = 15;
 
-  // Replication status. Only set in the metrics heartbeat.
-  repeated TabletReplicationStatusPB replication_state = 16;
+  // DEPRECATED TabletReplicationStatusPB.
+  reserved 16;
 
   optional uint32 auto_flags_config_version = 17;
 
@@ -233,6 +244,11 @@ message TSHeartbeatRequestPB {
   repeated FullCompactionStatusPB full_compaction_statuses = 20;
 
   optional uint64 ysql_db_catalog_versions_fingerprint = 21;
+
+  optional string universe_uuid = 22;
+
+  repeated XClusterConsumerReplicationStatusPB
+      xcluster_consumer_replication_status = 23;
 }
 
 message TSHeartbeatResponsePB {
@@ -302,6 +318,8 @@ message TSHeartbeatResponsePB {
   optional xcluster.ProducerRegistryPB xcluster_producer_registry = 23;
 
   optional uint32 xcluster_config_version = 24;
+
+  optional string universe_uuid = 25;
 }
 
 service MasterHeartbeat {

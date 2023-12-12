@@ -39,7 +39,6 @@ class PgFailOnConflictTest : public PgOnConflictTest {
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     opts->extra_tserver_flags.push_back("--enable_wait_queues=false");
-    opts->extra_tserver_flags.push_back("--enable_deadlock_detection=false");
   }
 };
 
@@ -280,19 +279,13 @@ void PgOnConflictTest::TestOnConflict(bool kill_master, const MonoDelta& duratio
                 "UPDATE SET v = CONCAT(test.v, '$1')",
                 key_and_appended_char.first, value);
           } else {
-            auto result = connection.FetchFormat(
-                "SELECT v FROM test WHERE k = $0", key_and_appended_char.first);
+            auto result = connection.FetchRows<std::string>(Format(
+                "SELECT v FROM test WHERE k = $0", key_and_appended_char.first));
             if (!result.ok()) {
               status = result.status();
-            } else {
-              auto tuples = PQntuples(result->get());
-              if (tuples == 1) {
-                ASSERT_EQ(PQnfields(result->get()), 1);
-                current_batch.read_value = ASSERT_RESULT(
-                    GetString(result->get(), 0, 0));
-              } else {
-                ASSERT_EQ(tuples, 0);
-              }
+            } else if (!result->empty()) {
+              ASSERT_EQ(result->size(), 1);
+              current_batch.read_value = std::move(result->back());
             }
           }
           if (status.ok()) {
@@ -359,17 +352,12 @@ void PgOnConflictTest::TestOnConflict(bool kill_master, const MonoDelta& duratio
   }
 
   for (;;) {
-    auto res = conn.Fetch("SELECT * FROM test ORDER BY k");
-    if (!res.ok()) {
-      ASSERT_TRUE(TransactionalFailure(res.status())) << res.status();
+    auto rows_res = conn.FetchRows<int32_t, std::string>("SELECT * FROM test ORDER BY k");
+    if (!rows_res.ok()) {
+      ASSERT_TRUE(TransactionalFailure(rows_res.status())) << rows_res.status();
       continue;
     }
-    int cols = PQnfields(res->get());
-    ASSERT_EQ(cols, 2);
-    int rows = PQntuples(res->get());
-    for (int i = 0; i != rows; ++i) {
-      auto key = GetInt32(res->get(), i, 0);
-      auto value = GetString(res->get(), i, 1);
+    for (const auto& [key, value] : *rows_res) {
       LOG(INFO) << "  " << key << ": " << value;
     }
     LOG(INFO) << "Total processed: " << processed.load(std::memory_order_acquire);
@@ -419,21 +407,20 @@ TEST_F(PgOnConflictTest, NoTxnOnConflict) {
   }
 
   thread_holder.WaitAndStop(30s);
-  LogResult(ASSERT_RESULT(conn.Fetch("SELECT * FROM test ORDER BY k")).get());
+  LOG(INFO) << yb::ToString(ASSERT_RESULT((conn.FetchRows<int32_t, std::string>(
+      "SELECT * FROM test ORDER BY k"))));
 }
 
 TEST_F_EX(PgOnConflictTest, ValidSessionAfterTxnCommitConflict, PgFailOnConflictTest) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE test (k int PRIMARY KEY)"));
-  ASSERT_OK(conn.Execute("BEGIN"));
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
   ASSERT_OK(conn.Execute("INSERT INTO test VALUES(1)"));
   auto extra_conn = ASSERT_RESULT(Connect());
   ASSERT_OK(extra_conn.Execute("INSERT INTO test VALUES(1)"));
   ASSERT_NOK(conn.Execute("COMMIT"));
   // Check connection is in valid state after failed COMMIT
-  auto result_ptr = ASSERT_RESULT(conn.Fetch("SELECT * FROM test"));
-  auto value = ASSERT_RESULT(GetInt32(result_ptr.get(), 0, 0));
-  ASSERT_EQ(value, 1);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT * FROM test")), 1);
 }
 
 } // namespace pgwrapper

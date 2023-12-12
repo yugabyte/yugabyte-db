@@ -179,10 +179,6 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
                                                      uint64_t ysql_catalog_version,
                                                      bool is_db_catalog_version_mode);
 
-  Status DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
-
-  Status DeleteDBSequences(int64_t db_oid);
-
   //------------------------------------------------------------------------------------------------
   // Operations on Tablegroup.
   //------------------------------------------------------------------------------------------------
@@ -257,7 +253,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
       ForceNonBufferable force_non_bufferable = ForceNonBufferable::kFalse);
 
   struct CacheOptions {
-    std::string key;
+    uint64_t key_group;
+    std::string key_value;
     std::optional<uint32_t> lifetime_threshold_ms;
   };
 
@@ -351,10 +348,23 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   Result<bool> CheckIfPitrActive();
 
+  Result<TableKeyRangesWithHt> GetTableKeyRanges(
+      const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
+      uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length);
+
   PgDocMetrics& metrics() { return metrics_; }
+
+  uint64_t GetReadTimeSerialNo();
+
+  void ForceReadTimeSerialNo(uint64_t read_time_serial_no);
 
   // Check whether the specified table has a CDC stream.
   Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
+
+  Result<yb::tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
+
+  Result<yb::tserver::PgGetReplicationSlotStatusResponsePB> GetReplicationSlotStatus(
+      const ReplicationSlotName& slot_name);
 
  private:
   Result<PgTableDescPtr> DoLoadTable(const PgObjectId& table_id, bool fail_on_cache_hit);

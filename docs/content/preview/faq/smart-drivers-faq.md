@@ -2,7 +2,6 @@
 title: Smart driver FAQ
 linkTitle: Smart driver FAQ
 description: YugabyteDB smart drivers frequently asked questions
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 aliases:
   - /preview/drivers-orms/smart-drivers-faq/
 menu:

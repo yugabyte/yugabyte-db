@@ -32,6 +32,9 @@
 
 namespace yb {
 
+static const char* const kXClusterMetricEntityName = "xcluster";
+static const char* const kCdcsdkMetricEntityName = "cdcsdk";
+
 class JsonWriter;
 
 // Severity level used with metrics.
@@ -55,7 +58,6 @@ using AggregationLevels = unsigned int;
 constexpr AggregationLevels kServerLevel = 1 << 0;
 constexpr AggregationLevels kStreamLevel = 1 << 1;
 constexpr AggregationLevels kTableLevel = 1 << 2;
-constexpr AggregationLevels kAggregationLevelMask = (1 << 3) - 1;
 
 using MetricAggregationMap = std::unordered_map<std::string, AggregationLevels>;
 
@@ -68,8 +70,8 @@ struct MetricOptions {
   // Default: debug
   MetricLevel level = MetricLevel::kDebug;
 
-  // This CSV list is used to filter metrics.
-  std::vector<std::string> metrics;
+  // Missing vector means select all metrics.
+  std::optional<std::vector<std::string>> general_metrics_allowlist;
 };
 
 struct MetricJsonOptions : public MetricOptions {
@@ -85,39 +87,14 @@ struct MetricJsonOptions : public MetricOptions {
   bool include_schema_info = false;
 };
 
+YB_STRONGLY_TYPED_BOOL(ExportHelpAndType);
+
 struct MetricPrometheusOptions : public MetricOptions {
+  // Include #TYPE and #HELP in Prometheus metrics output
+  ExportHelpAndType export_help_and_type{ExportHelpAndType::kFalse};
+
   // Metrics that shows on table level.
-  // Default: "ALL"
-  std::string table_whitelist = "ALL";
-  boost::regex table_whitelist_regex;
-
-  // Metrics that should be excluded on table level.
-  // This has higher priority than table_whitelist.
-  // Default: "NONE"
-  std::string table_blacklist = "NONE";
-  boost::regex table_blacklist_regex;
-
-  // Metrics that shows on server level.
-  // Default: "ALL"
-  std::string server_whitelist = "ALL";
-  boost::regex server_whitelist_regex;
-
-  // Metrics that should be excluded on server level.
-  // This has higher priority than server_whitelist.
-  // Default: "NONE"
-  std::string server_blacklist = "NONE";
-  boost::regex server_blacklist_regex;
-
-  // If true, MetricRegister will cache all regex filters.
-  // Default: true.
-  bool cache_filters = true;
-
-  void CreateRegexs() {
-    table_whitelist_regex = table_whitelist;
-    table_blacklist_regex = table_blacklist;
-    server_whitelist_regex = server_whitelist;
-    server_blacklist_regex = server_blacklist;
-  }
+  std::string priority_regex_string = ".*";
 };
 
 class MetricEntityPrototype {
@@ -151,12 +128,8 @@ enum AggregationFunction {
 
 class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
  public:
-  typedef std::unordered_map<const MetricPrototype*, scoped_refptr<Metric> > MetricMap;
+  typedef std::map<const MetricPrototype*, scoped_refptr<Metric> > MetricMap;
   typedef std::unordered_map<std::string, std::string> AttributeMap;
-  typedef std::function<void (JsonWriter* writer, const MetricJsonOptions& opts)>
-    ExternalJsonMetricsCb;
-  typedef std::function<void (PrometheusWriter* writer, const MetricPrometheusOptions& opts)>
-    ExternalPrometheusMetricsCb;
 
   template<typename Metric, typename PrototypePtr, typename ...Args>
   scoped_refptr<Metric> FindOrCreateMetric(PrototypePtr proto, Args&&... args);
@@ -172,8 +145,7 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
                      const MetricJsonOptions& opts) const;
 
   Status WriteForPrometheus(PrometheusWriter* writer,
-                            const MetricPrometheusOptions& opts,
-                            MetricAggregationMap* metric_filter);
+                            const MetricPrometheusOptions& opts);
 
   const MetricMap& UnsafeMetricsMapForTests() const { return metric_map_; }
 
@@ -201,19 +173,11 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
     return metric_map_.size();
   }
 
-  void AddExternalJsonMetricsCb(const ExternalJsonMetricsCb &external_metrics_cb) {
-    std::lock_guard l(lock_);
-    external_json_metrics_cbs_.push_back(external_metrics_cb);
-  }
-
-  void AddExternalPrometheusMetricsCb(const ExternalPrometheusMetricsCb&external_metrics_cb) {
-    std::lock_guard l(lock_);
-    external_prometheus_metrics_cbs_.push_back(external_metrics_cb);
-  }
-
   const MetricEntityPrototype& prototype() const { return *prototype_; }
 
   void Remove(const MetricPrototype* proto);
+
+  bool TEST_ContainMetricName(const std::string& metric_name) const;
 
  private:
   friend class MetricRegistry;
@@ -228,11 +192,11 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
   // type defined within the metric prototype.
   void CheckInstantiation(const MetricPrototype* proto) const;
 
-  AggregationLevels GetAggregationLevelsFromRegex(
-    const MetricPrometheusOptions& opts, const std::string& metric_name) const;
-
   template<typename Pointer>
   void AddConsumption(const Pointer& value) REQUIRES(lock_);
+
+  MetricMap GetFilteredMetricMap(
+      const std::optional<std::vector<std::string>>& match_params_optional) const REQUIRES(lock_);
 
   const MetricEntityPrototype* const prototype_;
   const std::string id_;
@@ -249,12 +213,6 @@ class MetricEntity : public RefCountedThreadSafe<MetricEntity> {
 
   // The set of metrics which should never be retired. Protected by lock_.
   std::vector<scoped_refptr<Metric> > never_retire_metrics_;
-
-  // Callbacks fired each time WriteAsJson is called.
-  std::vector<ExternalJsonMetricsCb> external_json_metrics_cbs_;
-
-  // Callbacks fired each time WriteForPrometheus is called.
-  std::vector<ExternalPrometheusMetricsCb> external_prometheus_metrics_cbs_;
 };
 
 template<typename T>

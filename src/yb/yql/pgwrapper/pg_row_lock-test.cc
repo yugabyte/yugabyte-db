@@ -15,13 +15,13 @@
 
 #include "yb/util/logging.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/to_stream.h"
 
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_test_utils.h"
 
 DECLARE_bool(enable_wait_queues);
-DECLARE_bool(enable_deadlock_detection);
 
 using namespace std::literals;
 
@@ -45,7 +45,6 @@ class PgRowLockTest : public PgMiniTestBase {
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_deadlock_detection) = false;
     PgMiniTestBase::SetUp();
   }
 };
@@ -113,7 +112,16 @@ void PgRowLockTest::TestStmtBeforeRowLock(
     ASSERT_OK(misc_conn.ExecuteFormat("INSERT INTO t (i, j) VALUES ($0, $0)", i));
   }
 
+  LOG(INFO) << "starting transaction isolation level " << isolation << " test statement "
+            << statement << " rowmark " << row_mark_str;
+
+
   ASSERT_OK(read_conn.StartTransaction(isolation));
+  std::string isolation_level = ASSERT_RESULT(
+      read_conn.FetchRow<std::string>("SELECT yb_get_effective_transaction_isolation_level()"));
+
+  LOG(INFO) << "effective isolation level: " << isolation_level;
+
   ASSERT_OK(read_conn.FetchFormat("SELECT * FROM t WHERE i = $0", -1));
 
   // Sleep to ensure that read done in snapshot isolation txn doesn't face kReadRestart after INSERT
@@ -194,6 +202,25 @@ TEST_F(PgRowLockTest, SelectForKeyShareWithRestart) {
   ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1 FOR KEY SHARE", table));
 
   ASSERT_OK(cluster_->RestartSync());
+}
+
+TEST_F(PgRowLockTest, AdvisoryLocksNotSupported) {
+  const auto table = "foo";
+  const auto query = Format("SELECT pg_advisory_lock(k) FROM $0", table);
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0(k INT, v INT)", table));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES (1, 1)", table));
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  auto value = conn.Fetch(query);
+  ASSERT_NOK(value);
+  ASSERT_TRUE(value.status().message().Contains("ERROR:  advisory locks are not yet implemented"));
+  ASSERT_OK(conn.RollbackTransaction());
+
+  ASSERT_OK(conn.Execute("SET yb_silence_advisory_locks_not_supported_error = true"));
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.Fetch(query));
+  ASSERT_OK(conn.CommitTransaction());
 }
 
 class PgMiniTestNoTxnRetry : public PgRowLockTest {
@@ -291,9 +318,10 @@ TEST_F_EX(PgRowLockTest, SystemTableTxnTest, PgMiniTestNoTxnRetry) {
     }
   }
   LOG(INFO) << "Test stats: "
-            << EXPR_VALUE_FOR_LOG(commit1_fail_count) << ", "
-            << EXPR_VALUE_FOR_LOG(insert2_fail_count) << ", "
-            << EXPR_VALUE_FOR_LOG(commit2_fail_count);
+            << YB_EXPR_TO_STREAM_COMMA_SEPARATED(
+                commit1_fail_count,
+                insert2_fail_count,
+                commit2_fail_count);
   ASSERT_GE(commit1_fail_count, iterations / 4);
   ASSERT_GE(insert2_fail_count, iterations / 4);
   ASSERT_EQ(commit2_fail_count, 0);
@@ -320,7 +348,7 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     // Weak read + weak write on (1) has no conflicts.
     ASSERT_OK(extra_conn.Execute("COMMIT"));
     auto res = ASSERT_RESULT(
-        conn.template FetchValue<PGUint64>("SELECT COUNT(*) FROM pktable WHERE v = 20"));
+        conn.template FetchRow<PGUint64>("SELECT COUNT(*) FROM pktable WHERE v = 20"));
     ASSERT_EQ(res, 1);
   }
 
@@ -444,7 +472,7 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
 
     ASSERT_OK(conn.Execute("COMMIT"));
 
-    auto res = ASSERT_RESULT(conn.template FetchValue<PGUint64>("SELECT COUNT(*) FROM t"));
+    auto res = ASSERT_RESULT(conn.template FetchRow<PGUint64>("SELECT COUNT(*) FROM t"));
     ASSERT_EQ(res, 1);
   }
 
@@ -562,7 +590,7 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     ASSERT_OK(extra_conn.Execute("COMMIT"));
 
     ASSERT_OK(conn.Execute("COMMIT;"));
-    const auto count = ASSERT_RESULT(conn.template FetchValue<PGUint64>("SELECT COUNT(*) FROM t"));
+    const auto count = ASSERT_RESULT(conn.template FetchRow<PGUint64>("SELECT COUNT(*) FROM t"));
     ASSERT_EQ(4, count);
   }
 
@@ -624,7 +652,7 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
       ASSERT_NOK(low_pri_txn_commit_status);
     }
     const auto count = ASSERT_RESULT(
-      extra_conn.template FetchValue<PGUint64>("SELECT COUNT(*) FROM t WHERE v = 10"));
+      extra_conn.template FetchRow<PGUint64>("SELECT COUNT(*) FROM t WHERE v = 10"));
     ASSERT_EQ(low_pri_txn_succeed ? 2 : 1, count);
   }
 };
@@ -652,7 +680,7 @@ class PgMiniTestTxnHelperSerializable
 
     ASSERT_OK(conn.Execute("COMMIT"));
 
-    auto res = ASSERT_RESULT(conn.FetchValue<PGUint64>("SELECT COUNT(*) FROM t WHERE v1 = 20"));
+    auto res = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM t WHERE v1 = 20"));
     ASSERT_EQ(res, 1);
 
     ASSERT_OK(StartTxn(&conn));
@@ -664,7 +692,7 @@ class PgMiniTestTxnHelperSerializable
 
     ASSERT_OK(conn.Execute("COMMIT"));
 
-    res = ASSERT_RESULT(conn.FetchValue<PGUint64>("SELECT COUNT(*) FROM t WHERE v2 = 6"));
+    res = ASSERT_RESULT(conn.FetchRow<PGUint64>("SELECT COUNT(*) FROM t WHERE v2 = 6"));
     ASSERT_EQ(res, 1);
   }
 };
@@ -692,7 +720,7 @@ class PgRowLockTxnHelperSnapshotTest
 
     ASSERT_OK(conn.Execute("COMMIT"));
 
-    const auto res = ASSERT_RESULT(conn.FetchValue<PGUint64>(
+    const auto res = ASSERT_RESULT(conn.FetchRow<PGUint64>(
         "SELECT COUNT(*) FROM t WHERE v = 20"));
     ASSERT_EQ(res, 1);
   }
@@ -801,12 +829,6 @@ TEST_F_EX(PgRowLockTest,
 }
 
 TEST_F_EX(PgRowLockTest,
-          DuplicateInsertReadCommitted,
-          PgMiniTestTxnHelper<IsolationLevel::READ_COMMITTED>) {
-  TestDuplicateInsert();
-}
-
-TEST_F_EX(PgRowLockTest,
           DuplicateUniqueIndexInsertSerializable,
           PgMiniTestTxnHelperSerializable) {
   TestDuplicateUniqueIndexInsert();
@@ -819,12 +841,6 @@ TEST_F_EX(PgRowLockTest,
 }
 
 TEST_F_EX(PgRowLockTest,
-          DuplicateUniqueIndexInsertReadCommitted,
-          PgMiniTestTxnHelper<IsolationLevel::READ_COMMITTED>) {
-  TestDuplicateUniqueIndexInsert();
-}
-
-TEST_F_EX(PgRowLockTest,
           DuplicateNonUniqueIndexInsertSerializable,
           PgMiniTestTxnHelperSerializable) {
   TestDuplicateNonUniqueIndexInsert();
@@ -833,12 +849,6 @@ TEST_F_EX(PgRowLockTest,
 TEST_F_EX(PgRowLockTest,
           DuplicateNonUniqueIndexInsertSnapshot,
           PgRowLockTxnHelperSnapshotTest) {
-  TestDuplicateNonUniqueIndexInsert();
-}
-
-TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(DuplicateNonUniqueIndexInsertReadCommitted),
-          PgMiniTestTxnHelper<IsolationLevel::READ_COMMITTED>) {
   TestDuplicateNonUniqueIndexInsert();
 }
 

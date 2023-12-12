@@ -4,10 +4,7 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
-import static org.mockito.ArgumentMatchers.anyString;
-import static org.mockito.Mockito.when;
 
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.forms.ConfigureDBApiParams;
 import com.yugabyte.yw.models.TaskInfo;
@@ -20,7 +17,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnitRunner;
-import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 @Slf4j
@@ -33,9 +29,9 @@ public class ConfigureDBApisTest extends UpgradeTaskTest {
   public void setUp() {
     super.setUp();
     configureDBApis.setUserTaskUUID(UUID.randomUUID());
-    ObjectNode bodyJson = Json.newObject();
-    bodyJson.put("underreplicated_tablets", Json.newArray());
-    when(mockNodeUIApiHelper.getRequest(anyString())).thenReturn(bodyJson);
+
+    setUnderReplicatedTabletsMock();
+    setFollowerLagMock();
   }
 
   private static final List<TaskType> ENABLE_DB_API_TASK_SEQUENCE =

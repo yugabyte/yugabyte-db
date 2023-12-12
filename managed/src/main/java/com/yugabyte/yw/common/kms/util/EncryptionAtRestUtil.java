@@ -331,7 +331,7 @@ public class EncryptionAtRestUtil {
             String.join(
                 "/",
                 Arrays.asList(
-                    Arrays.copyOfRange(dirParts, dirParts.length - 3, dirParts.length - 1))));
+                    Arrays.copyOfRange(dirParts, dirParts.length - 5, dirParts.length - 1))));
 
     return new File(storageLocationDir.getAbsolutePath(), BACKUP_KEYS_FILE_NAME);
   }
@@ -380,6 +380,31 @@ public class EncryptionAtRestUtil {
           }
         };
     Universe.saveDetails(universeUUID, updater, false);
+  }
+
+  public static void updateUniverseKMSConfigIfNotExists(UUID universeUUID, UUID kmsConfigUUID) {
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+    if (universe.getUniverseDetails().encryptionAtRestConfig.kmsConfigUUID == null) {
+      UniverseUpdater updater =
+          new UniverseUpdater() {
+            @Override
+            public void run(Universe universe) {
+              UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+              LOG.info(
+                  "Found KMS config UUID {} for universe {} in the universe details.",
+                  universeDetails.encryptionAtRestConfig.kmsConfigUUID,
+                  universe.getUniverseUUID());
+              // Add the kms config UUID to universe details.
+              universeDetails.encryptionAtRestConfig.kmsConfigUUID = kmsConfigUUID;
+              universe.setUniverseDetails(universeDetails);
+              LOG.info(
+                  "Successfully set KMS config {} for universe {} in the universe details.",
+                  kmsConfigUUID,
+                  universeUUID);
+            }
+          };
+      Universe.saveDetails(universeUUID, updater, false);
+    }
   }
 
   public static class BackupEntry {

@@ -13,6 +13,7 @@ import org.yb.master.MasterBackupOuterClass;
 import org.yb.master.MasterBackupOuterClass.ListSnapshotsResponsePB;
 import org.yb.master.MasterBackupOuterClass.SnapshotInfoPB;
 import org.yb.master.MasterTypes;
+import org.yb.util.CommonUtil;
 import org.yb.util.Pair;
 import org.yb.util.SnapshotUtil;
 
@@ -43,7 +44,7 @@ public class ListSnapshotsRequest extends YRpc<ListSnapshotsResponse> {
                     .build();
 
         if (snapshotUUID != null) {
-            builder.setSnapshotId(SnapshotUtil.convertToByteString(snapshotUUID));
+            builder.setSnapshotId(CommonUtil.convertToByteString(snapshotUUID));
         }
         builder.setListDeletedSnapshots(this.listDeletedSnapshots);
         builder.setDetailOptions(snapshotsDetailOption);

@@ -98,6 +98,16 @@ public class UpdateAndPersistGFlags extends UniverseTaskBase {
                   // Updating old maps accordingly
                   cluster.userIntent.masterGFlags = masterGFlags;
                   cluster.userIntent.tserverGFlags = tserverGFlags;
+                  if (cluster.userIntent.specificGFlags != null
+                      && cluster.userIntent.specificGFlags.isInheritFromPrimary()) {
+                    SpecificGFlags primaryGFlags =
+                        universeDetails.getPrimaryCluster().userIntent.specificGFlags;
+                    if (primaryGFlags != null) {
+                      cluster.userIntent.specificGFlags.setPerProcessFlags(
+                          primaryGFlags.getPerProcessFlags());
+                      cluster.userIntent.specificGFlags.setPerAZ(primaryGFlags.getPerAZ());
+                    }
+                  }
                 }
                 GFlagsUtil.syncGflagsToIntent(masterGFlags, cluster.userIntent);
                 GFlagsUtil.syncGflagsToIntent(tserverGFlags, cluster.userIntent);

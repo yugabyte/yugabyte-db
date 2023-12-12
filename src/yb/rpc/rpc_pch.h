@@ -46,6 +46,7 @@
 #include <functional>
 #include <future>
 #include <iosfwd>
+#include <iterator>
 #include <limits>
 #include <list>
 #include <map>
@@ -55,6 +56,7 @@
 #include <optional>
 #include <queue>
 #include <random>
+#include <regex>
 #include <set>
 #include <shared_mutex>
 #include <sstream>
@@ -107,6 +109,7 @@
 #include <boost/preprocessor/stringize.hpp>
 #include <boost/preprocessor/variadic/to_seq.hpp>
 #include <boost/ptr_container/ptr_vector.hpp>
+#include <boost/range/adaptor/transformed.hpp>
 #include <boost/range/iterator_range.hpp>
 #include <boost/signals2/dummy_mutex.hpp>
 #include <boost/smart_ptr/detail/yield_k.hpp>
@@ -177,6 +180,7 @@
 #include "yb/gutil/threading/thread_collision_warner.h"
 #include "yb/gutil/type_traits.h"
 #include "yb/gutil/walltime.h"
+#include "yb/util/aggregate_stats.h"
 #include "yb/util/async_util.h"
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
@@ -204,6 +208,8 @@
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/flags/flags_callback.h"
 #include "yb/util/format.h"
+#include "yb/util/hdr_histogram.h"
+#include "yb/util/high_water_mark.h"
 #include "yb/util/io.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/lockfree.h"
@@ -237,6 +243,7 @@
 #include "yb/util/port_picker.h"
 #include "yb/util/random.h"
 #include "yb/util/random_util.h"
+#include "yb/util/range.h"
 #include "yb/util/ref_cnt_buffer.h"
 #include "yb/util/result.h"
 #include "yb/util/rw_semaphore.h"
@@ -259,6 +266,7 @@
 #include "yb/util/striped64.h"
 #include "yb/util/strongly_typed_bool.h"
 #include "yb/util/subprocess.h"
+#include "yb/util/tcmalloc_util.h"
 #include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/thread.h"

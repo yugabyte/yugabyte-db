@@ -9,6 +9,10 @@
       {
         "resourceType": "UNIVERSE",
         "action": "READ"
+      },
+      {
+        "resourceType": "OTHER",
+        "action": "READ"
       }
     ]
   },
@@ -18,7 +22,12 @@
     "name": "View Universe",
     "description": "Allows user to view a universe.",
     "permissionValidOnResource": true,
-    "prerequisitePermissions": []
+    "prerequisitePermissions": [
+      {
+        "resourceType": "OTHER",
+        "action": "READ"
+      }
+    ]
   },
   {
     "resourceType": "UNIVERSE",

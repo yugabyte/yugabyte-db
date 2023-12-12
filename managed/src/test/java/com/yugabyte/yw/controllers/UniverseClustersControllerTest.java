@@ -22,6 +22,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -45,7 +46,7 @@ public class UniverseClustersControllerTest extends UniverseCreateControllerTest
 
   @Before
   public void setUpTest() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.AddOnClusterCreate);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
   }
@@ -126,7 +127,13 @@ public class UniverseClustersControllerTest extends UniverseCreateControllerTest
   public void updatePrimaryNotConsistentFailTest() {
     Universe universe =
         ModelFactory.createFromConfig(ModelFactory.awsProvider(customer), "ahaha", "r1-az1-1-1");
-
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              u.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo =
+                  ApiUtils.getDummyDeviceInfo(1, 1);
+            });
     universe =
         Universe.saveDetails(
             universe.getUniverseUUID(),

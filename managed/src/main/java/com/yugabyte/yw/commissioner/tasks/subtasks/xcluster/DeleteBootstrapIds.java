@@ -8,6 +8,7 @@ import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterTableConfig;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -32,6 +33,11 @@ public class DeleteBootstrapIds extends XClusterConfigTaskBase {
   public static class Params extends XClusterConfigTaskParams {
     // The source universe UUID must be stored in universeUUID field.
     // The parent xCluster config must be stored in xClusterConfig field.
+
+    // The list of tables to remove the stream ids for. If null, it will be set to all tables in
+    // the xCluster config.
+    public Set<String> tableIds;
+
     // Whether the task must delete the bootstrap IDs even if they are in use.
     public boolean forceDelete;
   }
@@ -44,8 +50,11 @@ public class DeleteBootstrapIds extends XClusterConfigTaskBase {
   @Override
   public String getName() {
     return String.format(
-        "%s(xClusterConfig=%s,forceDelete=%s)",
-        super.getName(), taskParams().getXClusterConfig(), taskParams().forceDelete);
+        "%s(xClusterConfig=%s,tableIds=%s,forceDelete=%s)",
+        super.getName(),
+        taskParams().getXClusterConfig(),
+        taskParams().tableIds,
+        taskParams().forceDelete);
   }
 
   @Override
@@ -54,6 +63,9 @@ public class DeleteBootstrapIds extends XClusterConfigTaskBase {
 
     XClusterConfig xClusterConfig = getXClusterConfigFromTaskParams();
 
+    if (Objects.isNull(taskParams().tableIds)) {
+      throw new IllegalArgumentException("taskParams().tableIds could not be null");
+    }
     if (xClusterConfig.getSourceUniverseUUID() == null) {
       log.info("Skipped {}: the source universe is destroyed", getName());
       return;
@@ -67,7 +79,10 @@ public class DeleteBootstrapIds extends XClusterConfigTaskBase {
     // is deleted.
     Set<XClusterTableConfig> tableConfigsWithBootstrapId =
         xClusterConfig.getTableDetails().stream()
-            .filter(tableConfig -> tableConfig.getStreamId() != null)
+            .filter(
+                tableConfig ->
+                    taskParams().tableIds.contains(tableConfig.getTableId())
+                        && tableConfig.getStreamId() != null)
             .collect(Collectors.toSet());
     Set<String> bootstrapIds =
         tableConfigsWithBootstrapId.stream()
@@ -102,7 +117,7 @@ public class DeleteBootstrapIds extends XClusterConfigTaskBase {
           bootstrapIds,
           sourceUniverse.getUniverseUUID());
 
-      // Delete the bootstrap ID from DB.
+      // Delete the bootstrap ids from DB.
       tableConfigsWithBootstrapId.forEach(
           tableConfig -> {
             tableConfig.setStreamId(null);
@@ -111,7 +126,7 @@ public class DeleteBootstrapIds extends XClusterConfigTaskBase {
       xClusterConfig.update();
 
       if (HighAvailabilityConfig.get().isPresent()) {
-        getUniverse(true).incrementVersion();
+        getUniverse().incrementVersion();
       }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());

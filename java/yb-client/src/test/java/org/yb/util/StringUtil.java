@@ -31,7 +31,15 @@ public final class StringUtil {
   }
 
   public static String joinLinesForLogging(List<String> lines) {
-    return lines.stream().map(s -> "    " + s).collect(Collectors.joining("\n"));
+    return joinLinesForLoggingHelper(lines, "    ");
+  }
+
+  public static String joinLinesForLoggingNoPrefix(List<String> lines) {
+    return joinLinesForLoggingHelper(lines, "");
+  }
+
+  private static String joinLinesForLoggingHelper(List<String> lines, String prefix) {
+    return lines.stream().map(s -> prefix + s).collect(Collectors.joining("\n"));
   }
 
   public static boolean isStringTrue(String value, boolean defaultValue) {

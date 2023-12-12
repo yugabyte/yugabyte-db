@@ -10,6 +10,8 @@ import { isEmptyObject } from '../../../utils/ObjectUtils';
 import { getPrimaryCluster, getReadOnlyCluster } from '../../../utils/UniverseUtils';
 import { YBCopyButton } from '../../../components/common/descriptors';
 import { MenuItem } from 'react-bootstrap';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 import './NodeConnectModal.scss';
 
@@ -43,7 +45,8 @@ class NodeConnectModal extends Component {
       providerUUID,
       runtimeConfigs,
       currentUniverse,
-      clusterType
+      clusterType,
+      universeUUID
     } = this.props;
     const nodeIPs = { privateIP: currentRow.privateIP, publicIP: currentRow.publicIP };
     let accessCommand = null;
@@ -76,11 +79,11 @@ class NodeConnectModal extends Component {
     if (currentRow.cloudInfo.cloud === 'kubernetes') {
       accessTitle = 'Access your pod';
       const podNamespace = currentRow.cloudInfo.kubernetesNamespace
-	    ? currentRow.cloudInfo.kubernetesNamespace
-	    : currentRow.privateIP?.split('.')[2];
+        ? currentRow.cloudInfo.kubernetesNamespace
+        : currentRow.privateIP?.split('.')[2];
       const podName = currentRow.cloudInfo.kubernetesPodName
-	    ? currentRow.cloudInfo.kubernetesPodName
-	    : currentRow.privateIP?.split('.')[0];
+        ? currentRow.cloudInfo.kubernetesPodName
+        : currentRow.privateIP?.split('.')[0];
       let container_name_selector = '';
 
       if (currentRow.isMaster === 'Details') {
@@ -97,21 +100,38 @@ class NodeConnectModal extends Component {
         (key) => key.idKey.providerUUID === providerUUID && key.idKey.keyCode === accessKeyCode
       );
 
-      const accessKeyInfo = accessKey.keyInfo;
-      const sshPort = accessKeyInfo.sshPort || 22;
+      const accessKeyInfo = accessKey?.keyInfo;
+      const sshPort = accessKeyInfo?.sshPort || 22;
       if (!isTectiaSSHEnabled) {
-        accessCommand = `sudo ssh -i ${accessKeyInfo.privateKey} -ostricthostkeychecking=no -p ${sshPort} yugabyte@${nodeIPs.privateIP}`;
+        accessCommand = `sudo ssh -i ${
+          accessKeyInfo?.privateKey ?? '<private key>'
+        } -ostricthostkeychecking=no -p ${sshPort} yugabyte@${nodeIPs.privateIP}`;
       } else {
-        accessCommand = `sshg3 -K ${accessKeyInfo.privateKey} -ostricthostkeychecking=no -p ${sshPort} yugabyte@${nodeIPs.privateIP}`;
+        accessCommand = `sshg3 -K ${
+          accessKeyInfo?.privateKey ?? '<private key>'
+        } -ostricthostkeychecking=no -p ${sshPort} yugabyte@${nodeIPs.privateIP}`;
       }
     }
 
     const btnId = _.uniqueId('node_action_btn_');
     return (
       <Fragment>
-        <MenuItem eventKey={btnId} onClick={() => this.toggleConnectModal(true)}>
-          {label}
-        </MenuItem>
+        <RbacValidator
+          isControl
+          accessRequiredOn={{
+            onResource: universeUUID,
+            ...ApiPermissionMap.GET_UNIVERSES_BY_ID
+          }}
+        >
+          <MenuItem
+            eventKey={btnId}
+            data-testid="NodeAction-CONNECT"
+            onClick={() => this.toggleConnectModal(true)}
+          >
+            {label}
+          </MenuItem>
+        </RbacValidator>
+
         <YBModal
           title={accessTitle}
           visible={this.state.showConnectModal}

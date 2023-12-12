@@ -21,8 +21,7 @@
 // under the License.
 //
 
-
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/rocksdb/utilities/env_mirror.h"
 #include "yb/util/result.h"
@@ -220,6 +219,8 @@ class WritableFileMirror : public WritableFile {
     assert(as.code() == bs.code());
     return as;
   }
+
+  const std::string& filename() const override { return fname; }
 
  protected:
   Status Allocate(uint64_t offset, uint64_t length) override {

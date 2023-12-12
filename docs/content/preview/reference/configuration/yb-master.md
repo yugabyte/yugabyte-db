@@ -480,6 +480,14 @@ Clusters created using `yugabyted` always use a default value of `1`.
 
 {{< /note >}}
 
+##### --ysql_colocate_database_by_default
+
+When enabled, all databases created in the cluster are colocated by default. If you enable the flag after creating a cluster, you need to restart the YB-Master and YB-TServer services.
+
+For more details, see [clusters in colocated tables](../../../architecture/docdb-sharding/colocated-tables/#clusters).
+
+Default: `false`
+
 ## Tablet splitting flags
 
 ##### --enable_automatic_tablet_splitting
@@ -726,6 +734,23 @@ WAL retention time, in seconds, to be used for tables for which a CDC stream was
 
 Default: `14400` (4 hours)
 
+## Metric export flags
+
+##### --export_help_and_type_in_prometheus_metrics
+
+YB-Master metrics are available in Prometheus format at
+`http://localhost:7000/prometheus-metrics`.  This flag controls whether
+#TYPE and #HELP information is included as part of the Prometheus
+metrics output by default.
+
+To override this flag on a per-scrape basis, set the URL parameter
+`show_help` to `true` to include or to `false` to not include type and
+help information.  For example, querying
+`http://localhost:7000/prometheus-metrics?show_help=true` will return
+type and help information regardless of the setting of this flag.
+
+Default: `true`
+
 ## Admin UI
 
 The Admin UI for YB-Master is available at <http://localhost:7000>.
@@ -735,6 +760,12 @@ The Admin UI for YB-Master is available at <http://localhost:7000>.
 Home page of the YB-Master server that gives a high level overview of the cluster. Not all YB-Master servers in a cluster show identical information.
 
 ![master-home](/images/admin/master-home-binary-with-tables.png)
+
+### Namespaces
+
+List of namespaces present in the cluster.
+
+![master-namespaces](/images/admin/master-namespaces.png)
 
 ### Tables
 

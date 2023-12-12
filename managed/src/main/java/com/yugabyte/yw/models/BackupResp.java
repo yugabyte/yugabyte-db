@@ -40,4 +40,5 @@ public class BackupResp {
   TableType backupType;
   CommonBackupInfo commonBackupInfo;
   String scheduleName;
+  Boolean useTablespaces;
 }

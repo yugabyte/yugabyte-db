@@ -12,6 +12,13 @@ export enum ClusterType {
   ASYNC = 'ASYNC'
 }
 
+export enum UpdateActions {
+  FULL_MOVE = 'FULL_MOVE',
+  SMART_RESIZE = 'SMART_RESIZE',
+  SMART_RESIZE_NON_RESTART = 'SMART_RESIZE_NON_RESTART',
+  UPDATE = 'UPDATE'
+}
+
 export enum CloudType {
   unknown = 'unknown',
   aws = 'aws',
@@ -213,6 +220,9 @@ export interface UniverseDetails {
   enableYbc: boolean;
   updateOptions: string[];
   useSpotInstance: boolean;
+  softwareUpgradeState: string;
+  prevYBSoftwareConfig: { softwareVersion: string };
+  universePaused: boolean;
 }
 
 export type UniverseConfigure = Partial<UniverseDetails>;
@@ -674,6 +684,20 @@ export interface AccessKey {
     passwordlessSudoAccess: boolean;
     provisionInstanceScript: string;
   };
+}
+
+export interface YBSoftwareMetadata {
+  state: string;
+  notes: string[];
+  filePath: string[];
+  chartPath: string;
+  imageTag: string;
+  packages: YBSoftwareMetadataPackages[];
+}
+
+export interface YBSoftwareMetadataPackages {
+  path: string;
+  arch: string;
 }
 
 export interface Provider {

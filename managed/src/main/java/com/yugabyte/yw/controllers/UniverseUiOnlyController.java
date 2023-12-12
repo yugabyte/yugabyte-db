@@ -8,8 +8,11 @@ import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.operator.annotations.BlockOperatorResource;
+import com.yugabyte.yw.common.operator.annotations.OperatorResourceTypes;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
+import com.yugabyte.yw.common.rbac.RoleBindingUtil;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.DiskIncreaseFormData;
@@ -23,6 +26,7 @@ import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.extended.UserWithFeatures;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
@@ -52,6 +56,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
 
   @Inject private UniverseCRUDHandler universeCRUDHandler;
   @Inject private UniverseInfoHandler universeInfoHandler;
+  @Inject private RoleBindingUtil roleBindingUtil;
 
   /**
    * @deprecated Use UniverseInfoController.getUniverseResources that returns resources for universe
@@ -81,13 +86,27 @@ public class UniverseUiOnlyController extends AuthenticatedController {
    * @deprecated Use universe list with name parameter
    */
   @Deprecated
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT),
+        checkOnlyPermission = true)
+  })
   public Result find(UUID customerUUID, String name) {
+    UserWithFeatures user = RequestContext.get(TokenAuthenticator.USER);
     // Verify the customer with this universe is present.
     Customer customer = Customer.getOrBadRequest(customerUUID);
     LOG.info("Finding Universe with name {}.", name);
     Optional<Universe> universe = Universe.maybeGetUniverseByName(customer.getId(), name);
     if (universe.isPresent()) {
-      return PlatformResults.withData(Collections.singletonList(universe.get().getUniverseUUID()));
+      Set<UUID> resourceUUIDs =
+          roleBindingUtil.getResourceUuids(
+              user.getUser().getUuid(), ResourceType.UNIVERSE, Action.READ);
+      if (resourceUUIDs.contains(universe.get().getUniverseUUID())) {
+        return PlatformResults.withData(
+            Collections.singletonList(universe.get().getUniverseUUID()));
+      }
     }
     return PlatformResults.withData(Collections.emptyList());
   }
@@ -103,10 +122,11 @@ public class UniverseUiOnlyController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
         resourceLocation =
             @Resource(path = Util.UNIVERSE_UUID, sourceType = SourceType.REQUEST_BODY))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result configure(UUID customerUUID, Http.Request request) {
 
     // Verify the customer with this universe is present.
@@ -145,6 +165,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
         resourceLocation =
             @Resource(path = Util.UNIVERSE_UUID, sourceType = SourceType.REQUEST_BODY))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result getUpdateOptions(UUID customerUUID, Http.Request request) {
     // Verify the customer with this universe is present.
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -153,7 +174,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
         bindFormDataToTaskParams(request, UniverseConfigureTaskParams.class);
 
     Set<UniverseDefinitionTaskParams.UpdateOptions> options =
-        universeCRUDHandler.getUpdateOptions(customer, taskParams);
+        universeCRUDHandler.getUpdateOptions(taskParams, taskParams.clusterOperation);
     auditService()
         .createAuditEntryWithReqBody(
             request,
@@ -208,6 +229,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result update(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
@@ -321,6 +343,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result upgrade(UUID customerUUID, UUID universeUUID, Http.Request request) {
     LOG.info("Upgrade {} for {}.", customerUUID, universeUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -355,6 +378,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result updateDiskSize(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
@@ -391,6 +415,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result tlsConfigUpdate(UUID customerUUID, UUID universeUUID, Http.Request request) {
     LOG.info("TLS config update: {} for {}.", customerUUID, universeUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);

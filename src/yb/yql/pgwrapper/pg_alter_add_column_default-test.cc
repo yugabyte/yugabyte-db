@@ -90,7 +90,7 @@ TEST_P(PgAddColumnDefaultTest, AddColumnDefaultConcurrency) {
   ASSERT_OK(conn_->ExecuteFormat(
       "INSERT INTO $0 VALUES (generate_series(10, 12), null)", kTableName));
   // Verify that we can read the correct values for the new column.
-  auto res = ASSERT_RESULT(conn_->FetchValue<PGUint64>(
+  auto res = ASSERT_RESULT(conn_->FetchRow<PGUint64>(
       Format("SELECT count(*) FROM $0 WHERE c1 = 'default'", kTableName)));
   ASSERT_EQ(res, 9);
   const auto table_id = ASSERT_RESULT(GetTableIdByTableName(
@@ -102,7 +102,7 @@ TEST_P(PgAddColumnDefaultTest, AddColumnDefaultConcurrency) {
       3 /* deadline (seconds) */,
       true /* is_compaction */));
   // Verify that we can read the correct values for the new column after compaction.
-  res = ASSERT_RESULT(conn_->FetchValue<PGUint64>(
+  res = ASSERT_RESULT(conn_->FetchRow<PGUint64>(
       Format("SELECT count(*) FROM $0 WHERE c1 = 'default'", kTableName)));
   ASSERT_EQ(res, 9);
 }
@@ -118,7 +118,7 @@ TEST_P(PgAddColumnDefaultTest, AddColumnDefaultCompactionAfterUpdate) {
       " ADD COLUMN c2 int DEFAULT 5",
       kTableName));
   // Verify the data.
-  auto res = ASSERT_RESULT(conn_->FetchValue<PGUint64>(
+  auto res = ASSERT_RESULT(conn_->FetchRow<PGUint64>(
       Format("SELECT count(*) FROM $0 WHERE c1 = 'default' AND c2 = 5", kTableName)));
   ASSERT_EQ(res, 4);
   // Update some rows.
@@ -136,18 +136,16 @@ TEST_P(PgAddColumnDefaultTest, AddColumnDefaultCompactionAfterUpdate) {
       3 /* deadline (seconds) */,
       true /* is_compaction */));
   // Verify the data after compaction.
-  auto data = ASSERT_RESULT(conn_->FetchRowAsString(
-      Format("SELECT * FROM $0 WHERE t = 1", kTableName)));
-  ASSERT_EQ(data, "1, not default, 5");
-  data = ASSERT_RESULT(conn_->FetchRowAsString(
-      Format("SELECT * FROM $0 WHERE t = 2", kTableName)));
-  ASSERT_EQ(data, "2, default, 6");
-  data = ASSERT_RESULT(conn_->FetchRowAsString(
-      Format("SELECT * FROM $0 WHERE t = 3", kTableName)));
-  ASSERT_EQ(data, "3, default, NULL");
-  data = ASSERT_RESULT(conn_->FetchRowAsString(
-      Format("SELECT * FROM $0 WHERE t = 4", kTableName)));
-  ASSERT_EQ(data, "4, default, 5");
+  auto rows = ASSERT_RESULT((conn_->FetchRows<int32_t, std::string, std::optional<int32_t>>(
+      Format("SELECT * FROM $0 ORDER BY t", kTableName))));
+  ASSERT_EQ(
+      rows,
+      (decltype(rows){
+         {1, "not default", 5},
+         {2, "default", 6},
+         {3, "default", std::nullopt},
+         {4, "default", 5},
+       }));
 }
 
 // Test COPY FROM after a ALTER TABLE ... ADD COLUMN ... DEFAULT operation.
@@ -173,24 +171,26 @@ TEST_P(PgAddColumnDefaultTest, AddColumnDefaultCopy) {
     conn_->CopyPutString(i < 8 ? "" : "not default");
   }
   ASSERT_OK(conn_->CopyEnd());
-  // Verify the data.
-  auto res = ASSERT_RESULT(conn_->FetchFormat("SELECT * FROM $0 ORDER BY t", kTableName));
-  auto check_result = [&res] {
-    ASSERT_EQ(PQntuples(res.get()), 9);
-    for (int i = 1; i <= PQntuples(res.get()); ++i) {
-      const auto value1 = ASSERT_RESULT(GetInt32(res.get(), i - 1, 0));
-      ASSERT_EQ(value1, i);
-      const auto value2 = ASSERT_RESULT(GetString(res.get(), i - 1, 1));
-      if (i <= 5) {
-        ASSERT_EQ(value2, "default");
-      } else if (i <= 7) {
-        ASSERT_EQ(value2, "");
-      } else {
-        ASSERT_EQ(value2, "not default");
-      }
-    }
+
+  auto table_content_checker = [&conn = this->conn_]() -> Status {
+    auto rows = VERIFY_RESULT((conn->FetchRows<int32_t, std::string>(
+        Format("SELECT * FROM $0 ORDER BY t", kTableName))));
+    constexpr auto kDefault = "default";
+    constexpr auto kNotDefault = "not default";
+    constexpr auto kEmpty = "";
+    SCHECK_EQ(rows,
+              (decltype(rows){
+                {1, kDefault}, {2, kDefault}, {3, kDefault}, {4, kDefault}, {5, kDefault},
+                {6, kEmpty}, {7, kEmpty},
+                {8, kNotDefault}, {9, kNotDefault}}),
+              IllegalState,
+              "Unexpected value");
+    return Status::OK();
   };
-  check_result();
+
+  // Verify the data.
+  ASSERT_OK(table_content_checker());
+
   const auto table_id = ASSERT_RESULT(GetTableIdByTableName(
       client.get(), kDatabaseName, kTableName));
   // Compact the table.
@@ -200,8 +200,7 @@ TEST_P(PgAddColumnDefaultTest, AddColumnDefaultCopy) {
       3 /* deadline (seconds) */,
       true /* is_compaction */));
   // Verify the data after compaction.
-  res = ASSERT_RESULT(conn_->FetchFormat("SELECT * FROM $0 ORDER BY t", kTableName));
-  check_result();
+  ASSERT_OK(table_content_checker());
 }
 
 INSTANTIATE_TEST_CASE_P(

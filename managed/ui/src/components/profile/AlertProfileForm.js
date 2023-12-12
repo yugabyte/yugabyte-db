@@ -14,7 +14,8 @@ import * as Yup from 'yup';
 import _ from 'lodash';
 import { isNonEmptyObject, isNonEmptyArray } from '../../utils/ObjectUtils';
 import { getPromiseState } from '../../utils/PromiseUtils';
-import { toast } from 'react-toastify';
+import { RbacValidator } from '../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../redesign/features/rbac/ApiAndUserPermMapping';
 
 // TODO set predefined defaults another way not to share defaults this way
 const MILLISECONDS_IN_MINUTE = 60000;
@@ -85,11 +86,14 @@ export default class AlertProfileForm extends Component {
   componentDidUpdate() {
     const { customerProfile } = this.props;
     const { statusUpdated } = this.state;
+
     if (
       statusUpdated &&
       (getPromiseState(customerProfile).isSuccess() || getPromiseState(customerProfile).isError())
     ) {
-      this.setState({ statusUpdated: false });
+      this.setState({
+        statusUpdated: false
+      });
     }
   }
 
@@ -181,7 +185,6 @@ export default class AlertProfileForm extends Component {
             updateCustomerDetails(data);
             this.setState({ statusUpdated: true });
             setSubmitting(false);
-            toast.success('Configuration updated successfully');
 
             // default form to new values to avoid unwanted validation of smtp fields when they are hidden
             resetForm(values);
@@ -207,7 +210,7 @@ export default class AlertProfileForm extends Component {
                     type="text"
                     component={YBFormInput}
                     label="Health check interval (in minutes)"
-                    placeholder="Milliseconds to check universe status"
+                    placeholder="Minutes to check universe status"
                     disabled={isReadOnly}
                   />
                   <Field
@@ -215,7 +218,7 @@ export default class AlertProfileForm extends Component {
                     type="text"
                     component={YBFormInput}
                     label="Active alert notification interval (in minutes)"
-                    placeholder="Milliseconds to send an active alert notifications"
+                    placeholder="Minutes to send an active alert notifications"
                     disabled={isReadOnly}
                   />
                 </Col>
@@ -362,12 +365,20 @@ export default class AlertProfileForm extends Component {
               {!isReadOnly && (
                 <div className="form-action-button-container">
                   <Col sm={12}>
-                    <YBButton
-                      btnText="Save"
-                      btnType="submit"
-                      disabled={isSubmitting}
-                      btnClass="btn btn-orange pull-right"
-                    />
+                    <RbacValidator
+                      accessRequiredOn={ApiPermissionMap.MODIFY_CUSTOMER}
+                      overrideStyle={{
+                        float: 'right'
+                      }}
+                      isControl
+                    >
+                      <YBButton
+                        btnText="Save"
+                        btnType="submit"
+                        disabled={isSubmitting}
+                        btnClass="btn btn-orange pull-right"
+                      />
+                    </RbacValidator>
                   </Col>
                 </div>
               )}

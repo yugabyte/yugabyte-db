@@ -19,7 +19,9 @@ import { YBButton, YBCheckBox } from '../../common/forms/fields';
 import { YBLoading } from '../../common/indicators';
 import { YBConfirmModal } from '../../modals';
 
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import './MaintenanceWindowsList.scss';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 /**
  * Extend time frame options in minutes
@@ -115,17 +117,23 @@ const GetMaintenanceWindowActions = ({
           pullRight
         >
           {Object.keys(extendTimeframes).map((timeframe) => (
-            <MenuItem
-              key={timeframe}
-              onClick={() => {
-                extendTime.mutateAsync({
-                  window: currentWindow,
-                  minutesToExtend: extendTimeframes[timeframe]
-                });
-              }}
+            <RbacValidator
+              accessRequiredOn={ApiPermissionMap.MODIFY_MAINTENANCE_WINDOW}
+              isControl
+              overrideStyle={{ display: 'block' }}
             >
-              {timeframe}
-            </MenuItem>
+              <MenuItem
+                key={timeframe}
+                onClick={() => {
+                  extendTime.mutateAsync({
+                    window: currentWindow,
+                    minutesToExtend: extendTimeframes[timeframe]
+                  });
+                }}
+              >
+                {timeframe}
+              </MenuItem>
+            </RbacValidator>
           ))}
         </DropdownButton>
       )}
@@ -138,27 +146,44 @@ const GetMaintenanceWindowActions = ({
         pullRight
       >
         {currentWindow.state === MaintenanceWindowState.ACTIVE && (
-          <MenuItem onClick={() => markAsCompleted.mutateAsync(currentWindow)}>
-            <i className="fa fa-check" /> Mark as Completed
-          </MenuItem>
+          <RbacValidator
+            accessRequiredOn={ApiPermissionMap.MODIFY_MAINTENANCE_WINDOW}
+            isControl
+            overrideStyle={{ display: 'block' }}
+          >
+            <MenuItem onClick={() => markAsCompleted.mutateAsync(currentWindow)}>
+              <i className="fa fa-check" /> Mark as Completed
+            </MenuItem>
+          </RbacValidator>
         )}
         {currentWindow.state !== MaintenanceWindowState.FINISHED && (
+          <RbacValidator
+            accessRequiredOn={ApiPermissionMap.MODIFY_MAINTENANCE_WINDOW}
+            isControl
+            overrideStyle={{ display: 'block' }}
+          >
+            <MenuItem
+              onClick={() => {
+                setSelectedWindow(currentWindow);
+              }}
+            >
+              <i className="fa fa-pencil" /> Edit Window
+            </MenuItem>
+          </RbacValidator>
+        )}
+        <RbacValidator
+          accessRequiredOn={ApiPermissionMap.DELETE_MAINTENANCE_WINDOW}
+          isControl
+          overrideStyle={{ display: 'block' }}
+        >
           <MenuItem
             onClick={() => {
-              setSelectedWindow(currentWindow);
+              setVisibleModal(currentWindow?.uuid);
             }}
           >
-            <i className="fa fa-pencil" /> Edit Window
+            <i className="fa fa-trash-o" /> Delete Window
           </MenuItem>
-        )}
-
-        <MenuItem
-          onClick={() => {
-            setVisibleModal(currentWindow?.uuid);
-          }}
-        >
-          <i className="fa fa-trash-o" /> Delete Window
-        </MenuItem>
+        </RbacValidator>
       </DropdownButton>
       <YBConfirmModal
         name="delete-alert-config"
@@ -233,14 +258,19 @@ export const MaintenanceWindowsList: FC<MaintenanceWindowsListProps> = ({
           />
         </Col>
         <Col lg={2}>
-          <YBButton
-            btnText="Add Maintenance Window"
-            btnClass="btn btn-orange"
-            onClick={() => {
-              setSelectedWindow(null);
-              showCreateView();
-            }}
-          />
+          <RbacValidator
+            accessRequiredOn={ApiPermissionMap.CREATE_MAINTENANCE_WINDOW}
+            isControl
+          >
+            <YBButton
+              btnText="Add Maintenance Window"
+              btnClass="btn btn-orange"
+              onClick={() => {
+                setSelectedWindow(null);
+                showCreateView();
+              }}
+            />
+          </RbacValidator>
         </Col>
       </Row>
       <Row>

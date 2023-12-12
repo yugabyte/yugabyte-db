@@ -12,6 +12,8 @@ import { Tab } from 'react-bootstrap';
 import { useSelector } from 'react-redux';
 import { BackupList, Restore } from '..';
 import { YBTabsPanel } from '../../panels';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import './AccountLevelBackup.scss';
 
 export const AccountLevelBackup: FC = () => {
@@ -19,16 +21,19 @@ export const AccountLevelBackup: FC = () => {
 
   if (featureFlags.test.enableRestore || featureFlags.released.enableRestore) {
     return (
-      <YBTabsPanel id="account-level-backup-tab-panel" defaultTab="backupList">
-        <Tab eventKey="backupList" title="Backups" unmountOnExit>
-          <BackupList />
-        </Tab>
-        <Tab eventKey="restoreList" title="Restore History" unmountOnExit>
-          <Restore type="ACCOUNT_LEVEL" />
-        </Tab>
-      </YBTabsPanel>
+      <RbacValidator accessRequiredOn={ApiPermissionMap.GET_BACKUPS_BY_PAGE}
+      >
+        <YBTabsPanel id="account-level-backup-tab-panel" defaultTab="backupList">
+          <Tab eventKey="backupList" title="Backups" unmountOnExit>
+            <BackupList />
+          </Tab>
+          <Tab eventKey="restoreList" title="Restore History" unmountOnExit>
+            <Restore type="ACCOUNT_LEVEL" />
+          </Tab>
+        </YBTabsPanel>
+      </RbacValidator>
     );
   }
 
-  return <BackupList />;
+  return <RbacValidator accessRequiredOn={ApiPermissionMap.GET_BACKUPS_BY_PAGE}><BackupList /></RbacValidator>;
 };

@@ -48,6 +48,7 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
   public static class Params extends UniverseTaskParams {
     // If present, then we intend to decommission these nodes.
     public Set<String> blacklistNodes = null;
+    public List<Cluster> targetClusterStates;
   }
 
   @Override
@@ -77,7 +78,10 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
 
       ModifyUniverseConfig modifyConfig =
           new ModifyUniverseConfig(
-              client, taskParams().getUniverseUUID(), taskParams().blacklistNodes);
+              client,
+              taskParams().getUniverseUUID(),
+              taskParams().blacklistNodes,
+              taskParams().targetClusterStates);
       modifyConfig.doCall();
       if (shouldIncrementVersion(taskParams().getUniverseUUID())) universe.incrementVersion();
     } catch (Exception e) {
@@ -90,13 +94,19 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
 
   // TODO: in future, AbstractModifyMasterClusterConfig.run() should have retries.
   public static class ModifyUniverseConfig extends AbstractModifyMasterClusterConfig {
-    UUID universeUUID;
-    Set<String> blacklistNodes;
+    final UUID universeUUID;
+    final Set<String> blacklistNodes;
+    final List<Cluster> targetClusterStates;
 
-    public ModifyUniverseConfig(YBClient client, UUID universeUUID, Set<String> blacklistNodes) {
+    public ModifyUniverseConfig(
+        YBClient client,
+        UUID universeUUID,
+        Set<String> blacklistNodes,
+        List<Cluster> targetClusterStates) {
       super(client);
       this.universeUUID = universeUUID;
       this.blacklistNodes = blacklistNodes;
+      this.targetClusterStates = targetClusterStates;
     }
 
     public void generatePlacementInfoPB(
@@ -151,6 +161,16 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
       }
     }
 
+    private Cluster getTargetClusterState(Cluster cluster) {
+      if (targetClusterStates != null) {
+        return targetClusterStates.stream()
+            .filter(c -> c.uuid.equals(cluster.uuid))
+            .findFirst()
+            .orElse(cluster);
+      }
+      return cluster;
+    }
+
     @Override
     public CatalogEntityInfo.SysClusterConfigEntryPB modifyConfig(
         CatalogEntityInfo.SysClusterConfigEntryPB config) {
@@ -166,14 +186,17 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
       CatalogEntityInfo.PlacementInfoPB.Builder placementInfoPB =
           replicationInfoPB.getLiveReplicasBuilder();
       // Create the placement info for the universe.
-      PlacementInfo placementInfo = universe.getUniverseDetails().getPrimaryCluster().placementInfo;
-      generatePlacementInfoPB(placementInfoPB, universe.getUniverseDetails().getPrimaryCluster());
+      Cluster primaryCluster =
+          getTargetClusterState(universe.getUniverseDetails().getPrimaryCluster());
+
+      PlacementInfo placementInfo = primaryCluster.placementInfo;
+      generatePlacementInfoPB(placementInfoPB, primaryCluster);
 
       List<Cluster> readOnlyClusters = universe.getUniverseDetails().getReadOnlyClusters();
       for (Cluster cluster : readOnlyClusters) {
         CatalogEntityInfo.PlacementInfoPB.Builder placementInfoReadPB =
             replicationInfoPB.addReadReplicasBuilder();
-        generatePlacementInfoPB(placementInfoReadPB, cluster);
+        generatePlacementInfoPB(placementInfoReadPB, getTargetClusterState(cluster));
       }
 
       addAffinitizedPlacements(replicationInfoPB, placementInfo);
@@ -185,6 +208,10 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
             configBuilder.getServerBlacklistBuilder();
         for (String nodeName : blacklistNodes) {
           NodeDetails node = universe.getNode(nodeName);
+          if (node == null) {
+            log.info("Skipping non existing hosts");
+            continue;
+          }
           if (node.cloudInfo.private_ip != null) {
             blacklistBuilder.addHosts(
                 ProtobufHelper.hostAndPortToPB(

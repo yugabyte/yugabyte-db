@@ -18,6 +18,8 @@ import com.yugabyte.yw.commissioner.tasks.UpdateLoadBalancerConfig;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.operator.annotations.BlockOperatorResource;
+import com.yugabyte.yw.common.operator.annotations.OperatorResourceTypes;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.handlers.UniverseActionsHandler;
@@ -32,6 +34,7 @@ import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
@@ -57,15 +60,17 @@ public class UniverseActionsController extends AuthenticatedController {
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
 
   @ApiOperation(
-      value = "Configure alerts for a universe",
+      value = "Available since YBA version 2.2.0.0. Configure alerts for a universe",
       nickname = "configureUniverseAlerts",
       response = YBPSuccess.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.2.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result configureAlerts(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
@@ -80,7 +85,11 @@ public class UniverseActionsController extends AuthenticatedController {
     return empty();
   }
 
-  @ApiOperation(value = "Pause a universe", nickname = "pauseUniverse", response = YBPTask.class)
+  @ApiOperation(
+      value = "Available since YBA version 2.6.0.0. Pause a universe",
+      nickname = "pauseUniverse",
+      response = YBPTask.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.6.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -89,6 +98,7 @@ public class UniverseActionsController extends AuthenticatedController {
                 action = Action.PAUSE_RESUME),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result pause(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
@@ -122,9 +132,10 @@ public class UniverseActionsController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Resume a paused universe",
+      value = "Available since YBA version 2.6.0.0. Resume a paused universe",
       nickname = "resumeUniverse",
       response = YBPTask.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.6.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -133,6 +144,7 @@ public class UniverseActionsController extends AuthenticatedController {
                 action = Action.PAUSE_RESUME),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result resume(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
@@ -156,15 +168,17 @@ public class UniverseActionsController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Set a universe's key",
+      value = "Available since YBA version 2.2.0.0. Set a universe's key",
       nickname = "setUniverseKey",
       response = UniverseResp.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.2.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result setUniverseKey(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
@@ -190,15 +204,17 @@ public class UniverseActionsController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Update load balancer config",
+      value = "WARNING: This is a preview API that could change. Update load balancer config",
       nickname = "updateLoadBalancerConfig",
       response = UpdateLoadBalancerConfig.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result updateLoadBalancerConfig(
       UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -229,16 +245,18 @@ public class UniverseActionsController extends AuthenticatedController {
    * @return Result
    */
   @ApiOperation(
-      value = "Set a universe's backup flag",
+      value = "Available since YBA version 2.2.0.0. Set a universe's backup flag",
       nickname = "setUniverseBackupFlag",
       tags = {"Universe management", "Backups"},
       response = YBPSuccess.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.2.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result setBackupFlag(
       UUID customerUUID, UUID universeUUID, Boolean markActive, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -260,15 +278,17 @@ public class UniverseActionsController extends AuthenticatedController {
    * @return Result
    */
   @ApiOperation(
-      value = "Flag a universe as Helm 3-compatible",
+      value = "Deprecated since YBA version 2.20.0.0. Flag a universe as Helm 3-compatible",
       nickname = "setUniverseHelm3Compatible",
       response = YBPSuccess.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result setHelm3Compatible(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
@@ -289,9 +309,10 @@ public class UniverseActionsController extends AuthenticatedController {
    *     failure
    */
   @ApiOperation(
-      value = "Reset universe version",
+      value = "YbaApi Internal. Reset universe version",
       nickname = "resetUniverseVersion",
       response = YBPSuccess.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.6.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
@@ -322,6 +343,7 @@ public class UniverseActionsController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result unlockUniverse(UUID customerUUID, UUID universeUUID, Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);

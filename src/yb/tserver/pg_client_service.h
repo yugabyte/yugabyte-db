@@ -24,6 +24,8 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/server/server_base_options.h"
+
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/pg_client.service.h"
 #include "yb/tserver/xcluster_context.h"
@@ -36,46 +38,59 @@ namespace tserver {
 
 class PgMutationCounter;
 
+// Forwards call to corresponding PgClientSession sync method (see PG_CLIENT_SESSION_METHODS).
 #define YB_PG_CLIENT_METHODS \
     (AlterDatabase) \
     (AlterTable) \
     (BackfillIndex) \
+    (CancelTransaction) \
+    (CheckIfPitrActive) \
     (CreateDatabase) \
+    (CreateReplicationSlot) \
     (CreateSequencesDataTable) \
     (CreateTable) \
     (CreateTablegroup) \
     (DeleteDBSequences) \
     (DeleteSequenceTuple) \
     (DropDatabase) \
+    (DropReplicationSlot) \
     (DropTable) \
     (DropTablegroup) \
+    (FetchData) \
     (FetchSequenceTuple) \
     (FinishTransaction) \
+    (GetActiveTransactionList) \
     (GetCatalogMasterVersion) \
     (GetDatabaseInfo) \
     (GetIndexBackfillProgress) \
     (GetLockStatus) \
+    (GetReplicationSlotStatus) \
     (GetTableDiskSize) \
     (GetTablePartitionList) \
+    (GetTserverCatalogVersionInfo) \
     (Heartbeat) \
     (InsertSequenceTuple) \
     (IsInitDbDone) \
     (IsObjectPartOfXRepl) \
     (ListLiveTabletServers) \
+    (ListReplicationSlots) \
     (OpenTable) \
     (ReadSequenceTuple) \
     (ReserveOids) \
+    (GetNewObjectId) \
     (RollbackToSubTransaction) \
     (SetActiveSubTransaction) \
     (TabletServerCount) \
     (TruncateTable) \
     (UpdateSequenceTuple) \
     (ValidatePlacement) \
-    (CheckIfPitrActive) \
-    (GetTserverCatalogVersionInfo) \
     (WaitForBackendsCatalogVersion) \
-    (CancelTransaction) \
-    (GetActiveTransactionList) \
+    /**/
+
+// Forwards call to corresponding PgClientSession async method (see
+// PG_CLIENT_SESSION_ASYNC_METHODS).
+#define YB_PG_CLIENT_ASYNC_METHODS \
+    (GetTableKeyRanges) \
     /**/
 
 class PgClientServiceImpl : public PgClientServiceIf {
@@ -87,7 +102,9 @@ class PgClientServiceImpl : public PgClientServiceIf {
       TransactionPoolProvider transaction_pool_provider,
       const std::shared_ptr<MemTracker>& parent_mem_tracker,
       const scoped_refptr<MetricEntity>& entity,
-      rpc::Scheduler* scheduler,
+      rpc::Messenger* messenger,
+      const std::string& permanent_uuid,
+      const server::ServerBaseOptions* tablet_server_opts,
       const std::optional<XClusterContext>& xcluster_context = std::nullopt,
       PgMutationCounter* pg_node_level_mutation_counter = nullptr);
 
@@ -107,6 +124,7 @@ class PgClientServiceImpl : public PgClientServiceIf {
       rpc::RpcContext context) override;
 
   BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DECLARE, ~, YB_PG_CLIENT_METHODS);
+  BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DECLARE, ~, YB_PG_CLIENT_ASYNC_METHODS);
 
  private:
   class Impl;

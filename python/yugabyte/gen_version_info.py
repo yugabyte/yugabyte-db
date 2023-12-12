@@ -55,6 +55,7 @@ sys.path.append(os.path.dirname(os.path.dirname(__file__)))
 
 
 from yugabyte.common_util import get_yb_src_root_from_build_root  # noqa
+from yugabyte import git_util  # noqa
 
 
 def is_git_repo_clean(git_repo_dir: str) -> bool:
@@ -74,7 +75,7 @@ def get_git_sha1(git_repo_dir: str) -> Optional[str]:
             'cd {} && git rev-parse HEAD'.format(shlex.quote(git_repo_dir)), shell=True
         ).decode('utf-8').strip()
 
-        if re.match(r'^[0-9a-f]{40}$', sha1):
+        if git_util.SHA1_RE.match(sha1):
             return sha1
         logging.warning("Invalid git SHA1 in directory '%s': %s", git_repo_dir, sha1)
         return None
@@ -123,7 +124,7 @@ def main() -> int:
                         id_output)
                     raise
 
-    git_repo_dir = get_yb_src_root_from_build_root(os.getcwd(), must_succeed=False, verbose=True)
+    git_repo_dir = get_yb_src_root_from_build_root(os.getcwd(), must_succeed=False)
     if git_repo_dir:
         clean_repo = is_git_repo_clean(git_repo_dir)
     else:

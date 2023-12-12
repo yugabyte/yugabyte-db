@@ -3,7 +3,6 @@ title: Configure on-premises
 headerTitle: Overview
 linkTitle: Overview
 description: Configuring YugabyteDB Anywhere on-premises
-image: /images/section_icons/deploy/enterprise.png
 headcontent: Configuring YugabyteDB Anywhere on-premises
 menu:
   v2.14_yugabyte-platform:

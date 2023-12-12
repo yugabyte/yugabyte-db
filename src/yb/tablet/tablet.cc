@@ -122,6 +122,7 @@
 #include "yb/util/trace.h"
 #include "yb/util/yb_pg_errcodes.h"
 
+#include "yb/yql/pggate/util/pg_doc_data.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 
 DEFINE_UNKNOWN_bool(tablet_do_dup_key_checks, true,
@@ -190,7 +191,7 @@ TAG_FLAG(disable_alter_vs_write_mutual_exclusion, advanced);
 DEFINE_RUNTIME_bool(dump_metrics_to_trace, false,
     "Whether to dump changed metrics in tracing.");
 
-DEFINE_RUNTIME_bool(ysql_analyze_dump_metrics, false,
+DEFINE_RUNTIME_bool(ysql_analyze_dump_metrics, true,
     "Whether to return changed metrics for YSQL queries in RPC response.");
 
 DEFINE_UNKNOWN_bool(cleanup_intents_sst_files, true,
@@ -277,6 +278,7 @@ DEFINE_test_flag(bool, disable_adding_last_compaction_to_tablet_metadata, false,
 
 DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_bool(consistent_restore);
+DECLARE_int64(db_block_size_bytes);
 DECLARE_int32(rocksdb_level0_slowdown_writes_trigger);
 DECLARE_int32(rocksdb_level0_stop_writes_trigger);
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
@@ -449,7 +451,44 @@ class Tablet::RegularRocksDbListener : public rocksdb::EventListener {
       FillMinSchemaVersion(tablet_.regular_db_.get(), &table_id_to_min_schema_version);
       FillMinSchemaVersion(tablet_.intents_db_.get(), &table_id_to_min_schema_version);
     }
+
+    FillMinXClusterSchemaVersion(&table_id_to_min_schema_version);
     ERROR_NOT_OK(tablet_.metadata()->OldSchemaGC(table_id_to_min_schema_version), log_prefix_);
+  }
+
+  // Checks XCluster config to determine the min schema version at which to expect rows.
+  void FillMinXClusterSchemaVersion(MinSchemaVersionMap* table_id_to_min_schema_version) {
+    if (nullptr == tablet_.get_min_xcluster_schema_version_) {
+      return;
+    }
+
+    auto& min_schema_versions = *table_id_to_min_schema_version;
+    auto primary_table_id = tablet_.metadata()->table_id();
+    if(!tablet_.metadata()->colocated()) {
+      auto schema_version = tablet_.get_min_xcluster_schema_version_(primary_table_id,
+          kColocationIdNotSet);
+      VLOG_WITH_FUNC(4) <<
+          Format("MinNonXClusterSchemaVersion, MinXClusterSchemaVersion for $0:$1,$2",
+              primary_table_id, min_schema_versions[Uuid::Nil()], schema_version);
+      if (schema_version < min_schema_versions[Uuid::Nil()]) {
+        min_schema_versions[Uuid::Nil()] = schema_version;
+      }
+      return;
+    }
+
+    auto colocated_tables = tablet_.metadata()->GetAllColocatedTablesWithColocationId();
+    for(auto& [table_id, schema_version] : min_schema_versions) {
+      ColocationId colocation_id = colocated_tables[table_id.ToHexString()];
+      auto xcluster_min_schema_version = tablet_.get_min_xcluster_schema_version_(primary_table_id,
+          colocation_id);
+      VLOG_WITH_FUNC(4) <<
+          Format("MinNonXClusterSchemaVersion, MinXClusterSchemaVersion for $0,$1:$2,$3",
+              primary_table_id, colocation_id, min_schema_versions[table_id],
+              xcluster_min_schema_version);
+      if (xcluster_min_schema_version < min_schema_versions[table_id]) {
+        min_schema_versions[table_id] = xcluster_min_schema_version;
+      }
+    }
   }
 
   void FillMinSchemaVersion(rocksdb::DB* db, MinSchemaVersionMap* table_id_to_min_schema_version) {
@@ -507,7 +546,8 @@ Tablet::Tablet(const TabletInitData& data)
           clock_, data.allowed_history_cutoff_provider, metadata_.get())),
       full_compaction_pool_(data.full_compaction_pool),
       admin_triggered_compaction_pool_(data.admin_triggered_compaction_pool),
-      ts_post_split_compaction_added_(std::move(data.post_split_compaction_added)) {
+      ts_post_split_compaction_added_(std::move(data.post_split_compaction_added)),
+      get_min_xcluster_schema_version_(std::move(data.get_min_xcluster_schema_version)) {
   CHECK(schema()->has_column_ids());
   LOG_WITH_PREFIX(INFO) << "Schema version for " << metadata_->table_name() << " is "
                         << metadata_->schema_version();
@@ -1631,11 +1671,7 @@ Status Tablet::HandlePgsqlReadRequest(
   TabletMetrics* metrics = metrics_.get();
 
   if (GetAtomicFlag(&FLAGS_batch_tablet_metrics_update)) {
-    scoped_docdb_statistics.SetHistogramContext(regulardb_statistics_, intentsdb_statistics_);
     statistics = &scoped_docdb_statistics;
-
-    scoped_tablet_metrics.Prepare();
-    scoped_tablet_metrics.SetHistogramContext(metrics);
     metrics = &scoped_tablet_metrics;
   }
 
@@ -1648,8 +1684,10 @@ Status Tablet::HandlePgsqlReadRequest(
     if (GetAtomicFlag(&FLAGS_dump_metrics_to_trace)) {
       TraceScopedMetrics();
     }
-    if (GetAtomicFlag(&FLAGS_ysql_analyze_dump_metrics)) {
-      scoped_docdb_statistics.CopyToPgsqlResponse(&result->response);
+    auto metrics_capture = pgsql_read_request.metrics_capture();
+    if (GetAtomicFlag(&FLAGS_ysql_analyze_dump_metrics) &&
+        metrics_capture == PgsqlMetricsCaptureType::PGSQL_METRICS_CAPTURE_ALL) {
+      statistics->CopyToPgsqlResponse(&result->response);
       scoped_tablet_metrics.CopyToPgsqlResponse(&result->response);
     }
     scoped_tablet_metrics.MergeAndClear(metrics_.get());
@@ -1676,16 +1714,21 @@ Status Tablet::DoHandlePgsqlReadRequest(
 
   const shared_ptr<tablet::TableInfo> table_info =
       VERIFY_RESULT(metadata_->GetTableInfo(pgsql_read_request.table_id()));
-  Result<TransactionOperationContext> txn_op_ctx =
-      CreateTransactionOperationContext(
-          transaction_metadata,
-          table_info->schema().table_properties().is_ysql_catalog_table(),
-          &subtransaction_metadata);
 
-  RETURN_NOT_OK(txn_op_ctx);
-  auto status = ProcessPgsqlReadRequest(
-      read_operation_data, is_explicit_request_read_time, pgsql_read_request, table_info,
-      *txn_op_ctx, storage, statistics, *scoped_read_operation, result);
+  Status status;
+  if (pgsql_read_request.has_get_tablet_key_ranges_request()) {
+    status = ProcessPgsqlGetTableKeyRangesRequest(pgsql_read_request, result);
+  } else {
+    Result<TransactionOperationContext> txn_op_ctx =
+        CreateTransactionOperationContext(
+            transaction_metadata,
+            table_info->schema().table_properties().is_ysql_catalog_table(),
+            &subtransaction_metadata);
+    RETURN_NOT_OK(txn_op_ctx);
+    status = ProcessPgsqlReadRequest(
+        read_operation_data, is_explicit_request_read_time, pgsql_read_request, table_info,
+        *txn_op_ctx, storage, statistics, *scoped_read_operation, result);
+  }
 
   // Assert the table is a Postgres table.
   DCHECK_EQ(table_info->table_type, TableType::PGSQL_TABLE_TYPE);
@@ -2058,6 +2101,40 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIt
   return std::move(iter);
 }
 
+// This is called From ChangeMetadaOperation::Apply during the
+// creation of the stream and also possibly during Tablet Bootstrap.
+//
+// One thing to note here is that the retention barrier on the consensus layer
+// is not set in both these situations. This is no different from the
+// current behaviour during Tablet Bootstrap. This is alright since
+// that is only for the Log Cache's eviction policy. The Cache will reload
+// from the Log segments if there is a cache miss.
+//
+// Here, a stream is setting its initial retention barrier on the tablet.
+// It will be conservative. That is, it will reset the barrier only if
+// the current barrier is ahead of its requirement. If there is already
+// another slower consumer with a stricter barrier requirement, that
+// will be left alone and the barrier will not be reset.
+Status Tablet::SetAllInitialCDCSDKRetentionBarriers(
+  OpId cdc_sdk_op_id, MonoDelta cdc_sdk_op_id_expiration, HybridTime cdc_sdk_history_cutoff,
+  bool require_history_cutoff) {
+
+  // WAL, History, Intents Retention
+  if (VERIFY_RESULT(metadata_->SetAllInitialCDCSDKRetentionBarriers(cdc_sdk_op_id,
+                                                                    cdc_sdk_history_cutoff,
+                                                                    require_history_cutoff))) {
+    // Intents Retention setting on txn_participant
+    // 1. cdc_sdk_op_id - opid beyond which GC will not happen
+    // 2. cdc_sdk_op_id_expiration - time limit upto which intents barrier setting holds
+    auto txn_participant = transaction_participant();
+    if (txn_participant) {
+      txn_participant->SetIntentRetainOpIdAndTime(cdc_sdk_op_id, cdc_sdk_op_id_expiration);
+    }
+  }
+
+  return Status::OK();
+}
+
 Status Tablet::CreatePreparedChangeMetadata(
     ChangeMetadataOperation *operation, const Schema* schema, IsLeaderSide is_leader_side) {
   if (schema) {
@@ -2130,16 +2207,12 @@ Status Tablet::RemoveTable(const std::string& table_id, const OpId& op_id) {
 }
 
 Status Tablet::MarkBackfillDone(const OpId& op_id, const TableId& table_id) {
-  auto table_info = table_id.empty() ?
-    metadata_->primary_table_info() : VERIFY_RESULT(metadata_->GetTableInfo(table_id));
-  LOG_WITH_PREFIX(INFO) << "Setting backfill as done. Current schema  "
-                        << table_info->schema().ToString();
-  const vector<DeletedColumn> empty_deleted_cols;
-  Schema new_schema = table_info->schema();
-  new_schema.SetRetainDeleteMarkers(false);
-  metadata_->SetSchema(
-      new_schema, *table_info->index_map, empty_deleted_cols, table_info->schema_version,
-      op_id, table_id);
+  LOG_WITH_PREFIX(INFO) << "Setting backfill as done";
+  auto status = metadata_->OnBackfillDone(op_id, table_id);
+  if (!status.ok()) {
+    LOG_WITH_PREFIX(WARNING) << "Triggering backfill done failed: " << status;
+    return status;
+  }
   return metadata_->Flush();
 }
 
@@ -2308,7 +2381,7 @@ Result<PgsqlBackfillSpecPB> QueryPostgresToDoBackfill(
   auto& res = result.get();
   CHECK_EQ(PQntuples(res.get()), 1);
   CHECK_EQ(PQnfields(res.get()), 1);
-  const auto returned_spec = CHECK_RESULT(pgwrapper::GetString(res.get(), 0, 0));
+  const auto returned_spec = CHECK_RESULT(pgwrapper::GetValue<std::string>(res.get(), 0, 0));
   VLOG(3) << "Got back " << returned_spec << " of length " << returned_spec.length();
 
   PgsqlBackfillSpecPB spec;
@@ -4271,7 +4344,7 @@ HybridTime Tablet::DeleteMarkerRetentionTime(const std::vector<rocksdb::FileMeta
   return result;
 }
 
-Status Tablet::ApplyAutoFlagsConfig(const AutoFlagsConfigPB& config) {
+Status Tablet::ProcessAutoFlagsConfigOperation(const AutoFlagsConfigPB& config) {
   if (!is_sys_catalog()) {
     LOG_WITH_PREFIX_AND_FUNC(DFATAL) << "AutoFlags config change ignored on non-sys_catalog tablet";
     return Status::OK();
@@ -4282,7 +4355,7 @@ Status Tablet::ApplyAutoFlagsConfig(const AutoFlagsConfigPB& config) {
     return STATUS(InternalError, "AutoFlags manager not found");
   }
 
-  return auto_flags_manager_->LoadFromConfig(config, ApplyNonRuntimeAutoFlags::kFalse);
+  return auto_flags_manager_->ProcessAutoFlagsConfigOperation(config);
 }
 
 Status PopulateLockInfoFromIntent(
@@ -4416,8 +4489,259 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
   return Status::OK();
 }
 
+Status Tablet::ProcessPgsqlGetTableKeyRangesRequest(
+      const PgsqlReadRequestPB& req, PgsqlReadRequestResult* result) const {
+  const auto& get_key_ranges_req = req.get_tablet_key_ranges_request();
+  result->num_rows_read = 0;
+  const auto status = GetTabletKeyRanges(
+      get_key_ranges_req.lower_bound_key(), get_key_ranges_req.upper_bound_key(), req.limit(),
+      get_key_ranges_req.range_size_bytes(), IsForward(get_key_ranges_req.is_forward()),
+      get_key_ranges_req.max_key_length(), [result](Slice key) {
+        pggate::WriteBinaryColumn(key, result->rows_data);
+        ++result->num_rows_read;
+      }, req.table_id());
+  if (!status.ok()) {
+    result->response.set_status(PgsqlResponsePB::PGSQL_STATUS_RUNTIME_ERROR);
+    StatusToPB(status, result->response.add_error_status());
+    return Status::OK();
+  }
+  RETURN_NOT_OK(CreatePagingStateForRead(req, result->num_rows_read, &result->response));
+  result->response.set_status(PgsqlResponsePB::PGSQL_STATUS_OK);
+  return Status::OK();
+}
+
 Result<TableInfoPtr> Tablet::GetTableInfo(ColocationId colocation_id) const {
   return metadata_->GetTableInfo(colocation_id);
+}
+
+namespace {
+
+// Skips `num_keys_to_skip` keys using `skip_key_func` until `is_reached_end_key_func` return true.
+// Stops at first key that satisfies `is_reached_end_key_func`.
+// Can skip more keys if `has_key_changed_func` returns false.
+template<typename IsReachedEndKeyFunc, typename SkipKeyFunc, typename HasKeyChangedFunc>
+bool SkipKeys(
+    const size_t num_keys_to_skip, IsReachedEndKeyFunc is_reached_end_key_func,
+    SkipKeyFunc skip_key_func, HasKeyChangedFunc has_key_changed_func) {
+  bool reached_end_key = is_reached_end_key_func();
+  for (size_t i = 0; i < num_keys_to_skip && !reached_end_key; ++i) {
+    skip_key_func();
+    reached_end_key = is_reached_end_key_func();
+  }
+  while (!has_key_changed_func() && !reached_end_key) {
+    skip_key_func();
+    reached_end_key = is_reached_end_key_func();
+  }
+  return reached_end_key;
+}
+
+std::string IncrementedCopy(Slice key) {
+  std::string key_str = key.ToBuffer();
+  key = Slice(key_str);
+  uint8_t* p = key.mutable_data() + key.size() - 1;
+  while (p >= key.data()) {
+    if (++(*p) != 0) {
+      // No overflow - return.
+      return key_str;
+    }
+    --p;
+    // Overflow - try to increment previous byte.
+  }
+  // The whole key was 0xFF..FF, return max possible key (empty key).
+  return "";
+}
+
+} // namespace
+
+Status Tablet::GetTabletKeyRanges(
+    const Slice lower_bound_key, const Slice upper_bound_key, const uint64_t max_num_ranges,
+    const uint64_t range_size_bytes, const IsForward is_forward, const uint32_t max_key_length,
+    WriteBuffer* keys_buffer, const TableId& colocated_table_id) const {
+  if (table_type_ != PGSQL_TABLE_TYPE) {
+    return STATUS_FORMAT(
+        NotSupported, "GetTabletKeyRanges is only supported for YSQL, tablet_id: ", tablet_id());
+  }
+  return GetTabletKeyRanges(
+      lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes, is_forward,
+      max_key_length,
+      [&keys_buffer](Slice key) {
+        pggate::WriteBinaryColumn(key, keys_buffer);
+      }, colocated_table_id);
+}
+
+Status Tablet::GetTabletKeyRanges(
+    Slice lower_bound_key, Slice upper_bound_key, uint64_t max_num_ranges,
+    const uint64_t range_size_bytes, const IsForward is_forward, uint32_t max_key_length,
+    std::function<void(Slice key)> callback, const TableId& colocated_table_id) const {
+  VLOG_WITH_FUNC(2) << "lower_bound_key: " << lower_bound_key.ToDebugHexString()
+                    << " upper_bound_key: " << upper_bound_key.ToDebugHexString()
+                    << " max_num_ranges: " << max_num_ranges
+                    << " range_size_bytes: " << range_size_bytes
+                    << " max_key_length: " << max_key_length;
+  if (max_num_ranges == 0) {
+    max_num_ranges = std::numeric_limits<decltype(max_num_ranges)>::max();
+  }
+  if (max_key_length == 0) {
+    max_key_length = std::numeric_limits<decltype(max_key_length)>::max();
+  }
+
+  auto pending_op = CreateScopedRWOperationNotBlockingRocksDbShutdownStart();
+  RETURN_NOT_OK(pending_op);
+
+  const auto num_blocks_to_skip = std::max<size_t>(range_size_bytes / FLAGS_db_block_size_bytes, 1);
+
+  rocksdb::ReadOptions read_options;
+  // An index block contains one entry per data block, where the key is a string >= last key in that
+  // data block and < the first key in the successive data block. The value is the BlockHandle
+  // (file offset and length) for the data block.
+  // So, we need to skip last key in each SST index because there are no data keys after the last
+  // index key.
+  auto index_iter = regular_db_->NewIndexIterator(read_options, rocksdb::SkipLastEntry::kTrue);
+
+  // TODO(get_table_key_ranges): consider reusing index_iter and BlockHandle to avoid double SST
+  // index seek.
+  auto data_iter = std::unique_ptr<rocksdb::Iterator>(regular_db_->NewIterator(read_options));
+
+  std::string encoded_partition_key_start;
+  std::string encoded_partition_key_end;
+  Slice partition_lower_bound_key;
+  Slice partition_upper_bound_key;
+
+  const bool is_colocated = metadata()->colocated();
+  if (is_colocated) {
+    const auto table_info = VERIFY_RESULT(metadata_->GetTableInfo(colocated_table_id));
+    const auto table_key_prefix = table_info->doc_read_context->table_key_prefix();
+    partition_lower_bound_key = table_key_prefix;
+    encoded_partition_key_end = IncrementedCopy(table_key_prefix);
+    partition_upper_bound_key = encoded_partition_key_end;
+  } else if (key_bounds_.IsInitialized()) {
+    partition_lower_bound_key = key_bounds_.lower;
+    partition_upper_bound_key = key_bounds_.upper;
+  } else {
+    const auto& partition_schema = metadata_->partition_schema();
+    const auto& partition = metadata_->partition();
+    encoded_partition_key_start =
+        VERIFY_RESULT(partition_schema->GetEncodedPartitionKey(partition->partition_key_start()));
+    encoded_partition_key_end =
+        VERIFY_RESULT(partition_schema->GetEncodedPartitionKey(partition->partition_key_end()));
+    partition_lower_bound_key = encoded_partition_key_start;
+    partition_upper_bound_key = encoded_partition_key_end;
+  }
+  // Whether it make sense to continue fetching ranges for the caller if we reach end of
+  // tablet(table) or upper/lower bound.
+  bool use_empty_as_end_key;
+
+  if (partition_lower_bound_key > lower_bound_key) {
+    lower_bound_key = partition_lower_bound_key;
+  }
+  if (partition_upper_bound_key.empty() ||
+      (!upper_bound_key.empty() && partition_upper_bound_key >= upper_bound_key)) {
+    // Reaching partition upper bound means we can't have more keys in next tablet.
+    use_empty_as_end_key = true;
+  } else {
+    // Partition upper bound is less than upper_bound_key, we can have more keys in the next
+    // tablet (unless colocated).
+    use_empty_as_end_key = is_colocated;
+    upper_bound_key = partition_upper_bound_key;
+  }
+
+  return is_forward ? GetTabletKeyRangesForward(
+                          index_iter.get(), data_iter.get(), lower_bound_key, upper_bound_key,
+                          max_num_ranges, num_blocks_to_skip, max_key_length, std::move(callback),
+                          use_empty_as_end_key)
+                    : GetTabletKeyRangesBackward(
+                          index_iter.get(), lower_bound_key, upper_bound_key, max_num_ranges,
+                          num_blocks_to_skip, max_key_length, std::move(callback));
+}
+
+Status Tablet::GetTabletKeyRangesForward(
+    rocksdb::Iterator* index_iter, rocksdb::Iterator* data_iter, Slice lower_bound_key,
+    Slice upper_bound_key, const uint64_t max_num_ranges, const uint64_t num_blocks_to_skip,
+    const uint32_t max_key_length, std::function<void(Slice key)> callback,
+    const bool use_empty_as_end_key) const {
+  // TODO(get_table_key_ranges): As of 2023-09 we get full encoded doc keys and skip keys longer
+  // than max_key_length. Consider reworking that to allow using key prefixes as lower/upper bound
+  // for scan, currently it is not accepted by QLRocksDBStorage::GetIterator.
+
+  if (lower_bound_key.empty()) {
+    index_iter->SeekToFirst();
+  } else {
+    index_iter->Seek(lower_bound_key);
+  }
+
+  // First index key is the last key in first data block, so we treat it as we've already
+  // skipped one data block.
+  bool treat_block_as_skipped = index_iter->Valid() && index_iter->key() != lower_bound_key;
+
+  std::string last_key = lower_bound_key.ToBuffer();
+
+  uint64_t num_keys = 1;
+
+  auto has_iter_key_changed_func = [&index_iter, &last_key]() {
+    if (!index_iter->Valid()) {
+      return true;
+    }
+    return index_iter->key() > last_key;
+  };
+
+  while (num_keys <= max_num_ranges) {
+    const auto reached_end_key = SkipKeys(
+        num_blocks_to_skip - treat_block_as_skipped,
+        [&index_iter, upper_bound_key]() {
+          return !index_iter->Valid() ||
+                 (!upper_bound_key.empty() && index_iter->key().GreaterOrEqual(upper_bound_key));
+        },
+        [&index_iter]() { index_iter->Next(); },
+        has_iter_key_changed_func);
+    treat_block_as_skipped = false;
+
+    if (reached_end_key) {
+      if (use_empty_as_end_key) {
+        callback("");
+      } else {
+        callback(upper_bound_key);
+      }
+      break;
+    }
+
+    auto data_entry = data_iter->Seek(index_iter->key());
+    RSTATUS_DCHECK(
+        data_entry.Valid(), InternalError,
+        Format(
+            "Invalid data iterator after seeking to key from SST index: $0",
+            index_iter->key().ToDebugHexString()));
+
+    for (; data_entry.Valid(); data_entry = data_iter->Next()) {
+      // Use encoded doc key to avoid breaking data related to the same row into halves.
+      const auto doc_key_size_result =
+          dockv::DocKey::EncodedSize(data_entry.key, dockv::DocKeyPart::kWholeDocKey);
+
+      if (!doc_key_size_result.ok()) {
+        YB_LOG_EVERY_N_SECS(WARNING, 60)
+            << "Failed to get encoded size of key: " << data_entry.key.ToDebugHexString() << "."
+            << doc_key_size_result.status();
+        continue;
+      }
+      if (doc_key_size_result.get() > max_key_length) {
+        // Skip keys longer than max_key_length.
+        continue;
+      }
+      const auto key = data_entry.key.Prefix(doc_key_size_result.get());
+      callback(key);
+      last_key = key.ToBuffer();
+      ++num_keys;
+      break;
+    }
+  }
+
+  return Status::OK();
+}
+
+Status Tablet::GetTabletKeyRangesBackward(
+    rocksdb::Iterator* index_iter, Slice lower_bound_key, Slice upper_bound_key,
+    const uint64_t max_num_ranges, const uint64_t num_blocks_to_skip, const uint32_t max_key_length,
+    std::function<void(Slice key)> callback) const {
+  return STATUS(NotSupported, "Tablet::GetTabletKeyRanges in backward order is not yet supported");
 }
 
 // ------------------------------------------------------------------------------------------------

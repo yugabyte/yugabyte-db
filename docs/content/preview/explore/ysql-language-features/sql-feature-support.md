@@ -3,7 +3,6 @@ title: SQL feature support
 linkTitle: SQL feature support
 description: Summary of YugabyteDB's conformance to the SQL standard
 headcontent: YugabyteDB supports most standard SQL features.
-image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
     identifier: explore-ysql-language-feature-support
@@ -86,7 +85,7 @@ This page highlights the important differences in feature support between YSQL a
 | {{<icon/yes>}} | GIN indexes          | [GIN indexes](../../indexes-constraints/gin/)                          |
 | {{<icon/yes>}} | Partial indexes      | [Partial indexes](../../indexes-constraints/partial-index-ysql/)       |
 | {{<icon/yes>}} | Expression indexes   | [Expression indexes](../../indexes-constraints/expression-index-ysql/) |
-| {{<icon/yes>}} | Multi-column indexes |                                                                        |
+| {{<icon/yes>}} | Multi-column indexes | [Multi-column indexes](../../indexes-constraints/secondary-indexes-ysql/#multi-column-index) |
 | {{<icon/yes>}} | Covering indexes     | [Covering indexes](../../indexes-constraints/covering-index-ysql/)     |
 | {{<icon/no>}}  | GiST indexes         |                                                                        |
 | {{<icon/no>}}  | BRIN indexes         |                                                                        |

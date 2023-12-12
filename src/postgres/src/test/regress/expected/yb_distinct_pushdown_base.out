@@ -167,13 +167,12 @@ DROP TABLE vectors;
 -- Test distinct index scans in scenarios where user provides explicit ordering.
 -- Start off easy with forward and backward scans.
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t ORDER BY r1;
-                                QUERY PLAN
----------------------------------------------------------------------------
- Result (actual rows=2 loops=1)
-   ->  Unique (actual rows=2 loops=1)
-         ->  Distinct Index Scan using t_pkey on t (actual rows=3 loops=1)
-               Distinct Prefix: 1
-(4 rows)
+                             QUERY PLAN
+---------------------------------------------------------------------
+ Unique (actual rows=2 loops=1)
+   ->  Distinct Index Scan using t_pkey on t (actual rows=3 loops=1)
+         Distinct Prefix: 1
+(3 rows)
 
 SELECT DISTINCT r1 FROM t ORDER BY r1;
  r1
@@ -183,13 +182,12 @@ SELECT DISTINCT r1 FROM t ORDER BY r1;
 (2 rows)
 
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1 FROM t ORDER BY r1 DESC;
-                                     QUERY PLAN
-------------------------------------------------------------------------------------
- Result (actual rows=2 loops=1)
-   ->  Unique (actual rows=2 loops=1)
-         ->  Distinct Index Scan Backward using t_pkey on t (actual rows=3 loops=1)
-               Distinct Prefix: 1
-(4 rows)
+                                  QUERY PLAN
+------------------------------------------------------------------------------
+ Unique (actual rows=2 loops=1)
+   ->  Distinct Index Scan Backward using t_pkey on t (actual rows=3 loops=1)
+         Distinct Prefix: 1
+(3 rows)
 
 SELECT DISTINCT r1 FROM t ORDER BY r1 DESC;
  r1
@@ -200,13 +198,12 @@ SELECT DISTINCT r1 FROM t ORDER BY r1 DESC;
 
 -- Now, try a larger prefix.
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1, r2 FROM t ORDER BY r1, r2;
-                                QUERY PLAN
----------------------------------------------------------------------------
- Result (actual rows=6 loops=1)
-   ->  Unique (actual rows=6 loops=1)
-         ->  Distinct Index Scan using t_pkey on t (actual rows=7 loops=1)
-               Distinct Prefix: 2
-(4 rows)
+                             QUERY PLAN
+---------------------------------------------------------------------
+ Unique (actual rows=6 loops=1)
+   ->  Distinct Index Scan using t_pkey on t (actual rows=7 loops=1)
+         Distinct Prefix: 2
+(3 rows)
 
 SELECT DISTINCT r1, r2 FROM t ORDER BY r1, r2;
  r1 | r2
@@ -220,13 +217,12 @@ SELECT DISTINCT r1, r2 FROM t ORDER BY r1, r2;
 (6 rows)
 
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1, r2 FROM t ORDER BY r1 DESC, r2 DESC;
-                                     QUERY PLAN
-------------------------------------------------------------------------------------
- Result (actual rows=6 loops=1)
-   ->  Unique (actual rows=6 loops=1)
-         ->  Distinct Index Scan Backward using t_pkey on t (actual rows=7 loops=1)
-               Distinct Prefix: 2
-(4 rows)
+                                  QUERY PLAN
+------------------------------------------------------------------------------
+ Unique (actual rows=6 loops=1)
+   ->  Distinct Index Scan Backward using t_pkey on t (actual rows=7 loops=1)
+         Distinct Prefix: 2
+(3 rows)
 
 SELECT DISTINCT r1, r2 FROM t ORDER BY r1 DESC, r2 DESC;
  r1 | r2
@@ -289,13 +285,12 @@ SELECT DISTINCT r1, r2 FROM tm;
 
 -- This is a backwards scan because of how the keys are ordered in the primary index.
 EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT DISTINCT r1, r2 FROM tm ORDER BY r1, r2 DESC;
-                                      QUERY PLAN
---------------------------------------------------------------------------------------
- Result (actual rows=3 loops=1)
-   ->  Unique (actual rows=3 loops=1)
-         ->  Distinct Index Scan Backward using tm_pkey on tm (actual rows=3 loops=1)
-               Distinct Prefix: 2
-(4 rows)
+                                   QUERY PLAN
+--------------------------------------------------------------------------------
+ Unique (actual rows=3 loops=1)
+   ->  Distinct Index Scan Backward using tm_pkey on tm (actual rows=3 loops=1)
+         Distinct Prefix: 2
+(3 rows)
 
 SELECT DISTINCT r1, r2 FROM tm ORDER BY r1, r2 DESC;
  r1 | r2

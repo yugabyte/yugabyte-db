@@ -23,6 +23,8 @@ import {
 import {
   fetchRunTimeConfigs,
   fetchRunTimeConfigsResponse,
+  fetchProviderRunTimeConfigs,
+  fetchProviderRunTimeConfigsResponse,
   getAlerts,
   getAlertsSuccess,
   getAlertsFailure
@@ -94,6 +96,12 @@ const mapDispatchToProps = (dispatch) => {
     },
     showSoftwareUpgradesModal: () => {
       dispatch(openDialog('softwareUpgradesModal'));
+    },
+    showSoftwareUpgradesNewModal: () => {
+      dispatch(openDialog('softwareUpgradesNewModal'));
+    },
+    showRollbackModal: () => {
+      dispatch(openDialog('rollbackModal'));
     },
     showVMImageUpgradeModal: () => {
       dispatch(openDialog('vmImageUpgradeModal'));
@@ -167,7 +175,7 @@ const mapDispatchToProps = (dispatch) => {
         }
       });
     },
-    abortCurrentTask: (taskUUID) => {
+    abortTask: (taskUUID) => {
       return dispatch(abortTask(taskUUID)).then((response) => {
         return dispatch(abortTaskResponse(response.payload));
       });
@@ -181,6 +189,11 @@ const mapDispatchToProps = (dispatch) => {
     fetchRunTimeConfigs: (universeUUID) => {
       return dispatch(fetchRunTimeConfigs(universeUUID, true)).then((response) =>
         dispatch(fetchRunTimeConfigsResponse(response.payload))
+      );
+    },
+    fetchProviderRunTimeConfigs: (providerUUID) => {
+      return dispatch(fetchProviderRunTimeConfigs(providerUUID, true)).then((response) =>
+        dispatch(fetchProviderRunTimeConfigsResponse(response.payload))
       );
     }
   };
@@ -199,7 +212,7 @@ function mapStateToProps(state) {
         const currentVersion = primaryCluster?.userIntent?.ybSoftwareVersion ?? null;
         if (currentVersion) {
           const supportedSoftwareVersions =
-            state.universe.supportedReleases?.data?.sort(sortVersion) ?? [];
+            state.universe.supportedReleases?.data?.toSorted(sortVersion) ?? [];
           const matchIndex = supportedSoftwareVersions.findIndex(
             (version) => compareYBSoftwareVersions(currentVersion, version) >= 0
           );

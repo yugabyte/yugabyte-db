@@ -14,6 +14,7 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeActionType;
@@ -21,9 +22,13 @@ import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -36,14 +41,18 @@ import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
+import org.yb.client.ListLiveTabletServersResponse;
 import org.yb.client.ListMastersResponse;
 import org.yb.client.YBClient;
+import org.yb.util.TabletServerInfo;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
+
+  private YBClient mockClient;
 
   public void setUp(boolean withMaster, int numNodes, int replicationFactor, boolean multiZone) {
     super.setUp();
@@ -87,7 +96,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
 
-    YBClient mockClient = mock(YBClient.class);
+    mockClient = mock(YBClient.class);
     when(mockNodeManager.nodeCommand(any(), any()))
         .then(
             invocation -> {
@@ -124,6 +133,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
       when(mockClient.listMasters()).thenReturn(listMastersResponse);
       when(mockClient.setFlag(any(), any(), any(), anyBoolean())).thenReturn(true);
       when(mockClient.waitForMaster(any(), anyLong())).thenReturn(true);
+      setMockLiveTabletServers();
     } catch (Exception e) {
       fail();
     }
@@ -132,6 +142,8 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     mockWaits(mockClient, 3);
     UniverseModifyBaseTest.mockGetMasterRegistrationResponse(
         mockClient, ImmutableList.of("10.0.0.4", "10.0.0.6"), Collections.emptyList());
+
+    setFollowerLagMock();
   }
 
   private TaskInfo submitTask(NodeTaskParams taskParams, String nodeName) {
@@ -147,6 +159,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> REMOVE_NODE_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForDataMove,
@@ -158,6 +171,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> REMOVE_NODE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Removing")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -169,6 +183,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> REMOVE_NODE_WITH_MASTER_REPLACE =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForDataMove,
@@ -182,7 +197,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           TaskType.UpdateNodeProcess,
           TaskType.WaitForServer,
           TaskType.ChangeMasterConfig,
-          TaskType.WaitForFollowerLag,
+          TaskType.CheckFollowerLag,
           TaskType.ChangeMasterConfig,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForMasterLeader,
@@ -199,6 +214,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> REMOVE_NODE_WITH_MASTER_REPLACE_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Removing")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -233,6 +249,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> REMOVE_NODE_WITH_MASTER =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.UpdatePlacementInfo,
           TaskType.WaitForDataMove,
@@ -253,6 +270,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> REMOVE_NODE_WITH_MASTER_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Removing")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -274,28 +292,9 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()));
 
-  private static final List<TaskType> REMOVE_NOT_EXISTS_NODE_TASK_SEQUENCE =
-      ImmutableList.of(
-          TaskType.SetNodeState,
-          TaskType.UpdatePlacementInfo,
-          TaskType.UpdateNodeProcess,
-          TaskType.SetNodeState,
-          TaskType.SwamperTargetsFileUpdate,
-          TaskType.UniverseUpdateSucceeded);
-
-  private static final List<JsonNode> REMOVE_NOT_EXISTS_NODE_TASK_EXPECTED_RESULTS =
-      ImmutableList.of(
-          Json.toJson(ImmutableMap.of("state", "Removing")),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of("processType", "TSERVER", "isAdd", false)),
-          Json.toJson(ImmutableMap.of("state", "Removed")),
-          Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of()));
-
   private enum RemoveType {
     WITH_MASTER,
-    ONLY_TSERVER,
-    NOT_EXISTS
+    ONLY_TSERVER
   }
 
   private void assertRemoveNodeSequence(
@@ -342,19 +341,6 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           taskPosition++;
         }
         break;
-      case NOT_EXISTS:
-        for (TaskType taskType : REMOVE_NOT_EXISTS_NODE_TASK_SEQUENCE) {
-          List<TaskInfo> tasks = subTasksByPosition.get(position);
-          assertEquals(1, tasks.size());
-          assertEquals(taskType, tasks.get(0).getTaskType());
-          JsonNode expectedResults = REMOVE_NOT_EXISTS_NODE_TASK_EXPECTED_RESULTS.get(position);
-          List<JsonNode> taskDetails =
-              tasks.stream().map(TaskInfo::getDetails).collect(Collectors.toList());
-          assertJsonEqual(expectedResults, taskDetails.get(0));
-          position++;
-          taskPosition++;
-        }
-        break;
     }
   }
 
@@ -384,6 +370,15 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
             defaultUniverse.getUniverseDetails(), NodeTaskParams.class);
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 3;
+
+    List<String> masters =
+        defaultUniverse.getUniverseDetails().nodeDetailsSet.stream()
+            .filter(n -> !n.nodeName.equals("host-n1"))
+            .filter(n -> n.isMaster || n.nodeName.equals("host-n4"))
+            .map(n -> n.cloudInfo.private_ip)
+            .collect(Collectors.toList());
+
+    UniverseModifyBaseTest.mockMasterAndPeerRoles(mockClient, masters);
 
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
     assertEquals(Success, taskInfo.getTaskState());
@@ -425,43 +420,78 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertRemoveNodeSequence(subTasksByPosition, RemoveType.NOT_EXISTS, true, false);
+    assertRemoveNodeSequence(subTasksByPosition, RemoveType.ONLY_TSERVER, true, false);
   }
 
   @Test
-  public void testRemoveNodeWithNoDataMove() {
+  /*
+   * Do not allow removal of a healthy node with tablets assigned to it
+   *   when there is no place to move tablets to.
+   */
+  public void testRemoveNodeHealthyNode() {
     setUp(true, 3, 3, false);
+    String nodeToRemove = "host-n1";
+    NodeDetails node = defaultUniverse.getNode(nodeToRemove);
+    when(mockClient.getLeaderMasterHostAndPort())
+        .thenReturn(HostAndPort.fromParts(node.cloudInfo.private_ip, node.masterRpcPort));
+    setDumpEntitiesMock(defaultUniverse, nodeToRemove, true);
     NodeTaskParams taskParams =
         UniverseControllerRequestBinder.deepCopy(
             defaultUniverse.getUniverseDetails(), NodeTaskParams.class);
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 3;
 
-    TaskInfo taskInfo = submitTask(taskParams, "host-n1");
-    assertEquals(Success, taskInfo.getTaskState());
-
-    List<TaskInfo> subTasks = taskInfo.getSubTasks();
-    Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertRemoveNodeSequence(subTasksByPosition, RemoveType.WITH_MASTER, false, false);
+    TaskInfo taskInfo = submitTask(taskParams, nodeToRemove);
+    assertEquals(Failure, taskInfo.getTaskState());
   }
 
   @Test
-  public void testRemoveNodeWithNoDataMoveRF5() {
+  /*
+   * Similar to testRemoveNodeHealthyNode test.
+   */
+  public void testRemoveNodeHealthyNodeRF5() { // This should fail now.
     setUp(true, 5, 5, true);
+    String nodeToRemove = "host-n1";
+    NodeDetails node = defaultUniverse.getNode(nodeToRemove);
+    when(mockClient.getLeaderMasterHostAndPort())
+        .thenReturn(HostAndPort.fromParts(node.cloudInfo.private_ip, node.masterRpcPort));
+    setDumpEntitiesMock(defaultUniverse, nodeToRemove, true);
     NodeTaskParams taskParams =
         UniverseControllerRequestBinder.deepCopy(
             defaultUniverse.getUniverseDetails(), NodeTaskParams.class);
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 3;
 
-    TaskInfo taskInfo = submitTask(taskParams, "host-n1");
+    TaskInfo taskInfo = submitTask(taskParams, nodeToRemove);
+    assertEquals(Failure, taskInfo.getTaskState());
+  }
+
+  @Test
+  /*
+   * We allow removing a node when there is no place to move the tablets
+   *  (ex: number of node equals RF) if the node is unhealhy (no tablets assigned to it)
+   */
+  public void testRemoveNodeUnhealthyNode() {
+    setUp(true, 3, 3, true);
+    String nodeToRemove = "host-n1";
+    NodeDetails node = defaultUniverse.getNode(nodeToRemove);
+    when(mockClient.getLeaderMasterHostAndPort())
+        .thenReturn(HostAndPort.fromParts(node.cloudInfo.private_ip, node.masterRpcPort));
+    setDumpEntitiesMock(defaultUniverse, nodeToRemove, false);
+
+    NodeTaskParams taskParams =
+        UniverseControllerRequestBinder.deepCopy(
+            defaultUniverse.getUniverseDetails(), NodeTaskParams.class);
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = 3;
+
+    TaskInfo taskInfo = submitTask(taskParams, nodeToRemove);
     assertEquals(Success, taskInfo.getTaskState());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    assertRemoveNodeSequence(subTasksByPosition, RemoveType.WITH_MASTER, false, false);
+    assertRemoveNodeSequence(subTasksByPosition, RemoveType.WITH_MASTER, true, false);
   }
 
   @Test
@@ -473,8 +503,16 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.expectedUniverseVersion = 3;
 
+    List<String> masters =
+        defaultUniverse.getUniverseDetails().nodeDetailsSet.stream()
+            .filter(n -> !n.nodeName.equals("host-n1"))
+            .filter(n -> n.isMaster || n.nodeName.equals("host-n6"))
+            .map(n -> n.cloudInfo.private_ip)
+            .collect(Collectors.toList());
+
+    UniverseModifyBaseTest.mockMasterAndPeerRoles(mockClient, masters);
     TaskInfo taskInfo = submitTask(taskParams, "host-n1");
-    assertEquals(Success, taskInfo.getTaskState());
+    assertEquals(taskInfo.getErrorMessage(), Success, taskInfo.getTaskState());
 
     List<TaskInfo> subTasks = taskInfo.getSubTasks();
     Map<Integer, List<TaskInfo>> subTasksByPosition =
@@ -496,5 +534,61 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
             NodeState.Stopping,
             NodeState.Removing);
     assertEquals(expectedStates, allowedStates);
+  }
+
+  @Test
+  public void testRemoveNodeRetries() {
+    RuntimeConfigEntry.upsertGlobal("yb.checks.change_master_config.enabled", "false");
+    setUp(true, 4, 3, false);
+    String nodeToRemove = "host-n1";
+    NodeDetails node = defaultUniverse.getNode(nodeToRemove);
+    lenient()
+        .when(mockClient.getLeaderMasterHostAndPort())
+        .thenReturn(HostAndPort.fromParts(node.cloudInfo.private_ip, node.masterRpcPort));
+    setDumpEntitiesMock(defaultUniverse, nodeToRemove, true);
+    NodeTaskParams taskParams =
+        UniverseControllerRequestBinder.deepCopy(
+            defaultUniverse.getUniverseDetails(), NodeTaskParams.class);
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = 3;
+    taskParams.nodeName = nodeToRemove;
+    super.verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.Remove,
+        CustomerTask.TargetType.Universe,
+        defaultUniverse.getUniverseUUID(),
+        TaskType.RemoveNodeFromUniverse,
+        taskParams);
+  }
+
+  public void setMockLiveTabletServers() throws Exception {
+    List<TabletServerInfo> tabletServerInfoList = new ArrayList<>();
+
+    // Loop through both Primary cluster and RR nodes.
+    for (Cluster cluster : defaultUniverse.getUniverseDetails().clusters) {
+      UUID clusterUuid = cluster.uuid;
+      Set<NodeDetails> nodesInCluster =
+          new HashSet<>(defaultUniverse.getNodesByCluster(cluster.uuid));
+      for (NodeDetails curNode : nodesInCluster) {
+        TabletServerInfo.CloudInfo cloudInfo = new TabletServerInfo.CloudInfo();
+        cloudInfo.setCloud(curNode.cloudInfo.cloud);
+        cloudInfo.setRegion(curNode.cloudInfo.region);
+        cloudInfo.setZone(curNode.cloudInfo.az);
+
+        TabletServerInfo tserverInfo = new TabletServerInfo();
+        tserverInfo.setCloudInfo(cloudInfo);
+        tserverInfo.setUuid(UUID.randomUUID());
+        tserverInfo.setInPrimaryCluster(cluster.clusterType.equals(ClusterType.PRIMARY));
+        tserverInfo.setPlacementUuid(clusterUuid);
+        tserverInfo.setPrivateRpcAddress(
+            HostAndPort.fromParts(curNode.cloudInfo.private_ip, curNode.tserverRpcPort));
+
+        tabletServerInfoList.add(tserverInfo);
+      }
+    }
+    ListLiveTabletServersResponse listLiveTabletServersResponse =
+        mock(ListLiveTabletServersResponse.class);
+    when(listLiveTabletServersResponse.getTabletServers()).thenReturn(tabletServerInfoList);
+    when(mockClient.listLiveTabletServers()).thenReturn(listLiveTabletServersResponse);
   }
 }

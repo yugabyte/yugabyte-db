@@ -32,6 +32,9 @@ message CDCStreamInfoPB {
   repeated CDCStreamOptionsPB options = 3;
   optional bytes namespace_id = 4;
   optional bool transactional = 5; // [default = false]
+  optional string cdcsdk_ysql_replication_slot_name = 6;
+  optional uint64 cdcsdk_consistent_snapshot_time = 7;
+  optional CDCSDKSnapshotOption cdcsdk_consistent_snapshot_option = 8;
 }
 
 message ValidateReplicationInfoRequestPB {
@@ -52,6 +55,9 @@ message CreateCDCStreamRequestPB {
   optional SysCDCStreamEntryPB.State initial_state = 4;
   optional string db_stream_id = 5;
   optional bool transactional = 6; // [default = false]
+  optional string namespace_id = 7;
+  optional string cdcsdk_ysql_replication_slot_name = 8;
+  optional CDCSDKSnapshotOption cdcsdk_consistent_snapshot_option = 9;
 }
 
 message CreateCDCStreamResponsePB {
@@ -64,12 +70,14 @@ message DeleteCDCStreamRequestPB {
   repeated bytes stream_id = 1;
   optional bool ignore_errors = 2 [default = false];
   optional bool force_delete = 3 [default = false];
+  repeated string cdcsdk_ysql_replication_slot_name = 4;
 }
 
 message DeleteCDCStreamResponsePB {
   // The error, if an error occurred with this request.
   optional MasterErrorPB error = 1;
   repeated bytes not_found_stream_ids = 2;
+  repeated string not_found_cdcsdk_ysql_replication_slot_names = 3;
 }
 
 enum IdTypePB {
@@ -101,6 +109,7 @@ message IsObjectPartOfXReplResponsePB {
 
 message GetCDCStreamRequestPB {
   optional bytes stream_id = 1;
+  optional string cdcsdk_ysql_replication_slot_name = 2;
 }
 
 message GetCDCStreamResponsePB {
@@ -247,7 +256,7 @@ message SetupNamespaceReplicationWithBootstrapResponsePB {
 }
 
 message SetupUniverseReplicationRequestPB {
-  optional string producer_id = 1;
+  optional string replication_group_id = 1;
   repeated HostPortPB producer_master_addresses = 2;
   repeated string producer_table_ids = 3;
 
@@ -262,7 +271,7 @@ message SetupUniverseReplicationResponsePB {
 }
 
 message DeleteUniverseReplicationRequestPB {
-  optional string producer_id = 1;
+  optional string replication_group_id = 1;
   optional bool ignore_errors = 2 [default = false];
 }
 
@@ -273,12 +282,12 @@ message DeleteUniverseReplicationResponsePB {
 }
 
 message AlterUniverseReplicationRequestPB {
-  optional string producer_id = 1;
+  optional string replication_group_id = 1;
   // The below options are currently mutually exclusive.  Only 1 operation at a time.
   repeated HostPortPB producer_master_addresses = 2;
   repeated string producer_table_ids_to_add = 4;
   repeated string producer_table_ids_to_remove = 5;
-  optional string new_producer_universe_id = 7;
+  optional string new_replication_group_id = 7;
 
   // Optional bootstrap ids for the add table operation.
   repeated string producer_bootstrap_ids_to_add = 6;
@@ -299,7 +308,7 @@ message ChangeXClusterRoleResponsePB {
 }
 
 message SetUniverseReplicationEnabledRequestPB {
-  optional string producer_id = 1;
+  optional string replication_group_id = 1;
   optional bool is_enabled = 2;
 }
 
@@ -317,7 +326,7 @@ message PauseResumeXClusterProducerStreamsResponsePB {
 }
 
 message GetUniverseReplicationRequestPB {
-  optional string producer_id = 1;
+  optional string replication_group_id = 1;
 }
 
 message GetUniverseReplicationResponsePB {
@@ -326,7 +335,7 @@ message GetUniverseReplicationResponsePB {
 }
 
 message IsSetupUniverseReplicationDoneRequestPB {
-  optional string producer_id = 1;
+  optional string replication_group_id = 1;
 }
 
 message IsSetupUniverseReplicationDoneResponsePB {
@@ -367,7 +376,7 @@ message ProducerSplitTabletInfoPB {
 }
 
 message UpdateConsumerOnProducerSplitRequestPB {
-  optional string producer_id = 1;
+  optional string replication_group_id = 1;
   optional string stream_id = 2;
   optional ProducerSplitTabletInfoPB producer_split_tablet_info = 3;
 }
@@ -377,8 +386,8 @@ message UpdateConsumerOnProducerSplitResponsePB {
 }
 
 message GetReplicationStatusRequestPB {
-  // Filters by the universe uuid if non-empty.
-  optional string universe_id = 1;
+  // Filters by the replication group if non-empty.
+  optional string replication_group_id = 1;
 }
 
 message ReplicationStatusErrorPB {
@@ -414,7 +423,7 @@ message WaitForReplicationDrainResponsePB {
 }
 
 message SetupNSUniverseReplicationRequestPB {
-  optional string producer_id = 1;
+  optional string replication_group_id = 1;
   repeated HostPortPB producer_master_addresses = 2;
   optional string producer_ns_name = 3;
   optional YQLDatabase producer_ns_type = 4;
@@ -425,7 +434,7 @@ message SetupNSUniverseReplicationResponsePB {
 }
 
 message UpdateConsumerOnProducerMetadataRequestPB {
-  optional string producer_id = 1;
+  optional string replication_group_id = 1;
   optional string stream_id = 2;
   optional string consumer_tablet_id = 3;
   optional tablet.ChangeMetadataRequestPB producer_change_metadata_request = 4;
@@ -476,6 +485,24 @@ message GetTableSchemaFromSysCatalogResponsePB {
 
   // Table schema version
   optional uint32 version = 3;
+}
+
+message XClusterReportNewAutoFlagConfigVersionRequestPB {
+  required string replication_group_id = 1;
+  required uint32 auto_flag_config_version = 2;
+}
+
+message XClusterReportNewAutoFlagConfigVersionResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB {
+  optional bytes stream_id = 1;
+  optional string cdcsdk_ysql_replication_slot_name = 2;
+}
+
+message YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB {
+  optional MasterErrorPB error = 1;
 }
 
 service MasterReplication {
@@ -539,4 +566,13 @@ service MasterReplication {
 
   rpc BootstrapProducer(BootstrapProducerRequestPB)
       returns (BootstrapProducerResponsePB);
+
+  rpc XClusterReportNewAutoFlagConfigVersion(
+      XClusterReportNewAutoFlagConfigVersionRequestPB)
+      returns (XClusterReportNewAutoFlagConfigVersionResponsePB);
+
+  // Backfill a replication slot name to an existing CDCSDK stream.
+  rpc YsqlBackfillReplicationSlotNameToCDCSDKStream(
+      YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB)
+      returns (YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB);
 }

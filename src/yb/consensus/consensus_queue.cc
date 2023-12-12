@@ -40,7 +40,6 @@
 #include <utility>
 
 #include <boost/container/small_vector.hpp>
-#include <glog/logging.h>
 
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus_context.h"
@@ -119,8 +118,7 @@ TAG_FLAG(cdc_intent_retention_ms, advanced);
 DEFINE_test_flag(bool, disallow_lmp_failures, false,
                  "Whether we disallow PRECEDING_ENTRY_DIDNT_MATCH failures for non new peers.");
 
-DEFINE_RUNTIME_bool(
-    remote_bootstrap_from_leader_only, false,
+DEFINE_RUNTIME_AUTO_bool(remote_bootstrap_from_leader_only, kLocalVolatile, true, false,
     "Whether to instruct the peer to attempt bootstrap from the closest peer instead of the "
     "leader. The leader too could be the closest peer depending on the new peer's geographic "
     "placement. Setting the flag to false will enable remote bootstrap from the closest peer. "
@@ -128,14 +126,12 @@ DEFINE_RUNTIME_bool(
     "single node and could result in increased load on the node. If bootstrap of a new node is "
     "slow, it might be worth setting the flag to true and enable bootstrapping from leader only.");
 
-DEFINE_RUNTIME_uint32(
-    max_remote_bootstrap_attempts_from_non_leader, 5,
+DEFINE_RUNTIME_uint32(max_remote_bootstrap_attempts_from_non_leader, 5,
     "When FLAGS_remote_bootstrap_from_leader_only is enabled, the flag represents the maximum "
     "number of times we attempt to remote bootstrap a new peer from a closest non-leader peer "
     "that result in a failure. We fallback to bootstrapping from the leader peer post this.");
 
-DEFINE_test_flag(
-    bool, assert_remote_bootstrap_happens_from_same_zone, false,
+DEFINE_test_flag(bool, assert_remote_bootstrap_happens_from_same_zone, false,
     "Assert that remote bootstrap is served by a peer in the same zone as the new peer.");
 
 namespace yb {
@@ -795,14 +791,15 @@ const PeerMessageQueue::TrackedPeer* PeerMessageQueue::FindClosestPeerForBootstr
     }
 
     // Consider only those followers as rbs source which are in the same term as the leader
-    // and have last_applied_opid >= leader log's min available index
+    // and have last_received_opid >= leader log's min available index.
     // TODO: Add a gflag that sets the max allowed difference between the leader's last
-    // applied log opid and that of the rbs source. Reject peer as an rbs source if
-    // leader->last_applied.index - remote_peer->last_applied.index > flag
-    OpId remote_last_applied_opid = it->second->last_applied;
+    // logged opid and that of the rbs source. Reject peer as an rbs source if
+    // leader->last_received.index - remote_peer->last_received.index > flag_value
+    OpId remote_last_received_opid = it->second->last_received;
     if (it->second->member_type != PeerMemberType::VOTER ||
-        remote_last_applied_opid.term != queue_state_.current_term ||
-        remote_last_applied_opid.index < log_cache_.earliest_op_index()) {
+        remote_last_received_opid.term != queue_state_.current_term ||
+        remote_last_received_opid.index < log_cache_.earliest_op_index() ||
+        !it->second->is_last_exchange_successful) {
       continue;
     }
 
@@ -1745,6 +1742,19 @@ void PeerMessageQueue::TrackOperationsMemory(const OpIds& op_ids) {
 Result<OpId> PeerMessageQueue::TEST_GetLastOpIdWithType(
     int64_t max_allowed_index, OperationType op_type) {
   return log_cache_.TEST_GetLastOpIdWithType(max_allowed_index, op_type);
+}
+
+std::vector<FollowerCommunicationTime> PeerMessageQueue::GetFollowerCommunicationTimes() const {
+  std::vector<FollowerCommunicationTime> result;
+  std::lock_guard lock(queue_lock_);
+  result.reserve(peers_map_.size());
+  for (const auto& [peer_uuid, peer] : peers_map_) {
+    if (peer_uuid == local_peer_uuid_) {
+      continue;
+    }
+    result.emplace_back(peer_uuid, peer->last_successful_communication_time);
+  }
+  return result;
 }
 
 }  // namespace consensus

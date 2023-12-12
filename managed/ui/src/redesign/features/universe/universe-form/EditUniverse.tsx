@@ -5,7 +5,7 @@ import { browserHistory } from 'react-router';
 import { toast } from 'react-toastify';
 import { UniverseFormContext } from './UniverseFormContainer';
 import { UniverseForm } from './form/UniverseForm';
-import { FullMoveModal, ResizeNodeModal, SmartResizeModal } from './action-modals';
+import { FullMoveModal, PlacementModal, ResizeNodeModal, SmartResizeModal } from './action-modals';
 import { YBLoading } from '../../../../components/common/indicators';
 import { api, QUERY_KEY } from './utils/api';
 import { getPlacements } from './form/fields/PlacementsField/PlacementsFieldHelper';
@@ -23,7 +23,8 @@ import {
   MasterPlacementMode,
   UniverseConfigure,
   UniverseFormData,
-  UniverseDetails
+  UniverseDetails,
+  UpdateActions
 } from './utils/dto';
 import {
   DEVICE_INFO_FIELD,
@@ -42,17 +43,12 @@ import {
   SPOT_INSTANCE_FIELD
 } from './utils/constants';
 
-export enum UPDATE_ACTIONS {
-  FULL_MOVE = 'FULL_MOVE',
-  SMART_RESIZE = 'SMART_RESIZE',
-  SMART_RESIZE_NON_RESTART = 'SMART_RESIZE_NON_RESTART',
-  UPDATE = 'UPDATE'
-}
 interface EditUniverseProps {
   uuid: string;
+  isViewMode: boolean;
 }
 
-export const EditUniverse: FC<EditUniverseProps> = ({ uuid }) => {
+export const EditUniverse: FC<EditUniverseProps> = ({ uuid, isViewMode }) => {
   const [contextState, contextMethods]: any = useContext(UniverseFormContext);
   const { isLoading, universeConfigureTemplate } = contextState;
   const { initializeForm, setUniverseResourceTemplate } = contextMethods;
@@ -61,6 +57,7 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid }) => {
   const [showFMModal, setFMModal] = useState(false); //FM -> Full Move
   const [showRNModal, setRNModal] = useState(false); //RN -> Resize Nodes
   const [showSRModal, setSRModal] = useState(false); //SR -> Smart Resize
+  const [showPlacementModal, setPlacementModal] = useState(false);
   const [universePayload, setUniversePayload] = useState<UniverseDetails | null>(null);
 
   const { isLoading: isUniverseLoading, data: originalData } = useQuery(
@@ -77,6 +74,7 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid }) => {
           initializeForm({
             clusterType: ClusterType.PRIMARY,
             mode: ClusterModes.EDIT,
+            isViewMode,
             universeConfigureTemplate: _.cloneDeep(configureResponse)
           });
           //set Universe Resource Template
@@ -166,13 +164,13 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid }) => {
 
       if (!isK8sUniverse) {
         if (
-          _.intersection(updateOptions, [UPDATE_ACTIONS.SMART_RESIZE, UPDATE_ACTIONS.FULL_MOVE])
+          _.intersection(updateOptions, [UpdateActions.SMART_RESIZE, UpdateActions.FULL_MOVE])
             .length > 1
         )
           setSRModal(true);
-        else if (updateOptions.includes(UPDATE_ACTIONS.SMART_RESIZE_NON_RESTART)) setRNModal(true);
-        else if (updateOptions.includes(UPDATE_ACTIONS.FULL_MOVE)) setFMModal(true);
-        else submitEditUniverse(finalPayload);
+        else if (updateOptions.includes(UpdateActions.SMART_RESIZE_NON_RESTART)) setRNModal(true);
+        else if (updateOptions.includes(UpdateActions.FULL_MOVE)) setFMModal(true);
+        else setPlacementModal(true);
       } else submitEditUniverse(finalPayload);
     } else
       toast.warn('Nothing to update - no fields changed', {
@@ -182,12 +180,19 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid }) => {
 
   return (
     <>
-      <UniverseForm defaultFormData={initialFormData} onFormSubmit={onSubmit} onCancel={onCancel} />
+      <UniverseForm
+        defaultFormData={initialFormData}
+        onFormSubmit={onSubmit}
+        onCancel={onCancel}
+        universeUUID={uuid}
+        isViewMode={isViewMode}
+      />
       {universePayload && (
         <>
           {showRNModal && (
             <ResizeNodeModal
               open={showRNModal}
+              isPrimary={true}
               universeData={universePayload}
               onClose={() => setRNModal(false)}
             />
@@ -195,6 +200,7 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid }) => {
           {showSRModal && (
             <SmartResizeModal
               open={showSRModal}
+              isPrimary={true}
               oldConfigData={originalData.universeDetails}
               newConfigData={universePayload}
               onClose={() => setSRModal(false)}
@@ -208,9 +214,20 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid }) => {
           {showFMModal && (
             <FullMoveModal
               open={showFMModal}
+              isPrimary={true}
               oldConfigData={originalData.universeDetails}
               newConfigData={universePayload}
               onClose={() => setFMModal(false)}
+              onSubmit={() => submitEditUniverse(universePayload)}
+            />
+          )}
+          {showPlacementModal && (
+            <PlacementModal
+              open={showPlacementModal}
+              isPrimary={true}
+              oldConfigData={originalData.universeDetails}
+              newConfigData={universePayload}
+              onClose={() => setPlacementModal(false)}
               onSubmit={() => submitEditUniverse(universePayload)}
             />
           )}

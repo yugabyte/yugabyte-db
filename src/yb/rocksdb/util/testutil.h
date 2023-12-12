@@ -49,12 +49,15 @@
 #include "yb/util/slice.h"
 
 DECLARE_bool(never_fsync);
+DECLARE_bool(TEST_enable_sync_points);
+
 namespace rocksdb {
 class SequentialFileReader;
 
 class RocksDBTest : public ::testing::Test {
  public:
   RocksDBTest() {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_never_fsync) = true;
   }
 };
@@ -102,7 +105,7 @@ class PlainInternalKeyComparator : public InternalKeyComparator {
 
   virtual ~PlainInternalKeyComparator() {}
 
-  virtual int Compare(const Slice& a, const Slice& b) const override {
+  virtual int Compare(Slice a, Slice b) const override {
     return user_comparator()->Compare(a, b);
   }
   virtual void FindShortestSeparator(std::string* start,
@@ -128,7 +131,7 @@ class SimpleSuffixReverseComparator : public Comparator {
     return "SimpleSuffixReverseComparator";
   }
 
-  virtual int Compare(const Slice& a, const Slice& b) const override {
+  virtual int Compare(Slice a, Slice b) const override {
     Slice prefix_a = Slice(a.data(), 8);
     Slice prefix_b = Slice(b.data(), 8);
     int prefix_comp = prefix_a.compare(prefix_b);
@@ -257,6 +260,11 @@ class StringSink: public WritableFile {
           reader_contents_->data(), reader_contents_->size() - bytes);
       last_flush_ = contents_.size();
     }
+  }
+
+  const std::string& filename() const override {
+    static const std::string kFilename = "StringSink";
+    return kFilename;
   }
 
  private:
@@ -490,6 +498,11 @@ class StringEnv : public EnvWrapper {
     virtual Status Append(const Slice& slice) override {
       contents_->append(slice.cdata(), slice.size());
       return Status::OK();
+    }
+
+    const std::string& filename() const override {
+      static const std::string kFilename = "StringSink";
+      return kFilename;
     }
 
    private:

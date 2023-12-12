@@ -6,13 +6,13 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.yugabyte.yw.models.TaskInfo.State;
 import io.ebean.Finder;
 import io.ebean.Model;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
 import java.util.Date;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
 import lombok.Getter;
 import lombok.Setter;
 
@@ -69,8 +69,14 @@ public class ScheduleTask extends Model {
   }
 
   public static Optional<ScheduleTask> getLastSuccessfulTask(UUID scheduleUUID) {
-    return find.query().where().eq("scheduleUUID", scheduleUUID).orderBy().desc("scheduledTime")
-        .findList().stream()
+    return find
+        .query()
+        .where()
+        .eq("scheduleUUID", scheduleUUID)
+        .orderBy()
+        .desc("scheduledTime")
+        .findList()
+        .stream()
         .filter(
             (task) -> {
               Optional<TaskInfo> taskInfo = TaskInfo.maybeGet(task.getTaskUUID());

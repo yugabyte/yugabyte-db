@@ -39,15 +39,24 @@ DECLARE_bool(hide_pg_catalog_table_creation_logs);
 DECLARE_bool(master_auto_run_initdb);
 DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_bool(cdc_populate_safepoint_record);
+DECLARE_uint32(max_replication_slots);
+DECLARE_bool(TEST_ysql_yb_enable_replication_commands);
 
 namespace yb {
 using client::YBClient;
 using client::YBTableName;
 
 namespace cdc {
+// TODO(#19752): Remove the YB_DISABLE_TEST_IN_TSAN
+#define CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(fixture, test_name)                       \
+  TEST_F(fixture, YB_DISABLE_TEST_IN_TSAN(test_name##Explicit)) { test_name(EXPLICIT); }  \
+                                                                                          \
+  TEST_F(fixture, YB_DISABLE_TEST_IN_TSAN(test_name##Implicit)) { test_name(IMPLICIT); }
+
 constexpr int kRpcTimeout = NonTsanVsTsan(60, 120);
 static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
+static const std::string kReplicationSlotName = "test_replication_slot";
 constexpr static const char* const kTableName = "test_table";
 constexpr static const char* const kKeyColumnName = "key";
 constexpr static const char* const kValueColumnName = "value_1";
@@ -84,6 +93,15 @@ class CDCSDKTestBase : public YBTest {
         .dbname = dbname,
       }).Connect();
     }
+
+    Result<pgwrapper::PGConn> ConnectToDBWithReplication(const std::string& dbname) {
+      return pgwrapper::PGConnBuilder({
+        .host = pg_host_port_.host(),
+        .port = pg_host_port_.port(),
+        .dbname = dbname,
+        .replication = "database",
+      }).Connect(/*simple_query_protocol=*/true);
+    }
   };
 
   void SetUp() override {
@@ -94,6 +112,9 @@ class CDCSDKTestBase : public YBTest {
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_check_broadcast_address) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;
+
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_commands) = true;
+
     google::SetVLOGLevel("cdc*", 4);
   }
 
@@ -123,6 +144,9 @@ class CDCSDKTestBase : public YBTest {
   Status SetUpWithParams(
       uint32_t replication_factor, uint32_t num_masters = 1, bool colocated = false,
       bool cdc_populate_safepoint_record = false);
+
+  Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> SetUpWithOneTablet(
+      uint32_t replication_factor, uint32_t num_masters = 1, bool colocated = false);
 
   Result<YBTableName> GetTable(
       Cluster* cluster,
@@ -188,6 +212,24 @@ class CDCSDKTestBase : public YBTest {
   Result<xrepl::StreamId> CreateDBStream(
       CDCCheckpointType checkpoint_type = CDCCheckpointType::EXPLICIT,
       CDCRecordType record_type = CDCRecordType::CHANGE);
+  // Creates a DB stream on the database kNamespaceName using the Replication Slot syntax.
+  // Only supports the CDCCheckpointType::EXPLICIT and CDCRecordType::CHANGE.
+  // TODO(#19260): Support customizing the CDCRecordType.
+  Result<xrepl::StreamId> CreateDBStreamWithReplicationSlot(
+    CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT,
+    CDCRecordType record_type = CDCRecordType::CHANGE
+  );
+  Result<xrepl::StreamId> CreateDBStreamWithReplicationSlot(
+      const std::string& replication_slot_name,
+      CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT,
+      CDCRecordType record_type = CDCRecordType::CHANGE);
+
+  Result<xrepl::StreamId> CreateConsistentSnapshotStream(
+      CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT,
+      CDCCheckpointType checkpoint_type = CDCCheckpointType::EXPLICIT,
+      CDCRecordType record_type = CDCRecordType::CHANGE);
+
+  Result<xrepl::StreamId> CreateDBStreamBasedOnCheckpointType(CDCCheckpointType checkpoint_type);
 
  protected:
   // Every test needs to initialize this cdc_proxy_.

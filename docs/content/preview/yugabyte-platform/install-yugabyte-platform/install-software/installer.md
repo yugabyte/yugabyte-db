@@ -4,31 +4,32 @@ headerTitle: Install YugabyteDB Anywhere
 linkTitle: Install YBA software
 description: Install YugabyteDB Anywhere software using YBA Installer
 headContent: Install YBA software using YBA Installer
-earlyAccess: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+aliases:
+  - /preview/yugabyte-platform/install-yugabyte-platform/install-software/
 menu:
   preview_yugabyte-platform:
     parent: install-yugabyte-platform
     identifier: install-software-4-installer
-    weight: 88
+    weight: 77
 rightNav:
   hideH4: true
 type: docs
 ---
 
-Use the following instructions to install YugabyteDB Anywhere (YBA) software. For guidance on which method to choose, see [YBA Prerequisites](../../prerequisites/default/).
+Use the following instructions to install YugabyteDB Anywhere (YBA) software. For guidance on which method to choose, see [YBA prerequisites](../../prerequisites/installer/).
 
 Note: For higher availability, one or more additional YBA instances can be separately installed, and then configured later to serve as passive warm standby servers. See [Enable High Availability](../../../administer-yugabyte-platform/high-availability/) for more information.
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li>
-    <a href="../default/" class="nav-link">
-      <i class="fa-solid fa-cloud"></i>Replicated</a>
+    <a href="../installer/" class="nav-link active">
+      <i class="fa-solid fa-building"></i>YBA Installer</a>
   </li>
 
   <li>
-    <a href="../airgapped/" class="nav-link">
-      <i class="fa-solid fa-link-slash"></i>Replicated - Airgapped</a>
+    <a href="../default/" class="nav-link">
+      <i class="fa-solid fa-cloud"></i>Replicated</a>
   </li>
 
   <li>
@@ -41,19 +42,57 @@ Note: For higher availability, one or more additional YBA instances can be separ
       <i class="fa-brands fa-redhat"></i>OpenShift</a>
   </li>
 
-  <li>
-    <a href="../installer/" class="nav-link active">
-      <i class="fa-solid fa-building"></i>YBA Installer</a>
-  </li>
-
 </ul>
 
-Use YBA Installer to install YBA on a host. YBA Installer performs preflight checks to validate the workspace is ready to run YBA. YBA Installer also provides basic functionality for managing installations, including backup and restore of an installation, upgrading, basic licensing, and uninstalling the software.
+Use YBA Installer to install YBA on a host, either online or airgapped. YBA Installer performs preflight checks to validate the workspace is ready to run YBA.
+
+YBA Installer also provides basic functionality for managing installations, including backup and restore of an installation, upgrading, basic licensing, and uninstalling the software.
+
+{{< warning >}}
+You can use YBA Installer only if you are about to perform a new install. Currently, you cannot switch your existing YBA software installed via Replicated to be installed using YBA Installer.
+{{< /warning >}}
 
 ## Prerequisites
 
 - Ensure your machine satisfies the [minimum requirements](../../prerequisites/installer/).
-- For production deployments, root privileges (or equivalent sudo access) are required for some YBA Installer commands. (You can use YBA Installer without root access, but this is not recommended for production; refer to [Non-root installation](#non-root-installation).)
+- For production deployments, sudo permissions are required for some YBA Installer commands. (You can use YBA Installer without sudo access, but this is not recommended for production; refer to [Non-sudo installation](#non-sudo-installation).)
+
+  If your sudo permissions are limited, add the following to the allowed list for root in the sudoers file:
+
+  ```sh
+  /bin/mv, /usr/bin/find, /opt/yugabyte/software/*/pgsql/bin/createdb, /opt/yugabyte/software/*/pgsql/bin/initdb
+  ```
+
+## Quick start
+
+To install YugabyteDB Anywhere using YBA Installer, do the following:
+
+1. Obtain your license from Yugabyte Support.
+1. Download and extract the YBA Installer by entering the following commands:
+
+    ```sh
+    $ wget https://downloads.yugabyte.com/releases/{{<yb-version version="stable" format="long">}}/yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
+    $ tar -xf yba_installer_full-{{<yb-version version="stable" format="build">}}-linux-x86_64.tar.gz
+    $ cd yba_installer_full-{{<yb-version version="stable" format="build">}}/
+    ```
+
+1. Using sudo, run a preflight check to ensure your environment satisfies the requirements. Respond with `y` when prompted to create a default configuration.
+
+    ```sh
+    $ sudo ./yba-ctl preflight
+    ```
+
+1. If there are no issues, using sudo, install the software, providing your license.
+
+    ```sh
+    $ sudo ./yba-ctl install -l /path/to/license
+    ```
+
+After the installation succeeds, you can immediately start using YBA.
+
+If the installation fails due to permissions or lack of sudo privileges, you can retry after running `yba-ctl clean all` to remove all traces of the previous attempt.
+
+For more detailed installation instructions and information on how to use YBA Installer to manage your installation, refer to the following sections.
 
 ## Download and configure YBA Installer
 
@@ -78,7 +117,7 @@ To see a full list of commands, run the following command:
 $ ./yba-ctl help
 ```
 
-yba-ctl commands need to be run in the correct context; see [Running yb-ctl commands](#running-yba-ctl-commands).
+yba-ctl commands need to be run in the correct context; see [Running yba-ctl commands](#running-yba-ctl-commands).
 
 ### Configure YBA Installer
 
@@ -171,7 +210,7 @@ Services:
   Systemd service |       Version |  Port |                            Log File Locations |  Running Status |
          postgres |         10.23 |  5432 |          /opt/yugabyte/data/logs/postgres.log |         Running |
        prometheus |        2.42.0 |  9090 |  /opt/yugabyte/data/prometheus/prometheus.log |         Running |
-      yb-platform |  2.19.0.0-b51 |   443 |       /opt/yugabyte/data/logs/application.log |         Running |
+      yb-platform |  {{<yb-version version="preview" format="build">}} |   443 |       /opt/yugabyte/data/logs/application.log |         Running |
 INFO[2023-04-24T23:19:59Z] Successfully installed YugabyteDB Anywhere!
 ```
 
@@ -214,7 +253,7 @@ Services:
   Systemd service |       Version |  Port |                            Log File Locations |  Running Status |
          postgres |         10.23 |  5432 |          /opt/yugabyte/data/logs/postgres.log |         Running |
        prometheus |        2.42.0 |  9090 |  /opt/yugabyte/data/prometheus/prometheus.log |         Running |
-      yb-platform |  2.19.0.0-b59 |   443 |       /opt/yugabyte/data/logs/application.log |         Running |
+      yb-platform |  {{<yb-version version="preview" format="build">}} |   443 |       /opt/yugabyte/data/logs/application.log |         Running |
 ```
 
 ### Upgrade
@@ -311,13 +350,13 @@ $ sudo ./yba-ctl createBackup ~/backup.tgz
 FATAL[2023-04-25T00:14:57Z] createBackup must be run from the installed yba-ctl
 ```
 
-## Non-root installation
+## Non-sudo installation
 
-YBA Installer also supports a non-root installation, where sudo access is not required for any step of the installation. Note that this is not recommended for production use cases.
+YBA Installer also supports a non-sudo installation, where sudo access is not required for any step of the installation. Note that this is not recommended for production use cases.
 
-To facilitate a non-root install, YBA Installer will not create any additional users or set up services in systemd. The install will also be rooted in the home directory by default, instead of /opt, ensuring YBA Installer has write access to the base install directory. Instead of using systemd to manage services, basic cron jobs are used to start the services on bootup with basic management scripts used to restart the services after a crash.
+To facilitate a non-sudo install, YBA Installer will not create any additional users or set up services in systemd. The install will also be rooted in the home directory by default, instead of /opt, ensuring YBA Installer has write access to the base install directory. Instead of using systemd to manage services, basic cron jobs are used to start the services on bootup with basic management scripts used to restart the services after a crash.
 
-To perform a non-root installation, run any of the preceding commands without root access. You can't switch between a root and non-root installation, and yba-ctl will return an error if sudo is not used when operating in a root installation.
+To perform a non-sudo installation, run any of the preceding commands without sudo access. You can't switch between a sudo and non-sudo access installation, and `yba-ctl` will return an error if sudo is not used when operating in an installation where sudo access was used.
 
 ## Configuration options
 

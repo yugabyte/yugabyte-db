@@ -2,7 +2,7 @@
 title: yugabyted reference
 headerTitle: yugabyted
 linkTitle: yugabyted
-description: Use yugabyted to run single-node YugabyteDB clusters.
+description: Use yugabyted to deploy YugabyteDB clusters.
 menu:
   preview:
     identifier: yugabyted
@@ -13,15 +13,23 @@ rightNav:
   hideH4: true
 ---
 
-YugabyteDB uses a two-server architecture, with [YB-TServers](../yb-tserver/) managing the data and [YB-Masters](../yb-master/) managing the metadata. However, this can introduce a burden on new users who want to get started right away. To manage YugabyteDB for testing and learning purposes, you can use yugabyted. yugabyted acts as a parent server across the YB-TServer and YB-Masters servers. yugabyted also provides a UI similar to the YugabyteDB Anywhere UI, with a data placement map and metrics dashboard.
+YugabyteDB uses a two-server architecture, with [YB-TServers](../yb-tserver/) managing the data and [YB-Masters](../yb-master/) managing the metadata. However, this can introduce a burden on new users who want to get started right away. To manage YugabyteDB, you can use yugabyted. yugabyted acts as a parent server across the YB-TServer and YB-Masters servers. yugabyted also provides a UI similar to the YugabyteDB Anywhere UI, with a data placement map and metrics dashboard.
+
+{{< youtube id="ah_fPDpZjnc" title="How to Start YugabyteDB on Your Laptop" >}}
 
 The `yugabyted` executable file is located in the YugabyteDB home's `bin` directory.
 
 For examples of using yugabyted to deploy single- and multi-node clusters, see [Examples](#examples).
 
-{{<note title="Not recommended for production">}}
-Note that yugabyted is not recommended for production deployments. For production deployments with fully-distributed multi-node clusters, use [`yb-tserver`](../yb-tserver/) and [`yb-master`](../yb-master/) directly. Refer to [Deploy YugabyteDB](../../../deploy).
+{{<note title="Production deployments">}}
+You can use yugabyted for production deployments (v2.18.4 and later). You can also administer [`yb-tserver`](../yb-tserver/) and [`yb-master`](../yb-master/) directly (refer to [Deploy YugabyteDB](../../../deploy/)).
 {{</note>}}
+
+{{% note title="Running on macOS" %}}
+
+Running YugabyteDB on macOS requires additional settings. For more information, refer to [Running on macOS](#running-on-macos).
+
+{{% /note %}}
 
 ## Syntax
 
@@ -670,6 +678,8 @@ The following are combinations of environment variables and their uses:
 To deploy any type of secure cluster (that is, using the `--secure` flag) or use encryption at rest, OpenSSL must be installed on your machine.
 
 ### Running on macOS
+
+#### Port conflicts
 
 macOS Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail. Use the [--master_webserver_port flag](#advanced-flags) when you start the cluster to change the default port number, as follows:
 

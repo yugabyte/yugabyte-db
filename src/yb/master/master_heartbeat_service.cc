@@ -12,6 +12,7 @@
 //
 
 #include "yb/common/common_flags.h"
+#include "yb/common/common_util.h"
 #include "yb/common/pg_catversions.h"
 
 #include "yb/master/catalog_entity_info.pb.h"
@@ -27,6 +28,19 @@ DEFINE_UNKNOWN_int32(tablet_report_limit, 1000,
              "Max Number of tablets to report during a single heartbeat. "
              "If this is set to INT32_MAX, then heartbeat will report all dirty tablets.");
 TAG_FLAG(tablet_report_limit, advanced);
+
+DEFINE_test_flag(string, master_universe_uuid, "",
+                 "When set, use this mocked uuid to compare against the universe_uuid "
+                 "from the tserver request.");
+
+DEFINE_RUNTIME_AUTO_bool(
+    master_enable_universe_uuid_heartbeat_check, kLocalPersisted, false, true,
+    "When true, enables a sanity check between masters and tservers to prevent tservers from "
+    "mistakenly heartbeating to masters in different universes. Master leader will check the "
+    "universe_uuid passed by tservers against with its own copy of universe_uuid "
+    "and reject the request if there is a mismatch. Master sends its universe_uuid with the "
+    "response.");
+TAG_FLAG(master_enable_universe_uuid_heartbeat_check, advanced);
 
 DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
 DECLARE_int32(heartbeat_rpc_timeout_ms);
@@ -44,6 +58,32 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
  public:
   explicit MasterHeartbeatServiceImpl(Master* master)
       : MasterServiceBase(master), MasterHeartbeatIf(master->metric_entity()) {}
+
+  static Status CheckUniverseUuidMatchFromTserver(
+      const UniverseUuid& tserver_universe_uuid,
+      const UniverseUuid& master_universe_uuid) {
+    if (!GetAtomicFlag(&FLAGS_master_enable_universe_uuid_heartbeat_check)) {
+      return Status::OK();
+    }
+
+    // If the universe uuid on the master is empty, return an error. Eventually this field will be
+    // set via a background thread.
+    if (master_universe_uuid.IsNil()) {
+      return STATUS(TryAgain, "universe_uuid is not yet set in the cluster config");
+    }
+
+    if (tserver_universe_uuid.IsNil()) {
+      // The tserver must send universe_uuid with the request, ask it to retry.
+      return STATUS(TryAgain, "universe_uuid needs to be set in the request");
+    }
+
+    if (tserver_universe_uuid != master_universe_uuid) {
+      return STATUS(InvalidArgument,
+          Format("Received wrong universe_uuid $0, expected $1",
+              tserver_universe_uuid.ToString(), master_universe_uuid.ToString()));
+    }
+    return Status::OK();
+  }
 
   void TSHeartbeat(const TSHeartbeatRequestPB* req,
                    TSHeartbeatResponsePB* resp,
@@ -63,6 +103,7 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
                                 req->common().ts_instance().ShortDebugString()));
       return;
     }
+
     consensus::ConsensusStatePB cpb;
     Status s = server_->catalog_manager_impl()->GetCurrentConfig(&cpb);
     if (!s.ok()) {
@@ -85,6 +126,59 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
     resp->mutable_master_instance()->CopyFrom(server_->instance_pb());
     resp->set_leader_master(true);
 
+    // At the time of this check, we need to know that we're the master leader to access the
+    // cluster config.
+    SysClusterConfigEntryPB cluster_config;
+    s = server_->catalog_manager_impl()->GetClusterConfig(&cluster_config);
+    if (!s.ok()) {
+      LOG(WARNING) << "Unable to get cluster configuration: " << s.ToString();
+      rpc.RespondFailure(s);
+      return;
+    }
+
+    auto tserver_universe_uuid_res = UniverseUuid::FromString(req->universe_uuid());
+    if (!tserver_universe_uuid_res) {
+      LOG(WARNING) << "Could not decode request universe_uuid: " <<
+          tserver_universe_uuid_res.status().ToString();
+      rpc.RespondFailure(tserver_universe_uuid_res.status());
+    }
+    auto tserver_universe_uuid = *tserver_universe_uuid_res;
+
+    auto master_universe_uuid_res =  UniverseUuid::FromString(
+        FLAGS_TEST_master_universe_uuid.empty() ?
+            cluster_config.universe_uuid() : FLAGS_TEST_master_universe_uuid);
+    if (!master_universe_uuid_res) {
+      LOG(WARNING) << "Could not decode cluster config universe_uuid: " <<
+          master_universe_uuid_res.status().ToString();
+      rpc.RespondFailure(master_universe_uuid_res.status());
+    }
+    auto master_universe_uuid = *master_universe_uuid_res;
+
+    s = CheckUniverseUuidMatchFromTserver(tserver_universe_uuid, master_universe_uuid);
+
+    if (!s.ok()) {
+      LOG(WARNING) << "Failed CheckUniverseUuidMatchFromTserver check: " << s.ToString();
+      if (master_universe_uuid.IsNil()) {
+        auto* error = resp->mutable_error();
+        error->set_code(MasterErrorPB::INVALID_CLUSTER_CONFIG);
+        StatusToPB(s, error->mutable_status());
+        rpc.RespondSuccess();
+        return;
+      }
+
+      if (tserver_universe_uuid.IsNil()) {
+        resp->set_universe_uuid((*master_universe_uuid_res).ToString());
+        auto* error = resp->mutable_error();
+        error->set_code(MasterErrorPB::INVALID_REQUEST);
+        StatusToPB(s, error->mutable_status());
+        rpc.RespondSuccess();
+        return;
+      }
+
+      rpc.RespondFailure(s);
+      return;
+    }
+
     // If the TS is registering, register in the TS manager.
     if (req->has_registration()) {
       Status s = server_->ts_manager()->RegisterTS(req->common().ts_instance(),
@@ -97,12 +191,6 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
         // TODO: add service-specific errors.
         rpc.RespondFailure(s);
         return;
-      }
-      SysClusterConfigEntryPB cluster_config;
-      s = server_->catalog_manager_impl()->GetClusterConfig(&cluster_config);
-      if (!s.ok()) {
-        LOG(WARNING) << "Unable to get cluster configuration: " << s.ToString();
-        rpc.RespondFailure(s);
       }
       resp->set_cluster_uuid(cluster_config.cluster_uuid());
     }
@@ -175,15 +263,9 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
         }
       }
 
-      // Only process the replication status if we have plenty of time to process the work (> 50% of
-      // timeout).
-      safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
-      if (rpc.GetClientDeadline() > safe_time_left) {
-        for (const auto& replication_state : req->replication_state()) {
-          ERROR_NOT_OK(
-            server_->catalog_manager_impl()->ProcessTabletReplicationStatus(replication_state),
-            "Failed to process tablet replication status");
-        }
+      for (const auto& consumer_replication_state : req->xcluster_consumer_replication_status()) {
+        server_->catalog_manager_impl()->StoreXClusterConsumerReplicationStatus(
+            consumer_replication_state);
       }
 
       // Only process the full compaction statuses if we have plenty of time to process the work (>
@@ -210,7 +292,7 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
     }
 
     // Retrieve the ysql catalog schema version.
-    if (FLAGS_TEST_enable_db_catalog_version_mode) {
+    if (FLAGS_ysql_enable_db_catalog_version_mode) {
       DbOidToCatalogVersionMap versions;
       uint64_t fingerprint; // can only be used when versions is not empty.
       s = server_->catalog_manager_impl()->GetYsqlAllDBCatalogVersions(

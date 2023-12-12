@@ -4,16 +4,15 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.AssertHelper.assertJsonEqual;
 import static com.yugabyte.yw.common.ModelFactory.createUniverse;
-import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNull;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doNothing;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -21,7 +20,6 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common.CloudType;
@@ -30,6 +28,7 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.controllers.UniverseControllerRequestBinder;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -139,9 +138,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
       fail();
     }
 
-    ObjectNode bodyJson = Json.newObject();
-    bodyJson.put("underreplicated_tablets", Json.newArray());
-    when(mockNodeUIApiHelper.getRequest(anyString())).thenReturn(bodyJson);
+    setUnderReplicatedTabletsMock();
   }
 
   private TaskInfo submitTask(NodeTaskParams taskParams, String nodeName) {
@@ -158,9 +155,10 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> STOP_NODE_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.CheckUnderReplicatedTablets,
+          TaskType.FreezeUniverse,
           TaskType.ModifyBlackList,
           TaskType.SetNodeState,
-          TaskType.CheckUnderReplicatedTablets,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
           TaskType.AnsibleClusterServerCtl,
@@ -173,8 +171,9 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
   private static final List<JsonNode> STOP_NODE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of("state", "Stopping")),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("state", "Stopping")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
@@ -186,9 +185,10 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> STOP_NODE_WITH_YBC_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.CheckUnderReplicatedTablets,
+          TaskType.FreezeUniverse,
           TaskType.ModifyBlackList,
           TaskType.SetNodeState,
-          TaskType.CheckUnderReplicatedTablets,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
           TaskType.AnsibleClusterServerCtl,
@@ -202,8 +202,9 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
   private static final List<JsonNode> STOP_NODE_WITH_YBC_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of("state", "Stopping")),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("state", "Stopping")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
@@ -216,9 +217,10 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> STOP_NODE_TASK_SEQUENCE_MASTER =
       ImmutableList.of(
+          TaskType.CheckUnderReplicatedTablets,
+          TaskType.FreezeUniverse,
           TaskType.ModifyBlackList,
           TaskType.SetNodeState,
-          TaskType.CheckUnderReplicatedTablets,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
           TaskType.AnsibleClusterServerCtl,
@@ -240,8 +242,9 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
   private static final List<JsonNode> STOP_NODE_TASK_SEQUENCE_MASTER_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of("state", "Stopping")),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("state", "Stopping")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
@@ -262,9 +265,10 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> STOP_NODE_WITH_YBC_TASK_SEQUENCE_MASTER =
       ImmutableList.of(
+          TaskType.CheckUnderReplicatedTablets,
+          TaskType.FreezeUniverse,
           TaskType.ModifyBlackList,
           TaskType.SetNodeState,
-          TaskType.CheckUnderReplicatedTablets,
           TaskType.ModifyBlackList,
           TaskType.WaitForLeaderBlacklistCompletion,
           TaskType.AnsibleClusterServerCtl,
@@ -287,8 +291,9 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
   private static final List<JsonNode> STOP_NODE_WITH_YBC_TASK_SEQUENCE_MASTER_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of()),
-          Json.toJson(ImmutableMap.of("state", "Stopping")),
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of("state", "Stopping")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("process", "tserver", "command", "stop")),
@@ -310,6 +315,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
   private static final List<TaskType> STOP_NODE_TASK_SEQUENCE_DEDICATED_MASTER =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.ChangeMasterConfig,
           TaskType.AnsibleClusterServerCtl,
@@ -326,6 +332,7 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> STOP_NODE_DEDICATED_MASTER_EXPECTED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Stopping")),
           Json.toJson(ImmutableMap.of("opType", "RemoveMaster")),
           Json.toJson(ImmutableMap.of("process", "master", "command", "stop")),
@@ -561,9 +568,8 @@ public class StopNodeInUniverseTest extends CommissionerBaseTest {
         UniverseControllerRequestBinder.deepCopy(
             defaultUniverse.getUniverseDetails(), NodeTaskParams.class);
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
-    TaskInfo taskInfo = submitTask(taskParams, "host-n9");
-    verify(mockNodeManager, times(0)).nodeCommand(any(), any());
-    assertEquals(Failure, taskInfo.getTaskState());
+    // Throws at validateParams check.
+    assertThrows(PlatformServiceException.class, () -> submitTask(taskParams, "host-n9"));
   }
 
   @Test

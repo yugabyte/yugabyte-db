@@ -2,7 +2,6 @@
 title: Enable users in YSQL
 headerTitle: Enable users in YSQL
 description: Enable users in YSQL.
-image: /images/section_icons/secure/authentication.png
 menu:
   stable:
     name: Enable users
@@ -95,7 +94,7 @@ A YugabyteDB cluster with authentication enabled starts with the default admin u
 $ ./bin/ysqlsh -U yugabyte
 ```
 
-You are prompted to enter the password. After logging in to the YSQL shell, you should see the following output:
+You are prompted to enter the password. After logging in, you should see the following output:
 
 ```output
 ysqlsh (11.2-YB-2.7.0.0-b0)

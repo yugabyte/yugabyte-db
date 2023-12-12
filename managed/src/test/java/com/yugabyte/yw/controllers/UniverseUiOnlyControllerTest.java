@@ -39,10 +39,13 @@ import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.UniverseConfigureTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -56,6 +59,7 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
@@ -72,10 +76,12 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
@@ -83,6 +89,7 @@ import play.libs.Json;
 import play.mvc.Result;
 
 @RunWith(JUnitParamsRunner.class)
+@Slf4j
 public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBase {
 
   @Override
@@ -405,7 +412,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseCreateWithInvalidTServerJson() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CheckTServers);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
@@ -460,7 +467,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseExpand() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
@@ -510,7 +517,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     assertNotNull(primaryClusterJson.get("userIntent"));
     assertAuditEntry(1, customer.getUuid());
 
-    fakeTaskUUID = UUID.randomUUID();
+    fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     // Try universe expand only, and re-check.
@@ -531,7 +538,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseExpandWithYbc() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
@@ -585,7 +592,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     assertNotNull(primaryClusterJson.get("userIntent"));
     assertAuditEntry(1, customer.getUuid());
 
-    fakeTaskUUID = UUID.randomUUID();
+    fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     // Try universe expand only, and re-check.
@@ -656,7 +663,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseUpdateWithChangingIP() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
@@ -717,7 +724,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseUpdateIllegalIP() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
@@ -780,7 +787,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseUpdateWithAllNodesRemoved() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
@@ -838,7 +845,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseUpdateWithMissingNodes() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
@@ -899,7 +906,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseUpdateWithUnknownNodes() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
@@ -961,7 +968,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseUpdateWithNodeNameInToBeAdded() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
@@ -1015,7 +1022,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseUpdateWithValidParams() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
@@ -1038,7 +1045,9 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
             .put("replicationFactor", 3)
             .put("numNodes", 3)
             .put("provider", p.getUuid().toString())
-            .put("accessKeyCode", accessKeyCode);
+            .put("accessKeyCode", accessKeyCode)
+            .set("deviceInfo", Json.toJson(ApiUtils.getDummyDeviceInfo(1, 1)));
+
     ArrayNode regionList = Json.newArray().add(r.getUuid().toString());
     userIntentJson.set("regionList", regionList);
 
@@ -1159,8 +1168,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   @Test
   public void testVMImageUpgradeValidParams() {
     when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
-
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.VMImageUpgrade);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
@@ -1211,7 +1219,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     "Non-Restart",
   })
   public void testUniverseUpgradeWithNodesInTransit(String upgradeOption) {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.UpgradeUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     UUID uUUID = createUniverse(customer.getId()).getUniverseUUID();
@@ -1278,7 +1286,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseSoftwareUpgradeValidParams() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.SoftwareUpgrade);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     Universe u = createUniverse(customer.getId());
@@ -1304,7 +1312,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseRollingRestartValidParams() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.RestartUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     Universe u = createUniverse(customer.getId());
@@ -1338,7 +1346,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseRollingRestartNonRolling() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.RestartUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     Universe u = createUniverse(customer.getId());
@@ -1387,7 +1395,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseGFlagsUpgradeValidParams() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     Universe u = createUniverse(customer.getId());
@@ -1425,7 +1433,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseGFlagsUpgradeWithTrimParams() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     Universe u = createUniverse(customer.getId());
@@ -1598,7 +1606,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseNonRollingGFlagsUpgrade() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     Universe u = createUniverse(customer.getId());
@@ -1641,7 +1649,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testUniverseNonRollingSoftwareUpgrade() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.SoftwareUpgrade);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     Universe u = createUniverse(customer.getId());
@@ -1706,8 +1714,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   @Test
   public void testResizeNodeWithUnsupportedProvider() {
     when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
-
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.ResizeNode);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
@@ -1745,8 +1752,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
   @Test
   public void testResizeNodeValidParams() {
     when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(true);
-
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.ResizeNode);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
 
@@ -1849,7 +1855,7 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
 
   @Test
   public void testExpandDiskSizeSuccess() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.EditUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     Universe u = createUniverse(customer.getId());
@@ -1910,6 +1916,22 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
         x -> x.getPrimaryCluster().userIntent.deviceInfo.volumeSize += 50,
         EDIT,
         UniverseDefinitionTaskParams.UpdateOptions.SMART_RESIZE_NON_RESTART);
+  }
+
+  @Test
+  public void testGetUpdateOptionsEditRegions() throws IOException {
+    testGetAvailableOptions(
+        x -> x.getPrimaryCluster().userIntent.regionList.add(UUID.randomUUID()),
+        EDIT,
+        UniverseDefinitionTaskParams.UpdateOptions.UPDATE);
+  }
+
+  @Test
+  public void testGetUpdateOptionsEditRF() throws IOException {
+    testGetAvailableOptions(
+        x -> x.getPrimaryCluster().userIntent.replicationFactor++,
+        EDIT,
+        UniverseDefinitionTaskParams.UpdateOptions.UPDATE);
   }
 
   @Test
@@ -2037,6 +2059,189 @@ public class UniverseUiOnlyControllerTest extends UniverseCreateControllerTestBa
     assertErrorResponse(result, "Region region-1 is deleted");
     assertBadRequest(result, "");
     assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
+  public void testUniverseUpdateUnchangedFail() {
+    Universe u = setUpUniverse();
+    String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
+    Result result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "PUT", url, authToken, Json.toJson(u.getUniverseDetails())));
+    assertErrorResponse(result, "No changes that could be applied by EditUniverse");
+  }
+
+  @Test
+  public void testUniverseUpdateChangeInstanceTypeFail() {
+    Universe u = setUpUniverse();
+    u.getUniverseDetails().getPrimaryCluster().userIntent.instanceType = "newInstanceType";
+    u.getUniverseDetails().getPrimaryCluster().userIntent.instanceTags = Map.of("foo", "bar");
+    String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
+    Result result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "PUT", url, authToken, Json.toJson(u.getUniverseDetails())));
+    assertErrorResponse(result, "Cannot change instance type for existing node");
+  }
+
+  @Test
+  public void testUniverseUpdateChangeVolumeSizeFail() {
+    Universe u = setUpUniverse();
+    u.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo.volumeSize++;
+    u.getUniverseDetails().getPrimaryCluster().userIntent.instanceTags = Map.of("foo", "bar");
+    String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
+    Result result =
+        assertPlatformException(
+            () ->
+                doRequestWithAuthTokenAndBody(
+                    "PUT", url, authToken, Json.toJson(u.getUniverseDetails())));
+    assertErrorResponse(result, "Cannot change volume size for existing node");
+  }
+
+  @Test
+  public void testUniverseUpdateChangeVolumeSizeK8sOk() {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.CheckTServers);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    Universe u = setUpUniverse(CloudType.kubernetes);
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              universe.updateConfig(Map.of(Universe.HELM2_LEGACY, "true"));
+              UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+              universeDetails.getPrimaryCluster().userIntent.ybSoftwareVersion = "2.7.9.0";
+              universe.setUniverseDetails(universeDetails);
+            });
+    u = addNode(u);
+    u.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo.volumeSize++;
+    JsonNode bodyJson = Json.toJson(u.getUniverseDetails());
+    String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
+    Result result = doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson);
+    assertOk(result);
+  }
+
+  @Test
+  public void testUniverseUpdateChangeNumVolumesFail() {
+    Universe u = setUpUniverse();
+    u = addNode(u);
+    u.getUniverseDetails().getPrimaryCluster().userIntent.deviceInfo.numVolumes++;
+    String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
+    JsonNode bodyJson = Json.toJson(u.getUniverseDetails());
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson));
+    assertErrorResponse(result, "Cannot change num of volumes for existing node");
+  }
+
+  @Test
+  public void testUniverseUpdateChangeTserverGFlagsFail() {
+    Universe u = setUpUniverse();
+    u = addNode(u);
+    u.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(Collections.emptyMap(), Map.of("a", "b"));
+    String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
+    JsonNode bodyJson = Json.toJson(u.getUniverseDetails());
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson));
+    assertErrorResponse(result, "Cannot change tserver gflags for existing node");
+  }
+
+  @Test
+  public void testUniverseUpdateChangeMasterGFlagsFail() {
+    Universe u = setUpUniverse();
+    u = addNode(u);
+    u.getUniverseDetails().getPrimaryCluster().userIntent.specificGFlags =
+        SpecificGFlags.construct(Map.of("a", "b"), Collections.emptyMap());
+    String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
+    JsonNode bodyJson = Json.toJson(u.getUniverseDetails());
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson));
+    assertErrorResponse(result, "Cannot change master gflags for existing node");
+  }
+
+  @Test
+  public void testUniverseUpdateChangeSystemdFail() {
+    Universe u = setUpUniverse();
+    u = addNode(u);
+    u.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd =
+        !u.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
+    String url = "/api/customers/" + customer.getUuid() + "/universes/" + u.getUniverseUUID();
+    JsonNode bodyJson = Json.toJson(u.getUniverseDetails());
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("PUT", url, authToken, bodyJson));
+    assertErrorResponse(result, "Cannot change systemd setting for existing node");
+  }
+
+  private Universe addNode(Universe u) {
+    return Universe.saveDetails(
+        u.getUniverseUUID(),
+        universe -> {
+          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+          universeDetails.getPrimaryCluster().userIntent.numNodes++;
+          PlacementInfoUtil.updateUniverseDefinition(
+              universeDetails, customer.getId(), universeDetails.getPrimaryCluster().uuid, EDIT);
+          universe.setUniverseDetails(universeDetails);
+        });
+  }
+
+  private Universe setUpUniverse() {
+    return setUpUniverse(CloudType.aws);
+  }
+
+  private Universe setUpUniverse(CloudType providerType) {
+    Provider p =
+        Provider.create(
+            customer.getUuid(),
+            providerType,
+            providerType.name() + " Provider",
+            new ProviderDetails());
+    String accessKeyCode = "someKeyCode";
+    AccessKey.create(p.getUuid(), accessKeyCode, new AccessKey.KeyInfo());
+    Region r = Region.create(p, "region-1", "PlacementRegion 1", "default-image");
+    AvailabilityZone.createOrThrow(r, "az-1", "PlacementAZ 1", "subnet-1");
+    AvailabilityZone.createOrThrow(r, "az-2", "PlacementAZ 2", "subnet-2");
+    AvailabilityZone.createOrThrow(r, "az-3", "PlacementAZ 3", "subnet-3");
+    Universe u = createUniverse("Test universe", customer.getId(), providerType);
+    InstanceType i =
+        InstanceType.upsert(
+            p.getUuid(), "c3.xlarge", 10, 5.5, new InstanceType.InstanceTypeDetails());
+    Universe result =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+              UserIntent userIntent = universeDetails.getPrimaryCluster().userIntent;
+              userIntent.instanceType = i.getInstanceTypeCode();
+              userIntent.regionList = Collections.singletonList(r.getUuid());
+              userIntent.deviceInfo = ApiUtils.getDummyDeviceInfo(1, 100);
+              PlacementInfoUtil.updateUniverseDefinition(
+                  universeDetails,
+                  customer.getId(),
+                  universeDetails.getPrimaryCluster().uuid,
+                  CREATE);
+              AtomicInteger idx = new AtomicInteger();
+              universeDetails.nodeDetailsSet.forEach(
+                  node -> {
+                    node.state = NodeState.Live;
+                    node.nodeName =
+                        UniverseDefinitionTaskBase.getNodeName(
+                            universeDetails.getPrimaryCluster(),
+                            "",
+                            universeDetails.nodePrefix,
+                            idx.incrementAndGet(),
+                            node.cloudInfo.region,
+                            node.cloudInfo.az);
+                  });
+              universe.setUniverseDetails(universeDetails);
+            });
+    return result;
   }
 
   private void testGetAvailableOptions(

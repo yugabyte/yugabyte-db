@@ -14,6 +14,8 @@ import { EditRoleModal } from './modals/EditRoleModal';
 import { YBConfirmModal } from '../../modals';
 import { isNonAvailable, isNotHidden, isDisabled } from '../../../utils/LayoutUtils';
 import { timeFormatter } from '../../../utils/TableFormatters';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 export const UsersList = (props) => {
   const [userForModal, setUserModal] = useState(null);
@@ -70,7 +72,7 @@ export const UsersList = (props) => {
     ) {
       return null;
     } else {
-      const disableRoleEdit = user?.ldapSpecifiedRole; //if user is LDAP
+      const disableRoleEdit = user?.ldapSpecifiedRole;; //if user is LDAP
       return (
         <DropdownButton
           className="btn btn-default"
@@ -103,13 +105,18 @@ export const UsersList = (props) => {
         )}
         <Col className="header-col justify-end">
           {isNotHidden(customer.data.features, 'universe.create') && (
-            <YBButton
-              btnClass="add-user-btn btn btn-lg btn-orange"
-              onClick={showAddUserModal}
-              btnText="Add User"
-              btnIcon="fa fa-plus"
-              disabled={isDisabled(customer.data.features, 'universe.create')}
-            />
+            <RbacValidator
+              isControl
+              accessRequiredOn={ApiPermissionMap.CREATE_USER}
+            >
+              <YBButton
+                btnClass="add-user-btn btn btn-lg btn-orange"
+                onClick={showAddUserModal}
+                btnText="Add User"
+                btnIcon="fa fa-plus"
+                disabled={isDisabled(customer.data.features, 'universe.create')}
+              />
+            </RbacValidator>
           )}
           {/* re-mount modals in order to internal forms show valid initial values all the times */}
           {showModal && visibleModal === 'addUserModal' && (

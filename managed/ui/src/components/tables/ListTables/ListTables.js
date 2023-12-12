@@ -18,6 +18,7 @@ import { formatSchemaName } from '../../../utils/Formatters';
 import { YBButtonLink } from '../../common/forms/fields';
 import './ListTables.scss';
 
+
 class TableTitle extends Component {
   render() {
     const {
@@ -178,6 +179,7 @@ class ListTableGrid extends Component {
               currentRow={row}
               actionType="import"
               disabled={actions_disabled}
+              universeUUID={currentUniverse.universeUUID}
             />
           ]);
         }
@@ -335,7 +337,7 @@ class ListTableGrid extends Component {
         >
           WAL Size
         </TableHeaderColumn>
-        {!universePaused && isNotHidden(currentCustomer.data.features, 'universes.backup') && (
+        {!universePaused && isNotHidden(currentCustomer.data.features, 'universes.backup') &&  (
           <TableHeaderColumn
             dataField={'actions'}
             columnClassName={'yb-actions-cell'}

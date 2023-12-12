@@ -35,6 +35,7 @@ DECLARE_int32(ysql_sequence_cache_minval);
 DECLARE_int32(ysql_num_databases_reserved_in_db_catalog_version_mode);
 
 DECLARE_bool(ysql_suppress_unsupported_error);
+DECLARE_bool(ysql_suppress_unsafe_alter_notice);
 
 DECLARE_bool(ysql_beta_features);
 DECLARE_bool(ysql_beta_feature_tablegroup);
@@ -48,3 +49,6 @@ DECLARE_bool(TEST_yb_lwlock_crash_after_acquire_pg_stat_statements_reset);
 DECLARE_bool(TEST_yb_test_fail_matview_refresh_after_creation);
 DECLARE_bool(ysql_enable_read_request_caching);
 DECLARE_bool(ysql_enable_create_database_oid_collision_retry);
+DECLARE_bool(ysql_use_relcache_file);
+
+DECLARE_bool(TEST_yb_enable_ash);

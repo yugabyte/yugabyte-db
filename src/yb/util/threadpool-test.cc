@@ -39,7 +39,7 @@
 #include <thread>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/gutil/atomicops.h"
@@ -828,6 +828,30 @@ TEST_F(TestThreadPool, TestTokenConcurrency) {
                           kWaitThreads, total_num_tokens_waited.load());
   LOG(INFO) << Substitute("Tokens submitted ($0 threads): $1",
                           kSubmitThreads, total_num_tokens_submitted.load());
+}
+
+TEST_F(TestThreadPool, TestTaskRunnerStopWait) {
+  TaskRunner runner;
+  ASSERT_OK(runner.Init(/* concurrency = */1));
+
+  std::atomic<int> val = 0;
+  runner.Submit([&val]() -> Status {
+    val++;
+    return STATUS(IllegalState, "first task failed");
+  });
+  runner.Submit([&val]() -> Status {
+    SleepFor(MonoDelta::FromSeconds(1));
+    val++;
+    return Status::OK();
+  });
+
+  ASSERT_NOK(runner.Wait(StopWaitIfFailed::kTrue));
+  ASSERT_NOK(runner.status());
+  ASSERT_EQ(1, val);
+
+  // Wait for second task to finish.
+  ASSERT_NOK(runner.Wait(StopWaitIfFailed::kFalse));
+  ASSERT_EQ(2, val);
 }
 
 } // namespace yb

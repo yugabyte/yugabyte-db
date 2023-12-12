@@ -21,19 +21,21 @@ import play.mvc.Http;
 
 @Slf4j
 public class UpgradeWithGFlags extends UpgradeTaskParams {
+  public static final String SPECIFIC_GFLAGS_NO_CHANGES_ERROR =
+      "No changes in gflags " + "(modify specificGflags in cluster)";
 
   public Map<String, String> masterGFlags;
   public Map<String, String> tserverGFlags;
 
-  protected void verifyGFlags(Universe universe) {
+  protected void verifyGFlags(Universe universe, boolean isFirstTry) {
     if (isUsingSpecificGFlags(universe)) {
-      verifySpecificGFlags(universe);
+      verifySpecificGFlags(universe, isFirstTry);
     } else {
-      verifyGFlagsOld(universe);
+      verifyGFlagsOld(universe, isFirstTry);
     }
   }
 
-  protected void verifySpecificGFlags(Universe universe) {
+  protected void verifySpecificGFlags(Universe universe, boolean isFirstTry) {
     Map<UUID, Cluster> newClusters =
         clusters.stream().collect(Collectors.toMap(c -> c.uuid, c -> c));
     boolean hasClustersToUpdate = false;
@@ -78,20 +80,21 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
         }
       }
     }
-    if (!hasClustersToUpdate) {
-      throw new PlatformServiceException(
-          Http.Status.BAD_REQUEST, "No changes in gflags (modify specificGflags in cluster)");
+    if (isFirstTry && !hasClustersToUpdate) {
+      throw new PlatformServiceException(Http.Status.BAD_REQUEST, SPECIFIC_GFLAGS_NO_CHANGES_ERROR);
     }
   }
 
-  protected void verifyGFlagsOld(Universe universe) {
+  protected void verifyGFlagsOld(Universe universe, boolean isFirstTry) {
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     if (masterGFlags.equals(userIntent.masterGFlags)
         && tserverGFlags.equals(userIntent.tserverGFlags)) {
       if (masterGFlags.isEmpty() && tserverGFlags.isEmpty()) {
         throw new PlatformServiceException(Http.Status.BAD_REQUEST, "gflags param is required.");
       }
-      throw new PlatformServiceException(Http.Status.BAD_REQUEST, "No gflags to change.");
+      if (isFirstTry) {
+        throw new PlatformServiceException(Http.Status.BAD_REQUEST, "No gflags to change.");
+      }
     }
     boolean gFlagsDeleted =
         (!GFlagsUtil.getDeletedGFlags(userIntent.masterGFlags, masterGFlags).isEmpty())
@@ -155,6 +158,8 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
         GFlagsUtil.getGFlagsForNode(node, serverType, newClusterVersion, newClusters);
     Map<String, String> oldGflags =
         GFlagsUtil.getGFlagsForNode(node, serverType, curCluster, curClusters);
-    return !newGflags.equals(oldGflags);
+    boolean result = !newGflags.equals(oldGflags);
+    log.debug("Node {} type {} has changes: {}", node.getNodeName(), serverType, result);
+    return result;
   }
 }

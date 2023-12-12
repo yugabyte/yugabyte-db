@@ -228,9 +228,60 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
         "foo://bar/graph?g0.expr=%28max%28max_over_time%28our_valid_range_metric%7Bfilter"
             + "%3D%22awesome%22%7D%5B60s%5D%29%29+by+%28exported_instance%29+and+topk%282%2C+max%28"
             + "max_over_time%28our_valid_range_metric%7Bfilter%3D%22awesome%22%7D%5B3600s%5D%"
-            + "401479381737%29%29+by+%28exported_instance%29%29%29+or+max%28max_over_time%28"
-            + "our_valid_range_metric%7Bfilter%3D%22awesome%22%7D%5B60s%5D%29%29&g0.tab=0&"
-            + "g0.range_input=100000s&g0.end_input=2016-11-17 11:22:17",
+            + "401479381737%29%29+by+%28exported_instance%29%29%29+or+avg%28max%28max_over_time%28"
+            + "our_valid_range_metric%7Bfilter%3D%22awesome%22%7D%5B60s%5D%29%29+by+%28exported"
+            + "_instance%29%29&g0.tab=0&g0.range_input=100000s&g0.end_input=2016-11-17"
+            + " 11:22:17",
+        directUrls.get(0).asText());
+  }
+
+  @Test
+  public void testTopKQueryWithSpecifiedAggregateQueryAggregator() {
+    HashMap<String, String> params = new HashMap<>();
+    params.put("start", "1479281737");
+    params.put("end", "1479381737");
+    params.put("step", "60");
+    params.put("range", "3600");
+    params.put("queryKey", "valid_range_metric");
+    MetricQueryExecutor qe =
+        new MetricQueryExecutor(
+            metricUrlProvider,
+            mockApiHelper,
+            new HashMap<>(),
+            params,
+            new HashMap<>(),
+            new MetricSettings()
+                .setMetric("valid_range_metric")
+                .setNodeAggregation(NodeAggregation.MAX)
+                .setTimeAggregation(TimeAggregation.MAX)
+                .setAggregatedValueFunction(NodeAggregation.MIN)
+                .setSplitType(SplitType.NODE)
+                .setSplitMode(SplitMode.TOP)
+                .setSplitCount(2),
+            false);
+
+    JsonNode responseJson =
+        Json.parse(
+            "{\"status\":\"success\",\"data\":{\"resultType\":\"vector\",\"result\":[{\"metric\":\n"
+                + " {\"cpu\":\"system\",\"exported_instance\":\"instance1\"},"
+                + "\"value\":[1479278137,\"0.027751899056199826\"]},{\"metric\":\n"
+                + " {\"cpu\":\"system\",\"exported_instance\":\"instance2\"},"
+                + "\"value\":[1479278137,\"0.04329469299783263\"]}]}}");
+
+    when(mockApiHelper.getRequest(eq("foo://bar/api/v1/query_range"), anyMap(), anyMap()))
+        .thenReturn(Json.toJson(responseJson));
+
+    JsonNode result = qe.call();
+    ArrayNode directUrls = (ArrayNode) result.get("directURLs");
+    assertEquals(directUrls.size(), 1);
+    assertEquals(
+        "foo://bar/graph?g0.expr=%28max%28max_over_time%28our_valid_range_metric%7Bfilter"
+            + "%3D%22awesome%22%7D%5B60s%5D%29%29+by+%28exported_instance%29+and+topk%282%2C+max%28"
+            + "max_over_time%28our_valid_range_metric%7Bfilter%3D%22awesome%22%7D%5B3600s%5D%"
+            + "401479381737%29%29+by+%28exported_instance%29%29%29+or+min%28max%28max_over_time%28"
+            + "our_valid_range_metric%7Bfilter%3D%22awesome%22%7D%5B60s%5D%29%29+by+%28exported"
+            + "_instance%29%29&g0.tab=0&g0.range_input=100000s&g0.end_input=2016-11-17"
+            + " 11:22:17",
         directUrls.get(0).asText());
   }
 
@@ -348,8 +399,8 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
 
     JsonNode responseJson =
         Json.parse(
-            "{\"status\":\"error\",\"errorType\":\"bad_data\","
-                + "\"error\":\"parse error at char 44: unexpected \\\"{\\\" in aggregation, expected \\\")\\\"\"}");
+            "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"parse error at char 44:"
+                + " unexpected \\\"{\\\" in aggregation, expected \\\")\\\"\"}");
     when(mockApiHelper.getRequest(anyString(), anyMap(), anyMap()))
         .thenReturn(Json.toJson(responseJson));
     JsonNode response = qe.call();

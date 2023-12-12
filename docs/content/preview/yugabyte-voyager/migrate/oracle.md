@@ -56,13 +56,13 @@ Create a role and a database user, and provide the user with READ access to all 
    GRANT <SCHEMA_NAME>_reader_role TO ybvoyager;
    ```
 
-   If you're using [accelerated data export](../migrate-steps/#accelerate-data-export-for-mysql-and-oracle), run the additional grant as follows:
+   If you're using [accelerated data export](#accelerate-data-export-for-mysql-and-oracle), run the additional grant as follows:
 
    ```sql
    GRANT FLASHBACK ANY TABLE TO ybvoyager;
    ```
 
-1. If you're using [accelerated data export](../migrate-steps/#accelerate-data-export-for-mysql-and-oracle), the `log_mode` should be archivelog.
+1. If you're using [accelerated data export](#accelerate-data-export-for-mysql-and-oracle), the `log_mode` should be archivelog.
 
     1. Check the value for `log_mode` using the following command for Oracle/Oracle RDS:
 
@@ -95,6 +95,6 @@ Create a role and a database user, and provide the user with READ access to all 
 
 If you want yb-voyager to connect to the source database over SSL, refer to [SSL Connectivity](../../reference/yb-voyager-cli/#ssl-connectivity). Note that you can use only one of the following arguments to connect to your Oracle instance:
 
-- [--source-db-schema](../../reference/yb-voyager-cli/#source-db-schema)
-- [--oracle-db-sid](../../reference/yb-voyager-cli/#oracle-db-sid)
-- [--oracle-tns-alias](../../reference/yb-voyager-cli/#ssl-connectivity)
+- --source-db-schema (Schema name of the source database.)
+- --oracle-db-sid (Oracle System Identifier you can use while exporting data from Oracle instances.)
+- --oracle-tns-alias (TNS (Transparent Network Substrate) alias configured to establish a secure connection with the server.)

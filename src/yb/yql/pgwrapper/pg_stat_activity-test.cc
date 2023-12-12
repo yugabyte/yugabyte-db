@@ -22,8 +22,8 @@
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/uuid.h"
 
+#include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
-#include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
 using namespace std::literals;
 
@@ -31,6 +31,7 @@ namespace yb::pgwrapper {
 namespace {
 
 constexpr auto* kTableName = "t";
+constexpr int kSimulateSlowDDLSecs = 3;
 
 struct TxnInfo {
   TxnInfo(int32_t pid_, Uuid txn_id_) : pid(pid_), txn_id(txn_id_) {}
@@ -39,19 +40,24 @@ struct TxnInfo {
   Uuid txn_id;
 };
 
-class PgStatActivityTest : public PgMiniTestBase {
+class PgStatActivityTest : public LibPqTestBase {
  protected:
   void SetUp() override {
-    PgMiniTestBase::SetUp();
+    LibPqTestBase::SetUp();
     auto conn = ASSERT_RESULT(Connect());
     ASSERT_OK(conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kTableName));
   }
 
-  size_t NumTabletServers() override { return 1; }
+  int GetNumTabletServers() const override { return 1; }
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_master_flags.push_back("--replication_factor=1");
+    LibPqTestBase::UpdateMiniClusterOptions(options);
+  }
 
   static Result<TxnInfo> GetTransactionInfo(PGConn* conn) {
     auto opt_txn_id =
-        VERIFY_RESULT(conn->FetchValue<std::optional<Uuid>>("SELECT yb_get_current_transaction()"));
+        VERIFY_RESULT(conn->FetchRow<std::optional<Uuid>>("SELECT yb_get_current_transaction()"));
     return TxnInfo{PQbackendPID(conn->get()), opt_txn_id.value_or(Uuid::Nil())};
   }
 
@@ -64,18 +70,23 @@ class PgStatActivityTest : public PgMiniTestBase {
   }
 
   static Result<std::vector<TxnInfo>> FetchTxnInfoFromStatActivity(PGConn* conn) {
-    auto stat_result_holder = VERIFY_RESULT(conn->Fetch(
-        "SELECT pid, yb_backend_xid FROM pg_stat_activity WHERE yb_backend_xid IS NOT NULL"));
-    auto* stat_result = stat_result_holder.get();
+    auto rows = VERIFY_RESULT((conn->FetchRows<int32_t, Uuid>(
+        "SELECT pid, yb_backend_xid FROM pg_stat_activity WHERE yb_backend_xid IS NOT NULL")));
     std::vector<TxnInfo> result;
-    const auto rows_count = PQntuples(stat_result);
-    result.reserve(rows_count);
-    for (int i = 0; i < rows_count; ++i) {
-      result.emplace_back(
-          VERIFY_RESULT(GetValue<int32_t>(stat_result, i, 0)),
-          VERIFY_RESULT(GetValue<Uuid>(stat_result, i, 1)));
+    result.reserve(rows.size());
+    for (const auto& [pid, txn_id] : rows) {
+      result.emplace_back(pid, txn_id);
     }
     return result;
+  }
+};
+
+class PgStatActivityDelayTest : public PgStatActivityTest {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_master_flags.push_back(
+        Format("--TEST_simulate_slow_table_create_secs=$0", kSimulateSlowDDLSecs));
+    PgStatActivityTest::UpdateMiniClusterOptions(options);
   }
 };
 
@@ -169,6 +180,31 @@ TEST_F(PgStatActivityTest, DDLInsideDMLTransaction) {
   ASSERT_EQ(dml_txn_id, ASSERT_RESULT(GetTransactionId(&conn)));
   ASSERT_OK(conn.RollbackTransaction());
   ASSERT_TRUE(ASSERT_RESULT(GetTransactionId(&conn)).IsNil());
+}
+
+// The test checks that the pg_stat_activity function does not get blocked
+// behind a long running DDL operation.
+TEST_F(PgStatActivityDelayTest, SlowDDLOperation) {
+  constexpr auto* kDdlTableName = "kDdl";
+  auto conn = ASSERT_RESULT(Connect());
+  auto aux_conn = ASSERT_RESULT(Connect());
+  CountDownLatch latch(1);
+  TestThreadHolder threads;
+  threads.AddThreadFunctor([&aux_conn, &latch, kDdlTableName] {
+    ASSERT_OK(aux_conn.ExecuteFormat("CREATE TABLE $0 (k INT PRIMARY KEY, v INT)", kDdlTableName));
+    latch.CountDown();
+  });
+
+  // Sleep to ensure that table creation thread has acquired session lock
+  const auto kSleepDuration = MonoDelta::FromMilliseconds(1000);
+  SleepFor(kSleepDuration);
+
+  const auto start = MonoTime::Now();
+  ASSERT_RESULT(conn.Fetch("SELECT pid, yb_backend_xid FROM pg_stat_activity"));
+  const auto end = MonoTime::Now();
+
+  ASSERT_LT((end - start).ToSeconds(), 1);
+  latch.Wait();
 }
 
 }  // namespace yb::pgwrapper

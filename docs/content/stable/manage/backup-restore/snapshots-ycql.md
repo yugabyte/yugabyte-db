@@ -3,7 +3,6 @@ title: Distributed snapshots for YCQL
 headerTitle: Distributed snapshots for YCQL
 linkTitle: Distributed snapshots
 description: Distributed snapshots for YCQL.
-image: /images/section_icons/manage/enterprise.png
 menu:
   stable:
     identifier: snapshots-2-ycql
@@ -29,7 +28,7 @@ type: docs
 
 </ul>
 
-The most efficient way to back up the data stored in YugabyteDB is to create a distributed snapshot. A snapshot is a consistent cut of a data taken across all the nodes in the cluster.
+The most efficient way to back up the data stored in YugabyteDB is to create a distributed snapshot. A snapshot is a consistent cut of data taken across all the nodes in the cluster.
 
 When YugabyteDB creates a snapshot, it doesn't physically copy the data; instead, it creates hard links to all the relevant files. These links reside on the same storage volumes where the data itself is stored, which makes both backup and restore operations nearly instantaneous.
 

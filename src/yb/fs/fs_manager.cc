@@ -38,7 +38,6 @@
 
 #include <boost/algorithm/string/predicate.hpp>
 #include <boost/preprocessor/cat.hpp>
-#include <glog/logging.h>
 #include <glog/stl_logging.h>
 #include <google/protobuf/message.h>
 
@@ -56,12 +55,14 @@
 #include "yb/util/env_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/metric_entity.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/oid_generator.h"
 #include "yb/util/path_util.h"
 #include "yb/util/pb_util.h"
 #include "yb/util/result.h"
+#include "yb/util/string_util.h"
 
 DEFINE_UNKNOWN_bool(enable_data_block_fsync, true,
             "Whether to enable fsync() of data blocks, metadata, and their parent directories. "
@@ -115,6 +116,7 @@ const char *FsManager::kWalsRecoveryDirSuffix = ".recovery";
 const char *FsManager::kRocksDBDirName = "rocksdb";
 const char *FsManager::kDataDirName = "data";
 
+YB_STRONGLY_TYPED_UUID_IMPL(UniverseUuid);
 namespace {
 
 const char kRaftGroupMetadataDirName[] = "tablet-meta";
@@ -327,6 +329,22 @@ std::string FsManager::GetAutoFlagsConfigPath() const {
   return auto_flags_config_path_;
 }
 
+Result<std::string> FsManager::GetUniverseUuidFromTserverInstanceMetadata() const {
+  std::lock_guard lock(metadata_mutex_);
+  SCHECK_NOTNULL(metadata_);
+  return metadata_->tserver_instance_metadata().universe_uuid();
+}
+
+Status FsManager::SetUniverseUuidOnTserverInstanceMetadata(
+    const UniverseUuid& universe_uuid) {
+  std::lock_guard lock(metadata_mutex_);
+  SCHECK_NOTNULL(metadata_);
+  metadata_->mutable_tserver_instance_metadata()->set_universe_uuid(universe_uuid.ToString());
+  auto instance_metadata_path = VERIFY_RESULT(GetExistingInstanceMetadataPath());
+  return pb_util::WritePBContainerToPath(
+      env_, instance_metadata_path, *metadata_.get(), pb_util::OVERWRITE, pb_util::SYNC);
+}
+
 Status FsManager::CheckAndOpenFileSystemRoots() {
   RETURN_NOT_OK(Init());
 
@@ -335,6 +353,10 @@ Status FsManager::CheckAndOpenFileSystemRoots() {
   }
 
   bool create_roots = false;
+
+  // Currently, this path is only called on Init and does not race with any other threads trying
+  // to access metadata_. To future proof this however, we will still obtain a lock.
+  std::lock_guard lock(metadata_mutex_);
   for (const string& root : canonicalized_all_fs_roots_) {
     auto pb = std::make_unique<InstanceMetadataPB>();
     auto read_result = pb_util::ReadPBContainerFromPath(env_, GetInstanceMetadataPath(root),
@@ -670,10 +692,12 @@ Status FsManager::CreateDirIfMissingAndSync(const std::string& path, bool* creat
 }
 
 const string& FsManager::uuid() const {
+  std::lock_guard lock(metadata_mutex_);
   return CHECK_NOTNULL(metadata_.get())->uuid();
 }
 
 bool FsManager::initdb_done_set_after_sys_catalog_restore() const {
+  std::lock_guard lock(metadata_mutex_);
   return CHECK_NOTNULL(metadata_.get())->initdb_done_set_after_sys_catalog_restore();
 }
 
@@ -721,6 +745,7 @@ Result<std::string> FsManager::GetRaftGroupMetadataPath(const string& tablet_id)
 
 void FsManager::SetTabletPathByDataPath(const string& tablet_id, const string& path) {
   string tablet_path = path.empty() ? GetDefaultRootDir() : DirName(path);
+  LOG_WITH_FUNC(INFO) << "Tablet " << tablet_id << " metadata path being set to " << tablet_path;
   std::lock_guard lock(data_mutex_);
   InsertOrUpdate(&tablet_id_to_path_, tablet_id, tablet_path);
 }
@@ -775,11 +800,25 @@ Result<std::vector<std::string>> FsManager::ListTabletIds() {
       if (!IsValidTabletId(child)) {
         continue;
       }
-      tablet_id_to_path_.emplace(child, DirName(dir));
+      auto tablet_dirname = DirName(dir);
+      LOG(INFO) << "Found tablet " << child << " metadata at " << tablet_dirname;
+      tablet_id_to_path_.emplace(child, tablet_dirname);
       tablet_ids.push_back(child);
     }
   }
   return tablet_ids;
+}
+
+Result<std::string> FsManager::GetExistingInstanceMetadataPath() const {
+  for (const string& root : canonicalized_all_fs_roots_) {
+    auto instance_metadata_path = GetInstanceMetadataPath(root);
+    if (env_->FileExists(GetInstanceMetadataPath(root))) {
+      return instance_metadata_path;
+    }
+  }
+  return STATUS(IllegalState,
+      Format("No instance metadata found in root dirs $0",
+      RangeToString(canonicalized_all_fs_roots_.begin(), canonicalized_all_fs_roots_.end())));
 }
 
 std::string FsManager::GetInstanceMetadataPath(const string& root) const {

@@ -19,16 +19,16 @@ import io.ebean.Model;
 import io.ebean.SqlUpdate;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import jakarta.persistence.Column;
+import jakarta.persistence.EmbeddedId;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Temporal;
+import jakarta.persistence.TemporalType;
 import java.util.Date;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import javax.persistence.Column;
-import javax.persistence.EmbeddedId;
-import javax.persistence.Entity;
-import javax.persistence.Temporal;
-import javax.persistence.TemporalType;
 import lombok.Getter;
 import lombok.Setter;
 import org.slf4j.Logger;
@@ -84,8 +84,13 @@ public class KmsHistory extends Model {
   public static int getLatestReEncryptionCount(UUID targetUUID) {
     // If there is no universe with universe key, return 0.
     int latestReEncryptionCount =
-        KmsHistory.find.query().where().eq("target_uuid", targetUUID)
-            .eq("type", KmsHistoryId.TargetType.UNIVERSE_KEY).findList().stream()
+        KmsHistory.find
+            .query()
+            .where()
+            .eq("target_uuid", targetUUID)
+            .eq("type", KmsHistoryId.TargetType.UNIVERSE_KEY)
+            .findList()
+            .stream()
             .mapToInt(kmsHistory -> kmsHistory.uuid.getReEncryptionCount())
             .max()
             .orElse(0);

@@ -43,7 +43,6 @@
 #include "yb/master/xcluster_consumer_registry_service.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/server/hybrid_clock.h"
-#include "yb/tserver/xcluster_consumer.h"
 #include "yb/tserver/mini_tablet_server.h"
 
 #include "yb/util/atomic.h"
@@ -62,7 +61,7 @@ DECLARE_bool(enable_log_retention_by_op_idx);
 DECLARE_bool(enable_ysql);
 DECLARE_int32(cdc_max_apply_batch_num_records);
 DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
-DECLARE_int32(cdc_wal_retention_time_secs);
+DECLARE_uint32(cdc_wal_retention_time_secs);
 DECLARE_int32(log_min_seconds_to_retain);
 DECLARE_int32(log_min_segments_to_retain);
 DECLARE_int32(transaction_table_num_tablets);
@@ -120,22 +119,29 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
         Format(
             "Num consumer tables: $0 num producer tables: $1 must be equal.",
             num_consumer_tablets.size(), num_producer_tablets.size()));
-    std::vector<YBTableName> tables;
     for (uint32_t i = 0; i < num_consumer_tablets.size(); i++) {
-      RETURN_NOT_OK(CreateTable(i, num_producer_tablets[i], producer_client(), &tables));
+      auto table_name = VERIFY_RESULT(CreateTable(i, num_producer_tablets[i], producer_client()));
 
       std::shared_ptr<client::YBTable> producer_table;
-      RETURN_NOT_OK(producer_client()->OpenTable(tables[i * 2], &producer_table));
+      RETURN_NOT_OK(producer_client()->OpenTable(table_name, &producer_table));
       producer_tables_[producer_cluster()->GetClusterId()].push_back(producer_table);
 
-      RETURN_NOT_OK(
-          CreateTable(i, num_consumer_tablets[i], consumer_client(), consumer_schema, &tables));
+      table_name = VERIFY_RESULT(
+          CreateTable(i, num_consumer_tablets[i], consumer_client(), consumer_schema));
       std::shared_ptr<client::YBTable> consumer_table;
-      RETURN_NOT_OK(consumer_client()->OpenTable(tables[(i * 2) + 1], &consumer_table));
+      RETURN_NOT_OK(consumer_client()->OpenTable(table_name, &consumer_table));
       consumer_tables_.push_back(consumer_table);
     }
     return Status::OK();
   }
+
+  Status SetUpWithParams(
+      const std::vector<uint32_t>& num_consumer_tablets,
+      const std::vector<uint32_t>& num_producer_tablets, uint32_t replication_factor,
+      uint32_t num_masters, uint32_t num_tservers) override {
+    return STATUS(NotSupported, "Not supported");
+  }
+  Status SetUpWithParams() override { return STATUS(NotSupported, "Not supported"); }
 
   Status SetUpWithParams(
       const std::vector<uint32_t>& num_consumer_tablets,
@@ -230,6 +236,11 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
   }
 
   Status VerifyNumRecords(
+      const std::shared_ptr<client::YBTable>& table, YBClient* client, size_t expected_size) {
+    return XClusterYcqlTestBase::VerifyNumRecords(table, client, expected_size);
+  }
+
+  Status VerifyNumRecords(
       const std::unordered_set<XClusterTestBase::Cluster*>& expected_fail_clusters,
       size_t expected_size) {
     for (size_t i = 0; i < consumer_clusters_.size(); ++i) {
@@ -237,7 +248,7 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
         const auto& table =
             consumer_tables_[j + (i * producer_tables_[producer_cluster()->GetClusterId()].size())];
         YBClient* client = consumer_clusters_[i]->client_.get();
-        Status s = DoVerifyNumRecords(table->name(), client, expected_size);
+        Status s = VerifyNumRecords(table, client, expected_size);
         if (!expected_fail_clusters.contains(consumer_clusters_[i]) && !s.ok()) {
           return s;
         } else if (expected_fail_clusters.contains(consumer_clusters_[i]) && s.ok()) {
@@ -257,8 +268,7 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
       int timeout = kRpcTimeout) {
     for (size_t i = 0; i < producer_tables.size(); ++i) {
       const auto& producer_table = producer_tables[i];
-      LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
-      WriteWorkload(start, end, producer_client(), producer_table->name());
+      RETURN_NOT_OK(InsertRowsInProducer(start, end, producer_table));
     }
     RETURN_NOT_OK(VerifyWrittenRecords(expected_fail_consumer_clusters, skip_clusters, timeout));
     return Status::OK();
@@ -282,8 +292,7 @@ class XClusterTopologiesTest : public XClusterYcqlTestBase {
     size_t size = stream_ids.size() ? stream_ids.size() : producer_tables.size();
     for (size_t i = 0; i < size; i++) {
       const auto& producer_table = producer_tables[i];
-      LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
-      WriteWorkload(start, end, producer_client(), producer_table->name());
+      RETURN_NOT_OK(InsertRowsInProducer(start, end, producer_table));
     }
     RETURN_NOT_OK(VerifyWrittenRecords(expected_fail_consumer_clusters, skip_clusters, timeout));
     return Status::OK();
@@ -317,7 +326,7 @@ TEST_F(XClusterTopologiesTest, TestBasicBroadcastTopology) {
   for (int i = 0; i < kNumTables; ++i) {
     const auto& producer_table = producer_tables_[producer_cluster()->GetClusterId()][i];
     LOG(INFO) << "Writing records for table " << producer_table->name().ToString();
-    WriteWorkload(0, 10, producer_client(), producer_table->name());
+    ASSERT_OK(InsertRowsInProducer(0, 10, producer_table));
   }
 
   ASSERT_OK(VerifyWrittenRecords());

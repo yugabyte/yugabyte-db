@@ -26,7 +26,7 @@ public class PermissionInfo {
     UNIVERSE("rbac/available_resource_permissions/universeResourcePermissions.json"),
     ROLE("rbac/available_resource_permissions/roleResourcePermissions.json"),
     USER("rbac/available_resource_permissions/userResourcePermissions.json"),
-    OTHER("rbac/available_resource_permissions/defaultResourcePermissions.json");
+    OTHER("rbac/available_resource_permissions/otherResourcePermissions.json");
 
     @Getter public String permissionFilePath;
 

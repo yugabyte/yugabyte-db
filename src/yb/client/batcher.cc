@@ -43,7 +43,6 @@
 
 #include <boost/optional/optional_io.hpp>
 #include <boost/range/adaptors.hpp>
-#include <glog/logging.h>
 
 #include "yb/client/async_rpc.h"
 #include "yb/client/client-internal.h"
@@ -271,7 +270,7 @@ void Batcher::FlushAsync(
   }
 }
 
-bool Batcher::Has(const std::shared_ptr<YBOperation>& yb_op) const {
+bool Batcher::Has(const YBOperationPtr& yb_op) const {
   for (const auto& op : ops_) {
     if (op == yb_op) {
       return true;
@@ -280,14 +279,14 @@ bool Batcher::Has(const std::shared_ptr<YBOperation>& yb_op) const {
   return false;
 }
 
-void Batcher::Add(std::shared_ptr<YBOperation> op) {
+void Batcher::Add(YBOperationPtr op) {
   if (state_ != BatcherState::kGatheringOps) {
     LOG_WITH_PREFIX(DFATAL)
         << "Adding op to batcher in a wrong state: " << state_ << "\n" << GetStackTrace();
     return;
   }
 
-  ops_.push_back(op);
+  ops_.emplace_back(std::move(op));
 }
 
 void Batcher::CombineError(const InFlightOp& in_flight_op) {
@@ -312,9 +311,11 @@ void Batcher::CombineError(const InFlightOp& in_flight_op) {
 
 void Batcher::LookupTabletFor(InFlightOp* op) {
   auto shared_this = shared_from_this();
+  TracePtr trace(Trace::CurrentTrace());
   client_->data_->meta_cache_->LookupTabletByKey(
       op->yb_op->mutable_table(), op->partition_key, deadline_,
-      [shared_this, op](const auto& lookup_result) {
+      [shared_this, op, trace](const auto& lookup_result) {
+        ADOPT_TRACE(trace.get());
         shared_this->TabletLookupFinished(op, lookup_result);
       },
       FailOnPartitionListRefreshed::kTrue);
@@ -424,8 +425,9 @@ void Batcher::AllLookupsDone() {
 
   state_ = BatcherState::kTransactionPrepare;
 
-  VLOG_WITH_PREFIX_AND_FUNC(4)
-      << "Errors: " << errors_by_partition_key.size() << ", ops queue: " << ops_queue_.size();
+  VLOG_WITH_PREFIX_AND_FUNC(4) << "Number of partition keys with lookup errors: "
+                               << errors_by_partition_key.size()
+                               << ", ops queue: " << ops_queue_.size();
 
   if (!errors_by_partition_key.empty()) {
     // If some operation tablet lookup failed - set this error for all operations designated for
@@ -510,6 +512,7 @@ void Batcher::AllLookupsDone() {
 void Batcher::ExecuteOperations(Initial initial) {
   VLOG_WITH_PREFIX_AND_FUNC(3) << "initial: " << initial;
   auto transaction = this->transaction();
+  ADOPT_TRACE(transaction ? transaction->trace() : Trace::CurrentTrace());
   if (transaction) {
     // If this Batcher is executed in context of transaction,
     // then this transaction should initialize metadata used by RPC calls.
@@ -564,9 +567,6 @@ void Batcher::ExecuteOperations(Initial initial) {
 
   outstanding_rpcs_.store(rpcs.size());
   for (const auto& rpc : rpcs) {
-    if (transaction && transaction->trace() && rpc->trace()) {
-      transaction->trace()->AddChildTrace(rpc->trace());
-    }
     rpc->SendRpc();
   }
 }
@@ -617,7 +617,6 @@ void Batcher::MoveRequestDetailsFrom(const BatcherPtr& other, RetryableRequestId
 std::shared_ptr<AsyncRpc> Batcher::CreateRpc(
     const BatcherPtr& self, RemoteTablet* tablet, const InFlightOpsGroup& group,
     const bool allow_local_calls_in_curr_thread, const bool need_consistent_read) {
-  ADOPT_TRACE(transaction_ ? transaction_->trace() : Trace::CurrentTrace());
   VLOG_WITH_PREFIX_AND_FUNC(3) << "tablet: " << tablet->tablet_id();
 
   CHECK(group.begin != group.end);

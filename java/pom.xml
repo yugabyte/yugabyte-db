@@ -40,7 +40,7 @@
 
   <groupId>org.yb</groupId>
   <artifactId>yb-parent</artifactId>
-  <version>0.8.63-SNAPSHOT</version>
+  <version>0.8.74-SNAPSHOT</version>
   <packaging>pom</packaging>
 
   <name>Yugabyte</name>
@@ -104,7 +104,7 @@
 
     <mockito-inline.version>4.7.0</mockito-inline.version>
     <murmur.version>1.0.0</murmur.version>
-    <netty-all.version>4.1.86.Final</netty-all.version>
+    <netty-all.version>4.1.100.Final</netty-all.version>
     <protobuf.version>3.21.7</protobuf.version>
     <slf4j.version>1.7.32</slf4j.version>
     <spark.version>2.4.8</spark.version>
@@ -355,7 +355,7 @@
       <dependency>
         <groupId>org.yb</groupId>
         <artifactId>yb-client</artifactId>
-        <version>0.8.63-SNAPSHOT</version>
+        <version>0.8.74-SNAPSHOT</version>
       </dependency>
       <dependency>
         <groupId>org.yb</groupId>
@@ -526,7 +526,7 @@
       <dependency>
         <groupId>org.yb</groupId>
         <artifactId>yb-client</artifactId>
-        <version>0.8.63-SNAPSHOT</version>
+        <version>0.8.74-SNAPSHOT</version>
         <type>test-jar</type>
       </dependency>
       <dependency>

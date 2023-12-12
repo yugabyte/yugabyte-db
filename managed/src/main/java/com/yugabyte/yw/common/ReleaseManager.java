@@ -10,10 +10,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
-import com.yugabyte.yw.commissioner.tasks.AddGFlagMetadata;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.services.FileDataService;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.ReleaseFormData;
@@ -74,7 +72,6 @@ public class ReleaseManager {
 
   private final ConfigHelper configHelper;
   private final Config appConfig;
-  private final GFlagsValidation gFlagsValidation;
   private final AWSUtil awsUtil;
   private final GCPUtil gcpUtil;
   private final RuntimeConfGetter confGetter;
@@ -85,7 +82,6 @@ public class ReleaseManager {
   public ReleaseManager(
       ConfigHelper configHelper,
       Config appConfig,
-      GFlagsValidation gFlagsValidation,
       AWSUtil awsUtil,
       GCPUtil gcpUtil,
       RuntimeConfGetter confGetter,
@@ -93,7 +89,6 @@ public class ReleaseManager {
       CloudUtilFactory cloudUtilFactory) {
     this.configHelper = configHelper;
     this.appConfig = appConfig;
-    this.gFlagsValidation = gFlagsValidation;
     this.awsUtil = awsUtil;
     this.gcpUtil = gcpUtil;
     this.confGetter = confGetter;
@@ -400,6 +395,10 @@ public class ReleaseManager {
         });
   }
 
+  public Map<String, ReleaseMetadata> getLocalReleases() {
+    return getLocalReleases(appConfig.getString(YB_RELEASES_PATH));
+  }
+
   public Map<String, ReleaseMetadata> getLocalReleases(String releasesPath) {
     Map<String, String> releaseFiles;
     Map<String, String> releaseCharts = getReleaseFiles(releasesPath, ybChartFilter, false);
@@ -545,6 +544,7 @@ public class ReleaseManager {
       String ybReleasesPath = appConfig.getString(YB_RELEASES_PATH);
       Path chartPath =
           Paths.get(ybReleasesPath, version, String.format("yugabyte-%s-helm.tar.gz", version));
+      log.debug("Chart Path is {}", chartPath);
       String checksum = null;
       // Helm chart can be downloaded only from one path.
       if (metadata.s3 != null && metadata.s3.paths.helmChart != null) {
@@ -567,6 +567,8 @@ public class ReleaseManager {
       } else {
         chartPath = null;
       }
+      log.info("Chart Path is {}", chartPath);
+
       // Verify checksum.
       if (chartPath != null && !StringUtils.isBlank(checksum)) {
         checksum = checksum.toLowerCase();
@@ -611,7 +613,9 @@ public class ReleaseManager {
     validateSoftwareVersionOnCurrentYbaVersion(version);
     log.info("Adding release version {} with metadata {}", version, metadata.toString());
     downloadYbHelmChart(version, metadata);
+    log.info("Metadata after helm chart download {}", metadata);
     currentReleases.put(version, metadata);
+
     configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, currentReleases);
   }
 
@@ -758,9 +762,6 @@ public class ReleaseManager {
                 e);
             continue;
           }
-
-          // Add gFlag metadata for newly added release.
-          addGFlagsMetadataFiles(version, localReleases.get(version));
 
           // Release has been added successfully.
           successfullyAddedReleases.put(version, localReleases.get(version));
@@ -982,22 +983,6 @@ public class ReleaseManager {
           updatedReleases.put(version, rm);
         });
     configHelper.loadConfigToDB(CONFIG_TYPE, updatedReleases);
-  }
-
-  public void addGFlagsMetadataFiles(String version, ReleaseMetadata releaseMetadata) {
-    try {
-      List<String> missingGFlagsFilesList = gFlagsValidation.getMissingGFlagFileList(version);
-      if (missingGFlagsFilesList.size() != 0) {
-        String releasesPath = appConfig.getString(Util.YB_RELEASES_PATH);
-        AddGFlagMetadata.fetchGFlagFiles(
-            releaseMetadata, missingGFlagsFilesList, version, releasesPath, this, gFlagsValidation);
-        log.info("Successfully added gFlags metadata for version: {}", version);
-      } else {
-        log.warn("Skipping gFlags metadata addition as all files are already present");
-      }
-    } catch (Exception e) {
-      log.error("Could not add GFlags metadata as it errored out with: {}", e.getMessage());
-    }
   }
 
   public synchronized InputStream getTarGZipDBPackageInputStream(

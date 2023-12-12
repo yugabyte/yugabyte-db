@@ -9,19 +9,28 @@
 import { useContext } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FormProvider, useForm } from 'react-hook-form';
-import { useMutation, useQuery } from 'react-query';
+import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { yupResolver } from '@hookform/resolvers/yup';
+import { useToggle } from 'react-use';
 import { toast } from 'react-toastify';
+import { find } from 'lodash';
 
-import { Box, makeStyles } from '@material-ui/core';
+import { Box, FormHelperText, makeStyles } from '@material-ui/core';
 import Container from '../../common/Container';
+import { DeleteUserModal } from './DeleteUserModal';
 import { YBLoadingCircleIcon } from '../../../../../components/common/indicators';
 import { RolesAndResourceMapping } from '../../policy/RolesAndResourceMapping';
 import { YBButton, YBInputField } from '../../../../components';
-import { editUsersRoles, getRoleBindingsForUser } from '../../api';
+import { editUsersRolesBindings, getRoleBindingsForUser } from '../../api';
 import { convertRbacBindingsToUISchema } from './UserUtils';
+import { RbacValidator, hasNecessaryPerm } from '../../common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../ApiAndUserPermMapping';
 
 import { RbacUserWithResources } from '../interface/Users';
-import { UserContextMethods, UserViewContext } from './UserContext';
+import { UserContextMethods, UserPages, UserViewContext } from './UserContext';
+import { createErrorMessage } from '../../../universe/universe-form/utils/helpers';
+import { ForbiddenRoles, Role } from '../../roles';
+import { getEditUserValidationSchema } from './UserValidationSchema';
 
 import { ReactComponent as ArrowLeft } from '../../../../assets/arrow_left.svg';
 import { ReactComponent as Delete } from '../../../../assets/trashbin.svg';
@@ -64,22 +73,41 @@ const useStyles = makeStyles((theme) => ({
 
 export const EditUser = () => {
   const classes = useStyles();
+
   const [{ currentUser }, { setCurrentPage, setCurrentUser }] = (useContext(
     UserViewContext
   ) as unknown) as UserContextMethods;
+
   const { t } = useTranslation('translation', { keyPrefix: 'rbac.users.edit' });
+
   const methods = useForm<RbacUserWithResources>({
-    defaultValues: currentUser ?? {}
+    defaultValues: currentUser ?? {},
+    resolver: yupResolver(getEditUserValidationSchema(t))
   });
 
-  const editUser = useMutation(() => editUsersRoles(currentUser!.uuid!, methods.getValues()), {
-    onSuccess() {
-      toast.success('Done');
-      setCurrentPage('LIST_USER');
+  const {
+    formState: { errors, isValid }
+  } = methods;
+
+  const queryClient = useQueryClient();
+
+  const [showDeleteModal, toggleDeleteModal] = useToggle(false);
+
+  const editUser = useMutation(
+    () => editUsersRolesBindings(currentUser!.uuid!, methods.getValues()),
+    {
+      onSuccess() {
+        toast.success(t('successMsg', { user_email: currentUser!.email }));
+        queryClient.invalidateQueries('users');
+        setCurrentPage(UserPages.LIST_USER);
+      },
+      onError: (err) => {
+        toast.error(createErrorMessage(err));
+      }
     }
-  });
+  );
 
-  const { isLoading } = useQuery(
+  const { isLoading, data: roleBindings } = useQuery(
     ['role_binding', currentUser?.uuid],
     () => getRoleBindingsForUser(currentUser!.uuid!),
     {
@@ -95,31 +123,77 @@ export const EditUser = () => {
 
   if (isLoading) return <YBLoadingCircleIcon />;
 
+  let userRoles: Role[] = [];
+  let isSuperAdmin = false;
+
+  if (currentUser?.uuid) {
+    userRoles = [...(roleBindings?.[currentUser.uuid] ?? [])].map((r) => r.role);
+    isSuperAdmin = userRoles.some((role) =>
+      find(ForbiddenRoles, { name: role.name, roleType: role.roleType })
+    );
+  }
+
   return (
     <Container
       onCancel={() => {
         setCurrentUser(null);
-        setCurrentPage('LIST_USER');
+        setCurrentPage(UserPages.LIST_USER);
       }}
       onSave={() => {
-        editUser.mutate();
+        methods.handleSubmit(() => {
+          editUser.mutate();
+        })();
       }}
       saveLabel={t('title')}
+      disableSave={
+        currentUser?.uuid !== undefined &&
+        !hasNecessaryPerm({
+          ...ApiPermissionMap.MODIFY_USER,
+          onResource: { USER: currentUser?.uuid }
+        })
+      }
     >
       <Box className={classes.root}>
         <div className={classes.header}>
           <div className={classes.back}>
             <ArrowLeft
               onClick={() => {
-                setCurrentPage('LIST_USER');
+                setCurrentPage(UserPages.LIST_USER);
                 setCurrentUser(null);
               }}
+              data-testid={`rbac-resource-back-to-users`}
             />
             {t('title')}
           </div>
-          <YBButton variant="secondary" size="large" startIcon={<Delete />} onClick={() => {}}>
-            {t('delete')}
-          </YBButton>
+          <RbacValidator
+            accessRequiredOn={{
+              ...ApiPermissionMap.DELETE_USER,
+              onResource: { USER: currentUser?.uuid }
+            }}
+            customValidateFunction={() => {
+              return (
+                hasNecessaryPerm({
+                  ...ApiPermissionMap.DELETE_USER,
+                  onResource: { USER: currentUser?.uuid }
+                }) &&
+                currentUser?.uuid !== localStorage.getItem('userId') &&
+                !isSuperAdmin
+              );
+            }}
+            isControl
+          >
+            <YBButton
+              variant="secondary"
+              size="large"
+              startIcon={<Delete />}
+              onClick={() => {
+                toggleDeleteModal(true);
+              }}
+              data-testid={`rbac-resource-delete-user`}
+            >
+              {t('delete')}
+            </YBButton>
+          </RbacValidator>
         </div>
         <FormProvider {...methods}>
           <form className={classes.form}>
@@ -133,8 +207,19 @@ export const EditUser = () => {
               className={classes.email}
             />
             <RolesAndResourceMapping />
+            {errors.roleResourceDefinitions?.message && (
+              <FormHelperText required error>
+                {errors.roleResourceDefinitions.message}
+              </FormHelperText>
+            )}
           </form>
         </FormProvider>
+        <DeleteUserModal
+          open={showDeleteModal}
+          onHide={() => {
+            toggleDeleteModal(false);
+          }}
+        />
       </Box>
     </Container>
   );

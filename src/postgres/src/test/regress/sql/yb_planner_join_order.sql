@@ -46,7 +46,7 @@ EXPLAIN (COSTS false) SELECT * FROM t_1000, t_100 WHERE t_1000.id = t_100.id;
 EXPLAIN (COSTS false) SELECT * FROM t_100, t_1000 WHERE t_100.id = t_1000.id;
 EXPLAIN (COSTS false) SELECT * FROM t_10000, t_1000000 WHERE t_10000.id = t_1000000.id;
 EXPLAIN (COSTS false) SELECT * FROM t_1000000, t_10000 WHERE t_1000000.id = t_10000.id;
--- Updating table sizes arranges join orders based on table sizes. Updating costs enables the query
+-- Updating table sizes arranges join orders based on table sizes. Updating costs enables the query
 -- planner to prioritize NestedLoop vs HashJoins during different occasions based on the size of
 -- the tables. In the second example, due to varying sizes of the table, the join order changes.
 -- The query planner tries to optimize the join by prioritizing joining smaller tables with larger

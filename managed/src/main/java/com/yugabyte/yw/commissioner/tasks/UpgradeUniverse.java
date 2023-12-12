@@ -64,7 +64,9 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 
-/** @deprecated Use separate tasks based on UpgradeTaskBase */
+/**
+ * @deprecated Use separate tasks based on UpgradeTaskBase
+ */
 @Deprecated
 @Slf4j
 public class UpgradeUniverse extends UniverseDefinitionTaskBase {
@@ -137,7 +139,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
         List<InstanceType> instanceTypes =
             InstanceType.findByProvider(
-                Provider.getOrBadRequest(UUID.fromString(provider)), config);
+                Provider.getOrBadRequest(UUID.fromString(provider)), confGetter);
         log.info(instanceTypes.toString());
         InstanceType newInstanceType =
             instanceTypes.stream()
@@ -492,7 +494,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
     UpdateNodeDetails updateNodeTask = createTask(UpdateNodeDetails.class);
     updateNodeTask.initialize(updateNodeDetailsParams);
-    updateNodeTask.setUserTaskUUID(userTaskUUID);
+    updateNodeTask.setUserTaskUUID(getUserTaskUUID());
     subTaskGroup.addSubTask(updateNodeTask);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
@@ -1218,10 +1220,12 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     params.enableYCQL = userIntent.enableYCQL;
     params.enableYCQLAuth = userIntent.enableYCQLAuth;
     params.enableYSQLAuth = userIntent.enableYSQLAuth;
+    params.auditLogConfig = userIntent.auditLogConfig;
 
     // The software package to install for this cluster.
     params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
     params.setYbcSoftwareVersion(taskParams().getYbcSoftwareVersion());
+    params.ybcGflags = userIntent.ybcFlags;
     // Set the InstanceType
     params.instanceType = node.cloudInfo.instance_type;
     params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
@@ -1269,7 +1273,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
     // Create the Ansible task to get the server info.
     AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
     task.initialize(params);
-    task.setUserTaskUUID(userTaskUUID);
+    task.setUserTaskUUID(getUserTaskUUID());
 
     return task;
   }

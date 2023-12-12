@@ -5,6 +5,8 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.RestoreKeyspace;
@@ -19,11 +21,16 @@ import lombok.extern.slf4j.Slf4j;
 public class RestoreBackup extends UniverseTaskBase {
 
   private YbcManager ybcManager;
+  private final OperatorStatusUpdater kubernetesStatus;
 
   @Inject
-  protected RestoreBackup(BaseTaskDependencies baseTaskDependencies, YbcManager ybcManager) {
+  protected RestoreBackup(
+      BaseTaskDependencies baseTaskDependencies,
+      YbcManager ybcManager,
+      OperatorStatusUpdaterFactory statusUpdaterFactory) {
     super(baseTaskDependencies);
     this.ybcManager = ybcManager;
+    this.kubernetesStatus = statusUpdaterFactory.create();
   }
 
   @Override
@@ -43,6 +50,10 @@ public class RestoreBackup extends UniverseTaskBase {
       lockUniverse(-1 /* expectedUniverseVersion */);
 
       try {
+
+        if (isFirstTry()) {
+          backupHelper.validateRestoreOverwrites(taskParams().backupStorageInfoList, universe);
+        }
 
         if (universe.isYbcEnabled()
             && !universe
@@ -78,7 +89,7 @@ public class RestoreBackup extends UniverseTaskBase {
         getRunnableTask().runSubTasks();
         unlockUniverseForUpdate();
         if (restore != null) {
-          restore.update(taskUUID, Restore.State.Completed);
+          restore.update(getTaskUUID(), Restore.State.Completed);
         }
 
       } catch (CancellationException ce) {
@@ -86,9 +97,10 @@ public class RestoreBackup extends UniverseTaskBase {
         isAbort = true;
         // Aborted
         if (restore != null) {
-          restore.update(taskUUID, Restore.State.Aborted);
+          restore.update(getTaskUUID(), Restore.State.Aborted);
           RestoreKeyspace.update(restore, TaskInfo.State.Aborted);
         }
+        kubernetesStatus.updateRestoreJobStatus("Aborted Restore task", getUserTaskUUID());
         throw ce;
       }
     } catch (Throwable t) {
@@ -96,8 +108,10 @@ public class RestoreBackup extends UniverseTaskBase {
       handleFailedBackupAndRestore(
           null, Arrays.asList(restore), isAbort, taskParams().alterLoadBalancer);
       unlockUniverseForUpdate();
+      kubernetesStatus.updateRestoreJobStatus("Failed Restore task", getUserTaskUUID());
       throw t;
     }
+    kubernetesStatus.updateRestoreJobStatus("Finished Restore", getUserTaskUUID());
     log.info("Finished {} task.", getName());
   }
 }

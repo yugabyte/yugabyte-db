@@ -14,6 +14,7 @@ import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.NodeAgent.ArchType;
 import com.yugabyte.yw.models.NodeAgent.OSType;
 import com.yugabyte.yw.models.NodeAgent.State;
+import io.ebean.annotation.Transactional;
 import io.jsonwebtoken.Jwts;
 import io.jsonwebtoken.SignatureAlgorithm;
 import java.io.BufferedInputStream;
@@ -174,7 +175,9 @@ public class NodeAgentManager {
     try {
       Map<String, Integer> sans =
           ImmutableMap.<String, Integer>builder()
-              .put(nodeAgent.getIp(), GeneralName.iPAddress)
+              .put(
+                  nodeAgent.getIp(),
+                  Util.isIpAddress(nodeAgent.getIp()) ? GeneralName.iPAddress : GeneralName.dNSName)
               .build();
 
       // Add the security provider in case createSignedCertificate was never called.
@@ -297,12 +300,12 @@ public class NodeAgentManager {
    * @param nodeAgentUuid node agent UUID.
    * @return the JWT for sending request to the node agent.
    */
+  @VisibleForTesting
   public String getClientToken(UUID nodeAgentUuid, UUID userUuid) {
     PrivateKey privateKey = getNodeAgentPrivateKey(nodeAgentUuid);
     return Jwts.builder()
         .setIssuer("https://www.yugabyte.com")
         .setSubject(ClientType.NODE_AGENT.name())
-        .setIssuedAt(Date.from(Instant.now()))
         .setExpiration(Date.from(Instant.now().plusSeconds(NODE_AGENT_JWT_EXPIRY_SECS)))
         .claim(JWTVerifier.CLIENT_ID_CLAIM.toString(), nodeAgentUuid.toString())
         .claim(JWTVerifier.USER_ID_CLAIM.toString(), userUuid.toString())
@@ -421,13 +424,15 @@ public class NodeAgentManager {
    * @param includeCertContents if it is true, server cert and key contents are included.
    * @return the updated node agent record along with cert and key in the config.
    */
+  @Transactional
   public NodeAgent create(NodeAgent nodeAgent, boolean includeCertContents) {
     nodeAgent.setConfig(new NodeAgent.Config());
     nodeAgent.setState(State.REGISTERING);
     nodeAgent.insert();
     Path certDirPath = getOrCreateNextCertDirectory(nodeAgent);
     Pair<X509Certificate, KeyPair> serverPair = generateNodeAgentCerts(nodeAgent, certDirPath);
-    nodeAgent.updateCertDirPath(certDirPath);
+    nodeAgent.getConfig().setCertPath(certDirPath.toString());
+    nodeAgent.save();
     if (includeCertContents) {
       X509Certificate serverCert = serverPair.getLeft();
       KeyPair serverKeyPair = serverPair.getRight();
@@ -513,7 +518,7 @@ public class NodeAgentManager {
     }
     // Point to the new directory and persist in the DB before deleting.
     log.info("Updating the cert dir to {} for node agent {}", newCertDirPath, nodeAgent.getUuid());
-    nodeAgent.updateCertDirPath(newCertDirPath);
+    nodeAgent.updateCertDirPath(newCertDirPath, State.UPGRADED);
     try {
       // Delete the old cert directory.
       log.info(

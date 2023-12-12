@@ -33,8 +33,6 @@
 #include <iostream>
 #include <string>
 
-#include <glog/logging.h>
-
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
@@ -46,7 +44,7 @@ using std::cerr;
 using std::endl;
 using std::string;
 
-DEFINE_UNKNOWN_bool(oneline, false, "print each protobuf on a single line");
+DEFINE_NON_RUNTIME_bool(oneline, false, "print each protobuf on a single line");
 TAG_FLAG(oneline, stable);
 
 namespace yb {

@@ -45,6 +45,7 @@ import lombok.extern.slf4j.Slf4j;
 @Abortable
 @Retryable
 public class EditUniverse extends UniverseDefinitionTaskBase {
+  private final AtomicBoolean dedicatedNodesChanged = new AtomicBoolean();
 
   @Inject
   protected EditUniverse(BaseTaskDependencies baseTaskDependencies) {
@@ -52,89 +53,70 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
   }
 
   @Override
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    if (isFirstTry) {
+      // Verify the task params.
+      verifyParams(UniverseOpType.EDIT);
+    }
+  }
+
+  private void freezeUniverseInTxn(Universe universe) {
+    // The universe parameter in this callback has local changes which may be needed by
+    // the methods inside e.g updateInProgress field.
+    // Fetch the task params from the DB to start from fresh on retry.
+    // Otherwise, some operations like name assignment can fail.
+    fetchTaskDetailsFromDB();
+    // TODO Transaction is required mainly because validations are done here.
+    // Set all the node names.
+    setNodeNames(universe);
+    // Set non on-prem node UUIDs.
+    setCloudNodeUuids(universe);
+    // Update on-prem node UUIDs.
+    updateOnPremNodeUuidsOnTaskParams();
+    // Perform pre-task actions.
+    preTaskActions(universe);
+    // Select master nodes, if needed. Changes in masters are not automatically
+    // applied.
+    SelectMastersResult selection = selectMasters(universe.getMasterLeaderHostText());
+    verifyMastersSelection(selection);
+
+    // Applying changes to master flags for added masters only.
+    // We are not clearing this flag according to selection.removedMasters in case
+    // the master leader is to be changed and until the master leader is switched to
+    // the new one.
+    selection.addedMasters.forEach(
+        n -> {
+          n.isMaster = true;
+          n.masterState = MasterState.ToStart;
+        });
+    selection.removedMasters.forEach(
+        n -> {
+          n.masterState = MasterState.ToStop;
+        });
+    // Set the prepared data to universe in-memory.
+    updateUniverseNodesAndSettings(universe, taskParams(), false);
+    // Task params contain the exact blueprint of what is desired.
+    // There is a rare possibility that this succeeds and
+    // saving the Universe fails. It is ok because the retry
+    // will just fail.
+    updateTaskDetailsInDB(taskParams());
+  }
+
+  @Override
   public void run() {
     log.info("Started {} task for uuid={}", getName(), taskParams().getUniverseUUID());
+    checkUniverseVersion();
     String errorString = null;
+    Universe universe =
+        lockAndFreezeUniverseForUpdate(
+            taskParams().expectedUniverseVersion, this::freezeUniverseInTxn);
     try {
-      checkUniverseVersion();
-      if (isFirstTry()) {
-        // Verify the task params.
-        verifyParams(UniverseOpType.EDIT);
+      if (taskParams().getPrimaryCluster() != null) {
+        dedicatedNodesChanged.set(
+            taskParams().getPrimaryCluster().userIntent.dedicatedNodes
+                != universe.getUniverseDetails().getPrimaryCluster().userIntent.dedicatedNodes);
       }
-
-      Map<UUID, Map<String, String>> tagsToUpdate = new HashMap<>();
-      AtomicBoolean dedicatedNodesChanged = new AtomicBoolean();
-      // Update the universe DB with the changes to be performed and set the 'updateInProgress' flag
-      // to prevent other updates from happening.
-      Universe universe =
-          lockUniverseForUpdate(
-              taskParams().expectedUniverseVersion,
-              u -> {
-                if (taskParams().getPrimaryCluster() != null) {
-                  dedicatedNodesChanged.set(
-                      taskParams().getPrimaryCluster().userIntent.dedicatedNodes
-                          != u.getUniverseDetails().getPrimaryCluster().userIntent.dedicatedNodes);
-                }
-                // The universe parameter in this callback has local changes which may be needed by
-                // the methods inside e.g updateInProgress field.
-                for (Cluster cluster : taskParams().clusters) {
-                  Cluster originalCluster = u.getCluster(cluster.uuid);
-                  if (!cluster.areTagsSame(originalCluster)) {
-                    tagsToUpdate.put(cluster.uuid, cluster.userIntent.instanceTags);
-                  }
-                }
-                if (isFirstTry()) {
-                  // Fetch the task params from the DB to start from fresh on retry.
-                  // Otherwise, some operations like name assignment can fail.
-                  fetchTaskDetailsFromDB();
-                  // TODO Transaction is required mainly because validations are done here.
-                  // Set all the node names.
-                  setNodeNames(u);
-                  // Set non on-prem node UUIDs.
-                  setCloudNodeUuids(u);
-                  // Update on-prem node UUIDs.
-                  updateOnPremNodeUuidsOnTaskParams();
-                  // Perform pre-task actions.
-                  preTaskActions(u);
-                  // Select master nodes, if needed. Changes in masters are not automatically
-                  // applied.
-                  SelectMastersResult selection = selectMasters(u.getMasterLeaderHostText());
-                  verifyMastersSelection(selection);
-
-                  // Applying changes to master flags for added masters only.
-                  // We are not clearing this flag according to selection.removedMasters in case
-                  // the master leader is to be changed and until the master leader is switched to
-                  // the new one.
-                  selection.addedMasters.forEach(
-                      n -> {
-                        n.isMaster = true;
-                        n.masterState = MasterState.ToStart;
-                      });
-                  selection.removedMasters.forEach(
-                      n -> {
-                        n.masterState = MasterState.ToStop;
-                      });
-                  // UserIntent in universe will be pointing to userIntent from params after
-                  // setUserIntentToUniverse. So we need to store tags locally to be able to reset
-                  // them later.
-                  Map<UUID, Map<String, String>> currentTags =
-                      u.getUniverseDetails().clusters.stream()
-                          .collect(Collectors.toMap(c -> c.uuid, c -> c.userIntent.instanceTags));
-                  // Set the prepared data to universe in-memory.
-                  setUserIntentToUniverse(u, taskParams(), false);
-                  // Task params contain the exact blueprint of what is desired.
-                  // There is a rare possibility that this succeeds and
-                  // saving the Universe fails. It is ok because the retry
-                  // will just fail.
-                  updateTaskDetailsInDB(taskParams());
-                  // We need to reset tags, to make this tags update retryable.
-                  // New tags will be written into DB in UpdateUniverseTags task.
-                  for (Cluster cluster : u.getUniverseDetails().clusters) {
-                    cluster.userIntent.instanceTags = currentTags.get(cluster.uuid);
-                  }
-                }
-              });
-
       // Create preflight node check tasks for on-prem nodes.
       createPreflightNodeCheckTasks(universe, taskParams().clusters);
 
@@ -148,6 +130,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
               .collect(Collectors.toSet());
       boolean updateMasters = !addedMasters.isEmpty() || !removedMasters.isEmpty();
       for (Cluster cluster : taskParams().clusters) {
+        // Updating cluster in memory
+        universe
+            .getUniverseDetails()
+            .upsertCluster(cluster.userIntent, cluster.placementInfo, cluster.uuid);
         if (cluster.clusterType == ClusterType.PRIMARY && dedicatedNodesChanged.get()) {
           updateGFlagsForTservers(cluster, universe);
         }
@@ -156,8 +142,9 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
             cluster,
             getNodesInCluster(cluster.uuid, addedMasters),
             getNodesInCluster(cluster.uuid, removedMasters),
-            updateMasters,
-            tagsToUpdate);
+            updateMasters);
+        // Updating placement info and userIntent in DB
+        createUpdateUniverseIntentTask(cluster);
       }
 
       // Wait for the master leader to hear from all tservers.
@@ -182,7 +169,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     } finally {
       // Mark the update of the universe as done. This will allow future edits/updates to the
       // universe to happen.
-      Universe universe = unlockUniverseForUpdate(errorString);
+      universe = unlockUniverseForUpdate(errorString);
 
       if (universe != null
           && universe.getConfig().getOrDefault(Universe.USE_CUSTOM_IMAGE, "false").equals("true")) {
@@ -203,8 +190,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       Cluster cluster,
       Set<NodeDetails> newMasters,
       Set<NodeDetails> mastersToStop,
-      boolean updateMasters,
-      Map<UUID, Map<String, String>> tagsToUpdate) {
+      boolean updateMasters) {
     UserIntent userIntent = cluster.userIntent;
     Set<NodeDetails> nodes = taskParams().getNodesInCluster(cluster.uuid);
 
@@ -216,6 +202,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     Set<NodeDetails> nodesToBeRemoved = PlacementInfoUtil.getNodesToBeRemoved(nodes);
 
     Set<NodeDetails> nodesToProvision = PlacementInfoUtil.getNodesToProvision(nodes);
+
+    Set<NodeDetails> removeMasters = PlacementInfoUtil.getMastersToBeRemoved(nodes);
+
+    Set<NodeDetails> tserversToBeRemoved = PlacementInfoUtil.getTserversToBeRemoved(nodes);
 
     Set<NodeDetails> existingNodesToStartMaster =
         newMasters.stream().filter(n -> n.state != NodeState.ToBeAdded).collect(Collectors.toSet());
@@ -238,17 +228,17 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     Set<NodeDetails> liveNodes = PlacementInfoUtil.getLiveNodes(nodes);
 
     // Update any tags on nodes that are not going to be removed and not being added.
-    Cluster existingCluster = universe.getCluster(cluster.uuid);
-    if (tagsToUpdate.containsKey(cluster.uuid)) {
-      Map<String, String> newTags = tagsToUpdate.get(cluster.uuid);
-      log.info("Tags changed from '{}' to '{}'.", existingCluster.userIntent.instanceTags, newTags);
+    Cluster existingCluster = getUniverse().getCluster(cluster.uuid);
+    if (!cluster.areTagsSame(existingCluster)) {
+      log.info(
+          "Tags changed from '{}' to '{}'.",
+          existingCluster.userIntent.instanceTags,
+          cluster.userIntent.instanceTags);
       createUpdateInstanceTagsTasks(
           getNodesInCluster(cluster.uuid, liveNodes),
-          newTags,
-          Util.getKeysNotPresent(existingCluster.userIntent.instanceTags, newTags));
-
-      createUpdateUniverseTagsTask(cluster, newTags)
-          .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+          cluster.userIntent.instanceTags,
+          Util.getKeysNotPresent(
+              existingCluster.userIntent.instanceTags, cluster.userIntent.instanceTags));
     }
 
     boolean ignoreUseCustomImageConfig =
@@ -291,17 +281,23 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       createProvisionNodeTasks(
           universe,
           nodesToProvision,
-          true /* isShell */,
           false /* ignore node status check */,
-          ignoreUseCustomImageConfig);
-
+          setupServerParams -> {
+            setupServerParams.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
+          },
+          installSoftwareParams -> {
+            installSoftwareParams.isMasterInShellMode = true;
+            installSoftwareParams.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
+          },
+          gFlagsParams -> {
+            gFlagsParams.isMasterInShellMode = true;
+            gFlagsParams.resetMasterState = true;
+            gFlagsParams.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
+          });
       // Copy the source root certificate to the provisioned nodes.
       createTransferXClusterCertsCopyTasks(
           nodesToProvision, universe, SubTaskGroupType.Provisioning);
     }
-
-    Set<NodeDetails> removeMasters = PlacementInfoUtil.getMastersToBeRemoved(nodes);
-    Set<NodeDetails> tserversToBeRemoved = PlacementInfoUtil.getTserversToBeRemoved(nodes);
 
     // Ensure all masters are covered in nodes to be removed.
     if (!removeMasters.isEmpty()) {
@@ -386,7 +382,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
     // Update placement info on master leader.
-    createPlacementInfoTask(null /* additional blacklist */)
+    createPlacementInfoTask(null /* additional blacklist */, taskParams().clusters)
         .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
     if (!nodesToBeRemoved.isEmpty()) {
@@ -414,8 +410,13 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     }
 
     if (!newMasters.isEmpty()) {
+
+      // Filter out nodes which are not in the universe.
+      Set<NodeDetails> removeUniverseMasters =
+          filterUniverseNodes(universe, removeMasters, n -> true);
       // Now finalize the master quorum change tasks.
-      createMoveMastersTasks(SubTaskGroupType.WaitForDataMigration, newMasters, removeMasters);
+      createMoveMastersTasks(
+          SubTaskGroupType.WaitForDataMigration, newMasters, removeUniverseMasters);
 
       if (!mastersToStop.isEmpty()) {
         createStopMasterTasks(mastersToStop)
@@ -539,7 +540,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       params.gflags = cluster.userIntent.tserverGFlags;
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
-      task.setUserTaskUUID(userTaskUUID);
+      task.setUserTaskUUID(getUserTaskUUID());
       subTaskGroup.addSubTask(task);
       getRunnableTask().addSubTaskGroup(subTaskGroup);
 

@@ -20,38 +20,55 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.rbac.Permission;
 import com.yugabyte.yw.common.rbac.PermissionInfo;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.rbac.PermissionUtil;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.Users.UserType;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
 import com.yugabyte.yw.models.rbac.Role;
 import com.yugabyte.yw.models.rbac.Role.RoleType;
 import com.yugabyte.yw.models.rbac.RoleBinding;
 import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import java.io.File;
 import java.io.IOException;
+import java.lang.reflect.Method;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
+import org.reflections.Reflections;
+import org.reflections.scanners.MethodAnnotationsScanner;
+import org.reflections.util.ClasspathHelper;
+import org.reflections.util.ConfigurationBuilder;
 import play.Environment;
 import play.Mode;
 import play.libs.Json;
 import play.mvc.Result;
+import play.routing.Router;
 
 @RunWith(MockitoJUnitRunner.class)
+@Slf4j
 public class RBACControllerTest extends FakeDBApplication {
 
   private Customer customer;
@@ -69,11 +86,14 @@ public class RBACControllerTest extends FakeDBApplication {
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
-    user = ModelFactory.testUser(customer);
+    user = ModelFactory.testSuperAdminUserNewRbac(customer);
     ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
     this.environment = new Environment(new File("."), classLoader, Mode.TEST);
     this.permissionUtil = new PermissionUtil(environment);
     mapper = new ObjectMapper();
+
+    // Set the new RBAC runtime flag to true to allow controller method calls.
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
   }
 
   @After
@@ -150,6 +170,14 @@ public class RBACControllerTest extends FakeDBApplication {
     return doRequestWithAuthToken("GET", uri, user.createAuthToken());
   }
 
+  private Result setRoleBindings(UUID customerUUID, UUID userUUID, JsonNode bodyJson) {
+    String uri =
+        String.format(
+            "/api/customers/%s/rbac/role_binding/%s", customerUUID.toString(), userUUID.toString());
+    return doRequestWithAuthTokenAndBody(
+        "POST", String.format(uri, customerUUID.toString()), user.createAuthToken(), bodyJson);
+  }
+
   /* ==== API Tests ==== */
 
   @Test
@@ -162,7 +190,8 @@ public class RBACControllerTest extends FakeDBApplication {
     List<PermissionInfo> permissionInfoList = reader.readValue(json);
 
     assertEquals(
-        permissionInfoList.size(), permissionUtil.getAllPermissionInfo(ResourceType.OTHER).size());
+        permissionInfoList.size(),
+        permissionUtil.getAllPermissionInfoFromCache(ResourceType.OTHER).size());
   }
 
   @Test
@@ -198,7 +227,8 @@ public class RBACControllerTest extends FakeDBApplication {
     ObjectReader reader = mapper.readerFor(new TypeReference<List<Role>>() {});
     List<Role> roleList = reader.readValue(json);
 
-    assertEquals(3, roleList.size());
+    // 8 because of the 3 we created above + 5 built-in roles.
+    assertEquals(8, roleList.size());
     assertTrue(roleList.contains(role1));
     assertTrue(roleList.contains(role2));
     assertTrue(roleList.contains(role3));
@@ -290,7 +320,8 @@ public class RBACControllerTest extends FakeDBApplication {
             + "\"name\": \"custom Read UniverseRole 1\","
             + "\"description\": \"test Description\","
             + "\"permissionList\": ["
-            + "{\"resourceType\": \"UNIVERSE\", \"action\": \"READ\"}"
+            + "{\"resourceType\": \"UNIVERSE\", \"action\": \"READ\"},"
+            + "{\"resourceType\": \"OTHER\", \"action\": \"READ\"}"
             + "]}";
     JsonNode bodyJson = mapper.readValue(createRoleRequestBody, JsonNode.class);
     Result result = createRole(customer.getUuid(), bodyJson);
@@ -305,8 +336,9 @@ public class RBACControllerTest extends FakeDBApplication {
     assertAuditEntry(1, customer.getUuid());
 
     // Get the role from DB and compare with returned result.
-    assertEquals(1, Role.getAll(customer.getUuid()).size());
-    Role roleDb = Role.getAll(customer.getUuid()).get(0);
+    // 6 because of the 1 we created above + 5 built-in roles.
+    assertEquals(6, Role.getAll(customer.getUuid()).size());
+    Role roleDb = Role.get(customer.getUuid(), "custom Read UniverseRole 1");
     assertEquals(roleResult, roleDb);
   }
 
@@ -332,7 +364,7 @@ public class RBACControllerTest extends FakeDBApplication {
             + "]}";
     JsonNode bodyJson = mapper.readValue(createRoleRequestBody, JsonNode.class);
     Result result = assertPlatformException(() -> createRole(customer.getUuid(), bodyJson));
-    assertEquals(BAD_REQUEST, result.status());
+    assertEquals(CONFLICT, result.status());
     assertAuditEntry(0, customer.getUuid());
   }
 
@@ -362,13 +394,14 @@ public class RBACControllerTest extends FakeDBApplication {
             "customReadUniverseRole1",
             "testDescription",
             RoleType.Custom,
-            new HashSet<>(Arrays.asList(permission1, permission2)));
+            new HashSet<>(Arrays.asList(permission1, permission2, permission4)));
 
     // Filling the JSON object to be passed in the request body
     String createRoleRequestBody =
         "{"
             + "\"permissionList\": ["
-            + "{\"resourceType\": \"UNIVERSE\", \"action\": \"READ\"}"
+            + "{\"resourceType\": \"UNIVERSE\", \"action\": \"READ\"},"
+            + "{\"resourceType\": \"OTHER\", \"action\": \"READ\"}"
             + "]}";
     JsonNode bodyJson = mapper.readValue(createRoleRequestBody, JsonNode.class);
     Result result = editRole(customer.getUuid(), role1.getRoleUUID(), bodyJson);
@@ -383,11 +416,12 @@ public class RBACControllerTest extends FakeDBApplication {
     assertAuditEntry(1, customer.getUuid());
 
     // Get the role from DB and compare with returned result.
-    assertEquals(1, Role.getAll(customer.getUuid()).size());
-    Role roleDb = Role.getAll(customer.getUuid()).get(0);
+    // 6 because of the 1 we created above + 5 built-in roles.
+    assertEquals(6, Role.getAll(customer.getUuid()).size());
+    Role roleDb = Role.get(customer.getUuid(), "customReadUniverseRole1");
     assertEquals(roleResult, roleDb);
     // Verify if permissions got updated correctly.
-    Set<Permission> permissionList = new HashSet<>(Arrays.asList(permission2));
+    Set<Permission> permissionList = new HashSet<>(Arrays.asList(permission2, permission4));
     assertEquals(permissionList, roleDb.getPermissionDetails().getPermissionList());
   }
 
@@ -447,7 +481,8 @@ public class RBACControllerTest extends FakeDBApplication {
     // Call API and assert if custom role is deleted.
     Result result = deleteRole(customer.getUuid(), role1.getRoleUUID());
     assertEquals(OK, result.status());
-    assertEquals(0, Role.getAll(customer.getUuid()).size());
+    // 5 because of the 5 built-in roles left after deleting the above role.
+    assertEquals(5, Role.getAll(customer.getUuid()).size());
     assertAuditEntry(1, customer.getUuid());
   }
 
@@ -466,7 +501,8 @@ public class RBACControllerTest extends FakeDBApplication {
     Result result =
         assertPlatformException(() -> deleteRole(customer.getUuid(), role1.getRoleUUID()));
     assertEquals(BAD_REQUEST, result.status());
-    assertEquals(1, Role.getAll(customer.getUuid()).size());
+    // 6 because of the 1 we created above + 5 built-in roles.
+    assertEquals(6, Role.getAll(customer.getUuid()).size());
     assertAuditEntry(0, customer.getUuid());
   }
 
@@ -499,8 +535,10 @@ public class RBACControllerTest extends FakeDBApplication {
     Result result =
         assertPlatformException(() -> deleteRole(customer.getUuid(), role1.getRoleUUID()));
     assertEquals(CONFLICT, result.status());
-    assertEquals(1, Role.getAll(customer.getUuid()).size());
-    assertEquals(1, RoleBinding.getAll(user.getUuid()).size());
+    // 6 because of the 1 we created above + 5 built-in roles.
+    assertEquals(6, Role.getAll(customer.getUuid()).size());
+    // 2 because of the 1 we created above + 1 built-in role binding for the test super admin user.
+    assertEquals(2, RoleBinding.getAll(user.getUuid()).size());
     assertAuditEntry(0, customer.getUuid());
   }
 
@@ -556,8 +594,77 @@ public class RBACControllerTest extends FakeDBApplication {
     ObjectReader reader = mapper.readerFor(new TypeReference<Map<UUID, List<RoleBinding>>>() {});
     Map<UUID, List<RoleBinding>> roleBindingList = reader.readValue(json);
 
-    assertEquals(2, roleBindingList.get(user.getUuid()).size());
+    // 3 because of the 2 we created above + 1 built-in role binding for the test super admin user.
+    assertEquals(3, roleBindingList.get(user.getUuid()).size());
     assertTrue(roleBindingList.get(user.getUuid()).contains(roleBinding1));
     assertTrue(roleBindingList.get(user.getUuid()).contains(roleBinding2));
+  }
+
+  @Test
+  public void testSetRoleBindingsForLdapUser() {
+    // Set the user to LDAP user.
+    user.setUserType(UserType.ldap);
+    user.setLdapSpecifiedRole(true);
+    user.save();
+
+    // Call API and assert that role bindings cannot be set for users with LDAP specified role.
+    Result result =
+        assertPlatformException(() -> setRoleBindings(customer.getUuid(), user.getUuid(), null));
+    assertEquals(BAD_REQUEST, result.status());
+  }
+
+  @Test
+  public void testAuthzAnnotationDefinitions() {
+    List<Router.RouteDocumentation> routesList =
+        app.injector().instanceOf(Router.class).documentation();
+    Map<String, String> routesMap = new HashMap<>();
+    Map<String, String> requestMap = new HashMap<>();
+    for (Router.RouteDocumentation route : routesList) {
+      String controllerMethodDef = route.getControllerMethodInvocation();
+      String controllerMethod = controllerMethodDef.split("\\(", 2)[0];
+      routesMap.put(controllerMethod, route.getPathPattern());
+      requestMap.put(controllerMethod, route.getHttpMethod());
+    }
+
+    Reflections reflections =
+        new Reflections(
+            new ConfigurationBuilder()
+                .setUrls(ClasspathHelper.forPackage("com.yugabyte.yw.controllers"))
+                .setScanners(new MethodAnnotationsScanner()));
+    Set<Method> annonatedMethods = reflections.getMethodsAnnotatedWith(AuthzPath.class);
+    for (Method aM : annonatedMethods) {
+      String className = aM.getDeclaringClass().getName();
+      AuthzPath authzPath = aM.getAnnotation(AuthzPath.class);
+      String methodName = StringUtils.join(className, ".", aM.getName());
+      if (authzPath != null && requestMap.containsKey(methodName)) {
+        for (RequiredPermissionOnResource permissionOnResource : authzPath.value()) {
+          ResourceType rType = permissionOnResource.requiredPermission().resourceType();
+          Action action = permissionOnResource.requiredPermission().action();
+          Resource resource = permissionOnResource.resourceLocation();
+          log.info(methodName);
+          switch (rType) {
+            case OTHER:
+              assertEquals(Util.CUSTOMERS, resource.path());
+              break;
+            case UNIVERSE:
+              if (resource.sourceType().equals(SourceType.ENDPOINT)) {
+                assertEquals(Util.UNIVERSES, resource.path());
+              }
+              break;
+            case USER:
+              String[] userStrings = new String[] {"user", "users", "userUUID", "role_binding"};
+              if (resource.sourceType().equals(SourceType.ENDPOINT)) {
+                assertTrue(Arrays.asList(userStrings).contains(resource.path()));
+              }
+              break;
+            case ROLE:
+              if (resource.sourceType().equals(SourceType.ENDPOINT)) {
+                assertEquals(Util.ROLE, resource.path());
+              }
+              break;
+          }
+        }
+      }
+    }
   }
 }

@@ -93,6 +93,9 @@ static bool is_statement_executed = false;
 char *metric_node_name = NULL;
 struct WebserverWrapper *webserver = NULL;
 int port = 0;
+static bool log_accesses = false;
+static bool log_tcmalloc_stats = false;
+static int webserver_profiler_sample_freq_bytes = 0;
 static int num_backends = 0;
 static rpczEntry *rpcz = NULL;
 static MemoryContext ybrpczMemoryContext = NULL;
@@ -100,6 +103,9 @@ PgBackendStatus *backendStatusArray = NULL;
 extern int MaxConnections;
 
 static long last_cache_misses_val = 0;
+
+static volatile sig_atomic_t got_SIGHUP = false;
+static volatile sig_atomic_t got_SIGTERM = false;
 
 void		_PG_init(void);
 /*
@@ -127,6 +133,9 @@ static void ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
                                  DestReceiver *dest, char *completionTag);
 static void ybpgm_Store(statementType type, uint64_t time, uint64_t rows);
 static void ybpgm_StoreCount(statementType type, uint64_t time, uint64_t count);
+
+static void ws_sighup_handler(SIGNAL_ARGS);
+static void ws_sigterm_handler(SIGNAL_ARGS);
 
 /*
  * Function used for checking if the current statement is a top level statement.
@@ -326,6 +335,30 @@ freeRpczEntries(void)
   ybrpczMemoryContext = NULL;
 }
 
+/* SIGHUP: set flag to re-read config file at next convenient time */
+void
+ws_sighup_handler(SIGNAL_ARGS) {
+	int			save_errno = errno;
+
+	got_SIGHUP = true;
+	SetLatch(&MyProc->procLatch);
+
+	errno = save_errno;
+}
+
+
+/* SIGTERM: time to die */
+static void
+ws_sigterm_handler(SIGNAL_ARGS)
+{
+	int			save_errno = errno;
+
+	got_SIGTERM = true;
+	SetLatch(MyLatch);
+
+	errno = save_errno;
+}
+
 /*
  * Function that is executed when the YSQL webserver process is started.
  * We don't use the argument "unused", however, a postgres background worker's function
@@ -372,7 +405,29 @@ webserver_worker_main(Datum unused)
   RegisterRpczEntries(&callbacks, &num_backends, &rpcz, &conn_metrics);
   HandleYBStatus(StartWebserver(webserver));
 
-  WaitLatch(&MyProc->procLatch, WL_POSTMASTER_DEATH, -1, PG_WAIT_EXTENSION);
+	pqsignal(SIGHUP, ws_sighup_handler);
+	pqsignal(SIGTERM, ws_sigterm_handler);
+
+  SetWebserverConfig(webserver, log_accesses, log_tcmalloc_stats,
+                     webserver_profiler_sample_freq_bytes);
+
+  int rc;
+  while (!got_SIGTERM)
+  {
+    rc = WaitLatch(&MyProc->procLatch, WL_LATCH_SET | WL_POSTMASTER_DEATH, -1, PG_WAIT_EXTENSION);
+    ResetLatch(&MyProc->procLatch);
+
+		if (rc & WL_POSTMASTER_DEATH)
+			break;
+
+    if (got_SIGHUP)
+    {
+      got_SIGHUP = false;
+      ProcessConfigFile(PGC_SIGHUP);
+      SetWebserverConfig(webserver, log_accesses, log_tcmalloc_stats,
+                         webserver_profiler_sample_freq_bytes);
+    }
+  }
 
   if (rpcz != NULL && ybrpczMemoryContext != NULL)
   {
@@ -380,6 +435,9 @@ webserver_worker_main(Datum unused)
     pfree(rpcz);
     MemoryContextSwitchTo(oldcontext);
   }
+
+  if (rc & WL_POSTMASTER_DEATH)
+      proc_exit(1);
 
   proc_exit(0);
 }
@@ -412,6 +470,22 @@ _PG_init(void)
                           | GUC_DISALLOW_IN_FILE,
                           NULL, NULL, NULL);
 
+  DefineCustomBoolVariable("yb_pg_metrics.log_accesses",
+                          "Log each request received by the YSQL webserver",
+                          NULL, &log_accesses, false, PGC_SUSET, 0,
+                          NULL, NULL, NULL);
+
+  DefineCustomBoolVariable("yb_pg_metrics.log_tcmalloc_stats",
+                          "Log each request received by the YSQL webserver",
+                          NULL, &log_tcmalloc_stats, false, PGC_SUSET, 0,
+                          NULL, NULL, NULL);
+
+  DefineCustomIntVariable("yb_pg_metrics.webserver_profiler_sample_freq_bytes",
+                          "The frequency at which Google TCMalloc should sample allocations in the "
+                          "YSQL webserver. If this is 0, sampling is disabled. ",
+                          NULL, &webserver_profiler_sample_freq_bytes, 1024 * 1024, 0, INT_MAX,
+                          PGC_SUSET, 0, NULL, NULL, NULL);
+
   BackgroundWorker worker;
 
   /* Registering the YSQL webserver as a background worker */
@@ -425,6 +499,9 @@ _PG_init(void)
   strcpy(worker.bgw_library_name, "yb_pg_metrics");
   strcpy(worker.bgw_function_name, "webserver_worker_main");
   worker.bgw_notify_pid = 0;
+  if (getenv("FLAGS_yb_webserver_oom_score_adj") != NULL)
+    strncpy(worker.bgw_oom_score_adj, getenv("FLAGS_yb_webserver_oom_score_adj"), BGW_MAXLEN);
+
   RegisterBackgroundWorker(&worker);
   /*
    * Set the value of the hooks.
@@ -710,12 +787,8 @@ ybpgm_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
     INSTR_TIME_SET_CURRENT(end);
     INSTR_TIME_SUBTRACT(end, start);
 
-    bool is_catalog_version_increment = false;
-    bool is_breaking_catalog_change = false;
-    if (IsTransactionalDdlStatement(pstmt,
-                                    &is_catalog_version_increment,
-                                    &is_breaking_catalog_change,
-                                    context))
+    YbDdlModeOptional ddl_mode = YbGetDdlMode(pstmt, context);
+    if (ddl_mode.has_value)
     {
       ybpgm_Store(Transaction, INSTR_TIME_GET_MICROSEC(end), 0);
     }

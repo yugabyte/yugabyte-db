@@ -4,7 +4,6 @@ headerTitle: C# Drivers
 linkTitle: C# Drivers
 description: C# PostgreSQL Npgsql Driver for YSQL
 headcontent: C# Drivers for YSQL
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   stable:
     name: C# Drivers
@@ -32,7 +31,11 @@ type: docs
 
 </ul>
 
-Npgsql is an open source ADO.NET Data Provider for PostgreSQL; it allows programs written in C#, Visual Basic, and F# to access the YugabyteDB server.
+Npgsql is an open source ADO.NET Data Provider for PostgreSQL; it allows programs written in C#, Visual Basic, and F# to access the YugabyteDB server. Npgsql is based on [libpq](#libpq) and supports the [SCRAM-SHA-256 authentication method](../../../../secure/authentication/password-authentication/#scram-sha-256).
+
+For details on Npgsql, refer to the [Npgsql documentation](https://www.npgsql.org/doc/).
+
+For building a sample C# application with Npgsql, see [Connect an application](../../../../drivers-orms/csharp/postgres-npgsql/).
 
 ## Download the driver dependency
 
@@ -75,6 +78,16 @@ The following is a basic example connection string for connecting to YugabyteDB.
 var connStringBuilder = "Host=localhost;Port=5433;Database=yugabyte;Username=yugabyte;Password=password"
 NpgsqlConnection conn = new NpgsqlConnection(connStringBuilder);
 ```
+
+{{< warning title="Warning" >}}
+
+On every new connection, the NpgSQL driver also makes [extra system table queries to map types](https://github.com/npgsql/npgsql/issues/1486), which adds significant overhead. To turn off this behavior, set the following option in your connection string builder:
+
+```csharp
+connStringBuilder.ServerCompatibilityMode = ServerCompatibilityMode.NoTypeLoading;
+```
+
+{{< /warning >}}
 
 ### Create table
 

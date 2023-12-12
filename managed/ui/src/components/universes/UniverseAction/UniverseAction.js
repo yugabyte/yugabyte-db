@@ -14,6 +14,8 @@ import {
   fetchUniverseInfo,
   fetchUniverseInfoResponse
 } from '../../../actions/universe';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 
 class UniverseAction extends Component {
   constructor(props) {
@@ -115,13 +117,21 @@ class UniverseAction extends Component {
     return (
       <div>
         {!universePaused && (
-          <YBButton
-            btnText={btnLabel}
-            btnIcon={btnIcon}
-            btnClass={`btn ${btnClass}`}
-            disabled={disabled}
-            onClick={disabled ? null : this.openModal}
-          />
+          <RbacValidator
+            accessRequiredOn={{
+              onResource: universe.universeUUID,
+              ...ApiPermissionMap.MODIFY_UNIVERSE
+            }}
+            isControl
+          >
+            <YBButton
+              btnText={btnLabel}
+              btnIcon={btnIcon}
+              btnClass={`btn ${btnClass}`}
+              disabled={disabled}
+              onClick={disabled ? null : this.openModal}
+            />
+          </RbacValidator>
         )}
         {modalForm}
       </div>

@@ -3,7 +3,6 @@ title: PostgreSQL Psycopg2 Driver for YSQL
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Python application using PostgreSQL Psycopg2 Driver for YSQL
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
     identifier: postgres-psycopg2-driver
@@ -38,6 +37,13 @@ type: docs
     <a href="../postgres-psycopg2" class="nav-link active">
       <i class="icon-postgres" aria-hidden="true"></i>
       PostgreSQL Psycopg2 Driver
+    </a>
+  </li>
+
+  <li >
+    <a href="../aiopg" class="nav-link">
+      <i class="icon-postgres" aria-hidden="true"></i>
+      aiopg
     </a>
   </li>
 

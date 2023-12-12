@@ -1,4 +1,5 @@
 import { Component, Fragment } from 'react';
+import { find } from 'lodash';
 import { YBPanelItem } from '../../../panels';
 import { Row, Col, DropdownButton, MenuItem } from 'react-bootstrap';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
@@ -16,6 +17,13 @@ import { api } from '../../../../redesign/helpers/api';
 import { AssociatedUniverse } from '../../../common/associatedUniverse/AssociatedUniverse';
 import { YBConfirmModal } from '../../../modals';
 import { ybFormatDate } from '../../../../redesign/helpers/DateUtils';
+import {
+  RbacValidator,
+  hasNecessaryPerm
+} from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { Action, Resource } from '../../../../redesign/features/rbac';
+import { userhavePermInRoleBindings } from '../../../../redesign/features/rbac/common/RbacUtils';
 import './certificates.scss';
 
 const validationSchema = Yup.object().shape({
@@ -168,8 +176,10 @@ class Certificates extends Component {
   };
 
   formatActionButtons = (cell, row) => {
-    const downloadEnabled = ['SelfSigned', 'HashicorpVault'].includes(row.type);
-    const deleteDisabled = row.inUse;
+    const downloadEnabled =
+      ['SelfSigned', 'HashicorpVault'].includes(row.type) ||
+      !hasNecessaryPerm(ApiPermissionMap.DOWNLOAD_CERTIFICATE);
+    const deleteDisabled = row.inUse || !hasNecessaryPerm(ApiPermissionMap.DELETE_CERTIFICATE);
     const payload = {
       name: row.name,
       uuid: row.uuid,
@@ -177,7 +187,8 @@ class Certificates extends Component {
       expiryDate: row.expiryDateIso,
       universeDetails: row.universeDetails
     };
-    const disableCertEdit = row.type !== 'HashicorpVault';
+    const disableCertEdit =
+      row.type !== 'HashicorpVault' || !hasNecessaryPerm(ApiPermissionMap.MODIFY_CERTIFICATE);
     // TODO: Replace dropdown option + modal with a side panel
     return (
       <DropdownButton className="btn btn-default" title="Actions" id="bg-nested-dropdown" pullRight>
@@ -189,59 +200,97 @@ class Certificates extends Component {
             this.setState({ selectedCert: row });
             this.props.showCertificateDetailsModal();
           }}
+          data-testid="Certificates-Details"
         >
           <i className="fa fa-info-circle"></i> Details
         </MenuItem>
-        <MenuItem
-          disabled={disableCertEdit}
-          onClick={() => {
-            if (!disableCertEdit) {
-              this.setState({ mode: MODES.EDIT, selectedCert: row }, () => {
-                this.props.showAddCertificateModal();
+        <RbacValidator
+          accessRequiredOn={ApiPermissionMap.MODIFY_CERTIFICATE}
+          isControl
+          overrideStyle={{ display: 'block' }}
+        >
+          <MenuItem
+            disabled={disableCertEdit}
+            onClick={() => {
+              if (!disableCertEdit) {
+                this.setState({ mode: MODES.EDIT, selectedCert: row }, () => {
+                  this.props.showAddCertificateModal();
+                });
+              }
+            }}
+            data-testid="Certificates-EditCertificate"
+          >
+            <i className="fa fa-edit"></i> Edit Certificate
+          </MenuItem>
+        </RbacValidator>
+        <RbacValidator
+          accessRequiredOn={ApiPermissionMap.DOWNLOAD_CERTIFICATE}
+          isControl
+          overrideStyle={{ display: 'block' }}
+        >
+          <MenuItem
+            onClick={() => {
+              if (downloadEnabled) {
+                this.setState({ selectedCert: payload });
+                this.props.showDownloadCertificateModal();
+              }
+            }}
+            disabled={!downloadEnabled}
+            data-testid="Certificates-DownloadYSQLCert"
+          >
+            <i className="fa fa-download"></i> Download YSQL Cert
+          </MenuItem>
+        </RbacValidator>
+        <RbacValidator
+          accessRequiredOn={ApiPermissionMap.DOWNLOAD_CERTIFICATE}
+          isControl
+          overrideStyle={{ display: 'block' }}
+        >
+          <MenuItem
+            onClick={() => {
+              downloadEnabled && this.downloadRootCertificate(row);
+            }}
+            disabled={!downloadEnabled}
+            data-testid="Certificates-DownloadRootCACert"
+          >
+            <i className="fa fa-download"></i> Download Root CA Cert
+          </MenuItem>
+        </RbacValidator>
+        <RbacValidator
+          accessRequiredOn={ApiPermissionMap.DELETE_CERTIFICATE}
+          isControl
+          overrideStyle={{ display: 'block' }}
+        >
+          <MenuItem
+            onClick={() => {
+              !deleteDisabled && this.showDeleteCertificateModal(payload);
+            }}
+            disabled={deleteDisabled}
+            title={deleteDisabled ? 'In use certificates cannot be deleted' : null}
+            data-testid="Certificates-DeleteCertificate"
+          >
+            <i className="fa fa-trash"></i> Delete Certificate
+          </MenuItem>
+        </RbacValidator>
+        <RbacValidator
+          customValidateFunction={() =>
+            userhavePermInRoleBindings(Resource.UNIVERSE, Action.READ)
+          }
+          isControl
+          overrideStyle={{ display: 'block' }}
+        >
+          <MenuItem
+            onClick={() => {
+              this.setState({
+                associatedUniverses: [...payload?.universeDetails],
+                isVisibleModal: true
               });
-            }
-          }}
-        >
-          <i className="fa fa-edit"></i> Edit Certificate
-        </MenuItem>
-        <MenuItem
-          onClick={() => {
-            if (downloadEnabled) {
-              this.setState({ selectedCert: payload });
-              this.props.showDownloadCertificateModal();
-            }
-          }}
-          disabled={!downloadEnabled}
-        >
-          <i className="fa fa-download"></i> Download YSQL Cert
-        </MenuItem>
-        <MenuItem
-          onClick={() => {
-            downloadEnabled && this.downloadRootCertificate(row);
-          }}
-          disabled={!downloadEnabled}
-        >
-          <i className="fa fa-download"></i> Download Root CA Cert
-        </MenuItem>
-        <MenuItem
-          onClick={() => {
-            !deleteDisabled && this.showDeleteCertificateModal(payload);
-          }}
-          disabled={deleteDisabled}
-          title={deleteDisabled ? 'In use certificates cannot be deleted' : null}
-        >
-          <i className="fa fa-trash"></i> Delete Certificate
-        </MenuItem>
-        <MenuItem
-          onClick={() => {
-            this.setState({
-              associatedUniverses: [...payload?.universeDetails],
-              isVisibleModal: true
-            });
-          }}
-        >
-          <i className="fa fa-eye"></i> Show Universes
-        </MenuItem>
+            }}
+            data-testid="Certificates-ShowUniverses"
+          >
+            <i className="fa fa-eye"></i> Show Universes
+          </MenuItem>
+        </RbacValidator>
       </DropdownButton>
     );
   };
@@ -296,107 +345,112 @@ class Certificates extends Component {
 
     return (
       <div id="page-wrapper">
-        <YBPanelItem
-          header={
-            <Row className="header-row">
-              <Col xs={6}>
-                <h2>Certificates</h2>
-              </Col>
-              <Col xs={6} className="universe-table-header-action">
-                {isNotHidden(currentCustomer.data.features, 'universe.create') && (
-                  <YBButton
-                    btnClass="universe-button btn btn-lg btn-orange"
-                    onClick={() => {
-                      this.setState({ mode: MODES.CREATE }, () => {
-                        showAddCertificateModal();
-                      });
-                    }}
-                    disabled={isDisabled(currentCustomer.data.features, 'universe.create')}
-                    btnText="Add Certificate"
-                    btnIcon="fa fa-plus"
+        <RbacValidator accessRequiredOn={ApiPermissionMap.GET_CERTIFICATES}>
+          <YBPanelItem
+            header={
+              <Row className="header-row">
+                <Col xs={6}>
+                  <h2>Certificates</h2>
+                </Col>
+                <Col xs={6} className="universe-table-header-action">
+                  {isNotHidden(currentCustomer.data.features, 'universe.create') && (
+                    <RbacValidator accessRequiredOn={ApiPermissionMap.CREATE_CERTIFICATE} isControl>
+                      <YBButton
+                        btnClass="universe-button btn btn-lg btn-orange"
+                        onClick={() => {
+                          this.setState({ mode: MODES.CREATE }, () => {
+                            showAddCertificateModal();
+                          });
+                        }}
+                        disabled={isDisabled(currentCustomer.data.features, 'universe.create')}
+                        btnText="Add Certificate"
+                        btnIcon="fa fa-plus"
+                        data-testid="Add-Certificate"
+                      />
+                    </RbacValidator>
+                  )}
+                </Col>
+              </Row>
+            }
+            noBackground
+            body={
+              <Fragment>
+                <BootstrapTable
+                  data={certificateArray}
+                  search
+                  multiColumnSearch
+                  pagination
+                  className="bs-table-certs"
+                  trClassName="tr-cert-name"
+                >
+                  <TableHeaderColumn
+                    dataField="name"
+                    isKey={true}
+                    columnClassName="no-border name-column"
+                    className="no-border"
+                  >
+                    Name
+                  </TableHeaderColumn>
+                  <TableHeaderColumn
+                    dataField="creationTime"
+                    dataFormat={this.getDateColumn('creationTime')}
+                    columnClassName="no-border name-column"
+                    className="no-border"
+                  >
+                    Creation Time
+                  </TableHeaderColumn>
+                  <TableHeaderColumn
+                    dataField="expiryDate"
+                    dataFormat={this.getDateColumn('expiryDate')}
+                    columnClassName="no-border name-column"
+                    className="no-border"
+                  >
+                    Expiration
+                  </TableHeaderColumn>
+                  <TableHeaderColumn
+                    dataField="base_url"
+                    dataFormat={this.showCertProperties}
+                    columnClassName="no-border name-column"
+                    className="no-border"
+                  >
+                    Properties
+                  </TableHeaderColumn>
+                  <TableHeaderColumn
+                    dataField="actions"
+                    width="120px"
+                    columnClassName="yb-actions-cell"
+                    dataFormat={this.formatActionButtons}
                   />
-                )}
-              </Col>
-            </Row>
-          }
-          noBackground
-          body={
-            <Fragment>
-              <BootstrapTable
-                data={certificateArray}
-                search
-                multiColumnSearch
-                pagination
-                className="bs-table-certs"
-                trClassName="tr-cert-name"
-              >
-                <TableHeaderColumn
-                  dataField="name"
-                  isKey={true}
-                  columnClassName="no-border name-column"
-                  className="no-border"
-                >
-                  Name
-                </TableHeaderColumn>
-                <TableHeaderColumn
-                  dataField="creationTime"
-                  dataFormat={this.getDateColumn('creationTime')}
-                  columnClassName="no-border name-column"
-                  className="no-border"
-                >
-                  Creation Time
-                </TableHeaderColumn>
-                <TableHeaderColumn
-                  dataField="expiryDate"
-                  dataFormat={this.getDateColumn('expiryDate')}
-                  columnClassName="no-border name-column"
-                  className="no-border"
-                >
-                  Expiration
-                </TableHeaderColumn>
-                <TableHeaderColumn
-                  dataField="base_url"
-                  dataFormat={this.showCertProperties}
-                  columnClassName="no-border name-column"
-                  className="no-border"
-                >
-                  Properties
-                </TableHeaderColumn>
-                <TableHeaderColumn
-                  dataField="actions"
-                  width="120px"
-                  columnClassName="yb-actions-cell"
-                  dataFormat={this.formatActionButtons}
+                </BootstrapTable>
+                <AddCertificateFormContainer
+                  visible={showModal && visibleModal === 'addCertificateModal'}
+                  onHide={this.props.closeModal}
+                  fetchCustomerCertificates={this.props.fetchCustomerCertificates}
+                  isHCVaultEnabled={isHCVaultEnabled}
+                  certificate={this.state.selectedCert}
+                  mode={this.state.mode}
                 />
-              </BootstrapTable>
-              <AddCertificateFormContainer
-                visible={showModal && visibleModal === 'addCertificateModal'}
-                onHide={this.props.closeModal}
-                fetchCustomerCertificates={this.props.fetchCustomerCertificates}
-                isHCVaultEnabled={isHCVaultEnabled}
-                certificate={this.state.selectedCert}
-                mode={this.state.mode}
-              />
-              <CertificateDetails
-                visible={showModal && visibleModal === 'certificateDetailsModal'}
-                onHide={this.props.closeModal}
-                certificate={this.state.selectedCert}
-              />
-              <DownloadCertificateForm
-                handleSubmit={this.downloadYCQLCertificates}
-                visible={showModal && visibleModal === 'downloadCertificateModal'}
-                onHide={this.props.closeModal}
-                certificate={this.state.selectedCert}
-              />
-              <AssociatedUniverse
-                visible={isVisibleModal}
-                onHide={this.closeModal}
-                associatedUniverses={associatedUniverses}
-                title="Certificate"
-              />
-            </Fragment>
-          }
-        />
+                <CertificateDetails
+                  visible={showModal && visibleModal === 'certificateDetailsModal'}
+                  onHide={this.props.closeModal}
+                  certificate={this.state.selectedCert}
+                />
+                <DownloadCertificateForm
+                  handleSubmit={this.downloadYCQLCertificates}
+                  visible={showModal && visibleModal === 'downloadCertificateModal'}
+                  onHide={this.props.closeModal}
+                  certificate={this.state.selectedCert}
+                />
+                <AssociatedUniverse
+                  visible={isVisibleModal}
+                  onHide={this.closeModal}
+                  associatedUniverses={associatedUniverses}
+                  title="Certificate"
+                />
+              </Fragment>
+            }
+          />
+        </RbacValidator>
         {showSubmitting && (
           <div className="loading-text">
             <span>Generating certificates...</span>

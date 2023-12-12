@@ -25,6 +25,10 @@ import { YBLoading } from '../../../../common/indicators';
 import { StorageConfigDeleteModal } from '../../StorageConfigDeleteModal';
 import { IStorageProviders } from '../IStorageConfigs';
 import { deleteCustomerConfig } from './StorageConfigApi';
+import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { userhavePermInRoleBindings } from '../../../../../redesign/features/rbac/common/RbacUtils';
+import { Action, Resource } from '../../../../../redesign/features/rbac';
 
 interface StorageConfigurationListProps {
   type: IStorageProviders;
@@ -61,8 +65,8 @@ export const StorageConfigurationList: FC<StorageConfigurationListProps> = ({
 
   const configs:
     | {
-        data: IStorageConfig[];
-      }
+      data: IStorageConfig[];
+    }
     | undefined = useSelector((state: any) => state.customer.configs);
 
   if (getPromiseState(configs).isLoading()) {
@@ -82,13 +86,19 @@ export const StorageConfigurationList: FC<StorageConfigurationListProps> = ({
           id="bg-nested-dropdown"
           pullRight
         >
-          <MenuItem
-            onClick={() => {
-              setEditConfigData(row);
-            }}
+          <RbacValidator
+            accessRequiredOn={ApiPermissionMap.EDIT_CUSTOMER_CONFIG}
+            isControl
+            overrideStyle={{ display: 'block' }}
           >
-            Edit Configuration
-          </MenuItem>
+            <MenuItem
+              onClick={() => {
+                setEditConfigData(row);
+              }}
+            >
+              Edit Configuration
+            </MenuItem>
+          </RbacValidator>
           <MenuItem
             onClick={(e) => {
               e.stopPropagation();
@@ -98,110 +108,133 @@ export const StorageConfigurationList: FC<StorageConfigurationListProps> = ({
           >
             Show associated backups
           </MenuItem>
-          <MenuItem
-            disabled={inUse}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (!inUse) {
-                setConfigData({ configUUID, configName });
-                setDeleteModalVisible(true);
-              }
-            }}
+          <RbacValidator
+            accessRequiredOn={ApiPermissionMap.DELETE_CUSTOMER_CONFIG}
+            isControl
+            overrideStyle={{ display: 'block' }}
           >
-            {!inUse && <>Delete Configuration</>}
+            <MenuItem
+              disabled={inUse}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (!inUse) {
+                  setConfigData({ configUUID, configName });
+                  setDeleteModalVisible(true);
+                }
+              }}
+            >
+              {!inUse && <>Delete Configuration</>}
 
-            {inUse && (
-              <YBInfoTip
-                content="Storage configuration is in use and cannot be deleted until associated resources are removed."
-                placement="top"
-              >
-                <span className="disable-delete">Delete Configuration</span>
-              </YBInfoTip>
-            )}
-          </MenuItem>
-          <MenuItem
-            onClick={() => {
-              setConfigData(configName);
-              setUniverseDetails([...universeDetails]);
-              setIsUniverseVisible(true);
-            }}
+              {inUse && (
+                <YBInfoTip
+                  content="Storage configuration is in use and cannot be deleted until associated resources are removed."
+                  placement="top"
+                >
+                  <span className="disable-delete">Delete Configuration</span>
+                </YBInfoTip>
+              )}
+            </MenuItem>
+          </RbacValidator>
+          <RbacValidator
+            customValidateFunction={() =>
+              userhavePermInRoleBindings(Resource.UNIVERSE, Action.READ)
+            }
+            isControl
+            overrideStyle={{ display: 'block' }}
           >
-            Show Universes
-          </MenuItem>
+            <MenuItem
+              onClick={() => {
+                setConfigData(configName);
+                setUniverseDetails([...universeDetails]);
+                setIsUniverseVisible(true);
+              }}
+            >
+              Show Universes
+            </MenuItem>
+          </RbacValidator>
         </DropdownButton>
       </>
     );
   };
 
   return (
-    <>
-      <h2 className="table-container-title pull-left">Backup List</h2>
-      <FlexContainer className="pull-right" direction={'row'}>
-        <FlexShrink className="" power={1}>
-          <Button bsClass="btn btn-orange btn-config" onClick={() => showStorageConfigCreation()}>
-            Create {type.toUpperCase()} Backup
-          </Button>
-        </FlexShrink>
-      </FlexContainer>
-      <BootstrapTable data={backupConfigsByType}>
-        <TableHeaderColumn dataField="configUUID" isKey={true} hidden={true} />
-        <TableHeaderColumn
-          dataField="configName"
-          columnClassName="no-border name-column"
-          className="no-border"
-          width="30%"
-        >
-          Configuration Name
-        </TableHeaderColumn>
-        <TableHeaderColumn
-          dataField="backupLocation"
-          dataFormat={getBackupLocation}
-          columnClassName="no-border name-column"
-          className="no-border"
-          width="30%"
-        >
-          Backup Location
-        </TableHeaderColumn>
-        <TableHeaderColumn
-          dataField="status"
-          dataFormat={getBackupStatus}
-          columnClassName="no-border name-column"
-          className="no-border"
-          width="10%"
-        >
-          Status
-        </TableHeaderColumn>
-        <TableHeaderColumn
-          dataField="configActions"
-          dataFormat={(cell, row) => formatConfigActions(cell, row)}
-          columnClassName="yb-actions-cell"
-          className="yb-actions-cell"
-          width="10%"
-          dataAlign="center"
-        >
-          Actions
-        </TableHeaderColumn>
-      </BootstrapTable>
-      <AssociatedUniverse
-        visible={isUniverseVisible}
-        onHide={() => setIsUniverseVisible(false)}
-        associatedUniverses={associatedUniverses}
-        title={`Backup Configuration ${configData}`}
-      />
-      <AssociatedBackups
-        visible={showAssociatedBackups}
-        onHide={() => setShowAssociatedBackups(false)}
-        storageConfigData={configData}
-      />
-      <StorageConfigDeleteModal
-        visible={deleteModalVisible}
-        onHide={() => setDeleteModalVisible(false)}
-        configName={configData.configName}
-        configUUID={configData.configUUID}
-        onDelete={() => {
-          doDeleteStorageConfig.mutate(configData.configUUID);
-        }}
-      />
-    </>
+    <RbacValidator
+      accessRequiredOn={ApiPermissionMap.GET_CUSTOMER_CONFIGS}
+    >
+      <>
+        <h2 className="table-container-title pull-left">Backup List</h2>
+        <FlexContainer className="pull-right" direction={'row'}>
+          <FlexShrink className="" power={1}>
+            <RbacValidator
+              accessRequiredOn={ApiPermissionMap.CREATE_CUSTOMER_CONFIG}
+              isControl
+            >
+              <Button bsClass="btn btn-orange btn-config" onClick={() => showStorageConfigCreation()}>
+                Create {type.toUpperCase()} Backup
+              </Button>
+            </RbacValidator>
+          </FlexShrink>
+        </FlexContainer>
+        <BootstrapTable data={backupConfigsByType}>
+          <TableHeaderColumn dataField="configUUID" isKey={true} hidden={true} />
+          <TableHeaderColumn
+            dataField="configName"
+            columnClassName="no-border name-column"
+            className="no-border"
+            width="30%"
+          >
+            Configuration Name
+          </TableHeaderColumn>
+          <TableHeaderColumn
+            dataField="backupLocation"
+            dataFormat={getBackupLocation}
+            columnClassName="no-border name-column"
+            className="no-border"
+            width="30%"
+          >
+            Backup Location
+          </TableHeaderColumn>
+          <TableHeaderColumn
+            dataField="status"
+            dataFormat={getBackupStatus}
+            columnClassName="no-border name-column"
+            className="no-border"
+            width="10%"
+          >
+            Status
+          </TableHeaderColumn>
+          <TableHeaderColumn
+            dataField="configActions"
+            dataFormat={(cell, row) => formatConfigActions(cell, row)}
+            columnClassName="yb-actions-cell"
+            className="yb-actions-cell"
+            width="10%"
+            dataAlign="center"
+          >
+            Actions
+          </TableHeaderColumn>
+        </BootstrapTable>
+        <AssociatedUniverse
+          visible={isUniverseVisible}
+          onHide={() => setIsUniverseVisible(false)}
+          associatedUniverses={associatedUniverses}
+          title={`Backup Configuration ${configData}`}
+        />
+        <AssociatedBackups
+          visible={showAssociatedBackups}
+          onHide={() => setShowAssociatedBackups(false)}
+          storageConfigData={configData}
+        />
+        <StorageConfigDeleteModal
+          visible={deleteModalVisible}
+          onHide={() => setDeleteModalVisible(false)}
+          configName={configData.configName}
+          configUUID={configData.configUUID}
+          onDelete={() => {
+            doDeleteStorageConfig.mutate(configData.configUUID);
+          }}
+        />
+      </>
+    </RbacValidator>
   );
 };

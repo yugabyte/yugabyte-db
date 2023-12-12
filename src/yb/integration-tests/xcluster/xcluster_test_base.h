@@ -21,6 +21,7 @@
 #include "yb/cdc/cdc_types.h"
 
 #include "yb/client/transaction_manager.h"
+#include "yb/client/client.h"
 
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
@@ -35,7 +36,7 @@
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 
 DECLARE_bool(TEST_check_broadcast_address);
-DECLARE_bool(allow_ycql_transactional_xcluster);
+DECLARE_bool(TEST_allow_ycql_transactional_xcluster);
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(cdc_write_rpc_timeout_ms);
 DECLARE_bool(flush_rocksdb_on_shutdown);
@@ -67,7 +68,7 @@ class XClusterTestBase : public YBTest {
   class Cluster {
    public:
     std::unique_ptr<MiniCluster> mini_cluster_;
-    std::unique_ptr<YBClient> client_;
+    std::unique_ptr<client::YBClient> client_;
     std::unique_ptr<yb::pgwrapper::PgSupervisor> pg_supervisor_;
     HostPort pg_host_port_;
     boost::optional<client::TransactionManager> txn_mgr_;
@@ -111,7 +112,7 @@ class XClusterTestBase : public YBTest {
 
     // We normally disable setting up transactional replication for CQL tables because the
     // implementation isn't quite complete yet.  It's fine to use it in tests, however.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_allow_ycql_transactional_xcluster) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_allow_ycql_transactional_xcluster) = true;
 
     // Allow for one-off network instability by ensuring a single CDC RPC timeout << test timeout.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_read_rpc_timeout_ms) = (kRpcTimeout / 2) * 1000;
@@ -123,11 +124,18 @@ class XClusterTestBase : public YBTest {
     propagation_timeout_ = MonoDelta::FromSeconds(30 * kTimeMultiplier);
   }
 
+  virtual Status PostSetUp();
+
   Result<std::unique_ptr<Cluster>> CreateCluster(
       const std::string& cluster_id, const std::string& cluster_short_name,
       uint32_t num_tservers = 1, uint32_t num_masters = 1);
 
   virtual Status InitClusters(const MiniClusterOptions& opts);
+
+  virtual Status PreProducerCreate() { return Status::OK(); }
+  virtual Status PostProducerCreate() { return Status::OK(); }
+  virtual Status PreConsumerCreate() { return Status::OK(); }
+  virtual Status PostConsumerCreate() { return Status::OK(); }
 
   void TearDown() override;
 
@@ -146,6 +154,7 @@ class XClusterTestBase : public YBTest {
       uint32_t num_tablets, const client::YBSchema* schema);
 
   virtual Status SetupUniverseReplication(const std::vector<std::string>& producer_table_ids);
+  virtual Status SetupUniverseReplication();
 
   virtual Status SetupUniverseReplication(
       const std::vector<std::shared_ptr<client::YBTable>>& producer_tables,
@@ -215,8 +224,7 @@ class XClusterTestBase : public YBTest {
       const cdc::ReplicationGroupId& replication_group_id,
       master::IsSetupUniverseReplicationDoneResponsePB* resp);
 
-  Status GetCDCStreamForTable(
-      const std::string& table_id, master::ListCDCStreamsResponsePB* resp);
+  Status GetCDCStreamForTable(const TableId& table_id, master::ListCDCStreamsResponsePB* resp);
 
   uint32_t GetSuccessfulWriteOps(MiniCluster* cluster);
 
@@ -255,15 +263,9 @@ class XClusterTestBase : public YBTest {
 
   // Wait for replication drain on a list of tables.
   Status WaitForReplicationDrain(
-      const std::shared_ptr<master::MasterReplicationProxy>& master_proxy,
-      const master::WaitForReplicationDrainRequestPB& req,
-      int expected_num_nondrained,
-      int timeout_secs = kRpcTimeout);
-
-  // Populate a WaitForReplicationDrainRequestPB request from a list of tables.
-  void PopulateWaitForReplicationDrainRequest(
-      const std::vector<std::shared_ptr<client::YBTable>>& producer_tables,
-      master::WaitForReplicationDrainRequestPB* req);
+      int expected_num_nondrained = 0, int timeout_secs = kRpcTimeout,
+      std::optional<uint64> target_time = std::nullopt,
+      std::vector<TableId> producer_table_ids = {});
 
   YBClient* producer_client() {
     return producer_cluster_.client_.get();
@@ -313,16 +315,16 @@ class XClusterTestBase : public YBTest {
 
   Status WaitForSafeTime(const NamespaceId& namespace_id, const HybridTime& min_safe_time);
 
-  void VerifyReplicationError(
-      const std::string& consumer_table_id,
-      const std::string& stream_id,
-      const boost::optional<ReplicationErrorPb>
-          expected_replication_error);
+  Status VerifyReplicationError(
+      const std::string& consumer_table_id, const xrepl::StreamId& stream_id,
+      const std::optional<ReplicationErrorPb> expected_replication_error);
 
   Result<xrepl::StreamId> GetCDCStreamID(const TableId& producer_table_id);
 
   Status PauseResumeXClusterProducerStreams(
       const std::vector<xrepl::StreamId>& stream_ids, bool is_paused);
+
+  Result<TableId> GetColocatedDatabaseParentTableId();
 
  protected:
   CoarseTimePoint PropagationDeadline() const {
@@ -335,14 +337,6 @@ class XClusterTestBase : public YBTest {
   YBTables &producer_tables_, &consumer_tables_;
   // The first table in producer_tables_ and consumer_tables_ is the default table.
   std::shared_ptr<client::YBTable> producer_table_, consumer_table_;
-
- private:
-  // Function that translates the api response from a WaitForReplicationDrainResponsePB call into
-  // a status.
-  Status SetupWaitForReplicationDrainStatus(
-      Status api_status,
-      const master::WaitForReplicationDrainResponsePB& api_resp,
-      int expected_num_nondrained);
 };
 
 } // namespace yb

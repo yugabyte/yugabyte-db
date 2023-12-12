@@ -181,61 +181,56 @@ scoped_refptr<Metric> MetricEntity::FindOrNull(const MetricPrototype& prototype)
   return FindPtrOrNull(metric_map_, &prototype);
 }
 
-namespace {
-
-bool MatchMetricInRegex(const string& metric_name,
-                        const string& regex_string,
-                        const boost::regex& regex) {
-  if (regex_string == "ALL") {
-    return true;
-  }
-  if (regex_string == "NONE") {
-    return false;
-  }
-  return boost::regex_match(metric_name, regex);
-}
-
-bool MatchMetricInList(const string& metric_name,
-                       const vector<string>& match_params) {
-  for (const string& param : match_params) {
-    // The parameter is a substring match of the metric name.
-    if (metric_name.find(param) != std::string::npos) {
+bool MetricEntity::TEST_ContainMetricName(const std::string& metric_name) const {
+  std::lock_guard l(lock_);
+  for (const MetricMap::value_type& val : metric_map_) {
+    if (val.first->name() == metric_name) {
       return true;
     }
   }
   return false;
 }
 
-} // anonymous namespace
+MetricEntity::MetricMap MetricEntity::GetFilteredMetricMap(
+    const std::optional<std::vector<std::string>>& required_metric_substrings) const {
+  if (!required_metric_substrings) {
+    // Select all if filter is not provided:
+    return metric_map_;
+  }
 
+  MetricMap output_metric_map;
+  if (required_metric_substrings->empty()) {
+    return output_metric_map;
+  }
+
+  for (const auto& [prototype, metric] : metric_map_) {
+    for (const auto& required_metric_substring : *required_metric_substrings) {
+      const std::string& metric_name = prototype->name();
+      // Collect the metric if metric name substring is found.
+      if (metric_name.find(required_metric_substring) != std::string::npos) {
+        output_metric_map[prototype] = metric;
+        break;
+      }
+    }
+  }
+
+  return output_metric_map;
+}
 
 Status MetricEntity::WriteAsJson(JsonWriter* writer,
                                  const MetricJsonOptions& opts) const {
   MetricMap json_metrics;
   AttributeMap attrs;
-  std::vector<ExternalJsonMetricsCb> external_metrics_cbs;
   {
     // Snapshot the metrics, attributes & external metrics callbacks in this metrics entity. (Note:
     // this is not guaranteed to be a consistent snapshot).
     std::lock_guard l(lock_);
-    attrs = attributes_;
-    external_metrics_cbs = external_json_metrics_cbs_;
-    if (!opts.metrics.empty()) {
-      for (const MetricMap::value_type& val : metric_map_) {
-        const scoped_refptr<Metric>& metric = val.second;
-
-        if (MatchMetricInList(val.first->name(), opts.metrics)) {
-          InsertOrDie(&json_metrics, val.first, metric);
-        }
-      }
-    } else {
-      json_metrics = metric_map_;
+    json_metrics = GetFilteredMetricMap(opts.general_metrics_allowlist);
+    if (json_metrics.empty()) {
+      // None of the metrics are matched, or this entity has no metrics.
+      return Status::OK();
     }
-  }
-
-  // If we have any metrics inside don't print the entity at all.
-  if (json_metrics.empty()) {
-    return Status::OK();
+    attrs = attributes_;
   }
 
   writer->StartObject();
@@ -256,15 +251,11 @@ Status MetricEntity::WriteAsJson(JsonWriter* writer,
 
   writer->String("metrics");
   writer->StartArray();
-  for (MetricMap::value_type& val : json_metrics) {
-      WARN_NOT_OK(val.second->WriteAsJson(writer, opts),
-          Format("Failed to write $0 as JSON", val.first->name()));
+  for (const auto& [prototype, metric] : json_metrics) {
+      WARN_NOT_OK(metric->WriteAsJson(writer, opts),
+          Format("Failed to write $0 as JSON", prototype->name()));
+  }
 
-  }
-  // Run the external metrics collection callback if there is one set.
-  for (const ExternalJsonMetricsCb& cb : external_metrics_cbs) {
-    cb(writer, opts);
-  }
   writer->EndArray();
 
   writer->EndObject();
@@ -273,36 +264,23 @@ Status MetricEntity::WriteAsJson(JsonWriter* writer,
 }
 
 Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
-                                        const MetricPrometheusOptions& opts,
-                                        MetricAggregationMap* metric_filter) {
+                                        const MetricPrometheusOptions& opts) {
   AttributeMap attrs;
-  std::vector<ExternalPrometheusMetricsCb> external_metrics_cbs;
   MetricMap prometheus_metrics;
   {
     // Snapshot the metrics, attributes & external metrics callbacks in this metrics entity. (Note:
     // this is not guaranteed to be a consistent snapshot).
     std::lock_guard l(lock_);
-    attrs = attributes_;
-    external_metrics_cbs = external_prometheus_metrics_cbs_;
-    if (!opts.metrics.empty()) {
-      for (const MetricMap::value_type& val : metric_map_) {
-        const scoped_refptr<Metric>& metric = val.second;
-
-        if (MatchMetricInList(val.first->name(), opts.metrics)) {
-          InsertOrDie(&prometheus_metrics, val.first, metric);
-        }
-      }
-    } else {
-      prometheus_metrics = metric_map_;
+    prometheus_metrics = GetFilteredMetricMap(opts.general_metrics_allowlist);
+    if (prometheus_metrics.empty()) {
+      // None of the metrics are matched, or this entity has no metrics.
+      return Status::OK();
     }
+    attrs = attributes_;
   }
 
-  // If we have any metrics inside don't print the entity at all.
-  if (prometheus_metrics.empty()) {
-    return Status::OK();
-  }
   AttributeMap prometheus_attr;
-  AggregationLevels default_aggregation_levels;
+  AggregationLevels aggregation_levels;
   // Per tablet metrics come with tablet_id, as well as table_id and table_name attributes.
   // We ignore the tablet part to squash at the table level.
   if (strcmp(prototype_->name(), "tablet") == 0 || strcmp(prototype_->name(), "table") == 0) {
@@ -310,29 +288,29 @@ Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
     prometheus_attr["table_name"] = attrs["table_name"];
     prometheus_attr["table_type"] = attrs["table_type"];
     prometheus_attr["namespace_name"] = attrs["namespace_name"];
-    default_aggregation_levels = kTableLevel | kServerLevel;
+    aggregation_levels = kTableLevel | kServerLevel;
   } else if (
       strcmp(prototype_->name(), "server") == 0 || strcmp(prototype_->name(), "cluster") == 0) {
     prometheus_attr = attrs;
     // This is tablet_id in the case of tablet, but otherwise names the server type, eg: yb.master
     prometheus_attr["metric_id"] = id_;
-    default_aggregation_levels = kServerLevel;
-  } else if (strcmp(prototype_->name(), "cdc") == 0) {
+    aggregation_levels = kServerLevel;
+  } else if (strcmp(prototype_->name(), kXClusterMetricEntityName) == 0) {
     prometheus_attr["table_id"] = attrs["table_id"];
     prometheus_attr["table_name"] = attrs["table_name"];
     prometheus_attr["table_type"] = attrs["table_type"];
     prometheus_attr["namespace_name"] = attrs["namespace_name"];
     prometheus_attr["stream_id"] = attrs["stream_id"];
-    default_aggregation_levels = kStreamLevel;
-  } else if (strcmp(prototype_->name(), "cdcsdk") == 0) {
+    aggregation_levels = kStreamLevel;
+  } else if (strcmp(prototype_->name(), kCdcsdkMetricEntityName) == 0) {
     prometheus_attr["table_id"] = attrs["table_id"];
     prometheus_attr["table_name"] = attrs["table_name"];
     prometheus_attr["namespace_name"] = attrs["namespace_name"];
     prometheus_attr["stream_id"] = attrs["stream_id"];
-    default_aggregation_levels = kStreamLevel;
+    aggregation_levels = kStreamLevel;
   } else if (strcmp(prototype_->name(), "drive") == 0) {
     prometheus_attr["drive_path"] = attrs["drive_path"];
-    default_aggregation_levels = kServerLevel;
+    aggregation_levels = kServerLevel;
   } else {
     return Status::OK();
   }
@@ -340,48 +318,13 @@ Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
   prometheus_attr["metric_type"] = prototype_->name();
   prometheus_attr["exported_instance"] = FLAGS_metric_node_name;
 
-  for (MetricMap::value_type& val : prometheus_metrics) {
-    const string& metric_name = val.first->name();
-    auto it = metric_filter->find(metric_name);
-    if (it == metric_filter->end()) {
-      // Need to do regex matching to figure out and store the result in metric_filter.
-      (*metric_filter)[metric_name] = GetAggregationLevelsFromRegex(opts, metric_name);
-      it = metric_filter->find(metric_name);
-    }
-    auto aggregation_levels = it->second & default_aggregation_levels;
-
-    // If aggregation_levels indicates that this metric is not collected on server, stream
-    // and table level, just skip it.
-    if (aggregation_levels & kAggregationLevelMask) {
-      WARN_NOT_OK(val.second->WriteForPrometheus(writer,
-          prometheus_attr, opts, aggregation_levels),
-          Format("Failed to write $0 as Prometheus", val.first->name()));
-    }
-  }
-  // Run the external metrics collection callback if there is one set.
-  for (const ExternalPrometheusMetricsCb& cb : external_metrics_cbs) {
-    cb(writer, opts);
+  for (const auto& [prototype, metric]  : prometheus_metrics) {
+    WARN_NOT_OK(metric->WriteForPrometheus(
+        writer, prometheus_attr, opts, aggregation_levels),
+        Format("Failed to write $0 as Prometheus", prototype->name()));
   }
 
   return Status::OK();
-}
-
-AggregationLevels MetricEntity::GetAggregationLevelsFromRegex(
-    const MetricPrometheusOptions& opts, const string& metric_name) const {
-  AggregationLevels filter_result = 0;
-  // Check table level.
-  if (!MatchMetricInRegex(metric_name, opts.table_blacklist, opts.table_blacklist_regex) &&
-      MatchMetricInRegex(metric_name, opts.table_whitelist, opts.table_whitelist_regex)) {
-    filter_result |= kTableLevel;
-  }
-  // Check server level.
-  if (!MatchMetricInRegex(metric_name, opts.server_blacklist, opts.server_blacklist_regex) &&
-      MatchMetricInRegex(metric_name, opts.server_whitelist, opts.server_whitelist_regex)) {
-    filter_result |= kServerLevel;
-  }
-  // No filter for stream level currently.
-  filter_result |= kStreamLevel;
-  return filter_result;
 }
 
 void MetricEntity::Remove(const MetricPrototype* proto) {

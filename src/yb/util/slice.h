@@ -141,6 +141,9 @@ class Slice {
 
   Slice Prefix(size_t n) const;
 
+  // N could be larger than current size than the current slice is returned.
+  Slice PrefixNoLongerThan(size_t n) const;
+
   Slice WithoutPrefix(size_t n) const;
 
   // Drop the last "n" bytes from this slice.
@@ -159,8 +162,12 @@ class Slice {
 
   void AppendTo(faststring* out) const;
 
-  // Truncate the slice to "n" bytes
+  // Truncate the slice to "n" bytes, "n" should be less or equal to the current size.
   void truncate(size_t n);
+
+  // Make the slice no longer than "n" bytes. N could be larger than current size than nothing is
+  // done.
+  void MakeNoLongerThan(size_t n);
 
   char consume_byte();
 

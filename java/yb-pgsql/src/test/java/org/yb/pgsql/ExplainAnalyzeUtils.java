@@ -5,6 +5,7 @@ import static org.junit.Assert.assertTrue;
 import java.sql.ResultSet;
 import java.sql.Statement;
 import java.util.List;
+import java.math.BigDecimal;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -15,7 +16,9 @@ import org.yb.util.json.ObjectChecker;
 import org.yb.util.json.ObjectCheckerBuilder;
 import org.yb.util.json.ValueChecker;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 public class ExplainAnalyzeUtils {
@@ -37,11 +40,15 @@ public class ExplainAnalyzeUtils {
 
   public static final String NODE_YB_BATCHED_NESTED_LOOP = "YB Batched Nested Loop";
 
+  public static final String PLAN = "Plan";
+
   public static final String OPERATION_INSERT = "Insert";
   public static final String OPERATION_UPDATE = "Update";
 
   public static final String RELATIONSHIP_OUTER_TABLE = "Outer";
   public static final String RELATIONSHIP_INNER_TABLE = "Inner";
+
+  public static final String TOTAL_COST = "Total Cost";
 
   public interface TopLevelCheckerBuilder extends ObjectCheckerBuilder {
     TopLevelCheckerBuilder plan(ObjectChecker checker);
@@ -93,14 +100,98 @@ public class ExplainAnalyzeUtils {
     PlanCheckerBuilder totalCost(Checker checker);
     PlanCheckerBuilder actualStartupTime(Checker checker);
     PlanCheckerBuilder actualTotalTime(Checker checker);
+
+    // Seek and Next Estimation
+    PlanCheckerBuilder estimatedSeeks(ValueChecker<Double> checker);
+    PlanCheckerBuilder estimatedNexts(ValueChecker<Double> checker);
+
+    // DocDB Metric
+    PlanCheckerBuilder metric(String key, ValueChecker<Double> checker);
   }
 
-  private static void testExplain(
-      Statement stmt, String query, Checker checker, boolean timing) throws Exception {
-    LOG.info("Query: " + query);
-    ResultSet rs = stmt.executeQuery(String.format(
-        "EXPLAIN (FORMAT json, ANALYZE true, SUMMARY true, DIST true, TIMING %b) %s",
-        timing, query));
+  public static final class ExplainAnalyzeOptionsBuilder {
+    private boolean analyze = false;
+    private boolean costs = true;
+    private boolean debug = false;
+    private boolean dist = false;
+    private boolean summary = true;
+    private boolean timing = false;
+    private boolean verbose = false;
+
+    public ExplainAnalyzeOptionsBuilder() {}
+
+    public ExplainAnalyzeOptionsBuilder analyze(boolean value) {
+      this.analyze = value;
+      return this;
+    }
+
+    public ExplainAnalyzeOptionsBuilder costs(boolean value) {
+      this.costs = value;
+      return this;
+    }
+
+    public ExplainAnalyzeOptionsBuilder debug(boolean value) {
+      this.debug = value;
+      return this;
+    }
+
+    public ExplainAnalyzeOptionsBuilder dist(boolean value) {
+      this.dist = value;
+      return this;
+    }
+
+    public ExplainAnalyzeOptionsBuilder summary(boolean value) {
+      this.summary = value;
+      return this;
+    }
+
+    public ExplainAnalyzeOptionsBuilder timing(boolean value) {
+      this.timing = value;
+      return this;
+    }
+
+    public ExplainAnalyzeOptionsBuilder verbose(boolean value) {
+      this.verbose = value;
+      return this;
+    }
+  }
+
+  public static void setRowAndSizeLimit(Statement statement, int rowLimit, int sizeLimitBytes)
+      throws Exception {
+    LOG.info(String.format("Row limit = %d, Size limit = %d B", rowLimit, sizeLimitBytes));
+    statement.execute(String.format("SET yb_fetch_row_limit = %d", rowLimit));
+    statement.execute(String.format("SET yb_fetch_size_limit = %d", sizeLimitBytes));
+  }
+
+  public static void setRowAndSizeLimit(Statement statement, int rowLimit, String sizeLimit)
+      throws Exception {
+    LOG.info(String.format("Row limit = %d, Size limit = %s", rowLimit, sizeLimit));
+    statement.execute(String.format("SET yb_fetch_row_limit = %d", rowLimit));
+    statement.execute(String.format("SET yb_fetch_size_limit = '%s'", sizeLimit));
+  }
+
+  public static void setHideNonDeterministicFields(Statement statement, boolean value)
+      throws Exception {
+    LOG.info(String.format("Setting yb_explain_hide_non_deterministic_fields to %b", value));
+    statement.execute(String.format("SET yb_explain_hide_non_deterministic_fields = %b", value));
+  }
+
+  private static void testExplain(Statement stmt,
+                                  String query,
+                                  Checker checker,
+                                  boolean analyze,
+                                  boolean costs,
+                                  boolean debug,
+                                  boolean dist,
+                                  boolean summary,
+                                  boolean timing,
+                                  boolean verbose) throws Exception {
+    String explainQuery = String.format(
+        "EXPLAIN (FORMAT json, ANALYZE %b, COSTS %b, DEBUG %b, DIST %b, SUMMARY %b, " +
+        "TIMING %b, VERBOSE %b) %s", analyze, costs, debug, dist, summary, timing, verbose, query);
+
+    LOG.info("Query: " + explainQuery);
+    ResultSet rs = stmt.executeQuery(explainQuery);
     rs.next();
     JsonElement json = JsonParser.parseString(rs.getString(1));
     LOG.info("Response:\n" + JsonUtil.asPrettyString(json));
@@ -112,14 +203,41 @@ public class ExplainAnalyzeUtils {
                conflicts.isEmpty());
   }
 
+  private static void testExplain(
+      Statement stmt, String query, Checker checker, boolean timing, boolean debug, boolean verbose)
+      throws Exception {
+    testExplain(stmt,
+                query,
+                checker,
+                true /* analyze */,
+                true /* costs */,
+                debug,
+                true /* dist */,
+                true /* summary */,
+                timing,
+                verbose);
+  }
+
   public static void testExplain(
       Statement stmt, String query, Checker checker) throws Exception {
-    testExplain(stmt, query, checker, true);
+    testExplain(stmt, query, checker, true /* timing */, false /* debug */, false /* verbose */);
+  }
+
+  public static void testExplainDebug(
+      Statement stmt, String query, Checker checker) throws Exception {
+    testExplain(stmt, query, checker, true /* timing */, true /* debug */, false /* verbose */);
   }
 
   public static void testExplainNoTiming(
       Statement stmt, String query, Checker checker) throws Exception {
-    testExplain(stmt, query, checker, false);
+    testExplain(stmt, query, checker, false /* timing */, false /* debug */, false /* verbose */);
+  }
+
+  public static void testExplainWithOptions(
+    Statement stmt, ExplainAnalyzeOptionsBuilder options, String query,
+    Checker checker) throws Exception {
+    testExplain(stmt, query, checker, options.analyze, options.costs, options.debug, options.dist,
+        options.summary, options.timing, options.verbose);
   }
 
   private static TopLevelCheckerBuilder makeTopLevelBuilder() {
@@ -142,5 +260,47 @@ public class ExplainAnalyzeUtils {
         .build();
 
     testExplain(stmt, query, checker);
+  }
+
+    // An opaque holder for costs. The idea of this is for users to only be able
+  // to compare costs in tests and not read into potentially finnicky cost
+  // values.
+  public static class Cost implements Comparable<Cost> {
+    public Cost(String value) {
+      this.value = new BigDecimal(value);
+    }
+
+    @Override
+    public int compareTo(Cost otherCost) {
+      return this.value.compareTo(otherCost.value);
+    }
+
+    @Override
+    public boolean equals(Object other) {
+      if (this == other)
+        return true;
+
+      if (other == null || this.getClass() != other.getClass())
+        return false;
+
+      Cost otherCost = (Cost) other;
+      return this.value.equals(otherCost.value);
+    }
+
+    private BigDecimal value;
+  }
+
+  public static Cost getExplainTotalCost(Statement stmt, String query)
+  throws Exception {
+    ResultSet rs = stmt.executeQuery(String.format(
+      "EXPLAIN (FORMAT json) %s", query));
+    rs.next();
+    JsonElement json = JsonParser.parseString(rs.getString(1));
+    JsonArray rootArray = json.getAsJsonArray();
+    if (!rootArray.isEmpty()) {
+      JsonObject plan = rootArray.get(0).getAsJsonObject().getAsJsonObject(PLAN);
+      return new Cost(plan.get(TOTAL_COST).getAsString());
+    }
+    throw new IllegalArgumentException("Explain plan for this query returned empty.");
   }
 }

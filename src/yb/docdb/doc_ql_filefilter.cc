@@ -17,12 +17,15 @@
 #include "yb/dockv/primitive_value.h"
 #include "yb/dockv/value_type.h"
 
+#include "yb/qlexpr/ql_scanspec.h"
+
 #include "yb/rocksdb/db/compaction.h"
 
-namespace yb {
-namespace docdb {
+namespace yb::docdb {
 
-extern rocksdb::UserBoundaryTag TagForRangeComponent(size_t index);
+rocksdb::UserBoundaryTag TagForRangeComponent(size_t index);
+
+namespace {
 
 std::vector<dockv::KeyBytes> EncodePrimitiveValues(
     const dockv::KeyEntryValues& source, size_t min_size) {
@@ -55,6 +58,21 @@ int Compare(const Slice *lhs, const Slice *rhs) {
   return lhs->compare(*rhs);
 }
 
+class QLRangeBasedFileFilter : public rocksdb::ReadFileFilter {
+ public:
+  QLRangeBasedFileFilter(const dockv::KeyEntryValues& lower_bounds,
+                         const std::vector<bool>& lower_bounds_inclusive_,
+                         const dockv::KeyEntryValues& upper_bounds,
+                         const std::vector<bool>& upper_bounds_inclusive_);
+
+  bool Filter(const rocksdb::FdWithBoundaries& file) const override;
+
+ private:
+  std::vector<dockv::KeyBytes> lower_bounds_;
+  std::vector<bool> lower_bounds_inclusive_;
+  std::vector<dockv::KeyBytes> upper_bounds_;
+  std::vector<bool> upper_bounds_inclusive_;
+};
 
 QLRangeBasedFileFilter::QLRangeBasedFileFilter(const dockv::KeyEntryValues& lower_bounds,
                                                const std::vector<bool>& lower_bounds_inclusive,
@@ -90,5 +108,24 @@ bool QLRangeBasedFileFilter::Filter(const rocksdb::FdWithBoundaries& file) const
   return true;
 }
 
-}  // namespace docdb
-}  // namespace yb
+} // namespace
+
+std::shared_ptr<rocksdb::ReadFileFilter> CreateFileFilter(const qlexpr::YQLScanSpec& scan_spec) {
+  std::vector<bool> lower_bound_incl;
+  auto lower_bound = scan_spec.RangeComponents(true, &lower_bound_incl);
+  CHECK_EQ(lower_bound.size(), lower_bound_incl.size());
+
+  std::vector<bool> upper_bound_incl;
+  auto upper_bound = scan_spec.RangeComponents(false, &upper_bound_incl);
+  CHECK_EQ(upper_bound.size(), upper_bound_incl.size());
+  if (lower_bound.empty() && upper_bound.empty()) {
+    return std::shared_ptr<rocksdb::ReadFileFilter>();
+  } else {
+    return std::make_shared<QLRangeBasedFileFilter>(std::move(lower_bound),
+                                                    std::move(lower_bound_incl),
+                                                    std::move(upper_bound),
+                                                    std::move(upper_bound_incl));
+  }
+}
+
+}  // namespace yb::docdb

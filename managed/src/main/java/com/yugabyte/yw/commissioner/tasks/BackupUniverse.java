@@ -19,6 +19,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
+import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
 import com.yugabyte.yw.common.metrics.MetricLabelsBuilder;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BackupTableParams.ActionType;
@@ -127,7 +128,8 @@ public class BackupUniverse extends UniverseTaskBase {
           installThirdPartyPackagesTask(universe)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InstallingThirdPartySoftware);
         } else {
-          installThirdPartyPackagesTaskK8s(universe)
+          installThirdPartyPackagesTaskK8s(
+                  universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType.XXHSUM)
               .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.InstallingThirdPartySoftware);
         }
 
@@ -160,7 +162,7 @@ public class BackupUniverse extends UniverseTaskBase {
         createTableBackupTask(taskParams()).setSubTaskGroupType(groupType);
 
         Backup backup = Backup.create(taskParams().customerUuid, taskParams());
-        backup.setTaskUUID(userTaskUUID);
+        backup.setTaskUUID(getUserTaskUUID());
         backup.save();
 
         // Marks the update of this universe as a success only if all the tasks before it succeeded.

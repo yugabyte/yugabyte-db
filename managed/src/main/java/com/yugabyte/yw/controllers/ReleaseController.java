@@ -11,6 +11,7 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ValidatingFormFactory;
+import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.PlatformResults;
@@ -20,6 +21,8 @@ import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
@@ -53,6 +56,8 @@ public class ReleaseController extends AuthenticatedController {
   public static final Logger LOG = LoggerFactory.getLogger(ReleaseController.class);
 
   @Inject ReleaseManager releaseManager;
+
+  @Inject GFlagsValidation gFlagsValidation;
 
   @Inject ValidatingFormFactory formFactory;
 
@@ -95,7 +100,7 @@ public class ReleaseController extends AuthenticatedController {
       releases.forEach(
           (version, metadata) -> {
             releaseManager.addReleaseWithMetadata(version, metadata);
-            releaseManager.addGFlagsMetadataFiles(version, metadata);
+            gFlagsValidation.addDBMetadataFiles(version, metadata);
           });
       releaseManager.updateCurrentReleases();
     } catch (RuntimeException re) {
@@ -141,9 +146,10 @@ public class ReleaseController extends AuthenticatedController {
     return PlatformResults.withData(includeMetadata ? filtered : filtered.keySet());
   }
 
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
   @ApiOperation(
       value =
-          "Deprecated: sinceDate=2023-08-30, sinceYBAVersion=2.20.0, "
+          "Deprecated since YBA version 2.20.0.0, "
               + "Use /api/v1/customers/{cUUID}/releases/:arch instead",
       response = Object.class,
       responseContainer = "Map",

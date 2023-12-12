@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.TableSpaceStructures.PlacementBlock;
 import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceInfo;
 import com.yugabyte.yw.common.alerts.AlertChannelEmailParams;
@@ -34,6 +35,7 @@ import com.yugabyte.yw.forms.CreateTablespaceParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
 import com.yugabyte.yw.forms.filters.AlertConfigurationApiFilter;
 import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
@@ -57,7 +59,6 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.common.Condition;
 import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.configs.CustomerConfig;
@@ -69,6 +70,11 @@ import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.rbac.ResourceGroup;
+import com.yugabyte.yw.models.rbac.Role;
+import com.yugabyte.yw.models.rbac.RoleBinding;
+import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
+import db.migration.default_.common.R__Sync_System_Roles;
 import io.ebean.DB;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
@@ -113,15 +119,31 @@ public class ModelFactory {
   }
 
   public static Users testUser(Customer customer, String email) {
-    return testUser(customer, email, Role.Admin);
+    return testUser(customer, email, Users.Role.Admin);
   }
 
-  public static Users testUser(Customer customer, Role role) {
+  public static Users testUser(Customer customer, Users.Role role) {
     return testUser(customer, "test@customer.com", role);
   }
 
-  public static Users testUser(Customer customer, String email, Role role) {
+  public static Users testUser(Customer customer, String email, Users.Role role) {
     return Users.create(email, "password", role, customer.getUuid(), false);
+  }
+
+  public static Users testSuperAdminUserNewRbac(Customer customer) {
+    // Create test user.
+    Users testUser =
+        Users.create(
+            "test@customer.com", "password", Users.Role.SuperAdmin, customer.getUuid(), false);
+    // Create all built in roles.
+    R__Sync_System_Roles.syncSystemRoles();
+    Role testSuperAdminRole = Role.getOrBadRequest(customer.getUuid(), "SuperAdmin");
+    // Need to define all available resources in resource group as default.
+    ResourceGroup resourceGroup =
+        ResourceGroup.getSystemDefaultResourceGroup(customer.getUuid(), testUser);
+    // Create a single role binding for the user with super admin role.
+    RoleBinding.create(testUser, RoleBindingType.System, testSuperAdminRole, resourceGroup);
+    return testUser;
   }
 
   /*
@@ -254,15 +276,53 @@ public class ModelFactory {
     if (enableYbc) {
       params.setYbcSoftwareVersion("1.0.0-b1");
       NodeDetails node = new NodeDetails();
+      node.nodeUuid = UUID.randomUUID();
       node.cloudInfo = new CloudSpecificInfo();
       node.cloudInfo.private_ip = "127.0.0.1";
       params.nodeDetailsSet.add(node);
       NodeDetails node2 = node.clone();
+      node2.nodeUuid = UUID.randomUUID();
       node2.cloudInfo.private_ip = "127.0.0.2";
       params.nodeDetailsSet.add(node2);
     }
     params.upsertPrimaryCluster(userIntent, pi);
     return Universe.create(params, customerId);
+  }
+
+  public static Universe createK8sUniverseCustomCores(
+      String universeName,
+      UUID universeUUID,
+      long customerId,
+      PlacementInfo pi,
+      UUID rootCA,
+      boolean enableYbc,
+      double cores) {
+    Customer c = Customer.get(customerId);
+    // Custom setup a default AWS provider, can be overridden later.
+    List<Provider> providerList = Provider.get(c.getUuid(), CloudType.kubernetes);
+    Provider p =
+        providerList.isEmpty() ? newProvider(c, CloudType.kubernetes) : providerList.get(0);
+
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
+    userIntent.universeName = universeName;
+    userIntent.provider = p.getUuid().toString();
+    userIntent.providerType = CloudType.kubernetes;
+    userIntent.ybSoftwareVersion = "2.17.0.0-b1";
+    K8SNodeResourceSpec spec = new K8SNodeResourceSpec();
+    spec.cpuCoreCount = cores;
+    userIntent.tserverK8SNodeResourceSpec = spec;
+    UniverseDefinitionTaskParams params = new UniverseDefinitionTaskParams();
+    params.setUniverseUUID(universeUUID);
+    params.nodeDetailsSet = new HashSet<>();
+    params.nodePrefix = universeName;
+    params.rootCA = rootCA;
+    params.setEnableYbc(enableYbc);
+    params.setYbcInstalled(enableYbc);
+    params.nodePrefix = Util.getNodePrefix(customerId, universeName);
+    params.upsertPrimaryCluster(userIntent, pi);
+    Universe u = Universe.create(params, customerId);
+    return addNodesToUniverse(u.getUniverseUUID(), 3);
   }
 
   public static Universe addNodesToUniverse(UUID universeUUID, int numNodesToAdd) {
@@ -312,12 +372,19 @@ public class ModelFactory {
   }
 
   public static CustomerConfig createNfsStorageConfig(Customer customer, String configName) {
+    return createNfsStorageConfig(customer, configName, "/foo/bar");
+  }
+
+  public static CustomerConfig createNfsStorageConfig(
+      Customer customer, String configName, String backupLocation) {
     JsonNode formData =
         Json.parse(
             "{\"configName\": \""
                 + configName
                 + "\", \"name\": \"NFS\","
-                + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \"/foo/bar\"}}");
+                + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \""
+                + backupLocation
+                + "\"}}");
     return CustomerConfig.createWithFormData(customer.getUuid(), formData);
   }
 

@@ -3,14 +3,11 @@ title: Java Driver 4.15 for YCQL
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Java application using YCQL 4.15 driver
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   stable:
     identifier: ycql-java-driver-4.x
     parent: java-drivers
     weight: 500
-aliases:
-  - /stable/drivers-orms/java/ycql-4.6/
 type: docs
 ---
 

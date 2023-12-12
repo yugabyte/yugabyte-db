@@ -15,6 +15,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleCreateServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleSetupServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleUpdateNodeInfo;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteClusterFromUniverse;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck;
@@ -24,8 +25,9 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterAPIDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateNodeDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseCommunicationPorts;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseTags;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseIntent;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
+import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
@@ -34,6 +36,8 @@ import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.helm.HelmUtils;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
@@ -62,6 +66,7 @@ import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import com.yugabyte.yw.models.helpers.NodeStatus;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import java.time.Duration;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
@@ -143,14 +148,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
-   * This sets the user intent from the task params to the universe in memory. Note that the changes
-   * are not saved to the DB in this method.
+   * This sets nodes details and some properties (that cannot be updated during edit) from the task
+   * params to the universe in memory. Note that the changes are not saved to the DB in this method.
    *
    * @param universe
    * @param taskParams
    * @param isNonPrimaryCreate
    */
-  public static void setUserIntentToUniverse(
+  public static void updateUniverseNodesAndSettings(
       Universe universe, UniverseDefinitionTaskParams taskParams, boolean isNonPrimaryCreate) {
     // Persist the updated information about the universe.
     // It should have been marked as being edited in lockUniverseForUpdate().
@@ -178,7 +183,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         if (EncryptionInTransitUtil.isClientRootCARequired(taskParams)) {
           universeDetails.setClientRootCA(taskParams.getClientRootCA());
         }
-        universeDetails.upsertPrimaryCluster(cluster.userIntent, cluster.placementInfo);
         universeDetails.xClusterInfo = taskParams.xClusterInfo;
       } // else non-primary (read-only / add-on) cluster edit mode.
     } else {
@@ -186,28 +190,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       universeDetails.nodeDetailsSet.addAll(taskParams.nodeDetailsSet);
     }
 
-    setEncryptionIntentForNonPrimaryClusters(
-        taskParams.getClusterByType(ClusterType.ASYNC), taskParams, universeDetails);
-    setEncryptionIntentForNonPrimaryClusters(
-        taskParams.getClusterByType(ClusterType.ADDON), taskParams, universeDetails);
-
     universe.setUniverseDetails(universeDetails);
-  }
-
-  private static void setEncryptionIntentForNonPrimaryClusters(
-      List<Cluster> clusters,
-      UniverseDefinitionTaskParams taskParams,
-      UniverseDefinitionTaskParams universeDetails) {
-    clusters.forEach(
-        cluster -> {
-          // Update read replica cluster TLS params to be same as primary cluster
-          cluster.userIntent.enableNodeToNodeEncrypt =
-              universeDetails.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt;
-          cluster.userIntent.enableClientToNodeEncrypt =
-              universeDetails.getPrimaryCluster().userIntent.enableClientToNodeEncrypt;
-          universeDetails.upsertCluster(
-              cluster.userIntent, cluster.placementInfo, cluster.uuid, cluster.clusterType);
-        });
   }
 
   /**
@@ -229,7 +212,23 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Create the update lambda.
     UniverseUpdater updater =
         universe -> {
-          setUserIntentToUniverse(universe, taskParams(), isReadOnlyCreate);
+          updateUniverseNodesAndSettings(universe, taskParams(), isReadOnlyCreate);
+          if (!isReadOnlyCreate) {
+            universe
+                .getUniverseDetails()
+                .upsertPrimaryCluster(
+                    taskParams().getPrimaryCluster().userIntent,
+                    taskParams().getPrimaryCluster().placementInfo);
+          } else {
+            for (Cluster readOnlyCluster : taskParams().getReadOnlyClusters()) {
+              universe
+                  .getUniverseDetails()
+                  .upsertCluster(
+                      readOnlyCluster.userIntent,
+                      readOnlyCluster.placementInfo,
+                      readOnlyCluster.uuid);
+            }
+          }
         };
     // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
     // catch as we want to fail.
@@ -475,8 +474,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   public void setCloudNodeUuids(Universe universe) {
-    // Set random node UUIDs for nodes in the cloud.
-    universe.getUniverseDetails().clusters.stream()
+    // Set deterministic node UUIDs for nodes in the cloud.
+    taskParams().clusters.stream()
         .filter(c -> !c.userIntent.providerType.equals(CloudType.onprem))
         .flatMap(c -> taskParams().getNodesInCluster(c.uuid).stream())
         .filter(n -> n.state == NodeDetails.NodeState.ToBeAdded)
@@ -759,7 +758,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         });
   }
 
-  public void createGFlagsOverrideTasks(
+  public SubTaskGroup createGFlagsOverrideTasks(
       Collection<NodeDetails> nodes,
       ServerType serverType,
       Consumer<AnsibleConfigureServers.Params> paramsCustomizer) {
@@ -786,11 +785,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.enableYCQL = userIntent.enableYCQL;
       params.enableYCQLAuth = userIntent.enableYCQLAuth;
       params.enableYSQLAuth = userIntent.enableYSQLAuth;
+      params.auditLogConfig = userIntent.auditLogConfig;
 
       // The software package to install for this cluster.
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
       params.setEnableYbc(taskParams().isEnableYbc());
       params.setYbcSoftwareVersion(taskParams().getYbcSoftwareVersion());
+      params.ybcGflags = userIntent.ybcFlags;
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
       params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
@@ -819,19 +820,68 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           GFlagsUtil.getGFlagsForNode(
               node, serverType, cluster, universe.getUniverseDetails().clusters);
       params.useSystemd = userIntent.useSystemd;
-      paramsCustomizer.accept(params);
+      if (paramsCustomizer != null) {
+        paramsCustomizer.accept(params);
+      }
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
-      task.setUserTaskUUID(userTaskUUID);
+      task.setUserTaskUUID(getUserTaskUUID());
       subTaskGroup.addSubTask(task);
     }
 
-    if (subTaskGroup.getSubTaskCount() == 0) {
-      return;
+    if (subTaskGroup.getSubTaskCount() > 0) {
+      subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+    }
+    return subTaskGroup;
+  }
+
+  public void createConfigureUniverseTasks(
+      Cluster primaryCluster, @Nullable Collection<NodeDetails> masterNodes) {
+    // Wait for a Master Leader to be elected.
+    createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+    if (CollectionUtils.isNotEmpty(masterNodes)
+        && primaryCluster.userIntent.providerType != CloudType.kubernetes) {
+      // Update the gflags to set master_join_existing_universe to false.
+      // It is not set for k8s universe because this restarts the pods.
+      createGFlagsOverrideTasks(masterNodes, ServerType.MASTER, null /* param customizer */);
     }
 
-    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    // Persist the placement info into the YB master leader.
+    createPlacementInfoTask(null /* blacklistNodes */)
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+    // Manage encryption at rest
+    SubTaskGroup manageEncryptionKeyTask = createManageEncryptionAtRestTask();
+    if (manageEncryptionKeyTask != null) {
+      manageEncryptionKeyTask.setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+    }
+
+    // Wait for a master leader to hear from all the tservers.
+    createWaitForTServerHeartBeatsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+    // Update the DNS entry for all the nodes once, using the primary cluster type.
+    createDnsManipulationTask(DnsManager.DnsCommandType.Create, false, primaryCluster)
+        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+    // Update the swamper target file.
+    createSwamperTargetUpdateTask(false /* removeFile */);
+
+    // Create alert definitions.
+    createUnivCreateAlertDefinitionsTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+
+    // Create default redis table.
+    checkAndCreateRedisTableTask(primaryCluster);
+
+    // Create read write test table tasks.
+    checkAndCreateReadWriteTestTableTask(primaryCluster);
+
+    // Change admin password for Admin user, as specified.
+    checkAndCreateChangeAdminPasswordTask(primaryCluster);
+
+    // Marks the update of this universe as a success only if all the tasks before it succeeded.
+    createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
   }
 
   /**
@@ -1050,10 +1100,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Whether to install node_exporter on nodes or not.
     params.extraDependencies.installNodeExporter =
         taskParams().extraDependencies.installNodeExporter;
+    // Whether to install OpenTelemetry Collector on nodes or not.
+    params.otelCollectorEnabled = taskParams().otelCollectorEnabled;
     // Which user the node exporter service will run as
     params.nodeExporterUser = taskParams().nodeExporterUser;
     // Development testing variable.
     params.remotePackagePath = taskParams().remotePackagePath;
+    params.cgroupSize = getCGroupSize(node);
   }
 
   protected void fillCreateParamsForNode(
@@ -1090,17 +1143,19 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param nodes : a collection of nodes that need to be created
    */
   public SubTaskGroup createSetupServerTasks(
-      Collection<NodeDetails> nodes, Consumer<AnsibleSetupServer.Params> paramsCustomizer) {
+      Collection<NodeDetails> nodes,
+      @Nullable Consumer<AnsibleSetupServer.Params> paramsCustomizer) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleSetupServer");
     for (NodeDetails node : nodes) {
       UserIntent userIntent = taskParams().getClusterByUuid(node.placementUuid).userIntent;
       AnsibleSetupServer.Params params = new AnsibleSetupServer.Params();
       fillSetupParamsForNode(params, userIntent, node);
       params.useSystemd = userIntent.useSystemd;
-      paramsCustomizer.accept(params);
       params.sshUserOverride = node.sshUserOverride;
       params.sshPortOverride = node.sshPortOverride;
-
+      if (paramsCustomizer != null) {
+        paramsCustomizer.accept(params);
+      }
       // Create the Ansible task to setup the server.
       AnsibleSetupServer ansibleSetupServer = createTask(AnsibleSetupServer.class);
       ansibleSetupServer.initialize(params);
@@ -1112,7 +1167,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   public SubTaskGroup createSetupServerTasks(Collection<NodeDetails> nodes) {
-    return createSetupServerTasks(nodes, x -> {});
+    return createSetupServerTasks(nodes, null);
   }
 
   /**
@@ -1128,6 +1183,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       fillCreateParamsForNode(params, userIntent, node);
       params.creatingUser = taskParams().creatingUser;
       params.platformUrl = taskParams().platformUrl;
+      params.tags = userIntent.instanceTags;
       // Create the Ansible task to setup the server.
       AnsibleCreateServer ansibleCreateServer = createTask(AnsibleCreateServer.class);
       ansibleCreateServer.initialize(params);
@@ -1148,7 +1204,8 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @return subtask group
    */
   public SubTaskGroup createConfigureServerTasks(
-      Collection<NodeDetails> nodes, Consumer<AnsibleConfigureServers.Params> paramsCustomizer) {
+      Collection<NodeDetails> nodes,
+      @Nullable Consumer<AnsibleConfigureServers.Params> paramsCustomizer) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleConfigureServers");
     for (NodeDetails node : nodes) {
       Cluster cluster = taskParams().getClusterByUuid(node.placementUuid);
@@ -1168,12 +1225,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.enableYCQL = userIntent.enableYCQL;
       params.enableYCQLAuth = userIntent.enableYCQLAuth;
       params.enableYSQLAuth = userIntent.enableYSQLAuth;
+      params.auditLogConfig = userIntent.auditLogConfig;
       // Set if this node is a master in shell mode.
       // The software package to install for this cluster.
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
       params.setEnableYbc(taskParams().isEnableYbc());
       params.setYbcSoftwareVersion(taskParams().getYbcSoftwareVersion());
       params.setYbcInstalled(taskParams().isYbcInstalled());
+      params.ybcGflags = userIntent.ybcFlags;
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
       params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
@@ -1189,10 +1248,13 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // sshPortOverride, in case the passed imageBundle has a different port
       // configured for the region.
       params.sshPortOverride = node.sshPortOverride;
-      paramsCustomizer.accept(params);
 
       // Development testing variable.
       params.itestS3PackagePath = taskParams().itestS3PackagePath;
+
+      if (paramsCustomizer != null) {
+        paramsCustomizer.accept(params);
+      }
 
       Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
       UUID custUUID = Customer.get(universe.getCustomerId()).getUuid();
@@ -1222,7 +1284,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Create the Ansible task to get the server info.
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
-      task.setUserTaskUUID(userTaskUUID);
+      task.setUserTaskUUID(getUserTaskUUID());
       // Add it to the task list.
       subTaskGroup.addSubTask(task);
     }
@@ -1254,7 +1316,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       // Create the Ansible task to get the server info.
       AnsibleUpdateNodeInfo ansibleFindCloudHost = createTask(AnsibleUpdateNodeInfo.class);
       ansibleFindCloudHost.initialize(params);
-      ansibleFindCloudHost.setUserTaskUUID(userTaskUUID);
+      ansibleFindCloudHost.setUserTaskUUID(getUserTaskUUID());
       // Add it to the task list.
       subTaskGroup.addSubTask(ansibleFindCloudHost);
     }
@@ -1298,14 +1360,17 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         }
         if (cluster.userIntent.deviceInfo != null
             && cluster.userIntent.deviceInfo.volumeSize != null
-            && cluster.userIntent.deviceInfo.volumeSize
-                < univCluster.userIntent.deviceInfo.volumeSize) {
-          String errMsg =
-              String.format(
-                  "Cannot decrease disk size in a Kubernetes cluster (%dG to %dG)",
-                  univCluster.userIntent.deviceInfo.volumeSize,
-                  cluster.userIntent.deviceInfo.volumeSize);
-          throw new IllegalStateException(errMsg);
+            && cluster.userIntent.deviceInfo.numVolumes != null) {
+          int prevSize =
+              univCluster.userIntent.deviceInfo.volumeSize
+                  * univCluster.userIntent.deviceInfo.numVolumes;
+          int curSize =
+              cluster.userIntent.deviceInfo.volumeSize * cluster.userIntent.deviceInfo.numVolumes;
+          if (curSize < prevSize
+              && !confGetter.getConfForScope(universe, UniverseConfKeys.allowVolumeDecrease)) {
+            throw new IllegalArgumentException(
+                "Cannot decrease volume size from " + prevSize + " to " + curSize);
+          }
         }
       }
       PlacementInfoUtil.verifyNumNodesAndRF(
@@ -1320,8 +1385,20 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                   && cluster.userIntent.azOverrides.size() != 0) {
             throw new IllegalArgumentException("Readonly cluster can't have overrides defined");
           }
-        } else { // During edit universe, overrides can't be changed.
+        } else {
           if (opType == UniverseOpType.EDIT) {
+            if (cluster.userIntent.deviceInfo != null
+                && cluster.userIntent.deviceInfo.volumeSize != null
+                && cluster.userIntent.deviceInfo.volumeSize
+                    < univCluster.userIntent.deviceInfo.volumeSize) {
+              String errMsg =
+                  String.format(
+                      "Cannot decrease disk size in a Kubernetes cluster (%dG to %dG)",
+                      univCluster.userIntent.deviceInfo.volumeSize,
+                      cluster.userIntent.deviceInfo.volumeSize);
+              throw new IllegalStateException(errMsg);
+            }
+            // During edit universe, overrides can't be changed.
             Map<String, String> curUnivOverrides =
                 HelmUtils.flattenMap(
                     HelmUtils.convertYamlToMap(univCluster.userIntent.universeOverrides));
@@ -1442,7 +1519,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               userIntent, node, certRotateAction, rootCARotationType, clientRootCARotationType);
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
-      task.setUserTaskUUID(userTaskUUID);
+      task.setUserTaskUUID(getUserTaskUUID());
       subTaskGroup.addSubTask(task);
     }
     subTaskGroup.setSubTaskGroupType(subTaskGroupType);
@@ -1462,7 +1539,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           createUpdateCertDirParams(userIntent, node, ServerType.CONTROLLER);
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
-      task.setUserTaskUUID(userTaskUUID);
+      task.setUserTaskUUID(getUserTaskUUID());
       subTaskGroup.addSubTask(task);
     }
     subTaskGroup.setSubTaskGroupType(subTaskGroupType);
@@ -1482,7 +1559,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
           createUpdateCertDirParams(userIntent, node, serverType);
       AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
       task.initialize(params);
-      task.setUserTaskUUID(userTaskUUID);
+      task.setUserTaskUUID(getUserTaskUUID());
       subTaskGroup.addSubTask(task);
     }
     subTaskGroup.setSubTaskGroupType(subTaskGroupType);
@@ -1606,57 +1683,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
-   * Performs preflight checks for nodes in cluster. No fail tasks are created.
-   *
-   * @return map of failed nodes
-   */
-  private Map<String, String> performClusterPreflightChecks(Cluster cluster) {
-    Map<String, String> failedNodes = new HashMap<>();
-    // This check is only applied to onperm nodes
-    if (cluster.userIntent.providerType != CloudType.onprem) {
-      return failedNodes;
-    }
-    Set<NodeDetails> nodes = taskParams().getNodesInCluster(cluster.uuid);
-    Collection<NodeDetails> nodesToProvision = PlacementInfoUtil.getNodesToProvision(nodes);
-    UserIntent userIntent = cluster.userIntent;
-    Boolean rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
-    Boolean rootCARequired =
-        EncryptionInTransitUtil.isRootCARequired(userIntent, rootAndClientRootCASame);
-    Boolean clientRootCARequired =
-        EncryptionInTransitUtil.isClientRootCARequired(userIntent, rootAndClientRootCASame);
-
-    for (NodeDetails currentNode : nodesToProvision) {
-      String preflightStatus =
-          performPreflightCheck(
-              cluster,
-              currentNode,
-              rootCARequired ? taskParams().rootCA : null,
-              clientRootCARequired ? taskParams().getClientRootCA() : null);
-      if (preflightStatus != null) {
-        failedNodes.put(currentNode.nodeName, preflightStatus);
-      }
-    }
-
-    return failedNodes;
-  }
-
-  /**
-   * Performs preflight checks and creates failed preflight tasks.
-   *
-   * @return true if everything is OK
-   */
-  public boolean performUniversePreflightChecks(Collection<Cluster> clusters) {
-    Map<String, String> failedNodes = new HashMap<>();
-    for (Cluster cluster : clusters) {
-      failedNodes.putAll(performClusterPreflightChecks(cluster));
-    }
-    if (!failedNodes.isEmpty()) {
-      createFailedPrecheckTask(failedNodes).setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
-    }
-    return failedNodes.isEmpty();
-  }
-
-  /**
    * Finds the given list of nodes in the universe. The lookup is done by the node name.
    *
    * @param universe Universe to which the node belongs.
@@ -1739,7 +1765,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
   /** Sets the task params from the DB. */
   public void fetchTaskDetailsFromDB() {
-    TaskInfo taskInfo = TaskInfo.getOrBadRequest(userTaskUUID);
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(getUserTaskUUID());
     taskParams = Json.fromJson(taskInfo.getDetails(), UniverseDefinitionTaskParams.class);
   }
 
@@ -1838,14 +1864,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * @param universe universe to which the nodes belong.
    * @param nodesToBeCreated nodes to be created.
    * @param ignoreNodeStatus ignore checking node status before creating subtasks if it is set.
-   * @param ignoreUseCustomImageConfig ignore using custom image config if it is set.
+   * @param setupParamsCustomizer callback to customize params.
    * @return true if any of the subtasks are executed or ignoreNodeStatus is true.
    */
   public boolean createCreateNodeTasks(
       Universe universe,
       Set<NodeDetails> nodesToBeCreated,
       boolean ignoreNodeStatus,
-      boolean ignoreUseCustomImageConfig) {
+      @Nullable Consumer<AnsibleSetupServer.Params> setupParamsCustomizer) {
 
     // Determine the starting state of the nodes and invoke the callback if
     // ignoreNodeStatus is not set.
@@ -1899,8 +1925,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               createWaitForNodeAgentTasks(nodesToBeCreated)
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
               createHookProvisionTask(filteredNodes, TriggerType.PreNodeProvision);
-              createSetupServerTasks(
-                      filteredNodes, p -> p.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig)
+              createSetupServerTasks(filteredNodes, setupParamsCustomizer)
                   .setSubTaskGroupType(SubTaskGroupType.Provisioning);
             });
 
@@ -1923,20 +1948,20 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    * ignored if ignoreNodeStatus is true.
    *
    * @param universe universe to which the nodes belong.
-   * @param mastersToBeConfigured, nodes to be configured.
-   * @param tServersToBeConfigured, nodes to be configured.
-   * @param isShellMode configure nodes in shell mode if true.
+   * @param mastersToBeConfigured mastersToBeConfigured, nodes to be configured.
+   * @param tServersToBeConfigured tServersToBeConfigured, nodes to be configured.
    * @param ignoreNodeStatus ignore node status if it is set.
-   * @param ignoreUseCustomImageConfig ignore using custom image config if it is set.
+   * @param installSoftwareParamsCustomizer callback to customize params.
+   * @param gflagsParamsCustomizer callback to customize params.
    * @return true if any of the subtasks are executed or ignoreNodeStatus is true.
    */
   public boolean createConfigureNodeTasks(
       Universe universe,
       Set<NodeDetails> mastersToBeConfigured,
       Set<NodeDetails> tServersToBeConfigured,
-      boolean isShellMode,
       boolean ignoreNodeStatus,
-      boolean ignoreUseCustomImageConfig) {
+      @Nullable Consumer<AnsibleConfigureServers.Params> installSoftwareParamsCustomizer,
+      @Nullable Consumer<AnsibleConfigureServers.Params> gflagsParamsCustomizer) {
 
     Set<NodeDetails> mergedNodes = new HashSet<>();
     if (mastersToBeConfigured == tServersToBeConfigured) {
@@ -1959,12 +1984,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
             ignoreNodeStatus,
             NodeStatus.builder().nodeState(NodeState.ServerSetup).build(),
             filteredNodes -> {
-              createConfigureServerTasks(
-                      filteredNodes,
-                      params -> {
-                        params.isMasterInShellMode = isShellMode;
-                        params.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
-                      })
+              createConfigureServerTasks(filteredNodes, installSoftwareParamsCustomizer)
                   .setSubTaskGroupType(SubTaskGroupType.InstallingSoftware);
             });
 
@@ -1987,14 +2007,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
                     // Override master (on primary cluster only) and tserver flags as necessary.
                     // These are idempotent operations.
                     createGFlagsOverrideTasks(
-                        primaryClusterNodes,
-                        ServerType.MASTER,
-                        params -> {
-                          params.isMasterInShellMode = isShellMode;
-                          params.resetMasterState = isShellMode;
-                          params.vmUpgradeTaskType = VmUpgradeTaskType.None;
-                          params.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
-                        });
+                        primaryClusterNodes, ServerType.MASTER, gflagsParamsCustomizer);
                   }
                 }
               });
@@ -2012,11 +2025,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               NodeStatus.builder().nodeState(NodeState.SoftwareInstalled).build(),
               filteredNodes -> {
                 createGFlagsOverrideTasks(
-                    filteredNodes,
-                    ServerType.TSERVER,
-                    false /* isShell */,
-                    VmUpgradeTaskType.None,
-                    ignoreUseCustomImageConfig);
+                    filteredNodes, ServerType.TSERVER, gflagsParamsCustomizer);
               });
     }
 
@@ -2044,28 +2053,30 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
    *
    * @param universe universe to which the nodes belong.
    * @param nodesToBeCreated nodes to be provisioned.
-   * @param isShellMode configure nodes in shell mode if true.
    * @param ignoreNodeStatus ignore node status if it is set.
-   * @param ignoreUseCustomImageConfig ignore using custom image config if it is set.
+   * @param setupServerParamsCustomizer callback to customize params.
+   * @param installSoftwareParamsCustomizer callback to customize params.
+   * @param gflagsParamsCustomizer callback to customize params.
    * @return true if any of the subtasks are executed or ignoreNodeStatus is true.
    */
   public boolean createProvisionNodeTasks(
       Universe universe,
       Set<NodeDetails> nodesToBeCreated,
-      boolean isShellMode,
       boolean ignoreNodeStatus,
-      boolean ignoreUseCustomImageConfig) {
+      @Nullable Consumer<AnsibleSetupServer.Params> setupServerParamsCustomizer,
+      @Nullable Consumer<AnsibleConfigureServers.Params> installSoftwareParamsCustomizer,
+      @Nullable Consumer<AnsibleConfigureServers.Params> gflagsParamsCustomizer) {
     boolean isFallThrough =
         createCreateNodeTasks(
-            universe, nodesToBeCreated, ignoreNodeStatus, ignoreUseCustomImageConfig);
+            universe, nodesToBeCreated, ignoreNodeStatus, setupServerParamsCustomizer);
 
     return createConfigureNodeTasks(
         universe,
         nodesToBeCreated,
         nodesToBeCreated,
-        isShellMode,
         isFallThrough,
-        ignoreUseCustomImageConfig);
+        installSoftwareParamsCustomizer,
+        gflagsParamsCustomizer);
   }
 
   /**
@@ -2180,6 +2191,63 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         });
   }
 
+  protected int getCGroupSize(NodeDetails nodeDetails) {
+    Universe universe = getUniverse();
+    Cluster primary = taskParams().getPrimaryCluster();
+    if (primary == null) {
+      primary = universe.getUniverseDetails().getPrimaryCluster();
+    }
+    Cluster curCluster = taskParams().getClusterByUuid(nodeDetails.placementUuid);
+    if (curCluster == null) {
+      curCluster = universe.getUniverseDetails().getClusterByUuid(nodeDetails.placementUuid);
+    }
+    return getCGroupSize(confGetter, universe, primary, curCluster, nodeDetails);
+  }
+
+  public static int getCGroupSize(
+      RuntimeConfGetter confGetter,
+      Universe universe,
+      Cluster primaryCluster,
+      Cluster currentCluster,
+      NodeDetails nodeDetails) {
+
+    Integer primarySizeFromIntent = primaryCluster.userIntent.getCGroupSize(nodeDetails.azUuid);
+    Integer sizeFromIntent = currentCluster.userIntent.getCGroupSize(nodeDetails.azUuid);
+
+    if (sizeFromIntent != null || primarySizeFromIntent != null) {
+      // Absence of value (or -1) for read replica means to use value from primary cluster.
+      if (currentCluster.clusterType == UniverseDefinitionTaskParams.ClusterType.ASYNC
+          && (sizeFromIntent == null || sizeFromIntent < 0)) {
+        if (primarySizeFromIntent == null) {
+          log.error(
+              "Incorrect state for cgroup: null for primary but {} for replica", sizeFromIntent);
+          return getCGroupSizeFromConfig(confGetter, universe, currentCluster.clusterType);
+        }
+        return primarySizeFromIntent;
+      }
+      return sizeFromIntent;
+    }
+    return getCGroupSizeFromConfig(confGetter, universe, currentCluster.clusterType);
+  }
+
+  private static int getCGroupSizeFromConfig(
+      RuntimeConfGetter confGetter,
+      Universe universe,
+      UniverseDefinitionTaskParams.ClusterType clusterType) {
+    log.debug("Falling back to runtime config for cgroup size");
+    Integer postgresMaxMemMb =
+        confGetter.getConfForScope(universe, UniverseConfKeys.dbMemPostgresMaxMemMb);
+
+    // For read replica clusters, use the read replica value if it is >= 0. -1 means to follow
+    // what the primary cluster has set.
+    Integer rrMaxMemMb =
+        confGetter.getConfForScope(universe, UniverseConfKeys.dbMemPostgresReadReplicaMaxMemMb);
+    if (clusterType == UniverseDefinitionTaskParams.ClusterType.ASYNC && rrMaxMemMb >= 0) {
+      postgresMaxMemMb = rrMaxMemMb;
+    }
+    return postgresMaxMemMb;
+  }
+
   /**
    * Creates a task to delete a read only cluster info from the universe and adds the task to the
    * task queue.
@@ -2292,7 +2360,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         getAnsibleConfigureServerParams(node, processType, UpgradeTaskType.Software, taskSubType);
     if (softwareVersion == null) {
       UserIntent userIntent =
-          getUniverse(true).getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
+          getUniverse().getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
     } else {
       params.ybSoftwareVersion = softwareVersion;
@@ -2304,7 +2372,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
     AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
     task.initialize(params);
-    task.setUserTaskUUID(userTaskUUID);
+    task.setUserTaskUUID(getUserTaskUUID());
     return task;
   }
 
@@ -2323,7 +2391,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       UpgradeTaskType type,
       UpgradeTaskSubType taskSubType) {
     return getAnsibleConfigureServerParams(
-        getUniverse(true).getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent,
+        getUniverse().getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent,
         node,
         processType,
         type,
@@ -2352,6 +2420,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.setYbcSoftwareVersion(taskParams().getYbcSoftwareVersion());
     params.installYbc = taskParams().installYbc;
     params.setYbcInstalled(taskParams().isYbcInstalled());
+    params.ybcGflags = userIntent.ybcFlags;
 
     params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
 
@@ -2371,16 +2440,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return params;
   }
 
-  protected SubTaskGroup createUpdateUniverseTagsTask(
-      Cluster cluster, Map<String, String> instanceTags) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("InstanceActions");
-    UpdateUniverseTags.Params params = new UpdateUniverseTags.Params();
+  protected SubTaskGroup createUpdateUniverseIntentTask(Cluster cluster) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UniverseUpdateDetails");
+    UpdateUniverseIntent.Params params = new UpdateUniverseIntent.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
-    params.clusterUUID = cluster.uuid;
-    params.instanceTags = instanceTags;
-    UpdateUniverseTags task = createTask(UpdateUniverseTags.class);
+    params.clusters = Collections.singletonList(cluster);
+    UpdateUniverseIntent task = createTask(UpdateUniverseIntent.class);
     task.initialize(params);
-    task.setUserTaskUUID(userTaskUUID);
+    task.setUserTaskUUID(getUserTaskUUID());
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
@@ -2429,9 +2496,50 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
     UpdateNodeDetails updateNodeTask = createTask(UpdateNodeDetails.class);
     updateNodeTask.initialize(updateNodeDetailsParams);
-    updateNodeTask.setUserTaskUUID(userTaskUUID);
+    updateNodeTask.setUserTaskUUID(getUserTaskUUID());
     subTaskGroup.addSubTask(updateNodeTask);
 
+    getRunnableTask().addSubTaskGroup(subTaskGroup);
+    return subTaskGroup;
+  }
+
+  protected void createNodePrecheckTasks(
+      NodeDetails node,
+      Set<ServerType> processTypes,
+      SubTaskGroupType subGroupType,
+      @Nullable String targetSoftwareVersion) {
+    boolean underReplicatedTabletsCheckEnabled =
+        confGetter.getConfForScope(
+            getUniverse(), UniverseConfKeys.underReplicatedTabletsCheckEnabled);
+    if (underReplicatedTabletsCheckEnabled && processTypes.contains(ServerType.TSERVER)) {
+      createCheckUnderReplicatedTabletsTask(node, targetSoftwareVersion)
+          .setSubTaskGroupType(subGroupType);
+    }
+  }
+
+  /**
+   * Checks whether cluster contains any under replicated tablets before proceeding.
+   *
+   * @param node node to check for under replicated tablets
+   * @param targetSoftwareVersion software version to check if under replicated tablets endpoint is
+   *     enabled. If null, will use the current software version of the node in the universe
+   * @return the created task group.
+   */
+  protected SubTaskGroup createCheckUnderReplicatedTabletsTask(
+      NodeDetails node, @Nullable String targetSoftwareVersion) {
+    SubTaskGroup subTaskGroup = createSubTaskGroup("CheckUnderReplicatedTables");
+    Duration maxWaitTime =
+        confGetter.getConfForScope(getUniverse(), UniverseConfKeys.underReplicatedTabletsTimeout);
+    CheckUnderReplicatedTablets.Params params = new CheckUnderReplicatedTablets.Params();
+    params.targetSoftwareVersion = targetSoftwareVersion;
+    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.maxWaitTime = maxWaitTime;
+    params.nodeName = node.nodeName;
+
+    CheckUnderReplicatedTablets checkUnderReplicatedTablets =
+        createTask(CheckUnderReplicatedTablets.class);
+    checkUnderReplicatedTablets.initialize(params);
+    subTaskGroup.addSubTask(checkUnderReplicatedTablets);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
   }

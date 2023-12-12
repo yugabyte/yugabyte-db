@@ -3,7 +3,6 @@ title: Edit the YugabyteDB docs
 headerTitle: Edit the docs
 linkTitle: Edit the docs
 description: Get set up and edit the YugabyteDB docs locally
-image: /images/section_icons/index/quick_start.png
 menu:
   preview:
     identifier: docs-edit
@@ -34,7 +33,7 @@ If you need to edit syntax diagrams, see [Edit syntax diagrams](../syntax-diagra
 
 1. Find your file(s) in `docs/content/<version>/...` and edit as required.
 
-1. Verify that your changes look good in the live-reload server.
+1. Verify that your changes look good in the live-reload server. If you don't have the docs site running locally, refer to [Build the docs site](../docs-build/#live-reload).
 
     ```sh
     npm start

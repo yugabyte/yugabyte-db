@@ -13,6 +13,7 @@ import com.yugabyte.yw.common.backuprestore.ybc.YbcBackupUtil.YbcBackupResponse;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager.RestoreKeyResult;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.RestoreBackupParams.BackupStorageInfo;
 import com.yugabyte.yw.models.Universe;
@@ -62,20 +63,22 @@ public class RestoreUniverseKeysYbc extends RestoreUniverseKeysTaskBase {
       BackupStorageInfo backupStorageInfo = taskParams().backupStorageInfoList.get(0);
       String taskId =
           ybcBackupUtil.getYbcTaskID(
-              userTaskUUID, backupStorageInfo.backupType.toString(), backupStorageInfo.keyspace);
+              getUserTaskUUID(),
+              backupStorageInfo.backupType.toString(),
+              backupStorageInfo.keyspace);
       BackupServiceTaskCreateRequest downloadSuccessMarkerRequest =
           ybcBackupUtil.createDsmRequest(
               taskParams().customerUUID, taskParams().storageConfigUUID, taskId, backupStorageInfo);
       String successMarkerString =
           ybcManager.downloadSuccessMarker(
-              downloadSuccessMarkerRequest, taskParams().getUniverseUUID(), taskId);
+              downloadSuccessMarkerRequest, universe.getUniverseUUID(), taskId);
       if (StringUtils.isEmpty(successMarkerString)) {
         throw new PlatformServiceException(
             INTERNAL_SERVER_ERROR, "Got empty success marker response, exiting.");
       }
-      YbcBackupResponse successMarker = ybcBackupUtil.parseYbcBackupResponse(successMarkerString);
+      YbcBackupResponse successMarker = YbcBackupUtil.parseYbcBackupResponse(successMarkerString);
       JsonNode universeKeys =
-          ybcBackupUtil.getUniverseKeysJsonFromSuccessMarker(successMarker.extendedArgsString);
+          YbcBackupUtil.getUniverseKeysJsonFromSuccessMarker(successMarker.extendedArgsString);
 
       RestoreKeyResult restoreResult = RestoreKeyResult.RESTORE_SKIPPED;
       if (universeKeys != null && !universeKeys.isNull()) {
@@ -112,6 +115,9 @@ public class RestoreUniverseKeysYbc extends RestoreUniverseKeysTaskBase {
             // to that state
             client.disableEncryptionAtRestInMemory();
             universe.incrementVersion();
+            // Need to set KMS config UUID in the target universe since there are universe keys now.
+            EncryptionAtRestUtil.updateUniverseKMSConfigIfNotExists(
+                universe.getUniverseUUID(), taskParams().kmsConfigUUID);
           }
       }
     } catch (Exception e) {

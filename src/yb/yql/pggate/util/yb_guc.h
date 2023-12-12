@@ -15,6 +15,8 @@
 
 #pragma once
 
+#include <stdint.h>
+
 #ifdef __cplusplus
 extern "C" {
 
@@ -100,6 +102,11 @@ extern bool yb_enable_hash_batch_in;
 extern bool yb_enable_add_column_missing_default;
 
 /*
+ * Guc variable that enables replication commands.
+ */
+extern bool yb_enable_replication_commands;
+
+/*
  * xcluster consistency level
  */
 #define XCLUSTER_CONSISTENCY_TABLET 0
@@ -111,6 +118,7 @@ extern bool yb_enable_add_column_missing_default;
  */
 extern int yb_xcluster_consistency_level;
 
+extern uint64_t yb_read_time;
 /*
  * Allows for customizing the number of rows to be prefetched.
  */

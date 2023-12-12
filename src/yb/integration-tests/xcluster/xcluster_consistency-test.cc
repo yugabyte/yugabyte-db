@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/cdc/cdc_metrics.h"
+#include "yb/cdc/xrepl_metrics.h"
 #include "yb/cdc/cdc_service.h"
 #include "yb/client/client.h"
 #include "yb/client/table.h"
@@ -20,6 +20,7 @@
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
+#include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/mini_tablet_server.h"
@@ -172,12 +173,10 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
 
       for (const auto& stream_id : stream_ids_) {
         for (const auto& tablet_id : producer_tablet_ids_) {
-          std::shared_ptr<cdc::CDCTabletMetrics> metrics =
-              std::static_pointer_cast<cdc::CDCTabletMetrics>(
-                  cdc_service->GetCDCTabletMetrics({{}, stream_id, tablet_id}));
+          auto metrics = GetXClusterTabletMetrics(*cdc_service, tablet_id, stream_id);
 
-          if (metrics && metrics->last_read_hybridtime->value()) {
-            producer_tablet_read_time_[tablet_id] = metrics->last_read_hybridtime->value();
+          if (metrics && metrics.get()->last_read_hybridtime->value()) {
+            producer_tablet_read_time_[tablet_id] = metrics.get()->last_read_hybridtime->value();
             count++;
           }
         }
@@ -197,12 +196,11 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
 
       for (const auto& stream_id : stream_ids_) {
         for (const auto& tablet_id : producer_tablet_ids_) {
-          std::shared_ptr<cdc::CDCTabletMetrics> metrics =
-              std::static_pointer_cast<cdc::CDCTabletMetrics>(
-                  cdc_service->GetCDCTabletMetrics({{}, stream_id, tablet_id}));
+          auto metrics = GetXClusterTabletMetrics(*cdc_service, tablet_id, stream_id);
 
           if (metrics &&
-              metrics->last_read_hybridtime->value() > producer_tablet_read_time_[tablet_id]) {
+              metrics.get()->last_read_hybridtime->value() >
+                  producer_tablet_read_time_[tablet_id]) {
             count++;
           }
         }
@@ -237,7 +235,8 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
   Result<uint64_t> GetXClusterSafeTimeLagFromMetrics(const NamespaceId& namespace_id) {
     auto& cm = VERIFY_RESULT(consumer_cluster()->GetLeaderMiniMaster())->catalog_manager();
     const auto metrics =
-        cm.TEST_xcluster_safe_time_service()->TEST_GetMetricsForNamespace(namespace_id);
+        cm.GetXClusterManagerImpl()->TEST_xcluster_safe_time_service()->TEST_GetMetricsForNamespace(
+            namespace_id);
     const auto safe_time_lag = metrics->consumer_safe_time_lag->value();
     const auto safe_time_skew = metrics->consumer_safe_time_skew->value();
     CHECK_GE(safe_time_lag, safe_time_skew);

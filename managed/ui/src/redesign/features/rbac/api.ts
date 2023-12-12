@@ -8,10 +8,14 @@
  */
 
 import axios from "axios";
+import Cookies from 'js-cookie';
 import { Role } from "./roles";
 import { Permission, ResourceType } from "./permission";
 import { RbacUser, RbacUserWithResources } from "./users/interface/Users";
 import { ROOT_URL } from "../../../config";
+import { mapResourceBindingsToApi } from "./rbacUtils";
+import { RbacBindings } from "./users/components/UserUtils";
+import { RunTimeConfigEntry } from "../universe/universe-form/utils/dto";
 
 
 export const getAllAvailablePermissions = (resourceType?: ResourceType) => {
@@ -51,23 +55,23 @@ export const deleteRole = (role: Role) => {
     return axios.delete(requestUrl);
 };
 
+export const fetchUserPermissions = () => {
+    const cUUID = localStorage.getItem('customerId');
+    const userId = Cookies.get('userId') ?? localStorage.getItem('userId');
+    const requestUrl = `${ROOT_URL}/customers/${cUUID}/rbac/user/${userId}`;
+    return axios.get(requestUrl);
+};
+
 export const getAllUsers = () => {
     const cUUID = localStorage.getItem('customerId');
     const requestUrl = `${ROOT_URL}/customers/${cUUID}/users`;
     return axios.get<RbacUser[]>(requestUrl);
 };
 
-export const editUsersRoles = (userUUID: string, usersWithRole: RbacUserWithResources) => {
+export const editUsersRolesBindings = (userUUID: string, usersWithRole: RbacUserWithResources) => {
     const cUUID = localStorage.getItem('customerId');
     const requestUrl = `${ROOT_URL}/customers/${cUUID}/rbac/role_binding/${userUUID}`;
-    const resourceDefinitions = usersWithRole.roleResourceDefinitions?.map((res) => {
-        return {
-            ...res,
-            resourceGroup: {
-                resourceDefinitionSet: res.resourceGroup.resourceDefinitionSet.map((t) => ({ ...t, resourceUUIDSet: t.resourceUUIDSet.map(i => i.universeUUID ?? i)}))
-            }
-        };
-    });
+    const resourceDefinitions = mapResourceBindingsToApi(usersWithRole);
     return axios.post(requestUrl, {
         roleResourceDefinitions: resourceDefinitions
     });
@@ -77,4 +81,33 @@ export const getRoleBindingsForUser = (userUUID: string) => {
     const cUUID = localStorage.getItem('customerId');
     const requestUrl = `${ROOT_URL}/customers/${cUUID}/rbac/role_binding?userUUID=${userUUID}`;
     return axios.get<RbacUserWithResources>(requestUrl);
+};
+
+export const getRoleBindingsForAllUsers = () => {
+    const cUUID = localStorage.getItem('customerId');
+    const requestUrl = `${ROOT_URL}/customers/${cUUID}/rbac/role_binding`;
+    return axios.get<RbacBindings[]>(requestUrl);
+};
+
+export const createUser = (user: RbacUserWithResources) => {
+    const cUUID = localStorage.getItem('customerId');
+    const requestUrl = `${ROOT_URL}/customers/${cUUID}/users`;
+    const resourceDefinitions = mapResourceBindingsToApi(user);
+    return axios.post(requestUrl, {
+        ...user,
+        roleResourceDefinitions: resourceDefinitions
+    });
+};
+
+export const deleteUser = (user: RbacUserWithResources) => {
+    const cUUID = localStorage.getItem('customerId');
+    return axios.delete(`${ROOT_URL}/customers/${cUUID}/users/${user.uuid}`);
+};
+
+export const getApiRoutePermMapList = () => {
+    return axios.get(`${ROOT_URL}/rbac/routes`);
+};
+
+export const getRBACEnabledStatus = () => {
+    return axios.get<RunTimeConfigEntry[]>(`${ROOT_URL}/runtime_config/feature_flags`);
 };

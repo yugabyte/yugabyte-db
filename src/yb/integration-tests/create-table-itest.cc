@@ -43,17 +43,17 @@ using std::vector;
 METRIC_DECLARE_entity(server);
 METRIC_DECLARE_entity(tablet);
 METRIC_DECLARE_gauge_int64(is_raft_leader);
+METRIC_DECLARE_gauge_uint32(ts_live_tablet_peers);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerAdminService_CreateTablet);
 METRIC_DECLARE_histogram(handler_latency_yb_tserver_TabletServerAdminService_DeleteTablet);
 
-DECLARE_int32(ycql_num_tablets);
-DECLARE_int32(yb_num_shards_per_tserver);
-DECLARE_int32(raft_heartbeat_interval_ms);
 DECLARE_double(leader_failure_max_missed_heartbeat_periods);
+DECLARE_int32(heartbeat_interval_ms);
+DECLARE_int32(raft_heartbeat_interval_ms);
+DECLARE_int32(yb_num_shards_per_tserver);
+DECLARE_int32(ycql_num_tablets);
 
 namespace yb {
-
-using pgwrapper::GetInt32;
 
 class CreateTableITest : public CreateTableITestBase {
  public:
@@ -401,11 +401,10 @@ TEST_F(CreateTableITest, TableColocationRemoteBootstrapTest) {
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocation = true", kNamespaceName));
   conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
   ASSERT_OK(conn.Execute("CREATE TABLE tbl (k int PRIMARY KEY, v int)"));
-  auto res = ASSERT_RESULT(conn.FetchFormat("SELECT oid FROM pg_database WHERE datname = '$0'",
-                                            kNamespaceName));
-  uint32 db_oid = static_cast<uint32>(ASSERT_RESULT(GetInt32(res.get(), 0, 0)));
-  res = ASSERT_RESULT(conn.Fetch("SELECT oid FROM pg_yb_tablegroup WHERE grpname = 'default'"));
-  uint32 tablegroup_oid = static_cast<uint32>(ASSERT_RESULT(GetInt32(res.get(), 0, 0)));
+  auto db_oid = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(Format(
+      "SELECT oid FROM pg_database WHERE datname = '$0'", kNamespaceName)));
+  auto tablegroup_oid = ASSERT_RESULT(conn.FetchRow<pgwrapper::PGOid>(
+      "SELECT oid FROM pg_yb_tablegroup WHERE grpname = 'default'"));
   TablegroupId tablegroup_id = GetPgsqlTablegroupId(db_oid, tablegroup_oid);
   parent_table_id = GetColocationParentTableId(tablegroup_id);
 
@@ -566,6 +565,30 @@ TEST_F(CreateTableITest, TestIsRaftLeaderMetric) {
     }
   }
   ASSERT_EQ(kNumRaftLeaders, kExpectedRaftLeaders);
+}
+
+TEST_F(CreateTableITest, TestLiveTabletPeersMetric) {
+  constexpr int kNumTServers = 3;
+  const int kNumTablets = 10;
+  ASSERT_NO_FATALS(StartCluster({}, {"--tablet_creation_timeout_ms=1000"}, kNumTServers));
+  ASSERT_OK(client_->CreateNamespaceIfNotExists(
+      kTableName.namespace_name(), kTableName.namespace_type()));
+  std::unique_ptr<client::YBTableCreator> table_creator(client_->NewTableCreator());
+  client::YBSchema client_schema(client::YBSchemaFromSchema(GetSimpleTestSchema()));
+
+  ASSERT_OK(table_creator->table_name(kTableName)
+                .schema(&client_schema)
+                .num_tablets(kNumTablets)
+                .Create());
+
+  // For each tserver verify the metric value ts_live_tablet_peers is equal to the number of tablets
+  // we requested for the table.
+  for (const auto& tserver : cluster_->tserver_daemons()) {
+    ASSERT_EQ(
+        ASSERT_RESULT(tserver->GetMetric<uint32>(
+            "server", "yb.tabletserver", "ts_live_tablet_peers", "value")),
+        kNumTablets);
+  }
 }
 
 // In TSAN, currently, initdb isn't created during build but on first start.
@@ -1060,7 +1083,7 @@ void CreateTableITest::TestLazySuperblockFlushPersistence(int num_tables, int it
     auto new_conn = ASSERT_RESULT(ConnectToDB(database));
     for (int i = 0; i < num_tables; ++i) {
       auto res = ASSERT_RESULT(
-          new_conn.FetchValue<int64_t>(Format("SELECT COUNT(*) FROM $0$1", table_prefix, i)));
+          new_conn.FetchRow<int64_t>(Format("SELECT COUNT(*) FROM $0$1", table_prefix, i)));
       ASSERT_EQ(res, 1);
     }
   }

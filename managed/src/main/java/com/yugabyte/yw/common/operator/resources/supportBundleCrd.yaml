@@ -62,7 +62,7 @@ spec:
                     - OutputFiles
                     - ErrorFiles
                     - CoreFiles
-                    - Gflags
+                    - GFlags
                     - Instance
                     - ConsensusMeta
                     - TabletMeta

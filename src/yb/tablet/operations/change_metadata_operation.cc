@@ -32,8 +32,6 @@
 
 #include "yb/tablet/operations/change_metadata_operation.h"
 
-#include <glog/logging.h>
-
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 
@@ -59,6 +57,7 @@ DEFINE_test_flag(bool, ignore_apply_change_metadata_on_followers, false,
                  " on followers.");
 
 DECLARE_bool(TEST_invalidate_last_change_metadata_op);
+DECLARE_int64(cdc_intent_retention_ms);
 
 namespace yb {
 namespace tablet {
@@ -133,6 +132,11 @@ Status ChangeMetadataOperation::Apply(int64_t leader_term, Status* complete_stat
   TabletPtr tablet = VERIFY_RESULT(tablet_safe());
   log::Log* log = mutable_log();
   size_t num_operations = 0;
+
+  // CDCSDK Create Stream Context
+  if (request()->has_retention_requester_id()) {
+    RETURN_NOT_OK(ProcessCDCSDKCreateStreamContext());
+  }
 
   if (request()->has_wal_retention_secs()) {
     // We don't consider wal retention changes as another operation because this value is always
@@ -250,6 +254,46 @@ Status ChangeMetadataOperation::DoReplicated(int64_t leader_term, Status* comple
 Status ChangeMetadataOperation::DoAborted(const Status& status) {
   TRACE("AlterSchemaCommitCallback: transaction aborted");
   return status;
+}
+
+// CDCSDK Create Stream Context
+Status ChangeMetadataOperation::ProcessCDCSDKCreateStreamContext() {
+
+  TabletPtr tablet = VERIFY_RESULT(tablet_safe());
+  log::Log* log = mutable_log();
+
+  // Set WAL/Intents/History Retention Barriers
+  LOG(INFO) << tablet->LogPrefix()
+            << "Setting all retention barriers for stream "
+            << request()->retention_requester_id() << "."
+            << " Setting WAL cdc_min_replicated_index at most to " << op_id().index;
+
+  if (log->cdc_min_replicated_index() > op_id().index) {
+    log->set_cdc_min_replicated_index(op_id().index);
+  }
+
+  // Intent Retention and History Retention
+  auto intent_retention_duration =
+      MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
+  LOG(INFO) << tablet->LogPrefix()
+            << "Blocking Intents GC at least from " << op_id()
+            << " for a duration of " << intent_retention_duration;
+
+  auto require_history_cutoff =
+      request()->has_cdc_sdk_require_history_cutoff() &&
+      request()->cdc_sdk_require_history_cutoff() &&
+      has_hybrid_time();
+
+  auto history_cutoff_time = HybridTime::kMin;
+  if (require_history_cutoff) {
+    history_cutoff_time = hybrid_time();
+    // History retention barrier also needs to be set
+    LOG(INFO) << tablet->LogPrefix()
+              << "History retention barrier to be set at most at " << history_cutoff_time;
+  }
+
+  return tablet->SetAllInitialCDCSDKRetentionBarriers(
+      op_id(), intent_retention_duration, history_cutoff_time, require_history_cutoff);
 }
 
 Status SyncReplicateChangeMetadataOperation(

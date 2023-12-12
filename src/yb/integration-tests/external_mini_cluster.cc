@@ -42,7 +42,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include <glog/logging.h>
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
@@ -403,6 +402,37 @@ Status ExternalMiniCluster::Start(rpc::Messenger* messenger) {
     }
     RETURN_NOT_OK(WaitForTabletServerCount(
         opts_.num_tablet_servers, kTabletServerRegistrationTimeout));
+
+    if (UseYbController()) {
+      vector<string> extra_flags;
+      for (const auto& flag : opts_.extra_tserver_flags) {
+        if (flag.find("certs_dir") != string::npos) {
+          extra_flags.push_back(flag);
+        }
+      }
+      // we need 1 yb controller server for each tserver
+      // yb controller uses the same IP as corresponding tserver
+      yb_controller_servers_.reserve(opts_.num_tablet_servers);
+      // all yb controller servers need to be on the same port
+      const auto server_port = AllocateFreePort();
+      for (size_t i = 0; i < opts_.num_tablet_servers; ++i) {
+        const auto yb_controller_log_dir = GetDataPath(Format("ybc-$0/logs", i));
+        const auto yb_controller_tmp_dir = GetDataPath(Format("ybc-$0/tmp", i));
+        RETURN_NOT_OK(Env::Default()->CreateDirs(yb_controller_log_dir));
+        RETURN_NOT_OK(Env::Default()->CreateDirs(yb_controller_tmp_dir));
+        scoped_refptr<ExternalYbController> yb_controller = new ExternalYbController(
+            yb_controller_log_dir, yb_controller_tmp_dir, tablet_servers_[i]->bind_host(),
+            GetToolPath("yb-admin"), GetToolPath("../../../bin", "yb-ctl"),
+            GetToolPath("../../../bin", "ycqlsh"), GetPgToolPath("ysql_dump"),
+            GetPgToolPath("ysql_dumpall"), GetPgToolPath("ysqlsh"), server_port,
+            masters_[0]->http_port(), tablet_servers_[i]->http_port(),
+            tablet_servers_[i]->bind_host(), GetYbcToolPath("yb-controller-server"), extra_flags);
+
+        RETURN_NOT_OK_PREPEND(
+            yb_controller->Start(), "Failed to start YB Controller at index " + std::to_string(i));
+        yb_controller_servers_.push_back(yb_controller);
+      }
+    }
   } else {
     LOG(INFO) << "No need to start tablet servers";
   }
@@ -411,19 +441,23 @@ Status ExternalMiniCluster::Start(rpc::Messenger* messenger) {
   return Status::OK();
 }
 
-void ExternalMiniCluster::Shutdown(NodeSelectionMode mode) {
+void ExternalMiniCluster::Shutdown(NodeSelectionMode mode, RequireExitCode0 require_exit_code_0) {
   // TODO: in the regular MiniCluster Shutdown is a no-op if running_ is false.
   // Therefore, in case of an error during cluster startup behavior might be different.
   if (mode == ALL) {
     for (const scoped_refptr<ExternalMaster>& master : masters_) {
       if (master) {
-        master->Shutdown(SafeShutdown::kTrue);
+        master->Shutdown(SafeShutdown::kTrue, require_exit_code_0);
       }
     }
   }
 
   for (const scoped_refptr<ExternalTabletServer>& ts : tablet_servers_) {
-    ts->Shutdown(SafeShutdown::kTrue);
+    ts->Shutdown(SafeShutdown::kTrue, require_exit_code_0);
+  }
+
+  for (const auto& yb_controller : yb_controller_servers_) {
+    yb_controller->Shutdown();
   }
   running_ = false;
 }
@@ -446,10 +480,20 @@ Status ExternalMiniCluster::Restart() {
 
   RETURN_NOT_OK(WaitForTabletServerCount(tablet_servers_.size(), kTabletServerRegistrationTimeout));
 
+  if (UseYbController()) {
+    for (const auto& yb_controller : yb_controller_servers_) {
+      if (yb_controller->IsShutdown()) {
+        RETURN_NOT_OK_PREPEND(
+            yb_controller->Restart(),
+            "Cannot restart YB Controller server bound at: " + yb_controller->GetServerAddress());
+      }
+    }
+  }
+
   // Give some more time for the cluster to be ready. If we proceed to run the
   // unit test prematurely before the master/tserver are fully ready, deadlock
   // can happen which leads to test flakiness.
-  SleepFor(2s);
+  SleepFor(2s * kTimeMultiplier);
   running_ = true;
   return Status::OK();
 }
@@ -1043,10 +1087,11 @@ Status ExternalMiniCluster::WaitForLeaderCommitTermAdvance() {
   return STATUS(TimedOut, Format("Term did not advance from $0.", start_opid.term()));
 }
 
-Status ExternalMiniCluster::GetLastOpIdForEachMasterPeer(
+Status ExternalMiniCluster::GetLastOpIdForMasterPeers(
     const MonoDelta& timeout,
     consensus::OpIdType opid_type,
-    vector<OpIdPB>* op_ids) {
+    vector<OpIdPB>* op_ids,
+    const std::vector<ExternalMaster*>& masters) {
   GetLastOpIdRequestPB opid_req;
   GetLastOpIdResponsePB opid_resp;
   opid_req.set_tablet_id(yb::master::kSysCatalogTabletId);
@@ -1054,11 +1099,11 @@ Status ExternalMiniCluster::GetLastOpIdForEachMasterPeer(
   controller.set_timeout(timeout);
 
   op_ids->clear();
-  for (scoped_refptr<ExternalMaster> master : masters_) {
+  for (auto master : masters) {
     opid_req.set_dest_uuid(master->uuid());
     opid_req.set_opid_type(opid_type);
     RETURN_NOT_OK_PREPEND(
-        GetConsensusProxy(master.get()).GetLastOpId(opid_req, &opid_resp, &controller),
+        GetConsensusProxy(master).GetLastOpId(opid_req, &opid_resp, &controller),
         Format("Failed to fetch last op id from $0", master->bound_rpc_hostport().port()));
     op_ids->push_back(opid_resp.opid());
     controller.Reset();
@@ -1068,11 +1113,23 @@ Status ExternalMiniCluster::GetLastOpIdForEachMasterPeer(
 }
 
 Status ExternalMiniCluster::WaitForMastersToCommitUpTo(int64_t target_index) {
-  auto deadline = CoarseMonoClock::Now() + opts_.timeout.ToSteadyDuration();
+  std::vector<ExternalMaster*> masters;
+  for (auto master : masters_) {
+    masters.push_back(master.get());
+  }
+  return WaitForMastersToCommitUpTo(target_index, masters);
+}
+
+Status ExternalMiniCluster::WaitForMastersToCommitUpTo(
+    int64_t target_index, const std::vector<ExternalMaster*>& masters, MonoDelta timeout) {
+  if (!timeout.Initialized()) {
+    timeout = opts_.timeout;
+  }
+  auto deadline = CoarseMonoClock::Now() + timeout.ToSteadyDuration();
 
   for (int i = 1;; i++) {
     vector<OpIdPB> ids;
-    Status s = GetLastOpIdForEachMasterPeer(opts_.timeout, consensus::COMMITTED_OPID, &ids);
+    Status s = GetLastOpIdForMasterPeers(opts_.timeout, consensus::COMMITTED_OPID, &ids, masters);
 
     if (s.ok()) {
       bool any_behind = false;
@@ -1331,7 +1388,7 @@ Status ExternalMiniCluster::WaitForInitDb() {
 }
 
 Result<bool> ExternalMiniCluster::is_ts_stale(int ts_idx, MonoDelta deadline) {
-  auto proxy = GetMasterProxy<master::MasterClusterProxy>();
+  auto proxy = GetLeaderMasterProxy<master::MasterClusterProxy>();
   std::shared_ptr<rpc::RpcController> controller = std::make_shared<rpc::RpcController>();
   master::ListTabletServersRequestPB req;
   master::ListTabletServersResponsePB resp;
@@ -1629,15 +1686,14 @@ Result<tserver::GetSplitKeyResponsePB> ExternalMiniCluster::GetSplitKey(
 
 Status ExternalMiniCluster::FlushTabletsOnSingleTServer(
     ExternalTabletServer* ts, const std::vector<yb::TabletId> tablet_ids,
-    bool is_compaction) {
+    tserver::FlushTabletsRequestPB_Operation operation) {
   tserver::FlushTabletsRequestPB req;
   tserver::FlushTabletsResponsePB resp;
   rpc::RpcController controller;
   controller.set_timeout(10s * kTimeMultiplier);
 
   req.set_dest_uuid(ts->uuid());
-  req.set_operation(is_compaction ? tserver::FlushTabletsRequestPB::COMPACT
-                                  : tserver::FlushTabletsRequestPB::FLUSH);
+  req.set_operation(operation);
   for (const auto& tablet_id : tablet_ids) {
     req.add_tablet_ids(tablet_id);
   }
@@ -1871,6 +1927,15 @@ std::vector<ExternalTabletServer*> ExternalMiniCluster::tserver_daemons() const 
   return result;
 }
 
+vector<ExternalYbController*> ExternalMiniCluster::yb_controller_daemons() const {
+  vector<ExternalYbController*> results;
+  results.reserve(yb_controller_servers_.size());
+  for (const scoped_refptr<ExternalYbController>& yb_controller : yb_controller_servers_) {
+    results.push_back(yb_controller.get());
+  }
+  return results;
+}
+
 HostPort ExternalMiniCluster::pgsql_hostport(int node_index) const {
   return HostPort(tablet_servers_[node_index]->bind_host(),
                   tablet_servers_[node_index]->pgsql_rpc_port());
@@ -1939,6 +2004,18 @@ Status ExternalMiniCluster::SetFlagOnTServers(const string& flag, const string& 
     RETURN_NOT_OK(SetFlag(tablet_server.get(), flag, value));
   }
   return Status::OK();
+}
+
+void ExternalMiniCluster::AddExtraFlagOnTServers(
+    const std::string& flag, const std::string& value) {
+  for (const auto& tablet_server : tablet_servers_) {
+    tablet_server->AddExtraFlag(flag, value);
+  }
+}
+void ExternalMiniCluster::RemoveExtraFlagOnTServers(const std::string& flag) {
+  for (const auto& tablet_server : tablet_servers_) {
+    tablet_server->RemoveExtraFlag(flag);
+  }
 }
 
 
@@ -2248,7 +2325,7 @@ Status ExternalDaemon::StartProcess(const vector<string>& user_flags) {
   argv.insert(argv.end(), extra_flags_.begin(), extra_flags_.end());
   AddExtraFlagsFromEnvVar("YB_EXTRA_DAEMON_FLAGS", &argv);
 
-  std::unique_ptr<Subprocess> p(new Subprocess(exe_, argv));
+  auto p = std::make_unique<Subprocess>(exe_, argv);
   p->PipeParentStdout();
   p->PipeParentStderr();
   auto default_output_prefix = Format("[$0]", daemon_id_);
@@ -2344,13 +2421,19 @@ bool ExternalDaemon::IsShutdown() const {
 
 bool ExternalDaemon::WasUnsafeShutdown() const { return sigkill_used_for_shutdown_; }
 
-bool ExternalDaemon::IsProcessAlive() const {
+bool ExternalDaemon::IsProcessAlive(RequireExitCode0 require_exit_code_0) const {
   if (IsShutdown()) {
     return false;
   }
 
   int rc = 0;
   Status s = process_->WaitNoBlock(&rc);
+
+  // Return code will be non-zero if the process crashed.
+  if (require_exit_code_0 && rc != 0) {
+    LOG(DFATAL) << "Non-zero return code " << rc << " for WaitNoBlock for daemon " << daemon_id_;
+  }
+
   // If the non-blocking Wait "times out", that means the process
   // is running.
   return s.IsTimedOut();
@@ -2365,7 +2448,7 @@ pid_t ExternalDaemon::pid() const {
   return process_->pid();
 }
 
-void ExternalDaemon::Shutdown(SafeShutdown safe_shutdown) {
+void ExternalDaemon::Shutdown(SafeShutdown safe_shutdown, RequireExitCode0 require_exit_code_0) {
   if (!process_) {
     return;
   }
@@ -2379,7 +2462,7 @@ void ExternalDaemon::Shutdown(SafeShutdown safe_shutdown) {
 
   const auto start_time = CoarseMonoClock::Now();
   auto process_name_and_pid = exe_;
-  if (IsProcessAlive()) {
+  if (IsProcessAlive(require_exit_code_0)) {
     process_name_and_pid = ProcessNameAndPidStr();
     // In coverage builds, ask the process nicely to flush coverage info
     // before we kill -9 it. Otherwise, we never get any coverage from
@@ -2404,7 +2487,7 @@ void ExternalDaemon::Shutdown(SafeShutdown safe_shutdown) {
       LOG_WITH_PREFIX(INFO) << "Terminating " << process_name_and_pid << " using 'SIGTERM' signal";
       WARN_NOT_OK(process_->Kill(SIGTERM), "Killing process failed");
       CoarseBackoffWaiter waiter(start_time + max_graceful_shutdown_wait, 100ms);
-      while (IsProcessAlive()) {
+      while (IsProcessAlive(require_exit_code_0)) {
         YB_LOG_EVERY_N_SECS(INFO, 1)
             << LogPrefix() << "Waiting for process termination: " << process_name_and_pid;
         if (!waiter.Wait()) {
@@ -2412,14 +2495,14 @@ void ExternalDaemon::Shutdown(SafeShutdown safe_shutdown) {
         }
       }
 
-      if (IsProcessAlive()) {
+      if (IsProcessAlive(require_exit_code_0)) {
         LOG_WITH_PREFIX(INFO) << "The process " << process_name_and_pid
                               << " is still running after " << CoarseMonoClock::Now() - start_time
                               << " ms, will send SIGKILL";
       }
     }
 
-    if (IsProcessAlive()) {
+    if (IsProcessAlive(require_exit_code_0)) {
       LOG_WITH_PREFIX(INFO) << "Killing " << process_name_and_pid << " with SIGKILL";
       sigkill_used_for_shutdown_ = true;
       WARN_NOT_OK(process_->Kill(SIGKILL), "Killing process failed");
@@ -2502,6 +2585,14 @@ Result<bool> ExternalDaemon::ExtractMetricValue<bool>(const JsonReader& r,
   return value;
 }
 
+template <>
+Result<uint32_t> ExternalDaemon::ExtractMetricValue<uint32_t>(
+    const JsonReader& r, const Value* metric, const char* value_field) {
+  uint32_t value;
+  RETURN_NOT_OK(r.ExtractUInt32(metric, value_field, &value));
+  return value;
+}
+
 string ExternalDaemon::LogPrefix() {
   return Format("{ daemon_id: $0 bound_rpc: $1 } ", daemon_id_, bound_rpc_);
 }
@@ -2529,6 +2620,32 @@ Result<string> ExternalDaemon::GetFlag(const std::string& flag) {
     return STATUS_FORMAT(RemoteError, "Failed to get gflag $0 value.", flag);
   }
   return resp.value();
+}
+
+Result<HybridTime> ExternalDaemon::GetServerTime() {
+  server::GenericServiceProxy proxy(proxy_cache_, bound_rpc_addr());
+
+  rpc::RpcController controller;
+  controller.set_timeout(MonoDelta::FromSeconds(30));
+  server::ServerClockRequestPB req;
+  server::ServerClockResponsePB resp;
+  RETURN_NOT_OK(proxy.ServerClock(req, &resp, &controller));
+  SCHECK(resp.has_hybrid_time(), IllegalState, "No hybrid time in response");
+  HybridTime ht;
+  RETURN_NOT_OK(ht.FromUint64(resp.hybrid_time()));
+
+  return ht;
+}
+
+void ExternalDaemon::AddExtraFlag(const std::string& flag, const std::string& value) {
+  extra_flags_.push_back(Format("--$0=$1", flag, value));
+}
+
+size_t ExternalDaemon::RemoveExtraFlag(const std::string& flag) {
+  const std::string flag_with_prefix = "--" + flag;
+  return std::erase_if(extra_flags_, [&flag_with_prefix](auto&& flag) {
+    return HasPrefixString(flag, flag_with_prefix);
+  });
 }
 
 LogWaiter::LogWaiter(ExternalDaemon* daemon, const std::string& string_to_wait) :

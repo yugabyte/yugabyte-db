@@ -16,6 +16,7 @@ import com.yugabyte.yw.forms.DatabaseSecurityFormData;
 import com.yugabyte.yw.forms.DatabaseUserDropFormData;
 import com.yugabyte.yw.forms.DatabaseUserFormData;
 import com.yugabyte.yw.forms.RunQueryFormData;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -220,7 +221,6 @@ public class YsqlQueryExecutor {
     String queryType = getQueryType(queryParams.query);
     String queryString =
         queryType.equals("SELECT") ? wrapJsonAgg(queryParams.query) : queryParams.query;
-
     ShellResponse shellResponse = new ShellResponse();
     try {
       shellResponse =
@@ -251,8 +251,9 @@ public class YsqlQueryExecutor {
   }
 
   public void dropUser(Universe universe, DatabaseUserDropFormData data) {
+    Customer customer = Customer.get(universe.getCustomerId());
     boolean isCloudEnabled =
-        runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled");
+        runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
 
     if (!isCloudEnabled) {
       throw new PlatformServiceException(Http.Status.METHOD_NOT_ALLOWED, "Feature not allowed.");
@@ -286,8 +287,9 @@ public class YsqlQueryExecutor {
   }
 
   public void createRestrictedUser(Universe universe, DatabaseUserFormData data) {
+    Customer customer = Customer.get(universe.getCustomerId());
     boolean isCloudEnabled =
-        runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled");
+        runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
 
     if (!isCloudEnabled) {
       throw new PlatformServiceException(Http.Status.METHOD_NOT_ALLOWED, "Feature not allowed.");
@@ -336,8 +338,9 @@ public class YsqlQueryExecutor {
 
   public void createUser(Universe universe, DatabaseUserFormData data) {
 
+    Customer customer = Customer.get(universe.getCustomerId());
     boolean isCloudEnabled =
-        runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled");
+        runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled");
 
     StringBuilder allQueries = new StringBuilder();
     String query;
@@ -419,7 +422,7 @@ public class YsqlQueryExecutor {
     LOG.info("Assigned permissions to the user");
   }
 
-  public void runUserDbCommands(String query, String dbName, Universe universe) {
+  public JsonNode runUserDbCommands(String query, String dbName, Universe universe) {
     NodeDetails nodeToUse;
     try {
       nodeToUse = CommonUtils.getServerToRunYsqlQuery(universe);
@@ -430,11 +433,14 @@ public class YsqlQueryExecutor {
     RunQueryFormData ysqlQuery = new RunQueryFormData();
     ysqlQuery.query = query;
     ysqlQuery.db_name = dbName;
+
     JsonNode ysqlResponse = executeQueryInNodeShell(universe, ysqlQuery, nodeToUse);
     if (ysqlResponse.has("error")) {
       throw new PlatformServiceException(
           Http.Status.BAD_REQUEST, ysqlResponse.get("error").asText());
     }
+
+    return ysqlResponse;
   }
 
   public void validateAdminPassword(Universe universe, DatabaseSecurityFormData data) {

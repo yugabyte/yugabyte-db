@@ -17,6 +17,8 @@ type: docs
 
 You can use YugabyteDB Anywhere to back up your YugabyteDB universe data. This includes actions such as deleting and restoring the backup, as well as restoring and copying the database location.
 
+Before you can back up universes, you need to [configure a storage location](../configure-backup-storage/) for your backups.
+
 If you are using YBA version 2.16 or later to manage universes with YugabyteDB version 2.16 or later, you can additionally create [incremental backups](#create-incremental-backups) and [configure backup performance parameters](#configure-backup-performance-parameters).
 
 For information on how to schedule backups for a later time or as a recurring task, see [Schedule universe backups](../schedule-data-backups/).
@@ -25,7 +27,7 @@ Note that non-transactional backups are not supported.
 
 To view, [restore](../restore-universe-data/), or delete existing backups for your universe, navigate to that universe and select **Backups**.
 
-By default, the list displays all the backups generated for the universe regardless of the time period. You can configure the list to only display the backups created during a specific time period, such as last year, last month, and so on. In addition, you can specify a custom time period.
+By default, the list displays all the backups generated for the universe regardless of the time period. You can filter the list to only display the backups created during a specific time period, such as last year, last month, and so on. In addition, you can specify a custom time period.
 
 ## Create backups
 
@@ -55,7 +57,9 @@ For YSQL, you can allow YugabyteDB Anywhere to back up your data with the user a
 
 ### View backup details
 
-To view detailed information about an existing backup, click on it to open **Backup Details**.
+To view detailed information about an existing backup, click on the backup (row) in the **Backups** list to open **Backup Details**.
+
+The **Backup Details** include the storage address of your backup. In the list of databases (YSQL) or keyspaces (YCQL), click **Copy Location** for the database or keyspace. If your backup includes incremental backups, click the arrow for the increment of interest to display the databases or keyspaces.
 
 To access a list of all backups from all universes, including deleted universes, navigate to **Backups** on the YugabyteDB Anywhere left-side menu.
 

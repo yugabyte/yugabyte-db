@@ -3,7 +3,6 @@ title: Vert.x PG Client for YSQL
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a Java application using Vert.x PG driver
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   stable:
     identifier: vertx-pg-client
@@ -57,6 +56,7 @@ The [Vert.x Pg Client](https://vertx.io/docs/vertx-pg-client/java/) driver for P
 The following sections demonstrate how to perform common tasks required for Java application development using the Vert.x PG Client.
 
 To start building your application, make sure you have met the [prerequisites](../#prerequisites).
+
 {{< note title="Note" >}}
 The Vert.x PG Client `executeBatch()` API is supported in YugabyteDB version `2.15.2.0-b0` and later.
 {{< /note >}}

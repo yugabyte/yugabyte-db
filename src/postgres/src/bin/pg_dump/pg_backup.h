@@ -186,6 +186,7 @@ typedef struct _dumpOptions
 	int			sequence_data;	/* dump sequence data even in schema-only mode */
 
 	Oid			db_oid;			/* initiated only if include-yb-metadata flag is set */
+	char 		*yb_read_time; 	/* read the data as of this time. Used in Backup/Restore */
 } DumpOptions;
 
 /*

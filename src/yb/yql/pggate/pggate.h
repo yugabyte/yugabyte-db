@@ -119,7 +119,8 @@ struct PgApiContext {
 class PgApiImpl {
  public:
   PgApiImpl(PgApiContext context, const YBCPgTypeEntity *YBCDataTypeTable, int count,
-            YBCPgCallbacks pg_callbacks);
+            YBCPgCallbacks pg_callbacks, std::optional<uint64_t> session_id,
+            const YBCAshMetadata *ash_metadata);
   ~PgApiImpl();
 
   const YBCPgCallbacks* pg_callbacks() {
@@ -129,6 +130,8 @@ class PgApiImpl {
   // Interrupt aborts all pending RPCs immediately to unblock main thread.
   void Interrupt();
   void ResetCatalogReadTime();
+
+  uint64_t GetSessionId();
 
   // Initialize a session to process statements that come from the same client connection.
   // If database_name is empty, a session is created without connecting to any database.
@@ -217,8 +220,6 @@ class PgApiImpl {
                            int64_t *last_val,
                            bool *is_called);
 
-  Status DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
-
   void DeleteStatement(PgStatement *handle);
 
   // Search for type_entity.
@@ -260,6 +261,9 @@ class PgApiImpl {
                      uint32_t count,
                      PgOid *begin_oid,
                      PgOid *end_oid);
+
+  // Allocate a new object id from the oid allocator of database db_oid.
+  Status GetNewObjectId(PgOid db_oid, PgOid *new_oid);
 
   Status GetCatalogMasterVersion(uint64_t *version);
 
@@ -402,6 +406,15 @@ class PgApiImpl {
 
   Status BackfillIndex(const PgObjectId& table_id);
 
+  Status NewDropSequence(const YBCPgOid database_oid,
+                         const YBCPgOid sequence_oid,
+                         PgStatement **handle);
+
+  Status ExecDropSequence(PgStatement *handle);
+
+  Status NewDropDBSequences(const YBCPgOid database_oid,
+                            PgStatement **handle);
+
   //------------------------------------------------------------------------------------------------
   // All DML statements
   Status DmlAppendTarget(PgStatement *handle, PgExpr *expr);
@@ -444,6 +457,12 @@ class PgApiImpl {
 
   Status DmlBindHashCode(
       PgStatement* handle, const std::optional<Bound>& start, const std::optional<Bound>& end);
+
+  Status DmlBindRange(YBCPgStatement handle,
+                      Slice start_value,
+                      bool start_inclusive,
+                      Slice end_value,
+                      bool end_inclusive);
 
   Status DmlAddRowUpperBound(YBCPgStatement handle,
                              int n_col_values,
@@ -497,9 +516,10 @@ class PgApiImpl {
   //------------------------------------------------------------------------------------------------
   // Insert.
   Status NewInsert(const PgObjectId& table_id,
-                   bool is_single_row_txn,
                    bool is_region_local,
-                   PgStatement **handle);
+                   PgStatement **handle,
+                   YBCPgTransactionSetting transaction_setting =
+                       YBCPgTransactionSetting::YB_TRANSACTIONAL);
 
   Status ExecInsert(PgStatement *handle);
 
@@ -512,18 +532,20 @@ class PgApiImpl {
   //------------------------------------------------------------------------------------------------
   // Update.
   Status NewUpdate(const PgObjectId& table_id,
-                   bool is_single_row_txn,
                    bool is_region_local,
-                   PgStatement **handle);
+                   PgStatement **handle,
+                   YBCPgTransactionSetting transaction_setting =
+                       YBCPgTransactionSetting::YB_TRANSACTIONAL);
 
   Status ExecUpdate(PgStatement *handle);
 
   //------------------------------------------------------------------------------------------------
   // Delete.
   Status NewDelete(const PgObjectId& table_id,
-                   bool is_single_row_txn,
                    bool is_region_local,
-                   PgStatement **handle);
+                   PgStatement **handle,
+                   YBCPgTransactionSetting transaction_setting =
+                       YBCPgTransactionSetting::YB_TRANSACTIONAL);
 
   Status ExecDelete(PgStatement *handle);
 
@@ -532,9 +554,10 @@ class PgApiImpl {
   //------------------------------------------------------------------------------------------------
   // Colocated Truncate.
   Status NewTruncateColocated(const PgObjectId& table_id,
-                              bool is_single_row_txn,
                               bool is_region_local,
-                              PgStatement **handle);
+                              PgStatement **handle,
+                              YBCPgTransactionSetting transaction_setting =
+                                  YBCPgTransactionSetting::YB_TRANSACTIONAL);
 
   Status ExecTruncateColocated(PgStatement *handle);
 
@@ -549,6 +572,8 @@ class PgApiImpl {
   Status SetForwardScan(PgStatement *handle, bool is_forward_scan);
 
   Status SetDistinctPrefixLength(PgStatement *handle, int distinct_prefix_length);
+
+  Status SetHashBounds(PgStatement *handle, uint16_t low_bound, uint16_t high_bound);
 
   Status ExecSelect(PgStatement *handle, const PgExecParameters *exec_params);
 
@@ -588,7 +613,7 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Transaction control.
-  Status BeginTransaction();
+  Status BeginTransaction(int64_t start_time);
   Status RecreateTransaction();
   Status RestartTransaction();
   Status ResetTransactionReadPoint();
@@ -611,6 +636,7 @@ class PgApiImpl {
   TxnPriorityRequirement GetTransactionPriorityType() const;
   Result<Uuid> GetActiveTransaction() const;
   Status GetActiveTransactions(YBCPgSessionTxnInfo* infos, size_t num_infos);
+  bool IsDdlMode() const;
 
   //------------------------------------------------------------------------------------------------
   // Expressions.
@@ -682,12 +708,39 @@ class PgApiImpl {
 
   Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
 
+  Result<TableKeyRangesWithHt> GetTableKeyRanges(
+      const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
+      uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length);
+
   MemTracker &GetMemTracker() { return *mem_tracker_; }
 
   MemTracker &GetRootMemTracker() { return *MemTracker::GetRootTracker(); }
 
   // Using this function instead of GetRootMemTracker allows us to avoid copying a shared_pointer
   int64_t GetRootMemTrackerConsumption() { return MemTracker::GetRootTrackerConsumption(); }
+
+  uint64_t GetReadTimeSerialNo();
+
+  void ForceReadTimeSerialNo(uint64_t read_time_serial_no);
+
+  //------------------------------------------------------------------------------------------------
+  // Replication Slots Functions.
+
+  // Create Replication Slot.
+  Status NewCreateReplicationSlot(const char *slot_name,
+                                  const PgOid database_oid,
+                                  PgStatement **handle);
+  Status ExecCreateReplicationSlot(PgStatement *handle);
+
+  Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
+
+  Result<tserver::PgGetReplicationSlotStatusResponsePB> GetReplicationSlotStatus(
+      const ReplicationSlotName& slot_name);
+
+  // Drop Replication Slot.
+  Status NewDropReplicationSlot(const char *slot_name,
+                                PgStatement **handle);
+  Status ExecDropReplicationSlot(PgStatement *handle);
 
  private:
   class Interrupter;

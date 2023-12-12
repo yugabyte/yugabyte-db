@@ -19,6 +19,9 @@ import io.ebean.RawSqlBuilder;
 import io.ebean.SqlUpdate;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.HashMap;
@@ -29,9 +32,6 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
 import lombok.AccessLevel;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
@@ -194,8 +194,8 @@ public class NodeInstance extends Model {
 
   public static int deleteByProvider(UUID providerUUID) {
     String deleteNodeQuery =
-        "delete from node_instance where zone_uuid in"
-            + " (select az.uuid from availability_zone az join region r on az.region_uuid = r.uuid and r.provider_uuid=:provider_uuid)";
+        "delete from node_instance where zone_uuid in (select az.uuid from availability_zone az"
+            + " join region r on az.region_uuid = r.uuid and r.provider_uuid=:provider_uuid)";
     SqlUpdate deleteStmt = DB.sqlUpdate(deleteNodeQuery);
     deleteStmt.setParameter("provider_uuid", providerUUID);
     return deleteStmt.execute();

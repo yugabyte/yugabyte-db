@@ -25,6 +25,7 @@
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/master.h"
+#include "yb/master/xcluster/xcluster_manager_if.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 
 #include "yb/util/atomic.h"
@@ -169,9 +170,10 @@ void XClusterSafeTimeService::ProcessTaskPeriodically() {
 }
 
 Status XClusterSafeTimeService::GetXClusterSafeTimeInfoFromMap(
-    GetXClusterSafeTimeResponsePB* resp) {
+    const LeaderEpoch& epoch, GetXClusterSafeTimeResponsePB* resp) {
   // Recompute safe times again before fetching maps.
-  const auto& current_safe_time_map = VERIFY_RESULT(RefreshAndGetXClusterNamespaceToSafeTimeMap());
+  const auto& current_safe_time_map =
+      VERIFY_RESULT(RefreshAndGetXClusterNamespaceToSafeTimeMap(epoch));
   XClusterNamespaceToSafeTimeMap max_safe_time_map;
   {
     std::lock_guard lock(mutex_);
@@ -211,9 +213,10 @@ Status XClusterSafeTimeService::GetXClusterSafeTimeInfoFromMap(
 }
 
 Result<std::unordered_map<NamespaceId, uint64_t>>
-XClusterSafeTimeService::GetEstimatedDataLossMicroSec() {
+XClusterSafeTimeService::GetEstimatedDataLossMicroSec(const LeaderEpoch& epoch) {
   // Recompute safe times again before fetching maps.
-  const auto& current_safe_time_map = VERIFY_RESULT(RefreshAndGetXClusterNamespaceToSafeTimeMap());
+  const auto& current_safe_time_map =
+      VERIFY_RESULT(RefreshAndGetXClusterNamespaceToSafeTimeMap(epoch));
   XClusterNamespaceToSafeTimeMap max_safe_time_map;
   {
     std::lock_guard lock(mutex_);
@@ -243,8 +246,8 @@ XClusterSafeTimeService::GetEstimatedDataLossMicroSec() {
 }
 
 Result<XClusterNamespaceToSafeTimeMap>
-XClusterSafeTimeService::RefreshAndGetXClusterNamespaceToSafeTimeMap() {
-  RETURN_NOT_OK(ComputeSafeTime(VERIFY_RESULT(GetLeaderTermFromCatalogManager())));
+XClusterSafeTimeService::RefreshAndGetXClusterNamespaceToSafeTimeMap(const LeaderEpoch& epoch) {
+  RETURN_NOT_OK(ComputeSafeTime(epoch.leader_term));
   return GetXClusterNamespaceToSafeTimeMap();
 }
 
@@ -262,9 +265,9 @@ Status XClusterSafeTimeService::CreateXClusterSafeTimeTableIfNotFound() {
   req.set_table_type(TableType::YQL_TABLE_TYPE);
 
   // Schema:
-  // universe_id string (HASH), tablet_id string (HASH), safe_time int64
+  // replication_group_id string (HASH), tablet_id string (HASH), safe_time int64
   client::YBSchemaBuilder schema_builder;
-  schema_builder.AddColumn(kXCUniverseId)->HashPrimaryKey()->Type(DataType::STRING);
+  schema_builder.AddColumn(kXCReplicationGroupId)->HashPrimaryKey()->Type(DataType::STRING);
   schema_builder.AddColumn(kXCProducerTabletId)->HashPrimaryKey()->Type(DataType::STRING);
   schema_builder.AddColumn(kXCSafeTime)->Type(DataType::INT64);
 
@@ -406,7 +409,8 @@ Result<bool> XClusterSafeTimeService::ComputeSafeTime(
   if (should_log_outlier_tablets) {
     for (const auto& [namespace_id, tablet_ids] : tablets_missing_safe_time_map) {
       LOG(WARNING) << "Missing xcluster safe time for producer tablet(s) "
-                   << TabletIdsToLimitedString(tablet_ids) << " in namespace " << namespace_id;
+                   << JoinStringsLimitCount(tablet_ids, ",", 20) << " in namespace "
+                   << namespace_id;
     }
   }
 
@@ -446,7 +450,7 @@ Result<bool> XClusterSafeTimeService::ComputeSafeTime(
                    << namespace_max_safe_time[namespace_id].PhysicalDiff(
                           namespace_min_safe_time[namespace_id]) /
                           MonoTime::kMicrosecondsPerSecond
-                   << "s due to producer tablet(s) " << TabletIdsToLimitedString(tablet_ids);
+                   << "s due to producer tablet(s) " << JoinStringsLimitCount(tablet_ids, ",", 20);
     }
   }
 
@@ -514,7 +518,7 @@ XClusterSafeTimeService::GetSafeTimeFromTable() {
   };
 
   for (const auto& row : client::TableRange(*safe_time_table_, options)) {
-    auto universe_id = row.column(kXCUniverseIdIdx).string_value();
+    auto replication_group_id = row.column(kXCReplicationGroupIdIdx).string_value();
     auto tablet_id = row.column(kXCProducerTabletIdIdx).string_value();
     auto safe_time = row.column(kXCSafeTimeIdx).int64_value();
     HybridTime safe_ht;
@@ -522,9 +526,9 @@ XClusterSafeTimeService::GetSafeTimeFromTable() {
         safe_ht.FromUint64(static_cast<uint64_t>(safe_time)),
         Format(
             "Invalid safe time set in $0 table. universe_uuid:$1, tablet_id:$2",
-            kSafeTimeTableName.table_name(), universe_id, tablet_id));
+            kSafeTimeTableName.table_name(), replication_group_id, tablet_id));
 
-    tablet_safe_time[{universe_id, tablet_id}] = safe_ht;
+    tablet_safe_time[{replication_group_id, tablet_id}] = safe_ht;
   }
 
   RETURN_NOT_OK_PREPEND(
@@ -598,7 +602,7 @@ Result<bool> XClusterSafeTimeService::CreateTableRequired() {
 
 Result<XClusterNamespaceToSafeTimeMap>
 XClusterSafeTimeService::GetXClusterNamespaceToSafeTimeMap() {
-  return catalog_manager_->GetXClusterNamespaceToSafeTimeMap();
+  return master_->xcluster_manager()->GetXClusterNamespaceToSafeTimeMap();
 }
 
 Status XClusterSafeTimeService::SetXClusterSafeTime(
@@ -610,7 +614,8 @@ Status XClusterSafeTimeService::SetXClusterSafeTime(
     }
   }
 
-  return catalog_manager_->SetXClusterNamespaceToSafeTimeMap(leader_term, new_safe_time_map);
+  return master_->xcluster_manager()->SetXClusterNamespaceToSafeTimeMap(
+      leader_term, new_safe_time_map);
 }
 
 Status XClusterSafeTimeService::CleanupEntriesFromTable(
@@ -630,9 +635,6 @@ Status XClusterSafeTimeService::CleanupEntriesFromTable(
 
   auto session = ybclient->NewSession(ybclient->default_rpc_timeout());
 
-  std::vector<client::YBOperationPtr> ops;
-  ops.reserve(entries_to_delete.size());
-
   for (auto& tablet : entries_to_delete) {
     const auto op = safe_time_table_->NewWriteOp(QLWriteRequestPB::QL_STMT_DELETE);
     auto* const req = op->mutable_request();
@@ -643,11 +645,11 @@ Status XClusterSafeTimeService::CleanupEntriesFromTable(
                       << ". cluster_uuid: " << tablet.cluster_uuid
                       << ", tablet_id: " << tablet.tablet_id;
 
-    ops.push_back(std::move(op));
+    session->Apply(std::move(op));
   }
 
-  RETURN_NOT_OK_PREPEND(
-      session->ApplyAndFlushSync(ops), "Failed to cleanup to XClusterSafeTime table");
+  // TODO(async_flush): https://github.com/yugabyte/yugabyte-db/issues/12173
+  RETURN_NOT_OK_PREPEND(session->TEST_Flush(), "Failed to cleanup to XClusterSafeTime table");
 
   return OK();
 }
@@ -736,16 +738,5 @@ xcluster::XClusterConsumerClusterMetrics* XClusterSafeTimeService::TEST_GetMetri
   return cluster_metrics_per_namespace_[namespace_id].get();
 }
 
-std::string XClusterSafeTimeService::TabletIdsToLimitedString(
-    const std::vector<TabletId>& tablet_ids) {
-  const uint32 max_tablet_count = 20;
-  uint32 tablet_count = std::min(max_tablet_count, static_cast<uint32>(tablet_ids.size()));
-  auto tablet_str = JoinStringsIterator(tablet_ids.begin(), tablet_ids.begin() + tablet_count, ",");
-  const auto tablets_left = tablet_ids.size() - tablet_count;
-  if (tablets_left > 0) {
-    tablet_str += Format(" and $0 others", tablets_left);
-  }
-  return tablet_str;
-}
 }  // namespace master
 }  // namespace yb

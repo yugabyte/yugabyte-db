@@ -34,13 +34,17 @@ import { YBLabelWithIcon } from '../../common/descriptors';
 import ellipsisIcon from '../../common/media/more.svg';
 import { DeleteProviderConfigModal } from './DeleteProviderConfigModal';
 import { UniverseItem } from './providerView/providerDetails/UniverseTable';
-import { getLinkedUniverses, usePillStyles } from './utils';
+import { getLinkedUniverses } from './utils';
+import { usePillStyles } from '../../../redesign/styles/styles';
 import { YBButton } from '../../../redesign/components';
 import { ProviderStatusLabel } from './components/ProviderStatusLabel';
 import { SortOrder } from '../../../redesign/helpers/constants';
 
 import { YBProvider, YBRegion } from './types';
 
+import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { isRbacEnabled } from '../../../redesign/features/rbac/common/RbacUtils';
 import styles from './ProviderList.module.scss';
 
 interface ProviderListCommonProps {
@@ -92,11 +96,11 @@ export const ProviderList = (props: ProviderListProps) => {
   if (providerListQuery.isError) {
     return <YBErrorIndicator customErrorMessage="Error fetching provider list." />;
   }
-  if (universeListQuery.isError) {
+  if (universeListQuery.isError && !isRbacEnabled()) {
     return <YBErrorIndicator customErrorMessage="Error fetching universe list." />;
   }
   const providerList = providerListQuery.data;
-  const universeList = universeListQuery.data;
+  const universeList = universeListQuery.data ?? [];
 
   const showDeleteProviderModal = () => {
     setIsDeleteProviderModalOpen(true);
@@ -115,9 +119,8 @@ export const ProviderList = (props: ProviderListProps) => {
   const formatProviderName = (providerName: string, row: ProviderListItem) => {
     return (
       <Link
-        to={`/${PROVIDER_ROUTE_PREFIX}/${
-          providerCode === ProviderCode.KUBERNETES ? props.kubernetesProviderType : providerCode
-        }/${row.uuid}`}
+        to={`/${PROVIDER_ROUTE_PREFIX}/${providerCode === ProviderCode.KUBERNETES ? props.kubernetesProviderType : providerCode
+          }/${row.uuid}`}
       >
         <Typography variant="body2">{providerName}</Typography>
       </Link>
@@ -150,21 +153,27 @@ export const ProviderList = (props: ProviderListProps) => {
           <img src={ellipsisIcon} alt="more" className="ellipsis-icon" />
         </Dropdown.Toggle>
         <Dropdown.Menu>
-          <MenuItem
-            eventKey="1"
-            onSelect={() => handleDeleteProviderConfig(row)}
-            data-testid="DeleteConfiguration-button"
-            disabled={row.linkedUniverses.length > 0}
+          <RbacValidator
+            accessRequiredOn={ApiPermissionMap.DELETE_PROVIDER}
+            isControl
+            overrideStyle={{ display: 'block' }}
           >
-            <YBLabelWithIcon icon="fa fa-trash">Delete Configuration</YBLabelWithIcon>
-          </MenuItem>
+            <MenuItem
+              eventKey="1"
+              onSelect={() => handleDeleteProviderConfig(row)}
+              data-testid="DeleteConfiguration-button"
+              disabled={row.linkedUniverses.length > 0 || !hasNecessaryPerm(ApiPermissionMap.DELETE_PROVIDER)}
+            >
+              <YBLabelWithIcon icon="fa fa-trash">Delete Configuration</YBLabelWithIcon>
+            </MenuItem>
+          </RbacValidator>
         </Dropdown.Menu>
       </Dropdown>
     );
   };
   const formatUsage = (_: unknown, row: ProviderListItem) => {
     return row.linkedUniverses.length ? (
-      <Box display="flex" gridGap="5px">
+      <Box display="flex" gridGap="5px" alignItems="center">
         <Typography variant="body2">In Use</Typography>
         <div className={classes.pill}>{row.linkedUniverses.length}</div>
       </Box>
@@ -177,9 +186,9 @@ export const ProviderList = (props: ProviderListProps) => {
     .filter((provider) =>
       providerCode === ProviderCode.KUBERNETES
         ? provider.code === providerCode &&
-          (KUBERNETES_PROVIDERS_MAP[props.kubernetesProviderType] as readonly string[]).includes(
-            provider.details.cloudInfo.kubernetes.kubernetesProvider
-          )
+        (KUBERNETES_PROVIDERS_MAP[props.kubernetesProviderType] as readonly string[]).includes(
+          provider.details.cloudInfo.kubernetes.kubernetesProvider
+        )
         : provider.code === providerCode
     )
     .map((provider) => {
@@ -189,22 +198,26 @@ export const ProviderList = (props: ProviderListProps) => {
 
   return (
     <>
-      <Box display="flex" marginBottom="35px">
-        <Typography variant="h4">{`${
-          providerCode === ProviderCode.KUBERNETES && props.kubernetesProviderType
-            ? KubernetesProviderTypeLabel[props.kubernetesProviderType]
-            : ProviderLabel[providerCode]
-        } Configs`}</Typography>
+      <Box display="flex" marginBottom="35px" justifyContent="space-between">
+        <Typography variant="h4">{`${providerCode === ProviderCode.KUBERNETES && props.kubernetesProviderType
+          ? KubernetesProviderTypeLabel[props.kubernetesProviderType]
+          : ProviderLabel[providerCode]
+          } Configs`}</Typography>
         {filteredProviderList.length > 0 && (
-          <YBButton
-            style={{ marginLeft: 'auto', width: '200px' }}
-            variant="primary"
-            onClick={() => setCurrentView(ProviderDashboardView.CREATE)}
-            data-testid="ProviderListView-CreateConfigButton"
+          <RbacValidator
+            accessRequiredOn={ApiPermissionMap.CREATE_PROVIDERS}
+            isControl
           >
-            <i className="fa fa-plus" />
-            Create Config
-          </YBButton>
+            <YBButton
+              style={{ marginLeft: 'auto', width: '200px' }}
+              variant="primary"
+              onClick={() => setCurrentView(ProviderDashboardView.CREATE)}
+              data-testid="ProviderListView-CreateConfigButton"
+            >
+              <i className="fa fa-plus" />
+              Create Config
+            </YBButton>
+          </RbacValidator>
         )}
       </Box>
       {filteredProviderList.length === 0 ? (

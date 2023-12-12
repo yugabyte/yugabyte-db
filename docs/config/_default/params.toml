@@ -9,11 +9,6 @@ version_menu = "Releases"
 # versions from the dropdown menu.
 version_menu_pagelinks = true
 
-[algolia]
-  index = "yugabyte"
-  appID = "UMBCUJCBE8"
-  apiKey = "a879f0ab89b677264d0c6e087b714fd8"
-
 [path_base_for_github_subdir]
   from = "content/en/(.*?)/"
   to = "content/$1/"
@@ -52,10 +47,13 @@ version_menu_pagelinks = true
   ul_show = 1
 
 [[versions]]
+  url = "/stable"
+  version = "v2.20 (LTS)"
+[[versions]]
   url = "/preview"
   version = "v2.19 (Preview)"
 [[versions]]
-  url = "/stable"
+  url = "/v2.18"
   version = "v2.18 (STS)"
 [[versions]]
   url = "/v2.16"
@@ -64,20 +62,15 @@ version_menu_pagelinks = true
   url = "/v2.14"
   version = "v2.14 (LTS)"
 [[versions]]
-  url = "/v2.12"
-  version = "v2.12"
-[[versions]]
-  url = "/v2.8"
-  version = "v2.8"
-[[versions]]
-  url = "https://docs-archive.yugabyte.com/v2.6"
+  url = "https://docs-archive.yugabyte.com/v2.12"
   version = "Unsupported versions"
+  newTab = true
 
 # Custom params, regardless of theme
 [yb]
   terms_of_service = "https://www.yugabyte.com/terms-of-service/"
   preview_version = "v2.19"
-  preview_version_slug = "preview"
+  preview_version_slug = "stable"
 
 # Header logo link
 [yb.navbar_logo]

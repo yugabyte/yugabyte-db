@@ -405,5 +405,71 @@ Status PgAlterTable::Exec() {
 PgAlterTable::~PgAlterTable() {
 }
 
+//--------------------------------------------------------------------------------------------------
+// PgDropSequence
+//--------------------------------------------------------------------------------------------------
+
+PgDropSequence::PgDropSequence(PgSession::ScopedRefPtr pg_session,
+                               PgOid database_oid,
+                               PgOid sequence_oid)
+  : PgDdl(std::move(pg_session)),
+    database_oid_(database_oid),
+    sequence_oid_(sequence_oid) {
+}
+
+PgDropSequence::~PgDropSequence() {
+}
+
+Status PgDropSequence::Exec() {
+  return pg_session_->pg_client().DeleteSequenceTuple(database_oid_, sequence_oid_);
+}
+
+PgDropDBSequences::PgDropDBSequences(PgSession::ScopedRefPtr pg_session,
+                                     PgOid database_oid)
+  : PgDdl(std::move(pg_session)),
+    database_oid_(database_oid) {
+}
+
+PgDropDBSequences::~PgDropDBSequences() {
+}
+
+Status PgDropDBSequences::Exec() {
+  return pg_session_->pg_client().DeleteDBSequences(database_oid_);
+}
+
+// PgCreateReplicationSlot
+//--------------------------------------------------------------------------------------------------
+
+PgCreateReplicationSlot::PgCreateReplicationSlot(PgSession::ScopedRefPtr pg_session,
+                                                 const char *slot_name,
+                                                 PgOid database_oid)
+    : PgDdl(pg_session) {
+  req_.set_database_oid(database_oid);
+  req_.set_replication_slot_name(slot_name);
+}
+
+Status PgCreateReplicationSlot::Exec() {
+  return pg_session_->pg_client().CreateReplicationSlot(&req_, DdlDeadline());
+}
+
+PgCreateReplicationSlot::~PgCreateReplicationSlot() {
+}
+
+// PgDropReplicationSlot
+//--------------------------------------------------------------------------------------------------
+
+PgDropReplicationSlot::PgDropReplicationSlot(PgSession::ScopedRefPtr pg_session,
+                                             const char *slot_name)
+    : PgDdl(pg_session) {
+  req_.set_replication_slot_name(slot_name);
+}
+
+Status PgDropReplicationSlot::Exec() {
+  return pg_session_->pg_client().DropReplicationSlot(&req_, DdlDeadline());
+}
+
+PgDropReplicationSlot::~PgDropReplicationSlot() {
+}
+
 }  // namespace pggate
 }  // namespace yb

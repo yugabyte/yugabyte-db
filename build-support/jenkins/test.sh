@@ -76,6 +76,7 @@ echo "Build script ${BASH_SOURCE[0]} is running"
 # -------------------------------------------------------------------------------------------------
 # Functions
 
+# shellcheck disable=SC2317
 cleanup() {
   if [[ -n ${BUILD_ROOT:-} && ${DONT_DELETE_BUILD_ROOT} == "0" ]]; then
     log "Running the script to clean up build artifacts..."
@@ -245,6 +246,10 @@ fi
 
 export YB_SKIP_INITIAL_SYS_CATALOG_SNAPSHOT=1
 
+if [[ ${YB_ENABLE_YSQL_CONN_MGR:-} == "1" ]]; then
+  export YB_ENABLE_YSQL_CONN_MGR_IN_TESTS=true
+fi
+
 # -------------------------------------------------------------------------------------------------
 # Running initdb
 # -------------------------------------------------------------------------------------------------
@@ -396,6 +401,31 @@ log "Aggregating test reports"
       --build-type "${build_type}" \
       --compiler-type "${YB_COMPILER_TYPE}" \
       --build-root "${BUILD_ROOT}"
+
+log "Analyzing test results"
+test_results_from_junit_xml_path=${YB_SRC_ROOT}/test_results.json
+test_results_from_spark_path=${BUILD_ROOT}/full_build_report.json.gz
+
+if [[ -f $test_results_from_junit_xml_path &&
+      -f $test_results_from_spark_path ]]; then
+  (
+    set -x
+    "$YB_SCRIPT_PATH_ANALYZE_TEST_RESULTS" \
+          "--aggregated-json-test-results=$test_results_from_junit_xml_path" \
+          "--run-tests-on-spark-report=$test_results_from_spark_path" \
+          "--archive-dir=$YB_SRC_ROOT" \
+          "--successful-tests-out-path=$YB_SRC_ROOT/successful_tests.txt" \
+          "--test-list-out-path=$YB_SRC_ROOT/test_list.txt"
+  )
+else
+  if [[ ! -f $test_results_from_junit_xml_path ]]; then
+    log "File $test_results_from_junit_xml_path does not exist"
+  fi
+  if [[ ! -f $test_results_from_spark_path ]]; then
+    log "File $test_results_from_spark_path does not exist"
+  fi
+  log "Not running $YB_SCRIPT_PATH_ANALYZE_TEST_RESULTS"
+fi
 
 if [[ -n ${FAILURES} ]]; then
   heading "Failure summary"

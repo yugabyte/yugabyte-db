@@ -200,6 +200,10 @@ class YBClient::Data {
                                       const TableId& index_id,
                                       CoarseTimePoint deadline);
 
+  Result<master::GetBackfillStatusResponsePB> GetBackfillStatus(
+    const std::vector<std::string_view>& table_ids,
+    const CoarseTimePoint deadline);
+
   Status AlterTable(YBClient* client,
                     const master::AlterTableRequestPB& req,
                     CoarseTimePoint deadline);
@@ -403,6 +407,7 @@ class YBClient::Data {
   std::shared_ptr<master::MasterDdlProxy> master_ddl_proxy() const;
   std::shared_ptr<master::MasterReplicationProxy> master_replication_proxy() const;
   std::shared_ptr<master::MasterEncryptionProxy> master_encryption_proxy() const;
+  std::shared_ptr<master::MasterTestProxy> master_test_proxy() const;
 
   HostPort leader_master_hostport() const;
 
@@ -517,6 +522,7 @@ class YBClient::Data {
   std::shared_ptr<master::MasterDdlProxy> master_ddl_proxy_;
   std::shared_ptr<master::MasterReplicationProxy> master_replication_proxy_;
   std::shared_ptr<master::MasterEncryptionProxy> master_encryption_proxy_;
+  std::shared_ptr<master::MasterTestProxy> master_test_proxy_;
 
   // Ref-counted RPC instance: since 'SetMasterServerProxyAsync' call
   // is asynchronous, we need to hold a reference in this class

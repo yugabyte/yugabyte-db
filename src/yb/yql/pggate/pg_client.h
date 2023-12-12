@@ -37,6 +37,7 @@
 #include "yb/util/enums.h"
 #include "yb/util/lw_function.h"
 #include "yb/util/monotime.h"
+#include "yb/util/ref_cnt_buffer.h"
 
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
@@ -44,19 +45,17 @@
 namespace yb {
 namespace pggate {
 
-YB_DEFINE_ENUM(
-  DdlType,
-  // Not a DDL operation.
-  ((NonDdl, 0))
-  // DDL operation that does not modify the DocDB schema protobufs.
-  ((DdlWithoutDocdbSchemaChanges, 1))
-  // DDL operation that modifies the DocDB schema protobufs.
-  ((DdlWithDocdbSchemaChanges, 2))
-);
+struct DdlMode {
+  bool has_docdb_schema_changes{false};
+
+  std::string ToString() const;
+  void ToPB(tserver::PgFinishTransactionRequestPB_DdlModePB* dest) const;
+};
 
 #define YB_PG_CLIENT_SIMPLE_METHODS \
-    (AlterDatabase)(AlterTable)(CreateDatabase)(CreateTable)(CreateTablegroup) \
-    (DropDatabase)(DropTablegroup)(TruncateTable)
+    (AlterDatabase)(AlterTable) \
+    (CreateDatabase)(CreateReplicationSlot)(CreateTable)(CreateTablegroup) \
+    (DropDatabase)(DropReplicationSlot)(DropTablegroup)(TruncateTable)
 
 struct PerformResult {
   Status status;
@@ -69,7 +68,49 @@ struct PerformResult {
   }
 };
 
-using PerformCallback = std::function<void(const PerformResult&)>;
+struct TableKeyRangesWithHt {
+  boost::container::small_vector<RefCntSlice, 2> encoded_range_end_keys;
+  HybridTime current_ht;
+};
+
+struct PerformData;
+
+class PerformExchangeFuture {
+ public:
+  PerformExchangeFuture() = default;
+  explicit PerformExchangeFuture(std::shared_ptr<PerformData> data)
+      : data_(std::move(data)) {}
+
+  PerformExchangeFuture(PerformExchangeFuture&& rhs) noexcept : data_(std::move(rhs.data_)) {
+  }
+
+  PerformExchangeFuture& operator=(PerformExchangeFuture&& rhs) noexcept {
+    data_ = std::move(rhs.data_);
+    return *this;
+  }
+
+  bool valid() const {
+    return data_ != nullptr;
+  }
+
+  void wait() const;
+  bool ready() const;
+
+  PerformResult get();
+
+ private:
+  std::shared_ptr<PerformData> data_;
+  mutable std::optional<PerformResult> value_;
+};
+
+using PerformResultFuture = std::variant<std::future<PerformResult>, PerformExchangeFuture>;
+
+void Wait(const PerformResultFuture& future);
+bool Ready(const std::future<PerformResult>& future);
+bool Ready(const PerformExchangeFuture& future);
+bool Ready(const PerformResultFuture& future);
+bool Valid(const PerformResultFuture& future);
+PerformResult Get(PerformResultFuture* future);
 
 class PgClient {
  public:
@@ -78,7 +119,9 @@ class PgClient {
 
   Status Start(rpc::ProxyCache* proxy_cache,
                rpc::Scheduler* scheduler,
-               const tserver::TServerSharedObject& tserver_shared_object);
+               const tserver::TServerSharedObject& tserver_shared_object,
+               std::optional<uint64_t> session_id, const YBCAshMetadata* ash_metadata);
+
   void Shutdown();
 
   void SetTimeout(MonoDelta timeout);
@@ -90,11 +133,13 @@ class PgClient {
 
   Result<client::VersionedTablePartitionList> GetTablePartitionList(const PgObjectId& table_id);
 
-  Status FinishTransaction(Commit commit, DdlType ddl_type);
+  Status FinishTransaction(Commit commit, std::optional<DdlMode> ddl_mode = std::nullopt);
 
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
 
   Result<std::pair<PgOid, PgOid>> ReserveOids(PgOid database_oid, PgOid next_oid, uint32_t count);
+
+  Result<PgOid> GetNewObjectId(PgOid db_oid);
 
   Result<bool> IsInitDbDone();
 
@@ -162,17 +207,26 @@ class PgClient {
 
   Status DeleteDBSequences(int64_t db_oid);
 
-  void PerformAsync(
+  PerformResultFuture PerformAsync(
       tserver::PgPerformOptionsPB* options,
-      PgsqlOps* operations,
-      const PerformCallback& callback);
+      PgsqlOps* operations);
 
   Result<bool> CheckIfPitrActive();
 
   Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
 
+  Result<TableKeyRangesWithHt> GetTableKeyRanges(
+      const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
+      uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length,
+      uint64_t read_time_serial_no);
+
   Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo(
       bool size_only, uint32_t db_oid);
+
+  Result<tserver::PgListReplicationSlotsResponsePB> ListReplicationSlots();
+
+  Result<tserver::PgGetReplicationSlotStatusResponsePB> GetReplicationSlotStatus(
+      const ReplicationSlotName& slot_name);
 
   using ActiveTransactionCallback = LWFunction<Status(
       const tserver::PgGetActiveTransactionListResponsePB_EntryPB&, bool is_last)>;

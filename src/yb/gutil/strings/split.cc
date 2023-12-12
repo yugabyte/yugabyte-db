@@ -32,7 +32,7 @@ using std::set;
 using std::pair;
 
 #include "yb/gutil/integral_types.h"
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include "yb/gutil/logging-inl.h"
 #include "yb/gutil/macros.h"
 #include "yb/gutil/strtoint.h"
@@ -422,6 +422,13 @@ void SplitStringToIteratorUsing(const StringType& full,
     *result++ = full.substr(begin_index, (end_index - begin_index));
     begin_index = full.find_first_not_of(delim, end_index);
   }
+}
+
+std::vector<std::string> SplitStringUsing(const string& full,
+                                          const char* delim) {
+  vector<string> result;
+  SplitStringUsing(full, delim, &result);
+  return result;
 }
 
 void SplitStringUsing(const string& full,

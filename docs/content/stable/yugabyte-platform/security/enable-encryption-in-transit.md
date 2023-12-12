@@ -201,11 +201,11 @@ In addition, ensure the following:
 
 1. Select **CA Signed**, as per the following illustration:
 
-   ![add-cert](/images/yp/encryption-in-transit/add-cert.png)
+    ![add-cert](/images/yp/encryption-in-transit/add-cert.png)
 
 1. Upload the custom CA root certificate as the root certificate.
 
-   If you use an intermediate CA/issuer, but do not have the complete chain of certificates, then you need to create a bundle by executing the `cat intermediate-ca.crt root-ca.crt > bundle.crt` command, and then use this bundle as the root certificate. You might also want to [verify the certificate chain](#verify-certificate-chain).
+    If you use an intermediate CA/issuer, but do not have the complete chain of certificates, then you need to create a bundle by executing the `cat intermediate-ca.crt root-ca.crt > bundle.crt` command, and then use this bundle as the root certificate. You might also want to [verify the certificate chain](#verify-certificate-chain).
 
 1. Enter the file paths for each of the certificates on the nodes. These are the paths from the previous step.
 
@@ -247,13 +247,37 @@ If the key is protected by a passphrase in the PKCS12 archive, you are prompted 
 
 #### Verify certificate chain
 
-To verify the certificate chain, execute the following command:
+Perform the following steps to verify your certificates:
 
-```sh
-openssl verify -CAfile bundle.pem cert.pem
-```
+1. Execute the following verify command which checks the database node certificate (node.crt) against the root CA certificate (ca.crt):
 
-The `bundle.pem` file is a certificate bundle containing the root certificate and any intermediate certificates in the PEM format.
+    ```sh
+    openssl verify ca.crt node.crt
+    ```
+
+1. Verify that the node certificate (`node.crt`) and the node private key (`node.key`) match. See [How do I verify that a private key matches a certificate?](https://www.ssl247.com/knowledge-base/detail/how-do-i-verify-that-a-private-key-matches-a-certificate-openssl-1527076112539/ka03l0000015hscaay/)
+
+1. Verify that the node certificate and Root CA certificate expiration is at least 3 months by checking the validity field in the output of the following commands:
+
+    ```sh
+    openssl x509 -in node.crt -text -noout
+    ```
+
+    ```sh
+    openssl x509 -in ca.crt -text -noout
+    ```
+
+1. Verify that the node certificate Common Name (CN) or Subject Alternate Name  (SAN) contains the IP address or DNS name of each on-prem node on which the nodes are deployed.
+
+    {{< note >}}
+Each entry you provide for the CN or SAN must match the on-prem node as entered in the provider configuration. For example, if the node address is entered as a DNS address in the on-prem provider configuration, you must use the same DNS entry in the CN or SAN, not the resolved IP address.
+    {{< /note >}}
+
+    If you face any issue with the above verification, you can customize the level of certificate validation while creating a universe that uses these certificates. Refer to [Customizing the verification of RPC server certificate by the client](https://www.yugabyte.com/blog/yugabytedb-server-to-server-encryption/#customizing-the-verification-of-rpc-server-certificate-by-the-client).
+
+{{< note >}}
+The client certificates and keys are required only if you intend to use [PostgreSQL certificate-based authentication](https://www.postgresql.org/docs/current/auth-pg-hba-conf.html#:~:text=independent%20authentication%20option-,clientcert,-%2C%20which%20can%20be).
+{{< /note >}}
 
 ### Rotate custom CA-signed certificates
 
@@ -263,7 +287,7 @@ You rotate the existing custom certificates and replace them with new database n
 
 **Step 1**: Follow Step 1 of [Use custom CA-signed certificates to enable TLS](#use-custom-ca-signed-certificates-to-enable-tls) to obtain a new set of certificates for each of the nodes.
 
-**Step 2**: Follow Step 2 of  [Use custom CA-signed certificates to enable TLS](#use-custom-ca-signed-certificates-to-enable-tls) to copy the certificates to the respective nodes.
+**Step 2**: Follow Step 2 of [Use custom CA-signed certificates to enable TLS](#use-custom-ca-signed-certificates-to-enable-tls) to copy the certificates to the respective nodes.
 
 **Step 3**: Follow Step 3 of [Use custom CA-signed certificates to enable TLS](#use-custom-ca-signed-certificates-to-enable-tls) to create a new CA-signed certificate in YugabyteDB Anywhere.
 
@@ -484,11 +508,11 @@ During the universe creation, you can enable TLS certificates issued by the cert
    - Click **Upload Root Certificate** and select the root certificate file that you prepared.
    - Click **Add** to make the certificate available.
 
-2. Configure the Kubernetes-based cloud provider by following instructions provided in [Configure region and zones](../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#configure-region-and-zones). In the **Add new region** dialog shown in the following illustration, you would be able to specify the Issuer name or the ClusterIssuer name for each zone. Because an Issuer Kind is a Kubernetes namespace-scoped resource, the zone definition should also set the **Namespace** field value if an Issuer Kind is selected:
+1. Configure the Kubernetes-based cloud provider by following instructions provided in [Configure region and zones](../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#configure-region-and-zones). In the **Add new region** dialog shown in the following illustration, you would be able to specify the Issuer name or the ClusterIssuer name for each zone. Because an Issuer Kind is a Kubernetes namespace-scoped resource, the zone definition should also set the **Namespace** field value if an Issuer Kind is selected:
 
    ![Add new region](/images/yp/security/kubernetes-cert-manager-add-region.png)
 
-3. Create the universe:
+1. Create the universe:
 
    - Navigate to **Universes** and click **Create Universe**.
    - In the **Provider** field, select the cloud provided that you have configured in step 2.
@@ -581,9 +605,9 @@ If you created your universe with the Client-to-Node TLS option enabled, then yo
   ycqlsh>
   ```
 
-To use TLS from a different client, consult the client-specific documentation. For example, if you are using a Cassandra driver to connect to YugabyteDB, see [SSL](https://docs.datastax.com/en/developer/python-driver/3.19/security/#ssl) .
+To use TLS from a different client, consult the client-specific documentation. For example, if you are using a Cassandra driver to connect to YugabyteDB, see [SSL](https://docs.datastax.com/en/developer/python-driver/3.19/security/#ssl).
 
-## Validating certificates
+## Validate certificates
 
 When configuring and using certificates, SSL issues may occasionally arise. You can validate your certificates and keys as follows:
 
@@ -628,7 +652,7 @@ To enforce the minimum TLS version of 1.2, you need to specify all available sub
 ssl_protocols = tls12,tls13
 ```
 
-In addition, as the `ssl_protocols` setting does not propagate to PostgreSQL, it is recommended that you specify the minimum TLS version (`ssl_min_protocol_version`) for PostgreSQL by setting the following YB-TServer gflag:
+In addition, as the `ssl_protocols` setting does not propagate to PostgreSQL, it is recommended that you specify the minimum TLS version (`ssl_min_protocol_version`) for PostgreSQL by setting the following YB-TServer flag:
 
 ```shell
 --ysql_pg_conf_csv="ssl_min_protocol_version=TLSv1.2"
@@ -641,13 +665,11 @@ YugabyteDB Anywhere uses TLS to protect data in transit when connecting to other
 - LDAP
 - OIDC
 - Webhook
-- S3 backup storage
+- [S3 backup storage](../../back-up-restore-universes/configure-backup-storage/)
 - Hashicorp Vault
-- YBA high availability
+- [YBA high availability](../../administer-yugabyte-platform/high-availability/)
 
 If you are using self-signed or custom CA certificates, YugabyteDB cannot verify your TLS connections unless you add the certificates to the YugabyteDB Anywhere Trust Store.
-
-Note that self-signed and custom CA certificates cannot be verified for OIDC connections, even if they are uploaded to the trust store. Connections are still encrypted.
 
 ### Add certificates to your trust store
 
@@ -659,7 +681,7 @@ To add a certificate to the YugabyteDB Anywhere Trust Store, do the following:
 
 1. Enter a name for the certificate.
 
-1. Click **Upload**, select your certifcate (in .crt format) and click **Save CA Certificate**.
+1. Click **Upload**, select your certificate (in .crt format) and click **Save CA Certificate**.
 
 ### Rotate a certificate in your trust store
 
@@ -669,7 +691,7 @@ To rotate a certificate in your YugabyteDB Anywhere Trust Store, do the followin
 
 1. Click the **...** button for the certificate and choose **Update Certificate**.
 
-1. Click **Upload**, select your certifcate (in .crt format) and click **Save CA Certificate**.
+1. Click **Upload**, select your certificate (in .crt format) and click **Save CA Certificate**.
 
 ### Delete a certificate in your trust store
 

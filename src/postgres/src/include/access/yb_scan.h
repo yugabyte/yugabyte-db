@@ -38,6 +38,97 @@
 #include "pg_yb_utils.h"
 #include "executor/ybcExpr.h"
 
+extern PGDLLIMPORT int yb_parallel_range_rows;
+
+/*
+ * In fact, only initial fetch uses the default size, we estimate the number
+ * based on average key length so far. In future we may be able to estimate
+ * key length before fetch starts and always use estimated value.
+ */
+#define YB_PARTITION_KEYS_DEFAULT_FETCH_SIZE 100
+
+/*
+ * Size of the buffer (in bytes) to store the parallel keys.
+ * Ideally it should be adjustable to specific relation, since different
+ * relations has different key sizes. Moreover, key sizes may vary within a
+ * relation.
+ */
+#define YB_PARTITION_KEY_DATA_CAPACITY 16384
+
+/*
+ * State of the parallel key fetch. We only allow one fetching backend at a
+ * time, so FETCH_STATUS_WORKING indicates that one of the backends is actively
+ * performing the fetch.
+ * FETCH_STATUS_IDLE means that DocDB has more keys to return, a worker should
+ * request them.
+ * FETCH_STATUS_DONE means that all the keys has been fetched, no more fetch is
+ * needed.
+ */
+typedef enum
+{
+	FETCH_STATUS_IDLE,
+	FETCH_STATUS_WORKING,
+	FETCH_STATUS_DONE
+} FetchStatus;
+
+/*
+ * The parallel scan state structure
+ * Most important data stored in the structure is the buffer of parallel key,
+ * representing bounds of the blocks to scan by the parallel workers.
+ * The keys are ordered, and parallel workers take one at a time in their
+ * order as the lower bound of the scan range, and peek at the next key to use
+ * as the higher bound. The key is essentially a byte array of variable length,
+ * its actual length is stored as the prefixes to the actual data. The keys are
+ * stored without gaps, so the end of the key is the beginning of the next. Keys
+ * are stored continuously, so if the next key does not fit into the space
+ * between the end of the last key and the end of the buffer, it is written from
+ * the beginning of the buffer (referred as buffer wraparound).
+ *
+ * The low_offset and high_offset indicate two "active" keys in the buffer. The
+ * low_offset is the key to be used and removed by the worker, grabbing next
+ * scan range, and the high_offset points to key used by fetching worker: it is
+ * the lower bound when making a request, and the point to append keys from the
+ * response. In fact, the keys in the buffer form a FIFO queue. As it was
+ * mentioned above, there may be unused space at the end of the buffer, because
+ * of the key continuity. The key_data_size variable points to the beginning of
+ * that space.
+ *
+ * The keys are fetched from the DocDB by a random worker when number of the
+ * keys available in the buffer goes low. The fetch_status indicates current
+ * fetch state. The last key in the buffer (highest key) is used as a fetch
+ * starting point. For that reason we do not allow to take the last remaining
+ * key from the buffer, until DocDB fetch is done.
+ *
+ * Purpose of other fields of the structure:
+ *  - mutex to synchronize access to other fields
+ *  - cv_empty is the conditional variable to wait while buffer has keys
+ *    available to take
+ *  - read_time_serial_no, used_ht_for_read to replicate from the main backend
+ *    to the parallel workers.
+ *  - total_key_size, total_key_count key stats, also used to estimate number
+ *    of keys to fetch (provides average key length).
+ */
+typedef struct YBParallelPartitionKeysData
+{
+	slock_t		mutex;			/* to synchronize access from the workers */
+	ConditionVariable cv_empty;	/* to wait until buffer has more entries */
+	Oid			database_oid;	/* database of the target relation */
+	Oid			table_oid;		/* oid of the target relation */
+	bool		is_forward;		/* scan direction */
+	uint64_t	read_time_serial_no;	/* to replicate to background workers */
+	uint64_t	used_ht_for_read;	/* to replicate to background workers */
+	FetchStatus fetch_status;	/* if fetch is in progress or completed */
+	int			low_offset;		/* offset of the lowest key in the buffer */
+	int			high_offset;	/* offset of the highest key in the buffer */
+	int			key_count;		/* number of keys in the buffer */
+	double		total_key_size;	/* combined length of the keys fetched so far */
+	double		total_key_count;	/* number of keys fetched so far */
+	int			key_data_size;	/* end of the last entry in the wraparound key_data */
+	int			key_data_capacity;	/* YB_PARTITION_KEY_DATA_CAPACITY now, but may change */
+	char		key_data[FLEXIBLE_ARRAY_MEMBER];	/* the buffer */
+} YBParallelPartitionKeysData;
+typedef YBParallelPartitionKeysData *YBParallelPartitionKeys;
+
 /*
  * SCAN PLAN - Two structures.
  * - "struct YbScanPlanData" contains variables that are used during preparing statement.
@@ -121,9 +212,26 @@ typedef struct YbScanDescData
 	 * sending a request to docDB.
 	 */
 	bool quit_scan;
+
+	YBParallelPartitionKeys pscan;
 } YbScanDescData;
 
 typedef struct YbScanDescData *YbScanDesc;
+
+struct YbSysScanBaseData;
+
+typedef struct YbSysScanBaseData *YbSysScanBase;
+
+typedef struct YbSysScanVirtualTable
+{
+	HeapTuple (*next)(YbSysScanBase);
+	void (*end)(YbSysScanBase);
+} YbSysScanVirtualTable;
+
+typedef struct YbSysScanBaseData
+{
+	YbSysScanVirtualTable *vtable;
+} YbSysScanBaseData;
 
 extern void ybc_free_ybscan(YbScanDesc ybscan);
 
@@ -138,8 +246,12 @@ extern SysScanDesc ybc_systable_beginscan(Relation relation,
 										  Snapshot snapshot,
 										  int nkeys,
 										  ScanKey key);
-extern HeapTuple ybc_systable_getnext(SysScanDesc scanDesc);
-extern void ybc_systable_endscan(SysScanDesc scan_desc);
+extern SysScanDesc ybc_systable_begin_default_scan(Relation relation,
+												   Oid indexId,
+												   bool indexOK,
+												   Snapshot snapshot,
+												   int nkeys,
+												   ScanKey key);
 
 /*
  * Access to YB-stored system catalogs (mirroring API from heapam.c)
@@ -152,12 +264,6 @@ extern HeapScanDesc ybc_heap_beginscan(Relation relation,
 									   bool temp_snap);
 extern HeapTuple ybc_heap_getnext(HeapScanDesc scanDesc);
 extern void ybc_heap_endscan(HeapScanDesc scanDesc);
-extern HeapScanDesc ybc_remote_beginscan(Relation relation,
-										 Snapshot snapshot,
-										 Scan *pg_scan_plan,
-										 PushdownExprs *pushdown,
-										 List *aggrefs,
-										 YBCPgExecParameters *exec_params);
 
 /* Add targets to the given statement. */
 extern void YbDmlAppendTargetSystem(AttrNumber attnum, YBCPgStatement handle);
@@ -189,7 +295,8 @@ extern YbScanDesc ybcBeginScan(Relation relation,
 							   PushdownExprs *idx_pushdown,
 							   List *aggrefs,
 							   int distinct_prefixlen,
-							   YBCPgExecParameters *exec_params);
+							   YBCPgExecParameters *exec_params,
+							   bool is_internal_scan);
 
 /* Returns whether the given populated ybScan needs PG-side recheck. */
 extern bool YbNeedsRecheck(YbScanDesc ybScan);
@@ -200,8 +307,8 @@ extern bool YbPredetermineNeedsRecheck(Relation relation,
 									   ScanKey keys,
 									   int nkeys);
 
-HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);
-IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, bool is_forward_scan, bool *recheck);
+HeapTuple ybc_getnext_heaptuple(YbScanDesc ybScan, ScanDirection dir, bool *recheck);
+IndexTuple ybc_getnext_indextuple(YbScanDesc ybScan, ScanDirection dir, bool *recheck);
 bool ybc_getnext_aggslot(IndexScanDesc scan, YBCPgStatement handle,
 						 bool index_only_scan);
 
@@ -268,3 +375,13 @@ bool ybSampleNextBlock(YbSample ybSample);
 int ybFetchSample(YbSample ybSample, HeapTuple *rows);
 TupleTableSlot *ybFetchNext(YBCPgStatement handle,
 			TupleTableSlot *slot, Oid relid);
+
+int ybParallelWorkers(double numrows);
+
+Size yb_estimate_parallel_size(void);
+void yb_init_partition_key_data(void *data);
+void ybParallelPrepare(YBParallelPartitionKeys ppk, Relation relation,
+				  YBCPgExecParameters *exec_params, bool is_forward);
+bool ybParallelNextRange(YBParallelPartitionKeys ppk,
+					const char **low_bound, size_t *low_bound_size,
+					const char **high_bound, size_t *high_bound_size);

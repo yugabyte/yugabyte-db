@@ -1,4 +1,5 @@
 import { FC, useContext } from 'react';
+import { useQuery, useQueryClient } from 'react-query';
 import { useSelector } from 'react-redux';
 import { browserHistory } from 'react-router';
 import { useTranslation } from 'react-i18next';
@@ -7,6 +8,7 @@ import { UniverseFormContext } from './UniverseFormContainer';
 import { UniverseForm } from './form/UniverseForm';
 import { YBLoading } from '../../../../components/common/indicators';
 import { getPlacements } from './form/fields/PlacementsField/PlacementsFieldHelper';
+import { QUERY_KEY, api } from './utils/api';
 import {
   createUniverse,
   filterFormDataByClusterType,
@@ -21,12 +23,16 @@ import {
   UniverseFormData,
   CloudType,
   UniverseConfigure,
-  DEFAULT_FORM_DATA
+  DEFAULT_FORM_DATA,
+  RunTimeConfigEntry
 } from './utils/dto';
+import { RuntimeConfigKey } from '../../../helpers/constants';
 
 export const CreateUniverse: FC = () => {
   const { t } = useTranslation();
   const [contextState, contextMethods]: any = useContext(UniverseFormContext);
+  // Create a deep copy of the DEFAULT_FORM_DATA object
+  const DEFAULT_FORM_DATA_COPY = JSON.parse(JSON.stringify(DEFAULT_FORM_DATA));
   const {
     asyncFormData,
     clusterType,
@@ -43,6 +49,11 @@ export const CreateUniverse: FC = () => {
   } = contextMethods;
   const featureFlags = useSelector((state: any) => state.featureFlags);
   const isPrimary = clusterType === ClusterType.PRIMARY;
+  const globalRuntimeConfigQuery = useQuery(QUERY_KEY.fetchGlobalRunTimeConfigs, () =>
+    api.fetchRunTimeConfigs(true)
+  );
+
+  const queryClient = useQueryClient();
 
   useEffectOnce(() => {
     initializeForm({
@@ -151,14 +162,32 @@ export const CreateUniverse: FC = () => {
       configurePayload.encryptionAtRestConfig.configUUID = primaryData.instanceConfig.kmsConfig;
     }
     createUniverse({ configurePayload, universeContextData: contextState });
+    setTimeout(()=>{
+      queryClient.invalidateQueries('user_permissions');
+    }, 2000);
   };
 
   if (isLoading) return <YBLoading />;
 
+  // Retrieve userTags when running local dev environment
+  if (globalRuntimeConfigQuery.isSuccess && globalRuntimeConfigQuery.data) {
+    const isTagsEnforcedObject = globalRuntimeConfigQuery?.data?.configEntries?.find(
+      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.IS_TAGS_ENFORCED
+    );
+    const isTagsEnforced = isTagsEnforcedObject?.value === 'true';
+    const defaultDevTags = globalRuntimeConfigQuery?.data?.configEntries?.find(
+      (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.DEFAULT_DEV_TAGS
+    )?.value;
+
+    if (isTagsEnforced && defaultDevTags) {
+      DEFAULT_FORM_DATA_COPY.instanceTags = JSON.parse(defaultDevTags);
+    }
+  }
+
   if (isPrimary)
     return (
       <UniverseForm
-        defaultFormData={primaryFormData ?? DEFAULT_FORM_DATA}
+        defaultFormData={primaryFormData ?? DEFAULT_FORM_DATA_COPY}
         onFormSubmit={(data: UniverseFormData) =>
           onSubmit(
             data,

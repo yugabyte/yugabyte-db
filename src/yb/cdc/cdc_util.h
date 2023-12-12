@@ -28,7 +28,7 @@ struct ProducerTabletInfo {
   ReplicationGroupId replication_group_id;
   // Unique ID on Producer, but not on Consumer.
   xrepl::StreamId stream_id;
-  std::string tablet_id;
+  TabletId tablet_id;
 
   bool operator==(const ProducerTabletInfo& other) const {
     return replication_group_id == other.replication_group_id && stream_id == other.stream_id &&
@@ -36,9 +36,6 @@ struct ProducerTabletInfo {
   }
 
   std::string ToString() const;
-
-  // String used as a descriptor id for metrics.
-  std::string MetricsString() const;
 
   struct Hash {
     std::size_t operator()(const ProducerTabletInfo& p) const noexcept;

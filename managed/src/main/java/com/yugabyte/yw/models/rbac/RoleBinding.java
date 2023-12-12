@@ -16,16 +16,16 @@ import io.ebean.annotation.EnumValue;
 import io.ebean.annotation.WhenCreated;
 import io.ebean.annotation.WhenModified;
 import io.swagger.annotations.ApiModelProperty;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Id;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import java.util.Date;
 import java.util.List;
 import java.util.UUID;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.EnumType;
-import javax.persistence.Enumerated;
-import javax.persistence.Id;
-import javax.persistence.JoinColumn;
-import javax.persistence.ManyToOne;
 import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -123,12 +123,20 @@ public class RoleBinding extends Model {
     return roleBinding;
   }
 
+  public static List<RoleBinding> getAll() {
+    return find.query().findList();
+  }
+
   public static List<RoleBinding> getAll(UUID userUUID) {
     return find.query().where().eq("user_uuid", userUUID).findList();
   }
 
   public static List<RoleBinding> getAllWithRole(UUID roleUUID) {
     return find.query().where().eq("role_uuid", roleUUID).findList();
+  }
+
+  public static boolean checkUserHasRole(UUID userUUID, UUID roleUUID) {
+    return find.query().where().eq("user_uuid", userUUID).eq("role_uuid", roleUUID).exists();
   }
 
   public void edit(Role role, ResourceGroup resourceGroup) {

@@ -82,13 +82,16 @@ InboundCall::~InboundCall() {
   Trace *my_trace = trace();
   TRACE_TO(my_trace, "Destroying InboundCall");
   if (my_trace) {
+    bool was_printed = false;
     YB_LOG_IF_EVERY_N(INFO, FLAGS_print_trace_every > 0, FLAGS_print_trace_every)
-        << "Tracing op: \n " << my_trace->DumpToString(true);
+        << "Tracing op:" << Trace::SetTrue(&was_printed);
+    if (was_printed)
+      my_trace->DumpToLogInfo(true);
   }
   DecrementGauge(rpc_metrics_->inbound_calls_alive);
 }
 
-void InboundCall::NotifyTransferred(const Status& status, const ConnectionPtr& conn) {
+void InboundCall::NotifyTransferred(const Status& status, const ConnectionPtr& /*conn*/) {
   if (status.ok()) {
     TRACE_TO(trace(), "Transfer finished");
   } else {
@@ -223,6 +226,13 @@ bool InboundCall::RespondTimedOutIfPending(const char* message) {
   Clear();
 
   return true;
+}
+
+void InboundCall::SetCallProcessedListener(CallProcessedListener* call_processed_listener) {
+  DCHECK(call_processed_listener_ == nullptr)
+      << this << " Trying to overwrite non-null call processed listner "
+      << " existing : " << call_processed_listener_ << " trying to set " << call_processed_listener;
+  call_processed_listener_ = call_processed_listener;
 }
 
 void InboundCall::Clear() {

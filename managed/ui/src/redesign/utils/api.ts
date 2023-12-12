@@ -1,4 +1,4 @@
-import axios, { Canceler } from 'axios';
+import axios, { AxiosResponse, Canceler } from 'axios';
 import { ROOT_URL } from '../../config';
 import { KMSRotationHistory } from '../features/universe/universe-actions/encryption-at-rest/EncryptionAtRestUtils';
 import {
@@ -6,6 +6,12 @@ import {
   YCQLFormPayload,
   RotatePasswordPayload
 } from '../features/universe/universe-actions/edit-ysql-ycql/Helper';
+import {
+  DBUpgradePayload,
+  DBRollbackPayload,
+  GetInfoPayload,
+  GetInfoResponse
+} from '../features/universe/universe-actions/rollback-upgrade/utils/types';
 import {
   Universe,
   KmsConfig,
@@ -88,6 +94,31 @@ class ApiService {
   getCertificates = (): Promise<Certificate[]> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/certificates`;
     return axios.get<Certificate[]>(requestUrl).then((resp) => resp.data);
+  };
+
+  upgradeSoftware = (universeId: string, data: DBUpgradePayload): Promise<TaskResponse> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeId}/upgrade/software`;
+    return axios.post<TaskResponse>(requestUrl, data).then((resp) => resp.data);
+  };
+
+  finalizeUpgrade = (universeId: string): Promise<TaskResponse> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeId}/upgrade/finalize`;
+    return axios.post<TaskResponse>(requestUrl, {}).then((resp) => resp.data);
+  };
+
+  rollbackUpgrade = (universeId: string, data: DBRollbackPayload): Promise<TaskResponse> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeId}/upgrade/rollback`;
+    return axios.post<TaskResponse>(requestUrl, data).then((resp) => resp.data);
+  };
+
+  getUpgradeDetails = (universeId: string, data: GetInfoPayload): Promise<GetInfoResponse> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeId}/upgrade/software/info`;
+    return axios.post<GetInfoResponse>(requestUrl, data).then((resp) => resp.data);
+  };
+
+  retryCurrentTask = (taskUUID: string): Promise<AxiosResponse> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/tasks/${taskUUID}`;
+    return axios.post<AxiosResponse>(requestUrl).then((resp) => resp);
   };
 }
 

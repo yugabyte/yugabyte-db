@@ -22,19 +22,20 @@
 #include "yb/yql/pgwrapper/geo_transactions_test_base.h"
 
 DECLARE_bool(TEST_consider_all_local_transaction_tables_local);
+DECLARE_bool(TEST_pause_sending_txn_status_requests);
 DECLARE_bool(TEST_select_all_status_tablets);
 DECLARE_bool(TEST_txn_status_moved_rpc_force_fail);
 DECLARE_bool(auto_create_local_transaction_tables);
 DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
-DECLARE_bool(enable_deadlock_detection);
 DECLARE_bool(enable_wait_queues);
-DECLARE_bool(enable_deadlock_detection);
 DECLARE_bool(force_global_transactions);
+DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_double(transaction_max_missed_heartbeat_periods);
 DECLARE_int32(TEST_old_txn_status_abort_delay_ms);
 DECLARE_int32(TEST_transaction_inject_flushed_delay_ms);
 DECLARE_int32(TEST_txn_status_moved_rpc_handle_delay_ms);
 DECLARE_int32(TEST_txn_status_moved_rpc_send_delay_ms);
+DECLARE_int32(TEST_new_txn_status_initial_heartbeat_delay_ms);
 DECLARE_int64(transaction_rpc_timeout_ms);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_uint64(TEST_inject_sleep_before_applying_write_batch_ms);
@@ -210,10 +211,10 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
     if (success) {
       // Ensure data written is still fine.
       for (size_t i = 1; i <= tables_per_region_; ++i) {
-        ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchValue<int32_t>(strings::Substitute(
+        ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
             "SELECT value FROM $0$1_$2", kTablePrefix, kLocalRegion, i))));
       }
-      ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchValue<int32_t>(strings::Substitute(
+      ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
           "SELECT value FROM $0$1_1", kTablePrefix, kOtherRegion))));
     }
 
@@ -236,10 +237,10 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
 
     if (transaction_type == TestTransactionType::kCommit && success) {
       for (size_t i = 1; i <= tables_per_region_; ++i) {
-        ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchValue<int32_t>(strings::Substitute(
+        ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
             "SELECT value FROM $0$1_$2", kTablePrefix, kLocalRegion, i))));
       }
-      ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchValue<int32_t>(strings::Substitute(
+      ASSERT_EQ(field_value, EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
           "SELECT value FROM $0$1_1", kTablePrefix, kOtherRegion))));
     } else {
       for (size_t i = 1; i <= tables_per_region_; ++i) {
@@ -288,6 +289,14 @@ class GeoTransactionsPromotionTest : public GeoTransactionsTestBase {
   }
 };
 
+class GeoTransactionsPromotionConflictAbortTest : public GeoTransactionsPromotionTest {
+ public:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
+    GeoTransactionsPromotionTest::SetUp();
+  }
+};
+
 class GeoTransactionsPromotionRF1Test : public GeoTransactionsPromotionTest {
  protected:
   static constexpr auto kGlobalTable = "global_table";
@@ -330,7 +339,6 @@ class GeoTransactionsFailOnConflictTest : public GeoTransactionsPromotionTest {
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_deadlock_detection) = false;
     GeoTransactionsPromotionTest::SetUp();
   }
 };
@@ -344,7 +352,6 @@ class GeoPartitionedDeadlockTest : public GeoTransactionsPromotionTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = Format(
         "statement_timeout=$0", kClientStatementTimeoutSeconds);
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_deadlock_detection) = true;
 
     GeoTransactionsPromotionTest::SetUp();
   }
@@ -612,6 +619,50 @@ TEST_F_EX(GeoTransactionsPromotionTest,
   PerformConflictTest(0 /* delay_before_promotion_us */);
 }
 
+TEST_F(GeoTransactionsPromotionConflictAbortTest, TestConflictAbortBeforeNewHeartbeat) {
+  auto conn0 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn0.ExecuteFormat(
+      "CREATE UNIQUE INDEX $0$1_1_key ON $0$1_1(value) TABLESPACE tablespace$1",
+      kTablePrefix, kLocalRegion));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_new_txn_status_initial_heartbeat_delay_ms) =
+      400 * kTimeMultiplier;
+
+  auto conn1 = ASSERT_RESULT(Connect());
+  auto conn2 = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn1.Execute("SET force_global_transaction = false"));
+  ASSERT_OK(conn2.Execute("SET force_global_transaction = false"));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_override_transaction_priority) = 100;
+  ASSERT_OK(conn1.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+  ASSERT_OK(conn1.ExecuteFormat(
+      "INSERT INTO $0$1_1(value, other_value) VALUES (1, 1)", kTablePrefix, kLocalRegion));
+
+  TestThreadHolder thread_holder;
+
+  thread_holder.AddThreadFunctor([&conn1] {
+    // Trigger promotion.
+    (void) conn1.ExecuteFormat(
+        "INSERT INTO $0$1_1(value, other_value) VALUES (2, 1)", kTablePrefix, kOtherRegion);
+    ASSERT_NOK(conn1.CommitTransaction());
+  });
+
+  thread_holder.AddThreadFunctor([&conn2] {
+    // Give time for promotion to start, but not for initial heartbeat to be sent.
+    std::this_thread::sleep_for(200ms * kTimeMultiplier);
+
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_override_transaction_priority) = 200;
+    ASSERT_OK(conn2.StartTransaction(IsolationLevel::SERIALIZABLE_ISOLATION));
+    // Trigger abort on conn1.
+    ASSERT_OK(conn2.ExecuteFormat(
+        "INSERT INTO $0$1_1(value, other_value) VALUES (1, 2)", kTablePrefix, kLocalRegion));
+    ASSERT_OK(conn2.CommitTransaction());
+  });
+  thread_holder.WaitAndStop(1000ms * kTimeMultiplier);
+}
+
 TEST_F(GeoTransactionsPromotionRF1Test,
        YB_DISABLE_TEST_IN_TSAN(TestPromoteBeforeEarlierWriteRPCReceived)) {
   constexpr auto kNumIterations = 100;
@@ -829,6 +880,156 @@ TEST_F(GeoPartitionedDeadlockTest, YB_DISABLE_TEST_IN_TSAN(TestDeadlockAcrossTab
     });
   }
   thread_holder.WaitAndStop(35s * kTimeMultiplier);
+}
+
+class GeoPartitionedReadCommiittedTest : public GeoTransactionsTestBase {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_auto_create_local_transaction_tables) = true;
+    GeoTransactionsTestBase::SetUp();
+    SetupTablespaces();
+  }
+
+  // Sets up a partitioned table with primary key(state, country) partitioned on state into 3
+  // partitions. partition P_i hosts states S_(2*i-1), S_(2*i). Partitioned table P1 is split
+  // into 2 tablets and the other partitioned tables are split into 1 tablet.
+  void SetUpPartitionedTable(const std::string& table_name) {
+    auto current_version = GetCurrentVersion();
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat(
+        "CREATE TABLE $0(people int, state VARCHAR, country VARCHAR, $1) PARTITION BY LIST (state)",
+        table_name, "PRIMARY KEY(state, country)"));
+
+    std::vector<std::string> partition_list;
+    partition_list.reserve(NumRegions());
+    for (size_t i = 1; i <= NumRegions(); i++) {
+      partition_list.push_back(Format("('S$0', 'S$1')", 2*i - 1, 2*i));
+    }
+    for (size_t i = 1; i <= NumRegions(); i++) {
+      auto num_tablets = Format("SPLIT INTO $0 TABLETS", i == 1 ? 2 : 1);
+      ASSERT_OK(conn.ExecuteFormat(
+          "CREATE TABLE $0$1 PARTITION OF $0 FOR VALUES IN $2 TABLESPACE tablespace$1 $3",
+          table_name, i, partition_list[i - 1], num_tablets));
+
+      if (ANNOTATE_UNPROTECTED_READ(FLAGS_auto_create_local_transaction_tables)) {
+        WaitForStatusTabletsVersion(current_version + 1);
+        ++current_version;
+      }
+    }
+    ASSERT_OK(conn.ExecuteFormat(
+          "CREATE TABLE $0_defaut PARTITION OF $0 DEFAULT TABLESPACE tablespace$1", table_name, 3));
+
+    // For states S[1-6], insert countries C[0-10].
+    for (size_t i = 0; i <= 10; i++) {
+      for (size_t j = 1; j <= 2 * NumRegions(); j++) {
+        ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES(0, 'S$1', 'C$2')", table_name, j, i));
+      }
+    }
+  }
+};
+
+// The below test helps assert that transaction promotion requests are sent only to involved
+// tablets that have already processed a write of the transaction (explicit write/read with locks).
+TEST_F(GeoPartitionedReadCommiittedTest, TestPromotionAmidstConflicts) {
+  auto table_name = "foo";
+  SetUpPartitionedTable(table_name);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = false;
+
+  TestThreadHolder thread_holder;
+  const auto num_sessions = 5;
+  const auto num_iterations = 20;
+  for (int i = 1; i <= num_sessions; i++) {
+    thread_holder.AddThreadFunctor([this, i, table_name] {
+      for (int j = 1; j <= num_iterations; j++) {
+        auto conn = ASSERT_RESULT(Connect());
+        ASSERT_OK(conn.Execute("SET force_global_transaction = false"));
+        ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED"));
+        // Start off as a local txn, hitting just one tablet of the local partition.
+        ASSERT_OK(conn.ExecuteFormat(
+            "UPDATE $0 SET people=people+1 WHERE country='C0' AND state='S$1'",
+            table_name, i%2 + 1));
+        // The below would trigger transaction promotion since it would launch read ops across all
+        // tablets. This would lead to transaction promotion amidst conflicting writes.
+        ASSERT_OK(conn.ExecuteFormat(
+            "UPDATE $0 SET people=people+1 WHERE country='C$1'", table_name, (j + 1)/2));
+        ASSERT_OK(conn.CommitTransaction());
+      }
+    });
+  }
+  thread_holder.WaitAndStop(60s * kTimeMultiplier);
+
+  // Assert that the conflicting updates above go through successfully.
+  auto conn = ASSERT_RESULT(Connect());
+  for (int i = 1; i <= num_iterations/2; i++) {
+    auto values = ASSERT_RESULT(conn.FetchRows<int32_t>(
+        Format("SELECT people FROM $0 WHERE country='C$1'", table_name, i)));
+    for (const auto value : values) {
+      ASSERT_EQ(value, num_sessions * 2);
+    }
+  }
+}
+
+// The test asserts that the transaction participant ignores status responses from old status tablet
+// for transactions that underwent promotion. If not, the participant could end up cleaning intents
+// and silently let the commit go through, thus leading to data loss/inconsistency in case of
+// promoted transactions. Refer #19535 for details.
+TEST_F(GeoPartitionedReadCommiittedTest,
+       YB_DISABLE_TEST_IN_TSAN(TestParticipantIgnoresAbortFromOldStatusTablet)) {
+  auto table_name = "foo";
+  const auto kLocalState = "S1";
+  const auto kOtherState = "S6";
+  SetUpPartitionedTable(table_name);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_global_transactions) = false;
+
+  auto update_query = Format(
+      "UPDATE $0 SET people=people+1 WHERE country='C0' AND state='$1'", table_name, kLocalState);
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("SET force_global_transaction = false"));
+  ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED"));
+  // Start off as a local txn. Will end up writing intents.
+  ASSERT_OK(conn.Execute(update_query));
+  // Delay sending all status requests for this txn from the txn participant end.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_sending_txn_status_requests) = true;
+
+  const auto num_sessions = 5;
+  CountDownLatch requested_status_of_txn_with_intents{num_sessions};
+  TestThreadHolder thread_holder;
+  for (int i = 0; i < num_sessions; i++) {
+    thread_holder.AddThreadFunctor(
+        [this, &requested_status_of_txn_with_intents, update_query] {
+      auto conn = ASSERT_RESULT(Connect());
+      ASSERT_OK(conn.Execute("SET force_global_transaction = false"));
+      ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED"));
+      // Try performing conflicting updates which end up requesting status of the txn with intents.
+      auto status_future = std::async(std::launch::async, [&conn, update_query]() {
+        return conn.Execute(update_query);
+      });
+      ASSERT_OK(WaitFor([&conn] () {
+        return conn.IsBusy();
+      }, 1s * kTimeMultiplier, "Wait for blocking request to be submitted to the query layer"));
+      requested_status_of_txn_with_intents.CountDown();
+      ASSERT_OK(status_future.get());
+      ASSERT_OK(conn.CommitTransaction());
+    });
+  }
+  // Wait for the status requests for this transaction to pile up with the current status tablet.
+  ASSERT_TRUE(requested_status_of_txn_with_intents.WaitFor(10s * kTimeMultiplier));
+  SleepFor(5s * kTimeMultiplier);
+  // Make the transaction undergo transaction promotion, which switches its status tablet.
+  ASSERT_OK(conn.ExecuteFormat(
+      "UPDATE $0 SET people=people+1 WHERE country='C1' AND state='$1'", table_name, kOtherState));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_sending_txn_status_requests) = false;
+  // Wait for the piled up status requests to get executed and process the response from the old
+  // status tablet.
+  SleepFor(5s * kTimeMultiplier);
+  ASSERT_OK(conn.CommitTransaction());
+
+  thread_holder.WaitAndStop(60s * kTimeMultiplier);
+  auto res = ASSERT_RESULT(conn.FetchRow<int32_t>(Format(
+      "SELECT people FROM $0 WHERE country='C0' AND state='$1'", table_name, kLocalState)));
+  ASSERT_EQ(res, num_sessions + 1);
 }
 
 } // namespace client

@@ -5,21 +5,23 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.fasterxml.jackson.annotation.JsonGetter;
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbEnumValue;
 import io.swagger.annotations.ApiModelProperty;
+import jakarta.persistence.Column;
+import jakarta.persistence.Embeddable;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.IdClass;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import java.io.Serializable;
 import java.util.Date;
 import java.util.Optional;
 import java.util.UUID;
-import javax.persistence.Column;
-import javax.persistence.Embeddable;
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.IdClass;
-import javax.persistence.JoinColumn;
-import javax.persistence.ManyToOne;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
@@ -58,21 +60,26 @@ public class XClusterTableConfig extends Model {
       example = "a9d2470786694dc4b34e0e58e592da9e")
   private String streamId;
 
-  @ApiModelProperty(value = "Whether replication is set up for this table")
+  @ApiModelProperty(value = "YbaApi Internal. Whether replication is set up for this table")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.16.0.0")
   private boolean replicationSetupDone;
 
-  @ApiModelProperty(value = "Whether this table needs bootstrap process for replication setup")
+  @ApiModelProperty(
+      value = "YbaApi Internal. Whether this table needs bootstrap process for replication setup")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.16.0.0")
   private boolean needBootstrap;
 
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd'T'HH:mm:ss'Z'")
   @ApiModelProperty(value = "Time of the bootstrap of the table", example = "2022-12-12T13:07:18Z")
   private Date bootstrapCreateTime;
 
+  @ApiModelProperty(value = "The backup config used to do bootstrapping for this table")
   @ManyToOne
   @JoinColumn(name = "backup_uuid", referencedColumnName = "backup_uuid")
   @JsonProperty("backupUuid")
   private Backup backup;
 
+  @ApiModelProperty(value = "The restore config used to do bootstrapping for this table")
   @ManyToOne
   @JoinColumn(name = "restore_uuid", referencedColumnName = "restore_uuid")
   @JsonProperty("restoreUuid")
@@ -86,6 +93,11 @@ public class XClusterTableConfig extends Model {
 
   // If its main table is not part the config, it will be false; otherwise, it indicates whether the
   // table is an index table.
+  @ApiModelProperty(
+      value =
+          "YbaApi Internal. Whether this table is an index table and its main table is in"
+              + " replication")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.16.0.0")
   private boolean indexTable;
 
   @ApiModelProperty(
@@ -152,6 +164,16 @@ public class XClusterTableConfig extends Model {
       return null;
     }
     return getRestore().getRestoreUUID();
+  }
+
+  public void reset() {
+    this.setStatus(XClusterTableConfig.Status.Validated);
+    this.setReplicationSetupDone(false);
+    this.setStreamId(null);
+    this.setBootstrapCreateTime(null);
+    this.setRestoreTime(null);
+    // We intentionally do not reset backup and restore objects in the xCluster config because
+    // restart parent task sets these attributes and its subtasks use this method.
   }
 
   /** This class is the primary key for XClusterTableConfig. */

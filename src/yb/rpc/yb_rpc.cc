@@ -175,7 +175,7 @@ Status YBInboundConnectionContext::HandleCall(
     return s;
   }
 
-  s = Store(call.get());
+  s = Store(call);
   if (!s.ok()) {
     return s;
   }
@@ -191,7 +191,7 @@ Status YBInboundConnectionContext::HandleCall(
   return Status::OK();
 }
 
-void YBInboundConnectionContext::Connected(const ConnectionPtr& connection) {
+Status YBInboundConnectionContext::Connected(const ConnectionPtr& connection) {
   DCHECK_EQ(connection->direction(), Connection::Direction::SERVER);
 
   state_ = RpcConnectionPB::NEGOTIATING;
@@ -204,6 +204,7 @@ void YBInboundConnectionContext::Connected(const ConnectionPtr& connection) {
         YBInboundConnectionContext, &YBInboundConnectionContext::HandleTimeout>(this);
     timer_.Start(HeartbeatPeriod());
   }
+  return Status::OK();
 }
 
 void YBInboundConnectionContext::UpdateLastWrite(const ConnectionPtr& connection) {
@@ -261,7 +262,7 @@ YBInboundCall::YBInboundCall(RpcMetrics* rpc_metrics, const RemoteMethod& remote
   header_.remote_method = remote_method.serialized_body();
 }
 
-YBInboundCall::~YBInboundCall() {}
+YBInboundCall::~YBInboundCall() = default;
 
 CoarseTimePoint YBInboundCall::GetClientDeadline() const {
   if (header_.timeout_ms == 0) {
@@ -338,7 +339,8 @@ void YBInboundCall::LogTrace() const {
                    << header_.timeout_ms << "ms).";
       auto my_trace = trace();
       if (my_trace) {
-        LOG(WARNING) << "Trace:\n" << my_trace->DumpToString(1, true);
+        LOG(INFO) << "Trace:";
+        my_trace->DumpToLogInfo(true);
       }
       return;
     }
@@ -351,7 +353,7 @@ void YBInboundCall::LogTrace() const {
           total_time > FLAGS_rpc_slow_query_threshold_ms)) {
     LOG(INFO) << ToString() << " took " << total_time << "ms. Trace:";
     if (my_trace) {
-      my_trace->Dump(&LOG(INFO), true);
+      my_trace->DumpToLogInfo(true);
     }
   }
 }
@@ -366,7 +368,7 @@ void YBInboundCall::DoSerialize(ByteBlocks* output) {
 Status YBInboundCall::ParseParam(RpcCallParams* params) {
   RETURN_NOT_OK(ThrottleRpcStatus(consumption_.mem_tracker(), *this));
 
-  auto consumption = params->ParseRequest(serialized_request(), request_data_.buffer());
+  auto consumption = params->ParseRequest(serialized_request(), request_data_.holder());
   if (!consumption.ok()) {
     auto status = consumption.status().CloneAndPrepend(
         Format("Invalid parameter for call $0", header_.RemoteMethodAsString()));
@@ -444,7 +446,7 @@ Slice YBInboundCall::method_name() const {
 }
 
 Result<RefCntSlice> YBInboundCall::ExtractSidecar(size_t idx) const {
-  return received_sidecars_.Extract(request_data_.buffer(), idx);
+  return received_sidecars_.Extract(request_data_.holder(), idx);
 }
 
 Status YBOutboundConnectionContext::HandleCall(
@@ -452,7 +454,7 @@ Status YBOutboundConnectionContext::HandleCall(
   return connection->HandleCallResponse(call_data);
 }
 
-void YBOutboundConnectionContext::Connected(const ConnectionPtr& connection) {
+Status YBOutboundConnectionContext::Connected(const ConnectionPtr& connection) {
   DCHECK_EQ(connection->direction(), Connection::Direction::CLIENT);
   connection_ = connection;
   last_read_time_ = connection->reactor()->cur_time();
@@ -462,6 +464,7 @@ void YBOutboundConnectionContext::Connected(const ConnectionPtr& connection) {
         YBOutboundConnectionContext, &YBOutboundConnectionContext::HandleTimeout>(this);
     timer_.Start(Timeout());
   }
+  return Status::OK();
 }
 
 Status YBOutboundConnectionContext::AssignConnection(const ConnectionPtr& connection) {

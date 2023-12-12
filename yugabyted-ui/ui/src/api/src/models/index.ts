@@ -20,6 +20,8 @@ export type { ClusterTableListResponse } from  './ClusterTableListResponse';
 export type { ClusterTablet } from  './ClusterTablet';
 export type { ClusterTabletListResponse } from  './ClusterTabletListResponse';
 export type { ColumnInfo } from  './ColumnInfo';
+export type { ConnectionStatsItem } from  './ConnectionStatsItem';
+export type { ConnectionsStats } from  './ConnectionsStats';
 export type { EncryptionInfo } from  './EncryptionInfo';
 export type { EntityMetadata } from  './EntityMetadata';
 export type { Gflag } from  './Gflag';

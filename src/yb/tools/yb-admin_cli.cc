@@ -38,6 +38,8 @@
 #include <boost/algorithm/string.hpp>
 #include <boost/lexical_cast.hpp>
 
+#include "yb/cdc/cdc_service.h"
+
 #include "yb/common/json_util.h"
 
 #include "yb/gutil/strings/util.h"
@@ -505,7 +507,9 @@ void ClusterAdminCli::SetUsage(const string& prog_name) {
       << "<operation> must be one of:" << endl;
 
   for (size_t i = 0; i < commands_.size(); ++i) {
-    str << ' ' << i + 1 << ". " << commands_[i].name_ << commands_[i].usage_arguments_ << endl;
+    str << ' ' << i + 1 << ". " << commands_[i].name_
+        << (commands_[i].usage_arguments_.empty() ? "" : " ") << commands_[i].usage_arguments_
+        << endl;
   }
 
   str << endl;
@@ -1224,6 +1228,13 @@ Status get_wal_retention_secs_action(
   return Status::OK();
 }
 
+const auto get_auto_flags_config_args = "";
+Status get_auto_flags_config_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  RETURN_NOT_OK_PREPEND(client->GetAutoFlagsConfig(), "Unable to get AutoFlags config");
+  return Status::OK();
+}
+
 const auto promote_auto_flags_args =
     "[<max_flags_class> (default kExternal) [<promote_non_runtime_flags> (default true) [force]]]";
 Status promote_auto_flags_action(
@@ -1263,6 +1274,69 @@ Status promote_auto_flags_action(
   return Status::OK();
 }
 
+const auto rollback_auto_flags_args = "<rollback_version>";
+Status rollback_auto_flags_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  const int64_t rollback_version = VERIFY_RESULT(CheckedStoll(args[0]));
+  SCHECK_LT(
+      rollback_version, std::numeric_limits<uint32_t>::max(), InvalidArgument,
+      "rollback_version exceeds bounds");
+
+  RETURN_NOT_OK_PREPEND(
+      client->RollbackAutoFlags(static_cast<uint32_t>(rollback_version)),
+      "Unable to Rollback AutoFlags");
+  return Status::OK();
+}
+
+const auto promote_single_auto_flag_args = "<process_name> <auto_flag_name>";
+Status promote_single_auto_flag_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 2) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  auto& process_name = args[0];
+  auto& auto_flag_name = args[1];
+
+  RETURN_NOT_OK_PREPEND(
+      client->PromoteSingleAutoFlag(process_name, auto_flag_name), "Unable to Promote AutoFlag");
+  return Status::OK();
+}
+
+const auto demote_single_auto_flag_args = "<process_name> <auto_flag_name> [force]";
+Status demote_single_auto_flag_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() > 3) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  auto& process_name = args[0];
+  auto& auto_flag_name = args[1];
+  if (args.size() == 3 && !IsEqCaseInsensitive(args[2], "force")) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+  const bool force = args.size() == 3;
+
+  if (!force) {
+    std::cout
+        << "WARNING: Demotion of AutoFlags is dangerous and can lead to silent corruptions and "
+           "data loss!";
+    std::cout << "Are you sure you want to demote the flag '" << auto_flag_name
+              << "' belonging to process '" << process_name << "'? (y/N)?";
+    std::string answer;
+    std::cin >> answer;
+    SCHECK(answer == "y" || answer == "Y", InvalidArgument, "demote_single_auto_flag aborted");
+  }
+
+  RETURN_NOT_OK_PREPEND(
+      client->DemoteSingleAutoFlag(process_name, auto_flag_name), "Unable to Demote AutoFlag");
+  return Status::OK();
+}
+
 std::string GetListSnapshotsFlagList() {
   std::string options = "";
   for (auto flag : ListSnapshotsFlagList()) {
@@ -1297,17 +1371,33 @@ Status list_snapshots_action(
 }
 
 const auto create_snapshot_args =
-    "<table> [<table>]... [<flush_timeout_in_seconds>] (default 60, set 0 to skip flushing)";
+    "<table> [<table>]... [<flush_timeout_in_seconds>] (default 60, set 0 to skip flushing) "
+    "[<retention_duration_hours>] (set a <= 0 value to retain the snapshot forever. If not "
+    "specified then takes the default value controlled by gflag default_snapshot_retention_hours) "
+    "[skip_indexes]";
 Status create_snapshot_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   int timeout_secs = 60;
+  std::optional<int32_t> retention_duration_hours;
+  bool timeout_set = false;
+  bool skip_indexes = false;
   const auto tables = VERIFY_RESULT(ResolveTableNames(
-      client, args.begin(), args.end(), [&timeout_secs](auto i, const auto& end) -> Status {
-        if (std::next(i) == end) {
-          timeout_secs = VERIFY_RESULT(CheckedStoi(*i));
-          return Status::OK();
+      client, args.begin(), args.end(), [&](auto i, const auto& end) -> Status {
+        for (auto curr_it = i; curr_it != end; ++curr_it) {
+          if (IsEqCaseInsensitive(*curr_it, "skip_indexes")) {
+            skip_indexes = true;
+            continue;
+          }
+          if (!timeout_set) {
+            timeout_secs = VERIFY_RESULT(CheckedStoi(*curr_it));
+            timeout_set = true;
+          } else if (!retention_duration_hours) {
+            retention_duration_hours = VERIFY_RESULT(CheckedStoi(*curr_it));
+          } else {
+            return ClusterAdminCli::kInvalidArguments;
+          }
         }
-        return ClusterAdminCli::kInvalidArguments;
+        return Status::OK();
       }));
 
   for (auto table : tables) {
@@ -1315,10 +1405,16 @@ Status create_snapshot_action(
       return STATUS(
           InvalidArgument, "Cannot create snapshot of YCQL system table", table.table_name());
     }
+    if (table.is_pgsql_namespace()) {
+      return STATUS(
+          InvalidArgument,
+          "Cannot create snapshot of individual YSQL tables. Only database level is supported");
+    }
   }
 
   RETURN_NOT_OK_PREPEND(
-      client->CreateSnapshot(tables, true, timeout_secs),
+      client->CreateSnapshot(tables, retention_duration_hours,
+                             !skip_indexes, timeout_secs),
       Format("Unable to create snapshot of tables: $0", yb::ToString(tables)));
   return Status::OK();
 }
@@ -1416,11 +1512,23 @@ Status edit_snapshot_schedule_action(
   return PrintJsonResult(client->EditSnapshotSchedule(schedule_id, new_interval, new_retention));
 }
 
-const auto create_keyspace_snapshot_args = "[ycql.]<database_name>";
+const auto create_keyspace_snapshot_args = "[ycql.]<database_name> [retention_duration_hours] "
+    "(set a <= 0 value to retain the snapshot forever. If not specified "
+    "then takes the default value controlled by gflag default_retention_hours) "
+    "[skip_indexes] (if not specified then defaults to false)";
 Status create_keyspace_snapshot_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  if (args.size() != 1) {
+  if (args.size() < 1 || args.size() > 3) {
     return ClusterAdminCli::kInvalidArguments;
+  }
+  std::optional<int32_t> retention_duration_hours;
+  bool skip_indexes = false;
+  for (size_t i = 1; i < args.size(); i++) {
+    if (IsEqCaseInsensitive(args[i], "skip_indexes")) {
+      skip_indexes = true;
+    } else {
+      retention_duration_hours = VERIFY_RESULT(CheckedStoi(args[i]));
+    }
   }
 
   const TypedNamespaceName keyspace = VERIFY_RESULT(ParseNamespaceName(args[0]));
@@ -1429,16 +1537,23 @@ Status create_keyspace_snapshot_action(
       Format("Wrong keyspace type: $0", YQLDatabase_Name(keyspace.db_type)));
 
   RETURN_NOT_OK_PREPEND(
-      client->CreateNamespaceSnapshot(keyspace),
+      client->CreateNamespaceSnapshot(keyspace, retention_duration_hours, !skip_indexes),
       Format("Unable to create snapshot of keyspace: $0", keyspace.name));
   return Status::OK();
 }
 
-const auto create_database_snapshot_args = "[ysql.]<database_name>";
+const auto create_database_snapshot_args = "[ysql.]<database_name> [retention_duration_hours] "
+    "(set a <= 0 value to retain the snapshot forever. If not specified "
+    "then takes the default value controlled by gflag default_retention_hours)";
 Status create_database_snapshot_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() != 1) {
     return ClusterAdminCli::kInvalidArguments;
+  }
+
+  std::optional<int32_t> retention_duration_hours;
+  if (args.size() == 2) {
+    retention_duration_hours = VERIFY_RESULT(CheckedStoi(args[1]));
   }
 
   const TypedNamespaceName database =
@@ -1448,7 +1563,7 @@ Status create_database_snapshot_action(
       Format("Wrong database type: $0", YQLDatabase_Name(database.db_type)));
 
   RETURN_NOT_OK_PREPEND(
-      client->CreateNamespaceSnapshot(database),
+      client->CreateNamespaceSnapshot(database, retention_duration_hours),
       Format("Unable to create snapshot of database: $0", database.name));
   return Status::OK();
 }
@@ -1647,17 +1762,21 @@ Status create_cdc_stream_action(
   return Status::OK();
 }
 
-const auto create_change_data_stream_args = "<namespace> [<checkpoint_type>] [<record_type>]";
+const auto create_change_data_stream_args =
+   "<namespace> [<checkpoint_type>] [<record_type>] [<consistent_snapshot_option>]";
 Status create_change_data_stream_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() < 1) {
     return ClusterAdminCli::kInvalidArguments;
   }
 
-  std::string checkpoint_type = yb::ToString("IMPLICIT");
-  std::string record_type = yb::ToString("CHANGE");
+  std::string checkpoint_type = yb::ToString("EXPLICIT");
+  cdc::CDCRecordType record_type_pb = cdc::CDCRecordType::CHANGE;
+  std::optional<std::string> consistent_snapshot_option;
   std::string uppercase_checkpoint_type;
   std::string uppercase_record_type;
+  std::string uppercase_consistent_snapshot_option;
+
 
   if (args.size() > 1) {
     ToUpperCase(args[1], &uppercase_checkpoint_type);
@@ -1670,20 +1789,26 @@ Status create_change_data_stream_action(
 
   if (args.size() > 2) {
     ToUpperCase(args[2], &uppercase_record_type);
-    if (uppercase_record_type != yb::ToString("ALL") &&
-        uppercase_record_type != yb::ToString("CHANGE") &&
-        uppercase_record_type != yb::ToString("FULL_ROW_NEW_IMAGE") &&
-        uppercase_record_type != yb::ToString("MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES")) {
+    if (!cdc::CDCRecordType_Parse(uppercase_record_type, &record_type_pb)) {
       return ClusterAdminCli::kInvalidArguments;
     }
-    record_type = uppercase_record_type;
+  }
+
+  if (args.size() > 3) {
+    ToUpperCase(args[3], &uppercase_consistent_snapshot_option);
+    if (uppercase_consistent_snapshot_option != "USE_SNAPSHOT" &&
+        uppercase_consistent_snapshot_option != "NOEXPORT_SNAPSHOT") {
+      return ClusterAdminCli::kInvalidArguments;
+    }
+    consistent_snapshot_option = uppercase_consistent_snapshot_option;
   }
 
   const string namespace_name = args[0];
   const TypedNamespaceName database = VERIFY_RESULT(ParseNamespaceName(args[0]));
 
   RETURN_NOT_OK_PREPEND(
-      client->CreateCDCSDKDBStream(database, checkpoint_type, record_type),
+      client->CreateCDCSDKDBStream(
+          database, checkpoint_type, record_type_pb, consistent_snapshot_option),
       Format("Unable to create CDC stream for database $0", namespace_name));
   return Status::OK();
 }
@@ -1760,6 +1885,25 @@ Status get_change_data_stream_info_action(
   return Status::OK();
 }
 
+const auto ysql_backfill_change_data_stream_with_replication_slot_args =
+    "<stream_id> <replication_slot_name>";
+Status ysql_backfill_change_data_stream_with_replication_slot_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 2) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  const string stream_id = args[0];
+  const string replication_slot_name = args[1];
+
+  RETURN_NOT_OK_PREPEND(
+      client->YsqlBackfillReplicationSlotNameToCDCSDKStream(stream_id, replication_slot_name),
+      Format(
+          "Unable to backfill CDC stream $0 with replication slot $1", stream_id,
+          replication_slot_name));
+  return Status::OK();
+}
+
 const auto setup_universe_replication_args =
     "<producer_universe_uuid> <producer_master_addresses> "
     "<comma_separated_list_of_table_ids> [<comma_separated_list_of_producer_bootstrap_ids>] "
@@ -1814,19 +1958,19 @@ Status delete_universe_replication_action(
   if (args.size() < 1) {
     return ClusterAdminCli::kInvalidArguments;
   }
-  const string producer_id = args[0];
+  const string replication_group_id = args[0];
   bool ignore_errors = false;
   if (args.size() >= 2 && args[1] == "ignore-errors") {
     ignore_errors = true;
   }
   RETURN_NOT_OK_PREPEND(
-      client->DeleteUniverseReplication(producer_id, ignore_errors),
-      Format("Unable to delete replication for universe $0", producer_id));
+      client->DeleteUniverseReplication(replication_group_id, ignore_errors),
+      Format("Unable to delete replication for universe $0", replication_group_id));
   return Status::OK();
 }
 
 const auto alter_universe_replication_args =
-    "<producer_universe_id>"
+    "<producer_universe_uuid>"
     "(set_master_addresses [<comma_separated_list_of_producer_master_addresses>] | "
     "add_table [<comma_separated_list_of_table_ids>] "
     "[<comma_separated_list_of_producer_bootstrap_ids>] | "
@@ -1846,7 +1990,7 @@ Status alter_universe_replication_action(
   vector<string> add_tables;
   vector<string> remove_tables;
   vector<string> bootstrap_ids_to_add;
-  string new_producer_universe_id = "";
+  string new_replication_group_id = "";
   bool remove_table_ignore_errors = false;
 
   vector<string> newElem, *lst;
@@ -1861,7 +2005,7 @@ Status alter_universe_replication_action(
     }
   } else if (args[1] == "rename_id") {
     lst = nullptr;
-    new_producer_universe_id = args[2];
+    new_replication_group_id = args[2];
   } else {
     return ClusterAdminCli::kInvalidArguments;
   }
@@ -1878,7 +2022,7 @@ Status alter_universe_replication_action(
   RETURN_NOT_OK_PREPEND(
       client->AlterUniverseReplication(
           replication_group_id, master_addresses, add_tables, remove_tables, bootstrap_ids_to_add,
-          new_producer_universe_id, remove_table_ignore_errors),
+          new_replication_group_id, remove_table_ignore_errors),
       Format("Unable to alter replication for universe $0", replication_group_id));
 
   return Status::OK();
@@ -1906,13 +2050,13 @@ Status set_universe_replication_enabled_action(
   if (args.size() < 2) {
     return ClusterAdminCli::kInvalidArguments;
   }
-  const string producer_id = args[0];
+  const string replication_group_id = args[0];
   const bool is_enabled = VERIFY_RESULT(CheckedStoi(args[1])) != 0;
   RETURN_NOT_OK_PREPEND(
-      client->SetUniverseReplicationEnabled(producer_id, is_enabled),
+      client->SetUniverseReplicationEnabled(replication_group_id, is_enabled),
       Format(
           "Unable to $0 replication for universe $1", is_enabled ? "enable" : "disable",
-          producer_id));
+          replication_group_id));
   return Status::OK();
 }
 
@@ -2041,9 +2185,9 @@ Status get_replication_status_action(
   if (args.size() != 0 && args.size() != 1) {
     return ClusterAdminCli::kInvalidArguments;
   }
-  const string producer_universe_uuid = args.size() == 1 ? args[0] : "";
+  const string replication_group_id = args.size() == 1 ? args[0] : "";
   RETURN_NOT_OK_PREPEND(
-      client->GetReplicationInfo(producer_universe_uuid), "Unable to get replication status");
+      client->GetReplicationInfo(replication_group_id), "Unable to get replication status");
   return Status::OK();
 }
 
@@ -2127,7 +2271,11 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(upgrade_ysql);
   REGISTER_COMMAND(set_wal_retention_secs);
   REGISTER_COMMAND(get_wal_retention_secs);
+  REGISTER_COMMAND(get_auto_flags_config);
   REGISTER_COMMAND(promote_auto_flags);
+  REGISTER_COMMAND(rollback_auto_flags);
+  REGISTER_COMMAND(promote_single_auto_flag);
+  REGISTER_COMMAND(demote_single_auto_flag);
   REGISTER_COMMAND(list_snapshots);
   REGISTER_COMMAND(create_snapshot);
   REGISTER_COMMAND(list_snapshot_restorations);
@@ -2154,6 +2302,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(rotate_universe_key_in_memory);
   REGISTER_COMMAND(disable_encryption_in_memory);
   REGISTER_COMMAND(write_universe_key_to_file);
+  // CDC commands
   REGISTER_COMMAND(create_cdc_stream);
   REGISTER_COMMAND(create_change_data_stream);
   REGISTER_COMMAND(delete_cdc_stream);
@@ -2161,6 +2310,8 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(list_cdc_streams);
   REGISTER_COMMAND(list_change_data_streams);
   REGISTER_COMMAND(get_change_data_stream_info);
+  REGISTER_COMMAND(ysql_backfill_change_data_stream_with_replication_slot);
+  // xCluster commands
   REGISTER_COMMAND(setup_universe_replication);
   REGISTER_COMMAND(delete_universe_replication);
   REGISTER_COMMAND(alter_universe_replication);

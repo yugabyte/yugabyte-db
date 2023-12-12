@@ -1,4 +1,4 @@
----
+<!---
 title: Using Sequelize with YugabyteDB
 linkTitle: Sequelize
 description: Using Sequelize with YugabyteDB
@@ -8,7 +8,7 @@ menu:
     parent: integrations
     weight: 571
 type: docs
----
+--->
 
 This document describes how to use [Sequelize](https://sequelize.org/), a promise-based Node.js object-relational mapping (ORM), with YugabetyDB.
 

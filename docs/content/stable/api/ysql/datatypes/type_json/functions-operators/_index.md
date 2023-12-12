@@ -4,7 +4,7 @@ headerTitle: JSON functions and operators
 linkTitle: Functions & operators
 summary: Functions and operators
 description: Learn about JSON functions and operators categorized by the goal you want to accomplish.
-image: /images/section_icons/api/ysql.png
+image: /images/section_icons/api/subsection.png
 menu:
   stable:
     identifier: json-functions-operators

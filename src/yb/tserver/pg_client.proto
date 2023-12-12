@@ -33,11 +33,14 @@ service PgClientService {
   rpc AlterTable(PgAlterTableRequestPB) returns (PgAlterTableResponsePB);
   rpc BackfillIndex(PgBackfillIndexRequestPB) returns (PgBackfillIndexResponsePB);
   rpc CreateDatabase(PgCreateDatabaseRequestPB) returns (PgCreateDatabaseResponsePB);
+  rpc CreateReplicationSlot(PgCreateReplicationSlotRequestPB)
+      returns (PgCreateReplicationSlotResponsePB);
   rpc CreateSequencesDataTable(PgCreateSequencesDataTableRequestPB)
       returns (PgCreateSequencesDataTableResponsePB);
   rpc CreateTable(PgCreateTableRequestPB) returns (PgCreateTableResponsePB);
   rpc CreateTablegroup(PgCreateTablegroupRequestPB) returns (PgCreateTablegroupResponsePB);
   rpc DropDatabase(PgDropDatabaseRequestPB) returns (PgDropDatabaseResponsePB);
+  rpc DropReplicationSlot(PgDropReplicationSlotRequestPB) returns (PgDropReplicationSlotResponsePB);
   rpc DropTable(PgDropTableRequestPB) returns (PgDropTableResponsePB);
   rpc DropTablegroup(PgDropTablegroupRequestPB) returns (PgDropTablegroupResponsePB);
   rpc FinishTransaction(PgFinishTransactionRequestPB) returns (PgFinishTransactionResponsePB);
@@ -45,9 +48,13 @@ service PgClientService {
       returns (PgGetCatalogMasterVersionResponsePB);
   rpc GetDatabaseInfo(PgGetDatabaseInfoRequestPB) returns (PgGetDatabaseInfoResponsePB);
   rpc GetLockStatus(PgGetLockStatusRequestPB) returns (PgGetLockStatusResponsePB);
+  rpc GetReplicationSlotStatus(PgGetReplicationSlotStatusRequestPB)
+      returns (PgGetReplicationSlotStatusResponsePB);
   rpc IsInitDbDone(PgIsInitDbDoneRequestPB) returns (PgIsInitDbDoneResponsePB);
   rpc ListLiveTabletServers(PgListLiveTabletServersRequestPB)
       returns (PgListLiveTabletServersResponsePB);
+  rpc ListReplicationSlots(PgListReplicationSlotsRequestPB)
+      returns (PgListReplicationSlotsResponsePB);
   rpc GetIndexBackfillProgress(PgGetIndexBackfillProgressRequestPB)
       returns (PgGetIndexBackfillProgressResponsePB);
   rpc OpenTable(PgOpenTableRequestPB) returns (PgOpenTableResponsePB);
@@ -59,9 +66,7 @@ service PgClientService {
   rpc ReserveOids(PgReserveOidsRequestPB) returns (PgReserveOidsResponsePB);
   rpc RollbackToSubTransaction(PgRollbackToSubTransactionRequestPB)
       returns (PgRollbackToSubTransactionResponsePB);
-  // DEPRECATED
-  rpc SetActiveSubTransaction(PgSetActiveSubTransactionRequestPB)
-      returns (PgSetActiveSubTransactionResponsePB);
+
   rpc TabletServerCount(PgTabletServerCountRequestPB) returns (PgTabletServerCountResponsePB);
   rpc TruncateTable(PgTruncateTableRequestPB) returns (PgTruncateTableResponsePB);
   rpc ValidatePlacement(PgValidatePlacementRequestPB)
@@ -85,6 +90,19 @@ service PgClientService {
   rpc CancelTransaction(PgCancelTransactionRequestPB) returns (PgCancelTransactionResponsePB);
   rpc GetActiveTransactionList(PgGetActiveTransactionListRequestPB)
       returns (PgGetActiveTransactionListResponsePB);
+
+  rpc GetTableKeyRanges(PgGetTableKeyRangesRequestPB) returns (PgGetTableKeyRangesResponsePB);
+
+  rpc GetNewObjectId(PgGetNewObjectIdRequestPB)
+      returns (PgGetNewObjectIdResponsePB);
+
+  // DEPRECATED
+  rpc SetActiveSubTransaction(PgSetActiveSubTransactionRequestPB)
+      returns (PgSetActiveSubTransactionResponsePB);
+
+  rpc FetchData(PgFetchDataRequestPB) returns (PgFetchDataResponsePB) {
+    option (yb.rpc.lightweight_method).sides = PROXY;
+  };
 }
 
 message PgHeartbeatRequestPB {
@@ -162,6 +180,17 @@ message PgCreateDatabaseResponsePB {
 }
 
 message PgCreateSequencesDataTableRequestPB {
+}
+
+message PgCreateReplicationSlotRequestPB {
+  uint64 session_id = 1;
+  uint32 database_oid = 2;
+  string replication_slot_name = 3;
+}
+
+message PgCreateReplicationSlotResponsePB {
+  AppStatusPB status = 1;
+  bytes stream_id = 2;
 }
 
 message PgCreateSequencesDataTableResponsePB {
@@ -245,6 +274,15 @@ message PgDropDatabaseResponsePB {
   AppStatusPB status = 1;
 }
 
+message PgDropReplicationSlotRequestPB {
+  uint64 session_id = 1;
+  string replication_slot_name = 2;
+}
+
+message PgDropReplicationSlotResponsePB {
+  AppStatusPB status = 1;
+}
+
 message PgDropTableRequestPB {
   uint64 session_id = 1;
   PgObjectIdPB table_id = 2;
@@ -269,11 +307,14 @@ message PgGetCatalogMasterVersionRequestPB {
 }
 
 message PgFinishTransactionRequestPB {
+  message DdlModePB {
+    // This transaction contains changes to the DocDB schema protobufs.
+    bool has_docdb_schema_changes = 1;
+  }
+
   uint64 session_id = 1;
   bool commit = 2;
-  bool ddl_mode = 3;
-  // This transaction contains changes to the DocDB schema protobufs.
-  bool has_docdb_schema_changes = 4;
+  DdlModePB ddl_mode = 3;
 }
 
 message PgFinishTransactionResponsePB {
@@ -337,6 +378,21 @@ message PgGetLockStatusResponsePB {
   map<string, TransactionList> transactions_by_node = 3;
 }
 
+message PgGetReplicationSlotStatusRequestPB {
+  string replication_slot_name = 1;
+}
+
+enum ReplicationSlotStatus {
+  ACTIVE = 0;
+  INACTIVE = 1;
+}
+
+message PgGetReplicationSlotStatusResponsePB {
+  AppStatusPB status = 1;
+
+  ReplicationSlotStatus replication_slot_status = 2;
+}
+
 message PgListLiveTabletServersRequestPB {
   bool primary_only = 1;
 }
@@ -367,6 +423,20 @@ message PgGetIndexBackfillProgressResponsePB {
 message PgListLiveTabletServersResponsePB {
   AppStatusPB status = 1;
   repeated PgLiveTabletServerPB servers = 2;
+}
+
+message PgListReplicationSlotsRequestPB {}
+
+message PgReplicationSlotInfoPB {
+  string slot_name = 1;
+  bytes stream_id = 2;
+  uint32 database_oid = 3;
+  ReplicationSlotStatus replication_slot_status = 4;
+}
+
+message PgListReplicationSlotsResponsePB {
+  AppStatusPB status = 1;
+  repeated PgReplicationSlotInfoPB replication_slots = 2;
 }
 
 message PgOpenTableRequestPB {
@@ -424,8 +494,9 @@ message OptionalUint64PB { uint64 value = 1; }
 
 message PgPerformOptionsPB {
   message CachingInfoPB {
-    bytes key = 1;
-    OptionalUint32PB lifetime_threshold_ms = 2;
+    uint64 key_group = 1;
+    bytes key_value = 2;
+    OptionalUint32PB lifetime_threshold_ms = 3;
   }
 
   // Cannot use IsolationLevel enum, since we cannot use proto2 enum in proto3 messages.
@@ -451,6 +522,10 @@ message PgPerformOptionsPB {
   CachingInfoPB caching_info = 17;
   bool read_from_followers = 18;
   bool trace_requested = 19;
+  bool yb_non_ddl_txn_for_sys_tables_allowed = 21;
+  int64 pg_txn_start_us = 22;
+
+  AshMetadataPB ash_metadata = 23;
 }
 
 message PgPerformRequestPB {
@@ -704,4 +779,40 @@ message PgGetActiveTransactionListResponsePB {
   }
   AppStatusPB status = 1;
   repeated EntryPB entries = 2;
+}
+
+message PgGetTableKeyRangesRequestPB {
+  uint64 session_id = 1;
+  PgObjectIdPB table_id = 2;
+  bytes lower_bound_key = 3;
+  bytes upper_bound_key = 4;
+  uint64 max_num_ranges = 5;
+  uint64 range_size_bytes = 6;
+  bool is_forward = 7;
+  uint32 max_key_length = 8;
+  uint64 read_time_serial_no = 9;
+}
+
+message PgGetTableKeyRangesResponsePB {
+  AppStatusPB status = 1;
+  fixed64 current_ht = 2;
+}
+
+message PgGetNewObjectIdRequestPB {
+  uint32 db_oid = 1;
+}
+
+message PgGetNewObjectIdResponsePB {
+  AppStatusPB status = 1;
+  uint32 new_oid = 2;
+}
+
+message PgFetchDataRequestPB {
+  uint64 session_id = 1;
+  uint64 data_id = 2;
+}
+
+message PgFetchDataResponsePB {
+  AppStatusPB status = 1;
+  uint32 sidecar = 2;
 }

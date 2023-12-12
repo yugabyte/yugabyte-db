@@ -61,9 +61,29 @@ std::shared_ptr<StreamMetadata::StreamTabletMetadata> StreamMetadata::GetTabletM
   return metadata;
 }
 
+std::vector<xrepl::StreamTabletStats> StreamMetadata::GetAllStreamTabletStats(
+    const xrepl::StreamId& stream_id) const {
+  std::vector<xrepl::StreamTabletStats> result;
+  const auto table_ids = GetTableIds();
+  SharedLock l(tablet_metadata_map_mutex_);
+  for (const auto& [tablet_id, metadata] : tablet_metadata_map_) {
+    xrepl::StreamTabletStats stat;
+    stat.stream_id_str = stream_id.ToString();
+    stat.producer_tablet_id = tablet_id;
+    stat.producer_table_id = table_ids.size() == 1 ? table_ids[0] : yb::AsString(table_ids);
+    stat.state = SysCDCStreamEntryPB_State_Name(state_);
+    metadata->PopulateStats(&stat);
+
+    result.emplace_back(std::move(stat));
+  }
+
+  return result;
+}
+
 Status StreamMetadata::InitOrReloadIfNeeded(
     const xrepl::StreamId& stream_id, RefreshStreamMapOption opts, client::YBClient* client) {
   std::lock_guard l(load_mutex_);
+
   if (!loaded_ || opts == RefreshStreamMapOption::kAlways ||
       (opts == RefreshStreamMapOption::kIfInitiatedState &&
        state_.load(std::memory_order_acquire) == master::SysCDCStreamEntryPB_State_INITIATED)) {
@@ -89,9 +109,13 @@ Status StreamMetadata::GetStreamInfoFromMaster(
   NamespaceId namespace_id;
   std::unordered_map<std::string, std::string> options;
   StreamModeTransactional transactional(false);
+  std::optional<uint64> consistent_snapshot_time;
+  std::optional<CDCSDKSnapshotOption> consistent_snapshot_option;
 
   RETURN_NOT_OK(
-      client->GetCDCStream(stream_id, &namespace_id, &object_ids, &options, &transactional));
+      client->GetCDCStream(
+          stream_id, &namespace_id, &object_ids, &options, &transactional,
+          &consistent_snapshot_time, &consistent_snapshot_option));
 
   AddDefaultOptionsIfMissing(&options);
 
@@ -140,11 +164,25 @@ Status StreamMetadata::GetStreamInfoFromMaster(
   }
 
   transactional_.store(transactional, std::memory_order_release);
+  consistent_snapshot_time_.store(consistent_snapshot_time, std::memory_order_release);
+  consistent_snapshot_option_ = consistent_snapshot_option;
+
   if (!is_refresh) {
     loaded_.store(true, std::memory_order_release);
   }
 
   return Status::OK();
+}
+
+void StreamMetadata::StreamTabletMetadata::UpdateStats(
+    const MonoTime& start_time, const Status& status, int num_records, size_t bytes_sent,
+    int64_t sent_index, int64_t latest_wal_index) {
+  stats_history_.UpdateStats(
+      start_time, status, num_records, bytes_sent, sent_index, latest_wal_index);
+}
+
+void StreamMetadata::StreamTabletMetadata::PopulateStats(xrepl::StreamTabletStats* stats) const {
+  stats_history_.PopulateStats(stats);
 }
 
 }  // namespace cdc

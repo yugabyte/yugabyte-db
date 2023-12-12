@@ -3,7 +3,6 @@ title: Host-based authentication
 headerTitle: Host-based authentication
 linkTitle: Host-based authentication
 description: Manage access control for localhost, remote hosts, and clients for YSQL.
-image: /images/section_icons/secure/authentication.png
 menu:
   v2.16:
     identifier: host-based-authentication
@@ -93,19 +92,42 @@ hostssl    database  user  IP-address  netmask  auth-method  [auth-options]
 hostnossl  database  user  IP-address  netmask  auth-method  [auth-options]
 ```
 
-### local
+### Connection
 
-This record matches connection attempts made via the UNIX socket.
+#### local
 
-### host
+Similarly to PostgreSQL, YugabyteDB supports opening connections via the UNIX sockets when local authentication is used. However, unlike PostgreSQL, YugabyteDB requires ysqlsh, psql and other tools to provide the full path to the socket location when using the following authentication methods:
+
+- local authentication using [peer](#peer)
+- local authentication using [trust](#trust)
+
+One way to obtain the path to the socket location is from the YB-TServer logs, similar to the following:
+
+```output
+2023-09-05 13:56:20.154 UTC [1261] LOG:  listening on Unix socket "/tmp/.yb.127.0.0.1:5433/.s.PGSQL.5433"
+```
+
+If you use ysqlsh, use the `-h` flag, and pass in the first part of the path (in the preceding example, `/tmp/.yb.127.0.0.1:5433/`) as follows:
+
+```sh
+./bin/ysqlsh -h /tmp/.yb.127.0.0.1:5433
+```
+
+For psql, you also need specify the port number as follows:
+
+```sh
+psql -h /tmp/.yb.127.0.0.1:5433/ -p 5433
+```
+
+#### host
 
 This record matches connection attempts made using TCP/IP, including localhost. `host` records match either SSL or non-SSL connection attempts.
 
-### hostssl
+#### hostssl
 
 This record specifies a local or remote host that can connect to a YugabyteDB cluster using SSL.
 
-### hostnossl
+#### hostnossl
 
 This record only matches connection attempts made over TCP/IP that do not use SSL.
 

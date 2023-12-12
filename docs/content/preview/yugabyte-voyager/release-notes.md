@@ -11,20 +11,69 @@ menu:
 type: docs
 ---
 
-Included here are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
+What follows are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
+
+## v1.6 - November 30, 2023
+
+### New Features
+
+- Live migration
+
+  - Support for [live migration](../migrate/live-migrate/) from Oracle databases (with the option of [fall-back](../migrate/live-fall-back/)) {{<badge/tp>}}, using which you can fall back to the original source database if an issue arises during live migration.
+
+  - Various commands that are used in live migration workflows (including [fall-forward](../migrate/live-fall-forward/)) have been modified. YugabyteDB Voyager is transitioning from the use of the term "fall-forward database" to the more preferred "source-replica database" terminology. The following table includes the list of modified commands.
+
+      | Old command | New command |
+      | :---------- | :---------- |
+      | yb-voyager fall-forward setup ... | yb-voyager import data to source-replica ... |
+      | yb-voyager fall-forward synchronize ... | yb-voyager export data from target ... |
+      | yb-voyager fall-forward switchover ... | yb-voyager initiate cutover to source-replica ... |
+      | yb-voyager cutover initiate ... | yb-voyager initiate cutover to target ... |
+
+  - A new command `yb-voyager get data-migration-report` has been added to display table-wise statistics during and post live migration.
+
+- End migration
+
+A new command `yb-voyager end migration` has been added to complete migration by cleaning up metadata on all databases involved in migration, and backing up migration reports, schema, data, and log files.
+
+### Enhancements
+
+- Boolean arguments in yb-voyager commands have been standardized as string arguments for consistent CLI usage.
+In all yb-voyager commands, there is no need to explicitly use `=` while setting boolean flags to false; a white-space would work (just like arguments of other types). As a side effect of this action, you cannot use boolean flag names without any value. For example, use `--send-diagnostics true` instead of `--send-diagnostics`. The boolean values can now be specified as `true/false, yes/no, 1/0`.
+- For yb-voyager export/import data, the argument `--table-list` can now be provided via a file using the arguments `--table-list-file-path` or `exclude-table-list-file-path`. The table-list arguments now support glob wildcard characters `?` (matches one character) and `*` (matches zero or more characters). Furthermore, the `table-list` and `exclude-table-list` arguments can be used together in a command, which can be beneficial with glob support.
+- Object types in `yb-voyager export schema` can now be filtered via the arguments `--object-type-list` or `--exclude-object-type-list`.
+- In yb-voyager import-data, table names provided via any `table-list` argument are now by default, case-insensitive. To make it case-sensitive, enclose each name in double quotes.
+- The `--verbose` argument has been removed from all yb-voyager commands.
+- The `--delete` argument in `yb-voyager archive-changes` has been renamed to `--delete-changes-without-archiving`.
+- `yb-voyager analyze-schema` now provides additional details in the report, indicating indices that don't get exported, such as reverse indexes, which are unsupported in YugabyteDB.
+
+### Bug fix
+
+Removed redundant ALTER COLUMN DDLs present in the exported schema for certain cases.
+
+### Known issues
+
+- Compared to earlier releases, Voyager v1.6 uses a different and incompatible structure to represent the import data state. As a result, Voyager v1.6 can't "continue" a data import operation that was started using Voyager v1.5 or earlier.
+
+- If you are using [dockerised yb-voyager](../install-yb-voyager/#install-yb-voyager):
+
+  - export schema and export data from Oracle database with SSL (via --oracle-tns-alias) fails. Use a non-docker version of yb-voyager to work around this limitation.
+
+  - end migration command fails. This issue will be addressed in an upcoming release.
+
 
 ## v1.5 - September 11, 2023
 
 ### New feature
 
-* Support for [live migration](../migrate/live-migrate/) from Oracle databases (with the option of [fall-forward](../migrate/live-fall-forward/)) [Tech Preview].
+* Support for [live migration](../migrate/live-migrate/) from Oracle databases (with the option of [fall-forward](../migrate/live-fall-forward/)) {{<badge/tp>}}.
 
 Note that as the feature in Tech Preview, there are some known limitations. For details, refer to [Live migration limitations](../migrate/live-migrate/#limitations), and [Live migration with fall-forward limitations](../migrate/live-fall-forward/#limitations).
 
 ### Key enhancements
 
-* The yb-voyager [export data](../reference/yb-voyager-cli/#export-data) and [export schema](../reference/yb-voyager-cli/#export-schema) commands now support overriding the `pg_dump` arguments internally. The arguments are present at `/etc/yb-voyager/pg_dump-args.ini`. Any additions or modifications to this file will be honoured by yb-voyager.
-* The yb-voyager export data and [import data](../reference/yb-voyager-cli/#import-data) commands now support providing passwords using environment variables `SOURCE_DB_PASSWORD` and `TARGET_DB_PASSWORD`. This addresses the security concern of a password being leaked via the `ps` command output. In addition, the password will not be present in any configuration or log files on the disk.
+* The yb-voyager [export data](../reference/data-migration/export-data/) and [export schema](../reference/schema-migration/export-schema/) commands now support overriding the `pg_dump` arguments internally. The arguments are present at `/etc/yb-voyager/pg_dump-args.ini`. Any additions or modifications to this file will be honoured by yb-voyager.
+* All yb-voyager commands that require a password now support providing passwords using environment variables such as `SOURCE_DB_PASSWORD` and `TARGET_DB_PASSWORD`. This addresses the security concern of a password being leaked via the `ps` command output. In addition, the password will not be present in any configuration or log files on the disk.
 
 ## v1.4 - June 30, 2023
 
@@ -34,11 +83,11 @@ Note that as the feature in Tech Preview, there are some known limitations. For 
 
 * In addition to AWS S3, `import data file` now supports directly importing objects (CSV/TEXT files) stored in GCS and Azure Blob Storage. You can specify GCS and Azure Blob Storage "directories" by prefixing them with `gs://` and `https://`.
 
-* When using the [accelerated data export](../migrate-steps/#accelerate-data-export-for-mysql-and-oracle), Voyager can now connect to the source databases using SSL.
+* When using the [accelerated data export](../migrate/migrate-steps/#accelerate-data-export-for-mysql-and-oracle), Voyager can now connect to the source databases using SSL.
 
 * The `analyze-schema` command now reports unsupported data types.
 
-* The `--file-opts` CLI argument is now deprecated. Use the new [--escape-char](../reference/yb-voyager-cli/#escape-char) and [--quote-char](../reference/yb-voyager-cli/#quote-char) options.
+* The `--file-opts` CLI argument is now deprecated. Use the new [--escape-char](../reference/bulk-data-load/import-data-file/#arguments) and [--quote-char](../reference/bulk-data-load/import-data-file/#arguments) options.
 
 ### Bug fixes
 
@@ -56,9 +105,9 @@ Note that as the feature in Tech Preview, there are some known limitations. For 
 
 ### Key enhancements
 
-* Export data for MySQL and Oracle is now 2-4x faster. To leverage this performance improvement, set the environment variable `BETA_FAST_DATA_EXPORT=1`. Most features, such as migrating partitioned tables, sequences, and so on, are supported in this mode. Refer to [Export data](../migrate-steps/#export-data) for more details.
+* Export data for MySQL and Oracle is now 2-4x faster. To leverage this performance improvement, set the environment variable `BETA_FAST_DATA_EXPORT=1`. Most features, such as migrating partitioned tables, sequences, and so on, are supported in this mode. Refer to [Export data](../migrate/migrate-steps/#export-data) for more details.
 
-* Added support for characters such as backspace(\b) in quote and escape character with [--file-opts](../reference/yb-voyager-cli/#file-opts) in import data file.
+* Added support for characters such as backspace(\b) in quote and escape character with [--file-opts](../reference/bulk-data-load/import-data-file/#arguments) in import data file.
 
 * Added ability to specify null value string in import data file.
 

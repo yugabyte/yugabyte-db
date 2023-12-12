@@ -2,7 +2,7 @@
 {{ $docDir := "" }}
 {{ $versionDir := "" }}
 
-{{- if .File.Dir -}}
+{{- if (and .File .File.Dir) -}}
   {{ $versionDir = index (split .File.Dir "/") 0 }}
   {{ $docDir = index (split .File.Dir "/") 1 }}
 {{- end -}}

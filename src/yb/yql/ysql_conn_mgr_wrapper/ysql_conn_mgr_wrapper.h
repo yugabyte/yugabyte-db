@@ -28,7 +28,7 @@ class TabletServerIf;
 // YsqlConnMgrWrapper: managing one instance of a Ysql Connection Manager child process
 namespace ysql_conn_mgr_wrapper {
 
-class YsqlConnMgrConf {
+class YsqlConnMgrConf : public yb::ProcessWrapperCommonConfig {
  public:
   explicit YsqlConnMgrConf(const std::string& data_path);
 
@@ -52,6 +52,7 @@ class YsqlConnMgrConf {
 
   void UpdateConfigFromGFlags();
   std::string GetBindAddress();
+  void AddSslConfig(std::map<std::string, std::string>* ysql_conn_mgr_configs);
 };
 
 class YsqlConnMgrWrapper : public yb::ProcessWrapper {

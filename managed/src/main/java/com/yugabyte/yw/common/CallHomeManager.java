@@ -56,6 +56,7 @@ public class CallHomeManager {
     this.apiHelper = apiHelper;
     this.configHelper = configHelper;
   }
+
   // Email address from YugaByte to which to send diagnostics, if enabled.
   private final String YB_CALLHOME_URL = "http://yw-diagnostics.yugabyte.com";
 
@@ -65,7 +66,7 @@ public class CallHomeManager {
     CollectionLevel callhomeLevel = CustomerConfig.getOrCreateCallhomeLevel(c.getUuid());
     if (!callhomeLevel.isDisabled()) {
       LOG.info("Starting collecting diagnostics");
-      JsonNode payload = CollectDiagnostics(c, callhomeLevel);
+      JsonNode payload = collectDiagnostics(c, callhomeLevel);
       LOG.info("Sending collected diagnostics to " + YB_CALLHOME_URL);
       // Api Helper handles exceptions
       Map<String, String> headers = new HashMap<>();
@@ -77,7 +78,7 @@ public class CallHomeManager {
   }
 
   @VisibleForTesting
-  JsonNode CollectDiagnostics(Customer c, CollectionLevel callhomeLevel) {
+  public JsonNode collectDiagnostics(Customer c, CollectionLevel callhomeLevel) {
     ObjectNode payload = Json.newObject();
     // Build customer details json
     payload.put("customer_uuid", c.getUuid().toString());

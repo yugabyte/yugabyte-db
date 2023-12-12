@@ -9,8 +9,9 @@ import { useDispatch, useSelector } from 'react-redux';
 import { getPrimaryCluster, getReadOnlyCluster } from '../../../../utils/UniverseUtils';
 import { updateTLS } from '../../../../actions/customers';
 import { YBBanner, YBBannerVariant } from '../../descriptors';
-import { getAllXClusterConfigs } from '../../../xcluster/ReplicationUtils';
-
+import { hasLinkedXClusterConfig } from '../../../xcluster/ReplicationUtils';
+import { hasNecessaryPerm } from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import './EncryptionInTransit.scss';
 
 const CLIENT_TO_NODE_ROTATE_MSG =
@@ -217,7 +218,12 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse, fetchCur
     });
   };
 
-  const universeHasXClusterConfig = getAllXClusterConfigs(currentUniverse.data).length > 0;
+  const universeHasXClusterConfig = hasLinkedXClusterConfig([currentUniverse.data]);
+  const canEditEAT = hasNecessaryPerm({
+    onResource: currentUniverse.data.universeDetails.universeUUID,
+    ...ApiPermissionMap.MODIFY_UNIVERSE_TLS
+  });
+
   return (
     <YBModalForm
       visible={visible}
@@ -230,6 +236,7 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse, fetchCur
         handleSubmit(values, setStatus);
         setSubmitting(false);
       }}
+      isButtonDisabled={!canEditEAT}
       render={({ values, handleChange, setFieldValue, status, setStatus }) => {
         if (isCertificateListLoading) {
           return <YBLoading />;

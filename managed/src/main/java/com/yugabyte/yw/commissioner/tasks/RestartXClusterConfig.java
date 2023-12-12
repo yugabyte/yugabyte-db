@@ -3,7 +3,9 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
-import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables;
+import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
+import com.yugabyte.yw.common.DrConfigStates.State;
+import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.Universe;
@@ -71,6 +73,16 @@ public class RestartXClusterConfig extends EditXClusterConfig {
           createDeleteXClusterConfigSubtasks(
               xClusterConfig, true /* keepEntry */, taskParams().isForced());
 
+          if (xClusterConfig.isUsedForDr()) {
+            createSetDrStatesTask(
+                    xClusterConfig,
+                    State.Initializing,
+                    SourceUniverseState.Unconfigured,
+                    TargetUniverseState.Unconfigured,
+                    null /* keyspacePending */)
+                .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+          }
+
           createXClusterConfigSetStatusTask(
               xClusterConfig, XClusterConfig.XClusterConfigStatusType.Updating);
 
@@ -89,10 +101,8 @@ public class RestartXClusterConfig extends EditXClusterConfig {
           createXClusterConfigSetStatusForTablesTask(
               xClusterConfig, tableIds, XClusterTableConfig.Status.Updating);
 
-          createXClusterConfigModifyTablesTask(
-              xClusterConfig,
-              tableIds,
-              XClusterConfigModifyTables.Params.Action.REMOVE_FROM_REPLICATION_ONLY);
+          createRemoveTableFromXClusterConfigSubtasks(
+              xClusterConfig, tableIds, true /* keepEntry */);
 
           createXClusterConfigSetStatusForTablesTask(
               xClusterConfig, tableIds, XClusterTableConfig.Status.Updating);

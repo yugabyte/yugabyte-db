@@ -22,6 +22,8 @@ import {
 } from '../../redesign/utils/dtos';
 import { UniverseState, getUniverseStatus } from '../universes/helpers/universeHelpers';
 import { YBSelect } from '../../redesign/components';
+import { RbacValidator } from '../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../redesign/features/rbac/ApiAndUserPermMapping';
 import dbSettingsIcon from './images/db-settings.svg';
 import documentationIcon from './images/documentation.svg';
 import EmptyTrayIcon from './images/empty-tray.svg';
@@ -333,171 +335,196 @@ export const PerfAdvisor: FC = () => {
   return (
     // This dialog is shown is when the last run API fails with 404
     <div className="parentPerfAdvisor">
-      {isLastRunNotFound && (!recommendations.length || isEmptyString(lastScanTime)) && (
-        <YBPanelItem
-          header={
-            <div className="perfAdvisor">
-              <div className="perfAdvisor__containerTitleGrid">
-                <div className="contentContainer">
-                  <img src={dbSettingsIcon} alt="more" className="dbImage" />
-                  <h4 className="primaryDescription">
-                    {t('clusterDetail.performance.advisor.ScanCluster')}
-                  </h4>
-                  <p className="secondaryDescription">
-                    <b> Note: </b>
-                    {t('clusterDetail.performance.advisor.RunWorkload')}
-                  </p>
-                  <Button
-                    bsClass="btn btn-orange rescanBtn"
-                    disabled={isUniversePaused || isUniverseUpdating}
-                    onClick={handleScan}
-                    data-placement="left"
-                    title={
-                      isUniversePaused
-                        ? 'Universe Paused'
-                        : isUniverseUpdating
-                        ? 'Universe Updating'
-                        : ''
-                    }
-                  >
-                    <i className="fa fa-search-minus" aria-hidden="true"></i>
-                    {t('clusterDetail.performance.advisor.ScanBtn')}
-                  </Button>
-                  <a
-                    className="learnMoreLink"
-                    href={EXTERNAL_LINKS.PERF_ADVISOR_DOCS_LINK}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <div className="learnMoreContent">
-                      <img src={documentationIcon} alt="more" className="learnMoreImage" />
-                      {t('clusterDetail.performance.advisor.LearnPerformanceAdvisor')}
-                    </div>
-                  </a>
+      <RbacValidator
+        accessRequiredOn={{ ...ApiPermissionMap.GET_PERF_RECOMENDATION_BY_PAGE, onResource: universeUUID }}
+      >
+        {isLastRunNotFound && (!recommendations.length || isEmptyString(lastScanTime)) && (
+          <YBPanelItem
+            header={
+              <div className="perfAdvisor">
+                <div className="perfAdvisor__containerTitleGrid">
+                  <div className="contentContainer">
+                    <img src={dbSettingsIcon} alt="more" className="dbImage" />
+                    <h4 className="primaryDescription">
+                      {t('clusterDetail.performance.advisor.ScanCluster')}
+                    </h4>
+                    <p className="secondaryDescription">
+                      <b> Note: </b>
+                      {t('clusterDetail.performance.advisor.RunWorkload')}
+                    </p>
+                    <Button
+                      bsClass="btn btn-orange rescanBtn"
+                      disabled={isUniversePaused || isUniverseUpdating}
+                      onClick={handleScan}
+                      data-placement="left"
+                      title={
+                        isUniversePaused
+                          ? 'Universe Paused'
+                          : isUniverseUpdating
+                            ? 'Universe Updating'
+                            : ''
+                      }
+                    >
+                      <i className="fa fa-search-minus" aria-hidden="true"></i>
+                      {t('clusterDetail.performance.advisor.ScanBtn')}
+                    </Button>
+                    <a
+                      className="learnMoreLink"
+                      href={EXTERNAL_LINKS.PERF_ADVISOR_DOCS_LINK}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <div className="learnMoreContent">
+                        <img src={documentationIcon} alt="more" className="learnMoreImage" />
+                        {t('clusterDetail.performance.advisor.LearnPerformanceAdvisor')}
+                      </div>
+                    </a>
+                  </div>
                 </div>
               </div>
-            </div>
-          }
-        />
-      )}
+            }
+          />
+        )}
 
-      {/* This dialog is shown when there are no performance issues or when the scan fails  */}
-      {isNonEmptyString(lastScanTime) && !recommendations.length && !isLastRunNotFound && (
-        <YBPanelItem
-          header={
-            <div className="perfAdvisor">
-              <div className="perfAdvisor__containerTitleGrid">
-                <div className="contentContainer">
-                  <img src={EmptyTrayIcon} alt="more" />
-                  <h4 className="primaryDescription">
-                    {isPerfCallFail || scanStatus === LastRunStatus.FAILED
-                      ? isNonEmptyString(errorMessage)
-                        ? errorMessage
-                        : t('common.wrong')
-                      : t('clusterDetail.performance.advisor.Hurray')}
-                  </h4>
-                  <p className="secondaryDescription">
-                    {isPerfCallFail || scanStatus === LastRunStatus.FAILED
-                      ? t('clusterDetail.performance.advisor.DBScanFailed')
-                      : t('clusterDetail.performance.advisor.NoPerformanceIssues')}
-                  </p>
-                  <Button
-                    bsClass="btn btn-orange rescanBtn"
-                    disabled={isUniversePaused || isUniverseUpdating}
-                    onClick={handleScan}
-                    data-placement="left"
-                    title={
-                      isUniversePaused
-                        ? 'Universe Paused'
-                        : isUniverseUpdating
-                        ? 'Universe Updating'
-                        : ''
-                    }
-                  >
-                    <i className="fa fa-search-minus" aria-hidden="true"></i>
-                    {t('clusterDetail.performance.advisor.ReScanBtn')}
-                  </Button>
+        {/* This dialog is shown when there are no performance issues or when the scan fails  */}
+        {isNonEmptyString(lastScanTime) && !recommendations.length && !isLastRunNotFound && (
+          <YBPanelItem
+            header={
+              <div className="perfAdvisor">
+                <div className="perfAdvisor__containerTitleGrid">
+                  <div className="contentContainer">
+                    <img src={EmptyTrayIcon} alt="more" />
+                    <h4 className="primaryDescription">
+                      {isPerfCallFail || scanStatus === LastRunStatus.FAILED
+                        ? isNonEmptyString(errorMessage)
+                          ? errorMessage
+                          : t('common.wrong')
+                        : t('clusterDetail.performance.advisor.Hurray')}
+                    </h4>
+                    <p className="secondaryDescription">
+                      {isPerfCallFail || scanStatus === LastRunStatus.FAILED
+                        ? t('clusterDetail.performance.advisor.DBScanFailed')
+                        : t('clusterDetail.performance.advisor.NoPerformanceIssues')}
+                    </p>
+                    <RbacValidator
+                      isControl
+                      accessRequiredOn={{
+                        onResource: universeUUID,
+                        ...ApiPermissionMap.PERF_ADVISOR_START_MANUALLY
+                      }}
+                    >
+                      <Button
+                        bsClass="btn btn-orange rescanBtn"
+                        disabled={isUniversePaused || isUniverseUpdating}
+                        onClick={handleScan}
+                        data-placement="left"
+                        title={
+                          isUniversePaused
+                            ? 'Universe Paused'
+                            : isUniverseUpdating
+                              ? 'Universe Updating'
+                              : ''
+                        }
+                      >
+                        <i className="fa fa-search-minus" aria-hidden="true"></i>
+
+                        {t('clusterDetail.performance.advisor.ReScanBtn')}
+                      </Button>
+                    </RbacValidator>
+                  </div>
                 </div>
               </div>
-            </div>
-          }
-        />
-      )}
+            }
+          />
+        )}
 
-      {/* // This dialog is shown when there are recommendation results */}
-      {isNonEmptyString(lastScanTime) && displayedRecomendations.length > 0 && !isLastRunNotFound && (
-        <div>
-          {(scanStatus === LastRunStatus.FAILED || errorMessage) && (
-            <div className="scanFailureContainer">
-              <img src={WarningIcon} alt="warning" className="warningIcon" />
-              <span className="scanFailureMessage">
-                {isNonEmptyString(errorMessage)
-                  ? t('clusterDetail.performance.advisor.DBScanFailed') + ':' + errorMessage
-                  : t('clusterDetail.performance.advisor.DBScanFailed')}
-              </span>
+        {/* // This dialog is shown when there are recommendation results */}
+        {isNonEmptyString(lastScanTime) && displayedRecomendations.length > 0 && !isLastRunNotFound && (
+          <div>
+            {(scanStatus === LastRunStatus.FAILED || errorMessage) && (
+              <div className="scanFailureContainer">
+                <img src={WarningIcon} alt="warning" className="warningIcon" />
+                <span className="scanFailureMessage">
+                  {isNonEmptyString(errorMessage)
+                    ? t('clusterDetail.performance.advisor.DBScanFailed') + ':' + errorMessage
+                    : t('clusterDetail.performance.advisor.DBScanFailed')}
+                </span>
+              </div>
+            )}
+            <div className="perfAdvisor__containerTitleFlex">
+              <h5 className="numRecommendations">
+                {displayedRecomendations.length} {recommendationLabel}
+              </h5>
+              <p className="scanTime">
+                {t('clusterDetail.performance.advisor.ScanTime')}
+                {t('clusterDetail.performance.advisor.Separator')}
+                {ybFormatDate(new Date())}
+              </p>
+              <RbacValidator
+                isControl
+                accessRequiredOn={{
+                  onResource: universeUUID,
+                  ...ApiPermissionMap.PERF_ADVISOR_START_MANUALLY
+                }}
+              >
+                <YBButton
+                  btnClass="btn btn-orange rescanBtnRecPage"
+                  disabled={isUniversePaused || isUniverseUpdating}
+                  btnText="Re-Scan"
+                  btnIcon="fa fa-search-minus"
+                  onClick={handleScan}
+                  data-placement="left"
+                  title={
+                    isUniversePaused
+                      ? 'Universe Paused'
+                      : isUniverseUpdating
+                        ? 'Universe Updating'
+                        : ''
+                  }
+                />
+              </RbacValidator>
             </div>
-          )}
-          <div className="perfAdvisor__containerTitleFlex">
-            <h5 className="numRecommendations">
-              {displayedRecomendations.length} {recommendationLabel}
-            </h5>
-            <p className="scanTime">
-              {t('clusterDetail.performance.advisor.ScanTime')}
-              {t('clusterDetail.performance.advisor.Separator')}
-              {ybFormatDate(new Date())}
-            </p>
-            <YBButton
-              btnClass="btn btn-orange rescanBtnRecPage"
-              disabled={isUniversePaused || isUniverseUpdating}
-              btnText="Re-Scan"
-              btnIcon="fa fa-search-minus"
-              onClick={handleScan}
-              data-placement="left"
-              title={
-                isUniversePaused ? 'Universe Paused' : isUniverseUpdating ? 'Universe Updating' : ''
-              }
-            />
+            <div className="perfAdvisor__containerRecommendationFlex">
+              <YBSelect
+                onChange={handleDbSelection}
+                value={databaseSelection}
+                className="filterDropdowns"
+                inputProps={{
+                  'data-testid': `PerfAdvisor-DBSelect`
+                }}
+              >
+                {databaseOptionList}
+              </YBSelect>
+              <YBSelect
+                onChange={handleSuggestionTypeSelection}
+                value={suggestionType}
+                className="filterDropdowns"
+                inputProps={{
+                  'data-testid': `PerfAdvisor-SuggestionTypeSelect`
+                }}
+              >
+                {recommendationTypes.map((type) => (
+                  <MenuItem key={`suggestion-${type}`} value={type}>
+                    {t(`clusterDetail.performance.suggestionTypes.${TranslationTypeMap[type]}`)}
+                  </MenuItem>
+                ))}
+              </YBSelect>
+            </div>
+            {displayedRecomendations.map((rec) => (
+              <>
+                <RecommendationBox
+                  key={rec.key}
+                  idKey={rec.key}
+                  type={rec.data.type}
+                  data={rec.data}
+                  resolved={!!rec.isResolved}
+                  onResolve={handleResolve}
+                />
+              </>
+            ))}
           </div>
-          <div className="perfAdvisor__containerRecommendationFlex">
-            <YBSelect
-              onChange={handleDbSelection}
-              value={databaseSelection}
-              className="filterDropdowns"
-              inputProps={{
-                'data-testid': `PerfAdvisor-DBSelect`
-              }}
-            >
-              {databaseOptionList}
-            </YBSelect>
-            <YBSelect
-              onChange={handleSuggestionTypeSelection}
-              value={suggestionType}
-              className="filterDropdowns"
-              inputProps={{
-                'data-testid': `PerfAdvisor-SuggestionTypeSelect`
-              }}
-            >
-              {recommendationTypes.map((type) => (
-                <MenuItem key={`suggestion-${type}`} value={type}>
-                  {t(`clusterDetail.performance.suggestionTypes.${TranslationTypeMap[type]}`)}
-                </MenuItem>
-              ))}
-            </YBSelect>
-          </div>
-          {displayedRecomendations.map((rec) => (
-            <>
-              <RecommendationBox
-                key={rec.key}
-                idKey={rec.key}
-                type={rec.data.type}
-                data={rec.data}
-                resolved={!!rec.isResolved}
-                onResolve={handleResolve}
-              />
-            </>
-          ))}
-        </div>
-      )}
+        )}
+      </RbacValidator>
     </div>
   );
 };

@@ -1,6 +1,6 @@
 ---
-title: YugabyteDB releases
-headerTitle: YugabyteDB releases
+title: Releases in YugabyteDB
+headerTitle: Releases
 linkTitle: Releases
 description: An overview of the preview and current stable YugabyteDB database releases, and upcoming releases.
 image: /images/section_icons/index/quick_start.png
@@ -13,12 +13,30 @@ cascade:
   unversioned: true
 ---
 
-## Current supported releases
+This section describes the release support policy, versioning, and feature availability for YugabyteDB and YugabyteDB Anywhere. You can also access releases and release notes for YugabyteDB and YugabyteDB Anywhere.
 
-The supported release series include:
+-> For information on YugabyteDB Managed releases, refer to the [YugabyteDB Managed Change log](../yugabyte-cloud/release-notes/).
 
-* [LTS and STS](versioning/#stable-releases): Supported for production deployments.
-* [Preview](versioning/#preview-releases): Supported for development and testing only.
+-> For information on YugabyteDB Voyager releases, refer to the [YugabyteDB Voyager release notes](../yugabyte-voyager/release-notes/).
+
+## Current releases
+
+<ul class="nav yb-pills">
+  <li>
+    <a href="release-notes/">
+        <img src="/icons/database.svg" alt="Server Icon"><span>YugabyteDB -></span>
+    </a>
+  </li>
+  <li>
+    <a href="yba-releases/">
+        <img src="/icons/server.svg" alt="Server Icon"><span>YugabyteDB Anywhere -></span>
+    </a>
+  </li>
+</ul>
+
+The supported release series for YugabyteDB and YugabyteDB Anywhere include Long-term support (LTS) and standard-term support (STS).
+
+Preview releases, which include features under active development, are also available. Preview releases are recommended for development and testing only.
 
 For details about the differences between the release series, see [Release versioning](versioning/).
 
@@ -26,9 +44,9 @@ For details about the differences between the release series, see [Release versi
 
 The type of YugabyteDB release series you are running determines its support timelines.
 
-**LTS (long-term support)** release series receive maintenance updates for at least 2 years (730 days) from the first release date of the minor release.
+**LTS** release series receive maintenance updates for at least 2 years (730 days) from the first release date of the minor release.
 
-**STS (standard-term support)** release series receive maintenance updates for at least 1 year (365 days) from the first release date of the minor release.
+**STS** release series receive maintenance updates for at least 1 year (365 days) from the first release date of the minor release.
 
 LTS and STS release series are both subject to the following support and EOL timelines:
 
@@ -38,48 +56,11 @@ LTS and STS release series are both subject to the following support and EOL tim
   * Yugabyte may direct Customers to Upgrade to a current release if a workaround does not exist.
 * **End of Life (EOL):** Yugabyte will post publicly on its website a notice of End of Life (EOL) for the affected Software and the timeline for discontinuing Support Services.
 
-The information in this section is a summary for convenience only. For complete details, see the [Yugabyte Support Services Agreement](https://www.yugabyte.com/yugabyte-software-support-services-agreement/).
-
-### Release support timelines
-
-| Release series | Released | End of maintenance support | End of Life (EOL) |
-| :------------- | :------- | :------------------------- | :---------------- |
-| [v2.19](release-notes/v2.19/) <span class='metadata-tag-gray'>Preview</span> | {{< yb-eol-dates "v2.19" release >}} | n/a | n/a |
-| [v2.18](release-notes/v2.18/) <span class='metadata-tag-green'>STS</span> | {{< yb-eol-dates "v2.18" release >}} | {{< yb-eol-dates "v2.18" EOM >}} | {{< yb-eol-dates "v2.18" EOL >}} |
-| [v2.16](release-notes/v2.16/) <span class='metadata-tag-green'>STS</span> | {{< yb-eol-dates "v2.16" release >}} | {{< yb-eol-dates "v2.16" EOM >}} | {{< yb-eol-dates "v2.16" EOL >}} |
-| [v2.14](release-notes/v2.14/) <span class='metadata-tag-green'>LTS</span> | {{< yb-eol-dates "v2.14" release >}} | {{< yb-eol-dates "v2.14" EOM >}} | {{< yb-eol-dates "v2.14" EOL >}} |
-
-{{< tip title="YugabyteDB Anywhere release notes have moved" >}}
-Starting with v2.17, the [release notes for YugabyteDB Anywhere](yba-releases/) have moved to [their own page](yba-releases/v2.19/).
-{{< /tip >}}
-
-### Releases at end of life (EOL) {#eol-releases}
-
-The following releases are no longer supported:
-
-| Release series | Released | End of maintenance support | End of Life (EOL) |
-| :------------- | :------- | :------------------------- | :---------------- |
-| [v2.17](release-notes/v2.17/) | December 8, 2022 | n/a | n/a |
-| [v2.15](release-notes/v2.15/) | June 27, 2022 | n/a | n/a |
-| [v2.13](release-notes/end-of-life/v2.13/) | March 7, 2022 | n/a | n/a |
-| [v2.12](release-notes/end-of-life/v2.12/) | {{< yb-eol-dates "v2.12" release >}} | {{< yb-eol-dates "v2.12" EOM >}} | {{< yb-eol-dates "v2.12" EOL >}} |
-| [v2.11](release-notes/end-of-life/v2.11/) | November 22, 2021 | n/a | n/a |
-| [v2.9](release-notes/end-of-life/v2.9/) | August 31, 2021 | n/a | n/a |
-| [v2.8](release-notes/end-of-life/v2.8/) | {{< yb-eol-dates "v2.8" release >}} | {{< yb-eol-dates "v2.8" EOM >}} | {{< yb-eol-dates "v2.8" EOL >}} |
-| [v2.7](release-notes/end-of-life/v2.7/) | May 5, 2021 | n/a | n/a |
-| [v2.6](release-notes/end-of-life/v2.6/) | July 5, 2021 | July 5, 2022 | January 5, 2023 |
-| [v2.5](release-notes/end-of-life/v2.5/) | November 12, 2020 | n/a | n/a |
-| [v2.4](release-notes/end-of-life/v2.4/) | January 22, 2021 | January 22, 2022 | July 21, 2022 |
-| [v2.2](release-notes/end-of-life/v2.2/) | July 15, 2020 | July 15, 2021 | January 15, 2022 |
-| [v2.1](release-notes/end-of-life/v2.1/) | February 25, 2020 | February 25, 2021 | August 08, 2021 |
-| [v2.0](release-notes/end-of-life/v2.0/) | September 17, 2019 | September 17, 2020 | March 03, 2021 |
-| [v1.3](release-notes/end-of-life/v1.3/) | July 15, 2019 | July 15, 2020 | January 15, 2021 |
-
-All non-current preview releases are unsupported.
-
-{{<note title="Archived docs available">}}
+  {{<note title="Archived docs available">}}
 Documentation for EOL stable releases is available at the [YugabyteDB docs archive](https://docs-archive.yugabyte.com/).
-{{</note>}}
+  {{</note>}}
+
+The information in this section is a summary for convenience only. For complete details, see the [Yugabyte Support Services Agreement](https://www.yugabyte.com/yugabyte-software-support-services-agreement/).
 
 ## Upcoming release series
 
@@ -89,7 +70,7 @@ For information on key features planned for the upcoming releases, visit [Curren
 
 | Release series | Planned release |
 | :------------- | :-------------- |
-| v2.20 (LTS) | Late 2023 |
+| v2.22 (STS)    | Mid 2024       |
 
 ## Recommended release series for projects
 

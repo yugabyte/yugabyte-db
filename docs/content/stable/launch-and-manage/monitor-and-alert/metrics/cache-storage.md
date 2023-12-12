@@ -39,8 +39,8 @@ The following table describes key cache metrics for the storage (RocksDB) layer.
 | :----- | :--- | :--- | :---------- |
 | `rocksdb_block_cache_hit` | blocks | counter | The total number of block cache hits (cache index + cache filter + cache data). |
 | `rocksdb_block_cache_miss` | blocks | counter | The total number of block cache misses (cache index + cache filter + cache data). |
-| `block_cache_single_touch_usage` | blocks | counter | Blocks of data cached and read more than once by the YSQL layer are classified in single touch portion of the cache. The size (in bytes) of the cache usage by blocks having a single touch. |
-| `block_cache_multi_touch_usage` | blocks | counter | Blocks of data cached and read once by the YSQL layer are classified in the multi-touch portion of the cache. The size (in bytes) of the cache usage by blocks having multiple touches. |
+| `block_cache_single_touch_usage` | blocks | counter | Blocks of data cached and read once by the YSQL layer are classified in single touch portion of the cache. The size (in bytes) of the cache usage by blocks having a single touch. |
+| `block_cache_multi_touch_usage` | blocks | counter | Blocks of data cached and read more than once by the YSQL layer are classified in the multi-touch portion of the cache. The size (in bytes) of the cache usage by blocks having multiple touches. |
 
 These metrics can be aggregated across the entire cluster using appropriate aggregations.
 
@@ -57,7 +57,7 @@ These metrics can be aggregated across the entire cluster using appropriate aggr
 
 ## SST files
 
-RocksDB LSM-trees buffer incoming data in a memory buffer that, when full, is sorted, and flushed to disk in the form of a sorted run. When a sorted run is flushed to disk, it may be iteratively merged with existing runs of the same size. Overall, as a result of such iterative merges, the sorted runs on disk, also termed Sorted-String Table or SST files, form a collection of levels of exponentially increasing size with potentially overlapping key ranges across the levels.
+RocksDB LSM-trees buffer incoming data in a memory buffer that, when full, is sorted, and flushed to disk in the form of a sorted run. When a sorted run is flushed to disk, it may be iteratively merged with existing runs of the same size. Overall, as a result of such iterative merges, the sorted runs on disk (also called Sorted-String Table or SST files) form a collection of levels of exponentially increasing size with potentially overlapping key ranges across the levels.
 
 | Metric | Unit | Type | Description |
 | :------ | :--- | :--- | :---------- |

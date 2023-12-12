@@ -81,7 +81,7 @@ Connect to the database with the `ybadmin` user.
 
 ## Step 3. Verify permissions
 
-User `ybadmin `has access to view all the contents of the table.
+User `ybadmin` has access to view all the contents of the table.
 
 ```sql
 select current_user;
@@ -109,7 +109,7 @@ select * from employees;
 
 ## Step 4a. Restrict column access using `CREATE VIEW`
 
-Admin user `ybadmin` has permissions to view all the contents on employees table. In order to prevent admin users from viewing sensitivity information like salary and account_number, the `CREATE VIEW` statement can be used to secure the sensitive columns.
+Admin user `ybadmin` has permissions to view all the contents on employees table. To prevent admin users from viewing sensitive information like salary and account_number, the `CREATE VIEW` statement can be used to secure these columns.
 
 ```sql
 \c yugabyte yugabyte;
@@ -136,7 +136,7 @@ select current_user;
 (1 row)
 ```
 
-Since permission is revoked for `ybadmin`, this user will not be able to query employees table.
+Because permission is revoked for `ybadmin`, this user will not be able to query employees table.
 
 ```sql
 select * from employees;
@@ -146,7 +146,7 @@ select * from employees;
 ERROR:  permission denied for table employees
 ```
 
-Since `ybadmin` was granted select permission on `emp_info` table, `ybadmin` user will be able to query `emp_info` table.
+Because `ybadmin` was granted select permission on `emp_info` table, `ybadmin` user will be able to query `emp_info` table.
 
 ```sql
 select * from emp_info;
@@ -165,7 +165,7 @@ select * from emp_info;
 
 Instead of creating views, YugabyteDB supports column level permissions, where users can be provided access to select columns in a table using `GRANT` command.
 
-Considering the above example, instead of creating a new view, `ybadmin` user can be provided with permissions to view all columns except salary and account_number like below.
+Considering the preceding example, instead of creating a new view, `ybadmin` user can be provided with permissions to view all columns except salary and account_number, as follows:
 
 ```sql
 \c yugabyte yugabyte;

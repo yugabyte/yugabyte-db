@@ -52,7 +52,7 @@
   .cluster-name {
     margin: 10px 0 0 20px;
   }
-  
+
   .live-queries-label,
   .universe-name,
   .provider-name,
@@ -95,7 +95,7 @@
   }
 
   .dropdown-menu .active a {
-    color: #2B59C3;
+    color: #2b59c3;
   }
 
   .live-queries {
@@ -108,7 +108,12 @@
     font-size: 13px;
     line-height: 16px;
     text-decoration-line: underline;
-    color: #44518B;
+    color: #44518b;
+  }
+
+  .dr-metrics-link {
+    text-decoration-line: underline;
+    color: #44518b;
   }
 
   .node-filter-dropdown {
@@ -174,8 +179,7 @@
       float: right;
       vertical-align: middle;
       margin-top: 9px;
-      color: #44518B;
-      ;
+      color: #44518b;
     }
   }
 

@@ -452,40 +452,40 @@ try_nestloop_path(PlannerInfo *root,
 			}
 		}
 
-		if (IsYugaByteEnabled() &&
-			 inner_path->param_info &&
-			 inner_path->param_info->yb_ppi_req_outer_batched)
+		if (IsYugaByteEnabled() && YB_PATH_NEEDS_BATCHED_RELS(inner_path))
 		{
 			/*
 			 * YB: Check to make sure this is a valid BNL.
 			 */
 			if (yb_has_non_evaluable_bnl_clauses(outer_path,
-															 inner_path,
-															 extra->restrictlist) || 
-				 (yb_has_non_evaluable_bnl_clauses(outer_path,
-															  inner_path,
-															  inner_path->param_info
-															  ->ppi_clauses)))
+												 inner_path,
+												 extra->restrictlist) ||
+			   (yb_has_non_evaluable_bnl_clauses(outer_path,
+												 inner_path,
+												 inner_path->param_info
+												 ->ppi_clauses)))
 			{
 				bms_free(required_outer);
 				return;
 			}
 		}
 
-		if (IsYugaByteEnabled() &&
-			 outer_path->param_info && inner_path->param_info)
+		if (IsYugaByteEnabled())
 		{
 			/*
 			 * YB: Check to see if there are any conflicting unbatched and batched
-			 * rels.
+			 * requirements.
 			 */
 			Relids unbatched =
-				bms_union(inner_path->param_info->yb_ppi_req_outer_unbatched,
-							 outer_path->param_info->yb_ppi_req_outer_unbatched);
-			Relids batched =
-				bms_union(inner_path->param_info->yb_ppi_req_outer_batched,
-							 outer_path->param_info->yb_ppi_req_outer_batched);
-			if (bms_overlap(unbatched, batched))
+				bms_union(YB_PATH_REQ_OUTER_UNBATCHED(inner_path),
+						  YB_PATH_REQ_OUTER_UNBATCHED(outer_path));
+			Relids batched = bms_union(YB_PATH_REQ_OUTER_BATCHED(outer_path),
+									   YB_PATH_REQ_OUTER_BATCHED(inner_path));
+			bool yb_is_nl_batched =
+				bms_overlap(YB_PATH_REQ_OUTER_BATCHED(inner_path), outerrelids);
+
+			if (bms_overlap(unbatched, batched) ||
+				(yb_is_nl_batched && bms_overlap(unbatched, outerrelids)))
 			{
 				bms_free(required_outer);
 				bms_free(unbatched);
@@ -1354,52 +1354,34 @@ generate_mergejoin_paths(PlannerInfo *root,
 Relids
 yb_get_batched_relids(NestPath *nest)
 {
-	ParamPathInfo *innerppi = nest->innerjoinpath->param_info;
-	ParamPathInfo *outerppi = nest->outerjoinpath->param_info;
+	Relids outer_unbatched = YB_PATH_REQ_OUTER_UNBATCHED(nest->outerjoinpath);
+	Relids inner_batched = YB_PATH_REQ_OUTER_BATCHED(nest->innerjoinpath);
 
-	Relids outer_unbatched =
-		outerppi ? outerppi->yb_ppi_req_outer_unbatched : NULL;
-	Relids inner_batched = innerppi ? innerppi->yb_ppi_req_outer_batched : NULL;
+	Assert(!bms_overlap(inner_batched, outer_unbatched));
+	(void) outer_unbatched;
 
-	/* Rels not in this join that can't be batched. */
-	Relids param_unbatched =
-		nest->path.param_info ?
-		nest->path.param_info->yb_ppi_req_outer_unbatched : NULL;
-
-	return bms_difference(bms_difference(inner_batched, outer_unbatched),
-						  param_unbatched);
+	Relids outerrels = nest->outerjoinpath->parent->relids;
+	return bms_intersect(inner_batched, outerrels);
 }
 
 Relids
 yb_get_unbatched_relids(NestPath *nest)
 {
-	ParamPathInfo *innerppi = nest->innerjoinpath->param_info;
-	ParamPathInfo *outerppi = nest->outerjoinpath->param_info;
-
-	Relids outer_unbatched =
-		outerppi ? outerppi->yb_ppi_req_outer_unbatched : NULL;
-	Relids inner_unbatched =
-		innerppi ? innerppi->yb_ppi_req_outer_unbatched : NULL;
+	Relids outer_unbatched = YB_PATH_REQ_OUTER_UNBATCHED(nest->outerjoinpath);
+	Relids inner_unbatched = YB_PATH_REQ_OUTER_UNBATCHED(nest->innerjoinpath);
 
 	/* Rels not in this join that can't be batched. */
-	Relids param_unbatched =
-		nest->path.param_info ?
-		nest->path.param_info->yb_ppi_req_outer_unbatched : NULL;
+	Relids param_unbatched = YB_PATH_REQ_OUTER_UNBATCHED(&nest->path);
 
 	return bms_union(outer_unbatched,
-					 bms_union(inner_unbatched, param_unbatched));
+						  bms_union(inner_unbatched, param_unbatched));
 }
 
 bool
 yb_is_outer_inner_batched(Path *outer, Path *inner)
 {
-	ParamPathInfo *innerppi = inner->param_info;
-	ParamPathInfo *outerppi = outer->param_info;
-
-	Relids outer_unbatched =
-		outerppi ? outerppi->yb_ppi_req_outer_unbatched : NULL;
-	Relids inner_batched =
-		innerppi ? innerppi->yb_ppi_req_outer_batched : NULL;
+	Relids outer_unbatched = YB_PATH_REQ_OUTER_UNBATCHED(outer);
+	Relids inner_batched = YB_PATH_REQ_OUTER_BATCHED(inner);
 
 	return bms_overlap(outer->parent->relids,
 		bms_difference(inner_batched, outer_unbatched));
@@ -2153,7 +2135,7 @@ yb_has_non_evaluable_bnl_clauses(Path *outer_path, Path *inner_path,
 											List *rinfos)
 {
 	ListCell *lc;
-	Relids req_batched_rels = inner_path->param_info->yb_ppi_req_outer_batched;
+	Relids req_batched_rels = YB_PATH_REQ_OUTER_BATCHED(inner_path);
 	Relids outer_relids = outer_path->parent->relids;
 	Relids inner_relids = inner_path->parent->relids;
 

@@ -62,6 +62,7 @@ public class MetricQueryHelper {
   public static final String TABLE_ID = "table_id";
   public static final String TABLE_NAME = "table_name";
   public static final String NAMESPACE_NAME = "namespace_name";
+  public static final String NAMESPACE_ID = "namespace_id";
   private static final String POD_NAME = "pod_name";
   private static final String CONTAINER_NAME = "container_name";
   private static final String PVC = "persistentvolumeclaim";
@@ -347,16 +348,15 @@ public class MetricQueryHelper {
       timeDifference = endTime - Long.parseLong(startTime);
     }
 
-    long range = Math.max(scrapeInterval * 2, timeDifference);
+    long range = Math.max(scrapeInterval * 3, timeDifference);
     params.put("range", Long.toString(range));
 
     String step = params.get("step");
     if (step == null) {
-      if (timeDifference <= STEP_SIZE) {
-        throw new PlatformServiceException(
-            BAD_REQUEST, "Should be at least " + STEP_SIZE + " seconds between start and end time");
+      if (timeDifference <= 0) {
+        throw new PlatformServiceException(BAD_REQUEST, "Queried time interval should be positive");
       }
-      long resolution = Math.max(scrapeInterval * 2, Math.round(timeDifference / STEP_SIZE));
+      long resolution = Math.max(scrapeInterval * 3, Math.round(timeDifference / STEP_SIZE));
       params.put("step", String.valueOf(resolution));
     } else {
       try {
@@ -580,8 +580,8 @@ public class MetricQueryHelper {
       // and will return inaccurate results if the universe has a read replica that is
       // not onprem.
       if (!mountRoots.isEmpty()) {
-        HashMap<String, String> mountFilters = new HashMap<>();
-        return mountRoots;
+        // In case we have multiple mount roots - these are separated by comma.
+        return mountRoots.replaceAll(",", "|");
       } else {
         LOG.debug(
             "No mount points found in onprem universe {}",
