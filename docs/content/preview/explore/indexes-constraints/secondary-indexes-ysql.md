@@ -157,7 +157,7 @@ To add a multi-column index to an existing table, you can use the following synt
 CREATE INDEX index_name ON table_name ((col2,col3,col4));
 ```
 
-If you include nested parenthesis between the columns as per the preceding syntax, you will have to perform search using all the columns col2,col3, and col4.
+If you enclose the columns in nested parentheses as per the preceding syntax, you will have to perform search using all the columns (col2, col3, and col4).
 
 However, if you add the multi-column index to an existing table using the following syntax:
 
