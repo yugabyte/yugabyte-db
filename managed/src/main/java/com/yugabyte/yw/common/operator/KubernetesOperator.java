@@ -243,6 +243,7 @@ public class KubernetesOperator {
                           universeCRUDHandler,
                           upgradeUniverseHandler,
                           cloudProviderHandler,
+                          taskExecutor,
                           statusUpdaterFactory);
 
                   ReleaseReconciler releaseReconciler =

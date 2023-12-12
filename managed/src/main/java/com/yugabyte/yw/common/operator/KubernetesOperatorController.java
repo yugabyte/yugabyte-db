@@ -9,6 +9,7 @@ import com.fasterxml.jackson.databind.SerializationFeature;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
@@ -82,6 +83,7 @@ public class KubernetesOperatorController {
   private final UniverseCRUDHandler universeCRUDHandler;
   private final UpgradeUniverseHandler upgradeUniverseHandler;
   private final CloudProviderHandler cloudProviderHandler;
+  private final TaskExecutor taskExecutor;
   private Map<String, Deque<Pair<Field, UserIntent>>> pendingTasks = new HashMap<>();
 
   public static final Logger LOG = LoggerFactory.getLogger(KubernetesOperatorController.class);
@@ -103,6 +105,7 @@ public class KubernetesOperatorController {
       UniverseCRUDHandler universeCRUDHandler,
       UpgradeUniverseHandler upgradeUniverseHandler,
       CloudProviderHandler cloudProviderHandler,
+      TaskExecutor taskExecutor,
       OperatorStatusUpdaterFactory statusUpdaterFactory) {
     this.kubernetesClient = kubernetesClient;
     this.ybUniverseClient = ybUniverseClient;
@@ -113,6 +116,7 @@ public class KubernetesOperatorController {
     this.universeCRUDHandler = universeCRUDHandler;
     this.upgradeUniverseHandler = upgradeUniverseHandler;
     this.cloudProviderHandler = cloudProviderHandler;
+    this.taskExecutor = taskExecutor;
     this.kubernetesStatusUpdater = statusUpdaterFactory.create();
     addEventHandlersToSharedIndexInformers();
   }
@@ -191,35 +195,42 @@ public class KubernetesOperatorController {
           if (ybUniStatus == null) {
             return;
           }
-          String status = ybUniStatus.getUniverseStatus();
-          if (status.contains("DestroyKubernetesUniverse Success")
-              && canDeleteProvider(cust, universeName)
-              && isRunningInKubernetes()) {
-            LOG.info("Status is: " + status);
-            LOG.info("Deleting provider now");
-            Result deleteProvider = deleteProvider(cust.getUuid(), universeName);
-            // Removing finalizer so we can delete the custom resource
-            // This only happens after we remove the corresponding provider
-            ObjectMeta objectMeta = ybUniverse.getMetadata();
-            objectMeta.setFinalizers(Collections.emptyList());
-            ybUniverseClient
-                .inNamespace(namespace)
-                .withName(ybUniverse.getMetadata().getName())
-                .patch(ybUniverse);
+
+          // Add thread to delete provider and remove finalizer
+          ObjectMeta objectMeta = ybUniverse.getMetadata();
+          if (CollectionUtils.isNotEmpty(objectMeta.getFinalizers())) {
+            UUID customerUUID = cust.getUuid();
+            Thread universeDeletionFinalizeThread =
+                new Thread(
+                    () -> {
+                      try {
+                        if (canDeleteProvider(cust, universeName)) {
+                          try {
+                            UUID deleteProviderTaskUUID =
+                                deleteProvider(customerUUID, universeName);
+                            taskExecutor.waitForTask(deleteProviderTaskUUID);
+                          } catch (Exception e) {
+                            LOG.error("Got error in deleting provider", e);
+                          }
+                        }
+                        LOG.info("Removing finalizers...");
+                        if (ybUniverse.getStatus() != null) {
+                          objectMeta.setFinalizers(Collections.emptyList());
+                          ybUniverseClient
+                              .inNamespace(namespace)
+                              .withName(universeName)
+                              .patch(ybUniverse);
+                        }
+                      } catch (Exception e) {
+                        LOG.info("Got error in finalizing Universe {} delete", universeName);
+                      }
+                    });
+            universeDeletionFinalizeThread.start();
           }
         } else {
           Universe universe = Universe.getOrBadRequest(universeResp.universeUUID);
           UUID universeUUID = universe.getUniverseUUID();
           Result task = deleteUniverse(cust.getUuid(), universeUUID, ybUniverse);
-
-          if (!isRunningInKubernetes()) {
-            ObjectMeta objectMeta = ybUniverse.getMetadata();
-            objectMeta.setFinalizers(Collections.emptyList());
-            ybUniverseClient
-                .inNamespace(namespace)
-                .withName(ybUniverse.getMetadata().getName())
-                .patch(ybUniverse);
-          }
           if (task != null) {
             LOG.info("Deleted Universe using KubernetesOperator");
             LOG.info(task.toString());
@@ -283,20 +294,19 @@ public class KubernetesOperatorController {
     }
   }
 
-  private Result deleteProvider(UUID customerUUID, String universeName) {
+  private UUID deleteProvider(UUID customerUUID, String universeName) {
     LOG.info("Deleting provider using operator");
     Customer customer = Customer.getOrBadRequest(customerUUID);
     String providerName = getProviderName(universeName);
     Provider provider = Provider.get(customer.getUuid(), providerName, CloudType.kubernetes);
-    UUID taskUUID = cloudProviderHandler.delete(customer, provider.getUuid());
-    return new YBPTask(taskUUID, provider.getUuid()).asResult();
+    return cloudProviderHandler.delete(customer, provider.getUuid());
   }
 
   private boolean canDeleteProvider(Customer customer, String universeName) {
     LOG.info("Checking if provider can be deleted");
     String providerName = getProviderName(universeName);
     Provider provider = Provider.get(customer.getUuid(), providerName, CloudType.kubernetes);
-    return (customer.getUniversesForProvider(provider.getUuid()).size() == 0);
+    return (provider != null) && (customer.getUniversesForProvider(provider.getUuid()).size() == 0);
   }
 
   private Result createUniverse(
