@@ -28,7 +28,8 @@ import {
   XClusterTableStatus,
   XCLUSTER_CONFIG_REFETCH_INTERVAL_MS,
   XCLUSTER_METRIC_REFETCH_INTERVAL_MS,
-  AlertName
+  AlertName,
+  XCLUSTER_UNIVERSE_TABLE_FILTERS
 } from '../constants';
 import {
   MaxAcceptableLag,
@@ -103,15 +104,15 @@ export function ReplicationDetails({
   );
 
   const sourceUniverseTableQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(xClusterConfigQuery.data?.sourceUniverseUUID, {
-      excludeColocatedTables: true,
-      xClusterSupportedOnly: true
-    }),
+    universeQueryKey.tables(
+      xClusterConfigQuery.data?.sourceUniverseUUID,
+      XCLUSTER_UNIVERSE_TABLE_FILTERS
+    ),
     () =>
-      fetchTablesInUniverse(xClusterConfigQuery.data?.sourceUniverseUUID, {
-        excludeColocatedTables: true,
-        xClusterSupportedOnly: true
-      }).then((response) => response.data),
+      fetchTablesInUniverse(
+        xClusterConfigQuery.data?.sourceUniverseUUID,
+        XCLUSTER_UNIVERSE_TABLE_FILTERS
+      ).then((response) => response.data),
     { enabled: xClusterConfigQuery.data?.sourceUniverseUUID !== undefined }
   );
 
