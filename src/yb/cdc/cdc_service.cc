@@ -176,6 +176,10 @@ DEFINE_RUNTIME_int32(xcluster_get_changes_max_send_rate_mbps, 100,
 DEFINE_RUNTIME_bool(enable_xcluster_stat_collection, true,
     "When enabled, stats are collected from xcluster streams for reporting purposes.");
 
+DEFINE_RUNTIME_uint32(cdcsdk_tablet_not_of_interest_timeout_secs, 15*60,
+                      "Timeout after which it can be inferred that tablet is not of interest "
+                      "for the stream");
+
 DECLARE_bool(enable_log_retention_by_op_idx);
 
 DECLARE_int32(cdc_checkpoint_opid_interval_ms);
@@ -1575,6 +1579,9 @@ void CDCServiceImpl::GetChanges(
 
   if (record.GetSourceType() == CDCSDK) {
     RPC_STATUS_RETURN_ERROR(
+        CheckTabletNotOfInterest(producer_tablet), resp->mutable_error(),
+        CDCErrorPB::INTERNAL_ERROR, context);
+    RPC_STATUS_RETURN_ERROR(
         CheckStreamActive(producer_tablet), resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR,
         context);
     impl_->UpdateActiveTime(producer_tablet);
@@ -2489,14 +2496,6 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
       continue;
     }
 
-    // If the tablet_id, stream_id pair have OpId::Min() as checkpoint, but the LastReplicatedTime
-    // is not set, we know this was a child tablet (refer: UpdateCDCProducerOnTabletSplit). We will
-    // not update the checkpoint details.
-    if (checkpoint == OpId::Min() && last_replicated_time_str.empty() &&
-        record.GetSourceType() == CDCSDK) {
-      continue;
-    }
-
     // Check that requested tablet_id is part of the CDC stream.
     ProducerTabletInfo producer_tablet = {{}, stream_id, tablet_id};
 
@@ -2512,7 +2511,19 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
             << tablet_id;
         last_active_time_cdc_state_table = GetCurrentTimeMicros();
       }
-      auto status = CheckStreamActive(producer_tablet, last_active_time_cdc_state_table);
+      auto status = CheckTabletNotOfInterest(
+          producer_tablet, last_active_time_cdc_state_table, true);
+      if (!status.ok()) {
+        if (!tablet_min_checkpoint_map.contains(tablet_id)) {
+          VLOG(2) << "Stream: " << stream_id << ", is not of interest for tablet: " << tablet_id
+                  << ", hence we are adding default entries to tablet_min_checkpoint_map";
+          auto& tablet_info = tablet_min_checkpoint_map[tablet_id];
+          tablet_info.cdc_sdk_op_id = OpId::Max();
+          tablet_info.cdc_sdk_safe_time = HybridTime::kInvalid;
+        }
+        continue;
+      }
+      status = CheckStreamActive(producer_tablet, last_active_time_cdc_state_table);
       if (!status.ok()) {
         // It is possible that all streams associated with a tablet have expired, in which case we
         // have to create a default entry in 'tablet_min_checkpoint_map' corresponding to the
@@ -2532,6 +2543,17 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
         continue;
       }
       latest_active_time = last_active_time_cdc_state_table;
+
+      // If the tablet_id, stream_id pair have OpId::Min() as checkpoint,
+      // but the LastReplicatedTime is not set, we know this was
+      // a child tablet (refer: UpdateCDCProducerOnTabletSplit).
+      // We will not update the checkpoint details.
+      // This check is to be done after CheckTabletNotOfInterest and CheckStreamActive because if
+      // stream is not of interest / expired for parent tablet, then it should be the same status
+      // for the child tablets as well.
+      if (checkpoint == OpId::Min() && last_replicated_time_str.empty()) {
+        continue;
+      }
     }
 
     // Ignoring those non-bootstarped CDCSDK stream
@@ -3439,6 +3461,59 @@ Status CDCServiceImpl::CheckStreamActive(
           << ", active time in CDCState table: " << last_active_time << ", current time: " << now;
   return STATUS_FORMAT(
       InternalError, "Stream ID $0 is expired for Tablet ID $1", producer_tablet.stream_id,
+      producer_tablet.tablet_id);
+}
+
+Status CDCServiceImpl::CheckTabletNotOfInterest(
+    const ProducerTabletInfo& producer_tablet, int64_t last_active_time_passed,
+    bool deletion_check) {
+
+  // This is applicable only to Consistent Snapshot Streams,
+  auto record = VERIFY_RESULT(GetStream(producer_tablet.stream_id));
+  if (!record->GetSnapshotOption().has_value() || !record->GetStreamCreationTime().has_value()) {
+    return Status::OK();
+  }
+
+  auto last_active_time = (last_active_time_passed == 0)
+                              ? VERIFY_RESULT(GetLastActiveTime(producer_tablet))
+                              : last_active_time_passed;
+  auto stream_creation_time = *record->GetStreamCreationTime();
+
+  // A tablet is of interest to the stream if:
+  // If it has been polled at least once since creation OR
+  // if it is a tablet of a dynamic table (a table that was created after the stream is created)
+  DCHECK_GE(last_active_time, 0);
+  if (last_active_time < 0 || stream_creation_time != static_cast<uint64>(last_active_time)) {
+    return Status::OK();
+  }
+
+  auto limit = GetAtomicFlag(&FLAGS_cdcsdk_tablet_not_of_interest_timeout_secs) * 1000 * 1000;
+  if (deletion_check) {
+    // Add a little bit more to the timeout limit to determine if the cdc_state table
+    // entry for this producer_tablet can be deleted. This will help avoid race conditions.
+    limit += 2*1000*1000;
+  }
+
+  auto now = GetCurrentTimeMicros();
+  if (now < last_active_time + limit) {
+    return Status::OK();
+  }
+
+  last_active_time = VERIFY_RESULT(GetLastActiveTime(producer_tablet, true));
+  if (last_active_time < 0 || stream_creation_time != static_cast<uint64>(last_active_time)) {
+    return Status::OK();
+  }
+  if (now < last_active_time + limit) {
+    return Status::OK();
+  }
+
+  VLOG(1) << "Stream: " << producer_tablet.stream_id
+          << ", unpolled for too long " << (now - last_active_time) << "micros"
+          << " for tablet: " << producer_tablet.tablet_id
+          << ", active time in CDCState table: " << last_active_time << ", current time: " << now;
+  return STATUS_FORMAT(
+      InternalError,
+      "Stream ID $0 unpolled for too long for Tablet ID $1", producer_tablet.stream_id,
       producer_tablet.tablet_id);
 }
 
