@@ -486,6 +486,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const uint32_t num_tservers,
       const bool set_flag_to_a_smaller_value,
       const uint32_t cdc_intent_retention_ms,
+      CDCCheckpointType checkpoint_type,
       const bool extend_expiration = false);
 
   void TestSetCDCCheckpoint(const uint32_t num_tservers, bool initial_checkpoint);
@@ -642,6 +643,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const GetChangesResponsePB& change_resp_after_snapshot);
+
+  void TestCDCLagMetric(CDCCheckpointType checkpoint_type);
 };
 
 }  // namespace cdc
