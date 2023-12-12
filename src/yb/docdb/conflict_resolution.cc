@@ -277,7 +277,8 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
   void InvokeCallback(const Result<HybridTime>& result) {
     YB_TRANSACTION_DUMP(
         Conflicts, context_->transaction_id(),
-        result.ok() ? *result : HybridTime::kInvalid, conflict_data_->DumpConflicts());
+        result.ok() ? *result : HybridTime::kInvalid,
+        conflict_data_ ? conflict_data_->DumpConflicts() : Slice());
     intent_iter_.Reset();
     callback_(result);
   }
