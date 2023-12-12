@@ -2,6 +2,12 @@
 
 Below is the complete list of release notes for every version of ``pg_stat_monitor``.
 
+## 2.0.4
+
+### Bug Fixes
+
+[GH-425](https://github.com/percona/pg_stat_monitor/pull/432) - Resolving a possible issue that could lead to pg_stat_monitor deadlocking in pgsm_store
+
 ## 2.0.3
 
 ### Bug Fixes

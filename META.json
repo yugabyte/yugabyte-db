@@ -2,7 +2,7 @@
    "name": "pg_stat_monitor",
    "abstract": "PostgreSQL Query Performance Monitoring Tool",
    "description": "pg_stat_monitor is a PostgreSQL Query Performance Monitoring tool, based on PostgreSQL's contrib module pg_stat_statements. PostgreSQL’s pg_stat_statements provides the basic statistics, which is sometimes not enough. The major shortcoming in pg_stat_statements is that it accumulates all the queries and their statistics and does not provide aggregated statistics nor histogram information. In this case, a user would need to calculate the aggregates, which is quite an expensive operation.",
-   "version": "2.0.3",
+   "version": "2.0.4",
    "maintainer": [
       "ibrar.ahmed@percona.com"
    ],
@@ -12,7 +12,7 @@
          "abstract": "PostgreSQL Query Performance Monitoring Tool",
          "file": "pg_stat_monitor--2.0.sql",
          "docfile": "README.md",
-         "version": "2.0.3"
+         "version": "2.0.4"
       }
    },
    "prereqs": {
