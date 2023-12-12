@@ -72,7 +72,7 @@ type: indexpage
         <div class="title">Shutdown</div>
       </div>
       <div class="body">
-        Shut YugabytedB Anywhere down gracefully.
+        Shut YugabyteDB Anywhere down gracefully.
       </div>
     </a>
   </div>
