@@ -2976,6 +2976,15 @@ reaper(SIGNAL_ARGS)
 				break;
 			}
 
+			if (proc->ybEnteredCriticalSection)
+			{
+				YbCrashInUnmanageableState = true;
+				ereport(WARNING,
+						(errmsg("terminating active server processes due to backend crash of a "
+								"process while it was in a critical section")));
+				break;
+			}
+
 			elog(INFO, "cleaning up after process with pid %d exited with status %d",
 				 pid, exitstatus);
 			CleanupKilledProcess(proc);
