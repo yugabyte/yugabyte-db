@@ -49,11 +49,9 @@ For a configuration that provides fault tolerance across availability zones, dep
 
 ![Deploy a 3-node YugabyteDB Managed cluster to Azure](/images/tutorials/azure/azure-functions/yb-cluster.png)
 
-Add the [outbound addresses for your function app](https://learn.microsoft.com/en-us/azure/azure-functions/ip-addresses?tabs=azurecli) to your cluster's [IP allow list](../../../yugabyte-cloud/cloud-secure-clusters/add-connections/). Find these addresses in the **Networking** tab of the Azure portal. This will ensure that a connection can be made between Azure Functions and YugabyteDB.
+Add your computer's IP address to the IP allow list in YugabyteDB Managed so that you can run your serverless functions locally in development.
 
-![Locate outbound IP addresses in the Azure portal](/images/tutorials/azure/azure-functions/azure-networking.png)
-
-In addition to the outbound IP addresses in Azure, add your machine's IP address to the IP allow list in YugabyteDB Managed so that you can run your serverless functions locally in development. Now that we have a working cluster in YugabyteDB Managed, let's add some data.
+Now that we have a working cluster in YugabyteDB Managed, let's add some data.
 
 ## Add data to YugabyteDB
 
@@ -176,6 +174,16 @@ We can deploy our application to Azure using the [Azure CLI](https://learn.micro
     ```sh
     az functionapp create --resource-group RESOURCE_GROUP_NAME --consumption-plan-location eastus2 --runtime node --runtime-version 18 --functions-version 4 --name YBAzureFunctions --storage-account STORAGE_ACCOUNT_NAME
     ```
+
+1. Get the [outbound addresses for your function app](https://learn.microsoft.com/en-us/azure/azure-functions/ip-addresses?tabs=azurecli) and add them to your YugabyteDB cluster's [IP allow list](../../../yugabyte-cloud/cloud-secure-clusters/add-connections/). This ensures that a connection can be made between Azure Functions and YugabyteDB.
+
+    ```sh
+    az functionapp show --resource-group RESOURCE_GROUP_NAME --name YBAzureFunctions --query possibleOutboundIpAddresses --output tsv
+    ```
+
+    You can also obtain these addresses in the **Networking** tab of the Azure portal.
+
+    ![Locate outbound IP addresses in the Azure portal](/images/tutorials/azure/azure-functions/azure-networking.png)
 
 1. Configure the application settings.
 
