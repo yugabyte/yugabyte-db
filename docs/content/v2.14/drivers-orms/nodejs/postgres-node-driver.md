@@ -142,7 +142,6 @@ async.series([
   console.log('Shutting down');
   client.end();
 });
->>>>>>> master
 ```
 
 When you run the application using the command `node yb-ysql-helloworld-ssl.js`, you should see output similar to the following:
