@@ -1777,6 +1777,7 @@ namespace cdc {
       const uint32_t num_tservers,
       const bool set_flag_to_a_smaller_value,
       const uint32_t cdc_intent_retention_ms,
+      CDCCheckpointType checkpoint_type,
       const bool extend_expiration) {
     if (set_flag_to_a_smaller_value) {
       ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = cdc_intent_retention_ms;
@@ -1793,7 +1794,7 @@ namespace cdc {
         test_client()->GetTablets(table, 0, &tablets, /* partition_list_version = */ nullptr));
 
     TabletId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-    xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT));
+    xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
     auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
     ASSERT_FALSE(resp.has_error());
 
@@ -1818,19 +1819,21 @@ namespace cdc {
     vector<int64> intent_counts(num_tservers, -1);
     ASSERT_OK(WaitFor(
         [this, &num_tservers, &set_flag_to_a_smaller_value, &extend_expiration, &intent_counts,
-         &stream_id, &tablets]() -> Result<bool> {
+         &stream_id, &tablets, &change_resp]() -> Result<bool> {
           uint32_t i = 0;
           while (i < num_tservers) {
             if (extend_expiration) {
               // Call GetChanges once to set the initial value in the cdc_state table.
-              auto result = GetChangesFromCDC(stream_id, tablets);
+              auto result =
+                  GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint());
               if (!result.ok()) {
                 return false;
               }
-              yb::cdc::GetChangesResponsePB change_resp = *result;
-              if (change_resp.has_error()) {
+              yb::cdc::GetChangesResponsePB change_resp_2 = *result;
+              if (change_resp_2.has_error()) {
                 return false;
               }
+              change_resp = change_resp_2;
             }
 
             auto status = GetIntentCounts(i, &intent_counts[i]);
@@ -1866,7 +1869,8 @@ namespace cdc {
 
       SleepFor(MonoDelta::FromMilliseconds(100));
 
-      change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
+      change_resp =
+          ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint()));
       uint32_t record_size = change_resp.cdc_sdk_proto_records_size();
       uint32_t insert_count = 0;
       for (uint32_t idx = 0; idx < record_size; idx++) {
