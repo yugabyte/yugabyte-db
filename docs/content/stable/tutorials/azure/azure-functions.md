@@ -49,7 +49,7 @@ For a configuration that provides fault tolerance across availability zones, dep
 
 ![Deploy a 3-node YugabyteDB Managed cluster to Azure](/images/tutorials/azure/azure-functions/yb-cluster.png)
 
-Add your computer's IP address to the IP allow list in YugabyteDB Managed so that you can run your serverless functions locally in development.
+Add your computer's IP address to the cluster [IP allow list](../../../yugabyte-cloud/cloud-secure-clusters/add-connections/) so that you can run your serverless functions locally in development.
 
 Now that we have a working cluster in YugabyteDB Managed, let's add some data.
 
