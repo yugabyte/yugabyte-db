@@ -92,10 +92,26 @@ public class ChangeMasterConfig extends UniverseTaskBase {
       throw new IllegalStateException(
           "No master host/ports for a change config op in " + taskParams().getUniverseUUID());
     }
-
+    boolean isAddMasterOp = (taskParams().opType == OpType.AddMaster);
     // Get the node details and perform the change config operation.
     NodeDetails node = universe.getNode(taskParams().nodeName);
-    boolean isAddMasterOp = (taskParams().opType == OpType.AddMaster);
+    if (node == null) {
+      boolean throwExc = true;
+      // on K8s we don't raise exception here.
+      if (isAddMasterOp == false) {
+        if (Util.isKubernetesBasedUniverse(universe)) {
+          throwExc = false;
+        }
+      }
+      if (throwExc) {
+        throw new RuntimeException("Cannot find node " + taskParams().nodeName);
+      } else {
+        log.info(
+            "Config change remove is already done for node {} as node is no longer in universe",
+            taskParams().nodeName);
+        return;
+      }
+    }
     // If the cluster has a secondary IP, we want to ensure that we use the correct addresses.
     // The ipToUse is the address that we need to add to the config.
     // The ipForPlatform is the address that the platform uses to connect to the host.
