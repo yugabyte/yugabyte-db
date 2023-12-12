@@ -7,7 +7,7 @@ import { Typography } from '@material-ui/core';
 
 import { closeDialog, openDialog } from '../../actions/modal';
 import { YBButton } from '../common/forms/fields';
-import { ConfigureMaxLagTimeModal } from './ConfigureMaxLagTimeModal';
+import { ConfigureReplicationLagAlertModal } from './ConfigureMaxLagTimeModal';
 import { CreateConfigModal } from './createConfig/CreateConfigModal';
 import { XClusterConfigList } from './XClusterConfigList';
 import { api, xClusterQueryKey } from '../../redesign/helpers/api';
@@ -138,12 +138,6 @@ export const XClusterReplication = ({ currentUniverseUUID }: { currentUniverseUU
             sourceUniverseUUID={currentUniverseUUID}
             onHide={hideModal}
             visible={showModal && visibleModal === 'addClusterReplicationModal'}
-          />
-          <ConfigureMaxLagTimeModal
-            visible={showModal && visibleModal === 'configureMaxLagTimeModal'}
-            // visible={true}
-            currentUniverseUUID={currentUniverseUUID}
-            onHide={hideModal}
           />
         </Col>
       </Row>

@@ -4,8 +4,11 @@ import { isNonAvailable } from '../../../utils/LayoutUtils';
 import { getSeverityLabel } from './AlertUtils';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 
-import prometheusIcon from '../../metrics/images/prometheus-icon.svg';
-import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import prometheusIcon from '../../../redesign/assets/prometheus-icon.svg';
+import {
+  RbacValidator,
+  hasNecessaryPerm
+} from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import './AlertDetails.scss';
 

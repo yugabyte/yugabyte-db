@@ -119,7 +119,8 @@ struct PgApiContext {
 class PgApiImpl {
  public:
   PgApiImpl(PgApiContext context, const YBCPgTypeEntity *YBCDataTypeTable, int count,
-            YBCPgCallbacks pg_callbacks, std::optional<uint64_t> session_id);
+            YBCPgCallbacks pg_callbacks, std::optional<uint64_t> session_id,
+            const YBCAshMetadata *ash_metadata);
   ~PgApiImpl();
 
   const YBCPgCallbacks* pg_callbacks() {

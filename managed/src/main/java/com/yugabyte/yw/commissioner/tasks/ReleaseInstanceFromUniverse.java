@@ -67,84 +67,88 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
         getName(),
         taskParams().nodeName,
         taskParams().getUniverseUUID());
+    checkUniverseVersion();
+    Universe universe =
+        lockAndFreezeUniverseForUpdate(
+            taskParams().expectedUniverseVersion, null /* Txn callback */);
+    try {
+      NodeDetails currentNode = universe.getNode(taskParams().nodeName);
 
-    super.runUpdateTasks(
-        () -> {
-          Universe universe = getUniverse();
-          NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+      preTaskActions();
 
-          preTaskActions();
+      // Update Node State to BeingDecommissioned.
+      createSetNodeStateTask(currentNode, NodeState.BeingDecommissioned)
+          .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
 
-          // Update Node State to BeingDecommissioned.
-          createSetNodeStateTask(currentNode, NodeState.BeingDecommissioned)
-              .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
+      taskParams().azUuid = currentNode.azUuid;
+      taskParams().placementUuid = currentNode.placementUuid;
+      taskParams().nodeUuid = currentNode.nodeUuid;
+      Collection<NodeDetails> currentNodeDetails = Collections.singleton(currentNode);
 
-          taskParams().azUuid = currentNode.azUuid;
-          taskParams().placementUuid = currentNode.placementUuid;
-          taskParams().nodeUuid = currentNode.nodeUuid;
-          Collection<NodeDetails> currentNodeDetails = Collections.singleton(currentNode);
-
-          // Wait for Master Leader before doing Master operations, like blacklisting.
-          createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
-          // If the node fails in Adding state during ADD action, IP may not be available.
-          // Check to make sure that the node IP is available.
-          if (Util.getNodeIp(universe, currentNode) != null) {
-            // Create a task for removal of this server from blacklist on master leader.
-            createModifyBlackListTask(
-                    null /* addNodes */,
-                    currentNodeDetails /* removeNodes */,
-                    false /* isLeaderBlacklist */)
-                .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
+      // Wait for Master Leader before doing Master operations, like blacklisting.
+      createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
+      // If the node fails in Adding state during ADD action, IP may not be available.
+      // Check to make sure that the node IP is available.
+      if (Util.getNodeIp(universe, currentNode) != null) {
+        // Create a task for removal of this server from blacklist on master leader.
+        createModifyBlackListTask(
+                null /* addNodes */,
+                currentNodeDetails /* removeNodes */,
+                false /* isLeaderBlacklist */)
+            .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
+      }
+      UserIntent userIntent =
+          universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid).userIntent;
+      // Method instanceExists also checks for on-prem.
+      if (instanceExists(taskParams())) {
+        if (userIntent.providerType == CloudType.onprem) {
+          // Stop master and tservers.
+          createStopServerTasks(currentNodeDetails, ServerType.MASTER, true /* isForceDelete */)
+              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+          createStopServerTasks(currentNodeDetails, ServerType.TSERVER, true /* isForceDelete */)
+              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+          if (universe.isYbcEnabled()) {
+            createStopYbControllerTasks(new HashSet<>(currentNodeDetails), true /*isIgnoreError*/)
+                .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
           }
-          UserIntent userIntent =
-              universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid).userIntent;
-          // Method instanceExists also checks for on-prem.
-          if (instanceExists(taskParams())) {
-            if (userIntent.providerType == CloudType.onprem) {
-              // Stop master and tservers.
-              createStopServerTasks(currentNodeDetails, ServerType.MASTER, true /* isForceDelete */)
-                  .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-              createStopServerTasks(
-                      currentNodeDetails, ServerType.TSERVER, true /* isForceDelete */)
-                  .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-              if (universe.isYbcEnabled()) {
-                createStopYbControllerTasks(
-                        new HashSet<>(currentNodeDetails), true /*isIgnoreError*/)
-                    .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-              }
-            }
+        }
 
-            // Set the node states to Removing.
-            createSetNodeStateTasks(currentNodeDetails, NodeDetails.NodeState.Terminating)
-                .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
-            // Create tasks to terminate that instance. Force delete and ignore errors.
-            createDestroyServerTasks(
-                    universe,
-                    currentNodeDetails,
-                    true /* isForceDelete */,
-                    false /* deleteNode */,
-                    true /* deleteRootVolumes */)
-                .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
-          }
+        // Set the node states to Removing.
+        createSetNodeStateTasks(currentNodeDetails, NodeDetails.NodeState.Terminating)
+            .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
+        // Create tasks to terminate that instance. Force delete and ignore errors.
+        createDestroyServerTasks(
+                universe,
+                currentNodeDetails,
+                true /* isForceDelete */,
+                false /* deleteNode */,
+                true /* deleteRootVolumes */)
+            .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
+      }
 
-          // Update the DNS entry for this universe.
-          createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, universe)
-              .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      // Update the DNS entry for this universe.
+      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, universe)
+          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
 
-          // Update the swamper target file.
-          createSwamperTargetUpdateTask(false /* removeFile */);
+      // Update the swamper target file.
+      createSwamperTargetUpdateTask(false /* removeFile */);
 
-          // Update Node State to Decommissioned.
-          createSetNodeStateTask(currentNode, NodeState.Decommissioned)
-              .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
+      // Update Node State to Decommissioned.
+      createSetNodeStateTask(currentNode, NodeState.Decommissioned)
+          .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
 
-          // Mark universe task state to success
-          createMarkUniverseUpdateSuccessTasks()
-              .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
+      // Mark universe task state to success
+      createMarkUniverseUpdateSuccessTasks()
+          .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
 
-          // Run all the tasks.
-          getRunnableTask().runSubTasks();
-        });
+      // Run all the tasks.
+      getRunnableTask().runSubTasks();
+    } catch (Throwable t) {
+      log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
+      throw t;
+    } finally {
+      unlockUniverseForUpdate();
+    }
 
     log.info("Finished {} task.", getName());
   }

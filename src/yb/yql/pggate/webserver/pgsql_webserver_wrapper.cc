@@ -22,11 +22,16 @@
 
 #include "yb/gutil/map-util.h"
 
+#include "yb/server/default-path-handlers.h"
+#include "yb/server/pprof-path-handlers.h"
 #include "yb/server/webserver.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/metrics_writer.h"
+#include "yb/util/tcmalloc_util.h"
 #include "yb/util/signal_util.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
 
 #include "yb/yql/pggate/util/ybc-internal.h"
@@ -555,7 +560,24 @@ YBCStatus StartWebserver(WebserverWrapper *webserver_wrapper) {
       "/statements", "PG Stat Statements", PgStatStatementsHandler, false, false);
   webserver->RegisterPathHandler(
       "/statements-reset", "Reset PG Stat Statements", PgStatStatementsResetHandler, false, false);
+  webserver->RegisterPathHandler("/webserver-heap-snapshot", "",
+      PprofHeapSnapshotHandler, true /* is_styled */, false /* is_on_nav_bar */);
+  webserver->RegisterPathHandler("/memz", "Memory (total)", MemUsageHandler, true, false);
+
   return ToYBCStatus(WithMaskedYsqlSignals([webserver]() { return webserver->Start(); }));
+}
+
+void SetWebserverConfig(
+    WebserverWrapper *webserver_wrapper, bool enable_access_logging, bool enable_tcmalloc_logging,
+    int webserver_profiler_sample_freq_bytes) {
+  Webserver *webserver = reinterpret_cast<Webserver *>(webserver_wrapper);
+  webserver->SetLogging(enable_access_logging, enable_tcmalloc_logging);
+
+  if (GetTCMallocSamplingFrequency() != webserver_profiler_sample_freq_bytes) {
+    LOG(INFO) << Format("Setting TCMalloc profiler sampling frequency to $0 bytes",
+        webserver_profiler_sample_freq_bytes);
+    SetTCMallocSamplingFrequency(webserver_profiler_sample_freq_bytes);
+  }
 }
 }  // extern "C"
 

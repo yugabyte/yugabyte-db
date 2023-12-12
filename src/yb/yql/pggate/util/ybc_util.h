@@ -250,6 +250,8 @@ void YBCInitThreading();
 
 double YBCEvalHashValueSelectivity(int32_t hash_low, int32_t hash_high);
 
+void YBCGenerateAshRootRequestId(unsigned char *root_request_id);
+
 #ifdef __cplusplus
 } // extern "C"
 #endif

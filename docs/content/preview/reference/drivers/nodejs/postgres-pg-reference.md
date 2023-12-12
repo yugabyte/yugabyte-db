@@ -4,7 +4,6 @@ headerTitle: Node.js Drivers
 linkTitle: Node.js Drivers
 description: PostgreSQL node-postgres Driver for YSQL
 headcontent: Node.js Drivers for YSQL
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
     name: Node.js Drivers

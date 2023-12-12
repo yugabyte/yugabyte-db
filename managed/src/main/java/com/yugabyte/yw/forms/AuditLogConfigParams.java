@@ -21,7 +21,8 @@ public class AuditLogConfigParams extends UpgradeTaskParams {
   public void verifyParams(Universe universe, boolean isFirstTry) {
     super.verifyParams(universe, isFirstTry);
     boolean exportEnabled =
-        CollectionUtils.isNotEmpty(auditLogConfig.getUniverseLogsExporterConfig());
+        auditLogConfig.isExportActive()
+            && CollectionUtils.isNotEmpty(auditLogConfig.getUniverseLogsExporterConfig());
     if (exportEnabled
         && !universe.getUniverseDetails().otelCollectorEnabled
         && !installOtelCollector) {
@@ -39,7 +40,6 @@ public class AuditLogConfigParams extends UpgradeTaskParams {
           BAD_REQUEST,
           "Can't install OpenTelemetry Collector for onprem universe with manual provisioning");
     }
-    if (upgradeOption == UpgradeOption.NON_RESTART_UPGRADE) {}
   }
 
   public static class Converter extends BaseConverter<AuditLogConfigParams> {}

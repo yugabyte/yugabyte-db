@@ -4,7 +4,6 @@ headerTitle: Secondary indexes with JSONB
 linkTitle: Secondary indexes with JSONB
 description: Secondary indexes with JSONB in YugabyteDB YCQL
 headContent: Explore secondary indexes with JSONB in YugabyteDB using YCQL
-image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
     identifier: secondary-indexes-with-jsonb-ycql

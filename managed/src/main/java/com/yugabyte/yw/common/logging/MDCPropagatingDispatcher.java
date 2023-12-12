@@ -2,11 +2,11 @@
 
 package com.yugabyte.yw.common.logging;
 
-import akka.dispatch.Batchable;
-import akka.dispatch.Dispatcher;
-import akka.dispatch.ExecutorServiceFactoryProvider;
-import akka.dispatch.MessageDispatcherConfigurator;
 import java.util.Map;
+import org.apache.pekko.dispatch.Batchable;
+import org.apache.pekko.dispatch.Dispatcher;
+import org.apache.pekko.dispatch.ExecutorServiceFactoryProvider;
+import org.apache.pekko.dispatch.MessageDispatcherConfigurator;
 import org.slf4j.MDC;
 import scala.concurrent.ExecutionContext;
 import scala.concurrent.duration.Duration;
@@ -16,8 +16,9 @@ import scala.concurrent.duration.FiniteDuration;
  * This custom dispatcher is used to capture MDC, propagate it through an {@link
  * scala.concurrent.ExecutionContext} and restore when the executor finishes. Note that capturing
  * the context in the dispatcher constructor and overriding {@link
- * akka.dispatch.Dispatcher#execute(Runnable)} will result in context being set only once and
- * subsequent runnables on the same thread will no longer be able to access it after it is cleared.
+ * org.apache.pekko.dispatch.Dispatcher#execute(Runnable)} will result in context being set only
+ * once and subsequent runnables on the same thread will no longer be able to access it after it is
+ * cleared.
  */
 public class MDCPropagatingDispatcher extends Dispatcher {
 

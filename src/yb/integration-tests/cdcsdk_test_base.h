@@ -47,6 +47,12 @@ using client::YBClient;
 using client::YBTableName;
 
 namespace cdc {
+// TODO(#19752): Remove the YB_DISABLE_TEST_IN_TSAN
+#define CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(fixture, test_name)                       \
+  TEST_F(fixture, YB_DISABLE_TEST_IN_TSAN(test_name##Explicit)) { test_name(EXPLICIT); }  \
+                                                                                          \
+  TEST_F(fixture, YB_DISABLE_TEST_IN_TSAN(test_name##Implicit)) { test_name(IMPLICIT); }
+
 constexpr int kRpcTimeout = NonTsanVsTsan(60, 120);
 static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
@@ -139,7 +145,7 @@ class CDCSDKTestBase : public YBTest {
       uint32_t replication_factor, uint32_t num_masters = 1, bool colocated = false,
       bool cdc_populate_safepoint_record = false);
 
-  Result<tablet::TabletPeerPtr> SetUpWithOneTablet(
+  Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> SetUpWithOneTablet(
       uint32_t replication_factor, uint32_t num_masters = 1, bool colocated = false);
 
   Result<YBTableName> GetTable(
@@ -218,10 +224,12 @@ class CDCSDKTestBase : public YBTest {
       CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT,
       CDCRecordType record_type = CDCRecordType::CHANGE);
 
-  Result<xrepl::StreamId> CreateCSStream(
+  Result<xrepl::StreamId> CreateConsistentSnapshotStream(
       CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT,
       CDCCheckpointType checkpoint_type = CDCCheckpointType::EXPLICIT,
       CDCRecordType record_type = CDCRecordType::CHANGE);
+
+  Result<xrepl::StreamId> CreateDBStreamBasedOnCheckpointType(CDCCheckpointType checkpoint_type);
 
  protected:
   // Every test needs to initialize this cdc_proxy_.

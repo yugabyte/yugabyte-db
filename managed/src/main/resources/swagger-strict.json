@@ -1383,6 +1383,10 @@
     "AuditLogConfig" : {
       "description" : "Audit Log Configuration",
       "properties" : {
+        "exportActive" : {
+          "description" : "Universe logs export active",
+          "type" : "boolean"
+        },
         "universeLogsExporterConfig" : {
           "description" : "Universe logs exporter config",
           "items" : {
@@ -4724,7 +4728,7 @@
         },
         "state" : {
           "description" : "The state of the DR config",
-          "enum" : [ "Initializing", "Replicating", "SwitchoverInProgress", "FailoverInProgress", "Halted" ],
+          "enum" : [ "Initializing", "Replicating", "Switchover in Progress", "Failover in Progress", "Halted" ],
           "type" : "string"
         },
         "uuid" : {
@@ -4738,9 +4742,9 @@
     "DrConfigCreateForm" : {
       "description" : "drConfig create form",
       "properties" : {
-        "bootstrapBackupParams" : {
-          "$ref" : "#/definitions/BootstarpBackupParams",
-          "description" : "Parameters used to do Backup/restore"
+        "bootstrapParams" : {
+          "$ref" : "#/definitions/RestartBootstrapParams",
+          "description" : "Parameters needed for the bootstrap flow including backup/restore"
         },
         "dbs" : {
           "description" : "Source Universe DB IDs",
@@ -6415,10 +6419,6 @@
     "LdapUnivSyncFormData" : {
       "description" : "Config to sync universe roles with ldap users",
       "properties" : {
-        "allowDropSuperuser" : {
-          "description" : "Allow the API to drop a superuser role which is not an LDAP group",
-          "type" : "boolean"
-        },
         "createGroups" : {
           "description" : "Allow the API to create the LDAP groups as DB superusers",
           "type" : "boolean"
@@ -7596,6 +7596,11 @@
           "format" : "uuid",
           "type" : "string"
         },
+        "otelCollectorMetricsPort" : {
+          "description" : "Otel collector metrics port",
+          "format" : "int32",
+          "type" : "integer"
+        },
         "placementUuid" : {
           "description" : "UUID of the cluster to which this node belongs",
           "format" : "uuid",
@@ -7774,6 +7779,11 @@
           "description" : "Node UUID",
           "format" : "uuid",
           "type" : "string"
+        },
+        "otelCollectorMetricsPort" : {
+          "description" : "Otel collector metrics port",
+          "format" : "int32",
+          "type" : "integer"
         },
         "placementUuid" : {
           "description" : "UUID of the cluster to which this node belongs",
@@ -11926,6 +11936,11 @@
           "description" : "Keyspace",
           "type" : "string"
         },
+        "mainTableUUID" : {
+          "description" : "Main Table UUID of index tables",
+          "format" : "uuid",
+          "type" : "string"
+        },
         "nameSpace" : {
           "description" : "Namespace or Schema",
           "type" : "string"
@@ -13937,12 +13952,6 @@
         "masterDeviceInfo" : {
           "$ref" : "#/definitions/DeviceInfo"
         },
-        "masterGFlags" : {
-          "additionalProperties" : {
-            "type" : "string"
-          },
-          "type" : "object"
-        },
         "masterInstanceType" : {
           "type" : "string"
         },
@@ -13976,17 +13985,12 @@
           "type" : "integer"
         },
         "specificGFlags" : {
-          "$ref" : "#/definitions/SpecificGFlags"
+          "$ref" : "#/definitions/SpecificGFlags",
+          "description" : "User-defined gflags for all processes."
         },
         "spotPrice" : {
           "format" : "double",
           "type" : "number"
-        },
-        "tserverGFlags" : {
-          "additionalProperties" : {
-            "type" : "string"
-          },
-          "type" : "object"
         },
         "tserverK8SNodeResourceSpec" : {
           "$ref" : "#/definitions/K8SNodeResourceSpec"
@@ -14569,7 +14573,7 @@
         },
         "sourceUniverseState" : {
           "description" : "WARNING: This is a preview API that could change. The replication status of the source universe; used for disaster recovery",
-          "enum" : [ "Unconfigured", "ReadyToReplicate", "WaitingForDr", "ReplicatingData", "PreparingSwitchover", "SwitchingToDrReplica", "DrFailed" ],
+          "enum" : [ "Unconfigured for DR", "Ready to replicate", "Waiting for DR", "Replicating data", "Preparing for switchover", "Switching to DR replica", "Universe marked as DR failed" ],
           "type" : "string"
         },
         "sourceUniverseUUID" : {
@@ -14609,7 +14613,7 @@
         },
         "targetUniverseState" : {
           "description" : "WARNING: This is a preview API that could change. The replication status of the target universe; used for disaster recovery",
-          "enum" : [ "Unconfigured", "Bootstrapping", "ReceivingData", "SwitchingToDrPrimary", "DrFailed" ],
+          "enum" : [ "Unconfigured for DR", "Bootstrapping", "Receiving data, Ready for reads", "Switching to DR primary", "Universe marked as DR failed" ],
           "type" : "string"
         },
         "targetUniverseUUID" : {
@@ -14774,7 +14778,7 @@
         },
         "sourceUniverseState" : {
           "description" : "WARNING: This is a preview API that could change. The replication status of the source universe; used for disaster recovery",
-          "enum" : [ "Unconfigured", "ReadyToReplicate", "WaitingForDr", "ReplicatingData", "PreparingSwitchover", "SwitchingToDrReplica", "DrFailed" ],
+          "enum" : [ "Unconfigured for DR", "Ready to replicate", "Waiting for DR", "Replicating data", "Preparing for switchover", "Switching to DR replica", "Universe marked as DR failed" ],
           "type" : "string"
         },
         "sourceUniverseUUID" : {
@@ -14814,7 +14818,7 @@
         },
         "targetUniverseState" : {
           "description" : "WARNING: This is a preview API that could change. The replication status of the target universe; used for disaster recovery",
-          "enum" : [ "Unconfigured", "Bootstrapping", "ReceivingData", "SwitchingToDrPrimary", "DrFailed" ],
+          "enum" : [ "Unconfigured for DR", "Bootstrapping", "Receiving data, Ready for reads", "Switching to DR primary", "Universe marked as DR failed" ],
           "type" : "string"
         },
         "targetUniverseUUID" : {
@@ -15213,6 +15217,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/SessionInfo"
+            }
+          }
+        },
         "summary" : "Authenticate user and return api token",
         "tags" : [ "Session management" ]
       }
@@ -15223,6 +15235,17 @@
         "operationId" : "appVersion",
         "parameters" : [ ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "additionalProperties" : {
+                "type" : "string"
+              },
+              "type" : "object"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -15262,6 +15285,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AuditLoggingConfig"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -15275,6 +15306,14 @@
         "operationId" : "customerCount",
         "parameters" : [ ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/CustomerCountResp"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -15296,6 +15335,17 @@
           "required" : false
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/Customer"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -15336,6 +15386,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -15353,6 +15411,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/CustomerDetailsData"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -15396,6 +15462,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Customer"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -15415,6 +15489,17 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/AccessKey"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -15451,6 +15536,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Current admin notification messages"
+            }
+          }
+        },
         "summary" : "WARNING: This is a preview API that could change. Returns the current list of notifications for admin",
         "tags" : [ "Session management" ]
       }
@@ -15467,6 +15560,17 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/Alert channel templates ext with default values"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -15512,6 +15616,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -15534,6 +15646,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Alert channel templates ext with default values"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -15581,6 +15701,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AlertChannelTemplates"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -15600,6 +15728,17 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/AlertChannel"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -15645,6 +15784,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AlertChannel"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -15681,6 +15828,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -15704,6 +15859,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AlertChannel"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -15752,6 +15915,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AlertChannel"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -15782,6 +15953,14 @@
           }
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AlertConfiguration"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -15829,6 +16008,17 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/AlertConfiguration"
+              },
+              "type" : "array"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -15859,6 +16049,14 @@
           }
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AlertConfigurationPagedResponse"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -15902,6 +16100,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -15925,6 +16131,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AlertConfiguration"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -15973,6 +16187,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AlertConfiguration"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -16005,6 +16227,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -16024,6 +16254,17 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/AlertDefinition"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -16069,6 +16310,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AlertDestination"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -16105,6 +16354,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -16128,6 +16385,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AlertDestination"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -16176,6 +16441,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AlertDestination"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -16213,6 +16486,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AlertTemplateVariablesList"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -16232,6 +16513,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AlertTemplateVariablesList"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -16277,6 +16566,17 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/AlertTemplateVariable"
+              },
+              "type" : "array"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -16306,6 +16606,14 @@
           "required" : false
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -16353,6 +16661,17 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/AlertConfigurationTemplate"
+              },
+              "type" : "array"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -16372,6 +16691,17 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/Alert"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -16420,6 +16750,15 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "format" : "int32",
+              "type" : "integer"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -16450,6 +16789,14 @@
           }
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AlertPagedResponse"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -16489,6 +16836,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Alert"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -16518,6 +16873,14 @@
           "required" : false
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Alert"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -16563,6 +16926,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -16594,6 +16965,14 @@
           }
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTasks"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -16638,6 +17017,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/BackupPagedApiResponse"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -16663,6 +17050,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Backup"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -16712,6 +17107,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Backup"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -16737,6 +17140,17 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/CommonBackupInfo"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -16783,6 +17197,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -16802,6 +17224,23 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/CertificateInfoExt"
+              },
+              "type" : "array"
+            }
+          },
+          "500" : {
+            "description" : "If there was a server or database issue when listing the regions",
+            "schema" : {
+              "$ref" : "#/definitions/YBPError"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -16855,6 +17294,15 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -16884,6 +17332,14 @@
           "required" : false
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -16927,6 +17383,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "object"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -16956,6 +17420,14 @@
           "required" : false
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -17006,6 +17478,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "object"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -17025,6 +17505,17 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/CustomerConfigUI"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -17064,6 +17555,14 @@
           }
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/CustomerConfig"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -17113,6 +17612,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -17155,6 +17662,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/CustomerConfig"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -17190,6 +17705,14 @@
           "required" : false
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -17241,6 +17764,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/CustomerConfig"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -17279,6 +17810,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -17310,6 +17849,15 @@
           }
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -17363,6 +17911,15 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -17382,6 +17939,17 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/CustomCaCertificateInfo"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -17428,6 +17996,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -17455,6 +18031,14 @@
           "required" : false
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/CustomCaCertificateInfo"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -17493,6 +18077,14 @@
           }
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -17542,6 +18134,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -17565,6 +18165,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/DrConfig"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -17616,6 +18224,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -17653,6 +18269,14 @@
           }
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -17710,6 +18334,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -17735,6 +18367,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/DrConfigSafetimeResp"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -17786,6 +18426,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -17830,6 +18478,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -17866,6 +18522,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -17895,6 +18559,17 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "additionalProperties" : {
+                "type" : "object"
+              },
+              "type" : "object"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -17914,6 +18589,17 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "type" : "object"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -17960,6 +18646,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -17983,6 +18677,17 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "additionalProperties" : {
+                "type" : "object"
+              },
+              "type" : "object"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -18037,6 +18742,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -18066,6 +18779,20 @@
           "required" : false
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          },
+          "500" : {
+            "description" : "If there is an error refreshing the KMS config.",
+            "schema" : {
+              "$ref" : "#/definitions/YBPError"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -18122,6 +18849,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -18141,6 +18876,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/LdapDnToYbaRoleData"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -18181,6 +18924,11 @@
             "description" : "successful operation"
           }
         },
+        "responsesObject" : {
+          "default" : {
+            "description" : "successful operation"
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -18204,6 +18952,14 @@
           "required" : false
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/CustomerLicense"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -18240,6 +18996,14 @@
           "required" : false
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -18284,6 +19048,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/MaintenanceWindow"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -18307,6 +19079,17 @@
           "required" : false
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/MaintenanceWindow"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -18354,6 +19137,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/MaintenanceWindowPagedResponse"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -18390,6 +19181,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -18413,6 +19212,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/MaintenanceWindow"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -18461,6 +19268,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/MaintenanceWindow"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -18485,6 +19300,17 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/NodeAgentResp"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -18532,6 +19358,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/NodeAgentPagedApiResponse"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -18564,6 +19398,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/NodeAgentResp"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -18589,6 +19431,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/NodeInstance"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -18633,6 +19483,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/StateChangeAuditInfoPagedResponse"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -18663,6 +19521,14 @@
           }
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -18707,6 +19573,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/PerformanceRecommendationPagedResponse"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -18732,6 +19606,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/PerformanceRecommendation"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -18770,6 +19652,17 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/Provider"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -18827,6 +19720,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -18857,6 +19758,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/RegionMetadata"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -18900,6 +19809,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -18923,6 +19840,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Provider"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -18966,6 +19891,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -18991,6 +19924,17 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/Schedule"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -19028,6 +19972,14 @@
           "required" : false
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Schedule"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -19084,6 +20036,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Schedule"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -19109,6 +20069,17 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/AccessKey"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -19160,6 +20131,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -19188,6 +20167,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AccessKey"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -19235,6 +20222,14 @@
           }
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AccessKey"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -19298,6 +20293,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -19329,6 +20332,17 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/ImageBundle"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -19381,6 +20395,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/ImageBundle"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -19423,6 +20445,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -19452,6 +20482,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/ImageBundle"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -19500,6 +20538,14 @@
           }
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/ImageBundle"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -19564,6 +20610,23 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/InstanceTypeResp"
+              },
+              "type" : "array"
+            }
+          },
+          "500" : {
+            "description" : "If there was a server or database issue when listing the instance types",
+            "schema" : {
+              "$ref" : "#/definitions/YBPError"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -19599,6 +20662,14 @@
           }
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/InstanceTypeResp"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -19647,6 +20718,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -19675,6 +20754,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/InstanceTypeResp"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -19716,6 +20803,14 @@
           "required" : false
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -19770,6 +20865,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -19795,6 +20898,17 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/NodeInstance"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -19842,6 +20956,14 @@
           }
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Region"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -19899,6 +21021,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Region"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -19942,6 +21072,17 @@
           }
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "additionalProperties" : {
+                "$ref" : "#/definitions/AvailabilityZone"
+              },
+              "type" : "object"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -20008,6 +21149,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/AvailabilityZone"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -20044,6 +21193,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -20069,6 +21226,23 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/Region"
+              },
+              "type" : "array"
+            }
+          },
+          "500" : {
+            "description" : "If there was a server or database issue when listing the regions",
+            "schema" : {
+              "$ref" : "#/definitions/YBPError"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -20127,6 +21301,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "object"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -20158,6 +21340,17 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/AvailabilityZone"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -20216,6 +21409,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -20235,6 +21436,17 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/Region"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -20286,6 +21498,17 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "additionalProperties" : {
+                "type" : "object"
+              },
+              "type" : "object"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -20322,6 +21545,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -20343,6 +21574,14 @@
           "required" : false
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -20378,6 +21617,14 @@
           "required" : false
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/ReleaseMetadata"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -20426,6 +21673,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/ReleaseMetadata"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -20464,6 +21719,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -20494,6 +21757,14 @@
           }
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/RestorePagedApiResponse"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -20539,6 +21810,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/RestorePreflightResponse"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -20562,6 +21841,14 @@
           "required" : false
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/RuntimeConfigData"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -20611,6 +21898,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/ScopedConfig"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -20652,6 +21947,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -20685,6 +21988,14 @@
         } ],
         "produces" : [ "text/plain" ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -20740,6 +22051,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -20777,6 +22096,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/SchedulePagedResponse"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -20802,6 +22129,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Schedule"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -20850,6 +22185,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Schedule"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -20886,6 +22229,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -20905,6 +22256,18 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "enum" : [ "UniverseLogs", "OutputFiles", "ErrorFiles", "CoreFiles", "GFlags", "Instance", "ConsensusMeta", "TabletMeta", "YbcLogs", "K8sInfo", "NodeAgent", "YbaMetadata", "ApplicationLogs" ],
+                "type" : "string"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -20948,6 +22311,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "object"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -20977,6 +22348,14 @@
           "required" : false
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -21016,6 +22395,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Audit"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -21048,6 +22435,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Audit"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -21073,6 +22468,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/FailedSubtasks"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -21116,6 +22519,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -21142,6 +22553,17 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/CustomerTaskData"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -21187,6 +22609,17 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/UniverseResp"
+              },
+              "type" : "array"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -21217,6 +22650,14 @@
           }
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -21278,6 +22719,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -21301,6 +22750,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/UniverseResp"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -21339,6 +22796,23 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/Backup"
+              },
+              "type" : "array"
+            }
+          },
+          "500" : {
+            "description" : "If there was a server or database issue when listing the backups",
+            "schema" : {
+              "$ref" : "#/definitions/YBPError"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -21398,6 +22872,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -21441,6 +22923,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -21475,6 +22965,14 @@
           }
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -21530,6 +23028,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -21566,6 +23072,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -21591,6 +23105,17 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/Details"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -21655,6 +23180,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -21680,6 +23213,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -21719,6 +23260,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "object"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -21744,6 +23293,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "object"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -21783,6 +23340,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -21808,6 +23373,17 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/MasterNodesInfo"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -21871,6 +23447,17 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "additionalProperties" : {
+                "type" : "object"
+              },
+              "type" : "object"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -21914,6 +23501,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/NodeAgent"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -21943,6 +23538,14 @@
           "required" : false
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -21986,6 +23589,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/PerfAdvisorSettingsWithDefaults"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -22020,6 +23631,14 @@
           }
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -22071,6 +23690,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -22096,6 +23723,17 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/PitrConfig"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -22148,6 +23786,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -22173,6 +23819,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/QueryDistributionSuggestionResponse"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -22212,6 +23866,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/HashedTimestampColumnFinderResponse"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -22237,6 +23899,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -22280,6 +23950,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -22309,6 +23987,14 @@
           "required" : false
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/UniverseResp"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -22352,6 +24038,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "object"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -22375,6 +24069,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "object"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -22418,6 +24120,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/PerfAdvisorManualRunStatus"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -22453,6 +24163,17 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "additionalProperties" : {
+                "type" : "object"
+              },
+              "type" : "object"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -22478,6 +24199,17 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/SupportBundle"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -22530,6 +24262,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -22572,6 +24312,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -22601,6 +24349,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/SupportBundle"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -22647,6 +24403,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -22679,6 +24443,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/UniverseResourceDetails"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -22704,6 +24476,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/UnusedIndexFinderResponse"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -22752,6 +24532,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -22781,6 +24569,14 @@
           "required" : false
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/UpdateLoadBalancerConfig"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -22832,6 +24628,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -22876,6 +24680,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -22901,6 +24713,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/FinalizeUpgradeInfoResponse"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -22952,6 +24772,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -22989,6 +24817,14 @@
           }
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -23040,6 +24876,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -23077,6 +24921,14 @@
           }
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -23128,6 +24980,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -23165,6 +25025,14 @@
           }
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -23216,6 +25084,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -23253,6 +25129,14 @@
           }
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/SoftwareUpgradeInfoResponse"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -23304,6 +25188,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -23341,6 +25233,14 @@
           }
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -23392,6 +25292,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -23436,6 +25344,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -23461,6 +25377,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YbcThrottleParametersResponse"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -23510,6 +25434,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -23542,6 +25474,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -23567,6 +25507,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -23618,6 +25566,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -23662,6 +25618,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -23699,6 +25663,14 @@
           }
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -23755,6 +25727,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -23792,6 +25772,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/NodeDetailsResp"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -23811,6 +25799,17 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/UserWithFeatures"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -23857,6 +25856,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/UserWithFeatures"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -23893,6 +25900,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -23916,6 +25931,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/UserWithFeatures"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -23963,6 +25986,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -23988,6 +26019,17 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/Audit"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -24042,6 +26084,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPSuccess"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -24071,6 +26121,14 @@
           "required" : false
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/UserOIDCAuthToken"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -24122,6 +26180,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/Users"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -24152,6 +26218,14 @@
           }
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/KubernetesOverridesResponse"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -24197,6 +26271,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -24227,6 +26309,14 @@
           "required" : false
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -24276,6 +26366,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -24299,6 +26397,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/XClusterConfigGetResp"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -24354,6 +26460,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -24389,6 +26503,14 @@
           }
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -24443,6 +26565,17 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "additionalProperties" : {
+                "$ref" : "#/definitions/NodeInstance"
+              },
+              "type" : "object"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -24468,6 +26601,17 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/NodeInstance"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -24517,6 +26661,17 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "additionalProperties" : {
+                "$ref" : "#/definitions/ValidationResult"
+              },
+              "type" : "object"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -24530,6 +26685,14 @@
         "operationId" : "GrafanaDashboard",
         "parameters" : [ ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -24562,6 +26725,14 @@
           }
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/PlatformLoggingConfig"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -24621,6 +26792,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        },
         "summary" : "getFilteredLogs",
         "tags" : [ "Session management" ]
       }
@@ -24644,6 +26823,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/LogData"
+            }
+          }
+        },
         "summary" : "getLogs",
         "tags" : [ "Session management" ]
       }
@@ -24654,6 +26841,18 @@
         "operationId" : "getAZUTypes",
         "parameters" : [ ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "enum" : [ "IO1", "GP2", "GP3", "Scratch", "Persistent", "StandardSSD_LRS", "Premium_LRS", "UltraSSD_LRS", "Local" ],
+                "type" : "string"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -24689,6 +26888,18 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "enum" : [ "IO1", "GP2", "GP3", "Scratch", "Persistent", "StandardSSD_LRS", "Premium_LRS", "UltraSSD_LRS", "Local" ],
+                "type" : "string"
+              },
+              "type" : "array"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -24702,6 +26913,18 @@
         "operationId" : "getGCPTypes",
         "parameters" : [ ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "enum" : [ "IO1", "GP2", "GP3", "Scratch", "Persistent", "StandardSSD_LRS", "Premium_LRS", "UltraSSD_LRS", "Local" ],
+                "type" : "string"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -24750,6 +26973,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -24763,6 +26994,14 @@
         "operationId" : "MetricsDetail",
         "parameters" : [ ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "type" : "string"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -24807,6 +27046,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/SessionInfo"
+            }
+          }
+        },
         "summary" : "Register a customer",
         "tags" : [ "Session management" ]
       }
@@ -24817,6 +27064,17 @@
         "operationId" : "listKeyInfo",
         "parameters" : [ ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "$ref" : "#/definitions/ConfKeyInfo"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -24840,6 +27098,17 @@
         "operationId" : "listKeys",
         "parameters" : [ ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "items" : {
+                "type" : "string"
+              },
+              "type" : "array"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -24874,6 +27143,14 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/SessionInfo"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -24893,6 +27170,14 @@
           "type" : "string"
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/MastersList"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {

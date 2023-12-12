@@ -32,7 +32,7 @@
 
 namespace yb {
 
-static const char* const kCdcMetricEntityName = "cdc";
+static const char* const kXClusterMetricEntityName = "xcluster";
 static const char* const kCdcsdkMetricEntityName = "cdcsdk";
 
 class JsonWriter;

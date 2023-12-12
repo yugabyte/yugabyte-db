@@ -134,13 +134,12 @@ public class BackupHelper {
   }
 
   public boolean abortBackupTask(UUID taskUUID) {
-    boolean status = commissioner.abortTask(taskUUID);
-    return status;
+    return commissioner.abortTask(taskUUID, false);
   }
 
   public List<UUID> getBackupUUIDList(UUID taskUUID) {
     List<Backup> backups = Backup.fetchAllBackupsByTaskUUID(taskUUID);
-    List<UUID> uuidList = new ArrayList<UUID>();
+    List<UUID> uuidList = new ArrayList<UUID>(backups.size());
 
     for (Backup b : backups) {
       uuidList.add(b.getBackupUUID());

@@ -39,11 +39,9 @@
           - targets: ['{{ yamlPath "host" }}:{{ yamlPath "prometheus.port" }}']
 
       - job_name: 'platform'
-        {{if eq (yamlPath "platform.port") "443"}}
         scheme: https
         tls_config:
           insecure_skip_verify: true
-        {{end}}
         scrape_timeout:  {{ yamlPath "prometheus.scrapeTimeout" }}
         metrics_path: "/api/v1/prometheus_metrics"
         static_configs:

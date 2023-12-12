@@ -5,7 +5,15 @@ package com.yugabyte.yw.commissioner.tasks;
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.Mockito.*;
+import static org.junit.Assert.fail;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.endsWith;
+import static org.mockito.Mockito.endsWith;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.spy;
+import static org.mockito.Mockito.when;
 import static play.inject.Bindings.bind;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -65,6 +73,7 @@ import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponentFactory;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -92,6 +101,7 @@ import org.mockito.Mockito;
 import org.pac4j.play.CallbackController;
 import org.pac4j.play.store.PlayCacheSessionStore;
 import org.pac4j.play.store.PlaySessionStore;
+import org.slf4j.LoggerFactory;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
@@ -102,7 +112,7 @@ import play.libs.Json;
 
 @Slf4j
 public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseTest {
-  private static final int MAX_RETRY_COUNT = 2000;
+  protected static final int MAX_RETRY_COUNT = 4000;
   protected static final String ENABLE_CUSTOM_HOOKS_PATH =
       "yb.security.custom_hooks.enable_custom_hooks";
   protected static final String ENABLE_SUDO_PATH = "yb.security.custom_hooks.enable_sudo";
@@ -208,6 +218,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getHealthChecker()).thenReturn(mockHealthChecker);
     when(mockBaseTaskDependencies.getNodeManager()).thenReturn(mockNodeManager);
     when(mockBaseTaskDependencies.getBackupHelper()).thenReturn(mockBackupHelper);
+    when(mockBaseTaskDependencies.getCommissioner()).thenReturn(commissioner);
   }
 
   @Override
@@ -306,7 +317,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
           new GetMasterClusterConfigResponse(0, "", configBuilder.build(), null);
       when(mockClient.getMasterClusterConfig()).thenReturn(gcr);
     } catch (Exception e) {
-      e.printStackTrace();
+      fail(e.getMessage());
     }
   }
 
@@ -324,6 +335,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
 
   public static TaskInfo waitForTask(UUID taskUUID) throws InterruptedException {
     int numRetries = 0;
+    TaskInfo taskInfo = null;
     while (numRetries < MAX_RETRY_COUNT) {
       // Here is a hack to decrease amount of accidental problems for tests using this
       // function:
@@ -331,7 +343,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       // inside the get() request. We are not afraid of such exception as the next
       // request will succeeded.
       try {
-        TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+        taskInfo = TaskInfo.getOrBadRequest(taskUUID);
         if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
           // Also, ensure task details are set before returning.
           if (taskInfo.getDetails() != null) {
@@ -343,15 +355,67 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       Thread.sleep(100);
       numRetries++;
     }
+
+    String runningTasks =
+        taskInfo.getSubTasks().stream()
+            .filter(t -> t.getTaskState() == State.Running)
+            .map(t -> getBriefTaskInfo(t))
+            .collect(Collectors.joining(","));
+
     throw new RuntimeException(
         "WaitFor task exceeded maxRetries! Task state is "
+            + taskInfo.getTaskState()
+            + ".\n Running subtasks: "
+            + runningTasks);
+  }
+
+  private static String getBriefTaskInfo(TaskInfo taskInfo) {
+    StringBuilder sb = new StringBuilder();
+    sb.append(taskInfo.getTaskType());
+    if (taskInfo.getDetails().has("nodeName")) {
+      sb.append("(");
+      sb.append(taskInfo.getDetails().get("nodeName").textValue());
+      if (taskInfo.getDetails().has("serverType")) {
+        sb.append(" ").append(taskInfo.getDetails().get("serverType").textValue());
+      }
+      if (taskInfo.getDetails().has("process")) {
+        sb.append(" ").append(taskInfo.getDetails().get("process").textValue());
+      }
+      if (taskInfo.getDetails().has("command")) {
+        sb.append(" ").append(taskInfo.getDetails().get("command").textValue());
+      }
+      sb.append(")");
+    }
+    return sb.toString();
+  }
+
+  public boolean waitForTaskRunning(UUID taskUUID) throws InterruptedException {
+    int numRetries = 0;
+    while (numRetries < MAX_RETRY_COUNT) {
+      // Here is a hack to decrease amount of accidental problems for tests using this
+      // function:
+      // Surrounding the next block with try {} catch {} as sometimes h2 raises NPE
+      // inside the get() request. We are not afraid of such exception as the next
+      // request will succeeded.
+      boolean isRunning = commissioner.isTaskRunning(taskUUID);
+      if (isRunning) {
+        return isRunning;
+      }
+      TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+      if (TaskInfo.COMPLETED_STATES.contains(taskInfo.getTaskState())) {
+        return false;
+      }
+      Thread.sleep(100);
+      numRetries++;
+    }
+    throw new RuntimeException(
+        "WaitFor task running exceeded maxRetries! Task state is "
             + TaskInfo.getOrBadRequest(taskUUID).getTaskState());
   }
 
   public void waitForTaskPaused(UUID taskUuid) throws InterruptedException {
     int numRetries = 0;
     while (numRetries < MAX_RETRY_COUNT) {
-      System.out.println(numRetries);
       if (!commissioner.isTaskRunning(taskUuid)) {
         throw new RuntimeException(String.format("Task %s is not running", taskUuid));
       }
@@ -437,6 +501,15 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       ITaskParams taskParams,
       boolean checkStrictOrdering) {
     try {
+
+      // Turning off logs for task retry tests as we're doing 194 retries in this test sometimes,
+      // and it spams logs like crazy - which will cause OOMs in Jenkins
+      // - as Jenkins caches stdout in memory until test finishes.
+      ch.qos.logback.classic.Logger rootLogger =
+          (ch.qos.logback.classic.Logger)
+              LoggerFactory.getLogger(ch.qos.logback.classic.Logger.ROOT_LOGGER_NAME);
+      rootLogger.detachAppender("ASYNCSTDOUT");
+
       setPausePosition(0);
       UUID taskUuid = commissioner.submit(taskType, taskParams);
       CustomerTask.create(
@@ -463,6 +536,29 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
               expectedSubTaskMap);
           setAbortPosition(abortPosition);
         }
+
+        // mock db version during upgrade and rollback task to take action on all nodes.
+        if (taskType.equals(TaskType.SoftwareUpgradeYB)
+            || taskType.equals(TaskType.RollbackUpgrade)) {
+          Universe universe = Universe.getOrBadRequest(targetUuid);
+          int masterTserverNodesCount =
+              universe.getMasters().size() + universe.getTServers().size();
+          String oldVersion =
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+          if (pendingSubTaskCount <= 1) {
+            String version;
+            if (taskType.equals(TaskType.SoftwareUpgradeYB)) {
+              SoftwareUpgradeParams params = (SoftwareUpgradeParams) taskParams;
+              version = params.ybSoftwareVersion;
+            } else {
+              version = universe.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion();
+            }
+            mockDBServerVersion(version, masterTserverNodesCount);
+          } else {
+            mockDBServerVersion(oldVersion, masterTserverNodesCount);
+          }
+        }
+
         // Resume task will resume and abort it if any abort position is set.
         commissioner.resumeTask(taskUuid);
         // Wait for the task to abort.
@@ -572,5 +668,33 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     ObjectNode dumpEntitiesJson = (ObjectNode) Json.toJson(response);
     when(mockNodeUIApiHelper.getRequest(endsWith(RemoveNodeFromUniverse.DUMP_ENTITIES_URL_SUFFIX)))
         .thenReturn(dumpEntitiesJson);
+  }
+
+  public void mockDBServerVersion(String oldVersion, String newVersion, int count) {
+    mockDBServerVersion(oldVersion, count, newVersion, count);
+  }
+
+  public void mockDBServerVersion(String version, int count) {
+    List<Optional<String>> response = new ArrayList<>();
+    for (int i = 1; i < count; i++) {
+      response.add(Optional.of(version));
+    }
+    Optional<String>[] resp = response.toArray(new Optional[0]);
+    when(mockYBClient.getServerVersion(any(), anyString(), anyInt()))
+        .thenReturn(Optional.of(version), resp);
+  }
+
+  public void mockDBServerVersion(
+      String oldVersion, int oldVersionCount, String newVersion, int newVersionCount) {
+    List<Optional<String>> response = new ArrayList<>();
+    for (int i = 1; i < oldVersionCount; i++) {
+      response.add(Optional.of(oldVersion));
+    }
+    for (int i = 0; i < newVersionCount; i++) {
+      response.add(Optional.of(newVersion));
+    }
+    Optional<String>[] resp = response.toArray(new Optional[0]);
+    when(mockYBClient.getServerVersion(any(), anyString(), anyInt()))
+        .thenReturn(Optional.of(oldVersion), resp);
   }
 }

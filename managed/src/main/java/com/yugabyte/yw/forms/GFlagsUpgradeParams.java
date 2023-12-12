@@ -54,7 +54,6 @@ public class GFlagsUpgradeParams extends UpgradeWithGFlags {
           "Cannot upgrade gflags on universe in state "
               + universe.getUniverseDetails().softwareUpgradeState);
     }
-
     if (masterGFlags == null) {
       masterGFlags = new HashMap<>();
     }

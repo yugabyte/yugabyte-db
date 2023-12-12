@@ -2,7 +2,6 @@
 title: Table partitioning
 linkTitle: Table partitioning
 description: Table partitioning in YSQL
-image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
     identifier: advanced-features-partitions

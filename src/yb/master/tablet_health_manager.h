@@ -104,6 +104,9 @@ class TabletHealthManager {
   Status CheckMasterTabletHealth(
       const CheckMasterTabletHealthRequestPB* req, CheckMasterTabletHealthResponsePB* resp);
 
+  Status GetMasterHeartbeatDelays(
+      const GetMasterHeartbeatDelaysRequestPB* req, GetMasterHeartbeatDelaysResponsePB* resp);
+
  private:
   Master* master_;
   CatalogManagerIf* catalog_manager_;

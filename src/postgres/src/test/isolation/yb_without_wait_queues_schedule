@@ -1,1 +1,2 @@
 test: yb-stat-activity-waitevent-statement-retry
+test: rc-ignores-txn-priority-bounds

@@ -187,7 +187,7 @@ DECLARE_int64(cdc_intent_retention_ms);
 DECLARE_bool(TEST_ysql_yb_enable_replication_commands);
 DECLARE_bool(enable_xcluster_auto_flag_validation);
 
-METRIC_DEFINE_entity(cdc);
+METRIC_DEFINE_entity(xcluster);
 
 METRIC_DEFINE_entity(cdcsdk);
 
@@ -279,6 +279,7 @@ bool RecordHasValidOp(const CDCSDKProtoRecordPB& record) {
   return record.row_message().op() == RowMessage_Op_INSERT ||
          record.row_message().op() == RowMessage_Op_UPDATE ||
          record.row_message().op() == RowMessage_Op_DELETE ||
+         record.row_message().op() == RowMessage_Op_SAFEPOINT ||
          record.row_message().op() == RowMessage_Op_READ;
 }
 
@@ -327,7 +328,7 @@ Result<std::shared_ptr<T>> GetOrCreateXreplTabletMetrics(
 
     scoped_refptr<MetricEntity> entity;
     if (source_type == XCLUSTER) {
-      entity = METRIC_ENTITY_cdc.Instantiate(
+      entity = METRIC_ENTITY_xcluster.Instantiate(
           metric_registry, metric_id, attrs);
     } else {
       entity = METRIC_ENTITY_cdcsdk.Instantiate(
@@ -600,26 +601,27 @@ class CDCServiceImpl::Impl {
 
   Status AddEntriesForChildrenTabletsOnSplitOp(
       const ProducerTabletInfo& info,
-      const std::array<const master::TabletLocationsPB*, 2>& tablets,
-      const OpId& split_op_id) {
+      const std::array<TabletId, 2>& tablets,
+      const OpId& children_op_id) {
     std::lock_guard l(mutex_);
+
     for (const auto& tablet : tablets) {
       ProducerTabletInfo producer_info{
-          info.replication_group_id, info.stream_id, tablet->tablet_id()};
+          info.replication_group_id, info.stream_id, tablet};
       tablet_checkpoints_.emplace(TabletCheckpointInfo{
           .producer_tablet_info = producer_info,
           .cdc_state_checkpoint =
               TabletCheckpoint{
-                  .op_id = split_op_id, .last_update_time = {}, .last_active_time = {}},
+                  .op_id = children_op_id, .last_update_time = {}, .last_active_time = {}},
           .sent_checkpoint =
               TabletCheckpoint{
-                  .op_id = split_op_id, .last_update_time = {}, .last_active_time = {}},
+                  .op_id = children_op_id, .last_update_time = {}, .last_active_time = {}},
           .mem_tracker = nullptr,
       });
       cdc_state_metadata_.emplace(CDCStateMetadataInfo{
           .producer_tablet_info = producer_info,
           .commit_timestamp = {},
-          .last_streamed_op_id = split_op_id,
+          .last_streamed_op_id = children_op_id,
           .schema_details_map = {},
           .mem_tracker = nullptr,
       });
@@ -1263,8 +1265,10 @@ void CDCServiceImpl::GetTabletListToPollForCDC(
   NamespaceId ns_id;
   std::unordered_map<std::string, std::string> options;
   StreamModeTransactional transactional(false);
+  std::optional<uint64_t> consistent_snapshot_time;
   RPC_STATUS_RETURN_ERROR(
-      client()->GetCDCStream(req_stream_id, &ns_id, &table_ids, &options, &transactional),
+      client()->GetCDCStream(
+          req_stream_id, &ns_id, &table_ids, &options, &transactional, &consistent_snapshot_time),
       resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
   // This means the table has not been added to the stream's metadata.
@@ -1614,6 +1618,14 @@ void CDCServiceImpl::GetChanges(
         req, &explicit_op_id, &cdc_sdk_explicit_op_id, &cdc_sdk_explicit_safe_time);
   }
 
+  std::optional<uint64_t> consistent_snapshot_time = record.GetConsistentSnapshotTime();
+  if (consistent_snapshot_time.has_value()) {
+    VLOG(2) << "consistent snapshot time from metadata = "
+            << *consistent_snapshot_time;
+  } else {
+    VLOG(2) << "consistent snapshot time not present in metadata";
+  }
+
   // Get opId from request.
   if (!GetFromOpId(req, &from_op_id, &cdc_sdk_from_op_id)) {
     auto last_checkpoint = RPC_VERIFY_RESULT(
@@ -1727,7 +1739,9 @@ void CDCServiceImpl::GetChanges(
     status = GetChangesForCDCSDK(
         stream_id, req->tablet_id(), cdc_sdk_from_op_id, record, tablet_peer, mem_tracker, enum_map,
         composite_atts_map, client(), &msgs_holder, resp, &commit_timestamp, &cached_schema_details,
-        &last_streamed_op_id, req->safe_hybrid_time(), req->wal_segment_index(),
+        &last_streamed_op_id, req->safe_hybrid_time(),
+        consistent_snapshot_time,
+        req->wal_segment_index(),
         &last_readable_index, tablet_peer->tablet_metadata()->colocated() ? req->table_id() : "",
         get_changes_deadline);
     // This specific error from the docdb_pgapi layer is used to identify enum cache entry is
@@ -1755,11 +1769,14 @@ void CDCServiceImpl::GetChanges(
           stream_id, req->tablet_id(), cdc_sdk_from_op_id, record, tablet_peer, mem_tracker,
           enum_map, composite_atts_map, client(), &msgs_holder, resp, &commit_timestamp,
           &cached_schema_details, &last_streamed_op_id, req->safe_hybrid_time(),
+          consistent_snapshot_time,
           req->wal_segment_index(), &last_readable_index,
           tablet_peer->tablet_metadata()->colocated() ? req->table_id() : "", get_changes_deadline);
     }
     // This specific error indicates that a tablet split occured on the tablet.
     if (status.IsTabletSplit()) {
+      LOG(INFO) << "Updating children tablets on detected split on tablet "
+                << producer_tablet.tablet_id;
       status = UpdateChildrenTabletsOnSplitOpForCDCSDK(producer_tablet);
       RPC_STATUS_RETURN_ERROR(status, resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
@@ -1988,7 +2005,8 @@ void ComputeLagMetric(
       metric->set_value(lag_metric > 0 ? lag_metric : 0);
     }
   } else {
-    metric->set_value(last_replicated_micros - metric_last_timestamp_micros);
+    auto lag_metric = last_replicated_micros - metric_last_timestamp_micros;
+    metric->set_value(lag_metric > 0 ? lag_metric : 0);
   }
 }
 
@@ -3948,13 +3966,15 @@ void CDCServiceImpl::IsBootstrapRequired(
 
 Status CDCServiceImpl::UpdateChildrenTabletsOnSplitOpForCDCSDK(const ProducerTabletInfo& info) {
   auto tablets = VERIFY_RESULT(GetTablets(info.stream_id, true /* ignore_errors */));
+
+  // Initializing the children to 0.0 to prevent garbage collection on them.
   const OpId& children_op_id = OpId();
 
-  std::array<const master::TabletLocationsPB*, 2> children_tablets;
+  std::array<TabletId, 2> children;
   uint found_children = 0;
   for (auto const& tablet : tablets) {
     if (tablet.has_split_parent_tablet_id() && tablet.split_parent_tablet_id() == info.tablet_id) {
-      children_tablets[found_children] = &tablet;
+      children[found_children] = tablet.tablet_id();
       found_children += 1;
 
       if (found_children == 2) {
@@ -3962,15 +3982,16 @@ Status CDCServiceImpl::UpdateChildrenTabletsOnSplitOpForCDCSDK(const ProducerTab
       }
     }
   }
-  LOG_IF(DFATAL, found_children != 2)
-      << "Could not find the two split children for the tablet: " << info.tablet_id;
 
-  // Add the entries for the children tablets in 'cdc_state_metadata_' and 'tablet_checkpoints_'.
+  RSTATUS_DCHECK(
+      found_children == 2, InternalError,
+      Format("Could not find the two split children for tablet: $0", info.tablet_id));
+
   RETURN_NOT_OK_SET_CODE(
-      impl_->AddEntriesForChildrenTabletsOnSplitOp(info, children_tablets, children_op_id),
+      impl_->AddEntriesForChildrenTabletsOnSplitOp(info, children, children_op_id),
       CDCError(CDCErrorPB::INTERNAL_ERROR));
-  VLOG(1) << "Added entries for children tablets: " << children_tablets[0]->tablet_id() << " and "
-          << children_tablets[1]->tablet_id() << ", of parent tablet: " << info.tablet_id
+  VLOG(1) << "Added entries for children tablets: " << children[0] << " and "
+          << children[1] << ", of parent tablet: " << info.tablet_id
           << ", to 'cdc_state_metadata_' and 'tablet_checkpoints_'";
 
   return Status::OK();

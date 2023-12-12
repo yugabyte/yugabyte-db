@@ -6,6 +6,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
+import java.util.Map;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -20,6 +21,7 @@ public class ManageOtelCollector extends NodeTaskBase {
   public static class Params extends NodeTaskParams {
     public boolean installOtelCollector;
     public AuditLogConfig auditLogConfig;
+    public Map<String, String> gflags;
   }
 
   @Override

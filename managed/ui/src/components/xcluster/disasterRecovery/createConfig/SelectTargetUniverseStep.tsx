@@ -1,61 +1,58 @@
+import { Box, makeStyles, Typography, useTheme } from '@material-ui/core';
+import { useFormContext } from 'react-hook-form';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
 
-import { YBFormSelect } from '../../../common/forms/fields';
+import { UnavailableUniverseStates } from '../../../../redesign/helpers/constants';
+import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
+import { YBReactSelectField } from '../../../configRedesign/providerRedesign/components/YBReactSelect/YBReactSelectField';
+import { api, universeQueryKey } from '../../../../redesign/helpers/api';
+import { getUniverseStatus } from '../../../universes/helpers/universeHelpers';
 
 import { Universe } from '../../../../redesign/helpers/dtos';
-import { Field, FormikProps } from 'formik';
-import { getUniverseStatus } from '../../../universes/helpers/universeHelpers';
-import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
-import { api, universeQueryKey } from '../../../../redesign/helpers/api';
 import { CreateDrConfigFormValues } from './CreateConfigModal';
-import { UnavailableUniverseStates } from '../../../../redesign/helpers/constants';
-import { CollapsibleNote } from '../../sharedComponents/CollapsibleNote';
-
-import styles from './SelectTargetUniverseStep.module.scss';
-
-const YB_ADMIN_XCLUSTER_DOCUMENTATION_URL =
-  'https://docs.yugabyte.com/preview/admin/yb-admin/#xcluster-replication-commands';
-
-const NOTE_CONTENT = (
-  <p>
-    <b>Note!</b> Ensure that the
-    <b> backup storage config can be accessed from both DR Primary and DR Replica universe </b>
-    for bootstrapping. Particularly, <b>Network File System (NFS)</b> based storage configs may not
-    be accessible from universes in different regions. In that case, refer to the{' '}
-    <a href={YB_ADMIN_XCLUSTER_DOCUMENTATION_URL}>
-      {'documentation for creating replication using yb-admin.'}
-    </a>
-  </p>
-);
-
-const NOTE_EXPAND_CONTENT = (
-  <div>
-    <b>What is bootstrapping?</b>
-    <p>
-      Bootstrapping brings your target universe to the same checkpoint as your source universe
-      before turning on async replication. First, YBAnywhere creates a backup of the source
-      universe. Then it restores the backup to the target universe. Hence the need to ensure the
-      backup storage config (which you will select on step 3) is accessible from both source &amp;
-      target universe. If the tables selected for xcluster replication are empty on the source
-      universe, no bootstrapping is needed.
-    </p>
-  </div>
-);
+import { getPrimaryCluster } from '../../../../utils/universeUtilsTyped';
+import { DR_DROPDOWN_SELECT_INPUT_WIDTH } from '../constants';
 
 interface SelectTargetUniverseStepProps {
-  formik: React.MutableRefObject<FormikProps<CreateDrConfigFormValues>>;
-  currentUniverseUuid: string;
+  isFormDisabled: boolean;
+  sourceUniverse: Universe;
 }
+
+const useStyles = makeStyles((theme) => ({
+  stepContainer: {
+    '& ol': {
+      paddingLeft: theme.spacing(2),
+      listStylePosition: 'outside',
+      '& li::marker': {
+        fontWeight: 'bold'
+      }
+    }
+  },
+  instruction: {
+    marginBottom: theme.spacing(4)
+  },
+  fieldLabel: {
+    marginBottom: theme.spacing(1)
+  }
+}));
 
 const TRANSLATION_KEY_PREFIX =
   'clusterDetail.disasterRecovery.config.createModal.step.selectTargetUniverse';
 
+/**
+ * Component requirements:
+ * - An ancestor must provide form context using <FormProvider> from React Hook Form
+ */
 export const SelectTargetUniverseStep = ({
-  formik,
-  currentUniverseUuid
+  isFormDisabled,
+  sourceUniverse
 }: SelectTargetUniverseStepProps) => {
+  const { control } = useFormContext<CreateDrConfigFormValues>();
+  const classes = useStyles();
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
+  const theme = useTheme();
+
   const universeListQuery = useQuery<Universe[]>(universeQueryKey.ALL, () =>
     api.fetchUniverseList()
   );
@@ -72,34 +69,48 @@ export const SelectTargetUniverseStep = ({
     );
   }
 
-  const { values } = formik.current;
+  const universeOptions = universeListQuery.data
+    .filter(
+      (universe) =>
+        universe.universeUUID !== sourceUniverse.universeUUID &&
+        !UnavailableUniverseStates.includes(getUniverseStatus(universe).state)
+    )
+    .map((universe) => {
+      return {
+        label: universe.name,
+        value: universe
+      };
+    });
   return (
-    <>
-      <div className={styles.formInstruction}>{t('instruction')}</div>
-      <div className={styles.formFieldContainer}>
-        <Field
-          name="targetUniverse"
-          component={YBFormSelect}
-          options={universeListQuery.data
-            .filter(
-              (universe) =>
-                universe.universeUUID !== currentUniverseUuid &&
-                !UnavailableUniverseStates.includes(getUniverseStatus(universe).state)
-            )
-            .map((universe) => {
-              return {
-                label: universe.name,
-                value: universe
-              };
-            })}
-          field={{
-            name: 'targetUniverse',
-            value: values.targetUniverse
-          }}
-          label={t('drReplica')}
-        />
-      </div>
-      <CollapsibleNote noteContent={NOTE_CONTENT} expandContent={NOTE_EXPAND_CONTENT} />
-    </>
+    <div className={classes.stepContainer}>
+      <ol>
+        <li>
+          <Typography variant="body1" className={classes.instruction}>
+            {t('instruction')}
+          </Typography>
+          <Typography variant="body2" className={classes.fieldLabel}>
+            {t('drReplica')}
+          </Typography>
+          <YBReactSelectField
+            control={control}
+            name="targetUniverse"
+            options={universeOptions}
+            width={DR_DROPDOWN_SELECT_INPUT_WIDTH}
+            rules={{
+              validate: {
+                required: (targetUniverse: { label: string; value: Universe }) =>
+                  !!targetUniverse || t('error.targetUniverseRequired'),
+                hasMatchingTLSConfiguration: (targetUniverse: { label: string; value: Universe }) =>
+                  getPrimaryCluster(targetUniverse.value.universeDetails.clusters)?.userIntent
+                    ?.enableNodeToNodeEncrypt ===
+                    getPrimaryCluster(sourceUniverse.universeDetails.clusters)?.userIntent
+                      ?.enableNodeToNodeEncrypt || t('error.mismatchedNodeToNodeEncryption')
+              }
+            }}
+            isDisabled={isFormDisabled}
+          />
+        </li>
+      </ol>
+    </div>
   );
 };

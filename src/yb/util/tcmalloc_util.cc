@@ -271,9 +271,9 @@ int64_t GetTCMallocSamplingFrequency() {
 
 void SetTCMallocSamplingFrequency(int64_t sample_freq_bytes) {
 #if YB_GOOGLE_TCMALLOC
-  tcmalloc::MallocExtension::SetProfileSamplingRate(FLAGS_profiler_sample_freq_bytes);
+  tcmalloc::MallocExtension::SetProfileSamplingRate(sample_freq_bytes);
 #elif YB_GPERFTOOLS_TCMALLOC
-  MallocExtension::instance()->SetProfileSamplingRate(FLAGS_profiler_sample_freq_bytes);
+  MallocExtension::instance()->SetProfileSamplingRate(sample_freq_bytes);
 #endif
 }
 
