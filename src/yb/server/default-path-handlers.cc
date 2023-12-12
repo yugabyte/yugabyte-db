@@ -352,26 +352,6 @@ static void StatusHandler(const Webserver::WebRequest& req, Webserver::WebRespon
   (*output) << "{}";
 }
 
-// Registered to handle "/memz", and prints out memory allocation statistics.
-static void MemUsageHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
-  std::stringstream *output = &resp->output;
-  bool as_text = (req.parsed_args.find("raw") != req.parsed_args.end());
-  Tags tags(as_text);
-
-  (*output) << tags.pre_tag;
-#ifndef YB_TCMALLOC_ENABLED
-  (*output) << "Memory tracking is not available unless tcmalloc is enabled.";
-#else
-  auto tmp = TcMallocStats();
-  if (!as_text) {
-    tmp = EscapeForHtmlToString(tmp);
-  }
-  // Replace new lines with <br> for html.
-  replace_all(tmp, "\n", tags.line_break);
-  (*output) << tmp << tags.end_pre_tag;
-#endif
-}
-
 // Registered to handle "/mem-trackers", and prints out to handle memory tracker information.
 static void MemTrackersHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
@@ -623,6 +603,26 @@ static void HandleGetVersionInfo(
 }
 
 } // anonymous namespace
+
+// Registered to handle "/memz", and prints out memory allocation statistics.
+void MemUsageHandler(const Webserver::WebRequest& req, Webserver::WebResponse* resp) {
+  std::stringstream *output = &resp->output;
+  bool as_text = (req.parsed_args.find("raw") != req.parsed_args.end());
+  Tags tags(as_text);
+
+  (*output) << tags.pre_tag;
+#ifndef YB_TCMALLOC_ENABLED
+  (*output) << "Memory tracking is not available unless tcmalloc is enabled.";
+#else
+  auto tmp = TcMallocStats();
+  if (!as_text) {
+    tmp = EscapeForHtmlToString(tmp);
+  }
+  // Replace new lines with <br> for html.
+  replace_all(tmp, "\n", tags.line_break);
+  (*output) << tmp << tags.end_pre_tag;
+#endif
+}
 
 void AddDefaultPathHandlers(Webserver* webserver) {
   webserver->RegisterPathHandler("/logs", "Logs", LogsHandler, true, false);
