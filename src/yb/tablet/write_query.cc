@@ -13,6 +13,8 @@
 
 #include "yb/tablet/write_query.h"
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/client/client.h"
 #include "yb/client/error.h"
 #include "yb/client/meta_data_cache.h"
@@ -21,7 +23,6 @@
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/qlexpr/index.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 
@@ -31,6 +32,8 @@
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/redis_operation.h"
+
+#include "yb/qlexpr/index.h"
 
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/operations/write_operation.h"
@@ -187,7 +190,15 @@ void WriteQuery::DoStartSynchronization(const Status& status) {
     return;
   }
 
+  SET_WAIT_STATUS(OnCpu_Passive);
   context_->Submit(self.release()->PrepareSubmit(), term_);
+  // Any further update to the wait-state for this RPC should happen based on
+  // the state/transition of the submitted WriteOperation.
+  // We don't want to update this RPC's wait-state when this thread returns from
+  // ServicePoolImpl::Handle call.
+  //
+  // Prevent any further modification to the wait-state on this thread.
+  ash::WaitStateInfo::SetCurrentWaitState(nullptr);
 }
 
 void WriteQuery::Release() {

@@ -17,6 +17,8 @@
 
 #include <google/protobuf/io/coded_stream.h>
 
+#include "yb/common/common.pb.h"
+
 #include "yb/gutil/casts.h"
 #include "yb/gutil/endian.h"
 
@@ -49,6 +51,7 @@ DEFINE_test_flag(uint64, yb_inbound_big_calls_parse_delay_ms, false,
                  "Test flag for simulating slow parsing of inbound calls larger than "
                  "rpc_throttle_threshold_bytes");
 
+DECLARE_bool(TEST_yb_enable_ash);
 DECLARE_uint64(rpc_connection_timeout_ms);
 DECLARE_int32(rpc_slow_query_threshold_ms);
 DECLARE_int64(rpc_throttle_threshold_bytes);
@@ -277,6 +280,18 @@ Status YBInboundCall::ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call
 
   RETURN_NOT_OK(ParseYBMessage(*call_data, &header_, &serialized_request_, &received_sidecars_));
   DVLOG(4) << "Parsed YBInboundCall header: " << header_.call_id;
+  // having to get rid of the const for metadata_. Is it better to
+  // create the waitstate after parsing?
+  if (wait_state_) {
+    wait_state_->UpdateMetadata({.rpc_request_id = header_.call_id});
+    wait_state_->set_client_host_port(HostPort(remote_address()));
+    wait_state_->UpdateAuxInfo({
+        .method = method_name().ToBuffer(),
+    });
+  } else {
+    LOG_IF(ERROR, GetAtomicFlag(&FLAGS_TEST_yb_enable_ash))
+        << "Wait state is nullptr for " << ToString();
+  }
 
   consumption_ = ScopedTrackedConsumption(mem_tracker, call_data->size());
   request_data_ = std::move(*call_data);
@@ -320,6 +335,15 @@ bool YBInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
   auto my_trace = trace();
   if (req.include_traces() && my_trace) {
     resp->set_trace_buffer(my_trace->DumpToString(true));
+  }
+  if (req.get_wait_state()) {
+    if (const auto& wait_state = this->wait_state()) {
+      // TBD: Add WaitStateInfoPB to the response instead of the string.
+      wait_state->ToPB(resp->mutable_wait_state());
+      TRACE_TO(
+          trace(), "Pulled $0",
+          yb::ToString(ash::WaitStateCode(resp->wait_state().wait_status_code())));
+    }
   }
   resp->set_elapsed_millis(MonoTime::Now().GetDeltaSince(timing_.time_received)
       .ToMilliseconds());

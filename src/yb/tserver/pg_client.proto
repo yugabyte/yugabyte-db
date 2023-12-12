@@ -88,6 +88,8 @@ service PgClientService {
   rpc GetTserverCatalogVersionInfo(PgGetTserverCatalogVersionInfoRequestPB)
       returns (PgGetTserverCatalogVersionInfoResponsePB);
   rpc CancelTransaction(PgCancelTransactionRequestPB) returns (PgCancelTransactionResponsePB);
+  rpc ActiveSessionHistory(PgActiveSessionHistoryRequestPB)
+      returns (PgActiveSessionHistoryResponsePB);
   rpc GetActiveTransactionList(PgGetActiveTransactionListRequestPB)
       returns (PgGetActiveTransactionListResponsePB);
 
@@ -771,6 +773,17 @@ message PgCancelTransactionRequestPB {
 
 message PgCancelTransactionResponsePB {
   AppStatusPB status = 1;
+}
+
+message PgActiveSessionHistoryRequestPB {}
+
+message WaitStatesPB {
+  repeated WaitStateInfoPB wait_states = 1;
+}
+
+message PgActiveSessionHistoryResponsePB {
+  AppStatusPB status = 1;
+  WaitStatesPB tserver_wait_states = 2;
 }
 
 message PgGetActiveTransactionListRequestPB { OptionalUint64PB session_id = 1; }
