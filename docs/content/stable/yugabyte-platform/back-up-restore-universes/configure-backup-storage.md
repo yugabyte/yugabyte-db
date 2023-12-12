@@ -101,6 +101,32 @@ You can configure access control for the GCS bucket as follows:
 - Provide the required access control list (ACL) and set it as either uniform or fine-grained (for object-level access).
 - Add permissions, such as roles and members.
 
+### GKE Service Account based IAM (GCP IAM)
+
+Google Kubernetes Engine (GKE) uses a concept known as "Workload Identity" to provide a secure way to allow a Kubernetes service accounts in your GKE cluster to act as an IAM service account. Workload Identity links a Kubernetes Service Account to a Google Cloud Service Account through annotations in the Kubernetes Service Account. Pods that use the configured Kubernetes service account automatically authenticate as the IAM service account when accessing Google Cloud APIs.
+
+By using Workload Identity, you avoid the need for manually managing service account keys or tokens in your applications running on GKE. This approach enhances security and simplifies the management of credentials.
+
+Details about additional terminology associated with GKE Service account are as follows:
+
+1. **Kubernetes Service Account (KSA):** In GKE, each pod can be associated with a Kubernetes Service Account. This is used to authenticate and authorize the pod to interact with other Google Cloud services.
+
+1. **IAM service accounts:** Google Cloud resources that allow applications to make authorized calls to Google Cloud APIs.
+
+#### Prerequisites
+
+1. The GKE cluster hosting the pods should have Workload Identity enabled. The worker nodes of this GKE cluster should have the GKE metadata server enabled.
+
+1. The IAM service account, which is to be used to annotate the Kubernetes Service account should have sufficient permissions to read/write/list/delete objects in Google Cloud Storage(GCS).
+
+1. The Kubernetes Service Account, which is annotated with the IAM Service Account, should be present in the same namespace where the pod resources for YugabyteDB Anywhere and YugabyteDB Universe are expected. For distinct namespaces, each namespace should consist of the annotated Kubernetes Service Account.
+
+For more details, see [Use Workload Identity](https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity).
+
+To enable this feature when installing YBA, refer to [Enable GKE Service Account based IAM](../../install-yugabyte-platform/install-software/kubernetes/#enable-gke-service-account-based-iam).
+
+To upgrade an existing universe with this feature, refer to [Upgrade universes for GKE Service Account based IAM support](../../manage-deployments/edit-helm-overrides/#upgrade-universes-for-gke-service-account-based-iam-support).
+
 ## Azure Storage
 
 You can configure Azure as your backup target, as follows:

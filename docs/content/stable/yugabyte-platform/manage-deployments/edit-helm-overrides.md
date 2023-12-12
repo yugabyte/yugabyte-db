@@ -16,3 +16,24 @@ If your universe was created using Kubernetes, you have an option of modifying t
 ![img](/images/yb-platform/kubernetes-config66.png)
 
 Complete the dialog by following instructions provided in [Configure Helm overrides](../../create-deployments/create-universe-multi-zone-kubernetes#configure-helm-overrides).
+
+## Upgrade universes for GKE Service Account based IAM support
+
+Existing universes can be software upgraded to versions which support [GKE Service Account based IAM](../../back-up-restore-universes/configure-backup-storage/#gke-service-account-based-iam-gcp-iam) using the following steps:
+
+1. Upgrade YugabyteDB to a version which supports the feature ( 2.18.x or later). For more details, refer to [Upgrade the YugabyteDB software](../../manage-deployments/upgrade-software/).
+
+1. Apply overrides using the "Edit Kubernetes overrides" flow.
+
+   **Prerequisite:** Provide the Kube namespace of the YugabyteDB Universe pods with the annotated Service Account. This may not be present already, as the service account would not have been used in YugabyteDB Universe pods.
+
+   Provide the following overrides after software upgrading the YugabyteDB software.
+
+   - serviceAccount: Pass the service account name created in [prerequisites](../../back-up-restore-universes/configure-backup-storage/#prerequisites). Note that this service account should be present in the namespace being used for the YugabyteDB pod resources.
+   - [nodeSelector](../../install-yugabyte-platform/install-software/kubernetes/#nodeselector): Pass a node selector override to make sure that the YugabyteDB pods are scheduled on the GKE cluster's worker nodes which have a metadata server running.
+
+    ```yaml
+    serviceAccount:<KSA_NAME>
+    nodeSelector:
+     iam.gke.io/gke-metadata-server-enabled: "true"
+    ```
