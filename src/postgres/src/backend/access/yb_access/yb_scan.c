@@ -3491,10 +3491,6 @@ ybFetchNext(YBCPgStatement handle,
 		slot->tts_flags &= ~TTS_FLAG_EMPTY; /* Not empty */
 		TABLETUPLE_YBCTID(slot) = PointerGetDatum(syscols.ybctid);
 		slot->tts_tableOid = relid;
-		/*
-		 * YB_TODO(jason): remove functions related to
-		 * 3037fd3a755515cf7bfbc13450b3059940e2ffa2.
-		 */
 	}
 	return slot;
 }
