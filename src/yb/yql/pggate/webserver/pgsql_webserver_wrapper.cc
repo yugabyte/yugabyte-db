@@ -574,8 +574,6 @@ void SetWebserverConfig(
   webserver->SetLogging(enable_access_logging, enable_tcmalloc_logging);
 
   if (GetTCMallocSamplingFrequency() != webserver_profiler_sample_freq_bytes) {
-    LOG(INFO) << Format("Setting TCMalloc profiler sampling frequency to $0 bytes",
-        webserver_profiler_sample_freq_bytes);
     SetTCMallocSamplingFrequency(webserver_profiler_sample_freq_bytes);
   }
 }
