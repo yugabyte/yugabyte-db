@@ -43,7 +43,7 @@ Both [YugabyteDB Anywhere](../../yugabyte-platform/alerts-monitoring/) and [Yuga
 
 ## Visualization and analysis
 
-YugabytedB provides dashboards that include charts, graphs, and other visual representations of the system's state and performance. [yugabyted](../../reference/configuration/yugabyted/) starts a web-UI on port [15433](http://127.0.0.1:15433/performance/metrics?interval=lasthour&nodeName=all&showGraph=operations&showGraph=latency&showGraph=cpuUsage&showGraph=diskUsage&showGraph=totalLiveNodes) that displays different charts for various metrics.
+YugabyteDB provides dashboards that include charts, graphs, and other visual representations of the system's state and performance. [yugabyted](../../reference/configuration/yugabyted/) starts a web-UI on port [15433](http://127.0.0.1:15433/performance/metrics?interval=lasthour&nodeName=all&showGraph=operations&showGraph=latency&showGraph=cpuUsage&showGraph=diskUsage&showGraph=totalLiveNodes) that displays different charts for various metrics.
 
 You can also export the metrics provided by YugabyteDB onto third-party visualization tools like [Prometheus](./prometheus-integration/) and [Grafana](./grafana-dashboard/grafana/) as per the needs of your organization.
 
