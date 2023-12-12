@@ -28,6 +28,10 @@
 #include "pgtime.h"				/* for pg_time_t */
 
 
+#ifndef FRONTEND
+#include "storage/proc.h"		/* for MyProc */
+#endif
+
 #define InvalidPid				(-1)
 
 
@@ -128,6 +132,7 @@ do { \
 	QueryCancelHoldoffCount--; \
 } while(0)
 
+#ifdef FRONTEND
 #define START_CRIT_SECTION()  (CritSectionCount++)
 
 #define END_CRIT_SECTION() \
@@ -135,6 +140,24 @@ do { \
 	Assert(CritSectionCount > 0); \
 	CritSectionCount--; \
 } while(0)
+
+#else /* !FRONTEND */
+
+#define START_CRIT_SECTION()  \
+do { \
+	if (MyProc) \
+		MyProc->ybEnteredCriticalSection = true; \
+	CritSectionCount++; \
+} while(0)
+
+#define END_CRIT_SECTION() \
+do { \
+	Assert(CritSectionCount > 0); \
+	CritSectionCount--; \
+	if (MyProc && CritSectionCount == 0) \
+		MyProc->ybEnteredCriticalSection = false; \
+} while(0)
+#endif /* FRONTEND */
 
 
 /*****************************************************************************
