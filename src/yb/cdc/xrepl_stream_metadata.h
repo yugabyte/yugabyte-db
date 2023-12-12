@@ -114,6 +114,10 @@ class StreamMetadata {
     DCHECK(loaded_);
     return consistent_snapshot_time_.load(std::memory_order_acquire);
   }
+  std::optional<uint64_t> GetStreamCreationTime() const {
+    DCHECK(loaded_);
+    return stream_creation_time_.load(std::memory_order_acquire);
+  }
 
 
   std::shared_ptr<StreamTabletMetadata> GetTabletMetadata(const TabletId& tablet_id)
@@ -140,6 +144,7 @@ class StreamMetadata {
   std::atomic<master::SysCDCStreamEntryPB_State> state_;
   std::atomic<StreamModeTransactional> transactional_{StreamModeTransactional::kFalse};
   std::atomic<std::optional<uint64_t>> consistent_snapshot_time_;
+  std::atomic<std::optional<uint64_t>> stream_creation_time_;
 
   std::mutex load_mutex_;  // Used to ensure only a single thread performs InitOrReload.
   std::atomic<bool> loaded_ = false;

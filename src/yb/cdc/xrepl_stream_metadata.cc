@@ -111,11 +111,12 @@ Status StreamMetadata::GetStreamInfoFromMaster(
   StreamModeTransactional transactional(false);
   std::optional<uint64> consistent_snapshot_time;
   std::optional<CDCSDKSnapshotOption> consistent_snapshot_option;
+  std::optional<uint64> stream_creation_time;
 
   RETURN_NOT_OK(
       client->GetCDCStream(
           stream_id, &namespace_id, &object_ids, &options, &transactional,
-          &consistent_snapshot_time, &consistent_snapshot_option));
+          &consistent_snapshot_time, &consistent_snapshot_option, &stream_creation_time));
 
   AddDefaultOptionsIfMissing(&options);
 
@@ -165,6 +166,7 @@ Status StreamMetadata::GetStreamInfoFromMaster(
 
   transactional_.store(transactional, std::memory_order_release);
   consistent_snapshot_time_.store(consistent_snapshot_time, std::memory_order_release);
+  stream_creation_time_.store(stream_creation_time, std::memory_order_release);
   consistent_snapshot_option_ = consistent_snapshot_option;
 
   if (!is_refresh) {
