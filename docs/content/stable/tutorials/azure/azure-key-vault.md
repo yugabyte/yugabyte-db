@@ -190,6 +190,9 @@ A reference to the application we'll be developing can be found [on GitHub](http
 
     ```sh
     node index.js
+    ```
+
+    ```output
     Establishing connection with YugabyteDB Managed...
     Connected successfully.
     ```

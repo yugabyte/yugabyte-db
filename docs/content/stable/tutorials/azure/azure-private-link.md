@@ -95,8 +95,11 @@ This basic application can be run inside your Azure VNet to verify the connectiv
 
     ```sh
     npm run start
-    # Establishing connection with YugabyteDB Managed...
-    # Connected successfully.
+    ```
+
+    ```output
+    Establishing connection with YugabyteDB Managed...
+    Connected successfully.
     ```
 
 ## Wrap-up
