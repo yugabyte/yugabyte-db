@@ -17,7 +17,7 @@
 #
 
 
-FROM postgres:14
+FROM postgres:15
 
 RUN apt-get update
 RUN apt-get install --assume-yes --no-install-recommends --no-install-suggests \
