@@ -71,7 +71,7 @@ The transaction anomalies are as follows:
 
 - Dirty read: A transaction reads data written by a concurrent uncommitted transaction.
 
-- Non-repeatable read: A transaction rereads data it has previously read and finds that data has been modified by another transaction committed after the initial read.
+- Non-repeatable read: A transaction re-reads data it has previously read and finds that data has been modified by another transaction committed after the initial read.
 
 - Phantom read: A transaction re-executes a query returning a set of rows that satisfy a search condition and finds that the set of rows satisfying the condition has changed due to another recently-committed transaction.
 
