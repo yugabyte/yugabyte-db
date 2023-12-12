@@ -10,6 +10,7 @@ import {
   StatusBadge as BackupStatusBadge
 } from '../../common/badge/StatusBadge';
 import { formatUuidForXCluster } from '../ReplicationUtils';
+import { getTableUuid } from '../../../utils/tableUtils';
 
 import { YBTable } from '../../../redesign/helpers/dtos';
 import { IStorageConfig as BackupStorageConfig } from '../../backupv2';
@@ -59,7 +60,7 @@ export const ConfigureBootstrapStep = ({
 
   const bootstrapRequiredTableUUIDsLookup = new Set(bootstrapRequiredTableUUIDs);
   const keyspaces = sourceTables.reduce((keyspaces, table) => {
-    if (bootstrapRequiredTableUUIDsLookup.has(formatUuidForXCluster(table.tableUUID))) {
+    if (bootstrapRequiredTableUUIDsLookup.has(formatUuidForXCluster(getTableUuid(table)))) {
       keyspaces.add(table.keySpace);
     }
     return keyspaces;

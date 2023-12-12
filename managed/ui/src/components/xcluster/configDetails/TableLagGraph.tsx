@@ -8,6 +8,7 @@ import { useSelector } from 'react-redux';
 import { getAlertConfigurations } from '../../../actions/universe';
 import { fetchReplicationLag } from '../../../actions/xClusterReplication';
 import { alertConfigQueryKey, metricQueryKey } from '../../../redesign/helpers/api';
+import { getTableName, getTableUuid } from '../../../utils/tableUtils';
 import { YBButtonLink } from '../../common/forms/fields';
 import { YBErrorIndicator } from '../../common/indicators';
 import { MetricsPanelOld } from '../../metrics';
@@ -39,7 +40,7 @@ interface Props {
 }
 
 export const TableLagGraph: FC<Props> = ({
-  tableDetails: { tableName, tableUUID: tableId, streamId },
+  tableDetails,
   universeUUID,
   queryEnabled,
   nodePrefix
@@ -63,8 +64,8 @@ export const TableLagGraph: FC<Props> = ({
   // Thus, all custom time ranges are fixed.
   const isFixedTimeRange = isCustomTimeRange;
   const replciationLagMetricRequestParams = {
-    streamId,
-    tableId,
+    streamId: tableDetails.streamId,
+    tableId: getTableUuid(tableDetails),
     nodePrefix,
     start: metricTimeRange.startMoment.format('X'),
     end: metricTimeRange.endMoment.format('X')
@@ -160,7 +161,7 @@ export const TableLagGraph: FC<Props> = ({
 
   const graphMetric = _.cloneDeep(tableMetricsQuery.data ?? REPLICATION_LAG_GRAPH_EMPTY_METRIC);
   setTracesToPlot(graphMetric);
-
+  const tableName = getTableName(tableDetails);
   return (
     <div>
       <div className={styles.modalToolBar}>

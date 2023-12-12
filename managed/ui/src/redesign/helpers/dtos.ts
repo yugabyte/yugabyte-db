@@ -280,14 +280,18 @@ export const TableType = {
 export type TableType = typeof TableType[keyof typeof TableType];
 
 export interface YBTable {
+  colocated: boolean;
+  colocationParentId: string;
   isIndexTable: boolean;
   keySpace: string;
   pgSchemaName: string;
   relationType: YBTableRelationType;
   sizeBytes: number;
+  tableID: string;
   tableName: string;
   tableType: TableType;
   tableUUID: string;
+  walSizeBytes: number;
 }
 
 export interface UniverseNamespace {
