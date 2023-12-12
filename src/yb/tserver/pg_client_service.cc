@@ -48,6 +48,7 @@
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/scheduler.h"
 #include "yb/rpc/tasks_pool.h"
+#include "yb/rpc/rpc_introspection.pb.h"
 
 #include "yb/tserver/pg_client_session.h"
 #include "yb/tserver/pg_create_table.h"
@@ -1099,6 +1100,69 @@ class PgClientServiceImpl::Impl {
     } else {
       resp->set_is_pitr_active(*res);
     }
+    return Status::OK();
+  }
+
+  void GetRpcsWaitStates(yb::rpc::Messenger* messenger, tserver::WaitStatesPB* resp) {
+    rpc::DumpRunningRpcsRequestPB dump_req;
+    rpc::DumpRunningRpcsResponsePB dump_resp;
+
+    dump_req.set_include_traces(false);
+    dump_req.set_get_wait_state(true);
+    dump_req.set_dump_timed_out(false);
+    dump_req.set_get_local_calls(true);
+
+    WARN_NOT_OK(messenger->DumpRunningRpcs(dump_req, &dump_resp), "DumpRunningRpcs failed");
+
+    size_t ignored_calls = 0;
+    size_t ignored_calls_no_wait_state = 0;
+    for (const auto& conns : dump_resp.inbound_connections()) {
+      for (const auto& call : conns.calls_in_flight()) {
+        if (!call.has_wait_state() ||
+            (call.wait_state().has_aux_info() && call.wait_state().aux_info().has_method() &&
+             call.wait_state().aux_info().method() == "ActiveSessionHistory")) {
+          ignored_calls++;
+          if (!call.has_wait_state()) {
+            ignored_calls_no_wait_state++;
+          }
+          continue;
+        }
+        resp->add_wait_states()->CopyFrom(call.wait_state());
+      }
+    }
+    if (dump_resp.has_local_calls()) {
+      for (const auto& call : dump_resp.local_calls().calls_in_flight()) {
+        if (!call.has_wait_state() ||
+            (call.wait_state().has_aux_info() && call.wait_state().aux_info().has_method() &&
+             call.wait_state().aux_info().method() == "ActiveSessionHistory")) {
+          ignored_calls++;
+          if (!call.has_wait_state()) {
+            ignored_calls_no_wait_state++;
+          }
+          continue;
+        }
+        resp->add_wait_states()->CopyFrom(call.wait_state());
+      }
+    }
+    LOG_IF(INFO, VLOG_IS_ON(1) || ignored_calls > 1)
+        << "Ignored " << ignored_calls << " calls. " << ignored_calls_no_wait_state
+        << " without wait state";
+    VLOG(2) << __PRETTY_FUNCTION__
+            << " wait-states: " << yb::ToString(resp->wait_states());
+  }
+
+  void GetTServerWaitStates(tserver::WaitStatesPB* resp) {
+    if (auto* messenger = tablet_server_.GetMessenger()) {
+      GetRpcsWaitStates(messenger, resp);
+    } else {
+      LOG(DFATAL) << __func__ << " got no messenger.";
+    }
+  }
+
+  Status ActiveSessionHistory(
+      const PgActiveSessionHistoryRequestPB& req, PgActiveSessionHistoryResponsePB* resp,
+      rpc::RpcContext* context) {
+    GetTServerWaitStates(resp->mutable_tserver_wait_states());
     return Status::OK();
   }
 

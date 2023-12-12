@@ -37,6 +37,7 @@ package yb.rpc;
 
 option java_package = "org.yb";
 
+import "yb/common/common.proto";
 import "yb/rpc/rpc_header.proto";
 
 message CQLStatementsDetailsPB {
@@ -77,6 +78,7 @@ message RpcCallInProgressPB {
     CQLCallDetailsPB cql_details = 4;
     RedisCallDetailsPB redis_details = 5;
   }
+  optional WaitStateInfoPB wait_state = 8;
 }
 
 message CQLConnectionDetailsPB {

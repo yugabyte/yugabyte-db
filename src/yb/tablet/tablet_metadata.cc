@@ -38,6 +38,8 @@
 
 #include <boost/optional.hpp>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/common/colocated_util.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/schema.h"
@@ -1069,6 +1071,7 @@ Status RaftGroupMetadata::SaveToDiskUnlocked(
     return SaveToDiskUnlocked(pb, VERIFY_RESULT(FilePath()));
   }
 
+  SCOPED_WAIT_STATUS(SaveRaftGroupMetadataToDisk);
   RETURN_NOT_OK_PREPEND(pb_util::WritePBContainerToPath(
                             fs_manager_->encrypted_env(), path, pb,
                             pb_util::OVERWRITE, pb_util::SYNC),

@@ -183,5 +183,10 @@ client::TransactionPool& MasterTabletServer::TransactionPool() {
   return *temp;
 }
 
+rpc::Messenger* MasterTabletServer::GetMessenger() const {
+  LOG(FATAL) << "Unexpected call of GetMessenger()";
+  return nullptr;
+}
+
 } // namespace master
 } // namespace yb

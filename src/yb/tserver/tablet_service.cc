@@ -37,6 +37,8 @@
 #include <string>
 #include <vector>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
@@ -364,6 +366,7 @@ class WriteQueryCompletionCallback {
         trace_(include_trace_ ? Trace::CurrentTrace() : nullptr) {}
 
   void operator()(Status status) const {
+    SCOPED_WAIT_STATUS(OnCpu_Active);
     VLOG(1) << __PRETTY_FUNCTION__ << " completing with status " << status;
     // When we don't need to return any data, we could return success on duplicate request.
     if (status.IsAlreadyPresent() &&
@@ -633,6 +636,7 @@ void TabletServiceAdminImpl::BackfillIndex(
   const CoarseTimePoint &deadline = context.GetClientDeadline();
   const auto coarse_start = CoarseMonoClock::Now();
   {
+    SCOPED_WAIT_STATUS(BackfillIndex_WaitForAFreeSlot);
     std::unique_lock<std::mutex> l(backfill_lock_);
     while (num_tablets_backfilling_ >= FLAGS_num_concurrent_backfills_allowed) {
       if (backfill_cond_.wait_until(l, deadline) == std::cv_status::timeout) {
@@ -1899,6 +1903,7 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
   // First, check tserver's catalog version.
   const std::string db_ver_tag = Format("[DB $0, V $1]", database_oid, catalog_version);
   uint64_t ts_catalog_version = 0;
+  SCOPED_WAIT_STATUS(WaitForYsqlBackendsCatalogVersion);
   Status s = Wait(
       [catalog_version, database_oid, this, &ts_catalog_version]() -> Result<bool> {
         // TODO(jason): using the gflag to determine per-db mode may not work for initdb, so make
@@ -2127,6 +2132,13 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     return;
   }
 
+  const auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
+  if (wait_state && req->has_tablet_id()) {
+    wait_state->UpdateAuxInfo(ash::AshAuxInfo{.tablet_id = req->tablet_id(), .method = "Write"});
+  }
+  if (wait_state && req->has_ash_metadata()) {
+    wait_state->UpdateMetadataFromPB(req->ash_metadata());
+  }
   auto status = PerformWrite(req, resp, &context);
   if (!status.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), std::move(status), &context);
@@ -2157,6 +2169,13 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     return;
   }
 
+  const auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
+  if (wait_state && req->has_tablet_id()) {
+    wait_state->UpdateAuxInfo(ash::AshAuxInfo{.tablet_id = req->tablet_id(), .method = "Read"});
+  }
+  if (wait_state && req->has_ash_metadata()) {
+    wait_state->UpdateMetadataFromPB(req->ash_metadata());
+  }
   PerformRead(server_, this, req, resp, std::move(context));
 }
 

@@ -15,6 +15,8 @@
 #include <atomic>
 #include <map>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/common/hybrid_time.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/transaction.h"
@@ -147,6 +149,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
                    ResolutionCallback callback)
       : doc_db_(doc_db), status_manager_(*status_manager),
         partial_range_key_intents_(partial_range_key_intents), context_(std::move(context)),
+        wait_state_(ash::WaitStateInfo::CurrentWaitState()),
         callback_(std::move(callback)) {}
 
   virtual ~ConflictResolver() = default;
@@ -173,6 +176,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
   }
 
   void Resolve() {
+    SET_WAIT_STATUS(ConflictResolution_ResolveConficts);
     auto status = SetRequestScope();
     if (status.ok()) {
       auto start_time = CoarseMonoClock::Now();
@@ -312,6 +316,9 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
   }
 
   void InvokeCallback(const Result<HybridTime>& result) {
+    // ConflictResolution_ResolveConficts lasts until InvokeCallback.
+    ADOPT_WAIT_STATE(wait_state_);
+    SET_WAIT_STATUS(OnCpu_Passive);
     YB_TRANSACTION_DUMP(
         Conflicts, context_->transaction_id(),
         result.ok() ? *result : HybridTime::kInvalid,
@@ -347,6 +354,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
       return;
     }
 
+    TRACE("Has conflicts.");
     conflict_data_ = std::make_shared<ConflictDataManager>(conflicts_.size());
     for (const auto& [id, conflict_info] : conflicts_) {
       conflict_data_->AddTransaction(id, conflict_info);
@@ -469,7 +477,9 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
            // So we cannot accept status with time >= read_ht and < global_limit_ht.
         &kRequestReason,
         TransactionLoadFlags{TransactionLoadFlag::kCleanup},
-        [self, &transaction, trace](Result<TransactionStatusResult> result) {
+        [self, &transaction, trace, wait_state = ash::WaitStateInfo::CurrentWaitState()](
+            Result<TransactionStatusResult> result) {
+          ADOPT_WAIT_STATE(std::move(wait_state));
           ADOPT_TRACE(trace.get());
           if (result.ok()) {
             transaction.ProcessStatus(*result);
@@ -502,6 +512,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
   RequestScope request_scope_;
   PartialRangeKeyIntents partial_range_key_intents_;
   std::unique_ptr<ConflictResolverContext> context_;
+  const ash::WaitStateInfoPtr wait_state_;
   ResolutionCallback callback_;
 
   BoundedRocksDbIterator intent_iter_;
@@ -658,6 +669,7 @@ class WaitOnConflictResolver : public ConflictResolver {
     DCHECK_GT(conflict_data_->NumActiveTransactions(), 0);
     VTRACE(3, "Waiting on $0 transactions after $1 tries.",
            conflict_data_->NumActiveTransactions(), wait_for_iters_);
+
     MaybeSetWaitStartTime();
     return wait_queue_->WaitOn(
         context_->transaction_id(), context_->subtransaction_id(), lock_batch_,

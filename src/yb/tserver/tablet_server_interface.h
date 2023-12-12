@@ -76,6 +76,8 @@ class TabletServerIf : public LocalTabletServer {
   client::YBClient* client() const {
     return client_future().get();
   }
+
+  virtual rpc::Messenger* GetMessenger() const = 0;
 };
 
 } // namespace tserver

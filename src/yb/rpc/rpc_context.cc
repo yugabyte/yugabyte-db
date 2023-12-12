@@ -260,6 +260,11 @@ std::string RpcContext::ToString() const {
   return call_->ToString();
 }
 
+const ash::WaitStateInfoPtr& RpcContext::wait_state() const {
+  static const ash::WaitStateInfoPtr kNullPtr;
+  return call_ ? call_->wait_state() : kNullPtr;
+}
+
 void PanicRpc(RpcContext* context, const char* file, int line_number, const std::string& message) {
   if (context) {
     context->Panic(file, line_number, message);
