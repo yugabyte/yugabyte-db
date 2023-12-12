@@ -49,11 +49,8 @@ For a configuration that provides fault tolerance across availability zones, dep
 
 ![Deploy a 3-node YugabyteDB Managed cluster to Azure](/images/tutorials/azure/azure-functions/yb-cluster.png)
 
-Add the [outbound addresses for your function app](https://learn.microsoft.com/en-us/azure/azure-functions/ip-addresses?tabs=azurecli) to your cluster's [IP allow list](../../../yugabyte-cloud/cloud-secure-clusters/add-connections/). Find these addresses in the **Networking** tab of the Azure portal. This will ensure that a connection can be made between Azure Functions and YugabyteDB.
-
-![Locate outbound IP addresses in the Azure portal](/images/tutorials/azure/azure-functions/azure-networking.png)
-
-In addition to the outbound IP addresses in Azure, add your machine's IP address to the IP allow list in YugabyteDB Managed so that you can run your serverless functions locally in development. Now that we have a working cluster in YugabyteDB Managed, let's add some data.
+Add your machine's IP address to the IP Allow List in YugabyteDB Managed, to successfully run your serverless functions locally in development. 
+Now that we have a working cluster in YugabyteDB Managed, let's add some data.
 
 ## Add data to YugabyteDB
 
@@ -177,10 +174,20 @@ We can deploy our application to Azure using the [Azure CLI](https://learn.micro
     az functionapp create --resource-group RESOURCE_GROUP_NAME --consumption-plan-location eastus2 --runtime node --runtime-version 18 --functions-version 4 --name YBAzureFunctions --storage-account STORAGE_ACCOUNT_NAME
     ```
 
+1. Get the [outbound addresses for your function app](https://learn.microsoft.com/en-us/azure/azure-functions/ip-addresses?tabs=azurecli) and add them to your YugabyteDB cluster's [IP allow list](https://docs.yugabyte.com/preview/yugabyte-cloud/cloud-secure-clusters/add-connections/). This will ensure that a connection can be made between Azure Functions and YugabyteDB.
+   
+    ```sh
+    az functionapp show --resource-group RESOURCE_GROUP_NAME --name YBAzureFunctions --query possibleOutboundIpAddresses --output tsv
+    ```
+
+    These addresses can can also be found in the **Networking** tab of the Azure portal. 
+
+    ![Locate outbound IP addresses in the Azure web portal.](/images/tutorials/azure/azure-functions/azure-networking.png "Locate outbound IP addresses in the Azure web portal.")
+
 1. Configure the application settings.
 
     ```sh
-    az functionapp config appsettings set -g RESOURCE_GROUP_NAME -n APPLICATION_NAME --setting DB_HOST=[YUGABYTE_DB_HOST] DB_USERNAME=admin DB_PASSWORD=[YUGABYTE_DB_PASSWORD] DB_CERTIFICATE=[BASE_64_ENCODED_YUGABYTE_DB_CERTIFICATE]
+    az functionapp config appsettings set -g RESOURCE_GROUP_NAME -n YBAzureFunctions --setting DB_HOST=[YUGABYTE_DB_HOST] DB_USERNAME=admin DB_PASSWORD=[YUGABYTE_DB_PASSWORD] DB_CERTIFICATE=[BASE_64_ENCODED_YUGABYTE_DB_CERTIFICATE]
     ```
 
 1. Publish Function App to Azure.
