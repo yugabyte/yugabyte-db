@@ -12,7 +12,7 @@ import {
 } from '../../../../actions/xClusterReplication';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { formatUuidForXCluster } from '../../ReplicationUtils';
-import { XClusterConfigAction } from '../../constants';
+import { XClusterConfigAction, XCLUSTER_UNIVERSE_TABLE_FILTERS } from '../../constants';
 import { assertUnreachableCase, handleServerError } from '../../../../utils/errorHandlingUtils';
 import {
   api,
@@ -147,12 +147,11 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
   );
 
   const tablesQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(sourceUniverseUuid, { excludeColocatedTables: true }),
+    universeQueryKey.tables(sourceUniverseUuid, XCLUSTER_UNIVERSE_TABLE_FILTERS),
     () =>
-      fetchTablesInUniverse(sourceUniverseUuid, {
-        excludeColocatedTables: true,
-        xClusterSupportedOnly: true
-      }).then((response) => response.data)
+      fetchTablesInUniverse(sourceUniverseUuid, XCLUSTER_UNIVERSE_TABLE_FILTERS).then(
+        (response) => response.data
+      )
   );
   const sourceUniverseQuery = useQuery<Universe>(universeQueryKey.detail(sourceUniverseUuid), () =>
     api.fetchUniverse(sourceUniverseUuid)

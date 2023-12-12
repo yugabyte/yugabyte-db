@@ -21,16 +21,20 @@ import {
 } from '../../../../redesign/helpers/api';
 import { assertUnreachableCase, handleServerError } from '../../../../utils/errorHandlingUtils';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
-import { BOOTSTRAP_MIN_FREE_DISK_SPACE_GB, XClusterConfigAction } from '../../constants';
+import {
+  BOOTSTRAP_MIN_FREE_DISK_SPACE_GB,
+  XClusterConfigAction,
+  XCLUSTER_UNIVERSE_TABLE_FILTERS
+} from '../../constants';
 import {
   formatUuidForXCluster,
-  formatUuidFromXCluster,
   getTablesForBootstrapping,
   getXClusterConfigTableType,
   parseFloatIfDefined
 } from '../../ReplicationUtils';
 import { StorageConfigOption } from '../../sharedComponents/ReactSelectStorageConfig';
 import { CurrentFormStep } from './CurrentFormStep';
+import { getTableUuid } from '../../../../utils/tableUtils';
 
 import { Universe, UniverseNamespace, YBTable } from '../../../../redesign/helpers/dtos';
 import { XClusterConfig } from '../../dtos';
@@ -85,13 +89,12 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
   );
 
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, {
-      excludeColocatedTables: true
-    }),
+    universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, XCLUSTER_UNIVERSE_TABLE_FILTERS),
     () =>
-      fetchTablesInUniverse(xClusterConfig.sourceUniverseUUID, {
-        excludeColocatedTables: true
-      }).then((response) => response.data)
+      fetchTablesInUniverse(
+        xClusterConfig.sourceUniverseUUID,
+        XCLUSTER_UNIVERSE_TABLE_FILTERS
+      ).then((response) => response.data)
   );
 
   const sourceUniverseNamespacesQuery = useQuery<UniverseNamespace[]>(
@@ -256,6 +259,7 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
 
         if (!isTableSelectionValidated) {
           let bootstrapTableUuids: string[] | null = null;
+
           try {
             // We pass null as the target universe in the following method because add table does not
             // support the case where a matching table does not exist on the target universe.
@@ -264,7 +268,9 @@ export const EditTablesModal = (props: EditTablesModalProps) => {
               sourceUniverseUuid,
               null /* targetUniverseUUID */,
               sourceUniverseTables,
-              xClusterConfig.type
+              xClusterConfig.tables,
+              xClusterConfig.type,
+              xClusterConfig.usedForDr
             );
           } catch (error: any) {
             toast.error(
@@ -444,7 +450,7 @@ const getXClusterConfigNamespaces = (
   const selectedTableUuids = new Set<string>(xClusterConfig.tables);
   const selectedNamespaceUuid = new Set<string>();
   sourceUniverseTables.forEach((table) => {
-    if (selectedTableUuids.has(formatUuidForXCluster(table.tableUUID))) {
+    if (selectedTableUuids.has(formatUuidForXCluster(getTableUuid(table)))) {
       selectedNamespaceUuid.add(namespaceToNamespaceUuid[table.keySpace]);
     }
   });
@@ -457,7 +463,7 @@ const getDefaultFormValues = (
   sourceUniverseNamespace: UniverseNamespace[]
 ): Partial<EditTablesFormValues> => {
   return {
-    tableUuids: xClusterConfig.tables.map(formatUuidFromXCluster),
+    tableUuids: xClusterConfig.tables,
     namespaceUuids: getXClusterConfigNamespaces(
       xClusterConfig,
       sourceUniverseTables,

@@ -229,6 +229,10 @@ export const XClusterModalName = {
   SYNC_XCLUSTER_CONFIG_WITH_DB: 'syncXClusterConfigWithDB'
 } as const;
 
+export const XCLUSTER_UNIVERSE_TABLE_FILTERS = {
+  xClusterSupportedOnly: true
+};
+
 /**
  * The name of the replication configuration cannot contain any characters in [SPACE '_' '*' '<' '>' '?' '|' '"' NULL])
  */
