@@ -129,6 +129,8 @@ When the build is done, the `yugabyte-db/docs/public` folder contains a full HTM
 
 * Make sure your tools are up-to-date. Run `brew update` periodically, and if it reports anything out of date, run `brew upgrade`.
 
+* If you get an error about missing modules, try running `npm install`.
+
 ## Next steps
 
 Need to edit an existing page? [Start editing](../docs-edit/) it now. (Optional: [set up your editor](../docs-editor-setup/).)
