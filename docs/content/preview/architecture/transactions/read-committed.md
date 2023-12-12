@@ -201,7 +201,7 @@ select * from test;
 </tbody>
 </table>
 
-As seen above, the UPDATE from transaction 2 first picks the latest snapshot of the database which only has the row (2, 5). The row satisfies the `UPDATE` statement's `WHERE` clause and hence the transaction 2 tries to update the value of `v` from 5 to 100. However, due to an existing conflicting write from transaction 1, it waits for transaction 1 to end. Once transaction 1 commits, it re-reads the latest version of only the conflicting row, and re-evaluates the `WHERE` clause. The clause is still satisfied by the new row (2, 10) and so the value is updated to 100. Note that the newly inserted row (5, 5) isn't updated even though it satisfies the `WHERE` clause of transaction 2's `UPDATE`, because it was not part of the snapshot originally picked by transaction 2's `UPDATE` statement.
+As seen above, the UPDATE from transaction 2 first picks the latest snapshot of the database which only has the row (2, 5). The row satisfies the `UPDATE` statement's `WHERE` clause and hence the transaction 2 tries to update the value of `v` from 5 to 100. However, due to an existing conflicting write from transaction 1, it waits for transaction 1 to end. After transaction 1 commits, it re-reads the latest version of only the conflicting row, and re-evaluates the `WHERE` clause. The clause is still satisfied by the new row (2, 10) and so the value is updated to 100. Note that the newly inserted row (5, 5) isn't updated even though it satisfies the `WHERE` clause of transaction 2's `UPDATE`, because it was not part of the snapshot originally picked by transaction 2's `UPDATE` statement.
 
 So, to avoid serialization errors, PostgreSQL only retries the conflicting rows based on their latest versions, thereby allowing a single statement to run on an inconsistent snapshot. In other words, one snapshot is picked for the statement to read all data and process all non-conflicting rows, and a latest version is used for the conflicting rows.
 
@@ -305,11 +305,11 @@ select * from test;
 </tbody>
 </table>
 
-The preceding outcome can occur via the following unlikely chance: until Client 1 commits, PostgreSQL on Client 2 for some reason is busy or slow, and hasn't yet picked a snapshot for execution. Only after Client 1 commits, transaction on Client 2 picks a snapshot based off the current time for the statement. This leads to both rows being read as part of the snapshot and updated without any observable conflicts.
+The preceding outcome can occur via the following unlikely circumstance: until Client 1 commits, PostgreSQL on Client 2 for some reason is busy or slow, and hasn't yet picked a snapshot for execution. Only after Client 1 commits, transaction on Client 2 picks a snapshot based off the current time for the statement. This leads to both rows being read as part of the snapshot and updated without any observable conflicts.
 
-Both the `common case` and `unlikely` outcome are valid and satisfy the semantics of Read Committed isolation level. And theoretically, the user cannot figure out which one will be seen because the user cannot differentiate between a pause due to waiting for a conflicting transaction or a pause due to the database just being busy or slow. Moreover, the `unlikely` case provides a stronger and more intuitive guarantee: the whole statement runs off a single snapshot.
+Both the `common case` and `unlikely` outcomes are valid and satisfy the semantics of Read Committed isolation level. And theoretically, the user cannot figure out which one will be seen because the user cannot differentiate between a pause due to waiting for a conflicting transaction, or a pause due to the database just being busy or slow. Moreover, the `unlikely` case provides a stronger and more intuitive guarantee that the whole statement runs off a single snapshot.
 
-These two possibilities show that the client cannot have application logic that relies on the expectation that the common case occurs always. Given this, YugabyteDB provides a stronger guarantee that each statement always works off just a single snapshot and no inconsistency is allowed even in case of a some conflicting rows. This leads to YugabyteDB always returning output similar to the second outcome in the above example which is also simpler to reason.
+These two possibilities show that the client cannot have application logic that relies on the expectation that the common case occurs always. Given this, YugabyteDB provides a stronger guarantee that each statement always works off just a single snapshot, and no inconsistency is allowed even in case of a some conflicting rows. This leads to YugabyteDB always returning output similar to the second outcome in the preceding example which is also simpler to reason.
 
 This might change in future as per [#11573](https://github.com/yugabyte/yugabyte-db/issues/11573), if it gains interest.
 
@@ -317,9 +317,9 @@ This might change in future as per [#11573](https://github.com/yugabyte/yugabyte
 
 [Read Restart errors](../read-restart-error) stem from clock skew which is inherent in distributed databases due to the distribution of data across more than one physical node. PostgreSQL doesn't require defining semantics around read restart errors in read committed isolation because it is a single-node database without clock skew.
 
-In general, YugabyteDB has optimizations to resolve this error internally with best-effort before forwarding it to the external client. However, for Read Committed isolation, YugabyteDB gives a stronger guarantee: no `read restart` errors will be thrown to the external client except when a statement's output exceeds `ysql_output_buffer_size` (the size of the output buffer between YSQL and the external client which has a default of 256KB and is configurable). For most OLTP applications, this would hold always since response sizes are usually within this limit.
+In general, YugabyteDB has optimizations to resolve this error internally with best-effort before forwarding it to the external client. However, for Read Committed isolation, YugabyteDB gives a stronger guarantee: no `read restart` errors will be thrown to the external client except when a statement's output exceeds `ysql_output_buffer_size` (the size of the output buffer between YSQL and the external client which has a default of 256KB and is configurable). For most OLTP applications, this would hold always as response sizes are usually in this limit.
 
-YugabyteDB chooses to provide this guarantee since most clients that use read committed with PostgreSQL don't have app-level retries for serialization errors. So, it helps to provide the same guarantee for `read restart` errors which are unique to distributed databases.
+YugabyteDB chooses to provide this guarantee as most clients that use read committed with PostgreSQL don't have app-level retries for serialization errors. So, it helps to provide the same guarantee for `read restart` errors which are unique to distributed databases.
 
 ## Interaction with concurrency control
 
