@@ -10,10 +10,12 @@ import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
+import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagDiffEntry;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
@@ -49,7 +51,9 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
             mock(GFlagsValidationHandler.class),
             mock(YbcManager.class),
             mock(RuntimeConfGetter.class),
-            mock(CertificateHelper.class));
+            mock(CertificateHelper.class),
+            mock(AutoFlagUtil.class),
+            mock(XClusterUniverseService.class));
   }
 
   private static Object[] tlsToggleCustomTypeNameParams() {

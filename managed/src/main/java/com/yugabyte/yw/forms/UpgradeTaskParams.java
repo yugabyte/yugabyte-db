@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.forms;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
@@ -60,6 +61,11 @@ public class UpgradeTaskParams extends UniverseDefinitionTaskParams {
 
   public boolean isKubernetesUpgradeSupported() {
     return false;
+  }
+
+  @JsonIgnore
+  public SoftwareUpgradeState getUniverseSoftwareUpgradeStateOnFailure() {
+    return null;
   }
 
   public void verifyParams(Universe universe, boolean isFirstTry) {

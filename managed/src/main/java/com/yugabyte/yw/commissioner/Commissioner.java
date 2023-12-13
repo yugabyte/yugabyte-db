@@ -7,6 +7,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Strings;
+import com.google.common.collect.ImmutableSet;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -43,6 +44,8 @@ public class Commissioner {
   public static final String TASK_ID = "commissioner_task_id";
   public static final String SUBTASK_ABORT_POSITION_PROPERTY = "subtask-abort-position";
   public static final String SUBTASK_PAUSE_POSITION_PROPERTY = "subtask-pause-position";
+  public static final String YB_SOFTWARE_VERSION = "ybSoftwareVersion";
+  public static final String YB_PREV_SOFTWARE_VERSION = "ybPrevSoftwareVersion";
 
   private final ExecutorService executor;
 
@@ -241,7 +244,15 @@ public class Commissioner {
     } else {
       userTaskDetails = taskInfo.getUserTaskDetails();
     }
-    responseJson.set("details", Json.toJson(userTaskDetails));
+    ObjectNode details = Json.newObject();
+    if (userTaskDetails != null && userTaskDetails.taskDetails != null) {
+      details.set("taskDetails", Json.toJson(userTaskDetails.taskDetails));
+    }
+    ObjectNode versionNumbers = getVersionInfo(task, taskInfo);
+    if (versionNumbers != null && !versionNumbers.isEmpty()) {
+      details.set("versionNumbers", versionNumbers);
+    }
+    responseJson.set("details", details);
 
     // Set abortable if eligible.
     responseJson.put("abortable", false);
@@ -270,6 +281,23 @@ public class Commissioner {
       responseJson.put("paused", true);
     }
     return Optional.of(responseJson);
+  }
+
+  public ObjectNode getVersionInfo(CustomerTask task, TaskInfo taskInfo) {
+    ObjectNode versionNumbers = Json.newObject();
+    JsonNode taskDetails = taskInfo.getDetails();
+    if (ImmutableSet.of(
+                CustomerTask.TaskType.SoftwareUpgrade, CustomerTask.TaskType.RollbackUpgrade)
+            .contains(task.getType())
+        && taskDetails.has(Commissioner.YB_PREV_SOFTWARE_VERSION)) {
+      versionNumbers.put(
+          Commissioner.YB_PREV_SOFTWARE_VERSION,
+          taskDetails.get(Commissioner.YB_PREV_SOFTWARE_VERSION).asText());
+      versionNumbers.put(
+          Commissioner.YB_SOFTWARE_VERSION,
+          taskDetails.get(Commissioner.YB_SOFTWARE_VERSION).asText());
+    }
+    return versionNumbers;
   }
 
   public boolean isTaskPaused(UUID taskUuid) {

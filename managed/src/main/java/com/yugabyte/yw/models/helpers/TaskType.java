@@ -573,6 +573,9 @@ public enum TaskType {
   UpdateClusterAPIDetails(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterAPIDetails.class),
 
+  UpdateUniverseState(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseSoftwareUpgradeState.class),
+
   UpdateUniverseCommunicationPorts(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseCommunicationPorts.class),
 
@@ -584,9 +587,15 @@ public enum TaskType {
 
   SoftwareUpgradeYB(com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareUpgradeYB.class),
 
+  SoftwareKubernetesUpgradeYB(
+      com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareKubernetesUpgradeYB.class),
+
   FinalizeUpgrade(com.yugabyte.yw.commissioner.tasks.upgrade.FinalizeUpgrade.class),
 
   RollbackUpgrade(com.yugabyte.yw.commissioner.tasks.upgrade.RollbackUpgrade.class),
+
+  RollbackKubernetesUpgrade(
+      com.yugabyte.yw.commissioner.tasks.upgrade.RollbackKubernetesUpgrade.class),
 
   ReprovisionNode(com.yugabyte.yw.commissioner.tasks.ReprovisionNode.class),
 
@@ -647,6 +656,8 @@ public enum TaskType {
           .put(UpgradeKubernetesUniverse, 50)
           .put(FinalizeUpgrade, 51)
           .put(RollbackUpgrade, 52)
+          .put(SoftwareKubernetesUpgradeYB, 53)
+          .put(RollbackKubernetesUpgrade, 54)
           // Node operations (70-89):
           .put(AddNodeToUniverse, 70)
           .put(DeleteNodeFromUniverse, 71)

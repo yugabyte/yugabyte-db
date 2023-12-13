@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.forms;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.annotation.JsonCreator;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonProperty;
@@ -33,6 +35,11 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
     return true;
   }
 
+  @Override
+  public SoftwareUpgradeState getUniverseSoftwareUpgradeStateOnFailure() {
+    return SoftwareUpgradeState.UpgradeFailed;
+  }
+
   public void verifyParams(Universe universe, boolean isFirstTry) {
     super.verifyParams(universe, isFirstTry);
 
@@ -51,6 +58,15 @@ public class SoftwareUpgradeParams extends UpgradeTaskParams {
       throw new PlatformServiceException(
           Status.BAD_REQUEST, "Software version is already: " + ybSoftwareVersion);
     }
+
+    if (universe
+        .getUniverseDetails()
+        .softwareUpgradeState
+        .equals(SoftwareUpgradeState.PreFinalize)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Software upgrade cannot be preformed on universe in pre-finalize state.");
+    }
+
     RuntimeConfigFactory runtimeConfigFactory =
         StaticInjectorHolder.injector().instanceOf(RuntimeConfigFactory.class);
 
