@@ -637,15 +637,12 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionSpanningMultipleBa
 }
 
 TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionsWithUpdates) {
-  // Write a transactional workload of updates with valdation for 30s and ensure there are no
+  // Write a transactional workload of updates with validation for 30s and ensure there are no
   // FATALs and that we maintain consistent reads.
-  const auto namespace_name = "demo";
   const auto table_name = "account_balance";
 
   ASSERT_OK(Initialize(3 /* replication_factor */, 1 /* num_masters */));
 
-  ASSERT_OK(
-      RunOnBothClusters([&](Cluster* cluster) { return CreateDatabase(cluster, namespace_name); }));
   ASSERT_OK(RunOnBothClusters([&](Cluster* cluster) {
     auto conn = VERIFY_RESULT(cluster->ConnectToDB(namespace_name));
     return conn.ExecuteFormat("create table $0(id int, name text, salary int);", table_name);
@@ -672,12 +669,44 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionsWithUpdates) {
         "INSERT INTO account_balance VALUES($0, 'user$0', 1000000)", i));
   }
 
-  auto total_salary = ASSERT_RESULT(producer_conn.FetchRow<int64_t>(
-      "SELECT SUM(salary) FROM account_balance"));
+  auto print_table = [this](Cluster& cluster) {
+    auto conn = ASSERT_RESULT(cluster.ConnectToDB(namespace_name));
+    const auto select_all_query = "SELECT * FROM account_balance";
+    auto results = ASSERT_RESULT(conn.Fetch(select_all_query));
+    std::stringstream result_string;
+    for (int i = 0; i < PQntuples(results.get()); ++i) {
+      result_string << "\n";
+      for (int col_num = 0; col_num < 3; col_num++) {
+        if (col_num != 0) {
+          result_string << ", ";
+        }
+        result_string << ASSERT_RESULT(pgwrapper::ToString(results.get(), i, col_num));
+      }
+    }
+    LOG(INFO) << result_string.str();
+  };
+
+  LOG(INFO) << "Initial data inserted: ";
+  print_table(producer_cluster_);
+
+  const auto select_salary_sum_query = "SELECT SUM(salary) FROM account_balance";
+  const auto total_salary = ASSERT_RESULT(producer_conn.FetchRow<int64_t>(select_salary_sum_query));
+
+  auto consumer_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
+  ASSERT_OK(LoggedWaitFor(
+      [&]() -> Result<bool> {
+        // TODO(#20254) : Replace the warning with Assert.
+        auto consumer_salary = consumer_conn.FetchRow<int64_t>(select_salary_sum_query);
+        if (!consumer_salary) {
+          LOG(WARNING) << consumer_salary;
+        }
+        return consumer_salary && *consumer_salary == total_salary;
+      },
+      30s, "Initial data not replicated"));
 
   // Transactional workload
   auto test_thread_holder = TestThreadHolder();
-  test_thread_holder.AddThread([this, namespace_name]() {
+  test_thread_holder.AddThread([&producer_conn]() {
     std::string update_query;
     for (int i = 0; i < num_users - 1; i++) {
       update_query +=
@@ -686,28 +715,41 @@ TEST_F(XClusterYSqlTestConsistentTransactionsTest, TransactionsWithUpdates) {
     update_query += Format(
         "UPDATE account_balance SET salary = salary + $0 WHERE name = 'user$1';",
         500 * (num_users - 1), num_users - 1);
-    auto producer_conn = ASSERT_RESULT(producer_cluster_.ConnectToDB(namespace_name));
-    auto now = CoarseMonoClock::Now();
-    while (CoarseMonoClock::Now() < now + MonoDelta::FromSeconds(30)) {
-      ASSERT_OK(producer_conn.ExecuteFormat("BEGIN TRANSACTION; $0; COMMIT;", update_query));
+    auto transactional_update_query = Format("BEGIN TRANSACTION; $0; COMMIT;", update_query);
+    LOG(INFO) << "Running producer workload in a loop: " << transactional_update_query;
+
+    auto deadline = CoarseMonoClock::Now() + 30s;
+    while (CoarseMonoClock::Now() < deadline) {
+      ASSERT_OK(producer_conn.Execute(transactional_update_query));
     }
   });
 
   // Read validate workload.
-  test_thread_holder.AddThread([this, namespace_name, total_salary]() {
-    auto now = CoarseMonoClock::Now();
+  test_thread_holder.AddThread([&]() {
     auto consumer_conn = ASSERT_RESULT(consumer_cluster_.ConnectToDB(namespace_name));
-    while (CoarseMonoClock::Now() < now + MonoDelta::FromSeconds(30)) {
-      auto current_salary_result = consumer_conn.FetchRow<int64_t>(
-          "select sum(salary) from account_balance");
+    auto deadline = CoarseMonoClock::Now() + 30s;
+    LOG(INFO) << "Running consumer workload in a loop: " << select_salary_sum_query;
+    while (CoarseMonoClock::Now() < deadline) {
+      // TODO(#20254) : Replace the warning with Assert.
+      auto current_salary_result = consumer_conn.FetchRow<int64_t>(select_salary_sum_query);
       if (!current_salary_result.ok()) {
+        LOG(WARNING) << "Failed to fetch salary sum: " << current_salary_result.status();
         continue;
+      }
+
+      if (total_salary != *current_salary_result) {
+        LOG(ERROR) << "Consumer data: ";
+        print_table(consumer_cluster_);
       }
       ASSERT_EQ(total_salary, *current_salary_result);
     }
   });
 
   test_thread_holder.JoinAll();
+
+  LOG(INFO) << "Final producer data: ";
+  print_table(producer_cluster_);
+
   ASSERT_OK(WaitForIntentsCleanedUpOnConsumer());
   ASSERT_OK(DeleteUniverseReplication());
 }
