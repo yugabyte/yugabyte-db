@@ -236,17 +236,17 @@ Review the [prerequisites](#prerequisites). YBA Installer performs the migration
 
 To migrate your installation from Replicated, do the following:
 
-1. If your Replicated installation is v2.18 or earlier, [upgrade your installation](../../../upgrade/upgrade-yp-replicated/) to v2.20.1.
+1. If your Replicated installation is v2.18.5 or earlier, [upgrade your installation](../../../upgrade/upgrade-yp-replicated/) to v2.20.1.
 
 1. If you haven't already, [download and extract YBA Installer](#download-yba-installer).
 
-1. Configure the migration as follows:
+1. Optionally, configure the migration as follows:
 
     ```sh
     $ sudo ./yba-ctl replicated-migrate config
     ```
 
-    This generates a configuration file `/opt/yba-ctl/yba-ctl.yml` with the settings for your current installation, which are used for the migration. You may optionally edit the file to customize the install further. For a list of options, refer to [Configuration options](#configuration-options).
+    This generates a configuration file `/opt/yba-ctl/yba-ctl.yml` with the settings for your current installation, which are used for the migration. You can edit the file to customize the install further. For a list of options, refer to [Configuration options](#configuration-options).
 
 1. Start the migration, passing in your license file:
 
@@ -254,7 +254,7 @@ To migrate your installation from Replicated, do the following:
     $ sudo ./yba-ctl replicated-migrate start -l /path/to/license
     ```
 
-    The `start` command runs all [preflight checks](#run-preflight-checks) and then proceeds to do the migration, and then waits for YBA to start. After the migration succeeds, you can immediately start using YBA.
+    The `start` command runs all [preflight checks](#run-preflight-checks) and then proceeds to do the migration, and then waits for YBA to start. After the migration finishes, YBA is installed.
 
 1. Validate YBA is up and running with the correct data, including Prometheus.
 
@@ -267,6 +267,28 @@ To migrate your installation from Replicated, do the following:
     ```
 
     This uninstalls Replicated and makes the new YBA instance permanent.
+
+### Migration and high availability
+
+If you have [high availability](../../../administer-yugabyte-platform/high-availability/) (HA) configured, migrate your installations as follows.
+
+If Replicated is using HTTPS:
+
+1. If your instances are v2.18.5 or earlier, [upgrade your primary and HA standby instances](../../../administer-yugabyte-platform/high-availability/#upgrade-instances) to v2.20.1.
+1. Migrate and finalize the primary.
+1. Migrate and finalize the standby.
+
+Failovers are now possible again after the completion of this step.
+
+If Replicated is using HTTP:
+
+1. [Remove the standby instances](../../administer-yugabyte-platform/high-availability/#remove-a-standby-instance).
+1. If your instances are v2.18.5 or earlier, [upgrade the primary and standby instances](../../../administer-yugabyte-platform/high-availability/#upgrade-instances) to v2.20.1.
+1. Migrate and finalize the primary.
+1. Migrate and finalize the standbys.
+1. [Configure HA on the updated instances](../../administer-yugabyte-platform/high-availability/#configure-active-and-standby-instances).
+
+Failovers are now possible again after the completion of this step.
 
 ## Manage a YBA installation
 
