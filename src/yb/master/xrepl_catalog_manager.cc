@@ -1044,54 +1044,58 @@ Status CatalogManager::DeleteCDCStream(
   LOG(INFO) << "Servicing DeleteCDCStream request from " << RequestorString(rpc) << ": "
             << req->ShortDebugString();
 
-  if (req->stream_id_size() < 1) {
+  if (req->stream_id_size() == 0 && req->cdcsdk_ysql_replication_slot_name_size() == 0) {
     return STATUS(
-        InvalidArgument, "No CDC Stream ID given", req->ShortDebugString(),
+        InvalidArgument, "No CDC Stream ID or YSQL Replication Slot Name given",
         MasterError(MasterErrorPB::INVALID_REQUEST));
   }
 
   std::vector<CDCStreamInfoPtr> streams;
   {
     SharedLock lock(mutex_);
-    for (const auto& stream_id : req->stream_id()) {
-      auto stream =
-          FindPtrOrNull(cdc_stream_map_, VERIFY_RESULT(xrepl::StreamId::FromString(stream_id)));
 
-      if (stream == nullptr || stream->LockForRead()->is_deleting()) {
-        resp->add_not_found_stream_ids(stream_id);
-        LOG(WARNING) << "CDC stream does not exist: " << stream_id;
+    for (const auto& stream_id : req->stream_id()) {
+      auto stream_opt = VERIFY_RESULT(GetStreamIfValidForDelete(
+          VERIFY_RESULT(xrepl::StreamId::FromString(stream_id)), req->force_delete()));
+      if (stream_opt) {
+        streams.emplace_back(std::move(*stream_opt));
       } else {
-        auto ltm = stream->LockForRead();
-        if (req->has_force_delete() && req->force_delete() == false) {
-          bool active = (ltm->pb.state() == SysCDCStreamEntryPB::ACTIVE);
-          bool is_WAL = false;
-          for (const auto& option : ltm->pb.options()) {
-            if (option.key() == "record_format" && option.value() == "WAL") {
-              is_WAL = true;
-            }
-          }
-          if (is_WAL && active) {
-            return STATUS(
-                NotSupported,
-                "Cannot delete an xCluster Stream in replication. "
-                "Use 'force_delete' to override",
-                req->ShortDebugString(),
-                MasterError(MasterErrorPB::INVALID_REQUEST));
-          }
-        }
-        streams.push_back(stream);
+        resp->add_not_found_stream_ids(stream_id);
+      }
+    }
+
+    for (const auto& replication_slot_name : req->cdcsdk_ysql_replication_slot_name()) {
+      auto slot_name = ReplicationSlotName(replication_slot_name);
+      auto stream_it = FindOrNull(cdcsdk_replication_slots_to_stream_map_, slot_name);
+      auto stream_id = stream_it ? *stream_it : xrepl::StreamId::Nil();
+      auto stream_opt =
+          VERIFY_RESULT(GetStreamIfValidForDelete(std::move(stream_id), req->force_delete()));
+      if (stream_opt) {
+        streams.emplace_back(std::move(*stream_opt));
+      } else {
+        resp->add_not_found_cdcsdk_ysql_replication_slot_names(replication_slot_name);
       }
     }
   }
 
-  if (!resp->not_found_stream_ids().empty() && !req->ignore_errors()) {
-    string missing_streams;
-    JoinElements(resp->not_found_stream_ids(), ",", &missing_streams);
+  const auto& not_found_stream_ids = resp->not_found_stream_ids();
+  const auto& not_found_cdcsdk_ysql_replication_slot_names =
+      resp->not_found_cdcsdk_ysql_replication_slot_names();
+  if ((!not_found_stream_ids.empty() || !not_found_cdcsdk_ysql_replication_slot_names.empty()) &&
+      !req->ignore_errors()) {
+    std::vector<std::string> missing_streams(
+        resp->not_found_stream_ids_size() +
+        resp->not_found_cdcsdk_ysql_replication_slot_names_size());
+    missing_streams.insert(
+        missing_streams.end(), not_found_stream_ids.begin(), not_found_stream_ids.end());
+    missing_streams.insert(
+        missing_streams.end(), not_found_cdcsdk_ysql_replication_slot_names.begin(),
+        not_found_cdcsdk_ysql_replication_slot_names.end());
     return STATUS(
         NotFound,
         Format(
             "Did not find all requested CDC streams. Missing streams: [$0]. Request: $1",
-            missing_streams, req->ShortDebugString()),
+            JoinStrings(missing_streams, ","), req->ShortDebugString()),
         MasterError(MasterErrorPB::OBJECT_NOT_FOUND));
   }
 
@@ -1109,6 +1113,31 @@ Status CatalogManager::DeleteCDCStream(
             << " per request from " << RequestorString(rpc);
 
   return Status::OK();
+}
+
+Result<std::optional<CDCStreamInfoPtr>> CatalogManager::GetStreamIfValidForDelete(
+    const xrepl::StreamId& stream_id, bool force_delete) {
+  auto stream = FindPtrOrNull(cdc_stream_map_, stream_id);
+  if (stream == nullptr || stream->LockForRead()->is_deleting()) {
+    return std::nullopt;
+  }
+
+  auto ltm = stream->LockForRead();
+  if (!force_delete && ltm->pb.state() == SysCDCStreamEntryPB::ACTIVE) {
+    for (const auto& option : ltm->pb.options()) {
+      if (option.key() == "record_format") {
+        if (option.value() == "WAL") {
+          return STATUS(
+              NotSupported,
+              "Cannot delete an xCluster Stream in replication. "
+              "Use 'force_delete' to override",
+              MasterError(MasterErrorPB::INVALID_REQUEST));
+        }
+        break;
+      }
+    }
+  }
+  return stream;
 }
 
 Status CatalogManager::MarkCDCStreamsForMetadataCleanup(
