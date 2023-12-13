@@ -385,6 +385,35 @@ TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceCql) {
   ASSERT_EQ(1, list_resp.streams_size());
 }
 
+TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceDisabled) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_commands) = false;
+
+  CreateNamespaceResponsePB create_namespace_resp;
+  ASSERT_OK(CreatePgsqlNamespace(kNamespaceName, kPgsqlNamespaceId, &create_namespace_resp));
+  auto ns_id = create_namespace_resp.id();
+
+  for (auto i = 0; i < num_tables; ++i) {
+    ASSERT_OK(CreatePgsqlTable(ns_id, Format("cdc_table_$0", i), kTableIds[i], kTableSchema));
+  }
+
+  CreateCDCStreamRequestPB req;
+  CreateCDCStreamResponsePB resp;
+  req.set_namespace_id(ns_id);
+  req.set_cdcsdk_ysql_replication_slot_name(kPgReplicationSlotName);
+  AddKeyValueToCreateCDCStreamRequestOption(&req, cdc::kIdType, cdc::kNamespaceId);
+  AddKeyValueToCreateCDCStreamRequestOption(
+      &req, cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK));
+
+  ASSERT_OK(proxy_replication_->CreateCDCStream(req, &resp, ResetAndGetController()));
+  SCOPED_TRACE(resp.DebugString());
+  ASSERT_TRUE(resp.has_error());
+  ASSERT_NE(
+      resp.error().status().message().find(
+          "Creation of CDCSDK stream with a replication slot name is disallowed"),
+      std::string::npos)
+      << resp.error().status().message();
+}
+
 TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceInvalidDuplicationSlotName) {
   CreateNamespaceResponsePB create_namespace_resp;
   ASSERT_OK(CreatePgsqlNamespace(kNamespaceName, kPgsqlNamespaceId, &create_namespace_resp));
@@ -440,35 +469,6 @@ TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceInvalidIdTypeOption) {
   ASSERT_NE(
       resp.error().status().message().find(
           "Invalid id_type in options. Expected to be NAMESPACEID"),
-      std::string::npos)
-      << resp.error().status().message();
-
-  auto list_resp = ASSERT_RESULT(ListCDCStreams());
-  ASSERT_EQ(0, list_resp.streams_size());
-}
-
-TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceMissingReplicationSlotName) {
-  CreateNamespaceResponsePB create_namespace_resp;
-  CreateCDCStreamRequestPB req;
-  CreateCDCStreamResponsePB resp;
-
-  ASSERT_OK(CreatePgsqlNamespace(kNamespaceName, kPgsqlNamespaceId, &create_namespace_resp));
-  auto ns_id = create_namespace_resp.id();
-
-
-  // Not populating cdcsdk_ysql_replication_slot_name.
-  req.set_namespace_id(ns_id);
-  AddKeyValueToCreateCDCStreamRequestOption(&req, cdc::kIdType, cdc::kNamespaceId);
-  AddKeyValueToCreateCDCStreamRequestOption(
-      &req, cdc::kSourceType, CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK));
-
-  ASSERT_OK(proxy_replication_->CreateCDCStream(req, &resp, ResetAndGetController()));
-  SCOPED_TRACE(resp.DebugString());
-  ASSERT_TRUE(resp.has_error());
-  ASSERT_EQ(MasterErrorPB::INVALID_REQUEST, resp.error().code());
-  ASSERT_NE(
-      resp.error().status().message().find(
-          "cdcsdk_ysql_replication_slot_name is required for YSQL databases"),
       std::string::npos)
       << resp.error().status().message();
 

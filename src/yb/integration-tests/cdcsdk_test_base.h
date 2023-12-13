@@ -39,6 +39,7 @@ DECLARE_bool(hide_pg_catalog_table_creation_logs);
 DECLARE_bool(master_auto_run_initdb);
 DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_bool(cdc_populate_safepoint_record);
+DECLARE_bool(TEST_ysql_yb_enable_replication_commands);
 
 namespace yb {
 using client::YBClient;
@@ -94,6 +95,9 @@ class CDCSDKTestBase : public YBTest {
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_check_broadcast_address) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;
+
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_commands) = true;
+
     google::SetVLOGLevel("cdc*", 4);
   }
 

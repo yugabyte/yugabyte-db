@@ -7057,5 +7057,22 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestUnrelatedTableDropUponTserver
       GetChangesFromCDCWithoutRetry(stream_id, tablets, &change_resp_2.cdc_sdk_checkpoint()));
 }
 
+void TestStreamCreationViaCDCService(CDCSDKYsqlTest* test_class, bool enable_replication_commands) {
+  ASSERT_OK(test_class->SetUpWithParams(
+      /*replication_factor=*/3, /*num_masters=*/1, /*colocated=*/false));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_commands) =
+      enable_replication_commands;
+
+  ASSERT_OK(test_class->CreateDBStream());
+}
+
+TEST_F(CDCSDKYsqlTest, TestCDCStreamCreationViaCDCServiceWithReplicationCommandsEnabled) {
+  TestStreamCreationViaCDCService(this, /* enable_replication_commands */ true);
+}
+
+TEST_F(CDCSDKYsqlTest, TestCDCStreamCreationViaCDCServiceWithReplicationCommandsDisabled) {
+  TestStreamCreationViaCDCService(this, /* enable_replication_commands */ false);
+}
+
 }  // namespace cdc
 }  // namespace yb

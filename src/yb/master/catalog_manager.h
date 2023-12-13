@@ -168,10 +168,6 @@ constexpr int32_t kInvalidClusterConfigVersion = 0;
 
 YB_DEFINE_ENUM(
     CreateNewCDCStreamMode,
-    // Only populate the namespace_id. It is only used by CDCSDK while creating a stream from
-    // cdc_service. The caller is expected to populate table_ids in subsequent requests.
-    // This should not be needed after we tackle #18890.
-    (kNamespaceId)
     // Only populate the table_id. It is only used by xCluster.
     (kXClusterTableIds)
     // Populate the namespace_id and a list of table ids. It is only used by CDCSDK.
@@ -1408,6 +1404,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<std::string>& table_ids, const NamespaceId& ns_id)
       REQUIRES(mutex_);
+
+  Status ValidateCDCSDKRequestProperties(
+      const CreateCDCStreamRequestPB& req, const std::string& source_type_option_value,
+      const std::string& id_type_option_value);
 
   // Process the newly created tables that are relevant to existing CDCSDK streams.
   Status ProcessNewTablesForCDCSDKStreams(
@@ -2672,8 +2672,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const CreateCDCStreamRequestPB& req, CreateNewCDCStreamMode mode,
       const std::vector<TableId>& table_ids, const std::optional<const NamespaceId>& namespace_id,
       CreateCDCStreamResponsePB* resp, const LeaderEpoch& epoch);
-
-  Status AddTableIdToCDCStream(const CreateCDCStreamRequestPB& req) EXCLUDES(mutex_);
 
   Status SetWalRetentionForTable(
       const TableId& table_id, rpc::RpcContext* rpc, const LeaderEpoch& epoch);
