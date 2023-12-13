@@ -233,7 +233,8 @@ pullRpczEntries(void)
      * while we're copying the entry or if its odd. The check for odd is needed for when a backend
      * has begun changing the entry but hasn't finished.
      */
-    for (;;)
+    int attempt = 1;
+    while (yb_pgstat_log_read_activity(beentry, ++attempt))
     {
       int			before_changecount;
       int			after_changecount;
