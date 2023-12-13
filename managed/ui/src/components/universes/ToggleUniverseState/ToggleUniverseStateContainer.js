@@ -27,7 +27,13 @@ const mapDispatchToProps = (dispatch) => {
     },
     submitRestartUniverse: (universeUUID) => {
       dispatch(restartUniverse(universeUUID)).then((res) => {
-        dispatch(restartUniverseResponse(res.payload));
+        if (res.error) {
+          if (res.payload.status !== 200) {
+            toast.error(createErrorMessage(res.payload));
+          }
+        } else {
+          dispatch(restartUniverseResponse(res.payload));
+        }
       });
     },
     resetUniverseInfo: () => {
