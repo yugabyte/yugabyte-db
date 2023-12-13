@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <chrono>
 #include <utility>
+#include <vector>
 
 #include <boost/assign.hpp>
 #include <gmock/gmock.h>
@@ -214,7 +215,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   Status WriteRowsHelper(
       uint32_t start, uint32_t end, Cluster* cluster, bool flag, uint32_t num_cols = 2,
-      const char* const table_name = kTableName, const vector<string>& optional_cols_name = {});
+      const char* const table_name = kTableName, const vector<string>& optional_cols_name = {},
+      const bool trasaction_enabled = true);
 
   Status CreateTableWithoutPK(Cluster* cluster);
 
@@ -336,6 +338,20 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       bool initial_checkpoint,
       const uint64_t cdc_sdk_safe_time,
       bool bootstrap);
+
+  bool IsDMLRecord(const CDCSDKProtoRecordPB& record) {
+    return record.row_message().op() == RowMessage::INSERT
+        || record.row_message().op() == RowMessage::UPDATE
+        || record.row_message().op() == RowMessage::DELETE
+        || record.row_message().op() == RowMessage::READ;
+  }
+
+  Result<int64> GetChangeRecordCount(
+      const xrepl::StreamId& stream_id, const YBTableName& table,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      std::map<TabletId, CDCSDKCheckpointPB> tablet_to_checkpoint,
+      const int64 expected_total_records, bool explicit_checkpointing_enabled = false,
+      std::map<TabletId, std::vector<CDCSDKProtoRecordPB>> records = {});
 
   Result<SetCDCCheckpointResponsePB> SetCDCCheckpoint(
       const xrepl::StreamId& stream_id,

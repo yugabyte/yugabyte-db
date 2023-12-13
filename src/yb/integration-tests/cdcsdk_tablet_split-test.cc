@@ -11,9 +11,14 @@
 // under the License.
 
 #include "yb/cdc/cdc_service.pb.h"
+#include "yb/gutil/dynamic_annotations.h"
+#include "yb/gutil/integral_types.h"
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 
 #include "yb/cdc/cdc_state_table.h"
+#include "yb/util/monotime.h"
+#include "yb/util/result.h"
+#include "yb/util/test_macros.h"
 
 namespace yb {
 namespace cdc {
@@ -284,14 +289,12 @@ TEST_F(
   new_checkpoint.set_index(data.op_id.index);
 
   // Initiate a tablet split request, since there are around 5000 rows in the table/ tablet, it will
-  // take some time for the child tablets to be in tunning state.
+  // take some time for the child tablets to be in running state.
   ASSERT_OK(SplitTablet(tablets.Get(0).tablet_id(), &test_cluster_));
-
-  // Verify that we did not get the tablet split error in the first 'GetChanges' call
-  auto change_resp = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &new_checkpoint));
 
   // Keep calling 'GetChange' until we get an error for the tablet split, this will only happen
   // after both the child tablets are in running state.
+  GetChangesResponsePB change_resp;
   ASSERT_OK(WaitFor(
       [&]() -> Result<bool> {
         auto result = GetChangesFromCDC(stream_id, tablets, &change_resp.cdc_sdk_checkpoint());
@@ -345,14 +348,24 @@ TEST_F(
 
   // We must still be able to get the remaining records from the parent tablet even after master is
   // restarted.
-  change_resp_1 =
-      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
-  ASSERT_GE(change_resp_1.cdc_sdk_proto_records_size(), 200);
-  LOG(INFO) << "Number of records after restart: " << change_resp_1.cdc_sdk_proto_records_size();
 
-  // Now that there are no more records to stream, further calls of 'GetChangesFromCDC' to the same
-  // tablet should fail.
+  // Since split is complete at this stage, parent tablet will report an error
+  // and we should be able to get the records from the children.
   ASSERT_NOK(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
+
+  // Get children tablets.
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(2, tablets.size());
+
+  GetChangesResponsePB child_resp_1 =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint(), 0));
+  GetChangesResponsePB child_resp_2 =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint(), 1));
+
+  ASSERT_GE(
+    child_resp_1.cdc_sdk_proto_records_size() + child_resp_2.cdc_sdk_proto_records_size(), 200);
+  LOG(INFO) << "Number of records after restart: " << child_resp_1.cdc_sdk_proto_records_size()
+      + child_resp_2.cdc_sdk_proto_records_size();
 }
 
 TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestGetChangesOnChildrenOnSplit)) {
@@ -439,14 +452,18 @@ TEST_F(
   LOG(INFO) << "All nodes restarted";
   SleepFor(MonoDelta::FromSeconds(10));
 
-  change_resp_1 =
-      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
-  ASSERT_GE(change_resp_1.cdc_sdk_proto_records_size(), 200);
-  LOG(INFO) << "Number of records after restart: " << change_resp_1.cdc_sdk_proto_records_size();
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_after_split;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets_after_split, nullptr));
 
-  // Now that there are no more records to stream, further calls of 'GetChangesFromCDC' to the same
-  // tablet should fail.
-  ASSERT_NOK(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
+  GetChangesResponsePB resp_1 =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets_after_split,
+                                      &change_resp_1.cdc_sdk_checkpoint(), 0));
+  GetChangesResponsePB resp_2 =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets_after_split,
+                                      &change_resp_1.cdc_sdk_checkpoint(), 1));
+  ASSERT_GE(resp_1.cdc_sdk_proto_records_size() + resp_2.cdc_sdk_proto_records_size(), 200);
+  LOG(INFO) << "Number of records after restart: "
+            << resp_1.cdc_sdk_proto_records_size() + resp_2.cdc_sdk_proto_records_size();
 }
 
 TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestGetChangesMultipleStreamsTabletSplit)) {
@@ -492,22 +509,39 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestGetChangesMultipleStre
 
   WaitUntilSplitIsSuccesful(tablets.Get(0).tablet_id(), table);
 
-  change_resp_1 =
-      ASSERT_RESULT(GetChangesFromCDC(stream_id_1, tablets, &change_resp_1.cdc_sdk_checkpoint()));
-  ASSERT_GE(change_resp_1.cdc_sdk_proto_records_size(), 100);
-  LOG(INFO) << "Number of records on first stream after split: "
-            << change_resp_1.cdc_sdk_proto_records_size();
+  // Get new tablets.
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_after_split;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets_after_split, nullptr));
 
-  // Now that there are no more records to stream, further calls of 'GetChangesFromCDC' to the same
-  // tablet should fail.
   ASSERT_NOK(GetChangesFromCDC(stream_id_1, tablets, &change_resp_1.cdc_sdk_checkpoint()));
 
-  // Calling GetChanges on stream 2 should still return around 200 records.
-  change_resp_2 =
-      ASSERT_RESULT(GetChangesFromCDC(stream_id_2, tablets, &change_resp_2.cdc_sdk_checkpoint()));
-  ASSERT_GE(change_resp_2.cdc_sdk_proto_records_size(), 200);
+  GetChangesResponsePB stream_1_resp_1 =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id_1, tablets_after_split,
+                                      &change_resp_1.cdc_sdk_checkpoint(), 0));
+  GetChangesResponsePB stream_1_resp_2 =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id_1, tablets_after_split,
+                                      &change_resp_1.cdc_sdk_checkpoint(), 1));
+  ASSERT_GE(
+    stream_1_resp_1.cdc_sdk_proto_records_size() + stream_1_resp_2.cdc_sdk_proto_records_size(),
+    100);
+  LOG(INFO) << "Number of records on first stream after split: "
+            << stream_1_resp_1.cdc_sdk_proto_records_size()
+                 + stream_1_resp_2.cdc_sdk_proto_records_size();
 
-  ASSERT_NOK(GetChangesFromCDC(stream_id_2, tablets, &change_resp_2.cdc_sdk_checkpoint()));
+  ASSERT_NOK(GetChangesFromCDC(stream_id_1, tablets, &change_resp_1.cdc_sdk_checkpoint()));
+
+  GetChangesResponsePB stream_2_resp_1 =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id_2, tablets_after_split,
+                                      &change_resp_2.cdc_sdk_checkpoint(), 0));
+  GetChangesResponsePB stream_2_resp_2 =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id_2, tablets_after_split,
+                                      &change_resp_2.cdc_sdk_checkpoint(), 1));
+  ASSERT_GE(
+    stream_2_resp_1.cdc_sdk_proto_records_size() + stream_2_resp_2.cdc_sdk_proto_records_size(),
+    200);
+  LOG(INFO) << "Number of records on first stream after split: "
+            << stream_2_resp_1.cdc_sdk_proto_records_size()
+                 + stream_2_resp_2.cdc_sdk_proto_records_size();
 }
 
 TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestSetCDCCheckpointAfterTabletSplit)) {
@@ -823,15 +857,23 @@ TEST_F(
 
   WaitUntilSplitIsSuccesful(tablets.Get(0).tablet_id(), table);
 
-  change_resp_1 =
-      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
-  ASSERT_GE(change_resp_1.cdc_sdk_proto_records_size(), 200);
-  LOG(INFO) << "Number of records after restart: " << change_resp_1.cdc_sdk_proto_records_size();
-
-  // Now that there are no more records to stream, further calls of 'GetChangesFromCDC' to the same
-  // tablet should fail.
+  // Call on parent tablet should fail since that has been split.
   ASSERT_NOK(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
   LOG(INFO) << "The tablet split error is now communicated to the client.";
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_after_split;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets_after_split, nullptr));
+
+  GetChangesResponsePB resp_1 =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets_after_split,
+                                      &change_resp_1.cdc_sdk_checkpoint(), 0));
+  GetChangesResponsePB resp_2 =
+      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets_after_split,
+                                      &change_resp_1.cdc_sdk_checkpoint(), 1));
+
+  ASSERT_GE(resp_1.cdc_sdk_proto_records_size() + resp_2.cdc_sdk_proto_records_size(), 200);
+  LOG(INFO) << "Number of records after restart: "
+            << resp_1.cdc_sdk_proto_records_size() + resp_2.cdc_sdk_proto_records_size();
 
   auto get_tablets_resp =
       ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_id, tablets[0].tablet_id()));
@@ -844,9 +886,6 @@ TEST_F(
 
   // Wait until the 'cdc_parent_tablet_deletion_task_' has run.
   SleepFor(MonoDelta::FromSeconds(2));
-  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_after_split;
-  ASSERT_OK(test_client()->GetTablets(
-      table, 0, &tablets_after_split, /* partition_list_version =*/nullptr));
 
   bool saw_row_child_one = false;
   bool saw_row_child_two = false;
@@ -1036,7 +1075,7 @@ TEST_F(
   GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-  ASSERT_OK(WriteRowsHelper(1, 200, &test_cluster_, true));
+  ASSERT_OK(WriteRowsHelper(0, 200, &test_cluster_, true));
   ASSERT_OK(test_client()->FlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ true));
@@ -1057,10 +1096,8 @@ TEST_F(
 
   WaitUntilSplitIsSuccesful(tablets_after_first_split.Get(0).tablet_id(), table, 3);
 
-  change_resp_1 =
-      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
-  ASSERT_GE(change_resp_1.cdc_sdk_proto_records_size(), 200);
-  LOG(INFO) << "Number of records after restart: " << change_resp_1.cdc_sdk_proto_records_size();
+  // GetChanges call would fail since the tablet is split.
+  ASSERT_NOK(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
 
   // We are calling: "GetTabletListToPollForCDC" when the tablet split on the parent tablet has
   // still not been communicated to the client. Hence we should get only the original parent tablet.
@@ -1070,10 +1107,6 @@ TEST_F(
     const auto& tablet_id = tablet_checkpoint_pair.tablet_locations().tablet_id();
     ASSERT_EQ(tablet_id, tablets[0].tablet_id());
   }
-
-  // Now that there are no more records to stream, further calls of 'GetChangesFromCDC' to the same
-  // tablet should fail.
-  ASSERT_NOK(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
 
   // Wait until the 'cdc_parent_tablet_deletion_task_' has run.
   SleepFor(MonoDelta::FromSeconds(2));
@@ -1101,10 +1134,17 @@ TEST_F(
   }
   ASSERT_TRUE(saw_first_child && saw_second_child);
 
-  change_resp_1 = ASSERT_RESULT(
-      GetChangesFromCDC(stream_id, tablets_after_first_split, &change_resp_1.cdc_sdk_checkpoint()));
-  ASSERT_NOK(
-      GetChangesFromCDC(stream_id, tablets_after_first_split, &change_resp_1.cdc_sdk_checkpoint()));
+  // These calls will return errors since the tablet have been split further.
+  ASSERT_NOK(GetChangesFromCDC(stream_id, tablets_after_first_split,
+                               &change_resp_1.cdc_sdk_checkpoint(), 0));
+
+
+  std::map<TabletId, CDCSDKCheckpointPB> tablet_to_checkpoint;
+  tablet_to_checkpoint[tablets.Get(0).tablet_id()] = change_resp_1.cdc_sdk_checkpoint();
+
+  int64 received_records = ASSERT_RESULT(GetChangeRecordCount(
+      stream_id, table, tablets, tablet_to_checkpoint, 400));
+  ASSERT_EQ(received_records, 400);
 }
 
 TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitOnAddedTableForCDC)) {
@@ -1150,22 +1190,18 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitOnAddedTabl
   change_resp =
       ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets_2, &change_resp.cdc_sdk_checkpoint()));
 
-  ASSERT_OK(WriteRowsHelper(1, 200, &test_cluster_, true, 2, "test_table_1"));
+  ASSERT_OK(WriteRowsHelper(0, 200, &test_cluster_, true, 2, "test_table_1"));
   ASSERT_OK(test_client()->FlushTables(
       {table_2_id}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ true));
   ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
   WaitUntilSplitIsSuccesful(tablets_2.Get(0).tablet_id(), table_2);
 
-  // Verify GetChanges returns records even after tablet split, i.e tablets of the newly added table
-  // are hidden instead of being deleted.
-  change_resp =
-      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets_2, &change_resp.cdc_sdk_checkpoint()));
-  ASSERT_GE(change_resp.cdc_sdk_proto_records_size(), 200);
+  std::map<TabletId, CDCSDKCheckpointPB> tablet_to_checkpoint;
+  int64 received_records = ASSERT_RESULT(GetChangeRecordCount(
+      stream_id, table_2, tablets_2, tablet_to_checkpoint, 200));
 
-  // Now that all the required records have been streamed, verify that the tablet split error is
-  // reported.
-  ASSERT_NOK(GetChangesFromCDC(stream_id, tablets_2, &change_resp.cdc_sdk_checkpoint()));
+  ASSERT_EQ(received_records, 200);
 }
 
 TEST_F(
@@ -1224,15 +1260,13 @@ TEST_F(
   ASSERT_OK(test_cluster_.mini_cluster_->CompactTablets());
   WaitUntilSplitIsSuccesful(tablets_2.Get(0).tablet_id(), table_2);
 
-  // Verify GetChanges returns records even after tablet split, i.e tablets of the newly added table
-  // are hidden instead of being deleted.
-  change_resp =
-      ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets_2, &change_resp.cdc_sdk_checkpoint()));
-  ASSERT_GE(change_resp.cdc_sdk_proto_records_size(), 200);
+  std::map<TabletId, CDCSDKCheckpointPB> tablet_to_checkpoint;
+  tablet_to_checkpoint[tablets_2.Get(0).tablet_id()] = change_resp.cdc_sdk_checkpoint();
+  int64 record_count = ASSERT_RESULT(GetChangeRecordCount(
+      stream_id, table_2, tablets_2, tablet_to_checkpoint, 199));
 
-  // Now that all the required records have been streamed, verify that the tablet split error is
-  // reported.
-  ASSERT_NOK(GetChangesFromCDC(stream_id, tablets_2, &change_resp.cdc_sdk_checkpoint()));
+  // Verify the count of records for the table.
+  ASSERT_EQ(record_count, 199);
 }
 
 TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTabletSplitDuringSnapshot)) {
@@ -1320,7 +1354,7 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionCommitAfter
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   ASSERT_OK(conn.Execute("BEGIN"));
 
-  ASSERT_OK(WriteRowsHelper(1, 200, &test_cluster_, true));
+  ASSERT_OK(WriteRowsHelper(0, 200, &test_cluster_, true));
   ASSERT_OK(test_client()->FlushTables(
       {table}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ true));
@@ -1373,12 +1407,13 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestTransactionCommitAfter
     change_resp_1 = *result;
   }
 
-  uint32_t child1_record_count = GetTotalNumRecordsInTablet(
-      stream_id, first_tablet_after_split, &change_resp_1.cdc_sdk_checkpoint());
-  uint32_t child2_record_count = GetTotalNumRecordsInTablet(
-      stream_id, second_tablet_after_split, &change_resp_1.cdc_sdk_checkpoint());
+  std::map<TabletId, CDCSDKCheckpointPB> tablet_to_checkpoint;
+  tablet_to_checkpoint[tablets.Get(0).tablet_id()] = change_resp_1.cdc_sdk_checkpoint();
 
-  ASSERT_GE(child1_record_count + child2_record_count, 200);
+  int64 received_records = ASSERT_RESULT(GetChangeRecordCount(
+      stream_id, table, tablets, tablet_to_checkpoint, 400));
+
+  ASSERT_EQ(received_records, 400);
 }
 
 TEST_F(
@@ -1502,7 +1537,7 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestRecordCountsAfterMulti
   ASSERT_FALSE(resp.has_error());
 
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-  ASSERT_OK(WriteRows(1, 200, &test_cluster_));
+  ASSERT_OK(WriteRows(0, 200, &test_cluster_));
   ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 100, false));
 
   WaitUntilSplitIsSuccesful(tablets.Get(0).tablet_id(), table);
@@ -1529,26 +1564,96 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestRecordCountsAfterMulti
   ASSERT_OK(WriteRows(600, 1000, &test_cluster_));
   ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 100, false));
 
-  const int expected_total_records = 3006;
-  const int expected_total_splits = 4;
-  // The array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, COMMIT in that
-  // order.
-  const int expected_records_count[] = {9, 999, 0, 0, 0, 0, 999, 999};
+  const int expected_total_records = 1000;
+  std::map<TabletId, CDCSDKCheckpointPB> tablet_to_checkpoint;
+  int64 total_records = ASSERT_RESULT(GetChangeRecordCount(
+      stream_id, table, tablets, tablet_to_checkpoint, expected_total_records));
 
-  int total_records = 0;
-  int total_splits = 0;
-  int record_count[] = {0, 0, 0, 0, 0, 0, 0, 0};
+  LOG(INFO) << "Got " << total_records << " records";
+  ASSERT_EQ(expected_total_records, total_records);
+}
 
-  GetRecordsAndSplitCount(
-      stream_id, tablets[0].tablet_id(), table_id, record_count, &total_records, &total_splits);
+TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestSplitAfterSplit)) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_aborted_intent_cleanup_ms) = 1000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_parent_tablet_deletion_task_retry_secs) = 1;
 
-  for (int i = 0; i < 8; i++) {
-    ASSERT_EQ(expected_records_count[i], record_count[i]);
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  const uint32_t num_tablets = 1;
+
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
+  auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
+  ASSERT_FALSE(resp.has_error());
+
+  TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
+  ASSERT_OK(WriteRows(0, 200, &test_cluster_));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 100, false));
+
+  WaitUntilSplitIsSuccesful(tablets.Get(0).tablet_id(), table);
+
+  ASSERT_OK(WriteRows(200, 400, &test_cluster_));
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 100, false));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_after_first_split;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets_after_first_split, nullptr));
+  ASSERT_EQ(tablets_after_first_split.size(), 2);
+
+  WaitUntilSplitIsSuccesful(tablets_after_first_split.Get(0).tablet_id(), table, 3);
+  WaitUntilSplitIsSuccesful(tablets_after_first_split.Get(1).tablet_id(), table, 4);
+
+  // Don't insert anything, just split the tablets further
+  ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 100, false));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_after_third_split;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets_after_third_split, nullptr));
+  ASSERT_EQ(tablets_after_third_split.size(), 4);
+
+  WaitUntilSplitIsSuccesful(tablets_after_third_split.Get(1).tablet_id(), table, 5);
+
+  std::map<TabletId, CDCSDKCheckpointPB> checkpoint_map;
+  int64 received_records =
+      ASSERT_RESULT(GetChangeRecordCount(stream_id, table, tablets, checkpoint_map, 400));
+
+  ASSERT_EQ(received_records, 400);
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> final_tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &final_tablets, nullptr));
+
+  std::unordered_set<TabletId> expected_tablet_ids;
+  for (int i = 0; i < final_tablets.size(); ++i) {
+    expected_tablet_ids.insert(final_tablets.Get(i).tablet_id());
   }
 
-  LOG(INFO) << "Got " << total_records << " records and " << total_splits << " tablet splits";
-  ASSERT_EQ(expected_total_records, total_records);
-  ASSERT_EQ(expected_total_splits, total_splits);
+  // Verify that the cdc_state has only current set of children tablets.
+  CDCStateTable cdc_state_table(test_client());
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        Status s;
+        std::unordered_set<TabletId> tablets_found;
+        for (auto row_result : VERIFY_RESULT(cdc_state_table.GetTableRange(
+                 CDCStateTableEntrySelector().IncludeCheckpoint(), &s))) {
+          RETURN_NOT_OK(row_result);
+          auto& row = *row_result;
+          if (row.key.stream_id == stream_id && !expected_tablet_ids.contains(row.key.tablet_id)) {
+            // Still have a tablet left over from a dropped table.
+            return false;
+          }
+          if (row.key.stream_id == stream_id) {
+            tablets_found.insert(row.key.tablet_id);
+          }
+        }
+        RETURN_NOT_OK(s);
+        LOG(INFO) << "tablets found: " << AsString(tablets_found)
+                  << ", expected tablets: " << AsString(expected_tablet_ids);
+        return expected_tablet_ids == tablets_found;
+      },
+      MonoDelta::FromSeconds(60), "Waiting for stream metadata cleanup."));
 }
 
 TEST_F(
@@ -1572,7 +1677,7 @@ TEST_F(
   ASSERT_FALSE(resp.has_error());
 
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-  ASSERT_OK(WriteRows(1, 200, &test_cluster_));
+  ASSERT_OK(WriteRows(0, 200, &test_cluster_));
   ASSERT_OK(test_client()->FlushTables({table.table_id()}, false, 100, false));
 
   WaitUntilSplitIsSuccesful(tablets.Get(0).tablet_id(), table);
@@ -1584,26 +1689,13 @@ TEST_F(
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets_after_first_split, nullptr));
   ASSERT_EQ(tablets_after_first_split.size(), 2);
 
-  const int expected_total_records = 1200;
-  const int expected_total_splits = 1;
-  // The array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, COMMIT in that
-  // order.
-  const int expected_records_count[] = {3, 399, 0, 0, 0, 0, 399, 399};
+  const int expected_total_records = 400;
+  std::map<TabletId, CDCSDKCheckpointPB> tablet_to_checkpoint;
+  int64 total_records = ASSERT_RESULT(GetChangeRecordCount(
+      stream_id, table, tablets, tablet_to_checkpoint, expected_total_records));
 
-  int total_records = 0;
-  int total_splits = 0;
-  int record_count[] = {0, 0, 0, 0, 0, 0, 0, 0};
-
-  GetRecordsAndSplitCount(
-      stream_id, tablets[0].tablet_id(), table_id, record_count, &total_records, &total_splits);
-
-  for (int i = 0; i < 8; i++) {
-    ASSERT_EQ(expected_records_count[i], record_count[i]);
-  }
-
-  LOG(INFO) << "Got " << total_records << " records and " << total_splits << " tablet splits";
+  LOG(INFO) << "Got " << total_records << " records";
   ASSERT_EQ(expected_total_records, total_records);
-  ASSERT_EQ(expected_total_splits, total_splits);
 }
 
 TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollForCDCWithTabletId)) {
@@ -1625,7 +1717,7 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollFor
   GetChangesResponsePB change_resp_1 = ASSERT_RESULT(GetChangesFromCDC(stream_id, tablets));
 
   TableId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-  ASSERT_OK(WriteRowsHelper(1, 200, &test_cluster_, true));
+  ASSERT_OK(WriteRowsHelper(0, 200, &test_cluster_, true));
   ASSERT_OK(test_client()->FlushTables(
       {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
       /* is_compaction = */ true));
@@ -1635,16 +1727,13 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestGetTabletListToPollFor
 
   WaitUntilSplitIsSuccesful(tablets.Get(0).tablet_id(), table);
 
-  ASSERT_OK(WaitForGetChangesToFetchRecords(
-      &change_resp_1, stream_id, tablets, 199, &change_resp_1.cdc_sdk_checkpoint()));
+  auto cp = change_resp_1.cdc_sdk_checkpoint();
+  std::map<TabletId, CDCSDKCheckpointPB> tablet_to_checkpoint;
+  tablet_to_checkpoint[tablets.Get(0).tablet_id()] = cp;
 
-  ASSERT_GE(change_resp_1.cdc_sdk_proto_records_size(), 200);
-  LOG(INFO) << "Number of records after restart: " << change_resp_1.cdc_sdk_proto_records_size();
-
-  // Now that there are no more records to stream, further calls of 'GetChangesFromCDC' to the same
-  // tablet should fail.
-  ASSERT_NOK(GetChangesFromCDC(stream_id, tablets, &change_resp_1.cdc_sdk_checkpoint()));
-  LOG(INFO) << "The tablet split error is now communicated to the client.";
+  int64 record_count = ASSERT_RESULT(GetChangeRecordCount(
+      stream_id, table, tablets, tablet_to_checkpoint, 200));
+  ASSERT_EQ(record_count, 200);
 
   auto get_tablets_resp =
       ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_id, tablets[0].tablet_id()));

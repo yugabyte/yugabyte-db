@@ -10,6 +10,7 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include "yb/cdc/cdc_service.pb.h"
 #include "yb/integration-tests/cdcsdk_ysql_test_base.h"
 #include "yb/util/test_macros.h"
 
@@ -618,57 +619,19 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKConsistentStreamWithTab
   ASSERT_OK(test_client()->GetTablets(table, 0, &tablets_after_first_split, nullptr));
   ASSERT_EQ(tablets_after_first_split.size(), 2);
 
-  // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, COMMIT in
-  // that order.
-  const int expected_count_1[] = {
-      1,
-      2 * num_batches * inserts_per_batch,
-      0,
-      0,
-      0,
-      0,
-      2 * num_batches + num_batches * inserts_per_batch,
-      2 * num_batches + num_batches * inserts_per_batch,
-  };
-  const int expected_count_2[] = {3, 4 * num_batches * inserts_per_batch, 0, 0, 0, 0};
-  int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
+  const int64 expected_total_records = 4 * num_batches * inserts_per_batch;
 
-  auto parent_get_changes = GetAllPendingChangesFromCdc(stream_id, tablets);
-  for (size_t i = 0; i < parent_get_changes.records.size(); i++) {
-    auto record = parent_get_changes.records[i];
-    UpdateRecordCount(record, count);
-  }
+  std::map<TabletId, CDCSDKCheckpointPB> tablet_to_checkpoint;
+  std::map<TabletId, std::vector<CDCSDKProtoRecordPB>> records_by_tablet;
+  int64 total_received_records = ASSERT_RESULT(GetChangeRecordCount(
+      stream_id, table, tablets, tablet_to_checkpoint, expected_total_records,
+      false /* explicit_checkpointing */, records_by_tablet));
 
-  CheckRecordsConsistency(parent_get_changes.records);
-  for (int i = 0; i < 8; i++) {
-    ASSERT_EQ(expected_count_1[i], count[i]);
-  }
+  ASSERT_EQ(expected_total_records, total_received_records);
 
-  // Wait until the 'cdc_parent_tablet_deletion_task_' has run.
-  SleepFor(MonoDelta::FromSeconds(2));
-
-  auto get_tablets_resp =
-      ASSERT_RESULT(GetTabletListToPollForCDC(stream_id, table_id, tablets[0].tablet_id()));
-  for (const auto& tablet_checkpoint_pair : get_tablets_resp.tablet_checkpoint_pairs()) {
-    auto new_tablet = tablet_checkpoint_pair.tablet_locations();
-    auto new_checkpoint = tablet_checkpoint_pair.cdc_sdk_checkpoint();
-
-    google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
-    auto tablet_ptr = tablets.Add();
-    tablet_ptr->CopyFrom(new_tablet);
-
-    auto child_get_changes = GetAllPendingChangesFromCdc(stream_id, tablets, &new_checkpoint);
-    vector<CDCSDKProtoRecordPB> child_plus_parent = parent_get_changes.records;
-    for (size_t i = 0; i < child_get_changes.records.size(); i++) {
-      auto record = child_get_changes.records[i];
-      child_plus_parent.push_back(record);
-      UpdateRecordCount(record, count);
-    }
-    CheckRecordsConsistency(child_plus_parent);
-  }
-
-  for (int i = 0; i < 6; i++) {
-    ASSERT_EQ(expected_count_2[i], count[i]);
+  for (auto iter = records_by_tablet.begin(); iter != records_by_tablet.end(); ++iter) {
+    LOG(INFO) << "Checking records consistency for tablet " << iter->first;
+    CheckRecordsConsistency(iter->second);
   }
 }
 
