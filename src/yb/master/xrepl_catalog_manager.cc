@@ -836,7 +836,7 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
   }
 
   return CreateNewXReplStream(
-      req, CreateNewCDCStreamMode::kNamespaceAndTableIds, table_ids, ns->id(), resp, epoch);
+      req, CreateNewCDCStreamMode::kCdcsdkNamespaceAndTableIds, table_ids, ns->id(), resp, epoch);
 }
 
 Status CatalogManager::CreateNewXReplStream(
@@ -855,9 +855,22 @@ Status CatalogManager::CreateNewXReplStream(
     if (req.has_cdcsdk_ysql_replication_slot_name() &&
         cdcsdk_replication_slots_to_stream_map_.contains(
             ReplicationSlotName(req.cdcsdk_ysql_replication_slot_name()))) {
-      return STATUS(
-          InvalidArgument, "CDC stream with the given replication slot name already exists",
-          req.ShortDebugString(), MasterError(MasterErrorPB::OBJECT_ALREADY_PRESENT));
+      auto slot_name = ReplicationSlotName(req.cdcsdk_ysql_replication_slot_name());
+      auto stream_id = FindOrNull(cdcsdk_replication_slots_to_stream_map_, slot_name);
+      SCHECK(
+          stream_id, IllegalState, "Stream with slot name $0 was not found unexpectedly",
+          slot_name);
+      auto stream = FindOrNull(cdc_stream_map_, *stream_id);
+      SCHECK(stream, IllegalState, "Stream with id $0 was not found unexpectedly", stream_id);
+      if (!(*stream)->LockForRead()->is_deleting()) {
+        return STATUS(
+            AlreadyPresent, "CDC stream with the given replication slot name already exists",
+            MasterError(MasterErrorPB::OBJECT_ALREADY_PRESENT));
+      }
+
+      // A prior replication slot with the same name exists which is in the DELETING state. Remove
+      // from the map early so that we don't have to fail this request.
+      cdcsdk_replication_slots_to_stream_map_.erase(slot_name);
     }
 
     // Construct the CDC stream if the producer wasn't bootstrapped.
@@ -937,7 +950,10 @@ Status CatalogManager::CreateNewXReplStream(
     auto table = VERIFY_RESULT(FindTableById(table_id));
     for (const auto& tablet : table->GetTablets()) {
       cdc::CDCStateTableEntry entry(tablet->id(), stream->StreamId());
-      entry.checkpoint = OpId().Min();
+      // For CDCSDK streams, the initial checkpoint must be Invalid (-1, -1).
+      entry.checkpoint = (mode == CreateNewCDCStreamMode::kCdcsdkNamespaceAndTableIds)
+                             ? OpId().Invalid()
+                             : OpId().Min();
       entry.last_replication_time = GetCurrentTimeMicros();
       entries.push_back(std::move(entry));
     }
@@ -1710,8 +1726,17 @@ Status CatalogManager::CleanUpDeletedCDCStreams(
         xcluster_producer_tables_to_stream_map_[id].erase(stream->StreamId());
         cdcsdk_tables_to_stream_map_[id].erase(stream->StreamId());
       }
+
+      // Delete entry from cdcsdk_replication_slots_to_stream_map_ if the map contains the same
+      // stream_id for the replication_slot_name key.
+      // It can contain a different stream_id in scenarios where a CreateCDCStream with same
+      // replication slot name was immediately invoked after DeleteCDCStream before the background
+      // cleanup task was executed.
       auto cdcsdk_ysql_replication_slot_name = stream->GetCdcsdkYsqlReplicationSlotName();
-      if (!cdcsdk_ysql_replication_slot_name.empty()) {
+      if (!cdcsdk_ysql_replication_slot_name.empty() &&
+          cdcsdk_replication_slots_to_stream_map_.contains(cdcsdk_ysql_replication_slot_name) &&
+          FindOrDie(cdcsdk_replication_slots_to_stream_map_, cdcsdk_ysql_replication_slot_name) ==
+              stream->StreamId()) {
         cdcsdk_replication_slots_to_stream_map_.erase(cdcsdk_ysql_replication_slot_name);
       }
     }

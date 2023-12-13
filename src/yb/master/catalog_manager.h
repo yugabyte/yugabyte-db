@@ -175,7 +175,7 @@ YB_DEFINE_ENUM(
     // Only populate the table_id. It is only used by xCluster.
     (kXClusterTableIds)
     // Populate the namespace_id and a list of table ids. It is only used by CDCSDK.
-    (kNamespaceAndTableIds)
+    (kCdcsdkNamespaceAndTableIds)
 );
 
 using DdlTxnIdToTablesMap =
