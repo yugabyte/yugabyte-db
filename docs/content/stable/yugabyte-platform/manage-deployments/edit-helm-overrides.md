@@ -33,7 +33,8 @@ Existing universes can be software upgraded to versions which support [GKE Servi
    - [nodeSelector](../../install-yugabyte-platform/install-software/kubernetes/#nodeselector): Pass a node selector override to make sure that the YugabyteDB pods are scheduled on the GKE cluster's worker nodes which have a metadata server running.
 
     ```yaml
-    serviceAccount:<KSA_NAME>
+    tserver:
+      serviceAccount:<KSA_NAME>
     nodeSelector:
      iam.gke.io/gke-metadata-server-enabled: "true"
     ```

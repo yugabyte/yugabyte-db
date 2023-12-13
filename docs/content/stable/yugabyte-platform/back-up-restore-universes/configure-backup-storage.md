@@ -88,7 +88,7 @@ You can configure Google Cloud Storage (GCS) as your backup target, as follows:
 
 1. Complete the **GCS Bucket** field.
 
-1. Select **Use GCP IAM** if you're using GKE service account for backup and restore.
+1. Select **Use GCP IAM** if you're using [GKE service account](#gke-service-account-based-iam-gcp-iam) for backup and restore.
 
 1. Complete the **GCS Credentials** field.
 

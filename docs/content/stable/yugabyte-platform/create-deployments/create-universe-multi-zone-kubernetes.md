@@ -124,19 +124,23 @@ Optionally, use the **Helm Overrides** section, as follows:
 
   If you specify conflicting overrides, YugabyteDB Anywhere would use the following order of precedence: universe availability zone-level overrides, universe-level overrides, provider overrides.
 
-  If you want to enable [GKE service account based IAM](../../back-up-restore-universes/configure-backup-storage/#gke-service-account-based-iam-gcp-iam) for backup and restore at the universe level, add the following overrides:
+- If you want to enable [GKE service account based IAM](../../back-up-restore-universes/configure-backup-storage/#gke-service-account-based-iam-gcp-iam) for backup and restore at the universe level, add the following overrides:
 
-  ```yaml
-  serviceAccount:<KSA_NAME>
-  nodeSelector:
-   iam.gke.io/gke-metadata-server-enabled: "true"
-  ```
+    ```yaml
+    tserver:
+      serviceAccount:<KSA_NAME>
+    nodeSelector:
+     iam.gke.io/gke-metadata-server-enabled: "true"
+    ```
 
-  {{<note title="Note">}}
-  It is required to provide Namespace names for each zone/region during [provider creation](../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes/) itself, otherwise YBA assigns pods to a new Namespace which would not contain the annotated service account. The namespace name can be the same across all zones/regions.
-  {{</note>}}
+    {{<note title="Note">}}
+  If you don not provide Namespace names for each zone/region during [provider creation](../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes/), add the names using the following steps:
 
-  To enable the GKE service account service at the provider level, refer to [Overrides](../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#overrides) to enable GKE service account based IAM.
+  1. Add service account to the namespaces where pods are created.
+  1. Use [Edit kubernetes overrides](../../manage-deployments/edit-helm-overrides/#upgrade-universes-for-gke-service-account-based-iam-support) to annotate service account to pods.
+    {{</note>}}
+
+    To enable the GKE service account service at the provider level, refer to [Overrides](../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#overrides) to enable GKE service account based IAM.
 
 - Select **Force Apply** if you want to override any previous overrides.
 
