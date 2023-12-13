@@ -269,6 +269,11 @@ create temp table prtx2 (a integer, b integer, c integer);
 insert into prtx2 select 1 + i%10, i, i from generate_series(1,5000) i, generate_series(1,10) j;
 create index on prtx2 (c);
 
+-- Row locking
+CREATE TABLE t(h INT, r INT, PRIMARY KEY(h, r));
+INSERT INTO t VALUES(1, 1), (1, 3);
+SELECT * FROM t WHERE h = 1 AND r in(1, 3) FOR KEY SHARE;
+
 -- Cleanup
 DROP TABLE IF EXISTS address, address2, emp, emp2, emp_par1, emp_par1_1_100, emp_par2, emp_par3,
   fastpath, myemp, myemp2, myemp2_101_200, myemp2_1_100, p1, p2, pk_range_int_asc,

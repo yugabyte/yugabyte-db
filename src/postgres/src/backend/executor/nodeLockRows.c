@@ -247,17 +247,27 @@ lnext:
 				/*
 				 * Got the lock successfully, the locked tuple saved in
 				 * markSlot for, if needed, EvalPlanQual testing below.
+				 *
+				 * TODO(Piyush): If we use EvalPlanQual for READ
+				 * COMMITTED in future:
+				 * - remove !IsYBBackedRelation(erm->relation)
+				 * - In YBCLockTuple():
+				 *	- initialize tmfd.traversed to false
+				 *	- if the tuple being locked is updated, populate latest
+				 *    tuple version in markSlot and set tmfd.traversed to true
 				 */
-				if (tmfd.traversed)
+				if (!IsYBBackedRelation(erm->relation) && tmfd.traversed)
 					epq_needed = true;
 				break;
 
 			case TM_Updated:
 				/*
-				 * TODO(Piyush): If handling using EvalPlanQual for READ COMMITTED in future, replace true
-				 * with IsolationUsesXactSnapshot().
+				 * TODO(Piyush): If handling using EvalPlanQual for READ
+				 * COMMITTED in future, replace
+				 * IsYBBackedRelation(erm->relation) with
+				 * IsolationUsesXactSnapshot().
 				 */
-				if (true)
+				if (IsYBBackedRelation(erm->relation))
 				{
 					if (erm->waitPolicy == LockWaitError)
 					{
