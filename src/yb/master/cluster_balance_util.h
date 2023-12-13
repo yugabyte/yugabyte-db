@@ -379,8 +379,6 @@ class PerTableLoadState {
 
   void SortDriveLeaderLoad();
 
-  void LogSortedLeaderLoad();
-
   int AdjustLeaderBalanceThreshold(int zone_set_size);
 
   Status AddRunningTablet(const TabletId& tablet_id,
@@ -391,10 +389,12 @@ class PerTableLoadState {
 
   Status AddStartingTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
 
+  // Note: this does not call SortLeaderLoad.
   Status AddLeaderTablet(const TabletId& tablet_id,
                                  const TabletServerId& ts_uuid,
                                  const TabletServerId& ts_path);
 
+  // Note: this does not call SortLeaderLoad.
   Status RemoveLeaderTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
 
   Status AddDisabledByTSTablet(const TabletId& tablet_id, const TabletServerId& ts_uuid);
