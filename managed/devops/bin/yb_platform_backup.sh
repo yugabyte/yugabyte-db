@@ -332,7 +332,7 @@ create_backup() {
   echo "Creating platform backup package..."
   cd ${data_dir}
 
-  eval find ${FIND_OPTIONS[@]}
+  eval find -L ${FIND_OPTIONS[@]}
 
   gzip -9 < ${tar_name} > ${tgz_name}
   cleanup "${tar_name}"

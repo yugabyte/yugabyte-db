@@ -37,4 +37,5 @@ var ReplicatedMigrateChecks = []Check{
 	checks.License,
 	checks.ValidateLocaleConfig,
 	checks.MigrateDiskCheck,
+	checks.HTTPHACheck,
 }
