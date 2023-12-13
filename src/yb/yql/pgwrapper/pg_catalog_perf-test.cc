@@ -232,6 +232,7 @@ constexpr auto kPreloadCatalogList =
     "pg_cast,pg_inherits,pg_policy,pg_proc,pg_tablespace,pg_trigger"sv;
 constexpr auto kExtendedTableList =
     "pg_cast,pg_inherits,pg_policy,pg_proc,pg_tablespace,pg_trigger,pg_statistic,pg_invalid"sv;
+constexpr auto kShortTableList = "pg_inherits"sv;
 
 constexpr Configuration kConfigDefault;
 
@@ -262,6 +263,9 @@ constexpr Configuration kConfigPredictableMemoryUsage{
     .response_cache_size_bytes = 0,
     .use_relcache_file = false};
 
+constexpr Configuration kConfigSmallPreload{
+    .preload_additional_catalog_list = kShortTableList};
+
 template<class Base, const Configuration& Config>
 class ConfigurableTest : public Base {
  private:
@@ -284,6 +288,8 @@ using PgPreloadAdditionalCatBothTest =
     ConfigurableTest<PgCatalogPerfTestBase, kConfigWithPreloadAdditionalCatBoth>;
 using PgPredictableMemoryUsageTest =
     ConfigurableTest<PgCatalogPerfTestBase, kConfigPredictableMemoryUsage>;
+using PgSmallPreloadTest =
+    ConfigurableTest<PgCatalogPerfTestBase, kConfigSmallPreload>;
 
 class PgCatalogWithStaleResponseCacheTest : public PgCatalogWithUnlimitedCachePerfTest {
  protected:
@@ -302,6 +308,7 @@ class PgCatalogWithStaleResponseCacheTest : public PgCatalogWithUnlimitedCachePe
 
 constexpr uint64_t kFirstConnectionRPCCountDefault = 5;
 constexpr uint64_t kFirstConnectionRPCCountWithAdditionalTables = 6;
+constexpr uint64_t kFirstConnectionRPCCountWithSmallPreload = 5;
 constexpr uint64_t kSubsequentConnectionRPCCount = 2;
 static_assert(kFirstConnectionRPCCountDefault <= kFirstConnectionRPCCountWithAdditionalTables);
 
@@ -555,6 +562,13 @@ TEST_F_EX(PgCatalogPerfTest,
           PgPreloadAdditionalCatBothTest) {
   const auto rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
   ASSERT_EQ(rpc_count, kFirstConnectionRPCCountWithAdditionalTables);
+}
+
+TEST_F_EX(PgCatalogPerfTest,
+          RPCCountOnStartupSmallPreload,
+          PgSmallPreloadTest) {
+  const auto rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
+  ASSERT_EQ(rpc_count, kFirstConnectionRPCCountWithSmallPreload);
 }
 
 // Test checks that response cache is DB specific.
