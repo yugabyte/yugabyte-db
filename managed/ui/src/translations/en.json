@@ -445,7 +445,13 @@
       "placementModal": {
         "modalTitle": "Confirm Update",
         "modalDescription": "This operation will scale-up or scale-down the number of the nodes or will change master placement from colocated to dedicated or vice versa",
-        "likeToProceed": "Would you like to proceed?"
+        "modalDescriptionRR": "This operation will either scale-up or scale-down the number of the nodes or will change the configuration of number of read replicas",
+        "likeToProceed": "Would you like to proceed?",
+        "nodes": "nodes",
+        "readReplicas": "Read Replicas",
+        "scaleUp": "Scale Up",
+        "scaleDown": "Scale Down",
+        "mode": "mode"
       },
       "fullMoveModal": {
         "modalTitle": "Confirm Full Move Update",
