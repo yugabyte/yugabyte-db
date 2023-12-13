@@ -2329,7 +2329,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   public SubTaskGroup createInstanceExistsCheckTasks(
-      UUID universeUuid, Collection<NodeDetails> nodes) {
+      UUID universeUuid,
+      UniverseDefinitionTaskParams parentTaskParams,
+      Collection<NodeDetails> nodes) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("InstanceExistsCheck");
     for (NodeDetails node : nodes) {
       if (node.placementUuid == null) {
@@ -2342,6 +2344,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.nodeUuid = node.nodeUuid;
       params.azUuid = node.azUuid;
       params.placementUuid = node.placementUuid;
+      params.clusters = parentTaskParams.clusters;
       InstanceExistCheck task = createTask(InstanceExistCheck.class);
       task.initialize(params);
       subTaskGroup.addSubTask(task);
