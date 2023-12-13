@@ -375,8 +375,8 @@ class ClusterLoadBalancer {
   Result<bool> IsConfigMemberInTransitionMode(const TabletId& tablet_id) const
       REQUIRES_SHARED(catalog_manager_->mutex_);
 
-  // Dump the sorted load on tservers (it is usually per table).
-  void DumpSortedLoad() const;
+  std::string GetSortedLoad() const;
+  std::string GetSortedLeaderLoad() const;
 
   // Report unusual state at the beginning of an LB run which may prevent LB from making moves.
   void ReportUnusualLoadBalancerState() const;
