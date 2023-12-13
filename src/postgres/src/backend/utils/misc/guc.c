@@ -4738,7 +4738,7 @@ static struct config_enum ConfigureNamesEnum[] =
 		 GUC_SUPERUSER_ONLY
 		},
 		&yb_pg_batch_detection_mechanism,
-		IGNORE_BATCH_DELETE_AND_UPDATE_MAY_FAIL,
+		DETECT_BY_PEEKING,
 		yb_pg_batch_detection_mechanism_options,
 		NULL, assign_yb_pg_batch_detection_mechanism, NULL
 	},
