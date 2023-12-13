@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
+import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.LocalNodeManager;
@@ -55,6 +56,7 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.YugawareProperty;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.TaskType;
 import com.yugabyte.yw.models.helpers.provider.LocalCloudInfo;
 import java.io.File;
 import java.io.FileInputStream;
@@ -579,7 +581,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     // CREATE
     UniverseResp universeResp = universeCRUDHandler.createUniverse(customer, taskParams);
     TaskInfo taskInfo = waitForTask(universeResp.taskUUID);
-    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    verifyUniverseTaskSuccess(taskInfo);
     Universe result = Universe.getOrBadRequest(universeResp.universeUUID);
     assertEquals(
         result.getUniverseDetails().getPrimaryCluster().userIntent.masterGFlags,
@@ -740,7 +742,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
       Universe universe, UniverseDefinitionTaskParams.UserIntent userIntent)
       throws InterruptedException {
     TaskInfo taskInfo = addReadReplica(universe, userIntent);
-    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    verifyUniverseTaskSuccess(taskInfo);
     return taskInfo;
   }
 
@@ -836,6 +838,35 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     restartTaskParams.clusters = universe.getUniverseDetails().clusters;
     UUID taskUUID = upgradeUniverseHandler.restartUniverse(restartTaskParams, customer, universe);
     TaskInfo taskInfo = waitForTask(taskUUID);
-    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    verifyUniverseTaskSuccess(taskInfo);
+  }
+
+  protected void verifyUniverseTaskSuccess(TaskInfo taskInfo) {
+    Universe universe =
+        Universe.getOrBadRequest(
+            UUID.fromString(taskInfo.getDetails().get("universeUUID").textValue()));
+    String separator = System.getProperty("line.separator");
+    StringBuilder errorBuilder = new StringBuilder();
+    if (taskInfo.getTaskState() != TaskInfo.State.Success) {
+      errorBuilder.append("Base task error: " + taskInfo.getErrorMessage());
+      List<String> failedTasksMessages = new ArrayList<>();
+      for (TaskInfo subTask : taskInfo.getSubTasks()) {
+        if (subTask.getTaskState() == TaskInfo.State.Failure) {
+          if (subTask.getTaskType() == TaskType.WaitForServer
+              || subTask.getTaskType() == TaskType.WaitForServerReady) {
+            String nodeName = subTask.getDetails().get("nodeName").textValue();
+            UniverseTaskBase.ServerType serverType =
+                UniverseTaskBase.ServerType.valueOf(
+                    subTask.getDetails().get("serverType").asText());
+            localNodeManager.dumpProcessOutput(universe, nodeName, serverType);
+          } else {
+            failedTasksMessages.add(
+                CommissionerBaseTest.getBriefTaskInfo(subTask) + ":" + subTask.getErrorMessage());
+          }
+        }
+      }
+      failedTasksMessages.forEach(t -> errorBuilder.append(separator).append(t));
+    }
+    assertEquals(errorBuilder.toString(), TaskInfo.State.Success, taskInfo.getTaskState());
   }
 }

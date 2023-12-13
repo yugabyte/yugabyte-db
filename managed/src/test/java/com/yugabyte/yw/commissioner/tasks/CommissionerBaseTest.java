@@ -10,7 +10,6 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.endsWith;
-import static org.mockito.Mockito.endsWith;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
@@ -369,7 +368,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
             + runningTasks);
   }
 
-  private static String getBriefTaskInfo(TaskInfo taskInfo) {
+  public static String getBriefTaskInfo(TaskInfo taskInfo) {
     StringBuilder sb = new StringBuilder();
     sb.append(taskInfo.getTaskType());
     if (taskInfo.getDetails().has("nodeName")) {

@@ -56,7 +56,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
             Universe.getOrBadRequest(universe.getUniverseUUID()),
             universe.getUniverseDetails());
     TaskInfo taskInfo = CommissionerBaseTest.waitForTask(taskID);
-    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    verifyUniverseTaskSuccess(taskInfo);
     verifyUniverseState(Universe.getOrBadRequest(universe.getUniverseUUID()));
     verifyYSQL(universe);
   }
@@ -91,7 +91,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
             Universe.getOrBadRequest(universe.getUniverseUUID()),
             universe.getUniverseDetails());
     TaskInfo taskInfo = CommissionerBaseTest.waitForTask(taskID);
-    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    verifyUniverseTaskSuccess(taskInfo);
     verifyUniverseState(Universe.getOrBadRequest(universe.getUniverseUUID()));
     verifyYSQL(universe);
   }
@@ -126,7 +126,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
             Universe.getOrBadRequest(universe.getUniverseUUID()),
             universe.getUniverseDetails());
     TaskInfo taskInfo = CommissionerBaseTest.waitForTask(taskID);
-    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    verifyUniverseTaskSuccess(taskInfo);
     verifyUniverseState(Universe.getOrBadRequest(universe.getUniverseUUID()));
     verifyYSQL(universe);
   }
@@ -206,7 +206,124 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
             Universe.getOrBadRequest(universe.getUniverseUUID()),
             universe.getUniverseDetails());
     TaskInfo taskInfo = CommissionerBaseTest.waitForTask(taskID);
-    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    verifyUniverseTaskSuccess(taskInfo);
+    verifyUniverseState(Universe.getOrBadRequest(universe.getUniverseUUID()));
+    verifyYSQL(universe);
+    verifyYSQL(universe, true);
+  }
+
+  @Test
+  public void testIncreaseRFInRR() throws InterruptedException {
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
+    Universe universe = createUniverse(userIntent);
+    initYSQL(universe);
+    UniverseDefinitionTaskParams.UserIntent rrIntent = getDefaultUserIntent();
+    rrIntent.replicationFactor = 1;
+    rrIntent.numNodes = 3;
+    doAddReadReplica(universe, rrIntent);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    verifyYSQL(universe, true);
+
+    UniverseDefinitionTaskParams.Cluster cluster =
+        universe.getUniverseDetails().getReadOnlyClusters().get(0);
+    cluster.userIntent.replicationFactor++;
+    PlacementInfoUtil.updateUniverseDefinition(
+        universe.getUniverseDetails(),
+        customer.getId(),
+        cluster.uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.EDIT);
+    assertEquals(
+        0,
+        universe.getUniverseDetails().nodeDetailsSet.stream()
+            .filter(
+                n ->
+                    n.state == NodeDetails.NodeState.ToBeAdded
+                        || n.state == NodeDetails.NodeState.ToBeRemoved)
+            .count());
+
+    UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
+    taskParams.currentClusterType = UniverseDefinitionTaskParams.ClusterType.ASYNC;
+
+    UUID taskID =
+        universeCRUDHandler.update(
+            customer, Universe.getOrBadRequest(universe.getUniverseUUID()), taskParams);
+    TaskInfo taskInfo = CommissionerBaseTest.waitForTask(taskID);
+    verifyUniverseTaskSuccess(taskInfo);
+    verifyUniverseState(Universe.getOrBadRequest(universe.getUniverseUUID()));
+    verifyYSQL(universe);
+    verifyYSQL(universe, true);
+  }
+
+  @Test
+  public void testDecreaseRFInRR() throws InterruptedException {
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
+    Universe universe = createUniverse(userIntent);
+    initYSQL(universe);
+    UniverseDefinitionTaskParams.UserIntent rrIntent = getDefaultUserIntent();
+    rrIntent.replicationFactor = 3;
+    rrIntent.numNodes = 3;
+    doAddReadReplica(universe, rrIntent);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    verifyYSQL(universe, true);
+
+    UniverseDefinitionTaskParams.Cluster cluster =
+        universe.getUniverseDetails().getReadOnlyClusters().get(0);
+    cluster.userIntent.replicationFactor--;
+    PlacementInfoUtil.updateUniverseDefinition(
+        universe.getUniverseDetails(),
+        customer.getId(),
+        cluster.uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.EDIT);
+    UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
+    taskParams.currentClusterType = UniverseDefinitionTaskParams.ClusterType.ASYNC;
+
+    UUID taskID =
+        universeCRUDHandler.update(
+            customer, Universe.getOrBadRequest(universe.getUniverseUUID()), taskParams);
+    TaskInfo taskInfo = CommissionerBaseTest.waitForTask(taskID);
+    verifyUniverseTaskSuccess(taskInfo);
+    verifyUniverseState(Universe.getOrBadRequest(universe.getUniverseUUID()));
+    verifyYSQL(universe);
+    verifyYSQL(universe, true);
+  }
+
+  @Test
+  public void testAddNodesInRR() throws InterruptedException {
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
+    Universe universe = createUniverse(userIntent);
+    initYSQL(universe);
+    UniverseDefinitionTaskParams.UserIntent rrIntent = getDefaultUserIntent();
+    rrIntent.replicationFactor = 1;
+    rrIntent.numNodes = 1;
+    doAddReadReplica(universe, rrIntent);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    verifyYSQL(universe, true);
+
+    UniverseDefinitionTaskParams.Cluster cluster =
+        universe.getUniverseDetails().getReadOnlyClusters().get(0);
+    cluster.userIntent.numNodes += 2;
+    PlacementInfoUtil.updateUniverseDefinition(
+        universe.getUniverseDetails(),
+        customer.getId(),
+        cluster.uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.EDIT);
+    assertEquals(
+        2,
+        universe.getUniverseDetails().nodeDetailsSet.stream()
+            .filter(n -> n.state == NodeDetails.NodeState.ToBeAdded)
+            .count());
+
+    UniverseDefinitionTaskParams taskParams = universe.getUniverseDetails();
+    taskParams.currentClusterType = UniverseDefinitionTaskParams.ClusterType.ASYNC;
+
+    UUID taskID =
+        universeCRUDHandler.update(
+            customer, Universe.getOrBadRequest(universe.getUniverseUUID()), taskParams);
+    TaskInfo taskInfo = CommissionerBaseTest.waitForTask(taskID);
+    verifyUniverseTaskSuccess(taskInfo);
     verifyUniverseState(Universe.getOrBadRequest(universe.getUniverseUUID()));
     verifyYSQL(universe);
     verifyYSQL(universe, true);

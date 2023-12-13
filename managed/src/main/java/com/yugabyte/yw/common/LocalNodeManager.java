@@ -16,6 +16,7 @@ import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_SUCCESS;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Joiner;
+import com.google.common.base.Predicate;
 import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
@@ -47,6 +48,7 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.InetAddress;
 import java.net.ServerSocket;
+import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Paths;
@@ -69,6 +71,7 @@ import javax.inject.Singleton;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.MapUtils;
+import org.apache.commons.io.input.ReversedLinesFileReader;
 import play.libs.Json;
 
 /** Node manager that runs all the processes locally. Processess are bind to loopback interfaces. */
@@ -81,6 +84,10 @@ public class LocalNodeManager {
 
   private static final String MAX_MEM_RATIO_TSERVER = "0.1";
   private static final String MAX_MEM_RATIO_MASTER = "0.05";
+
+  private static final int ERROR_LINES_TO_DUMP = 100;
+  private static final int OUT_LINES_TO_DUMP = 20;
+  private static final int EXIT_LINES_TO_DUMP = 30;
 
   private static final String LOOPBACK_PREFIX = "127.0.";
   public static final String COMMAND_OUTPUT_PREFIX = "Command output:";
@@ -324,6 +331,80 @@ public class LocalNodeManager {
       response = ShellResponse.create(ERROR_CODE_GENERIC_ERROR, "Unknown!");
     }
     return response;
+  }
+
+  public void dumpProcessOutput(
+      Universe universe, String nodeName, UniverseTaskBase.ServerType serverType) {
+
+    NodeDetails nodeDetails = universe.getNode(nodeName);
+    if (nodeDetails == null) {
+      log.warn("Node {} not found", nodeName);
+      return;
+    }
+    UniverseDefinitionTaskParams.UserIntent intent =
+        universe.getCluster(nodeDetails.placementUuid).userIntent;
+    NodeInfo nodeInfo = nodesByNameMap.get(nodeName);
+    Process process = nodeInfo.processMap.get(serverType);
+    String logsDir = getLogsDir(intent, serverType, nodeInfo);
+    String processLogName = "yb-" + serverType.name().toLowerCase();
+    try {
+      File errFile = new File(logsDir + processLogName + ".ERROR");
+      if (errFile.exists()) {
+        log.error(
+            "Node {} process {} last {} error logs: \n {}",
+            nodeName,
+            serverType,
+            ERROR_LINES_TO_DUMP,
+            getLogOutput(
+                nodeName + "_" + serverType + "_ERR", errFile, (l) -> true, ERROR_LINES_TO_DUMP));
+      }
+
+      File outFile = new File(logsDir + processLogName + ".INFO");
+      if (outFile.exists()) {
+        log.error(
+            "Node {} process {} last {} kills: \n {}",
+            nodeName,
+            serverType,
+            EXIT_LINES_TO_DUMP,
+            getLogOutput(
+                nodeName + "_" + serverType + "_EXIT",
+                outFile,
+                (l) -> l.contains("exited with code"),
+                EXIT_LINES_TO_DUMP));
+
+        log.error(
+            "Node {} process {} last {} output lines: \n {}",
+            nodeName,
+            serverType,
+            OUT_LINES_TO_DUMP,
+            getLogOutput(
+                nodeName + "_" + serverType + "_OUT", outFile, (l) -> true, OUT_LINES_TO_DUMP));
+      }
+
+    } catch (IOException ignored) {
+    }
+  }
+
+  private String getLogOutput(String prefix, File file, Predicate<String> filter, int maxLines)
+      throws IOException {
+    StringBuilder stringBuilder = new StringBuilder();
+    String line;
+    int counter = 0;
+    try (ReversedLinesFileReader reader =
+        new ReversedLinesFileReader(file, Charset.defaultCharset())) {
+      while (counter < maxLines) {
+        line = reader.readLine();
+        if (line == null) {
+          break;
+        }
+        if (filter.apply(line)) {
+          counter++;
+          stringBuilder.append("\n");
+          stringBuilder.append(line);
+        }
+      }
+    }
+    return stringBuilder.toString();
   }
 
   private void transferXClusterCerts(
