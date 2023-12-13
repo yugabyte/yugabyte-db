@@ -55,11 +55,11 @@ func YbaVersion(config replicatedctl.AppConfig) (string, error) {
 	var urlSchema string
 	var port int
 	var portEntry replicatedctl.ConfigEntry
-	isHttpsEntry := config.Get("https_enabled")
-	if isHttpsEntry == replicatedctl.NilConfigEntry {
+	isHTTPSEntry := config.Get("https_enabled")
+	if isHTTPSEntry == replicatedctl.NilConfigEntry {
 		return "", fmt.Errorf("no https_enabled found")
 	}
-	https, err := isHttpsEntry.Bool()
+	https, err := isHTTPSEntry.Bool()
 	if err != nil {
 		return "", err
 	}
