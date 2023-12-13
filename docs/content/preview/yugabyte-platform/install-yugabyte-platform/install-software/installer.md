@@ -46,7 +46,7 @@ Note: For higher availability, one or more additional YBA instances can be separ
 
 Use YBA Installer to install YBA on a host, either online or airgapped. YBA Installer performs preflight checks to validate the workspace is ready to run YBA.
 
-You can also use YBA Installer to migrate an existing YBA software installed via Replicated to be installed using YBA Installer. Before you can migrate, you must use Replicated to upgrade your YBA to version 2.20.1.
+You can also use YBA Installer to migrate an existing YBA software installed via Replicated to be installed using YBA Installer. Note that you may first need to use Replicated to upgrade your YBA to version 2.20.1.
 
 -> To perform a new installation, follow the steps in [Quick start](#quick-start).
 
@@ -244,7 +244,7 @@ If you have high availability configured, you need to migrate your instances in 
 
 To migrate your installation from Replicated, do the following:
 
-1. If your Replicated installation is v2.18.5 or earlier, [upgrade your installation](../../../upgrade/upgrade-yp-replicated/) to v2.20.1.
+1. If your Replicated installation is v2.18.5 or earlier, or v2.20.0, [upgrade your installation](../../../upgrade/upgrade-yp-replicated/) to v2.20.1.
 
 1. If you haven't already, [download and extract YBA Installer](#download-yba-installer).
 
@@ -282,7 +282,7 @@ If you have [high availability](../../../administer-yugabyte-platform/high-avail
 
 If Replicated is using HTTPS:
 
-1. If your instances are v2.18.5 or earlier, [upgrade your primary and HA standby instances](../../../administer-yugabyte-platform/high-availability/#upgrade-instances) to v2.20.1.
+1. If your instances are v2.18.5 or earlier, or v2.10.0, [upgrade your primary and HA standby instances](../../../administer-yugabyte-platform/high-availability/#upgrade-instances) to v2.20.1.
 1. Migrate and finalize the active instance.
 1. Migrate and finalize the standby instances.
 
@@ -291,7 +291,8 @@ Failovers are now possible again after the completion of this step.
 If Replicated is using HTTP:
 
 1. [Remove the standby instances](../../../administer-yugabyte-platform/high-availability/#remove-a-standby-instance).
-1. If your instances are v2.18.5 or earlier, [upgrade the primary and standby instances](../../../administer-yugabyte-platform/high-availability/#upgrade-instances) to v2.20.1.
+1. On the active instance, navigate to **Admin > High Availability** and click **Delete Configuration**.
+1. If your instances are v2.18.5 or earlier, or 2.20.0, [upgrade the primary and standby instances](../../../administer-yugabyte-platform/high-availability/#upgrade-instances) to v2.20.1.
 1. Migrate and finalize the active instance.
 1. Migrate and finalize the standby instances.
 1. [Configure HA on the updated instances](../../administer-yugabyte-platform/high-availability/#configure-active-and-standby-instances).
