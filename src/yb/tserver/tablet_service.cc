@@ -132,11 +132,11 @@ DEPRECATE_FLAG(int32, scanner_max_batch_size_bytes, "10_2022");
 DEPRECATE_FLAG(int32, scanner_batch_size_rows, "10_2022");
 
 DEFINE_UNKNOWN_int32(max_wait_for_safe_time_ms, 5000,
-             "Maximum time in milliseconds to wait for the safe time to advance when trying to "
-             "scan at the given hybrid_time.");
+    "Maximum time in milliseconds to wait for the safe time to advance when trying to "
+    "scan at the given hybrid_time.");
 
 DEFINE_RUNTIME_int32(num_concurrent_backfills_allowed, -1,
-             "Maximum number of concurrent backfill jobs that is allowed to run.");
+    "Maximum number of concurrent backfill jobs that is allowed to run.");
 
 DEFINE_test_flag(bool, tserver_noop_read_write, false, "Respond NOOP to read/write.");
 
@@ -172,7 +172,7 @@ DEFINE_RUNTIME_int32(index_backfill_wait_for_old_txns_ms, 0,
 TAG_FLAG(index_backfill_wait_for_old_txns_ms, evolving);
 
 DEFINE_test_flag(double, respond_write_failed_probability, 0.0,
-                 "Probability to respond that write request is failed");
+    "Probability to respond that write request is failed");
 
 DEFINE_test_flag(bool, rpc_delete_tablet_fail, false, "Should delete tablet RPC fail.");
 
@@ -182,76 +182,72 @@ DECLARE_uint64(transaction_min_running_check_interval_ms);
 DECLARE_int64(transaction_rpc_timeout_ms);
 
 DEFINE_test_flag(int32, txn_status_table_tablet_creation_delay_ms, 0,
-                 "Extra delay to slowdown creation of transaction status table tablet.");
+    "Extra delay to slowdown creation of transaction status table tablet.");
 
 DEFINE_test_flag(int32, leader_stepdown_delay_ms, 0,
-                 "Amount of time to delay before starting a leader stepdown change.");
+    "Amount of time to delay before starting a leader stepdown change.");
 
 DEFINE_test_flag(int32, alter_schema_delay_ms, 0, "Delay before processing AlterSchema.");
 
 DEFINE_test_flag(bool, disable_post_split_tablet_rbs_check, false,
-                 "If true, bypass any checks made to reject remote boostrap requests for post "
-                 "split tablets whose parent tablets are still present.");
+    "If true, bypass any checks made to reject remote boostrap requests for post "
+    "split tablets whose parent tablets are still present.");
 
 DEFINE_test_flag(double, fail_tablet_split_probability, 0.0,
-                 "Probability of failing in TabletServiceAdminImpl::SplitTablet.");
+    "Probability of failing in TabletServiceAdminImpl::SplitTablet.");
 
 DEFINE_test_flag(bool, pause_tserver_get_split_key, false,
-                 "Pause before processing a GetSplitKey request.");
+    "Pause before processing a GetSplitKey request.");
 
 DEFINE_test_flag(bool, fail_wait_for_ysql_backends_catalog_version, false,
-                 "Fail any WaitForYsqlBackendsCatalogVersion requests received by this tserver.");
+    "Fail any WaitForYsqlBackendsCatalogVersion requests received by this tserver.");
 
 DECLARE_int32(heartbeat_interval_ms);
 DECLARE_uint64(rocksdb_max_file_size_for_compaction);
 
 DEFINE_UNKNOWN_bool(enable_ysql, true,
-            "Enable YSQL on the cluster. This will cause yb-master to initialize sys catalog "
-            "tablet from an initial snapshot (in case --initial_sys_catalog_snapshot_path is "
-            "specified or can be auto-detected). Also each tablet server will start a PostgreSQL "
-            "server as a child process.");
+    "Enable YSQL on the cluster. This will cause yb-master to initialize sys catalog "
+    "tablet from an initial snapshot (in case --initial_sys_catalog_snapshot_path is "
+    "specified or can be auto-detected). Also each tablet server will start a PostgreSQL "
+    "server as a child process.");
 
 DECLARE_int32(ysql_transaction_abort_timeout_ms);
 DECLARE_bool(ysql_yb_disable_wait_for_backends_catalog_version);
 
 DEFINE_test_flag(bool, fail_alter_schema_after_abort_transactions, false,
-                 "If true, setup an error status in AlterSchema and respond success to rpc call. "
-                 "This failure should not cause the TServer to crash but "
-                 "instead return an error message on the YSQL connection.");
+    "If true, setup an error status in AlterSchema and respond success to rpc call. "
+    "This failure should not cause the TServer to crash but "
+    "instead return an error message on the YSQL connection.");
 
 DEFINE_test_flag(bool, txn_status_moved_rpc_force_fail, false,
-                 "Force updates in transaction status location to fail.");
+    "Force updates in transaction status location to fail.");
 
 DEFINE_test_flag(bool, txn_status_moved_rpc_force_fail_retryable, true,
-                 "Forced updates in transaction status location failure should be retryable "
-                 "error.");
+    "Forced updates in transaction status location failure should be retryable "
+    "error.");
 
 DEFINE_test_flag(int32, txn_status_moved_rpc_handle_delay_ms, 0,
-                 "Inject delay to slowdown handling of updates in transaction status location.");
-
-METRIC_DEFINE_gauge_uint64(server, ts_split_op_added, "Split OPs Added to Leader",
-                           yb::MetricUnit::kOperations,
-                           "Number of split operations added to the leader's Raft log.");
+    "Inject delay to slowdown handling of updates in transaction status location.");
 
 DECLARE_bool(ysql_enable_db_catalog_version_mode);
 
 DEFINE_test_flag(bool, skip_aborting_active_transactions_during_schema_change, false,
-                 "Skip aborting active transactions during schema change");
+    "Skip aborting active transactions during schema change");
 
-DEFINE_test_flag(
-    bool, skip_force_superblock_flush, false,
+DEFINE_test_flag(bool, skip_force_superblock_flush, false,
     "Used in tests to skip superblock flush on tablet flush.");
 
-DEFINE_test_flag(
-    uint64, wait_row_mark_exclusive_count, 0, "Number of row mark exclusive reads to wait for.");
+DEFINE_test_flag(uint64, wait_row_mark_exclusive_count, 0,
+    "Number of row mark exclusive reads to wait for.");
 
-DEFINE_test_flag(
-    int32, set_tablet_follower_lag_ms, 0,
+DEFINE_test_flag(int32, set_tablet_follower_lag_ms, 0,
     "What to report for tablet follower lag on this tserver in CheckTserverTabletHealth.");
 
-DEFINE_test_flag(
-    bool, pause_before_tablet_health_response, false,
+DEFINE_test_flag(bool, pause_before_tablet_health_response, false,
     "Whether to pause before responding to CheckTserverTabletHealth.");
+
+METRIC_DEFINE_gauge_uint64(server, ts_split_op_added, "Split OPs Added to Leader",
+    yb::MetricUnit::kOperations, "Number of split operations added to the leader's Raft log.");
 
 double TEST_delay_create_transaction_probability = 0;
 

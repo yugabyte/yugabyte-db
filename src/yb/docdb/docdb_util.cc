@@ -245,7 +245,7 @@ Status DocDBRocksDBUtil::WriteToRocksDB(
   return Status::OK();
 }
 
-Status DocDBRocksDBUtil::InitCommonRocksDBOptionsForTests() {
+Status DocDBRocksDBUtil::InitCommonRocksDBOptionsForTests(const TabletId& tablet_id) {
   // TODO(bojanserafimov): create MemoryMonitor?
   const size_t cache_size = block_cache_size();
   if (cache_size > 0) {
@@ -254,12 +254,12 @@ Status DocDBRocksDBUtil::InitCommonRocksDBOptionsForTests() {
 
   regular_db_options_.statistics = rocksdb::CreateDBStatisticsForTests(/* for intents */ false);
   intents_db_options_.statistics = rocksdb::CreateDBStatisticsForTests(/* for intents */ true);
-  RETURN_NOT_OK(ReinitDBOptions());
+  RETURN_NOT_OK(ReinitDBOptions(tablet_id));
   InitRocksDBWriteOptions(&write_options_);
   return Status::OK();
 }
 
-Status DocDBRocksDBUtil::InitCommonRocksDBOptionsForBulkLoad() {
+Status DocDBRocksDBUtil::InitCommonRocksDBOptionsForBulkLoad(const TabletId& tablet_id) {
   const size_t cache_size = block_cache_size();
   if (cache_size > 0) {
     block_cache_ = rocksdb::NewLRUCache(cache_size);
@@ -269,7 +269,7 @@ Status DocDBRocksDBUtil::InitCommonRocksDBOptionsForBulkLoad() {
   // bulk load.
   regular_db_options_.statistics = nullptr;
   intents_db_options_.statistics = nullptr;
-  RETURN_NOT_OK(ReinitDBOptions());
+  RETURN_NOT_OK(ReinitDBOptions(tablet_id));
   InitRocksDBWriteOptions(&write_options_);
   return Status::OK();
 }
@@ -509,15 +509,15 @@ Status DocDBRocksDBUtil::FlushRocksDbAndWait() {
   return rocksdb()->Flush(flush_options);
 }
 
-Status DocDBRocksDBUtil::ReinitDBOptions() {
+Status DocDBRocksDBUtil::ReinitDBOptions(const TabletId& tablet_id) {
   tablet::TabletOptions tablet_options;
   tablet_options.block_cache = block_cache_;
   docdb::InitRocksDBOptions(
-      &regular_db_options_, "[R] " /* log_prefix */, regular_db_options_.statistics,
-      tablet_options);
+      &regular_db_options_, yb::Format("[R] $0", tablet_id), tablet_id,
+      regular_db_options_.statistics, tablet_options);
   docdb::InitRocksDBOptions(
-      &intents_db_options_, "[I] " /* log_prefix */, intents_db_options_.statistics,
-      tablet_options);
+      &intents_db_options_, yb::Format("[I] $0", tablet_id), tablet_id,
+      intents_db_options_.statistics, tablet_options);
   regular_db_options_.compaction_context_factory = CreateCompactionContextFactory(
       retention_policy_, &KeyBounds::kNoBounds,
       [this](const std::vector<rocksdb::FileMetaData*>&) {

@@ -32,6 +32,8 @@
 #include <utility>
 #include <vector>
 
+#include "yb/ash/wait_state_fwd.h"
+
 #include "yb/rocksdb/db.h"
 #include "yb/rocksdb/db/column_family.h"
 #include "yb/rocksdb/db/dbformat.h"
@@ -113,6 +115,7 @@ class FlushJob {
   CompressionType output_compression_;
   Statistics* stats_;
   EventLogger* event_logger_;
+  yb::ash::WaitStateInfoPtr wait_state_;
   TableProperties table_properties_;
 };
 

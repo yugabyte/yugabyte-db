@@ -244,6 +244,10 @@ class CQLMessage {
   // Id of a prepared query for PREPARE, EXECUTE and BATCH requests.
   using QueryId = std::string;
 
+  // Returns the query-id as a uint64.
+  // uses only the first 8 bytes of the query_id instead of 16.
+  static uint64 QueryIdAsUint64(const QueryId& query_id);
+
   // Query parameters for QUERY, EXECUTE and BATCH requests
   struct QueryParameters : ql::StatementParameters {
     typedef std::unordered_map<std::string, std::vector<Value>::size_type> NameToIndexMap;

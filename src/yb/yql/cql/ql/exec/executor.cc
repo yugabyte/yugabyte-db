@@ -15,6 +15,8 @@
 
 #include "yb/yql/cql/ql/exec/executor.h"
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/client/callbacks.h"
 #include "yb/client/client.h"
 #include "yb/client/error.h"
@@ -36,6 +38,8 @@
 
 #include "yb/gutil/casts.h"
 
+#include "yb/rpc/inbound_call.h"
+#include "yb/rpc/rpc_introspection.pb.h"
 #include "yb/rpc/thread_pool.h"
 
 #include "yb/util/decimal.h"
@@ -71,6 +75,8 @@
 #include "yb/yql/cql/ql/ql_processor.h"
 #include "yb/yql/cql/ql/util/errcodes.h"
 #include "yb/util/flags.h"
+
+DECLARE_bool(TEST_yb_enable_ash);
 
 using namespace std::literals;
 using namespace std::placeholders;
@@ -879,6 +885,12 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
                               : exec_context_->Error(tnode, ErrorCode::OBJECT_NOT_FOUND);
   }
 
+  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
+    wait_state->UpdateAuxInfo({.table_id{table->id()}});
+  } else {
+    LOG_IF(DFATAL, GetAtomicFlag(&FLAGS_TEST_yb_enable_ash)) << "No wait state here.";
+  }
+
   // If there is a table id in the statement parameter's paging state, this is a continuation of a
   // prior SELECT statement. Verify that the same table/index still exists and matches the table id
   // for query without index, or the index id in the leaf node (where child_select is null also).
@@ -925,6 +937,11 @@ Status Executor::ExecPTNode(const PTSelectStmt *tnode, TnodeContext* tnode_conte
   // Create the read request.
   YBqlReadOpPtr select_op(table->NewQLSelect());
   QLReadRequestPB *req = select_op->mutable_request();
+  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
+    wait_state->MetadataToPB(req->mutable_ash_metadata());
+  } else {
+    LOG_IF(DFATAL, GetAtomicFlag(&FLAGS_TEST_yb_enable_ash)) << "No wait state here.";
+  }
 
   // Where clause - Hash, range, and regular columns.
   req->set_is_aggregate(tnode->is_aggregate());
@@ -1270,6 +1287,13 @@ Status Executor::ExecPTNode(const PTInsertStmt *tnode, TnodeContext* tnode_conte
   YBqlWriteOpPtr insert_op(table->NewQLInsert());
   QLWriteRequestPB *req = insert_op->mutable_request();
 
+  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
+    wait_state->UpdateAuxInfo({.table_id{table->id()}});
+    wait_state->MetadataToPB(req->mutable_ash_metadata());
+  } else {
+    LOG_IF(DFATAL, GetAtomicFlag(&FLAGS_TEST_yb_enable_ash)) << "No wait state here.";
+  }
+
   // Set the ttl.
   Status s = TtlToPB(tnode, req);
   if (PREDICT_FALSE(!s.ok())) {
@@ -1337,6 +1361,13 @@ Status Executor::ExecPTNode(const PTDeleteStmt *tnode, TnodeContext* tnode_conte
   const shared_ptr<client::YBTable>& table = tnode->table();
   YBqlWriteOpPtr delete_op(table->NewQLDelete());
   QLWriteRequestPB *req = delete_op->mutable_request();
+
+  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
+    wait_state->UpdateAuxInfo({.table_id{table->id()}});
+    wait_state->MetadataToPB(req->mutable_ash_metadata());
+  } else {
+    LOG_IF(DFATAL, GetAtomicFlag(&FLAGS_TEST_yb_enable_ash)) << "No wait state here.";
+  }
 
   // Set the timestamp.
   Status s = TimestampToPB(tnode, req);
@@ -1709,6 +1740,7 @@ void Executor::FlushAsync(ResetAsyncCalls* reset_async_calls) {
   // FlushAsync() and CommitTransaction(). This is necessary so that only the last callback will
   // correctly detect that all async calls are done invoked before processing the async results
   // exclusively.
+  bool is_read = write_batch_.Empty();
   write_batch_.Clear();
   std::vector<std::pair<YBSessionPtr, ExecContext*>> flush_sessions;
   std::vector<ExecContext*> commit_contexts;
@@ -1759,6 +1791,12 @@ void Executor::FlushAsync(ResetAsyncCalls* reset_async_calls) {
     return StatementExecuted(Status::OK(), reset_async_calls);
   }
 
+  // Should we update the method instead?
+  if (is_read) {
+    SET_WAIT_STATUS(CQL_Read);
+  } else {
+    SET_WAIT_STATUS(CQL_Write);
+  }
   reset_async_calls->Cancel();
   num_async_calls_.store(flush_sessions.size() + commit_contexts.size(), std::memory_order_release);
   for (auto* exec_context : commit_contexts) {
@@ -1775,9 +1813,11 @@ void Executor::FlushAsync(ResetAsyncCalls* reset_async_calls) {
     auto exec_context = pair.second;
     session->SetRejectionScoreSource(rejection_score_source);
     TRACE("Flush Async");
-    session->FlushAsync([this, exec_context](client::FlushStatus* flush_status) {
-        FlushAsyncDone(flush_status, exec_context);
-      });
+    session->FlushAsync([this, exec_context, wait_state = ash::WaitStateInfo::CurrentWaitState()](
+                            client::FlushStatus* flush_status) {
+      ADOPT_WAIT_STATE(wait_state);
+      FlushAsyncDone(flush_status, exec_context);
+    });
   }
 }
 
@@ -1827,8 +1867,13 @@ void Executor::FlushAsyncDone(client::FlushStatus* flush_status, ExecContext* ex
   // Process async results exclusively if this is the last callback of the last FlushAsync() and
   // there is no more outstanding async call.
   if (AddFetch(&num_async_calls_, -1, std::memory_order_acq_rel) == 0) {
+    TRACE_FUNC();
+    SET_WAIT_STATUS(OnCpu_Passive);
+    SCOPED_WAIT_STATUS(OnCpu_Active);
     ResetAsyncCalls reset_async_calls(&num_async_calls_);
     ProcessAsyncResults(/* rescheduled */ false, &reset_async_calls);
+  } else {
+    SET_WAIT_STATUS(YBC_WaitingOnDocdb);
   }
 }
 
@@ -2435,6 +2480,11 @@ void Executor::AddOperation(const YBqlReadOpPtr& op, TnodeContext *tnode_context
   DCHECK(write_batch_.Empty()) << "Concurrent read and write operations not supported yet";
 
   op->mutable_request()->set_request_id(exec_context_->params().request_id());
+  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
+    wait_state->set_rpc_request_id(exec_context_->params().request_id());
+  } else {
+    LOG_IF(DFATAL, GetAtomicFlag(&FLAGS_TEST_yb_enable_ash)) << "No wait state here.";
+  }
   tnode_context->AddOperation(op);
 
   // We need consistent read point if statement is executed in multiple RPC commands.
@@ -2673,12 +2723,15 @@ Executor::ExecutorTask& Executor::ExecutorTask::Bind(
     Executor* executor, Executor::ResetAsyncCalls* reset_async_calls) {
   executor_ = executor;
   reset_async_calls_ = std::move(*reset_async_calls);
+  wait_state_ = ash::WaitStateInfo::CurrentWaitState();
   return *this;
 }
 
 void Executor::ExecutorTask::Run() {
   auto executor = executor_;
   executor_ = nullptr;
+  ADOPT_WAIT_STATE(wait_state_);
+  wait_state_ = nullptr;
   DoRun(executor, &reset_async_calls_);
 }
 

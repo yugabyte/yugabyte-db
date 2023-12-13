@@ -3996,6 +3996,7 @@ InternalIterator* DBImpl::NewInternalIterator(const ReadOptions& read_options,
                                               ColumnFamilyData* cfd,
                                               SuperVersion* super_version,
                                               Arena* arena) {
+  SCOPED_WAIT_STATUS(RocksDB_NewIterator);
   InternalIterator* internal_iter;
   assert(arena != nullptr);
   // Need to create internal iterator from the arena.
@@ -4018,7 +4019,7 @@ InternalIterator* DBImpl::NewInternalIterator(const ReadOptions& read_options,
 template <bool kSkipLastEntry>
 std::unique_ptr<InternalIterator> DBImpl::NewInternalIndexIterator(
     const ReadOptions& read_options, ColumnFamilyData* cfd, SuperVersion* super_version) {
-  SCOPED_WAIT_STATUS(RocksDB_ReadIO);
+  SCOPED_WAIT_STATUS(RocksDB_NewIterator);
   std::unique_ptr<InternalIterator> merge_iter;
   MergeIteratorInHeapBuilder<IteratorWrapperBase<kSkipLastEntry>> merge_iter_builder(
       cfd->internal_comparator().get());

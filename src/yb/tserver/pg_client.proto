@@ -779,7 +779,13 @@ message PgCancelTransactionResponsePB {
   AppStatusPB status = 1;
 }
 
-message PgActiveSessionHistoryRequestPB {}
+message PgActiveSessionHistoryRequestPB {
+  bool fetch_tserver_states = 1;
+  bool fetch_flush_and_compaction_states = 2;
+  bool fetch_cql_states = 3;
+  bool ignore_ash_calls = 4;
+  bool fetch_raft_log_appender_states = 5;
+}
 
 message WaitStatesPB {
   repeated WaitStateInfoPB wait_states = 1;
@@ -788,6 +794,9 @@ message WaitStatesPB {
 message PgActiveSessionHistoryResponsePB {
   AppStatusPB status = 1;
   WaitStatesPB tserver_wait_states = 2;
+  WaitStatesPB flush_and_compaction_wait_states = 3;
+  WaitStatesPB raft_log_appender_wait_states = 4;
+  WaitStatesPB cql_wait_states = 5;
 }
 
 message PgGetActiveTransactionListRequestPB { OptionalUint64PB session_id = 1; }

@@ -135,7 +135,7 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   ConnectionContext& connection_context() const;
 
   inline Trace* trace() const EXCLUDES(mutex_) {
-    return trace_.load(std::memory_order_relaxed);
+    return trace_.load(std::memory_order_acquire);
   }
 
   // When this InboundCall was received (instantiated).
@@ -212,6 +212,8 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
     // See #17726 for this bug and #17759 to track the "proper" fix in ServicePoolImpl.
     auto* call_ptr = new T(std::forward<Args>(args)...);
     auto result = std::shared_ptr<T>(call_ptr);
+    // Needs to be done after assigning it to a shared_ptr.
+    result->InitializeWaitState();
     result->RecordCallReceived();
     return result;
   }
@@ -238,6 +240,10 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
     return wait_state_;
   }
 
+  int64_t instance_id() const {
+    return instance_id_;
+  }
+
  protected:
   ThreadPoolTask* BindTask(InboundCallHandler* handler, int64_t rpc_queue_limit);
 
@@ -252,6 +258,8 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   virtual void LogTrace() const = 0;
 
   void QueueResponse(bool is_success);
+
+  void InitializeWaitState();
 
   // The serialized bytes of the request param protobuf. Set by ParseFrom().
   // This references memory held by 'request_data_'.
@@ -279,6 +287,8 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
   // The trace buffer.
   scoped_refptr<Trace> trace_holder_ GUARDED_BY(mutex_);
   std::atomic<Trace*> trace_ = nullptr;
+
+  const int64_t instance_id_;
 
   // The connection on which this inbound call arrived. Can be null for LocalYBInboundCall.
   ConnectionPtr conn_ = nullptr;
