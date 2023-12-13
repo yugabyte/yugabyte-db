@@ -268,6 +268,8 @@ To migrate your installation from Replicated, do the following:
 
     At this point, if you find problems, you can revert to your Replicated installation using the `replicated-migrate rollback` command. Note that any changes made with the new YBA (either using the UI or the API) will not be reflected after the rollback.
 
+    In particular, do not configure HA until running the `finish` command (next step) on all instances.
+
 1. If the new YBA installation is correct, finish the migration as follows:
 
     ```sh
