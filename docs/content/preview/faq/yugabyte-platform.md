@@ -95,7 +95,7 @@ YugabyteDB Anywhere also requires the following:
 <!-- Ability to install and configure [docker-engine](https://docs.docker.com/engine/).
 - Ability to install and configure [Replicated](https://www.replicated.com/install-options/), which is a containerized application itself and needs to pull containers from its own [Replicated.com container registry](https://help.replicated.com/docs/native/getting-started/docker-registries/).
 - Ability to pull Yugabyte container images from the [Quay.io](https://quay.io/) container registry (this will be done by Replicated automatically).-->
-- The following ports open on the YugabyteDB Anywhere host: `80` (http access to the YugabyteDB Anywhere UI), `22` (ssh).
+- The following ports open on the YugabyteDB Anywhere host: 443 (http access to the YugabyteDB Anywhere UI), 22 (ssh).
 - Attached disk storage (such as persistent EBS volumes on AWS): 100 GB SSD minimum.
 - A YugabyteDB Anywhere license file from [Yugabyte](https://www.yugabyte.com/platform/#request-trial-form).
 - Ability to connect from the YugabyteDB Anywhere host to all YugabyteDB data nodes via SSH.
