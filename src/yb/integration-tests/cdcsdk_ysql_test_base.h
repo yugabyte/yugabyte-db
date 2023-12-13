@@ -490,7 +490,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       CDCCheckpointType checkpoint_type,
       const bool extend_expiration = false);
 
-  void TestSetCDCCheckpoint(const uint32_t num_tservers, bool initial_checkpoint);
+  void TestSetCDCCheckpoint(CDCCheckpointType checkpoint_type);
 
   Result<GetChangesResponsePB> VerifyIfDDLRecordPresent(
       const xrepl::StreamId& stream_id,
@@ -646,6 +646,20 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const GetChangesResponsePB& change_resp_after_snapshot);
 
   void TestCDCLagMetric(CDCCheckpointType checkpoint_type);
+
+  void TestMultipleStreamOnSameTablet(CDCCheckpointType checkpoint_type);
+
+  void TestMultipleActiveStreamOnSameTablet(CDCCheckpointType checkpoint_type);
+
+  void TestActiveAndInactiveStreamOnSameTablet(CDCCheckpointType checkpoint_type);
+
+  void TestCheckpointPersistencyAllNodesRestart(CDCCheckpointType checkpoint_type);
+
+  void TestIntentCountPersistencyAllNodesRestart(CDCCheckpointType checkpoint_type);
+
+  void TestHighIntentCountPersistencyAllNodesRestart(CDCCheckpointType checkpoint_type);
+
+  void TestIntentCountPersistencyBootstrap(CDCCheckpointType checkpoint_type);
 };
 
 }  // namespace cdc

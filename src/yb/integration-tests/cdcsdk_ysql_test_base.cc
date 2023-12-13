@@ -1884,15 +1884,15 @@ namespace cdc {
     }
   }
 
-  void CDCSDKYsqlTest::TestSetCDCCheckpoint(const uint32_t num_tservers, bool initial_checkpoint) {
-    ASSERT_OK(SetUpWithParams(num_tservers, 1, false));
+  void CDCSDKYsqlTest::TestSetCDCCheckpoint(CDCCheckpointType checkpoint_type) {
+    ASSERT_OK(SetUpWithParams(1, 1, false));
     auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
     google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
     ASSERT_OK(
         test_client()->GetTablets(table, 0, &tablets, /* partition_list_version = */ nullptr));
 
     TabletId table_id = ASSERT_RESULT(GetTableId(&test_cluster_, kNamespaceName, kTableName));
-    xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(CDCCheckpointType::IMPLICIT));
+    auto stream_id = ASSERT_RESULT(CreateDBStreamBasedOnCheckpointType(checkpoint_type));
     auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));
     ASSERT_FALSE(resp.has_error());
     auto checkpoints = ASSERT_RESULT(GetCDCCheckpoint(stream_id, tablets));
