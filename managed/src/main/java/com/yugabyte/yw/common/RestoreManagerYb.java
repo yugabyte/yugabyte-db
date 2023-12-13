@@ -194,7 +194,8 @@ public class RestoreManagerYb extends DevopsBase {
         podAddrToConfig,
         nodeToNodeTlsEnabled,
         ipToSshKeyPath,
-        commandArgs);
+        commandArgs,
+        userIntent);
     // Update env vars with customer config data after provider config to make sure the correct
     // credentials are used.
     extraVars.putAll(customerConfig.dataAsMap());
@@ -250,9 +251,13 @@ public class RestoreManagerYb extends DevopsBase {
       Map<String, Map<String, String>> podAddrToConfig,
       boolean nodeToNodeTlsEnabled,
       Map<String, String> ipToSshKeyPath,
-      List<String> commandArgs) {
+      List<String> commandArgs,
+      UserIntent userIntent) {
 
     BackupStorageInfo backupStorageInfo = restoreBackupParams.backupStorageInfoList.get(0);
+    if (region.provider.code.equals("kubernetes") || userIntent.dedicatedNodes) {
+      commandArgs.add("--useTserver");
+    }
     if (region.provider.code.equals("kubernetes")) {
       commandArgs.add("--k8s_config");
       commandArgs.add(Json.stringify(Json.toJson(podAddrToConfig)));
