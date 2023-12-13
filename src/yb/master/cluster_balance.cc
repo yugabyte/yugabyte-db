@@ -510,7 +510,11 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
 
     // We may have modified global loads, so we need to reset this state's load.
     state_->SortLoad();
+
     VLOG(2) << "Per table state for table: " << table.first << ", " << state_->ToString();
+    VLOG(2) << "Global state: " << table.first << ", " << state_->ToString();
+    VLOG(2) << "Sorted load: " << table.first << ", " << GetSortedLoad();
+    VLOG(2) << "Global load: " << table.first << ", " << GetSortedLeaderLoad();
 
     // Output parameters are unused in the load balancer, but useful in testing.
     TabletId out_tablet_id;
@@ -536,6 +540,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
           break;
         }
 
+        VLOG(3) << "Sorted load after HandleRemoveReplicas: " << GetSortedLoad();
         task_added = true;
       }
     }
@@ -558,6 +563,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
         break;
       }
 
+      VLOG(3) << "Sorted load after HandleAddReplicas: " << GetSortedLoad();
       task_added = true;
     }
 
@@ -589,6 +595,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
         break;
       }
 
+      VLOG(3) << "Sorted leader load after HandleLeaderMoves: " << GetSortedLeaderLoad();
       task_added = true;
     }
   }
@@ -933,8 +940,8 @@ Result<bool> ClusterLoadBalancer::HandleAddReplicas(
   // Finally, handle normal load balancing.
   if (!VERIFY_RESULT(GetLoadToMove(out_tablet_id, out_from_ts, out_to_ts))) {
     if (VLOG_IS_ON(2)) {
-      VLOG(2) << "Cannot find any more tablets to move for this table, under current constraints.";
-      DumpSortedLoad();
+      VLOG(2) << "Cannot find any more tablets to move for this table, under current constraints. "
+              << "Sorted load: " << GetSortedLoad();
     }
     return false;
   }
@@ -942,16 +949,34 @@ Result<bool> ClusterLoadBalancer::HandleAddReplicas(
   return true;
 }
 
-void ClusterLoadBalancer::DumpSortedLoad() const {
+string ClusterLoadBalancer::GetSortedLoad() const {
   ssize_t last_pos = state_->sorted_load_.size() - 1;
   std::ostringstream out;
-  out << "Table load (global load): ";
   for (ssize_t left = 0; left <= last_pos; ++left) {
     const TabletServerId& uuid = state_->sorted_load_[left];
-    auto load = state_->GetLoad(uuid);
-    out << uuid << ":" << load << " (" << global_state_->GetGlobalLoad(uuid) << ") ";
+    bool blacklisted = global_state_->blacklisted_servers_.contains(uuid);
+    out << Format("$0$1: $2 (global=$3), ",
+        uuid,
+        blacklisted ? "[blacklisted]" : "",
+        state_->GetLoad(uuid),
+        global_state_->GetGlobalLoad(uuid));
   }
-  VLOG(2) << out.str();
+  return out.str();
+}
+
+string ClusterLoadBalancer::GetSortedLeaderLoad() const {
+  std::ostringstream out;
+  for (const auto& leader_set : state_->sorted_leader_load_) {
+    for (const auto& ts_uuid : leader_set) {
+      bool blacklisted = global_state_->leader_blacklisted_servers_.contains(ts_uuid);
+      out << Format("$0$1: $2 (global=$3), ",
+          ts_uuid,
+          blacklisted ? "[leader blacklisted]" : "",
+          state_->GetLeaderLoad(ts_uuid),
+          global_state_->GetGlobalLeaderLoad(ts_uuid));
+    }
+  }
+  return out.str();
 }
 
 Result<bool> ClusterLoadBalancer::GetLoadToMove(
@@ -1300,7 +1325,6 @@ Result<bool> ClusterLoadBalancer::GetLeaderToMove(
         // Leader movement solely due to leader blacklist.
         if (load_variance < state_->options_->kMinLeaderLoadVarianceToBalance &&
             high_leader_blacklisted) {
-          state_->LogSortedLeaderLoad();
           LOG(INFO) << "Move tablet " << tablet.first << " leader from leader blacklisted TS "
             << *from_ts << " to TS " << *to_ts;
         }
