@@ -1229,6 +1229,8 @@ class YBBackup:
             '--disable_checksums', action='store_true', default=False,
             help="Whether checksums will be created and checked. If specified, will skip using "
                  "checksums.")
+        parser.add_argument('--useTserver', action='store_true', required=False, default=False,
+                            help="use tserver instead of master for backup operations")
 
         backup_location_group = parser.add_mutually_exclusive_group(required=True)
         backup_location_group.add_argument(
@@ -1561,7 +1563,7 @@ class YBBackup:
         return self.args.ssh_user != self.args.remote_user
 
     def get_main_host_ip(self):
-        if self.is_k8s():
+        if self.args.useTserver:
             return self.get_live_tserver_ip()
         else:
             return self.get_leader_master_ip()
@@ -1766,7 +1768,7 @@ class YBBackup:
         :return: the standard output of the tool
         """
 
-        run_at_ip = self.get_live_tserver_ip() if self.is_k8s() else None
+        run_at_ip = self.get_live_tserver_ip() if self.args.useTserver else None
         return self.run_tool(None, cli_tool_with_args, [], [], run_ip=run_at_ip)
 
     def run_dump_tool(self, local_tool_binary, remote_tool_binary, cmd_line_args):
@@ -1784,7 +1786,7 @@ class YBBackup:
                 'FLAGS_use_node_hostname_for_local_tserver': 'true',
             }
 
-        run_at_ip = self.get_live_tserver_ip() if self.is_k8s() else None
+        run_at_ip = self.get_live_tserver_ip() if self.args.useTserver else None
         # If --ysql_enable_auth is passed, connect with ysql through the remote socket.
         local_binary = None if self.args.ysql_enable_auth else local_tool_binary
 
@@ -1811,7 +1813,7 @@ class YBBackup:
         :return: the standard output of ysql shell
         """
         run_at_ip = None
-        if self.is_k8s():
+        if self.args.useTserver:
             run_at_ip = self.get_live_tserver_ip()
 
         return self.run_tool(
