@@ -1520,6 +1520,10 @@ void RaftConsensus::TryRemoveFollowerTask(const string& uuid,
 Status RaftConsensus::Update(
     const std::shared_ptr<LWConsensusRequestPB>& request_ptr,
     LWConsensusResponsePB* response, CoarseTimePoint deadline) {
+  if (const auto& wait_state = yb::ash::WaitStateInfo::CurrentWaitState()) {
+    wait_state->set_query_id(
+        yb::to_underlying(yb::ash::FixedQueryId::kQueryIdForRaftUpdateConsensus));
+  }
   follower_last_update_received_time_ms_.store(
       clock_->Now().GetPhysicalValueMillis(), std::memory_order_release);
   if (PREDICT_FALSE(FLAGS_TEST_follower_reject_update_consensus_requests)) {

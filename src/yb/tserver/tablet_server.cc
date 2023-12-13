@@ -1320,8 +1320,20 @@ void TabletServer::SetXClusterDDLOnlyMode(bool is_xcluster_read_only_mode) {
   xcluster_read_only_mode_.store(is_xcluster_read_only_mode, std::memory_order_release);
 }
 
-rpc::Messenger* TabletServer::GetMessenger() const {
-  return messenger();
+void TabletServer::SetCQLServer(yb::server::RpcAndWebServerBase* server) {
+  DCHECK_EQ(cql_server_.load(), nullptr);
+  cql_server_.store(server);
+}
+
+rpc::Messenger* TabletServer::GetMessenger(ServerType server_type) const {
+  switch (server_type) {
+    case ServerType::TServer:
+      return messenger();
+    case ServerType::CQLServer:
+      auto cql_server = cql_server_.load();
+      return (cql_server ? cql_server->messenger() : nullptr);
+  }
+  FATAL_INVALID_ENUM_VALUE(ServerType, server_type);
 }
 
 }  // namespace yb::tserver

@@ -657,7 +657,7 @@ string DocDBRocksDBFixture::tablet_id() {
 }
 
 Status DocDBRocksDBFixture::InitRocksDBOptions() {
-  RETURN_NOT_OK(InitCommonRocksDBOptionsForTests());
+  RETURN_NOT_OK(InitCommonRocksDBOptionsForTests(tablet_id()));
   return Status::OK();
 }
 

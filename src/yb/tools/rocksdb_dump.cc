@@ -58,7 +58,7 @@ int main(int argc, char** argv) {
 
   yb::tablet::TabletOptions t_options;
   yb::docdb::InitRocksDBOptions(
-      &db_options, "" /* log_prefix */, nullptr /* statistics */, t_options);
+      &db_options, "" /* log_prefix */, "" /* tablet_id */, nullptr /* statistics */, t_options);
 
   rocksdb::DbDumpTool tool;
   if (!tool.Run(dump_options, db_options)) {

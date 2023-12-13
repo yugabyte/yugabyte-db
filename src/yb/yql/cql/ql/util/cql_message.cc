@@ -67,6 +67,13 @@ constexpr char CQLMessage::kTopologyChangeEvent[];
 constexpr char CQLMessage::kStatusChangeEvent[];
 constexpr char CQLMessage::kSchemaChangeEvent[];
 
+uint64 CQLMessage::QueryIdAsUint64(const QueryId& query_id) {
+  // Convert up to the first 16 characters of the query-id's hex representation.
+  return std::stoull(
+      b2a_hex(query_id).substr(0, std::min(static_cast<QueryId::size_type>(16), query_id.size())),
+      nullptr, 16);
+}
+
 Status CQLMessage::QueryParameters::GetBindVariableValue(const std::string& name,
                                                          const size_t pos,
                                                          const Value** value) const {

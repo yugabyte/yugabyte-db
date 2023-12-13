@@ -91,7 +91,6 @@
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
 #include "yb/util/taskstream.h"
-#include "yb/util/thread.h"
 #include "yb/util/trace.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/unique_lock.h"
@@ -140,7 +139,6 @@ DEFINE_UNKNOWN_double(log_background_sync_interval_fraction, 0.6,
              "When log_enable_background_sync is enabled and time passed since insertion of log "
              "entry exceeds interval_durable_wal_write_ms*log_background_sync_interval_fraction "
              "the fsync task is pushed to the log-sync queue.");
-
 
 // Flags for controlling kernel watchdog limits.
 DEFINE_RUNTIME_int32(consensus_log_scoped_watch_delay_callback_threshold_ms, 1000,
@@ -407,6 +405,10 @@ class Log::Appender {
     return task_stream_->ToString();
   }
 
+  const yb::ash::WaitStateInfoPtr& wait_state() const {
+    return wait_state_;
+  }
+
  private:
   // Process the given log entry batch or does a sync if a null is passed.
   void ProcessBatch(LogEntryBatch* entry_batch);
@@ -423,15 +425,24 @@ class Log::Appender {
 
   // Time at which current group was started
   MonoTime time_started_;
+
+  const yb::ash::WaitStateInfoPtr wait_state_;
 };
 
-Log::Appender::Appender(Log *log, ThreadPool* append_thread_pool)
+Log::Appender::Appender(Log* log, ThreadPool* append_thread_pool)
     : log_(log),
       task_stream_counter_(Format("Appender for $0", log->tablet_id())),
       task_stream_(new TaskStream<LogEntryBatch>(
           std::bind(&Log::Appender::ProcessBatch, this, _1), append_thread_pool,
           FLAGS_taskstream_queue_max_size,
-          MonoDelta::FromMilliseconds(FLAGS_taskstream_queue_max_wait_ms))) {
+          MonoDelta::FromMilliseconds(FLAGS_taskstream_queue_max_wait_ms))),
+      wait_state_(ash::WaitStateInfo::CreateIfAshIsEnabled()) {
+  if (wait_state_) {
+    wait_state_->set_query_id(yb::to_underlying(yb::ash::FixedQueryId::kQueryIdForLogAppender));
+    wait_state_->UpdateAuxInfo({.tablet_id = log_->tablet_id(), .method = "RaftWAL"});
+    SET_WAIT_STATUS_TO(wait_state_, Idle);
+    yb::ash::RaftLogAppenderWaitStatesTracker().Track(wait_state_);
+  }
   DCHECK(log_min_segments_to_retain_validator_registered);
 }
 
@@ -544,6 +555,9 @@ void Log::Appender::Shutdown() {
     VLOG_WITH_PREFIX(1) << "Log append task stream is shut down";
     task_stream_.reset();
   }
+  if (wait_state_) {
+    yb::ash::RaftLogAppenderWaitStatesTracker().Untrack(wait_state_);
+  }
 }
 
 // This task is submitted to allocation_pool_ in order to asynchronously pre-allocate new log
@@ -571,8 +585,6 @@ Status Log::Open(const LogOptions &options,
                  const PreLogRolloverCallback& pre_log_rollover_callback,
                  NewSegmentAllocationCallback callback,
                  CreateNewSegment create_new_segment) {
-  SCOPED_WAIT_STATUS(WAL_Open);
-
   RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(options.env, DirName(wal_dir)),
                         Substitute("Failed to create table wal dir $0", DirName(wal_dir)));
 
@@ -734,7 +746,6 @@ Status Log::CloseCurrentSegment() {
   footer_builder_.set_close_timestamp_micros(close_timestamp_micros);
   Status status;
   {
-    SCOPED_WAIT_STATUS(WAL_Close);
     std::lock_guard lock(active_segment_mutex_);
     status = active_segment_->WriteIndexWithFooterAndClose(log_index_.get(),
                                                            &footer_builder_);
@@ -857,6 +868,8 @@ Status Log::AsyncAppendReplicates(const ReplicateMsgs& msgs, const yb::OpId& com
 }
 
 Status Log::DoAppend(LogEntryBatch* entry_batch, SkipWalWrite skip_wal_write) {
+  ADOPT_WAIT_STATE(appender_->wait_state());
+  SCOPED_WAIT_STATUS(WAL_Append);
   if (!skip_wal_write) {
     RETURN_NOT_OK(entry_batch->Serialize());
     Slice entry_batch_data = entry_batch->data();
@@ -899,7 +912,6 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, SkipWalWrite skip_wal_write) {
     int64_t start_offset = active_segment_->written_offset();
 
     LOG_SLOW_EXECUTION(WARNING, 50, "Append to log took a long time") {
-      SCOPED_WAIT_STATUS(WAL_Write);
       SCOPED_LATENCY_METRIC(metrics_, append_latency);
       LongOperationTracker long_operation_tracker(
           "Log append", FLAGS_consensus_log_scoped_watch_delay_append_threshold_ms * 1ms);
@@ -1104,6 +1116,7 @@ Status Log::EnsureSegmentInitializedUnlocked() {
 // might not be necessary. We only call ::DoSync directly before we call ::CloseCurrentSegment
 Status Log::DoSync() {
   // Acquire the lock over active_segment_ to prevent segment rollover in the interim.
+  ADOPT_WAIT_STATE(appender_->wait_state());
   SCOPED_WAIT_STATUS(WAL_Sync);
   std::lock_guard lock(active_segment_mutex_);
   if (active_segment_->IsClosed()) {
@@ -1807,7 +1820,6 @@ WritableFileOptions Log::GetNewSegmentWritableFileOptions() {
 }
 
 Status Log::PreAllocateNewSegment() {
-  SCOPED_WAIT_STATUS(WAL_AllocateNewSegment);
   TRACE_EVENT1("log", "PreAllocateNewSegment", "file", next_segment_path_);
   CHECK_EQ(allocation_state(), SegmentAllocationState::kAllocationInProgress);
 
@@ -1871,8 +1883,11 @@ Status Log::SwitchToAllocatedSegment() {
   RETURN_NOT_OK(new_segment->WriteHeader(header));
   // Calling Sync() here is important because it ensures the file has a complete WAL header
   // on disk before renaming the file.
-  SCOPED_WAIT_STATUS(WAL_Sync);
-  RETURN_NOT_OK(new_segment->Sync());
+  {
+    ADOPT_WAIT_STATE(appender_->wait_state());
+    SCOPED_WAIT_STATUS(WAL_Sync);
+    RETURN_NOT_OK(new_segment->Sync());
+  }
 
   const auto new_segment_path =
       FsManager::GetWalSegmentFilePath(wal_dir_, active_segment_sequence_number_);
@@ -1915,7 +1930,6 @@ Status Log::SwitchToAllocatedSegment() {
 }
 
 Status Log::ReplaceSegmentInReaderUnlocked() {
-  SCOPED_WAIT_STATUS(WAL_Open);
   // We should never switch to a new segment if we wrote nothing to the old one.
   CHECK(active_segment_->IsClosed());
   shared_ptr<RandomAccessFile> readable_file;
