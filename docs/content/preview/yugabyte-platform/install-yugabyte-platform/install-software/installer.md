@@ -284,7 +284,7 @@ If you have [high availability](../../../administer-yugabyte-platform/high-avail
 
 If Replicated is using HTTPS:
 
-1. If your instances are v2.18.5 or earlier, or v2.10.0, [upgrade your primary and HA standby instances](../../../administer-yugabyte-platform/high-availability/#upgrade-instances) to v2.20.1.
+1. If your instances are v2.18.5 or earlier, or v2.20.0, [upgrade your primary and HA standby instances](../../../administer-yugabyte-platform/high-availability/#upgrade-instances) to v2.20.1.
 1. Migrate and finalize the active instance.
 1. Migrate and finalize the standby instances.
 
