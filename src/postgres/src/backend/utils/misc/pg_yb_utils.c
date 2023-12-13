@@ -558,7 +558,7 @@ YBIsDBCatalogVersionMode()
 			 * then stale read/write RPCs are possible which can lead to wrong
 			 * results;
 			 */
-			elog(INFO, "change to per-db mode");
+			elog(LOG, "change to per-db mode");
 			if (MyDatabaseId != TemplateDbOid)
 			{
 				yb_last_known_catalog_cache_version = 1;
@@ -624,6 +624,43 @@ YBCanEnableDBCatalogVersionMode()
 	 * to have one row per database.
 	 */
 	return (YbGetNumberOfDatabases() > 1);
+}
+
+void
+YBCheckDdlForDBCatalogVersionMode(bool is_catalog_version_increment)
+{
+	/*
+	 * When --ysql_enable_db_catalog_version_mode=true, we only need to check
+	 * for incompatible pg_yb_catalog_version and disallow DDLs that increment
+	 * the catalog version. DDLs that do not increment the catalog version are
+	 * fine because there isn't any problem.
+	 */
+	if (!is_catalog_version_increment)
+		return;
+
+	bool db_catalog_version_mode_gflag =
+		YBCIsEnvVarTrueWithDefault("FLAGS_ysql_enable_db_catalog_version_mode",
+								   false);
+	int num_databases = YbGetNumberOfDatabases();
+
+	/*
+	 * Disallow DDL statement when FLAGS_ysql_enable_db_catalog_version_mode
+	 * is on but pg_yb_catalog_version table only has one row. Note that
+	 * the other mismatch (where FLAGS_ysql_enable_db_catalog_version_mode is
+	 * off but pg_yb_catalog_version table has one row per database) is fine
+	 * because we only use the first row (which is for template1) and ignore
+	 * the other rows and therefore table pg_yb_catalog_version is used in the
+	 * global catalog version mode. Also note that due to heart beat delay,
+	 * this rejection is done at best effort.
+	 */
+	if (db_catalog_version_mode_gflag && num_databases == 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("this ddl statement is currently not allowed"),
+				 errdetail("The pg_yb_catalog_version table is not in "
+						   "per-database catalog version mode."),
+				 errhint("Fix pg_yb_catalog_version table to per-database "
+						 "catalog version mode.")));
 }
 
 void
@@ -1963,6 +2000,9 @@ static void YBTxnDdlProcessUtility(
 												  &is_catalog_version_increment,
 												  &is_breaking_catalog_change,
 												  context);
+
+	if (is_txn_ddl)
+		YBCheckDdlForDBCatalogVersionMode(is_catalog_version_increment);
 
 	PG_TRY();
 	{
