@@ -232,6 +232,8 @@ YugabyteDB Anywhere will end support for Replicated installation at the end of 2
 
 Review the [prerequisites](#prerequisites). YBA Installer performs the migration in place. Make sure you have enough disk space on your current machine.
 
+If you have high availability configured, you need to migrate your instances in a specific order. See [Migration and high availability](#migration-and-high-availability).
+
 ### Migrate a YBA installation
 
 To migrate your installation from Replicated, do the following:
@@ -275,17 +277,17 @@ If you have [high availability](../../../administer-yugabyte-platform/high-avail
 If Replicated is using HTTPS:
 
 1. If your instances are v2.18.5 or earlier, [upgrade your primary and HA standby instances](../../../administer-yugabyte-platform/high-availability/#upgrade-instances) to v2.20.1.
-1. Migrate and finalize the primary.
-1. Migrate and finalize the standby.
+1. Migrate and finalize the active instance.
+1. Migrate and finalize the standby instances.
 
 Failovers are now possible again after the completion of this step.
 
 If Replicated is using HTTP:
 
-1. [Remove the standby instances](../../administer-yugabyte-platform/high-availability/#remove-a-standby-instance).
+1. [Remove the standby instances](../../../administer-yugabyte-platform/high-availability/#remove-a-standby-instance).
 1. If your instances are v2.18.5 or earlier, [upgrade the primary and standby instances](../../../administer-yugabyte-platform/high-availability/#upgrade-instances) to v2.20.1.
-1. Migrate and finalize the primary.
-1. Migrate and finalize the standbys.
+1. Migrate and finalize the active instance.
+1. Migrate and finalize the standby instances.
 1. [Configure HA on the updated instances](../../administer-yugabyte-platform/high-availability/#configure-active-and-standby-instances).
 
 Failovers are now possible again after the completion of this step.
