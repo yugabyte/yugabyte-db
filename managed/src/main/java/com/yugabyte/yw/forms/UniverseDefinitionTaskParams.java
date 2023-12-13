@@ -619,6 +619,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @ApiModelProperty public K8SNodeResourceSpec tserverK8SNodeResourceSpec;
 
+    @Data
     public static class K8SNodeResourceSpec {
       // Memory in GiB
       public Double memoryGib = 4.0;
