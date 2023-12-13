@@ -1020,4 +1020,11 @@ extern void** YbPtrListToArray(const List* str_list, size_t* length);
  */
 extern char* YbReadWholeFile(const char *filename, int* length, int elevel);
 
+/*
+ * If the tserver gflag --ysql_enable_db_catalog_version_mode is true
+ * but the number of rows in pg_yb_catalog_version is 1, disallow a DDL
+ * statement if it increments the catalog version.
+ */
+extern void YBCheckDdlForDBCatalogVersionMode(YbDdlMode mode);
+
 #endif /* PG_YB_UTILS_H */
