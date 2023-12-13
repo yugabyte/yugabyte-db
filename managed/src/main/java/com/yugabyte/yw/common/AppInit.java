@@ -171,8 +171,7 @@ public class AppInit {
         List<Provider> providerList = Provider.find.query().where().findList();
         for (Provider provider : providerList) {
           if (provider.getCode().equals("aws")) {
-            for (InstanceType instanceType :
-                InstanceType.findByProvider(provider, application.config())) {
+            for (InstanceType instanceType : InstanceType.findByProvider(provider, confGetter)) {
               if (instanceType.getInstanceTypeDetails() != null
                   && (instanceType.getInstanceTypeDetails().volumeDetailsList == null
                       || (instanceType.getInstanceTypeDetails().arch == null

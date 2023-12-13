@@ -4,17 +4,17 @@ package com.yugabyte.yw.forms;
 
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.utils.Pair;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -81,8 +81,10 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
           Status.BAD_REQUEST, "Either none or both master and tserver gflags are required");
     }
     if (masterGFlags != null) {
+      long customerId = universe.getCustomerId();
       // We want this flow to only be enabled for cloud in the first go.
-      if (!runtimeConfGetter.getConfForScope(universe, UniverseConfKeys.cloudEnabled)) {
+      if (!runtimeConfGetter.getConfForScope(
+          Customer.get(customerId), CustomerConfKeys.cloudEnabled)) {
         throw new PlatformServiceException(
             Status.METHOD_NOT_ALLOWED, "Cannot resize with gflag changes.");
       }
@@ -426,7 +428,7 @@ public class ResizeNodeParams extends UpgradeWithGFlags {
     List<InstanceType> instanceTypes =
         InstanceType.findByProvider(
             Provider.getOrBadRequest(UUID.fromString(provider)),
-            StaticInjectorHolder.injector().instanceOf(Config.class),
+            StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class),
             allowUnsupportedInstances);
     return instanceTypes.stream()
         .filter(type -> type.getInstanceTypeCode().equals(instanceTypeCode))

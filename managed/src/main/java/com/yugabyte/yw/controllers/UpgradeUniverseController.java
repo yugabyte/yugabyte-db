@@ -461,7 +461,7 @@ public class UpgradeUniverseController extends AuthenticatedController {
 
     // TODO yb.cloud.enabled is redundant here because many tests set it during runtime,
     // to enable this method in cloud. Clean it up later when the tests are fixed.
-    if (!runtimeConfigFactory.forUniverse(universe).getBoolean("yb.cloud.enabled")
+    if (!runtimeConfigFactory.forCustomer(customer).getBoolean("yb.cloud.enabled")
         && !confGetter.getConfForScope(universe, UniverseConfKeys.ybUpgradeVmImage)) {
       throw new PlatformServiceException(METHOD_NOT_ALLOWED, "VM image upgrade is disabled.");
     }

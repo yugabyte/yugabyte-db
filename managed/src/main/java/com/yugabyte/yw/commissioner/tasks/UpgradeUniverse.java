@@ -137,7 +137,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
         List<InstanceType> instanceTypes =
             InstanceType.findByProvider(
-                Provider.getOrBadRequest(UUID.fromString(provider)), config);
+                Provider.getOrBadRequest(UUID.fromString(provider)), confGetter);
         log.info(instanceTypes.toString());
         InstanceType newInstanceType =
             instanceTypes.stream()
