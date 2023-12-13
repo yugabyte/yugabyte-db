@@ -46,13 +46,13 @@ Note: For higher availability, one or more additional YBA instances can be separ
 
 Use YBA Installer to install YBA on a host, either online or airgapped. YBA Installer performs preflight checks to validate the workspace is ready to run YBA.
 
-You can also use YBA Installer to migrate an existing YBA software installed via Replicated to be installed using YBA Installer {{<badge/ea>}}. Before you can migrate, you must use Replicated to upgrade your YBA to version 2.20.1.
+You can also use YBA Installer to migrate an existing YBA software installed via Replicated to be installed using YBA Installer. Before you can migrate, you must use Replicated to upgrade your YBA to version 2.20.1.
 
-- To perform a new installation, follow the steps in [Quick start](#quick-start).
+-> To perform a new installation, follow the steps in [Quick start](#quick-start).
 
-- To upgrade an installation of YBA that was installed using YBA Installer, refer to [Upgrade](#upgrade).
+-> To upgrade an installation of YBA that was installed using YBA Installer, refer to [Upgrade](#upgrade).
 
-- To migrate an installation from Replicated, refer to [Migrate from Replicated](#migrate-from-replicated).
+-> To migrate an installation from Replicated, refer to [Migrate from Replicated](#migrate-from-replicated). {{<badge/ea>}}
 
 After the installation is complete, you can use YBA Installer to manage your installation. This includes backup and restore, upgrading, basic licensing, and uninstalling the software.
 
@@ -222,13 +222,19 @@ The `install` command runs all [preflight checks](#run-preflight-checks) first, 
 
 ## Migrate from Replicated
 
-If your YBA installation uses Replicated, you can use YBA Installer to migrate from Replicated. {{<badge/ea>}}
+{{< note >}}
 
-{{< note title="Replicated end of life" >}}
+Migrating from Replicated using YBA Installer is [Early Access](/preview/releases/versioning/#feature-availability).
+
+{{</note >}}
+
+{{< warning title="Replicated end of life" >}}
 
 YugabyteDB Anywhere will end support for Replicated installation at the end of 2024.
 
-{{< /note >}}
+{{< /warning >}}
+
+If your YBA installation uses Replicated, you can use YBA Installer to migrate from Replicated.
 
 Review the [prerequisites](#prerequisites). YBA Installer performs the migration in place. Make sure you have enough disk space on your current machine.
 
