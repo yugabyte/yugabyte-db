@@ -4,8 +4,8 @@
 # This includes tests for Join Clause
 ####################################################################################################
 # Dependencies for `yb_pg_join`
-test: yb_pg_int4
-test: yb_pg_float8
+test: yb_dep_float8_tbl
+test: yb_dep_int4_tbl
 test: yb_dep_tenk1
 test: yb_dep_tenk2
 

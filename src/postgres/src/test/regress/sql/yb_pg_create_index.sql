@@ -3,6 +3,9 @@
 -- Create ancillary data structures (i.e. indices)
 --
 
+-- directory paths are passed to us in environment variables
+\getenv abs_srcdir PG_ABS_SRCDIR
+
 --
 -- BTREE
 --
@@ -50,12 +53,30 @@ CREATE INDEX onek2_u2_prtl ON onek2 USING btree(unique2 int4_ops ASC)
 CREATE INDEX onek2_stu1_prtl ON onek2 USING btree(stringu1 name_ops ASC)
 	where onek2.stringu1 >= 'J' and onek2.stringu1 < 'K';
 
+CREATE TABLE slow_emp4000 (
+	home_base	 box
+);
+
+CREATE TABLE fast_emp4000 (
+	home_base	 box
+);
+
 --
 -- GIN over int[] and text[]
 --
 -- Note: GIN currently supports only bitmap scans, not plain indexscans
 -- YB Note: ybgin uses plain indexscans, not bitmap scans
 --
+
+CREATE TABLE array_index_op_test (
+	seqno		int4,
+	i			int4[],
+	t			text[]
+);
+
+\set filename :abs_srcdir '/data/array.data'
+COPY array_index_op_test FROM :'filename';
+ANALYZE array_index_op_test;
 
 SET enable_seqscan = OFF;
 SET enable_indexscan = OFF;

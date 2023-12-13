@@ -1,43 +1,72 @@
 --
--- CREATE_FUNCTION_2
+-- MISC
 --
 
--- directory path and dlsuffix are passed to us in environment variables
+-- directory paths and dlsuffix are passed to us in environment variables
+\getenv abs_srcdir PG_ABS_SRCDIR
+\getenv abs_builddir PG_ABS_BUILDDIR
 \getenv libdir PG_LIBDIR
 \getenv dlsuffix PG_DLSUFFIX
 
 \set regresslib :libdir '/regress' :dlsuffix
 
+-- TODO requires 'INHERITS' which is not supported.
+CREATE FUNCTION overpaid(emp)
+   RETURNS bool
+   AS :'regresslib'
+   LANGUAGE C STRICT;
+
+CREATE FUNCTION reverse_name(name)
+   RETURNS name
+   AS :'regresslib'
+   LANGUAGE C STRICT;
+
+SELECT two, stringu1, ten, string4
+   INTO TABLE tmp
+   FROM onek;
+
+\set filename :abs_builddir '/results/onek.data'
+COPY onek TO :'filename';
+
+-- YB note: create YB table instead of temp table to exercise YB tables.
+CREATE TABLE onek_copy (LIKE onek);
+
+COPY onek_copy FROM :'filename';
+
+CREATE TABLE hobbies_r (
+	name		text,
+	person 		text
+);
+
+CREATE TABLE equipment_r (
+	name 		text,
+	hobby		text
+);
 
 CREATE FUNCTION hobbies(person)
    RETURNS setof hobbies_r
    AS 'select * from hobbies_r where person = $1.name'
    LANGUAGE SQL;
 
-
 CREATE FUNCTION hobby_construct(text, text)
    RETURNS hobbies_r
    AS 'select $1 as name, $2 as hobby'
    LANGUAGE SQL;
-
 
 CREATE FUNCTION hobby_construct_named(name text, hobby text)
    RETURNS hobbies_r
    AS 'select name, hobby'
    LANGUAGE SQL;
 
-
 CREATE FUNCTION hobbies_by_name(hobbies_r.name%TYPE)
    RETURNS hobbies_r.person%TYPE
    AS 'select person from hobbies_r where name = $1'
    LANGUAGE SQL;
 
-
 CREATE FUNCTION equipment(hobbies_r)
    RETURNS setof equipment_r
    AS 'select * from equipment_r where hobby = $1.name'
    LANGUAGE SQL;
-
 
 CREATE FUNCTION equipment_named(hobby hobbies_r)
    RETURNS setof equipment_r
@@ -69,33 +98,6 @@ CREATE FUNCTION equipment_named_ambiguous_2b(hobby text)
    AS 'select * from equipment_r where equipment_r.hobby = hobby'
    LANGUAGE SQL;
 
-CREATE FUNCTION pt_in_widget(point, widget)
-   RETURNS bool
-   AS :'regresslib'
-   LANGUAGE C STRICT;
-
--- TODO requires 'INHERITS' which is not supported.
-CREATE FUNCTION overpaid(emp)
-   RETURNS bool
-   AS :'regresslib'
-   LANGUAGE C STRICT;
-
-CREATE FUNCTION interpt_pp(path, path)
-   RETURNS point
-   AS :'regresslib'
-   LANGUAGE C STRICT;
-
-CREATE FUNCTION reverse_name(name)
-   RETURNS name
-   AS :'regresslib'
-   LANGUAGE C STRICT;
-
---
--- Function dynamic loading
---
--- TODO Not yet supported in YB.
--- Until it is supported, commenting out the original query and replacing
--- with a stub because the error message contains the local path.
--- (The query will currently fail before processing the path argument anyway.)
--- LOAD :'regresslib';
-LOAD 'regress.so'
+-- YB note: mimic natural discard of temp tables for tables that have been
+-- converted from temp tables in the upstream PG to YB tables here.
+DROP TABLE onek_copy;

@@ -3,16 +3,16 @@
 ################################################################################
 # This suite includes tests on string datatypes that are enabled for Yugabyte.
 ################################################################################
+# Dependency for yb_pg_varchar, yb_pg_text.
+test: yb_pg_test_setup
 
 test: yb_char
+test: yb_pg_varchar
 test: yb_pg_text
 test: yb_pg_bit
 test: yb_bytea
 test: yb_pg_uuid
 test: yb_pg_tstypes
-
-# Dependency.
-test: yb_dep_test_tsvector
 
 test: yb_pg_collate
 test: yb_collate_icu_utf8

@@ -3,37 +3,18 @@
 --
 -- The queries are taken from the relevant dependency files.  Since it is
 -- faster to run this rather than each file itself (e.g. dependency chain
--- create_function_1, create_type, create_table, copy, create_index), prefer
--- using this.
+-- test_setup, create_index), prefer using this.
 --
 -- DEPENDENCY: this file must be run after tenk1 has been populated (by
 -- yb_dep_tenk1).
 --
 --
--- create_table
+-- test_setup
 --
-CREATE TABLE tenk2 (
-	unique1 	int4,
-	unique2 	int4,
-	two 	 	int4,
-	four 		int4,
-	ten			int4,
-	twenty 		int4,
-	hundred 	int4,
-	thousand 	int4,
-	twothousand int4,
-	fivethous 	int4,
-	tenthous	int4,
-	odd			int4,
-	even		int4,
-	stringu1	name,
-	stringu2	name,
-	string4		name
-);
---
--- create_misc
---
-INSERT INTO tenk2 SELECT * FROM tenk1;
+CREATE TABLE tenk2 AS SELECT * FROM tenk1;
+VACUUM ANALYZE tenk2;
+WARNING:  VACUUM will be ignored
+ERROR:  Transaction for catalog table write operation 'pg_statistic' not found
 --
 -- yb_pg_create_index
 -- (With modification to make them all nonconcurrent for performance.)

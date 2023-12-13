@@ -3,12 +3,15 @@
 --
 -- The queries are taken from the relevant dependency files.  Since it is
 -- faster to run this rather than each file itself (e.g. dependency chain
--- create_function_1, create_type, create_table, copy, create_index), prefer
--- using this.
+-- test_setup, create_index), prefer using this.
 --
 
 --
--- create_table
+-- test_setup
+--
+
+\getenv abs_srcdir PG_ABS_SRCDIR
+
 --
 
 CREATE TABLE onek (
@@ -30,20 +33,9 @@ CREATE TABLE onek (
 	string4		name
 );
 
---
--- copy
---
-
-\getenv abs_srcdir PG_ABS_SRCDIR
-
---
-
 \set filename :abs_srcdir '/data/onek.data'
 COPY onek FROM :'filename';
-
---
-
-ANALYZE onek;
+VACUUM ANALYZE onek;
 
 --
 -- yb_pg_create_index

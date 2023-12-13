@@ -3,18 +3,18 @@
 --
 -- The queries are taken from the relevant dependency files.  Since it is
 -- faster to run this rather than each file itself (e.g. dependency chain
--- create_function_1, create_type, create_table, copy, create_index), prefer
--- using this.
+-- test_setup, create_index), prefer using this.
 --
 -- DEPENDENCY: this file must be run after onek has been populated (by
 -- yb_dep_onek).
 --
 
 --
--- create_misc
+-- test_setup
 --
 
 CREATE TABLE onek2 AS SELECT * FROM onek;
+VACUUM ANALYZE onek2;
 
 --
 -- yb_pg_create_index
@@ -29,9 +29,3 @@ CREATE INDEX NONCONCURRENTLY onek2_u2_prtl ON onek2 USING btree(unique2 int4_ops
 
 CREATE INDEX NONCONCURRENTLY onek2_stu1_prtl ON onek2 USING btree(stringu1 name_ops ASC)
 	where onek2.stringu1 >= 'J' and onek2.stringu1 < 'K';
-
---
--- select
---
-
-ANALYZE onek2;

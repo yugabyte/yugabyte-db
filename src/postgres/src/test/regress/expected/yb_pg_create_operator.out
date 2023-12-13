@@ -7,13 +7,6 @@ CREATE OPERATOR ## (
    function = path_inter,
    commutator = ##
 );
-CREATE OPERATOR <% (
-   leftarg = point,
-   rightarg = widget,
-   procedure = pt_in_widget,
-   commutator = >% ,
-   negator = >=%
-);
 CREATE OPERATOR @#@ (
    rightarg = int8,		-- left unary
    procedure = numeric_fac
@@ -27,11 +20,10 @@ CREATE OPERATOR #%# (
    procedure = numeric_fac
 );
 -- Test operator created above
-SELECT point '(1,2)' <% widget '(0,0,3)' AS t,
-       point '(1,2)' <% widget '(0,0,1)' AS f;
- t | f 
----+---
- t | f
+SELECT @#@ 24;
+         ?column?
+--------------------------
+ 620448401733239439360000
 (1 row)
 
 -- Test comments
