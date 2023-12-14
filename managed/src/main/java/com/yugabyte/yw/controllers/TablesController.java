@@ -209,7 +209,7 @@ public class TablesController extends AuthenticatedController {
       UUID customerUUID,
       UUID universeUUID,
       boolean includeParentTableInfo,
-      boolean excludeColocatedTables,
+      @Deprecated boolean excludeColocatedTables,
       boolean includeColocatedParentTables,
       boolean xClusterSupportedOnly) {
     List<TableInfoForm.TableInfoResp> resp =
