@@ -2065,6 +2065,18 @@ ExternalTabletServer* ExternalMiniCluster::tablet_server(size_t idx) const {
   return tablet_servers_[idx].get();
 }
 
+Status ExternalMiniCluster::WaitForLoadBalancerToBecomeIdle(
+    const std::unique_ptr<yb::client::YBClient>& client, MonoDelta timeout) {
+  // Wait for LB to become idle.
+  RETURN_NOT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return client->IsLoadBalancerIdle();
+      },
+      timeout,
+      "IsLoadBalancerIdle"));
+  return Status::OK();
+}
+
 //------------------------------------------------------------
 // ExternalDaemon
 //------------------------------------------------------------

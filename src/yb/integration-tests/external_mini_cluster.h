@@ -532,6 +532,11 @@ class ExternalMiniCluster : public MiniClusterBase {
   // take effect on new tserver creation.
   std::vector<std::string>* mutable_extra_tserver_flags() { return &opts_.extra_tserver_flags; }
 
+  // Wait for LB to become idle.
+  // LB related tests should call this function before performing test logic to stabilize tests.
+  Status WaitForLoadBalancerToBecomeIdle(
+      const std::unique_ptr<yb::client::YBClient>& client, MonoDelta timeout);
+
  protected:
   FRIEND_TEST(MasterFailoverTest, TestKillAnyMaster);
 

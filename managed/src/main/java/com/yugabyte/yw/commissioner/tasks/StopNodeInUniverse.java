@@ -76,8 +76,7 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
     }
   }
 
-  @Override
-  protected void freezeUniverseInTxn(Universe universe) {
+  private void freezeUniverseInTxn(Universe universe) {
     NodeDetails node = universe.getNode(taskParams().nodeName);
     if (node == null) {
       String msg = "No node " + taskParams().nodeName + " found in universe " + universe.getName();
@@ -95,78 +94,82 @@ public class StopNodeInUniverse extends UniverseDefinitionTaskBase {
 
   @Override
   public void run() {
-    super.runUpdateTasks(this::runTask);
-  }
-
-  private void runTask() {
     log.info(
         "Stop Node with name {} from universe uuid={}",
         taskParams().nodeName,
         taskParams().getUniverseUUID());
+    checkUniverseVersion();
+    Universe universe =
+        lockAndFreezeUniverseForUpdate(
+            taskParams().expectedUniverseVersion, this::freezeUniverseInTxn);
+    try {
+      NodeDetails currentNode = universe.getNode(taskParams().nodeName);
 
-    Universe universe = getUniverse();
-    NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+      preTaskActions();
+      List<NodeDetails> nodeList = Collections.singletonList(currentNode);
 
-    preTaskActions();
-    List<NodeDetails> nodeList = Collections.singletonList(currentNode);
-
-    if (currentNode.isTserver) {
-      clearLeaderBlacklistIfAvailable(SubTaskGroupType.StoppingNodeProcesses);
-    }
-
-    // Update Node State to Stopping
-    createSetNodeStateTask(currentNode, NodeState.Stopping)
-        .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-
-    taskParams().azUuid = currentNode.azUuid;
-    taskParams().placementUuid = currentNode.placementUuid;
-    boolean instanceExists = instanceExists(taskParams());
-    if (instanceExists) {
       if (currentNode.isTserver) {
-        stopProcessesOnNode(
-            currentNode,
-            EnumSet.of(ServerType.TSERVER),
-            true,
-            false,
-            SubTaskGroupType.StoppingNodeProcesses);
-        // Remove leader blacklist.
-        removeFromLeaderBlackListIfAvailable(nodeList, SubTaskGroupType.StoppingNodeProcesses);
+        clearLeaderBlacklistIfAvailable(SubTaskGroupType.StoppingNodeProcesses);
       }
 
-      // Stop Yb-controller on this node.
-      if (universe.isYbcEnabled()) {
-        createStopYbControllerTasks(nodeList)
+      // Update Node State to Stopping
+      createSetNodeStateTask(currentNode, NodeState.Stopping)
+          .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+
+      taskParams().azUuid = currentNode.azUuid;
+      taskParams().placementUuid = currentNode.placementUuid;
+      boolean instanceExists = instanceExists(taskParams());
+      if (instanceExists) {
+        if (currentNode.isTserver) {
+          stopProcessesOnNode(
+              currentNode,
+              EnumSet.of(ServerType.TSERVER),
+              true,
+              false,
+              SubTaskGroupType.StoppingNodeProcesses);
+          // Remove leader blacklist.
+          removeFromLeaderBlackListIfAvailable(nodeList, SubTaskGroupType.StoppingNodeProcesses);
+        }
+
+        // Stop Yb-controller on this node.
+        if (universe.isYbcEnabled()) {
+          createStopYbControllerTasks(nodeList)
+              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+        }
+      }
+      if (currentNode.isTserver) {
+        // Update the per process state in YW DB.
+        createUpdateNodeProcessTask(taskParams().nodeName, ServerType.TSERVER, false)
             .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
       }
+
+      createMasterReplacementTasks(
+          universe,
+          currentNode,
+          () -> findNewMasterIfApplicable(universe, currentNode),
+          instanceExists);
+
+      // Update Node State to Stopped
+      createSetNodeStateTask(currentNode, NodeState.Stopped)
+          .setSubTaskGroupType(SubTaskGroupType.StoppingNode);
+
+      // Update the swamper target file.
+      createSwamperTargetUpdateTask(false /* removeFile */);
+
+      // Update the DNS entry for this universe.
+      createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, universe)
+          .setSubTaskGroupType(SubTaskGroupType.StoppingNode);
+
+      // Mark universe task state to success
+      createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.StoppingNode);
+
+      getRunnableTask().runSubTasks();
+    } catch (Throwable t) {
+      log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
+      throw t;
+    } finally {
+      unlockUniverseForUpdate();
     }
-    if (currentNode.isTserver) {
-      // Update the per process state in YW DB.
-      createUpdateNodeProcessTask(taskParams().nodeName, ServerType.TSERVER, false)
-          .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-    }
-
-    createMasterReplacementTasks(
-        universe,
-        currentNode,
-        () -> findNewMasterIfApplicable(universe, currentNode),
-        instanceExists);
-
-    // Update Node State to Stopped
-    createSetNodeStateTask(currentNode, NodeState.Stopped)
-        .setSubTaskGroupType(SubTaskGroupType.StoppingNode);
-
-    // Update the swamper target file.
-    createSwamperTargetUpdateTask(false /* removeFile */);
-
-    // Update the DNS entry for this universe.
-    createDnsManipulationTask(DnsManager.DnsCommandType.Edit, false, universe)
-        .setSubTaskGroupType(SubTaskGroupType.StoppingNode);
-
-    // Mark universe task state to success
-    createMarkUniverseUpdateSuccessTasks().setSubTaskGroupType(SubTaskGroupType.StoppingNode);
-
-    getRunnableTask().runSubTasks();
-
     log.info("Finished {} task.", getName());
   }
 }

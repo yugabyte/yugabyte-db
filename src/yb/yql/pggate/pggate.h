@@ -628,7 +628,7 @@ class PgApiImpl {
   Status EnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms);
   Status EnterSeparateDdlTxnMode();
   bool HasWriteOperationsInDdlTxnMode() const;
-  Status ExitSeparateDdlTxnMode();
+  Status ExitSeparateDdlTxnMode(PgOid db_oid, bool is_silent_modification);
   Status ClearSeparateDdlTxnMode();
   Status SetActiveSubTransaction(SubTransactionId id);
   Status RollbackToSubTransaction(SubTransactionId id);

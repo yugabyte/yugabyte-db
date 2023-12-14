@@ -619,6 +619,20 @@
   force = true
 
 [[redirects]]
+  from = "/v2.14/tutorials/*"
+  to = "/preview/tutorials/azure/"
+  force = true
+[[redirects]]
+  from = "/v2.16/tutorials/*"
+  to = "/preview/tutorials/azure/"
+  force = true
+[[redirects]]
+  from = "/v2.18/tutorials/*"
+  to = "/preview/tutorials/azure/"
+  force = true
+
+
+[[redirects]]
   from = "/preview/yugabyte-platform/manage-deployments/high-availability/"
   to = "/preview/yugabyte-platform/administer-yugabyte-platform/high-availability/"
   force = true

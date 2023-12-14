@@ -95,6 +95,7 @@ struct WebserverWrapper *webserver = NULL;
 int port = 0;
 static bool log_accesses = false;
 static bool log_tcmalloc_stats = false;
+static int webserver_profiler_sample_freq_bytes = 0;
 static int num_backends = 0;
 static rpczEntry *rpcz = NULL;
 static MemoryContext ybrpczMemoryContext = NULL;
@@ -232,7 +233,8 @@ pullRpczEntries(void)
      * while we're copying the entry or if its odd. The check for odd is needed for when a backend
      * has begun changing the entry but hasn't finished.
      */
-    for (;;)
+    int attempt = 1;
+    while (yb_pgstat_log_read_activity(beentry, ++attempt))
     {
       int			before_changecount;
       int			after_changecount;
@@ -407,7 +409,8 @@ webserver_worker_main(Datum unused)
 	pqsignal(SIGHUP, ws_sighup_handler);
 	pqsignal(SIGTERM, ws_sigterm_handler);
 
-  SetWebserverLogging(webserver, log_accesses, log_tcmalloc_stats);
+  SetWebserverConfig(webserver, log_accesses, log_tcmalloc_stats,
+                     webserver_profiler_sample_freq_bytes);
 
   int rc;
   while (!got_SIGTERM)
@@ -422,7 +425,8 @@ webserver_worker_main(Datum unused)
     {
       got_SIGHUP = false;
       ProcessConfigFile(PGC_SIGHUP);
-      SetWebserverLogging(webserver, log_accesses, log_tcmalloc_stats);
+      SetWebserverConfig(webserver, log_accesses, log_tcmalloc_stats,
+                         webserver_profiler_sample_freq_bytes);
     }
   }
 
@@ -476,6 +480,12 @@ _PG_init(void)
                           "Log each request received by the YSQL webserver",
                           NULL, &log_tcmalloc_stats, false, PGC_SUSET, 0,
                           NULL, NULL, NULL);
+
+  DefineCustomIntVariable("yb_pg_metrics.webserver_profiler_sample_freq_bytes",
+                          "The frequency at which Google TCMalloc should sample allocations in the "
+                          "YSQL webserver. If this is 0, sampling is disabled. ",
+                          NULL, &webserver_profiler_sample_freq_bytes, 1024 * 1024, 0, INT_MAX,
+                          PGC_SUSET, 0, NULL, NULL, NULL);
 
   BackgroundWorker worker;
 

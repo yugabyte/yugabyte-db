@@ -15,6 +15,7 @@ public class Filters extends DefaultHttpFilters {
       RequestLoggingFilter requestLoggingFilter,
       RequestHeaderFilter requestHeaderFilter,
       HSTSFilter hstsFilter,
+      HAApiFilter haApiFilter,
       CustomHTTPHeader customHTTPHeader) {
     super(
         corsFilter,
@@ -22,6 +23,7 @@ public class Filters extends DefaultHttpFilters {
         requestLoggingFilter,
         requestHeaderFilter,
         hstsFilter,
+        haApiFilter,
         customHTTPHeader);
   }
 }

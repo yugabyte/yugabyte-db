@@ -6419,10 +6419,6 @@
     "LdapUnivSyncFormData" : {
       "description" : "Config to sync universe roles with ldap users",
       "properties" : {
-        "allowDropSuperuser" : {
-          "description" : "Allow the API to drop a superuser role which is not an LDAP group",
-          "type" : "boolean"
-        },
         "createGroups" : {
           "description" : "Allow the API to create the LDAP groups as DB superusers",
           "type" : "boolean"
@@ -13956,12 +13952,6 @@
         "masterDeviceInfo" : {
           "$ref" : "#/definitions/DeviceInfo"
         },
-        "masterGFlags" : {
-          "additionalProperties" : {
-            "type" : "string"
-          },
-          "type" : "object"
-        },
         "masterInstanceType" : {
           "type" : "string"
         },
@@ -13995,17 +13985,12 @@
           "type" : "integer"
         },
         "specificGFlags" : {
-          "$ref" : "#/definitions/SpecificGFlags"
+          "$ref" : "#/definitions/SpecificGFlags",
+          "description" : "User-defined gflags for all processes."
         },
         "spotPrice" : {
           "format" : "double",
           "type" : "number"
-        },
-        "tserverGFlags" : {
-          "additionalProperties" : {
-            "type" : "string"
-          },
-          "type" : "object"
         },
         "tserverK8SNodeResourceSpec" : {
           "$ref" : "#/definitions/K8SNodeResourceSpec"

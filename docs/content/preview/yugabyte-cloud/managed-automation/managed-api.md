@@ -3,7 +3,6 @@ title: YugabyteDB Managed REST API
 headerTitle: REST API
 linkTitle: REST API
 description: REST API YugabyteDB Managed.
-image: /images/section_icons/explore/administer.png
 headcontent: Manage YugabyteDB Managed accounts and deployments using the REST API
 menu:
   preview_yugabyte-cloud:

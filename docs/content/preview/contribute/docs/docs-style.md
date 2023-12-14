@@ -3,7 +3,6 @@ title: YugabyteDB documentation style guide
 headerTitle: Docs style guide
 linkTitle: Style guide
 description: YugabyteDB documentation style guide
-image: /images/section_icons/index/quick_start.png
 menu:
   preview:
     identifier: docs-style

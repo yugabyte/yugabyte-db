@@ -16,7 +16,6 @@
 #include <atomic>
 #include <future>
 #include <mutex>
-#include <utility>
 
 #include <boost/functional/hash.hpp>
 #include <boost/multi_index/member.hpp>
@@ -29,8 +28,6 @@
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/rpc/sidecars.h"
-
-#include "yb/tserver/pg_client.pb.h"
 
 #include "yb/util/async_util.h"
 #include "yb/util/flags.h"
@@ -66,6 +63,10 @@ METRIC_DEFINE_counter(server, pg_response_cache_entries_removed_by_gc,
                       "PgClientService Response Cache Renewed Hard",
                       yb::MetricUnit::kEntries,
                       "Number of PgClientService response cache entries removed by GC calls");
+METRIC_DEFINE_counter(server, pg_response_cache_disable_calls,
+                      "PgClientService Response Cache Disabled",
+                      yb::MetricUnit::kRequests,
+                      "Total number of Disable() calls for PgClientService response cache");
 METRIC_DEFINE_gauge_uint32(server, pg_response_cache_entries,
                       "PgClientService Response Cache Entries",
                       yb::MetricUnit::kEntries,
@@ -82,6 +83,13 @@ DEFINE_NON_RUNTIME_uint32(
     pg_response_cache_size_percentage, 5,
     "Percentage of total available memory to use by the PgClientService response cache. "
     "Default value is 5, max is 100, min is 0 means that cache size is not limited by this flag.");
+
+
+DEFINE_NON_RUNTIME_uint32(
+    pg_response_cache_num_key_group_bucket, 512,
+    "Number of buckets for key group values which are used as part of response cache key. "
+    "Response cache can be disabled for particular key group, but actually it will be disabled for "
+    "all key groups in same bucket");
 
 DEFINE_test_flag(uint64, pg_response_cache_catalog_read_time_usec, 0,
                  "Value to substitute original catalog_read_time in cached responses");
@@ -166,10 +174,12 @@ class MetricUpdater {
 
 class Data {
  public:
-  Data(std::weak_ptr<MetricUpdater> metric_updater,
+  Data(uint64_t version,
+       std::weak_ptr<MetricUpdater> metric_updater,
        CoarseTimePoint creation_time,
        CoarseTimePoint readiness_deadline)
       : metric_updater_(std::move(metric_updater)),
+        version_(version),
         creation_time_(creation_time),
         readiness_deadline_(readiness_deadline),
         future_(promise_.get_future()) {}
@@ -205,8 +215,9 @@ class Data {
     }
   }
 
-  [[nodiscard]] bool IsValid(CoarseTimePoint now) const {
-    return IsReady(future_) ? IsOk(future_.get()) : now < readiness_deadline_;
+  [[nodiscard]] bool IsValid(CoarseTimePoint now, uint64_t version) const {
+    return version == version_ &&
+           (IsReady(future_) ? IsOk(future_.get()) : now < readiness_deadline_);
   }
 
   [[nodiscard]] CoarseTimePoint creation_time() const {
@@ -215,6 +226,7 @@ class Data {
 
  private:
   std::weak_ptr<MetricUpdater> metric_updater_;
+  const uint64_t version_;
   const CoarseTimePoint creation_time_;
   const CoarseTimePoint readiness_deadline_;
   std::promise<PgResponseCache::Response> promise_;
@@ -226,11 +238,13 @@ class Data {
 class Value {
  public:
   Value() = default;
-  Value(MetricContext* metric_context,
+  Value(uint64_t version,
+        MetricContext* metric_context,
         CoarseTimePoint creation_time,
         CoarseTimePoint readiness_deadline)
       : metric_updater_(std::make_shared<MetricUpdater>(metric_context)),
-        data_(std::make_shared<Data>(metric_updater_, creation_time, readiness_deadline)) {}
+        data_(std::make_shared<Data>(version, metric_updater_, creation_time, readiness_deadline)) {
+        }
 
   [[nodiscard]] size_t Consumption() const {
     DCHECK(metric_updater_);
@@ -245,10 +259,10 @@ class Value {
 };
 
 struct Key {
-  uint64_t group;
+  PgResponseCache::KeyGroup group;
   std::string value;
-  explicit Key (uint64_t key_group, std::string&& key_value)
-      : group(key_group), value(std::move(key_value)) {}
+  Key(PgResponseCache::KeyGroup group, std::string&& key_value)
+      : group(group), value(std::move(key_value)) {}
 
   friend bool operator==(const Key&, const Key&) = default;
 };
@@ -261,8 +275,8 @@ inline size_t hash_value(const Key& key) {
 }
 
 struct Entry {
-  explicit Entry(uint64_t key_group, std::string&& key_value)
-      : key(key_group, std::move(key_value)) {}
+  Entry(PgResponseCache::KeyGroup group, std::string&& key_value)
+      : key(group, std::move(key_value)) {}
 
   Key key;
   Value value;
@@ -317,11 +331,24 @@ void FillResponse(PgPerformResponsePB* response,
   return MemTracker::FindOrCreateTracker(kId, parent);
 }
 
+struct KeyGroupBucket {
+  std::weak_ptr<PgResponseCache::DisablerType> disabler;
+  uint64_t version{0};
+};
+
 } // namespace
 
+struct PgResponseCache::DisablerType {};
+
 class PgResponseCache::Impl : private GarbageCollector {
-  [[nodiscard]] auto GetEntryData(PgPerformOptionsPB::CachingInfoPB* cache_info,
-                                  CoarseTimePoint deadline) EXCLUDES(mutex_) {
+  [[nodiscard]] auto& GetKeyGroupBucket(KeyGroup group) REQUIRES(mutex_) {
+    const auto sz = key_group_buckets_.size();
+    DCHECK_EQ(sz, FLAGS_pg_response_cache_num_key_group_bucket);
+    return key_group_buckets_[group % sz];
+  }
+
+  [[nodiscard]] auto GetEntryData(
+      PgPerformOptionsPB::CachingInfoPB* cache_info, CoarseTimePoint deadline) EXCLUDES(mutex_) {
     auto now = CoarseMonoClock::Now();
     Counter* renew_metric = nullptr;
     auto metric_updater = ScopeExit([&renew_metric] {
@@ -330,22 +357,31 @@ class PgResponseCache::Impl : private GarbageCollector {
       }
     });
     std::lock_guard lock(mutex_);
-    const auto& value = entries_.emplace(
-        cache_info->key_group(), std::move(*cache_info->mutable_key_value()))->value;
-    const auto& data = value.data();
-    bool loading_required = false;
-    if (!data ||
-        !data->IsValid(now) ||
-        IsRenewRequired(data->creation_time(), now, *cache_info, &renew_metric)) {
-      VLOG(5) << "(Re)Building element";
-      const_cast<Value&>(value) = Value(&metric_context_, now, deadline);
+    std::shared_ptr<Data> data;
+    auto loading_required = false;
+    const auto group = cache_info->key_group();
+    const auto& bucket = GetKeyGroupBucket(group);
+    if (!bucket.disabler.lock()) {
+      auto actual_version = bucket.version;
+      const auto& value = entries_.emplace(
+          group, std::move(*cache_info->mutable_key_value()))->value;
+      data = value.data();
+      if (!data ||
+          !data->IsValid(now, actual_version) ||
+          IsRenewRequired(data->creation_time(), now, *cache_info, &renew_metric)) {
+        VLOG(5) << "(Re)Building element group=" << group << " actual_version=" << actual_version;
+        const_cast<Value&>(value) = Value(actual_version, &metric_context_, now, deadline);
+        loading_required = true;
+        data = value.data();
+      }
+    } else {
       loading_required = true;
     }
-    return std::make_pair(data, loading_required);
+    return std::make_pair(std::move(data), loading_required);
   }
 
  public:
-  Result<PgResponseCache::Setter> Get(
+  Result<Setter> Get(
       PgPerformOptionsPB::CachingInfoPB* cache_info, PgPerformResponsePB* response,
       rpc::Sidecars* sidecars, CoarseTimePoint deadline) EXCLUDES(mutex_) {
     auto [data, loading_required] = GetEntryData(cache_info, deadline);
@@ -353,11 +389,28 @@ class PgResponseCache::Impl : private GarbageCollector {
     if (!loading_required) {
       hits_->Increment();
       FillResponse(response, sidecars, VERIFY_RESULT_REF(data->Get(deadline)));
-      return PgResponseCache::Setter();
+      return Setter();
+    }
+    if (!data) {
+      return [](Response&& response) {};
     }
     return [empty_data = std::move(data)](Response&& response) {
       empty_data->Set(std::move(response));
     };
+  }
+
+  [[nodiscard]] Disabler Disable(KeyGroup group) {
+    VLOG(5) << "Disabling cache for " << group;
+    disable_calls_->Increment();
+    std::lock_guard lock(mutex_);
+    auto& bucket = GetKeyGroupBucket(group);
+    auto disabler = bucket.disabler.lock();
+    if (!disabler) {
+      disabler = std::make_shared<DisablerType>();
+      bucket.disabler = disabler;
+      ++bucket.version;
+    }
+    return disabler;
   }
 
   [[nodiscard]] static std::shared_ptr<Impl> Make(
@@ -380,12 +433,14 @@ class PgResponseCache::Impl : private GarbageCollector {
         renew_soft_(METRIC_pg_response_cache_renew_soft.Instantiate(metric_entity)),
         renew_hard_(METRIC_pg_response_cache_renew_hard.Instantiate(metric_entity)),
         gc_calls_(METRIC_pg_response_cache_gc_calls.Instantiate(metric_entity)),
+        disable_calls_(METRIC_pg_response_cache_disable_calls.Instantiate(metric_entity)),
         entries_removed_by_gc_(
             METRIC_pg_response_cache_entries_removed_by_gc.Instantiate(metric_entity)),
         metric_context_(
             GetCacheMemoryTracker(parent_mem_tracker),
             METRIC_pg_response_cache_entries.Instantiate(metric_entity, 0)),
-        entries_(FLAGS_pg_response_cache_capacity)
+        entries_(FLAGS_pg_response_cache_capacity),
+        key_group_buckets_(FLAGS_pg_response_cache_num_key_group_bucket)
   {}
 
   void CollectGarbage(size_t required) override {
@@ -433,6 +488,7 @@ class PgResponseCache::Impl : private GarbageCollector {
   scoped_refptr<Counter> renew_soft_;
   scoped_refptr<Counter> renew_hard_;
   scoped_refptr<Counter> gc_calls_;
+  scoped_refptr<Counter> disable_calls_;
   scoped_refptr<Counter> entries_removed_by_gc_;
   MetricContext metric_context_;
   std::mutex mutex_;
@@ -440,6 +496,8 @@ class PgResponseCache::Impl : private GarbageCollector {
       Entry,
       boost::multi_index::member<Entry, Key, &Entry::key>
   > entries_ GUARDED_BY(mutex_);
+
+  std::vector<KeyGroupBucket> key_group_buckets_ GUARDED_BY(mutex_);
 
   DISALLOW_COPY_AND_ASSIGN(Impl);
 };
@@ -457,6 +515,10 @@ Result<PgResponseCache::Setter> PgResponseCache::Get(
     PgPerformResponsePB* response, rpc::Sidecars* sidecars,
     CoarseTimePoint deadline) {
   return impl_->Get(cache_info, response, sidecars, deadline);
+}
+
+PgResponseCache::Disabler PgResponseCache::Disable(KeyGroup key_group) {
+  return impl_->Disable(key_group);
 }
 
 } // namespace yb::tserver

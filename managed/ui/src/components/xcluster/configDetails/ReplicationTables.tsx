@@ -25,22 +25,27 @@ import { ReplicationLagGraphModal } from './ReplicationLagGraphModal';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import ellipsisIcon from '../../common/media/more.svg';
 import { api, universeQueryKey, xClusterQueryKey } from '../../../redesign/helpers/api';
-import { XClusterModalName, XClusterTableStatus } from '../constants';
+import {
+  XClusterModalName,
+  XClusterTableStatus,
+  XCLUSTER_UNIVERSE_TABLE_FILTERS
+} from '../constants';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { XClusterTableStatusLabel } from '../XClusterTableStatusLabel';
 import { handleServerError } from '../../../utils/errorHandlingUtils';
 import { AddTableModal } from './addTable/AddTableModal';
-
-import { TableType, TableTypeLabel, YBTable } from '../../../redesign/helpers/dtos';
-import { XClusterTable } from '../XClusterTypes';
-import { XClusterConfig } from '../dtos';
-
 import {
   RbacValidator,
   hasNecessaryPerm
 } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { Action, Resource } from '../../../redesign/features/rbac';
+import { getTableName, getTableUuid } from '../../../utils/tableUtils';
+
+import { TableType, TableTypeLabel, YBTable } from '../../../redesign/helpers/dtos';
+import { XClusterTable } from '../XClusterTypes';
+import { XClusterConfig } from '../dtos';
+
 import styles from './ReplicationTables.module.scss';
 
 interface props {
@@ -67,15 +72,12 @@ export function ReplicationTables({
   const queryClient = useQueryClient();
 
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, {
-      excludeColocatedTables: true,
-      xClusterSupportedOnly: true
-    }),
+    universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, XCLUSTER_UNIVERSE_TABLE_FILTERS),
     () =>
-      fetchTablesInUniverse(xClusterConfig.sourceUniverseUUID, {
-        excludeColocatedTables: true,
-        xClusterSupportedOnly: true
-      }).then((respone) => respone.data)
+      fetchTablesInUniverse(
+        xClusterConfig.sourceUniverseUUID,
+        XCLUSTER_UNIVERSE_TABLE_FILTERS
+      ).then((respone) => respone.data)
   );
 
   const sourceUniverseQuery = useQuery(
@@ -93,12 +95,24 @@ export function ReplicationTables({
           if (!err) {
             queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.uuid));
             dispatch(closeDialog());
-            toast.success(`"${deleteTableDetails?.tableName}" table removed successfully`);
+            toast.success(
+              deleteTableDetails
+                ? `"${getTableName(deleteTableDetails)}" table removed successfully from ${
+                    xClusterConfig.name
+                  }.`
+                : `Table removed successfully from ${xClusterConfig.name}`
+            );
           } else {
             toast.error(
               <span className="alertMsg">
                 <i className="fa fa-exclamation-circle" />
-                <span>{`Remove table from xCluster config failed: ${xClusterConfig.name}`}</span>
+                <span>
+                  {deleteTableDetails
+                    ? `Failed to remove table "${getTableName(deleteTableDetails)}" from ${
+                        xClusterConfig.name
+                      }.`
+                    : `Failed to remove table from ${xClusterConfig.name}.`}
+                </span>
                 <a href={`/tasks/${response.taskUUID}`} target="_blank" rel="noopener noreferrer">
                   View Details
                 </a>
@@ -179,7 +193,12 @@ export function ReplicationTables({
           pagination={tablesInConfig && tablesInConfig.length > TABLE_MIN_PAGE_SIZE}
         >
           <TableHeaderColumn dataField="tableUUID" isKey={true} hidden />
-          <TableHeaderColumn dataField="tableName">Table Name</TableHeaderColumn>
+          <TableHeaderColumn
+            dataField="tableName"
+            dataFormat={(_, xClusterTable) => getTableName(xClusterTable)}
+          >
+            Table Name
+          </TableHeaderColumn>
           <TableHeaderColumn
             dataField="pgSchemaName"
             dataFormat={(cell: string, row: YBTable) => formatSchemaName(row.tableType, cell)}
@@ -200,11 +219,11 @@ export function ReplicationTables({
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="status"
-            dataFormat={(cell: XClusterTableStatus, row: XClusterTable) => (
+            dataFormat={(cell: XClusterTableStatus, xClusterTable: XClusterTable) => (
               <XClusterTableStatusLabel
                 status={cell}
-                streamId={row.streamId}
-                sourceUniverseTableUuid={row.tableUUID}
+                streamId={xClusterTable.streamId}
+                sourceUniverseTableUuid={getTableUuid(xClusterTable)}
                 sourceUniverseNodePrefix={sourceUniverse.universeDetails.nodePrefix}
                 sourceUniverseUuid={sourceUniverse.universeUUID}
               />
@@ -213,11 +232,11 @@ export function ReplicationTables({
             Replication Status
           </TableHeaderColumn>
           <TableHeaderColumn
-            dataFormat={(_cell, row: XClusterTable) => (
+            dataFormat={(_, xClusterTable: XClusterTable) => (
               <span className="lag-text">
                 <CurrentTableReplicationLag
-                  streamId={row.streamId}
-                  tableId={row.tableUUID}
+                  streamId={xClusterTable.streamId}
+                  tableId={getTableUuid(xClusterTable)}
                   nodePrefix={sourceUniverse.universeDetails.nodePrefix}
                   queryEnabled={isActive}
                   sourceUniverseUUID={xClusterConfig.sourceUniverseUUID}
@@ -302,7 +321,7 @@ export function ReplicationTables({
         />
       )}
       <DeleteReplicactionTableModal
-        deleteTableName={deleteTableDetails?.tableName ?? ''}
+        deleteTableName={deleteTableDetails ? getTableName(deleteTableDetails) : ''}
         onConfirm={() => {
           removeTableFromXCluster.mutate({
             ...xClusterConfig,

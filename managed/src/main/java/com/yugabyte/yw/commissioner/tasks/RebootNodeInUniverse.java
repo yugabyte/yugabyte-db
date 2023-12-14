@@ -76,103 +76,107 @@ public class RebootNodeInUniverse extends UniverseDefinitionTaskBase {
   public void run() {
     boolean isHardReboot = taskParams().isHardReboot;
     boolean skipWaitingForMasterLeader = taskParams().skipWaitingForMasterLeader;
+    checkUniverseVersion();
+    Universe universe =
+        lockAndFreezeUniverseForUpdate(
+            taskParams().expectedUniverseVersion, null /* Txn callback */);
+    try {
+      NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+      taskParams().azUuid = currentNode.azUuid;
+      taskParams().placementUuid = currentNode.placementUuid;
 
-    runUpdateTasks(
-        () -> {
-          Universe universe = getUniverse();
-          NodeDetails currentNode = universe.getNode(taskParams().nodeName);
-          taskParams().azUuid = currentNode.azUuid;
-          taskParams().placementUuid = currentNode.placementUuid;
+      if (!instanceExists(taskParams())) {
+        String msg = "No instance exists for " + taskParams().nodeName;
+        log.error(msg);
+        throw new RuntimeException(msg);
+      }
 
-          if (!instanceExists(taskParams())) {
-            String msg = "No instance exists for " + taskParams().nodeName;
-            log.error(msg);
-            throw new RuntimeException(msg);
-          }
+      preTaskActions();
 
-          preTaskActions();
+      createSetNodeStateTask(
+              currentNode, isHardReboot ? NodeState.HardRebooting : NodeState.Rebooting)
+          .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
 
-          createSetNodeStateTask(
-                  currentNode, isHardReboot ? NodeState.HardRebooting : NodeState.Rebooting)
+      // Stop the tserver.
+      if (currentNode.isTserver) {
+        boolean tserverAlive = isTserverAliveOnNode(currentNode, universe.getMasterAddresses());
+        if (tserverAlive) {
+          createTServerTaskForNode(currentNode, "stop")
               .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+        }
+      }
 
-          // Stop the tserver.
-          if (currentNode.isTserver) {
-            boolean tserverAlive = isTserverAliveOnNode(currentNode, universe.getMasterAddresses());
-            if (tserverAlive) {
-              createTServerTaskForNode(currentNode, "stop")
-                  .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-            }
-          }
+      // Stop Yb-controller on this node.
+      if (universe.isYbcEnabled()) {
+        createStopYbControllerTasks(Collections.singletonList(currentNode))
+            .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+      }
 
-          // Stop Yb-controller on this node.
-          if (universe.isYbcEnabled()) {
-            createStopYbControllerTasks(Collections.singletonList(currentNode))
+      // Stop the master process on this node.
+      if (currentNode.isMaster) {
+        boolean masterAlive = isMasterAliveOnNode(currentNode, universe.getMasterAddresses());
+        if (masterAlive) {
+          createStopMasterTasks(Collections.singleton(currentNode))
+              .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
+          if (!skipWaitingForMasterLeader) {
+            createWaitForMasterLeaderTask()
                 .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
           }
+        }
+      }
 
-          // Stop the master process on this node.
-          if (currentNode.isMaster) {
-            boolean masterAlive = isMasterAliveOnNode(currentNode, universe.getMasterAddresses());
-            if (masterAlive) {
-              createStopMasterTasks(Collections.singleton(currentNode))
-                  .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-              if (!skipWaitingForMasterLeader) {
-                createWaitForMasterLeaderTask()
-                    .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
-              }
-            }
-          }
+      // Reboot the node.
+      createRebootTasks(Collections.singletonList(currentNode), isHardReboot)
+          .setSubTaskGroupType(
+              isHardReboot ? SubTaskGroupType.HardRebootingNode : SubTaskGroupType.RebootingNode);
 
-          // Reboot the node.
-          createRebootTasks(Collections.singletonList(currentNode), isHardReboot)
-              .setSubTaskGroupType(
-                  isHardReboot
-                      ? SubTaskGroupType.HardRebootingNode
-                      : SubTaskGroupType.RebootingNode);
+      if (currentNode.isMaster) {
+        // Start the master.
+        createStartMasterProcessTasks(Collections.singleton(currentNode));
 
-          if (currentNode.isMaster) {
-            // Start the master.
-            createStartMasterProcessTasks(Collections.singleton(currentNode));
+        createWaitForServerReady(
+                currentNode, ServerType.MASTER, getSleepTimeForProcess(ServerType.MASTER))
+            .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
+      }
 
-            createWaitForServerReady(
-                    currentNode, ServerType.MASTER, getSleepTimeForProcess(ServerType.MASTER))
-                .setSubTaskGroupType(SubTaskGroupType.StartingMasterProcess);
-          }
+      // Start the tserver.
+      if (currentNode.isTserver) {
+        createTServerTaskForNode(currentNode, "start")
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
-          // Start the tserver.
-          if (currentNode.isTserver) {
-            createTServerTaskForNode(currentNode, "start")
-                .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+        // Wait for the tablet server to be responsive.
+        createWaitForServersTasks(Collections.singleton(currentNode), ServerType.TSERVER)
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
-            // Wait for the tablet server to be responsive.
-            createWaitForServersTasks(Collections.singleton(currentNode), ServerType.TSERVER)
-                .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+        createWaitForServerReady(
+                currentNode, ServerType.TSERVER, getSleepTimeForProcess(ServerType.TSERVER))
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+      }
 
-            createWaitForServerReady(
-                    currentNode, ServerType.TSERVER, getSleepTimeForProcess(ServerType.TSERVER))
-                .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
-          }
+      if (universe.isYbcEnabled()) {
+        createStartYbcTasks(Arrays.asList(currentNode))
+            .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
-          if (universe.isYbcEnabled()) {
-            createStartYbcTasks(Arrays.asList(currentNode))
-                .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+        // Wait for yb-controller to be responsive on each node.
+        createWaitForYbcServerTask(new HashSet<>(Arrays.asList(currentNode)))
+            .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+      }
 
-            // Wait for yb-controller to be responsive on each node.
-            createWaitForYbcServerTask(new HashSet<>(Arrays.asList(currentNode)))
-                .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-          }
+      // Update node state to running.
+      createSetNodeStateTask(currentNode, NodeDetails.NodeState.Live)
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
-          // Update node state to running.
-          createSetNodeStateTask(currentNode, NodeDetails.NodeState.Live)
-              .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
+      // Marks the update of this universe as a success only if all the tasks before it
+      // succeeded.
+      createMarkUniverseUpdateSuccessTasks()
+          .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
 
-          // Marks the update of this universe as a success only if all the tasks before it
-          // succeeded.
-          createMarkUniverseUpdateSuccessTasks()
-              .setSubTaskGroupType(SubTaskGroupType.StartingNodeProcesses);
-
-          getRunnableTask().runSubTasks();
-        });
+      getRunnableTask().runSubTasks();
+    } catch (Throwable t) {
+      log.error("Error executing task {}, error='{}'", getName(), t.getMessage(), t);
+      throw t;
+    } finally {
+      unlockUniverseForUpdate();
+    }
   }
 }

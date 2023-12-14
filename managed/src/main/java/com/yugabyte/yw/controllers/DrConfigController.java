@@ -147,8 +147,7 @@ public class DrConfigController extends AuthenticatedController {
     }
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
-        XClusterConfigTaskBase.getTableInfoList(
-            ybService, sourceUniverse, true /* excludeSystemTables */);
+        XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
         getRequestedTableInfoList(createForm.dbs, sourceTableInfoList);
 
@@ -160,8 +159,7 @@ public class DrConfigController extends AuthenticatedController {
         requestedTableInfoList, ConfigType.Txn, sourceUniverse, targetUniverse, confGetter);
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList =
-        XClusterConfigTaskBase.getTableInfoList(
-            ybService, targetUniverse, true /* excludeSystemTables */);
+        XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
     Map<String, String> sourceTableIdTargetTableIdMap =
         XClusterConfigTaskBase.getSourceTableIdTargetTableIdMap(
             requestedTableInfoList, targetTableInfoList);
@@ -332,8 +330,7 @@ public class DrConfigController extends AuthenticatedController {
         Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
-        XClusterConfigTaskBase.getTableInfoList(
-            ybService, sourceUniverse, true /* excludeSystemTables */);
+        XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
 
     // Todo: Always add non existing tables to the xCluster config on restart.
     Set<String> tableIds =
@@ -422,8 +419,7 @@ public class DrConfigController extends AuthenticatedController {
     log.debug("tableIds are {}", tableIds);
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
-        XClusterConfigTaskBase.getTableInfoList(
-            ybService, sourceUniverse, true /* excludeSystemTables */);
+        XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
         XClusterConfigTaskBase.filterTableInfoListByTableIds(sourceTableInfoList, tableIds);
 
@@ -432,8 +428,7 @@ public class DrConfigController extends AuthenticatedController {
     XClusterConfigController.certsForCdcDirGFlagCheck(sourceUniverse, newTargetUniverse);
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> newTargetTableInfoList =
-        XClusterConfigTaskBase.getTableInfoList(
-            ybService, newTargetUniverse, true /* excludeSystemTables */);
+        XClusterConfigTaskBase.getTableInfoList(ybService, newTargetUniverse);
     Map<String, String> sourceTableIdNewTargetTableIdMap =
         XClusterConfigTaskBase.getSourceTableIdTargetTableIdMap(
             requestedTableInfoList, newTargetTableInfoList);
@@ -524,6 +519,43 @@ public class DrConfigController extends AuthenticatedController {
     Universe targetUniverse =
         Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
 
+    // All the tables in DBs in replication on the source universe must be in the xCluster config.
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
+        XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
+    XClusterConfigTaskBase.groupByNamespaceId(
+            XClusterConfigTaskBase.filterTableInfoListByTableIds(
+                sourceTableInfoList, xClusterConfig.getTableIds()))
+        .forEach(
+            (namespaceId, tablesInfoList) -> {
+              Set<String> tableIdsInNamespace =
+                  sourceTableInfoList.stream()
+                      .filter(
+                          tableInfo ->
+                              XClusterConfigTaskBase.isXClusterSupported(tableInfo)
+                                  && tableInfo
+                                      .getNamespace()
+                                      .getId()
+                                      .toStringUtf8()
+                                      .equals(namespaceId))
+                      .map(XClusterConfigTaskBase::getTableId)
+                      .collect(Collectors.toSet());
+              Set<String> tableIdsNotInReplication =
+                  tableIdsInNamespace.stream()
+                      .filter(
+                          tableId ->
+                              !XClusterConfigTaskBase.getTableIds(tablesInfoList).contains(tableId))
+                      .collect(Collectors.toSet());
+              if (!tableIdsNotInReplication.isEmpty()) {
+                throw new PlatformServiceException(
+                    BAD_REQUEST,
+                    String.format(
+                        "To do a switchover, all the tables in a keyspace that exist on the source"
+                            + " universe and supports xCluster replication must be in replication:"
+                            + " missing table ids: %s in the keyspace: %s",
+                        tableIdsNotInReplication, namespaceId));
+              }
+            });
+
     // To do switchover, the xCluster config and all the tables in that config must be in
     // the green status because we are going to drop that config and the information for bad
     // replication streams will be lost.
@@ -542,8 +574,7 @@ public class DrConfigController extends AuthenticatedController {
     // Todo: PLAT-10130, handle cases where the planned failover task fails.
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList =
-        XClusterConfigTaskBase.getTableInfoList(
-            ybService, targetUniverse, true /* excludeSystemTables */);
+        XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
     Map<String, String> sourceTableIdTargetTableIdMap =
         xClusterUniverseService.getSourceTableIdTargetTableIdMap(
             targetUniverse, xClusterConfig.getReplicationGroupName());
@@ -652,8 +683,7 @@ public class DrConfigController extends AuthenticatedController {
     // Todo: Add pre-checks for user's input safetime.
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList =
-        XClusterConfigTaskBase.getTableInfoList(
-            ybService, targetUniverse, true /* excludeSystemTables */);
+        XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
 
     // Because during failover, the source universe could be down, we should rely on the target
     // universe to get the table map between source to target.

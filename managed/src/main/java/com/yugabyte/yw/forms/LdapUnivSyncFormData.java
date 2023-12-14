@@ -75,9 +75,6 @@ public class LdapUnivSyncFormData {
   @ApiModelProperty(value = "Allow the API to create the LDAP groups as DB superusers")
   private Boolean createGroups = false;
 
-  @ApiModelProperty(value = "Allow the API to drop a superuser role which is not an LDAP group")
-  private Boolean allowDropSuperuser = false;
-
   @ApiModelProperty(value = "List of users to exclude while revoking and dropping")
   private List<String> excludeUsers = new ArrayList<>();
 
@@ -105,12 +102,5 @@ public class LdapUnivSyncFormData {
       return false;
     }
     return this.createGroups;
-  }
-
-  public Boolean getAllowDropSuperuser() {
-    if (this.allowDropSuperuser == null) {
-      return false;
-    }
-    return this.allowDropSuperuser;
   }
 }

@@ -777,33 +777,6 @@ void PerTableLoadState::SortDriveLeaderLoad() {
   }
 }
 
-void PerTableLoadState::LogSortedLeaderLoad() {
-  // Sample output:
-  // ts1_uuid[ts1_load] ts2_uuid[ts2_load] ts4_uuid[ts4_load] -- ts3_uuid[ts3_load]
-  // Note: entries following "--" are leader blacklisted tservers
-
-  std::string s;
-  std::string blacklisted;
-  for (const auto& leader_set : sorted_leader_load_) {
-    for (const auto& ts_uuid : leader_set) {
-      if (global_state_->leader_blacklisted_servers_.find(ts_uuid) !=
-          global_state_->leader_blacklisted_servers_.end()) {
-        blacklisted += strings::Substitute(" $0[$1]", ts_uuid, GetLeaderLoad(ts_uuid));
-      } else {
-        s += strings::Substitute(" $0[$1]", ts_uuid, GetLeaderLoad(ts_uuid));
-      }
-    }
-  }
-
-  if (!blacklisted.empty()) {
-    s += " --" + blacklisted;
-  }
-
-  if (s.size() > 0) {
-    LOG(INFO) << "tservers sorted by whether leader blacklisted and load: " << s;
-  }
-}
-
 int PerTableLoadState::AdjustLeaderBalanceThreshold(int zone_set_size) {
   int adjusted_leader_balance_threshold = leader_balance_threshold_;
   if (adjusted_leader_balance_threshold != 0) {
@@ -831,6 +804,7 @@ Status PerTableLoadState::AddRunningTablet(const TabletId& tablet_id,
   auto& meta_ts = per_ts_meta_.at(ts_uuid);
   auto ret = meta_ts.running_tablets.insert(tablet_id);
   if (ret.second) {
+    VLOG(3) << "Adding running tablet " << tablet_id << " to " << ts_uuid;
     ++global_state_->per_ts_global_meta_[ts_uuid].running_tablets_count;
     ++total_running_;
     ++per_tablet_meta_[tablet_id].running;
@@ -851,6 +825,7 @@ Status PerTableLoadState::RemoveRunningTablet(
       "Could not find running tablet to remove: ts_uuid: $0, tablet_id: $1",
       ts_uuid, tablet_id);
   }
+  VLOG(3) << "Removing running tablet " << tablet_id << " from " << ts_uuid;
   global_state_->per_ts_global_meta_[ts_uuid].running_tablets_count -= num_erased;
   total_running_ -= num_erased;
   per_tablet_meta_[tablet_id].running -= num_erased;
@@ -880,7 +855,7 @@ Status PerTableLoadState::AddStartingTablet(
       tablets_over_replicated_.insert(tablet_id);
     }
     VLOG(3) << "Increased total_starting to "
-                << total_starting_ << " for tablet " << tablet_id << " and table " << table_id_;
+            << total_starting_ << " for tablet " << tablet_id << " and table " << table_id_;
   }
   return Status::OK();
 }
@@ -892,6 +867,7 @@ Status PerTableLoadState::AddLeaderTablet(
   auto& meta_ts = per_ts_meta_.at(ts_uuid);
   auto ret = meta_ts.leaders.insert(tablet_id);
   if (ret.second) {
+    VLOG(3) << "Added leader tablet " << tablet_id << " to " << ts_uuid;
     ++global_state_->per_ts_global_meta_[ts_uuid].leaders_count;
   }
   meta_ts.path_to_leaders[ts_path].insert(tablet_id);
@@ -902,6 +878,7 @@ Status PerTableLoadState::RemoveLeaderTablet(
     const TabletId& tablet_id, const TabletServerId& ts_uuid) {
   SCHECK(per_ts_meta_.find(ts_uuid) != per_ts_meta_.end(), IllegalState,
           Format(uninitialized_ts_meta_format_msg, ts_uuid, table_id_));
+  VLOG(3) << "Removing leader tablet " << tablet_id << " from " << ts_uuid;
   auto num_erased = per_ts_meta_.at(ts_uuid).leaders.erase(tablet_id);
   global_state_->per_ts_global_meta_[ts_uuid].leaders_count -= num_erased;
   return Status::OK();

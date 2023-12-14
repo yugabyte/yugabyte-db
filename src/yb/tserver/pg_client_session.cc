@@ -553,6 +553,10 @@ HybridTime GetInTxnLimit(const PgPerformOptionsPB& options, ClockBase* clock) {
   return in_txn_limit ? in_txn_limit : clock->Now();
 }
 
+Status Commit(client::YBTransaction* txn, PgResponseCache::Disabler disabler) {
+  return txn->CommitFuture().get();
+}
+
 } // namespace
 
 PgClientSession::PgClientSession(
@@ -895,11 +899,15 @@ Status PgClientSession::FinishTransaction(
   auto is_ddl = false;
   auto kind = PgClientSessionKind::kPlain;
   auto has_docdb_schema_changes = false;
+  std::optional<uint32_t> silently_altered_db;
   if (req.has_ddl_mode()) {
     const auto& ddl_mode = req.ddl_mode();
     is_ddl = true;
     kind = PgClientSessionKind::kDdl;
     has_docdb_schema_changes = ddl_mode.has_docdb_schema_changes();
+    if (ddl_mode.has_silently_altered_db()) {
+      silently_altered_db = ddl_mode.silently_altered_db().value();
+    }
   }
   auto& txn = Transaction(kind);
   if (!txn) {
@@ -917,7 +925,11 @@ Status PgClientSession::FinishTransaction(
   Session(kind)->SetTransaction(nullptr);
 
   if (req.commit()) {
-    const auto commit_status = txn_value->CommitFuture().get();
+    const auto commit_status = Commit(
+        txn_value.get(),
+        silently_altered_db ? response_cache_.Disable(*silently_altered_db)
+                            : PgResponseCache::Disabler());
+
     VLOG_WITH_PREFIX_AND_FUNC(2)
         << "ddl: " << is_ddl << ", txn: " << txn_value->id()
         << ", commit: " << commit_status;

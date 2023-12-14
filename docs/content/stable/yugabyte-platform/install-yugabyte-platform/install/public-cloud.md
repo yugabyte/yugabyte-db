@@ -3,7 +3,6 @@ title: Install YugabyteDB Anywhere on Public Cloud Overview
 headerTitle: Overview
 linkTitle: Overview
 description: Installing YugabyteDB Anywhere on public clouds
-image: /images/section_icons/deploy/enterprise.png
 menu:
   stable_yugabyte-platform:
     identifier: install-1-public-cloud

@@ -986,14 +986,6 @@ Status CatalogManager::CreateNewXReplStream(
       }
     }
 
-    if (has_consistent_snapshot_option) {
-      // TEMPORARY: The creation of the cdc_state table sometimes interferes with the write into
-      // the table from the AsyncAlterTable callback
-      // Just wait for the cdc_state table creation to finish
-      // TODO(#19211): Need to fix this as part of making createStream synchronous
-      SleepFor(MonoDelta::FromMilliseconds(100*kTimeMultiplier));
-    }
-
     auto require_history_cutoff = consistent_snapshot_option_use || record_type_option_all;
     RETURN_NOT_OK(SetAllCDCSDKRetentionBarriers(
         req, rpc, epoch, table_ids, stream->StreamId(), has_consistent_snapshot_option,
@@ -1002,10 +994,13 @@ Status CatalogManager::CreateNewXReplStream(
     // At this stage, establish the consistent snapshot time
     // This time is the same across all involved tablets and is the
     // mechanism through which consistency is established
+    auto stream_creation_time = GetCurrentTimeMicros();
     if (has_consistent_snapshot_option) {
-      consistent_snapshot_time = Clock()->MaxGlobalNow().ToUint64();
+      auto cs_hybrid_time = Clock()->MaxGlobalNow();
+      consistent_snapshot_time = cs_hybrid_time.ToUint64();
       LOG(INFO) << "Consistent Snapshot Time for stream " << stream->StreamId().ToString()
-                << " is: " << consistent_snapshot_time;
+                << " is: " << consistent_snapshot_time
+                << " = " << cs_hybrid_time;
 
       // Save the consistent_snapshot_time in the SysCDCStreamEntryPB catalog
       auto l = stream->LockForWrite();
@@ -1013,6 +1008,7 @@ Status CatalogManager::CreateNewXReplStream(
           consistent_snapshot_time);
       l.mutable_data()->pb.mutable_cdcsdk_stream_metadata()->set_consistent_snapshot_option(
           req.cdcsdk_consistent_snapshot_option());
+      l.mutable_data()->pb.set_stream_creation_time(stream_creation_time);
       l.mutable_data()->pb.set_state(SysCDCStreamEntryPB::ACTIVE);
       RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), stream));
       l.Commit();
@@ -1021,7 +1017,7 @@ Status CatalogManager::CreateNewXReplStream(
     }
     RETURN_NOT_OK(PopulateCDCStateTable(
         stream->StreamId(), table_ids, has_consistent_snapshot_option,
-        consistent_snapshot_option_use, consistent_snapshot_time));
+        consistent_snapshot_option_use, consistent_snapshot_time, stream_creation_time));
   } else {
     DCHECK(mode == CreateNewCDCStreamMode::kXClusterTableIds);
     std::vector<cdc::CDCStateTableEntry> entries;
@@ -1045,7 +1041,8 @@ Status CatalogManager::PopulateCDCStateTable(const xrepl::StreamId& stream_id,
                                              const std::vector<TableId>& table_ids,
                                              bool has_consistent_snapshot_option,
                                              bool consistent_snapshot_option_use,
-                                             uint64_t consistent_snapshot_time) {
+                                             uint64_t consistent_snapshot_time,
+                                             uint64_t stream_creation_time) {
 
   std::vector<cdc::CDCStateTableEntry> entries;
   for (const auto& table_id : table_ids) {
@@ -1058,7 +1055,7 @@ Status CatalogManager::PopulateCDCStateTable(const xrepl::StreamId& stream_id,
         if (consistent_snapshot_option_use)
           entry.snapshot_key = "";
 
-        entry.active_time = GetCurrentTimeMicros();
+        entry.active_time = stream_creation_time;
         entry.cdc_sdk_safe_time = consistent_snapshot_time;
       } else {
         entry.checkpoint = OpId().Invalid();
@@ -1120,9 +1117,11 @@ Status CatalogManager::SetAllCDCSDKRetentionBarriers(
     }
   }
 
-  // TEMPORARY: Just sleep a bit to allow ALTER TABLEs to finish.
-  // TODO(#19211): Make this function synchronous
-  SleepFor(MonoDelta::FromMilliseconds(500*kTimeMultiplier));
+  auto deadline = rpc->GetClientDeadline();
+  // TODO(#18934): Handle partial failures by rolling back all changes.
+  for (const auto& table_id : table_ids) {
+    RETURN_NOT_OK(WaitForAlterTableToFinish(table_id, deadline));
+  }
 
   return Status::OK();
 }
@@ -1160,8 +1159,8 @@ Status CatalogManager::SetWalRetentionForTable(
 Status CatalogManager::PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
     const scoped_refptr<TableInfo>& table,
     const yb::TabletId& tablet_id,
-    const xrepl::StreamId&  cdc_sdk_stream_id,
-    const yb::OpIdPB&   snapshot_safe_opid,
+    const xrepl::StreamId& cdc_sdk_stream_id,
+    const yb::OpIdPB& snapshot_safe_opid,
     const yb::HybridTime& proposed_snapshot_time,
     bool require_history_cutoff) {
 
@@ -1172,8 +1171,6 @@ Status CatalogManager::PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
                       << " and " << snapshot_safe_opid.index()
                       << ", proposed snapshot time: " << proposed_snapshot_time.ToUint64()
                       << ", require history cutoff: " << require_history_cutoff;
-
-  SharedLock lock(mutex_);
 
   std::vector<cdc::CDCStateTableEntry> entries;
 
@@ -2061,6 +2058,10 @@ Status CatalogManager::GetCDCStream(
     }
   }
 
+  if (stream_lock->pb.has_stream_creation_time()) {
+    stream_info->set_stream_creation_time(stream_lock->pb.stream_creation_time());
+  }
+
   return Status::OK();
 }
 
@@ -2181,6 +2182,11 @@ Status CatalogManager::ListCDCStreams(
             cdcsdk_stream_metadata.consistent_snapshot_option());
       }
     }
+
+    if (ltm->pb.has_stream_creation_time()) {
+      stream->set_stream_creation_time(ltm->pb.stream_creation_time());
+    }
+
   }
   return Status::OK();
 }
@@ -3834,6 +3840,35 @@ Status CatalogManager::UpdateCDCProducerOnTabletSplit(
     }
 
     for (const auto& stream : streams) {
+      auto last_active_time = GetCurrentTimeMicros();
+
+      // In the case of a Consistent Snapshot Stream, set the active_time of the children tablets
+      // to the corresponding value in the parent tablet.
+      // This will allow to establish that a child tablet is of interest to a stream
+      // iff the parent tablet is also of interest to the stream.
+      // Thus, retention barriers, inherited from the parent tablet, can be released
+      // on the children tablets also if not of interest to the stream
+      if (stream->IsConsistentSnapshotStream()) {
+        LOG_WITH_FUNC(INFO) << "Copy active time from parent to child tablets"
+                            << " Tablets involved: " << split_tablet_ids.ToString()
+                            << " Consistent Snapshot StreamId: " << stream->StreamId();
+
+        auto parent_entry_opt = VERIFY_RESULT(cdc_state_table_->TryFetchEntry(
+            {split_tablet_ids.source, stream->StreamId()},
+            cdc::CDCStateTableEntrySelector().IncludeActiveTime()));
+        DCHECK(parent_entry_opt);
+        DCHECK(parent_entry_opt->active_time);
+        if (parent_entry_opt && parent_entry_opt->active_time) {
+            last_active_time = *parent_entry_opt->active_time;
+        } else {
+            LOG_WITH_FUNC(WARNING)
+                << Format("Did not find $0 value in the cdc state table",
+                          parent_entry_opt ? "active_time" : "row")
+                << " for parent tablet: " << split_tablet_ids.source
+                << " and stream: " << stream->StreamId();
+        }
+      }
+
       // Insert children entries into cdc_state now, set the opid to 0.0 and the timestamp to
       // NULL. When we process the parent's SPLIT_OP in GetChanges, we will update the opid to
       // the SPLIT_OP so that the children pollers continue from the next records. When we process
@@ -3847,7 +3882,6 @@ Status CatalogManager::UpdateCDCProducerOnTabletSplit(
         entry.checkpoint = OpId().Min();
 
         if (stream_type == cdc::CDCSDK) {
-          auto last_active_time = GetCurrentTimeMicros();
           entry.active_time = last_active_time;
           entry.cdc_sdk_safe_time = last_active_time;
         }

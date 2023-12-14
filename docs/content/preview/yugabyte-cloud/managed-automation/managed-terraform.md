@@ -3,7 +3,6 @@ title: YugabyteDB Managed Terraform Provider
 headerTitle: Terraform Provider
 linkTitle: Terraform Provider
 description: Terraform Provider for YugabyteDB Managed.
-image: /images/section_icons/explore/administer.png
 headcontent: Manage YugabyteDB Managed accounts and deployments using the Terraform Provider
 menu:
   preview_yugabyte-cloud:

@@ -2,7 +2,6 @@
 title: Trace executed statements in YSQL
 headerTitle: Manually trace executed statements in YSQL
 description: Tracing executed statements in YSQL.
-image: /images/section_icons/secure/authentication.png
 menu:
   v2.18:
     name: Trace statements

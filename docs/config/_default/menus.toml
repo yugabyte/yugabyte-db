@@ -414,6 +414,13 @@
   [preview.params]
     showSection = true
 
+[[preview]]
+  name = "Tutorials"
+  weight = 7
+  identifier = "tutorials"
+  [preview.params]
+    showSection = true
+
 # [[preview]]
 #   name = "Migrate"
 #   weight = 6
@@ -424,7 +431,7 @@
 
 [[preview]]
   name = "Secure"
-  weight = 7
+  weight = 8
   identifier = "secure"
   url = "/preview/secure/"
   [preview.params]
@@ -432,7 +439,7 @@
 
 [[preview]]
   name = "Launch and Manage"
-  weight = 8
+  weight = 9
   identifier = "launch-and-manage"
   url = "/preview/launch-and-manage/"
   [preview.params]
@@ -440,7 +447,7 @@
 
 [[preview]]
   name = "Benchmark"
-  weight = 9
+  weight = 10
   identifier = "benchmark"
   url = "/preview/benchmark/"
   [preview.params]
@@ -795,8 +802,17 @@
     showSection = true
 
 [[stable]]
-  name = "Quick Start"
+  name = "Key benefits"
   weight = 3
+  identifier = "features"
+  url = "/stable/features/"
+  [stable.params]
+    showSection = true
+    hideChildren = true
+
+[[stable]]
+  name = "Quick Start"
+  weight = 4
   identifier = "quick-start"
   url = "/preview/quick-start-yugabytedb-managed/"
   [stable.params]
@@ -805,7 +821,7 @@
 
 [[stable]]
   name = "Explore"
-  weight = 4
+  weight = 5
   identifier = "explore"
   url = "/stable/explore/"
   [stable.params]
@@ -813,9 +829,16 @@
 
 [[stable]]
   name = "Develop"
-  weight = 5
+  weight = 6
   identifier = "develop"
   url = "/stable/develop/"
+  [stable.params]
+    showSection = true
+
+[[stable]]
+  name = "Tutorials"
+  weight = 7
+  identifier = "tutorials"
   [stable.params]
     showSection = true
 
@@ -829,7 +852,7 @@
 
 [[stable]]
   name = "Secure"
-  weight = 7
+  weight = 8
   identifier = "secure"
   url = "/stable/secure/"
   [stable.params]
@@ -837,7 +860,7 @@
 
 [[stable]]
   name = "Launch and Manage"
-  weight = 8
+  weight = 9
   identifier = "launch-and-manage"
   url = "/stable/launch-and-manage/"
   [stable.params]
@@ -850,7 +873,7 @@
 
 [[stable]]
   name = "Benchmark"
-  weight = 9
+  weight = 10
   identifier = "benchmark"
   url = "/stable/benchmark/"
   [stable.params]

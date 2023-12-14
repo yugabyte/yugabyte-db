@@ -59,8 +59,7 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
     }
   }
 
-  @Override
-  protected void freezeUniverseInTxn(Universe universe) {
+  private void freezeUniverseInTxn(Universe universe) {
     // Fetch the task params from the DB to start from fresh on retry.
     // Otherwise, some operations like name assignment can fail.
     fetchTaskDetailsFromDB();
@@ -139,14 +138,12 @@ public class CreateUniverse extends UniverseDefinitionTaskBase {
   // pattern below
   @Override
   public void run() {
+    log.info("Started {} task.", getName());
     // Cache the password before it is redacted.
     cachePasswordsIfNeeded();
-    super.runUpdateTasks(this::runTask);
-  }
-
-  private void runTask() {
-    log.info("Started {} task.", getName());
-    Universe universe = getUniverse();
+    Universe universe =
+        lockAndFreezeUniverseForUpdate(
+            taskParams().expectedUniverseVersion, this::freezeUniverseInTxn);
     try {
       Cluster primaryCluster = taskParams().getPrimaryCluster();
 

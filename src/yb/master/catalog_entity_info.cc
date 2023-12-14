@@ -1263,6 +1263,12 @@ const ReplicationSlotName CDCStreamInfo::GetCdcsdkYsqlReplicationSlotName() cons
   return ReplicationSlotName(l->pb.cdcsdk_ysql_replication_slot_name());
 }
 
+bool CDCStreamInfo::IsConsistentSnapshotStream() const {
+  auto l = LockForRead();
+  return l->pb.has_cdcsdk_stream_metadata() &&
+         l->pb.cdcsdk_stream_metadata().has_consistent_snapshot_option();
+}
+
 std::string CDCStreamInfo::ToString() const {
   auto l = LockForRead();
   if (l->pb.has_namespace_id()) {
