@@ -20,6 +20,7 @@ import io.fabric8.kubernetes.api.model.PersistentVolumeClaim;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.PodCondition;
 import io.fabric8.kubernetes.api.model.PodStatus;
+import io.fabric8.kubernetes.api.model.Quantity;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.api.model.Service;
 import io.fabric8.kubernetes.api.model.events.v1.Event;
@@ -617,6 +618,13 @@ public abstract class KubernetesManager {
       String helmReleaseName,
       String appName,
       String newDiskSize,
+      boolean newNamingStyle);
+
+  public abstract List<Quantity> getPVCSizeList(
+      Map<String, String> config,
+      String namespace,
+      String helmReleaseName,
+      String appName,
       boolean newNamingStyle);
 
   public abstract List<PersistentVolumeClaim> getPVCs(
