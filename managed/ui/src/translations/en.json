@@ -606,11 +606,11 @@
         },
         "switchover": {
           "initiateModal": {
-            "title": "Switchover",
+            "title": "Switchover to DR Replica: {{drReplicaName}}",
             "titleTooltip": "<paragraph>Switch the DR primary with the DR replica after waiting for replication drain so there will be no data loss.</paragraph>Replication drain allows the replication on the DR replica to catch up with the DR primary and be fully synchronized before initiating switchover.",
-            "instructions": "Wait for the standby cluster to be fully synchronized with the primary by <bold>draining replication</bold> before switchover.",
+            "instructions": "Wait for the DR replica cluster to be fully synchronized with the primary by <bold>draining replication</bold> before switchover",
             "noDataLoss": "There will be <bold>no data loss</bold> in switchover.",
-            "confirmationInstructions": "Enter DR Replica universe name to proceed.",
+            "confirmationInstructions": "Enter DR replica universe name to confirm.",
             "submitButton": "Initiate Switchover",
             "note": {
               "stopWorkload": "<bold>Stop application workloads</bold> before initiating switchover as all <bold>writes will be rejected</bold> during failover."
@@ -637,13 +637,13 @@
         },
         "failover": {
           "initiateModal": {
-            "title": "Failover",
+            "title": "Failover to DR Replica: {{drReplicaName}}",
             "description": "Start failover immediately at the cost of <bold>losing some data</bold> that is not replicated to the DR replica.",
             "estimatedDataLoss": {
-              "label": "Estimated Data Loss",
+              "label": "Potential Data Loss",
               "tooltip": "The estimated data loss is determined by the DR replica's safe time lag at the last known safe time."
             },
-            "confirmationInstructions": "Enter DR Replica universe name to proceed.",
+            "confirmationInstructions": "Enter DR Replica universe name to confirm.",
             "submitButton": "Initiate Failover",
             "error": {
               "taskFailure": "Failover task failed.",
@@ -827,13 +827,13 @@
             "step": {
               "selectTargetUniverse": {
                 "drReplica": "DR Replica Universe",
-                "nextButton": "Next: Configure bootstrap",
+                "nextButton": "Next: Configure Full Copy",
                 "error": {
                   "targetUniverseRequired": "Required."
                 }
               },
               "configureBootstrap": {
-                "infoText": "Initial seeding is required when the database contains data. This involves a process called bootstrapping. Bootstrapping requires a backup storage config as an intermediate third party storage, and is <bold>time and resource intensive.</bold>",
+                "infoText": "Initial full copy is required when the database contains data. Performing an initial full copy requires a backup storage config as an intermediate third party storage, and is time and resource intensive. This is also referred to as bootstrapping or initial seeding.",
                 "backupStorageConfig": {
                   "label": "Backup Storage Config",
                   "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both source and target universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>"
@@ -857,10 +857,10 @@
             "instruction": "Select the databases to enable disaster recovery for",
             "step": {
               "selectTables": {
-                "nextButton": "Next: Configure bootstrap"
+                "nextButton": "Next: Configure Full Copy"
               },
               "configureBootstrap": {
-                "infoText": "<paragraph>The selected databases and/or tables contain <bold>data that is not yet replicated</bold> for DR. To enable DR for these databases and/or tables, a bootstrap will be required before aynchronous replication from the DR primary universe to the DR replica universe can be established.</paragraph><paragraph>Are you sure you want to <bold>bootstrap</bold> and add these databases and/or tables?</paragraph>",
+                "infoText": "<paragraph>The selected databases and/or tables contain <bold>data that is not yet replicated</bold> for DR. To enable DR for these databases and/or tables, a fully copy will be required before aynchronous replication from the DR primary universe to the DR replica universe can be established.</paragraph><paragraph>Are you sure you want to perform a <bold>full copy</bold> and add these databases and/or tables?</paragraph>",
                 "backupStorageConfig": {
                   "label": "Backup Storage Config",
                   "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both source and target universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>"
@@ -903,8 +903,8 @@
         "selectTable": {
           "error": {
             "failedToFetchIsBootstrapRequired": {
-              "title": "Table bootstrap verification failed.",
-              "body": "An error occured while verifying whether the selected tables require bootstrapping."
+              "title": "Table full copy verification failed.",
+              "body": "An error occured while verifying whether the selected tables require fully copying."
             },
             "validationMinimumTableUuids": {
               "title": "No tables selected.",
@@ -914,7 +914,7 @@
           "warning": {
             "insufficientDiskSpace": {
               "title": "Warning: You may need additional disk space.",
-              "body": "Some selected tables require bootstrapping. We recommend having at least {{bootstrapMinFreeDiskSpaceGb}} GB of free disk space in the source universe."
+              "body": "Some selected tables require full copying. We recommend having at least {{bootstrapMinFreeDiskSpaceGb}} GB of free disk space in the source universe."
             }
           }
         },
@@ -977,16 +977,16 @@
           "step": {
             "selectTables": {
               "instruction": "1. Select the tables you want to restart replication for.",
-              "submitButton": "Next: Configure boostrap"
+              "submitButton": "Next: Configure Full Copy"
             },
             "configureBootstrap": {
-              "instruction": "2. Configure bootstrap.",
-              "submitButton": "Restart Replication"
+              "instruction": "2. Configure Full Copy.",
+              "submitButton": "Create a New Full Copy"
             }
           },
           "error": {
-            "requestFailure": "Restart replication request failed.",
-            "taskFailure": "Restart replication task failed."
+            "requestFailure": "Create full copy request failed.",
+            "taskFailure": "Create full copy task failed."
           }
         }
       },
