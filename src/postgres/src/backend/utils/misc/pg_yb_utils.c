@@ -101,6 +101,7 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pgstat.h"
 #include "nodes/readfuncs.h"
+#include "yb_ash.h"
 
 #ifdef __linux__
 #include <sys/prctl.h>
@@ -865,6 +866,8 @@ YBInitPostgresBackend(
 		YBCInitPgGate(type_table, count, callbacks, session_id, &MyProc->yb_ash_metadata,
 					  &MyProc->yb_is_ash_metadata_set);
 		YBCInstallTxnDdlHook();
+		if (YBEnableAsh())
+			YbAshInstallHooks();
 
 		/*
 		 * For each process, we create one YBC session for PostgreSQL to use

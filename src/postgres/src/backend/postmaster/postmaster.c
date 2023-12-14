@@ -143,6 +143,7 @@
 
 #include "common/pg_yb_common.h"
 #include "pg_yb_utils.h"
+#include "yb_ash.h"
 
 #ifdef EXEC_BACKEND
 #include "storage/spin.h"
@@ -1036,6 +1037,10 @@ PostmasterMain(int argc, char *argv[])
 	 */
 	if (!YBIsEnabledInPostgresEnvVar())
 		ApplyLauncherRegister();
+
+	/* Register ASH collector */
+	if (YBIsEnabledInPostgresEnvVar() && YBEnableAsh())
+		YbAshRegister();
 
 	/*
 	 * process any libraries that should be preloaded at postmaster start
