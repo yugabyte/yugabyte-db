@@ -573,11 +573,11 @@ const getFormSubmitLabel = (
         return 'Validate Table Selection';
       }
       if (bootstrapRequired) {
-        return 'Next: Configure Bootstrap';
+        return 'Next: Configure Fully Copy';
       }
       return 'Enable Replication';
     case FormStep.CONFIGURE_BOOTSTRAP:
-      return 'Bootstrap and Enable Replication';
+      return 'Full Copy and Enable Replication';
     default:
       return assertUnreachableCase(formStep);
   }
