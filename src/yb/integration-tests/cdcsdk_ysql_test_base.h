@@ -129,6 +129,10 @@ DECLARE_bool(cdc_populate_end_markers_transactions);
 DECLARE_uint64(cdc_stream_records_threshold_size_bytes);
 DECLARE_int64(cdc_resolve_intent_lag_threshold_ms);
 DECLARE_bool(enable_tablet_split_of_cdcsdk_streamed_tables);
+DECLARE_bool(cdc_enable_postgres_replica_identity);
+DECLARE_uint64(ysql_cdc_active_replication_slot_window_ms);
+DECLARE_bool(enable_log_retention_by_op_idx);
+DECLARE_bool(TEST_yb_enable_cdc_consistent_snapshot_streams);
 
 namespace yb {
 
@@ -581,6 +585,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const double& timeout_secs = 5);
 
   Status XreplValidateSplitCandidateTable(const TableId& table);
+
+  void LogRetentionBarrierAndRelatedDetails(const GetCheckpointResponsePB& checkpoint_result,
+                                            const tablet::TabletPeerPtr& tablet_peer);
 };
 
 }  // namespace cdc

@@ -305,6 +305,10 @@ class TabletServiceAdminImpl : public TabletServerAdminServiceIf {
 
   Status DoCreateTablet(const CreateTabletRequestPB* req, CreateTabletResponsePB* resp);
 
+  Status SetupCDCSDKRetention(const tablet::ChangeMetadataRequestPB* req,
+                              ChangeMetadataResponsePB* resp,
+                              const tablet::TabletPeerPtr& peer);
+
   // Used to implement wait/signal mechanism for backfill requests.
   // Since the number of concurrently allowed backfill requests is
   // limited.

@@ -2094,6 +2094,40 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIt
   return std::move(iter);
 }
 
+// This is called From ChangeMetadaOperation::Apply during the
+// creation of the stream and also possibly during Tablet Bootstrap.
+//
+// One thing to note here is that the retention barrier on the consensus layer
+// is not set in both these situations. This is no different from the
+// current behaviour during Tablet Bootstrap. This is alright since
+// that is only for the Log Cache's eviction policy. The Cache will reload
+// from the Log segments if there is a cache miss.
+//
+// Here, a stream is setting its initial retention barrier on the tablet.
+// It will be conservative. That is, it will reset the barrier only if
+// the current barrier is ahead of its requirement. If there is already
+// another slower consumer with a stricter barrier requirement, that
+// will be left alone and the barrier will not be reset.
+Status Tablet::SetAllInitialCDCSDKRetentionBarriers(
+  OpId cdc_sdk_op_id, MonoDelta cdc_sdk_op_id_expiration, HybridTime cdc_sdk_history_cutoff,
+  bool require_history_cutoff) {
+
+  // WAL, History, Intents Retention
+  if (VERIFY_RESULT(metadata_->SetAllInitialCDCSDKRetentionBarriers(cdc_sdk_op_id,
+                                                                    cdc_sdk_history_cutoff,
+                                                                    require_history_cutoff))) {
+    // Intents Retention setting on txn_participant
+    // 1. cdc_sdk_op_id - opid beyond which GC will not happen
+    // 2. cdc_sdk_op_id_expiration - time limit upto which intents barrier setting holds
+    auto txn_participant = transaction_participant();
+    if (txn_participant) {
+      txn_participant->SetIntentRetainOpIdAndTime(cdc_sdk_op_id, cdc_sdk_op_id_expiration);
+    }
+  }
+
+  return Status::OK();
+}
+
 Status Tablet::CreatePreparedChangeMetadata(
     ChangeMetadataOperation *operation, const Schema* schema, IsLeaderSide is_leader_side) {
   if (schema) {

@@ -3286,5 +3286,16 @@ namespace cdc {
     return cm.XreplValidateSplitCandidateTable(*table);
   }
 
+  void CDCSDKYsqlTest::LogRetentionBarrierAndRelatedDetails(
+    const GetCheckpointResponsePB& checkpoint_result,
+    const tablet::TabletPeerPtr& tablet_peer) {
+
+    LOG(INFO) << "Snapshot Time : " << checkpoint_result.snapshot_time();
+    LOG(INFO) << "History cutoff: " << tablet_peer->get_cdc_sdk_safe_time();
+    LOG(INFO) << "Snapshot Safe Opid: " <<  checkpoint_result.checkpoint().op_id()
+              << ", WAL index protected from: " << tablet_peer->get_cdc_min_replicated_index()
+              << ", Intents protected from: " << tablet_peer->cdc_sdk_min_checkpoint_op_id();
+  }
+
 } // namespace cdc
 } // namespace yb

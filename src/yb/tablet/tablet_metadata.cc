@@ -1465,6 +1465,51 @@ Status RaftGroupMetadata::set_cdc_sdk_safe_time(const HybridTime& cdc_sdk_safe_t
   return Flush();
 }
 
+Result<bool> RaftGroupMetadata::SetAllInitialCDCSDKRetentionBarriers(
+    OpId cdc_sdk_op_id, HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff) {
+
+  // WAL retention
+  //  cdc_min_replicated_index : indicates if a WAL segment is being used by CDC
+  //                             and thus impacts GC of the WAL segments
+  if (cdc_min_replicated_index() > cdc_sdk_op_id.index) {
+    LOG_WITH_PREFIX(INFO) << "Setting cdc_min_replicated index WAL retention barrier to "
+                          << cdc_sdk_op_id.index;
+    RETURN_NOT_OK(set_cdc_min_replicated_index(cdc_sdk_op_id.index));
+  } else {
+    LOG_WITH_PREFIX(INFO) << "Skipping setting cdc_min_replicated index WAL retention barrier."
+                          << " Stricter requirement at " << cdc_min_replicated_index()
+                          << ", current requirement is for " << cdc_sdk_op_id.index;
+  }
+
+  // History Retention
+  if (require_history_cutoff) {
+    if (cdc_sdk_safe_time() == HybridTime::kInvalid ||
+        cdc_sdk_safe_time() > cdc_sdk_history_cutoff) {
+      LOG_WITH_PREFIX(INFO) << "Setting history retention barrier to " << cdc_sdk_history_cutoff;
+      RETURN_NOT_OK(set_cdc_sdk_safe_time(cdc_sdk_history_cutoff));
+    } else {
+      LOG_WITH_PREFIX(INFO) << "Skipping setting history retention barrier."
+                            << " Stricter requirement at " << cdc_sdk_safe_time()
+                            << ", current requirement is for " << cdc_sdk_history_cutoff;
+    }
+  }
+
+  // Intents Retention
+  //  set_cdc_sdk_min_checkpoint_op_id - opid beyond which GC will not happen
+  if (cdc_sdk_min_checkpoint_op_id() == OpId::Invalid() ||
+      cdc_sdk_min_checkpoint_op_id() > cdc_sdk_op_id) {
+    LOG_WITH_PREFIX(INFO) << "Setting intents retention barrier to " << cdc_sdk_op_id;
+    RETURN_NOT_OK(set_cdc_sdk_min_checkpoint_op_id(cdc_sdk_op_id));
+  } else {
+    LOG_WITH_PREFIX(INFO) << "Skipping setting intents retention barrier."
+                          << " Stricter requirement at " << cdc_sdk_min_checkpoint_op_id()
+                          << ", current requirement is for " << cdc_sdk_op_id;
+    return false;
+  }
+
+  return true;
+}
+
 Status RaftGroupMetadata::SetIsUnderXClusterReplicationAndFlush(
     bool is_under_xcluster_replication) {
   {
