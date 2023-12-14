@@ -38,7 +38,7 @@ The following is an example of a payload that is collected:
     "UUID": "ba4786e8-5923-11ee-8621-06e7faf40beb",
     "start_time": "2023-12-14 12:21:53",
     "yb_voyager_version": "1.6.1",
-    "last_updated_time": "2023-02-14 12:29:49",
+    "last_updated_time": "2023-12-14 12:29:49",
     "source_db_type": "oracle",
     "source_db_version": "Oracle Database 19c Enterprise Edition Release 19.0.0.0.0 - Production",
     "issues": "[
