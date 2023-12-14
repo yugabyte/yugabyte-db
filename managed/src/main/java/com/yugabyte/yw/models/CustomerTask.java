@@ -168,6 +168,9 @@ public class CustomerTask extends Model {
     @EnumValue("KubernetesOverridesUpgrade")
     KubernetesOverridesUpgrade,
 
+    @EnumValue("EditKubernetesUniverse")
+    EditKubernetesUniverse,
+
     @EnumValue("CertsRotate")
     CertsRotate,
 
@@ -377,6 +380,8 @@ public class CustomerTask extends Model {
           return completed ? "Upgraded GFlags " : "Upgrading GFlags ";
         case KubernetesOverridesUpgrade:
           return completed ? "Upgraded Kubernetes Overrides " : "Upgrading Kubernetes Overrides ";
+        case EditKubernetesUniverse:
+          return completed ? "Edited Kubernetes Universe  " : "Editing Kubernetes Universe";
         case CertsRotate:
           return completed ? "Updated Certificates " : "Updating Certificates ";
         case TlsToggle:

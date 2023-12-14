@@ -185,6 +185,10 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
             configBuilder.getServerBlacklistBuilder();
         for (String nodeName : blacklistNodes) {
           NodeDetails node = universe.getNode(nodeName);
+          if (node == null) {
+            log.info("Skipping non existing hosts");
+            continue;
+          }
           if (node.cloudInfo.private_ip != null) {
             blacklistBuilder.addHosts(
                 ProtobufHelper.hostAndPortToPB(

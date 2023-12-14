@@ -82,6 +82,8 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.DestroyKubernetesUniverse,
           TaskType.CreateUniverse,
           TaskType.EditUniverse,
+          TaskType.UpdateKubernetesDiskSize,
+          TaskType.EditKubernetesUniverse,
           TaskType.ReadOnlyClusterCreate,
           TaskType.AddNodeToUniverse,
           TaskType.RemoveNodeFromUniverse,
@@ -97,7 +99,8 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.ReinstallNodeAgent,
           TaskType.KubernetesOverridesUpgrade,
           TaskType.GFlagsKubernetesUpgrade,
-          TaskType.SoftwareKubernetesUpgrade);
+          TaskType.SoftwareKubernetesUpgrade,
+          TaskType.RestartUniverseKubernetesUpgrade);
 
   @Override
   protected Application provideApplication() {
