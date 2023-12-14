@@ -78,9 +78,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       Universe universe =
           lockAndFreezeUniverseForUpdate(
               taskParams().expectedUniverseVersion, null /* Txn callback */);
-      if (isFirstTry()) {
-        verifyClustersConsistency();
-      }
+      addBasicPrecheckTasks();
       kubernetesStatus.createYBUniverseEventStatus(
           universe, taskParams().getKubernetesResourceDetails(), getName(), getUserTaskUUID());
       // Reset any state from previous tasks if this is a new invocation.

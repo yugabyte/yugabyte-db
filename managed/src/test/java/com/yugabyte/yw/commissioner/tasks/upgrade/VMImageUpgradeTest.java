@@ -30,6 +30,7 @@ import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
@@ -103,6 +104,7 @@ public class VMImageUpgradeTest extends UpgradeTaskTest {
     super.setUp();
 
     vmImageUpgrade.setUserTaskUUID(UUID.randomUUID());
+    RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.enabled", "false");
   }
 
   private TaskInfo submitTask(VMImageUpgradeParams requestParams, int version) {

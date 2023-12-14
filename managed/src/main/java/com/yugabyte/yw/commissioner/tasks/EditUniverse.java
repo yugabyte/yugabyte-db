@@ -49,9 +49,7 @@ public class EditUniverse extends EditUniverseTaskBase {
 
   @Override
   protected void createPrecheckTasks(Universe universe) {
-    if (isFirstTry()) {
-      verifyClustersConsistency();
-    }
+    addBasicPrecheckTasks();
   }
 
   protected void freezeUniverseInTxn(Universe universe) {

@@ -55,6 +55,11 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
   }
 
   @Override
+  protected void createPrecheckTasks(Universe universe) {
+    addBasicPrecheckTasks();
+  }
+
+  @Override
   public void run() {
     log.info("Started {} task for uuid={}", getName(), params().getUniverseUUID());
 
@@ -78,10 +83,6 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
                 + "\" as it doesn't have any RO clusters.";
         log.error(msg);
         throw new RuntimeException(msg);
-      }
-
-      if (isFirstTry()) {
-        verifyClustersConsistency();
       }
 
       preTaskActions();

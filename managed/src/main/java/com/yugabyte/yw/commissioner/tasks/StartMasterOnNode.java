@@ -40,6 +40,11 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
   }
 
   @Override
+  protected void createPrecheckTasks(Universe universe) {
+    addBasicPrecheckTasks();
+  }
+
+  @Override
   public void run() {
     log.info(
         "Started {} task for node {} in univ uuid={}",
@@ -112,9 +117,6 @@ public class StartMasterOnNode extends UniverseDefinitionTaskBase {
           universe.getName());
 
       preTaskActions();
-      if (isFirstTry()) {
-        verifyClustersConsistency();
-      }
 
       if (currentNode.masterState == null) {
         saveNodeStatus(
