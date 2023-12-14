@@ -191,11 +191,13 @@ public class UniverseTableHandler {
                       Function.identity()));
     }
 
-    // Fetch colocated keyspaces. excludeColocatedTables effectively means
-    // 'exclude tables from colocated keyspaces'.
-    Set<String> colocatedKeySpaces = Collections.emptySet();
-    if (excludeColocatedTables) {
-      colocatedKeySpaces = getColocatedKeySpaces(tableInfoList);
+    Set<String> excludedKeyspaces = new HashSet<>();
+
+    // Do not allow xcluster replication to be set up for colocated dbs if db rpc does not contain
+    // colocated information.
+    // Note: excludeColocatedTables effectively means 'exclude tables from colocated keyspaces'.
+    if ((!hasColocationInfo && xClusterSupportedOnly) || excludeColocatedTables) {
+      excludedKeyspaces.addAll(getColocatedKeySpaces(tableInfoList));
     }
 
     Map<String, String> indexTableMainTableMap = new HashMap<>();
@@ -212,8 +214,7 @@ public class UniverseTableHandler {
     for (TableInfo table : tableInfoList) {
       TablePartitionInfoKey tableKey =
           new TablePartitionInfoKey(table.getName(), table.getNamespace().getName());
-      if (excludeColocatedTables && colocatedKeySpaces.contains(table.getNamespace().getName())) {
-        // Exclude tables from colocated keyspaces, if needed.
+      if (excludedKeyspaces.contains(table.getNamespace().getName())) {
         continue;
       }
       if (!includeColocatedParentTables && colocatedParentTablesMap.containsKey(tableKey)) {
