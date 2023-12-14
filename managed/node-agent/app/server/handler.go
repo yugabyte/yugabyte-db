@@ -46,14 +46,15 @@ func RetrieveUser(ctx context.Context, apiToken string) error {
 // Registers the node agent to the platform.
 func RegisterNodeAgent(ctx context.Context, apiToken string) error {
 	config := util.CurrentConfig()
-	host := config.String(util.NodeIpKey)
+	host := config.String(util.NodeBindIpKey)
 	port := config.String(util.NodePortKey)
 	version := config.String(util.PlatformVersionKey)
 	util.FileLogger().Infof(ctx,
 		"Starting Node Agent registration (Version: %s)", version)
-	util.FileLogger().Info(ctx, "Starting RPC server...")
+	addr := fmt.Sprintf("%s:%s", host, port)
+	util.FileLogger().Infof(ctx, "Starting RPC server on %s...", addr)
 	serverConfig := &RPCServerConfig{
-		Address: fmt.Sprintf("%s:%s", host, port),
+		Address: addr,
 	}
 	// Start server to verify host.
 	server, err := NewRPCServer(ctx, serverConfig)
@@ -123,5 +124,46 @@ func UnregisterNodeAgent(ctx context.Context, apiToken string) error {
 	}
 	config.Remove(util.NodeAgentIdKey)
 	util.FileLogger().Infof(ctx, "Node Agent Unregistration Successful")
+	return nil
+}
+
+// ValidateNodeAgentIfExists validates if the existing node agent communication works.
+func ValidateNodeAgentIfExists(ctx context.Context, apiToken string) error {
+	config := util.CurrentConfig()
+	getNodeAgentHandler := task.NewGetNodeAgentHandler(apiToken)
+	err := executor.GetInstance().ExecuteTask(ctx, getNodeAgentHandler.Handle)
+	if err == util.ErrNotExist {
+		util.FileLogger().Info(ctx, "Node Agent does not exist")
+		return err
+	}
+	if err != nil {
+		util.FileLogger().Errorf(ctx, "Node Agent Get failed - %s", err)
+		return err
+	}
+	nodeAgent := getNodeAgentHandler.Result()
+	if nodeAgent.State != string(model.Ready) {
+		err = fmt.Errorf("Node Agent state %s is not ready", nodeAgent.State)
+		util.FileLogger().Errorf(ctx, "Node Agent validation failed - %s", err)
+		return err
+	}
+	nodeAgentId := config.String(util.NodeAgentIdKey)
+	if nodeAgentId == "" {
+		// Fix the node agent ID in case it was not saved.
+		err = config.Update(util.NodeAgentIdKey, nodeAgent.Uuid)
+		if err != nil {
+			util.ConsoleLogger().Fatalf(ctx, "Unable to store node agent ID - %s", err.Error())
+		}
+	} else if nodeAgentId != nodeAgent.Uuid {
+		err = fmt.Errorf("Node Agent ID %s does not match", nodeAgent.Uuid)
+		util.FileLogger().Errorf(ctx, "Node Agent validation failed - %s", err)
+		return err
+	}
+	// Validate the keys by not using the API token.
+	getNodeAgentHandler = task.NewGetNodeAgentHandler("")
+	err = executor.GetInstance().ExecuteTask(ctx, getNodeAgentHandler.Handle)
+	if err != nil {
+		util.FileLogger().Errorf(ctx, "Node Agent Get failed - %s", err)
+		return err
+	}
 	return nil
 }
