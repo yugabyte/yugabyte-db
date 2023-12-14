@@ -1,7 +1,7 @@
 ---
-title: Build applications
-headerTitle: Build an application
-linkTitle: Build an application
+title: Build a hello world application with YugabyteDB
+headerTitle: Hello world
+linkTitle: Hello world
 description: Build an application using your favorite programming language.
 headcontent: Use your favorite programming language to build an application that uses YSQL or YCQL APIs.
 image: /images/section_icons/develop/api-icon.png
@@ -10,7 +10,7 @@ aliases:
 menu:
   preview_tutorials:
     identifier: build-apps
-    parent: tutorials
+    parent: tutorials-first
 type: indexpage
 weight: 5
 ---
