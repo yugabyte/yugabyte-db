@@ -21,8 +21,8 @@ Unless otherwise noted, x86 operating systems are supported on all supported ver
 | :--------------- | :--- | :--- | :--- |
 | CentOS7 | {{<icon/yes>}} |   |
 | CentOS8 | {{<icon/yes>}} |   |
-| ALMA Linux 8 | {{<icon/yes>}} | {{<icon/yes>}} |
-| ALMA Linux 9 | {{<icon/yes>}} | {{<icon/yes>}} |
+| AlmaLinux 8 | {{<icon/yes>}} | {{<icon/yes>}} |
+| AlmaLinux 9 | {{<icon/yes>}} | {{<icon/yes>}} |
 | Ubuntu 18 | {{<icon/yes>}} |   |
 | Ubuntu 20 | {{<icon/yes>}} |   |
 | Ubuntu 22 | {{<icon/yes>}} |   | 2.18.5, 2.20.1 |
@@ -37,12 +37,12 @@ YugabyteDB Anywhere supports the following operating systems and architectures.
 
 Unless otherwise noted, operating systems are supported on all supported versions of YugabyteDB and YugabyteDB Anywhere.
 
-| Operating system | x86  | ARM  | Supported versions |
+| Operating system | x86  | ARM  | Supported versions and notes |
 | :--------------- | :--- | :--- | :--- |
-| CentOS7 | {{<icon/yes>}} |   |
+| CentOS7 | {{<icon/yes>}} |   | Default for YBA-deployed nodes |
 | CentOS8 | {{<icon/yes>}} |   |
-| ALMA Linux 8 | {{<icon/yes>}} | {{<icon/yes>}} |
-| ALMA Linux 9 | {{<icon/yes>}} | {{<icon/yes>}} |
+| AlmaLinux 8 | {{<icon/yes>}} | {{<icon/yes>}} |
+| AlmaLinux 9 | {{<icon/yes>}} | {{<icon/yes>}} |
 | Ubuntu 18 | {{<icon/yes>}} |   | |
 | Ubuntu 20 | {{<icon/yes>}} |   | |
 | Ubuntu 22 | {{<icon/yes>}} |   | 2.18.5, 2.20.1 |

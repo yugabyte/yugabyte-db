@@ -23,7 +23,7 @@ In particular, the main YugabyteDB process, the YB-TServer, is multi-threaded. A
 
 ## ntp
 
- If your instance does not have public Internet access, make sure the ntp package is installed:
+If your instance does not have public Internet access, make sure the ntp package is installed:
 
 ```sh
 $ sudo yum install -y ntp
