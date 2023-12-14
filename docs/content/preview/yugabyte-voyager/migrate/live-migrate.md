@@ -15,7 +15,7 @@ rightNav:
   hideH4: true
 ---
 
-This page describes the steps to perform and verify a successful live migration to YugabyteDB, including changes that continuously occur on the source.
+The following instructions describe the steps to perform and verify a successful live migration to YugabyteDB, including changes that continuously occur on the source.
 
 ## Live migration workflow
 
@@ -176,7 +176,7 @@ The `yb-voyager export schema` command extracts the schema from the source datab
 
 The `source_db_schema` argument specifies the schema of the source database.
 
-- For Oracle, `source-db-schema` can take only one schema name and you can migrate _only one_ schema at a time.
+- For Oracle, `source-db-schema` can take only one schema name and you can migrate *only one* schema at a time.
 
 {{< /note >}}
 
@@ -342,7 +342,7 @@ Some important metrics such as the number of events, ingestion rate, and so on, 
 | -----------------------------  |  ----------------------------- |
 ```
 
-The entire import process is designed to be _restartable_ if yb-voyager terminates when the data import is in progress. If restarted, the data import resumes from its current state.
+The entire import process is designed to be *restartable* if yb-voyager terminates when the data import is in progress. If restarted, the data import resumes from its current state.
 
 {{< note title="Note">}}
 The arguments `table-list` and `exclude-table-list` are not supported in live migration.
@@ -462,7 +462,7 @@ yb-voyager end migration --export-dir <EXPORT_DIR> \
         --backup-dir <BACKUP_DIR>
 ```
 
-Note that after you end the migration, you will _not_ be able to continue further. If you wish to back up the schema, data, log files, and the migration reports (`analyze-schema` report and `get data-migration-report` output) for future reference, the command provides an additional argument `--backup-dir`, using which you can pass the path of the directory where the backup content needs to be saved (based on what you choose to back up).
+Note that after you end the migration, you will *not* be able to continue further. If you wish to back up the schema, data, log files, and the migration reports (`analyze-schema` report and `get data-migration-report` output) for future reference, the command provides an additional argument `--backup-dir`, using which you can pass the path of the directory where the backup content needs to be saved (based on what you choose to back up).
 
 Refer to [end migration](../../reference/end-migration/) for more details on the arguments.
 
@@ -471,7 +471,7 @@ Refer to [end migration](../../reference/end-migration/) for more details on the
 - Schema changes on the source Oracle database will not be recognized during the live migration.
 - Tables without primary key are not supported.
 - Truncating a table on the source database is not taken into account; you need to manually truncate tables on your YugabyteDB cluster.
-- Some Oracle datatypes are unsupported - User Defined Types (UDT), NCHAR, NVARCHAR, VARRAY, BLOB, CLOB, and NCLOB.
+- Some Oracle data types are unsupported - User Defined Types (UDT), NCHAR, NVARCHAR, VARRAY, BLOB, CLOB, and NCLOB.
 - Case-sensitive table names or column names are partially supported. YugabyteDB Voyager converts them to case-insensitive names. For example, an "Accounts" table in a source Oracle database is migrated as `accounts` (case-insensitive) to a YugabyteDB database.
 - Reserved keywords such as "group", "user", and so on, as table names, or column names are unsupported.
 - Tables or column names having more than 30 characters are not supported.
