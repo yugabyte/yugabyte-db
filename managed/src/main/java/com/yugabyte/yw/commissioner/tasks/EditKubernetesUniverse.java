@@ -417,7 +417,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           true,
           true,
           newNamingStyle,
-          isReadOnlyCluster);
+          isReadOnlyCluster,
+          KubernetesCommandExecutor.CommandType.HELM_UPGRADE,
+          universe.isYbcEnabled(),
+          universe.getUniverseDetails().getYbcSoftwareVersion());
     }
     if (instanceTypeChanged || restartAllPods) {
       upgradePodsTask(
