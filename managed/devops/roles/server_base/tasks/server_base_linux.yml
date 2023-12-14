@@ -116,16 +116,6 @@
         backup: no
       with_items: "{{ repos.files }}"
 
-    - name: Replace mirror links from https to http
-      become: yes
-      become_method: sudo
-      replace:
-        dest: "{{ item.path }}"
-        regexp: '^(.*)https(.*)$'
-        replace: '\1http\2'
-        backup: no
-      with_items: "{{ repos.files }}"
-
     when: ansible_os_family == "RedHat" and (cloud_type is not defined or cloud_type != "onprem")
 
   - name: Gather package facts
