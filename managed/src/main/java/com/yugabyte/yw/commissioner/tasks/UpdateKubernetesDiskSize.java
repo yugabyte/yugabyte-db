@@ -53,9 +53,7 @@ public class UpdateKubernetesDiskSize extends EditKubernetesUniverse {
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
       taskParams().useNewHelmNamingStyle = universe.getUniverseDetails().useNewHelmNamingStyle;
       preTaskActions();
-      if (isFirstTry()) {
-        verifyClustersConsistency();
-      }
+      addBasicPrecheckTasks();
 
       // String softwareVersion = userIntent.ybSoftwareVersion;
       // primary and readonly clusters disk resize

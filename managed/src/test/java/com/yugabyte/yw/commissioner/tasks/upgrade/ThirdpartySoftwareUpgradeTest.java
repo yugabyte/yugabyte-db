@@ -21,6 +21,7 @@ import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -82,6 +83,7 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
 
     setUnderReplicatedTabletsMock();
     setFollowerLagMock();
+    setLeaderlessTabletsMock();
   }
 
   private TaskInfo submitTask(ThirdpartySoftwareUpgradeParams requestParams, int version) {
@@ -176,6 +178,7 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckLeaderlessTablets);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     // Assert that the first task is the pre-upgrade hooks
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
@@ -196,6 +199,7 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
 
   @Test
   public void testInstanceReprovisionRetries() {
+    RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.enabled", "false");
     ThirdpartySoftwareUpgradeParams taskParams = new ThirdpartySoftwareUpgradeParams();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
