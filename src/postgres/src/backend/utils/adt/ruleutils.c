@@ -8088,7 +8088,7 @@ find_param_referent(Param *param, deparse_context *context,
 			 * we've crawled up out of a subplan, this couldn't possibly be
 			 * the right match.
 			 */
-			if ((IsA(ancestor, NestLoop) || IsA(ancestor, YbBatchedNestLoopState)) &&
+			if ((IsA(ancestor, NestLoop) || IsA(ancestor, YbBatchedNestLoop)) &&
 				child_plan == innerPlan(ancestor) &&
 				in_same_plan_level)
 			{

@@ -207,22 +207,24 @@ SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
 (17 rows)
 
 -- Batched nested loop join
+ANALYZE p1;
+ANALYZE p2;
 SET enable_hashjoin = off;
 SET enable_seqscan = off;
 SET enable_material = off;
 SET yb_bnl_batch_size = 3;
 EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
-               QUERY PLAN                
------------------------------------------
+                     QUERY PLAN                      
+-----------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.a = t2.a)
-   ->  Seq Scan on p1 t1
+   ->  Seq Scan on p2 t2
          Remote Filter: (a <= 100)
-   ->  Index Scan using p2_pkey on p2 t2
+   ->  Index Scan using p1_pkey on p1 t1
+         Index Cond: (a = ANY (ARRAY[t2.a, $1, $2]))
          Remote Filter: (a <= 100)
-(6 rows)
+(7 rows)
 
--- YB_TODO: Explain has a missing line Index Cond: (a = ANY (ARRAY[t1.a, $1, $2])) under Index Scan
 SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
  a  | b  |  c   | a  | b  |  c   
 ----+----+------+----+----+------

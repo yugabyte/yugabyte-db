@@ -6249,11 +6249,11 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 								   (void *) root);
 }
 
-
-static List *
-yb_get_fixed_batched_indexquals(PlannerInfo *root, IndexPath *index_path)
+static void
+yb_get_batched_indexquals(PlannerInfo *root, IndexPath *index_path,
+						  List **stripped_indexquals, List **fixed_indexquals)
 {
-	List *batched_quals = NIL;
+	Assert(bms_num_members(index_path->path.parent->relids) == 1);
 	if (!bms_is_empty(root->yb_cur_batched_relids))
 	{
 		ListCell *lc;
@@ -6273,21 +6273,23 @@ yb_get_fixed_batched_indexquals(PlannerInfo *root, IndexPath *index_path)
 
 				if (tmp_batched)
 				{
-					OpExpr *op = (OpExpr *) tmp_batched->clause;
+					Node *clause = (Node *) tmp_batched->clause;
 
-					if (list_member_ptr(batched_quals, op))
+					if (list_member_ptr(*stripped_indexquals, clause))
 						continue;
-
-					op = copyObject(op);
-					linitial(op->args) = fix_indexqual_operand(linitial(op->args),
-														index_path->indexinfo,
-														indexcol);
-					batched_quals = lappend(batched_quals, op);
+					
+					*stripped_indexquals = lappend(*stripped_indexquals, clause);
+					clause = copyObject(clause);
+					clause = fix_indexqual_clause(root, index_path->indexinfo,
+												  indexcol, clause,
+												  iclause->indexcols);
+					*fixed_indexquals = lappend(*fixed_indexquals, clause);
 				}
 			}
 		}
 	}
-	return batched_quals;
+	*fixed_indexquals = yb_zip_batched_exprs(root, *fixed_indexquals, true);
+	*stripped_indexquals = yb_zip_batched_exprs(root, *stripped_indexquals, false);
 }
 
 /*
@@ -6318,21 +6320,12 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
 	List	   *stripped_indexquals;
 	List	   *fixed_indexquals;
 	ListCell   *lc;
-	List	   *rinfos;
 
 	stripped_indexquals = fixed_indexquals = NIL;
 
-	List *batched_quals = yb_get_fixed_batched_indexquals(root, index_path);
-	batched_quals = yb_zip_batched_exprs(root, batched_quals, true);
+	yb_get_batched_indexquals(root, index_path, &stripped_indexquals,
+							  &fixed_indexquals);
 
-	foreach(lc, batched_quals)
-	{
-		Expr *clause = (Expr *) lfirst(lc);
-		Node *fixed_clause = replace_nestloop_params(root, (Node *) clause);
-		fixed_indexquals = lappend(fixed_indexquals, fixed_clause);
-	}
-
-	rinfos = NIL;
 	foreach(lc, index_path->indexclauses)
 	{
 		IndexClause *iclause = lfirst_node(IndexClause, lc);
@@ -6358,13 +6351,7 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
 			clause = fix_indexqual_clause(root, index, indexcol,
 										  clause, iclause->indexcols);
 			fixed_indexquals = lappend(fixed_indexquals, clause);
-			rinfos = lappend(rinfos, rinfo);
 		}
-	}
-
-	if(!bms_is_empty(root->yb_cur_batched_relids) && IsYugaByteEnabled())
-	{
-		stripped_indexquals = yb_get_actual_batched_clauses(root, rinfos, (Path *) index_path);
 	}
 
 	*stripped_indexquals_p = stripped_indexquals;
