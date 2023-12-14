@@ -116,10 +116,11 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   @Override
   public void onUpdate(YBUniverse oldUniverse, YBUniverse newUniverse) {
     // Handle the delete workflow first, as we get a this call before onDelete is called
-    if (!newUniverse
-        .getMetadata()
-        .getDeletionTimestamp()
-        .equals(oldUniverse.getMetadata().getDeletionTimestamp())) {
+    if (newUniverse.getMetadata().getDeletionTimestamp() != null
+        && !newUniverse
+            .getMetadata()
+            .getDeletionTimestamp()
+            .equals(oldUniverse.getMetadata().getDeletionTimestamp())) {
       enqueueYBUniverse(newUniverse, OperatorWorkQueue.ResourceAction.DELETE);
       return;
     }
