@@ -38,7 +38,7 @@ YugabyteDB supports three isolation levels in the transactional layer:
 - Snapshot
 - Read committed {{<badge/tp>}}
 
-The default isolation level for the YSQL API is essentially Snapshot (that is, the same as PostgreSQL's `REPEATABLE READ`) because, by default, Read committed, which is the YSQL API and PostgreSQL _syntactic_ default, maps to Snapshot isolation.
+The default isolation level for the YSQL API is effectively Snapshot (that is, the same as PostgreSQL's `REPEATABLE READ`) because, by default, Read committed, which is the YSQL API and PostgreSQL _syntactic_ default, maps to Snapshot isolation.
 
 To enable Read committed (currently in [Tech Preview](/preview/releases/versioning/#feature-availability)), you must set the YB-TServer flag `yb_enable_read_committed_isolation` to `true`. By default this flag is `false` and the Read committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot isolation).
 
@@ -67,15 +67,12 @@ The strictest isolation level is Serializable, which requires that any concurren
 
 The other levels are defined by which anomalies (none of which are possible with serializable) must not occur as a result of interactions between concurrent transactions.
 
-The transaction anomalies are as follows:
-
-- Dirty read: A transaction reads data written by a concurrent uncommitted transaction.
-
-- Non-repeatable read: A transaction re-reads data it has previously read and finds that data has been modified by another transaction committed after the initial read.
-
-- Phantom read: A transaction re-executes a query returning a set of rows that satisfy a search condition and finds that the set of rows satisfying the condition has changed due to another recently-committed transaction.
-
-- Serialization anomaly: The result of successfully committing a group of transactions is inconsistent with all possible orderings of running those transactions one at a time.
+| Transaction&nbsp;anomaly | Description |
+| :--- | :--- |
+| Dirty read | A transaction reads data written by a concurrent uncommitted transaction. |
+| Non-repeatable read | A transaction re-reads data it has previously fetched and finds that data has been modified by another transaction committed after the initial read. |
+| Phantom read | A transaction re-executes a query returning a set of rows that satisfy a search condition and finds that the set of rows satisfying the condition has changed due to another recently-committed transaction. |
+| Serialization anomaly | The result of successfully committing a group of transactions is inconsistent with all possible orderings of running those transactions one at a time. |
 
 ## Serializable isolation
 
