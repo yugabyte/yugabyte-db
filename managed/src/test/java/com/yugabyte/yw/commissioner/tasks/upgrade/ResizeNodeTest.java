@@ -146,6 +146,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
 
     setUnderReplicatedTabletsMock();
     setFollowerLagMock();
+    RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.enabled", "false");
   }
 
   @Override

@@ -78,9 +78,7 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
         throw new RuntimeException(msg);
       }
 
-      if (isFirstTry()) {
-        verifyClustersConsistency();
-      }
+      addBasicPrecheckTasks();
 
       preTaskActions();
 

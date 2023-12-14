@@ -96,6 +96,7 @@ import org.junit.Before;
 import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.rules.TestWatcher;
+import org.junit.rules.Timeout;
 import org.junit.runner.Description;
 import org.yb.CommonTypes.TableType;
 import org.yb.client.GetMasterClusterConfigResponse;
@@ -129,6 +130,8 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
   private static List<String> toCleanDirectories = ImmutableList.of("yugabyte_backup");
 
   public static Map<String, String> GFLAGS = new HashMap<>();
+
+  @Rule public Timeout globalTimeout = Timeout.seconds(600);
 
   static {
     GFLAGS.put("load_balancer_max_over_replicated_tablets", "15");

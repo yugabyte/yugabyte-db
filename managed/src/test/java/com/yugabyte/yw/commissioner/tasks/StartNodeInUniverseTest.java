@@ -20,6 +20,7 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.NodeManager;
@@ -145,6 +146,8 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
         mockClient, ImmutableList.of("10.0.0.1"), Collections.emptyList());
 
     setFollowerLagMock();
+    setLeaderlessTabletsMock();
+    when(mockClient.getLeaderMasterHostAndPort()).thenReturn(HostAndPort.fromHost("10.0.0.1"));
   }
 
   private TaskInfo submitTask(NodeTaskParams taskParams, String nodeName) {
@@ -177,6 +180,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
 
   List<TaskType> START_NODE_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
@@ -191,6 +195,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
   List<JsonNode> START_NODE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
           Json.toJson(ImmutableMap.of()),
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Starting")),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -203,6 +208,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
 
   List<TaskType> WITH_MASTER_UNDER_REPLICATED =
       ImmutableList.of(
+          TaskType.CheckLeaderlessTablets,
           TaskType.FreezeUniverse,
           TaskType.SetNodeState,
           TaskType.WaitForClockSync, // Ensure clock skew is low enough
@@ -233,6 +239,7 @@ public class StartNodeInUniverseTest extends CommissionerBaseTest {
 
   List<JsonNode> WITH_MASTER_UNDER_REPLICATED_RESULTS =
       ImmutableList.of(
+          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of("state", "Starting")),
           Json.toJson(ImmutableMap.of()),

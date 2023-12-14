@@ -147,10 +147,8 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
       if (placementInfo.cloudList.get(0).regionList.get(0).azList.size() > 1) {
         masterLeaderName = "yb-master-0.yb-masters.demo-universe-az-2.svc.cluster.local";
       }
-      if (mockGetLeaderMaster) {
-        when(mockClient.getLeaderMasterHostAndPort())
-            .thenReturn(HostAndPort.fromString(masterLeaderName).withDefaultPort(11));
-      }
+      when(mockClient.getLeaderMasterHostAndPort())
+          .thenReturn(HostAndPort.fromString(masterLeaderName).withDefaultPort(11));
 
       IsServerReadyResponse okReadyResp = new IsServerReadyResponse(0, "", null, 0, 0);
       when(mockClient.isServerReady(any(), anyBoolean())).thenReturn(okReadyResp);
@@ -160,6 +158,7 @@ public abstract class KubernetesUpgradeTaskTest extends CommissionerBaseTest {
       when(mockClient.getLeaderBlacklistCompletion()).thenReturn(mockGetLoadMovePercentResponse);
     } catch (Exception ignored) {
     }
+    setLeaderlessTabletsMock();
   }
 
   protected void setupUniverseSingleAZ(boolean setMasters, boolean mockGetLeaderMaster) {

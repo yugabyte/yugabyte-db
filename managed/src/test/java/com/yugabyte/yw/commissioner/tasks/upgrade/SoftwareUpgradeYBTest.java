@@ -37,6 +37,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -146,6 +147,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
 
     setUnderReplicatedTabletsMock();
     setFollowerLagMock();
+    setLeaderlessTabletsMock();
 
     TestHelper.updateUniverseVersion(defaultUniverse, "2.21.0.0-b1");
   }
@@ -327,6 +329,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     int position = 0;
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckLeaderlessTablets);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
@@ -345,7 +348,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false, false);
     position = assertSequence(subTasksByPosition, TSERVER, position, true, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false, true);
-    assertEquals(130, position);
+    assertEquals(131, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
@@ -393,6 +396,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     int position = 0;
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckLeaderlessTablets);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
@@ -411,7 +415,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false, false);
     position = assertSequence(subTasksByPosition, TSERVER, position, true, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, true, true);
-    assertEquals(130, position);
+    assertEquals(131, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
@@ -470,6 +474,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     int position = 0;
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckLeaderlessTablets);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
@@ -488,7 +493,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
         assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false, false);
     position = assertSequence(subTasksByPosition, TSERVER, position, true, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.ROLLING_UPGRADE, false, true);
-    assertEquals(175, position);
+    assertEquals(176, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
@@ -523,6 +528,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     int position = 0;
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.CheckLeaderlessTablets);
     assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     assertTaskType(subTasksByPosition.get(position++), TaskType.UpdateUniverseState);
@@ -538,7 +544,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
     position = assertSequence(subTasksByPosition, MASTER, position, false, false);
     position = assertSequence(subTasksByPosition, TSERVER, position, false, true);
     assertCommonTasks(subTasksByPosition, position, UpgradeType.FULL_UPGRADE, false, true);
-    assertEquals(25, position);
+    assertEquals(26, position);
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
     defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
@@ -564,6 +570,7 @@ public class SoftwareUpgradeYBTest extends UpgradeTaskTest {
 
   @Test
   public void testSoftwareUpgradeRetries() {
+    RuntimeConfigEntry.upsertGlobal("yb.checks.leaderless_tablets.enabled", "false");
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
     taskParams.ybSoftwareVersion = "2.21.0.0-b2";
     taskParams.expectedUniverseVersion = -1;

@@ -74,9 +74,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
   @Override
   protected void createPrecheckTasks(Universe universe) {
-    if (isFirstTry()) {
-      verifyClustersConsistency();
-    }
+    addBasicPrecheckTasks();
   }
 
   private void freezeUniverseInTxn(Universe universe) {

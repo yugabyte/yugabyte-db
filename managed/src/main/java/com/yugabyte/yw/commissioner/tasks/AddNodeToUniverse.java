@@ -135,9 +135,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
       createInstanceExistsCheckTasks(
           universe.getUniverseUUID(), taskParams(), Collections.singletonList(currentNode));
     }
-    if (isFirstTry()) {
-      verifyClustersConsistency();
-    }
+    addBasicPrecheckTasks();
   }
 
   @Override
