@@ -8,11 +8,12 @@ image: /images/section_icons/develop/api-icon.png
 aliases:
   - /preview/quick-start/build-apps/
 menu:
-  preview:
+  preview_tutorials:
     identifier: build-apps
     parent: tutorials
-    weight: 10
 type: indexpage
+cascade:
+  unversioned: true
 ---
 
 Applications connect to and interact with YugabyteDB using API client libraries (also known as client drivers). Because the YugabyteDB YSQL API is PostgreSQL-compatible, and the YCQL API has roots in the Apache Cassandra CQL, YugabyteDB supports many third-party drivers.

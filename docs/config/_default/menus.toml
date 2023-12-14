@@ -108,8 +108,15 @@
     imageUrl = "/images/migrate/migration-icon.svg"
 
 [[main]]
-  name = "Integrations"
+  name = "Tutorials"
   weight = 2
+  url = "/preview/tutorials/"
+  [main.params]
+    excludeVersion = true
+
+[[main]]
+  name = "Integrations"
+  weight = 3
   url = "/preview/integrations/"
   [main.params]
     excludeVersion = true
@@ -414,13 +421,13 @@
   [preview.params]
     showSection = true
 
-[[preview]]
-  name = "Tutorials"
-  weight = 7
-  identifier = "tutorials"
-  url = "/preview/tutorials/"
-  [preview.params]
-    showSection = true
+#[[preview]]
+#  name = "Tutorials"
+#  weight = 7
+#  identifier = "tutorials"
+#  url = "/preview/tutorials/"
+#  [preview.params]
+#    showSection = true
 
 # [[preview]]
 #   name = "Migrate"
@@ -558,6 +565,42 @@
   weight = 12
   identifier = "integrations-other"
   parent = "integrations"
+
+########## Menus (in preview) for Tutorials
+
+[[preview_tutorials]]
+  name = "Docs Home"
+  weight = 1
+  identifier = "home"
+  url = "/"
+  [preview_tutorials.params]
+    classes = "separator"
+    showSection = true
+
+[[preview_tutorials]]
+  name = "Tutorials"
+  weight = 2
+  identifier = "tutorials"
+  url = "/preview/tutorials/"
+  [preview_tutorials.params]
+    showSection = true
+
+[[preview_tutorials]]
+  name = "Hello world"
+  weight = 3
+  identifier = "build-apps"
+  url = "/preview/tutorials/build-apps/"
+  parent = "tutorials"
+  [preview_tutorials.params]
+    showSection = true
+
+[[preview_tutorials]]
+  name = "Cloud providers"
+  weight = 4
+  identifier = "tutorials-cloud"
+  parent = "tutorials"
+  [preview_tutorials.params]
+    showSection = true
 
 ########## Menus (in preview) for APIs
 

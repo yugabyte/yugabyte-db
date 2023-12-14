@@ -5,7 +5,7 @@ linkTitle: Go
 description: Build a simple Go application using the Go PostgreSQL driver and using the YSQL API to connect to and interact with a YugabyteDB Managed cluster.
 headContent: "Client driver: Go PostgreSQL"
 menu:
-  preview:
+  preview_tutorials:
     parent: build-apps
     name: Go
     identifier: cloud-go

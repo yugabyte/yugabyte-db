@@ -6,7 +6,7 @@ description: Real-Time Data Streaming with YugabyteDB CDC and Azure Event Hubs
 image: /images/tutorials/azure/icons/Event-Hubs-Icon.svg
 headcontent: Stream data from YugabyteDB to Azure Event Hubs using Kafka Connect
 menu:
-  preview:
+  preview_tutorials:
     identifier: tutorials-azure-event-hubs
     parent: tutorials-azure
     weight: 70

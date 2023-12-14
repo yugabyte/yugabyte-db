@@ -6,7 +6,7 @@ description: Developing Secure Applications with Azure Key Vault, Azure SDKs and
 image: /images/tutorials/azure/icons/Key-Vaults-Icon.svg
 headcontent: Use Azure SDKs to add services to applications
 menu:
-  preview:
+  preview_tutorials:
     identifier: tutorials-azure-key-vault
     parent: tutorials-azure
     weight: 30

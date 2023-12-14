@@ -4,7 +4,7 @@ headerTitle: Before you begin
 description: Obtain your cluster certificate and add your computer to the IP allow list.
 headcontent: Using a cluster in YugabyteDB Managed
 menu:
-  preview:
+  preview_tutorials:
     parent: build-apps
     name: Before you begin
     identifier: cloud-add-ip

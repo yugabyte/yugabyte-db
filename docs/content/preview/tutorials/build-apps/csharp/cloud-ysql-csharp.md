@@ -4,7 +4,7 @@ headerTitle: Build a C# application
 description: Build a small C# application using the Npgsql driver and using the YSQL API to connect to and interact with a YugabyteDB Managed cluster.
 headContent: "Client driver: Npgsql"
 menu:
-  preview:
+  preview_tutorials:
     parent: build-apps
     name: C#
     identifier: cloud-csharp

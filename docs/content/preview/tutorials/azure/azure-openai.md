@@ -6,7 +6,7 @@ description: Build scalable generative AI applications with Azure OpenAI and Yug
 image: /images/tutorials/azure/icons/OpenAI-Icon.svg
 headcontent: Use YugabyteDB as the database backend for Azure OpenAI applications
 menu:
-  preview:
+  preview_tutorials:
     identifier: tutorials-azure-openai
     parent: tutorials-azure
     weight: 40
