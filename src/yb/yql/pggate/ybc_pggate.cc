@@ -1733,10 +1733,11 @@ YBCStatus YBCTableIDMetadata(YBCTableIDMetadataInfo** infolist, size_t* count) {
             dest->namespace_.id = YBCPAllocStdString(table_info.namespace_().id()); 
             dest->namespace_.name = YBCPAllocStdString(table_info.namespace_().name()); 
             dest->namespace_.database_type = YBCPAllocStdString(YQLDatabase_Name(table_info.namespace_().database_type())); 
+            dest->state = YBCPAllocStdString(SysTablesEntryPB_State_Name(table_info.state()));
             dest->pgschema_name = YBCPAllocStdString(table_info.pgschema_name());
             dest->colocated_info.colocated = table_info.colocated_info().colocated();
             dest->colocated_info.parent_table_id = YBCPAllocStdString(table_info.colocated_info().parent_table_id());
-
+        
             ++dest;
         }
     }

@@ -28,6 +28,7 @@ CREATE FUNCTION yb_tables(
     OUT namespace_id text,
     OUT namespace_name text,
     OUT database_type text,
+    OUT table_state text,
     OUT pgschema_name text,
     OUT colocated boolean,
     OUT parent_table_id text
