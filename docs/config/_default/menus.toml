@@ -621,7 +621,7 @@
 #    showSection = true
 
 [[preview_tutorials]]
-  name = "Cloud providers"
+  name = "Cloud"
   weight = 6
   identifier = "tutorials-cloud"
   parent = "tutorials"
