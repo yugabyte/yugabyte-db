@@ -19,6 +19,10 @@ When migrating a database, it's prudent to have a backup strategy in case the ne
 
 A fall-back approach allows you to test the system end-to-end. This workflow is especially important in heterogeneous migration scenarios, in which source and target databases are using different engines.
 
+{{< warning title="Important" >}}
+This workflow has the potential to alter your source database. Make sure you fully understand the implications of these changes before proceeding.
+{{< /warning >}}
+
 ## Fall-back workflow
 
 Before starting a live migration, you set up the [source](#prepare-the-source-database) and [target](#prepare-the-target-database) database. During migration, yb-voyager replicates the snapshot data along with new changes exported from the source database to the target YugabyteDB database, as shown in the following illustration:

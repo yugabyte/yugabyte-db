@@ -13,6 +13,14 @@ type: docs
 
 What follows are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
+## v1.6.1 - December 14, 2023
+
+### Bug fixes
+
+- Fixed an issue that occurs in the CDC phase of live migration (including fall-back/fall-forward workflows), leading to transaction conflict errors or bad data in the worst case.
+- Fixed an issue where end migration fails when using dockerised yb-voyager.
+- Fixed an issue where export data from PostgreSQL fails when a single case-sensitive table name is provided to the `--table-list` argument.
+
 ## v1.6 - November 30, 2023
 
 ### New Features
