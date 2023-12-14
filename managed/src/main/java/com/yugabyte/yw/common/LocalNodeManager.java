@@ -24,10 +24,12 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
+import com.yugabyte.yw.commissioner.tasks.subtasks.TransferXClusterCerts;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -47,6 +49,7 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
+import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermission;
@@ -133,7 +136,7 @@ public class LocalNodeManager {
     PROVISIONED
   }
 
-  private class NodeInfo {
+  public class NodeInfo {
     private final String name;
     private final String region;
     private final UUID azUIID;
@@ -311,6 +314,9 @@ public class LocalNodeManager {
         nodesByNameMap.remove(nodeInfo.name);
         response = ShellResponse.create(ERROR_CODE_SUCCESS, "Success!");
         break;
+      case Transfer_XCluster_Certs:
+        transferXClusterCerts(nodeTaskParam, nodeInfo, userIntent);
+        break;
       default:
     }
     log.debug("Response is {} for {} ", response, type);
@@ -320,8 +326,41 @@ public class LocalNodeManager {
     return response;
   }
 
+  private void transferXClusterCerts(
+      NodeTaskParams taskParams,
+      NodeInfo nodeInfo,
+      UniverseDefinitionTaskParams.UserIntent userIntent) {
+    TransferXClusterCerts.Params tParams = (TransferXClusterCerts.Params) taskParams;
+    String homeDir = getNodeRoot(userIntent, nodeInfo);
+    String producerCertsDirOnTarget =
+        replaceYbHome(tParams.producerCertsDirOnTarget.getAbsolutePath(), userIntent, nodeInfo);
+    String replicationGroupName = tParams.replicationGroupName;
+    String path = producerCertsDirOnTarget + "/" + replicationGroupName;
+    switch (tParams.action.toString()) {
+      case "copy":
+        try {
+          copyCerts(path, tParams.rootCertPath.getAbsolutePath());
+        } catch (IOException e) {
+          throw new RuntimeException(e);
+        }
+        break;
+      case "remove":
+        File producerCertsDir = new File(path);
+        if (producerCertsDir.exists()) {
+          FileUtils.deleteDirectory(producerCertsDir);
+        }
+        break;
+      default:
+    }
+  }
+
   private Map<String, String> getGFlagsFromArgs(Map<String, String> args, String key) {
     return (Map<String, String>) Json.fromJson(Json.parse(args.get(key)), Map.class);
+  }
+
+  private String replaceYbHome(
+      String path, UniverseDefinitionTaskParams.UserIntent userIntent, NodeInfo nodeInfo) {
+    return path.replace(CommonUtils.DEFAULT_YB_HOME_DIR, getNodeRoot(userIntent, nodeInfo));
   }
 
   private void processAndWriteGFLags(
@@ -333,7 +372,7 @@ public class LocalNodeManager {
     try {
       for (String key : new ArrayList<>(gflags.keySet())) {
         String value = gflags.get(key);
-        value = value.replace(CommonUtils.DEFAULT_YB_HOME_DIR, getNodeRoot(userIntent, nodeInfo));
+        value = replaceYbHome(value, userIntent, nodeInfo);
         gflags.put(key, value);
       }
       if (!gflags.containsKey(GFlagsUtil.DEFAULT_MEMORY_LIMIT_TO_RAM_RATIO)
@@ -387,12 +426,16 @@ public class LocalNodeManager {
       }
       File targetFile = new File(baseDirFile + "/" + certName);
       Files.copy(certFile.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-      PosixFileAttributeView attributeView =
-          Files.getFileAttributeView(
-              targetFile.toPath(), PosixFileAttributeView.class, LinkOption.NOFOLLOW_LINKS);
-      attributeView.setPermissions(
-          Set.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE));
+      setFilePermissions(targetFile.getAbsolutePath());
     }
+  }
+
+  public void setFilePermissions(String filePath) throws IOException {
+    PosixFileAttributeView attributeView =
+        Files.getFileAttributeView(
+            Paths.get(filePath), PosixFileAttributeView.class, LinkOption.NOFOLLOW_LINKS);
+    attributeView.setPermissions(
+        Set.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE));
   }
 
   private void startProcessForNode(
@@ -564,8 +607,13 @@ public class LocalNodeManager {
     return ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, jsonNode.toString());
   }
 
-  private String getNodeRoot(
-      UniverseDefinitionTaskParams.UserIntent userIntent, NodeInfo nodeInfo) {
+  public String getNodeRoot(UniverseDefinitionTaskParams.UserIntent userIntent, NodeInfo nodeInfo) {
+    String binDir = getCloudInfo(userIntent).getDataHomeDir();
+    return binDir + "/" + nodeInfo.ip + "-" + nodeInfo.name.substring(nodeInfo.name.length() - 2);
+  }
+
+  public String getNodeRoot(UniverseDefinitionTaskParams.UserIntent userIntent, String nodeName) {
+    NodeInfo nodeInfo = nodesByNameMap.get(nodeName);
     String binDir = getCloudInfo(userIntent).getDataHomeDir();
     return binDir + "/" + nodeInfo.ip + "-" + nodeInfo.name.substring(nodeInfo.name.length() - 2);
   }
@@ -616,7 +664,7 @@ public class LocalNodeManager {
       String key = args.get(i);
       if (key.startsWith("--")) {
         String value = "";
-        if (i < args.size() - 1 && !args.get(i + 1).startsWith("--")) {
+        if (i < args.size() - 1 && (args.get(i + 1) == null || !args.get(i + 1).startsWith("--"))) {
           value = args.get(++i);
         }
         result.put(key, value);
