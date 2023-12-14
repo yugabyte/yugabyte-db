@@ -1197,8 +1197,10 @@ void CDCServiceImpl::GetTabletListToPollForCDC(
   NamespaceId ns_id;
   std::unordered_map<std::string, std::string> options;
   StreamModeTransactional transactional(false);
+  std::optional<uint64_t> consistent_snapshot_time;
   RPC_STATUS_RETURN_ERROR(
-      client()->GetCDCStream(req_stream_id, &ns_id, &table_ids, &options, &transactional),
+      client()->GetCDCStream(
+          req_stream_id, &ns_id, &table_ids, &options, &transactional, &consistent_snapshot_time),
       resp->mutable_error(), CDCErrorPB::INTERNAL_ERROR, context);
 
   // This means the table has not been added to the stream's metadata.
@@ -1548,6 +1550,14 @@ void CDCServiceImpl::GetChanges(
         req, &explicit_op_id, &cdc_sdk_explicit_op_id, &cdc_sdk_explicit_safe_time);
   }
 
+  std::optional<uint64_t> consistent_snapshot_time = record.GetConsistentSnapshotTime();
+  if (consistent_snapshot_time.has_value()) {
+    VLOG(2) << "consistent snapshot time from metadata = "
+            << *consistent_snapshot_time;
+  } else {
+    VLOG(2) << "consistent snapshot time not present in metadata";
+  }
+
   // Get opId from request.
   if (!GetFromOpId(req, &from_op_id, &cdc_sdk_from_op_id)) {
     auto last_checkpoint = RPC_VERIFY_RESULT(
@@ -1661,7 +1671,9 @@ void CDCServiceImpl::GetChanges(
     status = GetChangesForCDCSDK(
         stream_id, req->tablet_id(), cdc_sdk_from_op_id, record, tablet_peer, mem_tracker, enum_map,
         composite_atts_map, client(), &msgs_holder, resp, &commit_timestamp, &cached_schema_details,
-        &last_streamed_op_id, req->safe_hybrid_time(), req->wal_segment_index(),
+        &last_streamed_op_id, req->safe_hybrid_time(),
+        consistent_snapshot_time,
+        req->wal_segment_index(),
         &last_readable_index, tablet_peer->tablet_metadata()->colocated() ? req->table_id() : "",
         get_changes_deadline);
     // This specific error from the docdb_pgapi layer is used to identify enum cache entry is
@@ -1689,6 +1701,7 @@ void CDCServiceImpl::GetChanges(
           stream_id, req->tablet_id(), cdc_sdk_from_op_id, record, tablet_peer, mem_tracker,
           enum_map, composite_atts_map, client(), &msgs_holder, resp, &commit_timestamp,
           &cached_schema_details, &last_streamed_op_id, req->safe_hybrid_time(),
+          consistent_snapshot_time,
           req->wal_segment_index(), &last_readable_index,
           tablet_peer->tablet_metadata()->colocated() ? req->table_id() : "", get_changes_deadline);
     }

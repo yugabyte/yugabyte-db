@@ -959,7 +959,7 @@ void AsyncAlterTable::HandleResponse(int attempt) {
       if (resp_.has_cdc_sdk_snapshot_safe_op_id() && resp_.has_propagated_hybrid_time()) {
         WARN_NOT_OK(
             master_->catalog_manager()->PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
-                tablet_id(), cdc_sdk_stream_id_, resp_.cdc_sdk_snapshot_safe_op_id(),
+                table(), tablet_id(), cdc_sdk_stream_id_, resp_.cdc_sdk_snapshot_safe_op_id(),
                 HybridTime::FromPB(resp_.propagated_hybrid_time()),
                 cdc_sdk_require_history_cutoff_),
             Format(

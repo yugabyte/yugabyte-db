@@ -595,7 +595,9 @@ class YBClient {
       NamespaceId* ns_id,
       std::vector<TableId>* table_ids,
       std::unordered_map<std::string, std::string>* options,
-      cdc::StreamModeTransactional* transactional);
+      cdc::StreamModeTransactional* transactional,
+      std::optional<uint64_t>* consistent_snapshot_time = nullptr,
+      std::optional<CDCSDKSnapshotOption>* consistent_snapshot_option = nullptr);
 
   void GetCDCStream(
       const xrepl::StreamId& stream_id,
