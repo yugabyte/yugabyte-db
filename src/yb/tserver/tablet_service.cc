@@ -134,7 +134,7 @@ DEFINE_UNKNOWN_int32(max_wait_for_safe_time_ms, 5000,
              "Maximum time in milliseconds to wait for the safe time to advance when trying to "
              "scan at the given hybrid_time.");
 
-DEFINE_UNKNOWN_int32(num_concurrent_backfills_allowed, -1,
+DEFINE_RUNTIME_int32(num_concurrent_backfills_allowed, -1,
              "Maximum number of concurrent backfill jobs that is allowed to run.");
 
 DEFINE_test_flag(bool, tserver_noop_read_write, false, "Respond NOOP to read/write.");
