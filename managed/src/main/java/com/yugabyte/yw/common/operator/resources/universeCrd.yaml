@@ -1296,6 +1296,8 @@ spec:
             properties:
               universeStatus:
                 type: string
+              universeState:
+                type: string
               sqlEndpoints:
                 type: array
                 items:
@@ -1309,6 +1311,15 @@ spec:
 
     subresources:
       status: {}
+    additionalPrinterColumns:
+    - name: State
+      type: string
+      description: The state of the universe
+      jsonPath: .status.universeState
+    - name: Software Version
+      type: string
+      description: The Software version of the Universe
+      jsonPath: .spec.ybSoftwareVersion
   names:
     kind: YBUniverse
     plural: ybuniverses
