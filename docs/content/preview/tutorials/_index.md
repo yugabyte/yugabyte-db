@@ -6,6 +6,8 @@ description: How to Develop Applications with Azure and YugabyteDB
 headcontent: Step-by-step guides for adding YugbyteDB to your stack
 image: /images/section_icons/index/develop.png
 type: indexpage
+cascade:
+  unversioned: true
 ---
 
 ### Hello world

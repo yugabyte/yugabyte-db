@@ -10,8 +10,6 @@ menu:
     identifier: tutorials-azure
     parent: tutorials-cloud
 type: indexpage
-cascade:
-  unversioned: true
 ---
 
 <div class="row">

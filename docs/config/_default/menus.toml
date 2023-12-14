@@ -574,29 +574,47 @@
   identifier = "home"
   url = "/"
   [preview_tutorials.params]
-    classes = "separator"
     showSection = true
 
 [[preview_tutorials]]
-  name = "Tutorials"
+  name = "Key benefits"
   weight = 2
+  identifier = "features"
+  url = "/preview/features/"
+  [preview_tutorials.params]
+    showSection = true
+    hideChildren = true
+
+[[preview_tutorials]]
+  name = "Quick Start"
+  weight = 3
+  identifier = "quick-start"
+  url = "/preview/quick-start-yugabytedb-managed/"
+  [preview_tutorials.params]
+    classes = "separator"
+    showSection = true
+    hideChildren = true
+
+[[preview_tutorials]]
+  name = "Tutorials"
+  weight = 4
   identifier = "tutorials"
   url = "/preview/tutorials/"
   [preview_tutorials.params]
     showSection = true
 
-[[preview_tutorials]]
-  name = "Hello world"
-  weight = 3
-  identifier = "build-apps"
-  url = "/preview/tutorials/build-apps/"
-  parent = "tutorials"
-  [preview_tutorials.params]
-    showSection = true
+#[[preview_tutorials]]
+#  name = "Hello world"
+#  weight = 3
+#  identifier = "build-apps"
+#  url = "/preview/tutorials/build-apps/"
+#  parent = "tutorials"
+#  [preview_tutorials.params]
+#    showSection = true
 
 [[preview_tutorials]]
   name = "Cloud providers"
-  weight = 4
+  weight = 6
   identifier = "tutorials-cloud"
   parent = "tutorials"
   [preview_tutorials.params]
