@@ -1,0 +1,236 @@
+:root {
+  data-search-result-primary-text-color: #0B1117;
+}
+
+#kapa-widget-container {
+  .mantine-Button-root {
+    z-index: 9999 !important;
+  }
+
+  img.mantine-Image-image {
+    margin: 0 !important;
+  }
+
+  button {
+    span {
+      >div {
+        margin: 0 !important;
+        gap: 8px;
+
+        >div:first-child {
+          width: 40px !important;
+        }
+
+        img {
+          width: 40px !important;
+          height: 40px !important;
+        }
+
+        .mantine-Text-root {
+          font-weight: 600;
+          line-height: 26px;
+        }
+      }
+    }
+  }
+}
+
+.mantine-Modal-root {
+  .mantine-Modal-overlay {
+    z-index: 9999;
+    background-color: rgba(11, 17, 23, 0.2);
+  }
+
+  .mantine-Modal-inner {
+    z-index: 99999;
+  }
+
+  button:hover {
+    background: #5d5fef !important;
+    border: 1px solid #5d5fef;
+  }
+
+  .mantine-Textarea-input {
+    border: 1px solid #868e96;
+    color: #0b1117 !important;
+  }
+
+  .mantine-Textarea-input::-webkit-input-placeholder {
+    color: #6d7c88 !important;
+  }
+
+  .mantine-Textarea-input::-webkit-placeholder {
+    color: #6d7c88 !important;
+  }
+
+  .mantine-Modal-header {
+    border-bottom: 1px solid #E9EEF2;
+    background-color: #fff;
+
+    button {
+      width: 32px;
+      height: 32px;
+      background-color: #E9EEF2;
+      border-radius: 50%;
+
+      svg {
+        transform: scale(1.3);
+      }
+
+      &:hover {
+        background-color: #7879F1 !important;
+      }
+    }
+
+    h3 {
+      font-family: Inter;
+      font-size: 18px;
+      font-weight: 600;
+      line-height: 24px;
+    }
+
+    .mantine-Image-root {
+      width: 24px !important;
+
+      img {
+        width: 24px !important;
+        height: 24px !important;
+        border-radius: 0 !important;
+      }
+    }
+  }
+
+  .mantine-ch1i5f+.mantine-r3r7vl {
+    background-color: transparent;
+  }
+
+  .mantine-r3r7vl {
+    div {
+      color: #4E5F6D;
+      font-family: Inter;
+      font-size: 11.5px;
+      font-weight: 400;
+      line-height: 16px;
+    }
+  }
+
+  .mantine-x5r5zg {
+    font-family: Inter;
+    font-size: 13px;
+    font-weight: 400;
+    line-height: 16px;
+    color: #0B1117;
+    margin: 20px 0 0;
+  }
+
+  .mantine-Grid-root {
+    .mantine-Grid-col {
+      padding: 8px;
+
+      button {
+        border: 1px solid #D7DEE4;
+        box-shadow: none;
+        height: 36px;
+
+        div {
+          font-family: Inter;
+          font-size: 13px;
+          font-weight: 400;
+          line-height: 16px;
+        }
+
+        &:hover {
+          background-color: #7879F1 !important;
+        }
+      }
+    }
+
+    +.mantine-Modal-body {
+      margin: 26px 0 42px !important;
+    }
+  }
+
+  textarea {
+    border: 1px solid #D7DEE4 !important;
+    min-height: 54px;
+    padding-top: 14px;
+
+    +div {
+      button {
+        bottom: 11px !important;
+        background-color: #7879F1 !important;
+
+        &:hover {
+          background-color: rgb(64, 69, 207) !important;
+        }
+      }
+    }
+
+    &:focus {
+      border-color: #CBDBFF !important;
+      box-shadow: 0 0 0 1px #CBDBFF;
+    }
+  }
+
+  h5 {
+    font-family: Inter;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 20px;
+    margin: 30px 0 21px;
+    color: #0B1117;
+
+    +div {
+      font-family: Inter;
+      font-size: 13px;
+      font-weight: 400;
+      line-height: 18px;
+      color: #0B1117;
+      margin-bottom: 12px !important;
+
+      li {
+        font-family: Inter;
+        font-size: 13px;
+        font-weight: 400;
+        line-height: 18px;
+        color: #0B1117;
+      }
+
+      a {
+        color: #7879F1;
+
+        &:hover {
+          text-decoration: underline;
+        }
+      }
+    }
+
+    ~.mantine-Group-root {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+
+      div {
+        display: flex;
+        gap: 12px;
+      }
+
+      button {
+        color: rgb(134, 142, 150);
+        background-color: #f8f9fa;
+
+        &:hover {
+          color: #fff;
+
+          a {
+            color: #fff;
+
+            &:hover {
+              color: #fff;
+            }
+          }
+        }
+      }
+    }
+  }
+}

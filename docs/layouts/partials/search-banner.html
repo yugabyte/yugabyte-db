@@ -1,4 +1,5 @@
 <div class="admonition waving search-banner">
-  <p>Try using the AI-powered search <a href="#">below</a>.</p>
+  <p>Try using the AI-powered search below.</p>
   <span class="cross-btn"><img src="/icons/cross-icon.svg" alt="Cross" /></span>
 </div>
+<script>(()=>{var e,r;e=function(e){for(var r=document.cookie.split(";"),n=r.length,t=0,c="";t<n;){var o=r[t].split("=");if("closeAISearchBanner"===o[0].trim()&&""!==o[1].trim()){c=decodeURIComponent(o[1]);break}t+=1}return c}(),r=document.querySelector(".search-banner .cross-btn"),"1"===e&&document.querySelector(".search-banner").remove(),r&&r.addEventListener("click",(function(e){e.currentTarget.parentNode.remove(),document.cookie="closeAISearchBanner=1; path=/; secure=true"}))})();</script>

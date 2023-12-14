@@ -501,10 +501,6 @@ $(document).ready(() => {
 
   $('.td-search-input:focus').parents('form').addClass('active-input');
 
-  $(document).on('click', '.search-banner .cross-btn', (event) => {
-    $(event.currentTarget).parents('.search-banner').remove();
-  });
-
   $('#search-form').keyup((event) => {
     searchValue = event.target.value;
   });
