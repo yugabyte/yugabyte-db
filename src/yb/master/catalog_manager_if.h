@@ -13,6 +13,8 @@
 
 #pragma once
 
+#include "yb/cdc/cdc_fwd.h"
+
 #include "yb/common/common_fwd.h"
 
 #include "yb/common/schema.h"
@@ -295,6 +297,13 @@ class CatalogManagerIf {
       const GetCompactionStatusRequestPB* req, GetCompactionStatusResponsePB* resp) = 0;
 
   virtual Status PromoteTableToRunningState(TableInfoPtr table_info, const LeaderEpoch& epoch) = 0;
+
+  virtual Status PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
+      const yb::TabletId& tablet_id,
+      const xrepl::StreamId& cdc_sdk_stream_id,
+      const yb::OpIdPB& safe_opid,
+      const yb::HybridTime& proposed_snapshot_time,
+      const bool require_history_cutoff) = 0;
 
   virtual ~CatalogManagerIf() = default;
 };

@@ -167,3 +167,9 @@ enum StatefulServiceKind {
   TEST_ECHO = 0;
   PG_AUTO_ANALYZE = 1;
 }
+
+// CDC SDK Consistent Snapshot Options
+enum CDCSDKSnapshotOption {
+  NOEXPORT_SNAPSHOT = 1; // Client does not wish to consume snapshot
+  USE_SNAPSHOT = 2; // Client wishes to consume snapshot from the source universe
+}

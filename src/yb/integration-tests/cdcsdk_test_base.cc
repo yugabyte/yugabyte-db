@@ -411,5 +411,6 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStream(
   return xrepl::StreamId::FromString(resp.db_stream_id());
 }
 
+
 }  // namespace cdc
 }  // namespace yb

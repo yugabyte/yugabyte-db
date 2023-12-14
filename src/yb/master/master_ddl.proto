@@ -427,14 +427,19 @@ message AlterTableRequestPB {
   // This is the transaction performing the Alter operation. This is used by TServers to abort
   // any ongoing DML on the table other than this transaction.
   optional TransactionMetadataPB transaction = 9;
-  // If set, YB-Master will poll the status of 'transaction' and rollback the Alter if failed.
-  optional bool ysql_ddl_rollback_enabled = 12 [ default = false ];
 
   // If set, updates the pgschema_name in SchemaPB.
   optional string pgschema_name = 10;
 
   // Used for YSQL to notify DocDB of DDL changes that affect only PG metadata
   optional bool increment_schema_version = 11 [default = false];
+
+  // If set, YB-Master will poll the status of 'transaction' and rollback the Alter if failed.
+  optional bool ysql_ddl_rollback_enabled = 12 [ default = false ];
+
+  // For CDCSDK Stream creation with consistent snapshot
+  optional bytes cdc_sdk_stream_id = 13;
+  optional bool cdc_sdk_require_history_cutoff = 14;
 }
 
 message AlterTableResponsePB {
