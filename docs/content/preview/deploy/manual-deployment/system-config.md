@@ -118,7 +118,7 @@ On CentOS, `/etc/security/limits.d/20-nproc.conf` must also be configured to mat
 After changing a `ulimit` setting in `/etc/security/limits.conf`, you will need to log out and back in. To update system processes, you may need to restart.
 
 {{< note title="Using other distributions" >}}
-If you're using a desktop-distribution, such as ubuntu-desktop, the settings above may not suffice. The operating system needs additional steps to change `ulimit` for GUI login.
+If you're using a desktop-distribution, such as ubuntu-desktop, the preceding settings may not suffice. The operating system needs additional steps to change `ulimit` for GUI login.
 
 In the case of ubuntu-desktop, in `/etc/systemd/user.conf` and `/etc/systemd/system.conf`, add `DefaultLimitNOFILE=64000` at the end of file.
 
