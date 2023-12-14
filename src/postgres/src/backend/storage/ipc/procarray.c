@@ -64,6 +64,7 @@
 #include "utils/snapmgr.h"
 
 #include "pg_yb_utils.h"
+#include "yb_ash.h"
 
 /* Our shared memory area */
 typedef struct ProcArrayStruct
@@ -4135,8 +4136,7 @@ KnownAssignedXidsReset(void)
 }
 
 void
-YbStoreAshSamples(YbStoreAshSample store_ash_sample,
-				  TimestampTz sample_time)
+YbStoreAshSamples(TimestampTz sample_time)
 {
 	int			i;
 	int			samples_stored = 0;
@@ -4162,7 +4162,7 @@ YbStoreAshSamples(YbStoreAshSample store_ash_sample,
 			proc->yb_is_ash_metadata_set == 0)
 			continue;
 
-		if (store_ash_sample(proc, arrayP->numProcs, sample_time,
+		if (YbAshStoreSample(proc, arrayP->numProcs, sample_time,
 							 &samples_stored) == 0)
 			break;
 	}

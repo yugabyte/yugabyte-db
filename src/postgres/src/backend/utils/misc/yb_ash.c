@@ -1,4 +1,9 @@
 /*-------------------------------------------------------------------------
+ *
+ * yb_ash.c
+ *    Utilities for Active Session History/Yugabyte (Postgres layer) integration
+ *    that have to be defined on the PostgreSQL side.
+ *
  * Copyright (c) YugabyteDB, Inc.
  *
  * Licensed under the Apache License, Version 2.0 (the "License"); you may
@@ -12,10 +17,14 @@
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express
  * or implied.  See the License for the specific language governing
  * permissions and limitations under the License.
+ *
+ * IDENTIFICATION
+ *	  src/backend/utils/misc/yb_ash.c
+ *
  *-------------------------------------------------------------------------
  */
 
-#include "postgres.h"
+#include "yb_ash.h"
 
 #include "executor/executor.h"
 #include "miscadmin.h"
@@ -29,26 +38,25 @@
 #include "storage/shmem.h"
 #include "tcop/utility.h"
 #include "utils/guc.h"
-#include "utils/timestamp.h"
 
 #include "pg_yb_utils.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
-PG_MODULE_MAGIC;
-PG_FUNCTION_INFO_V1(yb_active_session_history);
-
 /* GUC variables */
-static int circular_buffer_size;
-static int ash_sampling_interval_ms;
-static int ash_sample_size;
+int yb_ash_circular_buffer_size;
+int yb_ash_sampling_interval_ms;
+int yb_ash_sample_size;
 
 /* Saved hook values in case of unload */
-static shmem_startup_hook_type prev_shmem_startup_hook = NULL;
 static post_parse_analyze_hook_type prev_post_parse_analyze_hook = NULL;
 static ExecutorStart_hook_type prev_ExecutorStart = NULL;
 static ExecutorEnd_hook_type prev_ExecutorEnd = NULL;
 static ProcessUtility_hook_type prev_ProcessUtility = NULL;
+
+/* Flags set by interrupt handlers for later service in the main loop. */
+static volatile sig_atomic_t got_sigterm = false;
+static volatile sig_atomic_t got_sighup = false;
 
 /* Struct to store ASH samples in the circular buffer. */
 typedef struct YbAshSample {
@@ -93,7 +101,7 @@ typedef struct YbAshSample {
 
 typedef struct YbAsh
 {
-	LWLock	   *lock;			/* Protects the circular buffer */
+	LWLock		lock;			/* Protects the circular buffer */
 	int			index;			/* Index to insert new buffer entry */
 	int			max_entries;	/* Maximum # of entries in the buffer */
 	YbAshSample circular_buffer[FLEXIBLE_ARRAY_MEMBER];
@@ -101,16 +109,10 @@ typedef struct YbAsh
 
 static YbAsh *yb_ash = NULL;
 
-void _PG_init(void);
-void _PG_fini(void);
-
 static int yb_ash_cb_max_entries(void);
-static Size yb_ash_memsize(void);
-static void yb_ash_startup(void);
 static void yb_set_ash_metadata(uint64_t query_id);
 static void yb_unset_ash_metadata();
 
-static void yb_ash_startup_hook(void);
 static void yb_ash_post_parse_analyze(ParseState *pstate, Query *query);
 static void yb_ash_ExecutorStart(QueryDesc *queryDesc, int eflags);
 static void yb_ash_ExecutorEnd(QueryDesc *queryDesc);
@@ -119,67 +121,13 @@ static void yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 								  QueryEnvironment *queryEnv, DestReceiver *dest,
 								  char *completionTag);
 
-static volatile sig_atomic_t got_sigterm = false;
-static volatile sig_atomic_t got_sighup = false;
-
 static const unsigned char *get_yql_endpoint_tserver_uuid();
-static void store_ash_samples(TimestampTz sample_time);
-static bool store_ash_sample(PGPROC *proc, int num_procs, TimestampTz sample_time,
-							 int *samples_stored);
 static void copy_pgproc_sample_fields(PGPROC *proc);
 static void copy_non_pgproc_sample_fields(float8 sample_weight, TimestampTz sample_time);
 
-void yb_ash_main(Datum);
-
-/*
- * Module load callback
- */
 void
-_PG_init(void)
+YbAshRegister(void)
 {
-	if (!process_shared_preload_libraries_in_progress)
-		return;
-
-	DefineCustomIntVariable("yb_ash.circular_buffer_size",
-							"Size of the circular buffer that stores wait events",
-							NULL,
-							&circular_buffer_size,
-							16 * 1024,
-							0,
-							INT_MAX,
-							PGC_POSTMASTER,
-							GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL |
-							GUC_NOT_IN_SAMPLE | GUC_DISALLOW_IN_FILE |
-							GUC_UNIT_KB,
-							NULL, NULL, NULL);
-
-	DefineCustomIntVariable("yb_ash.sampling_interval",
-							"Duration between each sample",
-							NULL,
-							&ash_sampling_interval_ms,
-							1000,
-							1,
-							INT_MAX,
-							PGC_SUSET,
-							GUC_UNIT_MS,
-							NULL, NULL, NULL);
-
-	DefineCustomIntVariable("yb_ash.sample_size",
-							"Number of wait events captured in each sample",
-							NULL,
-							&ash_sample_size,
-							500,
-							0,
-							INT_MAX,
-							PGC_SUSET,
-							0,
-							NULL, NULL, NULL);
-
-	EmitWarningsOnPlaceholders("yb_ash");
-
-	RequestAddinShmemSpace(yb_ash_memsize());
-	RequestNamedLWLockTranche("yb_ash", 1);
-
 	BackgroundWorker worker;
 	memset(&worker, 0, sizeof(worker));
 	sprintf(worker.bgw_name, "yb_ash collector");
@@ -188,18 +136,16 @@ _PG_init(void)
 	worker.bgw_start_time = BgWorkerStart_ConsistentState;
 	/* Value of 1 allows the background worker for yb_ash to restart */
 	worker.bgw_restart_time = 1;
-	sprintf(worker.bgw_library_name, "yb_ash");
-	sprintf(worker.bgw_function_name, "yb_ash_main");
+	sprintf(worker.bgw_library_name, "postgres");
+	sprintf(worker.bgw_function_name, "YbAshMain");
 	worker.bgw_main_arg = (Datum) 0;
 	worker.bgw_notify_pid = 0;
 	RegisterBackgroundWorker(&worker);
+}
 
-	/*
-	 * Install hooks.
-	 */
-	prev_shmem_startup_hook = shmem_startup_hook;
-	shmem_startup_hook = yb_ash_startup_hook;
-
+void
+YbAshInstallHooks(void)
+{
 	prev_post_parse_analyze_hook = post_parse_analyze_hook;
 	post_parse_analyze_hook = yb_ash_post_parse_analyze;
 
@@ -213,37 +159,18 @@ _PG_init(void)
 	ProcessUtility_hook = yb_ash_ProcessUtility;
 }
 
-/*
- * Module unload callback
- */
-void
-_PG_fini(void)
-{
-	/* Uninstall hooks. */
-	shmem_startup_hook = prev_shmem_startup_hook;
-	post_parse_analyze_hook = prev_post_parse_analyze_hook;
-	ExecutorStart_hook = prev_ExecutorStart;
-	ExecutorEnd_hook = prev_ExecutorEnd;
-	ProcessUtility_hook = prev_ProcessUtility;
-}
-
-static void
-yb_ash_startup_hook(void)
-{
-	if (prev_shmem_startup_hook)
-		prev_shmem_startup_hook();
-
-	yb_ash_startup();
-}
-
 static int
 yb_ash_cb_max_entries(void)
 {
-	return circular_buffer_size * 1024 / sizeof(YbAshSample);
+	return yb_ash_circular_buffer_size * 1024 / sizeof(YbAshSample);
 }
 
-static Size
-yb_ash_memsize(void)
+/*
+ * YbAshShmemSize
+ *		Compute space needed for ASH-related shared memory
+ */
+Size
+YbAshShmemSize(void)
 {
 	Size		size;
 
@@ -254,17 +181,24 @@ yb_ash_memsize(void)
 	return size;
 }
 
-static void
-yb_ash_startup(void)
+/*
+ * YbAshShmemInit
+ *		Allocate and initialize ASH-related shared memory
+ */
+void
+YbAshShmemInit(void)
 {
 	bool		found = false;
 
 	yb_ash = ShmemInitStruct("yb_ash_circular_buffer",
-							 yb_ash_memsize(),
+							 YbAshShmemSize(),
 							 &found);
+
+	LWLockRegisterTranche(LWTRANCHE_YB_ASH_CIRCULAR_BUFFER, "yb_ash_circular_buffer");
+
 	if (!found)
 	{
-		yb_ash->lock = &(GetNamedLWLockTranche("yb_ash"))->lock;
+		LWLockInitialize(&yb_ash->lock, LWTRANCHE_YB_ASH_CIRCULAR_BUFFER);
 		yb_ash->index = 0;
 		yb_ash->max_entries = yb_ash_cb_max_entries();
 	}
@@ -319,8 +253,8 @@ yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 {
 	if (prev_ProcessUtility)
 		prev_ProcessUtility(pstmt, queryString,
-								 context, params, queryEnv,
-								 dest, completionTag);
+							context, params, queryEnv,
+							dest, completionTag);
 	else
 		standard_ProcessUtility(pstmt, queryString,
 								context, params, queryEnv,
@@ -383,7 +317,7 @@ yb_ash_sighup(SIGNAL_ARGS)
 }
 
 void
-yb_ash_main(Datum main_arg)
+YbAshMain(Datum main_arg)
 {
 	ereport(LOG,
 			(errmsg("starting bgworker yb_ash collector with max buffer entries %d",
@@ -406,7 +340,7 @@ yb_ash_main(Datum main_arg)
 		int 		rc;
 		/* Wait necessary amount of time */
 		rc = WaitLatch(MyLatch, WL_LATCH_SET | WL_TIMEOUT | WL_POSTMASTER_DEATH,
-					   ash_sampling_interval_ms, PG_WAIT_EXTENSION);
+					   yb_ash_sampling_interval_ms, PG_WAIT_EXTENSION);
 		ResetLatch(MyLatch);
 
 		/* Bailout if postmaster has died */
@@ -425,12 +359,12 @@ yb_ash_main(Datum main_arg)
 
 		sample_time = GetCurrentTimestamp();
 
-		if (ash_sample_size > 0)
+		if (yb_ash_sample_size > 0)
 		{
-			LWLockAcquire(yb_ash->lock, LW_EXCLUSIVE);
-			store_ash_samples(sample_time);
+			LWLockAcquire(&yb_ash->lock, LW_EXCLUSIVE);
+			YbStoreAshSamples(sample_time);
 			/* TODO: get tserver samples */
-			LWLockRelease(yb_ash->lock);
+			LWLockRelease(&yb_ash->lock);
 		}
 	}
 	proc_exit(0);
@@ -445,24 +379,18 @@ get_yql_endpoint_tserver_uuid()
 	return local_tserver_uuid;
 }
 
-static void
-store_ash_samples(TimestampTz sample_time)
-{
-	YbStoreAshSamples(store_ash_sample, sample_time);
-}
-
 /*
  * Returns true if another sample should be stored in the circular buffer.
  */
-static bool
-store_ash_sample(PGPROC *proc, int num_procs, TimestampTz sample_time,
+bool
+YbAshStoreSample(PGPROC *proc, int num_procs, TimestampTz sample_time,
 				 int *samples_stored)
 {
 	/*
 	 * If there are less samples available than the sample size, the sample
 	 * weight must be 1.
 	 */
-	float8 sample_weight = Max(num_procs, ash_sample_size) * 1.0 / ash_sample_size;
+	float8 sample_weight = Max(num_procs, yb_ash_sample_size) * 1.0 / yb_ash_sample_size;
 
 	copy_pgproc_sample_fields(proc);
 	copy_non_pgproc_sample_fields(sample_weight, sample_time);
@@ -470,7 +398,7 @@ store_ash_sample(PGPROC *proc, int num_procs, TimestampTz sample_time,
 	if (++yb_ash->index == yb_ash->max_entries)
 		yb_ash->index = 0;
 
-	if (++(*samples_stored) == ash_sample_size)
+	if (++(*samples_stored) == yb_ash_sample_size)
 		return false;
 
 	return true;
