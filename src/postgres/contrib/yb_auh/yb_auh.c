@@ -537,8 +537,8 @@ yb_tables_internal(FunctionCallInfo fcinfo)
   int i;
   for (i = 0; i < size; i++) {
 
-    Datum values[10];
-    bool isnull[10];
+    Datum values[11];
+    bool isnull[11];
     int j = 0;
 
     memset(values, 0, sizeof(values));
@@ -589,6 +589,13 @@ yb_tables_internal(FunctionCallInfo fcinfo)
     //database_type 
     if (infolist[i].namespace_.database_type != NULL)
         values[j] = CStringGetTextDatum(infolist[i].namespace_.database_type);
+    else
+        isnull[j] = true;
+    j++;
+    
+    //state
+    if (infolist[i].state != NULL)
+        values[j] = CStringGetTextDatum(infolist[i].state);
     else
         isnull[j] = true;
     j++;

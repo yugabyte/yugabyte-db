@@ -460,6 +460,7 @@ typedef struct TableIDMetadataInfo {
   const char* table_type;
   const char* relation_type;
   NamespaceIdentifierPB namespace_;
+  const char* state;
   const char* pgschema_name;
   ColocatedInfo colocated_info;
 } YBCTableIDMetadataInfo;
