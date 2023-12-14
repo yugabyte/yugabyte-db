@@ -4,6 +4,7 @@ import (
 	"os"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
@@ -28,6 +29,10 @@ var installCmd = &cobra.Command{
 		state, err := ybactlstate.Initialize()
 		if err != nil {
 			log.Fatal("failed to initialize state " + err.Error())
+		}
+		if len(viper.GetString("server_cert_path")) == 0 {
+			log.Debug("marking self signed cert in ybactlstate")
+			state.Config.SelfSignedCert = true
 		}
 		if err := state.TransitionStatus(ybactlstate.InstallingStatus); err != nil {
 			log.Fatal("failed to start install: " + err.Error())
@@ -66,6 +71,9 @@ var installCmd = &cobra.Command{
 			}
 			log.Info("Completed installing component " + name)
 		}
+
+		// Update state config now that install is complete.
+		state.Config.Hostname = viper.GetString("host")
 		state.CurrentStatus = ybactlstate.InstalledStatus
 		if err := ybactlstate.StoreState(state); err != nil {
 			log.Fatal("after full install, failed to update state: " + err.Error())

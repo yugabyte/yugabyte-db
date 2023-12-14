@@ -19,6 +19,7 @@ type State struct {
 	Postgres        PostgresState            `json:"postgres"`
 	CurrentStatus   status                   `json:"current_status"`
 	Replicated      ReplicatedMigrationState `json:"replicated_migration"`
+	Config          Config                   `json:"config"`
 	_internalFields internalFields
 }
 
@@ -34,6 +35,11 @@ type ReplicatedMigrationState struct {
 	OriginalVersion     string `json:"original_version"`
 }
 
+type Config struct {
+	Hostname       string `json:"hostname"`
+	SelfSignedCert bool   `json:"self_signed_cert"`
+}
+
 func New() *State {
 	return &State{
 		Version:     ybactl.Version,
@@ -45,6 +51,9 @@ func New() *State {
 		},
 		Replicated:    ReplicatedMigrationState{},
 		CurrentStatus: UninstalledStatus,
+		Config: Config{
+			SelfSignedCert: false, // Default to false
+		},
 		_internalFields: internalFields{
 			ChangeID:      0,
 			SchemaVersion: schemaVersion,
