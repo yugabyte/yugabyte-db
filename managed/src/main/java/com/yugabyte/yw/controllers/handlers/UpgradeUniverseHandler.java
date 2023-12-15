@@ -5,14 +5,10 @@ package com.yugabyte.yw.controllers.handlers;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.annotations.VisibleForTesting;
-import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
@@ -26,9 +22,6 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
-import com.yugabyte.yw.common.gflags.GFlagDetails;
-import com.yugabyte.yw.common.gflags.GFlagDiffEntry;
-import com.yugabyte.yw.common.gflags.GFlagsAuditPayload;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
@@ -57,11 +50,6 @@ import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoResponse;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import java.util.UUID;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
@@ -74,7 +62,6 @@ public class UpgradeUniverseHandler {
   private final Commissioner commissioner;
   private final KubernetesManagerFactory kubernetesManagerFactory;
   private final RuntimeConfigFactory runtimeConfigFactory;
-  private final GFlagsValidationHandler gFlagsValidationHandler;
   private final YbcManager ybcManager;
   private final RuntimeConfGetter confGetter;
   private final CertificateHelper certificateHelper;
@@ -86,7 +73,6 @@ public class UpgradeUniverseHandler {
       Commissioner commissioner,
       KubernetesManagerFactory kubernetesManagerFactory,
       RuntimeConfigFactory runtimeConfigFactory,
-      GFlagsValidationHandler gFlagsValidationHandler,
       YbcManager ybcManager,
       RuntimeConfGetter confGetter,
       CertificateHelper certificateHelper,
@@ -95,7 +81,6 @@ public class UpgradeUniverseHandler {
     this.commissioner = commissioner;
     this.kubernetesManagerFactory = kubernetesManagerFactory;
     this.runtimeConfigFactory = runtimeConfigFactory;
-    this.gFlagsValidationHandler = gFlagsValidationHandler;
     this.ybcManager = ybcManager;
     this.confGetter = confGetter;
     this.certificateHelper = certificateHelper;
@@ -279,69 +264,6 @@ public class UpgradeUniverseHandler {
         requestParams,
         customer,
         universe);
-  }
-
-  public JsonNode constructGFlagAuditPayload(
-      GFlagsUpgradeParams requestParams, UserIntent oldUserIntent) {
-    if (requestParams.getPrimaryCluster() == null) {
-      return null;
-    }
-    // TODO: support specific gflags
-    UserIntent newUserIntent = requestParams.getPrimaryCluster().userIntent;
-    Map<String, String> newMasterGFlags = newUserIntent.masterGFlags;
-    Map<String, String> newTserverGFlags = newUserIntent.tserverGFlags;
-    Map<String, String> oldMasterGFlags = oldUserIntent.masterGFlags;
-    Map<String, String> oldTserverGFlags = oldUserIntent.tserverGFlags;
-    GFlagsAuditPayload payload = new GFlagsAuditPayload();
-    String softwareVersion = newUserIntent.ybSoftwareVersion;
-    payload.master =
-        generateGFlagEntries(
-            oldMasterGFlags, newMasterGFlags, ServerType.MASTER.toString(), softwareVersion);
-    payload.tserver =
-        generateGFlagEntries(
-            oldTserverGFlags, newTserverGFlags, ServerType.TSERVER.toString(), softwareVersion);
-
-    ObjectMapper mapper = new ObjectMapper();
-    Map<String, GFlagsAuditPayload> auditPayload = new HashMap<>();
-    auditPayload.put("gflags", payload);
-
-    return mapper.valueToTree(auditPayload);
-  }
-
-  public List<GFlagDiffEntry> generateGFlagEntries(
-      Map<String, String> oldGFlags,
-      Map<String, String> newGFlags,
-      String serverType,
-      String softwareVersion) {
-    List<GFlagDiffEntry> gFlagChanges = new ArrayList<GFlagDiffEntry>();
-
-    GFlagDiffEntry tEntry;
-    Collection<String> modifiedGFlags = Sets.union(oldGFlags.keySet(), newGFlags.keySet());
-
-    for (String gFlagName : modifiedGFlags) {
-      String oldGFlagValue = oldGFlags.getOrDefault(gFlagName, null);
-      String newGFlagValue = newGFlags.getOrDefault(gFlagName, null);
-      if (oldGFlagValue == null || !oldGFlagValue.equals(newGFlagValue)) {
-        String defaultGFlagValue = getGFlagDefaultValue(softwareVersion, serverType, gFlagName);
-        tEntry = new GFlagDiffEntry(gFlagName, oldGFlagValue, newGFlagValue, defaultGFlagValue);
-        gFlagChanges.add(tEntry);
-      }
-    }
-
-    return gFlagChanges;
-  }
-
-  public String getGFlagDefaultValue(String softwareVersion, String serverType, String gFlagName) {
-    GFlagDetails defaultGFlag;
-    String defaultGFlagValue;
-    try {
-      defaultGFlag =
-          gFlagsValidationHandler.getGFlagsMetadata(softwareVersion, serverType, gFlagName);
-    } catch (IOException | PlatformServiceException e) {
-      defaultGFlag = null;
-    }
-    defaultGFlagValue = (defaultGFlag == null) ? null : defaultGFlag.defaultValue;
-    return defaultGFlagValue;
   }
 
   public UUID rotateCerts(CertsRotateParams requestParams, Customer customer, Universe universe) {
