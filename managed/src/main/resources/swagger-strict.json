@@ -5285,6 +5285,9 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "sharedVPCProject" : {
+          "type" : "string"
+        },
         "useHostCredentials" : {
           "type" : "boolean"
         },
@@ -17866,6 +17869,15 @@
             }
           }
         },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "format" : "uuid",
+              "type" : "string"
+            }
+          }
+        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -18515,6 +18527,14 @@
           "required" : false
         } ],
         "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -19791,9 +19811,8 @@
           "required" : true,
           "type" : "string"
         }, {
-          "format" : "uuid",
           "in" : "path",
-          "name" : "pUUID",
+          "name" : "code",
           "required" : true,
           "type" : "string"
         }, {
@@ -20801,12 +20820,20 @@
           "in" : "query",
           "name" : "request",
           "required" : false
+        }, {
+          "description" : "Node action data to be updated",
+          "in" : "body",
+          "name" : "Node action",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/NodeActionFormData"
+          }
         } ],
         "responses" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YBPSuccess"
+              "$ref" : "#/definitions/YBPTask"
             }
           }
         },
