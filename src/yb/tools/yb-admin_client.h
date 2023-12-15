@@ -387,7 +387,8 @@ class ClusterAdminClient {
 
   Status CreateCDCSDKDBStream(
       const TypedNamespaceName& ns, const std::string& CheckPointType,
-      const std::string& RecordType);
+      const std::string& RecordType,
+      const std::optional<std::string>& ConsistentSnapshotOption);
 
   Status DeleteCDCStream(const std::string& stream_id, bool force_delete = false);
 

@@ -3730,7 +3730,8 @@ Status ClusterAdminClient::WriteUniverseKeyToFile(
 
 Status ClusterAdminClient::CreateCDCSDKDBStream(
     const TypedNamespaceName& ns, const std::string& checkpoint_type,
-    const std::string& record_type) {
+    const std::string& record_type,
+    const std::optional<std::string>& consistent_snapshot_option) {
   HostPort ts_addr = VERIFY_RESULT(GetFirstRpcAddressForTS());
   auto cdc_proxy = std::make_unique<cdc::CDCServiceProxy>(proxy_cache_.get(), ts_addr);
 
@@ -3755,6 +3756,14 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
         req.set_checkpoint_type(cdc::CDCCheckpointType::EXPLICIT);
   } else {
         req.set_checkpoint_type(cdc::CDCCheckpointType::IMPLICIT);
+  }
+
+  if (consistent_snapshot_option.has_value()) {
+    if (*consistent_snapshot_option == "USE_SNAPSHOT") {
+      req.set_cdcsdk_consistent_snapshot_option(CDCSDKSnapshotOption::USE_SNAPSHOT);
+    } else {
+      req.set_cdcsdk_consistent_snapshot_option(CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT);
+    }
   }
 
   RpcController rpc;

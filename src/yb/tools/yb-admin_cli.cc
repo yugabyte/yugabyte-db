@@ -1719,7 +1719,8 @@ Status create_cdc_stream_action(
   return Status::OK();
 }
 
-const auto create_change_data_stream_args = "<namespace> [<checkpoint_type>] [<record_type>]";
+const auto create_change_data_stream_args =
+    "<namespace> [<checkpoint_type>] [<record_type>] [<consistent_snapshot_option>]";
 Status create_change_data_stream_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() < 1) {
@@ -1728,8 +1729,11 @@ Status create_change_data_stream_action(
 
   std::string checkpoint_type = yb::ToString("EXPLICIT");
   std::string record_type = yb::ToString("CHANGE");
+  std::optional<std::string> consistent_snapshot_option;
   std::string uppercase_checkpoint_type;
   std::string uppercase_record_type;
+  std::string uppercase_consistent_snapshot_option;
+
 
   if (args.size() > 1) {
     ToUpperCase(args[1], &uppercase_checkpoint_type);
@@ -1751,11 +1755,21 @@ Status create_change_data_stream_action(
     record_type = uppercase_record_type;
   }
 
+  if (args.size() > 3) {
+    ToUpperCase(args[3], &uppercase_consistent_snapshot_option);
+    if (uppercase_consistent_snapshot_option != "USE_SNAPSHOT" &&
+        uppercase_consistent_snapshot_option != "NOEXPORT_SNAPSHOT") {
+      return ClusterAdminCli::kInvalidArguments;
+    }
+    consistent_snapshot_option = uppercase_consistent_snapshot_option;
+  }
+
   const string namespace_name = args[0];
   const TypedNamespaceName database = VERIFY_RESULT(ParseNamespaceName(args[0]));
 
   RETURN_NOT_OK_PREPEND(
-      client->CreateCDCSDKDBStream(database, checkpoint_type, record_type),
+      client->CreateCDCSDKDBStream(
+          database, checkpoint_type, record_type, consistent_snapshot_option),
       Format("Unable to create CDC stream for database $0", namespace_name));
   return Status::OK();
 }
