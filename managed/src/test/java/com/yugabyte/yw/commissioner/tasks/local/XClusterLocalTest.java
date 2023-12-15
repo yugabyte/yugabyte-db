@@ -80,7 +80,7 @@ public class XClusterLocalTest extends LocalProviderUniverseTestBase {
     // Get the table info for the source universe.
     List<TableInfoForm.TableInfoResp> resp =
         tableHandler.listTables(
-            customer.getUuid(), source.getUniverseUUID(), false, true, false, true);
+            customer.getUuid(), source.getUniverseUUID(), false, false, true, true);
 
     XClusterConfigCreateFormData formData = new XClusterConfigCreateFormData();
     formData.sourceUniverseUUID = source.getUniverseUUID();
@@ -147,7 +147,7 @@ public class XClusterLocalTest extends LocalProviderUniverseTestBase {
     // Get the table info for the source universe.
     List<TableInfoForm.TableInfoResp> resp =
         tableHandler.listTables(
-            customer.getUuid(), source.getUniverseUUID(), false, true, false, true);
+            customer.getUuid(), source.getUniverseUUID(), false, false, true, true);
 
     XClusterConfigCreateFormData formData = new XClusterConfigCreateFormData();
     formData.sourceUniverseUUID = source.getUniverseUUID();
@@ -196,7 +196,7 @@ public class XClusterLocalTest extends LocalProviderUniverseTestBase {
     // Get the table info for the source universe.
     resp =
         tableHandler.listTables(
-            customer.getUuid(), source.getUniverseUUID(), false, true, false, true);
+            customer.getUuid(), source.getUniverseUUID(), false, false, true, true);
     XClusterConfigEditFormData editFormData = new XClusterConfigEditFormData();
     editFormData.tables = new HashSet<String>();
     for (TableInfoForm.TableInfoResp tableInfo : resp) {
