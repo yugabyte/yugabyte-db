@@ -270,6 +270,12 @@ create temp table prtx2 (a integer, b integer, c integer);
 insert into prtx2 select 1 + i%10, i, i from generate_series(1,5000) i, generate_series(1,10) j;
 create index on prtx2 (c);
 
+-- testing yb_hash_code pushdown on a secondary index with a text hash column
+CREATE TABLE text_table (hr text, ti text, tj text, i int, j int, primary key (hr));
+INSERT INTO text_table SELECT i::TEXT, i::TEXT, i::TEXT, i, i FROM generate_series(1,10000) i;
+CREATE INDEX textidx ON text_table (tj);
+SELECT tj FROM text_table WHERE yb_hash_code(tj) <= 63;
+
 -- Row locking
 CREATE TABLE t(h INT, r INT, PRIMARY KEY(h, r));
 INSERT INTO t VALUES(1, 1), (1, 3);

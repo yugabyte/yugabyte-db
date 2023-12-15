@@ -6411,6 +6411,9 @@ fix_indexqual_clause(PlannerInfo *root, IndexOptInfo *index, int indexcol,
 	{
 		OpExpr	   *op = (OpExpr *) clause;
 
+		if (list_length(op->args) != 2)
+			elog(ERROR, "indexqual clause is not binary opclause");
+
 		/* Replace the indexkey expression with an index Var. */
 		linitial(op->args) = fix_indexqual_operand(linitial(op->args),
 												   index,

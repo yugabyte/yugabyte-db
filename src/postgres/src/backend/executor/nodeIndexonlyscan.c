@@ -286,7 +286,11 @@ IndexOnlyNext(IndexOnlyScanState *node)
 			econtext->ecxt_scantuple = slot;
 			ExprState *recheckqual = node->yb_indexqual_for_recheck
 				? node->yb_indexqual_for_recheck : node->recheckqual;
-			if (!ExecQualAndReset(recheckqual, econtext))
+			/*
+			 * Don't reset per-tuple memory context in YB, as the scanned tuple
+			 * resides there.
+			 */
+			if (!ExecQual(recheckqual, econtext))
 			{
 				/* Fails recheck, so drop it and loop back for another */
 				ResetExprContext(econtext);
