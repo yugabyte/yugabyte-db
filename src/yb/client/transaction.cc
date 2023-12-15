@@ -1280,7 +1280,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   bool CheckAbortToOldStatusTabletNeeded() {
-    auto old_status_tablet_state = old_status_tablet_state_.load(std::memory_order_acquire);
+    OldTransactionState old_status_tablet_state = OldTransactionState::kRunning;
+
+    old_status_tablet_state_.compare_exchange_strong(
+        old_status_tablet_state, OldTransactionState::kAborting, std::memory_order_acq_rel);
+
     switch (old_status_tablet_state) {
       case OldTransactionState::kAborting: FALLTHROUGH_INTENDED;
       case OldTransactionState::kAborted:
@@ -1302,8 +1306,6 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       const YBTransactionPtr& transaction,
       internal::RemoteTabletPtr old_status_tablet) {
     VLOG_WITH_PREFIX(1) << "Sending abort to old status tablet";
-
-    old_status_tablet_state_.store(OldTransactionState::kAborting, std::memory_order_release);
 
     if (PREDICT_FALSE(FLAGS_TEST_old_txn_status_abort_delay_ms > 0)) {
       std::this_thread::sleep_for(FLAGS_TEST_old_txn_status_abort_delay_ms * 1ms);
