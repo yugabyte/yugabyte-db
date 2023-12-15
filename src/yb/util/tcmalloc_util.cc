@@ -35,17 +35,10 @@ DEFINE_int64(server_tcmalloc_max_total_thread_cache_bytes, -1,
     "Total number of bytes to use for the thread cache for tcmalloc across all threads in the "
     "tserver/master. If this is negative, it has no effect.");
 
-DEFINE_bool(enable_process_lifetime_heap_sampling,
-    true,
-    "Enables heap sampling for the lifetime of the process, at a rate specified by "
-    "profiler_sample_freq_bytes.");
-TAG_FLAG(enable_process_lifetime_heap_sampling, stable);
-TAG_FLAG(enable_process_lifetime_heap_sampling, advanced);
-
 DEFINE_bool(enable_process_lifetime_heap_profiling,
     false,
     "WARNING: This flag will cause tcmalloc to sample every allocation. This can significantly "
-    "impact performance. For a lighter approach, use enable_process_lifetime_heap_sampling. "
+    "impact performance. For a lighter approach, use sampling (profiler_sample_freq_bytes). "
     "This option is only supported with gperftools tcmalloc. "
     "Enables heap profiling for the lifetime of the process. Profile output will be stored in the "
     "directory specified by -heap_profile_path, and enabling this option will disable the "
@@ -62,8 +55,8 @@ TAG_FLAG(heap_profile_path, advanced);
 // Assuming 30 lines per stack trace line * 20 bytes for the stack ptr, each sample costs 600 bytes.
 // With 1 MB sampling, a 64 GB server would have ~65536 samples, so the samples take ~39 MB, which
 // is a reasonable amount of overhead.
-DEFINE_int64(profiler_sample_freq_bytes, 1_MB, "The frequency at which TCMalloc should sample "
-    "allocations (if enable_process_lifetime_heap_sampling is set to true).");
+DEFINE_int64(profiler_sample_freq_bytes, 1_MB, "The frequency at which "
+    "TCMalloc should sample allocations. Sampling is disabled if this is set to <= 0.");
 
 DEFINE_bool(mem_tracker_include_pageheap_free_in_root_consumption, false,
     "Whether to include tcmalloc.pageheap_free_bytes from the consumption of the root memtracker. "
@@ -189,17 +182,28 @@ void ConfigureTCMalloc(int64_t mem_limit) {
     FLAGS_heap_profile_path = strings::Substitute(
         "/tmp/$0.$1", google::ProgramInvocationShortName(), getpid());
   }
-
-  if (FLAGS_enable_process_lifetime_heap_sampling) {
-    LOG(INFO) << Format("Setting TCMalloc profiler sampling frequency to $0 bytes",
-        FLAGS_profiler_sample_freq_bytes);
-    MallocExtension::instance()->SetProfileSamplingRate(FLAGS_profiler_sample_freq_bytes);
-  }
+  SetTCMallocSamplingFrequency(FLAGS_profiler_sample_freq_bytes);
 
   if (FLAGS_enable_process_lifetime_heap_profiling) {
     HeapProfilerStart(FLAGS_heap_profile_path.c_str());
   }
 #endif
+}
+
+int64_t GetTCMallocSamplingFrequency() {
+#if YB_TCMALLOC_ENABLED
+  return MallocExtension::instance()->GetProfileSamplingRate();
+#endif
+  return 0;
+}
+
+void SetTCMallocSamplingFrequency(int64_t sample_freq_bytes) {
+#if YB_TCMALLOC_ENABLED
+  bool disabled = sample_freq_bytes <= 0;
+  LOG(INFO) << Format("Setting TCMalloc profiler sampling frequency to $0 bytes", sample_freq_bytes)
+            << (disabled ? " (disabled)" : "");
+  MallocExtension::instance()->SetProfileSamplingRate(sample_freq_bytes);
+#endif // YB_TCMALLOC_ENABLED
 }
 
 }  // namespace yb
