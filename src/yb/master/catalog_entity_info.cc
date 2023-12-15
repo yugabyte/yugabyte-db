@@ -114,7 +114,10 @@ void TabletReplica::UpdateLeaderLeaseInfo(const TabletLeaderLeaseInfo& info) {
   const bool initialized = leader_lease_info.initialized;
   const auto old_lease_exp = leader_lease_info.ht_lease_expiration;
   leader_lease_info = info;
-  leader_lease_info.ht_lease_expiration = std::max(old_lease_exp, info.ht_lease_expiration);
+  leader_lease_info.ht_lease_expiration =
+      info.leader_lease_status == consensus::LeaderLeaseStatus::HAS_LEASE
+          ? std::max(info.ht_lease_expiration, old_lease_exp)
+          : 0;
   leader_lease_info.initialized = initialized || info.initialized;
 }
 
@@ -157,6 +160,7 @@ TabletInfo::TabletInfo(const scoped_refptr<TableInfo>& table, TabletId tablet_id
     : tablet_id_(std::move(tablet_id)),
       table_(table),
       last_update_time_(MonoTime::Now()),
+      last_time_with_valid_leader_(MonoTime::Now()),
       reported_schema_version_({}) {
   // Have to pre-initialize to an empty map, in case of access before the first setter is called.
   replica_locations_ = std::make_shared<TabletReplicaMap>();
@@ -242,7 +246,6 @@ Result<TabletReplicaDriveInfo> TabletInfo::GetLeaderReplicaDriveInfo() const {
 Result<TabletLeaderLeaseInfo> TabletInfo::GetLeaderLeaseInfoIfLeader(
     const std::string& ts_uuid) const {
   std::lock_guard l(lock_);
-
   auto it = replica_locations_->find(ts_uuid);
   if (it == replica_locations_->end() || it->second.role != PeerRole::LEADER) {
     return GetLeaderNotFoundStatus();
@@ -309,6 +312,21 @@ void TabletInfo::set_last_update_time(const MonoTime& ts) {
 MonoTime TabletInfo::last_update_time() const {
   std::lock_guard l(lock_);
   return last_update_time_;
+}
+
+void TabletInfo::UpdateLastTimeWithValidLeader() {
+  std::lock_guard l(lock_);
+  last_time_with_valid_leader_ = MonoTime::Now();
+}
+
+MonoTime TabletInfo::last_time_with_valid_leader() const {
+  std::lock_guard l(lock_);
+  return last_time_with_valid_leader_;
+}
+
+void TabletInfo::TEST_set_last_time_with_valid_leader(const MonoTime& time) {
+  std::lock_guard l(lock_);
+  last_time_with_valid_leader_ = time;
 }
 
 bool TabletInfo::set_reported_schema_version(const TableId& table_id, uint32_t version) {
