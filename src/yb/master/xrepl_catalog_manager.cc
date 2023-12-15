@@ -985,13 +985,15 @@ Status CatalogManager::CreateNewXReplStream(
                 << " is: " << consistent_snapshot_time;
 
       // Save the consistent_snapshot_time in the SysCDCStreamEntryPB catalog
-      stream->mutable_metadata()->StartMutation();
-      auto* metadata = &stream->mutable_metadata()->mutable_dirty()->pb;
-      metadata->mutable_cdcsdk_stream_metadata()->set_snapshot_time(consistent_snapshot_time);
-      metadata->mutable_cdcsdk_stream_metadata()->set_consistent_snapshot_option(
+      auto l = stream->LockForWrite();
+      l.mutable_data()->pb.mutable_cdcsdk_stream_metadata()->set_snapshot_time(
+          consistent_snapshot_time);
+      l.mutable_data()->pb.mutable_cdcsdk_stream_metadata()->set_consistent_snapshot_option(
           req.cdcsdk_consistent_snapshot_option());
-      metadata->set_state(SysCDCStreamEntryPB::ACTIVE);
-      stream->mutable_metadata()->CommitMutation();
+      l.mutable_data()->pb.set_state(SysCDCStreamEntryPB::ACTIVE);
+      RETURN_NOT_OK(sys_catalog_->Upsert(leader_ready_term(), stream));
+      l.Commit();
+
       LOG(INFO) << "Updating stream metadata with snapshot time " << stream->ToString();
     }
     RETURN_NOT_OK(PopulateCDCStateTable(
