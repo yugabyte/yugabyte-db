@@ -28,8 +28,8 @@
   const bannerClosed = getCookie('closeAISearchBanner');
   const crossButton = document.querySelector('.search-banner .cross-btn');
 
-  if (bannerClosed === '1') {
-    document.querySelector('.search-banner').remove();
+  if (bannerClosed !== '1') {
+    document.querySelector('.search-banner').classList.remove('hidden');
   }
 
   /**
@@ -37,7 +37,7 @@
    */
   if (crossButton) {
     crossButton.addEventListener('click', (event) => {
-      event.currentTarget.parentNode.remove();
+      event.currentTarget.parentNode.classList.add('hidden');
       document.cookie = 'closeAISearchBanner=1; path=/; secure=true';
     });
   }
