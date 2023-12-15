@@ -1,7 +1,3 @@
-/**
- * Compile the code in ES5 and minify it and then add the minify code at the
- * end in the sidebar-tree.html file under `/layouts/partials/`.
- */
 (() => {
   /**
    * Decode the cookie and return the appropriate cookie value if found
