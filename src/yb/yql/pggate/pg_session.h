@@ -40,6 +40,7 @@
 #include "yb/yql/pggate/pg_operation_buffer.h"
 #include "yb/yql/pggate/pg_perform_future.h"
 #include "yb/yql/pggate/pg_tabledesc.h"
+#include "yb/yql/pggate/pg_tools.h"
 #include "yb/yql/pggate/pg_txn_manager.h"
 
 namespace yb::pggate {
@@ -366,9 +367,11 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   Result<yb::tserver::PgGetReplicationSlotStatusResponsePB> GetReplicationSlotStatus(
       const ReplicationSlotName& slot_name);
 
+  [[nodiscard]] PgWaitEventWatcher StartWaitEvent(ash::WaitStateCode wait_event);
+
  private:
   Result<PgTableDescPtr> DoLoadTable(const PgObjectId& table_id, bool fail_on_cache_hit);
-  Result<PerformFuture> FlushOperations(BufferableOperations ops, bool transactional);
+  Result<PerformFuture> FlushOperations(BufferableOperations&& ops, bool transactional);
 
   class RunHelper;
 
@@ -420,12 +423,14 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
 
   PgDocMetrics metrics_;
 
+  const YBCPgCallbacks& pg_callbacks_;
+  const PgWaitEventWatcher::Starter wait_starter_;
+
   // Should write operations be buffered?
   bool buffering_enabled_ = false;
   BufferingSettings buffering_settings_;
   PgOperationBuffer buffer_;
 
-  const YBCPgCallbacks& pg_callbacks_;
   bool has_write_ops_in_ddl_mode_ = false;
 };
 
