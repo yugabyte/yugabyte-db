@@ -29,7 +29,7 @@ Note that in a YugabyteDB cluster with multiple nodes, session identifier is not
 To log the appropriate session information, you need to set the following configuration flags for your YB-TServers:
 
 - Set [ysql_log_statement](../../../reference/configuration/yb-tserver/#ysql-log-statement) YB-TServer configuration flag to `all` to turn on statement logging in the PostgreSQL logs.
-- Set the `log_line_prefix` PostgreSQL logging option to log timestamp, PostgreSQL PID, and session identifier.
+- Set the `log_line_prefix` PostgreSQL server option to log timestamp, PostgreSQL PID, and session identifier.
 
     YugabyteDB includes additional logging options so that you can record distributed location information. For example:
 
@@ -39,7 +39,7 @@ To log the appropriate session information, you need to set the following config
 
     The parameters are similar to that of PostgreSQL, with the addition of H, C, R, and Z to add host, cloud, region, and zone information relevant to distributed systems. You can also add `%U` and `%N` to add the cluster UUID, and node and cluster name respectively.
 
-    For information on setting server options, refer to [PostgreSQL server options](../../../reference/configuration/yb-tserver/#postgresql-server-options).
+    For information on setting server options in YugabyteDB, refer to [PostgreSQL server options](../../../reference/configuration/yb-tserver/#postgresql-server-options).
 
 ## Review logs
 
@@ -209,4 +209,4 @@ timestamp: 2022-10-24 17:05:25.404 UTC --pid: 1930 session: 6356c208.78a LOG:  s
 
 ## Next steps
 
-Use `pg_audit` to enable logging for specific databases, tables, or specific sets of operations. See [Configure audit logging in YSQL](../audit-logging-ysql).
+Use `pgaudit` to enable logging for specific databases, tables, or specific sets of operations. See [Configure audit logging in YSQL](../audit-logging-ysql).
