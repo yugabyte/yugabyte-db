@@ -513,6 +513,43 @@ public class DrConfigController extends AuthenticatedController {
     Universe targetUniverse =
         Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID(), customer);
 
+    // All the tables in DBs in replication on the source universe must be in the xCluster config.
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
+        XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
+    XClusterConfigTaskBase.groupByNamespaceId(
+            XClusterConfigTaskBase.filterTableInfoListByTableIds(
+                sourceTableInfoList, xClusterConfig.getTableIds()))
+        .forEach(
+            (namespaceId, tablesInfoList) -> {
+              Set<String> tableIdsInNamespace =
+                  sourceTableInfoList.stream()
+                      .filter(
+                          tableInfo ->
+                              XClusterConfigTaskBase.isXClusterSupported(tableInfo)
+                                  && tableInfo
+                                      .getNamespace()
+                                      .getId()
+                                      .toStringUtf8()
+                                      .equals(namespaceId))
+                      .map(XClusterConfigTaskBase::getTableId)
+                      .collect(Collectors.toSet());
+              Set<String> tableIdsNotInReplication =
+                  tableIdsInNamespace.stream()
+                      .filter(
+                          tableId ->
+                              !XClusterConfigTaskBase.getTableIds(tablesInfoList).contains(tableId))
+                      .collect(Collectors.toSet());
+              if (!tableIdsNotInReplication.isEmpty()) {
+                throw new PlatformServiceException(
+                    BAD_REQUEST,
+                    String.format(
+                        "To do a switchover, all the tables in a keyspace that exist on the source"
+                            + " universe and supports xCluster replication must be in replication:"
+                            + " missing table ids: %s in the keyspace: %s",
+                        tableIdsNotInReplication, namespaceId));
+              }
+            });
+
     // To do switchover, the xCluster config and all the tables in that config must be in
     // the green status because we are going to drop that config and the information for bad
     // replication streams will be lost.
