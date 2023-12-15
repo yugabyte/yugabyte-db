@@ -17,17 +17,17 @@ YugabyteDB supports the following operating systems and architectures.
 
 Unless otherwise noted, x86 operating systems are supported on all supported versions of YugabyteDB and YugabyteDB Anywhere. ARM support was added in v2.18.1.
 
-| Operating system | x86            | ARM            | Supported versions and notes |
+| Operating system | x86            | ARM            | Notes |
 | :--------------- | :------------- | :------------- | :--- |
 | CentOS7          | {{<icon/yes>}} |                |
 | CentOS8          | {{<icon/yes>}} |                |
-| AlmaLinux 8      | {{<icon/yes>}} | {{<icon/yes>}} | Recommended development platform |
+| AlmaLinux 8      | {{<icon/yes>}} | {{<icon/yes>}} | Recommended for production<br>Recommended development platform |
 | AlmaLinux 9      | {{<icon/yes>}} | {{<icon/yes>}} |
 | Ubuntu 18        | {{<icon/yes>}} |                |
 | Ubuntu 20        | {{<icon/yes>}} |                |
 | Ubuntu 22        | {{<icon/yes>}} |                | 2.18.5, 2.20.1 |
 | Red Hat Enterprise Linux 7 | {{<icon/yes>}} |      |
-| Red Hat Enterprise Linux 8 | {{<icon/yes>}} |      |
+| Red Hat Enterprise Linux 8 | {{<icon/yes>}} |      | Recommended for production |
 | SUSE Linux Enterprise Server 15 SP4 | {{<icon/yes>}} |   | {{<badge/ea>}} |
 | Amazon Linux 2   | {{<icon/yes>}} | {{<icon/yes>}} |
 
@@ -37,7 +37,7 @@ YugabyteDB Anywhere supports the following operating systems and architectures.
 
 Unless otherwise noted, operating systems are supported on all supported versions of YugabyteDB and YugabyteDB Anywhere.
 
-| Operating system | x86  | ARM  | Supported versions and notes |
+| Operating system | x86  | ARM  | Notes |
 | :--------------- | :--- | :--- | :--- |
 | CentOS7 | {{<icon/yes>}} |   | Default for YBA-deployed nodes |
 | CentOS8 | {{<icon/yes>}} |   |
