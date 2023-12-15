@@ -158,3 +158,47 @@ end;
 $$;
 
 drop table foo;
+
+create table tab1(c1 integer,  c2 numeric);
+
+create or replace procedure single_Row_insert(c1 integer, c2 numeric)
+as $$
+declare
+  c integer;
+  n integer;
+begin
+  c := dbms_sql.open_cursor();
+
+  call dbms_sql.parse(c, 'INSERT INTO tab1 VALUES (:bnd1, :bnd2)');
+
+  call dbms_sql.bind_variable(c, 'bnd1', c1);
+  call dbms_sql.bind_variable(c, 'bnd2', c2);
+
+  n := dbms_sql.execute(c);
+
+  call dbms_sql.debug_cursor(c);
+  call dbms_sql.close_cursor(c);
+end
+$$language plpgsql;
+
+do $$
+declare a numeric(7,2);
+begin
+  call single_Row_insert(2,a);
+end
+$$;
+
+select * from tab1;
+
+do $$
+declare a numeric(7,2) default 1.23;
+begin
+  call single_Row_insert(2,a);
+end
+$$;
+
+select * from tab1;
+select * from tab1 where c2 is null;
+
+drop procedure single_Row_insert;
+drop table tab1;
