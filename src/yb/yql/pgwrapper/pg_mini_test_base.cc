@@ -74,14 +74,22 @@ void PgMiniTestBase::SetUp() {
   };
   OverrideMiniClusterOptions(&mini_cluster_opt);
   cluster_ = std::make_unique<MiniCluster>(mini_cluster_opt);
+
+  // Use TS-0 IP for PG server. YBC process and PG auto analyze service use this IP.
+  const auto pg_ts_idx = 0;
+  const auto pg_addr = server::TEST_RpcAddress(pg_ts_idx + 1, server::Private::kTrue);
+  auto pg_port = cluster_->AllocateFreePort();
+  // The 'pgsql_proxy_bind_address' flag must be set before starting the cluster. Each
+  // tserver will store this address when it starts. Setting the 'pgsql_proxy_bind_address' flag
+  // is needed for tserver local PG connections.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_bind_address)
+      = HostPort(pg_addr, pg_port).ToString();
+
   ASSERT_OK(cluster_->Start(ExtraTServerOptions()));
 
   ASSERT_OK(WaitForInitDb(cluster_.get()));
 
-  auto port = cluster_->AllocateFreePort();
-  // Use TS-0 IP for PG server. YBC process uses this IP.
-  auto pg_process_conf = ASSERT_RESULT(CreatePgProcessConf(port, /* ts_idx */ 0));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_bind_address) = pg_host_port_.ToString();
+  auto pg_process_conf = ASSERT_RESULT(CreatePgProcessConf(pg_port, pg_ts_idx));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pgsql_proxy_webserver_port) = cluster_->AllocateFreePort();
 
   LOG(INFO) << "Starting PostgreSQL server listening on "

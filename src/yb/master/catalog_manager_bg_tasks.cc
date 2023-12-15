@@ -65,12 +65,6 @@ DEFINE_RUNTIME_bool(sys_catalog_respect_affinity_task, true,
             "Whether the master sys catalog tablet respects cluster config preferred zones "
             "and sends step down requests to a preferred leader.");
 
-DEFINE_RUNTIME_bool(ysql_enable_auto_analyze_service, false,
-                    "Enable the Auto Analyze service which automatically triggers ANALYZE to "
-                    "update table statistics for tables which have changed more than a "
-                    "configurable threshold.");
-TAG_FLAG(ysql_enable_auto_analyze_service, experimental);
-
 DEFINE_test_flag(bool, pause_catalog_manager_bg_loop_start, false,
                  "Pause the bg tasks thread at the beginning of the loop.");
 
@@ -83,6 +77,7 @@ DEFINE_test_flag(bool, cdcsdk_skip_processing_dynamic_table_addition, false,
 DECLARE_bool(enable_ysql);
 DECLARE_bool(TEST_echo_service_enabled);
 DECLARE_bool(cdcsdk_enable_cleanup_of_non_eligible_tables_from_stream);
+DECLARE_bool(ysql_enable_auto_analyze_service);
 
 namespace yb {
 namespace master {

@@ -657,8 +657,14 @@ Status TabletServer::RegisterServices() {
     RETURN_NOT_OK(RegisterService(FLAGS_TEST_echo_svc_queue_length, std::move(test_echo_service)));
   }
 
+  auto connect_to_pg = [this](const std::string& database_name) {
+    return pgwrapper::CreateInternalPGConnBuilder(pgsql_proxy_bind_address(), database_name,
+                                                  GetSharedMemoryPostgresAuthKey(),
+                                                  std::nullopt).Connect();
+  };
   auto pg_auto_analyze_service =
-      std::make_shared<stateful_service::PgAutoAnalyzeService>(metric_entity(), client_future());
+      std::make_shared<stateful_service::PgAutoAnalyzeService>(metric_entity(), client_future(),
+                                                               connect_to_pg);
   LOG(INFO) << "yb::tserver::stateful_service::PgAutoAnalyzeService created at "
             << pg_auto_analyze_service.get();
   RETURN_NOT_OK(pg_auto_analyze_service->Init(tablet_manager_.get()));
