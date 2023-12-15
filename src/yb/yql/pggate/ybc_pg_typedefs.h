@@ -367,6 +367,8 @@ typedef struct PgCallbacks {
   void (*ConstructArrayDatum)(YBCPgOid oid, const char **, const int, char **, size_t *);
   /* hba.c */
   int (*CheckUserMap)(const char *, const char *, const char *, bool case_insensitive);
+  /* pgstat.h */
+  uint32_t (*PgstatReportWaitStart)(uint32_t);
 } YBCPgCallbacks;
 
 typedef struct PgGFlagsAccessor {

@@ -105,6 +105,14 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     // Don't change the value of kUnused
     ((kUnused, 0xFFFFFFFFU))
 
+    // Wait states related to postgres
+    // Don't change the position of kPostgresReserved
+    ((kPostgresReserved, YB_ASH_MAKE_EVENT(TServerWait)))
+    (kCatalogRead)
+    (kIndexRead)
+    (kStorageRead)
+    (kStorageFlush)
+
     // Common wait states
     ((kOnCpu_Active, YB_ASH_MAKE_EVENT(Common)))
     (kOnCpu_Passive)
