@@ -52,4 +52,8 @@ void SetTCMallocTotalThreadCacheSize(int64_t max_size);
 // the hard limit of the root memory tracker.
 void ConfigureTCMalloc(int64_t mem_limit);
 
+int64_t GetTCMallocSamplingFrequency();
+
+void SetTCMallocSamplingFrequency(int64_t sample_freq_bytes);
+
 }  // namespace yb
