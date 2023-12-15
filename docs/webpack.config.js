@@ -6,6 +6,7 @@ module.exports = {
   entry: {
     site: './index.js',
     search: './algolia-search.js',
+    'track-utm': './track-utm.js',
   },
   output: {
     path: path.join(__dirname, 'static/js'),
