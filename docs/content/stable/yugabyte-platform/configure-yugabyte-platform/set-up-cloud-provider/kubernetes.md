@@ -507,7 +507,7 @@ The following overrides are available:
 
 - Overrides to use a secret for LDAP authentication. Refer to [Create secrets for Kubernetes](../../../../secure/authentication/ldap-authentication-ysql/#create-secrets-for-kubernetes).
 
-- Overrides to enable [GKE Service account based IAM](../../../back-up-restore-universes/configure-backup-storage/#gke-service-account-based-iam-gcp-iam) for backup and restores:
+- Overrides to enable [GKE service account-based IAM](../../../back-up-restore-universes/configure-backup-storage/#gke-service-account-based-iam-gcp-iam) for backup and restores:
 
   ```yaml
   serviceAccount:<KSA_NAME>
