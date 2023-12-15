@@ -58,6 +58,10 @@
   button:hover {
     background: #5d5fef !important;
     border: 1px solid #5d5fef;
+
+    div {
+      gap: 0
+    }
   }
 
   .mantine-Textarea-input {
@@ -136,6 +140,15 @@
       }
     }
 
+    .mantine-x5r5zg {
+      font-family: Inter;
+      font-size: 13px;
+      font-weight: 400;
+      line-height: 16px;
+      color: #0B1117;
+      margin: 20px 0 0;
+    }
+
     .mantine-Tooltip-tooltip {
       background-color: #fff;
       color: #4e5f6d;
@@ -143,16 +156,19 @@
     }
 
     .mantine-Popover-dropdown {
-      width: 100% !important;
-
       >div {
         flex-flow: column;
+
+        &:not(:empty) {
+          width: 100%;
+        }
       }
     }
   }
 
   .mantine-r3r7vl {
     background-color: transparent;
+    padding: 0;
 
     div {
       color: #25323d;
@@ -163,6 +179,7 @@
     }
   }
 
+  /*
   .mantine-x5r5zg {
     font-family: Inter;
     font-size: 13px;
@@ -171,6 +188,7 @@
     color: #0B1117;
     margin: 20px 0 0;
   }
+  */
 
   .mantine-Grid-root {
     .mantine-Grid-col {
@@ -273,6 +291,11 @@
         font-weight: inherit;
         line-height: inherit;
         color: inherit;
+      }
+
+      strong,
+      b {
+        font-weight: 700;
       }
 
       code {
@@ -388,6 +411,10 @@
         font-weight: 400;
         line-height: 18px;
         color: #0B1117;
+
+        div {
+          margin: 0 !important;
+        }
       }
 
       a {
