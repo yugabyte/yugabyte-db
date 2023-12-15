@@ -17,19 +17,19 @@ YugabyteDB supports the following operating systems and architectures.
 
 Unless otherwise noted, x86 operating systems are supported on all supported versions of YugabyteDB and YugabyteDB Anywhere. ARM support was added in v2.18.1.
 
-| Operating system | x86  | ARM  | Supported versions |
-| :--------------- | :--- | :--- | :--- |
-| CentOS7 | {{<icon/yes>}} |   |
-| CentOS8 | {{<icon/yes>}} |   |
-| AlmaLinux 8 | {{<icon/yes>}} | {{<icon/yes>}} |
-| AlmaLinux 9 | {{<icon/yes>}} | {{<icon/yes>}} |
-| Ubuntu 18 | {{<icon/yes>}} |   |
-| Ubuntu 20 | {{<icon/yes>}} |   |
-| Ubuntu 22 | {{<icon/yes>}} |   | 2.18.5, 2.20.1 |
-| Red Hat Enterprise Linux 7 | {{<icon/yes>}} |   |
-| Red Hat Enterprise Linux 8 | {{<icon/yes>}} |   |
-| SUSE Linux Enterprise Server 15 SP4 | {{<icon/yes>}} |   | {{<badge/tp>}} |
-| Amazon Linux 2 | {{<icon/yes>}} | {{<icon/yes>}} |
+| Operating system | x86            | ARM            | Supported versions and notes |
+| :--------------- | :------------- | :------------- | :--- |
+| CentOS7          | {{<icon/yes>}} |                |
+| CentOS8          | {{<icon/yes>}} |                |
+| AlmaLinux 8      | {{<icon/yes>}} | {{<icon/yes>}} | Recommended development platform |
+| AlmaLinux 9      | {{<icon/yes>}} | {{<icon/yes>}} |
+| Ubuntu 18        | {{<icon/yes>}} |                |
+| Ubuntu 20        | {{<icon/yes>}} |                |
+| Ubuntu 22        | {{<icon/yes>}} |                | 2.18.5, 2.20.1 |
+| Red Hat Enterprise Linux 7 | {{<icon/yes>}} |      |
+| Red Hat Enterprise Linux 8 | {{<icon/yes>}} |      |
+| SUSE Linux Enterprise Server 15 SP4 | {{<icon/yes>}} |   | {{<badge/ea>}} |
+| Amazon Linux 2   | {{<icon/yes>}} | {{<icon/yes>}} |
 
 ## YugabyteDB Anywhere
 

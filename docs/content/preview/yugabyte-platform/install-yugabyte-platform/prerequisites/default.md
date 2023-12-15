@@ -54,13 +54,13 @@ Installing using Replicated requires the following:
 YugabyteDB Anywhere is supported on all Linux distributions that Replicated supports. This includes, but is not limited to the following:
 
 - CentOS 7
-- Alma Linux 8
-- Alma Linux 9
+- AlmaLinux 8
+- AlmaLinux 9
 - Ubuntu 18
 - Ubuntu 20
 - RedHat Enterprise Linux 7
 - RedHat Enterprise Linux 8
-- SUSE Linux Enterprise Server (SLES) 15 SP4 (Tech Preview)
+- SUSE Linux Enterprise Server (SLES) 15 SP4 {{<badge/ea>}}
 
 ## Hardware requirements
 
