@@ -37,6 +37,20 @@
     background-color: rgba(11, 17, 23, 0.2);
   }
 
+  section {
+    scrollbar-width: thin;
+
+    &::-webkit-scrollbar {
+      height: 5px;
+      width: 5px;
+    }
+
+    &::-webkit-scrollbar-thumb {
+      background: #b7c3cb;
+      border-radius: 6px;
+    }
+  }
+
   .mantine-Modal-inner {
     z-index: 99999;
   }
@@ -103,7 +117,11 @@
       font-size: 11.5px;
       font-weight: 400;
       line-height: 16px;
-      color: #4E5F6D;
+      color: #25323d;
+
+      &.mantine-Alert-body {
+        padding-top: 3px;
+      }
     }
 
     a {
@@ -117,13 +135,27 @@
         text-underline-offset: 0.3em;
       }
     }
+
+    .mantine-Tooltip-tooltip {
+      background-color: #fff;
+      color: #4e5f6d;
+      box-shadow: 0 0 5px;
+    }
+
+    .mantine-Popover-dropdown {
+      width: 100% !important;
+
+      >div {
+        flex-flow: column;
+      }
+    }
   }
 
   .mantine-r3r7vl {
     background-color: transparent;
 
     div {
-      color: #4E5F6D;
+      color: #25323d;
       font-family: Inter;
       font-size: 11.5px;
       font-weight: 400;
@@ -202,12 +234,21 @@
     }
   }
 
+  .mantine-Text-root.mantine-1s22pdu {
+    font-family: Inter;
+    font-size: 15px;
+    font-weight: 600;
+    line-height: 20px;
+    margin: 30px 0 0;
+    color: #0B1117;
+  }
+
   .mantine-Modal-body h5 {
     font-family: Inter;
     font-size: 15px;
     font-weight: 600;
     line-height: 20px;
-    margin: 30px 0 21px;
+    margin: 20px 0 10px;
     color: #0B1117;
 
     div {
@@ -232,6 +273,14 @@
         font-weight: inherit;
         line-height: inherit;
         color: inherit;
+      }
+
+      code {
+        background: #f7fafc !important;
+        border: 1px solid #d7dee4;
+        border-radius: 4px;
+        color: #4e5f6d;
+        padding: 0 4px;
       }
 
       /*prism*/
@@ -276,7 +325,7 @@
           color: #4e5f6d !important;
           margin: 0;
           scrollbar-width: thin;
-          padding-bottom: 10px;
+          padding: 0 0 10px;
 
           &::-webkit-scrollbar {
             height: 5px;
@@ -288,15 +337,11 @@
             border-radius: 6px;
           }
         }
-
-        .mantine-Tooltip-tooltip {
-          background-color: #fff;
-          color: #4e5f6d;
-        }
       }
 
       /*prism*/
-      ul {
+      ul,
+      ol {
         padding: 0;
 
         li {
@@ -314,6 +359,25 @@
             width: 6px;
             height: 6px;
             background: #b7c3cb;
+          }
+        }
+      }
+
+      ol {
+        counter-reset: orderlist;
+
+        li {
+          &:before {
+            content: counter(orderlist);
+            counter-increment: orderlist;
+            width: 16px;
+            height: 16px;
+            font-size: 10px;
+            background: #f0f4f7;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            top: 1px;
           }
         }
       }
@@ -355,6 +419,10 @@
 
         * {
           color: rgb(134, 142, 150);
+
+          &:hover {
+            text-decoration: none;
+          }
         }
 
         &:hover {
