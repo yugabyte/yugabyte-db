@@ -18,7 +18,7 @@ YugabyteDB Anywhere uses a role-based access control (RBAC) model to manage acce
 
 A user can interact with a YugabyteDB Anywhere through the UI or REST API.
 
-Users are assigned roles, which determine what they actions they can perform.
+Users are assigned roles, which define the set of actions users can perform.
 
 ### Create, modify, and delete users
 
