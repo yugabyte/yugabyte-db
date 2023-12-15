@@ -15,14 +15,13 @@ package org.yb.pgsql;
 
 import static org.yb.AssertionWrappers.assertEquals;
 
-import com.google.common.collect.ImmutableMap;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.net.URL;
-import java.sql.Connection;
 import java.sql.Statement;
+import java.util.Map;
 import java.util.Scanner;
 import java.util.stream.Stream;
 
@@ -37,23 +36,26 @@ import org.yb.minicluster.MiniYBDaemon;
 public class TestStatementsQtext extends BasePgSQLTest {
   private static final Logger LOG = LoggerFactory.getLogger(TestStatementsQtext.class);
 
+  @Override
+  protected Map<String, String> getTServerFlags() {
+    Map<String, String> flagMap = super.getTServerFlags();
+    flagMap.put("ysql_pg_conf_csv", "pg_stat_statements.yb_qtext_size_limit=1kB");
+    return flagMap;
+  }
+
   /**
    * Tests that when the query file is bigger than the limit, we return an empty list
    * on the /statements endpoint.
    */
   @Test
   public void testHugeQueryFileWithLimit() throws Exception {
-    int tserver = spawnTServerWithFlags(
-      ImmutableMap.of("ysql_pg_conf_csv", "pg_stat_statements.yb_qtext_size_limit=1kB"));
-
-    try (Connection connection = getConnectionBuilder().withTServer(tserver).connect();
-         Statement statement = connection.createStatement()) {
+    try (Statement statement = connection.createStatement()) {
       String hugeQuery = Stream.generate(() -> " AND TRUE = TRUE").limit(1000)
         .reduce("SELECT * FROM pg_class WHERE TRUE = TRUE", (acc, clause) -> acc + clause);
 
       statement.execute(hugeQuery);
 
-      verifyStatementsEmpty(tserver);
+      verifyStatementsEmpty();
     }
   }
 
@@ -63,8 +65,8 @@ public class TestStatementsQtext extends BasePgSQLTest {
    *    "statements": []
    * }
    */
-  private static void verifyStatementsEmpty(int i) throws Exception {
-    MiniYBDaemon ts = (MiniYBDaemon) miniCluster.getTabletServers().values().toArray()[i];
+  private static void verifyStatementsEmpty() throws Exception {
+    MiniYBDaemon ts = (MiniYBDaemon) miniCluster.getTabletServers().values().toArray()[0];
     URL url = new URL(
         String.format("http://%s:%d/statements", ts.getLocalhostIP(), ts.getPgsqlWebPort()));
     try (Scanner scanner = new Scanner(url.openConnection().getInputStream())) {
