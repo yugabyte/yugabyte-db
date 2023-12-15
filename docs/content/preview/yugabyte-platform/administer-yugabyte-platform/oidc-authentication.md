@@ -33,7 +33,7 @@ YugabyteDB Anywhere uses OIDC to enable single sign-on (SSO) authentication.
 
 You can create an OIDC configuration as follows:
 
-- Navigate to **Admin > User Management > User Authentication**.
+- Navigate to **Admin > Access Management > User Authentication**.
 
 - Select **OIDC Configuration** and complete the fields shown in the following illustration:
 

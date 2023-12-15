@@ -18,29 +18,33 @@ YugabyteDB Anywhere uses a role-based access control (RBAC) model to manage acce
 
 A user can interact with a YugabyteDB Anywhere through the UI or REST API.
 
-Users are assigned roles, which define the set of actions users can perform.
+Users are assigned [roles](#roles), which define the set of actions users can perform. You can also define a set of universes to which the user has access.
 
 ### Create, modify, and delete users
 
 As a Super Admin or Admin, you can invite new users and manage existing users for your YugabyteDB Anywhere instance.
 
-You can invite new users as follows:
+You can assign built-in and custom roles to users to determine the actions they are allowed to perform, and specify the universes that they can access.
 
-1. Navigate to **Admin > User Management > Users**, and click **Add User**.
+To create or modify a user, do the following:
 
-1. Complete the fields of the **Add User** dialog shown in the following illustration:
+1. Navigate to **Admin > Access Management > Users**, and click **Create User** or **Edit Assigned Roles**.
+1. If you are adding a user, enter the user's email.
+1. To assign a built-in role, under **Built-in Role**, click **Assign New Built-in Role**, and select a built-in role.
+1. To assign a custom role, under **Custom Role**, click **Assign New Custom Role**, and select a custom role.
+    By default, users have access to all universes.
+1. To customize access to universes, click **Edit Selection**, and select the universes that you want to grant access for. Select the **Include future universes** option to automatically grant access to any universe created in the future. Click **Confirm** when you are done.
+1. Click **Add User** or **Edit User**.
 
-    ![Add User](/images/yp/authorization-platform/add-user.png)
-
-1. Click **Submit**.
-
-To modify a user role or delete the user, navigate to **Admin > User Management > Users**. Click **Actions** that corresponds to the specific user, and then choose either **Edit User Role** or **Delete User**.
+To delete a user, navigate to **Admin > Access Management > Users** click **Actions** for the user to delete, and choose **Delete User**.
 
 ## Roles
 
 YugabyteDB Anywhere includes built-in roles, and you can define custom roles for team members to restrict access to specific account features.
 
 [API tokens](../../anywhere-automation/) generated for users are assigned the same role as the user that generated them.
+
+To see the users that are assigned a specific role, navigate to **Admin > Access Management > Roles**, click **Actions** for the role, and choose **View Assigned Users**.
 
 ### Built-in roles
 
@@ -65,17 +69,39 @@ The following built-in roles are available:
 
 * **Read-only** access level provides viewer permission to the UI and API.
 
+You can't delete or edit built-in roles.
+
 ### Create, modify, and delete roles
 
-As a Super Admin or Admin, you can create and modify roles.
+As a Super Admin or Admin, you can:
+
+* create custom roles
+* clone built-in and custom roles
+* modify and delete custom roles
 
 To create a custom role, do the following:
 
-1. Navigate to **Admin > User Management > Roles**, then click **Add Role** to display the **Create a Role** dialog.
+1. Navigate to **Admin > Access Management > Roles**, then click **Add Role** to display the **Create a Role** dialog.
 1. Enter a name for the role.
 1. Enter a description for the role.
 1. Click **Select Permissions**.
 1. Select the permissions to assign to the role and click **Select** when you are done.
 1. Click **Save**.
 
-To modify a user role or delete a role, navigate to **Admin > User Management > Roles**. Click **Actions** that corresponds to the specific role, and then select either **Edit Role** or **Delete Role**.
+To create a custom role from an existing role, do the following:
+
+1. Navigate to **Admin > Access Management > Roles**, click **Actions** for the role to clone, and choose **Clone Role**.
+1. Enter a name for the role.
+1. Enter a description for the role.
+1. Click **Edit Permissions**.
+1. Select the permissions to assign to the role and click **Select** when you are done.
+1. Click **Save**.
+
+To edit a custom role, do the following:
+
+1. Navigate to **Admin > Access Management > Roles**, click **Actions** for the role to edit, and choose **Edit Role**.
+1. On the **Configurations** tab click **Edit Permissions**.
+1. Select the permissions to assign to the role and click **Select** when you are done.
+1. Click **Save**.
+
+To delete a role, navigate to **Admin > Access Management > Roles**, click **Actions** for the role to edit, and choose **Edit Role**.

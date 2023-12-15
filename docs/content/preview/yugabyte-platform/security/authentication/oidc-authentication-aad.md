@@ -144,7 +144,7 @@ To configure YugabyteDB Anywhere for OIDC, you need to be signed in as a superus
 
 To enable OIDC authentication in YugabyteDB Anywhere, do the following:
 
-1. Navigate to **Admin > User Management > User Authentication > OIDC Configuration**.
+1. Navigate to **Admin > Access Management > User Authentication > OIDC Configuration**.
 
 1. Enter the client ID and client secret for the application you registered.
 
