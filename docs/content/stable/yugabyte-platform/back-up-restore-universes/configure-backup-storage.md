@@ -127,7 +127,7 @@ To enable this feature when installing YBA, refer to [Enable GKE service account
 
 To enable this feature during universe creation, refer to [Configure Helm overrides](../../create-deployments/create-universe-multi-zone-kubernetes/#configure-helm-overrides).
 
-To upgrade an existing universe with this feature, refer to [Upgrade universes for GKE service account-based IAM support](../../manage-deployments/edit-helm-overrides/#upgrade-universes-for-gke-service-account-based-iam-support).
+To upgrade an existing universe with this feature, refer to [Upgrade universes for GKE service account-based IAM support](../../manage-deployments/edit-helm-overrides/#upgrade-universes-for-gke-service-account-based-iam).
 
 ## Azure Storage
 

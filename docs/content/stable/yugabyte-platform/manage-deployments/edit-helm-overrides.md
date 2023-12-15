@@ -36,5 +36,5 @@ Upgrade existing universes to versions that support [GKE service account-based I
     tserver:
       serviceAccount:<KSA_NAME>
     nodeSelector:
-     iam.gke.io/gke-metadata-server-enabled: "true"
+      iam.gke.io/gke-metadata-server-enabled: "true"
     ```

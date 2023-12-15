@@ -440,12 +440,12 @@ To enable the feature, provide the following additional helm values during insta
 - serviceAccount: Pass the service account name created in the prerequisites. Note that this service account should be present in the namespace being used for the YBA pod resource.
 - [nodeSelector](#nodeselector): Pass a node selector override to make sure YBA pods are scheduled on GKE cluster's worker nodes which have metadata server running.
 
-```yaml
-yugaware:
-....serviceAccount:<KSA_NAME>
-nodeSelector:
-....iam.gke.io/gke-metadata-server-enabled: "true"
-```
+    ```yaml
+    yugaware:
+    ....serviceAccount:<KSA_NAME>
+    nodeSelector:
+    ....iam.gke.io/gke-metadata-server-enabled: "true"
+    ```
 
 ## Delete the Helm installation of YugabyteDB Anywhere
 
