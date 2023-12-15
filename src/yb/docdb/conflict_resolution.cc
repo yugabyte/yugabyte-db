@@ -121,7 +121,12 @@ class ConflictResolverContext {
       boost::iterator_range<TransactionData*> transactions) = 0;
 
   // Check subtransaction data of pending transaction to determine if conflict can be avoided.
-  virtual bool CheckConflictWithPending(const TransactionData& transaction_data) = 0;
+  bool CheckConflictWithPending(const TransactionData& transaction_data) {
+    // We remove aborted subtransactions when processing the SubtxnSet stored locally or
+    // returned by the status tablet. If this is now empty, then all potentially conflicting
+    // intents have been aborted and there is no longer a conflict with this transaction.
+    return transaction_data.subtransactions->empty();
+  }
 
   // Check for conflict against committed transaction.
   // Returns true if transaction could be removed from list of conflicts.
@@ -1038,14 +1043,6 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
                                  metadata_.priority);
   }
 
-  bool CheckConflictWithPending(const TransactionData& transaction_data) override {
-    // We remove aborted subtransactions when processing the AbortedSubtransactionSet stored
-    // locally or returned by the status tablet. If this is now empty, then all potentially
-    // conflicting intents have been aborted and there is no longer a conflict with this
-    // transaction.
-    return transaction_data.subtransactions->empty();
-  }
-
   Result<bool> CheckConflictWithCommitted(
       const TransactionData& transaction_data, HybridTime commit_time) override {
     RSTATUS_DCHECK(commit_time.is_valid(), Corruption, "Invalid transaction commit time");
@@ -1185,10 +1182,6 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
 
   std::string ToString() const override {
     return "Operation Context";
-  }
-
-  bool CheckConflictWithPending(const TransactionData& transaction_data) override {
-    return false;
   }
 
   Result<bool> CheckConflictWithCommitted(

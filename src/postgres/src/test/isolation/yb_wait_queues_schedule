@@ -2,3 +2,4 @@ test: yb-wait-queues-single-shard-waiter-unlocks
 test: yb-wait-queues-single-shard-waiters-same-tablet
 test: yb-wait-queues-weak-read-unlocks
 test: concurrent-inserts-duplicate-key-error
+test: unblock-waiter-after-blocking-subtxn-rollsback
