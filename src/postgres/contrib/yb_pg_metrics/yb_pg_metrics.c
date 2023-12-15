@@ -342,7 +342,7 @@ ws_sighup_handler(SIGNAL_ARGS) {
 	int			save_errno = errno;
 
 	got_SIGHUP = true;
-	SetLatch(&MyProc->procLatch);
+	SetLatch(MyLatch);
 
 	errno = save_errno;
 }
@@ -416,8 +416,8 @@ webserver_worker_main(Datum unused)
   int rc;
   while (!got_SIGTERM)
   {
-    rc = WaitLatch(&MyProc->procLatch, WL_LATCH_SET | WL_POSTMASTER_DEATH, -1, PG_WAIT_EXTENSION);
-    ResetLatch(&MyProc->procLatch);
+    rc = WaitLatch(MyLatch, WL_LATCH_SET | WL_POSTMASTER_DEATH, -1, PG_WAIT_EXTENSION);
+    ResetLatch(MyLatch);
 
 		if (rc & WL_POSTMASTER_DEATH)
 			break;
