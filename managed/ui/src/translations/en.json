@@ -38,10 +38,12 @@
     },
     "queryError": {
       "failedToFetchUniverselist": "Error fetching universe list.",
-      "failedToFetchCustomerRuntimeCOnfig": "Error fetching runtime configurations for the current customer.",
+      "failedToFetchCustomerRuntimeConfig": "Error fetching runtime configurations for the current customer.",
       "failedToFetchSourceUniverse": "Unable to fetch universe details for source universe UUID: {{universeUuid}}",
       "failedToFetchTargetuniverse": "Unable to fetch universe details for target universe UUID: {{universeUuid}}",
-      "failedToFetchMetrics": "Failed to fetch metrics."
+      "failedToFetchMetrics": "Failed to fetch metrics.",
+      "failedToFetchAlertTemplates": "Failed to fetch alert templates.",
+      "failedToFetchAlertConfigs": "Failed to fetch alert configurations."
     },
     "universeActions": {
       "encryptionAtRest": {
@@ -572,7 +574,7 @@
           "actionMenu": {
             "label": "Actions",
             "deleteConfig": "Remove disaster recovery",
-            "editDrConfig": "Edit recovery configuration",
+            "editDrConfig": "Edit DR configuration",
             "editDrConfigTarget": "Change DR Replica Universe",
             "editTables": "Select databases and tables",
             "switchover": "Switchover",
@@ -740,7 +742,7 @@
             "step": {
               "selectTargetUniverse": {
                 "instruction": "Select a universe to use as the DR replica",
-                "submitButton": "Next: Select databases",
+                "submitButton": "Next: Select Databases",
                 "drReplica": "DR Replica Universe",
                 "error": {
                   "targetUniverseRequired": "Required.",
@@ -749,13 +751,14 @@
               },
               "selectDatabases": {
                 "instruction": "Select the databases to enable disaster recovery for",
-                "submitButton": "Next: Configure boostrap",
+                "validateButton": "Validate Table Selection",
+                "submitButton": "Next: Configure Full Copy",
                 "pitrSetUpNote": "<bold>Note:</bold> Point-in-time Recovery will be enabled for the selected databases on the DR Replica."
               },
               "configureBootstrap": {
                 "instruction": "Choose the storage config to use for performing the initial copy",
                 "infoText": "Initial full copy is required when the database contains data. Performing an initial full copy requires a backup storage config as an intermediate third party storage, and is time and resource intensive. This is also referred to as bootstrapping or initial seeding.",
-                "submitButton": "Set up and Enable Disaster Recovery",
+                "submitButton": "Next: Confirm Alert Threshold",
                 "backupStorageConfig": {
                   "label": "Backup Storage Config",
                   "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both source and target universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>"
@@ -763,6 +766,14 @@
                 "error": {
                   "backupStorageConfigRequired": "Required."
                 }
+              },
+              "confirmAlert": {
+                "instruction": "Confirm alert threshold for acceptable replication lag",
+                "infoText": "Replication lag measures how far behind in time the DR replica lags the DR primary. You can set alerts on the DR primary to notify you when this lag reaches a specified threshold so that you can take action to correct the lag. Setting up a replication lag alert is optional.",
+                "currentLowestReplicationLagLabel": "Current lowest replication lag alert threshold set on {{sourceUniverseName}}:",
+                "setUpReplicationLagAlertPrompt": "<paragraph>You currently do not have any alerts set up for replication lag on {{sourceUniverseName}}.</paragraph><paragraph>You can configure a replication lag alert using the 'Create Alert Policy' action on the <manageAlertConfigLink>alert configuration page.</manageAlertConfigLink></paragraph>.",
+                "editReplicationLagAlertPrompt": "You can edit these replication lag alerts from the <manageAlertConfigLink>alert configuration page.</manageAlertConfigLink>",
+                "submitButton": "Confirm and Enable Disaster Recovery"
               }
             },
             "error": {
@@ -791,10 +802,15 @@
           },
           "editModal": {
             "title": "Edit DR Configuration",
-            "bootstrapConfiguration": "Bootstrap Configuration",
-            "backupStorageConfig": {
-              "label": "Backup Storage Config",
-              "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both source and target universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>"
+            "maxAcceptableReplicationLag": {
+              "sectionHeader": "Max Acceptable Replication Lag",
+              "info": "The lowest alert threshold for replication lag on the DR primary is taken to be the 'max acceptable lag'. Updating the max acceptable replication lag will update the corresponding alert threshold. If the update causes the replication lag alert's threshold to be greater than another from the same universe, then the alert with the lower threshold will be used as the new max acceptable replication lag.",
+              "fieldLabel": "Max Acceptable Replication Lag"
+            },
+            "duration": {
+              "second": "Second",
+              "minute": "Minute",
+              "hour": "Hour"
             },
             "error": {
               "requestFailureLabel": "Edit DR configuration request failed",
@@ -921,11 +937,16 @@
               "bottom": "Bottom K"
             }
           },
+          "showAlertThresholdReferenceLine": {
+            "label": "Show Alert Threshold",
+            "disabledTooltip": "No replication lag alert thresholds found. Set up a replication lag alert thresholds by creating an alert policy on the DR primary/source universe."
+          },
           "graphTitle": {
             "asyncReplicationSentLag": "Async Replication Lag",
             "consumerSafeTimeLag": "Consumer Safe Time Lag",
             "consumerSafeTimeSkew": "Consumer Safe Time Skew"
-          }
+          },
+          "lowestReplicationLagAlertThresholdLabel": "Lowest Replication Lag Alert Threshold"
         },
         "error": {
           "undefinedXClusterTableType": "The tables in this config have unknown or mixed type.",
