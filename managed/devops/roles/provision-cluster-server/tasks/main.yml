@@ -232,6 +232,11 @@
     include_role:
       name: setup-cgroup
 
+  - name: Setup OpenTelemetry Collector
+    include_role:
+      name: manage_otel_collector
+    when: install_otel_collector is defined and install_otel_collector|bool
+
   # Adding systemd service files for yb-master and yb-tserver
   - name: Add yb-master.service
     template:

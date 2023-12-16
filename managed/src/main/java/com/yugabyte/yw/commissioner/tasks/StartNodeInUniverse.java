@@ -51,37 +51,44 @@ public class StartNodeInUniverse extends UniverseDefinitionTaskBase {
   }
 
   @Override
-  public void run() {
-    NodeDetails currentNode = null;
-    try {
-      checkUniverseVersion();
-      // Set the 'updateInProgress' flag to prevent other updates from happening.
-      Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-      log.info(
-          "Start Node with name {} from universe {} ({})",
-          taskParams().nodeName,
-          taskParams().getUniverseUUID(),
-          universe.getName());
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    Universe universe = getUniverse();
+    NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+    if (currentNode == null) {
+      String msg = "No node " + taskParams().nodeName + " found in universe " + universe.getName();
+      log.error(msg);
+      throw new RuntimeException(msg);
+    }
 
+    taskParams().azUuid = currentNode.azUuid;
+    taskParams().placementUuid = currentNode.placementUuid;
+    if (!instanceExists(taskParams())) {
+      String msg = "No instance exists for " + taskParams().nodeName;
+      log.error(msg);
+      throw new RuntimeException(msg);
+    }
+  }
+
+  public void run() {
+    log.info(
+        "Start Node with name {} from universe uuid={}",
+        taskParams().nodeName,
+        taskParams().getUniverseUUID());
+    checkUniverseVersion();
+    Universe universe =
+        lockAndFreezeUniverseForUpdate(
+            taskParams().expectedUniverseVersion, null /* Txn callback */);
+
+    try {
+      NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+      UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(currentNode.placementUuid);
       boolean followerLagCheckEnabled =
           confGetter.getConfForScope(universe, UniverseConfKeys.followerLagCheckEnabled);
 
-      currentNode = universe.getNode(taskParams().nodeName);
-      if (currentNode == null) {
-        String msg =
-            "No node " + taskParams().nodeName + " found in universe " + universe.getName();
-        log.error(msg);
-        throw new RuntimeException(msg);
-      }
-      UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(currentNode.placementUuid);
-
+      // Set again just in case not populated in validateParams().
       taskParams().azUuid = currentNode.azUuid;
       taskParams().placementUuid = currentNode.placementUuid;
-      if (!instanceExists(taskParams())) {
-        String msg = "No instance exists for " + taskParams().nodeName;
-        log.error(msg);
-        throw new RuntimeException(msg);
-      }
 
       preTaskActions();
 

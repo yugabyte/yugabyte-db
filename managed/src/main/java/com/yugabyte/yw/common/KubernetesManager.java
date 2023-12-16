@@ -66,8 +66,9 @@ public abstract class KubernetesManager {
 
   private static final long DEFAULT_HELM_TEMPLATE_TIMEOUT_SECS = 1;
 
-  /* helm interface */
+  private static final long HELM_UNINSTALL_RETRY = 5;
 
+  /* helm interface */
   public void helmInstall(
       UUID universeUUID,
       String ybSoftwareVersion,
@@ -79,27 +80,56 @@ public abstract class KubernetesManager {
 
     String helmPackagePath = this.getHelmPackagePath(ybSoftwareVersion);
 
-    // List Helm releases to check if the release already exists
-    List<String> listCmd = ImmutableList.of("helm", "list", "--short", "--namespace", namespace);
-
-    ShellResponse responseList = execCommand(config, listCmd);
-    responseList.processErrors();
-
+    int currentTry = 0;
     boolean helmReleaseExists = false;
-    String output = responseList.getMessage();
-    LOG.info("helm list command output {} ", output);
-    if (output.contains(helmReleaseName)) {
-      // The release already exists
-      helmReleaseExists = true;
-    }
-    if (helmReleaseExists) {
-      List<String> deleteCmd =
-          ImmutableList.of(
-              "helm", "uninstall", helmReleaseName, "--wait", "--namespace", namespace);
-      ShellResponse responseDelete = execCommand(config, deleteCmd);
-      responseDelete.processErrors();
+    // Helm uninstall can fail or timeout.
+    // Error occurred. Code: 1. Output: Error: uninstallation
+    // completed with 1 error(s): context deadline exceeded
+    // This block does a retry with a generous timeout to give it time to finish
+    while (currentTry < HELM_UNINSTALL_RETRY) {
+      // List Helm releases to check if the release already exists
+      List<String> listCmd = ImmutableList.of("helm", "list", "--short", "--namespace", namespace);
+      ShellResponse responseList = execCommand(config, listCmd);
+
+      responseList.processErrors();
+
+      String output = responseList.getMessage();
+      LOG.info("helm list command output: {}", output);
+
+      helmReleaseExists = output.contains(helmReleaseName);
+
+      if (helmReleaseExists) {
+        // The release already exists, uninstall it
+        List<String> deleteCmd =
+            ImmutableList.of(
+                "helm",
+                "uninstall",
+                helmReleaseName,
+                "--namespace",
+                namespace,
+                "--timeout",
+                getTimeout(universeUUID),
+                "--wait");
+        ShellResponse responseDelete = execCommand(config, deleteCmd);
+        responseDelete.processErrors();
+      } else {
+        // Release does not exist, exit the loop
+        break;
+      }
+
+      currentTry++;
     }
 
+    if (helmReleaseExists) {
+      String message =
+          String.format(
+              "Failed to delete Helm release %s after %d attempts",
+              helmReleaseName, HELM_UNINSTALL_RETRY);
+      LOG.error(message);
+      throw new RuntimeException(message);
+    }
+
+    // If the release does not exist or was successfully deleted, proceed with installation
     List<String> commandList =
         ImmutableList.of(
             "helm",
@@ -717,4 +747,12 @@ public abstract class KubernetesManager {
   public abstract String getKubeconfigUser(Map<String, String> config);
 
   public abstract String getKubeconfigCluster(Map<String, String> config);
+
+  public abstract void deleteUnusedPVCs(
+      Map<String, String> config,
+      String namespace,
+      String helmReleaseName,
+      String appName,
+      boolean newNamingStyle,
+      int replicaCount);
 }

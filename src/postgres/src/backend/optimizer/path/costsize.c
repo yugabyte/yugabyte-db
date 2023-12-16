@@ -5777,6 +5777,23 @@ yb_get_lsm_seek_cost(double num_tuples, int num_key_value_pairs_per_tuple,
 	return seek_cost;
 }
 
+static void
+yb_parallel_cost(Path *path)
+{
+	if (path->parallel_aware)
+	{
+		/* bg workers + main backend */
+		double parallel_divisor = get_parallel_divisor(path);
+		/*
+		 * parallelization doesn't help with startup cost, but the rest
+		 * can be equally divided among the workers.
+		 */
+		path->total_cost = path->startup_cost +
+			(path->total_cost - path->startup_cost) / parallel_divisor;
+		path->rows = clamp_row_est(path->rows / parallel_divisor);
+	}
+}
+
 /*
  * yb_cost_seqscan
  *	  Determines and returns the cost of scanning a relation sequentially.
@@ -5899,6 +5916,7 @@ yb_cost_seqscan(Path *path, PlannerInfo *root, RelOptInfo *baserel,
 
 	path->startup_cost = startup_cost;
 	path->total_cost = total_cost;
+	yb_parallel_cost(path);
 }
 
 /*
@@ -6036,6 +6054,22 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 	rte = planner_rt_fetch(index->rel->relid, root);
 	Assert(rte->rtekind == RTE_RELATION);
 	baserel_oid = rte->relid;
+
+	if (partial_path)
+	{
+		path->path.parallel_workers = compute_parallel_worker(
+			baserel, -1, -1, max_parallel_workers_per_gather);
+
+		/*
+		 * Fall out if workers can't be assigned for parallel scan, because in
+		 * such a case this path will be rejected.  So there is no benefit in
+		 * doing extra computation.
+		 */
+		if (path->path.parallel_workers <= 0)
+			return;
+
+		path->path.parallel_aware = true;
+	}
 
 	/*
 	 * Mark the path with the correct row estimate, and identify which quals
@@ -6483,4 +6517,5 @@ yb_cost_index(IndexPath *path, PlannerInfo *root, double loop_count,
 
 	path->path.startup_cost = startup_cost;
 	path->path.total_cost = startup_cost + run_cost;
+	yb_parallel_cost((Path *) path);
 }

@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.forms.YbcGflagsTaskParams;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Universe;
@@ -165,6 +166,23 @@ public class YbcHandler {
         taskUUID,
         CustomerTask.TargetType.Universe,
         CustomerTask.TaskType.InstallYbcSoftware,
+        universe.getName());
+    return taskUUID;
+  }
+
+  public UUID upgradeYbcGflags(
+      UUID customerUUID, UUID universeUUID, YbcGflagsTaskParams taskParams) {
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+    taskParams.setUniverseUUID(universeUUID);
+    taskParams.customerUUID = customerUUID;
+    UUID taskUUID = commissioner.submit(TaskType.UpgradeYbcGFlags, taskParams);
+    CustomerTask.create(
+        customer,
+        universeUUID,
+        taskUUID,
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.UpgradeYbcGFlags,
         universe.getName());
     return taskUUID;
   }

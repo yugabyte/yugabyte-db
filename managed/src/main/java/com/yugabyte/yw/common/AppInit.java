@@ -158,15 +158,8 @@ public class AppInit {
         }
 
         boolean vmOsPatchingEnabled = confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching);
-        String defaultYbaOsVersion =
-            configHelper
-                .getConfig(ConfigHelper.ConfigType.YBADefaultAMI)
-                .getOrDefault(CloudImageBundleSetup.ybaDefaultKey, "")
-                .toString();
-        boolean migrateImageBundlesToNewYBAAMIVersion =
-            (defaultYbaOsVersion.isEmpty()
-                    || !defaultYbaOsVersion.equals(CloudImageBundleSetup.YBA_DEFAULT_OS))
-                && vmOsPatchingEnabled;
+        Map<String, Object> defaultYbaOsVersion =
+            configHelper.getConfig(ConfigHelper.ConfigType.YBADefaultAMI);
 
         // temporarily revert due to PLAT-2434
         // LogUtil.updateApplicationLoggingFromConfig(sConfigFactory, config);
@@ -212,23 +205,32 @@ public class AppInit {
               }
             }
           }
-          if (migrateImageBundlesToNewYBAAMIVersion) {
-            // In case defaultYbaAmiVersion is not null & not equal to version specified in
-            // CloudImageBundleSetup.YBA_AMI_VERSION, we will check in the provider bundles
-            // & migrate all the YBA_DEFAULT -> YBA_DEPRECATED, & at the same time generating
-            // new bundle with the latest AMIs. This will only hold in case the provider
-            // does not have CUSTOM bundles.
-            imageBundleUtil.migrateImageBundlesForProviders(provider);
+          if (vmOsPatchingEnabled && defaultYbaOsVersion != null) {
+            String providerCode = provider.getCode();
+            if (defaultYbaOsVersion.containsKey(providerCode)) {
+              Map<String, String> currOSVersionDBMap =
+                  (Map<String, String>) defaultYbaOsVersion.get(providerCode);
+              if (currOSVersionDBMap != null
+                  && currOSVersionDBMap.containsKey("version")
+                  && !currOSVersionDBMap
+                      .get("version")
+                      .equals(CloudImageBundleSetup.CLOUD_OS_MAP.get(providerCode).getVersion())) {
+                // In case defaultYbaAmiVersion is not null & not equal to version specified in
+                // CloudImageBundleSetup.YBA_AMI_VERSION, we will check in the provider bundles
+                // & migrate all the YBA_DEFAULT -> YBA_DEPRECATED, & at the same time generating
+                // new bundle with the latest AMIs. This will only hold in case the provider
+                // does not have CUSTOM bundles.
+                imageBundleUtil.migrateImageBundlesForProviders(provider);
+              }
+            }
           }
         }
 
-        if (migrateImageBundlesToNewYBAAMIVersion) {
+        if (vmOsPatchingEnabled) {
           // Store the latest YBA_AMI_VERSION in the yugaware_roperty.
-          // This will be first time YBA reboot post VM OS Patching changes.
-          Map<String, Object> defaultYbaAmiVersionMap = new HashMap<>();
-          defaultYbaAmiVersionMap.put(
-              CloudImageBundleSetup.ybaDefaultKey, CloudImageBundleSetup.YBA_DEFAULT_OS);
-          configHelper.loadConfigToDB(ConfigType.YBADefaultAMI, defaultYbaAmiVersionMap);
+          Map<String, Object> defaultYbaOsVersionMap =
+              new HashMap<>(CloudImageBundleSetup.CLOUD_OS_MAP);
+          configHelper.loadConfigToDB(ConfigType.YBADefaultAMI, defaultYbaOsVersionMap);
         }
 
         // Load metrics configurations.
@@ -253,7 +255,11 @@ public class AppInit {
             .getLocalReleases()
             .forEach(
                 (version, rm) -> {
-                  gFlagsValidation.addDBMetadataFiles(version, rm);
+                  try {
+                    gFlagsValidation.addDBMetadataFiles(version, rm);
+                  } catch (Exception e) {
+                    log.error("Error: ", e);
+                  }
                 });
         // Background thread to query for latest ARM release version.
         Thread armReleaseThread =

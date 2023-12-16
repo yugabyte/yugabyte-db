@@ -17,7 +17,7 @@ import { YBIntroDialog } from './YBIntroDialog';
 
 
 import { RBAC_RUNTIME_FLAG, isRbacEnabled, setIsRbacEnabled } from '../redesign/features/rbac/common/RbacUtils';
-import { fetchUserPermissions, getAllAvailablePermissions, getApiRoutePermMapList, getRBACEnabledStatus } from '../redesign/features/rbac/api';
+import { fetchUserPermissions, getAllAvailablePermissions, getApiRoutePermMapList, getRBACEnabledStatus, getRoleBindingsForUser } from '../redesign/features/rbac/api';
 import { Resource } from '../redesign/features/rbac';
 
 
@@ -84,7 +84,17 @@ const RBACAuthenticatedArea = (props) => {
     enabled: rbacEnabled
   });
 
-  if (isLoading || isPermissionsListLoading || isRbacStatusLoading || apiPermMapLoading || !isFeatureFlagLoaded) return <YBLoading />;
+  const { isLoading: userRoleBindingsLoading } = useQuery(['user_role_bindings', userId], () => getRoleBindingsForUser(userId), {
+    select: data => data.data,
+    onSuccess: (data) => {
+      const currentUserBindings = data[userId];
+      if (!currentUserBindings) return;
+      window.user_role_bindings = currentUserBindings;
+    },
+    enabled: rbacEnabled
+  });
+
+  if (isLoading || isPermissionsListLoading || isRbacStatusLoading || apiPermMapLoading || !isFeatureFlagLoaded || userRoleBindingsLoading) return <YBLoading />;
 
   return (
     <AuthenticatedComponentContainer>

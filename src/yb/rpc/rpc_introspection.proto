@@ -107,9 +107,12 @@ message RpcConnectionPB {
 message DumpRunningRpcsRequestPB {
   optional bool include_traces = 1 [ default = false ];
   optional bool dump_timed_out = 2;
+  optional bool get_wait_state = 3;
+  optional bool get_local_calls = 4;
 }
 
 message DumpRunningRpcsResponsePB {
   repeated RpcConnectionPB inbound_connections = 1;
   repeated RpcConnectionPB outbound_connections = 2;
+  optional RpcConnectionPB local_calls = 3;
 }

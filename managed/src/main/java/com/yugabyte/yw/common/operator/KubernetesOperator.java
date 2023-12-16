@@ -11,9 +11,6 @@ import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
-import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
-import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
-import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.client.Config;
 import io.fabric8.kubernetes.client.DefaultKubernetesClient;
@@ -29,19 +26,12 @@ import io.yugabyte.operator.v1alpha1.Release;
 import io.yugabyte.operator.v1alpha1.RestoreJob;
 import io.yugabyte.operator.v1alpha1.StorageConfig;
 import io.yugabyte.operator.v1alpha1.SupportBundle;
-import io.yugabyte.operator.v1alpha1.YBUniverse;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
 public class KubernetesOperator {
-  @Inject private UniverseCRUDHandler universeCRUDHandler;
-
-  @Inject private UpgradeUniverseHandler upgradeUniverseHandler;
-
-  @Inject private CloudProviderHandler cloudProviderHandler;
-
   @Inject private ReleaseManager releaseManager;
   @Inject private GFlagsValidation gFlagsValidation;
   @Inject private CustomerConfigService ccs;
@@ -56,8 +46,7 @@ public class KubernetesOperator {
 
   @Inject OperatorStatusUpdaterFactory statusUpdaterFactory;
 
-  public MixedOperation<YBUniverse, KubernetesResourceList<YBUniverse>, Resource<YBUniverse>>
-      ybUniverseClient;
+  @Inject private YBReconcilerFactory reconcilerFactory;
 
   public MixedOperation<Release, KubernetesResourceList<Release>, Resource<Release>> releasesClient;
   public MixedOperation<Backup, KubernetesResourceList<Backup>, Resource<Backup>> backupClient;
@@ -92,14 +81,12 @@ public class KubernetesOperator {
                 try (KubernetesClient client = new DefaultKubernetesClient(config)) {
                   LOG.info("Using namespace : {}", namespace);
 
-                  this.ybUniverseClient = client.resources(YBUniverse.class);
                   this.releasesClient = client.resources(Release.class);
                   this.scClient = client.resources(StorageConfig.class);
                   this.backupClient = client.resources(Backup.class);
                   this.restoreJobClient = client.resources(RestoreJob.class);
 
                   this.supportBundleClient = client.resources(SupportBundle.class);
-                  SharedIndexInformer<YBUniverse> ybUniverseSharedIndexInformer;
                   SharedIndexInformer<Release> ybSoftwareReleaseIndexInformer;
                   SharedIndexInformer<StorageConfig> ybStorageConfigIndexInformer;
                   SharedIndexInformer<Backup> ybBackupIndexInformer;
@@ -111,23 +98,6 @@ public class KubernetesOperator {
                   if (!namespace.trim().isEmpty()) {
 
                     // Listen to only one namespace.
-                    ybUniverseSharedIndexInformer =
-                        client
-                            .resources(YBUniverse.class)
-                            .inNamespace(namespace)
-                            .inform(
-                                new ResourceEventHandler<>() {
-                                  @Override
-                                  public void onAdd(YBUniverse Ybu) {}
-
-                                  @Override
-                                  public void onUpdate(YBUniverse Ybu, YBUniverse newYbu) {}
-
-                                  @Override
-                                  public void onDelete(
-                                      YBUniverse Ybu, boolean deletedFinalUnknown) {}
-                                },
-                                resyncPeriodInMillis);
                     ybSoftwareReleaseIndexInformer =
                         client
                             .resources(Release.class)
@@ -215,9 +185,6 @@ public class KubernetesOperator {
                                 resyncPeriodInMillis);
                   } else {
                     // Listen to all namespaces, use the factory to build informer.
-                    ybUniverseSharedIndexInformer =
-                        informerFactory.sharedIndexInformerFor(
-                            YBUniverse.class, resyncPeriodInMillis);
                     ybSoftwareReleaseIndexInformer =
                         informerFactory.sharedIndexInformerFor(Release.class, resyncPeriodInMillis);
                     ybStorageConfigIndexInformer =
@@ -234,16 +201,8 @@ public class KubernetesOperator {
                   }
                   LOG.info("Finished setting up SharedIndexInformers");
 
-                  KubernetesOperatorController ybUniverseController =
-                      new KubernetesOperatorController(
-                          client,
-                          ybUniverseClient,
-                          ybUniverseSharedIndexInformer,
-                          namespace,
-                          universeCRUDHandler,
-                          upgradeUniverseHandler,
-                          cloudProviderHandler,
-                          statusUpdaterFactory);
+                  YBUniverseReconciler ybUniverseController =
+                      reconcilerFactory.getYBUniverseReconciler(client);
 
                   ReleaseReconciler releaseReconciler =
                       new ReleaseReconciler(

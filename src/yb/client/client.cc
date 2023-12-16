@@ -666,6 +666,12 @@ Status YBClient::GetIndexBackfillProgress(
   return Status::OK();
 }
 
+Result<master::GetBackfillStatusResponsePB> YBClient::GetBackfillStatus(
+    const std::vector<std::string_view>& table_ids) {
+  const auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  return data_->GetBackfillStatus(table_ids, deadline);
+}
+
 Status YBClient::DeleteTable(const YBTableName& table_name, bool wait) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->DeleteTable(this,
@@ -1481,7 +1487,11 @@ Status YBClient::GetCDCStream(
     NamespaceId* ns_id,
     std::vector<ObjectId>* object_ids,
     std::unordered_map<std::string, std::string>* options,
-    cdc::StreamModeTransactional* transactional) {
+    cdc::StreamModeTransactional* transactional,
+    std::optional<uint64_t>* consistent_snapshot_time,
+    std::optional<CDCSDKSnapshotOption>* consistent_snapshot_option,
+    std::optional<uint64_t>* stream_creation_time) {
+
   // Setting up request.
   GetCDCStreamRequestPB req;
   req.set_stream_id(stream_id.ToString());
@@ -1510,6 +1520,15 @@ Status YBClient::GetCDCStream(
   }
 
   *transactional = cdc::StreamModeTransactional(resp.stream().transactional());
+  if (consistent_snapshot_time && resp.stream().has_cdcsdk_consistent_snapshot_time()) {
+    *consistent_snapshot_time = resp.stream().cdcsdk_consistent_snapshot_time();
+  }
+  if (consistent_snapshot_option && resp.stream().has_cdcsdk_consistent_snapshot_option()) {
+    *consistent_snapshot_option = resp.stream().cdcsdk_consistent_snapshot_option();
+  }
+  if (stream_creation_time && resp.stream().has_stream_creation_time()) {
+    *stream_creation_time = resp.stream().stream_creation_time();
+  }
 
   return Status::OK();
 }
@@ -1764,6 +1783,23 @@ Status YBClient::UpdateConsumerOnProducerMetadata(
   req.mutable_producer_change_metadata_request()->CopyFrom(meta_info);
 
   CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, (*resp), UpdateConsumerOnProducerMetadata);
+  return Status::OK();
+}
+
+Status YBClient::XClusterReportNewAutoFlagConfigVersion(
+    const cdc::ReplicationGroupId& replication_group_id, uint32 auto_flag_config_version) {
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "ReplicationGroup id is required");
+  master::XClusterReportNewAutoFlagConfigVersionRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+  req.set_auto_flag_config_version(auto_flag_config_version);
+
+  master::XClusterReportNewAutoFlagConfigVersionResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, XClusterReportNewAutoFlagConfigVersion);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
   return Status::OK();
 }
 

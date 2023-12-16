@@ -791,6 +791,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
       params.setEnableYbc(taskParams().isEnableYbc());
       params.setYbcSoftwareVersion(taskParams().getYbcSoftwareVersion());
+      params.ybcGflags = userIntent.ybcFlags;
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
       params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
@@ -1231,6 +1232,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.setEnableYbc(taskParams().isEnableYbc());
       params.setYbcSoftwareVersion(taskParams().getYbcSoftwareVersion());
       params.setYbcInstalled(taskParams().isYbcInstalled());
+      params.ybcGflags = userIntent.ybcFlags;
       // Set the InstanceType
       params.instanceType = node.cloudInfo.instance_type;
       params.enableNodeToNodeEncrypt = userIntent.enableNodeToNodeEncrypt;
@@ -1678,57 +1680,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Update the master addresses on the target universes whose source universe belongs to
     // this task.
     createXClusterConfigUpdateMasterAddressesTask();
-  }
-
-  /**
-   * Performs preflight checks for nodes in cluster. No fail tasks are created.
-   *
-   * @return map of failed nodes
-   */
-  private Map<String, String> performClusterPreflightChecks(Cluster cluster) {
-    Map<String, String> failedNodes = new HashMap<>();
-    // This check is only applied to onperm nodes
-    if (cluster.userIntent.providerType != CloudType.onprem) {
-      return failedNodes;
-    }
-    Set<NodeDetails> nodes = taskParams().getNodesInCluster(cluster.uuid);
-    Collection<NodeDetails> nodesToProvision = PlacementInfoUtil.getNodesToProvision(nodes);
-    UserIntent userIntent = cluster.userIntent;
-    Boolean rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
-    Boolean rootCARequired =
-        EncryptionInTransitUtil.isRootCARequired(userIntent, rootAndClientRootCASame);
-    Boolean clientRootCARequired =
-        EncryptionInTransitUtil.isClientRootCARequired(userIntent, rootAndClientRootCASame);
-
-    for (NodeDetails currentNode : nodesToProvision) {
-      String preflightStatus =
-          performPreflightCheck(
-              cluster,
-              currentNode,
-              rootCARequired ? taskParams().rootCA : null,
-              clientRootCARequired ? taskParams().getClientRootCA() : null);
-      if (preflightStatus != null) {
-        failedNodes.put(currentNode.nodeName, preflightStatus);
-      }
-    }
-
-    return failedNodes;
-  }
-
-  /**
-   * Performs preflight checks and creates failed preflight tasks.
-   *
-   * @return true if everything is OK
-   */
-  public boolean performUniversePreflightChecks(Collection<Cluster> clusters) {
-    Map<String, String> failedNodes = new HashMap<>();
-    for (Cluster cluster : clusters) {
-      failedNodes.putAll(performClusterPreflightChecks(cluster));
-    }
-    if (!failedNodes.isEmpty()) {
-      createFailedPrecheckTask(failedNodes).setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
-    }
-    return failedNodes.isEmpty();
   }
 
   /**
@@ -2409,7 +2360,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         getAnsibleConfigureServerParams(node, processType, UpgradeTaskType.Software, taskSubType);
     if (softwareVersion == null) {
       UserIntent userIntent =
-          getUniverse(true).getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
+          getUniverse().getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent;
       params.ybSoftwareVersion = userIntent.ybSoftwareVersion;
     } else {
       params.ybSoftwareVersion = softwareVersion;
@@ -2440,7 +2391,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       UpgradeTaskType type,
       UpgradeTaskSubType taskSubType) {
     return getAnsibleConfigureServerParams(
-        getUniverse(true).getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent,
+        getUniverse().getUniverseDetails().getClusterByUuid(node.placementUuid).userIntent,
         node,
         processType,
         type,
@@ -2469,6 +2420,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     params.setYbcSoftwareVersion(taskParams().getYbcSoftwareVersion());
     params.installYbc = taskParams().installYbc;
     params.setYbcInstalled(taskParams().isYbcInstalled());
+    params.ybcGflags = userIntent.ybcFlags;
 
     params.rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
 

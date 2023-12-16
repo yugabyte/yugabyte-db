@@ -3,7 +3,6 @@ title: Host-based authentication
 headerTitle: Host-based authentication
 linkTitle: Host-based authentication
 description: Manage access control for localhost, remote hosts, and clients for YSQL.
-image: /images/section_icons/secure/authentication.png
 menu:
   v2.14:
     identifier: host-based-authentication

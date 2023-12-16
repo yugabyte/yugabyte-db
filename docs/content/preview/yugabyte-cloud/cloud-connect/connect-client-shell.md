@@ -3,7 +3,6 @@ title: Connect via client shells
 linkTitle: Client shell
 description: Connect to YugabyteDB Managed clusters from your desktop using a client shell
 headcontent: Connect to YugabyteDB Managed databases from your desktop
-image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:
     identifier: connect-client-shell

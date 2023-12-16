@@ -22,11 +22,16 @@
 
 #include "yb/gutil/map-util.h"
 
+#include "yb/server/default-path-handlers.h"
+#include "yb/server/pprof-path-handlers.h"
 #include "yb/server/webserver.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/metrics_writer.h"
+#include "yb/util/tcmalloc_util.h"
 #include "yb/util/signal_util.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
 
 #include "yb/yql/pggate/util/ybc-internal.h"
@@ -182,7 +187,7 @@ void emitYsqlConnectionManagerMetrics(PrometheusWriter *pwriter) {
       WARN_NOT_OK(
         pwriter->WriteSingleEntry(
             ysql_conn_mgr_prometheus_attr, entry.first, entry.second,
-            AggregationFunction::kSum),
+            AggregationFunction::kSum, kServerLevel),
         "Cannot publish Ysql Connection Manager metric to Prometheus-metrics endpoint");
     }
     // Clear the collected metrics for the metrics collected for the next pool.
@@ -450,21 +455,17 @@ static void PgLogicalRpczHandler(const Webserver::WebRequest &req, Webserver::We
 static void PgPrometheusMetricsHandler(
     const Webserver::WebRequest &req, Webserver::WebResponse *resp) {
   std::stringstream *output = &resp->output;
-  PrometheusWriter writer(output, ExportHelpAndType::kFalse);
+  MetricPrometheusOptions opts;
+  PrometheusWriter writer(output, opts);
 
-  // Max size of ybpgm_table name (100 incl \0 char) + max size of "_count"/"_sum" (6 excl \0).
-  char copied_name[106];
   for (int i = 0; i < ybpgm_num_entries; ++i) {
-    snprintf(copied_name, sizeof(copied_name), "%s%s", ybpgm_table[i].name, "_count");
-    WARN_NOT_OK(
-        writer.WriteSingleEntry(
-            prometheus_attr, copied_name, ybpgm_table[i].calls, AggregationFunction::kSum),
-        "Couldn't write text metrics for Prometheus");
-    snprintf(copied_name, sizeof(copied_name), "%s%s", ybpgm_table[i].name, "_sum");
-    WARN_NOT_OK(
-        writer.WriteSingleEntry(
-            prometheus_attr, copied_name, ybpgm_table[i].total_time, AggregationFunction::kSum),
-        "Couldn't write text metrics for Prometheus");
+    std::string name = ybpgm_table[i].name;
+    WARN_NOT_OK(writer.WriteSingleEntry(prometheus_attr, name + "_count",
+        ybpgm_table[i].calls, AggregationFunction::kSum, kServerLevel),
+            "Couldn't write text metrics for Prometheus");
+    WARN_NOT_OK(writer.WriteSingleEntry(prometheus_attr, name + "_sum",
+        ybpgm_table[i].total_time, AggregationFunction::kSum, kServerLevel),
+            "Couldn't write text metrics for Prometheus");
   }
 
   // Publish sql server connection related metrics
@@ -559,7 +560,22 @@ YBCStatus StartWebserver(WebserverWrapper *webserver_wrapper) {
       "/statements", "PG Stat Statements", PgStatStatementsHandler, false, false);
   webserver->RegisterPathHandler(
       "/statements-reset", "Reset PG Stat Statements", PgStatStatementsResetHandler, false, false);
+  webserver->RegisterPathHandler("/webserver-heap-snapshot", "",
+      PprofHeapSnapshotHandler, true /* is_styled */, false /* is_on_nav_bar */);
+  webserver->RegisterPathHandler("/memz", "Memory (total)", MemUsageHandler, true, false);
+
   return ToYBCStatus(WithMaskedYsqlSignals([webserver]() { return webserver->Start(); }));
+}
+
+void SetWebserverConfig(
+    WebserverWrapper *webserver_wrapper, bool enable_access_logging, bool enable_tcmalloc_logging,
+    int webserver_profiler_sample_freq_bytes) {
+  Webserver *webserver = reinterpret_cast<Webserver *>(webserver_wrapper);
+  webserver->SetLogging(enable_access_logging, enable_tcmalloc_logging);
+
+  if (GetTCMallocSamplingFrequency() != webserver_profiler_sample_freq_bytes) {
+    SetTCMallocSamplingFrequency(webserver_profiler_sample_freq_bytes);
+  }
 }
 }  // extern "C"
 

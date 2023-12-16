@@ -2418,9 +2418,62 @@ yb-admin \
 
 Refer to [Upgrade a deployment](../../manage/upgrade-deployment/) to learn about how to upgrade a YugabyteDB cluster.
 
+For information on AutoFlags and how it secures upgrades with new data formats, refer to [AutoFlags](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md).
+
+#### get_auto_flags_config
+
+Returns the current AutoFlags configuration of the universe.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    get_auto_flags_config
+```
+
+**Example**
+
+```sh
+./bin/yb-admin -master_addresses ip1:7100,ip2:7100,ip3:7100 get_auto_flags_config
+```
+
+If the operation is successful you should see output similar to the following:
+
+```output
+AutoFlags config:
+config_version: 1
+promoted_flags {
+  process_name: "yb-master"
+  flags: "enable_automatic_tablet_splitting"
+  flags: "master_enable_universe_uuid_heartbeat_check"
+  flag_infos {
+    promoted_version: 1
+  }
+  flag_infos {
+    promoted_version: 1
+  }
+}
+promoted_flags {
+  process_name: "yb-tserver"
+  flags: "regular_tablets_data_block_key_value_encoding"
+  flags: "remote_bootstrap_from_leader_only"
+  flags: "ysql_yb_enable_expression_pushdown"
+  flag_infos {
+    promoted_version: 1
+  }
+  flag_infos {
+    promoted_version: 1
+  }
+  flag_infos {
+    promoted_version: 1
+  }
+}
+```
+
 #### promote_auto_flags
 
-[AutoFlags](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/auto_flags.md) protect new features that modify the format of data sent over the wire or stored on-disk. After all YugabyteDB processes have been upgraded to the new version, these features can be enabled by promoting their AutoFlags.
+After all YugabyteDB processes have been upgraded to the new version, these features can be enabled by promoting their AutoFlags.
 
 **Syntax**
 
@@ -2432,7 +2485,7 @@ yb-admin \
 ```
 
 * *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
-* *max_flags_class*: The maximum AutoFlag class to promote. Allowed values are `kLocalVolatile`, `kLocalPersisted`, `kExternal`, `kNewInstallsOnly`. Default value is `kExternal`.
+* *max_flags_class*: The maximum AutoFlag class to promote. Allowed values are `kLocalVolatile`, `kLocalPersisted` and `kExternal`. Default value is `kExternal`.
 * *promote_non_runtime_flags*: Weather to promote non-runtime flags. Allowed values are `true` and `false`. Default value is `true`.
 * *force*: Forces the generation of a new AutoFlag configuration and sends it to all YugabyteDB processes even if there are no new AutoFlags to promote.
 

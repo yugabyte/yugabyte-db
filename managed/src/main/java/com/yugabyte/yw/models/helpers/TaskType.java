@@ -169,6 +169,9 @@ public enum TaskType {
   KubernetesCheckVolumeExpansion(
       com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckVolumeExpansion.class),
 
+  KubernetesPostExpansionCheckVolume(
+      com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesPostExpansionCheckVolume.class),
+
   StartMasterOnNode(com.yugabyte.yw.commissioner.tasks.StartMasterOnNode.class),
 
   DeleteXClusterConfig(com.yugabyte.yw.commissioner.tasks.DeleteXClusterConfig.class),
@@ -290,6 +293,9 @@ public enum TaskType {
 
   UpdateUniverseYbcDetails(
       com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseYbcDetails.class),
+
+  UpdateUniverseYbcGflagsDetails(
+      com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseYbcGflagsDetails.class),
 
   VerifyNodeSSHAccess(com.yugabyte.yw.commissioner.tasks.subtasks.VerifyNodeSSHAccess.class),
 
@@ -552,6 +558,8 @@ public enum TaskType {
 
   UpgradeUniverseYbc(com.yugabyte.yw.commissioner.tasks.UpgradeUniverseYbc.class),
 
+  UpgradeYbcGFlags(com.yugabyte.yw.commissioner.tasks.UpgradeYbcGFlags.class),
+
   DisableYbc(com.yugabyte.yw.commissioner.tasks.DisableYbc.class),
 
   InstanceExistCheck(com.yugabyte.yw.commissioner.tasks.subtasks.InstanceExistCheck.class),
@@ -706,6 +714,7 @@ public enum TaskType {
           .put(SetUniverseKey, 135)
           .put(UpdateLoadBalancerConfig, 136)
           .put(LdapUniverseSync, 137)
+          .put(UpgradeYbcGFlags, 138)
           .build();
 
   TaskType(Class<? extends ITask> taskClass) {

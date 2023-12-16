@@ -12,18 +12,21 @@
 //
 
 #include "yb/integration-tests/cql_test_base.h"
-#include "yb/integration-tests/mini_cluster_utils.h"
 
 #include "yb/client/table_info.h"
 
 #include "yb/docdb/deadline_info.h"
 
-#include "yb/tablet/tablet_metadata.h"
-#include "yb/tablet/write_query.h"
+#include "yb/integration-tests/external_mini_cluster.h"
+#include "yb/integration-tests/external_mini_cluster_validator.h"
+#include "yb/integration-tests/mini_cluster_utils.h"
+
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_metadata.h"
+#include "yb/tablet/tablet_metrics.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/transaction_participant.h"
-#include "yb/tablet/tablet_metrics.h"
+#include "yb/tablet/write_query.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/backoff_waiter.h"
@@ -322,26 +325,60 @@ TEST_F(CqlIndexTest, TestSaturatedWorkers) {
    */
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cql_prepare_child_threshold_ms) = 1;
 
-  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
-  ASSERT_OK(session.ExecuteQuery(
-      "CREATE TABLE t (key INT PRIMARY KEY, v1 INT, v2 INT) WITH "
-      "transactions = { 'enabled' : true }"));
-  ASSERT_OK(session.ExecuteQuery(
-      "CREATE INDEX i1 ON t(key, v1) WITH "
-      "transactions = { 'enabled' : true }"));
-  ASSERT_OK(session.ExecuteQuery(
-      "CREATE INDEX i2 ON t(key, v2) WITH "
-      "transactions = { 'enabled' : true }"));
-
   constexpr int kKeys = 10000;
-  std::string expr = "BEGIN TRANSACTION ";
-  for (int i = 0; i < kKeys; i++) {
-    expr += Format("INSERT INTO t (key, v1, v2) VALUES ($0, $1, $2); ", i, i, i);
-  }
-  expr += "END TRANSACTION;";
+  constexpr int kMaxRound = 10;
+  Status status;
 
-  // We should expect to see timed out error
-  auto status = session.ExecuteQuery(expr);
+  for (int round = 0; round < kMaxRound; ++round) {
+    auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+
+    const std::string tbl_name = "tbl" + AsString(round);
+    ASSERT_OK(session.ExecuteQuery(
+        "CREATE TABLE " + tbl_name + " (key INT PRIMARY KEY, v1 INT, v2 INT) WITH "
+        "transactions = { 'enabled' : true }"));
+    ASSERT_OK(session.ExecuteQuery(
+        "CREATE INDEX " + tbl_name + "_idx1 ON " + tbl_name + "(key, v1) WITH "
+        "transactions = { 'enabled' : true }"));
+    ASSERT_OK(session.ExecuteQuery(
+        "CREATE INDEX " + tbl_name + "_idx2 ON " + tbl_name + "(key, v2) WITH "
+        "transactions = { 'enabled' : true }"));
+
+    const client::YBTableName table_name(YQL_DATABASE_CQL, kCqlTestKeyspace, tbl_name);
+    const client::YBTableName index_name1(YQL_DATABASE_CQL, kCqlTestKeyspace, tbl_name + "_idx1");
+    const client::YBTableName index_name2(YQL_DATABASE_CQL, kCqlTestKeyspace, tbl_name + "_idx2");
+
+    auto perm_idx1 = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
+        table_name, index_name1, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE));
+    CHECK_EQ(perm_idx1, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+    auto perm_idx2 = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
+        table_name, index_name2, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE));
+    CHECK_EQ(perm_idx2, IndexPermissions::INDEX_PERM_READ_WRITE_AND_DELETE);
+
+    std::string expr = "BEGIN TRANSACTION ";
+    for (int i = 0; i < kKeys; i++) {
+      expr += Format("INSERT INTO " + tbl_name + " (key, v1, v2) VALUES ($0, $1, $2); ", i, i, i);
+    }
+    expr += "END TRANSACTION;";
+
+    // We should expect to see timed out error.
+    status = session.ExecuteQuery(expr, 120000); // 2 minutes maximum
+    LOG(INFO) << "Round " << round << ": Result = " << status;
+
+    if (status.ok() || status.message().ToBuffer().find("Execution Error. ") != std::string::npos) {
+      // Ignore the successful OR "Execution Error" results & retry the test once again.
+      // During the testing the following rare (1-5%) unexpected results were faced:
+      // 1. Successful result.
+      // 2. 'Query error' like:
+      //    "Execution Error. Write RPC (request call id ID) to IP:PORT timed out after 0.008s"
+      // 3. 'Query error' like:
+      //    "Execution Error. LookupTabletByKey attempted after deadline expired, "
+      //    "passed since deadline: 0.000s"
+      SleepFor(MonoDelta::FromMilliseconds(200)); // And continue the loop.
+    } else {
+      break; // Got the expected error - stop the loop & check the error.
+    }
+  }
+
   ASSERT_FALSE(status.ok());
   ASSERT_NE(status.message().ToBuffer().find("Timed out waiting for prepare child status"),
             std::string::npos) << status;
@@ -566,6 +603,59 @@ TEST_F(CqlIndexTest, SlowIndexResponse) {
   ASSERT_TRUE(latch_done) << "SELECT hasn't completed within " << timeout_limit_ms << " ms";
 
   select_thread.JoinAll();
+}
+
+class CqlIndexExternalMiniClusterTest : public CqlTestBase<ExternalMiniCluster> {
+ protected:
+  void TestRetainDeleteMarkersRecovery(bool use_multiple_requests) {
+    ASSERT_OK(EnsureClientCreated());
+    auto validator =
+        CqlRetainDeleteMarkersValidator{ cluster_.get(), client_.get(), driver_.get() };
+    validator.TestRecovery(use_multiple_requests);
+  }
+
+ private:
+  class CqlRetainDeleteMarkersValidator final : public itest::RetainDeleteMarkersValidator {
+    using Base = itest::RetainDeleteMarkersValidator;
+
+   public:
+    CqlRetainDeleteMarkersValidator(
+        ExternalMiniCluster* cluster, client::YBClient* client, CppCassandraDriver* driver)
+        : Base(cluster, client, kCqlTestKeyspace), driver_(*CHECK_NOTNULL(driver)) {
+    }
+
+   private:
+    Status RestartCluster() override {
+      RETURN_NOT_OK(Base::RestartCluster());
+      session_ = VERIFY_RESULT(EstablishSession(&driver_));
+      return Status::OK();
+    }
+
+    Status CreateIndex(const std::string &index_name, const std::string &table_name) override {
+      return session_.ExecuteQueryFormat(
+          "CREATE INDEX $0 ON $1(value) WITH transactions = { 'enabled' : true }",
+          index_name, table_name);
+    }
+
+    Status CreateTable(const std::string &table_name) override {
+      return session_.ExecuteQueryFormat(
+          "CREATE TABLE $0 (key INT PRIMARY KEY, value INT) "
+          "WITH transactions = { 'enabled' : true }", table_name);
+    }
+
+    CppCassandraDriver& driver_;
+    CassandraSession session_;
+  };
+};
+
+// Test for https://github.com/yugabyte/yugabyte-db/issues/19731.
+TEST_F(CqlIndexExternalMiniClusterTest, RetainDeleteMarkersRecovery) {
+  TestRetainDeleteMarkersRecovery(false /* use_multiple_requests */);
+}
+
+// Test for https://github.com/yugabyte/yugabyte-db/issues/19731.
+TEST_F(CqlIndexExternalMiniClusterTest, RetainDeleteMarkersRecoveryViaSeveralRequests) {
+  TestRetainDeleteMarkersRecovery(true /* use_multiple_requests */);
 }
 
 } // namespace yb

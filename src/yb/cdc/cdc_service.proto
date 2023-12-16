@@ -89,6 +89,7 @@ message CDCErrorPB {
     INVALID_REQUEST = 10;
     TABLET_SPLIT = 12;
     OPERATION_DISALLOWED = 13;
+    AUTO_FLAGS_CONFIG_VERSION_MISMATCH = 14;
   }
 
   // The error code.
@@ -247,6 +248,9 @@ message GetChangesRequestPB {
 
   // index used to filter out the records we've already streamed.
   optional int32 wal_segment_index = 12 [default = 0];
+
+  // Used only in xCluster streams.
+  optional uint32 auto_flags_config_version = 13;
 }
 
 message KeyValuePairPB {
@@ -451,6 +455,9 @@ message GetChangesResponsePB {
 
   // index used to filter out the records we've already streamed.
   optional int32 wal_segment_index = 11 [default = 0];
+
+  // Only set in xCluster streams when error is AUTO_FLAGS_CONFIG_VERSION_MISMATCH.
+  optional uint32 auto_flags_config_version = 12;
 }
 
 message GetCheckpointRequestPB {

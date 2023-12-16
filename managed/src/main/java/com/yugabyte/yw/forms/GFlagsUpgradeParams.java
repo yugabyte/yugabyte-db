@@ -10,8 +10,11 @@ import com.fasterxml.jackson.databind.annotation.JsonDeserialize;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -30,6 +33,8 @@ import org.apache.commons.collections.CollectionUtils;
 @Slf4j
 public class GFlagsUpgradeParams extends UpgradeWithGFlags {
 
+  protected RuntimeConfGetter runtimeConfGetter;
+
   @Override
   public boolean isKubernetesUpgradeSupported() {
     return true;
@@ -39,14 +44,16 @@ public class GFlagsUpgradeParams extends UpgradeWithGFlags {
   public void verifyParams(Universe universe, boolean isFirstTry) {
     super.verifyParams(universe, isFirstTry);
 
-    if (universe
-        .getUniverseDetails()
-        .softwareUpgradeState
-        .equals(UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize)) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Cannot upgrade gflags on universe in pre-finalize state.");
-    }
+    runtimeConfGetter = StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
 
+    if (!universe.getUniverseDetails().softwareUpgradeState.equals(SoftwareUpgradeState.Ready)
+        && !runtimeConfGetter.getConfForScope(
+            universe, UniverseConfKeys.allowGFlagsOverrideDuringPreFinalize)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "Cannot upgrade gflags on universe in state "
+              + universe.getUniverseDetails().softwareUpgradeState);
+    }
     if (masterGFlags == null) {
       masterGFlags = new HashMap<>();
     }

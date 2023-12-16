@@ -65,6 +65,9 @@ public class UserTaskDetails {
     // Updating GFlags
     UpdatingGFlags,
 
+    // Updating YBC GFlags
+    UpdatingYbcGFlags,
+
     // Bootstrap Cloud
     BootstrappingCloud,
 
@@ -169,6 +172,9 @@ public class UserTaskDetails {
 
     // Delete Kubernetes volumes created by helm chart.
     KubernetesVolumeDelete,
+
+    // Delete Kubernetes Volumes for a shell mode master before creating it.
+    KubernetesVolumeDeleteMasterShellMode,
 
     // Delete kubernetes namespace
     KubernetesNamespaceDelete,
@@ -337,6 +343,10 @@ public class UserTaskDetails {
         title = "Updating gflags";
         description = "Updating GFlags on provisioned nodes.";
         break;
+      case UpdatingYbcGFlags:
+        title = "Updating YBC GFlags";
+        description = "Updating YBC GFlags on provisioned nodes.";
+        break;
       case UpdatingKubernetesOverrides:
         title = "Updating kubernetes overrides";
         description = "Updating kubernetes overrides on kubernetes pods.";
@@ -466,6 +476,10 @@ public class UserTaskDetails {
       case KubernetesVolumeDelete:
         title = "Delete Kubernetes Volumes";
         description = "Delete Kubernetes Volumes";
+        break;
+      case KubernetesVolumeDeleteMasterShellMode:
+        title = "Delete Kubernetes Volumes for a master before creating it in shell mode";
+        description = "Delete Kubernetes Volumes for master pod before creating it in shell mode";
         break;
       case KubernetesNamespaceDelete:
         title = "Delete Kubernetes Namespace";

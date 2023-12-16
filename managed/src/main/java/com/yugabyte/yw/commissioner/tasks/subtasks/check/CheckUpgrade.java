@@ -6,25 +6,25 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.google.inject.Inject;
-import com.google.protobuf.ProtocolStringList;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ServerSubTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ReleaseManager.ReleaseMetadata;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
-import com.yugabyte.yw.common.gflags.GFlagsValidation.AutoFlagsPerServer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.io.InputStream;
 import java.util.Collections;
+import java.util.Set;
+import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
-import org.yb.WireProtocol.AutoFlagsConfigPB;
-import org.yb.client.YBClient;
 
 @Slf4j
 public class CheckUpgrade extends ServerSubTaskBase {
@@ -32,17 +32,20 @@ public class CheckUpgrade extends ServerSubTaskBase {
   private final GFlagsValidation gFlagsValidation;
   private final ReleaseManager releaseManager;
   private final Config appConfig;
+  private final AutoFlagUtil autoFlagUtil;
 
   @Inject
   protected CheckUpgrade(
       BaseTaskDependencies baseTaskDependencies,
       Config appConfig,
       GFlagsValidation gFlagsValidation,
-      ReleaseManager releaseManager) {
+      ReleaseManager releaseManager,
+      AutoFlagUtil autoFlagUtil) {
     super(baseTaskDependencies);
     this.appConfig = appConfig;
     this.gFlagsValidation = gFlagsValidation;
     this.releaseManager = releaseManager;
+    this.autoFlagUtil = autoFlagUtil;
   }
 
   public static class Params extends ServerSubTaskParams {
@@ -87,30 +90,26 @@ public class CheckUpgrade extends ServerSubTaskBase {
         }
       }
 
-      AutoFlagsConfigPB autoFlagConfig = null;
-      // Fetch the promoted auto flags list.
-      try (YBClient client = getClient(); ) {
-        autoFlagConfig = client.autoFlagsConfig().getAutoFlagsConfig();
-      } catch (Exception e) {
-        throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
-      }
-
       // Make sure there are no new auto flags missing from the modified version,
       // which could occur during a downgrade.
-      if (autoFlagConfig != null && autoFlagConfig.getPromotedFlagsList().size() > 0) {
-        ProtocolStringList oldMasterAutoFlags = autoFlagConfig.getPromotedFlags(0).getFlagsList();
-        ProtocolStringList oldTserverAutoFlags = autoFlagConfig.getPromotedFlags(1).getFlagsList();
-        if (CollectionUtils.isNotEmpty(oldMasterAutoFlags)) {
-          AutoFlagsPerServer newMasterAutoFlags =
-              gFlagsValidation.extractAutoFlags(newVersion, "yb-master");
-          checkAutoFlagsAvailability(oldMasterAutoFlags, newMasterAutoFlags, newVersion);
-        }
+      Set<String> oldMasterAutoFlags =
+          autoFlagUtil.getPromotedAutoFlags(universe, ServerType.MASTER, -1);
+      if (CollectionUtils.isNotEmpty(oldMasterAutoFlags)) {
+        Set<String> newMasterAutoFlags =
+            gFlagsValidation.extractAutoFlags(newVersion, "yb-master").autoFlagDetails.stream()
+                .map(flag -> flag.name)
+                .collect(Collectors.toSet());
+        checkAutoFlagsAvailability(oldMasterAutoFlags, newMasterAutoFlags, newVersion);
+      }
 
-        if (!CollectionUtils.isNotEmpty(oldTserverAutoFlags)) {
-          AutoFlagsPerServer newTserverAutoFlags =
-              gFlagsValidation.extractAutoFlags(newVersion, "yb-tserver");
-          checkAutoFlagsAvailability(oldTserverAutoFlags, newTserverAutoFlags, newVersion);
-        }
+      Set<String> oldTserverAutoFlags =
+          autoFlagUtil.getPromotedAutoFlags(universe, ServerType.TSERVER, -1);
+      if (!CollectionUtils.isNotEmpty(oldTserverAutoFlags)) {
+        Set<String> newTserverAutoFlags =
+            gFlagsValidation.extractAutoFlags(newVersion, "yb-tserver").autoFlagDetails.stream()
+                .map(flag -> flag.name)
+                .collect(Collectors.toSet());
+        checkAutoFlagsAvailability(oldTserverAutoFlags, newTserverAutoFlags, newVersion);
       }
     } catch (PlatformServiceException e) {
       throw e;
@@ -121,9 +120,9 @@ public class CheckUpgrade extends ServerSubTaskBase {
   }
 
   private void checkAutoFlagsAvailability(
-      ProtocolStringList oldFlags, AutoFlagsPerServer newFlags, String version) {
+      Set<String> oldFlags, Set<String> newFlags, String version) {
     for (String oldFlag : oldFlags) {
-      if (newFlags.autoFlagDetails.stream().noneMatch((flag -> flag.name.equals(oldFlag)))) {
+      if (!newFlags.contains(oldFlag)) {
         throw new PlatformServiceException(
             BAD_REQUEST, oldFlag + " is not present in the requested db version " + version);
       }

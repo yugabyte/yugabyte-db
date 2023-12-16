@@ -473,6 +473,8 @@ class PgDocReadOp : public PgDocOp {
 
   Status DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) override;
 
+  Status ResetPgsqlOps();
+
  private:
   // Create protobuf requests using template_op_.
   Result<bool> DoCreateRequests() override;

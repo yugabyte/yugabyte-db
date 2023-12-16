@@ -26,11 +26,6 @@ std::string ProducerTabletInfo::ToString() const {
       tablet_id);
 }
 
-std::string ProducerTabletInfo::MetricsString() const {
-  std::stringstream ss;
-  ss << replication_group_id << ":" << stream_id << ":" << tablet_id;
-  return ss.str();
-}
 std::size_t ProducerTabletInfo::Hash::operator()(const ProducerTabletInfo& p) const noexcept {
   std::size_t hash = 0;
   boost::hash_combine(hash, p.replication_group_id);

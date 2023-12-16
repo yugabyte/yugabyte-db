@@ -3,12 +3,13 @@
 package com.yugabyte.yw.commissioner.tasks.upgrade;
 
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask;
 import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
-import com.yugabyte.yw.commissioner.tasks.subtasks.ManageOtelCollector;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistAuditLoggingConfig;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.AuditLogConfigParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
@@ -22,6 +23,7 @@ import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
 @EqualsAndHashCode(callSuper = false)
+@ITask.Retryable
 public class ModifyAuditLoggingConfig extends UpgradeTaskBase {
 
   @Inject
@@ -59,19 +61,22 @@ public class ModifyAuditLoggingConfig extends UpgradeTaskBase {
                     .toList();
             // Upgrade GFlags in all nodes. Also install
             // OpenTelemetry collector and configure as needed
-            createConfigureAuditLoggingAndOtelCollectorTasks(curCluster.userIntent, tServerNodes);
+            createConfigureAuditLoggingAndOtelCollectorTasks(
+                universe, curCluster.userIntent, tServerNodes);
           }
           updateAndPersistAuditLoggingConfigTask();
         });
   }
 
   private void createConfigureAuditLoggingAndOtelCollectorTasks(
-      UniverseDefinitionTaskParams.UserIntent userIntent, List<NodeDetails> tServerNodes) {
+      Universe universe,
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      List<NodeDetails> tServerNodes) {
     switch (taskParams().upgradeOption) {
       case ROLLING_UPGRADE:
         createRollingUpgradeTaskFlow(
             (nodes, processTypes) -> {
-              createNodesSubtasks(userIntent, nodes, processTypes);
+              createNodesSubtasks(universe, userIntent, nodes, processTypes);
             },
             Collections.emptyList(),
             tServerNodes,
@@ -81,7 +86,7 @@ public class ModifyAuditLoggingConfig extends UpgradeTaskBase {
       case NON_ROLLING_UPGRADE:
         createNonRollingUpgradeTaskFlow(
             (nodes, processTypes) -> {
-              createNodesSubtasks(userIntent, nodes, processTypes);
+              createNodesSubtasks(universe, userIntent, nodes, processTypes);
             },
             Collections.emptyList(),
             tServerNodes,
@@ -91,7 +96,7 @@ public class ModifyAuditLoggingConfig extends UpgradeTaskBase {
       case NON_RESTART_UPGRADE:
         createNonRestartUpgradeTaskFlow(
             (List<NodeDetails> nodeList, Set<ServerType> processTypes) -> {
-              createNodesSubtasks(userIntent, nodeList, processTypes);
+              createNodesSubtasks(universe, userIntent, nodeList, processTypes);
               // TBD: Most probably we can't set audit logging flags in memory. Need to check.
             },
             Collections.emptyList(),
@@ -102,14 +107,25 @@ public class ModifyAuditLoggingConfig extends UpgradeTaskBase {
   }
 
   protected void createNodesSubtasks(
+      Universe universe,
       UniverseDefinitionTaskParams.UserIntent userIntent,
       List<NodeDetails> nodes,
       Set<ServerType> processTypes) {
-    // Install, configure and start/stop/restart otel collector, if needed.
-    createManageOtelCollectorTasks(userIntent, nodes);
-
     // Update audit logging gflags in TServer configuration file.
     createUpdateConfigurationFileTask(userIntent, nodes, processTypes);
+
+    // Install, configure and start/stop/restart otel collector, if needed.
+    createManageOtelCollectorTasks(
+        userIntent,
+        nodes,
+        taskParams().installOtelCollector,
+        taskParams().auditLogConfig,
+        nodeDetails ->
+            GFlagsUtil.getGFlagsForNode(
+                nodeDetails,
+                ServerType.TSERVER,
+                universe.getCluster(nodeDetails.placementUuid),
+                universe.getUniverseDetails().clusters));
   }
 
   protected void createUpdateConfigurationFileTask(
@@ -130,37 +146,6 @@ public class ModifyAuditLoggingConfig extends UpgradeTaskBase {
       subTaskGroup.addSubTask(getAnsibleConfigureServerTask(userIntent, node, processType));
     }
     subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-  }
-
-  protected void createManageOtelCollectorTasks(
-      UniverseDefinitionTaskParams.UserIntent userIntent, List<NodeDetails> nodes) {
-    // If the node list is empty, we don't need to do anything.
-    if (nodes.isEmpty()) {
-      return;
-    }
-    String subGroupDescription =
-        String.format(
-            "AnsibleConfigureServers (%s) for: %s",
-            SubTaskGroupType.ManageOtelCollector, taskParams().nodePrefix);
-    TaskExecutor.SubTaskGroup subTaskGroup = createSubTaskGroup(subGroupDescription);
-    for (NodeDetails node : nodes) {
-      ManageOtelCollector.Params params = new ManageOtelCollector.Params();
-      params.nodeName = node.nodeName;
-      params.setUniverseUUID(taskParams().getUniverseUUID());
-      params.azUuid = node.azUuid;
-      params.installOtelCollector = taskParams().installOtelCollector;
-      params.otelCollectorEnabled =
-          taskParams().installOtelCollector
-              || getUniverse().getUniverseDetails().otelCollectorEnabled;
-      params.auditLogConfig = taskParams().auditLogConfig;
-      params.deviceInfo = userIntent.getDeviceInfoForNode(node);
-      ManageOtelCollector task = createTask(ManageOtelCollector.class);
-      task.initialize(params);
-      task.setUserTaskUUID(getUserTaskUUID());
-      subTaskGroup.addSubTask(task);
-    }
-    subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ManageOtelCollector);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
   }
 

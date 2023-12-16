@@ -269,6 +269,7 @@ CreateSharedProcArray(void)
 
 	/* Register and initialize fields of ProcLWLockTranche */
 	LWLockRegisterTranche(LWTRANCHE_PROC, "proc");
+	LWLockRegisterTranche(LWTRANCHE_YB_ASH_METADATA, "yb_ash_metadata");
 }
 
 /*

@@ -218,6 +218,10 @@ DEFINE_test_flag(bool, fail_alter_schema_after_abort_transactions, false,
 DEFINE_test_flag(bool, txn_status_moved_rpc_force_fail, false,
                  "Force updates in transaction status location to fail.");
 
+DEFINE_test_flag(bool, txn_status_moved_rpc_force_fail_retryable, true,
+                 "Forced updates in transaction status location failure should be retryable "
+                 "error.");
+
 DEFINE_test_flag(int32, txn_status_moved_rpc_handle_delay_ms, 0,
                  "Inject delay to slowdown handling of updates in transaction status location.");
 
@@ -956,7 +960,17 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
   }
   auto operation = std::make_unique<ChangeMetadataOperation>(
       tablet.tablet, tablet.peer->log());
-  operation->AllocateRequest()->CopyFrom(*req);
+  auto request = operation->AllocateRequest();
+  request->CopyFrom(*req);
+
+  // CDC SDK Create Stream Context
+  if (req->has_retention_requester_id()) {
+    auto status = SetupCDCSDKRetention(req, resp, tablet.peer);
+    if (!status.ok()) {
+      SetupErrorAndRespond(resp->mutable_error(), status, &context);
+      return;
+    }
+  }
 
   operation->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
@@ -965,6 +979,45 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
   // Submit the alter schema op. The RPC will be responded to asynchronously.
   tablet.peer->Submit(std::move(operation), tablet.leader_term);
 }
+
+Status TabletServiceAdminImpl::SetupCDCSDKRetention(const tablet::ChangeMetadataRequestPB* req,
+                                                    ChangeMetadataResponsePB* resp,
+                                                    const TabletPeerPtr& tablet_peer) {
+
+  tablet::RemoveIntentsData data;
+  auto s = tablet_peer->GetLastReplicatedData(&data);
+  if (s.ok()) {
+    LOG_WITH_PREFIX(INFO) << "Proposed cdc_sdk_snapshot_safe_op_id: " << data.op_id
+                          << ", time: " << data.log_ht;
+    resp->mutable_cdc_sdk_snapshot_safe_op_id()->set_term(data.op_id.term);
+    resp->mutable_cdc_sdk_snapshot_safe_op_id()->set_index(data.op_id.index);
+  } else {
+    LOG_WITH_PREFIX(WARNING) << "CDCSDK Create Stream context: "
+                             << "Could not get snapshot_safe_opid: "
+                             << s;
+    return s;
+  }
+
+  // Check if there is a valid CDC History cutoff requirement.
+  // Else, get the current time and set that as history cutoff
+  // Now, from this point on, till the Followers Apply the ChangeMetadataOperation,
+  // any proposed history cutoff they process can only be less than Now()
+  if (req->has_cdc_sdk_require_history_cutoff() && req->cdc_sdk_require_history_cutoff()) {
+    if (tablet_peer->get_cdc_sdk_safe_time() == HybridTime::kInvalid) {
+      auto s = tablet_peer->set_cdc_sdk_safe_time(server_->Clock()->Now());
+
+      // If there was an error while setting the history cutoff, respond with an error
+      if (!s.ok()) {
+        LOG_WITH_PREFIX(WARNING) << "CDCSDK Create Stream context: "
+                                 << "Unable to set history cutoff: "
+                                 << s;
+        return s;
+      }
+    }
+  }
+  return Status::OK();
+}
+
 
 #define VERIFY_RESULT_OR_RETURN(expr) RESULT_CHECKER_HELPER( \
     expr, \
@@ -1284,7 +1337,11 @@ Status TabletServiceImpl::HandleUpdateTransactionStatusLocation(
   }
 
   if (PREDICT_FALSE(FLAGS_TEST_txn_status_moved_rpc_force_fail)) {
-    return STATUS(IllegalState, "UpdateTransactionStatusLocation forced to fail");
+    if (FLAGS_TEST_txn_status_moved_rpc_force_fail_retryable) {
+      return STATUS(IllegalState, "UpdateTransactionStatusLocation forced to fail");
+    } else {
+      return STATUS(Expired, "UpdateTransactionStatusLocation forced to fail");
+    }
   }
 
   auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req->transaction_id()));

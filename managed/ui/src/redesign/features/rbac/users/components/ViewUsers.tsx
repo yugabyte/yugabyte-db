@@ -187,7 +187,7 @@ export const ViewUsers = ({ routerProps }: { routerProps: WithRouterProps }) => 
                 </RbacValidator>
               );
             },
-            disabled: isSuperAdmin || user.userType === UserTypes.LDAP
+            disabled: isSuperAdmin || (user.userType === UserTypes.LDAP && user.ldapSpecifiedRole)
           },
           {
             text: t('table.moreActions.deleteUser'),
@@ -217,7 +217,7 @@ export const ViewUsers = ({ routerProps }: { routerProps: WithRouterProps }) => 
                 </RbacValidator>
               );
             },
-            disabled: isSuperAdmin
+            disabled: isSuperAdmin || user.uuid === localStorage.getItem('userId')
           }
         ]}
       >

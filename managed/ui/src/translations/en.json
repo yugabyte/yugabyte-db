@@ -37,7 +37,13 @@
       "viewDetails": "View Details"
     },
     "queryError": {
-      "failedToFetchUniverselist": "Error fetching universe list."
+      "failedToFetchUniverselist": "Error fetching universe list.",
+      "failedToFetchCustomerRuntimeConfig": "Error fetching runtime configurations for the current customer.",
+      "failedToFetchSourceUniverse": "Unable to fetch universe details for source universe UUID: {{universeUuid}}",
+      "failedToFetchTargetuniverse": "Unable to fetch universe details for target universe UUID: {{universeUuid}}",
+      "failedToFetchMetrics": "Failed to fetch metrics.",
+      "failedToFetchAlertTemplates": "Failed to fetch alert templates.",
+      "failedToFetchAlertConfigs": "Failed to fetch alert configurations."
     },
     "universeActions": {
       "encryptionAtRest": {
@@ -441,7 +447,13 @@
       "placementModal": {
         "modalTitle": "Confirm Update",
         "modalDescription": "This operation will scale-up or scale-down the number of the nodes or will change master placement from colocated to dedicated or vice versa",
-        "likeToProceed": "Would you like to proceed?"
+        "modalDescriptionRR": "This operation will either scale-up or scale-down the number of the nodes or will change the configuration of number of read replicas",
+        "likeToProceed": "Would you like to proceed?",
+        "nodes": "nodes",
+        "readReplicas": "Read Replicas",
+        "scaleUp": "Scale Up",
+        "scaleDown": "Scale Down",
+        "mode": "mode"
       },
       "fullMoveModal": {
         "modalTitle": "Confirm Full Move Update",
@@ -555,7 +567,6 @@
         "heading": "Disaster Recovery",
         "actionButton": {
           "abortSwitchover": "Abort Switchover",
-          "connectApplications": "Connect",
           "switchover": "Switchover",
           "repairDr": "Repair DR",
           "restartReplication": "Restart Replication",
@@ -563,7 +574,7 @@
           "actionMenu": {
             "label": "Actions",
             "deleteConfig": "Remove disaster recovery",
-            "editDrConfig": "Edit recovery configuration",
+            "editDrConfig": "Edit DR configuration",
             "editDrConfigTarget": "Change DR Replica Universe",
             "editTables": "Select databases and tables",
             "switchover": "Switchover",
@@ -730,23 +741,39 @@
             "title": "Configure Active-Active Single-Master Disaster Recovery (DR)",
             "step": {
               "selectTargetUniverse": {
-                "instruction": "1. Select a universe to use as the DR replica.",
-                "submitButton": "Next: Select databases",
-                "drReplica": "DR Replica Universe"
+                "instruction": "Select a universe to use as the DR replica",
+                "submitButton": "Next: Select Databases",
+                "drReplica": "DR Replica Universe",
+                "error": {
+                  "targetUniverseRequired": "Required.",
+                  "mismatchedNodeToNodeEncryption": "The source and target universe must have matching TLS enable/disable setting."
+                }
               },
               "selectDatabases": {
-                "instruction": "2. Select the databases to enable disaster recovery for.",
-                "submitButton": "Next: Configure boostrap",
-                "databases": "Databases",
-                "sizeGb": "Size (GB)",
-                "ysqlDatabasesSelected": "YSQL: {{selectedDatabaseCount}} out of {totalDatabaseCount}} selected.",
-                "pitrSetUpNote": "Note: Point-in-time Recovery will be enabled for the selected databases on the DR Replica."
+                "instruction": "Select the databases to enable disaster recovery for",
+                "validateButton": "Validate Table Selection",
+                "submitButton": "Next: Configure Full Copy",
+                "pitrSetUpNote": "<bold>Note:</bold> Point-in-time Recovery will be enabled for the selected databases on the DR Replica."
               },
               "configureBootstrap": {
-                "instruction": "3. Configure bootstrap.",
-                "submitButton": "Set up and Enable Disaster Recovery",
-                "backupStorageConfig": "Select the backup storage config to use for bootstrapping.",
-                "bootstrapOffPeakNote": "Note: We recommend setting up Disaster Recovery during off-peak hours if bootstrap is required."
+                "instruction": "Choose the storage config to use for performing the initial copy",
+                "infoText": "Initial full copy is required when the database contains data. Performing an initial full copy requires a backup storage config as an intermediate third party storage, and is time and resource intensive. This is also referred to as bootstrapping or initial seeding.",
+                "submitButton": "Next: Confirm Alert Threshold",
+                "backupStorageConfig": {
+                  "label": "Backup Storage Config",
+                  "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both source and target universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>"
+                },
+                "error": {
+                  "backupStorageConfigRequired": "Required."
+                }
+              },
+              "confirmAlert": {
+                "instruction": "Confirm alert threshold for acceptable replication lag",
+                "infoText": "Replication lag measures how far behind in time the DR replica lags the DR primary. You can set alerts on the DR primary to notify you when this lag reaches a specified threshold so that you can take action to correct the lag. Setting up a replication lag alert is optional.",
+                "currentLowestReplicationLagLabel": "Current lowest replication lag alert threshold set on {{sourceUniverseName}}:",
+                "setUpReplicationLagAlertPrompt": "<paragraph>You currently do not have any alerts set up for replication lag on {{sourceUniverseName}}.</paragraph><paragraph>You can configure a replication lag alert using the 'Create Alert Policy' action on the <manageAlertConfigLink>alert configuration page.</manageAlertConfigLink></paragraph>.",
+                "editReplicationLagAlertPrompt": "You can edit these replication lag alerts from the <manageAlertConfigLink>alert configuration page.</manageAlertConfigLink>",
+                "submitButton": "Confirm and Enable Disaster Recovery"
               }
             },
             "error": {
@@ -775,10 +802,15 @@
           },
           "editModal": {
             "title": "Edit DR Configuration",
-            "bootstrapConfiguration": "Bootstrap Configuration",
-            "backupStorageConfig": {
-              "label": "Backup Storage Config",
-              "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both source and target universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>"
+            "maxAcceptableReplicationLag": {
+              "sectionHeader": "Max Acceptable Replication Lag",
+              "info": "The lowest alert threshold for replication lag on the DR primary is taken to be the 'max acceptable lag'. Updating the max acceptable replication lag will update the corresponding alert threshold. If the update causes the replication lag alert's threshold to be greater than another from the same universe, then the alert with the lower threshold will be used as the new max acceptable replication lag.",
+              "fieldLabel": "Max Acceptable Replication Lag"
+            },
+            "duration": {
+              "second": "Second",
+              "minute": "Minute",
+              "hour": "Hour"
             },
             "error": {
               "requestFailureLabel": "Edit DR configuration request failed",
@@ -825,10 +857,7 @@
             "instruction": "Select the databases to enable disaster recovery for",
             "step": {
               "selectTables": {
-                "nextButton": "Next: Configure bootstrap",
-                "error": {
-                  "validationMinimumTableUuids": "Select at least one table to proceed."
-                }
+                "nextButton": "Next: Configure bootstrap"
               },
               "configureBootstrap": {
                 "infoText": "<paragraph>The selected databases and/or tables contain <bold>data that is not yet replicated</bold> for DR. To enable DR for these databases and/or tables, a bootstrap will be required before aynchronous replication from the DR primary universe to the DR replica universe can be established.</paragraph><paragraph>Are you sure you want to <bold>bootstrap</bold> and add these databases and/or tables?</paragraph>",
@@ -884,10 +913,40 @@
           },
           "warning": {
             "insufficientDiskSpace": {
-              "title": "Insufficient disk space.",
+              "title": "Warning: You may need additional disk space.",
               "body": "Some selected tables require bootstrapping. We recommend having at least {{bootstrapMinFreeDiskSpaceGb}} GB of free disk space in the source universe."
             }
           }
+        },
+        "metricsPanel": {
+          "graphFilter": {
+            "nodeAggregation": {
+              "max": "Max",
+              "min": "Min",
+              "average": "Average"
+            },
+            "splitType": {
+              "cluster": "Cluster",
+              "node": "Node",
+              "namespace": "Database",
+              "table": "Table"
+            },
+            "splitMode": {
+              "all": "All",
+              "top": "Top K",
+              "bottom": "Bottom K"
+            }
+          },
+          "showAlertThresholdReferenceLine": {
+            "label": "Show Alert Threshold",
+            "disabledTooltip": "No replication lag alert thresholds found. Set up a replication lag alert thresholds by creating an alert policy on the DR primary/source universe."
+          },
+          "graphTitle": {
+            "asyncReplicationSentLag": "Async Replication Lag",
+            "consumerSafeTimeLag": "Consumer Safe Time Lag",
+            "consumerSafeTimeSkew": "Consumer Safe Time Skew"
+          },
+          "lowestReplicationLagAlertThresholdLabel": "Lowest Replication Lag Alert Threshold"
         },
         "error": {
           "undefinedXClusterTableType": "The tables in this config have unknown or mixed type.",
@@ -898,7 +957,8 @@
           "failedToFetchSourceUniverse": "Unable to fetch universe details for source universe UUID: {{universeUuid}}",
           "faliedToFetchTargetuniverse": "Unable to fetch universe details for target universe UUID: {{universeUuid}}",
           "failedToFetchUniverse": "Unable to fetch universe details for universe UUID: {{universeUuid}}",
-          "failedToFetchCurrentSafetimes": "Unable to fetch current safetimes."
+          "failedToFetchCurrentSafetimes": "Unable to fetch current safetimes.",
+          "failedToFetchConfigReplicationLagMetric": "Failed to fetch replication lag metric for the current config."
         },
         "syncDbModal": {
           "title": "Reconcile Config with Database",
@@ -937,6 +997,11 @@
         "error": {
           "failedToFetchUniverseTaskList": "Unable to fetch universe task list."
         }
+      }
+    },
+    "metric": {
+      "tooltip": {
+        "viewInPrometheus": "View this metric in Prometheus"
       }
     },
     "admin": {
@@ -1069,6 +1134,7 @@
       "errorMessage": "Failed to fetch list of providers"
     },
     "storageConfig": {
+      "createBackupStorageConfigPrompt": "You do not have any backup storage configs set up. Please <createStorageConfigLink>create a backup storage</createStorageConfigLink> config before trying again.",
       "pill": {
         "multiRegionSupport": "Multi-region support"
       }
@@ -1265,7 +1331,7 @@
       },
       "permissions": {
         "title": "User Roles",
-        "connectOnly": "Users without a role are automatically assigned the '<b>Connect Only</b>' role, limiting access to login and view their profile page",
+        "connectOnly": "Users without any built-in role are automatically assigned the '<b>Connect Only</b>' role, allowing access to login and view their profile page",
         "noUniverses": "There are no Universes deployed in this account. Selected roles will be applied to all future Universes by default. You can modify role's scope after deployment.",
         "role": "Role",
         "for": "for",
@@ -1371,7 +1437,8 @@
         "database": "Database",
         "tables": "Tables",
         "copyBackupLocation": "Copy backup location",
-        "copied": "Copied"
+        "copied": "Copied",
+        "restoreFailed": "Restore Failed"
       }
     }
   }

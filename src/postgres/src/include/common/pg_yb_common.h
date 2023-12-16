@@ -79,6 +79,11 @@ extern bool YBIsUsingYBParser();
 extern int YBUnsupportedFeatureSignalLevel();
 
 /**
+ * Returns whether unsafe ALTER notice should be suppressed.
+ */
+extern bool YBSuppressUnsafeAlterNotice();
+
+/**
  * Returns whether non-transactional COPY gflag is enabled.
  */
 extern bool YBIsNonTxnCopyEnabled();
@@ -149,5 +154,10 @@ extern const bool kTestOnlyUseOSDefaultCollation;
  * Returns whether colocation is enabled by default for each database.
  */
 extern bool YBColocateDatabaseByDefault();
+
+/**
+ * Returns true if Active Session History should be enabled.
+ */
+extern bool YBEnableAsh();
 
 #endif /* PG_YB_COMMON_H */

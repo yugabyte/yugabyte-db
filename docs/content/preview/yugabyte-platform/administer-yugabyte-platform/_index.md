@@ -77,4 +77,16 @@ type: indexpage
     </a>
   </div>
 
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="shutdown/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/enterprise.png" aria-hidden="true" />
+        <div class="title">Shutdown</div>
+      </div>
+      <div class="body">
+        Shut YugabyteDB Anywhere down gracefully.
+      </div>
+    </a>
+  </div>
+
 </div>

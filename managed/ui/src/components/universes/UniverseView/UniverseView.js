@@ -8,7 +8,7 @@ import { useQuery } from 'react-query';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { useSelector } from 'react-redux';
 import moment from 'moment';
-import _ from 'lodash';
+import _, { find } from 'lodash';
 
 import {
   getUniversePendingTask,
@@ -55,9 +55,12 @@ import ellipsisIcon from '../../common/media/more.svg';
 import { YBLoadingCircleIcon } from '../../common/indicators';
 import { UniverseAlertBadge } from '../YBUniverseItem/UniverseAlertBadge';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
-import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
-import 'react-bootstrap-table/css/react-bootstrap-table.css';
+import { customPermValidateFunction, RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { Action, Resource } from '../../../redesign/features/rbac';
+import { getWrappedChildren } from '../../../redesign/features/rbac/common/validator/ValidatorUtils';
+import { userhavePermInRoleBindings } from '../../../redesign/features/rbac/common/RbacUtils';
 import './UniverseView.scss';
+import 'react-bootstrap-table/css/react-bootstrap-table.css';
 
 /**
  * The tableData key allows us to use a different field from the universe
@@ -520,26 +523,26 @@ export const UniverseView = (props) => {
   let universes =
     _.isObject(universeList) && isNonEmptyArray(universeList.data)
       ? universeList.data.map((universeBase) => {
-          const universe = _.cloneDeep(universeBase);
-          universe.pricePerMonth = universe.pricePerHour * 24 * moment().daysInMonth();
+        const universe = _.cloneDeep(universeBase);
+        universe.pricePerMonth = universe.pricePerHour * 24 * moment().daysInMonth();
 
-          const clusterProviderUUIDs = getClusterProviderUUIDs(universe.universeDetails.clusters);
-          const clusterProviders = props.providers.data.filter((p) =>
-            clusterProviderUUIDs.includes(p.uuid)
-          );
-          universe.providerTypes = clusterProviders.map((provider) => {
-            return getProviderMetadata(provider).name;
-          });
-          universe.providerNames = clusterProviders.map((provider) => provider.name);
+        const clusterProviderUUIDs = getClusterProviderUUIDs(universe.universeDetails.clusters);
+        const clusterProviders = props.providers.data.filter((p) =>
+          clusterProviderUUIDs.includes(p.uuid)
+        );
+        universe.providerTypes = clusterProviders.map((provider) => {
+          return getProviderMetadata(provider).name;
+        });
+        universe.providerNames = clusterProviders.map((provider) => provider.name);
 
-          const universeStatus = getUniverseStatus(
-            universe,
-            universePendingTasks[universe.universeUUID]
-          );
-          universe.status = universeStatus.state;
-          universe.statusText = universeStatus.state.text;
-          return universe;
-        })
+        const universeStatus = getUniverseStatus(
+          universe,
+          universePendingTasks[universe.universeUUID]
+        );
+        universe.status = universeStatus.state;
+        universe.statusText = universeStatus.state.text;
+        return universe;
+      })
       : [];
 
   const statusFilterTokens = curStatusFilter.map((status) => ({
@@ -576,6 +579,13 @@ export const UniverseView = (props) => {
         totalCost += universeItem.pricePerHour * 24 * moment().daysInMonth();
       }
     });
+  }
+
+
+  if (!customPermValidateFunction(() => {
+    return userhavePermInRoleBindings(Resource.UNIVERSE, Action.READ);
+  })) {
+    return getWrappedChildren({});
   }
 
   return (

@@ -2101,6 +2101,40 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIt
   return std::move(iter);
 }
 
+// This is called From ChangeMetadaOperation::Apply during the
+// creation of the stream and also possibly during Tablet Bootstrap.
+//
+// One thing to note here is that the retention barrier on the consensus layer
+// is not set in both these situations. This is no different from the
+// current behaviour during Tablet Bootstrap. This is alright since
+// that is only for the Log Cache's eviction policy. The Cache will reload
+// from the Log segments if there is a cache miss.
+//
+// Here, a stream is setting its initial retention barrier on the tablet.
+// It will be conservative. That is, it will reset the barrier only if
+// the current barrier is ahead of its requirement. If there is already
+// another slower consumer with a stricter barrier requirement, that
+// will be left alone and the barrier will not be reset.
+Status Tablet::SetAllInitialCDCSDKRetentionBarriers(
+  OpId cdc_sdk_op_id, MonoDelta cdc_sdk_op_id_expiration, HybridTime cdc_sdk_history_cutoff,
+  bool require_history_cutoff) {
+
+  // WAL, History, Intents Retention
+  if (VERIFY_RESULT(metadata_->SetAllInitialCDCSDKRetentionBarriers(cdc_sdk_op_id,
+                                                                    cdc_sdk_history_cutoff,
+                                                                    require_history_cutoff))) {
+    // Intents Retention setting on txn_participant
+    // 1. cdc_sdk_op_id - opid beyond which GC will not happen
+    // 2. cdc_sdk_op_id_expiration - time limit upto which intents barrier setting holds
+    auto txn_participant = transaction_participant();
+    if (txn_participant) {
+      txn_participant->SetIntentRetainOpIdAndTime(cdc_sdk_op_id, cdc_sdk_op_id_expiration);
+    }
+  }
+
+  return Status::OK();
+}
+
 Status Tablet::CreatePreparedChangeMetadata(
     ChangeMetadataOperation *operation, const Schema* schema, IsLeaderSide is_leader_side) {
   if (schema) {
@@ -2173,8 +2207,12 @@ Status Tablet::RemoveTable(const std::string& table_id, const OpId& op_id) {
 }
 
 Status Tablet::MarkBackfillDone(const OpId& op_id, const TableId& table_id) {
-  LOG_WITH_PREFIX(INFO) << "Setting backfill as done.";
-  metadata_->OnBackfillDone(op_id, table_id);
+  LOG_WITH_PREFIX(INFO) << "Setting backfill as done";
+  auto status = metadata_->OnBackfillDone(op_id, table_id);
+  if (!status.ok()) {
+    LOG_WITH_PREFIX(WARNING) << "Triggering backfill done failed: " << status;
+    return status;
+  }
   return metadata_->Flush();
 }
 
@@ -2422,6 +2460,13 @@ bool CanProceedToBackfillMoreRows(
   return CanProceedToBackfillMoreRows(backfill_params, number_of_rows_processed);
 }
 
+void SlowdownBackfillForTests() {
+  if (PREDICT_FALSE(FLAGS_TEST_slowdown_backfill_by_ms > 0)) {
+    TRACE("Sleeping for $0 ms", FLAGS_TEST_slowdown_backfill_by_ms);
+    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_backfill_by_ms));
+  }
+}
+
 }  // namespace
 
 // Assume that we are already in the Backfilling mode.
@@ -2435,13 +2480,10 @@ Status Tablet::BackfillIndexesForYsql(
     const uint64_t postgres_auth_key,
     size_t* number_of_rows_processed,
     std::string* backfilled_until) {
-  if (PREDICT_FALSE(FLAGS_TEST_slowdown_backfill_by_ms > 0)) {
-    TRACE("Sleeping for $0 ms", FLAGS_TEST_slowdown_backfill_by_ms);
-    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_backfill_by_ms));
-  }
   LOG(INFO) << "Begin " << __func__ << " at " << read_time << " from "
             << (backfill_from.empty() ? "<start-of-the-tablet>" : strings::b2a_hex(backfill_from))
             << " for " << AsString(indexes);
+  SlowdownBackfillForTests();
   *backfilled_until = backfill_from;
   BackfillParams backfill_params(deadline);
   auto conn = VERIFY_RESULT(ConnectToPostgres(
@@ -2573,11 +2615,8 @@ Status Tablet::BackfillIndexes(
     std::string* backfilled_until,
     std::unordered_set<TableId>* failed_indexes) {
   TRACE(__func__);
-  if (PREDICT_FALSE(FLAGS_TEST_slowdown_backfill_by_ms > 0)) {
-    TRACE("Sleeping for $0 ms", FLAGS_TEST_slowdown_backfill_by_ms);
-    SleepFor(MonoDelta::FromMilliseconds(FLAGS_TEST_slowdown_backfill_by_ms));
-  }
   VLOG(2) << "Begin BackfillIndexes at " << read_time << " for " << AsString(indexes);
+  SlowdownBackfillForTests();
 
   std::vector<TableId> index_ids = GetIndexIds(indexes);
   auto columns = GetColumnSchemasForIndex(indexes);

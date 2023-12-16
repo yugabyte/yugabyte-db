@@ -11,7 +11,6 @@ import static com.yugabyte.yw.models.CustomerTask.TaskType.Create;
 import static com.yugabyte.yw.models.CustomerTask.TaskType.GFlagsUpgrade;
 import static com.yugabyte.yw.models.CustomerTask.TaskType.TlsToggle;
 import static com.yugabyte.yw.models.CustomerTask.TaskType.Update;
-import static com.yugabyte.yw.models.CustomerTask.TaskType.UpgradeSoftware;
 import static org.hamcrest.CoreMatchers.allOf;
 import static org.hamcrest.CoreMatchers.containsString;
 import static org.hamcrest.CoreMatchers.equalTo;
@@ -28,6 +27,7 @@ import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
@@ -157,7 +157,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     UUID taskUUID = UUID.randomUUID();
     // Set http context
     TestUtils.setFakeHttpContext(user);
-    TaskInfo taskInfo = new TaskInfo(taskInfoType);
+    TaskInfo taskInfo = new TaskInfo(taskInfoType, null);
     taskInfo.setTaskUUID(taskUUID);
     taskInfo.setDetails(Json.newObject());
     taskInfo.setOwner("");
@@ -201,7 +201,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
       ObjectNode responseJson) {
     // Persist subtask
     UserTaskDetails.SubTaskGroupType groupType = UserTaskDetails.SubTaskGroupType.ConfigureUniverse;
-    TaskInfo subTask = new TaskInfo(taskType);
+    TaskInfo subTask = new TaskInfo(taskType, null);
     subTask.setParentUuid(parentUUID);
     subTask.setPosition(position);
     subTask.setSubTaskGroupType(groupType);
@@ -241,27 +241,35 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
         createTaskWithStatus(
             universeUUID,
             CustomerTask.TargetType.Universe,
-            UpgradeSoftware,
+            CustomerTask.TaskType.SoftwareUpgradeYB,
             TaskType.SoftwareUpgrade,
             "Foo",
             "Success",
             100.0);
+
+    // update task details with version numbers
+    ObjectMapper objectMapper = new ObjectMapper();
+    ObjectNode objectNode = objectMapper.createObjectNode();
+    TaskInfo taskInfo = TaskInfo.get(upgradeUUID);
+    JsonNode taskInfoDetails = taskInfo.getDetails();
+    objectNode.setAll((ObjectNode) taskInfoDetails);
+    objectNode.put(YB_SOFTWARE_VERSION, "{Previous Version}");
+    objectNode.put(YB_PREV_SOFTWARE_VERSION, "{Current Version}");
+    taskInfo.setDetails(objectNode);
+    taskInfo.save();
+
     String url = "/api/customers/" + customer.getUuid() + "/tasks";
     Result result = doRequestWithAuthToken("GET", url, authToken);
-    //    assertEquals(OK, result.status());
     JsonNode json = Json.parse(contentAsString(result));
     assertThat(result.status(), is(OK));
     assertThat(json.isObject(), is(true));
     JsonNode universeTasks = json.get(universeUUID.toString());
     JsonNode upgradeTask = universeTasks.get(0);
-
-    TaskInfo taskInfo = TaskInfo.get(upgradeUUID);
-    taskInfo.setDetails(versionNumbers);
     JsonNode taskDetails = taskInfo.getDetails();
     assertThat(
-        ((upgradeTask.get("type").asText().equals("UpgradeSoftware")
+        ((upgradeTask.get("type").asText().equals("SoftwareUpgradeYB")
                 && taskDetails.has(YB_PREV_SOFTWARE_VERSION)))
-            || (!upgradeTask.get("type").asText().equals("UpgradeSoftware")
+            || (!upgradeTask.get("type").asText().equals("SoftwareUpgradeYB")
                 && !taskDetails.has(YB_SOFTWARE_VERSION)),
         is(true));
   }

@@ -25,7 +25,6 @@ import { YBCheckBox, YBControlledSelect, YBInputField } from '../../../common/fo
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { hasSubstringMatch } from '../../../queries/helpers/queriesHelper';
 import {
-  formatUuidForXCluster,
   formatBytes,
   getSharedXClusterConfigs,
   tableSort,
@@ -36,7 +35,8 @@ import {
   TRANSACTIONAL_ATOMICITY_YB_SOFTWARE_VERSION_THRESHOLD,
   XClusterConfigAction,
   XCLUSTER_REPLICATION_DOCUMENTATION_URL,
-  XCLUSTER_TABLE_INELIGIBLE_STATUSES
+  XCLUSTER_TABLE_INELIGIBLE_STATUSES,
+  XCLUSTER_UNIVERSE_TABLE_FILTERS
 } from '../../constants';
 import YBPagination from '../../../tables/YBPagination/YBPagination';
 import { CollapsibleNote } from '../CollapsibleNote';
@@ -52,7 +52,7 @@ import { DEFAULT_RUNTIME_GLOBAL_SCOPE } from '../../../../actions/customers';
 import { YBTooltip } from '../../../../redesign/components';
 import InfoMessageIcon from '../../../../redesign/assets/info-message.svg';
 import { compareYBSoftwareVersions, getPrimaryCluster } from '../../../../utils/universeUtilsTyped';
-import { isColocatedParentTable } from '../../../../utils/tableUtils';
+import { getTableUuid, isColocatedParentTable } from '../../../../utils/tableUtils';
 
 import {
   TableType,
@@ -215,26 +215,18 @@ export const TableSelect = (props: TableSelectProps) => {
   );
 
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(sourceUniverseUUID, {
-      excludeColocatedTables: true,
-      xClusterSupportedOnly: true
-    }),
+    universeQueryKey.tables(sourceUniverseUUID, XCLUSTER_UNIVERSE_TABLE_FILTERS),
     () =>
-      fetchTablesInUniverse(sourceUniverseUUID, {
-        excludeColocatedTables: true,
-        xClusterSupportedOnly: true
-      }).then((response) => response.data)
+      fetchTablesInUniverse(sourceUniverseUUID, XCLUSTER_UNIVERSE_TABLE_FILTERS).then(
+        (response) => response.data
+      )
   );
   const targetUniverseTablesQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(targetUniverseUUID, {
-      excludeColocatedTables: true,
-      xClusterSupportedOnly: true
-    }),
+    universeQueryKey.tables(targetUniverseUUID, XCLUSTER_UNIVERSE_TABLE_FILTERS),
     () =>
-      fetchTablesInUniverse(targetUniverseUUID, {
-        excludeColocatedTables: true,
-        xClusterSupportedOnly: true
-      }).then((response) => response.data)
+      fetchTablesInUniverse(targetUniverseUUID, XCLUSTER_UNIVERSE_TABLE_FILTERS).then(
+        (response) => response.data
+      )
   );
 
   const sourceUniverseQuery = useQuery<Universe>(universeQueryKey.detail(sourceUniverseUUID), () =>
@@ -300,17 +292,17 @@ export const TableSelect = (props: TableSelectProps) => {
     xClusterTableCandidates: XClusterTableCandidate[]
   ) => {
     if (isSelected) {
-      const currentSelectedTableUUIDs = new Set(selectedTableUUIDs);
+      const currentSelectedTableUuids = new Set(selectedTableUUIDs);
 
       xClusterTableCandidates.forEach((xClusterTableCandidate) => {
-        currentSelectedTableUUIDs.add(xClusterTableCandidate.tableUUID);
+        currentSelectedTableUuids.add(getTableUuid(xClusterTableCandidate));
       });
-      setSelectedTableUUIDs(Array.from(currentSelectedTableUUIDs));
+      setSelectedTableUUIDs(Array.from(currentSelectedTableUuids));
     } else {
-      const removedTables = new Set(xClusterTableCandidates.map((row) => row.tableUUID));
+      const removedTableUuids = new Set(xClusterTableCandidates.map((row) => getTableUuid(row)));
 
       setSelectedTableUUIDs(
-        selectedTableUUIDs.filter((tableUUID) => !removedTables.has(tableUUID))
+        selectedTableUUIDs.filter((tableUUID) => !removedTableUuids.has(tableUUID))
       );
     }
   };
@@ -336,11 +328,13 @@ export const TableSelect = (props: TableSelectProps) => {
       });
       setSelectedNamespaceUuids(Array.from(currentSelectedNamespaces));
     } else {
-      const removedNamespaces = new Set(namespaceItems.map((namespaceItem) => namespaceItem.uuid));
+      const removedNamespaceUuids = new Set(
+        namespaceItems.map((namespaceItem) => namespaceItem.uuid)
+      );
 
       setSelectedNamespaceUuids(
         selectedNamespaceUuids.filter(
-          (namespaceUuid: string) => !removedNamespaces.has(namespaceUuid)
+          (namespaceUuid: string) => !removedNamespaceUuids.has(namespaceUuid)
         )
       );
     }
@@ -667,8 +661,9 @@ const getReplicationItemsFromTables = (
         currentXClusterConfigUUID
       );
       const xClusterTable: XClusterTableCandidate = {
+        ...sourceTable,
         eligibilityDetails: tableEligibility,
-        ...sourceTable
+        tableUUID: getTableUuid(sourceTable)
       };
       const { tableType, keySpace: namespace, sizeBytes, eligibilityDetails } = xClusterTable;
       const namespaceUuid = namespaceToNamespaceUuid[namespace] ?? namespace;
@@ -761,7 +756,7 @@ const getXClusterTableEligibilityDetails = (
 
   for (const xClusterConfig of sharedXClusterConfigs) {
     const xClusterConfigTables = new Set(xClusterConfig.tables);
-    if (xClusterConfigTables.has(formatUuidForXCluster(sourceTable.tableUUID))) {
+    if (xClusterConfigTables.has(sourceTable.tableID)) {
       return {
         status:
           xClusterConfig.uuid === currentXClusterConfigUUID

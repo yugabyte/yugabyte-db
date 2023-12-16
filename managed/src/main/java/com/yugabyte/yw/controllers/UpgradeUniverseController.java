@@ -21,6 +21,7 @@ import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
+import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
@@ -37,6 +38,9 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
+import com.yugabyte.yw.models.extended.FinalizeUpgradeInfoResponse;
+import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoRequest;
+import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoResponse;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
@@ -606,6 +610,75 @@ public class UpgradeUniverseController extends AuthenticatedController {
         Audit.ActionType.RebootUniverse,
         customerUUID,
         universeUUID);
+  }
+
+  /**
+   * API that performs pre-check and provides pre-upgrade info in the universe.
+   *
+   * @param customerUUID ID of customer
+   * @param universeUUID ID of universe
+   * @return Pre upgrade info
+   */
+  @YbaApi(
+      visibility = YbaApiVisibility.PREVIEW,
+      sinceYBAVersion = "2.21.0.0-b1",
+      runtimeConfig = rollbackSupportRuntimeFlagPath,
+      runtimeConfigScope = ScopeType.UNIVERSE)
+  @ApiOperation(
+      value =
+          "WARNING: This is a preview API that could change. Software Upgrade universe pre-check",
+      notes = "Performs pre-checks and provides pre-upgrade info",
+      nickname = "softwareUpgradePreCheck",
+      response = SoftwareUpgradeInfoResponse.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "software_upgrade_info_request",
+          value = "Software Upgrade Info Request",
+          dataType = "com.yugabyte.yw.models.extended.SoftwareUpgradeInfoRequest",
+          required = true,
+          paramType = "body"))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  public Result softwareUpgradePreCheck(
+      UUID customerUUID, UUID universeUUID, Http.Request request) {
+    SoftwareUpgradeInfoRequest infoRequest =
+        parseJsonAndValidate(request, SoftwareUpgradeInfoRequest.class);
+    SoftwareUpgradeInfoResponse result =
+        upgradeUniverseHandler.softwareUpgradeInfo(customerUUID, universeUUID, infoRequest);
+    return PlatformResults.withData(result);
+  }
+
+  /**
+   * API that provides pre-finalize upgrade info in the universe.
+   *
+   * @param customerUUID ID of customer
+   * @param universeUUID ID of universe
+   * @return Pre Finalize upgrade info
+   */
+  @YbaApi(
+      visibility = YbaApiVisibility.PREVIEW,
+      sinceYBAVersion = "2.21.0.0-b1",
+      runtimeConfig = rollbackSupportRuntimeFlagPath,
+      runtimeConfigScope = ScopeType.UNIVERSE)
+  @ApiOperation(
+      value = "WARNING: This is a preview API that could change. Finalize Software Upgrade info",
+      notes = "Provides pre-finalize software upgrade info",
+      nickname = "preFinalizeSoftwareUpgradeInfo",
+      response = FinalizeUpgradeInfoResponse.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  public Result finalizeUpgradeInfo(UUID customerUUID, UUID universeUUID) {
+    FinalizeUpgradeInfoResponse response =
+        upgradeUniverseHandler.finalizeUpgradeInfo(customerUUID, universeUUID);
+    return PlatformResults.withData(response);
   }
 
   private <T extends UpgradeTaskParams> Result requestHandler(

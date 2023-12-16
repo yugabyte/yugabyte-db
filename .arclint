@@ -16,9 +16,12 @@
      "(^managed/src/main/public/swagger-ui/)",
      "(^managed/src/main/resources/swagger[.]json$)",
      "(^managed/src/main/resources/swagger-strict[.]json$)",
+     "(^managed/src/main/resources/logback.*[.]xml$)",
      "(^managed/src/test/resources/alert/test_alert_definition[.]yml$)",
+     "(^managed/src/test/resources/audit/.*[.]yml$)",
      "(^managed/src/test/resources/metric/targets_.*[.]json$)",
      "(^managed/src/test/resources/backup/ybc_success_file_with_index_tables.json$)",
+     "(^managed/src/test/resources/logback.*[.]xml$)",
      "(^managed/build[.]sbt$)",
      "(^managed/src/main/resources/aws_pricing/.*$)",
      "(^python/yugabyte/test_data/.*[.](log|out|json)$)",
@@ -33,7 +36,11 @@
      "(^managed/yba-cli/internal/formatter/tabwriter/*)",
      "(^managed/yba-cli/internal/formatter/templates/*)",
      "(^[.]clang-tidy)",
-     "(.*/py.typed)"
+     "(.*/py.typed)",
+     "(^troubleshoot/backend/gradlew)",
+     "(^troubleshoot/backend/gradlew[.]bat)",
+     "(^troubleshoot/backend/build.gradle.kts)",
+     "(^troubleshoot/backend/.*/application[.]properties)"
   ],
   "linters": {
     "go-files": {

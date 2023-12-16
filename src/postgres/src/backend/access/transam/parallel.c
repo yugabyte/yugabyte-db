@@ -22,6 +22,7 @@
 #include "catalog/pg_enum.h"
 #include "catalog/index.h"
 #include "catalog/namespace.h"
+#include "catalog/yb_catalog_version.h"
 #include "commands/async.h"
 #include "executor/execParallel.h"
 #include "libpq/libpq.h"
@@ -30,6 +31,7 @@
 #include "miscadmin.h"
 #include "optimizer/planmain.h"
 #include "pgstat.h"
+#include "pg_yb_utils.h"
 #include "storage/ipc.h"
 #include "storage/sinval.h"
 #include "storage/spin.h"
@@ -88,6 +90,8 @@ typedef struct FixedParallelState
 	PGPROC	   *parallel_master_pgproc;
 	pid_t		parallel_master_pid;
 	BackendId	parallel_master_backend_id;
+	bool		parallel_master_is_yb_session;
+	uint64_t	parallel_master_yb_session_id;
 	TimestampTz xact_ts;
 	TimestampTz stmt_ts;
 
@@ -331,6 +335,9 @@ InitializeParallelDSM(ParallelContext *pcxt)
 	fps->parallel_master_pgproc = MyProc;
 	fps->parallel_master_pid = MyProcPid;
 	fps->parallel_master_backend_id = MyBackendId;
+	/* Capture our Session ID to share with the background workers. */
+	fps->parallel_master_is_yb_session =
+		YbGetCurrentSessionId(&fps->parallel_master_yb_session_id);
 	fps->xact_ts = GetCurrentTransactionStartTimestamp();
 	fps->stmt_ts = GetCurrentStatementStartTimestamp();
 	SpinLockInit(&fps->mutex);
@@ -1352,9 +1359,10 @@ ParallelWorkerMain(Datum main_arg)
 	entrypt = LookupParallelWorkerFunction(library_name, function_name);
 
 	/* Restore database connection. */
-	BackgroundWorkerInitializeConnectionByOid(fps->database_id,
-											  fps->authenticated_user_id,
-											  0);
+	YbBackgroundWorkerInitializeConnectionByOid(
+		fps->database_id, fps->authenticated_user_id,
+		fps->parallel_master_is_yb_session ?
+			&fps->parallel_master_yb_session_id : NULL, 0);
 
 	/*
 	 * Set the client encoding to the database encoding, since that is what
@@ -1434,6 +1442,15 @@ ParallelWorkerMain(Datum main_arg)
 	RestoreReindexState(reindexspace);
 
 	/*
+	 * TODO Revisit initialization of the catalog cache version.
+	 * DocDB scans running in background workers need a catalog cache version
+	 * to put into the request. However, I'm not sure what is the right way to
+	 * obtain it. Perhaps master scan should share the value it has.
+	 */
+	if (IsYugaByteEnabled())
+		YbUpdateCatalogCacheVersion(YbGetMasterCatalogVersion());
+
+	/*
 	 * We've initialized all of our state now; nothing should change
 	 * hereafter.
 	 */
@@ -1491,14 +1508,6 @@ ParallelWorkerReportLastRecEnd(XLogRecPtr last_xlog_end)
 static void
 ParallelWorkerShutdown(int code, Datum arg)
 {
-	/*
-	 * We currently do not support parallel workers, and if we do, we will need to
-	 * enable this behaviour in reaper as well to wrap up any leftovers from suddenly
-	 * terminated processes.
-	 */
-	elog(ERROR, "ParallelWorkers are not supported");
-	Assert(false);
-
 	SendProcSignal(ParallelMasterPid,
 				   PROCSIG_PARALLEL_MESSAGE,
 				   ParallelMasterBackendId);

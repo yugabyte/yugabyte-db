@@ -735,14 +735,25 @@ class Tablet : public AbstractTablet,
     return snapshot_coordinator_;
   }
 
+//------------------------------------------------------------------------------------------------
+// CDC Related
+
   docdb::YQLRowwiseIteratorIf* cdc_iterator() {
     return cdc_iterator_;
   }
 
+  Status SetAllInitialCDCSDKRetentionBarriers(
+      OpId cdc_sdk_op_id, MonoDelta cdc_sdk_op_id_expiration, HybridTime cdc_sdk_history_cutoff,
+      bool require_history_cutoff);
+
+//------------------------------------------------------------------------------------------------
+
   // Allows us to add tablet-specific information that will get deref'd when the tablet does.
-  void AddAdditionalMetadata(const std::string& key, std::shared_ptr<void> additional_metadata) {
+  std::shared_ptr<void> AddAdditionalMetadata(
+      const std::string& key, std::shared_ptr<void> additional_metadata) {
     std::lock_guard lock(control_path_mutex_);
-    additional_metadata_.emplace(key, std::move(additional_metadata));
+    auto result = additional_metadata_.emplace(key, std::move(additional_metadata));
+    return result.first->second;
   }
 
   std::shared_ptr<void> GetAdditionalMetadata(const std::string& key) {

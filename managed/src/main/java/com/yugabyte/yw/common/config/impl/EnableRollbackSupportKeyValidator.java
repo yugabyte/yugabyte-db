@@ -4,7 +4,6 @@ package com.yugabyte.yw.common.config.impl;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
 
-import com.google.common.collect.ImmutableSet;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfigPreChangeValidator;
@@ -13,7 +12,6 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
-import java.util.Set;
 import java.util.UUID;
 
 @Singleton
@@ -22,14 +20,6 @@ public class EnableRollbackSupportKeyValidator implements RuntimeConfigPreChange
   public String getKeyPath() {
     return UniverseConfKeys.enableRollbackSupport.getKey();
   }
-
-  private static Set<SoftwareUpgradeState> ROLLBACK_SUPPORT_STATES =
-      ImmutableSet.of(
-          SoftwareUpgradeState.PreFinalize,
-          SoftwareUpgradeState.RollingBack,
-          SoftwareUpgradeState.RollbackFailed,
-          SoftwareUpgradeState.Finalizing,
-          SoftwareUpgradeState.FinalizeFailed);
 
   @Override
   public void validateConfigGlobal(UUID scopeUUID, String path, String newValue) {
@@ -65,7 +55,7 @@ public class EnableRollbackSupportKeyValidator implements RuntimeConfigPreChange
   private void validateUniverseState(Universe universe, String newValue) {
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
     if (universeDetails.softwareUpgradeState != null
-        && ROLLBACK_SUPPORT_STATES.contains(universeDetails.softwareUpgradeState)
+        && !universeDetails.softwareUpgradeState.equals(SoftwareUpgradeState.Ready)
         && newValue.equals("false")) {
       throw new PlatformServiceException(
           BAD_REQUEST,

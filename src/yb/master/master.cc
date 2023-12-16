@@ -271,8 +271,7 @@ MonoDelta Master::default_client_timeout() {
 }
 
 const std::string& Master::permanent_uuid() const {
-  static std::string empty_uuid;
-  return empty_uuid;
+  return fs_manager_->uuid();
 }
 
 void Master::SetupAsyncClientInit(client::AsyncClientInitializer* async_client_init) {
@@ -331,7 +330,7 @@ Status Master::RegisterServices() {
       std::make_shared<tserver::PgClientServiceImpl>(
           *master_tablet_server_, client_future(), clock(),
           std::bind(&Master::TransactionPool, this), mem_tracker(), metric_entity(),
-          messenger(), permanent_uuid(), &options(), std::nullopt /* xcluster_context */)));
+          messenger(), fs_manager_->uuid(), &options(), std::nullopt /* xcluster_context */)));
 
   return Status::OK();
 }

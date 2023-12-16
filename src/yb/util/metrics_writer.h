@@ -18,6 +18,7 @@
 #include <map>
 
 #include "yb/util/metric_entity.h"
+#include "yb/util/prometheus_metric_filter.h"
 
 namespace yb {
 
@@ -30,10 +31,9 @@ class PrometheusWriter {
     const char* help;
   };
 
-  explicit PrometheusWriter(
+  PrometheusWriter(
       std::stringstream* output,
-      ExportHelpAndType export_help_and_type,
-      AggregationMetricLevel aggregation_Level = AggregationMetricLevel::kTable);
+      const MetricPrometheusOptions& opts);
 
   virtual ~PrometheusWriter();
 
@@ -52,14 +52,19 @@ class PrometheusWriter {
   }
 
   Status WriteSingleEntry(
-      const MetricEntity::AttributeMap& attr, const std::string& name, int64_t value,
-      AggregationFunction aggregation_function, const char* type = "unknown",
+      const MetricEntity::AttributeMap& attr,
+      const std::string& name,
+      int64_t value,
+      AggregationFunction aggregation_function,
+      AggregationLevels aggregation_levels,
+      const char* type = "unknown",
       const char* description = "unknown");
 
-  Status FlushAggregatedValues(
-      uint32_t max_tables_metrics_breakdowns, const std::string& priority_regex);
+  Status FlushAggregatedValues();
 
-  AggregationMetricLevel GetAggregationMetricLevel() const { return aggregation_level_; }
+  PrometheusMetricFilter* TEST_GetPrometheusMetricFilter() const {
+    return prometheus_metric_filter_.get();
+  }
 
  private:
   friend class MetricsTest;
@@ -82,12 +87,13 @@ class PrometheusWriter {
 
   // Map metric name to type and description.
   std::unordered_map<std::string, MetricHelpAndType> metric_help_and_type_;
-  // Map entity id to attributes
-  std::unordered_map<std::string, MetricEntity::AttributeMap> aggregated_attributes_;
-  // Map entity id to values
-  using EntityValues = std::unordered_map<std::string, int64_t>;
+
+  using EntityIdToValues = std::unordered_map<std::string, int64_t>;
   // Map from metric name to EntityValues
-  std::unordered_map<std::string, EntityValues> aggregated_values_;
+  std::unordered_map<std::string, EntityIdToValues> aggregated_values_;
+
+  using EntityIdToAttributes = std::unordered_map<std::string, MetricEntity::AttributeMap>;
+  EntityIdToAttributes aggregated_id_to_attributes_;
 
   // Output stream
   std::stringstream* output_;
@@ -96,7 +102,7 @@ class PrometheusWriter {
 
   ExportHelpAndType export_help_and_type_;
 
-  AggregationMetricLevel aggregation_level_;
+  const std::unique_ptr<PrometheusMetricFilter> prometheus_metric_filter_;
 };
 
 // Native Metrics Storage Writer - writes prometheus metrics into system table.
@@ -105,7 +111,10 @@ class NMSWriter : public PrometheusWriter {
   typedef std::unordered_map<std::string, int64_t> MetricsMap;
   typedef std::unordered_map<std::string, MetricsMap> EntityMetricsMap;
 
-  explicit NMSWriter(EntityMetricsMap* table_metrics, MetricsMap* server_metrics);
+  explicit NMSWriter(
+      EntityMetricsMap* table_metrics,
+      MetricsMap* server_metrics,
+      const MetricPrometheusOptions& opts);
 
  private:
   Status FlushSingleEntry(

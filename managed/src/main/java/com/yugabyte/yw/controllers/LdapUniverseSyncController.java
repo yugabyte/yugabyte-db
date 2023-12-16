@@ -23,12 +23,16 @@ import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
 import com.yugabyte.yw.rbac.annotations.Resource;
 import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
+import io.swagger.annotations.ApiImplicitParam;
+import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.util.UUID;
@@ -37,6 +41,7 @@ import play.mvc.Result;
 
 @Api(
     value = "LDAP Universe Sync",
+    tags = "LDAP Role management",
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class LdapUniverseSyncController extends AuthenticatedController {
 
@@ -52,16 +57,26 @@ public class LdapUniverseSyncController extends AuthenticatedController {
    * @param request
    */
   @ApiOperation(
-      value = "Perform a LDAP user sync on the universe",
-      nickname = "LDAP-Universe Sync",
+      value =
+          "WARNING: This is a preview API that could change. Perform an LDAP users sync on the"
+              + " universe",
+      nickname = "syncLdapUniverse",
       notes = "UNSTABLE - This API will undergo changes in future.",
       response = YBPTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "syncLdapUniverse",
+          value = "config to sync universe roles with ldap users",
+          paramType = "body",
+          dataType = "com.yugabyte.yw.forms.LdapUnivSyncFormData",
+          required = true))
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.1.0")
   public Result syncUniverse(UUID customerUUID, UUID universeUUID, Http.Request request) {
 
     Customer customer = Customer.getOrBadRequest(customerUUID);

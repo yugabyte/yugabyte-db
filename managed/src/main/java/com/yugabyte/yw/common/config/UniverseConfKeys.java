@@ -63,6 +63,15 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "The timeout (in milliseconds) that we wait of leader blacklisting on a node to complete",
           ConfDataType.IntegerType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> leaderBlacklistFailOnTimeout =
+      new ConfKeyInfo<>(
+          "yb.node_ops.leader_blacklist.fail_on_timeout",
+          ScopeType.UNIVERSE,
+          "Fail task on leader blacklist timeout",
+          "Determines (boolean) whether we fail the task after waiting for leader blacklist "
+              + "timeout is reached",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> ybUpgradeMaxFollowerLagThresholdMs =
       new ConfKeyInfo<>(
           "yb.upgrade.max_follower_lag_threshold_ms",
@@ -847,6 +856,14 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ScopeType.UNIVERSE,
           "Enable Rollback Support",
           "Enable Yugabyte DB Rollback support",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> allowGFlagsOverrideDuringPreFinalize =
+      new ConfKeyInfo<>(
+          "yb.gflags.allow_during_prefinalize",
+          ScopeType.UNIVERSE,
+          "Allow editing GFlags for a universe in pre-finalize state",
+          "Allow editing GFlags for a universe in pre-finalize state",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> txnXClusterPitrDefaultRetentionPeriod =

@@ -50,6 +50,7 @@ set(INTEGRATION_TESTS_SRCS
   external_mini_cluster.cc
   external_yb_controller.cc
   external_mini_cluster_fs_inspector.cc
+  external_mini_cluster_validator.cc
   load_balancer_test_util.cc
   load_generator.cc
   mini_cluster.cc
@@ -61,6 +62,7 @@ set(INTEGRATION_TESTS_SRCS
   ts_itest-base.cc
   yb_mini_cluster_test_base.cc
   yb_table_test_base.cc
+  xcluster/xcluster_external_mini_cluster_base.cc
   xcluster/xcluster_test_base.cc
   cdcsdk_test_base.cc
   cdcsdk_ysql_test_base.cc
@@ -199,11 +201,13 @@ ADD_YB_TEST(cdcsdk_before_image-test)
 ADD_YB_TEST(cdcsdk_consistent_stream-test)
 ADD_YB_TEST(cdcsdk_snapshot-test)
 ADD_YB_TEST(cdcsdk_tablet_split-test)
+ADD_YB_TEST(cdcsdk_consistent_snapshot-test)
 ADD_YB_TEST(transaction-test)
 ADD_YB_TEST(encryption-test)
 ADD_YB_TEST(secure_connection_test)
 ADD_YB_TEST(xcluster/xcluster_consistency-test)
 ADD_YB_TEST(xcluster/xcluster_dr-itest)
+ADD_YB_TEST(xcluster/xcluster_upgrade-test)
 ADD_YB_TEST(xcluster/xcluster_safe_time-itest)
 ADD_YB_TEST(xcluster/xcluster_topologies-test)
 ADD_YB_TEST(xcluster/xcluster_ysql_colocated-test)

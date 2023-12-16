@@ -126,6 +126,17 @@ YBUnsupportedFeatureSignalLevel()
 }
 
 bool
+YBSuppressUnsafeAlterNotice()
+{
+	static int cached_value = -1;
+	if (cached_value == -1) {
+		cached_value = YBCIsEnvVarTrue(
+			"FLAGS_ysql_suppress_unsafe_alter_notice");
+	}
+	return cached_value;
+}
+
+bool
 YBIsNonTxnCopyEnabled()
 {
 	static int cached_value = -1;
@@ -229,5 +240,15 @@ YBColocateDatabaseByDefault()
 		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_ysql_colocate_database_by_default",
 												  false /* default_value */);
 	}
+	return cached_value;
+}
+
+bool
+YBEnableAsh()
+{
+	static int cached_value = -1;
+	if (cached_value == -1)
+		cached_value = YBCIsEnvVarTrue("FLAGS_TEST_yb_enable_ash");
+
 	return cached_value;
 }

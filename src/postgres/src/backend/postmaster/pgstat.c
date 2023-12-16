@@ -3514,7 +3514,8 @@ pgstat_read_current_status(void)
 		 * the source backend is between increment steps.)	We use a volatile
 		 * pointer here to ensure the compiler doesn't try to get cute.
 		 */
-		for (;;)
+		int attempt = 1;
+		while (yb_pgstat_log_read_activity(beentry, ++attempt))
 		{
 			int			before_changecount;
 			int			after_changecount;
@@ -3939,6 +3940,9 @@ pgstat_get_wait_ipc(WaitEventIPC w)
 		case WAIT_EVENT_SYNC_REP:
 			event_name = "SyncRep";
 			break;
+		case WAIT_EVENT_YB_PARALLEL_SCAN_EMPTY:
+			event_name = "YBParallelScanEmpty";
+			break;
 			/* no default case, so that compiler will warn */
 	}
 
@@ -4239,7 +4243,8 @@ pgstat_get_backend_current_activity(int pid, bool checkUser)
 		volatile PgBackendStatus *vbeentry = beentry;
 		bool		found;
 
-		for (;;)
+		int attempt = 1;
+		while (yb_pgstat_log_read_activity(vbeentry, ++attempt))
 		{
 			int			before_changecount;
 			int			after_changecount;
@@ -7058,4 +7063,20 @@ yb_pgstat_add_session_info(uint64_t session_id)
 	vbeentry->yb_session_id = session_id;
 
 	PGSTAT_END_WRITE_ACTIVITY(vbeentry);
+}
+
+bool
+yb_pgstat_log_read_activity(volatile PgBackendStatus *beentry, int attempt) {
+	if (attempt >= YB_MAX_BEENTRIES_ATTEMPTS)
+	{
+		elog(WARNING, "backend status entry for pid %d required %d "
+			 "attempts, using inconsistent results",
+			 (beentry)->st_procpid, attempt);
+		return false;
+	}
+	if (attempt % YB_BEENTRY_LOGGING_INTERVAL == 0)
+		elog(WARNING, "backend status entry for pid %d required %d "
+			 "attempts, continuing to retry",
+			 (beentry)->st_procpid, attempt);
+	return true;
 }

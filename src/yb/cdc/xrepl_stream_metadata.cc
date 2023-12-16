@@ -83,6 +83,7 @@ std::vector<xrepl::StreamTabletStats> StreamMetadata::GetAllStreamTabletStats(
 Status StreamMetadata::InitOrReloadIfNeeded(
     const xrepl::StreamId& stream_id, RefreshStreamMapOption opts, client::YBClient* client) {
   std::lock_guard l(load_mutex_);
+
   if (!loaded_ || opts == RefreshStreamMapOption::kAlways ||
       (opts == RefreshStreamMapOption::kIfInitiatedState &&
        state_.load(std::memory_order_acquire) == master::SysCDCStreamEntryPB_State_INITIATED)) {
@@ -108,9 +109,14 @@ Status StreamMetadata::GetStreamInfoFromMaster(
   NamespaceId namespace_id;
   std::unordered_map<std::string, std::string> options;
   StreamModeTransactional transactional(false);
+  std::optional<uint64> consistent_snapshot_time;
+  std::optional<CDCSDKSnapshotOption> consistent_snapshot_option;
+  std::optional<uint64> stream_creation_time;
 
   RETURN_NOT_OK(
-      client->GetCDCStream(stream_id, &namespace_id, &object_ids, &options, &transactional));
+      client->GetCDCStream(
+          stream_id, &namespace_id, &object_ids, &options, &transactional,
+          &consistent_snapshot_time, &consistent_snapshot_option, &stream_creation_time));
 
   AddDefaultOptionsIfMissing(&options);
 
@@ -159,6 +165,10 @@ Status StreamMetadata::GetStreamInfoFromMaster(
   }
 
   transactional_.store(transactional, std::memory_order_release);
+  consistent_snapshot_time_.store(consistent_snapshot_time, std::memory_order_release);
+  stream_creation_time_.store(stream_creation_time, std::memory_order_release);
+  consistent_snapshot_option_ = consistent_snapshot_option;
+
   if (!is_refresh) {
     loaded_.store(true, std::memory_order_release);
   }

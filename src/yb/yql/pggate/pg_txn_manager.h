@@ -70,7 +70,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status EnableFollowerReads(bool enable_follower_reads, int32_t staleness);
   Status SetDeferrable(bool deferrable);
   Status EnterSeparateDdlTxnMode();
-  Status ExitSeparateDdlTxnMode(Commit commit);
+  Status ExitSeparateDdlTxnModeWithAbort();
+  Status ExitSeparateDdlTxnModeWithCommit(uint32_t db_oid, bool is_silent_altering);
   void SetDdlHasSyscatalogChanges();
 
   bool IsTxnInProgress() const { return txn_in_progress_; }
@@ -84,7 +85,17 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   double GetTransactionPriority() const;
   TxnPriorityRequirement GetTransactionPriorityType() const;
 
+  uint64_t GetReadTimeSerialNo() { return read_time_serial_no_; }
+  void ForceReadTimeSerialNo(uint64_t read_time_serial_no) {
+    read_time_serial_no_ = read_time_serial_no;
+  }
+
  private:
+  struct DdlCommitInfo {
+    uint32_t db_oid;
+    bool is_silent_altering;
+  };
+
   YB_STRONGLY_TYPED_BOOL(NeedsHigherPriorityTxn);
   YB_STRONGLY_TYPED_BOOL(SavePriority);
 
@@ -100,6 +111,8 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status FinishTransaction(Commit commit);
 
   void IncTxnSerialNo();
+
+  Status ExitSeparateDdlTxnMode(const std::optional<DdlCommitInfo>& commit_info);
 
   // ----------------------------------------------------------------------------------------------
 

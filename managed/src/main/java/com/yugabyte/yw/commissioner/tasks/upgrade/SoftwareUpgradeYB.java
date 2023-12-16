@@ -5,6 +5,7 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
@@ -12,24 +13,32 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
+import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.Pair;
+import play.mvc.Http.Status;
 
 /**
  * Use this task to upgrade software yugabyte DB version if universe is already on version greater
  * or equal to 2.20.x
  */
+@Slf4j
 @Retryable
 @Abortable
 public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
 
+  private final AutoFlagUtil autoFlagUtil;
+
   @Inject
-  protected SoftwareUpgradeYB(BaseTaskDependencies baseTaskDependencies) {
+  protected SoftwareUpgradeYB(
+      BaseTaskDependencies baseTaskDependencies, AutoFlagUtil autoFlagUtil) {
     super(baseTaskDependencies);
+    this.autoFlagUtil = autoFlagUtil;
   }
 
   public NodeState getNodeState() {
@@ -60,9 +69,12 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
           Set<NodeDetails> allNodes = toOrderedSet(nodes);
           Universe universe = getUniverse();
           String newVersion = taskParams().ybSoftwareVersion;
+          String currentVersion =
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
 
           createUpdateUniverseSoftwareUpgradeStateTask(
-              UniverseDefinitionTaskParams.SoftwareUpgradeState.Upgrading);
+              UniverseDefinitionTaskParams.SoftwareUpgradeState.Upgrading,
+              true /* isSoftwareRollbackAllowed */);
 
           if (!universe
               .getUniverseDetails()
@@ -118,8 +130,24 @@ public class SoftwareUpgradeYB extends SoftwareUpgradeTaskBase {
           createUpdateSoftwareVersionTask(newVersion, false /*isSoftwareUpdateViaVm*/)
               .setSubTaskGroupType(getTaskSubGroupType());
 
-          createUpdateUniverseSoftwareUpgradeStateTask(
-              UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize);
+          boolean upgradeRequireFinalize;
+          try {
+            upgradeRequireFinalize =
+                autoFlagUtil.upgradeRequireFinalize(currentVersion, newVersion);
+          } catch (IOException e) {
+            log.error("Error: ", e);
+            throw new PlatformServiceException(
+                Status.INTERNAL_SERVER_ERROR, "Error while checking auto-finalize for upgrade");
+          }
+          if (upgradeRequireFinalize) {
+            createUpdateUniverseSoftwareUpgradeStateTask(
+                UniverseDefinitionTaskParams.SoftwareUpgradeState.PreFinalize,
+                true /* isSoftwareRollbackAllowed */);
+          } else {
+            createUpdateUniverseSoftwareUpgradeStateTask(
+                UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready,
+                true /* isSoftwareRollbackAllowed */);
+          }
         });
   }
 }

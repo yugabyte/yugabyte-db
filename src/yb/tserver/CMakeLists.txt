@@ -236,6 +236,7 @@ set(TSERVER_SRCS
   tablet_server.cc
   tablet_server_options.cc
   tablet_service.cc
+  tablet_validator.cc
   ts_tablet_manager.cc
   tserver-path-handlers.cc
   tserver_metrics_heartbeat_data_provider.cc
@@ -246,6 +247,7 @@ set(TSERVER_SRCS
   xcluster_async_executor.cc
   xcluster_safe_time_map.cc
   xcluster_consumer.cc
+  xcluster_consumer_auto_flags_info.cc
   xcluster_consumer_replication_error.cc
   xcluster_poller.cc
   xcluster_poller_id.cc
@@ -367,3 +369,4 @@ ADD_YB_TEST(remote_bootstrap_rocksdb_session-test_ent)
 ADD_YB_TEST(remote_bootstrap_rocksdb_client-test_ent)
 
 ADD_YB_TEST(xcluster_consumer_replication_error-test)
+ADD_YB_TEST(xcluster_consumer_auto_flags_info-test)

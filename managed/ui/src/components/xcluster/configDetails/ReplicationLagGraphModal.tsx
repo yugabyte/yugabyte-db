@@ -2,6 +2,7 @@ import { FC } from 'react';
 
 import { YBModal } from '../../common/forms/fields';
 import { TableLagGraph } from './TableLagGraph';
+import { getTableName } from '../../../utils/tableUtils';
 
 import { XClusterTable } from '../XClusterTypes';
 
@@ -36,7 +37,7 @@ export const ReplicationLagGraphModal: FC<Props> = ({
     >
       <p>
         {'Table: '}
-        <b>{tableDetails.tableName}</b>
+        <b>{getTableName(tableDetails)}</b>
       </p>
       {tableDetails.pgSchemaName && (
         <p>

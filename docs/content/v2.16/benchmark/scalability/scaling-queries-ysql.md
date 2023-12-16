@@ -85,16 +85,6 @@ java -jar ~/yb-sample-apps-no-table-drop.jar    \
                    --uuid 00000000-0000-0000-0000-00000000000n
 ```
 
-```java
-java -jar ~/yb-sample-apps-no-table-drop.jar    \
-                   --workload SqlInserts        \
-                   --nodes $YSQL_NODES          \
-                   --num_unique_keys 5000000000 \
-                   --num_threads_write 400      \
-                   --num_threads_read 0         \
-                   --uuid 00000000-0000-0000-0000-00000000000n
-```
-
 The table on which the benchmark was run had the following simple schema.
 
 ```plpgsql

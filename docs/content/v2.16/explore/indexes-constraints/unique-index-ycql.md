@@ -2,7 +2,6 @@
 title: Unique indexes
 linkTitle: Unique indexes
 description: Using Unique indexes in YCQL
-image: /images/section_icons/secure/create-roles.png
 menu:
   v2.16:
     identifier: unique-index-ycql

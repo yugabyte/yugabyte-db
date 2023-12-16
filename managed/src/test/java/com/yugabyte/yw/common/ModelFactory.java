@@ -276,10 +276,12 @@ public class ModelFactory {
     if (enableYbc) {
       params.setYbcSoftwareVersion("1.0.0-b1");
       NodeDetails node = new NodeDetails();
+      node.nodeUuid = UUID.randomUUID();
       node.cloudInfo = new CloudSpecificInfo();
       node.cloudInfo.private_ip = "127.0.0.1";
       params.nodeDetailsSet.add(node);
       NodeDetails node2 = node.clone();
+      node2.nodeUuid = UUID.randomUUID();
       node2.cloudInfo.private_ip = "127.0.0.2";
       params.nodeDetailsSet.add(node2);
     }
@@ -370,12 +372,19 @@ public class ModelFactory {
   }
 
   public static CustomerConfig createNfsStorageConfig(Customer customer, String configName) {
+    return createNfsStorageConfig(customer, configName, "/foo/bar");
+  }
+
+  public static CustomerConfig createNfsStorageConfig(
+      Customer customer, String configName, String backupLocation) {
     JsonNode formData =
         Json.parse(
             "{\"configName\": \""
                 + configName
                 + "\", \"name\": \"NFS\","
-                + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \"/foo/bar\"}}");
+                + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \""
+                + backupLocation
+                + "\"}}");
     return CustomerConfig.createWithFormData(customer.getUuid(), formData);
   }
 

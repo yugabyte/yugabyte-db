@@ -44,6 +44,7 @@ import {
   hasNecessaryPerm
 } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { getUniverseStatus, UniverseState } from '../../universes/helpers/universeHelpers';
 
 import { TableType } from '../../../redesign/helpers/dtos';
 import { fetchXClusterConfig } from '../../../actions/xClusterReplication';
@@ -157,6 +158,29 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
     }))
   ) as UseQueryResult<XClusterConfig>[];
 
+  const { primaryUniverseUuid: sourceUniverseUuid, drReplicaUniverseUuid: targetUniverseUuid } =
+    drConfigQuery.data ?? {};
+  // For DR, the currentUniverseUuid is not guaranteed to be the sourceUniverseUuid.
+  const participantUniveresUuid =
+    currentUniverseUuid !== targetUniverseUuid ? targetUniverseUuid : sourceUniverseUuid;
+  const participantUniverseQuery = useQuery(
+    universeQueryKey.detail(participantUniveresUuid),
+    () => api.fetchUniverse(participantUniveresUuid),
+    { enabled: !!participantUniveresUuid }
+  );
+
+  const [sourceUniverse, targetUniverse] =
+    currentUniverseUuid !== targetUniverseUuid
+      ? [currentUniverseQuery.data, participantUniverseQuery.data]
+      : [participantUniverseQuery.data, currentUniverseQuery.data];
+  useInterval(() => {
+    if (getUniverseStatus(sourceUniverse)?.state === UniverseState.PENDING) {
+      queryClient.invalidateQueries(universeQueryKey.detail(sourceUniverse?.universeUUID));
+    }
+    if (getUniverseStatus(targetUniverse)?.state === UniverseState.PENDING) {
+      queryClient.invalidateQueries(universeQueryKey.detail(targetUniverse?.universeUUID));
+    }
+  }, PollingIntervalMs.UNIVERSE_STATE_TRANSITIONS);
   // Polling for metrics and config updates.
   useInterval(() => {
     queryClient.invalidateQueries('xcluster-metric'); // TODO: Add a dedicated key for 'latest xCluster metrics'.
@@ -170,17 +194,6 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
       queryClient.invalidateQueries(drConfigQueryKey.detail(drConfigUuid));
     }
   }, PollingIntervalMs.DR_CONFIG_STATE_TRANSITIONS);
-
-  const { primaryUniverseUuid: sourceUniverseUuid, drReplicaUniverseUuid: targetUniverseUuid } =
-    drConfigQuery.data ?? {};
-  // For DR, the currentUniverseUuid is not guaranteed to be the sourceUniverseUuid.
-  const participantUniveresUuid =
-    currentUniverseUuid !== targetUniverseUuid ? targetUniverseUuid : sourceUniverseUuid;
-  const participantUniverseQuery = useQuery(
-    universeQueryKey.detail(participantUniveresUuid),
-    () => api.fetchUniverse(participantUniveresUuid),
-    { enabled: !!participantUniveresUuid }
-  );
 
   if (currentUniverseQuery.isError || participantUniverseQuery.isError) {
     return (
@@ -222,11 +235,12 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
           onConfigureDrButtonClick={openCreateConfigModal}
           isDisabled={universeHasTxnXCluster}
         />
-        <CreateConfigModal
-          onHide={closeCreateConfigModal}
-          visible={isCreateConfigModalOpen}
-          sourceUniverseUuid={currentUniverseUuid}
-        />
+        {isCreateConfigModalOpen && (
+          <CreateConfigModal
+            sourceUniverseUuid={currentUniverseUuid}
+            modalProps={{ open: isCreateConfigModalOpen, onClose: closeCreateConfigModal }}
+          />
+        )}
       </>
     );
   }
@@ -265,10 +279,6 @@ export const DrPanel = ({ currentUniverseUuid }: DrPanelProps) => {
     setIsActionMenuOpen(isOpen);
   };
 
-  const [sourceUniverse, targetUniverse] =
-    currentUniverseUuid !== targetUniverseUuid
-      ? [currentUniverseQuery.data, participantUniverseQuery.data]
-      : [participantUniverseQuery.data, currentUniverseQuery.data];
   const enabledDrConfigActions = getEnabledDrConfigActions(
     drConfig,
     sourceUniverse,

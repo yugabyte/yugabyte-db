@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCertificate;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RemoveUniverseEntry;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.SupportBundleUtil;
+import com.yugabyte.yw.common.UniverseInProgressException;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -34,6 +35,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -72,6 +74,17 @@ public class DestroyUniverse extends UniverseTaskBase {
 
   public Params params() {
     return (Params) taskParams;
+  }
+
+  @Override
+  protected void validateUniverseState(Universe universe) {
+    try {
+      super.validateUniverseState(universe);
+    } catch (UniverseInProgressException e) {
+      if (!params().isForceDelete) {
+        throw e;
+      }
+    }
   }
 
   @Override
@@ -167,11 +180,14 @@ public class DestroyUniverse extends UniverseTaskBase {
       // Run all the tasks.
       getRunnableTask().runSubTasks();
     } catch (Throwable t) {
-      // If for any reason destroy fails we would just unlock the universe for update
-      try {
-        unlockUniverseForUpdate();
-      } catch (Throwable t1) {
-        // Ignore the error
+      Optional<Universe> optional = Universe.maybeGet(taskParams().getUniverseUUID());
+      if (optional.isPresent()) {
+        // If for any reason destroy fails we would just unlock the universe for update
+        try {
+          unlockUniverseForUpdate();
+        } catch (Throwable t1) {
+          // Ignore the error
+        }
       }
       log.error("Error executing task {} with error='{}'.", getName(), t.getMessage(), t);
       throw t;

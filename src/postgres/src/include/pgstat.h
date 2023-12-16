@@ -38,6 +38,14 @@
 /* Caps the number of queries which can be stored in the array. */
 #define TERMINATED_QUERIES_SIZE 1000
 
+/*
+ * The number of attempts to read a BEEntry before proceeding with inconsistent
+ * results. This must be a multiple of YB_BEENTRY_LOGGING_INTERVAL
+ */
+#define YB_MAX_BEENTRIES_ATTEMPTS 1000
+/* How often to log BEEntry read failures */
+#define YB_BEENTRY_LOGGING_INTERVAL 100
+
 /* Values for track_functions GUC variable --- order is significant! */
 typedef enum TrackFunctionsLevel
 {
@@ -890,7 +898,8 @@ typedef enum
 	WAIT_EVENT_REPLICATION_ORIGIN_DROP,
 	WAIT_EVENT_REPLICATION_SLOT_DROP,
 	WAIT_EVENT_SAFE_SNAPSHOT,
-	WAIT_EVENT_SYNC_REP
+	WAIT_EVENT_SYNC_REP,
+	WAIT_EVENT_YB_PARALLEL_SCAN_EMPTY,
 } WaitEventIPC;
 
 /* ----------
@@ -1150,7 +1159,8 @@ typedef struct PgBackendStatus
  *
  * Reader logic should follow this sketch:
  *
- *		for (;;)
+ *		int attempt = 1;
+ *		while (yb_pgstat_log_read_activity(beentry, ++attempt))
  *		{
  *			int before_ct, after_ct;
  *
@@ -1352,6 +1362,8 @@ extern PgStat_BackendFunctionEntry *find_funcstat_entry(Oid func_id);
 extern void pgstat_initstats(Relation rel);
 
 extern char *pgstat_clip_activity(const char *raw_activity);
+
+extern bool yb_pgstat_log_read_activity(volatile PgBackendStatus *beentry, int attempt);
 
 /* ----------
  * pgstat_report_wait_start() -

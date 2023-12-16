@@ -53,9 +53,11 @@ DEFINE_UNKNOWN_string(pg_proxy_bind_address, "", "Address for the PostgreSQL pro
 DEFINE_UNKNOWN_string(postmaster_cgroup, "", "cgroup to add postmaster process to");
 DEFINE_UNKNOWN_bool(pg_transactions_enabled, true,
             "True to enable transactions in YugaByte PostgreSQL API.");
-DEFINE_UNKNOWN_string(yb_backend_oom_score_adj, "900",
+DEFINE_NON_RUNTIME_string(yb_backend_oom_score_adj, "900",
               "oom_score_adj of postgres backends in linux environments");
-DEFINE_UNKNOWN_bool(yb_pg_terminate_child_backend, false,
+DEFINE_NON_RUNTIME_string(yb_webserver_oom_score_adj, "900",
+              "oom_score_adj of YSQL webserver in linux environments");
+DEFINE_NON_RUNTIME_bool(yb_pg_terminate_child_backend, false,
             "Terminate other active server processes when a backend is killed");
 DEFINE_UNKNOWN_bool(pg_verbose_error_log, false,
             "True to enable verbose logging of errors in PostgreSQL server");
@@ -214,6 +216,9 @@ DEFINE_NON_RUNTIME_bool(enable_ysql_conn_mgr_stats, true,
 // TODO(#19211): Convert this to an auto-flag.
 DEFINE_test_flag(bool, ysql_yb_enable_replication_commands, false,
     "Enable logical replication commands for Publication and Replication Slots");
+
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(int32, yb_parallel_range_rows, 0,
+    "The number of rows to plan per parallel worker, zero disables the feature");
 
 static bool ValidateXclusterConsistencyLevel(const char* flagname, const std::string& value) {
   if (value != "database" && value != "tablet") {
@@ -393,7 +398,7 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   metricsLibs.push_back("yb_pg_metrics");
   metricsLibs.push_back("pgaudit");
   metricsLibs.push_back("pg_hint_plan");
-  if (FLAGS_enable_yb_ash) {
+  if (FLAGS_TEST_yb_enable_ash) {
     metricsLibs.push_back("yb_ash");
   }
 
@@ -653,6 +658,7 @@ Status PgWrapper::Start() {
   proc_->SetEnv("FLAGS_yb_pg_terminate_child_backend",
                 FLAGS_yb_pg_terminate_child_backend ? "true" : "false");
   proc_->SetEnv("FLAGS_yb_backend_oom_score_adj", FLAGS_yb_backend_oom_score_adj);
+  proc_->SetEnv("FLAGS_yb_webserver_oom_score_adj", FLAGS_yb_webserver_oom_score_adj);
 
   // Pass down custom temp path through environment variable.
   if (!VERIFY_RESULT(Env::Default()->DoesDirectoryExist(FLAGS_tmp_dir))) {

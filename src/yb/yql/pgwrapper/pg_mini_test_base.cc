@@ -151,12 +151,16 @@ void PgMiniTestBase::FlushAndCompactTablets() {
   LOG(INFO) << "Compaction duration: " << compaction_elapsed_time_sec << " s";
 }
 
-Result<PGConn> PgMiniTestBase::ConnectToDB(const std::string& dbname) const {
-  auto result = VERIFY_RESULT(PGConnBuilder({
+PGConnSettings PgMiniTestBase::MakeConnSettings(const std::string& dbname) const {
+  return PGConnSettings {
     .host = pg_host_port_.host(),
     .port = pg_host_port_.port(),
     .dbname = dbname
-  }).Connect());
+  };
+}
+
+Result<PGConn> PgMiniTestBase::ConnectToDB(const std::string& dbname) const {
+  auto result = VERIFY_RESULT(PGConnBuilder(MakeConnSettings(dbname)).Connect());
   RETURN_NOT_OK(SetupConnection(&result));
   return result;
 }

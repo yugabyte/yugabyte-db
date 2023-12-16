@@ -16,7 +16,6 @@ import com.yugabyte.yw.models.migrations.V_252.Provider;
 import com.yugabyte.yw.models.migrations.V_252.ProviderDetails;
 import com.yugabyte.yw.models.migrations.V_252.Region;
 import io.ebean.DB;
-import io.ebean.Ebean;
 import io.ebean.SqlRow;
 import io.ebean.SqlUpdate;
 import java.sql.SQLException;
@@ -52,8 +51,7 @@ public class V253__GenerateImageBundle extends BaseJavaMigration {
   public static void createImageBundleForUniverses(Customer customer) {
     String universeGet =
         "SELECT universe_uuid, name, universe_details_json from universe where customer_id= :param";
-    List<SqlRow> rows =
-        Ebean.createSqlQuery(universeGet).setParameter("param", customer.id).findList();
+    List<SqlRow> rows = DB.sqlQuery(universeGet).setParameter("param", customer.id).findList();
 
     for (SqlRow row : rows) {
       // Extract data from the row using column names
@@ -218,7 +216,7 @@ public class V253__GenerateImageBundle extends BaseJavaMigration {
 
     String universeUpdate =
         "UPDATE universe SET universe_details_json = :universe_details WHERE universe_uuid = :uuid";
-    SqlUpdate sqlUpdate = Ebean.createSqlUpdate(universeUpdate);
+    SqlUpdate sqlUpdate = DB.sqlUpdate(universeUpdate);
     sqlUpdate.setParameter("universe_details", Json.stringify(universeDetails));
     sqlUpdate.setParameter("uuid", UUID.fromString(universeUUID));
 

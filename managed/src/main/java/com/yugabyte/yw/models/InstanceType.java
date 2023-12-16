@@ -25,6 +25,12 @@ import io.ebean.annotation.DbJson;
 import io.ebean.annotation.EnumValue;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import jakarta.persistence.Column;
+import jakarta.persistence.EmbeddedId;
+import jakarta.persistence.Entity;
+import jakarta.persistence.FetchType;
+import jakarta.persistence.JoinColumn;
+import jakarta.persistence.ManyToOne;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Comparator;
@@ -39,12 +45,6 @@ import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-import javax.persistence.Column;
-import javax.persistence.EmbeddedId;
-import javax.persistence.Entity;
-import javax.persistence.FetchType;
-import javax.persistence.JoinColumn;
-import javax.persistence.ManyToOne;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;
@@ -341,8 +341,10 @@ public class InstanceType extends Model {
         .where()
         .eq("provider_uuid", providerUuid)
         .or()
-        .eq("instance_type_details", null)
-        .eq("instance_type_details::json->>'arch'", null)
+        .isNull("instance_type_details") // Check if instance_type_details is null
+        .jsonNotExists(
+            "instance_type_details",
+            "arch") // Check if "arch" key is not present in instance_type_details JSON
         .endOr()
         .findList();
   }

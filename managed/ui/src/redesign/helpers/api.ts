@@ -7,6 +7,8 @@ import {
 } from '../../components/configRedesign/providerRedesign/types';
 import {
   HostInfo,
+  MetricsQueryParams,
+  MetricsQueryResponse,
   Provider as Provider_Deprecated,
   SuggestedKubernetesConfig,
   UniverseNamespace,
@@ -136,6 +138,33 @@ export const drConfigQueryKey = {
   safetimes: (drConfigUuid: string) => [...drConfigQueryKey.detail(drConfigUuid), 'safetimes']
 };
 
+export const metricQueryKey = {
+  ALL: ['metric'],
+  detail: (metricRequestParams: { [property: string]: any }) => [
+    ...metricQueryKey.ALL,
+    metricRequestParams
+  ],
+  latest: (metricRequestParams: { [property: string]: any }, range: string, unit: string) => {
+    const { start, end, ...remainingRequestParams } = metricRequestParams;
+    // For metric queries where we are interested in the last x units of data, we should
+    // use the range and unit as part of the key instead of the concrete start and end time.
+    // This helps us refetch in the background while serving the most recent data from
+    // the cache. This is a better experience than hitting a loading spinner constantly on a
+    // metric graph which updates every x seconds.
+    return [...metricQueryKey.detail(remainingRequestParams), 'live', { range, unit }];
+  }
+};
+
+export const alertConfigQueryKey = {
+  ALL: ['alertConfig'],
+  list: (filters: unknown) => [...alertConfigQueryKey.ALL, { filters }]
+};
+
+export const alertTemplateQueryKey = {
+  ALL: ['alertTempalte'],
+  list: (filters: unknown) => [...alertTemplateQueryKey.ALL, { filters }]
+};
+
 // --------------------------------------------------------------------------------------
 // API Constants
 // --------------------------------------------------------------------------------------
@@ -154,9 +183,10 @@ export interface CreateDrConfigRequest {
   sourceUniverseUUID: string;
   targetUniverseUUID: string;
   dbs: string[]; // Database uuids (from source universe) selected for replication.
-  bootstrapBackupParams: {
-    storageConfigUUID: string;
-    parallelism?: number;
+  bootstrapParams: {
+    backupRequestParams?: {
+      storageConfigUUID: string;
+    };
   };
 
   dryRun?: boolean; // Run the pre-checks without actually running the subtasks
@@ -202,9 +232,9 @@ export interface RestartDrConfigRequest {
 
 export interface UpdateTablesInDrRequest {
   tables: string[];
-  // Bootstrap Params is required now, but it will be removed in future releases when
+  // Bootstrap Params will be removed in future releases when
   // we're able to save a storage config for each DR config.
-  bootstrapParams: {
+  bootstrapParams?: {
     backupRequestParams?: {
       storageConfigUUID: string;
     };
@@ -652,6 +682,13 @@ class ApiService {
   acknowledgeAlert = (uuid: string) => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/alerts/acknowledge`;
     return axios.post(requestUrl, { uuids: [uuid] }).then((res) => res.data);
+  };
+
+  fetchMetrics = (metricsQueryParams: MetricsQueryParams): Promise<MetricsQueryResponse> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/metrics`;
+    return axios
+      .post<MetricsQueryResponse>(requestUrl, metricsQueryParams)
+      .then((response) => response.data);
   };
 
   importReleases = (payload: any) => {
