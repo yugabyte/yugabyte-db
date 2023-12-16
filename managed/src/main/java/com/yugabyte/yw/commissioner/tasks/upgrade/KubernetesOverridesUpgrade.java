@@ -35,6 +35,8 @@ public class KubernetesOverridesUpgrade extends KubernetesUpgradeTaskBase {
         () -> {
           Universe universe = getUniverse();
           Cluster cluster = universe.getUniverseDetails().getPrimaryCluster();
+          // Persist new overrides in the DB.
+          addPersistKubernetesOverridesTask().setSubTaskGroupType(getTaskSubGroupType());
           // Set overrides to primary cluster so that they will be picked up in upgrade tasks.
           cluster.userIntent.universeOverrides = taskParams().universeOverrides;
           cluster.userIntent.azOverrides = taskParams().azOverrides;
@@ -48,8 +50,6 @@ public class KubernetesOverridesUpgrade extends KubernetesUpgradeTaskBase {
               /* isTServerChanged */ true,
               universe.isYbcEnabled(),
               universe.getUniverseDetails().getYbcSoftwareVersion());
-          // Persist new overrides in the DB.
-          addPersistKubernetesOverridesTask().setSubTaskGroupType(getTaskSubGroupType());
         });
   }
 
