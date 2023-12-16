@@ -158,10 +158,6 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
   public static class Params extends UniverseTaskParams {
     public UUID providerUUID;
     public String universeName;
-    // universe details from user task params used to generate helm overrides
-    public UniverseDefinitionTaskParams universeDetails;
-    // Universe config is used for generating helm overrides.
-    public Map<String, String> universeConfig;
     public CommandType commandType;
     public String helmReleaseName;
     public String namespace;
@@ -584,16 +580,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     Map<String, String> azConfig = new HashMap<String, String>();
     Map<String, String> regionConfig = new HashMap<String, String>();
 
-    // Assert that universeDetails is provided to generate helm overrides.
-    if (taskParams().universeDetails == null) {
-      throw new RuntimeException("Universe details not provided to generate helm overrides");
-    }
-    UniverseDefinitionTaskParams taskUniverseDetails = taskParams().universeDetails;
+    Universe u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
 
     UniverseDefinitionTaskParams.Cluster cluster =
         taskParams().isReadOnlyCluster
-            ? taskUniverseDetails.getReadOnlyClusters().get(0)
-            : taskUniverseDetails.getPrimaryCluster();
+            ? u.getUniverseDetails().getReadOnlyClusters().get(0)
+            : u.getUniverseDetails().getPrimaryCluster();
     UniverseDefinitionTaskParams.UserIntent userIntent = cluster.userIntent;
     InstanceType instanceType =
         InstanceType.get(UUID.fromString(userIntent.provider), userIntent.instanceType);
@@ -622,12 +614,12 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       pi =
           isMultiAz
               ? taskParams().placementInfo
-              : taskUniverseDetails.getReadOnlyClusters().get(0).placementInfo;
+              : u.getUniverseDetails().getReadOnlyClusters().get(0).placementInfo;
     } else {
       pi =
           isMultiAz
               ? taskParams().placementInfo
-              : taskUniverseDetails.getPrimaryCluster().placementInfo;
+              : u.getUniverseDetails().getPrimaryCluster().placementInfo;
     }
 
     // To maintain backward compatability with old helm charts,
@@ -804,22 +796,22 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
     // Use primary cluster intent to read gflags, tls settings.
     UniverseDefinitionTaskParams.UserIntent primaryClusterIntent =
-        taskUniverseDetails.getPrimaryCluster().userIntent;
+        u.getUniverseDetails().getPrimaryCluster().userIntent;
 
-    if (taskUniverseDetails.rootCA != null || taskUniverseDetails.getClientRootCA() != null) {
+    if (u.getUniverseDetails().rootCA != null || u.getUniverseDetails().getClientRootCA() != null) {
       Map<String, Object> tlsInfo = new HashMap<>();
       tlsInfo.put("enabled", true);
       tlsInfo.put("nodeToNode", primaryClusterIntent.enableNodeToNodeEncrypt);
       tlsInfo.put("clientToServer", primaryClusterIntent.enableClientToNodeEncrypt);
-      tlsInfo.put("insecure", taskUniverseDetails.allowInsecure);
+      tlsInfo.put("insecure", u.getUniverseDetails().allowInsecure);
       String rootCert;
       String rootKey;
-      if (taskUniverseDetails.rootCA != null) {
-        rootCert = CertificateHelper.getCertPEM(taskUniverseDetails.rootCA);
-        rootKey = CertificateHelper.getKeyPEM(taskUniverseDetails.rootCA);
+      if (u.getUniverseDetails().rootCA != null) {
+        rootCert = CertificateHelper.getCertPEM(u.getUniverseDetails().rootCA);
+        rootKey = CertificateHelper.getKeyPEM(u.getUniverseDetails().rootCA);
       } else {
-        rootCert = CertificateHelper.getCertPEM(taskUniverseDetails.getClientRootCA());
-        rootKey = CertificateHelper.getKeyPEM(taskUniverseDetails.getClientRootCA());
+        rootCert = CertificateHelper.getCertPEM(u.getUniverseDetails().getClientRootCA());
+        rootKey = CertificateHelper.getKeyPEM(u.getUniverseDetails().getClientRootCA());
       }
 
       if (rootKey != null && !rootKey.isEmpty()) {
@@ -831,10 +823,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
         // In case root cert key is null which will be the case with Hashicorp Vault certificates
         // Generate wildcard node cert and client cert and set them in override file
         CertificateInfo certInfo;
-        if (taskUniverseDetails.rootCA != null) {
-          certInfo = CertificateInfo.get(taskUniverseDetails.rootCA);
+        if (u.getUniverseDetails().rootCA != null) {
+          certInfo = CertificateInfo.get(u.getUniverseDetails().rootCA);
         } else {
-          certInfo = CertificateInfo.get(taskUniverseDetails.getClientRootCA());
+          certInfo = CertificateInfo.get(u.getUniverseDetails().getClientRootCA());
         }
 
         Map<String, Object> rootCA = new HashMap<>();
@@ -865,7 +857,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
                   certInfo, runtimeConfigFactory.staticApplicationConf());
           // Generate node cert from cert provider and set nodeCert param
           // As we are using same node cert for all nodes, set wildcard commonName
-          boolean newNamingStyle = taskUniverseDetails.useNewHelmNamingStyle;
+          boolean newNamingStyle = u.getUniverseDetails().useNewHelmNamingStyle;
           String kubeDomain = azConfig.getOrDefault("KUBE_DOMAIN", "cluster.local");
           List<String> dnsNames = getDnsNamesForSAN(newNamingStyle, kubeDomain);
           Map<String, Integer> subjectAltNames = new HashMap<>(dnsNames.size());
@@ -910,7 +902,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // Go over master flags.
     Map<String, Object> masterGFlags =
         new HashMap<>(
-            GFlagsUtil.getBaseGFlags(ServerType.MASTER, cluster, taskUniverseDetails.clusters));
+            GFlagsUtil.getBaseGFlags(ServerType.MASTER, cluster, u.getUniverseDetails().clusters));
     if (placementCloud != null && masterGFlags.get("placement_cloud") == null) {
       masterGFlags.put("placement_cloud", placementCloud);
     }
@@ -923,10 +915,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     if (placementUuid != null && masterGFlags.get("placement_uuid") == null) {
       masterGFlags.put("placement_uuid", placementUuid.toString());
     }
-    if (taskUniverseDetails.xClusterInfo.isSourceRootCertDirPathGflagConfigured()) {
+    if (u.getUniverseDetails().xClusterInfo.isSourceRootCertDirPathGflagConfigured()) {
       masterGFlags.put(
           XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG,
-          taskUniverseDetails.xClusterInfo.sourceRootCertDirPath);
+          u.getUniverseDetails().xClusterInfo.sourceRootCertDirPath);
     }
     if (!masterGFlags.isEmpty()) {
       gflagOverrides.put("master", masterGFlags);
@@ -934,7 +926,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
     // Go over tserver flags.
     Map<String, String> tserverGFlags =
-        GFlagsUtil.getBaseGFlags(ServerType.TSERVER, cluster, taskUniverseDetails.clusters);
+        GFlagsUtil.getBaseGFlags(ServerType.TSERVER, cluster, u.getUniverseDetails().clusters);
     if (!primaryClusterIntent
         .enableYSQL) { // In the UI, we can choose not to show these entries for read replica.
       tserverGFlags.put("enable_ysql", "false");
@@ -965,10 +957,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     if (placementUuid != null && tserverGFlags.get("placement_uuid") == null) {
       tserverGFlags.put("placement_uuid", placementUuid.toString());
     }
-    if (taskUniverseDetails.xClusterInfo.isSourceRootCertDirPathGflagConfigured()) {
+    if (u.getUniverseDetails().xClusterInfo.isSourceRootCertDirPathGflagConfigured()) {
       tserverGFlags.put(
           XClusterConfigTaskBase.SOURCE_ROOT_CERTS_DIR_GFLAG,
-          taskUniverseDetails.xClusterInfo.sourceRootCertDirPath);
+          u.getUniverseDetails().xClusterInfo.sourceRootCertDirPath);
     }
     if (!tserverGFlags.isEmpty()) {
       gflagOverrides.put("tserver", tserverGFlags);
@@ -996,13 +988,10 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     }
 
     // Universe and zone name label on all the  resources
-    if (taskParams()
-        .universeConfig
-        .getOrDefault(Universe.LABEL_K8S_RESOURCES, "false")
-        .equals("true")) {
+    if (u.getConfig().getOrDefault(Universe.LABEL_K8S_RESOURCES, "false").equals("true")) {
       String sanitizedUniverseName =
           Util.sanitizeKubernetesNamespace(
-              taskParams().universeDetails.getPrimaryCluster().userIntent.universeName, 0);
+              u.getUniverseDetails().getPrimaryCluster().userIntent.universeName, 0);
       Map<String, String> labels = new HashMap<>();
       labels.put("yugabyte.io/universe-name", sanitizedUniverseName);
       labels.put("app.kubernetes.io/part-of", sanitizedUniverseName);
@@ -1066,10 +1055,11 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
     // TODO gflags which have precedence over helm overrides should be merged here.
 
     validateOverrides(overrides);
-
+    Map<String, String> universeConfig = u.getConfig();
     boolean helmLegacy =
-        Universe.HelmLegacy.valueOf(taskParams().universeConfig.get(Universe.HELM2_LEGACY))
+        Universe.HelmLegacy.valueOf(universeConfig.get(Universe.HELM2_LEGACY))
             == Universe.HelmLegacy.V2TO3;
+
     if (helmLegacy) {
       overrides.put("helm2Legacy", helmLegacy);
       Map<String, String> serviceToIP = getClusterIpForLoadBalancer();
@@ -1090,7 +1080,7 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
 
     // TODO(bhavin192): we can save universeDetails at the top, we use
     // this call a couple of times throughout this method.
-    if (taskUniverseDetails.useNewHelmNamingStyle) {
+    if (u.getUniverseDetails().useNewHelmNamingStyle) {
       overrides.put("oldNamingStyle", false);
       overrides.put("fullnameOverride", taskParams().helmReleaseName);
     }
