@@ -6,7 +6,7 @@ description: Use YugabyteDB Anywhere to create a KMS configuration for Azure Key
 menu:
   preview_yugabyte-platform:
     parent: security
-    identifier: create-kms-config-1-azure-kms
+    identifier: create-kms-config-3-azure-kms
     weight: 50
 type: docs
 ---

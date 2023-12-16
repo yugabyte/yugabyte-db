@@ -6,7 +6,7 @@ description: Use YugabyteDB Anywhere to create a KMS configuration for Google Cl
 menu:
   preview_yugabyte-platform:
     parent: security
-    identifier: create-kms-config-1-google-kms
+    identifier: create-kms-config-2-google-kms
     weight: 50
 type: docs
 ---

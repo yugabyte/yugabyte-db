@@ -26,17 +26,30 @@ As a Super Admin or Admin, you can invite new users and manage existing users fo
 
 You can assign built-in and custom roles to users to determine the actions they are allowed to perform, and specify the universes that they can access.
 
-To create or modify a user, do the following:
+To create a user, do the following:
 
-1. Navigate to **Admin > Access Management > Users**, and click **Create User** or **Edit Assigned Roles**.
+1. Navigate to **Admin > Access Management > Users**, and click **Create User**.
 1. If you are adding a user, enter the user's email.
 1. To assign a built-in role, under **Built-in Role**, click **Assign New Built-in Role**, and select a built-in role.
 1. To assign a custom role, under **Custom Role**, click **Assign New Custom Role**, and select a custom role.
-    By default, users have access to all universes.
-1. To customize access to universes, click **Edit Selection**, and select the universes that you want to grant access for. Select the **Include future universes** option to automatically grant access to any universe created in the future. Click **Confirm** when you are done.
-1. Click **Add User** or **Edit User**.
 
-To delete a user, navigate to **Admin > Access Management > Users** click **Actions** for the user to delete, and choose **Delete User**.
+    By default, users have access to all universes.
+
+1. To customize access to universes, click **Edit Selection**, and select the universes that you want to grant access for. Select the **Include future universes** option to automatically grant access to any universe created in the future. Click **Confirm** when you are done.
+1. Click **Add User**.
+
+To modify a user, do the following:
+
+1. Navigate to **Admin > Access Management > Users**, click **Actions** for the user to modify, and choose **Edit Assigned Roles**.
+1. To change the built-in role, under **Built-in Role**, change the role. Click **Assign New Built-in Role** to add a role.
+1. To change the custom role, under **Custom Role**, change the existing role. Click **Assign New Custom Role** to add a role.
+
+    By default, users have access to all universes.
+
+1. To customize access to universes, click **Edit Selection**, and select the universes that you want to grant access for. Select the **Include future universes** option to automatically grant access to any universe created in the future. Click **Confirm** when you are done.
+1. Click **Edit User**.
+
+To delete a user, navigate to **Admin > Access Management > Users**, click **Actions** for the user to delete, and choose **Delete User**.
 
 ## Roles
 
@@ -81,11 +94,11 @@ As a Super Admin or Admin, you can:
 
 To create a custom role, do the following:
 
-1. Navigate to **Admin > Access Management > Roles**, then click **Add Role** to display the **Create a Role** dialog.
+1. Navigate to **Admin > Access Management > Roles** and click **Create Role**.
 1. Enter a name for the role.
 1. Enter a description for the role.
 1. Click **Select Permissions**.
-1. Select the permissions to assign to the role and click **Select** when you are done.
+1. Select the permissions to assign to the role and click **Confirm** when you are done.
 1. Click **Save**.
 
 To create a custom role from an existing role, do the following:
@@ -94,14 +107,16 @@ To create a custom role from an existing role, do the following:
 1. Enter a name for the role.
 1. Enter a description for the role.
 1. Click **Edit Permissions**.
-1. Select the permissions to assign to the role and click **Select** when you are done.
+1. Select the permissions to assign to the role and click **Confirm** when you are done.
 1. Click **Save**.
 
 To edit a custom role, do the following:
 
 1. Navigate to **Admin > Access Management > Roles**, click **Actions** for the role to edit, and choose **Edit Role**.
 1. On the **Configurations** tab click **Edit Permissions**.
-1. Select the permissions to assign to the role and click **Select** when you are done.
+1. Select the permissions to assign to the role and click **Confirm** when you are done.
 1. Click **Save**.
 
 To delete a role, navigate to **Admin > Access Management > Roles**, click **Actions** for the role to edit, and choose **Edit Role**.
+
+To view the users that have been assigned a role, navigate to **Admin > Access Management > Roles**, click **Actions** for the role, and choose **View Assigned Users**.
