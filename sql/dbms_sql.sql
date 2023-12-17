@@ -200,5 +200,23 @@ $$;
 select * from tab1;
 select * from tab1 where c2 is null;
 
+
+do $$
+declare a numeric(7,2);
+begin
+  call single_Row_insert(0,a);   -- single_Row_insert(0, null)
+end
+$$;
+
+select * from tab1;
+
+do $$
+declare a numeric(7,2) default 1.23;
+begin
+  call single_Row_insert(0,a);  -- single_Row_insert(0, 1.23)
+end
+$$;
+
+select * from tab1;
 drop procedure single_Row_insert;
 drop table tab1;
