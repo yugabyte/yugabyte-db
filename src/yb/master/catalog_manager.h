@@ -330,6 +330,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status WaitForCreateTableToFinish(const TableId& table_id, CoarseTimePoint deadline);
 
+  Status IsAlterTableInProgress(const TableId& table_id,
+                                 CoarseTimePoint deadline,
+                                 bool* alter_in_progress);
+
+  Status WaitForAlterTableToFinish(const TableId& table_id, CoarseTimePoint deadline);
+
   // Check if the transaction status table creation is done.
   //
   // This is called at the end of IsCreateTableDone if the table has transactions enabled.

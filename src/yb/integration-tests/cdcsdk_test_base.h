@@ -27,6 +27,7 @@
 
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(cdc_write_rpc_timeout_ms);
+DECLARE_int32(master_ts_rpc_timeout_ms);
 DECLARE_bool(TEST_check_broadcast_address);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 
@@ -46,7 +47,7 @@ using client::YBClient;
 using client::YBTableName;
 
 namespace cdc {
-constexpr int kRpcTimeout = NonTsanVsTsan(60, 120);
+constexpr int kRpcTimeout = 60 * kTimeMultiplier;
 static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
 constexpr static const char* const kTableName = "test_table";
@@ -92,6 +93,10 @@ class CDCSDKTestBase : public YBTest {
     // Allow for one-off network instability by ensuring a single CDC RPC timeout << test timeout.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_read_rpc_timeout_ms) = (kRpcTimeout / 4) * 1000;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_write_rpc_timeout_ms) = (kRpcTimeout / 4) * 1000;
+
+    // This timeout is used in the cdc_state_table client. So set to a custom value for sanitizer
+    // builds to avoid timeouts while waiting for the table creation.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ts_rpc_timeout_ms) = 30 * 1000 * kTimeMultiplier;
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_check_broadcast_address) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;

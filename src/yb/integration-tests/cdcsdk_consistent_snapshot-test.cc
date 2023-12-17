@@ -44,15 +44,12 @@ class CDCSDKConsistentSnapshotTest : public CDCSDKYsqlTest {
 };
 
 
-TEST_F(CDCSDKConsistentSnapshotTest, YB_DISABLE_TEST_IN_TSAN(TestCSStreamSnapshotEstablishment)) {
+TEST_F(CDCSDKConsistentSnapshotTest, TestCSStreamSnapshotEstablishment) {
   // Disable running UpdatePeersAndMetrics for this test
   FLAGS_enable_log_retention_by_op_idx = false;
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
   auto tablet_peer =
       ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets.begin()->tablet_id()));
-
-  // Temporary - this will create cdc_state table
-  ASSERT_RESULT(CreateDBStream());
 
   // Create a Consistent Snapshot Stream with NOEXPORT_SNAPSHOT option
   xrepl::StreamId stream1_id =
@@ -110,9 +107,6 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestTwoCSStream) {
   auto tablet_peer =
       ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets.begin()->tablet_id()));
 
-  // Temporary - this will create cdc_state table
-  ASSERT_RESULT(CreateDBStream());
-
   auto get_tablet_state = [tablet_peer]() {
     return std::tuple{tablet_peer->get_cdc_min_replicated_index(),
                       tablet_peer->cdc_sdk_min_checkpoint_op_id(),
@@ -136,8 +130,6 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestTwoCSStream) {
 // persisted in the sys_catalog
 TEST_F(CDCSDKConsistentSnapshotTest, TestConsistentSnapshotMetadataPersistence) {
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
-  // Temporary - this will create cdc_state table
-  ASSERT_RESULT(CreateDBStream());
 
   // Create a Consistent Snapshot Stream with USE_SNAPSHOT option
   auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
@@ -161,12 +153,9 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestConsistentSnapshotMetadataPersistence) 
 
 // Insert a row before snapshot. Insert a row after snapshot.
 // Expected records: (DDL, READ) and (DDL, INSERT).
-TEST_F(CDCSDKConsistentSnapshotTest, YB_DISABLE_TEST_IN_TSAN(InsertBeforeAfterSnapshot)) {
+TEST_F(CDCSDKConsistentSnapshotTest, InsertBeforeAfterSnapshot) {
   auto tablets = ASSERT_RESULT(SetUpCluster());
   ASSERT_EQ(tablets.size(), 1);
-
-  // Temporary - this will create cdc_state table
-  ASSERT_RESULT(CreateDBStream());
 
   // This should be part of the snapshot
   ASSERT_OK(WriteRows(1 /* start */, 2 /* end */, &test_cluster_));
@@ -213,11 +202,8 @@ TEST_F(CDCSDKConsistentSnapshotTest, YB_DISABLE_TEST_IN_TSAN(InsertBeforeAfterSn
 
 // Begin transaction, insert one row, commit transaction, enable snapshot
 // Expected records: (DDL, READ).
-TEST_F(CDCSDKConsistentSnapshotTest, YB_DISABLE_TEST_IN_TSAN(InsertSingleRowSnapshot)) {
+TEST_F(CDCSDKConsistentSnapshotTest, InsertSingleRowSnapshot) {
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(3, 1, false));
-
-  // Temporary - this will create cdc_state table
-  ASSERT_RESULT(CreateDBStream());
 
   ASSERT_OK(WriteRowsHelper(1 /* start */, 2 /* end */, &test_cluster_, true));
 
@@ -238,9 +224,6 @@ TEST_F(CDCSDKConsistentSnapshotTest, YB_DISABLE_TEST_IN_TSAN(InsertSingleRowSnap
 // Expected records: (DDL, READ).
 TEST_F(CDCSDKConsistentSnapshotTest, UpdateInsertedRowSnapshot) {
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(3, 1, false));
-
-  // Temporary - this will create cdc_state table
-  ASSERT_RESULT(CreateDBStream());
 
   ASSERT_OK(WriteRowsHelper(1 /* start */, 2 /* end */, &test_cluster_, true));
   ASSERT_OK(UpdateRows(1 /* key */, 1 /* value */, &test_cluster_));
@@ -263,9 +246,6 @@ TEST_F(CDCSDKConsistentSnapshotTest, UpdateInsertedRowSnapshot) {
 TEST_F(CDCSDKConsistentSnapshotTest, DeleteInsertedRowSnapshot) {
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(3, 1, false));
 
-  // Temporary - this will create cdc_state table
-  ASSERT_RESULT(CreateDBStream());
-
   ASSERT_OK(WriteRowsHelper(1 /* start */, 2 /* end */, &test_cluster_, true));
   ASSERT_OK(DeleteRows(1 /* key */, &test_cluster_));
 
@@ -287,9 +267,6 @@ TEST_F(CDCSDKConsistentSnapshotTest, DeleteInsertedRowSnapshot) {
 TEST_F(CDCSDKConsistentSnapshotTest, InsertBeforeDuringSnapshot) {
   auto tablets = ASSERT_RESULT(SetUpCluster());
   ASSERT_EQ(tablets.size(), 1);
-
-  // Temporary - this will create cdc_state table
-  ASSERT_RESULT(CreateDBStream());
 
   // 10K records inserted using a thread.
   std::vector<std::thread> threads;
@@ -326,9 +303,6 @@ TEST_F(CDCSDKConsistentSnapshotTest, InsertBeforeDuringSnapshot) {
 TEST_F(CDCSDKConsistentSnapshotTest, InsertBeforeDuringAfterSnapshot) {
   auto tablets = ASSERT_RESULT(SetUpCluster());
   ASSERT_EQ(tablets.size(), 1);
-
-  // Temporary - this will create cdc_state table
-  ASSERT_RESULT(CreateDBStream());
 
   // 10K records inserted using a thread.
   std::vector<std::thread> threads;
@@ -368,8 +342,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, InsertBeforeDuringAfterSnapshot) {
 TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotWithInvalidFromOpId) {
   auto tablets = ASSERT_RESULT(SetUpCluster());
   ASSERT_EQ(tablets.size(), 1);
-  // Temporary - this will create cdc_state table
-  ASSERT_RESULT(CreateDBStream());
+
   ASSERT_OK(WriteRows(1 /* start */, 1001 /* end */, &test_cluster_));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
   auto cp_resp = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id()));
@@ -415,8 +388,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestMultipleTableAlterWithSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 100;
   auto tablets = ASSERT_RESULT(SetUpCluster());
   ASSERT_EQ(tablets.size(), 1);
-  // Temporary - this will create cdc_state table
-  ASSERT_RESULT(CreateDBStream());
+
   // Table having key:value_1 column
   ASSERT_OK(WriteRows(1 /* start */, 101 /* end */, &test_cluster_));
   // Add column value_2 column, Table Alter happen.
@@ -486,8 +458,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestLeadershipChangeDuringSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   auto tablets = ASSERT_RESULT(SetUpCluster());
   ASSERT_EQ(tablets.size(), 1);
-  // Temporary - this will create cdc_state table
-  ASSERT_RESULT(CreateDBStream());
+
   ASSERT_OK(WriteRows(1 /* start */, 1001 /* end */, &test_cluster_));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
   auto cp_resp = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id()));
@@ -547,8 +518,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestServerFailureDuringSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_single_record_update) = false;
 
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(3, 1, false));
-  // Temporary - this will create cdc_state table
-  ASSERT_RESULT(CreateDBStream());
+
   // Table having key:value_1 column
   ASSERT_OK(WriteRows(1 /* start */, 201 /* end */, &test_cluster_));
 
@@ -611,8 +581,6 @@ TEST_F(CDCSDKConsistentSnapshotTest, InsertedRowInbetweenSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 10;
 
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(3, 1, false));
-  // Temporary - this will create cdc_state table
-  ASSERT_RESULT(CreateDBStream());
 
   ASSERT_OK(WriteRows(1 /* start */, 101 /* end */, &test_cluster_));
 
@@ -682,8 +650,6 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestStreamActiveWithSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_intent_retention_ms) = 20000;  // 20 seconds
 
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
-  // Temporary - this will create cdc_state table
-  ASSERT_RESULT(CreateDBStream());
 
   // Inserting 1000 rows, so that there will be 100 snapshot batches each with
   // 'FLAGS_cdc_snapshot_batch_size'(10) rows.
@@ -737,8 +703,6 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestCheckpointUpdatedDuringSnapshot) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 10;
 
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
-  // Temporary - this will create cdc_state table
-  ASSERT_RESULT(CreateDBStream());
 
   ASSERT_OK(WriteRows(1 /* start */, 1001 /* end */, &test_cluster_));
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream(
@@ -820,8 +784,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestCheckpointUpdatedDuringSnapshot) {
 
 TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotNoData) {
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
-  // Temporary - this will create cdc_state table
-  ASSERT_RESULT(CreateDBStream());
+
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
   auto cp_resp = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id()));
 
@@ -844,8 +807,6 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotForColocatedTablet) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 1;
   ASSERT_OK(SetUpWithParams(3, 1, true /* colocated */));
-  // Temporary - this will create cdc_state table
-  ASSERT_RESULT(CreateDBStream());
 
   // ASSERT_OK(CreateColocatedObjects(&test_cluster_));
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
@@ -923,8 +884,6 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestCommitTimeRecordTimeAndNoSafepointRecor
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 10;
 
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
-  // Temporary - this will create cdc_state table
-  ASSERT_RESULT(CreateDBStream());
 
   // Commit a transaction with 1000 rows.
   ASSERT_OK(WriteRowsHelper(1 /* start */, 1001 /* end */, &test_cluster_, true));
@@ -983,8 +942,6 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestGetCheckpointOnAddedColocatedTableWithN
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ASSERT_OK(SetUpWithParams(1, 1, true /* colocated */));
-  // Temporary - this will create cdc_state table
-  ASSERT_RESULT(CreateDBStream());
 
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
   ASSERT_OK(
@@ -1073,8 +1030,6 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotRecordSnapshotKey) {
   FLAGS_cdc_snapshot_batch_size = 10;
 
   auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
-  // Temporary - this will create cdc_state table
-  ASSERT_RESULT(CreateDBStream());
 
   ASSERT_OK(WriteRows(1 /* start */, 1001 /* end */, &test_cluster_));
 

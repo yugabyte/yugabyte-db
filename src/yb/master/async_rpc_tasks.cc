@@ -936,23 +936,9 @@ void AsyncAlterTable::HandleResponse(int attempt) {
         break;
     }
   } else {
-    TransitionToCompleteState();
-    VLOG_WITH_PREFIX(1)
-        << "TS " << permanent_uuid() << " completed: for version " << schema_version_;
-  }
-
-  server::UpdateClock(resp_, master_->clock());
-
-  if (state() == MonitoredTaskState::kComplete) {
-    // TODO: proper error handling here. Not critical, since TSHeartbeat will retry on failure.
-    WARN_NOT_OK(
-        master_->catalog_manager()->HandleTabletSchemaVersionReport(
-            tablet_.get(), schema_version_, epoch(), table()),
-        Format(
-            "$0 failed while running AsyncAlterTable::HandleResponse. Response $1", description(),
-            resp_.ShortDebugString()));
-
     // CDC SDK Create Stream Context
+    // Technically, handling the CDCSDK snapshot flow is part of AlterTable processing. So it is
+    // done before transitioning to complete state.
     // If there is an error while populating the cdc_state table, it can be ignored here
     // as it will be handled in CatalogManager::CreateNewXReplStream
     if (cdc_sdk_stream_id_) {
@@ -972,6 +958,22 @@ void AsyncAlterTable::HandleResponse(int attempt) {
                      << " and tablet id: " << tablet_id();
       }
     }
+
+    TransitionToCompleteState();
+    VLOG_WITH_PREFIX(1)
+        << "TS " << permanent_uuid() << " completed: for version " << schema_version_;
+  }
+
+  server::UpdateClock(resp_, master_->clock());
+
+  if (state() == MonitoredTaskState::kComplete) {
+    // TODO: proper error handling here. Not critical, since TSHeartbeat will retry on failure.
+    WARN_NOT_OK(
+        master_->catalog_manager()->HandleTabletSchemaVersionReport(
+            tablet_.get(), schema_version_, epoch(), table()),
+        Format(
+            "$0 failed while running AsyncAlterTable::HandleResponse. Response $1", description(),
+            resp_.ShortDebugString()));
   } else {
     VLOG_WITH_PREFIX(1) << "Task is not completed " << tablet_->ToString() << " for version "
                         << schema_version_;
