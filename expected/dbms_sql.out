@@ -498,5 +498,42 @@ select * from tab1 where c2 is null;
   2 |   
 (1 row)
 
+do $$
+declare a numeric(7,2);
+begin
+  call single_Row_insert(0,a);   -- single_Row_insert(0, null)
+end
+$$;
+NOTICE:  orig query: "INSERT INTO tab1 VALUES (:bnd1, :bnd2)"
+NOTICE:  parsed query: "INSERT INTO tab1 VALUES ($1, $2)"
+NOTICE:  variable "bnd1" is assigned to "0"
+NOTICE:  variable "bnd2" is NULL
+select * from tab1;
+ c1 |  c2  
+----+------
+  2 |     
+  2 | 1.23
+  0 |     
+(3 rows)
+
+do $$
+declare a numeric(7,2) default 1.23;
+begin
+  call single_Row_insert(0,a);  -- single_Row_insert(0, 1.23)
+end
+$$;
+NOTICE:  orig query: "INSERT INTO tab1 VALUES (:bnd1, :bnd2)"
+NOTICE:  parsed query: "INSERT INTO tab1 VALUES ($1, $2)"
+NOTICE:  variable "bnd1" is assigned to "0"
+NOTICE:  variable "bnd2" is assigned to "1.23"
+select * from tab1;
+ c1 |  c2  
+----+------
+  2 |     
+  2 | 1.23
+  0 |     
+  0 | 1.23
+(4 rows)
+
 drop procedure single_Row_insert;
 drop table tab1;
