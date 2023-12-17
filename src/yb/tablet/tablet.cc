@@ -56,6 +56,7 @@
 #include "yb/common/schema_pbutil.h"
 
 #include "yb/consensus/consensus.messages.h"
+#include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
 
@@ -119,6 +120,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/trace.h"
 #include "yb/util/yb_pg_errcodes.h"
 
@@ -263,6 +265,10 @@ DEFINE_RUNTIME_bool(tablet_exclusive_full_compaction, false,
        "Enables exclusive mode for any non-post-split full compaction for a tablet: all "
        "scheduled and unscheduled compactions are run before the full compaction and no other "
        "compactions will get scheduled during a full compaction.");
+
+DEFINE_RUNTIME_uint32(cdcsdk_retention_barrier_no_revision_interval_secs, 120,
+                     "Duration for which CDCSDK retention barriers cannot be revised from the "
+                     "cdcsdk_block_barrier_revision_start_time");
 
 // FLAGS_TEST_disable_getting_user_frontier_from_mem_table is used in conjunction with
 // FLAGS_TEST_disable_adding_user_frontier_to_sst.  Two flags are needed for the case in which
@@ -2101,8 +2107,55 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIt
   return std::move(iter);
 }
 
+Status Tablet::SetAllCDCRetentionBarriersUnlocked(
+    int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, MonoDelta cdc_sdk_op_id_expiration,
+    HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff,
+    bool initial_retention_barrier) {
+
+  // WAL, History, Intents Retention
+  if (VERIFY_RESULT(metadata_->SetAllCDCRetentionBarriers(cdc_wal_index,
+                                                          cdc_sdk_intents_op_id,
+                                                          cdc_sdk_history_cutoff,
+                                                          require_history_cutoff,
+                                                          initial_retention_barrier))) {
+    // Intents Retention setting on txn_participant
+    // 1. cdc_sdk_intents_op_id - opid beyond which GC will not happen
+    // 2. cdc_sdk_op_id_expiration - time limit upto which intents barrier setting holds
+    auto txn_participant = transaction_participant();
+    if (txn_participant) {
+
+      VLOG_WITH_PREFIX(1) << "Intents opid retention duration = " << cdc_sdk_op_id_expiration;
+      txn_participant->SetIntentRetainOpIdAndTime(
+          cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration);
+    }
+  }
+
+  return Status::OK();
+}
+
+// Applies to both CDCSDK and XCluster streams attempting to set their initial
+// retention barrier
+Status Tablet::SetAllInitialCDCRetentionBarriers(
+    log::Log* log, int64 cdc_wal_index, OpId cdc_sdk_intents_op_id,
+    HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff) {
+
+  VLOG_WITH_PREFIX(1) << "CDC Retention barrier initialization request";
+  std::lock_guard lock(cdcsdk_retention_barrier_lock_);
+
+  cdcsdk_block_barrier_revision_start_time = MonoTime::Now();
+
+  if (log && log->cdc_min_replicated_index() > cdc_wal_index) {
+    log->set_cdc_min_replicated_index(cdc_wal_index);
+  }
+  auto intent_retention_duration =
+      MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
+  return SetAllCDCRetentionBarriersUnlocked(
+      cdc_wal_index, cdc_sdk_intents_op_id, intent_retention_duration, cdc_sdk_history_cutoff,
+      require_history_cutoff, true /* initial_retention_barrier */);
+}
+
 // This is called From ChangeMetadaOperation::Apply during the
-// creation of the stream and also possibly during Tablet Bootstrap.
+// creation of the CDCSDK stream and also possibly during Tablet Bootstrap.
 //
 // One thing to note here is that the retention barrier on the consensus layer
 // is not set in both these situations. This is no different from the
@@ -2116,23 +2169,47 @@ Result<std::unique_ptr<docdb::YQLRowwiseIteratorIf>> Tablet::CreateCDCSnapshotIt
 // another slower consumer with a stricter barrier requirement, that
 // will be left alone and the barrier will not be reset.
 Status Tablet::SetAllInitialCDCSDKRetentionBarriers(
-  OpId cdc_sdk_op_id, MonoDelta cdc_sdk_op_id_expiration, HybridTime cdc_sdk_history_cutoff,
-  bool require_history_cutoff) {
+    log::Log* log, OpId cdc_sdk_op_id, HybridTime cdc_sdk_history_cutoff,
+    bool require_history_cutoff) {
 
-  // WAL, History, Intents Retention
-  if (VERIFY_RESULT(metadata_->SetAllInitialCDCSDKRetentionBarriers(cdc_sdk_op_id,
-                                                                    cdc_sdk_history_cutoff,
-                                                                    require_history_cutoff))) {
-    // Intents Retention setting on txn_participant
-    // 1. cdc_sdk_op_id - opid beyond which GC will not happen
-    // 2. cdc_sdk_op_id_expiration - time limit upto which intents barrier setting holds
-    auto txn_participant = transaction_participant();
-    if (txn_participant) {
-      txn_participant->SetIntentRetainOpIdAndTime(cdc_sdk_op_id, cdc_sdk_op_id_expiration);
+  VLOG_WITH_PREFIX(1) << "CDCSDK Retention barrier initialization request";
+  RETURN_NOT_OK(SetAllInitialCDCRetentionBarriers(
+      log, cdc_sdk_op_id.index, cdc_sdk_op_id, cdc_sdk_history_cutoff, require_history_cutoff));
+  TEST_SYNC_POINT("Tablet::SetAllInitialCDCSDKRetentionBarriers::End");
+  return Status::OK();
+}
+
+// Applies to the combined requirement of both CDCSDK and XCluster streams.
+Result<bool> Tablet::MoveForwardAllCDCRetentionBarriers(
+    log::Log* log, int64 cdc_wal_index, OpId cdc_sdk_intents_op_id,
+    MonoDelta cdc_sdk_op_id_expiration, HybridTime cdc_sdk_history_cutoff,
+    bool require_history_cutoff) {
+
+  VLOG_WITH_PREFIX(1) << "Move forward CDC Retention barrier request";
+  std::lock_guard lock(cdcsdk_retention_barrier_lock_);
+
+  // Retention barriers cannot be moved forward if the barrier revision
+  // has been recently blocked
+  auto duration_since_last_blocked =
+      MonoTime::Now().GetDeltaSince(cdcsdk_block_barrier_revision_start_time).ToSeconds();
+  VLOG_WITH_PREFIX(1) << "Duration since last blocked: " << duration_since_last_blocked;
+
+  if (duration_since_last_blocked >
+      GetAtomicFlag(&FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs)) {
+    VLOG_WITH_PREFIX(1) << "Advance CDC retention barriers";
+
+    if (log) {
+      log->set_cdc_min_replicated_index(cdc_wal_index);
     }
+    RETURN_NOT_OK(SetAllCDCRetentionBarriersUnlocked(
+        cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration, cdc_sdk_history_cutoff,
+        require_history_cutoff, false /* initial_retention_barrier */));
+    return true;
+  } else {
+    VLOG_WITH_PREFIX(1) << "Revision of CDC retention barriers is currently blocked";
   }
 
-  return Status::OK();
+  return false;
 }
 
 Status Tablet::CreatePreparedChangeMetadata(
