@@ -1164,6 +1164,8 @@ Status CatalogManager::PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
     const yb::HybridTime& proposed_snapshot_time,
     bool require_history_cutoff) {
 
+  TEST_SYNC_POINT("PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails::Start");
+
   LOG_WITH_FUNC(INFO) << "Table id: " << table->id()
                       << "Tablet id: " << tablet_id
                       << ", Stream id:" << cdc_sdk_stream_id.ToString()
@@ -1197,9 +1199,7 @@ Status CatalogManager::PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
     entries.push_back(std::move(col_entry));
   }
 
-  RETURN_NOT_OK(cdc_state_table_->InsertEntries(entries));
-
-  return Status::OK();
+  return cdc_state_table_->InsertEntries(entries);
 }
 
 Status CatalogManager::BackfillMetadataForCDC(

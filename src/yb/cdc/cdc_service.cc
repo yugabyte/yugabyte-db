@@ -1943,7 +1943,7 @@ void CDCServiceImpl::GetChanges(
 
 Status CDCServiceImpl::UpdatePeersCdcMinReplicatedIndex(
     const TabletId& tablet_id, const TabletCDCCheckpointInfo& cdc_checkpoint_min,
-    bool ignore_failures) {
+    bool ignore_failures, bool initial_retention_barrier) {
   std::vector<client::internal::RemoteTabletServer*> servers;
   RETURN_NOT_OK(GetTServers(tablet_id, &servers));
 
@@ -1963,6 +1963,7 @@ Status CDCServiceImpl::UpdatePeersCdcMinReplicatedIndex(
     cdc_checkpoint_min.cdc_sdk_op_id.ToPB(update_index_req.add_cdc_sdk_consumed_ops());
     update_index_req.add_cdc_sdk_ops_expiration_ms(
         cdc_checkpoint_min.cdc_sdk_op_id_expiration.ToMilliseconds());
+    update_index_req.set_initial_retention_barrier(initial_retention_barrier);
 
     rpc::RpcController rpc;
     rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
@@ -2378,14 +2379,15 @@ Status CDCServiceImpl::SetInitialCheckPoint(
 
   // Update the minimum checkpoint op_id for LEADER for intent cleanup for CDCSDK Stream type.
   RETURN_NOT_OK_SET_CODE(
-      tablet_peer->SetCDCSDKRetainOpIdAndTime(
-          tablet_op_id.cdc_sdk_op_id, tablet_op_id.cdc_sdk_op_id_expiration,
-          tablet_op_id.cdc_sdk_safe_time),
+      tablet_peer->SetAllInitialCDCSDKRetentionBarriers(
+          tablet_op_id.cdc_sdk_op_id, tablet_op_id.cdc_sdk_safe_time,
+          true /* require_history_cutoff */),
       CDCError(CDCErrorPB::INTERNAL_ERROR));
 
   //  Even if the flag is enable_update_local_peer_min_index is set, for the first time
   //  we need to set it to follower too.
-  return UpdatePeersCdcMinReplicatedIndex(tablet_id, tablet_op_id, false);
+  return UpdatePeersCdcMinReplicatedIndex(
+      tablet_id, tablet_op_id, false /* ignore_failures */, true /* initial_retention_barrier */);
 }
 
 void CDCServiceImpl::FilterOutTabletsToBeDeletedByAllStreams(
@@ -2632,12 +2634,10 @@ Status CDCServiceImpl::UpdateTabletPeerWithCheckpoint(
 
   auto min_index = tablet_info->cdc_op_id.index;
   auto current_term = tablet_info->cdc_op_id.term;
-  auto s = tablet_peer->set_cdc_min_replicated_index(min_index);
-  WARN_NOT_OK(
-      s, Format(
-             "Unable to set cdc min index for tablet $0 peer $1", tablet_peer->tablet_id(),
-             tablet_peer->permanent_uuid()));
-  RETURN_NOT_OK(s);
+
+  // At this point, this tserver, either hosts the leader tablet peer for tablet_id OR
+  // has a follower local peer for which it is allowed to update the retention barriers.
+  // Thus, in any case, we can update the retention barriers on the local peer.
 
   auto result = tablet_peer->GetCDCSDKIntentRetainTime(tablet_info->cdc_sdk_latest_active_time);
   WARN_NOT_OK(
@@ -2646,26 +2646,26 @@ Status CDCServiceImpl::UpdateTabletPeerWithCheckpoint(
   RETURN_NOT_OK(result);
   tablet_info->cdc_sdk_op_id_expiration = *result;
 
+  VLOG_WITH_FUNC(1) << "Trying to move forward retention barriers";
+  auto barrier_revised = VERIFY_RESULT(tablet_peer->MoveForwardAllCDCRetentionBarriers(
+      min_index, tablet_info->cdc_sdk_op_id, tablet_info->cdc_sdk_op_id_expiration,
+      tablet_info->cdc_sdk_safe_time, true /* require_history_cutoff */));
+
+  if (!ignore_rpc_failures && !barrier_revised) {
+    return STATUS_FORMAT(TryAgain, "Revision of CDC retention barriers is currently blocked");
+  }
+
   if (!enable_update_local_peer_min_index) {
+    // At this point, this tserver definitely hosts the leader tablet peer for tablet_id
     VLOG(1) << "Updating followers for tablet " << tablet_id << " with index " << min_index
             << " term " << current_term
             << " cdc_sdk_op_id: " << tablet_info->cdc_sdk_op_id.ToString()
             << " expiration: " << tablet_info->cdc_sdk_op_id_expiration.ToMilliseconds()
             << " cdc_sdk_safe_time: " << tablet_info->cdc_sdk_safe_time;
-    s = UpdatePeersCdcMinReplicatedIndex(tablet_id, *tablet_info, ignore_rpc_failures);
-    WARN_NOT_OK(s, "UpdatePeersCdcMinReplicatedIndex failed");
-    if (!ignore_rpc_failures && !s.ok()) {
-      return s;
-    }
-  } else {
-    s = tablet_peer->SetCDCSDKRetainOpIdAndTime(
-        tablet_info->cdc_sdk_op_id, tablet_info->cdc_sdk_op_id_expiration,
-        tablet_info->cdc_sdk_safe_time);
-    if (!s.ok()) {
-      LOG(WARNING) << "Unable to set CDCSDK min checkpoint for tablet peer "
-                   << tablet_peer->permanent_uuid() << " and tablet " << tablet_peer->tablet_id()
-                   << ": " << s;
-      return s;
+    auto status = UpdatePeersCdcMinReplicatedIndex(tablet_id, *tablet_info, ignore_rpc_failures);
+    WARN_NOT_OK(status, "UpdatePeersCdcMinReplicatedIndex failed");
+    if (!ignore_rpc_failures && !status.ok()) {
+      return status;
     }
   }
 
@@ -2852,6 +2852,8 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
              MonoDelta::FromSeconds(GetAtomicFlag(&FLAGS_update_min_cdc_indices_interval_secs)))) {
       continue;
     }
+    TEST_SYNC_POINT("UpdatePeersAndMetrics::Start");
+
     time_since_update_peers = MonoTime::Now();
     VLOG(2) << "Updating tablet peers with min cdc replicated index";
     {
@@ -2885,6 +2887,7 @@ void CDCServiceImpl::UpdatePeersAndMetrics() {
 
     std::unordered_set<TabletId> failed_tablet_ids;
     UpdateTabletPeersWithMaxCheckpoint(tablet_ids_with_max_checkpoint, &failed_tablet_ids);
+    TEST_SYNC_POINT("UpdateTabletPeersWithMaxCheckpoint::Done");
 
     WARN_NOT_OK(
         DeleteCDCStateTableMetadata(cdc_state_entries_to_delete, failed_tablet_ids),
@@ -3208,6 +3211,9 @@ void CDCServiceImpl::UpdateCdcReplicatedIndex(
       STATUS(InvalidArgument, "Tablet ID, Index, & Term Count must match"), resp->mutable_error(),
       CDCErrorPB::INVALID_REQUEST, context);
 
+  auto initial_retention_barrier =
+      req->has_initial_retention_barrier() && req->initial_retention_barrier();
+
   rollback_tablet_id_vec.reserve(req->tablet_ids_size());
   for (int i = 0; i < req->tablet_ids_size(); i++) {
     const OpId& cdc_sdk_op = req->cdc_sdk_consumed_ops().empty()
@@ -3221,7 +3227,8 @@ void CDCServiceImpl::UpdateCdcReplicatedIndex(
         req->tablet_ids(i), req->replicated_indices(i), cdc_sdk_op, cdc_sdk_op_id_expiration,
         &rollback_tablet_id_map,
         req->cdc_sdk_safe_times().size() > i ? HybridTime::FromPB(req->cdc_sdk_safe_times(i))
-                                             : HybridTime::kInvalid);
+                                             : HybridTime::kInvalid,
+        initial_retention_barrier);
     RPC_STATUS_RETURN_ERROR(s, resp->mutable_error(), CDCErrorPB::INVALID_REQUEST, context);
   }
 
@@ -3232,7 +3239,8 @@ void CDCServiceImpl::UpdateCdcReplicatedIndex(
 Status CDCServiceImpl::UpdateCdcReplicatedIndexEntry(
     const string& tablet_id, int64 replicated_index, const OpId& cdc_sdk_replicated_op,
     const MonoDelta& cdc_sdk_op_id_expiration,
-    RollBackTabletIdCheckpointMap* rollback_tablet_id_map, const HybridTime cdc_sdk_safe_time) {
+    RollBackTabletIdCheckpointMap* rollback_tablet_id_map, const HybridTime cdc_sdk_safe_time,
+    bool initial_retention_barrier) {
   auto tablet_peer = VERIFY_RESULT(GetServingTablet(tablet_id));
   if (!tablet_peer->log_available()) {
     return STATUS(TryAgain, "Tablet peer is not ready to set its log cdc index");
@@ -3243,9 +3251,22 @@ Status CDCServiceImpl::UpdateCdcReplicatedIndexEntry(
         tablet_peer->get_cdc_min_replicated_index(), tablet_peer->cdc_sdk_min_checkpoint_op_id()};
   }
 
-  RETURN_NOT_OK(tablet_peer->set_cdc_min_replicated_index(replicated_index));
-  RETURN_NOT_OK(tablet_peer->SetCDCSDKRetainOpIdAndTime(
-      cdc_sdk_replicated_op, cdc_sdk_op_id_expiration, cdc_sdk_safe_time));
+  if (initial_retention_barrier) {
+    RETURN_NOT_OK(tablet_peer->SetAllInitialCDCRetentionBarriers(
+        replicated_index, cdc_sdk_replicated_op, cdc_sdk_safe_time,
+        true /* require_history_cutoff */));
+  } else {
+    auto barrier_revised = VERIFY_RESULT(tablet_peer->MoveForwardAllCDCRetentionBarriers(
+        replicated_index, cdc_sdk_replicated_op, cdc_sdk_op_id_expiration, cdc_sdk_safe_time,
+        true /* require_history_cutoff */));
+    if (!barrier_revised) {
+      // No need to rollback in this case
+      if (rollback_tablet_id_map) {
+        (*rollback_tablet_id_map).erase(&tablet_id);
+      }
+      return STATUS(TryAgain, "Revision of CDC retention barriers is currently blocked");
+    }
+  }
 
   if (PREDICT_FALSE(FLAGS_TEST_cdc_inject_replication_index_update_failure)) {
     return STATUS(InternalError, "Simulated error when setting the replication index");

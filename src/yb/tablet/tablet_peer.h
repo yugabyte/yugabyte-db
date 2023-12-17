@@ -404,6 +404,9 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
     return meta_;
   }
 
+  //------------------------------------------------------------------------------------------------
+  // CDC Related
+
   Status set_cdc_min_replicated_index(int64_t cdc_min_replicated_index);
 
   Status set_cdc_min_replicated_index_unlocked(int64_t cdc_min_replicated_index);
@@ -429,6 +432,23 @@ class TabletPeer : public std::enable_shared_from_this<TabletPeer>,
       const HybridTime& cdc_sdk_safe_time = HybridTime::kInvalid);
 
   Result<MonoDelta> GetCDCSDKIntentRetainTime(const int64_t& cdc_sdk_latest_active_time);
+
+  Result<bool> SetAllCDCRetentionBarriers(
+      int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, MonoDelta cdc_sdk_op_id_expiration,
+      HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff,
+      bool initial_retention_barrier);
+
+  Result<bool> SetAllInitialCDCRetentionBarriers(
+      int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, HybridTime cdc_sdk_history_cutoff,
+      bool require_history_cutoff);
+
+  Result<bool> SetAllInitialCDCSDKRetentionBarriers(
+      OpId cdc_sdk_op_id, HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff);
+
+  Result<bool> MoveForwardAllCDCRetentionBarriers(
+      int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, MonoDelta cdc_sdk_op_id_expiration,
+      HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff);
+  //------------------------------------------------------------------------------------------------
 
   OpId GetLatestCheckPoint();
 
