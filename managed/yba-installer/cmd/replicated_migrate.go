@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight"
@@ -42,7 +43,7 @@ and configs from the replicated YugabyteDB Anywhere install to one managed by YB
 The migration will stop, but not delete, all replicated app instances.
 
 NOTE: THIS FEATURE IS EARLY ACCESS
-` ,
+`,
 	Run: func(cmd *cobra.Command, args []string) {
 		state, err := ybactlstate.Initialize()
 		if err != nil {
@@ -127,6 +128,7 @@ NOTE: THIS FEATURE IS EARLY ACCESS
 		if err != nil {
 			log.Fatal("failed to migrated replicated config to yba-ctl config: " + err.Error())
 		}
+		state.RootInstall = viper.GetString("installRoot")
 
 		//re-init after exporting config
 		initServices()
