@@ -19,7 +19,7 @@ resources:
     url: /preview/yugabyte-voyager/
 ---
 
-YugabyteDB is distributed PostgreSQL that delivers on-demand scale, built-in resilience, and a multi-API interface to eliminate complexity and risk when powering business-critical transactional applications.
+YugabyteDB is distributed PostgreSQL that delivers on-demand scale, built-in resilience, flexible geo-distribution and a multi-API (PostgreSQL-compatible & Cassandra-inspired) interface to power business-critical applications.
 
 Using an innovative and re-architected distributed storage layer, YugabyteDB serves both scale-out RDBMS and internet-scale OLTP workloads with low query latency, extreme resilience against failures, and global data distribution. YugabyteDB can be deployed across public, private, and hybrid clouds as well as in Kubernetes environments
 
