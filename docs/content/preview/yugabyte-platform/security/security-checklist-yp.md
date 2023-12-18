@@ -22,9 +22,9 @@ You need to ensure that YugabyteDB Anywhere and the database run in a trusted ne
 
 For information on configuring ports, refer to [Configure ports](../customize-ports/).
 
-## Authentication
+## Database authentication
 
-Authentication requires that all clients provide valid credentials before they can connect to a YugabyteDB universe. The authentication credentials in YugabyteDB are stored internally in the YB-Master system tables. The authentication mechanisms available to users depends on what is supported and exposed by the YSQL, YCQL, and YEDIS APIs.
+Authentication requires that all clients provide valid credentials before they can connect to a YugabyteDB universe. The authentication credentials in YugabyteDB are stored internally in the YB-Master system tables. The authentication mechanisms available to users depends on what is supported and exposed by the YSQL and YCQL APIs.
 
 You enable authentication for the YSQL and YCQL APIs when you deploy a universe. See [Create YugabyteDB universe deployments](../../create-deployments/).
 
@@ -36,7 +36,7 @@ For more information on authentication in YugabyteDB, see [Enable authentication
 
 Roles can be assigned to grant users only the essential privileges based on the operations they need to perform in YugabyteDB Anywhere, and in YugabyteDB universes.
 
-To manage access to your YugabyteDB Anywhere instance, typically you create a [Super Admin role first](../../configure-yugabyte-platform/create-admin-user/). The Super Admin can create additional admins and other users with fewer privileges. For information on how to manage YugabyteDB Anywhere users and roles, see [Manage YugabyteDB Anywhere users](../../administer-yugabyte-platform/rbac-platform/).
+To manage access to your YugabyteDB Anywhere instance, typically you create a [Super Admin role first](../../configure-yugabyte-platform/create-admin-user/). The Super Admin can create additional admins and other users with fewer privileges. For information on how to manage YugabyteDB Anywhere users and roles, see [Manage YugabyteDB Anywhere users](../../administer-yugabyte-platform/anywhere-rbac/).
 
 For information on how to manage database roles and users, see [Database authorization](../authorization-platform).
 
@@ -50,6 +50,6 @@ For more information, see [Enable encryption in transit](../enable-encryption-in
 
 Encryption at rest ensures that data at rest, stored on disk, is protected. You can configure YugabyteDB universes with a user-generated symmetric key to perform universe-wide encryption.
 
-Encryption at rest in YugabyteDB Anywhere uses a master key to encrypt and decrypt universe keys. The master key details are stored in YugabyteDB Anywhere in key management service (KMS) configurations. You enable encryption at rest for a universe by assigning the universe a KMS configuration. The master key designated in the configuration is then used for generating the universe keys used for encrypting the universe data.
+Encryption at rest in YugabyteDB Anywhere uses a master key to encrypt and decrypt universe keys. The master key details are stored in YugabyteDB Anywhere in [key management service (KMS) configurations](../create-kms-config/aws-kms/). You enable encryption at rest for a universe by assigning the universe a KMS configuration. The master key designated in the configuration is then used for generating the universe keys used for encrypting the universe data.
 
 For more information, see [Enable encryption at rest](../enable-encryption-at-rest).
