@@ -44,25 +44,27 @@ If configured by the LDAP server, YugabyteDB Anywhere can prevent the user from 
 
 You can use the YugabyteDB Anywhere UI to enable LDAP authentication for YugabyteDB Anywhere login, as follows:
 
-- Navigate to **Admin > Access Management > User Authentication**.
+1. Navigate to **Admin > Access Management > User Authentication > LDAP Configuration**.
 
-- Complete the fields in the **LDAP Configuration** page shown in the following illustration:
+1. Select **Enable LDAP** and complete the fields in the **LDAP Configuration** page shown in the following illustration:
 
-  ![LDAP authentication](/images/yb-platform/ldap-auth-1.png)
+    ![LDAP authentication](/images/yb-platform/ldap-auth-1.png)
 
-  With the exception of the following fields, the descriptions of the preceding settings are provided in [Use the YugabyteDB Anywhere API](#use-the-yugabytedb-anywhere-api).
+    With the exception of the following fields, the descriptions of the preceding settings are provided in [Use the YugabyteDB Anywhere API](#use-the-yugabytedb-anywhere-api).
 
-  - The **LDAP URL** field value represents a combination of the `ldap_url` and `ldap_port` values separated by a colon, as in `0.0.0.0:9000`.
+    - The **LDAP URL** field value represents a combination of the `ldap_url` and `ldap_port` values separated by a colon, as in `0.0.0.0:9000`.
 
-  - The **Binding Mechanism** field allows you to select one of the following:
-    - **Simple Bind**, in which case you can proceed with the typical configuration.
-    - **Search and Bind**, in which case you are presented with a dialog to enter the **Search Attribute** value used for searching and binding. Note that this requires you to complete the **Service Account Details** fields.
+    - The **Binding Mechanism** field allows you to select one of the following:
+      - **Simple Bind**, in which case you can proceed with the typical configuration.
+      - **Search and Bind**, in which case you are presented with a dialog to enter the **Search Attribute** value used for searching and binding. Note that this requires you to complete the **Service Account Details** fields.
 
-  - The **Bind DN** field value represents the distinguished name (DN) used for searching and binding.
+    - The **Bind DN** field value represents the distinguished name (DN) used for searching and binding.
 
-  - You can map LDAP groups to [YugabyteDB Anywhere roles](../../security/authorization-platform/#roles) by enabling group mapping. See [Role management](#role-management).
+    - You can map LDAP groups to [YugabyteDB Anywhere roles](../../security/authorization-platform/#roles) by enabling group mapping. See [Role management](#role-management).
 
-  - Optionally, enter your LDAP service account credentials. If you are using group mapping, these credentials are required.
+    - Optionally, enter your LDAP service account credentials. If you are using group mapping, these credentials are required.
+
+1. Click **Save**.
 
 ### Use the YugabyteDB Anywhere API
 

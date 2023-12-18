@@ -63,26 +63,27 @@ To see the users that are assigned a specific role, navigate to **Admin > Access
 
 The following built-in roles are available:
 
-- **Super Admin** is the first user that is created during the installation. This role has the highest level of privilege that allows all read and write actions on all YugabyteDB Anywhere resources. There can be only one Super Admin. This Super Admin can perform the following:
+- **Super Admin** is the first user that is created during installation. This role has the highest level of privilege and allows all read and write actions on all YugabyteDB Anywhere resources. There can be only one Super Admin. Super Admin can perform the following:
 
   - Manage all resources, including universes, nodes, backup, restore, and cloud providers.
   - Manage the user access control by creating and managing users.
 
-  For more information, see [admin user](../../configure-yugabyte-platform/create-admin-user/).
+  For more information, see [Create admin user](../../configure-yugabyte-platform/create-admin-user/).
 
-- **Admin** has privileges that are similar to the Super Admin, except that the Admin cannot manage the global scope artifacts and actions, such as runtime configuration settings and LDAP authentication.
+- **Admin** has privileges that are similar to the Super Admin, except that Admin cannot manage global scope artifacts and actions, such as runtime configuration settings and LDAP authentication.
 
-- **Backup Admin** has access to the backup related tasks, such as the following:
+- **Backup Admin** has access to backup-related tasks, such as the following:
 
   - Manage database backups and restore operations.
   - Create new backups.
   - Delete any existing backup or backup schedule.
   - Edit existing backups.
-  - Read-only permissions for all other resources in YugabyteDB Anywhere.
 
-- **Read-only** access level provides viewer permission to the UI and API.
+  Backup Admin has View permissions for all other resources.
 
-- **Connect-only** access level provides access to the user profile only. This is the default assigned to users who are not explicitly assigned a role.
+- **Read-only** access level provides view permissions for the UI and API.
+
+- **Connect-only** access level allows users to sign in and access their user profile only. This role is assigned to users who are not explicitly assigned a role.
 
 You can't delete or edit built-in roles.
 
