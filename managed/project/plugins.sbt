@@ -19,7 +19,7 @@ dependencyOverrides ++= jacksonOverrides
 
 dependencyOverrides += "com.google.googlejavaformat" % "google-java-format" % "1.17.0"
 
-libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.2.11"
+libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.4.14"
 
 // The Play plugin
 addSbtPlugin("org.playframework" % "sbt-plugin" % "3.0.0")
