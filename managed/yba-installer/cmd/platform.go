@@ -21,6 +21,7 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/config"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
+	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/replicated/replicatedctl"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/systemd"
 )
 
@@ -565,6 +566,7 @@ func (plat Platform) MigrateFromReplicated() error {
 			return err
 		}
 	} else {
+		log.Debug("found server.pem from docker.")
 		serverPemPath := filepath.Join(common.GetSelfSignedCertsDir(), common.ServerPemPath)
 		pemFile, err := common.Create(serverPemPath)
 		if err != nil {
@@ -575,6 +577,15 @@ func (plat Platform) MigrateFromReplicated() error {
 		if _, err := pemFile.WriteString(pemVal); err != nil {
 			return fmt.Errorf("failed to write pem file at %s: %w", serverPemPath, err)
 		}
+
+		log.Debug("Copying replicated ca key and cert for server.pem")
+		// Key file
+		common.CopyFile(filepath.Join(replicatedctl.SecretsDirectory, "ca.key"),
+			filepath.Join(common.GetSelfSignedCertsDir(), "replicated-ca.key"))
+		// Cert file
+		common.CopyFile(filepath.Join(replicatedctl.SecretsDirectory, "ca.crt"),
+			filepath.Join(common.GetSelfSignedCertsDir(), "replicated-ca.crt"))
+
 	}
 
 	//Create the platform.log file so that we can start platform as
