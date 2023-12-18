@@ -224,6 +224,8 @@ message ReadRequestPB {
   optional double rejection_score = 13;
 
   optional uint64 batch_idx = 14;
+
+  optional uint64 start_time_micros = 16;
 }
 
 message ReadResponsePB {
