@@ -11,6 +11,7 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
+import com.yugabyte.yw.controllers.handlers.GFlagsAuditHandler;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
@@ -23,7 +24,6 @@ import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.SystemdUpgradeParams;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.models.Audit;
@@ -41,7 +41,6 @@ import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
-import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Http.Request;
 import play.mvc.Result;
@@ -57,6 +56,8 @@ public class UpgradeUniverseController extends AuthenticatedController {
   @Inject RuntimeConfigFactory runtimeConfigFactory;
 
   @Inject RuntimeConfGetter confGetter;
+
+  @Inject GFlagsAuditHandler gFlagsAuditHandler;
 
   /**
    * API that restarts all nodes in the universe. Supports rolling and non-rolling restart
@@ -487,20 +488,13 @@ public class UpgradeUniverseController extends AuthenticatedController {
         universe.getName(),
         universe.getUniverseUUID(),
         customer.getUuid());
-
-    // prevent race condition in the case userIntent updates before we createAuditEntry
-    UserIntent userIntent =
-        Json.fromJson(
-            Json.toJson(universe.getUniverseDetails().getPrimaryCluster().userIntent),
-            UserIntent.class);
-    UUID taskUuid = serviceMethod.upgrade(requestParams, customer, universe);
     JsonNode additionalDetails = null;
     if (GFlagsUpgradeParams.class.isAssignableFrom(type)) {
       log.debug("setting up gflag audit logging");
       additionalDetails =
-          upgradeUniverseHandler.constructGFlagAuditPayload(
-              (GFlagsUpgradeParams) requestParams, userIntent);
+          gFlagsAuditHandler.constructGFlagAuditPayload((GFlagsUpgradeParams) requestParams);
     }
+    UUID taskUuid = serviceMethod.upgrade(requestParams, customer, universe);
     auditService()
         .createAuditEntryWithReqBody(
             request,

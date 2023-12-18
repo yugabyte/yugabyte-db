@@ -738,7 +738,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.provider = provider;
       newUserIntent.providerType = providerType;
       newUserIntent.replicationFactor = replicationFactor;
-      newUserIntent.regionList = new ArrayList<>(regionList);
+      if (regionList != null) {
+        newUserIntent.regionList = new ArrayList<>(regionList);
+      }
       newUserIntent.preferredRegion = preferredRegion;
       newUserIntent.instanceType = instanceType;
       newUserIntent.numNodes = numNodes;
