@@ -751,7 +751,7 @@ You can install the YugabyteDB node agent manually as follows:
 1. Run the following command to enable the node agent as a systemd service, which is required for self-upgrade and other functions:
 
    ```sh
-   sudo node-agent-installer.sh -c install-service --user yugabyte
+   sudo node-agent-installer.sh -c install_service --user yugabyte
    ```
 
 When the installation has been completed, the configurations are saved in the `config.yml` file located in the `node-agent/config/` directory. You should refrain from manually changing values in this file.
