@@ -570,23 +570,20 @@ restore_backup() {
 
   modify_service yb-platform stop
 
-  db_backup_path="${destination}/${PLATFORM_DUMP_FNAME}"
-  yugabackup="${destination}"/"${MIGRATION_BACKUP_DIR}"
-  trap 'delete_db_backup ${db_backup_path}' RETURN
+  untar_dir="${destination}"
   tar_cmd="tar -xzf"
   if [[ "${verbose}" = true ]]; then
     tar_cmd="tar -xzvf"
   fi
   if [[ "${migration}" = true ]]; then
-    # Copy over migration backup data into the correct yba-installer paths
-    db_backup_path="${yugabackup}"/"${PLATFORM_DUMP_FNAME}"
-    rm -rf "${yugabackup}"
-    mkdir -p "${yugabackup}"
-    $tar_cmd "${input_path}" --directory "${yugabackup}"
+    untar_dir="${destination}"/"${MIGRATION_BACKUP_DIR}"
+    rm -rf "${untar_dir}"
+    mkdir -p "${untar_dir}"
+    $tar_cmd "${input_path}" --directory "${untar_dir}"
 
     # Copy over releases. Need to ignore node-agent/ybc releases
     set +e
-    releasesdir=$(find "${yugabackup}" -name "releases" -type d | \
+    releasesdir=$(find "${untar_dir}" -name "releases" -type d | \
                   grep -v "ybc" | grep -v "node-agent")
     set -e
     if [[ "$releasesdir" != "" ]] && [[ -d "$releasesdir" ]]; then
@@ -599,7 +596,7 @@ restore_backup() {
     for d in "${BACKUP_DIRS[@]}"
     do
       set +e
-      found_dir=$(find "${yugabackup}" -path "$d" -type d)
+      found_dir=$(find "${untar_dir}" -path "$d" -type d)
       set -e
       if [[ "$found_dir" != "" ]] && [[ -d "$found_dir" ]]; then
         cp -R "$found_dir" "$ybai_data_dir"
@@ -610,6 +607,8 @@ restore_backup() {
     $tar_cmd "${input_path}" --directory "${destination}" --skip-old-files
   fi
 
+  db_backup_path="${untar_dir}"/"${PLATFORM_DUMP_FNAME}"
+  trap 'delete_db_backup ${db_backup_path}' RETURN
   if [[ "${ybdb}" = true ]]; then
     restore_ybdb_backup "${db_backup_path}" "${db_username}" "${db_host}" "${db_port}" \
       "${verbose}" "${yba_installer}" "${ysqlsh_path}"
@@ -629,13 +628,17 @@ restore_backup() {
     modify_service prometheus stop
     # Find snapshot directory in backup
     run_sudo_cmd "rm -rf ${PROMETHEUS_DATA_DIR}/*"
-    run_sudo_cmd "mv ${destination}/${prom_snapshot:2}* ${PROMETHEUS_DATA_DIR}"
+    run_sudo_cmd "mv ${untar_dir}/${prom_snapshot:2}* ${PROMETHEUS_DATA_DIR}"
     if [[ "${yba_installer}" = true ]] && [[ "${migration}" = true ]]; then
-      backup_targets=$(find "${yugabackup}" -name swamper_targets -type d)
+      set +e
+      backup_targets=$(find "${untar_dir}" -name swamper_targets -type d)
+      set -e
       if  [[ "$backup_targets" != "" ]] && [[ -d "$backup_targets" ]]; then
         run_sudo_cmd "cp -Tr ${backup_targets} ${destination}/data/prometheus/swamper_targets"
       fi
-      backup_rules=$(find "${yugabackup}" -name swamper_rules -type d)
+      set +e
+      backup_rules=$(find "${untar_dir}" -name swamper_rules -type d)
+      set -e
       if  [[ "$backup_rules" != "" ]] && [[ -d "$backup_rules" ]]; then
         run_sudo_cmd "cp -Tr ${backup_rules} ${destination}/data/prometheus/swamper_rules"
       fi
@@ -649,7 +652,7 @@ restore_backup() {
       run_sudo_cmd "chown -R ${NOBODY_UID}:${NOBODY_UID} ${PROMETHEUS_DATA_DIR}"
     fi
     # Clean up snapshot after restore
-    run_sudo_cmd "rm -rf ${destination}/${PROMETHEUS_SNAPSHOT_DIR}"
+    run_sudo_cmd "rm -rf ${untar_dir}/${PROMETHEUS_SNAPSHOT_DIR}"
     # Manually execute so postgres TRAP executes.
     modify_service prometheus restart
     if [[ "$DOCKER_BASED" = true ]]; then
