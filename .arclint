@@ -59,7 +59,7 @@
       "type": "text",
       "text.max-line-length": 100,
       "exclude": [
-        "(^pg15_tests/.*[.]sh$)",
+        "(^pg15_tests/.*[.](sh|tsv)$)",
         "(^managed/.*[.]go$)",
         "(^managed/.*/go[.]mod)",
         "(^managed/.*/go[.]sum)",

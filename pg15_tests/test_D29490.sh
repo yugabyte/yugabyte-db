@@ -1,7 +1,6 @@
 #!/usr/bin/env bash
 source "${BASH_SOURCE[0]%/*}"/common.sh
 
-java_test TestPgRegressTabletSplit
 java_test TestPgRegressPgMisc false
 grep_in_java_test \
   "failed tests: [yb_pg_create_operator, yb_pg_create_table, yb_pg_create_type, yb_pg_with]" \

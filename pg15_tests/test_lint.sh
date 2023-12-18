@@ -10,6 +10,12 @@ diff <(find . -name '*.sh' | grep -v '^./test_' | sort) - <<EOT
 ./run_test_n_times.sh
 EOT
 
+# passing_foo.tsv should be sorted and have no duplicates.
+find . -name 'passing_*.tsv' \
+  | while read -r tsv; do
+  sort -cu "$tsv"
+done
+
 find . -name '*.sh' \
   | grep '^./test_' \
   | while read -r test_file; do

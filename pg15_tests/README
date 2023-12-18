@@ -10,10 +10,13 @@ Run all tests once like
 
     pg15_tests/run_all_tests.sh fastdebug --clang16
 
-Add tests by adding a new test file following the existing conventions.  Make
-sure it passes 10x in a row to avoid introducing flaky tests, and make sure all
-tests pass (at least once) to avoid regressions.  Note: these tests are not
-covered by jenkins.
+Add passing tests into passing_cxx.tsv or passing_java.tsv.
+
+Add failing tests by adding a new test file following the existing conventions.
+
+Make sure new tests pass 10x in a row to avoid introducing flaky tests, and
+make sure all tests pass (at least once) to avoid regressions.  Note: these
+tests are not covered by jenkins.
 
 In the later stages of pg15, there will be no more need for these tests because
 the underlying tests will pass.  For now, these tests are most useful to assert
