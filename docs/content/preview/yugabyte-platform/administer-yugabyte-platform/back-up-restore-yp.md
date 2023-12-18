@@ -8,7 +8,7 @@ menu:
   preview_yugabyte-platform:
     identifier: back-up-restore-yp
     parent: administer-yugabyte-platform
-    weight: 20
+    weight: 30
 type: docs
 ---
 

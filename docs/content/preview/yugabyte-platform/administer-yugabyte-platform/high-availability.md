@@ -11,7 +11,7 @@ menu:
   preview_yugabyte-platform:
     identifier: platform-high-availability
     parent: administer-yugabyte-platform
-    weight: 15
+    weight: 40
 type: docs
 ---
 

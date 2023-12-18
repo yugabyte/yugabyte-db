@@ -8,7 +8,7 @@ menu:
   preview_yugabyte-platform:
     parent: administer-yugabyte-platform
     identifier: anywhere-rbac
-    weight: 27
+    weight: 10
 type: docs
 ---
 
