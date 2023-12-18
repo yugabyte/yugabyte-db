@@ -20,7 +20,7 @@ The following table describes the YugabyteDB features you can explore, along wit
 | Section | Purpose | [Universe&nbsp;setup](#set-up-yugabytedb-universe) |
 | :--- | :--- | :--- |
 | [SQL features](ysql-language-features/) | Learn about YugabyteDB's compatibility with PostgreSQL, including data types, queries, expressions, operators, extensions, and more. | Single-node<br/>local/cloud |
-| [YCQL features](ycql-language/) | Learn about YugabyteDB's Apache Cassandra compatible YCQL language features. | Single-node<br/>local/cloud |
+| [YCQL features](ycql-language/) | Learn about YugabyteDB's Apache Cassandra-compatible YCQL language features. | Single-node<br/>local/cloud |
 | [Going beyond SQL](ysql-language-features/going-beyond-sql/) | Learn about reducing read latency via follower reads and moving data closer to users using tablespaces. | Multi-node<br/>local |
 | [Continuous availability](fault-tolerance/) | Learn how YugabyteDB achieves high availability when a node fails. | Multi-node<br/>local |
 | [Horizontal scalability](linear-scalability/) | See how YugabyteDB handles loads while dynamically adding or removing nodes. | Multi-node<br/>local |
@@ -246,7 +246,7 @@ For instructions on creating a universe in YugabyteDB Anywhere, refer to [Create
 
 YB Workload Simulator is a Java application that simulates workloads against YugabyteDB and provides live metrics of latency and throughput from the application's point of view. Some Explore topics use the application to demonstrate features of YugabyteDB.
 
-The application uses the YugabyteDB JDBC [Smart Driver](../drivers-orms/smart-drivers/), which features universe- and topology-aware connection load balancing. The driver automatically balances application connections across the nodes in a universe, and rebalances connections when a node fails. For more information, see [YB Workload Simulator](https://github.com/YugabyteDB-Samples/yb-workload-simulator/).
+The application uses the YugabyteDB JDBC [Smart Driver](../drivers-orms/smart-drivers/), which features universe- and topology-aware connection load balancing. The driver automatically balances application connections across the nodes in a universe, and re-balances connections when a node fails. For more information, see [YB Workload Simulator](https://github.com/YugabyteDB-Samples/yb-workload-simulator/).
 
 ### Download
 
