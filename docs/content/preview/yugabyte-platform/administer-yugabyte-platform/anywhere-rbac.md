@@ -63,24 +63,26 @@ To see the users that are assigned a specific role, navigate to **Admin > Access
 
 The following built-in roles are available:
 
-* **Super Admin** is the first user that is created during the installation. This role has the highest level of privilege that allows all read and write actions on all YugabyteDB Anywhere resources. There can be only one Super Admin. This Super Admin can perform the following:
+- **Super Admin** is the first user that is created during the installation. This role has the highest level of privilege that allows all read and write actions on all YugabyteDB Anywhere resources. There can be only one Super Admin. This Super Admin can perform the following:
 
-  * Manage all resources, including universes, nodes, backup, restore, and cloud providers.
-  * Manage the user access control by creating and managing users.
+  - Manage all resources, including universes, nodes, backup, restore, and cloud providers.
+  - Manage the user access control by creating and managing users.
 
   For more information, see [admin user](../../configure-yugabyte-platform/create-admin-user/).
 
-* **Admin** has privileges that are similar to the Super Admin, except that the Admin cannot manage the global scope artifacts and actions, such as runtime configuration settings and LDAP authentication.
+- **Admin** has privileges that are similar to the Super Admin, except that the Admin cannot manage the global scope artifacts and actions, such as runtime configuration settings and LDAP authentication.
 
-* **Backup Admin** has access to the backup related tasks, such as the following:
+- **Backup Admin** has access to the backup related tasks, such as the following:
 
-  * Manage database backups and restore operations.
-  * Create new backups.
-  * Delete any existing backup or backup schedule.
-  * Edit existing backups.
-  * Read-only permissions for all other resources in YugabyteDB Anywhere.
+  - Manage database backups and restore operations.
+  - Create new backups.
+  - Delete any existing backup or backup schedule.
+  - Edit existing backups.
+  - Read-only permissions for all other resources in YugabyteDB Anywhere.
 
-* **Read-only** access level provides viewer permission to the UI and API.
+- **Read-only** access level provides viewer permission to the UI and API.
+
+- **Connect-only** access level provides access to the user profile only. This is the default assigned to users who are not explicitly assigned a role.
 
 You can't delete or edit built-in roles.
 
@@ -88,9 +90,9 @@ You can't delete or edit built-in roles.
 
 As a Super Admin or Admin, you can:
 
-* create custom roles
-* clone built-in and custom roles
-* modify and delete custom roles
+- create custom roles
+- clone built-in and custom roles
+- modify and delete custom roles
 
 To create a custom role, do the following:
 
@@ -120,3 +122,13 @@ To edit a custom role, do the following:
 To delete a role, navigate to **Admin > Access Management > Roles**, click **Actions** for the role to edit, and choose **Edit Role**.
 
 To view the users that have been assigned a role, navigate to **Admin > Access Management > Roles**, click **Actions** for the role, and choose **View Assigned Users**.
+
+## Limitations
+
+- Currently, the View Universe permission additionally requires the View Resource permission to work correctly with metrics, performance advisor, and other resources.
+- Deleting backups via the delete backup API requires the Delete Resource permission, but when deleting a universe you can choose to delete the associated backups even if you only have the Delete Universe permission.
+- Retrying and aborting a task can require different permissions than executing it the first time.
+- Currently, when creating a user, you can select **Include Future Universes** only when you have selected all current universes.
+- You may need to refresh your browser after creating a universe to apply the permissions for the newly created universe.
+- Currently, LDAP group mapping is not supported for custom roles. Only built-in roles are supported for LDAP users.
+- The View Resource permission provides view access to all logs, task logs, and so on.
