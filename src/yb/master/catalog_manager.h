@@ -2696,7 +2696,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                                const std::vector<TableId>& table_ids,
                                bool has_consistent_snapshot_option,
                                bool consistent_snapshot_option_use,
-                               uint64_t consistent_snapshot_time);
+                               uint64_t consistent_snapshot_time,
+                               uint64_t stream_creation_time);
 
   Status SetAllCDCSDKRetentionBarriers(
       const CreateCDCStreamRequestPB& req, rpc::RpcContext* rpc, const LeaderEpoch& epoch,

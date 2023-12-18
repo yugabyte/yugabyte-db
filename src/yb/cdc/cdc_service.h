@@ -242,6 +242,10 @@ class CDCServiceImpl : public CDCServiceIf {
   Status CheckStreamActive(
       const ProducerTabletInfo& producer_tablet, const int64_t& last_active_time_passed = 0);
 
+  Status CheckTabletNotOfInterest(
+      const ProducerTabletInfo& producer_tablet, int64_t last_active_time_passed = 0,
+      bool deletion_check = false);
+
   Result<int64_t> GetLastActiveTime(
       const ProducerTabletInfo& producer_tablet, bool ignore_cache = false);
 

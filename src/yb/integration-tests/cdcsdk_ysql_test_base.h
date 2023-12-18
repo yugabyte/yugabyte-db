@@ -133,6 +133,7 @@ DECLARE_bool(cdc_enable_postgres_replica_identity);
 DECLARE_uint64(ysql_cdc_active_replication_slot_window_ms);
 DECLARE_bool(enable_log_retention_by_op_idx);
 DECLARE_bool(TEST_yb_enable_cdc_consistent_snapshot_streams);
+DECLARE_uint32(cdcsdk_tablet_not_of_interest_timeout_secs);
 
 namespace yb {
 
@@ -531,6 +532,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   Result<std::vector<TableId>> GetCDCStreamTableIds(const xrepl::StreamId& stream_id);
 
+  Result<master::GetCDCStreamResponsePB> GetCDCStream(const xrepl::StreamId& stream_id);
+
   uint32_t GetTotalNumRecordsInTablet(
       const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
@@ -597,6 +600,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void LogRetentionBarrierAndRelatedDetails(const GetCheckpointResponsePB& checkpoint_result,
                                             const tablet::TabletPeerPtr& tablet_peer);
+
+  void LogRetentionBarrierDetails(const tablet::TabletPeerPtr& tablet_peer);
 
   void ConsumeSnapshotAndVerifyRecords(
       const xrepl::StreamId& stream_id,

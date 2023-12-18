@@ -517,6 +517,7 @@ message SysCDCStreamEntryPB {
   optional bool transactional = 5; // [default = false]
   optional string cdcsdk_ysql_replication_slot_name = 6;
   optional CDCSDKStreamEntryPB cdcsdk_stream_metadata = 7;
+  optional uint64 stream_creation_time = 8;
 }
 
 

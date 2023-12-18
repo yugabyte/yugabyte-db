@@ -22,23 +22,11 @@ class CDCSDKConsistentSnapshotTest : public CDCSDKYsqlTest {
   void SetUp() override {
     CDCSDKYsqlTest::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_yb_enable_cdc_consistent_snapshot_streams) = true;
-  }
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables) = true;
 
-  Result<master::GetCDCStreamResponsePB> GetCDCStream(const xrepl::StreamId& db_stream_id) {
-    master::GetCDCStreamRequestPB get_req;
-    master::GetCDCStreamResponsePB get_resp;
-    get_req.set_stream_id(db_stream_id.ToString());
-
-    RpcController get_rpc;
-    get_rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
-
-    master::MasterReplicationProxy master_proxy_(
-        &test_client()->proxy_cache(),
-        VERIFY_RESULT(test_cluster_.mini_cluster_->GetLeaderMasterBoundRpcAddr()));
-
-    RETURN_NOT_OK(master_proxy_.GetCDCStream(get_req, &get_resp, &get_rpc));
-
-    return get_resp;
+    // Disable pg replication command support to ensure that consistent snapshot feature
+    // works independently.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_commands) = false;
   }
 
 };
@@ -141,6 +129,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestConsistentSnapshotMetadataPersistence) 
   auto resp = ASSERT_RESULT(GetCDCStream(stream_id));
   ASSERT_TRUE(resp.stream().has_cdcsdk_consistent_snapshot_option());
   ASSERT_TRUE(resp.stream().has_cdcsdk_consistent_snapshot_time());
+  ASSERT_TRUE(resp.stream().has_stream_creation_time());
   for (const auto& option : resp.stream().options()) {
     if (option.key() == "state") {
       master::SysCDCStreamEntryPB_State state;
@@ -1174,6 +1163,135 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestConsistentSnapshotAcrossMultipleTables)
     expected_record_count++;
   }
   ASSERT_EQ(expected_record_count, 2);
+
+}
+
+// Test to ensure that retention barriers on tables for which there is no interest in
+// consumption are released. This should apply only to consistent snapshot streams
+// and not to older version streams.
+TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesOnUnpolledTablets) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_tablet_not_of_interest_timeout_secs) = 3;
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE TABLE test1(id1 int primary key);"));
+  ASSERT_OK(
+      conn.ExecuteFormat("CREATE TABLE test2(id2 int primary key);"));
+
+  auto table1 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test1"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets1;
+  ASSERT_OK(test_client()->GetTablets(table1, 0, &tablets1, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets1.size(), 1);
+  auto tablet1_peer =
+      ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets1.begin()->tablet_id()));
+
+  auto table2 = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, "test2"));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets2;
+  ASSERT_OK(test_client()->GetTablets(table2, 0, &tablets2, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets2.size(), 1);
+  auto tablet2_peer =
+      ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets2.begin()->tablet_id()));
+
+  // Insert a row each into test1 and test2
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO test1 VALUES ($0)", 1));
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO test2 VALUES ($0)", 1));
+
+  // Create a Non Consistent Snapshot Stream and another Consistent Snapshot streams
+  auto stream_id = ASSERT_RESULT(CreateDBStream());
+  auto cs_stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  // For cs_stream_id, only poll table1 but not table2
+  auto cp_resp1 =
+      ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(cs_stream_id, tablets1[0].tablet_id()));
+  auto cp_resp2 =
+      ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(cs_stream_id, tablets2[0].tablet_id()));
+  auto change_resp1 = ASSERT_RESULT(UpdateCheckpoint(cs_stream_id, tablets1, cp_resp1));
+
+  SleepFor(MonoDelta::FromSeconds(4));
+  ASSERT_NOK(UpdateCheckpoint(cs_stream_id, tablets2, cp_resp2));
+  ASSERT_OK(UpdateCheckpoint(cs_stream_id, tablets1, &change_resp1));
+  ASSERT_OK(GetLastActiveTimeFromCdcStateTable(stream_id, tablets1[0].tablet_id(), test_client()));
+  ASSERT_OK(GetLastActiveTimeFromCdcStateTable(stream_id, tablets2[0].tablet_id(), test_client()));
+
+  // Test for the following -
+  //  1) cdc_state table entry for (cs_stream_id, tablet1) should be present
+  //  2) cdc_state table entry for (cs_stream_id, tablet2) should still be present
+  //  3) Retention barriers on tablet1 must be in place
+  //  4) Retention barriers on tablet2 should be released
+  //  5) GetChanges on stream_id should work for both tablet1 and tablet2
+  SleepFor(MonoDelta::FromSeconds(5));
+  ASSERT_OK(GetLastActiveTimeFromCdcStateTable(
+      cs_stream_id, tablets1[0].tablet_id(), test_client()));
+  ASSERT_OK(GetLastActiveTimeFromCdcStateTable(
+      cs_stream_id, tablets2[0].tablet_id(), test_client()));
+  ASSERT_NE(tablet1_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+  ASSERT_LT(tablet1_peer->get_cdc_min_replicated_index(), OpId::Max().index);
+  ASSERT_LT(tablet1_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
+  ASSERT_EQ(tablet2_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
+  ASSERT_EQ(tablet2_peer->get_cdc_min_replicated_index(), OpId::Max().index);
+  ASSERT_EQ(tablet2_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+  ASSERT_OK(SetCDCCheckpoint(stream_id, tablets1));
+  ASSERT_OK(GetChangesFromCDCSnapshot(stream_id, tablets1));
+  ASSERT_OK(SetCDCCheckpoint(stream_id, tablets2));
+  ASSERT_OK(GetChangesFromCDCSnapshot(stream_id, tablets2));
+
+}
+
+TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesOnUnpolledSplitTablets) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+  const uint32_t num_tablets = 1;
+  auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, num_tablets));
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, /* partition_list_version=*/nullptr));
+  ASSERT_EQ(tablets.size(), num_tablets);
+
+  ASSERT_OK(WriteRowsHelper(100, 200, &test_cluster_, true));
+  ASSERT_OK(test_client()->FlushTables(
+      {table.table_id()}, /* add_indexes = */ false, /* timeout_secs = */ 30,
+      /* is_compaction = */ false));
+
+  // Create the consistent snapshot stream
+  ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  ASSERT_OK(SplitTablet(tablets.Get(0).tablet_id(), &test_cluster_));
+  SleepFor(MonoDelta::FromSeconds(60));
+  // WaitUntilSplitIsSuccesful(tablets.Get(0).tablet_id(), table);
+  LOG(INFO) << "Tablet split succeeded";
+
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets_after_split;
+  ASSERT_OK(test_client()->GetTablets(
+      table, 0, &tablets_after_split, /* partition_list_version =*/nullptr));
+  ASSERT_EQ(tablets_after_split.size(), num_tablets * 2);
+
+  // Check that parent and child tablets have valid retention barriers
+  for (const auto& tablet : {tablets[0], tablets_after_split[0], tablets_after_split[1]}) {
+    auto tablet_peer =
+        ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablet.tablet_id()));
+    LogRetentionBarrierDetails(tablet_peer);
+    ASSERT_NE(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+    ASSERT_LT(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
+    ASSERT_LT(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
+  }
+
+  // Now, sleep and make stream indicate no interest in all tablets
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_tablet_not_of_interest_timeout_secs) = 3;
+  SleepFor(MonoDelta::FromSeconds(8));
+
+  // Check that retention barriers have been released on parent and child tablets
+  for (const auto& tablet : {tablets[0], tablets_after_split[0], tablets_after_split[1]}) {
+    auto tablet_peer =
+        ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablet.tablet_id()));
+    LogRetentionBarrierDetails(tablet_peer);
+    ASSERT_EQ(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
+    ASSERT_EQ(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
+    ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+  }
 
 }
 

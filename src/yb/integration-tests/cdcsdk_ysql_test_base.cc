@@ -2248,6 +2248,24 @@ namespace cdc {
     return stream_table_ids;
   }
 
+  Result<master::GetCDCStreamResponsePB> CDCSDKYsqlTest::GetCDCStream(
+      const xrepl::StreamId& db_stream_id) {
+    master::GetCDCStreamRequestPB get_req;
+    master::GetCDCStreamResponsePB get_resp;
+    get_req.set_stream_id(db_stream_id.ToString());
+
+    RpcController get_rpc;
+    get_rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
+
+    master::MasterReplicationProxy master_proxy_(
+        &test_client()->proxy_cache(),
+        VERIFY_RESULT(test_cluster_.mini_cluster_->GetLeaderMasterBoundRpcAddr()));
+
+    RETURN_NOT_OK(master_proxy_.GetCDCStream(get_req, &get_resp, &get_rpc));
+
+    return get_resp;
+  }
+
   uint32_t CDCSDKYsqlTest::GetTotalNumRecordsInTablet(
       const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
@@ -3323,12 +3341,21 @@ namespace cdc {
   }
 
   void CDCSDKYsqlTest::LogRetentionBarrierAndRelatedDetails(
-    const GetCheckpointResponsePB& checkpoint_result,
-    const tablet::TabletPeerPtr& tablet_peer) {
+      const GetCheckpointResponsePB& checkpoint_result,
+      const tablet::TabletPeerPtr& tablet_peer) {
 
     LOG(INFO) << "Snapshot Time : " << checkpoint_result.snapshot_time();
     LOG(INFO) << "History cutoff: " << tablet_peer->get_cdc_sdk_safe_time();
     LOG(INFO) << "Snapshot Safe Opid: " <<  checkpoint_result.checkpoint().op_id()
+              << ", WAL index protected from: " << tablet_peer->get_cdc_min_replicated_index()
+              << ", Intents protected from: " << tablet_peer->cdc_sdk_min_checkpoint_op_id();
+  }
+
+  void CDCSDKYsqlTest::LogRetentionBarrierDetails(
+      const tablet::TabletPeerPtr& tablet_peer) {
+
+    LOG(INFO) << tablet_peer->LogPrefix()
+              << " History cutoff: " << tablet_peer->get_cdc_sdk_safe_time()
               << ", WAL index protected from: " << tablet_peer->get_cdc_min_replicated_index()
               << ", Intents protected from: " << tablet_peer->cdc_sdk_min_checkpoint_op_id();
   }
