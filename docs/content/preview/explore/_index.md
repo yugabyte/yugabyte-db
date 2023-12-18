@@ -24,6 +24,7 @@ The following table describes the YugabyteDB features you can explore, along wit
 | Section | Purpose | [Universe&nbsp;setup](#set-up-yugabytedb-universe) |
 | :--- | :--- | :--- |
 | [SQL features](ysql-language-features/) | Learn about YugabyteDB's compatibility with PostgreSQL, including data types, queries, expressions, operators, extensions, and more. | Single-node<br/>local/cloud |
+| [YCQL features](ycql-language/) | Learn about YugabyteDB's Apache Cassandra-compatible YCQL language features. | Single-node<br/>local/cloud |
 | [Going beyond SQL](ysql-language-features/going-beyond-sql/) | Learn about reducing read latency via follower reads and moving data closer to users using tablespaces. | Multi-node<br/>local |
 | [Continuous availability](fault-tolerance/) | Learn how YugabyteDB achieves high availability when a node fails. | Multi-node<br/>local |
 | [Horizontal scalability](linear-scalability/) | See how YugabyteDB handles loads while dynamically adding or removing nodes. | Multi-node<br/>local |
@@ -36,7 +37,6 @@ The following table describes the YugabyteDB features you can explore, along wit
 | [Change data capture](change-data-capture/) | Learn about YugabyteDB support for streaming data to Kafka. | N/A |
 | [Security](security/security/) | Learn how to secure data in YugabyteDB, using authentication, authorization (RBAC), encryption, and more. | Single-node<br/>local/cloud |
 | [Observability](observability/) | Export metrics into Prometheus and create dashboards using Grafana. | Multi-node<br/>local |
-| [YCQL features](ycql-language/) | Learn about YugabyteDB's Apache Cassandra compatible YCQL language features. | Single-node<br/>local/cloud |
 
 ## Set up YugabyteDB universe
 
