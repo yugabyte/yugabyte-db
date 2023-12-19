@@ -32,6 +32,7 @@ import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -86,10 +87,10 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       } else {
         universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
       }
-      kubernetesStatus.createYBUniverseEventStatus(
+      kubernetesStatus.startYBUniverseEventStatus(
           universe,
           params().getKubernetesResourceDetails(),
-          getName(),
+          TaskType.DestroyKubernetesUniverse.name(),
           getUserTaskUUID(),
           UniverseState.DELETING);
       // Delete xCluster configs involving this universe and put the locked universes to
@@ -234,7 +235,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       kubernetesStatus.updateYBUniverseStatus(
           universe,
           params().getKubernetesResourceDetails(),
-          getName(),
+          TaskType.DestroyKubernetesUniverse.name(),
           getUserTaskUUID(),
           UniverseState.DELETING,
           null);
@@ -244,7 +245,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
           kubernetesStatus.updateYBUniverseStatus(
               universe,
               params().getKubernetesResourceDetails(),
-              getName(),
+              TaskType.DestroyKubernetesUniverse.name(),
               getUserTaskUUID(),
               UniverseState.ERROR,
               t);

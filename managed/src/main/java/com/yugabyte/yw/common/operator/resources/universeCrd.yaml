@@ -581,10 +581,6 @@ spec:
                                           type: array
                                           items:
                                             type: string
-
-
-
-
                           nodeAffinity:
                             description: Node affinity settings
                             type: object
@@ -1310,8 +1306,6 @@ spec:
           status:
             type: object
             properties:
-              universeStatus:
-                type: string
               universeState:
                 type: string
               sqlEndpoints:
@@ -1324,6 +1318,23 @@ spec:
                   type: string
               resourceUUID:
                 type: string
+              actions:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    action_type:
+                      type: string
+                    message:
+                      type: string
+                    taskUUID:
+                      type: string
+                    status:
+                      type: string
+                      enum:
+                      - queued
+                      - running
+                      - failed
 
     subresources:
       status: {}

@@ -20,6 +20,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
+import com.yugabyte.yw.models.helpers.TaskType;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -79,10 +80,10 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           Cluster cluster = getUniverse().getUniverseDetails().getPrimaryCluster();
           UserIntent userIntent = cluster.userIntent;
           Universe universe = getUniverse();
-          kubernetesStatus.createYBUniverseEventStatus(
+          kubernetesStatus.startYBUniverseEventStatus(
               universe,
               taskParams().getKubernetesResourceDetails(),
-              getName(),
+              TaskType.GFlagsKubernetesUpgrade.name(),
               getUserTaskUUID(),
               UniverseState.EDITING);
           // Verify the request params and fail if invalid only if its the first time we are
@@ -140,7 +141,7 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
             kubernetesStatus.updateYBUniverseStatus(
                 universe,
                 taskParams().getKubernetesResourceDetails(),
-                getName(),
+                TaskType.GFlagsKubernetesUpgrade.name(),
                 getUserTaskUUID(),
                 (th != null) ? UniverseState.ERROR : UniverseState.READY,
                 th);
