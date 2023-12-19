@@ -234,13 +234,13 @@ On each node, perform the following as a user with sudo access:
     sudo mkdir /etc/prometheus
     sudo mkdir /var/log/prometheus
     sudo mkdir /var/run/prometheus
-    sudo mv /tmp/node_exporter-1.3.1.linux-amd64.tar  /opt/prometheus
+    sudo mv /tmp/node_exporter-1.3.1.linux-amd64.gz  /opt/prometheus
     sudo adduser --shell /bin/bash prometheus # (also adds group "prometheus")
     sudo chown -R prometheus:prometheus /opt/prometheus
     sudo chown -R prometheus:prometheus /etc/prometheus
     sudo chown -R prometheus:prometheus /var/log/prometheus
     sudo chown -R prometheus:prometheus /var/run/prometheus
-    sudo chmod +r /opt/prometheus/node_exporter-1.3.1.linux-amd64.tar
+    sudo chmod +r /opt/prometheus/node_exporter-1.3.1.linux-amd64.gz
     sudo su - prometheus (user session is now as user "prometheus")
     ```
 
@@ -751,7 +751,7 @@ You can install the YugabyteDB node agent manually as follows:
 1. Run the following command to enable the node agent as a systemd service, which is required for self-upgrade and other functions:
 
    ```sh
-   sudo node-agent-installer.sh -c install-service --user yugabyte
+   sudo node-agent-installer.sh -c install_service --user yugabyte
    ```
 
 When the installation has been completed, the configurations are saved in the `config.yml` file located in the `node-agent/config/` directory. You should refrain from manually changing values in this file.
