@@ -1038,6 +1038,16 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 	{
+		{"yb_bnl_optimize_first_batch", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables batched nested loop joins to predict the "			 	 "size of its first batch and optimize if it's "
+						 "smaller than yb_bnl_batch_size."),
+			NULL
+		},
+		&yb_bnl_optimize_first_batch,
+		true,
+		NULL, NULL, NULL
+	},
+	{
 		{"enable_partition_pruning", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Enable plan-time and run-time partition pruning."),
 			gettext_noop("Allows the query planner and executor to compare partition "

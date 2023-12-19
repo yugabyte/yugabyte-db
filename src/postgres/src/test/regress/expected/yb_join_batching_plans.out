@@ -251,16 +251,15 @@ ANALYZE;
 -- Since we don't have many rows in p1, p2 it isn't too bad to use the extra
 -- sort operator imposed by nested loop join batching.
 explain (costs off) select * from p1, p2 where p1.a = p2.a order by p2.a asc;
-                              QUERY PLAN                               
------------------------------------------------------------------------
- Sort
-   Sort Key: p1.a
-   ->  YB Batched Nested Loop Join
-         Join Filter: (p1.a = p2.a)
-         ->  Seq Scan on p2
-         ->  Index Scan using p1_pkey on p1
-               Index Cond: (a = ANY (ARRAY[p2.a, $1, $2, ..., $1023]))
-(7 rows)
+                           QUERY PLAN
+-----------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (p1.a = p2.a)
+   Sort Keys: p1.a
+   ->  Index Scan using p2_a_asc on p2
+   ->  Index Scan using p1_pkey on p1
+         Index Cond: (a = ANY (ARRAY[p2.a, $1, $2, ..., $1023]))
+(6 rows)
 
 INSERT INTO p1 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(600, 200000) i WHERE i % 2 = 0;
 INSERT INTO p2 SELECT i, i % 25, to_char(i, 'FM0000') FROM generate_series(600, 500000) i WHERE i % 3 = 0;
@@ -268,14 +267,15 @@ ANALYZE;
 -- After we have inserted many rows into each table, we expect that other
 -- join methods that preserve the sort order of its input relations to be better.
 explain (costs off) select * from p1, p2 where p1.a = p2.a order by p2.a asc;
-                 QUERY PLAN                  
----------------------------------------------
- Merge Join
-   Merge Cond: (p1.a = p2.a)
+                           QUERY PLAN
+-----------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (p1.a = p2.a)
+   Sort Keys: p1.a
    ->  Index Scan using p1_a_asc on p1
-   ->  Materialize
-         ->  Index Scan using p2_a_asc on p2
-(5 rows)
+   ->  Index Scan using p2_pkey on p2
+         Index Cond: (a = ANY (ARRAY[p1.a, $1, $2, ..., $1023]))
+(6 rows)
 
 -- However, removing the ordering constraint in this query allows us to prefer
 -- the batched nested loop join option again.
@@ -420,17 +420,16 @@ analyze q1;
 analyze q2;
 -- Make sure a sort node is inserted above a batched NL join when appropriate
 explain (costs off) select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
-                                  QUERY PLAN
--------------------------------------------------------------------------------
+                               QUERY PLAN
+-------------------------------------------------------------------------
  Limit
-   ->  Sort
-         Sort Key: q1.c1
-         ->  YB Batched Nested Loop Join
-               Join Filter: (q1.c2 = q2.c2)
-               ->  Seq Scan on q1
-               ->  Index Scan using q2_pkey on q2
-                     Index Cond: (c2 = ANY (ARRAY[q1.c2, $1, $2, ..., $1023]))
-(8 rows)
+   ->  YB Batched Nested Loop Join
+         Join Filter: (q1.c2 = q2.c2)
+         Sort Keys: q1.c1
+         ->  Index Scan using q1_pkey on q1
+         ->  Index Scan using q2_pkey on q2
+               Index Cond: (c2 = ANY (ARRAY[q1.c2, $1, $2, ..., $1023]))
+(7 rows)
 
 create table q3(a int, b int, c name, primary key(a,b));
 create index q3_range on q3(a asc);

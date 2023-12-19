@@ -312,6 +312,27 @@ SET yb_bnl_batch_size = 3;
 explain (costs off) select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
 select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
 
+explain (costs off) select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 DESC limit 10;
+select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 DESC limit 10;
+
+CREATE TABLE q1nulls (a int, b int);
+CREATE INDEX ON q1nulls (a ASC NULLS FIRST, b DESC NULLS LAST);
+INSERT INTO q1nulls SELECT i/10, i % 10 from generate_series(1, 100) i;
+INSERT INTO q1nulls VALUES (null, 9), (null, 8), (null, 8);
+EXPLAIN (COSTS OFF) SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC LIMIT 10;
+SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC LIMIT 10;
+
+EXPLAIN (COSTS OFF) SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST LIMIT 10;
+SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST LIMIT 10;
+
+EXPLAIN (COSTS OFF) SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST, q1nulls.b DESC LIMIT 10;
+SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST, q1nulls.b DESC LIMIT 10;
+
+EXPLAIN (COSTS OFF) SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST, q1nulls.b DESC NULLS LAST LIMIT 10;
+SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST, q1nulls.b DESC NULLS LAST LIMIT 10;
+
+DROP TABLE q1nulls;
+
 create table q3(a int, b int, c name, primary key(a,b));
 create index q3_range on q3(a asc);
 

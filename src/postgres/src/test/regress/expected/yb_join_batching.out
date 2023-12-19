@@ -495,7 +495,7 @@ explain (costs off) /*+ Leading((q3 q4)) IndexScan(q4) */select * from q3, q4 wh
 ------------------------------------------------------------------------------------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: ((q3.a = (q4.a)::bpchar) AND (q3.b = (q4.b)::bpchar))
-   ->  Seq Scan on q4
+   ->  YB Seq Scan on q4
    ->  Index Scan using q3_pkey on q3
          Index Cond: (ROW(a, b) = ANY (ARRAY[ROW((q4.a)::bpchar, (q4.b)::bpchar), ROW(($1)::bpchar, ($4)::bpchar), ROW(($2)::bpchar, ($5)::bpchar)]))
 (5 rows)
@@ -1101,17 +1101,16 @@ analyze q2;
 SET yb_bnl_batch_size = 3;
 -- Make sure a sort node is inserted above a batched NL join when appropriate
 explain (costs off) select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
-                            QUERY PLAN
--------------------------------------------------------------------
+                         QUERY PLAN
+-------------------------------------------------------------
  Limit
-   ->  Sort
-         Sort Key: q1.c1
-         ->  YB Batched Nested Loop Join
-               Join Filter: (q1.c2 = q2.c2)
-               ->  Index Scan using q1_pkey on q1
-               ->  Index Scan using q2_pkey on q2
-                     Index Cond: (c2 = ANY (ARRAY[q1.c2, $1, $2]))
-(8 rows)
+   ->  YB Batched Nested Loop Join
+         Join Filter: (q1.c2 = q2.c2)
+         Sort Keys: q1.c1
+         ->  Index Scan using q1_pkey on q1
+         ->  Index Scan using q2_pkey on q2
+               Index Cond: (c2 = ANY (ARRAY[q1.c2, $1, $2]))
+(7 rows)
 
 select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
  c1
@@ -1128,6 +1127,148 @@ select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
   4
 (10 rows)
 
+explain (costs off) select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 DESC limit 10;
+                         QUERY PLAN
+-------------------------------------------------------------
+ Limit
+   ->  YB Batched Nested Loop Join
+         Join Filter: (q1.c2 = q2.c2)
+         Sort Keys: q1.c1 DESC
+         ->  Index Scan Backward using q1_pkey on q1
+         ->  Index Scan using q2_pkey on q2
+               Index Cond: (c2 = ANY (ARRAY[q1.c2, $1, $2]))
+(7 rows)
+
+select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 DESC limit 10;
+ c1
+-----
+ 199
+ 199
+ 198
+ 198
+ 197
+ 197
+ 196
+ 196
+ 195
+ 195
+(10 rows)
+
+CREATE TABLE q1nulls (a int, b int);
+CREATE INDEX ON q1nulls (a ASC NULLS FIRST, b DESC NULLS LAST);
+INSERT INTO q1nulls SELECT i/10, i % 10 from generate_series(1, 100) i;
+INSERT INTO q1nulls VALUES (null, 9), (null, 8), (null, 8);
+EXPLAIN (COSTS OFF) SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC LIMIT 10;
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ Limit
+   ->  Sort
+         Sort Key: q1nulls.a
+         ->  YB Batched Nested Loop Join
+               Join Filter: (q1nulls.b = q2.c2)
+               ->  Index Only Scan using q1nulls_a_b_idx on q1nulls
+               ->  Index Scan using q2_pkey on q2
+                     Index Cond: (c2 = ANY (ARRAY[q1nulls.b, $1, $2]))
+(8 rows)
+
+SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC LIMIT 10;
+ a | b
+---+---
+ 0 | 5
+ 0 | 6
+ 0 | 8
+ 0 | 8
+ 0 | 5
+ 0 | 7
+ 0 | 7
+ 0 | 9
+ 0 | 9
+ 0 | 6
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST LIMIT 10;
+                           QUERY PLAN
+-----------------------------------------------------------------
+ Limit
+   ->  YB Batched Nested Loop Join
+         Join Filter: (q1nulls.b = q2.c2)
+         Sort Keys: q1nulls.a NULLS FIRST
+         ->  Index Only Scan using q1nulls_a_b_idx on q1nulls
+         ->  Index Scan using q2_pkey on q2
+               Index Cond: (c2 = ANY (ARRAY[q1nulls.b, $1, $2]))
+(7 rows)
+
+SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST LIMIT 10;
+ a | b
+---+---
+   | 9
+   | 9
+   | 8
+   | 8
+   | 8
+   | 8
+ 0 | 7
+ 0 | 7
+ 0 | 9
+ 0 | 9
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST, q1nulls.b DESC LIMIT 10;
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ Limit
+   ->  Sort
+         Sort Key: q1nulls.a NULLS FIRST, q1nulls.b DESC
+         ->  YB Batched Nested Loop Join
+               Join Filter: (q1nulls.b = q2.c2)
+               ->  Index Only Scan using q1nulls_a_b_idx on q1nulls
+               ->  Index Scan using q2_pkey on q2
+                     Index Cond: (c2 = ANY (ARRAY[q1nulls.b, $1, $2]))
+(8 rows)
+
+SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST, q1nulls.b DESC LIMIT 10;
+ a | b
+---+---
+   | 9
+   | 9
+   | 8
+   | 8
+   | 8
+   | 8
+ 0 | 9
+ 0 | 9
+ 0 | 8
+ 0 | 8
+(10 rows)
+
+EXPLAIN (COSTS OFF) SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST, q1nulls.b DESC NULLS LAST LIMIT 10;
+                             QUERY PLAN
+---------------------------------------------------------------------
+ Limit
+   ->  YB Batched Nested Loop Join
+         Join Filter: (q1nulls.b = q2.c2)
+         Sort Keys: q1nulls.a NULLS FIRST, q1nulls.b DESC NULLS LAST
+         ->  Index Only Scan using q1nulls_a_b_idx on q1nulls
+         ->  Index Scan using q2_pkey on q2
+               Index Cond: (c2 = ANY (ARRAY[q1nulls.b, $1, $2]))
+(7 rows)
+
+SELECT q1nulls.a, q1nulls.b FROM q1nulls, q2 WHERE q1nulls.b = q2.c2 ORDER BY q1nulls.a ASC NULLS FIRST, q1nulls.b DESC NULLS LAST LIMIT 10;
+ a | b
+---+---
+   | 9
+   | 9
+   | 8
+   | 8
+   | 8
+   | 8
+ 0 | 9
+ 0 | 9
+ 0 | 8
+ 0 | 8
+(10 rows)
+
+DROP TABLE q1nulls;
 create table q3(a int, b int, c name, primary key(a,b));
 create index q3_range on q3(a asc);
 /*+Set(enable_hashjoin off) Set(enable_mergejoin off) Set(yb_bnl_batch_size 3) Set(enable_seqscan off) Set(enable_material off)*/ explain (costs off) select * from q1 p1 left join (SELECT p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1 on j1.a1 = p1.c1;
