@@ -320,21 +320,17 @@ static void PgRpczHandler(const Webserver::WebRequest &req, Webserver::WebRespon
 static void PgPrometheusMetricsHandler(
     const Webserver::WebRequest &req, Webserver::WebResponse *resp) {
   std::stringstream *output = &resp->output;
-  PrometheusWriter writer(output, ExportHelpAndType::kFalse);
+  MetricPrometheusOptions opts;
+  PrometheusWriter writer(output, opts);
 
-  // Max size of ybpgm_table name (100 incl \0 char) + max size of "_count"/"_sum" (6 excl \0).
-  char copied_name[106];
   for (int i = 0; i < ybpgm_num_entries; ++i) {
-    snprintf(copied_name, sizeof(copied_name), "%s%s", ybpgm_table[i].name, "_count");
-    WARN_NOT_OK(
-        writer.WriteSingleEntry(
-            prometheus_attr, copied_name, ybpgm_table[i].calls, AggregationFunction::kSum),
-        "Couldn't write text metrics for Prometheus");
-    snprintf(copied_name, sizeof(copied_name), "%s%s", ybpgm_table[i].name, "_sum");
-    WARN_NOT_OK(
-        writer.WriteSingleEntry(
-            prometheus_attr, copied_name, ybpgm_table[i].total_time, AggregationFunction::kSum),
-        "Couldn't write text metrics for Prometheus");
+    std::string name = ybpgm_table[i].name;
+    WARN_NOT_OK(writer.WriteSingleEntry(prometheus_attr, name + "_count",
+        ybpgm_table[i].calls, AggregationFunction::kSum, kServerLevel),
+            "Couldn't write text metrics for Prometheus");
+    WARN_NOT_OK(writer.WriteSingleEntry(prometheus_attr, name + "_sum",
+        ybpgm_table[i].total_time, AggregationFunction::kSum, kServerLevel),
+            "Couldn't write text metrics for Prometheus");
   }
 
   // Publish sql server connection related metrics

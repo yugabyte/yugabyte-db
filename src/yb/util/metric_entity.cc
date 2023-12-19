@@ -14,8 +14,6 @@
 //
 #include "yb/util/metric_entity.h"
 
-#include <regex>
-
 #include "yb/gutil/map-util.h"
 #include "yb/util/flags.h"
 #include "yb/util/jsonwriter.h"
@@ -38,8 +36,7 @@ namespace yb {
 
 namespace {
 
-const std::regex prometheus_name_regex("[a-zA-Z_:][a-zA-Z0-9_:]*");
-
+const boost::regex prometheus_name_regex("[a-zA-Z_:][a-zA-Z0-9_:]*");
 // Registry of all of the metric and entity prototypes that have been
 // defined.
 //
@@ -165,7 +162,7 @@ MetricEntity::MetricEntity(const MetricEntityPrototype* prototype,
 MetricEntity::~MetricEntity() {
 }
 
-const std::regex& PrometheusNameRegex() {
+const boost::regex& PrometheusNameRegex() {
   return prometheus_name_regex;
 }
 
@@ -182,59 +179,46 @@ scoped_refptr<Metric> MetricEntity::FindOrNull(const MetricPrototype& prototype)
   return FindPtrOrNull(metric_map_, &prototype);
 }
 
-namespace {
-
-const string kWildCardString = "*";
-
-bool MatchMetricInList(const string& metric_name,
-                       const vector<string>& match_params) {
-  for (const string& param : match_params) {
-    // Handle wildcard.
-    if (param == kWildCardString) return true;
-    // The parameter is a substring match of the metric name.
-    if (metric_name.find(param) != std::string::npos) {
-      return true;
-    }
+MetricEntity::MetricMap MetricEntity::GetFilteredMetricMap(
+    const std::optional<std::vector<std::string>>& required_metric_substrings) const {
+  if (!required_metric_substrings) {
+    // Select all if filter is not provided:
+    return metric_map_;
   }
-  return false;
-}
 
-} // anonymous namespace
-
-
-Status MetricEntity::WriteAsJson(JsonWriter* writer,
-                                 const MetricEntityOptions& entity_options,
-                                 const MetricJsonOptions& opts) const {
-  if (MatchMetricInList(id(), entity_options.exclude_metrics)) {
-    return Status::OK();
+  MetricMap output_metric_map;
+  if (required_metric_substrings->empty()) {
+    return output_metric_map;
   }
-  bool select_all = MatchMetricInList(id(), entity_options.metrics);
 
-  // We want the keys to be in alphabetical order when printing, so we use an ordered map here.
-  typedef std::map<const char*, scoped_refptr<Metric> > OrderedMetricMap;
-  OrderedMetricMap metrics;
-  AttributeMap attrs;
-  std::vector<ExternalJsonMetricsCb> external_metrics_cbs;
-  {
-    // Snapshot the metrics, attributes & external metrics callbacks in this metrics entity. (Note:
-    // this is not guaranteed to be a consistent snapshot).
-    std::lock_guard<simple_spinlock> l(lock_);
-    attrs = attributes_;
-    external_metrics_cbs = external_json_metrics_cbs_;
-    for (const MetricMap::value_type& val : metric_map_) {
-      const MetricPrototype* prototype = val.first;
-      const scoped_refptr<Metric>& metric = val.second;
-
-      if (select_all || MatchMetricInList(prototype->name(), entity_options.metrics)) {
-        InsertOrDie(&metrics, prototype->name(), metric);
+  for (const auto& [prototype, metric] : metric_map_) {
+    for (const auto& required_metric_substring : *required_metric_substrings) {
+      const std::string& metric_name = prototype->name();
+      // Collect the metric if metric name substring is found.
+      if (metric_name.find(required_metric_substring) != std::string::npos) {
+        output_metric_map[prototype] = metric;
+        break;
       }
     }
   }
 
-  // If we had a filter, and we didn't either match this entity or any metrics inside
-  // it, don't print the entity at all.
-  if (!entity_options.metrics.empty() && !select_all && metrics.empty()) {
-    return Status::OK();
+  return output_metric_map;
+}
+
+Status MetricEntity::WriteAsJson(JsonWriter* writer,
+                                 const MetricJsonOptions& opts) const {
+  MetricMap json_metrics;
+  AttributeMap attrs;
+  {
+    // Snapshot the metrics, attributes & external metrics callbacks in this metrics entity. (Note:
+    // this is not guaranteed to be a consistent snapshot).
+    std::lock_guard l(lock_);
+    json_metrics = GetFilteredMetricMap(opts.general_metrics_allowlist);
+    if (json_metrics.empty()) {
+      // None of the metrics are matched, or this entity has no metrics.
+      return Status::OK();
+    }
+    attrs = attributes_;
   }
 
   writer->StartObject();
@@ -255,15 +239,11 @@ Status MetricEntity::WriteAsJson(JsonWriter* writer,
 
   writer->String("metrics");
   writer->StartArray();
-  for (OrderedMetricMap::value_type& val : metrics) {
-    WARN_NOT_OK(val.second->WriteAsJson(writer, opts),
-                Format("Failed to write $0 as JSON", val.first));
+  for (const auto& [prototype, metric] : json_metrics) {
+      WARN_NOT_OK(metric->WriteAsJson(writer, opts),
+          Format("Failed to write $0 as JSON", prototype->name()));
+  }
 
-  }
-  // Run the external metrics collection callback if there is one set.
-  for (const ExternalJsonMetricsCb& cb : external_metrics_cbs) {
-    cb(writer, opts);
-  }
   writer->EndArray();
 
   writer->EndObject();
@@ -272,43 +252,23 @@ Status MetricEntity::WriteAsJson(JsonWriter* writer,
 }
 
 Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
-                                        const MetricEntityOptions& entity_options,
-                                        const MetricPrometheusOptions& opts) const {
-  if (MatchMetricInList(id(), entity_options.exclude_metrics)) {
-    return Status::OK();
-  }
-  bool select_all = MatchMetricInList(id(), entity_options.metrics);
-
-  // We want the keys to be in alphabetical order when printing, so we use an ordered map here.
-  typedef std::map<const char*, scoped_refptr<Metric> > OrderedMetricMap;
-  OrderedMetricMap metrics;
+                                        const MetricPrometheusOptions& opts) {
   AttributeMap attrs;
-  std::vector<ExternalPrometheusMetricsCb> external_metrics_cbs;
+  MetricMap prometheus_metrics;
   {
     // Snapshot the metrics, attributes & external metrics callbacks in this metrics entity. (Note:
     // this is not guaranteed to be a consistent snapshot).
-    std::lock_guard<simple_spinlock> l(lock_);
-    attrs = attributes_;
-    external_metrics_cbs = external_prometheus_metrics_cbs_;
-    for (const auto& [prototype, metric] : metric_map_) {
-      if (MatchMetricInList(prototype->name(), entity_options.exclude_metrics)) {
-        continue;
-      }
-      if (select_all || MatchMetricInList(prototype->name(), entity_options.metrics)) {
-        InsertOrDie(&metrics, prototype->name(), metric);
-      }
+    std::lock_guard l(lock_);
+    prometheus_metrics = GetFilteredMetricMap(opts.general_metrics_allowlist);
+    if (prometheus_metrics.empty()) {
+      // None of the metrics are matched, or this entity has no metrics.
+      return Status::OK();
     }
-  }
-
-  // If we had a filter, and we didn't either match this entity or any metrics inside
-  // it, don't print the entity at all.
-  // If metrics is empty, we'd still call the callbacks if the entity matches,
-  // i.e. requested_metrics and select_all is true.
-  if (!entity_options.metrics.empty() && !select_all && metrics.empty()) {
-    return Status::OK();
+    attrs = attributes_;
   }
 
   AttributeMap prometheus_attr;
+  AggregationLevels aggregation_levels;
   // Per tablet metrics come with tablet_id, as well as table_id and table_name attributes.
   // We ignore the tablet part to squash at the table level.
   if (strcmp(prototype_->name(), "tablet") == 0 || strcmp(prototype_->name(), "table") == 0) {
@@ -316,38 +276,40 @@ Status MetricEntity::WriteForPrometheus(PrometheusWriter* writer,
     prometheus_attr["table_name"] = attrs["table_name"];
     prometheus_attr["table_type"] = attrs["table_type"];
     prometheus_attr["namespace_name"] = attrs["namespace_name"];
+    aggregation_levels = kTableLevel | kServerLevel;
   } else if (
       strcmp(prototype_->name(), "server") == 0 || strcmp(prototype_->name(), "cluster") == 0) {
     prometheus_attr = attrs;
     // This is tablet_id in the case of tablet, but otherwise names the server type, eg: yb.master
     prometheus_attr["metric_id"] = id_;
-  } else if (strcmp(prototype_->name(), "cdc") == 0) {
+    aggregation_levels = kServerLevel;
+  } else if (strcmp(prototype_->name(), kCdcMetricEntityName) == 0) {
     prometheus_attr["table_id"] = attrs["table_id"];
     prometheus_attr["table_name"] = attrs["table_name"];
     prometheus_attr["table_type"] = attrs["table_type"];
     prometheus_attr["namespace_name"] = attrs["namespace_name"];
     prometheus_attr["stream_id"] = attrs["stream_id"];
-  } else if (strcmp(prototype_->name(), "cdcsdk") == 0) {
+    aggregation_levels = kStreamLevel;
+  } else if (strcmp(prototype_->name(), kCdcsdkMetricEntityName) == 0) {
     prometheus_attr["table_id"] = attrs["table_id"];
     prometheus_attr["table_name"] = attrs["table_name"];
     prometheus_attr["namespace_name"] = attrs["namespace_name"];
     prometheus_attr["stream_id"] = attrs["stream_id"];
+    aggregation_levels = kStreamLevel;
   } else if (strcmp(prototype_->name(), "drive") == 0) {
     prometheus_attr["drive_path"] = attrs["drive_path"];
+    aggregation_levels = kServerLevel;
   } else {
     return Status::OK();
   }
-  // This is currently tablet / server / cluster / cdc.
+  // This is currently tablet / table / server / cluster / cdc / cdcsdk / drive.
   prometheus_attr["metric_type"] = prototype_->name();
   prometheus_attr["exported_instance"] = FLAGS_metric_node_name;
 
-  for (OrderedMetricMap::value_type& val : metrics) {
-    WARN_NOT_OK(val.second->WriteForPrometheus(writer, prometheus_attr, opts),
-                Format("Failed to write $0 as Prometheus", val.first));
-  }
-  // Run the external metrics collection callback if there is one set.
-  for (const ExternalPrometheusMetricsCb& cb : external_metrics_cbs) {
-    cb(writer, opts);
+  for (const auto& [prototype, metric]  : prometheus_metrics) {
+    WARN_NOT_OK(metric->WriteForPrometheus(
+        writer, prometheus_attr, opts, aggregation_levels),
+        Format("Failed to write $0 as Prometheus", prototype->name()));
   }
 
   return Status::OK();
