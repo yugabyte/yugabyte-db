@@ -390,17 +390,24 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
             .deleteStatefulSet(config, taskParams().namespace, appName);
         break;
       case PVC_EXPAND_SIZE:
-        u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
-        kubernetesManagerFactory
-            .getManager()
-            .expandPVC(
-                taskParams().getUniverseUUID(),
-                config,
-                taskParams().namespace,
-                taskParams().helmReleaseName,
-                "yb-tserver",
-                taskParams().newDiskSize,
-                u.getUniverseDetails().useNewHelmNamingStyle);
+        try {
+          u = Universe.getOrBadRequest(taskParams().getUniverseUUID());
+          kubernetesManagerFactory
+              .getManager()
+              .expandPVC(
+                  taskParams().getUniverseUUID(),
+                  config,
+                  taskParams().namespace,
+                  taskParams().helmReleaseName,
+                  "yb-tserver",
+                  taskParams().newDiskSize,
+                  u.getUniverseDetails().useNewHelmNamingStyle);
+        } catch (Throwable e) {
+          // Ignore exception from the actual expand task and handle it later in
+          // KubernetesPostExpansionCheckVolume since we want to run the subsequent task
+          // that re-creates the STS, and only then handle any errors.
+          log.error("Orginal failure to expand volume: ", e);
+        }
         break;
       case COPY_PACKAGE:
         u = Universe.getOrBadRequest(taskParams().getUniverseUUID());

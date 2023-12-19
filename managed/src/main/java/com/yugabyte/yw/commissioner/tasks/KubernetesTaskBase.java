@@ -502,7 +502,6 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                       null,
                       null,
                       false,
-                      false,
                       null));
 
               if (sType.equals(ServerType.EITHER)) {
@@ -574,7 +573,6 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
                       isReadOnlyCluster,
                       null,
                       null,
-                      true,
                       enableYbc,
                       null));
             });
@@ -1496,7 +1494,6 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
             isReadOnlyCluster,
             podName,
             newDiskSize,
-            ignoreErrors,
             enableYbc,
             ybcSoftwareVersion));
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -1519,7 +1516,6 @@ public abstract class KubernetesTaskBase extends UniverseDefinitionTaskBase {
       boolean isReadOnlyCluster,
       String podName,
       String newDiskSize,
-      boolean ignoreErrors,
       boolean enableYbc,
       String ybcSoftwareVersion) {
     KubernetesCommandExecutor.Params params = new KubernetesCommandExecutor.Params();
