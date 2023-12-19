@@ -613,7 +613,9 @@ bool ShouldReadEntry(const LWLogEntryPB& entry, const EntriesToRead& entries_to_
 } // namespace
 
 ReadEntriesResult ReadableLogSegment::ReadEntries(
-    int64_t max_entries_to_read, EntriesToRead entries_to_read) {
+    int64_t max_entries_to_read,
+    EntriesToRead entries_to_read,
+    std::optional<int64_t> start_offset_to_read) {
   TRACE_EVENT1("log", "ReadableLogSegment::ReadEntries",
                "path", path_);
 
@@ -622,7 +624,7 @@ ReadEntriesResult ReadableLogSegment::ReadEntries(
   std::vector<int64_t> recent_offsets(4, -1);
   int64_t batches_read = 0;
 
-  int64_t offset = first_entry_offset();
+  int64_t offset = start_offset_to_read ? *start_offset_to_read : first_entry_offset();
 
   result.end_offset = offset;
 
@@ -634,6 +636,8 @@ ReadEntriesResult ReadableLogSegment::ReadEntries(
           << ": "
           << YB_EXPR_TO_STREAM_COMMA_SEPARATED(
               first_entry_offset(),
+              start_offset_to_read,
+              offset,
               file_size(),
               readable_to_offset(),
               read_up_to,
@@ -1085,7 +1089,7 @@ Status WritableLogSegment::WriteIndexWithFooterAndClose(
       // This should not happen, but there is no harm in just skipping writing log index into WAL
       // segment file in this case.
       // We will have to read all entries from the segment file to restore index if we need it.
-      // This is already implemented inside LogIndex::LoadFromSegment and
+      // This is already implemented inside LogIndex::LazyLoadOneSegment and
       // LogIndex::RebuildFromSegmentEntries because we need it for truncated segment files anyway.
       LOG(WARNING) << "No min/max replicate index in footer for file " << path() << ": "
                    << footer->ShortDebugString();
