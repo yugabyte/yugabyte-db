@@ -8,6 +8,8 @@ menu:
     identifier: set-up-cloud-provider-6-on-premises
     parent: configure-yugabyte-platform
     weight: 20
+aliases:
+  - v2.16/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-script/
 type: docs
 ---
 

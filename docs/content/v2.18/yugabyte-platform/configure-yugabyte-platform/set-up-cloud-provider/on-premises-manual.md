@@ -745,7 +745,7 @@ You can install the YugabyteDB node agent manually as follows:
            Enter the option number: 1
            • Completed Node Agent Configuration
            • Node Agent Registration Successful
-   You can install a systemd service on linux machines by running sudo node-agent-installer.sh -c install-service --user yugabyte (Requires sudo access).
+   You can install a systemd service on linux machines by running sudo node-agent-installer.sh -c install_service --user yugabyte (Requires sudo access).
    ```
 
 1. Run the following command to enable the node agent as a systemd service, which is required for self-upgrade and other functions:
