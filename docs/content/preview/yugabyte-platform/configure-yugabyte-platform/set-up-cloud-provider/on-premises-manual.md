@@ -780,23 +780,14 @@ If the preflight check is successful, you add the node to the provider (if requi
 node-agent node preflight-check --add_node
 ```
 
-### Additional commands
-
-Even though the node agent installation, configuration, and registration are sufficient, the following supplementary commands are also supported:
-
-- `node-agent node unregister` is used to un-register the node and node agent from YugabyteDB Anywhere. Use this to restart the registration process.
-- `node-agent node register` is used to register a node and node agent with YugabyteDB Anywhere if they were manually unregistered. When registering, you can change the configuration. Refer to [Manual configuration](#manual-configuration).
-- `node-agent node preflight-check` is used for checking if a node is configured as a YugabyteDB Anywhere node.
-<!-- `node-agent service start` and `node-agent service stop` are used for starting or stopping the node agent as a gRPC server.-->
-
-#### Manual configuration
+### Manual configuration
 
 To enable secured communication, the node agent is automatically registered during its installation so YugabyteDB Anywhere is aware of its existence. You can also register and unregister the node agent manually during configuration.
 
 The following is the node agent registration command:
 
 ```sh
-node-agent node register --api-token <api_token>
+node-agent node register [flags] --api-token <api_token>
 ```
 
 If you need to overwrite any previously configured values, you can use the following parameters in the registration command:

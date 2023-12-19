@@ -698,9 +698,9 @@ As an alternative to setting crontab permissions, you can install systemd-specif
 
 The node agent is used to manage communication between YugabyteDB Anywhere and the node. YugabyteDB Anywhere uses node agents to communicate with the nodes, and once installed, YugabyteDB Anywhere no longer requires SSH or sudo access to nodes.
 
-(Node agents are installed onto instances automatically when adding instances or running the pre-provisioning script using the `--install_node_agent` flag.)
+Node agents are installed onto instances automatically when adding instances or running the pre-provisioning script using the `--install_node_agent` flag.
 
-You can install the YugabyteDB node agent manually as follows:
+You can install the YugabyteDB node agent manually. As the `yugabyte` user, do the following:
 
 1. Download the installer from YugabyteDB Anywhere using the API token of the Super Admin, as follows:
 
@@ -748,13 +748,17 @@ You can install the YugabyteDB node agent manually as follows:
    You can install a systemd service on linux machines by running sudo node-agent-installer.sh -c install_service --user yugabyte (Requires sudo access).
    ```
 
-1. Run the following command to enable the node agent as a systemd service, which is required for self-upgrade and other functions:
+1. Run the following command as a sudo user:
 
-   ```sh
-   sudo node-agent-installer.sh -c install_service --user yugabyte
-   ```
+    ```sh
+    sudo node-agent-installer.sh -c install_service --user yugabyte
+    ```
+
+    This installs node agent as a systemd service. This is required for the node agent perform self-upgrade and other functions.
 
 When the installation has been completed, the configurations are saved in the `config.yml` file located in the `node-agent/config/` directory. You should refrain from manually changing values in this file.
+
+After the installation, you may need to either sign out and back in, or edit the ~/.bashrc file as the `yugabyte` user to add the node-agent binary to your PATH.
 
 ### Preflight check
 
