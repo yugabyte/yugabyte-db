@@ -17,6 +17,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.helpers.TaskType;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.client.KubernetesClient;
@@ -62,6 +63,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
   @Mock Indexer<YBUniverse> indexer;
   @Mock UniverseCRUDHandler universeCRUDHandler;
   @Mock CloudProviderHandler cloudProviderHandler;
+  @Mock KubernetesOperatorStatusUpdater statusUpdater;
 
   MockedStatic<KubernetesEnvironmentVariables> envVars;
 
@@ -97,7 +99,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
             null,
             cloudProviderHandler,
             null,
-            null,
+            statusUpdater,
             confGetter);
     // reconcilerFactory.getYBUniverseReconciler(client);
 
@@ -139,6 +141,8 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     YBUniverse universe = createYbUniverse();
     ybUniverseReconciler.reconcile(universe, OperatorWorkQueue.ResourceAction.CREATE);
 
+    Mockito.verify(statusUpdater, Mockito.times(1))
+        .createYBUniverseEventStatus(null, null, TaskType.CreateKubernetesUniverse.name());
     Mockito.verify(universeCRUDHandler, Mockito.times(1)).findByName(defaultCustomer, universeName);
     Mockito.verify(universeCRUDHandler, Mockito.times(1))
         .createUniverse(Mockito.eq(defaultCustomer), any(UniverseDefinitionTaskParams.class));
