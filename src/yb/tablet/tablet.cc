@@ -4631,6 +4631,16 @@ std::string IncrementedCopy(Slice key) {
 
 } // namespace
 
+Status Tablet::AbortSQLTransactions(CoarseTimePoint deadline) const {
+  if (table_type() != TableType::PGSQL_TABLE_TYPE || transaction_participant() == nullptr) {
+    return Status::OK();
+  }
+  HybridTime max_cutoff = HybridTime::kMax;
+  LOG(INFO) << "Aborting transactions that started prior to " << max_cutoff << " for tablet id "
+            << tablet_id();
+  return transaction_participant()->StopActiveTxnsPriorTo(max_cutoff, deadline);
+}
+
 Status Tablet::GetTabletKeyRanges(
     const Slice lower_bound_key, const Slice upper_bound_key, const uint64_t max_num_ranges,
     const uint64_t range_size_bytes, const IsForward is_forward, const uint32_t max_key_length,

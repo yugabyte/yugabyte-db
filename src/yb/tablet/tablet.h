@@ -957,6 +957,8 @@ class Tablet : public AbstractTablet,
         max_key_length, std::move(callback), colocated_table_id);
   }
 
+  Status AbortSQLTransactions(CoarseTimePoint deadline) const;
+
   // Lock used to serialize the creation of RocksDB checkpoints.
   mutable std::mutex create_checkpoint_lock_;
 
