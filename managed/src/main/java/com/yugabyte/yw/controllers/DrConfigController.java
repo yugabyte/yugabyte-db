@@ -187,7 +187,8 @@ public class DrConfigController extends AuthenticatedController {
             createForm.name,
             createForm.sourceUniverseUUID,
             createForm.targetUniverseUUID,
-            tableIds);
+            tableIds,
+            bootstrapParams);
     drConfig
         .getActiveXClusterConfig()
         .updateIndexTablesFromMainTableIndexTablesMap(mainTableIndexTablesMap);
@@ -253,6 +254,14 @@ public class DrConfigController extends AuthenticatedController {
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
     DrConfigSetTablesForm setTablesForm = parseSetTablesForm(customerUUID, request);
+    if (setTablesForm.bootstrapParams == null) {
+      Set<String> tableIdsToAdd =
+          XClusterConfigTaskBase.getTableIdsDiff(xClusterConfig.getTableIds(), setTablesForm.tables)
+              .getFirst();
+      if (!tableIdsToAdd.isEmpty()) {
+        setTablesForm.bootstrapParams = drConfig.getBootstrapBackupParams();
+      }
+    }
     XClusterConfigController.verifyTaskAllowed(xClusterConfig, TaskType.EditXClusterConfig);
     Universe sourceUniverse =
         Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
@@ -321,8 +330,12 @@ public class DrConfigController extends AuthenticatedController {
     // Parse and validate request.
     Customer customer = Customer.getOrBadRequest(customerUUID);
     DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
+
     XClusterConfig xClusterConfig = drConfig.getActiveXClusterConfig();
     DrConfigRestartForm restartForm = parseRestartForm(customerUUID, request);
+    if (restartForm.bootstrapParams == null) {
+      restartForm.bootstrapParams = drConfig.getBootstrapBackupParams();
+    }
     XClusterConfigController.verifyTaskAllowed(xClusterConfig, TaskType.RestartXClusterConfig);
     Universe sourceUniverse =
         Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID(), customer);
@@ -398,6 +411,9 @@ public class DrConfigController extends AuthenticatedController {
 
     DrConfigReplaceReplicaForm replaceReplicaForm =
         parseReplaceReplicaForm(customerUUID, sourceUniverse, targetUniverse, request);
+    if (replaceReplicaForm.bootstrapParams == null) {
+      replaceReplicaForm.bootstrapParams = drConfig.getBootstrapBackupParams();
+    }
     Universe newTargetUniverse =
         Universe.getOrBadRequest(replaceReplicaForm.drReplicaUniverseUuid, customer);
 
@@ -977,8 +993,10 @@ public class DrConfigController extends AuthenticatedController {
     DrConfigRestartForm formData =
         formFactory.getFormDataOrBadRequest(request.body().asJson(), DrConfigRestartForm.class);
     formData.dbs = XClusterConfigTaskBase.convertUuidStringsToIdStringSet(formData.dbs);
-    validateBackupRequestParamsForBootstrapping(
-        formData.bootstrapParams.backupRequestParams, customerUUID);
+    if (Objects.nonNull(formData.bootstrapParams)) {
+      validateBackupRequestParamsForBootstrapping(
+          formData.bootstrapParams.backupRequestParams, customerUUID);
+    }
     return formData;
   }
 
@@ -1001,8 +1019,10 @@ public class DrConfigController extends AuthenticatedController {
       throw new IllegalArgumentException(
           "primaryUniverseUuid must be the same as the current primary universe");
     }
-    validateBackupRequestParamsForBootstrapping(
-        formData.bootstrapParams.backupRequestParams, customerUUID);
+    if (Objects.nonNull(formData.bootstrapParams)) {
+      validateBackupRequestParamsForBootstrapping(
+          formData.bootstrapParams.backupRequestParams, customerUUID);
+    }
     return formData;
   }
 
