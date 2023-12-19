@@ -1265,7 +1265,7 @@ Result<bool> TabletPeer::SetAllCDCRetentionBarriers(
     HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff,
     bool initial_retention_barrier) {
 
-  auto tablet = shared_tablet();
+  auto tablet = VERIFY_RESULT(shared_tablet_safe());
   Log* log = log_atomic_.load(std::memory_order_acquire);
 
   {
