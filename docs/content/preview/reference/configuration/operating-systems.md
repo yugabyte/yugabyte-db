@@ -21,7 +21,7 @@ Unless otherwise noted, x86 operating systems are supported on all supported ver
 | :--------------- | :------------- | :------------- | :--- |
 | AlmaLinux 8      | {{<icon/yes>}} | {{<icon/yes>}} | Recommended for production<br>Recommended development platform |
 | AlmaLinux 9      | {{<icon/yes>}} | {{<icon/yes>}} |
-| Amazon Linux 2   | {{<icon/yes>}} | {{<icon/yes>}} | Deprecated in v2.20.0.0 |
+| Amazon Linux 2   | {{<icon/yes>}} | {{<icon/yes>}} | Deprecated in v2.20.0 |
 | CentOS7          | {{<icon/yes>}} |                |
 | CentOS8          | {{<icon/yes>}} |                |
 | Red Hat Enterprise Linux 7 | {{<icon/yes>}} |      |
@@ -29,7 +29,7 @@ Unless otherwise noted, x86 operating systems are supported on all supported ver
 | SUSE Linux Enterprise Server 15 SP4 | {{<icon/yes>}} |   | {{<badge/ea>}} |
 | Ubuntu 18        | {{<icon/yes>}} |                |
 | Ubuntu 20        | {{<icon/yes>}} |                |
-| Ubuntu 22        | {{<icon/yes>}} |                | 2.18.5, 2.20.1 |
+| Ubuntu 22        | {{<icon/yes>}} |                | Supported in v2.18.5, v2.20.1 |
 
 ## YugabyteDB Anywhere
 
@@ -39,8 +39,8 @@ Unless otherwise noted, operating systems are supported on all supported version
 
 | Operating system | x86            | ARM            | Notes |
 | :--------------- | :------------- | :------------- | :--- |
-| AlmaLinux 9      | {{<icon/yes>}} | {{<icon/yes>}} |  Default for YBA-deployed nodes |
-| Amazon Linux 2   | {{<icon/yes>}} | {{<icon/yes>}} | 2.18.0 and later |
+| AlmaLinux 9      | {{<icon/yes>}} | {{<icon/yes>}} | Default for YBA-deployed nodes |
+| Amazon Linux 2   | {{<icon/yes>}} | {{<icon/yes>}} | v2.18.0 and later |
 | CentOS7          | {{<icon/yes>}} |                | |
 | Oracle 7         | {{<icon/yes>}} |   |
 | Oracle 8         | {{<icon/yes>}} |   |
@@ -48,6 +48,6 @@ Unless otherwise noted, operating systems are supported on all supported version
 | SUSE Linux Enterprise Server 15 SP5 | {{<icon/yes>}} |   | {{<badge/tp>}} |
 | Ubuntu 18        | {{<icon/yes>}} |                | |
 | Ubuntu 20        | {{<icon/yes>}} | {{<icon/yes>}} | |
-| Ubuntu 22        | {{<icon/yes>}} |                | 2.18.5, 2.20.1 |
+| Ubuntu 22        | {{<icon/yes>}} |                | Supported in v2.18.5, v2.20.1 |
 
 YugabyteDB Anywhere may also work on other Linux distributions; contact your YugabyteDB support representative if you need added support.
