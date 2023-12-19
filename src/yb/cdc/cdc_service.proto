@@ -466,6 +466,8 @@ message UpdateCdcReplicatedIndexRequestPB {
   repeated bytes stream_ids = 9;
   optional fixed64 cdc_sdk_safe_time = 10;
   repeated fixed64 cdc_sdk_safe_times = 11;
+  // Is this an initial retention barrier setting request
+  optional bool initial_retention_barrier = 12;
 }
 
 message UpdateCdcReplicatedIndexResponsePB {

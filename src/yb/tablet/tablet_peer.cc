@@ -1257,6 +1257,64 @@ Result<MonoDelta> TabletPeer::GetCDCSDKIntentRetainTime(const int64_t& cdc_sdk_l
   return cdc_sdk_intent_retention;
 }
 
+Result<bool> TabletPeer::SetAllCDCRetentionBarriers(
+    int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, MonoDelta cdc_sdk_op_id_expiration,
+    HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff,
+    bool initial_retention_barrier) {
+
+  auto tablet = VERIFY_RESULT(shared_tablet_safe());
+  Log* log = log_atomic_.load(std::memory_order_acquire);
+
+  {
+    std::lock_guard lock(cdc_min_replicated_index_lock_);
+    cdc_min_replicated_index_refresh_time_ = MonoTime::Now();
+  }
+
+  if (initial_retention_barrier) {
+    RETURN_NOT_OK(tablet->SetAllInitialCDCRetentionBarriers(
+        log, cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_history_cutoff,
+        require_history_cutoff));
+    return true;
+  } else {
+    return tablet->MoveForwardAllCDCRetentionBarriers(
+        log, cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration,
+        cdc_sdk_history_cutoff, require_history_cutoff);
+  }
+}
+
+// Applies to both CDCSDK and XCluster streams attempting to set their initial
+// retention barrier
+Result<bool> TabletPeer::SetAllInitialCDCRetentionBarriers(
+    int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, HybridTime cdc_sdk_history_cutoff,
+    bool require_history_cutoff) {
+
+  MonoDelta cdc_sdk_op_id_expiration =
+      MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
+  return SetAllCDCRetentionBarriers(
+      cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration, cdc_sdk_history_cutoff,
+      require_history_cutoff, true /* initial_retention_barrier */);
+}
+
+// Applies only to CDCSDK streams
+Result<bool> TabletPeer::SetAllInitialCDCSDKRetentionBarriers(
+    OpId cdc_sdk_op_id, HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff) {
+
+  return SetAllInitialCDCRetentionBarriers(
+      cdc_sdk_op_id.index, cdc_sdk_op_id, cdc_sdk_history_cutoff, require_history_cutoff);
+}
+
+// Applies to the combined requirement of both CDCSDK and XCluster streams.
+// UpdatePeersAndMetrics will call this with the strictest requirements
+// corresponding to the slowest consumer of this tablet among all streams.
+Result<bool> TabletPeer::MoveForwardAllCDCRetentionBarriers(
+    int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, MonoDelta cdc_sdk_op_id_expiration,
+    HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff) {
+
+  return SetAllCDCRetentionBarriers(
+      cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration, cdc_sdk_history_cutoff,
+      require_history_cutoff, false /* initial_retention_barrier */);
+}
+
 std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::LWReplicateMsg* replicate_msg) {
   // TODO: handle cases where tablet is unset safely.
   auto tablet = CHECK_RESULT(shared_tablet_safe());

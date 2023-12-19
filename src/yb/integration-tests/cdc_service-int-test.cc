@@ -86,6 +86,7 @@ DECLARE_double(cdc_read_safe_deadline_ratio);
 DECLARE_bool(TEST_xcluster_simulate_have_more_records);
 DECLARE_bool(TEST_xcluster_skip_meta_ops);
 DECLARE_bool(TEST_cdc_inject_replication_index_update_failure);
+DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
 
 DECLARE_double(cdc_get_changes_free_rpc_ratio);
 DECLARE_int32(rpc_workers_limit);
@@ -126,6 +127,7 @@ class CDCServiceTest : public YBMiniClusterTestBase<MiniCluster> {
     MiniClusterOptions opts;
     SetAtomicFlag(false, &FLAGS_enable_ysql);
     SetAtomicFlag(1000, &FLAGS_update_metrics_interval_ms);
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
     opts.num_tablet_servers = server_count();
     opts.num_masters = 1;
     cluster_.reset(new MiniCluster(opts));

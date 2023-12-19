@@ -134,6 +134,7 @@ DECLARE_uint64(ysql_cdc_active_replication_slot_window_ms);
 DECLARE_bool(enable_log_retention_by_op_idx);
 DECLARE_bool(TEST_yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_uint32(cdcsdk_tablet_not_of_interest_timeout_secs);
+DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
 
 namespace yb {
 

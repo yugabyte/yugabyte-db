@@ -742,8 +742,22 @@ class Tablet : public AbstractTablet,
     return cdc_iterator_;
   }
 
+  Status SetAllCDCRetentionBarriersUnlocked(
+      int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, MonoDelta cdc_sdk_op_id_expiration,
+      HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff,
+      bool initial_retention_barrier);
+
+  Status SetAllInitialCDCRetentionBarriers(
+      log::Log* log, int64 cdc_wal_index, OpId cdc_sdk_intents_op_id,
+      HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff);
+
   Status SetAllInitialCDCSDKRetentionBarriers(
-      OpId cdc_sdk_op_id, MonoDelta cdc_sdk_op_id_expiration, HybridTime cdc_sdk_history_cutoff,
+      log::Log* log, OpId cdc_sdk_op_id, HybridTime cdc_sdk_history_cutoff,
+      bool require_history_cutoff);
+
+  Result<bool> MoveForwardAllCDCRetentionBarriers(
+      log::Log* log, int64 cdc_wal_index, OpId cdc_sdk_intents_op_id,
+      MonoDelta cdc_sdk_op_id_expiration, HybridTime cdc_sdk_history_cutoff,
       bool require_history_cutoff);
 
 //------------------------------------------------------------------------------------------------
@@ -902,6 +916,10 @@ class Tablet : public AbstractTablet,
 
   // Lock used to serialize the creation of RocksDB checkpoints.
   mutable std::mutex create_checkpoint_lock_;
+
+  // Serializes access to setting/revising/releasing CDCSDK retention barriers
+  mutable simple_spinlock cdcsdk_retention_barrier_lock_;
+  MonoTime cdcsdk_block_barrier_revision_start_time = MonoTime::Now();
 
  private:
   friend class Iterator;

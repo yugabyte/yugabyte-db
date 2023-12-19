@@ -161,7 +161,8 @@ class CDCServiceImpl : public CDCServiceIf {
       const std::string& tablet_id, int64 replicated_index, const OpId& cdc_sdk_replicated_op,
       const MonoDelta& cdc_sdk_op_id_expiration,
       RollBackTabletIdCheckpointMap* rollback_tablet_id_map,
-      const HybridTime cdc_sdk_safe_time = HybridTime::kInvalid);
+      const HybridTime cdc_sdk_safe_time = HybridTime::kInvalid,
+      bool initial_retention_barrier = false);
 
   void RollbackCdcReplicatedIndexEntry(
       const std::string& tablet_id, const std::pair<int64_t, OpId>& rollback_checkpoint_info);
@@ -348,7 +349,7 @@ class CDCServiceImpl : public CDCServiceIf {
 
   Status UpdatePeersCdcMinReplicatedIndex(
       const TabletId& tablet_id, const TabletCDCCheckpointInfo& cdc_checkpoint_min,
-      bool ignore_failures = true);
+      bool ignore_failures = true, bool initial_retention_barrier = false);
 
   struct ChildrenTabletMeta {
     ProducerTabletInfo parent_tablet_info;

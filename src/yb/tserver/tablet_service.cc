@@ -986,23 +986,18 @@ Status TabletServiceAdminImpl::SetupCDCSDKRetention(const tablet::ChangeMetadata
     return s;
   }
 
-  // Check if there is a valid CDC History cutoff requirement.
-  // Else, get the current time and set that as history cutoff
   // Now, from this point on, till the Followers Apply the ChangeMetadataOperation,
   // any proposed history cutoff they process can only be less than Now()
-  if (req->has_cdc_sdk_require_history_cutoff() && req->cdc_sdk_require_history_cutoff()) {
-    if (tablet_peer->get_cdc_sdk_safe_time() == HybridTime::kInvalid) {
-      auto s = tablet_peer->set_cdc_sdk_safe_time(server_->Clock()->Now());
-
-      // If there was an error while setting the history cutoff, respond with an error
-      if (!s.ok()) {
-        LOG_WITH_PREFIX(WARNING) << "CDCSDK Create Stream context: "
-                                 << "Unable to set history cutoff: "
-                                 << s;
-        return s;
-      }
-    }
+  auto require_history_cutoff =
+      req->has_cdc_sdk_require_history_cutoff() && req->cdc_sdk_require_history_cutoff();
+  auto res = tablet_peer->SetAllInitialCDCSDKRetentionBarriers(
+      data.op_id, server_->Clock()->Now(), require_history_cutoff);
+  // If there was an error while setting the retention barrier cutoff, respond with an error
+  if (!res.ok()) {
+    WARN_NOT_OK(res, "CDCSDK Create Stream context: Unable to set history cutoff");
+    RETURN_NOT_OK(res);
   }
+
   return Status::OK();
 }
 
