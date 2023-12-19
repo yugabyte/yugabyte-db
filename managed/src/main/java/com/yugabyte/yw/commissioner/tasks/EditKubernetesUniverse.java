@@ -669,10 +669,6 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
               newDiskSizeGi,
               config,
               kubernetesManagerFactory);
-      if (!needsExpandPVCInZone) {
-        log.info("PVC size is unchanged, will not schedule resize tasks");
-        continue;
-      }
 
       Map<String, String> azConfig = entry.getValue();
       PlacementInfo azPI = new PlacementInfo();
@@ -680,47 +676,58 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       int numNodesInAZ = placement.tservers.getOrDefault(azUUID, 0);
       PlacementInfoUtil.addPlacementZone(azUUID, azPI, rf, numNodesInAZ, true);
       // Validate that the StorageClass has allowVolumeExpansion=true
-      createTaskToValidateExpansion(
-          universeName, azConfig, azName, isReadOnlyCluster, newNamingStyle, providerUUID);
-      // create the three tasks to update volume size
-      createSingleKubernetesExecutorTaskForServerType(
-          universeName,
-          KubernetesCommandExecutor.CommandType.STS_DELETE,
-          azPI,
-          azName,
-          masterAddresses,
-          softwareVersion,
-          ServerType.TSERVER,
-          azConfig,
-          0,
-          0,
-          null,
-          null,
-          isReadOnlyCluster,
-          null,
-          newDiskSizeGi,
-          false,
-          enableYbc,
-          ybcSoftwareVersion);
-      createSingleKubernetesExecutorTaskForServerType(
-          universeName,
-          KubernetesCommandExecutor.CommandType.PVC_EXPAND_SIZE,
-          azPI,
-          azName,
-          masterAddresses,
-          softwareVersion,
-          ServerType.TSERVER,
-          azConfig,
-          0,
-          0,
-          null,
-          null,
-          isReadOnlyCluster,
-          null,
-          newDiskSizeGi,
-          true,
-          enableYbc,
-          ybcSoftwareVersion);
+      if (needsExpandPVCInZone) {
+        // Only check for volume expansion if we are actually expanding the PVC.
+        // Only delete the statefulset if we are actually expanding the PVC.
+        // If previous retry already edited the PVC and expanded
+        // do it again. We go straight to helm upgrade.
+        // This is to make sure we recreate sts with the new disk size to make sure we don't leave
+        // pods in orphan state.
+        createTaskToValidateExpansion(
+            universeName, azConfig, azName, isReadOnlyCluster, newNamingStyle, providerUUID);
+        // create the three tasks to update volume size
+        createSingleKubernetesExecutorTaskForServerType(
+            universeName,
+            KubernetesCommandExecutor.CommandType.STS_DELETE,
+            azPI,
+            azName,
+            masterAddresses,
+            softwareVersion,
+            ServerType.TSERVER,
+            azConfig,
+            0,
+            0,
+            null,
+            null,
+            isReadOnlyCluster,
+            null,
+            newDiskSizeGi,
+            false,
+            enableYbc,
+            ybcSoftwareVersion);
+        createSingleKubernetesExecutorTaskForServerType(
+            universeName,
+            KubernetesCommandExecutor.CommandType.PVC_EXPAND_SIZE,
+            azPI,
+            azName,
+            masterAddresses,
+            softwareVersion,
+            ServerType.TSERVER,
+            azConfig,
+            0,
+            0,
+            null,
+            null,
+            isReadOnlyCluster,
+            null,
+            newDiskSizeGi,
+            true,
+            enableYbc,
+            ybcSoftwareVersion);
+      }
+      // This helm upgrade will only create the new statefulset with the new disk size, nothing else
+      // should change here and this is idempotent, since its a helm_upgrade.
+
       createSingleKubernetesExecutorTaskForServerType(
           universeName,
           KubernetesCommandExecutor.CommandType.HELM_UPGRADE,

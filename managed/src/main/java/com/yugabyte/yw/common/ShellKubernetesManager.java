@@ -358,7 +358,8 @@ public class ShellKubernetesManager extends KubernetesManager {
             "delete",
             "statefulset",
             stsName,
-            "--cascade=orphan");
+            "--cascade=orphan",
+            "--ignore-not-found=true");
     ShellResponse response =
         execCommand(config, commandList, false).processErrors("Unable to delete StatefulSet");
     return response.isSuccess();
