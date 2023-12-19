@@ -14,6 +14,7 @@ type BasicInfo struct {
 	Active bool   `json:"active"`
 }
 
+// Provider is the provider object.
 type Provider struct {
 	BasicInfo
 	Cuuid               string            `json:"customerUUID"`
@@ -25,6 +26,14 @@ type Provider struct {
 	ShowSetUpChrony     bool              `json:"showSetUpChrony"`
 	Config              map[string]string `json:"config"`
 	Regions             []Region          `json:"regions"`
+	Details             ProviderDetails   `json:"details"`
+}
+
+// ProviderDetails contains the details object within a provider.
+// Only the required fields are added here.
+type ProviderDetails struct {
+	NodeExporterPort int  `json:"nodeExporterPort"`
+	SkipProvisioning bool `json:"skipProvisioning"`
 }
 
 // yyyy-MM-dd HH:mm:ss

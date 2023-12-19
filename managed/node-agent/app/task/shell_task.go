@@ -274,6 +274,7 @@ func CreatePreflightCheckParam(
 	if homeDir, ok := provider.Config["YB_HOME_DIR"]; ok {
 		param.YbHomeDir = homeDir
 	}
+	param.NodeExporterPort = provider.Details.NodeExporterPort
 	param.SshPort = provider.SshPort
 	if data := instanceType.Details.VolumeDetailsList; len(data) > 0 {
 		param.MountPaths = make([]string, len(data))

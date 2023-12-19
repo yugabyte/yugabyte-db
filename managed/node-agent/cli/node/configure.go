@@ -333,7 +333,8 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 	providers := *providersHandler.Result()
 	i := 0
 	for _, data := range providers {
-		if data.Code == "onprem" {
+		// Only onprem and manually provisioned nodes.
+		if data.Code == "onprem" && data.Details.SkipProvisioning {
 			providers[i] = data
 			i++
 		}
@@ -366,7 +367,7 @@ func configureEnabledEgress(ctx context.Context, cmd *cobra.Command) {
 			ctx,
 			util.ProviderIdKey,
 			displayInterfaces(ctx, onpremProviders),
-			"Onprem Provider",
+			"Onprem Manually Provisioned Provider",
 		)
 		if err != nil {
 			util.ConsoleLogger().Fatalf(ctx, "Error while displaying providers - %s", err.Error())

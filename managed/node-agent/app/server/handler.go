@@ -105,14 +105,41 @@ func RegisterNodeAgent(ctx context.Context, apiToken string) error {
 // Unregisters the node agent from the platform.
 func UnregisterNodeAgent(ctx context.Context, apiToken string) error {
 	config := util.CurrentConfig()
+	customerId := config.String(util.CustomerIdKey)
+	if customerId == "" {
+		// Populate the customer ID from the API token.
+		err := RetrieveUser(ctx, apiToken)
+		if err != nil {
+			util.FileLogger().Errorf(ctx, "Node Agent Unregistration Failed - %s", err)
+			return err
+		}
+	}
 	nodeAgentId := config.String(util.NodeAgentIdKey)
-	// Return error if there is no node agent id present in the config.
 	if nodeAgentId == "" {
-		err := errors.New(
-			"Node Agent Unregistration Failed - Node Agent ID not found in the config",
-		)
-		util.FileLogger().Error(ctx, err.Error())
-		return err
+		// It is possible to miss node agent ID in the config due to installation cancellation.
+		// Try to get it by IP.
+		nodeAgentIp := config.String(util.NodeIpKey)
+		if nodeAgentIp == "" {
+			err := errors.New(
+				"Node Agent Unregistration Failed - Node Agent ID and IP not found in the config",
+			)
+			util.FileLogger().Errorf(ctx, "Node Agent Unregistration Failed - %s", err)
+			return err
+		}
+		util.FileLogger().Infof(ctx, "Getting Node Agent by IP %s", nodeAgentIp)
+		getNodeAgentHandler := task.NewGetNodeAgentHandler(apiToken)
+		err := executor.GetInstance().ExecuteTask(ctx, getNodeAgentHandler.Handle)
+		if err != nil {
+			util.FileLogger().Errorf(ctx, "Node Agent Unregistration Failed - %s", err)
+			return err
+		}
+		nodeAgent := getNodeAgentHandler.Result()
+		nodeAgentId = nodeAgent.Uuid
+		err = config.Update(util.NodeAgentIdKey, nodeAgent.Uuid)
+		if err != nil {
+			util.FileLogger().Errorf(ctx, "Node Agent Unregistration Failed - %s", err)
+			return err
+		}
 	}
 	util.FileLogger().Infof(ctx, "Unregistering Node Agent - %s", nodeAgentId)
 	unregisterHandler := task.NewAgentUnregistrationHandler(apiToken)
@@ -151,7 +178,8 @@ func ValidateNodeAgentIfExists(ctx context.Context, apiToken string) error {
 		// Fix the node agent ID in case it was not saved.
 		err = config.Update(util.NodeAgentIdKey, nodeAgent.Uuid)
 		if err != nil {
-			util.ConsoleLogger().Fatalf(ctx, "Unable to store node agent ID - %s", err.Error())
+			util.FileLogger().Errorf(ctx, "Unable to store node agent ID - %s", err)
+			return err
 		}
 	} else if nodeAgentId != nodeAgent.Uuid {
 		err = fmt.Errorf("Node Agent ID %s does not match", nodeAgent.Uuid)
