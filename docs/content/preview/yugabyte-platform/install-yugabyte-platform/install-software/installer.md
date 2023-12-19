@@ -280,26 +280,26 @@ To migrate your installation from Replicated, do the following:
 
 ### Migration and high availability
 
-If you have [high availability](../../../administer-yugabyte-platform/high-availability/) (HA) configured, migrate your installations as follows.
+If you have [high availability](../../../administer-yugabyte-platform/high-availability/) (HA) configured, you need to upgrade the active and standby instances if they are running older versions of YBA. In addition, you need to finish migration on both the active and standby instances for failover to be re-enabled.
 
-If Replicated is using HTTPS:
+If Replicated is using HTTPS, migrate as follows:
 
-1. If your instances are v2.18.5 or earlier, or v2.20.0, [upgrade your primary and HA standby instances](../../../administer-yugabyte-platform/high-availability/#upgrade-instances) to v2.20.1.
-1. Migrate and finalize the active instance.
-1. Migrate and finalize the standby instances.
+1. If your instances are v2.18.5 or earlier, or v2.20.0, [upgrade your active and HA standby instances](../../../administer-yugabyte-platform/high-availability/#upgrade-instances) to v2.20.1.
+1. [Migrate and finish](#migrate-a-yba-installation) the active instance.
+1. Migrate and finish the standby instances.
 
-Failovers are now possible again after the completion of this step.
+Failovers are only possible only after you finish the migration on both the primary and standby.
 
-If Replicated is using HTTP:
+If Replicated is using HTTP, you need to remove the standbys and delete the HA configuration before migrating. Migrate as follows:
 
 1. [Remove the standby instances](../../../administer-yugabyte-platform/high-availability/#remove-a-standby-instance).
 1. On the active instance, navigate to **Admin > High Availability** and click **Delete Configuration**.
 1. If your instances are v2.18.5 or earlier, or 2.20.0, [upgrade the primary and standby instances](../../../administer-yugabyte-platform/high-availability/#upgrade-instances) to v2.20.1.
-1. Migrate and finalize the active instance.
-1. Migrate and finalize the standby instances.
-1. [Configure HA on the updated instances](../../administer-yugabyte-platform/high-availability/#configure-active-and-standby-instances).
+1. [Migrate and finish](#migrate-a-yba-installation) the active instance.
+1. Migrate and finish the standby instances.
+1. [Configure HA on the updated instances](../../../administer-yugabyte-platform/high-availability/#configure-active-and-standby-instances).
 
-Failovers are now possible again after the completion of this step.
+Failovers are possible again after the completion of this step.
 
 ## Manage a YBA installation
 
