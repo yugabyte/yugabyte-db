@@ -936,6 +936,18 @@ ExecSetTupleBound(int64 tuples_needed, PlanState *child_node)
 
 		ExecSetTupleBound(tuples_needed, outerPlanState(child_node));
 	}
+	else if (IsA(child_node, YbBatchedNestLoopState))
+	{
+		YbBatchedNestLoopState *bnl_state =
+			(YbBatchedNestLoopState *) child_node;
+		if (bnl_state->bnl_is_sorted)
+		{
+			if (tuples_needed < 0)
+				bnl_state->bound = 0;
+			else
+				bnl_state->bound = tuples_needed;
+		}
+	}
 
 	/*
 	 * In principle we could descend through any plan node type that is

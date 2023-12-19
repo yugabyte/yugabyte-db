@@ -2565,6 +2565,16 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			if (((NestLoop *) plan)->join.joinqual)
 				show_instrumentation_count("Rows Removed by Join Filter", 1,
 										   planstate, es);
+			if (IsA(plan, YbBatchedNestLoop))
+			{
+				YbBatchedNestLoop *bnl = (YbBatchedNestLoop *) plan;
+				if (bnl->numSortCols > 0)
+					show_sort_group_keys(planstate, "Sort Keys",
+										 bnl->numSortCols, bnl->sortColIdx,
+										 bnl->sortOperators, bnl->collations,
+										 bnl->nullsFirst, ancestors, es);
+			}
+
 			show_upper_qual(plan->qual, "Filter", planstate, ancestors, es);
 			if (plan->qual)
 				show_instrumentation_count("Rows Removed by Filter", 2,
