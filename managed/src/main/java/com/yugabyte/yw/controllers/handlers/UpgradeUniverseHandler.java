@@ -20,7 +20,6 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.CertsRotateParams;
@@ -104,8 +103,8 @@ public class UpgradeUniverseHandler {
         universe);
   }
 
-  public UUID upgradeSoftware(
-      SoftwareUpgradeParams requestParams, Customer customer, Universe universe) {
+  private SoftwareUpgradeParams setSoftwareUpgradeRequestParams(
+      SoftwareUpgradeParams requestParams, Universe universe, boolean rollbackSupport) {
     // Temporary fix for PLAT-4791 until PLAT-4653 fixed.
     if (universe.getUniverseDetails().getReadOnlyClusters().size() > 0
         && requestParams.getReadOnlyClusters().size() == 0) {
@@ -154,7 +153,13 @@ public class UpgradeUniverseHandler {
       requestParams.setEnableYbc(false);
     }
     requestParams.setYbcInstalled(universe.isYbcEnabled());
+    requestParams.rollbackSupport = rollbackSupport;
+    return requestParams;
+  }
 
+  private TaskType getSoftwareUpgradeTaskType(
+      Universe universe, SoftwareUpgradeParams requestParams) {
+    UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     TaskType taskType =
         userIntent.providerType.equals(CloudType.kubernetes)
             ? TaskType.SoftwareKubernetesUpgrade
@@ -162,8 +167,7 @@ public class UpgradeUniverseHandler {
 
     String currentVersion =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
-    if (confGetter.getConfForScope(universe, UniverseConfKeys.enableRollbackSupport)
-        && CommonUtils.isReleaseEqualOrAfter(
+    if (CommonUtils.isReleaseEqualOrAfter(
             Util.YBDB_ROLLBACK_DB_VERSION, requestParams.ybSoftwareVersion)
         && CommonUtils.isReleaseEqualOrAfter(Util.YBDB_ROLLBACK_DB_VERSION, currentVersion)) {
       taskType =
@@ -171,6 +175,29 @@ public class UpgradeUniverseHandler {
               ? TaskType.SoftwareUpgradeYB
               : TaskType.SoftwareKubernetesUpgradeYB;
     }
+    return taskType;
+  }
+
+  /** Upgrades yugabyte DB software on a universe without rollback capabilities. */
+  public UUID upgradeSoftware(
+      SoftwareUpgradeParams requestParams, Customer customer, Universe universe) {
+
+    requestParams = setSoftwareUpgradeRequestParams(requestParams, universe, false);
+    TaskType taskType = getSoftwareUpgradeTaskType(universe, requestParams);
+
+    return submitUpgradeTask(
+        taskType, CustomerTask.TaskType.SoftwareUpgrade, requestParams, customer, universe);
+  }
+
+  /**
+   * Upgrades yugabyte DB software on a version with rollback capabilities on supported versions.
+   */
+  public UUID upgradeDBVersion(
+      SoftwareUpgradeParams requestParams, Customer customer, Universe universe) {
+
+    requestParams = setSoftwareUpgradeRequestParams(requestParams, universe, true);
+    TaskType taskType = getSoftwareUpgradeTaskType(universe, requestParams);
+
     return submitUpgradeTask(
         taskType, CustomerTask.TaskType.SoftwareUpgrade, requestParams, customer, universe);
   }

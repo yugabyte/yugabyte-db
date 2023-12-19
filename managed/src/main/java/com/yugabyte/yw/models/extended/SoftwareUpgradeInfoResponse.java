@@ -16,6 +16,6 @@ public class SoftwareUpgradeInfoResponse {
   @ApiModelProperty(
       value = "WARNING: This is a preview API that could change. Finalize required",
       accessMode = AccessMode.READ_ONLY)
-  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.21.0.0")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.2.0")
   private boolean finalizeRequired;
 }

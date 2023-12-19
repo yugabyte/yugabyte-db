@@ -5,29 +5,26 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertTrue;
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesWaitForPod;
-import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.RegexMatcher;
-import com.yugabyte.yw.forms.SoftwareUpgradeParams;
+import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.forms.RollbackUpgradeParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.TaskType;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -39,22 +36,18 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
-import org.yb.client.IsInitDbDoneResponse;
-import org.yb.client.UpgradeYsqlResponse;
-import org.yb.client.YBClient;
 import play.libs.Json;
 
-public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
+public class RollbackKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
 
   @Rule public MockitoRule rule = MockitoJUnit.rule();
 
-  @InjectMocks private SoftwareKubernetesUpgrade softwareKubernetesUpgrade;
-
-  private YBClient mockClient;
+  @InjectMocks private RollbackKubernetesUpgrade rollbackKubernetesUpgrade;
 
   private static final List<TaskType> UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
-          TaskType.CheckUpgrade,
+          TaskType.UpdateUniverseState,
+          TaskType.RollbackAutoFlags,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
@@ -91,36 +84,15 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
           TaskType.WaitForServerReady,
           TaskType.ModifyBlackList,
           TaskType.LoadBalancerStateChange,
-          TaskType.PromoteAutoFlags,
-          TaskType.RunYsqlUpgrade,
           TaskType.UpdateSoftwareVersion,
+          TaskType.UpdateUniverseState,
           TaskType.UniverseUpdateSucceeded,
           TaskType.ModifyBlackList);
-
-  @Before
-  public void setUp() {
-    super.setUp();
-    UpgradeYsqlResponse mockUpgradeYsqlResponse = new UpgradeYsqlResponse(1000, "", null);
-    IsInitDbDoneResponse mockIsInitDbDoneResponse =
-        new IsInitDbDoneResponse(1000, "", true, true, null, null);
-    mockClient = mock(YBClient.class);
-    when(mockYBClient.getClientWithConfig(any())).thenReturn(mockClient);
-
-    try {
-      when(mockClient.upgradeYsql(any(HostAndPort.class), anyBoolean()))
-          .thenReturn(mockUpgradeYsqlResponse);
-      when(mockClient.getIsInitDbDone()).thenReturn(mockIsInitDbDoneResponse);
-    } catch (Exception ignored) {
-    }
-  }
-
-  private TaskInfo submitTask(SoftwareUpgradeParams taskParams) {
-    return submitTask(taskParams, TaskType.SoftwareKubernetesUpgrade, commissioner);
-  }
 
   private static List<JsonNode> createUpgradeResult(boolean isSingleAZ) {
     String namespace = isSingleAZ ? "demo-universe" : "demo-universe-az-2";
     return ImmutableList.of(
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(
             ImmutableMap.of("commandType", KubernetesCommandExecutor.CommandType.POD_INFO.name())),
@@ -129,7 +101,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
                 "commandType",
                 KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name(),
                 "ybSoftwareVersion",
-                YB_SOFTWARE_VERSION_NEW)),
+                "old-version")),
         Json.toJson(
             ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
         Json.toJson(ImmutableMap.of()),
@@ -139,7 +111,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
                 "commandType",
                 KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name(),
                 "ybSoftwareVersion",
-                YB_SOFTWARE_VERSION_NEW)),
+                "old-version")),
         Json.toJson(
             ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
         Json.toJson(ImmutableMap.of()),
@@ -149,7 +121,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
                 "commandType",
                 KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name(),
                 "ybSoftwareVersion",
-                YB_SOFTWARE_VERSION_NEW)),
+                "old-version")),
         Json.toJson(
             ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
         Json.toJson(ImmutableMap.of()),
@@ -162,7 +134,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
                 "commandType",
                 KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name(),
                 "ybSoftwareVersion",
-                YB_SOFTWARE_VERSION_NEW,
+                "old-version",
                 "namespace",
                 namespace)),
         Json.toJson(
@@ -177,7 +149,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
                 "commandType",
                 KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name(),
                 "ybSoftwareVersion",
-                YB_SOFTWARE_VERSION_NEW)),
+                "old-version")),
         Json.toJson(
             ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
         Json.toJson(ImmutableMap.of()),
@@ -190,10 +162,9 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
                 "commandType",
                 KubernetesCommandExecutor.CommandType.HELM_UPGRADE.name(),
                 "ybSoftwareVersion",
-                YB_SOFTWARE_VERSION_NEW)),
+                "old-version")),
         Json.toJson(
             ImmutableMap.of("commandType", KubernetesWaitForPod.CommandType.WAIT_FOR_POD.name())),
-        Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
         Json.toJson(ImmutableMap.of()),
@@ -204,10 +175,52 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
         Json.toJson(ImmutableMap.of()));
   }
 
+  private TaskInfo submitTask(RollbackUpgradeParams taskParams) {
+    return submitTask(taskParams, TaskType.RollbackKubernetesUpgrade, commissioner);
+  }
+
+  @Before
+  public void setup() throws Exception {
+    rollbackKubernetesUpgrade.setTaskUUID(UUID.randomUUID());
+  }
+
   @Test
-  public void testSoftwareUpgradeSingleAZ() {
-    softwareKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
+  public void testRollbackUpgradeRetries() {
     setupUniverseSingleAZ(false, true);
+    UniverseDefinitionTaskParams.PrevYBSoftwareConfig ybSoftwareConfig =
+        new UniverseDefinitionTaskParams.PrevYBSoftwareConfig();
+    ybSoftwareConfig.setAutoFlagConfigVersion(1);
+    ybSoftwareConfig.setSoftwareVersion("old-version");
+    TestHelper.updateUniversePrevSoftwareConfig(defaultUniverse, ybSoftwareConfig);
+    TestHelper.updateUniverseIsRollbackAllowed(defaultUniverse, true);
+    TestHelper.updateUniverseVersion(defaultUniverse, "new-version");
+    RollbackUpgradeParams taskParams = new RollbackUpgradeParams();
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.expectedUniverseVersion = -1;
+    super.verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.RollbackUpgrade,
+        CustomerTask.TargetType.Universe,
+        defaultUniverse.getUniverseUUID(),
+        TaskType.RollbackKubernetesUpgrade,
+        taskParams,
+        false);
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertFalse(defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
+    assertEquals(
+        SoftwareUpgradeState.Ready, defaultUniverse.getUniverseDetails().softwareUpgradeState);
+  }
+
+  @Test
+  public void testRollbackUpgradeSingleAZ() {
+    setupUniverseSingleAZ(false, true);
+    UniverseDefinitionTaskParams.PrevYBSoftwareConfig ybSoftwareConfig =
+        new UniverseDefinitionTaskParams.PrevYBSoftwareConfig();
+    ybSoftwareConfig.setAutoFlagConfigVersion(1);
+    ybSoftwareConfig.setSoftwareVersion("old-version");
+    TestHelper.updateUniversePrevSoftwareConfig(defaultUniverse, ybSoftwareConfig);
+    TestHelper.updateUniverseIsRollbackAllowed(defaultUniverse, true);
+    TestHelper.updateUniverseVersion(defaultUniverse, "new-version");
 
     ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
@@ -219,8 +232,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
 
     String overrideFileRegex = "(.*)" + defaultUniverse.getUniverseUUID() + "(.*).yml";
 
-    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
-    taskParams.ybSoftwareVersion = YB_SOFTWARE_VERSION_NEW;
+    RollbackUpgradeParams taskParams = new RollbackUpgradeParams();
     TaskInfo taskInfo = submitTask(taskParams);
 
     verify(mockKubernetesManager, times(6))
@@ -238,7 +250,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
         .getPodInfos(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedNamespace.capture());
 
-    assertEquals(YB_SOFTWARE_VERSION_NEW, expectedYbSoftwareVersion.getValue());
+    assertEquals("old-version", expectedYbSoftwareVersion.getValue());
     assertEquals(config, expectedConfig.getValue());
     assertEquals(NODE_PREFIX, expectedNodePrefix.getValue());
     assertEquals(NODE_PREFIX, expectedNamespace.getValue());
@@ -249,12 +261,23 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(subTasksByPosition, UPGRADE_TASK_SEQUENCE, createUpgradeResult(true));
     assertEquals(Success, taskInfo.getTaskState());
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertFalse(defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
+    assertNull(defaultUniverse.getUniverseDetails().prevYBSoftwareConfig);
+    assertEquals(
+        SoftwareUpgradeState.Ready, defaultUniverse.getUniverseDetails().softwareUpgradeState);
   }
 
   @Test
-  public void testSoftwareUpgradeMultiAZ() {
-    softwareKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
+  public void testRollbackUpgradeMultiAZ() {
     setupUniverseMultiAZ(false, true);
+    UniverseDefinitionTaskParams.PrevYBSoftwareConfig ybSoftwareConfig =
+        new UniverseDefinitionTaskParams.PrevYBSoftwareConfig();
+    ybSoftwareConfig.setAutoFlagConfigVersion(1);
+    ybSoftwareConfig.setSoftwareVersion("old-version");
+    TestHelper.updateUniversePrevSoftwareConfig(defaultUniverse, ybSoftwareConfig);
+    TestHelper.updateUniverseIsRollbackAllowed(defaultUniverse, true);
+    TestHelper.updateUniverseVersion(defaultUniverse, "new-version");
 
     ArgumentCaptor<String> expectedYbSoftwareVersion = ArgumentCaptor.forClass(String.class);
     ArgumentCaptor<String> expectedNodePrefix = ArgumentCaptor.forClass(String.class);
@@ -265,8 +288,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
     ArgumentCaptor<UUID> expectedUniverseUUID = ArgumentCaptor.forClass(UUID.class);
     String overrideFileRegex = "(.*)" + defaultUniverse.getUniverseUUID() + "(.*).yml";
 
-    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
-    taskParams.ybSoftwareVersion = YB_SOFTWARE_VERSION_NEW;
+    RollbackUpgradeParams taskParams = new RollbackUpgradeParams();
     TaskInfo taskInfo = submitTask(taskParams);
 
     verify(mockKubernetesManager, times(6))
@@ -284,7 +306,7 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
         .getPodInfos(
             expectedConfig.capture(), expectedNodePrefix.capture(), expectedNamespace.capture());
 
-    assertEquals(YB_SOFTWARE_VERSION_NEW, expectedYbSoftwareVersion.getValue());
+    assertEquals("old-version", expectedYbSoftwareVersion.getValue());
     assertEquals(config, expectedConfig.getValue());
     assertTrue(expectedNodePrefix.getValue().contains(NODE_PREFIX));
     assertTrue(expectedNamespace.getValue().contains(NODE_PREFIX));
@@ -295,71 +317,10 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     assertTaskSequence(subTasksByPosition, UPGRADE_TASK_SEQUENCE, createUpgradeResult(false));
     assertEquals(Success, taskInfo.getTaskState());
-  }
-
-  @Test
-  public void testSoftwareUpgradeNoSystemCatalogUpgrade() {
-    softwareKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
-    setupUniverseSingleAZ(false, true);
-
-    String overrideFileRegex = "(.*)" + defaultUniverse.getUniverseUUID() + "(.*).yml";
-
-    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
-    taskParams.ybSoftwareVersion = YB_SOFTWARE_VERSION_NEW;
-    taskParams.upgradeSystemCatalog = false;
-    TaskInfo taskInfo = submitTask(taskParams);
-
-    List<TaskInfo> subTasks = taskInfo.getSubTasks();
-    Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    List<TaskType> expectedTasks = new ArrayList<>(UPGRADE_TASK_SEQUENCE);
-    expectedTasks.remove(TaskType.RunYsqlUpgrade);
-    assertTaskSequence(subTasksByPosition, expectedTasks, createUpgradeResult(true));
-    assertEquals(Success, taskInfo.getTaskState());
-  }
-
-  @Test
-  public void testSoftwareUpgradeAndPromoteAutoFlagsOnOthers() {
-    softwareKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
-    setupUniverseSingleAZ(false, true);
-
-    Universe xClusterUniv = ModelFactory.createUniverse("univ-2");
-    XClusterConfig.create(
-        "test-2", defaultUniverse.getUniverseUUID(), xClusterUniv.getUniverseUUID());
-
-    String overrideFileRegex = "(.*)" + defaultUniverse.getUniverseUUID() + "(.*).yml";
-
-    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
-    taskParams.ybSoftwareVersion = YB_SOFTWARE_VERSION_NEW;
-    TaskInfo taskInfo = submitTask(taskParams);
-
-    List<TaskInfo> subTasks = taskInfo.getSubTasks();
-    Map<Integer, List<TaskInfo>> subTasksByPosition =
-        subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
-    List<TaskType> expectedTasks = new ArrayList<>(UPGRADE_TASK_SEQUENCE);
-    expectedTasks.add(
-        expectedTasks.lastIndexOf(TaskType.PromoteAutoFlags), TaskType.PromoteAutoFlags);
-    List<JsonNode> expectedResultLists = new ArrayList<>(createUpgradeResult(true));
-    expectedResultLists.add(Json.toJson(ImmutableMap.of()));
-    assertTaskSequence(subTasksByPosition, expectedTasks, expectedResultLists);
-    assertEquals(Success, taskInfo.getTaskState());
-  }
-
-  @Test
-  public void testSoftwareKubernetesUpgradeRetries() {
-    softwareKubernetesUpgrade.setUserTaskUUID(UUID.randomUUID());
-    setupUniverseSingleAZ(false, true);
-    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
-    taskParams.ybSoftwareVersion = YB_SOFTWARE_VERSION_NEW;
-
-    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
-    taskParams.expectedUniverseVersion = 2;
-    super.verifyTaskRetries(
-        defaultCustomer,
-        CustomerTask.TaskType.SoftwareUpgrade,
-        CustomerTask.TargetType.Universe,
-        defaultUniverse.getUniverseUUID(),
-        TaskType.SoftwareKubernetesUpgrade,
-        taskParams);
+    defaultUniverse = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    assertFalse(defaultUniverse.getUniverseDetails().isSoftwareRollbackAllowed);
+    assertNull(defaultUniverse.getUniverseDetails().prevYBSoftwareConfig);
+    assertEquals(
+        SoftwareUpgradeState.Ready, defaultUniverse.getUniverseDetails().softwareUpgradeState);
   }
 }

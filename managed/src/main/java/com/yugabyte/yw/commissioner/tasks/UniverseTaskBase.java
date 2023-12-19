@@ -4854,6 +4854,33 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     }
   }
 
+  protected void createFinalizeUpgradeTasks(boolean upgradeSystemCatalog) {
+    Universe universe = getUniverse();
+    String version = universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+
+    createUpdateUniverseSoftwareUpgradeStateTask(
+        UniverseDefinitionTaskParams.SoftwareUpgradeState.Finalizing,
+        false /* isSoftwareRollbackAllowed */);
+
+    if (!confGetter.getConfForScope(universe, UniverseConfKeys.skipUpgradeFinalize)) {
+      if (upgradeSystemCatalog) {
+        // Run YSQL upgrade on the universe.
+        createRunYsqlUpgradeTask(version);
+      }
+      // Promote all auto flags upto class External.
+      createPromoteAutoFlagTask(
+          universe.getUniverseUUID(),
+          true /* ignoreErrors */,
+          AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS_NAME /* maxClass */);
+
+      createUpdateUniverseSoftwareUpgradeStateTask(
+          UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready);
+
+    } else {
+      log.info("Skipping upgrade finalization for universe : " + universe.getUniverseUUID());
+    }
+  }
+
   protected void createPromoteAutoFlagsAndLockOtherUniverse(
       Universe universe, Set<UUID> alreadyLockedUniverseUUIDSet, boolean ignoreErrors) {
     if (lockedXClusterUniversesUuidSet == null) {

@@ -105,7 +105,7 @@ public class Util {
 
   public static final String K8S_YBC_COMPATIBLE_DB_VERSION = "2.17.3.0-b62";
 
-  public static final String YBDB_ROLLBACK_DB_VERSION = "2.20.0.0-b1";
+  public static final String YBDB_ROLLBACK_DB_VERSION = "2.20.2.0-b1";
 
   public static final String AUTO_FLAG_FILENAME = "auto_flags.json";
 

@@ -4,6 +4,10 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static org.junit.Assert.assertEquals;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.endsWith;
 import static org.mockito.Mockito.*;
 import static play.inject.Bindings.bind;
 
@@ -61,6 +65,7 @@ import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponentFactory;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -68,11 +73,13 @@ import com.yugabyte.yw.models.CustomerTask.TargetType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.TaskInfo.State;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.TreeMap;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -436,6 +443,28 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
           // Let the last sub-task complete.
           clearAbortOrPausePositions();
         }
+        // mock db version during upgrade and rollback task to take action on all nodes.
+        if (taskType.equals(TaskType.SoftwareUpgradeYB)
+            || taskType.equals(TaskType.RollbackUpgrade)) {
+          Universe universe = Universe.getOrBadRequest(targetUuid);
+          int masterTserverNodesCount =
+              universe.getMasters().size() + universe.getTServers().size();
+          String oldVersion =
+              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+          if (pendingSubTaskCount <= 1) {
+            String version;
+            if (taskType.equals(TaskType.SoftwareUpgradeYB)) {
+              SoftwareUpgradeParams params = (SoftwareUpgradeParams) taskParams;
+              version = params.ybSoftwareVersion;
+            } else {
+              version = universe.getUniverseDetails().prevYBSoftwareConfig.getSoftwareVersion();
+            }
+            mockDBServerVersion(version, masterTserverNodesCount);
+          } else {
+            mockDBServerVersion(oldVersion, masterTserverNodesCount);
+          }
+        }
+
         // Resume task will resume and abort it if any abort position is set.
         commissioner.resumeTask(taskUuid);
         // Wait for the task to abort.
@@ -532,5 +561,33 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     underReplicatedTabletsJson.put("underreplicated_tablets", Json.newArray());
     when(mockNodeUIApiHelper.getRequest(endsWith(CheckUnderReplicatedTablets.URL_SUFFIX)))
         .thenReturn(underReplicatedTabletsJson);
+  }
+
+  public void mockDBServerVersion(String oldVersion, String newVersion, int count) {
+    mockDBServerVersion(oldVersion, count, newVersion, count);
+  }
+
+  public void mockDBServerVersion(String version, int count) {
+    List<Optional<String>> response = new ArrayList<>();
+    for (int i = 1; i < count; i++) {
+      response.add(Optional.of(version));
+    }
+    Optional<String>[] resp = response.toArray(new Optional[0]);
+    when(mockYBClient.getServerVersion(any(), anyString(), anyInt()))
+        .thenReturn(Optional.of(version), resp);
+  }
+
+  public void mockDBServerVersion(
+      String oldVersion, int oldVersionCount, String newVersion, int newVersionCount) {
+    List<Optional<String>> response = new ArrayList<>();
+    for (int i = 1; i < oldVersionCount; i++) {
+      response.add(Optional.of(oldVersion));
+    }
+    for (int i = 0; i < newVersionCount; i++) {
+      response.add(Optional.of(newVersion));
+    }
+    Optional<String>[] resp = response.toArray(new Optional[0]);
+    when(mockYBClient.getServerVersion(any(), anyString(), anyInt()))
+        .thenReturn(Optional.of(oldVersion), resp);
   }
 }
