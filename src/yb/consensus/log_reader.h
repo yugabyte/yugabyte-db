@@ -140,6 +140,14 @@ class LogReader {
     return log_prefix_;
   }
 
+  // Returns NotFound if there is no index entry for such op_index or if Raft operation at op_index
+  // will be rewritten due to term change.
+  // If segment is set, just lazily load index from the segment.
+  Result<LogIndexEntry> GetIndexEntry(
+      int64_t op_index, ReadableLogSegment* segment = nullptr) const;
+  Result<LogIndexEntry> DoGetIndexEntry(
+      int64_t op_index, ReadableLogSegment* segment = nullptr) const;
+
   Result<LogIndexEntry> TEST_GetIndexEntry(int64_t index) const;
 
  private:
@@ -219,10 +227,6 @@ class LogReader {
   // true, it will add the size of segment to potential_reclaimed_space.
   bool ViolatesMinSpacePolicy(const scoped_refptr<ReadableLogSegment>& segment,
                               int64_t *potential_reclaimed_space) const;
-
-  // Returns NotFound if there is no index entry for such op_index or if Raft operation at op_index
-  // will be rewritten due to term change.
-  Result<LogIndexEntry> GetIndexEntry(int64_t op_index) const;
 
   Env *env_;
 

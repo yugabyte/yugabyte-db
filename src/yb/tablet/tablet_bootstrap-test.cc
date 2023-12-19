@@ -57,7 +57,9 @@
 #include "yb/util/tostring.h"
 #include "yb/util/tsan_util.h"
 
+DECLARE_bool(save_index_into_wal_segments);
 DECLARE_bool(skip_flushed_entries);
+DECLARE_bool(skip_flushed_entries_in_first_replayed_segment);
 DECLARE_int32(retryable_request_timeout_secs);
 
 using std::shared_ptr;
@@ -104,6 +106,9 @@ struct BootstrapReport {
   // First OpIds of segments to replay, in reverse order (we traverse them from latest to earliest
   // in TabletBootstrap).
   std::vector<OpId> first_op_ids_of_segments_reversed;
+
+  // First OpId read from all replayed segments from earliest to latest.
+  std::vector<OpId> first_op_ids_read_from_replayed_segments;
 };
 
 struct BootstrapTestHooksImpl : public TabletBootstrapTestHooksIf {
@@ -115,6 +120,10 @@ struct BootstrapTestHooksImpl : public TabletBootstrapTestHooksIf {
 
   boost::optional<DocDbOpIds> GetFlushedOpIdsOverride() const override {
     return flushed_op_ids;
+  }
+
+  boost::optional<OpId> GetFlushedRetryableRequestsOpIdOverride() const override {
+    return flushed_retryable_requests_id;
   }
 
   void Replayed(OpId op_id, AlreadyAppliedToRegularDB already_applied_to_regular_db) override {
@@ -130,6 +139,11 @@ struct BootstrapTestHooksImpl : public TabletBootstrapTestHooksIf {
 
   void RetryableRequest(OpId op_id) override {
     actual_report.retryable_requests.push_back(op_id);
+  }
+
+  void FirstOpIdReadFromReplayedSegment(const std::string& path, OpId first_op_id) override {
+    LOG(INFO) << "First OpId read from segment " << DirName(path) << ": " << first_op_id;
+    actual_report.first_op_ids_read_from_replayed_segments.push_back(first_op_id);
   }
 
   bool ShouldSkipTransactionUpdates() const override {
@@ -155,6 +169,8 @@ struct BootstrapTestHooksImpl : public TabletBootstrapTestHooksIf {
 
   // This is queried by TabletBootstrap during its initialization.
   boost::optional<DocDbOpIds> flushed_op_ids;
+
+  boost::optional<OpId> flushed_retryable_requests_id;
 
   BootstrapReport actual_report;
 
@@ -885,6 +901,7 @@ TEST_F(BootstrapTest, RandomizedInput) {
   // This is to avoid non-deterministic time-based behavior in "bootstrap optimizer"
   // (skip_wal_rewrite mode).
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_retryable_request_timeout_secs) = 0;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_skip_flushed_entries_in_first_replayed_segment) = false;
 
   const auto kNumIter = NonTsanVsTsan(400, 150);
   const auto kNumEntries = NonTsanVsTsan(1500, 500);
@@ -997,6 +1014,114 @@ TEST_F(BootstrapTest, ColocatedSchemaBoostrap) {
   ASSERT_EQ(kv_store_created.colocation_to_table.size(), 1);
   ASSERT_EQ(kv_store_created.colocation_to_table.begin()->first, colocation_id);
 }
+
+TEST_F(BootstrapTest, ReplayOpsFromLastOpId) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_skip_flushed_entries_in_first_replayed_segment) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_save_index_into_wal_segments) = true;
+
+  options_.segment_size_bytes = 1024;
+  BuildLog();
+
+  // Insert 10 ops to the log and it should create 2 wal segments.
+  const int kNumEntries = 10;
+  for (int i = 0; i < kNumEntries; i++) {
+    AppendReplicateBatchToLog(1);
+    SleepFor(10ms);
+  }
+
+  test_hooks_->flushed_op_ids = DocDbOpIds{{1, 3}, {1, 3}};
+  test_hooks_->flushed_retryable_requests_id = OpId{1, 3};
+  TabletPtr tablet;
+  ConsensusBootstrapInfo boot_info;
+  ASSERT_OK(BootstrapTestTablet(&tablet, &boot_info));
+  vector<OpId> expected_replayed_op_ids;
+  for (int i = 3; i <= kNumEntries; i++) {
+    expected_replayed_op_ids.push_back({1, i});
+  }
+  // From 1.3 to 1.10.
+  ASSERT_VECTORS_EQ(test_hooks_->actual_report.retryable_requests, expected_replayed_op_ids);
+  expected_replayed_op_ids.clear();
+  for (int i = 4; i <= kNumEntries; i++) {
+    expected_replayed_op_ids.push_back({1, i});
+  }
+  // From 1.4 to 1.10.
+  ASSERT_VECTORS_EQ(test_hooks_->actual_report.replayed, expected_replayed_op_ids);
+
+  // The first entry read from the first segment is 1.3 instead of the very first entry 1.1.
+  ASSERT_EQ(test_hooks_->actual_report.first_op_ids_read_from_replayed_segments[0], OpId(1, 3));
+}
+
+TEST_F(BootstrapTest, ReplayOpsFromFirstOpForUnflushedTablet) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_skip_flushed_entries_in_first_replayed_segment) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_save_index_into_wal_segments) = true;
+
+  options_.segment_size_bytes = 1024;
+  BuildLog();
+
+  // Insert 10 ops to the log and it should create 2 wal segments.
+  const int kNumEntries = 10;
+  for (int i = 0; i < kNumEntries; i++) {
+    AppendReplicateBatchToLog(1);
+    SleepFor(10ms);
+  }
+
+  test_hooks_->flushed_op_ids = DocDbOpIds{OpId::Invalid(), OpId::Invalid()};
+  test_hooks_->flushed_retryable_requests_id = OpId{1, 3};
+  TabletPtr tablet;
+  ConsensusBootstrapInfo boot_info;
+  ASSERT_OK(BootstrapTestTablet(&tablet, &boot_info));
+  vector<OpId> expected_replayed_op_ids;
+  for (int i = 1; i <= kNumEntries; i++) {
+    expected_replayed_op_ids.push_back({1, i});
+  }
+  // From 1.1 to 1.10.
+  ASSERT_VECTORS_EQ(test_hooks_->actual_report.retryable_requests, expected_replayed_op_ids);
+  expected_replayed_op_ids.clear();
+  for (int i = 1; i <= kNumEntries; i++) {
+    expected_replayed_op_ids.push_back({1, i});
+  }
+  // From 1.1 to 1.10.
+  ASSERT_VECTORS_EQ(test_hooks_->actual_report.replayed, expected_replayed_op_ids);
+
+  // The first entry read from the first segment is the first op in it.
+  ASSERT_EQ(test_hooks_->actual_report.first_op_ids_read_from_replayed_segments[0], OpId(1, 1));
+}
+
+TEST_F(BootstrapTest, ReplayOpsFromFirstOpIfSegmentUnclosed) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_skip_flushed_entries_in_first_replayed_segment) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_save_index_into_wal_segments) = true;
+
+  options_.segment_size_bytes = 1024;
+  BuildLog();
+
+  // Insert 4 ops to the log, the segment shouldn't rotate.
+  const int kNumEntries = 4;
+  for (int i = 0; i < kNumEntries; i++) {
+    AppendReplicateBatchToLog(1);
+  }
+
+  test_hooks_->flushed_op_ids = DocDbOpIds{{1, 2}, {1, 2}};
+  test_hooks_->flushed_retryable_requests_id = OpId{1, 2};
+  TabletPtr tablet;
+  ConsensusBootstrapInfo boot_info;
+  ASSERT_OK(BootstrapTestTablet(&tablet, &boot_info));
+  vector<OpId> expected_replayed_op_ids;
+  for (int i = 1; i <= kNumEntries; i++) {
+    expected_replayed_op_ids.push_back({1, i});
+  }
+  // From 1.1 to 1.4.
+  ASSERT_VECTORS_EQ(test_hooks_->actual_report.retryable_requests, expected_replayed_op_ids);
+  expected_replayed_op_ids.clear();
+  for (int i = 3; i <= kNumEntries; i++) {
+    expected_replayed_op_ids.push_back({1, i});
+  }
+  // From 1.3 to 1.4.
+  ASSERT_VECTORS_EQ(test_hooks_->actual_report.replayed, expected_replayed_op_ids);
+
+  // The first entry read from the first segment is the first op in it.
+  ASSERT_EQ(test_hooks_->actual_report.first_op_ids_read_from_replayed_segments[0], OpId(1, 1));
+}
+
 
 } // namespace tablet
 } // namespace yb
