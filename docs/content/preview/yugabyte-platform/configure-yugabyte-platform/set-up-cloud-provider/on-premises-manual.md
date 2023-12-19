@@ -782,8 +782,8 @@ Even though the node agent installation, configuration, and registration are suf
 
 - `node-agent node unregister` is used for un-registering the node and node agent from YugabyteDB Anywhere. This can be done to restart the registration process.
 - `node-agent node register` is used for registering a node and node agent to YugabyteDB Anywhere if they were unregistered manually. Registering an already registered node agent fails as YugabyteDB Anywhere keeps a record of the node agent with this IP.
-- `node-agent service start` and `node-agent service stop` are used for starting or stopping the node agent as a gRPC server.
 - `node-agent node preflight-check` is used for checking if a node is configured as a YugabyteDB Anywhere node.
+<!-- `node-agent service start` and `node-agent service stop` are used for starting or stopping the node agent as a gRPC server.-->
 
 #### Manual registration
 
