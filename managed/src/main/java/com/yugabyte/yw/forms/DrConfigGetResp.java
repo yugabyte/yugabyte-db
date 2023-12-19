@@ -114,6 +114,11 @@ public class DrConfigGetResp {
     return drConfig.getModifyTime();
   }
 
+  @ApiModelProperty(value = "Bootstrap backup params for DR config")
+  public XClusterConfigRestartFormData.RestartBootstrapParams getBootstrapParams() {
+    return drConfig.getBootstrapBackupParams();
+  }
+
   @ApiModelProperty(value = "Replication group name in the dr replica universe cluster config")
   public String getReplicationGroupName() {
     return xClusterConfig.getReplicationGroupName();
