@@ -21,7 +21,7 @@ Unless otherwise noted, x86 operating systems are supported on all supported ver
 | :--------------- | :------------- | :------------- | :--- |
 | AlmaLinux 8      | {{<icon/yes>}} | {{<icon/yes>}} | Recommended for production<br>Recommended development platform |
 | AlmaLinux 9      | {{<icon/yes>}} | {{<icon/yes>}} |
-| Amazon Linux 2   | {{<icon/yes>}} | {{<icon/yes>}} |
+| Amazon Linux 2   | {{<icon/yes>}} | {{<icon/yes>}} | Deprecated in v2.20.0.0 |
 | CentOS7          | {{<icon/yes>}} |                |
 | CentOS8          | {{<icon/yes>}} |                |
 | Red Hat Enterprise Linux 7 | {{<icon/yes>}} |      |
