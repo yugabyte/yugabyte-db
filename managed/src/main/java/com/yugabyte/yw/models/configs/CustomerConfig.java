@@ -15,6 +15,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.common.CallHomeManager.CollectionLevel;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigAlertsPreferencesData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigAlertsSmtpInfoData;
 import com.yugabyte.yw.models.configs.data.CustomerConfigCallHomeData;
@@ -425,5 +426,10 @@ public class CustomerConfig extends Model {
       }
     }
     return null;
+  }
+
+  @JsonIgnore
+  public boolean isStorageConfigUsedForDr() {
+    return DrConfig.getByStorageConfigUuid(configUUID).size() != 0;
   }
 }

@@ -21,6 +21,5 @@ public class DrConfigRestartForm {
 
   @Valid
   @ApiModelProperty("Parameters needed for the bootstrap flow including backup/restore")
-  @Required
   public XClusterConfigRestartFormData.RestartBootstrapParams bootstrapParams;
 }
