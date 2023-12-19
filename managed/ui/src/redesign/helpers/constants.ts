@@ -34,9 +34,14 @@ export const SortOrder = {
 export type SortOrder = typeof SortOrder[keyof typeof SortOrder];
 
 export const RuntimeConfigKey = {
-  PROVIDER_REDESIGN_FEATURE_FLAG: 'yb.ui.feature_flags.provider_redesign',
+  PROVIDER_REDESIGN_UI_FEATURE_FLAG: 'yb.ui.feature_flags.provider_redesign',
   EDIT_IN_USE_PORIVDER_UI_FEATURE_FLAG: 'yb.ui.feature_flags.edit_in_use_provider',
   XCLUSTER_TRANSACTIONAL_ATOMICITY_FEATURE_FLAG: 'yb.xcluster.transactional.enabled',
+  DISASTER_RECOVERY_UI_FEATURE_FLAG: 'yb.ui.feature_flags.disaster_recovery',
+  DISASTER_RECOVERY_FEATURE_FLAG: 'yb.xcluster.dr.enabled',
+  PERFOMANCE_ADVISOR_UI_FEATURE_FLAG: 'yb.ui.feature_flags.perf_advisor',
+  GRANULAR_METRICS_FEATURE_FLAG: 'yb.ui.feature_flags.granular_metrics',
+  IS_UNIVERSE_AUTH_ENFORCED: 'yb.universe.auth.is_enforced',
   USE_K8_CUSTOM_RESOURCES_FEATURE_FLAG: 'yb.use_k8s_custom_resources',
   IS_GFLAG_MULTILINE_ENABLED: 'yb.ui.feature_flags.gflag_multiline_conf',
   SHOW_DR_XCLUSTER_CONFIG: 'yb.ui.xcluster.dr.show_xcluster_config'
@@ -50,3 +55,5 @@ export const ToastNotificationDuration = {
   DEFAULT: 3000,
   LONG: 5000
 } as const;
+
+export const CHART_RESIZE_DEBOUNCE = 100;

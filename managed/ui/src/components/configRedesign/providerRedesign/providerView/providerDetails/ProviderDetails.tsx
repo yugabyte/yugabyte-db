@@ -14,7 +14,7 @@ import { ProviderCode } from '../../constants';
 import { ProviderEditView } from '../../forms/ProviderEditView';
 import { ProviderOverview } from './ProviderOverview';
 import { UniverseItem, UniverseTable } from './UniverseTable';
-import { usePillStyles } from '../../utils';
+import { usePillStyles } from '../../../../../redesign/styles/styles';
 
 import { YBProvider } from '../../types';
 

@@ -20,7 +20,8 @@ import { ExpandedConfigTableSelect } from './ExpandedConfigTableSelect';
 import { SortOrder, YBTableRelationType } from '../../../../redesign/helpers/constants';
 
 import { TableType, Universe, YBTable } from '../../../../redesign/helpers/dtos';
-import { XClusterConfig, XClusterTable, XClusterTableType } from '../../XClusterTypes';
+import { XClusterTable, XClusterTableType } from '../../XClusterTypes';
+import { XClusterConfig } from '../../dtos';
 
 import styles from './ConfigTableSelect.module.scss';
 
@@ -44,7 +45,7 @@ interface ConfigTableSelectProps {
 const TABLE_MIN_PAGE_SIZE = 10;
 const PAGE_SIZE_OPTIONS = [TABLE_MIN_PAGE_SIZE, 20, 30, 40] as const;
 
-const TABLE_DESCRIPTOR = 'List of keyspaces and tables in the source universe';
+const TABLE_DESCRIPTOR = 'List of databases and tables in the source universe';
 
 /**
  * Input component for selecting tables for xCluster configuration.
@@ -78,7 +79,7 @@ export const ConfigTableSelect = ({
       }).then((response) => response.data)
   );
   const sourceUniverseQuery = useQuery<Universe>(
-    ['universe', xClusterConfig.sourceUniverseUUID],
+    universeQueryKey.detail(xClusterConfig.sourceUniverseUUID),
     () => api.fetchUniverse(xClusterConfig.sourceUniverseUUID)
   );
 
@@ -183,8 +184,7 @@ export const ConfigTableSelect = ({
 
   const tablesInConfig = augmentTablesWithXClusterDetails(
     sourceUniverseTablesQuery.data,
-    xClusterConfig.tableDetails,
-    xClusterConfig.txnTableDetails
+    xClusterConfig.tableDetails
   );
 
   const tablesForSelection = tablesInConfig.filter(
@@ -253,7 +253,7 @@ export const ConfigTableSelect = ({
           options={tableOptions}
         >
           <TableHeaderColumn dataField="keyspace" isKey={true} dataSort={true}>
-            Keyspace
+            Database
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="sizeBytes"
@@ -289,11 +289,11 @@ export const ConfigTableSelect = ({
       )}
       {configTableType === TableType.PGSQL_TABLE_TYPE ? (
         <div>
-          Tables in {selectedKeyspaces.length} of {rowItems.length} keyspaces selected
+          Tables in {selectedKeyspaces.length} of {rowItems.length} database(s) selected
         </div>
       ) : (
         <div>
-          {selectedTableUUIDs.length} of {tablesForSelection.length} tables selected
+          {selectedTableUUIDs.length} of {tablesForSelection.length} table(s) selected
         </div>
       )}
 

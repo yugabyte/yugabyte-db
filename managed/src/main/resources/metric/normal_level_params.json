@@ -10,7 +10,7 @@
     "|mem_tracker_(RegularDB_MemTable|IntentsDB_MemTable)",
     "|mem_tracker_server_PerTablet_(RegularDB_MemTable|IntentsDB_MemTable)",
     "|mem_tracker_server_Tablets_overhead_PerTablet_(RegularDB_MemTable|IntentsDB_MemTable)",
-    "|async_replication_[^_]+_lag_micros|transaction_conflicts",
+    "|async_replication_[^_]+_lag_micros|consumer_safe_time_[^_]+|transaction_conflicts",
     "|majority_sst_files_rejections|expired_transactions",
     "|log_(sync_latency_[^_]+|group_commit_latency_[^_]+",
     "|append_latency_[^_]+|bytes_logged|reader_bytes_read",

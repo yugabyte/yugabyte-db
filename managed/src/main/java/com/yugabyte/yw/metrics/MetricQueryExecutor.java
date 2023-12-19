@@ -219,10 +219,11 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
       case TABLE:
         return ImmutableSet.of(
             MetricQueryHelper.NAMESPACE_NAME,
+            MetricQueryHelper.NAMESPACE_ID,
             MetricQueryHelper.TABLE_ID,
             MetricQueryHelper.TABLE_NAME);
       case NAMESPACE:
-        return ImmutableSet.of(MetricQueryHelper.NAMESPACE_NAME);
+        return ImmutableSet.of(MetricQueryHelper.NAMESPACE_NAME, MetricQueryHelper.NAMESPACE_ID);
       default:
         return Collections.emptySet();
     }

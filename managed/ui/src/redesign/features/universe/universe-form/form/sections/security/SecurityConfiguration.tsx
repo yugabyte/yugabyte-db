@@ -32,6 +32,7 @@ import {
   NODE_TO_NODE_ENCRYPT_FIELD,
   ACCESS_KEY_FIELD
 } from '../../../utils/constants';
+import { RuntimeConfigKey } from '../../../../../../helpers/constants';
 import { useSectionStyles } from '../../../universeMainStyle';
 
 const useStyles = makeStyles((theme) => ({
@@ -61,7 +62,7 @@ export const SecurityConfiguration = ({ runtimeConfigs }: UniverseFormConfigurat
 
   // Value of runtime config key
   const authEnforcedObject = runtimeConfigs?.configEntries?.find(
-    (c: RunTimeConfigEntry) => c.key === 'yb.universe.auth.is_enforced'
+    (c: RunTimeConfigEntry) => c.key === RuntimeConfigKey.IS_UNIVERSE_AUTH_ENFORCED
   );
   const isAuthEnforced = !!(authEnforcedObject?.value === 'true');
 

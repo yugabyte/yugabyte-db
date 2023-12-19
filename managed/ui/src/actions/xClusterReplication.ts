@@ -2,7 +2,7 @@ import axios from 'axios';
 import moment from 'moment';
 
 import { ROOT_URL } from '../config';
-import { XClusterConfig, Metrics } from '../components/xcluster';
+import { Metrics } from '../components/xcluster';
 import { getCustomerEndpoint } from './common';
 import {
   MetricName,
@@ -10,14 +10,10 @@ import {
   XClusterConfigType
 } from '../components/xcluster/constants';
 import { ApiTimeout } from '../redesign/helpers/api';
-import { YBPTask } from '../redesign/helpers/dtos';
+import { MetricsQueryParams, YBPTask } from '../redesign/helpers/dtos';
+import { XClusterConfig } from '../components/xcluster/dtos';
 
 // TODO: Move this out of the /actions folder since these functions aren't Redux actions.
-
-export function getUniverseInfo(universeUUID: string) {
-  const cUUID = localStorage.getItem('customerId');
-  return axios.get(`${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}`);
-}
 
 export function fetchUniversesList() {
   const cUUID = localStorage.getItem('customerId');
@@ -71,10 +67,12 @@ export function restartXClusterConfig(
   bootstrapParams: { backupRequestParams: any }
 ) {
   const customerId = localStorage.getItem('customerId');
-  return axios.post(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterUUID}`, {
-    tables,
-    bootstrapParams
-  });
+  return axios
+    .post<YBPTask>(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterUUID}`, {
+      tables,
+      bootstrapParams
+    })
+    .then((response) => response.data);
 }
 
 export function isBootstrapRequired(
@@ -145,10 +143,12 @@ export function editXClusterConfigTables(
   }
 ) {
   const customerId = localStorage.getItem('customerId');
-  return axios.put(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterUUID}`, {
-    tables: tables,
-    ...(bootstrapParams !== undefined && { bootstrapParams })
-  });
+  return axios
+    .put<YBPTask>(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterUUID}`, {
+      tables: tables,
+      ...(bootstrapParams !== undefined && { bootstrapParams })
+    })
+    .then((response) => response.data);
 }
 
 export function deleteXclusterConfig(uuid: string, isForceDelete: boolean) {
@@ -184,7 +184,7 @@ export function queryLagMetricsForUniverse(
     start: moment().utc().subtract('1', 'hour').format('X'),
     end: moment().utc().format('X'),
     nodePrefix,
-    metrics: [MetricName.TSERVER_ASYNC_REPLICATION_LAG_METRIC],
+    metrics: [MetricName.TSERVER_ASYNC_REPLICATION_LAG],
     xClusterConfigUuid: replicationUUID
   };
 
@@ -210,13 +210,70 @@ export function queryLagMetricsForTable(
     streamId,
     tableId,
     nodePrefix,
-    metrics: [MetricName.TSERVER_ASYNC_REPLICATION_LAG_METRIC]
+    metrics: [MetricName.TSERVER_ASYNC_REPLICATION_LAG]
   };
   const customerUUID = localStorage.getItem('customerId');
   return axios
     .post<Metrics<'tserver_async_replication_lag_micros'>>(
       `${ROOT_URL}/customers/${customerUUID}/metrics`,
       DEFAULT_GRAPH_FILTER
+    )
+    .then((response) => response.data);
+}
+
+interface TableReplicationLagQueryParams {
+  nodePrefix: string | undefined;
+  streamId: string;
+  tableId: string;
+
+  start?: string;
+  end?: string;
+}
+interface ConfigReplicationLagQueryParms {
+  nodePrefix: string | undefined;
+  replicationUuid: string;
+
+  start?: string;
+  end?: string;
+}
+export function fetchReplicationLag(
+  metricRequestParams: TableReplicationLagQueryParams | ConfigReplicationLagQueryParms
+) {
+  const metricsQueryParams: MetricsQueryParams = {
+    ...metricRequestParams,
+    start: metricRequestParams.start ?? moment().utc().subtract('1', 'hour').format('X'),
+    end: metricRequestParams.end ?? moment().utc().format('X'),
+    metrics: [MetricName.TSERVER_ASYNC_REPLICATION_LAG]
+  };
+  const customerUuid = localStorage.getItem('customerId');
+  return axios
+    .post<Metrics<'tserver_async_replication_lag_micros'>>(
+      `${ROOT_URL}/customers/${customerUuid}/metrics`,
+      metricsQueryParams
+    )
+    .then((response) => response.data);
+}
+
+interface ReplicationSafeTimeLagQueryParam {
+  targetUniverseNodePrefix: string | undefined;
+
+  start?: string;
+  end?: string;
+  namespaceId?: string;
+}
+export function fetchReplicationSafeTimeLag(metricRequestParams: ReplicationSafeTimeLagQueryParam) {
+  const metricsQueryParams: MetricsQueryParams = {
+    start: metricRequestParams.start ?? moment().utc().subtract('1', 'hour').format('X'),
+    end: metricRequestParams.end ?? moment().utc().format('X'),
+    nodePrefix: metricRequestParams.targetUniverseNodePrefix,
+    namespaceId: metricRequestParams.namespaceId,
+    metrics: [MetricName.CONSUMER_SAFE_TIME_LAG]
+  };
+  const customerUuid = localStorage.getItem('customerId');
+  return axios
+    .post<Metrics<'consumer_safe_time_lag'>>(
+      `${ROOT_URL}/customers/${customerUuid}/metrics`,
+      metricsQueryParams
     )
     .then((response) => response.data);
 }
@@ -247,7 +304,7 @@ type callbackFunc = (err: boolean, data: any) => void;
 
 export function fetchTaskUntilItCompletes(
   taskUUID: string,
-  callback: callbackFunc,
+  onTaskCompletion: callbackFunc,
   onTaskStarted?: () => void,
   interval = DEFAULT_TASK_REFETCH_INTERVAL
 ) {
@@ -261,9 +318,9 @@ export function fetchTaskUntilItCompletes(
         taskRunning = true;
       }
       if (status === 'Failed' || status === 'Failure') {
-        callback(true, resp);
+        onTaskCompletion(true, resp);
       } else if (percent === 100) {
-        callback(false, resp.data);
+        onTaskCompletion(false, resp.data);
       } else {
         setTimeout(retryTask, interval);
       }

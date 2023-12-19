@@ -4,6 +4,7 @@ import { Button, OverlayTrigger, Tooltip, DropdownButton, MenuItem } from 'react
 import PropTypes from 'prop-types';
 import _ from 'lodash';
 import moment from 'moment-timezone';
+import clsx from 'clsx';
 
 import { MetricConsts, MetricMeasure, MetricTypes } from '../../metrics/constants';
 import { METRIC_FONT } from '../MetricsConfig';
@@ -16,7 +17,8 @@ import {
   removeNullProperties,
   timeFormatXAxis
 } from '../../../utils/ObjectUtils';
-import prometheusIcon from '../images/prometheus-icon.svg';
+import prometheusIcon from '../../../redesign/assets/prometheus-icon.svg';
+
 import './MetricsPanel.scss';
 
 const Plotly = require('plotly.js/lib/core');
@@ -53,8 +55,9 @@ export default class MetricsPanel extends Component {
       currentUser,
       shouldAbbreviateTraceName = true,
       metricMeasure,
-      operations,
-      metricType
+      operations = [],
+      metricType,
+      isMetricLoading = false
     } = this.props;
     const metric =
       metricMeasure === MetricMeasure.OUTLIER || metricType === MetricTypes.OUTLIER_TABLES
@@ -65,7 +68,7 @@ export default class MetricsPanel extends Component {
       const layoutWidth =
         this.props.width ||
         this.getGraphWidth(this.props.containerWidth || DEFAULT_CONTAINER_WIDTH);
-      if (metricOperation || this.props.operations.length) {
+      if (metricOperation || operations.length) {
         const matchingMetricOperation = metricOperation
           ? metricOperation
           : this.state.focusedButton ?? operations[0];
@@ -201,7 +204,7 @@ export default class MetricsPanel extends Component {
           {
             visible: true,
             align: 'center',
-            text: 'No Data',
+            text: isMetricLoading ? 'Loading metric...' : 'No Data',
             showarrow: false,
             x: 1,
             y: 1
@@ -278,7 +281,7 @@ export default class MetricsPanel extends Component {
     return Math.floor(width / columnCount) - GRAPH_GUTTER_WIDTH_PX;
   }
 
-  getClassName(idx, metricOperationsDisplayedLength, metricOperationsDropdownLength) {
+  getClassButtonName(idx, metricOperationsDisplayedLength, metricOperationsDropdownLength) {
     let className = 'outlier-chart-button';
     if (this.props.operations?.length === 1) {
       className = 'outlier-chart-button__only';
@@ -293,7 +296,7 @@ export default class MetricsPanel extends Component {
   }
 
   render() {
-    const { prometheusQueryEnabled, operations, metricMeasure, metricType } = this.props;
+    const { prometheusQueryEnabled, operations, metricMeasure, metricType, className } = this.props;
     let showDropdown = false;
     let numButtonsInDropdown = 0;
     let metricOperationsDisplayed = operations;
@@ -329,14 +332,14 @@ export default class MetricsPanel extends Component {
     const focusedButton = this.state.focusedButton ? this.state.focusedButton : operations?.[0];
 
     return (
-      <div id={this.props.metricKey} className="metrics-panel">
+      <div id={this.props.metricKey} className={clsx(className, 'metrics-panel')}>
         <span ref={this.outlierButtonsRef} className="outlier-buttons-container">
           {(metricMeasure === MetricMeasure.OUTLIER || metricType === MetricTypes.OUTLIER_TABLES) &&
             operations.length > 0 &&
             metricOperationsDisplayed.map((operation, idx) => {
               return (
                 <Button
-                  className={this.getClassName(
+                  className={this.getClassButtonName(
                     idx,
                     metricOperationsDisplayed.length,
                     metricOperationsDropdown.length

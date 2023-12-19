@@ -128,6 +128,7 @@ const useStyles = makeStyles((theme) => ({
     display: 'flex'
   },
   queryMetricLabel: {
+    width: '145px',
     minWidth: '145px'
   },
   totalCountMetric: {

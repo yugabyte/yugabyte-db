@@ -18,8 +18,9 @@ import {
   xClusterQueryKey
 } from '../../redesign/helpers/api';
 import { RuntimeConfigKey } from '../../redesign/helpers/constants';
+import { getXClusterConfigUuids } from './ReplicationUtils';
 
-import { XClusterConfig } from './XClusterTypes';
+import { XClusterConfig } from './dtos';
 
 import styles from './XClusterConfigList.module.scss';
 
@@ -40,17 +41,14 @@ export function XClusterConfigList({ currentUniverseUUID }: Props) {
     api.fetchUniverse(currentUniverseUUID)
   );
 
-  const sourceXClusterConfigUUIDs =
-    universeQuery.data?.universeDetails?.xclusterInfo?.sourceXClusterConfigs ?? [];
-  const targetXClusterConfigUUIDs =
-    universeQuery.data?.universeDetails?.xclusterInfo?.targetXClusterConfigs ?? [];
-
+  const { sourceXClusterConfigUuids, targetXClusterConfigUuids } = getXClusterConfigUuids(
+    universeQuery.data
+  );
   // List the XCluster Configurations for which the current universe is a source or a target.
   const universeXClusterConfigUUIDs: string[] = [
-    ...sourceXClusterConfigUUIDs,
-    ...targetXClusterConfigUUIDs
+    ...sourceXClusterConfigUuids,
+    ...targetXClusterConfigUuids
   ];
-
   // The unsafe cast is needed due to issue with useQueries typing
   // Upgrading react-query to v3.28 may solve this issue: https://github.com/TanStack/query/issues/1675
   const xClusterConfigQueries = useQueries(
@@ -64,7 +62,8 @@ export function XClusterConfigList({ currentUniverseUUID }: Props) {
   useInterval(() => {
     xClusterConfigQueries.forEach((xClusterConfig) => {
       if (
-        xClusterConfig?.data?.status &&
+        !xClusterConfig.data?.usedForDr &&
+        xClusterConfig.data?.status &&
         _.includes(TRANSITORY_XCLUSTER_CONFIG_STATUSES, xClusterConfig.data.status)
       ) {
         queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.data.uuid));
@@ -110,7 +109,7 @@ export function XClusterConfigList({ currentUniverseUUID }: Props) {
             if (xClusterConfigQuery.isLoading) {
               return (
                 <li className={clsx(styles.listItem)} key={xClusterConfigUUID}>
-                  <div className={(styles.configCard, styles.loading)}>
+                  <div className={clsx(styles.configCard, styles.loading)}>
                     <YBLoadingCircleIcon />
                   </div>
                 </li>

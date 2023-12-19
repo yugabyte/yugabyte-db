@@ -34,7 +34,8 @@ import { YBLabelWithIcon } from '../../common/descriptors';
 import ellipsisIcon from '../../common/media/more.svg';
 import { DeleteProviderConfigModal } from './DeleteProviderConfigModal';
 import { UniverseItem } from './providerView/providerDetails/UniverseTable';
-import { getLinkedUniverses, usePillStyles } from './utils';
+import { getLinkedUniverses } from './utils';
+import { usePillStyles } from '../../../redesign/styles/styles';
 import { YBButton } from '../../../redesign/components';
 import { ProviderStatusLabel } from './components/ProviderStatusLabel';
 import { SortOrder } from '../../../redesign/helpers/constants';
@@ -172,7 +173,7 @@ export const ProviderList = (props: ProviderListProps) => {
   };
   const formatUsage = (_: unknown, row: ProviderListItem) => {
     return row.linkedUniverses.length ? (
-      <Box display="flex" gridGap="5px">
+      <Box display="flex" gridGap="5px" alignItems="center">
         <Typography variant="body2">In Use</Typography>
         <div className={classes.pill}>{row.linkedUniverses.length}</div>
       </Box>

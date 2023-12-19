@@ -5,53 +5,19 @@ import {
   DROPDOWN_DIVIDER,
   MetricName,
   METRIC_TIME_RANGE_OPTIONS,
-  XClusterConfigStatus,
-  XClusterConfigType,
   XClusterTableEligibility,
-  XClusterTableStatus
+  XCLUSTER_SUPPORTED_TABLE_TYPES
 } from './constants';
 
-import { TableType, YBTable } from '../../redesign/helpers/dtos';
+import { Metric, MetricTrace, TableType, YBTable } from '../../redesign/helpers/dtos';
+import { XClusterTableDetails } from './dtos';
 
 /**
  * XCluster supported table type.
  */
-export type XClusterTableType = TableType.PGSQL_TABLE_TYPE | TableType.YQL_TABLE_TYPE;
-
-/**
- * Source: XClusterTableConfig.java
- */
-export interface XClusterTableDetails {
-  needBootstrap: boolean;
-  replicationSetupDone: true;
-  bootstrapCreateTime: string;
-  status: XClusterTableStatus;
-  restoreTime: string;
-  streamId: string;
-  tableId: string;
-}
+export type XClusterTableType = typeof XCLUSTER_SUPPORTED_TABLE_TYPES[number];
 
 export type XClusterTable = YBTable & Omit<XClusterTableDetails, 'tableId'>;
-
-export interface XClusterConfig {
-  createTime: string;
-  modifyTime: string;
-  name: string;
-  paused: boolean;
-  replicationGroupName: string;
-  sourceActive: boolean;
-  status: XClusterConfigStatus;
-  tableDetails: XClusterTableDetails[];
-  tables: string[];
-  targetActive: boolean;
-  txnTableDetails: XClusterTableDetails;
-  type: XClusterConfigType;
-  usedForDr: boolean;
-  uuid: string;
-
-  sourceUniverseUUID?: string;
-  targetUniverseUUID?: string;
-}
 
 //------------------------------------------------------------------------------------
 // Table Selection Types
@@ -80,7 +46,9 @@ export interface XClusterTableCandidate extends YBTable {
 /**
  * Holds list of tables for a keyspace and provides extra metadata.
  */
-export interface KeyspaceItem {
+export interface NamespaceItem {
+  uuid: string;
+  name: string;
   tableEligibilityCount: {
     ineligible: number;
     eligibleInCurrentConfig: number;
@@ -89,33 +57,14 @@ export interface KeyspaceItem {
   tables: XClusterTableCandidate[];
 }
 
-export interface KeyspaceRow extends KeyspaceItem {
-  keyspace: string;
-}
-
 /**
  * Structure for organizing tables by table type first and keyspace/database name second.
  */
 export type ReplicationItems = Record<
   XClusterTableType,
-  { keyspaces: Record<string, KeyspaceItem>; tableCount: number }
+  { namespaces: Record<string, NamespaceItem>; tableCount: number }
 >;
 //------------------------------------------------------------------------------------
-
-// TODO: Move the metric types to dtos.ts or another more appropriate file.
-
-export interface MetricTrace {
-  instanceName?: string;
-  name: string;
-  type: string;
-  x: number[];
-  y: string[] | number[];
-  mode?: string;
-  line?: {
-    dash: string;
-    width: number;
-  };
-}
 
 export type Metrics<MetricNameType extends MetricName> = {
   [metricName in MetricNameType]: {
@@ -135,6 +84,8 @@ export type Metrics<MetricNameType extends MetricName> = {
     queryKey: string;
   };
 };
+
+//------------------------------------------------------------------------------------
 
 // Time range selector types.
 

@@ -5,8 +5,6 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { makeStyles } from '@material-ui/core';
-
 import { YBAHost } from '../../../redesign/helpers/constants';
 import { HostInfo, Universe } from '../../../redesign/helpers/dtos';
 import {
@@ -214,15 +212,3 @@ export const getDeletedZones = <
         .map((zone) => deleteZone(zone))
     : [];
 };
-
-export const usePillStyles = makeStyles((theme) => ({
-  pill: {
-    padding: '4px 6px',
-    height: 'fit-content',
-    width: 'fit-content',
-
-    fontSize: '10px',
-    borderRadius: '6px',
-    backgroundColor: theme.palette.grey[200]
-  }
-}));

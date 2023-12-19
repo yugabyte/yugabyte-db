@@ -8,37 +8,42 @@ import {
 
 import { YBControlledSelect } from '../../../common/forms/fields';
 import YBPagination from '../../../tables/YBPagination/YBPagination';
-import { XClusterTableEligibility } from '../../constants';
+import { XClusterTableStatus } from '../../constants';
 import { formatBytes, tableSort } from '../../ReplicationUtils';
-import { TableEligibilityPill } from './TableEligibilityPill';
 
-import { KeyspaceRow, XClusterTableCandidate, XClusterTableType } from '../..';
+import { XClusterTableType } from '../..';
 import { TableType } from '../../../../redesign/helpers/dtos';
 
 import styles from './ExpandedTableSelect.module.scss';
+import { XClusterTable } from '../../XClusterTypes';
+import { XClusterTableStatusLabel } from '../../XClusterTableStatusLabel';
 import { SortOrder } from '../../../../redesign/helpers/constants';
 
 const TABLE_MIN_PAGE_SIZE = 10;
 const PAGE_SIZE_OPTIONS = [TABLE_MIN_PAGE_SIZE, 20, 30, 40, 50, 100, 1000] as const;
 
-interface ExpandedTableSelectProps {
-  row: KeyspaceRow;
+interface ExpandedConfigTableSelectProps {
+  tables: XClusterTable[];
   selectedTableUUIDs: string[];
   tableType: XClusterTableType;
-  handleTableSelect: (row: XClusterTableCandidate, isSelected: boolean) => void;
-  handleAllTableSelect: (isSelected: boolean, rows: XClusterTableCandidate[]) => boolean;
+  sourceUniverseUUID: string;
+  sourceUniverseNodePrefix: string;
+  handleTableSelect: (row: XClusterTable, isSelected: boolean) => void;
+  handleAllTableSelect: (isSelected: boolean, rows: XClusterTable[]) => boolean;
 }
 
-export const ExpandedTableSelect = ({
-  row,
+export const ExpandedConfigTableSelect = ({
+  tables,
   selectedTableUUIDs,
   tableType,
+  sourceUniverseUUID,
+  sourceUniverseNodePrefix,
   handleTableSelect,
   handleAllTableSelect
-}: ExpandedTableSelectProps) => {
+}: ExpandedConfigTableSelectProps) => {
   const [pageSize, setPageSize] = useState(PAGE_SIZE_OPTIONS[0]);
   const [activePage, setActivePage] = useState(1);
-  const [sortField, setSortField] = useState<keyof XClusterTableCandidate>('tableName');
+  const [sortField, setSortField] = useState<keyof XClusterTable>('tableName');
   const [sortOrder, setSortOrder] = useState<ReactBSTableSortOrder>(SortOrder.ASCENDING);
 
   const tableOptions: Options = {
@@ -46,35 +51,30 @@ export const ExpandedTableSelect = ({
     sortOrder: sortOrder,
     onSortChange: (sortName: string | number | symbol, sortOrder: ReactBSTableSortOrder) => {
       // Each row of the table is of type XClusterTable.
-      setSortField(sortName as keyof XClusterTableCandidate);
+      setSortField(sortName as keyof XClusterTable);
       setSortOrder(sortOrder);
     }
   };
-  const unselectableTableUUIDs = row.tables
-    .filter((table) => table.eligibilityDetails.status !== XClusterTableEligibility.ELIGIBLE_UNUSED)
-    .map((table) => table.tableUUID);
+
   return (
     <div className={styles.expandComponent}>
       <BootstrapTable
         maxHeight="300px"
         tableContainerClass={styles.bootstrapTable}
-        data={row.tables
-          .sort((a, b) =>
-            tableSort<XClusterTableCandidate>(a, b, sortField, sortOrder, 'tableName')
-          )
+        data={tables
+          .sort((a, b) => tableSort<XClusterTable>(a, b, sortField, sortOrder, 'tableName'))
           .slice((activePage - 1) * pageSize, activePage * pageSize)}
         selectRow={{
           mode: 'checkbox',
           onSelect: handleTableSelect,
           onSelectAll: handleAllTableSelect,
           selected: selectedTableUUIDs,
-          hideSelectColumn: tableType === TableType.PGSQL_TABLE_TYPE,
-          unselectable: unselectableTableUUIDs
+          hideSelectColumn: tableType === TableType.PGSQL_TABLE_TYPE
         }}
         options={tableOptions}
       >
         <TableHeaderColumn dataField="tableUUID" isKey={true} hidden={true} />
-        <TableHeaderColumn dataField="tableName" dataSort={true} dataFormat={formatTableName}>
+        <TableHeaderColumn dataField="tableName" dataSort={true}>
           Table Name
         </TableHeaderColumn>
         <TableHeaderColumn
@@ -85,6 +85,20 @@ export const ExpandedTableSelect = ({
           Schema Name
         </TableHeaderColumn>
         <TableHeaderColumn
+          dataField="status"
+          dataFormat={(cell: XClusterTableStatus, row: XClusterTable) => (
+            <XClusterTableStatusLabel
+              status={cell}
+              streamId={row.streamId}
+              sourceUniverseTableUuid={row.tableUUID}
+              sourceUniverseNodePrefix={sourceUniverseNodePrefix}
+              sourceUniverseUuid={sourceUniverseUUID}
+            />
+          )}
+        >
+          Status
+        </TableHeaderColumn>
+        <TableHeaderColumn
           dataField="sizeBytes"
           dataSort={true}
           width="100px"
@@ -93,7 +107,7 @@ export const ExpandedTableSelect = ({
           Size
         </TableHeaderColumn>
       </BootstrapTable>
-      {row.tables.length > TABLE_MIN_PAGE_SIZE && (
+      {tables.length > TABLE_MIN_PAGE_SIZE && (
         <div className={styles.paginationControls}>
           <YBControlledSelect
             className={styles.pageSizeInput}
@@ -107,7 +121,7 @@ export const ExpandedTableSelect = ({
           />
           <YBPagination
             className={styles.yBPagination}
-            numPages={Math.ceil(row.tables.length / pageSize)}
+            numPages={Math.ceil(tables.length / pageSize)}
             onChange={(newPageNum: number) => {
               setActivePage(newPageNum);
             }}
@@ -118,17 +132,3 @@ export const ExpandedTableSelect = ({
     </div>
   );
 };
-
-const formatTableName = (tableName: string, xClusterTable: XClusterTableCandidate) => {
-  return (
-    <div className={styles.tableNameContainer}>
-      <div className={styles.tableName}>{tableName}</div>
-      {shouldShowTableEligibilityPill(xClusterTable) && (
-        <TableEligibilityPill eligibilityDetails={xClusterTable.eligibilityDetails} />
-      )}
-    </div>
-  );
-};
-
-const shouldShowTableEligibilityPill = (xClusterTable: XClusterTableCandidate) =>
-  xClusterTable.eligibilityDetails.status !== XClusterTableEligibility.ELIGIBLE_UNUSED;

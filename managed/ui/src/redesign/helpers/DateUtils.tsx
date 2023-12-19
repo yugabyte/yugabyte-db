@@ -15,7 +15,8 @@ export const YBTimeFormats = {
   YB_DEFAULT_TIMESTAMP: 'MMM-DD-YYYY HH:mm:ss [UTC]ZZ',
   YB_DATE_ONLY_TIMESTAMP: 'MMM-DD-YYYY',
   YB_HOURS_FIRST_TIMESTAMP: 'HH:mm:ss MMM-DD-YYYY [UTC]ZZ',
-  YB_ISO8601_TIMESTAMP: 'YYYY-MM-DD[T]H:mm:ssZZ'
+  YB_ISO8601_TIMESTAMP: 'YYYY-MM-DD[T]H:mm:ssZZ',
+  YB_TIME_ONLY_TIMESTAMP: 'HH:mm:ss'
 } as const;
 export type YBTimeFormats = typeof YBTimeFormats[keyof typeof YBTimeFormats];
 /**
@@ -65,7 +66,9 @@ type FormatDateProps = {
 };
 
 export const YBFormatDate: FC<FormatDateProps> = ({ date, timeFormat }) => {
-  const currentUserTimezone = useSelector((state: any) => state.customer?.currentUser?.data?.timezone);
+  const currentUserTimezone = useSelector(
+    (state: any) => state.customer?.currentUser?.data?.timezone
+  );
   return <>{formatDatetime(date, timeFormat, currentUserTimezone)}</>;
 };
 

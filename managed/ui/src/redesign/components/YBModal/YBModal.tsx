@@ -21,15 +21,16 @@ export interface OverrideButtonProps {
 }
 
 export interface YBModalProps extends DialogProps {
+  onClose: () => void;
+
   title?: string;
-  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl';
+  size?: 'xs' | 'sm' | 'md' | 'lg' | 'xl' | 'fit';
   overrideHeight?: string | number;
   overrideWidth?: string | number;
   isSidePanel?: boolean;
   titleSeparator?: boolean;
   titleIcon?: React.ReactNode;
-  actionsInfo?: React.ReactNode;
-  onClose?: () => void;
+  footerAccessory?: React.ReactNode;
   onSubmit?: () => void;
   enableBackdropDismiss?: boolean;
   submitLabel?: string;
@@ -77,6 +78,10 @@ const useStyles = makeStyles<Theme, Partial<YBModalProps>>((theme) => ({
     width: ({ overrideWidth }) => overrideWidth ?? 1125,
     height: ({ overrideHeight }) => overrideHeight ?? 900
   },
+  dialogFit: {
+    width: ({ overrideWidth }) => overrideWidth ?? 'fit-content',
+    height: ({ overrideHeight }) => overrideHeight ?? 'fit-content'
+  },
   form: {
     display: 'flex',
     flexDirection: 'column',
@@ -109,7 +114,7 @@ const useStyles = makeStyles<Theme, Partial<YBModalProps>>((theme) => ({
     fontSize: theme.spacing(3),
     lineHeight: '26px'
   },
-  actionsInfo: {
+  footerAccessory: {
     marginRight: 'auto'
   },
   title: {
@@ -133,7 +138,7 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
     title,
     titleSeparator,
     titleIcon,
-    actionsInfo,
+    footerAccessory,
     onClose,
     onSubmit,
     children,
@@ -191,6 +196,9 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
     case 'xl':
       dialogClasses = classes.dialogXl;
       break;
+    case 'fit':
+      dialogClasses = classes.dialogFit;
+      break;
     case 'md':
     default:
       dialogClasses = classes.dialogMd;
@@ -208,7 +216,7 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
       paper: dialogClasses
     };
     dialogProps.fullWidth = true;
-    dialogProps.maxWidth = size;
+    dialogProps.maxWidth = false;
   }
 
   const getCancelButton = (): ReactElement | undefined => {
@@ -267,7 +275,9 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
     >
       <form className={classes.form}>
         {customTitle ? (
-          <div className={clsx(classes.modalTitle, titleContentProps)}>{customTitle}</div>
+          <DialogTitle id="form-dialog-title" disableTypography className={dialogTitle}>
+            {customTitle}
+          </DialogTitle>
         ) : (
           title && (
             <DialogTitle id="form-dialog-title" disableTypography className={dialogTitle}>
@@ -298,7 +308,7 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
         <DialogContent {...dialogContentProps}>{children}</DialogContent>
         {showDialogActions && (
           <DialogActions>
-            {actionsInfo && <div className={classes.actionsInfo}>{actionsInfo}</div>}
+            {footerAccessory && <div className={classes.footerAccessory}>{footerAccessory}</div>}
             {getCancelButton()}
             {getSubmitButton()}
           </DialogActions>

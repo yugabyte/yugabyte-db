@@ -46,7 +46,7 @@ export const DataCenterConfiguration = (props: any) => {
   const runtimeConfigEntries = customerRuntimeConfigQuery.data.configEntries ?? [];
   const shouldShowRedesignedUI = runtimeConfigEntries.some(
     (config: any) =>
-      config.key === RuntimeConfigKey.PROVIDER_REDESIGN_FEATURE_FLAG && config.value === 'true'
+      config.key === RuntimeConfigKey.PROVIDER_REDESIGN_UI_FEATURE_FLAG && config.value === 'true'
   );
 
   return (
