@@ -25,7 +25,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateClusterAPIDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateNodeDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseCommunicationPorts;
-import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseTags;
+import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateUniverseIntent;
 import com.yugabyte.yw.commissioner.tasks.subtasks.WaitForMasterLeader;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeManager;
@@ -147,14 +147,14 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
-   * This sets the user intent from the task params to the universe in memory. Note that the changes
-   * are not saved to the DB in this method.
+   * This sets nodes details and some properties (that cannot be updated during edit) from the task
+   * params to the universe in memory. Note that the changes are not saved to the DB in this method.
    *
    * @param universe
    * @param taskParams
    * @param isNonPrimaryCreate
    */
-  public static void setUserIntentToUniverse(
+  public static void updateUniverseNodesAndSettings(
       Universe universe, UniverseDefinitionTaskParams taskParams, boolean isNonPrimaryCreate) {
     // Persist the updated information about the universe.
     // It should have been marked as being edited in lockUniverseForUpdate().
@@ -182,7 +182,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
         if (EncryptionInTransitUtil.isClientRootCARequired(taskParams)) {
           universeDetails.setClientRootCA(taskParams.getClientRootCA());
         }
-        universeDetails.upsertPrimaryCluster(cluster.userIntent, cluster.placementInfo);
         universeDetails.xClusterInfo = taskParams.xClusterInfo;
       } // else non-primary (read-only / add-on) cluster edit mode.
     } else {
@@ -190,28 +189,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       universeDetails.nodeDetailsSet.addAll(taskParams.nodeDetailsSet);
     }
 
-    setEncryptionIntentForNonPrimaryClusters(
-        taskParams.getClusterByType(ClusterType.ASYNC), taskParams, universeDetails);
-    setEncryptionIntentForNonPrimaryClusters(
-        taskParams.getClusterByType(ClusterType.ADDON), taskParams, universeDetails);
-
     universe.setUniverseDetails(universeDetails);
-  }
-
-  private static void setEncryptionIntentForNonPrimaryClusters(
-      List<Cluster> clusters,
-      UniverseDefinitionTaskParams taskParams,
-      UniverseDefinitionTaskParams universeDetails) {
-    clusters.forEach(
-        cluster -> {
-          // Update read replica cluster TLS params to be same as primary cluster
-          cluster.userIntent.enableNodeToNodeEncrypt =
-              universeDetails.getPrimaryCluster().userIntent.enableNodeToNodeEncrypt;
-          cluster.userIntent.enableClientToNodeEncrypt =
-              universeDetails.getPrimaryCluster().userIntent.enableClientToNodeEncrypt;
-          universeDetails.upsertCluster(
-              cluster.userIntent, cluster.placementInfo, cluster.uuid, cluster.clusterType);
-        });
   }
 
   /**
@@ -233,7 +211,23 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     // Create the update lambda.
     UniverseUpdater updater =
         universe -> {
-          setUserIntentToUniverse(universe, taskParams(), isReadOnlyCreate);
+          updateUniverseNodesAndSettings(universe, taskParams(), isReadOnlyCreate);
+          if (!isReadOnlyCreate) {
+            universe
+                .getUniverseDetails()
+                .upsertPrimaryCluster(
+                    taskParams().getPrimaryCluster().userIntent,
+                    taskParams().getPrimaryCluster().placementInfo);
+          } else {
+            for (Cluster readOnlyCluster : taskParams().getReadOnlyClusters()) {
+              universe
+                  .getUniverseDetails()
+                  .upsertCluster(
+                      readOnlyCluster.userIntent,
+                      readOnlyCluster.placementInfo,
+                      readOnlyCluster.uuid);
+            }
+          }
         };
     // Perform the update. If unsuccessful, this will throw a runtime exception which we do not
     // catch as we want to fail.
@@ -1183,6 +1177,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       fillCreateParamsForNode(params, userIntent, node);
       params.creatingUser = taskParams().creatingUser;
       params.platformUrl = taskParams().platformUrl;
+      params.tags = userIntent.instanceTags;
       // Create the Ansible task to setup the server.
       AnsibleCreateServer ansibleCreateServer = createTask(AnsibleCreateServer.class);
       ansibleCreateServer.initialize(params);
@@ -2379,14 +2374,16 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
     return params;
   }
 
-  protected SubTaskGroup createUpdateUniverseTagsTask(
-      Cluster cluster, Map<String, String> instanceTags) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("InstanceActions");
-    UpdateUniverseTags.Params params = new UpdateUniverseTags.Params();
+  protected SubTaskGroup createUpdateUniverseIntentTask(Cluster cluster) {
+    if (cluster == null) {
+      // can be null if only editing read replica
+      return null;
+    }
+    SubTaskGroup subTaskGroup = createSubTaskGroup("UniverseUpdateDetails");
+    UpdateUniverseIntent.Params params = new UpdateUniverseIntent.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());
-    params.clusterUUID = cluster.uuid;
-    params.instanceTags = instanceTags;
-    UpdateUniverseTags task = createTask(UpdateUniverseTags.class);
+    params.clusters = Collections.singletonList(cluster);
+    UpdateUniverseIntent task = createTask(UpdateUniverseIntent.class);
     task.initialize(params);
     task.setUserTaskUUID(userTaskUUID);
     subTaskGroup.addSubTask(task);

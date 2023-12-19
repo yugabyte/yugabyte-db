@@ -62,7 +62,6 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
         verifyParams(UniverseOpType.EDIT);
       }
 
-      Map<UUID, Map<String, String>> tagsToUpdate = new HashMap<>();
       AtomicBoolean dedicatedNodesChanged = new AtomicBoolean();
       // Update the universe DB with the changes to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
@@ -77,12 +76,6 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
                 }
                 // The universe parameter in this callback has local changes which may be needed by
                 // the methods inside e.g updateInProgress field.
-                for (Cluster cluster : taskParams().clusters) {
-                  Cluster originalCluster = u.getCluster(cluster.uuid);
-                  if (!cluster.areTagsSame(originalCluster)) {
-                    tagsToUpdate.put(cluster.uuid, cluster.userIntent.instanceTags);
-                  }
-                }
                 if (isFirstTry()) {
                   // Fetch the task params from the DB to start from fresh on retry.
                   // Otherwise, some operations like name assignment can fail.
@@ -114,24 +107,13 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
                       n -> {
                         n.masterState = MasterState.ToStop;
                       });
-                  // UserIntent in universe will be pointing to userIntent from params after
-                  // setUserIntentToUniverse. So we need to store tags locally to be able to reset
-                  // them later.
-                  Map<UUID, Map<String, String>> currentTags =
-                      u.getUniverseDetails().clusters.stream()
-                          .collect(Collectors.toMap(c -> c.uuid, c -> c.userIntent.instanceTags));
                   // Set the prepared data to universe in-memory.
-                  setUserIntentToUniverse(u, taskParams(), false);
+                  updateUniverseNodesAndSettings(u, taskParams(), false);
                   // Task params contain the exact blueprint of what is desired.
                   // There is a rare possibility that this succeeds and
                   // saving the Universe fails. It is ok because the retry
                   // will just fail.
                   updateTaskDetailsInDB(taskParams());
-                  // We need to reset tags, to make this tags update retryable.
-                  // New tags will be written into DB in UpdateUniverseTags task.
-                  for (Cluster cluster : u.getUniverseDetails().clusters) {
-                    cluster.userIntent.instanceTags = currentTags.get(cluster.uuid);
-                  }
                 }
               });
 
@@ -148,6 +130,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
               .collect(Collectors.toSet());
       boolean updateMasters = !addedMasters.isEmpty() || !removedMasters.isEmpty();
       for (Cluster cluster : taskParams().clusters) {
+        // Updating cluster in memory
+        universe
+            .getUniverseDetails()
+            .upsertCluster(cluster.userIntent, cluster.placementInfo, cluster.uuid);
         if (cluster.clusterType == ClusterType.PRIMARY && dedicatedNodesChanged.get()) {
           updateGFlagsForTservers(cluster, universe);
         }
@@ -156,8 +142,9 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
             cluster,
             getNodesInCluster(cluster.uuid, addedMasters),
             getNodesInCluster(cluster.uuid, removedMasters),
-            updateMasters,
-            tagsToUpdate);
+            updateMasters);
+        // Updating placement info and userIntent in DB
+        createUpdateUniverseIntentTask(cluster);
       }
 
       // Wait for the master leader to hear from all tservers.
@@ -203,8 +190,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       Cluster cluster,
       Set<NodeDetails> newMasters,
       Set<NodeDetails> mastersToStop,
-      boolean updateMasters,
-      Map<UUID, Map<String, String>> tagsToUpdate) {
+      boolean updateMasters) {
     UserIntent userIntent = cluster.userIntent;
     Set<NodeDetails> nodes = taskParams().getNodesInCluster(cluster.uuid);
 
@@ -238,17 +224,17 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     Set<NodeDetails> liveNodes = PlacementInfoUtil.getLiveNodes(nodes);
 
     // Update any tags on nodes that are not going to be removed and not being added.
-    Cluster existingCluster = universe.getCluster(cluster.uuid);
-    if (tagsToUpdate.containsKey(cluster.uuid)) {
-      Map<String, String> newTags = tagsToUpdate.get(cluster.uuid);
-      log.info("Tags changed from '{}' to '{}'.", existingCluster.userIntent.instanceTags, newTags);
+    Cluster existingCluster = getUniverse().getCluster(cluster.uuid);
+    if (!cluster.areTagsSame(existingCluster)) {
+      log.info(
+          "Tags changed from '{}' to '{}'.",
+          existingCluster.userIntent.instanceTags,
+          cluster.userIntent.instanceTags);
       createUpdateInstanceTagsTasks(
           getNodesInCluster(cluster.uuid, liveNodes),
-          newTags,
-          Util.getKeysNotPresent(existingCluster.userIntent.instanceTags, newTags));
-
-      createUpdateUniverseTagsTask(cluster, newTags)
-          .setSubTaskGroupType(SubTaskGroupType.Provisioning);
+          cluster.userIntent.instanceTags,
+          Util.getKeysNotPresent(
+              existingCluster.userIntent.instanceTags, cluster.userIntent.instanceTags));
     }
 
     boolean ignoreUseCustomImageConfig =
@@ -395,7 +381,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
     }
     // Update placement info on master leader.
-    createPlacementInfoTask(null /* additional blacklist */)
+    createPlacementInfoTask(null /* additional blacklist */, taskParams().clusters)
         .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
     if (!nodesToBeRemoved.isEmpty()) {

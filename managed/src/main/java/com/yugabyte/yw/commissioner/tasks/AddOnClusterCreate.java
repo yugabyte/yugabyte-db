@@ -34,7 +34,7 @@ public class AddOnClusterCreate extends UniverseDefinitionTaskBase {
     log.info("Started {} task for uuid={}", getName(), taskParams().getUniverseUUID());
 
     try {
-
+      Cluster cluster = taskParams().getAddOnClusters().get(0);
       Universe universe =
           lockUniverseForUpdate(
               taskParams().expectedUniverseVersion,
@@ -49,7 +49,9 @@ public class AddOnClusterCreate extends UniverseDefinitionTaskBase {
                   // Update on-prem node UUIDs.
                   updateOnPremNodeUuidsOnTaskParams();
                   // Set the prepared data to universe in-memory.
-                  setUserIntentToUniverse(u, taskParams(), true);
+                  updateUniverseNodesAndSettings(u, taskParams(), true);
+                  u.getUniverseDetails()
+                      .upsertCluster(cluster.userIntent, cluster.placementInfo, cluster.uuid);
                   // There is a rare possibility that this succeeds and
                   // saving the Universe fails. It is ok because the retry
                   // will just fail.
@@ -57,7 +59,6 @@ public class AddOnClusterCreate extends UniverseDefinitionTaskBase {
                 }
               });
 
-      Cluster cluster = taskParams().getAddOnClusters().get(0);
       Set<NodeDetails> addOnNodes = taskParams().getNodesInCluster(cluster.uuid);
       boolean ignoreUseCustomImageConfig = !addOnNodes.stream().allMatch(n -> n.ybPrebuiltAmi);
 

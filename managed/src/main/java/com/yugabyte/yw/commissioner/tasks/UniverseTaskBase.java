@@ -3366,10 +3366,24 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param blacklistNodes list of nodes which are being removed.
    */
   public SubTaskGroup createPlacementInfoTask(Collection<NodeDetails> blacklistNodes) {
+    return createPlacementInfoTask(blacklistNodes, null);
+  }
+
+  /**
+   * Creates a task list to update the placement information by making a call to the master leader
+   * and adds it to the task queue.
+   *
+   * @param blacklistNodes list of nodes which are being removed.
+   * @param targetClusterStates new state of clusters (for the case when placement info is updated
+   *     but not persisted in db)
+   */
+  public SubTaskGroup createPlacementInfoTask(
+      Collection<NodeDetails> blacklistNodes, @Nullable List<Cluster> targetClusterStates) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("UpdatePlacementInfo");
     UpdatePlacementInfo.Params params = new UpdatePlacementInfo.Params();
     // Add the universe uuid.
     params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.targetClusterStates = targetClusterStates;
     // Set the blacklist nodes if any are passed in.
     if (blacklistNodes != null && !blacklistNodes.isEmpty()) {
       Set<String> blacklistNodeNames = new HashSet<>();
