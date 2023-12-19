@@ -154,6 +154,18 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       // Updating cluster in DB
       createUpdateUniverseIntentTask(taskParams().getPrimaryCluster());
 
+      // before staring the read cluster edit, copy over primary cluster into taskParams
+      // since the client does not have to pass the primary cluster in the request payload.
+      // The primary cluster in taskParams is used by KubernetesCommandExecutor to generate
+      // helm overrides.
+      if (taskParams().getPrimaryCluster() == null) {
+        taskParams()
+            .upsertCluster(
+                primaryCluster.userIntent,
+                primaryCluster.placementInfo,
+                primaryCluster.uuid,
+                primaryCluster.clusterType);
+      }
       // read cluster edit.
       for (Cluster cluster : taskParams().clusters) {
         if (cluster.clusterType == ClusterType.ASYNC) {
@@ -270,7 +282,8 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
 
       // For clusters that have read replicas, this condition is true since we
       // do not pass in masterK8sNodeResourceSpec.
-      if (curIntent.masterK8SNodeResourceSpec != null) {
+      if (curIntent.masterK8SNodeResourceSpec != null
+          && newIntent.masterK8SNodeResourceSpec != null) {
         masterMemChanged =
             !curIntent.masterK8SNodeResourceSpec.memoryGib.equals(
                 newIntent.masterK8SNodeResourceSpec.memoryGib);
