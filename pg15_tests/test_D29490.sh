@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
 source "${BASH_SOURCE[0]%/*}"/common.sh
 
-java_test TestPgRegressPgMisc false
+failing_java_test TestPgRegressPgMisc
 grep_in_java_test \
   "failed tests: [yb_pg_create_operator, yb_pg_create_table, yb_pg_create_type, yb_pg_with]" \
   TestPgRegressPgMisc
-java_test TestPgRegressTrigger false
+failing_java_test TestPgRegressTrigger
 grep_in_java_test \
   "failed tests: [yb_pg_event_trigger, yb_pg_triggers, yb_triggers]" \
   TestPgRegressTrigger

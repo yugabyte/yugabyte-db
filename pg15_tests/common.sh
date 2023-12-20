@@ -70,23 +70,25 @@ grep_in_java_test() {
   grep -F "$query" "$test_path"
 }
 
+# Usage:
+# - always pass: java_test foo
+# - always fail: failing_java_test bar
+# - flaky: if ! java_test baz; then additional checks; fi
+failing_java_test() {
+  # shellcheck disable=SC2251
+  ! java_test "$@"
+  return $?
+}
 java_test() {
   test_name=$1
-  expect_pass=${2:-true}
 
-  # Return test-status XOR expect_pass-status
-  # (https://stackoverflow.com/a/56703161).
   # TODO(#18234): after #18234, no need for this workaround because --sj can be
   # passed to this script.
-  # shellcheck disable=SC2251
-  ! "${build_cmd[@]}" --java-test "$test_name" --sj
-  status_a=$?
-  # shellcheck disable=SC2251
-  ! "$expect_pass"
-  status_b=$?
-  if [ "$status_a" -ne "$status_b" ]; then
-    return 1
-  fi
+  set +e
+  "${build_cmd[@]}" --java-test "$test_name" --sj
+  rc=$?
+  set -e
+  return $rc
 }
 
 # Assume subcommand is first argument, node index (if applicable) is second
