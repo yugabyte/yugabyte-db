@@ -33,6 +33,7 @@ import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -93,6 +94,8 @@ public class LocalNodeManager {
   public static final String COMMAND_OUTPUT_PREFIX = "Command output:";
   private static final boolean RUN_LOG_THREADS = false;
 
+  private static Map<String, String> versionBinPathMap = new HashMap<>();
+
   private Map<Integer, String> predefinedConfig = null;
   private Set<String> usedIPs = Sets.newConcurrentHashSet();
 
@@ -107,6 +110,10 @@ public class LocalNodeManager {
 
   public void setPredefinedConfig(Map<Integer, String> predefinedConfig) {
     this.predefinedConfig = predefinedConfig;
+  }
+
+  public void addVersionBinPath(String version, String binPath) {
+    versionBinPathMap.put(version, binPath);
   }
 
   public void setAdditionalGFlags(SpecificGFlags additionalGFlags) {
@@ -291,6 +298,9 @@ public class LocalNodeManager {
               processAndWriteGFLags(
                   args, ybcGFlags, userIntent, UniverseTaskBase.ServerType.CONTROLLER, nodeInfo);
             }
+            break;
+          case Software:
+            updateSoftwareOnNode(userIntent, params.ybSoftwareVersion);
             break;
           case ToggleTls:
           case GFlags:
@@ -517,6 +527,20 @@ public class LocalNodeManager {
             Paths.get(filePath), PosixFileAttributeView.class, LinkOption.NOFOLLOW_LINKS);
     attributeView.setPermissions(
         Set.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE));
+  }
+
+  private synchronized void updateSoftwareOnNode(
+      UniverseDefinitionTaskParams.UserIntent userIntent, String version) {
+    Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
+    String newYBBinDir = versionBinPathMap.get(version);
+    LocalCloudInfo localCloudInfo = getCloudInfo(userIntent);
+    localCloudInfo.setYugabyteBinDir(newYBBinDir);
+    ProviderDetails details = provider.getDetails();
+    ProviderDetails.CloudInfo cloudInfo = details.getCloudInfo();
+    cloudInfo.setLocal(localCloudInfo);
+    details.setCloudInfo(cloudInfo);
+    provider.setDetails(details);
+    provider.save();
   }
 
   private void startProcessForNode(

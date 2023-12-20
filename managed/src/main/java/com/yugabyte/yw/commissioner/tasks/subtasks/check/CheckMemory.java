@@ -6,6 +6,7 @@ import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.google.api.client.util.Throwables;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -13,6 +14,7 @@ import com.yugabyte.yw.common.RetryTaskUntilCondition;
 import com.yugabyte.yw.common.ShellProcessContext;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -47,6 +49,12 @@ public class CheckMemory extends UniverseTaskBase {
   public void run() {
     try {
       Universe universe = getUniverse();
+      UniverseDefinitionTaskParams.Cluster cluster =
+          universe.getUniverseDetails().getPrimaryCluster();
+      if (cluster.userIntent.providerType == Common.CloudType.local) {
+        log.info("Skipping check for local provider");
+        return;
+      }
       long timeout = confGetter.getConfForScope(universe, UniverseConfKeys.checkMemoryTimeoutSecs);
       List<String> command = new ArrayList<>();
       command.add("awk");
