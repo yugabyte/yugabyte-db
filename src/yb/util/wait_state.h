@@ -72,6 +72,7 @@ DECLARE_bool(export_wait_state_names);
 #define YB_PGGATE    0xF0000000U
 #define YB_TSERVER   0xE0000000U
 #define YB_YBC       0xC0000000U
+#define YB_CQL       0xD0000000U
 #define YB_PG        0x00000000U
 /* ----------
  * YB AUH Wait Classes
@@ -85,8 +86,9 @@ DECLARE_bool(export_wait_state_names);
 #define YB_ROCKSDB                   0xEB000000U
 #define YB_COMMON                    0xEA000000U
 
+#define YB_CQL_WAIT_STATE            0xDF000000U
+
 #define YB_PG_CLIENT_SERVICE         0xCF000000U
-#define YB_CQL_WAIT_STATE            0xCE000000U
 #define YB_CLIENT                    0xCD000000U
 
 // For debugging purposes:
