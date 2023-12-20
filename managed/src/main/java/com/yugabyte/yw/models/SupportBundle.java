@@ -132,7 +132,9 @@ public class SupportBundle extends Model {
     if (bundleData != null) {
       supportBundle.startDate = bundleData.startDate;
       supportBundle.endDate = bundleData.endDate;
-      supportBundle.bundleDetails = new BundleDetails(bundleData.components);
+      supportBundle.bundleDetails =
+          new BundleDetails(
+              bundleData.components, bundleData.maxNumRecentCores, bundleData.maxCoreFileSize);
     }
     supportBundle.status = SupportBundleStatusType.Running;
     supportBundle.save();

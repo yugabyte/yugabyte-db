@@ -73,6 +73,17 @@ find_paths_in_dir() {
   find "$remote_dir_path" -maxdepth "$max_depth" -type "$file_type" > "$temp_file_path"
 }
 
+# This function returns a list of file paths and their respective sizes, in a given directory.
+# Sorts the list by modification time, with newest first.
+get_paths_and_sizes() {
+  remote_dir_path=$1
+  shift
+  temp_file_path=$1
+
+  # This displays the size in bytes ($5) and file path ($9) on a new line.
+  ls -ltp "$remote_dir_path" | awk '{print $5, $9}' > "$temp_file_path"
+}
+
 # Function takes file path list as file input. It returns 1 for file exists
 # and 0 for file does not exist corresponding to each file. Output format
 # is space separated list of files and corresponding boolean value.
