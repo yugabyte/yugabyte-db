@@ -29,7 +29,10 @@ You can assign built-in and custom roles to users to determine the actions they 
 To create a user, do the following:
 
 1. Navigate to **Admin > Access Management > Users**, and click **Create User**.
-1. If you are adding a user, enter the user's email.
+
+    ![Add User](/images/yp/authorization-platform/add-user.png)
+
+1. Enter the user's email.
 1. To assign a built-in role, under **Built-in Role**, click **Assign New Built-in Role**, and select a built-in role.
 1. To assign a custom role, under **Custom Role**, click **Assign New Custom Role**, and select a custom role.
 
@@ -98,6 +101,9 @@ As a Super Admin or Admin, you can:
 To create a custom role, do the following:
 
 1. Navigate to **Admin > Access Management > Roles** and click **Create Role**.
+
+    ![Add Role](/images/yp/authorization-platform/add-role.png)
+
 1. Enter a name for the role.
 1. Enter a description for the role.
 1. Click **Select Permissions**.
