@@ -84,7 +84,7 @@ This process carries out all provisioning tasks on the database nodes which requ
 
 Physical nodes (or cloud instances) are installed with a standard CentOS 7 server image. The following steps are to be performed on each physical node, prior to universe creation:
 
-1. Log in to each database node as a user with sudo enabled (the `centos` user in centos7 images).
+1. Log in to each database node as a user with sudo enabled (the `centos` user in CentOS 7 images).
 
 1. Add the following line to the `/etc/chrony.conf` file:
 
