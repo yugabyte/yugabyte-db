@@ -189,7 +189,7 @@ DECLARE_int32(rpc_workers_limit);
 
 DECLARE_int64(cdc_intent_retention_ms);
 
-DECLARE_bool(TEST_ysql_yb_enable_replication_commands);
+DECLARE_bool(ysql_yb_enable_replication_commands);
 DECLARE_bool(enable_xcluster_auto_flag_validation);
 
 METRIC_DEFINE_entity(xcluster);
@@ -1040,9 +1040,9 @@ Status CDCServiceImpl::CreateCDCStreamForNamespace(
 
   // Forward request to master directly since we support creating CDCSDK stream for a namespace
   // atomically in master now.
-  // If FLAGS_TEST_ysql_yb_enable_replication_commands, populate the namespace id in the newly added
+  // If FLAGS_ysql_yb_enable_replication_commands, populate the namespace id in the newly added
   // namespace_id field, otherwise use the table_id as done before.
-  bool populate_namespace_id_as_table_id = !FLAGS_TEST_ysql_yb_enable_replication_commands;
+  bool populate_namespace_id_as_table_id = !FLAGS_ysql_yb_enable_replication_commands;
 
   // Consistent Snapshot option
   std::optional<CDCSDKSnapshotOption> snapshot_option = std::nullopt;

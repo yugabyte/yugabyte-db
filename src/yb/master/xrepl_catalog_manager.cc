@@ -143,7 +143,7 @@ DEFINE_RUNTIME_bool(enable_backfilling_cdc_stream_with_replication_slot, false,
 
 DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_int32(master_rpc_timeout_ms);
-DECLARE_bool(TEST_ysql_yb_enable_replication_commands);
+DECLARE_bool(ysql_yb_enable_replication_commands);
 DECLARE_bool(enable_xcluster_auto_flag_validation);
 
 
@@ -806,7 +806,7 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
   // YSQL. When the replication slot feature is disabled, read from the table_id field for backwards
   // compatibility so that we still support atomic creation of namespace level CDCSDK streams in
   // yb-master independently of the replication slot feature.
-  if (FLAGS_TEST_ysql_yb_enable_replication_commands) {
+  if (FLAGS_ysql_yb_enable_replication_commands) {
     namespace_id = req.namespace_id();
   } else {
     namespace_id = req.table_id();
@@ -1471,7 +1471,7 @@ Status CatalogManager::ValidateCDCSDKRequestProperties(
         "Invalid id_type in options. Expected to be NAMESPACEID for all CDCSDK streams");
   }
 
-  if (!FLAGS_TEST_ysql_yb_enable_replication_commands &&
+  if (!FLAGS_ysql_yb_enable_replication_commands &&
       req.has_cdcsdk_ysql_replication_slot_name()) {
     // Should never happen since the YSQL commands also check the flag.
     RETURN_INVALID_REQUEST_STATUS(
@@ -5690,7 +5690,7 @@ Status CatalogManager::YsqlBackfillReplicationSlotNameToCDCSDKStream(
   LOG(INFO) << "Servicing YsqlBackfillReplicationSlotNameToCDCSDKStream request from "
             << RequestorString(rpc) << ": " << req->ShortDebugString();
 
-  if (!FLAGS_TEST_ysql_yb_enable_replication_commands ||
+  if (!FLAGS_ysql_yb_enable_replication_commands ||
       !FLAGS_enable_backfilling_cdc_stream_with_replication_slot) {
     RETURN_INVALID_REQUEST_STATUS("Backfilling replication slot name is disabled");
   }

@@ -7281,7 +7281,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestUnrelatedTableDropUponTserver
 void TestStreamCreationViaCDCService(CDCSDKYsqlTest* test_class, bool enable_replication_commands) {
   ASSERT_OK(test_class->SetUpWithParams(
       /*replication_factor=*/3, /*num_masters=*/1, /*colocated=*/false));
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_commands) =
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) =
       enable_replication_commands;
 
   ASSERT_OK(test_class->CreateDBStream());
@@ -7405,6 +7405,24 @@ TEST_F(CDCSDKYsqlTest, TestPgReplicationSlotsWithoutCDCStateTable) {
   auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
 
   ASSERT_OK(conn.Fetch("SELECT * FROM pg_replication_slots"));
+}
+
+TEST_F(CDCSDKYsqlTest, TestPgPublicationDisabled) {
+  ASSERT_OK(
+      SetUpWithParams(3 /* replication_factor */, 1 /* num_masters */, false /* colocated */));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.Execute("create publication pub for all tables;"));
+
+  ASSERT_OK(conn.Execute("set yb_enable_replication_commands = false;"));
+  auto s = conn.Execute("create publication pub2 for all tables;");
+  ASSERT_NOK(s);
+  ASSERT_NE(s.message().AsStringView().find("CreatePublication is unavailable"), std::string::npos)
+      << s.message();
+
+  ASSERT_OK(conn.Execute("set yb_enable_replication_commands = true;"));
+  ASSERT_OK(conn.Execute("create publication pub2 for all tables;"));
 }
 
 }  // namespace cdc
