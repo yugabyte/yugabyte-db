@@ -38,7 +38,7 @@ export interface GetInfoPayload {
 }
 
 export interface GetInfoResponse {
-  requireFinalize: boolean;
+  finalizeRequired: boolean;
   affectedXClsuterUniversesList?: Universe[];
 }
 

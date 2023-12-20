@@ -155,6 +155,12 @@
           "modalMsg2": "Make sure you evaluate the universe performance before finalizing the upgrade.",
           "modalSubmitLabel": "Proceed to finalize the upgrade"
         },
+        "preFinalizeXcluster": {
+          "modalBody": "This universe is associated with one or more xCluster replications. To avoid disrupting replication, you should upgrade all linked universes to version {{version}} beforefinalizing this universe or any linked universe.",
+          "modalTitle": "Upgrade Linked Universes",
+          "modalSubmit": "Review Universe Replication",
+          "modalProceed": "Proceed Anyway"
+        },
         "rollback": {
           "bannerMsg": "The Universe database version upgrade has encountered an issue. To restore the Universe to its normal state, you have the option to either roll back the upgrade or retry the upgrade.",
           "viewTask": "View Task Details",

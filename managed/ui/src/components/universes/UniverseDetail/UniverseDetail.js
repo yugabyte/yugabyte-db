@@ -640,39 +640,37 @@ class UniverseDetail extends Component {
                   parentDropdownOpen={this.state.actionsDropdownOpen}
                   mainMenu={(showSubmenu) => (
                     <>
-                      {!universePaused &&
-                        (!isRollBackFeatureEnabled ||
-                          (universeHasXcluster && isRollBackFeatureEnabled)) && (
-                          <RbacValidator
-                            isControl
-                            accessRequiredOn={{
-                              onResource: uuid,
-                              ...ApiPermissionMap.MODIFY_UNIVERSE
-                            }}
+                      {!universePaused && !isRollBackFeatureEnabled && (
+                        <RbacValidator
+                          isControl
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.MODIFY_UNIVERSE
+                          }}
+                        >
+                          <YBMenuItem
+                            disabled={
+                              isUniverseStatusPending ||
+                              [SoftwareUpgradeState.PRE_FINALIZE].includes(upgradeState)
+                            }
+                            onClick={showSoftwareUpgradesModal}
+                            availability={getFeatureState(
+                              currentCustomer.data.features,
+                              'universes.details.overview.upgradeSoftware'
+                            )}
                           >
-                            <YBMenuItem
-                              disabled={
-                                isUniverseStatusPending ||
-                                [SoftwareUpgradeState.PRE_FINALIZE].includes(upgradeState)
-                              }
-                              onClick={showSoftwareUpgradesModal}
-                              availability={getFeatureState(
-                                currentCustomer.data.features,
-                                'universes.details.overview.upgradeSoftware'
-                              )}
-                            >
-                              <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
-                                Upgrade Software
-                              </YBLabelWithIcon>
-                              {this.showUpgradeMarker() && (
-                                <span className="badge badge-pill badge-red pull-right">
-                                  {updateAvailable}
-                                </span>
-                              )}
-                            </YBMenuItem>
-                          </RbacValidator>
-                        )}
-                      {!universePaused && !universeHasXcluster && isRollBackFeatureEnabled && (
+                            <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
+                              Upgrade Software
+                            </YBLabelWithIcon>
+                            {this.showUpgradeMarker() && (
+                              <span className="badge badge-pill badge-red pull-right">
+                                {updateAvailable}
+                              </span>
+                            )}
+                          </YBMenuItem>
+                        </RbacValidator>
+                      )}
+                      {!universePaused && isRollBackFeatureEnabled && (
                         <RbacValidator
                           isControl
                           accessRequiredOn={{
@@ -702,32 +700,29 @@ class UniverseDetail extends Component {
                           </YBMenuItem>
                         </RbacValidator>
                       )}
-                      {!universePaused &&
-                        isRollBackAllowed &&
-                        !universeHasXcluster &&
-                        isRollBackFeatureEnabled && (
-                          <RbacValidator
-                            isControl
-                            accessRequiredOn={{
-                              onResource: uuid,
-                              ...ApiPermissionMap.MODIFY_UNIVERSE
-                            }}
+                      {!universePaused && isRollBackAllowed && isRollBackFeatureEnabled && (
+                        <RbacValidator
+                          isControl
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.MODIFY_UNIVERSE
+                          }}
+                        >
+                          <YBMenuItem
+                            disabled={isUniverseStatusPending}
+                            onClick={showRollbackModal}
+                            availability={getFeatureState(
+                              currentCustomer.data.features,
+                              'universes.details.overview.upgradeSoftware'
+                            )}
                           >
-                            <YBMenuItem
-                              disabled={isUniverseStatusPending}
-                              onClick={showRollbackModal}
-                              availability={getFeatureState(
-                                currentCustomer.data.features,
-                                'universes.details.overview.upgradeSoftware'
-                              )}
-                            >
-                              <YBLabelWithIcon>
-                                <img src={ClockRewind} height="16px" width="16px" />
-                                &nbsp; Roll Back Upgrade
-                              </YBLabelWithIcon>
-                            </YBMenuItem>
-                          </RbacValidator>
-                        )}
+                            <YBLabelWithIcon>
+                              <img src={ClockRewind} height="16px" width="16px" />
+                              &nbsp; Roll Back Upgrade
+                            </YBLabelWithIcon>
+                          </YBMenuItem>
+                        </RbacValidator>
+                      )}
                       {!universePaused &&
                         runtimeConfigs &&
                         getPromiseState(runtimeConfigs).isSuccess() &&
