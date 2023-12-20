@@ -48,7 +48,7 @@ typedef struct ybauhEntry {
   TimestampTz auh_sample_time;
   uint64_t top_level_request_id[2];
   uint64_t request_id;
-  uint32 wait_event;
+  uint32_t encoded_wait_event;
   char wait_event_aux[16];
   uint64_t top_level_node_id[2];
   uint32 client_node_host;
@@ -115,7 +115,7 @@ static void pg_active_universe_history_internal(FunctionCallInfo fcinfo);
 static void auh_entry_store(TimestampTz auh_time,
                             const uint64_t* top_level_request_id,
                             uint64_t request_id,
-                            uint32 wait_event,
+                            uint32 encoded_wait_event,
                             const char* wait_event_aux,
                             const uint64_t* top_level_node_id,
                             uint32 client_node_ip,
@@ -313,7 +313,8 @@ static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 num_rpcs
   for (int i = 0; i < numrpcs; i++) {
     if(random() <= sample_rate * MAX_RANDOM_VALUE){
       auh_entry_store(auh_sample_time, rpcs[i].metadata.top_level_request_id,
-                    rpcs[i].metadata.current_request_id, rpcs[i].wait_status_code,
+                    rpcs[i].metadata.current_request_id, 
+                    rpcs[i].encoded_wait_status_code,
                     (rpcs[i].aux_info.tablet_id[0] == '\0' ? rpcs[i].aux_info.table_id : rpcs[i].aux_info.tablet_id),
                     rpcs[i].metadata.top_level_node_id,
                     rpcs[i].metadata.client_node_host, rpcs[i].metadata.client_node_port,
@@ -344,7 +345,7 @@ yb_auh_circularBufferIndexSize(void)
 static void auh_entry_store(TimestampTz auh_time,
                             const uint64_t* top_level_request_id,
                             uint64_t request_id,
-                            uint32 wait_event,
+                            uint32 encoded_wait_event,
                             const char* wait_event_aux,
                             const uint64_t* top_level_node_id,
                             uint32 client_node_host,
@@ -361,7 +362,7 @@ static void auh_entry_store(TimestampTz auh_time,
   inserted = CircularBufferIndexArray[0].index - 1;
 
   AUHEntryArray[inserted].auh_sample_time = auh_time;
-  AUHEntryArray[inserted].wait_event = wait_event;
+  AUHEntryArray[inserted].encoded_wait_event = encoded_wait_event;
   AUHEntryArray[inserted].request_id = request_id;
 
   if (top_level_request_id)
@@ -703,9 +704,9 @@ pg_active_universe_history_internal(FunctionCallInfo fcinfo)
       nulls[j++] = true;
 
     // Wait event, wait event component, wait event class
-    event_type = pgstat_get_wait_event_type(AUHEntryArray[i].wait_event);
-    event = pgstat_get_wait_event(AUHEntryArray[i].wait_event);
-    event_component = ybcstat_get_wait_event_component(AUHEntryArray[i].wait_event);
+    event_type = pgstat_get_wait_event_type(AUHEntryArray[i].encoded_wait_event);
+    event = pgstat_get_wait_event(AUHEntryArray[i].encoded_wait_event);
+    event_component = ybcstat_get_wait_event_component(AUHEntryArray[i].encoded_wait_event);
 
     if (event_component)
       values[j++] = CStringGetTextDatum(event_component);

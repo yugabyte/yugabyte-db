@@ -1533,7 +1533,8 @@ Status RaftConsensus::Update(
           .top_level_node_id = {0, 1},
           .query_id = -1,
           .client_node_host = (1ll << 32) - 1,
-          .client_node_port = (1 << 16) - 1});
+          .client_node_port = (1 << 16) - 1,
+          .component = yb::util::WaitStateComponent::TServer});
   }
 
   TEST_PAUSE_IF_FLAG(TEST_follower_pause_update_consensus_requests);

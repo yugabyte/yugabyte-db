@@ -69,25 +69,29 @@ DECLARE_bool(export_wait_state_names);
  * YB AUH Wait Components
  * ----------
  */
-#define YB_PGGATE    0xF0000000U
-#define YB_TSERVER   0xE0000000U
-#define YB_YBC       0xC0000000U
-#define YB_PG        0x00000000U
+#define YB_PG        0x0
+#define YB_TSERVER   0x4
+#define YB_YBC       0x8
+#define YB_PERFORM   0xC
 /* ----------
  * YB AUH Wait Classes
  * ----------
  */
-#define YB_PG_WAIT_PERFORM           0x0E000000U
-#define YB_RPC                       0xEF000000U
-#define YB_FLUSH_AND_COMPACTION      0xEE000000U
-#define YB_CONSENSUS                 0xED000000U
-#define YB_TABLET_WAIT               0xEC000000U
-#define YB_ROCKSDB                   0xEB000000U
-#define YB_COMMON                    0xEA000000U
 
-#define YB_PG_CLIENT_SERVICE         0xCF000000U
-#define YB_CQL_WAIT_STATE            0xCE000000U
-#define YB_CLIENT                    0xCD000000U
+// 0x01 - 0x0C used in pgstat.h for Pg Wait classes
+// For wait-events used in PG, we should avoid using these classes
+#define YB_PG_WAIT_PERFORM           0x0D000000U
+
+#define YB_RPC                       0x00000000U
+#define YB_FLUSH_AND_COMPACTION      0x01000000U
+#define YB_CONSENSUS                 0x02000000U
+#define YB_TABLET_WAIT               0x03000000U
+#define YB_ROCKSDB                   0x04000000U
+#define YB_COMMON                    0x05000000U
+                                          
+#define YB_CQL_WAIT_STATE            0x06000000U
+#define YB_CLIENT                    0x07000000U
+#define YB_PG_CLIENT_SERVICE         0x08000000U
 
 // For debugging purposes:
 // Uncomment the following line to track state changes in wait events.
@@ -96,11 +100,20 @@ namespace yb {
 namespace util {
 
 YB_DEFINE_ENUM_TYPE(
+    WaitStateComponent,
+    uint8_t,
+    ((PG, YB_PG))
+    ((TServer, YB_TSERVER))
+    ((YCQL, YB_YBC))
+    ((PGPerform, YB_PERFORM))
+    (Unused)
+    );
+
+YB_DEFINE_ENUM_TYPE(
     WaitStateCode,
     uint32_t,
-    ((Unused, 0))
-
-    ((ActiveOnCPU, YB_COMMON))
+    ((Unused, YB_COMMON))
+      (ActiveOnCPU)
       (PassiveOnCPU)
 
     // General states for incoming RPCs
@@ -188,12 +201,13 @@ struct AUHMetadata {
   int64_t current_request_id = 0;
   uint32_t client_node_host = 0;
   uint16_t client_node_port = 0;
+  WaitStateComponent component = WaitStateComponent::Unused;
 
   void set_client_node_ip(const std::string &endpoint);
 
   std::string ToString() const {
-    return yb::Format("{ top_level_node_id: $0, top_level_request_id: $1, query_id: $2, current_request_id: $3, client_node_ip: $4:$5 }",
-                      top_level_node_id, top_level_request_id, query_id, current_request_id, client_node_host, client_node_port);
+    return yb::Format("{ top_level_node_id: $0, top_level_request_id: $1, query_id: $2, current_request_id: $3, client_node_ip: $4:$5, component: $6 }",
+                      top_level_node_id, top_level_request_id, query_id, current_request_id, client_node_host, client_node_port, component);
   }
 
   void UpdateFrom(const AUHMetadata &other) {
@@ -214,6 +228,9 @@ struct AUHMetadata {
     }
     if (other.client_node_port != 0) {
       client_node_port = other.client_node_port;
+    }
+    if (other.component != WaitStateComponent::Unused) {
+      component = other.component;
     }
   }
 
@@ -239,6 +256,7 @@ struct AUHMetadata {
     if (client_node_port != 0) {
       pb->set_client_node_port(client_node_port);
     }
+    // component is not saved in the PB.
   }
 
   template <class PB>
@@ -249,30 +267,9 @@ struct AUHMetadata {
         .query_id = pb.query_id(),
         .current_request_id = pb.current_request_id(),
         .client_node_host = pb.client_node_host(),
-        .client_node_port = static_cast<uint16_t>(pb.client_node_port())
+        .client_node_port = static_cast<uint16_t>(pb.client_node_port()),
+        .component = WaitStateComponent::Unused
     };
-  }
-
-  template <class PB>
-  void UpdateFromPB(const PB& pb) {
-    if (pb.has_top_level_node_id()) {
-      top_level_node_id = std::vector<uint64_t>(pb.top_level_node_id().begin(), pb.top_level_node_id().end());
-    }
-    if (pb.has_top_level_request_id()) {
-      top_level_request_id = std::vector<uint64_t>(pb.top_level_request_id().begin(), pb.top_level_request_id().end());
-    }
-    if (pb.has_query_id()) {
-      query_id = pb.query_id();
-    }
-    if (pb.has_client_node_host()) {
-      client_node_host = pb.client_node_host();
-    }
-    if (pb.client_node_port()) {
-      client_node_port = static_cast<uint16_t>(pb.client_node_port());
-    }
-    if (pb.has_current_request_id()) {
-      current_request_id = pb.current_request_id();
-    }
   }
 };
 
@@ -344,12 +341,29 @@ class WaitStateInfo {
     }
   }
 
+  static uint32_t ToUint32(WaitStateComponent comp, WaitStateCode code) {
+    uint32_t res = to_underlying(comp);
+    CHECK_LE(res, 0xF);
+    res = (res << 28);
+    res = res | to_underlying(code);
+    return res;
+  }
+
+  static WaitStateComponent DecodeWaitStateComponent(uint32_t encoded_wait_status_code) {
+    return WaitStateComponent(encoded_wait_status_code >> 28);
+  }
+
+  static WaitStateCode DecodeWaitStateCode(uint32_t encoded_wait_status_code) {
+    return WaitStateCode(encoded_wait_status_code & 0x0F00FFFF);
+  }
+
   template <class PB>
   void ToPB(PB *pb) {
     std::lock_guard<simple_spinlock> l(mutex_);
     metadata_.ToPB(pb->mutable_metadata());
+    WaitStateComponent component = metadata_.component;
     WaitStateCode code = get_state();
-    pb->set_wait_status_code(yb::to_underlying(code));
+    pb->set_encoded_wait_status_code(ToUint32(component, code));
     if (FLAGS_export_wait_state_names) {
       pb->set_wait_status_code_as_string(yb::ToString(code));
     }

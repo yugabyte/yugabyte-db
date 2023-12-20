@@ -428,6 +428,7 @@ typedef struct AUHMetadataDescriptor {
   const uint64_t* top_level_node_id;
   int64_t current_request_id;
   int64_t query_id;
+  uint8_t component;
 } YBCAUHMetadataDescriptor;
 
 typedef struct AUHAuxDescriptor {
@@ -438,10 +439,12 @@ typedef struct AUHAuxDescriptor {
 
 typedef struct AUHDescriptor {
   YBCAUHMetadataDescriptor metadata;
-  uint64_t wait_status_code;
+  uint32_t encoded_wait_status_code;
   YBCAUHAuxDescriptor aux_info;
   const char* wait_status_code_as_string;
 } YBCAUHDescriptor;
+
+// uint8_t kPgAshComponent  = 1;
 
 typedef struct NamespaceIdentifierPB {
   const char* id;

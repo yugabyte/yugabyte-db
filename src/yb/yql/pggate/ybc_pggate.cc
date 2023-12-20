@@ -1766,7 +1766,7 @@ YBCStatus YBCActiveUniverseHistory(YBCAUHDescriptor **rpcs, size_t* count) {
           .current_request_id = info.metadata.current_request_id,
           .query_id = info.metadata.query_id,
         },
-        .wait_status_code = info.wait_status_code,
+        .encoded_wait_status_code = info.encoded_wait_status_code,
         .aux_info = {
           .table_id = YBCPAllocStdString(info.aux_info.table_id),
           .tablet_id = YBCPAllocStdString(info.aux_info.tablet_id),
