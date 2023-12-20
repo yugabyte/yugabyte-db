@@ -22,12 +22,12 @@ Unless otherwise noted, x86 operating systems are supported on all supported ver
 | AlmaLinux 8      | {{<icon/yes>}} | {{<icon/yes>}} | Recommended for production<br>Recommended development platform |
 | AlmaLinux 9      | {{<icon/yes>}} | {{<icon/yes>}} |
 | Amazon Linux 2   | {{<icon/yes>}} | {{<icon/yes>}} | Deprecated in v2.20.0 |
-| CentOS7          | {{<icon/yes>}} |                |
+| CentOS7          | {{<icon/yes>}} |                | Deprecated in v2.20.0 |
 | CentOS8          | {{<icon/yes>}} |                |
 | Red Hat Enterprise Linux 7 | {{<icon/yes>}} |      |
 | Red Hat Enterprise Linux 8 | {{<icon/yes>}} |      | Recommended for production |
 | SUSE Linux Enterprise Server 15 SP4 | {{<icon/yes>}} |   | {{<badge/ea>}} |
-| Ubuntu 18        | {{<icon/yes>}} |                |
+| Ubuntu 18        | {{<icon/yes>}} |                | Deprecated in v2.20.0 |
 | Ubuntu 20        | {{<icon/yes>}} |                |
 | Ubuntu 22        | {{<icon/yes>}} |                | Supported in v2.18.5, v2.20.1 |
 
