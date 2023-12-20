@@ -771,7 +771,7 @@
                 "instruction": "Confirm alert threshold for acceptable replication lag",
                 "infoText": "Replication lag measures how far behind in time the DR replica lags the DR primary. You can set alerts on the DR primary to notify you when this lag reaches a specified threshold so that you can take action to correct the lag. Setting up a replication lag alert is optional.",
                 "currentLowestReplicationLagLabel": "Current lowest replication lag alert threshold set on {{sourceUniverseName}}:",
-                "setUpReplicationLagAlertPrompt": "<paragraph>You currently do not have any alerts set up for replication lag on {{sourceUniverseName}}.</paragraph><paragraph>You can configure a replication lag alert using the 'Create Alert Policy' action on the <manageAlertConfigLink>alert configuration page.</manageAlertConfigLink></paragraph>.",
+                "setUpReplicationLagAlertPrompt": "<paragraph>You currently do not have any alerts set up for replication lag on {{sourceUniverseName}}.</paragraph><paragraph>You can configure a replication lag alert using the 'Create Alert Policy' action on the <manageAlertConfigLink>alert configuration page.</manageAlertConfigLink></paragraph>",
                 "editReplicationLagAlertPrompt": "You can edit these replication lag alerts from the <manageAlertConfigLink>alert configuration page.</manageAlertConfigLink>",
                 "submitButton": "Confirm and Enable Disaster Recovery"
               }
