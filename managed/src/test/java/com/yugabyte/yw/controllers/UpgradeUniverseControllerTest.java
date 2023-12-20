@@ -651,7 +651,8 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
             });
     assertEquals("No finalize upgrade info available for this universe", err.getMessage());
     TestHelper.updateUniverseVersion(universe1, "2.20.2.0-b1");
-    Set<UUID> impactedUniverses = ImmutableSet.of(UUID.randomUUID(), UUID.randomUUID());
+    Universe universe2 = createUniverse("test-2");
+    Set<UUID> impactedUniverses = ImmutableSet.of(universe2.getUniverseUUID());
     when(mockXClusterUniverseService.getXClusterTargetUniverseSetToBeImpactedWithUpgradeFinalize(
             any()))
         .thenReturn(impactedUniverses);
@@ -661,7 +662,9 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     ObjectMapper mapper = new ObjectMapper();
     FinalizeUpgradeInfoResponse response =
         mapper.convertValue(json, FinalizeUpgradeInfoResponse.class);
-    assertEquals(impactedUniverses, response.getImpactedXClusterConnectedUniverse());
+    assertEquals(
+        universe2.getUniverseUUID(),
+        response.getImpactedXClusterConnectedUniverse().get(0).universeUUID);
   }
 
   @Test
