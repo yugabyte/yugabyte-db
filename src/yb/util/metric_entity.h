@@ -89,12 +89,25 @@ struct MetricJsonOptions : public MetricOptions {
 
 YB_STRONGLY_TYPED_BOOL(ExportHelpAndType);
 
+static const std::string kFilterVersionOne = "v1";
+static const std::string kFilterVersionTwo = "v2";
+
 struct MetricPrometheusOptions : public MetricOptions {
   // Include #TYPE and #HELP in Prometheus metrics output
   ExportHelpAndType export_help_and_type{ExportHelpAndType::kFalse};
 
-  // Metrics that shows on table level.
+  std::string version = kFilterVersionOne;
+
+  // For filtering table level metrics when version is equal to kFilterVersionOne.
   std::string priority_regex_string = ".*";
+
+  // The four regexs are for filtering table level and server level metrics
+  // when version is equal to kFilterVersionTwo.
+  std::string table_allowlist_string = ".*";
+  std::string table_blocklist_string = "";
+
+  std::string server_allowlist_string = ".*";
+  std::string server_blocklist_string = "";
 };
 
 class MetricEntityPrototype {
