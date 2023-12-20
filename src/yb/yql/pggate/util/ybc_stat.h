@@ -26,6 +26,8 @@ extern "C" {
 extern const char *ybcstat_get_wait_event(uint32_t wait_event_info);
 extern const char *ybcstat_get_wait_event_type(uint32_t wait_event_info);
 extern const char *ybcstat_get_wait_event_component(uint32_t wait_event_info);
+extern bool should_export_tablet_id(uint32_t wait_event_info);
+extern bool should_export_table_id(uint32_t wait_event_info);
 
 #ifdef __cplusplus
 } // extern "C"

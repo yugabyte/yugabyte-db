@@ -312,10 +312,15 @@ static void tserver_collect_samples(TimestampTz auh_sample_time, uint16 num_rpcs
     sample_rate = (float)Min(num_rpcs_to_sample, numrpcs)/numrpcs;
   for (int i = 0; i < numrpcs; i++) {
     if(random() <= sample_rate * MAX_RANDOM_VALUE){
+      const char *wait_event_aux = "\0";
+      if (should_export_table_id(rpcs[i].wait_status_code))
+        wait_event_aux = rpcs[i].aux_info.table_id;
+      else if (should_export_tablet_id(rpcs[i].wait_status_code))
+        wait_event_aux = rpcs[i].aux_info.tablet_id;
+
       auh_entry_store(auh_sample_time, rpcs[i].metadata.top_level_request_id,
                     rpcs[i].metadata.current_request_id, rpcs[i].wait_status_code,
-                    (rpcs[i].aux_info.tablet_id[0] == '\0' ? rpcs[i].aux_info.table_id : rpcs[i].aux_info.tablet_id),
-                    rpcs[i].metadata.top_level_node_id,
+                    wait_event_aux, rpcs[i].metadata.top_level_node_id,
                     rpcs[i].metadata.client_node_host, rpcs[i].metadata.client_node_port,
                     rpcs[i].metadata.query_id, auh_sample_time, sample_rate);
     }
