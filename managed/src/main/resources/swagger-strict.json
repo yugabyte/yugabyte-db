@@ -5017,14 +5017,12 @@
       "description" : "Finalize Upgrade Info Response",
       "properties" : {
         "impactedXClusterConnectedUniverse" : {
-          "description" : "WARNING: This is a preview API that could change. Set of xCluster connected universes uuids to be impacted ",
+          "description" : "WARNING: This is a preview API that could change. List of xCluster connected universes details to be impacted ",
           "items" : {
-            "format" : "uuid",
-            "type" : "string"
+            "$ref" : "#/definitions/ImpactedXClusterConnectedUniverse"
           },
           "readOnly" : true,
-          "type" : "array",
-          "uniqueItems" : true
+          "type" : "array"
         }
       },
       "type" : "object"
@@ -5713,6 +5711,27 @@
           },
           "description" : "Regions override for image bundle",
           "type" : "object"
+        }
+      },
+      "type" : "object"
+    },
+    "ImpactedXClusterConnectedUniverse" : {
+      "properties" : {
+        "universeName" : {
+          "description" : "WARNING: This is a preview API that could change. Impacted Universe name ",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "universeUUID" : {
+          "description" : "WARNING: This is a preview API that could change. Impacted Universe UUID ",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "ybSoftwareVersion" : {
+          "description" : "WARNING: This is a preview API that could change. Impacted Universe version ",
+          "readOnly" : true,
+          "type" : "string"
         }
       },
       "type" : "object"
@@ -17869,15 +17888,6 @@
             }
           }
         },
-        "responsesObject" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "format" : "uuid",
-              "type" : "string"
-            }
-          }
-        },
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
@@ -18527,14 +18537,6 @@
           "required" : false
         } ],
         "responses" : {
-          "200" : {
-            "description" : "successful operation",
-            "schema" : {
-              "$ref" : "#/definitions/YBPTask"
-            }
-          }
-        },
-        "responsesObject" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
@@ -19811,8 +19813,9 @@
           "required" : true,
           "type" : "string"
         }, {
+          "format" : "uuid",
           "in" : "path",
-          "name" : "code",
+          "name" : "pUUID",
           "required" : true,
           "type" : "string"
         }, {
@@ -20820,20 +20823,12 @@
           "in" : "query",
           "name" : "request",
           "required" : false
-        }, {
-          "description" : "Node action data to be updated",
-          "in" : "body",
-          "name" : "Node action",
-          "required" : true,
-          "schema" : {
-            "$ref" : "#/definitions/NodeActionFormData"
-          }
         } ],
         "responses" : {
           "200" : {
             "description" : "successful operation",
             "schema" : {
-              "$ref" : "#/definitions/YBPTask"
+              "$ref" : "#/definitions/YBPSuccess"
             }
           }
         },
