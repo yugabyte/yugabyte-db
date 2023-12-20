@@ -356,14 +356,6 @@ class PgDocOp : public std::enable_shared_from_this<PgDocOp> {
   // Indicator for completing all request populations.
   bool request_population_completed_ = false;
 
-  // If true, all data for each batch must be collected before PgGate gets the reply.
-  // NOTE:
-  // - Currently, PgSession's default behavior is to get all responses in a batch together.
-  // - We set this flag only to prevent future optimization where requests & their responses to
-  //   and from different tablet servers are sent and received independently. That optimization
-  //   should only be done when "wait_for_batch_completion_ == false"
-  bool wait_for_batch_completion_ = true;
-
   // Object to fetch a response from DocDB after sending a request.
   // Object's Valid() method returns false in case no request is sent
   // or sent request was buffered by the session.
@@ -562,6 +554,11 @@ class PgDocReadOp : public PgDocOp {
   void ClonePgsqlOps(size_t op_count);
 
   //----------------------------------- Data Members -----------------------------------------------
+
+  // Arena for operations fetching from the main table by keys retrieved from the secondary index.
+  // Those can take billions of keys to fetch, and we want to be able to periodically release
+  // their memory, without harming the template operation and stuff, hence separate arena.
+  std::shared_ptr<Arena> pgsql_op_arena_;
 
   // Template operation, used to fill in pgsql_ops_ by either assigning or cloning.
   PgsqlReadOpPtr read_op_;

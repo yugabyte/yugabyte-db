@@ -116,7 +116,7 @@ class PgsqlReadOp : public PgsqlOp {
     return true;
   }
 
-  PgsqlOpPtr DeepCopy(const std::shared_ptr<void>& shared_ptr) const;
+  PgsqlOpPtr DeepCopy(const std::shared_ptr<Arena>& arena_ptr) const;
 
   std::string RequestToString() const override;
 
@@ -171,6 +171,10 @@ class PgsqlWriteOp : public PgsqlOp {
 
 
 Result<bool> PrepareNextRequest(const PgTableDesc& table, PgsqlReadOp* read_op);
+
+inline auto GetSharedArena(const PgsqlOpPtr& op) {
+  return std::shared_ptr<Arena>(op, &op->arena());
+}
 
 }  // namespace pggate
 }  // namespace yb
