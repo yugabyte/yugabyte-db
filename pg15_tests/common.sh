@@ -48,6 +48,22 @@ handle_test_result() {
   echo -e "$datetime\t$test_descriptor\t$result" | tee -a "$test_result_dir/$results_file"
 }
 
+grep_in_cxx_test() {
+  query=$1
+  gtest_filter=$2
+
+  test_dir=build/latest/yb-test-logs
+  # Cases:
+  # - PgRowLockTest.SelectForKeyShareWithRestart:
+  #   ...tests-pgwrapper__pg_row_lock-test/PgRowLockTest_SelectForKeyShareWithRestart.log
+  # - XClusterPgSchemaNameParams/XClusterPgSchemaNameTest.SetupSameNameDifferentSchemaUniverseReplication/2
+  #   ...tests-integration-tests__xcluster_ysql-test/XClusterPgSchemaNameParams__XClusterPgSchemaNameTest_SetupSameNameDifferentSchemaUniverseReplication__2.log
+  # Replace dot with underscore; replace slash with double underscore.
+  filename=$(echo "$gtest_filter" | sed -e 's/\./_/' -e 's,/,__,g')
+  log_path=$(find "$test_dir" -name "$filename".log)
+  grep -F "$query" "$log_path"
+}
+
 grep_in_java_test() {
   query=$1
   test_name=$2
@@ -71,9 +87,33 @@ grep_in_java_test() {
 }
 
 # Usage:
-# - always pass: java_test foo
-# - always fail: failing_java_test bar
-# - flaky: if ! java_test baz; then additional checks; fi
+# - always pass:
+#   cxx_test foo bar
+# - always fail:
+#   failing_cxx_test foo bar
+#   additional checks on the failure
+# - flaky:
+#   # Explanation or issue number.
+#   if ! cxx_test foo bar; then
+#     additional checks on the failure
+#   fi
+failing_cxx_test() {
+  # shellcheck disable=SC2251
+  ! cxx_test "$@"
+  return $?
+}
+cxx_test() {
+  test_program=$1
+  gtest_filter=${2:-.*}
+
+  set +e
+  "${build_cmd[@]}" --cxx-test "$test_program" --gtest_filter "$gtest_filter"
+  rc=$?
+  set -e
+  return $rc
+}
+
+# Usage: (similar to above cxx_test).
 failing_java_test() {
   # shellcheck disable=SC2251
   ! java_test "$@"

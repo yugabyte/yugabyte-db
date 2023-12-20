@@ -2,7 +2,10 @@
 source "${BASH_SOURCE[0]%/*}"/common.sh
 
 # TODO(#19488)
-"${build_cmd[@]}" --cxx-test pgwrapper_pg_index_backfill-test \
-  --gtest_filter PgIndexBackfillTest.InsertsWhileCreatingIndex \
-  || grep 'TRAP: FailedAssertion("ItemPointerIsValid(&scan->xs_heaptid)"' \
-          'build/latest/yb-test-logs/tests-pgwrapper__pg_index_backfill-test/PgIndexBackfillTest_InsertsWhileCreatingIndex.log'
+if ! cxx_test \
+  pgwrapper_pg_index_backfill-test \
+  PgIndexBackfillTest.InsertsWhileCreatingIndex; then
+  grep_in_cxx_test \
+    'TRAP: FailedAssertion("ItemPointerIsValid(&scan->xs_heaptid)"' \
+    PgIndexBackfillTest.InsertsWhileCreatingIndex
+fi

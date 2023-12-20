@@ -11,9 +11,7 @@ while read -r line; do
 
   # Run test, capturing out/err to file.
   set +e
-  "${build_cmd[@]}" \
-    --cxx-test "$test_program" \
-    --gtest_filter "$test_descriptor" \
+  cxx_test "$test_program" "$test_descriptor" \
     |& tee "$test_output_path"
   result=$?
   set -e
