@@ -54,6 +54,8 @@ import com.yugabyte.yw.models.extended.SoftwareUpgradeInfoResponse;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.io.IOException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
@@ -624,9 +626,21 @@ public class UpgradeUniverseHandler {
           BAD_REQUEST, "No finalize upgrade info available for this universe");
     }
     try {
-      response.setImpactedXClusterConnectedUniverse(
+      List<FinalizeUpgradeInfoResponse.ImpactedXClusterConnectedUniverse> impactedUniverses =
+          new ArrayList<>();
+      for (UUID uuid :
           xClusterUniverseService.getXClusterTargetUniverseSetToBeImpactedWithUpgradeFinalize(
-              universe));
+              universe)) {
+        Universe univ = Universe.getOrBadRequest(uuid);
+        FinalizeUpgradeInfoResponse.ImpactedXClusterConnectedUniverse details =
+            new FinalizeUpgradeInfoResponse.ImpactedXClusterConnectedUniverse();
+        details.universeUUID = uuid;
+        details.universeName = univ.getName();
+        details.ybSoftwareVersion =
+            univ.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+        impactedUniverses.add(details);
+      }
+      response.setImpactedXClusterConnectedUniverse(impactedUniverses);
     } catch (IOException e) {
       log.error("Error: ", e);
       throw new PlatformServiceException(
