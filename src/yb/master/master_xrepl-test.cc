@@ -33,7 +33,7 @@
 DECLARE_int32(cdc_state_table_num_tablets);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_bool(disable_truncate_table);
-DECLARE_bool(TEST_ysql_yb_enable_replication_commands);
+DECLARE_bool(ysql_yb_enable_replication_commands);
 DECLARE_bool(cdc_enable_postgres_replica_identity);
 DECLARE_bool(enable_backfilling_cdc_stream_with_replication_slot);
 DECLARE_uint32(max_replication_slots);
@@ -64,7 +64,7 @@ class MasterTestXRepl  : public MasterTestBase {
     // Default of FLAGS_cdc_state_table_num_tablets is to fallback to num_tablet_servers which is 0
     // in this test. So we need to explicitly set it here.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_table_num_tablets) = 1;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_commands) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_backfilling_cdc_stream_with_replication_slot) = true;
   }
 
@@ -454,7 +454,7 @@ TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceCql) {
 }
 
 TEST_F(MasterTestXRepl, TestCreateCDCStreamForNamespaceDisabled) {
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_commands) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = false;
 
   CreateNamespaceResponsePB create_namespace_resp;
   ASSERT_OK(CreatePgsqlNamespace(kNamespaceName, kPgsqlNamespaceId, &create_namespace_resp));
@@ -871,11 +871,11 @@ TEST_F(MasterTestXRepl, TestYsqlBackfillReplicationSlotNameToCDCSDKStream) {
 
   // Disable replication commands and create a CDCSDK stream to simulate the scenario of the stream
   // being created on the older version.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_commands) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = false;
   auto stream_id = ASSERT_RESULT(CreateCDCStreamForNamespaceOlderVersion(ns_id));
 
   // Enable replication commands and add the replication slot name to the created stream.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_commands) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = true;
 
   YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB req;
   YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB resp;
@@ -938,11 +938,11 @@ TEST_F(
 
   // Disable replication commands and create a CDCSDK stream to simulate the scenario of the stream
   // being created on the older version.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_commands) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = false;
   auto stream_id = ASSERT_RESULT(CreateCDCStreamForNamespaceOlderVersion(ns_id));
 
   // Enable replication commands and add the replication slot name to the created stream.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_commands) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = true;
   YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB req;
   YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB resp;
   req.set_stream_id(stream_id.ToString());
@@ -985,11 +985,11 @@ TEST_F(MasterTestXRepl, TestYsqlBackfillReplicationSlotNameToCDCSDKStreamInvalid
 
   // Disable replication commands and create a CDCSDK stream to simulate the scenario of the stream
   // being created on the older version.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_commands) = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = false;
   auto stream_id = ASSERT_RESULT(CreateCDCStreamForNamespaceOlderVersion(ns_id));
 
   // Enable replication commands and add the replication slot name to the created stream.
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_commands) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = true;
   YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB req;
   YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB resp;
   req.set_stream_id(stream_id.ToString());

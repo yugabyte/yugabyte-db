@@ -735,6 +735,7 @@ TEST_F(PgCatalogVersionTest, IncrementAllDBCatalogVersions) {
 
   // Ensure that PUBLICATION will not cause yb_increment_all_db_catalog_versions
   // to fail.
+  ASSERT_OK(conn_yugabyte.Execute("SET yb_enable_replication_commands = true"));
   ASSERT_OK(conn_yugabyte.Execute("CREATE PUBLICATION testpub_foralltables FOR ALL TABLES"));
   IncrementAllDBCatalogVersions(&conn_yugabyte, true);
 
@@ -1174,6 +1175,7 @@ TEST_F(PgCatalogVersionTest, InvalidateWholeRelCache) {
   conn_yugabyte = ASSERT_RESULT(ConnectToDB(kYugabyteDatabase));
   const auto yugabyte_db_oid = ASSERT_RESULT(GetDatabaseOid(&conn_yugabyte, kYugabyteDatabase));
   // CREATE PUBLICATION is not a global-impact DDL.
+  ASSERT_OK(conn_yugabyte.Execute("SET yb_enable_replication_commands = true"));
   ASSERT_OK(conn_yugabyte.Execute("CREATE PUBLICATION testpub_foralltables FOR ALL TABLES"));
 
   // This ALTER PUBLICATION causes invalidation of the whole relcache (including
