@@ -29,6 +29,8 @@ import io.yugabyte.operator.v1alpha1.YBUniverse;
 import io.yugabyte.operator.v1alpha1.YBUniverseSpec;
 import io.yugabyte.operator.v1alpha1.YBUniverseStatus;
 import io.yugabyte.operator.v1alpha1.ybuniversespec.DeviceInfo;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.MasterK8SNodeResourceSpec;
+import io.yugabyte.operator.v1alpha1.ybuniversespec.TserverK8SNodeResourceSpec;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
@@ -85,6 +87,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     envVars = Mockito.mockStatic(KubernetesEnvironmentVariables.class);
     envVars.when(KubernetesEnvironmentVariables::getServiceHost).thenReturn("host");
     envVars.when(KubernetesEnvironmentVariables::getServicePort).thenReturn("1234");
+    Mockito.when(confGetter.getGlobalConf(any())).thenReturn(true);
     ybUniverseReconciler =
         new YBUniverseReconciler(
             client,
@@ -94,7 +97,8 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
             null,
             cloudProviderHandler,
             null,
-            null);
+            null,
+            confGetter);
     // reconcilerFactory.getYBUniverseReconciler(client);
 
     // Setup Defaults
@@ -215,6 +219,8 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     spec.setYsqlPassword(null);
     spec.setYcqlPassword(null);
     spec.setProviderName(defaultProvider.getName());
+    spec.setMasterK8SNodeResourceSpec(new MasterK8SNodeResourceSpec());
+    spec.setTserverK8SNodeResourceSpec(new TserverK8SNodeResourceSpec());
     DeviceInfo deviceInfo = new DeviceInfo();
     spec.setDeviceInfo(deviceInfo);
 
