@@ -116,8 +116,9 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
 
   private static final String DEFAULT_BASE_DIR = "/tmp/testing";
   protected static String YBC_VERSION;
+  public static String DB_VERSION = "2.20.0.2-b1";
   private static final String DOWNLOAD_URL =
-      "https://downloads.yugabyte.com/releases/2.20.0.1/" + "yugabyte-2.20.0.1-b1-%s-%s.tar.gz";
+      "https://downloads.yugabyte.com/releases/2.20.0.2/" + "yugabyte-2.20.0.2-b1-%s-%s.tar.gz";
   private static final String YBC_BASE_S3_URL = "https://downloads.yugabyte.com/ybc/";
   private static final String YBC_BIN_ENV_KEY = "YBC_PATH";
   private static final boolean KEEP_FAILED_UNIVERSE = false;
@@ -214,7 +215,9 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
 
     ybBinPath = determineYBBinPath();
     if (ybBinPath == null) {
-      downloadAndSetUpYBSoftware(os, arch, downloadURL);
+      downloadAndSetUpYBSoftware(os, arch, downloadURL, DB_VERSION);
+      ybVersion = DB_VERSION;
+      ybBinPath = deriveYBBinPath(ybVersion);
     }
 
     log.debug("YB version {} bin path {}", ybVersion, ybBinPath);
@@ -244,27 +247,33 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     return null;
   }
 
-  private static void downloadAndSetUpYBSoftware(String os, String arch, String downloadURL) {
+  public static String deriveYBBinPath(String version) {
+    return baseDir + "/yugabyte/yugabyte-" + version + "/bin";
+  }
+
+  public static void downloadAndSetUpYBSoftware(
+      String os, String arch, String downloadURL, String dbVersion) {
     String baseDownloadPath = baseDir + "/yugabyte";
     File downloadPathFile = new File(baseDownloadPath);
 
     for (File child : Optional.ofNullable(downloadPathFile.listFiles()).orElse(new File[0])) {
-      if (child.getName().startsWith("yugabyte-") && hasRequiredExecutables(child)) {
-        ybVersion = extractVersionFromFolder(child.getName());
-        ybBinPath = new File(child, "bin").getPath();
-        log.debug("Already downloaded!");
+      if (child.getName().startsWith("yugabyte-" + dbVersion) && hasRequiredExecutables(child)) {
+        log.debug(dbVersion + " already downloaded! ");
         return;
       }
     }
 
-    String filePath = baseDownloadPath + "/yugabyte.tar.gz";
     try {
+      String version = extractVersionFromBuild(dbVersion);
+      String filePath = baseDownloadPath + "/yugabyte-" + dbVersion + ".tar.gz";
       downloadFromUrl(filePath, downloadURL);
-      ybVersion = extractVersionFromURL(downloadURL);
-      ybBinPath = baseDownloadPath + "/yugabyte-" + ybVersion + "/bin";
-      String ybReleasePath = baseDownloadPath + "/%s-%s-%s.tar.gz";
-      ybReleasePath = String.format(ybReleasePath, ybVersion, os, arch);
+      String ybReleasePath = baseDownloadPath + "/yugabyte-%s-%s-%s.tar.gz";
+      ybReleasePath = String.format(ybReleasePath, dbVersion, os, arch);
       Files.move(Paths.get(filePath), Paths.get(ybReleasePath));
+      File oldDbVersionPath = new File(baseDownloadPath + "/yugabyte-" + version);
+      File newDBVersionPath = new File(baseDownloadPath + "/yugabyte-" + dbVersion);
+      oldDbVersionPath.renameTo(newDBVersionPath);
+      String ybBinPath = baseDownloadPath + "/yugabyte-" + dbVersion + "/bin";
       runPostInstallScript(ybBinPath);
     } catch (IOException | InterruptedException e) {
       throw new RuntimeException("Failed to download package", e);
@@ -354,8 +363,8 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     return folder.substring(9); // yugabyte-2.18.3.0 for example
   }
 
-  private static String extractVersionFromURL(String URL) {
-    return URL.substring(40, 48);
+  private static String extractVersionFromBuild(String build) {
+    return build.substring(0, build.indexOf("-"));
   }
 
   @Before
@@ -388,7 +397,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     testDir.mkdirs();
 
     YugawareProperty.addConfigProperty(
-        ReleaseManager.CONFIG_TYPE.name(), getMetadataJson(ybVersion, false), "release");
+        ReleaseManager.CONFIG_TYPE.name(), getMetadataJson(DB_VERSION, false), "release");
     YugawareProperty.addConfigProperty(
         ReleaseManager.YBC_CONFIG_TYPE.name(),
         getMetadataJson("ybc-" + YBC_VERSION, true),
@@ -440,7 +449,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
    */
   protected abstract Pair<Integer, Integer> getIpRange();
 
-  private JsonNode getMetadataJson(String release, boolean isYbc) {
+  protected JsonNode getMetadataJson(String release, boolean isYbc) {
     ReleaseManager.ReleaseMetadata releaseMetadata = new ReleaseManager.ReleaseMetadata();
     releaseMetadata.state = ReleaseManager.ReleaseState.ACTIVE;
     String parentDirectory = "/";
@@ -448,7 +457,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
       parentDirectory = "/yugabyte/";
     }
     releaseMetadata.filePath =
-        baseDir + parentDirectory + release + "-" + os + "-" + arch + ".tar.gz";
+        baseDir + parentDirectory + "yugabyte-" + release + "-" + os + "-" + arch + ".tar.gz";
     ReleaseManager.ReleaseMetadata.Package pkg = new ReleaseManager.ReleaseMetadata.Package();
     pkg.arch = PublicCloudConstants.Architecture.valueOf(arch);
     pkg.path = releaseMetadata.filePath;
