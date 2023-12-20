@@ -56,7 +56,7 @@ class PrometheusWriter {
       const std::string& name,
       int64_t value,
       AggregationFunction aggregation_function,
-      AggregationLevels aggregation_levels,
+      AggregationLevels default_levels,
       const char* type = "unknown",
       const char* description = "unknown");
 
