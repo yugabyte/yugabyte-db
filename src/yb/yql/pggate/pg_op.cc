@@ -139,9 +139,8 @@ Status PgsqlReadOp::InitPartitionKey(const PgTableDesc& table) {
        table.schema(), table.partition_schema(), table.GetPartitionList(), &read_request_);
 }
 
-PgsqlOpPtr PgsqlReadOp::DeepCopy(const std::shared_ptr<void>& shared_ptr) const {
-  auto result = ArenaMakeShared<PgsqlReadOp>(
-      std::shared_ptr<ThreadSafeArena>(shared_ptr, &arena()), &arena(), is_region_local());
+PgsqlOpPtr PgsqlReadOp::DeepCopy(const std::shared_ptr<ThreadSafeArena>& arena_ptr) const {
+  auto result = ArenaMakeShared<PgsqlReadOp>(arena_ptr, &*arena_ptr, is_region_local());
   result->read_request() = read_request();
   return result;
 }
