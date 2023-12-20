@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"fmt"
 	"os"
+	"time"
 
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
@@ -160,6 +161,8 @@ func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
 	}
 
 	if migration {
+		// Wait a minute so that files are found on filesystem
+		time.Sleep(15 * time.Second)
 		// set fixPaths conf variable
 		plat.FixPaths = true
 		config.GenerateTemplate(plat)
