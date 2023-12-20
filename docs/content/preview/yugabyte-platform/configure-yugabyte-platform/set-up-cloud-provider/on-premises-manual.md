@@ -780,43 +780,105 @@ If the preflight check is successful, you add the node to the provider (if requi
 node-agent node preflight-check --add_node
 ```
 
-### Manual configuration
+### Reconfigure a node agent
 
-To enable secured communication, the node agent is automatically registered during its installation so YugabyteDB Anywhere is aware of its existence. You can also register and unregister the node agent manually during configuration.
+If you need to reconfigure a node agent, you can use the following procedure:
 
-The following is the node agent registration command:
+1. If the node instance has been added to a provider, remove the node instance from the provider.
 
-```sh
-node-agent node register [flags] --api-token <api_token>
-```
+1. Run the following command:
 
-If you need to overwrite any previously configured values, you can use the following parameters in the registration command:
+    ```sh
+    node-agent node unregister
+    ```
 
-- `--node_ip` represents the node IP address.
-- `--url` represents the YugabyteDB Anywhere address.
+    After running this command, YBA no longer recognizes the node agent. However, if the node agent configuration is corrupted, the command may fail. In this case, unregister the node agent using the API as follows:
 
-For secured communication, YugabyteDB Anywhere generates a key pair (private, public, and server certificate) that is sent to the node agent as part of its registration process.
+    - Obtain the node agent ID:
 
-<!--
+        ```sh
+        curl -k --header 'X-AUTH-YW-API-TOKEN:<API TOKEN>’ https://<YBA Address>/api/v1/customers/<CUSTOMER ID>/node_agents?nodeIp=<node agent IP>
+        ```
 
-You can obtain a list of existing node agents using the following API:
+        You should see output similar to the following:
 
-```http
-GET /api/v1/customers/<customer_id>/node_agents
-```
+        ```output.json
+        [{
+            "uuid":"ec7654b1-cf5c-4a3b-aee3-b5e240313ed2",
+            "name":"node1",
+            "ip":"10.9.82.61",
+            "port":9070,
+            "customerUuid":"f33e3c9b-75ab-4c30-80ad-cba85646ea39",
+            "version":"2.18.6.0-PRE_RELEASE",
+            "state":"READY",
+            "updatedAt":"2023-12-19T23:56:43Z",
+            "config":{
+                "certPath":"/opt/yugaware/node-agent/certs/f33e3c9b-75ab-4c30-80ad-cba85646ea39/ec7654b1-cf5c-4a3b-aee3-b5e240313ed2/0",
+                "offloadable":false
+                },
+            "osType":"LINUX",
+            "archType":"AMD64",
+            "home":"/home/yugabyte/node-agent",
+            "versionMatched":true,
+            "reachable":false
+        }]
+        ```
 
-To unregister a node agent, use the following API:
+    - Use the value of the field `uuid` as `<NODE AGENT ID>` in the following command:
 
-```http
-DELETE /api/v1/customers/<customer_id>/node_agents/<node_agent_id>
-```
+        ```sh
+        curl -k -X DELETE --header 'X-AUTH-YW-API-TOKEN:<API TOKEN>' https://<YBA Address>/api/v1/customers/<CUSTOMER ID>/node_agents/<NODE AGENT ID>
+        ```
 
--->
+1. Stop the systemd service as a sudo user.
 
-If the node agent is already registered, first unregister it, as registering an already registered node agent fails as YugabyteDB Anywhere keeps a record of the node agent with this IP.
+    ```sh
+    sudo systemctl stop yb-node-agent
+    ```
 
-To unregister a node agent, use the following command:
+1. Run the command to start the interactive configuration. This also registers the node agent with YBA.
 
-```sh
-node-agent node unregister
-```
+    ```sh
+    node-agent node configure -t <API TOKEN> -u <YBA URL>
+    ```
+
+    ```output
+    * The current value of Node Name is set to node1; Enter new value or enter to skip: 
+    * The current value of Node IP is set to 10.9.82.61; Enter new value or enter to skip: 
+    * Select your Onprem Provider.
+    1. Provider ID: b56d9395-1dda-47ae-864b-7df182d07fa7, Provider Name: onprem-provision-test1
+    * The current value is Provider ID: b56d9395-1dda-47ae-864b-7df182d07fa7, Provider Name: onprem-provision-test1.
+        Enter new option number or enter to skip: 
+    * Select your Instance Type.
+    1. Instance Code: c5.large
+    * The current value is Instance Code: c5.large.
+        Enter new option number or enter to skip: 
+    * Select your Region.
+    1. Region ID: 0a185358-3de0-41f2-b106-149be3bf07dd, Region Code: us-west-2
+    * The current value is Region ID: 0a185358-3de0-41f2-b106-149be3bf07dd, Region Code: us-west-2.
+        Enter new option number or enter to skip: 
+    * Select your Zone.
+    1. Zone ID: c9904f64-a65b-41d3-9afb-a7249b2715d1, Zone Code: us-west-2a
+    * The current value is Zone ID: c9904f64-a65b-41d3-9afb-a7249b2715d1, Zone Code: us-west-2a.
+        Enter new option number or enter to skip: 
+    • Completed Node Agent Configuration
+    • Node Agent Registration Successful
+    ```
+
+1. Start the Systemd service as a sudo user.
+
+    ```sh
+    sudo systemctl start yb-node-agent
+    ```
+
+1. Verify that the service is up.
+
+    ```sh
+    sudo systemctl status yb-node-agent
+    ```
+
+1. Run preflight checks and add the node as yugabyte user.
+
+    ```sh
+    node-agent node preflight-check --add_node
+    ```
