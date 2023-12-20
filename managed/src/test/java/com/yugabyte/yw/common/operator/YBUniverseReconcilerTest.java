@@ -8,7 +8,9 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
+import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
+import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.models.Customer;
@@ -57,6 +59,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
   @Mock SharedIndexInformer<YBUniverse> ybUniverseInformer;
   @Mock Indexer<YBUniverse> indexer;
   @Mock UniverseCRUDHandler universeCRUDHandler;
+  @Mock CloudProviderHandler cloudProviderHandler;
 
   MockedStatic<KubernetesEnvironmentVariables> envVars;
 
@@ -84,7 +87,14 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     envVars.when(KubernetesEnvironmentVariables::getServicePort).thenReturn("1234");
     ybUniverseReconciler =
         new YBUniverseReconciler(
-            client, informerFactory, universeName, universeCRUDHandler, null, null, null, null);
+            client,
+            informerFactory,
+            universeName,
+            universeCRUDHandler,
+            null,
+            cloudProviderHandler,
+            null,
+            null);
     // reconcilerFactory.getYBUniverseReconciler(client);
 
     // Setup Defaults
@@ -122,7 +132,6 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     List<UniverseResp> findResp = new ArrayList<>();
     Mockito.when(universeCRUDHandler.findByName(defaultCustomer, universeName))
         .thenReturn(findResp);
-
     YBUniverse universe = createYbUniverse();
     ybUniverseReconciler.reconcile(universe, OperatorWorkQueue.ResourceAction.CREATE);
 
@@ -147,6 +156,42 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
         .createUniverse(Mockito.eq(defaultCustomer), any(UniverseDefinitionTaskParams.class));
   }
 
+  @Test
+  public void testReconcileCreateAutoProvider() {
+    UniverseResp uResp = new UniverseResp(defaultUniverse, UUID.randomUUID());
+    Mockito.when(
+            universeCRUDHandler.createUniverse(
+                Mockito.eq(defaultCustomer), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(uResp);
+    // Empty response to show the universe isn't yet created
+    List<UniverseResp> findResp = new ArrayList<>();
+    Mockito.when(universeCRUDHandler.findByName(defaultCustomer, universeName))
+        .thenReturn(findResp);
+    KubernetesProviderFormData providerData = new KubernetesProviderFormData();
+    Mockito.when(cloudProviderHandler.suggestedKubernetesConfigs()).thenReturn(providerData);
+    // Create a provider with the name following `YBUniverseReconciler.getProviderName` format
+    Mockito.when(cloudProviderHandler.createKubernetes(defaultCustomer, providerData))
+        .thenAnswer(
+            invocation -> {
+              return ModelFactory.kubernetesProvider(defaultCustomer, "prov-" + universeName);
+            });
+
+    YBUniverse universe = createYbUniverse();
+    // Update universe to have no provider
+    YBUniverseSpec spec = universe.getSpec();
+    spec.setProviderName("");
+    universe.setSpec(spec);
+    ybUniverseReconciler.reconcile(universe, OperatorWorkQueue.ResourceAction.CREATE);
+
+    Mockito.verify(universeCRUDHandler, Mockito.times(1)).findByName(defaultCustomer, universeName);
+    Mockito.verify(cloudProviderHandler, Mockito.times(1)).suggestedKubernetesConfigs();
+    Mockito.verify(cloudProviderHandler, Mockito.times(1))
+        .createKubernetes(defaultCustomer, providerData);
+    Mockito.verify(universeCRUDHandler, Mockito.times(1))
+        .createUniverse(Mockito.eq(defaultCustomer), any(UniverseDefinitionTaskParams.class));
+    Mockito.verify(ybUniverseResource, Mockito.atLeast(1)).patch(any(YBUniverse.class));
+  }
+
   private YBUniverse createYbUniverse() {
     YBUniverse universe = new YBUniverse();
     ObjectMeta metadata = new ObjectMeta();
@@ -169,6 +214,7 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     spec.setEnableClientToNodeEncrypt(false);
     spec.setYsqlPassword(null);
     spec.setYcqlPassword(null);
+    spec.setProviderName(defaultProvider.getName());
     DeviceInfo deviceInfo = new DeviceInfo();
     spec.setDeviceInfo(deviceInfo);
 
