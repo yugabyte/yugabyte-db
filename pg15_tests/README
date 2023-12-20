@@ -1,3 +1,5 @@
+Run build first.
+
 Run individual tests like
 
     pg15_tests/test_D29226.sh fastdebug --gcc11

@@ -6,14 +6,10 @@ set -euxo pipefail
 # the repository.
 cd "$(git rev-parse --show-toplevel)"
 
-# Pass --scb, --sp as desired.
-build_cmd=(
+_build_cmd=(
   ./yb_build.sh
   "$@"
 )
-# TODO(#18234): after #18234, no need for this workaround because --sj can be
-# passed to this script.
-"${build_cmd[@]}"
 
 data_dir=${YB_PG15_DATA_DIR:-/tmp/pg15_cluster_data}
 ip_start=${YB_PG15_IP_START:-200}
@@ -107,7 +103,7 @@ cxx_test() {
   gtest_filter=${2:-.*}
 
   set +e
-  "${build_cmd[@]}" --cxx-test "$test_program" --gtest_filter "$gtest_filter"
+  "${_build_cmd[@]}" --cxx-test "$test_program" --gtest_filter "$gtest_filter" --scb --sj
   rc=$?
   set -e
   return $rc
@@ -122,10 +118,8 @@ failing_java_test() {
 java_test() {
   test_name=$1
 
-  # TODO(#18234): after #18234, no need for this workaround because --sj can be
-  # passed to this script.
   set +e
-  "${build_cmd[@]}" --java-test "$test_name" --sj
+  "${_build_cmd[@]}" --java-test "$test_name" --scb --sj
   rc=$?
   set -e
   return $rc
