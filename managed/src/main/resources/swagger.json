@@ -2949,6 +2949,16 @@
             "type" : "string"
           },
           "type" : "array"
+        },
+        "maxCoreFileSize" : {
+          "description" : "Max size of the collected cores (if any)",
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "maxNumRecentCores" : {
+          "description" : "Max number of most recent cores to collect (if any)",
+          "format" : "int32",
+          "type" : "integer"
         }
       },
       "required" : [ "components" ],
@@ -11638,6 +11648,16 @@
           "example" : "2022-12-12T13:07:18Z",
           "format" : "date-time",
           "type" : "string"
+        },
+        "maxCoreFileSize" : {
+          "description" : "Max size in bytes of the recent collected cores (if any)",
+          "format" : "int64",
+          "type" : "integer"
+        },
+        "maxNumRecentCores" : {
+          "description" : "Max number of the most recent cores to collect (if any)",
+          "format" : "int32",
+          "type" : "integer"
         },
         "startDate" : {
           "description" : "Start date to filter logs from",

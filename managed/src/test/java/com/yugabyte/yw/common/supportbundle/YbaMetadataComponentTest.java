@@ -76,7 +76,7 @@ public class YbaMetadataComponentTest extends FakeDBApplication {
     YbaMetadataComponent ybaMetadataComponent =
         new YbaMetadataComponent(mockBaseTaskDependencies, mockSupportBundleUtil);
     ybaMetadataComponent.downloadComponentBetweenDates(
-        customer, universe, Paths.get(fakeBundlePath), null, null, null);
+        null, customer, universe, Paths.get(fakeBundlePath), null, null, null);
 
     // Checking if the directory has some files.
     File[] files = new File(fakeBundlePath + "/metadata/").listFiles();

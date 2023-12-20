@@ -4,21 +4,28 @@ package com.yugabyte.yw.common.supportbundle;
 
 import static com.yugabyte.yw.common.TestHelper.createTarGzipFiles;
 import static com.yugabyte.yw.common.TestHelper.createTempFile;
+import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.doCallRealMethod;
+import static org.mockito.Mockito.doReturn;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.typesafe.config.Config;
+import com.yugabyte.yw.commissioner.tasks.params.SupportBundleTaskParams;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.SupportBundleUtil;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
+import com.yugabyte.yw.forms.SupportBundleFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.SupportBundle;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.io.File;
@@ -29,11 +36,14 @@ import java.nio.file.Paths;
 import java.util.Arrays;
 import java.util.Date;
 import java.util.HashSet;
+import java.util.List;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
+import org.mockito.Captor;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 
@@ -43,6 +53,7 @@ public class CoreFilesComponentTest extends FakeDBApplication {
   @Mock public NodeUniverseManager mockNodeUniverseManager;
   @Mock public Config mockConfig;
   @Mock public SupportBundleUtil mockSupportBundleUtil = new SupportBundleUtil();
+  @Captor public ArgumentCaptor<List<String>> captorSourceNodeFiles;
 
   private Universe universe;
   private Customer customer;
@@ -85,6 +96,15 @@ public class CoreFilesComponentTest extends FakeDBApplication {
     doCallRealMethod()
         .when(mockSupportBundleUtil)
         .batchWiseDownload(any(), any(), any(), any(), any(), any(), any(), any(), any());
+    List<Pair<Integer, String>> fileSizeNameList =
+        List.of(
+            new Pair<>(101, "core_test.2"),
+            new Pair<>(15, "core_test.3"),
+            new Pair<>(100, "core_test.1"),
+            new Pair<>(10, "core_test.4"));
+    doReturn(fileSizeNameList)
+        .when(mockNodeUniverseManager)
+        .getNodeFilePathsAndSize(any(), any(), any());
 
     when(mockUniverseInfoHandler.downloadNodeFile(any(), any(), any(), any(), any(), any()))
         .thenAnswer(
@@ -108,16 +128,65 @@ public class CoreFilesComponentTest extends FakeDBApplication {
     Date startDate = new Date();
     Date endDate = new Date();
 
-    // Calling the download function
+    // Define the task params with the cores info.
     CoreFilesComponent coreFilesComponent =
         new CoreFilesComponent(
             mockUniverseInfoHandler, mockNodeUniverseManager, mockSupportBundleUtil);
+    SupportBundle testSupportBundle =
+        new SupportBundle(null, universe.getUniverseUUID(), null, null, null, null, null);
+    SupportBundleFormData testFormData = new SupportBundleFormData();
+    testFormData.maxNumRecentCores = 2;
+    testFormData.maxCoreFileSize = 20;
+    SupportBundleTaskParams testTaskParams =
+        new SupportBundleTaskParams(testSupportBundle, testFormData, customer, universe);
+
+    // Calling the download function
     coreFilesComponent.downloadComponentBetweenDates(
-        customer, universe, Paths.get(fakeBundlePath), startDate, endDate, node);
+        testTaskParams, customer, universe, Paths.get(fakeBundlePath), startDate, endDate, node);
 
     // Check that the download function is called
     verify(mockUniverseInfoHandler, times(1))
         .downloadNodeFile(any(), any(), any(), any(), any(), any());
+
+    // Check if the cores directory is created
+    Boolean isDestDirCreated = new File(fakeTargetComponentPath).exists();
+    assertTrue(isDestDirCreated);
+  }
+
+  @Test
+  public void testDownloadComponentWithCoreFiltering() throws Exception {
+    // Define any start and end dates to filter - doesn't matter as internally not used
+    Date startDate = new Date();
+    Date endDate = new Date();
+
+    // Define the task params with the cores info.
+    CoreFilesComponent coreFilesComponent =
+        new CoreFilesComponent(
+            mockUniverseInfoHandler, mockNodeUniverseManager, mockSupportBundleUtil);
+    SupportBundle testSupportBundle =
+        new SupportBundle(null, universe.getUniverseUUID(), null, null, null, null, null);
+    SupportBundleFormData testFormData = new SupportBundleFormData();
+    testFormData.maxNumRecentCores = 3;
+    testFormData.maxCoreFileSize = 100;
+    SupportBundleTaskParams testTaskParams =
+        new SupportBundleTaskParams(testSupportBundle, testFormData, customer, universe);
+
+    // Calling the download function
+    coreFilesComponent.downloadComponentBetweenDates(
+        testTaskParams, customer, universe, Paths.get(fakeBundlePath), startDate, endDate, node);
+
+    // Check that the download function is called
+    verify(mockUniverseInfoHandler, times(1))
+        .downloadNodeFile(any(), any(), any(), any(), any(), any());
+
+    // Check that there are only 2 core files that we are trying to collect even though there are 4
+    // found on the DB node.
+    verify(mockSupportBundleUtil)
+        .downloadNodeLevelComponent(
+            any(), any(), any(), any(), any(), any(), captorSourceNodeFiles.capture(), any());
+    List<String> expectedSourceNodeFiles = List.of("cores/core_test.3", "cores/core_test.1");
+    System.out.println("CAPTOR: " + captorSourceNodeFiles.getValue().toString());
+    assertEquals(expectedSourceNodeFiles, captorSourceNodeFiles.getValue());
 
     // Check if the cores directory is created
     Boolean isDestDirCreated = new File(fakeTargetComponentPath).exists();
