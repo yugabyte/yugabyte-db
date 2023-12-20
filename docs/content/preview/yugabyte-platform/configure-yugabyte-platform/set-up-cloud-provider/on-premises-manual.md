@@ -76,7 +76,7 @@ Database servers need incoming TCP/IP access enabled to the following ports, for
 | TCP | 13000 | YSQL HTTP (for DB statistics gathering) |
 | TCP | 18018 | YB Controller |
 
-The preceding table is based on the information on the [default ports page](/preview/reference/configuration/default-ports/).
+The preceding table is based on the information on the [default ports page](../../../../reference/configuration/default-ports/).
 
 ## Pre-provision nodes manually
 
@@ -101,12 +101,12 @@ Physical nodes (or cloud instances) are installed with a standard CentOS 7 serve
 1. Add a new `yugabyte:yugabyte` user and group with the default login shell `/bin/bash` that you set via the `-s` flag, as follows:
 
     ```bash
-    sudo useradd -s /bin/bash --create-home --home-dir <yugabyte-home> yugabyte  # (add user yugabyte and create its home directory as specified in <yugabyte-home>)
+    sudo useradd -s /bin/bash --create-home --home-dir <yugabyte_home> yugabyte  # (add user yugabyte and create its home directory as specified in <yugabyte_home>)
     sudo passwd yugabyte   # (add a password to the yugabyte user)
     sudo su - yugabyte   # (change to yugabyte user for execution of next steps)
     ```
 
-    `yugabyte-home` is the path to the Yugabyte home directory. If you set a custom path for the yugabyte user's home in the YugabyteDB Anywhere UI, you must use the same path here. Otherwise, you can omit the `--home-dir` flag.
+    `yugabyte_home` is the path to the Yugabyte home directory. If you set a custom path for the yugabyte user's home in the YugabyteDB Anywhere UI, you must use the same path here. Otherwise, you can omit the `--home-dir` flag.
 
     Ensure that the `yugabyte` user has permissions to SSH into the YugabyteDB nodes (as defined in `/etc/ssh/sshd_config`).
 
@@ -124,7 +124,7 @@ Physical nodes (or cloud instances) are installed with a standard CentOS 7 serve
     cd ~yugabyte
     mkdir .ssh
     chmod 700 .ssh
-    cat <pubkey file> >> .ssh/authorized_keys
+    cat <pubkey_file> >> .ssh/authorized_keys
     chmod 400 .ssh/authorized_keys
     exit   # (exit from the yugabyte user back to previous user)
     ```
@@ -702,7 +702,7 @@ Node agents are installed onto instances automatically when adding instances or 
 
 You can install the YugabyteDB node agent manually. As the `yugabyte` user, do the following:
 
-1. Download the installer from YugabyteDB Anywhere using the API token of the Super Admin, as follows:
+1. Download the installer from YugabyteDB Anywhere using the [API token](../../../anywhere-automation/#authentication) of the Super Admin, as follows:
 
    ```sh
    curl https://<yugabytedb_anywhere_address>/api/v1/node_agents/download --fail --header 'X-AUTH-YW-API-TOKEN: <api_token>' > installer.sh && chmod +x installer.sh
@@ -715,10 +715,16 @@ You can install the YugabyteDB node agent manually. As the `yugabyte` user, do t
 1. Run the following command to download the node agent's `.tgz` file which installs and starts the interactive configuration:
 
    ```sh
-   ./installer.sh -c install -u https://<yugabytedb_anywhere_address> -t <api_token>
+   ./installer.sh -c install -u https://<yba_address>:9000 -t <api_token>
    ```
 
-   For example, if you execute `./installer.sh  -c install -u http://100.98.0.42:9000 -t 301fc382-cf06-4a1b-b5ef-0c8c45273aef`, expect the following output:
+   For example, if you run the following:
+
+   ```sh
+   node-agent node configure -t 1ba391bc-b522-4c18-813e-71a0e76b060a -u http://100.98.0.42:9000
+   ```
+
+   You should get output similar to the following:
 
    ```output
    * Starting YB Node Agent install
@@ -748,17 +754,17 @@ You can install the YugabyteDB node agent manually. As the `yugabyte` user, do t
    You can install a systemd service on linux machines by running sudo node-agent-installer.sh -c install_service --user yugabyte (Requires sudo access).
    ```
 
-1. Run the following command as a sudo user:
+1. Run the `install_service` command as a sudo user:
 
     ```sh
     sudo node-agent-installer.sh -c install_service --user yugabyte
     ```
 
-    This installs node agent as a systemd service. This is required for the node agent perform self-upgrade and other functions.
+    This installs node agent as a systemd service. This is required so that the node agent can perform self-upgrade, database installation and configuration, and other functions.
 
 When the installation has been completed, the configurations are saved in the `config.yml` file located in the `node-agent/config/` directory. You should refrain from manually changing values in this file.
 
-After the installation, you may need to either sign out and back in, or edit the ~/.bashrc file as the `yugabyte` user to add the node-agent binary to your PATH.
+After the installation, you may need to either sign out and back in, or edit the ~/.bashrc file as the `yugabyte` user to add the node agent binary to your PATH.
 
 ### Preflight check
 
@@ -797,7 +803,7 @@ If you need to reconfigure a node agent, you can use the following procedure:
     - Obtain the node agent ID:
 
         ```sh
-        curl -k --header 'X-AUTH-YW-API-TOKEN:<API TOKEN>’ https://<YBA Address>/api/v1/customers/<CUSTOMER ID>/node_agents?nodeIp=<node agent IP>
+        curl -k --header 'X-AUTH-YW-API-TOKEN:<api_token>' https://<yba_address>/api/v1/customers/<customer_id>/node_agents?nodeIp=<node_agent_ip>
         ```
 
         You should see output similar to the following:
@@ -824,10 +830,10 @@ If you need to reconfigure a node agent, you can use the following procedure:
         }]
         ```
 
-    - Use the value of the field `uuid` as `<NODE AGENT ID>` in the following command:
+    - Use the value of the field `uuid` as `<node_agent_id>` in the following command:
 
         ```sh
-        curl -k -X DELETE --header 'X-AUTH-YW-API-TOKEN:<API TOKEN>' https://<YBA Address>/api/v1/customers/<CUSTOMER ID>/node_agents/<NODE AGENT ID>
+        curl -k -X DELETE --header 'X-AUTH-YW-API-TOKEN:<api_token>' https://<yba_address>/api/v1/customers/<customer_id>/node_agents/<node_agent_id>
         ```
 
 1. Stop the systemd service as a sudo user.
@@ -836,10 +842,16 @@ If you need to reconfigure a node agent, you can use the following procedure:
     sudo systemctl stop yb-node-agent
     ```
 
-1. Run the command to start the interactive configuration. This also registers the node agent with YBA.
+1. Run the `configure` command to start the interactive configuration. This also registers the node agent with YBA.
 
     ```sh
-    node-agent node configure -t <API TOKEN> -u <YBA URL>
+    node-agent node configure -t <api_token> -u https://<yba_address>:9000
+    ```
+
+    For example, if you run the following:
+
+    ```sh
+    ./installer.sh  -c install -u http://100.98.0.42:9000 -t 301fc382-cf06-4a1b-b5ef-0c8c45273aef
     ```
 
     ```output
@@ -877,7 +889,7 @@ If you need to reconfigure a node agent, you can use the following procedure:
     sudo systemctl status yb-node-agent
     ```
 
-1. Run preflight checks and add the node as yugabyte user.
+1. Run preflight checks and add the node as `yugabyte` user.
 
     ```sh
     node-agent node preflight-check --add_node
