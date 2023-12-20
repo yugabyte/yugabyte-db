@@ -107,6 +107,7 @@
 #include "yb/util/ntp_clock.h"
 
 #include "yb/yql/pgwrapper/pg_wrapper.h"
+#include "tablet_server.h"
 
 using std::make_shared;
 using std::shared_ptr;
@@ -1206,6 +1207,18 @@ Status TabletServer::ValidateAndMaybeSetUniverseUuid(const UniverseUuid& univers
     return Status::OK();
   }
   return fs_manager_->SetUniverseUuidOnTserverInstanceMetadata(universe_uuid);
+}
+
+std::vector<ListTabletsResponsePB::StatusAndSchemaPB> TabletServer::GetTabletList(
+  rpc::RpcContext* context) const {
+  std::vector<ListTabletsResponsePB::StatusAndSchemaPB> tablets; 
+  if (auto tablet_service_ptr = tablet_server_service_.lock()) {
+    ListTabletsRequestPB req;
+    ListTabletsResponsePB resp;
+    tablet_service_ptr->ListTablets(&req, &resp, std::move(*context));
+    tablets.assign(resp.status_and_schema().begin(), resp.status_and_schema().end());
+  }
+  return tablets; 
 }
 
 int32_t TabletServer::cluster_config_version() const {

@@ -25,6 +25,7 @@ import "yb/common/wire_protocol.proto";
 import "yb/master/master_ddl.proto";
 import "yb/master/master_types.proto";
 import "yb/rpc/lightweight_message.proto";
+import "yb/tserver/tserver.proto";
 
 service PgClientService {
   rpc Heartbeat(PgHeartbeatRequestPB) returns (PgHeartbeatResponsePB);
@@ -86,6 +87,8 @@ service PgClientService {
   rpc CancelTransaction(PgCancelTransactionRequestPB) returns (PgCancelTransactionResponsePB);
   rpc ActiveUniverseHistory(PgActiveUniverseHistoryRequestPB)
       returns (PgActiveUniverseHistoryResponsePB);
+  rpc TabletIDMetadata(PgTabletIDMetadataRequestPB)
+      returns (PgTabletIDMetadataResponsePB);
   rpc TableIDMetadata(PgTableIDMetadataRequestPB)
       returns (PgTableIDMetadataResponsePB);
   rpc GetActiveTransactionList(PgGetActiveTransactionListRequestPB)
@@ -726,6 +729,13 @@ message PgTableIDMetadataRequestPB {}
 message PgTableIDMetadataResponsePB {
   AppStatusPB status = 1;
   repeated master.ListTablesResponsePB.TableInfo tables = 2;
+}
+
+message PgTabletIDMetadataRequestPB {}
+
+message PgTabletIDMetadataResponsePB {
+  AppStatusPB status = 1;
+  ListTabletsResponsePB tablets = 2;
 }
 
 message PgGetActiveTransactionListRequestPB { OptionalUint64PB session_id = 1; }

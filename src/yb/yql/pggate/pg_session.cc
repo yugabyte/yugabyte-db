@@ -971,6 +971,10 @@ Result<client::RpcsInfo> PgSession::ActiveUniverseHistory() {
   return pg_client_.ActiveUniverseHistory();
 }
 
+Result<std::vector<tserver::ListTabletsResponsePB::StatusAndSchemaPB>> PgSession::TabletIDMetadata() {
+    return pg_client_.TabletIDMetadata();
+}
+
 Result<tserver::PgTableIDMetadataResponsePB> PgSession::TableIDMetadata() {
     return pg_client_.TableIDMetadata();
 }

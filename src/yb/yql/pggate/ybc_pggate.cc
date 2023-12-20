@@ -1744,6 +1744,44 @@ YBCStatus YBCTableIDMetadata(YBCTableIDMetadataInfo** infolist, size_t* count) {
     return YBCStatusOK();
 }
 
+YBCStatus YBCTabletIDMetadata(YBCTabletIDMetadataInfo** infolist, size_t* count) {
+  const auto result = pgapi->TabletIDMetadata();
+  if (!result.ok()) {
+        return ToYBCStatus(result.status());
+    }
+
+  const auto& tablet_info_list = result.get();
+  YBCTabletIDMetadataInfo* dest;
+
+  if (*count > 0) {
+      *infolist = static_cast<YBCTabletIDMetadataInfo*>(YBCPAlloc(sizeof(YBCTabletIDMetadataInfo) * (*count)));
+      dest = *infolist;
+      for (const auto& status_and_schema : tablet_info_list) {
+          const google::protobuf::RepeatedPtrField<yb::ColumnSchemaPB>& columns = status_and_schema.schema().columns();
+          for (int i = 0; i < columns.size(); ++i) {
+            
+            dest->schema.table_properties.num_tablets = status_and_schema.schema().table_properties().num_tablets();
+            dest->tablet_status.tablet_id = YBCPAllocStdString(status_and_schema.tablet_status().tablet_id());
+            dest->tablet_status.namespace_name = YBCPAllocStdString(status_and_schema.tablet_status().namespace_name());
+            dest->tablet_status.table_name = YBCPAllocStdString(status_and_schema.tablet_status().table_name());
+            dest->tablet_status.table_id = YBCPAllocStdString(status_and_schema.tablet_status().table_id());
+            dest->tablet_status.last_status = YBCPAllocStdString(status_and_schema.tablet_status().last_status());
+            dest->tablet_status.start_key = YBCPAllocStdString(status_and_schema.tablet_status().start_key());
+            dest->tablet_status.end_key = YBCPAllocStdString(status_and_schema.tablet_status().end_key());
+            dest->tablet_status.estimated_on_disk_size = status_and_schema.tablet_status().estimated_on_disk_size();
+            dest->tablet_status.consensus_metadata_disk_size = status_and_schema.tablet_status().consensus_metadata_disk_size();
+            dest->tablet_status.wal_files_disk_size = status_and_schema.tablet_status().wal_files_disk_size();
+            dest->tablet_status.sst_files_disk_size = status_and_schema.tablet_status().sst_files_disk_size();
+            dest->tablet_status.uncompressed_sst_files_disk_size = status_and_schema.tablet_status().uncompressed_sst_files_disk_size();
+             
+            ++dest;
+          
+          }
+      }
+  }
+  return YBCStatusOK();
+}
+
 YBCStatus YBCActiveUniverseHistory(YBCAUHDescriptor **rpcs, size_t* count) {
   const auto result = pgapi->ActiveUniverseHistory();
   if (!result.ok()) {

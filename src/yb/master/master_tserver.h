@@ -78,6 +78,8 @@ class MasterTabletServer : public tserver::TabletServerIf,
 
   void RegisterCertificateReloader(tserver::CertificateReloader reloader) override {}
 
+  std::vector<tserver::ListTabletsResponsePB::StatusAndSchemaPB> GetTabletList(rpc::RpcContext *context) const override;
+
   std::vector<yb::util::WaitStateInfoPtr> GetThreadpoolWaitStates() const override;
 
   void SetCQLServerMessenger(tserver::CQLServerMessenger messenger) override {};

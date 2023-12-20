@@ -41,6 +41,7 @@
 PG_MODULE_MAGIC;
 PG_FUNCTION_INFO_V1(pg_active_universe_history);
 PG_FUNCTION_INFO_V1(yb_tables);
+PG_FUNCTION_INFO_V1(yb_tablets);
 
 #define PG_ACTIVE_UNIVERSE_HISTORY_COLS        12
 
@@ -269,7 +270,6 @@ yb_auh_main(Datum main_arg) {
 
     pg_collect_samples(auh_sample_time, auh_sample_size);
     tserver_collect_samples(auh_sample_time, auh_sample_size);
-
     MemoryContextSwitchTo(oldcxt);
     /* No problems, so clean exit */
   }
@@ -533,7 +533,7 @@ yb_tables_internal(FunctionCallInfo fcinfo)
 	size_t size = 0;
   
   HandleYBStatus(YBCTableIDMetadata(&infolist, &size));
-  
+  const char* table_id_test;
   int i;
   for (i = 0; i < size; i++) {
 
@@ -543,7 +543,7 @@ yb_tables_internal(FunctionCallInfo fcinfo)
 
     memset(values, 0, sizeof(values));
     memset(isnull, 0, sizeof(isnull));
-
+    table_id_test = infolist[0].table_id;
     // table_id
     if (infolist[i].table_id != NULL)
         values[j] = CStringGetTextDatum(infolist[i].table_id);
@@ -620,12 +620,152 @@ yb_tables_internal(FunctionCallInfo fcinfo)
   }
 
   tuplestore_donestoring(tupstore);
+
 }
 
 Datum
 yb_tables(PG_FUNCTION_ARGS)
 {
 	yb_tables_internal(fcinfo);
+  return (Datum) 0;
+}
+
+static void 
+yb_tablets_internal(FunctionCallInfo fcinfo)
+{
+  ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+  TupleDesc       tupdesc;
+  Tuplestorestate *tupstore;
+  MemoryContext per_query_ctx;
+  MemoryContext oldcontext;
+
+  if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+    ereport(ERROR,
+            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                errmsg("set-valued function called in context that cannot accept a set")));
+  if (!(rsinfo->allowedModes & SFRM_Materialize))
+    ereport(ERROR,
+            (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+                errmsg("materialize mode required, but it is not " \
+					   "allowed in this context")));
+
+  if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+    elog(ERROR, "return type must be a row type");
+
+  per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
+  oldcontext = MemoryContextSwitchTo(per_query_ctx); 
+
+  tupstore = tuplestore_begin_heap(true, false, work_mem);
+  rsinfo->returnMode = SFRM_Materialize;
+  rsinfo->setResult = tupstore;
+  rsinfo->setDesc = tupdesc;
+
+  MemoryContextSwitchTo(oldcontext);
+
+  YBCTabletIDMetadataInfo *status_and_schema = NULL;
+	size_t size = 0;
+  
+  HandleYBStatus(YBCTabletIDMetadata(&status_and_schema, &size));
+  int i;
+
+  for (i = 0; i < size; i++) {
+    Datum values[13]; 
+    bool nulls[13]; 
+    int j = 0;
+
+    memset(values, 0, sizeof(values));
+    memset(nulls, 0, sizeof(nulls));
+
+    if (status_and_schema->tablet_status.tablet_id != NULL) {
+        values[j++] = CStringGetTextDatum(status_and_schema->tablet_status.tablet_id);
+    } else {
+        nulls[j++] = true;
+    }
+
+    if (status_and_schema->tablet_status.namespace_name != NULL) {
+        values[j++] = CStringGetTextDatum(status_and_schema->tablet_status.namespace_name);
+    } else {
+        nulls[j++] = true;
+    }
+
+    if (status_and_schema->tablet_status.table_name != NULL) {
+        values[j++] = CStringGetTextDatum(status_and_schema->tablet_status.table_name);
+    } else {
+        nulls[j++] = true;
+    }
+
+    if (status_and_schema->tablet_status.table_id != NULL) {
+        values[j++] = CStringGetTextDatum(status_and_schema->tablet_status.table_id);
+    } else {
+        nulls[j++] = true;
+    }
+
+    if (status_and_schema->schema.table_properties.num_tablets != '\0') {
+        values[j++] = status_and_schema->schema.table_properties.num_tablets;
+    } else {
+        nulls[j++] = true;
+    }
+
+    if (status_and_schema->tablet_status.last_status != NULL) {
+        values[j++] = CStringGetTextDatum(status_and_schema->tablet_status.last_status);
+    } else {
+        nulls[j++] = true;
+    }
+
+    if (status_and_schema->tablet_status.partition.partition_key_start != NULL) {
+        values[j++] = CStringGetTextDatum(status_and_schema->tablet_status.partition.partition_key_start);
+    } else {
+        nulls[j++] = true;
+    }
+
+    if (status_and_schema->tablet_status.partition.partition_key_end != NULL) {
+        values[j++] = CStringGetTextDatum(status_and_schema->tablet_status.partition.partition_key_end);
+    } else {
+        nulls[j++] = true;
+    }
+
+    if (status_and_schema->tablet_status.estimated_on_disk_size != '\0') {
+    values[j++] = status_and_schema->tablet_status.estimated_on_disk_size;
+    } else {
+        nulls[j++] = true;
+    }
+
+    if (status_and_schema->tablet_status.consensus_metadata_disk_size != '\0') {
+        values[j++] = status_and_schema->tablet_status.consensus_metadata_disk_size;
+    } else {
+        nulls[j++] = true;
+    }
+
+    if (status_and_schema->tablet_status.wal_files_disk_size != '\0') {
+        values[j++] = status_and_schema->tablet_status.wal_files_disk_size;
+    } else {
+        nulls[j++] = true;
+    }
+
+    if (status_and_schema->tablet_status.sst_files_disk_size != '\0') {
+        values[j++] = status_and_schema->tablet_status.sst_files_disk_size;
+    } else {
+        nulls[j++] = true;
+    }
+
+    if (status_and_schema->tablet_status.uncompressed_sst_files_disk_size != '\0') {
+        values[j++] = status_and_schema->tablet_status.uncompressed_sst_files_disk_size;
+    } else {
+        nulls[j++] = true;
+    }
+
+
+   tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+  }
+
+  tuplestore_donestoring(tupstore);
+
+}
+
+Datum
+yb_tablets(PG_FUNCTION_ARGS)
+{
+	yb_tablets_internal(fcinfo);
   return (Datum) 0;
 }
 

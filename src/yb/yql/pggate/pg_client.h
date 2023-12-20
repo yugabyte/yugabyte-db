@@ -31,6 +31,7 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
+#include "yb/tserver/tserver.pb.h"
 #include "yb/tserver/tserver_fwd.h"
 #include "yb/tserver/tserver_util_fwd.h"
 #include "yb/tserver/pg_client.fwd.h"
@@ -179,7 +180,9 @@ class PgClient {
       bool size_only, uint32_t db_oid);
 
   Result<client::RpcsInfo> ActiveUniverseHistory();
-
+  
+  Result<std::vector<tserver::ListTabletsResponsePB::StatusAndSchemaPB>>TabletIDMetadata();
+  
   Result<tserver::PgTableIDMetadataResponsePB>TableIDMetadata();
 
   Result<client::YCQLStatStatementsInfo> YCQLStatStatements();

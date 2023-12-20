@@ -279,6 +279,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   Status ValidateAndMaybeSetUniverseUuid(const UniverseUuid& universe_uuid);
 
+  std::vector<ListTabletsResponsePB::StatusAndSchemaPB> GetTabletList( rpc::RpcContext *context) const override;
+
   XClusterConsumer* GetXClusterConsumer() const;
 
   // Mark the CDC service as enabled via heartbeat.
