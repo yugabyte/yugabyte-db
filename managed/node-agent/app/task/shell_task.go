@@ -149,6 +149,8 @@ func (s *ShellTask) userEnv(ctx context.Context, userDetail *util.UserDetail) []
 	// Otherwise, the child process is stopped because it is a background process.
 	ptty, err := pty.Start(cmd)
 	if err != nil {
+		// Return the default env.
+		env = append(env, os.Environ()...)
 		util.FileLogger().Warnf(
 			ctx, "Failed to run command to get env variables. Error: %s", err.Error())
 		return env
@@ -167,6 +169,8 @@ func (s *ShellTask) userEnv(ctx context.Context, userDetail *util.UserDetail) []
 	}
 	err = cmd.Wait()
 	if err != nil {
+		// Return the default env.
+		env = append(env, os.Environ()...)
 		util.FileLogger().Warnf(
 			ctx, "Failed to get env variables. Error: %s", err.Error())
 		return env
