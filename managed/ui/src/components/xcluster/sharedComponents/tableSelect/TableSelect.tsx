@@ -172,10 +172,10 @@ const NOTE_EXPAND_CONTENT = (
     </p>
     <p>
       Please be aware that we currently do not support backup/restore at table-level granularity for
-      YSQL. The bootstrapping step involves a backup/restore of the source universe data, and
-      initiating a restart replication task from the UI will involve bootstrapping. For a smooth
-      experience managing the xCluster configuration from the UI, we do not recommend creating
-      xCluster configurations for a subset of the tables in a YSQL database.
+      YSQL. The full copy step involves a backup/restore of the source universe data, and initiating
+      a restart replication task from the UI will involve full copying. For a smooth experience
+      managing the xCluster configuration from the UI, we do not recommend creating xCluster
+      configurations for a subset of the tables in a YSQL database.
     </p>
   </div>
 );

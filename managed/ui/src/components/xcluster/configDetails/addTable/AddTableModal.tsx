@@ -417,7 +417,7 @@ const validateForm = async (
           if (freeDiskSpace !== undefined && freeDiskSpace < BOOTSTRAP_MIN_FREE_DISK_SPACE_GB) {
             warning.tableUUIDs = {
               title: 'Warning: You may need additional disk space.',
-              body: `Some selected tables require bootstrapping. We recommend having at least ${BOOTSTRAP_MIN_FREE_DISK_SPACE_GB} GB of free disk space in the source universe.`
+              body: `Some selected tables require full copying. We recommend having at least ${BOOTSTRAP_MIN_FREE_DISK_SPACE_GB} GB of free disk space in the source universe.`
             };
           }
         }
@@ -450,11 +450,11 @@ const getFormSubmitLabel = (
         return 'Validate Table Selection';
       }
       if (bootstrapRequired) {
-        return 'Next: Configure Bootstrap';
+        return 'Next: Configure Full Copy';
       }
       return 'Enable Replication';
     case FormStep.CONFIGURE_BOOTSTRAP:
-      return 'Bootstrap and Enable Replication';
+      return 'Full Copy and Enable Replication';
     default:
       return assertUnreachableCase(formStep);
   }

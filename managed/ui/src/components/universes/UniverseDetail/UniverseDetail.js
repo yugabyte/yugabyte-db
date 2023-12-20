@@ -434,27 +434,10 @@ class UniverseDetail extends Component {
             <QueriesViewer isPerfAdvisorEnabled={isPerfAdvisorEnabled} />
           </Tab.Pane>
         ),
-
-        isNotHidden(currentCustomer.data.features, 'universes.details.replication') && (
-          <Tab.Pane
-            eventKey={'replication'}
-            tabtitle="Replication"
-            key="replication-tab"
-            mountOnEnter={true}
-            unmountOnExit={true}
-            disabled={isDisabled(currentCustomer.data.features, 'universes.details.replication')}
-          >
-            {featureFlags.released.enableXCluster || featureFlags.test.enableXCluster ? (
-              <XClusterReplication currentUniverseUUID={currentUniverse.data.universeUUID} />
-            ) : (
-              <ReplicationContainer />
-            )}
-          </Tab.Pane>
-        ),
         isNotHidden(currentCustomer.data.features, 'universes.details.recovery') && isDrEnabled && (
           <Tab.Pane
             eventKey={'recovery'}
-            tabtitle="Recovery"
+            tabtitle="Disaster Recovery"
             key="recovery-tab"
             mountOnEnter={true}
             unmountOnExit={true}
@@ -479,6 +462,22 @@ class UniverseDetail extends Component {
               refreshUniverseData={this.getUniverseInfo}
               visibleModal={visibleModal}
             />
+          </Tab.Pane>
+        ),
+        isNotHidden(currentCustomer.data.features, 'universes.details.replication') && (
+          <Tab.Pane
+            eventKey={'replication'}
+            tabtitle="xCluster Replication"
+            key="replication-tab"
+            mountOnEnter={true}
+            unmountOnExit={true}
+            disabled={isDisabled(currentCustomer.data.features, 'universes.details.replication')}
+          >
+            {featureFlags.released.enableXCluster || featureFlags.test.enableXCluster ? (
+              <XClusterReplication currentUniverseUUID={currentUniverse.data.universeUUID} />
+            ) : (
+              <ReplicationContainer />
+            )}
           </Tab.Pane>
         )
       ],

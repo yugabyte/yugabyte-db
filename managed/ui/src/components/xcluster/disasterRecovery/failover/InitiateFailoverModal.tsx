@@ -216,7 +216,7 @@ export const InitiateFailoverModal = ({ drConfig, modalProps }: InitiateFailover
   const isFormDisabled = isSubmitting || confirmationText !== targetUniverseName;
   return (
     <YBModal
-      title={t('title')}
+      title={t('title', { drReplicaName: targetUniverseName })}
       submitLabel={t('submitButton')}
       cancelLabel={t('cancel', { keyPrefix: 'common' })}
       onSubmit={onSubmit}

@@ -40,8 +40,6 @@ import {
   DrConfig,
   DrConfigSafetimeResponse
 } from '../../components/xcluster/disasterRecovery/dtos';
-import { Metrics } from '../../components/xcluster/XClusterTypes';
-import { MetricName } from '../../components/xcluster/constants';
 
 /**
  * @deprecated Use query key factories for more flexable key organization
@@ -160,6 +158,11 @@ export const metricQueryKey = {
 export const alertConfigQueryKey = {
   ALL: ['alertConfig'],
   list: (filters: unknown) => [...alertConfigQueryKey.ALL, { filters }]
+};
+
+export const alertTemplateQueryKey = {
+  ALL: ['alertTempalte'],
+  list: (filters: unknown) => [...alertTemplateQueryKey.ALL, { filters }]
 };
 
 // --------------------------------------------------------------------------------------
