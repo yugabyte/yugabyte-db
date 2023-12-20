@@ -659,122 +659,97 @@ yb_tablets_internal(FunctionCallInfo fcinfo)
 	size_t size = 0;
   
   HandleYBStatus(YBCTabletIDMetadata(&status_and_schema, &size));
-  //int i;
-ereport(LOG, (errmsg("table_id: %s", status_and_schema->tablet_status.table_id)));
+  int i;
 
-ereport(LOG, (errmsg("num_tablets: %d", status_and_schema->schema.table_properties.num_tablets)));
+  for (i = 0; i < size; i++) {
+    Datum values[13]; 
+    bool nulls[13]; 
+    int j = 0;
 
-ereport(LOG, (errmsg("last_status: %s", status_and_schema->tablet_status.last_status)));
+    memset(values, 0, sizeof(values));
+    memset(nulls, 0, sizeof(nulls));
 
-ereport(LOG, (errmsg("partition_key_start: %s",
-                     status_and_schema->tablet_status.partition.partition_key_start)));
+    if (status_and_schema->tablet_status.tablet_id != NULL) {
+        values[j++] = CStringGetTextDatum(status_and_schema->tablet_status.tablet_id);
+    } else {
+        nulls[j++] = true;
+    }
 
-ereport(LOG, (errmsg("partition_key_end: %s",
-                     status_and_schema->tablet_status.partition.partition_key_end)));
+    if (status_and_schema->tablet_status.namespace_name != NULL) {
+        values[j++] = CStringGetTextDatum(status_and_schema->tablet_status.namespace_name);
+    } else {
+        nulls[j++] = true;
+    }
 
-ereport(LOG, (errmsg("estimated_on_disk_size: %lld",
-                     status_and_schema->tablet_status.estimated_on_disk_size)));
+    if (status_and_schema->tablet_status.table_name != NULL) {
+        values[j++] = CStringGetTextDatum(status_and_schema->tablet_status.table_name);
+    } else {
+        nulls[j++] = true;
+    }
 
-ereport(LOG, (errmsg("consensus_metadata_disk_size: %lld",
-                     status_and_schema->tablet_status.consensus_metadata_disk_size)));
+    if (status_and_schema->tablet_status.table_id != NULL) {
+        values[j++] = CStringGetTextDatum(status_and_schema->tablet_status.table_id);
+    } else {
+        nulls[j++] = true;
+    }
 
-ereport(LOG, (errmsg("wal_files_disk_size: %lld",
-                     status_and_schema->tablet_status.wal_files_disk_size)));
+    if (status_and_schema->schema.table_properties.num_tablets != '\0') {
+        values[j++] = status_and_schema->schema.table_properties.num_tablets;
+    } else {
+        nulls[j++] = true;
+    }
 
-ereport(LOG, (errmsg("sst_files_disk_size: %lld",
-                     status_and_schema->tablet_status.sst_files_disk_size)));
+    if (status_and_schema->tablet_status.last_status != NULL) {
+        values[j++] = CStringGetTextDatum(status_and_schema->tablet_status.last_status);
+    } else {
+        nulls[j++] = true;
+    }
 
-ereport(LOG, (errmsg("uncompressed_sst_files_disk_size: %lld",
-                     status_and_schema->tablet_status.uncompressed_sst_files_disk_size)));
-  //for (i = 0; i < size; i++) {
-    // Datum values[13]; 
-    // bool nulls[13]; 
-    // int j = 0;
+    if (status_and_schema->tablet_status.partition.partition_key_start != NULL) {
+        values[j++] = CStringGetTextDatum(status_and_schema->tablet_status.partition.partition_key_start);
+    } else {
+        nulls[j++] = true;
+    }
 
-    // memset(values, 0, sizeof(values));
-    // memset(nulls, 0, sizeof(nulls));
+    if (status_and_schema->tablet_status.partition.partition_key_end != NULL) {
+        values[j++] = CStringGetTextDatum(status_and_schema->tablet_status.partition.partition_key_end);
+    } else {
+        nulls[j++] = true;
+    }
 
-    // if (status_and_schema->tablet_status.tablet_id != NULL) {
-    //     values[j++] = CStringGetTextDatum(status_and_schema->tablet_status.tablet_id);
-    // } else {
-    //     nulls[j++] = true;
-    // }
+    if (status_and_schema->tablet_status.estimated_on_disk_size != '\0') {
+    values[j++] = status_and_schema->tablet_status.estimated_on_disk_size;
+    } else {
+        nulls[j++] = true;
+    }
 
-    // if (status_and_schema->tablet_status.namespace_name != NULL) {
-    //     values[j++] = CStringGetTextDatum(status_and_schema->tablet_status.namespace_name);
-    // } else {
-    //     nulls[j++] = true;
-    // }
+    if (status_and_schema->tablet_status.consensus_metadata_disk_size != '\0') {
+        values[j++] = status_and_schema->tablet_status.consensus_metadata_disk_size;
+    } else {
+        nulls[j++] = true;
+    }
 
-    // if (status_and_schema->tablet_status.table_name != NULL) {
-    //     values[j++] = CStringGetTextDatum(status_and_schema->tablet_status.table_name);
-    // } else {
-    //     nulls[j++] = true;
-    // }
+    if (status_and_schema->tablet_status.wal_files_disk_size != '\0') {
+        values[j++] = status_and_schema->tablet_status.wal_files_disk_size;
+    } else {
+        nulls[j++] = true;
+    }
 
-    // if (status_and_schema->tablet_status.table_id != NULL) {
-    //     values[j++] = CStringGetTextDatum(status_and_schema->tablet_status.table_id);
-    // } else {
-    //     nulls[j++] = true;
-    // }
+    if (status_and_schema->tablet_status.sst_files_disk_size != '\0') {
+        values[j++] = status_and_schema->tablet_status.sst_files_disk_size;
+    } else {
+        nulls[j++] = true;
+    }
 
-    // if (status_and_schema->schema.table_properties.num_tablets != '\0') {
-    //     values[j++] = status_and_schema->schema.table_properties.num_tablets;
-    // } else {
-    //     nulls[j++] = true;
-    // }
-
-    // if (status_and_schema->tablet_status.last_status != NULL) {
-    //     values[j++] = CStringGetTextDatum(status_and_schema->tablet_status.last_status);
-    // } else {
-    //     nulls[j++] = true;
-    // }
-
-    // if (status_and_schema->tablet_status.partition.partition_key_start != NULL) {
-    //     values[j++] = CStringGetTextDatum(status_and_schema->tablet_status.partition.partition_key_start);
-    // } else {
-    //     nulls[j++] = true;
-    // }
-
-    // if (status_and_schema->tablet_status.partition.partition_key_end != NULL) {
-    //     values[j++] = CStringGetTextDatum(status_and_schema->tablet_status.partition.partition_key_end);
-    // } else {
-    //     nulls[j++] = true;
-    // }
-
-    // if (status_and_schema->tablet_status.estimated_on_disk_size != '\0') {
-    // values[j++] = status_and_schema->tablet_status.estimated_on_disk_size;
-    // } else {
-    //     nulls[j++] = true;
-    // }
-
-    // if (status_and_schema->tablet_status.consensus_metadata_disk_size != '\0') {
-    //     values[j++] = status_and_schema->tablet_status.consensus_metadata_disk_size;
-    // } else {
-    //     nulls[j++] = true;
-    // }
-
-    // if (status_and_schema->tablet_status.wal_files_disk_size != '\0') {
-    //     values[j++] = status_and_schema->tablet_status.wal_files_disk_size;
-    // } else {
-    //     nulls[j++] = true;
-    // }
-
-    // if (status_and_schema->tablet_status.sst_files_disk_size != '\0') {
-    //     values[j++] = status_and_schema->tablet_status.sst_files_disk_size;
-    // } else {
-    //     nulls[j++] = true;
-    // }
-
-    // if (status_and_schema->tablet_status.uncompressed_sst_files_disk_size != '\0') {
-    //     values[j++] = status_and_schema->tablet_status.uncompressed_sst_files_disk_size;
-    // } else {
-    //     nulls[j++] = true;
-    // }
+    if (status_and_schema->tablet_status.uncompressed_sst_files_disk_size != '\0') {
+        values[j++] = status_and_schema->tablet_status.uncompressed_sst_files_disk_size;
+    } else {
+        nulls[j++] = true;
+    }
 
 
-   // tuplestore_putvalues(tupstore, tupdesc, values, nulls);
-  //}
+   tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+  }
 
   tuplestore_donestoring(tupstore);
 

@@ -750,10 +750,9 @@ class PgClient::Impl {
     tserver::PgTabletIDMetadataResponsePB resp;
     RETURN_NOT_OK(proxy_->TabletIDMetadata(req, &resp, PrepareController()));
     std::vector<tserver::ListTabletsResponsePB::StatusAndSchemaPB> result;
-    LOG(INFO) << "size:" << resp.tablets().status_and_schema_size();  
-    // for (const auto& status_and_schema : resp.tablets().status_and_schema()) {
-    //     result.push_back(status_and_schema);
-    // }
+    for (const auto& status_and_schema : resp.tablets().status_and_schema()) {
+        result.push_back(status_and_schema);
+    }
     return result;
   }
 

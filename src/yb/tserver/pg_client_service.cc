@@ -924,7 +924,6 @@ class PgClientServiceImpl::Impl {
         statusAndSchemaElem->mutable_tablet_status()->CopyFrom(statusAndSchema.tablet_status());
         statusAndSchemaElem->mutable_schema()->CopyFrom(statusAndSchema.schema());    
     }
-    LOG(INFO) << "service size:" << resp->tablets().status_and_schema_size(); 
     return Status::OK();
 }
   
