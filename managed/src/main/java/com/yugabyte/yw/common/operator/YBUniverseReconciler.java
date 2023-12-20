@@ -32,7 +32,6 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
@@ -57,6 +56,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
 import play.mvc.Result;
 
@@ -665,76 +665,93 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     return secret.getStringData().get(key);
   }
 
+  private Provider createAutoProvider(
+      YBUniverse ybUniverse, String providerName, UUID customerUUID) {
+    List<String> zonesFilter = ybUniverse.getSpec().getZoneFilter();
+    KubernetesProviderFormData providerData = cloudProviderHandler.suggestedKubernetesConfigs();
+    providerData.regionList =
+        providerData.regionList.stream()
+            .map(
+                r -> {
+                  if (zonesFilter != null) {
+                    List<KubernetesProviderFormData.RegionData.ZoneData> filteredZones =
+                        r.zoneList.stream()
+                            .filter(z -> zonesFilter.contains(z.name))
+                            .collect(Collectors.toList());
+
+                    r.zoneList = filteredZones;
+                  }
+                  r.zoneList =
+                      r.zoneList.stream()
+                          .map(
+                              z -> {
+                                HashMap<String, String> tempMap = new HashMap<>(z.config);
+                                tempMap.put("STORAGE_CLASS", "yb-standard");
+                                z.config = tempMap;
+                                return z;
+                              })
+                          .collect(Collectors.toList());
+                  return r;
+                })
+            .collect(Collectors.toList());
+    providerData.name = providerName;
+    Provider autoProvider =
+        cloudProviderHandler.createKubernetes(Customer.getOrBadRequest(customerUUID), providerData);
+    // Fetch created provider from DB.
+    return Provider.get(customerUUID, providerName, CloudType.kubernetes);
+  }
+
+  private Provider filterProviders(YBUniverse ybUniverse, UUID customerUUID) {
+    Provider provider = null;
+    List<Provider> providers =
+        Provider.getAll(customerUUID).stream()
+            .filter(p -> p.getCloudCode() == CloudType.kubernetes)
+            .collect(Collectors.toList());
+    if (!providers.isEmpty()) {
+      if (!CollectionUtils.isNotEmpty(ybUniverse.getSpec().getZoneFilter())) {
+        log.error("Zone filter is not supported with pre-existing providers, ignoring zone filter");
+      }
+      provider = providers.get(0);
+    }
+    return provider;
+  }
+
   private Provider getProvider(UUID customerUUID, YBUniverse ybUniverse) {
-    try {
-      // If the provider already exists, don't create another
-      String providerName = getProviderName(ybUniverse.getMetadata().getName());
-      // Check if need to filter zones.
-      List<String> zonesFilter = ybUniverse.getSpec().getZoneFilter();
-      List<Provider> providers =
-          Provider.getAll(customerUUID).stream()
-              .filter(
-                  p -> p.getCloudCode() == CloudType.kubernetes && p.getName().equals(providerName))
-              .collect(Collectors.toList());
-      Provider autoProvider = null;
-      if (!providers.isEmpty()) {
-        if (!zonesFilter.isEmpty()) {
-          log.error(
-              "Zone filter is not supported with pre-existing providers, ignoring zone filter");
+    Provider provider = null;
+    // Check if provider name available in Cr
+    String providerName = ybUniverse.getSpec().getProviderName();
+    if (StringUtils.isNotBlank(providerName)) {
+      // Case when provider name is available: Use that, or fail.
+      provider = Provider.get(customerUUID, providerName, CloudType.kubernetes);
+      if (provider != null) {
+        log.info("Using provider from custom resource spec.");
+        return provider;
+      } else {
+        throw new RuntimeException(
+            "Could not find provider " + providerName + " in the list of providers.");
+      }
+    } else {
+      // Case when provider name is not available in spec
+      providerName = getProviderName(ybUniverse.getMetadata().getName());
+      provider = Provider.get(customerUUID, providerName, CloudType.kubernetes);
+      if (provider != null) {
+        // If auto-provider with the same name found return it.
+        log.info("Found auto-provider existing with same name {}", providerName);
+        return provider;
+      } else {
+        // If not found:
+        if (isRunningInKubernetes()) {
+          // Create auto-provider for Kubernetes based installation
+          log.info("Creating auto-provider with name {}", providerName);
+          try {
+            return createAutoProvider(ybUniverse, providerName, customerUUID);
+          } catch (Exception e) {
+            throw new RuntimeException("Unable to create auto-provider", e);
+          }
+        } else {
+          throw new RuntimeException("No usable providers found!");
         }
       }
-
-      if (providers.isEmpty() && isRunningInKubernetes()) {
-        KubernetesProviderFormData providerData = cloudProviderHandler.suggestedKubernetesConfigs();
-        providerData.regionList =
-            providerData.regionList.stream()
-                .map(
-                    r -> {
-                      if (zonesFilter != null) {
-                        List<KubernetesProviderFormData.RegionData.ZoneData> filteredZones =
-                            r.zoneList.stream()
-                                .filter(z -> zonesFilter.contains(z.name))
-                                .collect(Collectors.toList());
-
-                        r.zoneList = filteredZones;
-                      }
-                      r.zoneList =
-                          r.zoneList.stream()
-                              .map(
-                                  z -> {
-                                    HashMap<String, String> tempMap = new HashMap<>(z.config);
-                                    tempMap.put("STORAGE_CLASS", "yb-standard");
-                                    z.config = tempMap;
-                                    return z;
-                                  })
-                              .collect(Collectors.toList());
-                      return r;
-                    })
-                .collect(Collectors.toList());
-        providerData.name = providerName;
-        autoProvider =
-            cloudProviderHandler.createKubernetes(
-                Customer.getOrBadRequest(customerUUID), providerData);
-        CloudInfoInterface.mayBeMassageResponse(autoProvider);
-      } else {
-        log.info("Provider is already created, using that...");
-        autoProvider = providers.get(0);
-      }
-      return Provider.getAll(customerUUID).stream()
-          .filter(p -> p.getCloudCode() == CloudType.kubernetes && p.getName().equals(providerName))
-          .collect(Collectors.toList())
-          .get(0);
-    } catch (Exception e) {
-      if (isRunningInKubernetes()) {
-        log.error("Running in k8s but no provider created", e);
-      } else {
-        log.info("Not running in k8s");
-      }
-      log.info("No automatic provider found, using first in provider list...");
-      return Provider.getAll(customerUUID).stream()
-          .filter(p -> p.getCloudCode() == CloudType.kubernetes)
-          .collect(Collectors.toList())
-          .get(0);
     }
   }
 
