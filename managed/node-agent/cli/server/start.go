@@ -10,9 +10,10 @@ import (
 
 var (
 	startCmd = &cobra.Command{
-		Use:   "start ...",
-		Short: "Command for starting node-agent server",
-		Run:   startServerHandler,
+		Use: "start ...",
+		Short: "Start node-agent server. For testing only. For routine operations, " +
+			"use 'systemctl start yb-node-agent.service'.",
+		Run: startServerHandler,
 	}
 )
 
