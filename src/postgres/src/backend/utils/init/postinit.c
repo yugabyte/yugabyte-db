@@ -700,10 +700,11 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 		YBInitPostgresBackend("postgres", in_dbname, username, session_id);
 
 	/*
-	 * Set client_addr and client_host which will remain constant
-	 * throughout the session.
+	 * Set client_addr and client_host in ASH metadata which will remain
+	 * constant throughout the session. We don't want to do this during
+	 * bootstrap because it won't have client address anyway.
 	 */
-	if (IsYugaByteEnabled() && YBEnableAsh())
+	if (IsYugaByteEnabled() && YBEnableAsh() && !bootstrap)
 		YbSetAshClientAddrAndPort();
 
 	if (IsYugaByteEnabled() && !bootstrap)
