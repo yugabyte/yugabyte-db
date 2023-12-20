@@ -180,7 +180,7 @@ public class FileDataService {
           log.info("Replacing prefix {} with conf value {}", fileMatcher.group(1), newPathPrefix);
           return newPath;
         } else {
-          throw new RuntimeException("Error locating new file on system.");
+          throw new RuntimeException("Could not locate " + newPath);
         }
       }
     }
@@ -195,25 +195,34 @@ public class FileDataService {
       try {
         keyInfo.publicKey = fixFilePath(keyPattern, keyInfo.publicKey, storagePath);
       } catch (Exception e) {
-        log.warn("Error replacing public key path {}. Skipping.", keyInfo.publicKey);
+        log.warn(
+            "Error \"{}\" replacing public key path {}. Skipping.",
+            e.getMessage(),
+            keyInfo.publicKey);
       }
 
       try {
         keyInfo.privateKey = fixFilePath(keyPattern, keyInfo.privateKey, storagePath);
       } catch (Exception e) {
-        log.warn("Error replacing private key path {}. Skipping.", keyInfo.privateKey);
+        log.warn(
+            "Error {} replacing private key path {}. Skipping.",
+            e.getMessage(),
+            keyInfo.privateKey);
       }
 
       try {
         keyInfo.vaultPasswordFile = fixFilePath(keyPattern, keyInfo.vaultPasswordFile, storagePath);
       } catch (Exception e) {
-        log.warn("Error replacing vault password file {}. Skipping.", keyInfo.vaultPasswordFile);
+        log.warn(
+            "Error {} replacing vault password file {}. Skipping.",
+            e.getMessage(),
+            keyInfo.vaultPasswordFile);
       }
 
       try {
         keyInfo.vaultFile = fixFilePath(keyPattern, keyInfo.vaultFile, storagePath);
       } catch (Exception e) {
-        log.warn("Error replacing vault file {}. Skipping.", keyInfo.vaultFile);
+        log.warn("Error {} replacing vault file {}. Skipping.", e.getMessage(), keyInfo.vaultFile);
       }
 
       try {
@@ -221,7 +230,8 @@ public class FileDataService {
             fixFilePath(provisionPattern, keyInfo.provisionInstanceScript, storagePath);
       } catch (Exception e) {
         log.warn(
-            "Error replacing access key provision script {}. Skipping.",
+            "Error {} replacing access key provision script {}. Skipping.",
+            e.getMessage(),
             keyInfo.provisionInstanceScript);
       }
 
@@ -243,7 +253,8 @@ public class FileDataService {
                 fixFilePath(provisionPattern, details.provisionInstanceScript, storagePath);
           } catch (Exception e) {
             log.warn(
-                "Error replacing provider provision script {}. Skipping.",
+                "Error {} replacing provider provision script {}. Skipping.",
+                e.getMessage(),
                 details.provisionInstanceScript);
           }
         }
@@ -256,7 +267,8 @@ public class FileDataService {
                     keyPattern, gcpCloudInfo.getGceApplicationCredentialsPath(), storagePath));
           } catch (Exception e) {
             log.warn(
-                "Error replacing GCP application credentials {}. Skipping.",
+                "Error {} replacing GCP application credentials {}. Skipping.",
+                e.getMessage(),
                 gcpCloudInfo.getGceApplicationCredentialsPath());
           }
         }
@@ -268,14 +280,18 @@ public class FileDataService {
                 fixFilePath(keyPattern, k8sInfo.getKubernetesPullSecret(), storagePath));
           } catch (Exception e) {
             log.warn(
-                "Error replacing kubernetes pull secret {}. Skipping.",
+                "Error {} replacing kubernetes pull secret {}. Skipping.",
+                e.getMessage(),
                 k8sInfo.getKubernetesPullSecret());
           }
           // Fix up k8s kube config.
           try {
             k8sInfo.setKubeConfig(fixFilePath(keyPattern, k8sInfo.getKubeConfig(), storagePath));
           } catch (Exception e) {
-            log.warn("Error replacing kubernetes config {}. Skipping.", k8sInfo.getKubeConfig());
+            log.warn(
+                "Error {} replacing kubernetes config {}. Skipping.",
+                e.getMessage(),
+                k8sInfo.getKubeConfig());
           }
           for (Region region : Region.getByProvider(provider.getUuid())) {
             KubernetesRegionInfo k8sRegionInfo = CloudInfoInterface.get(region);
@@ -284,7 +300,8 @@ public class FileDataService {
                   fixFilePath(keyPattern, k8sRegionInfo.getKubeConfig(), storagePath));
             } catch (Exception e) {
               log.warn(
-                  "Error replacing Region kubernetes config {}. Skipping.",
+                  "Error {} replacing Region kubernetes config {}. Skipping.",
+                  e.getMessage(),
                   k8sRegionInfo.getKubeConfig());
             }
             try {
@@ -292,7 +309,8 @@ public class FileDataService {
                   fixFilePath(keyPattern, k8sRegionInfo.getKubernetesPullSecret(), storagePath));
             } catch (Exception e) {
               log.warn(
-                  "Error replacing Region kubernetes pull secret {}. Skipping.",
+                  "Error {} replacing Region kubernetes pull secret {}. Skipping.",
+                  e.getMessage(),
                   k8sRegionInfo.getKubernetesPullSecret());
             }
             for (AvailabilityZone az : AvailabilityZone.getAZsForRegion(region.getUuid())) {
@@ -302,7 +320,8 @@ public class FileDataService {
                     fixFilePath(keyPattern, kubernetesAzRegionInfo.getKubeConfig(), storagePath));
               } catch (Exception e) {
                 log.warn(
-                    "Error replacing AZ kubernetes config {}. Skipping.",
+                    "Error {} replacing AZ kubernetes config {}. Skipping.",
+                    e.getMessage(),
                     kubernetesAzRegionInfo.getKubeConfig());
               }
               try {
@@ -311,7 +330,8 @@ public class FileDataService {
                         keyPattern, kubernetesAzRegionInfo.getKubernetesPullSecret(), storagePath));
               } catch (Exception e) {
                 log.warn(
-                    "Error replacing AZ kubernetes pull secret {}. Skipping.",
+                    "Error {} replacing AZ kubernetes pull secret {}. Skipping.",
+                    e.getMessage(),
                     kubernetesAzRegionInfo.getKubernetesPullSecret());
               }
               az.save();
@@ -332,14 +352,18 @@ public class FileDataService {
         cert.setPrivateKey(fixFilePath(certPattern, cert.getPrivateKey(), storagePath));
       } catch (Exception e) {
         log.warn(
-            "Error replacing certificate info private key {}. Skipping.", cert.getPrivateKey());
+            "Error {} replacing certificate info private key {}. Skipping.",
+            e.getMessage(),
+            cert.getPrivateKey());
       }
 
       try {
         cert.setCertificate(fixFilePath(certPattern, cert.getCertificate(), storagePath));
       } catch (Exception e) {
         log.warn(
-            "Error replacing certificate info certificate {}. Skipping.", cert.getCertificate());
+            "Error {} replacing certificate info certificate {}. Skipping.",
+            e.getMessage(),
+            cert.getCertificate());
       }
 
       cert.save();
@@ -355,7 +379,8 @@ public class FileDataService {
                 fixFilePath(nodeCertPattern, nodeAgent.getCertDirPath().toString(), storagePath)));
       } catch (Exception e) {
         log.warn(
-            "Error replacing node agent certificate directory {}. Skipping.",
+            "Error {} replacing node agent certificate directory {}. Skipping.",
+            e.getMessage(),
             nodeAgent.getCertDirPath().toString());
       }
     }
@@ -367,7 +392,7 @@ public class FileDataService {
       try {
         license.setLicense(fixFilePath(licensePattern, license.getLicense(), storagePath));
       } catch (Exception e) {
-        log.warn("Error replacing license {}. Skipping.", license.getLicense());
+        log.warn("Error {} replacing license {}. Skipping.", e.getMessage(), license.getLicense());
       }
       license.save();
     }
