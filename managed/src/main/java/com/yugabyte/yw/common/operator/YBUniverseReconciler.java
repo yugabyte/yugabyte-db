@@ -11,6 +11,8 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskExecutor;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
 import com.yugabyte.yw.common.utils.Pair;
@@ -27,6 +29,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
@@ -74,6 +77,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   private final UpgradeUniverseHandler upgradeUniverseHandler;
   private final CloudProviderHandler cloudProviderHandler;
   private final TaskExecutor taskExecutor;
+  private final RuntimeConfGetter confGetter;
 
   private final Integer reconcileExceptionBackoffMS = 5000;
 
@@ -87,7 +91,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       UpgradeUniverseHandler upgradeUniverseHandler,
       CloudProviderHandler cloudProviderHandler,
       TaskExecutor taskExecutor,
-      KubernetesOperatorStatusUpdater kubernetesStatusUpdater) {
+      KubernetesOperatorStatusUpdater kubernetesStatusUpdater,
+      RuntimeConfGetter confGetter) {
     super(client, informerFactory);
     this.ybUniverseClient = client.resources(YBUniverse.class);
     this.ybUniverseInformer = informerFactory.getSharedIndexInformer(YBUniverse.class, client);
@@ -99,6 +104,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     this.cloudProviderHandler = cloudProviderHandler;
     this.kubernetesStatusUpdater = kubernetesStatusUpdater;
     this.taskExecutor = taskExecutor;
+    this.confGetter = confGetter;
     this.ybUniverseInformer.addEventHandler(this);
   }
 
@@ -590,7 +596,23 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
         provider.getRegions().stream().map(r -> r.getUuid()).collect(Collectors.toList());
     ;
     // userIntent.preferredRegion = preferredRegion;
-    userIntent.instanceType = ybUniverse.getSpec().getInstanceType();
+    if (confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
+      K8SNodeResourceSpec masterResourceSpec = new K8SNodeResourceSpec();
+      masterResourceSpec.setCpuCoreCount(
+          ybUniverse.getSpec().getMasterK8SNodeResourceSpec().getCpuCoreCount());
+      masterResourceSpec.setMemoryGib(
+          ybUniverse.getSpec().getMasterK8SNodeResourceSpec().getMemoryGib());
+      userIntent.masterK8SNodeResourceSpec = masterResourceSpec;
+
+      K8SNodeResourceSpec tserverResourceSpec = new K8SNodeResourceSpec();
+      tserverResourceSpec.setCpuCoreCount(
+          ybUniverse.getSpec().getTserverK8SNodeResourceSpec().getCpuCoreCount());
+      tserverResourceSpec.setMemoryGib(
+          ybUniverse.getSpec().getTserverK8SNodeResourceSpec().getMemoryGib());
+      userIntent.tserverK8SNodeResourceSpec = tserverResourceSpec;
+    } else {
+      userIntent.instanceType = ybUniverse.getSpec().getInstanceType();
+    }
     userIntent.numNodes =
         ybUniverse.getSpec().getNumNodes() != null
             ? ((int) ybUniverse.getSpec().getNumNodes().longValue())

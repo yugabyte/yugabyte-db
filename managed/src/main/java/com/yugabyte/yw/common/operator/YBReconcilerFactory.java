@@ -28,6 +28,7 @@ public class YBReconcilerFactory {
         upgradeUniverseHandler,
         cloudProviderHandler,
         taskExecutor,
-        statusUpdater);
+        statusUpdater,
+        confGetter);
   }
 }

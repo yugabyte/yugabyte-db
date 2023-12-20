@@ -32,6 +32,32 @@ spec:
                   rule: self == oldSelf
               instanceType:
                 type: string
+              masterK8SNodeResourceSpec:
+                type: object
+                properties:
+                  memoryGib:
+                    type: number
+                    minimum: 2.0
+                    maximum: 1000.0
+                    default: 4.0
+                  cpuCoreCount:
+                    type: number
+                    minimum: 0.5
+                    maximum: 100.0
+                    default: 2.0
+              tserverK8SNodeResourceSpec:
+                type: object
+                properties:
+                  memoryGib:
+                    type: number
+                    minimum: 2.0
+                    maximum: 1000.0
+                    default: 4.0
+                  cpuCoreCount:
+                    type: number
+                    minimum: 0.5
+                    maximum: 100.0
+                    default: 2.0
               assignPublicIP:
                 type: boolean
               masterGFlags:
