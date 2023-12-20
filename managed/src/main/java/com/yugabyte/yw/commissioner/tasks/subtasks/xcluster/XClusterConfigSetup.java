@@ -60,7 +60,7 @@ public class XClusterConfigSetup extends XClusterConfigTaskBase {
       waitForXClusterOperation(client::isSetupUniverseReplicationDone);
 
       if (HighAvailabilityConfig.get().isPresent()) {
-        getUniverse(true).incrementVersion();
+        getUniverse().incrementVersion();
       }
 
     } catch (Exception e) {

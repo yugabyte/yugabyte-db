@@ -261,7 +261,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
     UUID taskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
     try {
-      assertThrows(RuntimeException.class, () -> taskExecutor.abort(taskUUID));
+      assertThrows(RuntimeException.class, () -> taskExecutor.abort(taskUUID, false));
     } finally {
       latch.countDown();
     }
@@ -311,7 +311,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
     assertEquals(TaskInfo.State.Running, taskInfo.getTaskState());
     // Stop the task
-    taskExecutor.abort(taskUUID);
+    taskExecutor.abort(taskUUID, false);
     latch2.countDown();
 
     taskInfo = waitForTask(taskUUID);
@@ -518,7 +518,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     UUID taskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
     taskUUIDRef.set(taskUUID);
     latch.await();
-    taskExecutor.abort(taskUUID);
+    taskExecutor.abort(taskUUID, false);
     TaskInfo taskInfo = waitForTask(taskUUID);
     verify(subTask).setUserTaskUUID(eq(taskUUID));
     assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
@@ -529,7 +529,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
   @Test
   public void testTaskValidationFailure() {
     ITask task = mockTaskCommon(false);
-    doThrow(new IllegalArgumentException("Validation failed")).when(task).validateParams();
+    doThrow(new IllegalArgumentException("Validation failed")).when(task).validateParams(true);
     assertThrows(PlatformServiceException.class, () -> taskExecutor.createRunnableTask(task));
   }
 }

@@ -38,7 +38,7 @@ public class ThirdpartySoftwareUpgrade extends UpgradeTaskBase {
   }
 
   @Override
-  public void validateParams() {
+  public void validateParams(boolean isFirstTry) {
     Universe universe = getUniverse();
     taskParams().clusters =
         taskParams()

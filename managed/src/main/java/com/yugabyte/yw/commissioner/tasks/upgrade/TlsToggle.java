@@ -45,7 +45,7 @@ public class TlsToggle extends UpgradeTaskBase {
   }
 
   @Override
-  public void validateParams() {
+  public void validateParams(boolean isFirstTry) {
     verifyParams();
   }
 

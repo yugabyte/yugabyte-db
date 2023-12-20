@@ -324,7 +324,9 @@ public enum TaskType {
 
   MarkUniverseForHealthScriptReUpload("subtasks.MarkUniverseForHealthScriptReUpload"),
 
-  UpdateUniverseTags("subtasks.UpdateUniverseTags");
+  UpdateUniverseTags("subtasks.UpdateUniverseTags"),
+
+  FreezeUniverse("subtasks.FreezeUniverse");
 
   private String relativeClassPath;
 

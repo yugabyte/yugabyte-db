@@ -2,11 +2,16 @@
 
 package com.yugabyte.yw.common;
 
+import static play.mvc.Http.Status.BAD_REQUEST;
+
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.Backup;
+import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.CustomerTask.TargetType;
 import com.yugabyte.yw.models.ScheduleTask;
@@ -26,6 +31,7 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.client.ChangeLoadBalancerStateResponse;
 import org.yb.client.YBClient;
+import play.libs.Json;
 
 @Singleton
 public class CustomerTaskManager {
@@ -38,7 +44,8 @@ public class CustomerTaskManager {
           TaskType.MultiTableBackup,
           TaskType.CreateBackup);
   private static final String ALTER_LOAD_BALANCER = "alterLoadBalancer";
-  @Inject YBClientService ybService;
+  @Inject private Commissioner commissioner;
+  @Inject private YBClientService ybService;
 
   private void setTaskError(TaskInfo taskInfo) {
     taskInfo.setTaskState(TaskInfo.State.Failure);
@@ -203,5 +210,54 @@ public class CustomerTaskManager {
           "Setting load balancer to state true has failed for universe: "
               + universe.getUniverseUUID());
     }
+  }
+
+  public CustomerTask retryCustomerTask(UUID customerUUID, UUID taskUUID) {
+    CustomerTask customerTask = CustomerTask.getOrBadRequest(customerUUID, taskUUID);
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
+    JsonNode oldTaskParams = commissioner.getTaskDetails(taskUUID);
+    TaskType taskType = taskInfo.getTaskType();
+    LOG.info(
+        "Will retry task {}, of type {} in {} state.", taskUUID, taskType, taskInfo.getTaskState());
+    if (!Commissioner.isTaskRetryable(taskType)) {
+      String errMsg = String.format("Invalid task type: Task %s cannot be retried", taskUUID);
+      throw new PlatformServiceException(BAD_REQUEST, errMsg);
+    }
+    UniverseTaskParams taskParams = null;
+    switch (taskType) {
+      case CreateUniverse:
+      case EditUniverse:
+      case ReadOnlyClusterCreate:
+        UniverseDefinitionTaskParams params =
+            Json.fromJson(oldTaskParams, UniverseDefinitionTaskParams.class);
+        // Reset the error string.
+        params.setErrorString(null);
+        taskParams = params;
+        break;
+      default:
+        String errMsg =
+            String.format(
+                "Invalid task type: %s. Only Universe, some Node task retries are supported.",
+                taskType);
+        throw new PlatformServiceException(BAD_REQUEST, errMsg);
+    }
+    // Reset the error string.
+    taskParams.setErrorString(null);
+    taskParams.firstTry = false;
+    taskParams.setPreviousTaskUUID(taskUUID);
+    UUID newTaskUUID = commissioner.submit(taskType, taskParams);
+    LOG.info(
+        "Submitted retry task to universe for {}:{}, task uuid = {}.",
+        customerTask.getTargetUUID(),
+        customerTask.getTargetName(),
+        newTaskUUID);
+    return CustomerTask.create(
+        customer,
+        customerTask.getTargetUUID(),
+        newTaskUUID,
+        customerTask.getTarget(),
+        customerTask.getType(),
+        customerTask.getTargetName());
   }
 }

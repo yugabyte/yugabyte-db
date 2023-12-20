@@ -79,7 +79,7 @@ public class XClusterConfigDelete extends XClusterConfigTaskBase {
       xClusterConfig.delete();
 
       if (HighAvailabilityConfig.get().isPresent()) {
-        getUniverse(true).incrementVersion();
+        getUniverse().incrementVersion();
       }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());

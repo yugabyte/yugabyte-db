@@ -33,7 +33,6 @@ import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
-import org.yb.client.YBClient;
 import play.libs.Json;
 
 public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
@@ -41,8 +40,6 @@ public class SoftwareKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
   @Rule public MockitoRule rule = MockitoJUnit.rule();
 
   @InjectMocks private SoftwareKubernetesUpgrade softwareKubernetesUpgrade;
-
-  private YBClient mockClient;
 
   private static final List<TaskType> UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(

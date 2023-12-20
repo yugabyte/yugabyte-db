@@ -46,7 +46,7 @@ public class SoftwareUpgrade extends UpgradeTaskBase {
   }
 
   @Override
-  public void validateParams() {
+  public void validateParams(boolean isFirstTry) {
     taskParams().verifyParams(getUniverse());
   }
 

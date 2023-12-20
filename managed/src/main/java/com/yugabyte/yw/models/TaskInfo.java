@@ -43,6 +43,8 @@ import javax.persistence.EnumType;
 import javax.persistence.Enumerated;
 import javax.persistence.Id;
 import org.apache.commons.collections4.CollectionUtils;
+import lombok.Getter;
+import lombok.Setter;
 import play.data.validation.Constraints;
 
 @Entity

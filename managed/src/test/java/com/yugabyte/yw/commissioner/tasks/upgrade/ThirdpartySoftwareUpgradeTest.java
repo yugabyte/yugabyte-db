@@ -168,6 +168,7 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     if (nodeCnt > 0) {
       assertTaskType(subTasksByPosition.get(position++), TaskType.ModifyBlackList, position);
       position = assertSequence(subTasksByPosition, position);

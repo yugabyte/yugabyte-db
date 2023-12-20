@@ -7,6 +7,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
@@ -34,6 +35,7 @@ public class CustomerTaskController extends AuthenticatedController {
 
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
   @Inject private Commissioner commissioner;
+  @Inject private CustomerTaskManager customerTaskManager;
 
   static final String CUSTOMER_TASK_DB_QUERY_LIMIT = "yb.customer_task_db_query_limit";
   private static final String YB_SOFTWARE_VERSION = "ybSoftwareVersion";
@@ -235,68 +237,23 @@ public class CustomerTaskController extends AuthenticatedController {
       notes = "Retry a Universe task.",
       response = UniverseResp.class)
   public Result retryTask(UUID customerUUID, UUID taskUUID) {
-    Customer customer = Customer.getOrBadRequest(customerUUID);
+    CustomerTask customerTask = customerTaskManager.retryCustomerTask(customerUUID, taskUUID);
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
-    CustomerTask customerTask = CustomerTask.getOrBadRequest(customerUUID, taskUUID);
-    JsonNode oldTaskParams = commissioner.getTaskDetails(taskUUID);
-    TaskType taskType = taskInfo.getTaskType();
-    if (!Commissioner.isTaskRetryable(taskType)) {
-      String errMsg = String.format("Invalid task type: Task %s cannot be retried", taskUUID);
-      return ApiResponse.error(BAD_REQUEST, errMsg);
-    }
-    UniverseTaskParams taskParams = null;
-    switch (taskType) {
-      case CreateUniverse:
-      case EditUniverse:
-      case ReadOnlyClusterCreate:
-        UniverseDefinitionTaskParams params =
-            Json.fromJson(oldTaskParams, UniverseDefinitionTaskParams.class);
-        // Reset the error string.
-        params.setErrorString(null);
-        taskParams = params;
-        break;
-      default:
-        String errMsg =
-            String.format(
-                "Invalid task type: %s. Only Universe task retries are supported.", taskType);
-        return ApiResponse.error(BAD_REQUEST, errMsg);
-    }
-    Universe universe = Universe.getOrBadRequest(taskParams.universeUUID);
-    if (!taskUUID.equals(universe.getUniverseDetails().updatingTaskUUID)
-        && !taskUUID.equals(universe.getUniverseDetails().placementModificationTaskUuid)) {
-      String errMsg = String.format("Invalid task state: Task %s cannot be retried", taskUUID);
-      return ApiResponse.error(BAD_REQUEST, errMsg);
-    }
-    taskParams.firstTry = false;
-    taskParams.previousTaskUUID = taskUUID;
-    UUID newTaskUUID = commissioner.submit(taskType, taskParams);
+    Universe universe = Universe.getOrBadRequest(taskUUID);
     LOG.info(
-        "Submitted retry task to universe for {}:{}, task uuid = {}.",
-        universe.universeUUID,
-        universe.name,
-        newTaskUUID);
-
-    CustomerTask.create(
-        customer,
-        universe.universeUUID,
-        newTaskUUID,
-        customerTask.getTarget(),
-        customerTask.getType(),
-        universe.name);
-    LOG.info(
-        "Saved task uuid {} in customer tasks table for universe {}:{}",
-        newTaskUUID,
-        universe.universeUUID,
-        universe.name);
+        "Saved task uuid {} in customer tasks table for target {}:{}",
+        customerTask.getTaskUUID(),
+        customerTask.getTargetUUID(),
+        customerTask.getTargetName());
     auditService()
         .createAuditEntryWithReqBody(
             ctx(),
             Audit.TargetType.CustomerTask,
             taskUUID.toString(),
             Audit.ActionType.Retry,
-            Json.toJson(taskParams),
-            newTaskUUID);
-    return PlatformResults.withData(new UniverseResp(universe, newTaskUUID));
+            Json.toJson(taskInfo),
+            customerTask.getTaskUUID());
+    return PlatformResults.withData(new UniverseResp(universe, customerTask.getTargetUUID()));
   }
 
   @ApiOperation(
@@ -305,7 +262,9 @@ public class CustomerTaskController extends AuthenticatedController {
       response = YBPSuccess.class)
   public Result abortTask(UUID customerUUID, UUID taskUUID) {
     Customer.getOrBadRequest(customerUUID);
-    boolean isSuccess = commissioner.abortTask(taskUUID);
+    // Validate if task belongs to the user or not
+    CustomerTask.getOrBadRequest(customerUUID, taskUUID);
+    boolean isSuccess = commissioner.abortTask(taskUUID, false);
     if (!isSuccess) {
       return YBPSuccess.withMessage("Task is not running.");
     }

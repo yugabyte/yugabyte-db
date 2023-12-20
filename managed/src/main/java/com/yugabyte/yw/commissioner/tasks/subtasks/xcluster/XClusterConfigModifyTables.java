@@ -65,8 +65,8 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
         if (HighAvailabilityConfig.get().isPresent()) {
           // Note: We increment version twice for adding tables: once for setting up the .ALTER
           // replication group, and once for merging the .ALTER replication group
-          getUniverse(true).incrementVersion();
-          getUniverse(true).incrementVersion();
+          getUniverse().incrementVersion();
+          getUniverse().incrementVersion();
         }
       }
 
@@ -85,7 +85,7 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
         }
 
         if (HighAvailabilityConfig.get().isPresent()) {
-          getUniverse(true).incrementVersion();
+          getUniverse().incrementVersion();
         }
       }
 

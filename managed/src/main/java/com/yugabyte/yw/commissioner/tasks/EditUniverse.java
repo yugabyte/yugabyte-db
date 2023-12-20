@@ -47,86 +47,87 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
   }
 
   @Override
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    if (isFirstTry) {
+      // Verify the task params.
+      verifyParams(UniverseOpType.EDIT);
+    }
+  }
+
+  private void freezeUniverseInTxn(Universe universe) {
+    // Fetch the task params from the DB to start from fresh on retry.
+    // Otherwise, some operations like name assignment can fail.
+    fetchTaskDetailsFromDB();
+    // TODO Transaction is required mainly because validations are done here.
+    // Set all the node names.
+    setNodeNames(universe);
+    // Set non on-prem node UUIDs.
+    setCloudNodeUuids(universe);
+    // Update on-prem node UUIDs.
+    updateOnPremNodeUuidsOnTaskParams();
+    // Perform pre-task actions.
+    preTaskActions(universe);
+    // Select master nodes, if needed. Changes in masters are not automatically
+    // applied.
+    SelectMastersResult selection = selectMasters(universe.getMasterLeaderHostText());
+    verifyMastersSelection(selection);
+
+    // Applying changes to master flags for added masters only.
+    // We are not clearing this flag according to selection.removedMasters in case
+    // the master leader is to be changed and until the master leader is switched to
+    // the new one.
+    selection.addedMasters.forEach(
+        n -> {
+          n.isMaster = true;
+          n.masterState = MasterState.ToStart;
+        });
+    selection.removedMasters.forEach(
+        n -> {
+          n.masterState = MasterState.ToStop;
+        });
+    // UserIntent in universe will be pointing to userIntent from params after
+    // setUserIntentToUniverse. So we need to store tags locally to be able to reset
+    // them later.
+    Map<UUID, Map<String, String>> currentTags =
+        universe
+            .getUniverseDetails()
+            .clusters
+            .stream()
+            .collect(Collectors.toMap(c -> c.uuid, c -> c.userIntent.instanceTags));
+    // Set the prepared data to universe in-memory.
+    setUserIntentToUniverse(universe, taskParams(), false);
+    // Task params contain the exact blueprint of what is desired.
+    // There is a rare possibility that this succeeds and
+    // saving the Universe fails. It is ok because the retry
+    // will just fail.
+    updateTaskDetailsInDB(taskParams());
+    // We need to reset tags, to make this tags update retryable.
+    // New tags will be written into DB in UpdateUniverseTags task.
+    for (Cluster cluster : universe.getUniverseDetails().clusters) {
+      cluster.userIntent.instanceTags = currentTags.get(cluster.uuid);
+    }
+  }
+
+  @Override
   public void run() {
     log.info("Started {} task for uuid={}", getName(), taskParams().universeUUID);
+    checkUniverseVersion();
     String errorString = null;
-
-    try {
-      checkUniverseVersion();
-      if (isFirstTryForTask(taskParams())) {
-        // Verify the task params.
-        verifyParams(UniverseOpType.EDIT);
+    Map<UUID, Map<String, String>> tagsToUpdate = new HashMap<>();
+    Universe universe = getUniverse();
+    // The universe parameter in this callback has local changes which may be needed by
+    // the methods inside e.g updateInProgress field.
+    for (Cluster cluster : taskParams().clusters) {
+      Cluster originalCluster = universe.getCluster(cluster.uuid);
+      if (!originalCluster.areTagsSame(cluster)) {
+        tagsToUpdate.put(cluster.uuid, cluster.userIntent.instanceTags);
       }
-
-      Map<UUID, Map<String, String>> tagsToUpdate = new HashMap<>();
-      // Update the universe DB with the changes to be performed and set the 'updateInProgress' flag
-      // to prevent other updates from happening.
-      Universe universe =
-          lockUniverseForUpdate(
-              taskParams().expectedUniverseVersion,
-              u -> {
-                // The universe parameter in this callback has local changes which may be needed by
-                // the methods inside e.g updateInProgress field.
-                for (Cluster cluster : taskParams().clusters) {
-                  Cluster originalCluster = u.getCluster(cluster.uuid);
-                  if (!cluster.areTagsSame(originalCluster)) {
-                    tagsToUpdate.put(cluster.uuid, cluster.userIntent.instanceTags);
-                  }
-                }
-                if (isFirstTryForTask(taskParams())) {
-                  // Fetch the task params from the DB to start from fresh on retry.
-                  // Otherwise, some operations like name assignment can fail.
-                  fetchTaskDetailsFromDB();
-                  // TODO Transaction is required mainly because validations are done here.
-                  // Set all the node names.
-                  setNodeNames(u);
-                  // Set non on-prem node UUIDs.
-                  setCloudNodeUuids(u);
-                  // Update on-prem node UUIDs.
-                  updateOnPremNodeUuidsOnTaskParams();
-                  // Perform pre-task actions.
-                  preTaskActions(u);
-                  // Select master nodes, if needed. Changes in masters are not automatically
-                  // applied.
-                  SelectMastersResult selection = selectMasters(u.getMasterLeaderHostText());
-                  verifyMastersSelection(selection);
-
-                  // Applying changes to master flags for added masters only.
-                  // We are not clearing this flag according to selection.removedMasters in case
-                  // the master leader is to be changed and until the master leader is switched to
-                  // the new one.
-                  selection.addedMasters.forEach(
-                      n -> {
-                        n.isMaster = true;
-                        n.masterState = MasterState.ToStart;
-                      });
-                  selection.removedMasters.forEach(
-                      n -> {
-                        n.masterState = MasterState.ToStop;
-                      });
-                  // UserIntent in universe will be pointing to userIntent from params after
-                  // setUserIntentToUniverse. So we need to store tags locally to be able to reset
-                  // them later.
-                  Map<UUID, Map<String, String>> currentTags =
-                      u.getUniverseDetails()
-                          .clusters
-                          .stream()
-                          .collect(Collectors.toMap(c -> c.uuid, c -> c.userIntent.instanceTags));
-                  // Set the prepared data to universe in-memory.
-                  setUserIntentToUniverse(u, taskParams(), false);
-                  // Task params contain the exact blueprint of what is desired.
-                  // There is a rare possibility that this succeeds and
-                  // saving the Universe fails. It is ok because the retry
-                  // will just fail.
-                  updateTaskDetailsInDB(taskParams());
-                  // We need to reset tags, to make this tags update retryable.
-                  // New tags will be written into DB in UpdateUniverseTags task.
-                  for (Cluster cluster : u.getUniverseDetails().clusters) {
-                    cluster.userIntent.instanceTags = currentTags.get(cluster.uuid);
-                  }
-                }
-              });
-
+    }
+    universe =
+        lockAndFreezeUniverseForUpdate(
+            taskParams().expectedUniverseVersion, this::freezeUniverseInTxn);
+    try {
       // Create preflight node check tasks for on-prem nodes.
       createPreflightNodeCheckTasks(universe, taskParams().clusters);
 
@@ -176,7 +177,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     } finally {
       // Mark the update of the universe as done. This will allow future edits/updates to the
       // universe to happen.
-      Universe universe = unlockUniverseForUpdate(errorString);
+      universe = unlockUniverseForUpdate(errorString);
 
       if (universe != null
           && universe.getConfig().getOrDefault(Universe.USE_CUSTOM_IMAGE, "false").equals("true")) {
@@ -212,6 +213,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     Set<NodeDetails> nodesToBeRemoved = PlacementInfoUtil.getNodesToBeRemoved(nodes);
 
     Set<NodeDetails> nodesToProvision = PlacementInfoUtil.getNodesToProvision(nodes);
+
+    Set<NodeDetails> removeMasters = PlacementInfoUtil.getMastersToBeRemoved(nodes);
+
+    Set<NodeDetails> tserversToBeRemoved = PlacementInfoUtil.getTserversToBeRemoved(nodes);
 
     Set<NodeDetails> existingNodesToStartMaster =
         newMasters.stream().filter(n -> n.state != NodeState.ToBeAdded).collect(Collectors.toSet());
@@ -300,9 +305,6 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
             gFlagsParams.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
           });
     }
-
-    Set<NodeDetails> removeMasters = PlacementInfoUtil.getMastersToBeRemoved(nodes);
-    Set<NodeDetails> tserversToBeRemoved = PlacementInfoUtil.getTserversToBeRemoved(nodes);
 
     // Ensure all masters are covered in nodes to be removed.
     if (!removeMasters.isEmpty()) {
@@ -395,8 +397,13 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     }
 
     if (!newMasters.isEmpty()) {
+
+      // Filter out nodes which are not in the universe.
+      Set<NodeDetails> removeUniverseMasters =
+          filterUniverseNodes(universe, removeMasters, n -> true);
       // Now finalize the master quorum change tasks.
-      createMoveMastersTasks(SubTaskGroupType.WaitForDataMigration, newMasters, removeMasters);
+      createMoveMastersTasks(
+          SubTaskGroupType.WaitForDataMigration, newMasters, removeUniverseMasters);
 
       if (!mastersToStop.isEmpty()) {
         createStopMasterTasks(mastersToStop)
@@ -471,6 +478,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
       createSetNodeStateTasks(nodesToBeRemoved, NodeDetails.NodeState.Terminating)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
       createDestroyServerTasks(
+              universe,
               nodesToBeRemoved,
               false /* isForceDelete */,
               true /* deleteNode */,

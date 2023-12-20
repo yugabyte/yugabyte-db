@@ -67,6 +67,7 @@ public abstract class AbstractTaskBase implements ITask {
   protected final TableManagerYb tableManagerYb;
   private final PlatformExecutorFactory platformExecutorFactory;
   private final TaskExecutor taskExecutor;
+  private final Commissioner commissioner;
 
   @Inject
   protected AbstractTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -83,6 +84,7 @@ public abstract class AbstractTaskBase implements ITask {
     this.tableManagerYb = baseTaskDependencies.getTableManagerYb();
     this.platformExecutorFactory = baseTaskDependencies.getExecutorFactory();
     this.taskExecutor = baseTaskDependencies.getTaskExecutor();
+    this.commissioner = baseTaskDependencies.getCommissioner();
   }
 
   protected ITaskParams taskParams() {
@@ -134,7 +136,12 @@ public abstract class AbstractTaskBase implements ITask {
   }
 
   @Override
-  public void validateParams() {}
+  public boolean isFirstTry() {
+    return taskParams() == null || taskParams().getPreviousTaskUUID() == null;
+  }
+
+  @Override
+  public void validateParams(boolean isFirstTry) {}
 
   /**
    * We would try to parse the shell response message as JSON and return JsonNode
@@ -197,6 +204,10 @@ public abstract class AbstractTaskBase implements ITask {
     return taskExecutor;
   }
 
+  protected Commissioner getCommissioner() {
+    return commissioner;
+  }
+
   // Returns the RunnableTask instance to which SubTaskGroup instances can be added and run.
   protected RunnableTask getRunnableTask() {
     return getTaskExecutor().getRunnableTask(userTaskUUID);
@@ -213,5 +224,9 @@ public abstract class AbstractTaskBase implements ITask {
   // signal is received. It can be a replacement for Thread.sleep in subtasks.
   protected void waitFor(Duration duration) {
     getRunnableTask().waitFor(duration);
+  }
+
+  protected UUID getUserTaskUUID() {
+    return userTaskUUID;
   }
 }

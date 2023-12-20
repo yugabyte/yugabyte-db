@@ -22,11 +22,12 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
+import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
@@ -47,11 +48,11 @@ import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ChangeConfigResponse;
 import org.yb.client.ChangeMasterClusterConfigResponse;
+import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.ListMastersResponse;
 import org.yb.client.ListTabletServersResponse;
 import org.yb.master.CatalogEntityInfo;
-import org.yb.util.ServerInfo;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
@@ -60,6 +61,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
 
   private static final List<TaskType> UNIVERSE_EXPAND_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.SetNodeStatus, // ToBeAdded to Adding
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,
@@ -93,6 +95,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
 
   private static final List<TaskType> UNIVERSE_EXPAND_TASK_SEQUENCE_ON_PREM =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.PreflightNodeCheck,
           TaskType.SetNodeStatus, // ToBeAdded to Adding
           TaskType.AnsibleCreateServer,
@@ -165,6 +168,8 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
       ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
       when(listMastersResponse.getMasters()).thenReturn(Collections.emptyList());
       when(mockClient.listMasters()).thenReturn(listMastersResponse);
+      when(mockClient.getLoadMoveCompletion())
+          .thenReturn(new GetLoadMovePercentResponse(0, "", 100.0, 0, 0, null));
     } catch (Exception e) {
       fail();
     }
@@ -206,7 +211,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
-    List<TaskInfo> instanceActions = subTasksByPosition.get(0);
+    List<TaskInfo> instanceActions = subTasksByPosition.get(1);
     assertEquals(
         new ArrayList<>(
             Arrays.asList(
@@ -219,7 +224,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     assertEquals(Json.toJson(newTags), details.get("tags"));
     assertEquals("q1,q3", details.get("deleteTags").asText());
 
-    List<TaskInfo> updateUniverseTagsTask = subTasksByPosition.get(1);
+    List<TaskInfo> updateUniverseTagsTask = subTasksByPosition.get(2);
     assertEquals(
         new ArrayList<>(Collections.singletonList(TaskType.UpdateUniverseTags)),
         updateUniverseTagsTask
@@ -309,18 +314,50 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     assertEquals(Failure, taskInfo.getTaskState());
   }
 
+  @Test
+  public void testEditUniverseRetries() {
+    Universe universe = defaultUniverse;
+    UniverseDefinitionTaskParams taskParams = performExpand(universe);
+    super.verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.Edit,
+        CustomerTask.TargetType.Universe,
+        taskParams.universeUUID,
+        TaskType.EditUniverse,
+        taskParams);
+    universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    taskParams = performShrink(universe);
+    super.verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.Edit,
+        CustomerTask.TargetType.Universe,
+        taskParams.universeUUID,
+        TaskType.EditUniverse,
+        taskParams);
+  }
+
   private UniverseDefinitionTaskParams performExpand(Universe universe) {
+    return editClusterSize(universe, ApiUtils.UTIL_INST_TYPE, 5);
+  }
+
+  private UniverseDefinitionTaskParams performShrink(Universe universe) {
+    return editClusterSize(universe, "m4.medium", 3);
+  }
+
+  private UniverseDefinitionTaskParams editClusterSize(
+      Universe universe, String instanceType, int numNodes) {
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
     taskParams.universeUUID = universe.universeUUID;
-    taskParams.expectedUniverseVersion = 2;
+    taskParams.expectedUniverseVersion = -1;
     taskParams.nodePrefix = universe.getUniverseDetails().nodePrefix;
     taskParams.nodeDetailsSet = universe.getUniverseDetails().nodeDetailsSet;
     taskParams.clusters = universe.getUniverseDetails().clusters;
     Cluster primaryCluster = taskParams.getPrimaryCluster();
     UniverseDefinitionTaskParams.UserIntent newUserIntent = primaryCluster.userIntent.clone();
     PlacementInfo pi = universe.getUniverseDetails().getPrimaryCluster().placementInfo;
-    pi.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ = 5;
-    newUserIntent.numNodes = 5;
+    pi.cloudList.get(0).regionList.get(0).azList.get(0).numNodesInAZ = numNodes;
+    newUserIntent.numNodes = numNodes;
+    newUserIntent.instanceType = instanceType;
     taskParams.getPrimaryCluster().userIntent = newUserIntent;
     PlacementInfoUtil.updateUniverseDefinition(
         taskParams, defaultCustomer.getCustomerId(), primaryCluster.uuid, EDIT);

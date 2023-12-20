@@ -176,7 +176,10 @@ public class UserTaskDetails {
     SystemdUpgrade,
 
     // Add certificates and toggle TLS gflags
-    ToggleTls;
+    ToggleTls,
+
+    // Validate configurations.
+    ValidateConfigurations;
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -409,6 +412,10 @@ public class UserTaskDetails {
       case ToggleTls:
         title = "Toggle TLS";
         description = "Add certificates and toggle TLS gflags";
+        break;
+      case ValidateConfigurations:
+        title = "Validating configurations";
+        description = "Validating configurations before proceeding";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

@@ -45,27 +45,25 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
 
       // Set the 'updateInProgress' flag to prevent other updates from happening.
       Universe universe =
-          lockUniverseForUpdate(
+          lockAndFreezeUniverseForUpdate(
               taskParams().expectedUniverseVersion,
               u -> {
-                if (isFirstTryForTask(taskParams())) {
-                  // Fetch the task params from the DB to start from fresh on retry.
-                  // Otherwise, some operations like name assignment can fail.
-                  fetchTaskDetailsFromDB();
-                  preTaskActions(u);
-                  // Set all the in-memory node names.
-                  setNodeNames(u);
-                  // Set non on-prem node UUIDs.
-                  setCloudNodeUuids(u);
-                  // Update on-prem node UUIDs.
-                  updateOnPremNodeUuidsOnTaskParams();
-                  // Set the prepared data to universe in-memory.
-                  setUserIntentToUniverse(u, taskParams(), true);
-                  // There is a rare possibility that this succeeds and
-                  // saving the Universe fails. It is ok because the retry
-                  // will just fail.
-                  updateTaskDetailsInDB(taskParams());
-                }
+                // Fetch the task params from the DB to start from fresh on retry.
+                // Otherwise, some operations like name assignment can fail.
+                fetchTaskDetailsFromDB();
+                preTaskActions(u);
+                // Set all the in-memory node names.
+                setNodeNames(u);
+                // Set non on-prem node UUIDs.
+                setCloudNodeUuids(u);
+                // Update on-prem node UUIDs.
+                updateOnPremNodeUuidsOnTaskParams();
+                // Set the prepared data to universe in-memory.
+                setUserIntentToUniverse(u, taskParams(), true);
+                // There is a rare possibility that this succeeds and
+                // saving the Universe fails. It is ok because the retry
+                // will just fail.
+                updateTaskDetailsInDB(taskParams());
               });
 
       // Sanity checks for clusters list validity are performed in the controller.

@@ -258,14 +258,11 @@ public class UniverseControllerTest extends UniverseControllerTestBase {
     assertOk(result);
     JsonNode json = Json.parse(contentAsString(result));
     assertValue(json, "taskUUID", fakeTaskUUID.toString());
-
     CustomerTask th = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(th);
     assertThat(th.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.uuid)));
     assertThat(th.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
     assertThat(th.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.Delete)));
-    assertNotNull(CustomerTask.findByTaskUUID(randUUID).getCompletionTime());
-
     assertTrue(customer.getUniverseUUIDs().isEmpty());
     assertAuditEntry(1, customer.uuid);
   }

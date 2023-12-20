@@ -78,7 +78,7 @@ public class UpdatePlacementInfo extends UniverseTaskBase {
       ModifyUniverseConfig modifyConfig =
           new ModifyUniverseConfig(client, taskParams().universeUUID, taskParams().blacklistNodes);
       modifyConfig.doCall();
-      if (shouldIncrementVersion()) universe.incrementVersion();
+      if (shouldIncrementVersion(universe.getUniverseUUID())) universe.incrementVersion();
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
       throw new RuntimeException(e);

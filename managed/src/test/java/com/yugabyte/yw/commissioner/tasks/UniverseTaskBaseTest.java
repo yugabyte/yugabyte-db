@@ -8,6 +8,7 @@ import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doReturn;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -24,9 +25,10 @@ import com.yugabyte.yw.forms.NodeInstanceFormData.NodeInstanceData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.models.NodeInstance;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.helpers.PlacementInfo;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -104,9 +106,19 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
   // @formatter:on
   public void testCreateDestroyServerTasks(
       CloudType cloudType, @Nullable String privateIp, boolean detailsCleanExpected) {
-
     List<NodeDetails> nodes = setupNodeDetails(cloudType, privateIp);
-    universeTaskBase.createDestroyServerTasks(nodes, false, false, false);
+    Universe universe = mock(Universe.class);
+    when(universe.getNodes()).thenReturn(nodes);
+    UniverseDefinitionTaskParams.UserIntent userIntent =
+        new UniverseDefinitionTaskParams.UserIntent();
+    UniverseDefinitionTaskParams.Cluster cluster =
+        new UniverseDefinitionTaskParams.Cluster(
+            UniverseDefinitionTaskParams.ClusterType.PRIMARY, userIntent);
+    UniverseDefinitionTaskParams universeDetails = new UniverseDefinitionTaskParams();
+    universeDetails.clusters.add(cluster);
+    when(universe.getCluster(any())).thenReturn(cluster);
+    when(universe.getUniverseDetails()).thenReturn(universeDetails);
+    universeTaskBase.createDestroyServerTasks(universe, nodes, false, false, false);
     for (int i = 0; i < NUM_NODES; i++) {
       // Node should not be in use.
       NodeInstance ni = NodeInstance.get(nodes.get(i).nodeUuid);
@@ -212,12 +224,8 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
 
     public TestUniverseTaskBase() {
       super(baseTaskDependencies);
-      // Create a real task with fake parameters to make validations succeed.
-      runnableTask =
-          baseTaskDependencies
-              .getTaskExecutor()
-              .createRunnableTask(TaskType.CreateUniverse, new UniverseDefinitionTaskParams());
-      taskParams = new UniverseTaskParams();
+      runnableTask = mock(RunnableTask.class);
+      taskParams = mock(UniverseTaskParams.class);
     }
 
     @Override

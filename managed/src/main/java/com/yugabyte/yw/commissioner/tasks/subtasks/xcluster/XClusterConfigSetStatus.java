@@ -62,7 +62,7 @@ public class XClusterConfigSetStatus extends XClusterConfigTaskBase {
       xClusterConfig.update();
 
       if (HighAvailabilityConfig.get().isPresent()) {
-        getUniverse(true).incrementVersion();
+        getUniverse().incrementVersion();
       }
 
     } catch (Exception e) {
