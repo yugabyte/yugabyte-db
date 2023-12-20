@@ -213,29 +213,6 @@ spec:
                 # Helm chart can have a bunch more properties.
                 additionalProperties: true
                 properties:
-                  storage:
-                    type: object
-                    properties:
-                      ephemeral:
-                        type: boolean
-                      master:
-                        type: object
-                        properties:
-                          count:
-                            type: integer
-                          size:
-                            type: string
-                          storageClass:
-                            type: string
-                      tserver:
-                        type: object
-                        properties:
-                          count:
-                            type: integer
-                          size:
-                            type: string
-                          storageClass:
-                            type: string
                   resource:
                     type: object
                     properties:

@@ -627,6 +627,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
 
     userIntent.useTimeSync = ybUniverse.getSpec().getUseTimeSync();
     userIntent.enableYSQL = ybUniverse.getSpec().getEnableYSQL();
+    userIntent.enableYCQL = ybUniverse.getSpec().getEnableYCQL();
     userIntent.enableYEDIS = ybUniverse.getSpec().getEnableYEDIS();
     userIntent.enableNodeToNodeEncrypt = ybUniverse.getSpec().getEnableNodeToNodeEncrypt();
     userIntent.enableClientToNodeEncrypt = ybUniverse.getSpec().getEnableClientToNodeEncrypt();
@@ -690,6 +691,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   private Provider createAutoProvider(
       YBUniverse ybUniverse, String providerName, UUID customerUUID) {
     List<String> zonesFilter = ybUniverse.getSpec().getZoneFilter();
+    String storageClass = ybUniverse.getSpec().getDeviceInfo().getStorageClass();
     KubernetesProviderFormData providerData = cloudProviderHandler.suggestedKubernetesConfigs();
     providerData.regionList =
         providerData.regionList.stream()
@@ -708,7 +710,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
                           .map(
                               z -> {
                                 HashMap<String, String> tempMap = new HashMap<>(z.config);
-                                tempMap.put("STORAGE_CLASS", "yb-standard");
+                                tempMap.put("STORAGE_CLASS", storageClass);
                                 z.config = tempMap;
                                 return z;
                               })
