@@ -358,7 +358,8 @@ public class ShellKubernetesManager extends KubernetesManager {
             "delete",
             "statefulset",
             stsName,
-            "--cascade=orphan");
+            "--cascade=orphan",
+            "--ignore-not-found=true");
     ShellResponse response =
         execCommand(config, commandList, false).processErrors("Unable to delete StatefulSet");
     return response.isSuccess();
@@ -489,7 +490,7 @@ public class ShellKubernetesManager extends KubernetesManager {
             "get",
             "statefulset",
             statefulSetNames[0],
-            "-o=jsonpath={.status.readyReplicas} {.status.replicas}");
+            "-o=jsonpath={.status.availableReplicas} {.status.replicas}");
     response =
         execCommand(config, commandList, false)
             .processErrors("Unable to get StatefulSet status for " + statefulSetNames[0]);
@@ -498,9 +499,9 @@ public class ShellKubernetesManager extends KubernetesManager {
     String[] replicaCounts = response.getMessage().trim().split(" ");
     boolean isReady = false;
     if (replicaCounts.length == 2) {
-      int readyReplicas = Integer.parseInt(replicaCounts[0]);
+      int availableReplicas = Integer.parseInt(replicaCounts[0]);
       int totalReplicas = Integer.parseInt(replicaCounts[1]);
-      if (readyReplicas == totalReplicas && totalReplicas == replicaCount) {
+      if (availableReplicas == totalReplicas && totalReplicas == replicaCount) {
         isReady = true;
       }
     }

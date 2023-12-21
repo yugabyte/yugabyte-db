@@ -5,6 +5,7 @@ import { assertUnreachableCase } from '../../../../utils/errorHandlingUtils';
 import { YBBanner, YBBannerVariant } from '../../../common/descriptors';
 
 import { TableSelect, TableSelectProps } from '../../sharedComponents/tableSelect/TableSelect';
+import { ConfirmAlertStep } from './ConfirmAlertStep';
 import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
 import { FormStep } from './CreateConfigModal';
 import { SelectTargetUniverseStep } from './SelectTargetUniverseStep';
@@ -70,6 +71,8 @@ export const CurrentFormStep = ({
       );
     case FormStep.CONFIGURE_BOOTSTRAP:
       return <ConfigureBootstrapStep isFormDisabled={isFormDisabled} />;
+    case FormStep.CONFIGURE_ALERT:
+      return <ConfirmAlertStep isFormDisabled={isFormDisabled} sourceUniverse={sourceUniverse} />;
     default:
       return assertUnreachableCase(currentFormStep);
   }

@@ -149,14 +149,14 @@ void AreNodesSafeToTakeDownCallbackHandler::ProcessHealthCheck(
 std::shared_ptr<AreNodesSafeToTakeDownCallbackHandler>
 AreNodesSafeToTakeDownCallbackHandler::MakeHandler(
     int64_t follower_lag_bound_ms,
-    const std::unordered_map<TabletServerId, std::vector<TabletId>>& tserver_to_tablets,
+    const std::unordered_map<TabletServerId, std::vector<TabletId>>& tservers_to_tablets,
     const std::vector<consensus::RaftPeerPB>& masters_to_contact,
     ReplicaCountMap required_replicas) {
   ServerUuidSet outstanding_rpcs;
   for (const auto& peer : masters_to_contact) {
     outstanding_rpcs.insert(peer.permanent_uuid());
   }
-  for (const auto& [tserver_uuid, _] : tserver_to_tablets) {
+  for (const auto& [tserver_uuid, _] : tservers_to_tablets) {
     outstanding_rpcs.insert(tserver_uuid);
   }
 
@@ -254,42 +254,55 @@ AreNodesSafeToTakeDownDriver::FindMastersToContact(ReplicaCountMap* required_rep
   return masters_to_contact;
 }
 
+Status AreNodesSafeToTakeDownDriver::ScheduleTServerTasks(
+    std::unordered_map<TabletServerId, std::vector<TabletId>>&& tservers_to_tablets,
+    std::shared_ptr<AreNodesSafeToTakeDownCallbackHandler> cb_handler) {
+  for (auto& [ts_uuid, tablets] : tservers_to_tablets) {
+    auto call = std::make_shared<AsyncTserverTabletHealthTask>(
+        master_, catalog_manager_->AsyncTaskPool(), ts_uuid, std::move(tablets), cb_handler);
+    auto s = catalog_manager_->ScheduleTask(std::move(call));
+    if (!s.ok()) {
+      LOG(WARNING) << "Failed to schedule AsyncMasterTabletHealthTask: " << s;
+      return s;
+    }
+  }
+  return Status::OK();
+}
+
+Status AreNodesSafeToTakeDownDriver::ScheduleMasterTasks(
+    std::vector<consensus::RaftPeerPB>&& masters,
+    std::shared_ptr<AreNodesSafeToTakeDownCallbackHandler> cb_handler) {
+  for (auto& master : masters) {
+    auto call = std::make_shared<AsyncMasterTabletHealthTask>(
+        master_, catalog_manager_->AsyncTaskPool(), std::move(master), cb_handler);
+    auto s = catalog_manager_->ScheduleTask(std::move(call));
+    if (!s.ok()) {
+      LOG(WARNING) << "Failed to schedule AsyncMasterTabletHealthTask: " << s;
+      return s;
+    }
+  }
+  return Status::OK();
+}
+
 Status AreNodesSafeToTakeDownDriver::StartCallAndWait(CoarseTimePoint deadline) {
   ReplicaCountMap required_replicas;
 
-  const auto tservers_to_tablets = VERIFY_RESULT(FindTserversToContact(&required_replicas));
-  const auto masters_to_contact = VERIFY_RESULT(FindMastersToContact(&required_replicas));
-
+  auto masters_to_contact = VERIFY_RESULT(FindMastersToContact(&required_replicas));
+  auto tservers_to_tablets = VERIFY_RESULT(FindTserversToContact(&required_replicas));
   auto cb_handler = AreNodesSafeToTakeDownCallbackHandler::MakeHandler(
       req_.follower_lag_bound_ms(), tservers_to_tablets, masters_to_contact,
       std::move(required_replicas));
-
-  for (auto& [ts_uuid, tablets] : tservers_to_tablets) {
-    auto call = std::make_shared<AsyncTserverTabletHealthTask>(
-        master_, catalog_manager_->AsyncTaskPool(), ts_uuid, tablets, cb_handler);
-    auto s = catalog_manager_->ScheduleTask(call);
-    if (!s.ok()) {
-      LOG(WARNING) << "Failed to schedule AsyncMasterTabletHealthTask: " << s;
-      return s;
-    }
-  }
-
-  for (auto& master : masters_to_contact) {
-    auto call = std::make_shared<AsyncMasterTabletHealthTask>(
-        master_, catalog_manager_->AsyncTaskPool(), master, cb_handler);
-    auto s = catalog_manager_->ScheduleTask(call);
-    if (!s.ok()) {
-      LOG(WARNING) << "Failed to schedule AsyncMasterTabletHealthTask: " << s;
-      return s;
-    }
-  }
+  RETURN_NOT_OK(ScheduleTServerTasks(std::move(tservers_to_tablets), cb_handler));
+  RETURN_NOT_OK(ScheduleMasterTasks(std::move(masters_to_contact), cb_handler));
 
   auto tablets_missing_replicas = VERIFY_RESULT(cb_handler->WaitForResponses(deadline));
   if (!tablets_missing_replicas.empty()) {
     auto& [tablet_id, missing_replicas] = *tablets_missing_replicas.begin();
-    return STATUS_FORMAT(IllegalState,
+    return STATUS_FORMAT(
+        IllegalState,
         "$0 tablet(s) would be under-replicated. Example: tablet $1 would be under-replicated by "
-        "$2 replicas", tablets_missing_replicas, tablet_id, missing_replicas);
+        "$2 replicas",
+        tablets_missing_replicas, tablet_id, missing_replicas);
   }
 
   return Status::OK();

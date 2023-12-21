@@ -26,6 +26,7 @@ import org.yb.minicluster.MiniYBClusterBuilder;
 import org.yb.pgsql.AutoCommit;
 import org.yb.pgsql.ConnectionEndpoint;
 
+// TODO (rbarigidad) GH #20350: Improve tests to handle more scenarios.
 @RunWith(value = YBTestRunnerYsqlConnMgr.class)
 public class TestUnstickyConnections extends BaseYsqlConnMgr {
     // TODO: Revert to 2 connections after bug fix DB-7395 lands.

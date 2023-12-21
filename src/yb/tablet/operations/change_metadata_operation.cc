@@ -57,7 +57,6 @@ DEFINE_test_flag(bool, ignore_apply_change_metadata_on_followers, false,
                  " on followers.");
 
 DECLARE_bool(TEST_invalidate_last_change_metadata_op);
-DECLARE_int64(cdc_intent_retention_ms);
 
 namespace yb {
 namespace tablet {
@@ -273,11 +272,8 @@ Status ChangeMetadataOperation::ProcessCDCSDKCreateStreamContext() {
   }
 
   // Intent Retention and History Retention
-  auto intent_retention_duration =
-      MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
   LOG(INFO) << tablet->LogPrefix()
-            << "Blocking Intents GC at least from " << op_id()
-            << " for a duration of " << intent_retention_duration;
+            << "Blocking Intents GC at least from " << op_id();
 
   auto require_history_cutoff =
       request()->has_cdc_sdk_require_history_cutoff() &&
@@ -293,7 +289,7 @@ Status ChangeMetadataOperation::ProcessCDCSDKCreateStreamContext() {
   }
 
   return tablet->SetAllInitialCDCSDKRetentionBarriers(
-      op_id(), intent_retention_duration, history_cutoff_time, require_history_cutoff);
+      log, op_id(), history_cutoff_time, require_history_cutoff);
 }
 
 Status SyncReplicateChangeMetadataOperation(

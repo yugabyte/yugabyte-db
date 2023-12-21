@@ -52,7 +52,7 @@ These variants are useful only when at least one other table inherits `t`. But a
 
 Specify one of the following actions.
 
-#### ADD [ COLUMN ] *column_name* *data_type* [*constraint*](#constraints)
+#### ADD [ COLUMN ] [ IF NOT EXISTS ] *column_name* *data_type* [*constraint*](#constraints)
 
 Add the specified column with the specified data type and constraint.
 
@@ -67,7 +67,7 @@ Renaming a table is a non blocking metadata change operation.
 {{< /note >}}
 
 
-#### DROP [ COLUMN ] *column_name* [ RESTRICT | CASCADE ]
+#### DROP [ COLUMN ] [ IF EXISTS ] *column_name* [ RESTRICT | CASCADE ]
 
 Drop the named column from the table.
 

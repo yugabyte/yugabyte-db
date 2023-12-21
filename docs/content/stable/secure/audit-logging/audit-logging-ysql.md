@@ -28,7 +28,7 @@ type: docs
 
 YugabyteDB YSQL uses PostgreSQL Audit Extension ([pgaudit](https://www.pgaudit.org/)) to provide detailed session and/or object audit logging via YugabyteDB YB-TServer logging.
 
-The goal of the YSQL audit logging is to provide YugabyteDB users with capability to produce audit logs often required to comply with government, financial, or ISO certifications. An audit is an official inspection of an individual's or organization's accounts, typically by an independent body.
+The goal of YSQL audit logging is to provide you with the capability to produce audit logs often required to comply with government, financial, or ISO certifications. An audit is an official inspection of an individual's or organization's accounts, typically by an independent body.
 
 ## Enable audit logging
 
@@ -38,9 +38,13 @@ To enable audit logging, first configure audit logging for the cluster. This is 
 
     Use the [--ysql_pg_conf_csv](../../../reference/configuration/yb-tserver/#ysql-pg-conf-csv) YB-TServer flag.
 
-    Database administrators can use `ysql_pg_conf_csv` to configure audit logging with [pgaudit flags](#customize-audit-logging).
+    Database administrators can use `ysql_pg_conf_csv` to configure audit logging using [pgaudit flags](#customize-audit-logging).
 
-    Provide the options as a comma separated values. For example, `ysql_pg_conf_csv="pgaudit.log='DDL',pgaudit.log_level=notice"`.
+    Provide the options as a comma separated values. For example:
+
+    ```sh
+    ysql_pg_conf_csv="pgaudit.log='DDL',pgaudit.log_client=on,pgaudit.log_level=notice"
+    ```
 
     Use double quotes to enclose any settings that include commas.
 
@@ -68,20 +72,20 @@ You only need to run this statement on a single node, and it will apply across y
 
 ## Customize audit logging
 
-You can customize YSQL audit logging using the `pgaudit` flags, as per the following table.
+By default, audit logging includes the statement text for all statements in the classes of statements that you specify using the `pgaudit.log` flag. You can customize YSQL audit logging using the `pgaudit` flags, as per the following table.
 
 | Option | Description | Default |
 | :----- | :----- | :------ |
 | pgaudit.log | Specifies which classes of statements are logged by session audit logging, as follows:<ul><li>**READ**: SELECT and COPY when the source is a relation or a query.<li>**WRITE**: INSERT, UPDATE, DELETE, TRUNCATE, and COPY when the destination is a relation.<li>**FUNCTION**: Function calls and DO blocks.<li>**ROLE**: Statements related to roles and privileges: GRANT, REVOKE, CREATE/ALTER/DROP ROLE.<li>**DDL**: All DDL that is not included in the ROLE class.<li>**MISC**: Miscellaneous commands, such as DISCARD, FETCH, CHECKPOINT, VACUUM, SET.<li>**MISC_SET**: Miscellaneous SET commands, such as SET ROLE.<li>**ALL**: Include all of the preceding options.</ul>You can specify multiple classes using a comma-separated list. Subtract classes by prefacing the class with a minus (`-`) sign. | none |
 | pgaudit.log_catalog | Log statements for the PostgreSQL system catalog relations in `pg_catalog`. These system catalog tables record system (as opposed to user) activity, such as metadata lookups and from third-party tools performing lookups.<br>These statements aren't required for typical auditing and you can disable this option to reduce noise in the log. | ON |
-| pgaudit.log_client | Enable this option to echo log messages directly to clients such as ysqlsh an psql. Log messages are printed directly to the shell, which can be helpful for debugging. When enabled, you can set the level of logs that are output using `pgaudit.log_client`. | OFF |
-| pgaudit.log_level | Sets the [severity level](https://www.postgresql.org/docs/16/runtime-config-logging.html#RUNTIME-CONFIG-SEVERITY-LEVELS) of logs written to clients when `pgaudit.log_client` is on.<br>Values: DEBUG1 .. DEBUG5, INFO, NOTICE, WARNING, LOG. ERROR, FATAL, and PANIC are not allowed. Use this setting for debugging and testing.<br>`pgaudit.log_level` only applies when `pgaudit.log_client` is on; otherwise the default LOG level is used. | LOG |
+| pgaudit.log_client | Enable this option to echo log messages directly to clients such as [ysqlsh](../../../admin/ysqlsh/) and psql. Log messages are printed directly to the shell, which can be helpful for debugging.<br>When enabled, you can set the level of logs that are output using `pgaudit.log_level`. | OFF |
+| pgaudit.log_level | Sets the [severity level](https://www.postgresql.org/docs/16/runtime-config-logging.html#RUNTIME-CONFIG-SEVERITY-LEVELS) of logs written to clients when `pgaudit.log_client` is on. Use this setting for debugging and testing.<br>Values: DEBUG1 .. DEBUG5, INFO, NOTICE, WARNING, LOG.<br>ERROR, FATAL, and PANIC are not allowed.<br>`pgaudit.log_level` only applies when `pgaudit.log_client` is on; otherwise the default LOG level is used. | LOG |
 | pgaudit.log_parameter | Include the parameters that were passed with the statement in the logs. When parameters are present, they are included in CSV format after the statement text. | OFF |
-| pgaudit.log_parameter_max_size | Specifies the size, in bytes, of parameters to include in the logs if `pgaudit.log_parameter` is on. Parameters longer than this value are not logged and replaced with `<long param suppressed>`. The default of 0 indicates that all parameters are logged regardless of length. | 0 |
 | pgaudit.log_relation | Create separate log entries for each relation (TABLE, VIEW, and so on) referenced in a SELECT or DML statement. This is a shortcut for exhaustive logging without using [object audit logging](../object-audit-logging-ysql/). | OFF |
-| pgaudit.log_statement_once | Include the statement text and parameters for a statement or sub-statement combination with the first log entry only. Ordinarily, statement text and parameters are included with every log entry. Enable this setting for less verbose logging; however, this can make it more difficult to determine the statement that generated a log entry. | OFF |
+| pgaudit.log_statement_once | Ordinarily, statement text (and, if enabled, parameters) are included with every log entry. Enable this setting to only include statement text and parameters for the first entry for a statement or sub-statement combination. This makes for less verbose logging, but can make it more difficult to determine the statement that generated a log entry. | OFF |
 | pgaudit.role | Specifies the master role to use for object audit logging. To define multiple audit roles, grant the roles to the master role; this allows multiple groups to be in charge of different aspects of audit logging. | None |
 <!--
+| pgaudit.log_parameter_max_size | Specifies the size, in bytes, of parameters to include in the logs if `pgaudit.log_parameter` is on. Parameters longer than this value are not logged and replaced with `<long param suppressed>`. The default of 0 indicates that all parameters are logged regardless of length. | 0 |
 | pgaudit.log_rows | Include the rows retrieved or affected by a statement. The rows field is included after the parameter field. | OFF |
 | pgaudit.log_statement | Include the statement text and parameters. Depending on requirements, an audit log might not require this and it makes the logs less verbose. | ON |
 -->
@@ -130,7 +134,7 @@ Notice that audit logs are generated for DDL statements.
 For this example, start a new cluster with the following audit logging configuration:
 
 ```shell
---ysql_pg_conf_csv="log_line_prefix='%m [%p %l %c] %q[%C %R %Z %H] [%r %a %u %d] '",pgaudit.log='all',pgaudit.log_parameter=on,pgaudit.log_relation=on,pgaudit.log_catalog=off,suppress_nonpg_logs=on
+--ysql_pg_conf_csv="log_line_prefix='%m [%p %l %c] %q[%C %R %Z %H] [%r %a %u %d] ',pgaudit.log='all',pgaudit.log_parameter=on,pgaudit.log_relation=on,pgaudit.log_catalog=off,suppress_nonpg_logs=on"
 ```
 
 Enable the `pgaudit` extension on any node as follows:

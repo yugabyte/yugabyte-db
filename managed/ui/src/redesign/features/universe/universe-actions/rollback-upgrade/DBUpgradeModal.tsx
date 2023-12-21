@@ -29,7 +29,7 @@ import { dbUpgradeFormStyles } from './utils/RollbackUpgradeStyles';
 import BulbIcon from '../../../../assets/bulb.svg';
 import ExclamationIcon from '../../../../assets/exclamation-traingle.svg';
 import { ReactComponent as UpgradeArrow } from '../../../../assets/upgrade-arrow.svg';
-// import WarningIcon from '../../../../assets/warning-triangle.svg';
+import WarningIcon from '../../../../assets/warning-triangle.svg';
 
 interface DBUpgradeModalProps {
   open: boolean;
@@ -46,6 +46,10 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
   const { universeDetails, universeUUID } = universeData;
   const primaryCluster = _.cloneDeep(getPrimaryCluster(universeDetails));
   const currentRelease = primaryCluster?.userIntent.ybSoftwareVersion;
+  const universeHasXcluster =
+    universeData?.universeDetails?.xclusterInfo?.sourceXClusterConfigs?.length > 0 ||
+    universeData?.universeDetails?.xclusterInfo?.targetXClusterConfigs?.length > 0;
+
   const finalOptions: Record<string, any>[] = Object.keys(releases)
     .sort(sortVersion)
     .map((e) => ({
@@ -84,10 +88,10 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
 
   const callPrefinalizeCheck = async (version: string) => {
     try {
-      const { requireFinalize } = await api.getUpgradeDetails(universeUUID, {
+      const { finalizeRequired } = await api.getUpgradeDetails(universeUUID, {
         ybSoftwareVersion: version
       });
-      setPrefinalize(requireFinalize ? true : false);
+      setPrefinalize(finalizeRequired ? true : false);
     } catch (e) {
       console.log(e);
     }
@@ -114,6 +118,7 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
   });
 
   const ybSoftwareVersionValue = watch('softwareVersion');
+  const isRollingUpgradeValue = watch('rollingUpgrade');
 
   useUpdateEffect(() => {
     if (ybSoftwareVersionValue) {
@@ -122,6 +127,7 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
   }, [ybSoftwareVersionValue]);
 
   const handleVersionChange = (e: ChangeEvent<{}>, option: any) => {
+    setPrefinalize(false);
     setValue('softwareVersion', option?.version, { shouldValidate: true });
   };
 
@@ -179,7 +185,7 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
       open={open}
       titleSeparator
       size="sm"
-      overrideHeight="720px"
+      overrideHeight={universeHasXcluster ? '810px' : '720px'}
       overrideWidth="800px"
       onClose={onClose}
       onSubmit={handleFormSubmit}
@@ -277,6 +283,7 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
                       type="number"
                       name="timeDelay"
                       fullWidth
+                      disabled={!isRollingUpgradeValue}
                       inputProps={{
                         autoFocus: true,
                         'data-testid': 'DBUpgradeModal-TimeDelay'
@@ -299,22 +306,23 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
                 </Typography>
               </Box>
             </Box>
-            {/* Do not delete below code as it is required for once xcluster scope is added */}
-            {/* <Box className={classes.xclusterBanner}>
-              <Box display="flex" mr={1}>
-                <img src={WarningIcon} alt="---" height={'22px'} width="22px" />
-              </Box>
-              <Box display="flex" flexDirection={'column'} mt={0.5} width="100%">
-                <Typography variant="body1">
-                  {t('universeActions.dbRollbackUpgrade.avoidDisruption')}
-                </Typography>
-                <Box display="flex" mt={1.5}>
-                  <Typography variant="body2">
-                    {t('universeActions.dbRollbackUpgrade.xclusterWarning')}
+            {universeHasXcluster && (
+              <Box className={classes.xclusterBanner}>
+                <Box display="flex" mr={1}>
+                  <img src={WarningIcon} alt="---" height={'22px'} width="22px" />
+                </Box>
+                <Box display="flex" flexDirection={'column'} mt={0.5} width="100%">
+                  <Typography variant="body1">
+                    {t('universeActions.dbRollbackUpgrade.avoidDisruption')}
                   </Typography>
+                  <Box display="flex" mt={1.5}>
+                    <Typography variant="body2">
+                      {t('universeActions.dbRollbackUpgrade.xclusterWarning')}
+                    </Typography>
+                  </Box>
                 </Box>
               </Box>
-            </Box> */}
+            )}
           </Box>
         </Box>
       </FormProvider>

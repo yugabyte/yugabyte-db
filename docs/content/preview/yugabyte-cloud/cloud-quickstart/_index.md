@@ -4,6 +4,7 @@ headerTitle: Quick start
 linkTitle: Quick start
 headcontent: Sign up for YugabyteDB Managed and create a free Sandbox cluster
 description: Get started using YugabyteDB Managed in less than five minutes.
+image: /images/section_icons/index/quick_start.png
 layout: single
 type: docs
 menu:

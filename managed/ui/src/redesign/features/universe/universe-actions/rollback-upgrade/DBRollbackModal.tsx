@@ -26,9 +26,7 @@ export const DBRollbackModal: FC<DBRollbackModalProps> = ({ open, onClose, unive
   const { t } = useTranslation();
   const classes = dbUpgradeFormStyles();
   const { universeDetails, universeUUID } = universeData;
-  const prevVersion = _.get(universeDetails, 'prevYBSoftwareConfig.softwareVersion', '').split(
-    '-'
-  )[0];
+  const prevVersion = _.get(universeDetails, 'prevYBSoftwareConfig.softwareVersion', '');
   const formMethods = useForm<DBRollbackFormFields>({
     defaultValues: {
       rollingUpgrade: true,
@@ -37,7 +35,8 @@ export const DBRollbackModal: FC<DBRollbackModalProps> = ({ open, onClose, unive
     mode: 'onChange',
     reValidateMode: 'onChange'
   });
-  const { control, handleSubmit } = formMethods;
+  const { control, handleSubmit, watch } = formMethods;
+  const isRollingUpgrade = watch('rollingUpgrade');
 
   //rollback upgrade
   const rollingUpgrade = useMutation(
@@ -126,6 +125,7 @@ export const DBRollbackModal: FC<DBRollbackModalProps> = ({ open, onClose, unive
                   type="number"
                   name="timeDelay"
                   fullWidth
+                  disabled={!isRollingUpgrade}
                   inputProps={{
                     autoFocus: true,
                     'data-testid': 'time-delay'

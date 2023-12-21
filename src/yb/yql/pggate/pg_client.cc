@@ -522,7 +522,9 @@ class PgClient::Impl : public BigDataFetcher {
 
     if (FLAGS_TEST_yb_enable_ash) {
       // Don't send ASH metadata if it's not set
-      if (ash_metadata_->is_set) {
+      // ash_metadata_ can be null during tests which directly create the
+      // pggate layer without the PG backend.
+      if (ash_metadata_ != nullptr && ash_metadata_->is_set) {
         auto* ash_metadata = options->mutable_ash_metadata();
         ash_metadata->set_yql_endpoint_tserver_uuid(local_tserver_uuid_, 16);
         ash_metadata->set_root_request_id(ash_metadata_->root_request_id, 16);

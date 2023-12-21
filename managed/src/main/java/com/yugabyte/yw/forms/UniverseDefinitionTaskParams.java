@@ -153,9 +153,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   // Set to true when software rollback is allowed.
   @ApiModelProperty(
-      value = "Available since YBA version 2.21.0.0.",
+      value = "Available since YBA version 2.20.2.0",
       accessMode = AccessMode.READ_ONLY)
-  @YbaApi(visibility = YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.21.0.0")
+  @YbaApi(visibility = YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.20.2.0")
   public boolean isSoftwareRollbackAllowed = false;
 
   public enum SoftwareUpgradeState {
@@ -1337,7 +1337,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
   }
 
-  @ApiModelProperty("Previous software version related data")
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. Previous software version related"
+              + " data")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.2.0")
   public PrevYBSoftwareConfig prevYBSoftwareConfig;
 
   @Data

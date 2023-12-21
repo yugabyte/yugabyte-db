@@ -562,7 +562,7 @@ if [ -z "$INSTALL_USER" ]; then
   INSTALL_USER="$CURRENT_USER"
 elif [ "$INSTALL_USER" != "$CURRENT_USER" ] && [ "$COMMAND" != "install_service" ]; then
   show_usage >&2
-  echo "Different user can be passed only for installing service."
+  echo "Different user is only used for installing service."
   exit 1
 fi
 

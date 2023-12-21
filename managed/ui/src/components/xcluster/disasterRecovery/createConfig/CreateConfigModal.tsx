@@ -12,7 +12,7 @@ import {
 } from '../../../../actions/xClusterReplication';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { formatUuidForXCluster } from '../../ReplicationUtils';
-import { XClusterConfigAction, XCLUSTER_UNIVERSE_TABLE_FILTERS } from '../../constants';
+import { AlertName, XClusterConfigAction, XCLUSTER_UNIVERSE_TABLE_FILTERS } from '../../constants';
 import { assertUnreachableCase, handleServerError } from '../../../../utils/errorHandlingUtils';
 import {
   api,
@@ -24,22 +24,28 @@ import { generateUniqueName } from '../../../../redesign/helpers/utils';
 import { YBButton, YBModal, YBModalProps } from '../../../../redesign/components';
 import { CurrentFormStep } from './CurrentFormStep';
 import { StorageConfigOption } from '../../sharedComponents/ReactSelectStorageConfig';
+import { DurationUnit, DURATION_UNIT_TO_MS } from '../constants';
 
 import { TableType, Universe, YBTable } from '../../../../redesign/helpers/dtos';
 
 import toastStyles from '../../../../redesign/styles/toastStyles.module.scss';
+import { createAlertConfiguration, getAlertTemplates } from '../../../../actions/universe';
 
 export interface CreateDrConfigFormValues {
   targetUniverse: { label: string; value: Universe };
   namespaceUuids: string[];
   tableUuids: string[];
   storageConfig: StorageConfigOption;
+  replicationLagAlertThreshold: number;
+  replicationLagAlertThresholdUnit: { label: string; value: DurationUnit };
 }
 
 export interface CreateDrConfigFormErrors {
   targetUniverse: string;
   namespaceUuids: { title: string; body: string };
   storageConfig: string;
+  replicationLagAlertThreshold: string;
+  replicationLagAlertThresholdUnit: string;
 }
 
 export interface CreateXClusterConfigFormWarnings {
@@ -56,7 +62,8 @@ interface CreateConfigModalProps {
 export const FormStep = {
   SELECT_TARGET_UNIVERSE: 'selectTargetUniverse',
   SELECT_TABLES: 'selectDatabases',
-  CONFIGURE_BOOTSTRAP: 'configureBootstrap'
+  CONFIGURE_BOOTSTRAP: 'configureBootstrap',
+  CONFIGURE_ALERT: 'configureAlert'
 } as const;
 export type FormStep = typeof FormStep[keyof typeof FormStep];
 
@@ -95,7 +102,7 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
       return api.createDrConfig(createDrConfigRequest);
     },
     {
-      onSuccess: (response, values) => {
+      onSuccess: async (response, values) => {
         const invalidateQueries = () => {
           queryClient.invalidateQueries(drConfigQueryKey.detail(response.resourceUUID));
           // The new DR config will update the sourceXClusterConfigs for the source universe and
@@ -140,6 +147,23 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
         );
         modalProps.onClose();
         fetchTaskUntilItCompletes(response.taskUUID, handleTaskCompletion, invalidateQueries);
+
+        // Set up universe level alert for replication lag.
+        const alertTemplateFilter = {
+          name: AlertName.REPLICATION_LAG
+        };
+        const alertTemplates = await getAlertTemplates(alertTemplateFilter);
+        // There should only be one alert template for replication lag.
+        const alertTemplate = alertTemplates[0];
+        alertTemplate.active = true;
+        alertTemplate.thresholds.SEVERE.threshold =
+          values.replicationLagAlertThreshold *
+          DURATION_UNIT_TO_MS[values.replicationLagAlertThresholdUnit.value];
+        alertTemplate.target = {
+          all: false,
+          uuids: [sourceUniverseUuid]
+        };
+        createAlertConfiguration(alertTemplate);
       },
       onError: (error: Error | AxiosError) =>
         handleServerError(error, { customErrorLabel: t('error.request') })
@@ -158,7 +182,14 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
   );
 
   const formMethods = useForm<CreateDrConfigFormValues>({
-    defaultValues: { namespaceUuids: [], tableUuids: [] }
+    defaultValues: {
+      namespaceUuids: [],
+      tableUuids: [],
+      replicationLagAlertThresholdUnit: {
+        label: t('step.configureAlert.duration.second'),
+        value: DurationUnit.SECOND
+      }
+    }
   });
 
   const modalTitle = t('title');
@@ -248,6 +279,9 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
         }
         return;
       case FormStep.CONFIGURE_BOOTSTRAP:
+        setCurrentFormStep(FormStep.CONFIGURE_ALERT);
+        return;
+      case FormStep.CONFIGURE_ALERT:
         return drConfigMutation.mutateAsync(formValues);
       default:
         return assertUnreachableCase(currentFormStep);
@@ -264,6 +298,9 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
       case FormStep.CONFIGURE_BOOTSTRAP:
         setCurrentFormStep(FormStep.SELECT_TABLES);
         return;
+      case FormStep.CONFIGURE_ALERT:
+        setCurrentFormStep(FormStep.CONFIGURE_BOOTSTRAP);
+        return;
       default:
         assertUnreachableCase(currentFormStep);
     }
@@ -275,11 +312,13 @@ export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConf
         return t('step.selectTargetUniverse.submitButton');
       case FormStep.SELECT_TABLES:
         if (!validTableSelection) {
-          return 'Validate Table Selection';
+          return t('step.selectDatabases.validateButton');
         }
         return t('step.selectDatabases.submitButton');
       case FormStep.CONFIGURE_BOOTSTRAP:
         return t('step.configureBootstrap.submitButton');
+      case FormStep.CONFIGURE_ALERT:
+        return t('step.confirmAlert.submitButton');
       default:
         return assertUnreachableCase(formStep);
     }

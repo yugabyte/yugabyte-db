@@ -25,18 +25,18 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/uuid.h"
 
-#define SET_WAIT_STATUS_TO(ptr, state) \
-  if ((ptr)) (ptr)->set_state(state)
-#define SET_WAIT_STATUS(state) \
-  SET_WAIT_STATUS_TO(yb::ash::WaitStateInfo::CurrentWaitState(), (state))
+DECLARE_bool(TEST_export_wait_state_names);
+
+#define SET_WAIT_STATUS_TO(ptr, code) \
+  if ((ptr)) (ptr)->set_code(BOOST_PP_CAT(yb::ash::WaitStateCode::k, code))
+#define SET_WAIT_STATUS(code) \
+  SET_WAIT_STATUS_TO(yb::ash::WaitStateInfo::CurrentWaitState(), code)
 
 #define ADOPT_WAIT_STATE(ptr) \
   yb::ash::ScopedAdoptWaitState _scoped_state { (ptr) }
 
-#define SCOPED_WAIT_STATUS_FOR(ptr, state) \
-  yb::ash::ScopedWaitStatus _scoped_status { (ptr), (state) }
-#define SCOPED_WAIT_STATUS(state) \
-  SCOPED_WAIT_STATUS_FOR(yb::ash::WaitStateInfo::CurrentWaitState(), (state))
+#define SCOPED_WAIT_STATUS(code) \
+  yb::ash::ScopedWaitStatus _scoped_status(BOOST_PP_CAT(yb::ash::WaitStateCode::k, code))
 
 // Wait components refer to which process the specific wait-event is part of.
 // Generally, these are PG, TServer, YBClient/Perform layer, and PgGate.
@@ -75,6 +75,7 @@
 #define YB_ASH_CLASS_CONSENSUS            YB_ASH_MAKE_CLASS(YB_ASH_COMPONENT_TSERVER, 0xDU)
 #define YB_ASH_CLASS_TABLET_WAIT          YB_ASH_MAKE_CLASS(YB_ASH_COMPONENT_TSERVER, 0xCU)
 #define YB_ASH_CLASS_ROCKSDB              YB_ASH_MAKE_CLASS(YB_ASH_COMPONENT_TSERVER, 0xBU)
+#define YB_ASH_CLASS_COMMON               YB_ASH_MAKE_CLASS(YB_ASH_COMPONENT_TSERVER, 0xAU)
 
 #define YB_ASH_CLASS_PG_CLIENT_SERVICE    YB_ASH_MAKE_CLASS(YB_ASH_COMPONENT_YBC, 0xFU)
 #define YB_ASH_CLASS_CQL_WAIT_STATE       YB_ASH_MAKE_CLASS(YB_ASH_COMPONENT_YBC, 0xEU)
@@ -85,14 +86,47 @@
 namespace yb::ash {
 
 YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
-    ((Unused, 0)));
+    ((kUnused, 0))
+    ((kOnCpu_Active, YB_ASH_CLASS_COMMON))
+    (kOnCpu_Passive)
+    (kRpc_Done)
+    (kRpcs_WaitOnMutexInShutdown)
+    (kRetryableRequests_SaveToDisk)
+    ((kMVCC_WaitForSafeTime, YB_ASH_CLASS_TABLET_WAIT))
+    (kLockedBatchEntry_Lock)
+    (kBackfillIndex_WaitForAFreeSlot)
+    (kCreatingNewTablet)
+    (kSaveRaftGroupMetadataToDisk)
+    (kTransactionStatusCache_DoGetCommitData)
+    (kWaitForYsqlBackendsCatalogVersion)
+    (kWriteAutoFlagsConfigToDisk)
+    (kWriteInstanceMetadataToDisk)
+    (kWriteSysCatalogSnapshotToDisk)
+    (kDumpRunningRpc_WaitOnReactor)
+    (kConflictResolution_ResolveConficts)
+    (kConflictResolution_WaitOnConflictingTxns)
+    ((kWAL_Open, YB_ASH_CLASS_CONSENSUS)) // waiting for WALEdits to be persisted.
+    (kWAL_Close)
+    (kWAL_Write)
+    (kWAL_AllocateNewSegment)
+    (kWAL_Sync)
+    (kWAL_Wait)
+    (kWaitOnWAL)
+    (kRaft_WaitingForQuorum)
+    (kRaft_ApplyingEdits)
+    (kConsensusMeta_Flush)
+    (kReplicaState_TakeUpdateLock)
+    (kReplicaState_WaitForMajorityReplicatedHtLeaseExpiration)
+    ((kRocksDB_OnCpu_Active, YB_ASH_CLASS_ROCKSDB))
+    (kRocksDB_ReadBlockFromFile)
+    (kRocksDB_ReadIO));
 
 struct AshMetadata {
   Uuid root_request_id = Uuid::Nil();
   Uuid yql_endpoint_tserver_uuid = Uuid::Nil();
   int64_t query_id = 0;
   int64_t rpc_request_id = 0;
-  HostPort client_host_port;
+  HostPort client_host_port{};
 
   void set_client_host_port(const HostPort& host_port);
 
@@ -174,9 +208,9 @@ struct AshMetadata {
 };
 
 struct AshAuxInfo {
-  TableId table_id;
-  TabletId tablet_id;
-  std::string method;
+  TableId table_id = "";
+  TabletId tablet_id = "";
+  std::string method = "";
 
   std::string ToString() const;
 
@@ -214,7 +248,7 @@ class WaitStateInfo {
   void set_rpc_request_id(int64_t id) EXCLUDES(mutex_);
   void set_client_host_port(const HostPort& host_port) EXCLUDES(mutex_);
 
-  static WaitStateInfoPtr CurrentWaitState();
+  static const WaitStateInfoPtr& CurrentWaitState();
   static void SetCurrentWaitState(WaitStateInfoPtr);
 
   void UpdateMetadata(const AshMetadata& meta) EXCLUDES(mutex_);
@@ -222,10 +256,16 @@ class WaitStateInfo {
 
   template <class PB>
   static void UpdateMetadataFromPB(const PB& pb) {
-    auto wait_state = CurrentWaitState();
+    const auto& wait_state = CurrentWaitState();
     if (wait_state) {
       wait_state->UpdateMetadata(AshMetadata::FromPB(pb));
     }
+  }
+
+  template <class PB>
+  void MetadataToPB(PB* pb) EXCLUDES(mutex_) {
+    std::lock_guard lock(mutex_);
+    metadata_.ToPB(pb);
   }
 
   template <class PB>
@@ -234,16 +274,16 @@ class WaitStateInfo {
     metadata_.ToPB(pb->mutable_metadata());
     WaitStateCode code = this->code();
     pb->set_wait_status_code(yb::to_underlying(code));
-#ifndef NDEBUG
-    pb->set_wait_status_code_as_string(yb::ToString(code));
-#endif
+    if (FLAGS_TEST_export_wait_state_names) {
+      pb->set_wait_status_code_as_string(yb::ToString(code));
+    }
     aux_info_.ToPB(pb->mutable_aux_info());
   }
 
   std::string ToString() const EXCLUDES(mutex_);
 
  private:
-  std::atomic<WaitStateCode> code_{WaitStateCode::Unused};
+  std::atomic<WaitStateCode> code_{WaitStateCode::kUnused};
 
   mutable simple_spinlock mutex_;
   AshMetadata metadata_ GUARDED_BY(mutex_);
@@ -279,13 +319,12 @@ class ScopedAdoptWaitState {
 // be reverted back to the previous state.
 class ScopedWaitStatus {
  public:
-  ScopedWaitStatus(WaitStateInfoPtr wait_state, WaitStateCode code);
+  explicit ScopedWaitStatus(WaitStateCode code);
   ~ScopedWaitStatus();
 
  private:
-  WaitStateInfoPtr wait_state_;
   const WaitStateCode code_;
-  WaitStateCode prev_code_;
+  const WaitStateCode prev_code_;
 
   DISALLOW_COPY_AND_ASSIGN(ScopedWaitStatus);
 };

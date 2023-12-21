@@ -46,6 +46,8 @@
 #include <boost/preprocessor/stringize.hpp>
 #include <ev++.h>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stringprintf.h"
 
@@ -454,6 +456,7 @@ Status Reactor::QueueEventOnFilteredConnections(
 
 Status Reactor::DumpRunningRpcs(const DumpRunningRpcsRequestPB& req,
                                 DumpRunningRpcsResponsePB* resp) {
+  SCOPED_WAIT_STATUS(DumpRunningRpc_WaitOnReactor);
   return RunOnReactorThread([&req, resp](Reactor* reactor) -> Status {
     ReactorThreadRoleGuard guard;
     for (const ConnectionPtr& conn : reactor->server_conns_) {

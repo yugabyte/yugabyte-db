@@ -57,7 +57,6 @@ import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
-import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.CertificateParams;
@@ -258,7 +257,6 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     defaultUniverse = ModelFactory.addNodesToUniverse(defaultUniverse.getUniverseUUID(), 3);
     k8sUniverse = ModelFactory.createUniverse("k8s", customer.getId(), Common.CloudType.kubernetes);
     when(mockConfig.hasPath(any())).thenReturn(true);
-    when(mockConfig.getBoolean(UniverseConfKeys.enableRollbackSupport.getKey())).thenReturn(true);
     when(mockRuntimeConfigFactory.forUniverse(any())).thenReturn(mockConfig);
   }
 
@@ -453,6 +451,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     SoftwareUpgradeParams taskParams = argCaptor.getValue();
     assertEquals(UpgradeOption.ROLLING_UPGRADE, taskParams.upgradeOption);
     assertEquals("0.0.1", taskParams.ybSoftwareVersion);
+    assertEquals(false, taskParams.rollbackSupport);
 
     CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(task);
@@ -463,6 +462,12 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     assertAuditEntry(1, customer.getUuid());
 
     // Software upgrade with rollback support.
+    url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + defaultUniverse.getUniverseUUID()
+            + "/upgrade/db_version";
     fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.SoftwareUpgradeYB);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     bodyJson.put("ybSoftwareVersion", "2.20.3.0-b1");
@@ -476,6 +481,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     taskParams = argCaptor.getValue();
     assertEquals(UpgradeOption.ROLLING_UPGRADE, taskParams.upgradeOption);
     assertEquals("2.20.3.0-b1", taskParams.ybSoftwareVersion);
+    assertEquals(true, taskParams.rollbackSupport);
 
     task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(task);
@@ -562,6 +568,12 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     assertAuditEntry(1, customer.getUuid());
 
     // Software Upgrade with rollback support
+    url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + universe.getUniverseUUID()
+            + "/upgrade/db_version";
     fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.SoftwareKubernetesUpgradeYB);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
     bodyJson.put("ybSoftwareVersion", "2.20.3.0-b1");
@@ -575,6 +587,7 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     taskParams = argCaptor.getValue();
     assertEquals(UpgradeOption.ROLLING_UPGRADE, taskParams.upgradeOption);
     assertEquals("2.20.3.0-b1", taskParams.ybSoftwareVersion);
+    assertEquals(true, taskParams.rollbackSupport);
     task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(task);
     assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
@@ -639,7 +652,8 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
             });
     assertEquals("No finalize upgrade info available for this universe", err.getMessage());
     TestHelper.updateUniverseVersion(universe1, "2.20.2.0-b1");
-    Set<UUID> impactedUniverses = ImmutableSet.of(UUID.randomUUID(), UUID.randomUUID());
+    Universe universe2 = createUniverse("test-2");
+    Set<UUID> impactedUniverses = ImmutableSet.of(universe2.getUniverseUUID());
     when(mockXClusterUniverseService.getXClusterTargetUniverseSetToBeImpactedWithUpgradeFinalize(
             any()))
         .thenReturn(impactedUniverses);
@@ -649,7 +663,9 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     ObjectMapper mapper = new ObjectMapper();
     FinalizeUpgradeInfoResponse response =
         mapper.convertValue(json, FinalizeUpgradeInfoResponse.class);
-    assertEquals(impactedUniverses, response.getImpactedXClusterConnectedUniverse());
+    assertEquals(
+        universe2.getUniverseUUID(),
+        response.getImpactedXClusterConnectedUniverse().get(0).universeUUID);
   }
 
   @Test

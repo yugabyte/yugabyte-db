@@ -168,6 +168,7 @@ set(MASTER_DEPS
   server_process
   yrpc
   gutil
+  yb_ash
   yb_util
   tserver
   tserver_service_proto

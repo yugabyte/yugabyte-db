@@ -2,14 +2,12 @@
 
 package com.yugabyte.yw.common.supportbundle;
 
-import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.Mockito.when;
 
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.common.ApiHelper;
-import com.yugabyte.yw.common.CallHomeManager;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -20,14 +18,11 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Paths;
 import java.text.ParseException;
-import java.util.Arrays;
-import java.util.List;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnitRunner;
 
@@ -38,7 +33,6 @@ public class YbaMetadataComponentTest extends FakeDBApplication {
 
   @Mock ConfigHelper configHelper;
   @Mock ApiHelper apiHelper;
-  @InjectMocks CallHomeManager callHomeManager;
 
   private Universe universe;
   private Customer customer;
@@ -80,18 +74,12 @@ public class YbaMetadataComponentTest extends FakeDBApplication {
   public void testDownloadComponentBetweenDates() throws IOException, ParseException {
     // Calling the download function
     YbaMetadataComponent ybaMetadataComponent =
-        new YbaMetadataComponent(mockBaseTaskDependencies, mockSupportBundleUtil, callHomeManager);
+        new YbaMetadataComponent(mockBaseTaskDependencies, mockSupportBundleUtil);
     ybaMetadataComponent.downloadComponentBetweenDates(
         customer, universe, Paths.get(fakeBundlePath), null, null, null);
 
-    // Files expected to be present in the bundle after filtering
-    List<String> expectedFilesList = Arrays.asList("call_home_data.json");
-
-    // Checking if the filtered list is same as expected list of files
+    // Checking if the directory has some files.
     File[] files = new File(fakeBundlePath + "/metadata/").listFiles();
-    assertEquals(files.length, expectedFilesList.size());
-    for (int i = 0; i < files.length; i++) {
-      assertTrue(expectedFilesList.contains(files[i].getName()));
-    }
+    assertTrue(files.length > 0);
   }
 }

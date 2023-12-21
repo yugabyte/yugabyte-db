@@ -84,6 +84,7 @@ set(CLIENT_LIBS
   test_echo_service_proto
   tserver_util
   yb_ql_expr
+  yb_ash
   yb_util
   gutil
   yrpc

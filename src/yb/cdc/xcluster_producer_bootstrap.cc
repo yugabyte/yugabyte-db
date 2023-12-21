@@ -383,6 +383,7 @@ Status XClusterProducerBootstrap::SetLogRetentionForRemoteTabletPeers() {
       update_index_req.add_replicated_indices(tablet_op_ids_[bootstrap_id_tablet_id_pair].index);
       update_index_req.add_replicated_terms(tablet_op_ids_[bootstrap_id_tablet_id_pair].term);
     }
+    update_index_req.set_initial_retention_barrier(true);
 
     auto proxy = server_to_proxy_[server_id];
     // Todo: UpdateCdcReplicatedIndex does not seem to enforce this deadline.

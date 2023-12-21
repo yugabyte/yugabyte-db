@@ -1,4 +1,3 @@
-// @ts-nocheck
 /*
  * Copyright 2023 YugaByte, Inc. and Contributors
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License")

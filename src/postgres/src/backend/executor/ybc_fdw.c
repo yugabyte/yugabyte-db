@@ -564,9 +564,8 @@ ybcIterateForeignScan(ForeignScanState *node)
 	 * If function forms a heap tuple, the ForeignNext function will set proper
 	 * t_tableOid value there, so do not bother passing valid relid now.
 	 */
-	return ybFetchNext(ybc_state->handle,
-					   node->ss.ss_ScanTupleSlot,
-					   InvalidOid);
+	ybFetchNext(ybc_state->handle, node->ss.ss_ScanTupleSlot, InvalidOid);
+	return node->ss.ss_ScanTupleSlot;
 }
 
 static void
