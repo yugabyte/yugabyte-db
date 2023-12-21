@@ -5011,7 +5011,7 @@ PostgresMain(int argc, char *argv[],
 	 * it inside InitPostgres() instead.  In particular, anything that
 	 * involves database access should be there, not here.
 	 */
-	InitPostgres(dbname, InvalidOid, username, InvalidOid, NULL, false);
+	InitPostgres(dbname, InvalidOid, username, InvalidOid, NULL, NULL, false);
 
 	/*
 	 * If the PostmasterContext is still around, recycle the space; we don't
@@ -5853,6 +5853,7 @@ PostgresMain(int argc, char *argv[],
 					char *db_name = MyProcPort->database_name;
 					char *user_name = MyProcPort->user_name;
 					char *host = MyProcPort->remote_host;
+					sa_family_t conn_type = MyProcPort->raddr.addr.ss_family;
 
 					/* Update the Port details with the new context. */
 					MyProcPort->user_name =
@@ -5861,6 +5862,11 @@ PostgresMain(int argc, char *argv[],
 						(char *) pq_getmsgstring(&input_message);
 					MyProcPort->remote_host =
 						(char *) pq_getmsgstring(&input_message);
+					// HARD Code connection type between client and ysql_conn_mgr to AF_INET (only supported)
+					// for authentication
+					MyProcPort->raddr.addr.ss_family = AF_INET;
+					// TODO(mkumar) GH #20097 Add support for connection type hostssl/hostnossl
+					// in  ysql conn mgr
 
 					/* Update the `remote_host` */
 					struct sockaddr_in *ip_address_1;
@@ -5880,6 +5886,7 @@ PostgresMain(int argc, char *argv[],
 					MyProcPort->user_name = user_name;
 					MyProcPort->database_name = db_name;
 					MyProcPort->remote_host = host;
+					MyProcPort->raddr.addr.ss_family = conn_type;
 					inet_pton(AF_INET, MyProcPort->remote_host,
 							  &(ip_address_1->sin_addr));
 

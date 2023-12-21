@@ -22,6 +22,12 @@ import (
 	"time"
 
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
+	"golang.org/x/crypto/ssh"
+)
+
+const (
+	caCertTimeout     time.Duration = 10 * 365 * 24 * time.Hour // about 10 years
+	serverCertTimeout time.Duration = 4 * 365 * 24 * time.Hour  // about 4 years
 )
 
 func publicKey(priv any) any {
@@ -41,11 +47,11 @@ func generateSelfSignedServerCert(certPath string, keyPath string, caCertPath st
 	// generate a root CA cert and key
 	caCert, caKey := generateCert(
 		caCertPath, caKeyPath, true, /*isCA*/
-		10*365*24*time.Hour /*10 years*/, "", nil, nil)
+		caCertTimeout, "", nil, nil)
 
 	// generate a server cert and key signed by the above root CA
 	generateCert(certPath, keyPath, false, /*isCA*/
-		4*365*24*time.Hour /*4 years*/, host, caCert, caKey)
+		serverCertTimeout, host, caCert, caKey)
 
 }
 
@@ -140,4 +146,35 @@ func generateCert(
 	log.Debug("Generated cert/key pair at " + certPath + " and " + keyPath)
 	return resultCert, resultKey
 
+}
+
+func parseCertFromPem(filePath string) (*x509.Certificate, error) {
+	certData, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read certfile %s: %w", filePath, err)
+	}
+
+	block, rest := pem.Decode(certData)
+	if len(rest) != 0 {
+		return nil, fmt.Errorf("pem file with multiple blocks found")
+	}
+	return x509.ParseCertificate(block.Bytes)
+}
+
+// RetrievePrivateKey loads the key from the given file
+func parsePrivateKey(filePath string) (*rsa.PrivateKey, error) {
+	data, err := os.ReadFile(filePath)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read private key file %s: %w", filePath, err)
+	}
+	//blocks, _ := pem.Decode(data)
+	key, err := ssh.ParseRawPrivateKey(data)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse private key file %s: %w", filePath, err)
+	}
+	privateKey, ok := key.(*rsa.PrivateKey)
+	if !ok {
+		return nil, fmt.Errorf("could not convert private key to rsa.Privatekey")
+	}
+	return privateKey, nil
 }

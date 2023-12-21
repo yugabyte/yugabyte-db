@@ -32,7 +32,7 @@ type: docs
   </li>
 </ul>
 
-This page documents the manual deployment of YugabyteDB on six AWS EC2 instances with `c5d.4xlarge` as the instance type and CentOS 7 as the instance operating system. The deployment is configured for multiple availability zones (multi-AZ), with three AZs, and has a replication factor (RF) of `3`. The configuration can be changed to handle single-AZ as well as multi-region deployments.
+This page documents the manual deployment of YugabyteDB on six AWS EC2 instances with `c5d.4xlarge` as the instance type and CentOS 7 as the instance operating system. The deployment is configured for multiple availability zones (multi-AZ), with three AZs, and has a replication factor (RF) of 3. The configuration can be changed to handle single-AZ as well as multi-region deployments.
 
 ## 1. Prerequisites
 

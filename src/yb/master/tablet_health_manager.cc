@@ -28,9 +28,11 @@
 #include "yb/common/entity_ids_types.h"
 #include "yb/common/wire_protocol.h"
 #include "yb/common/wire_protocol.pb.h"
+
 #include "yb/consensus/consensus.h"
 #include "yb/consensus/metadata.pb.h"
 #include "yb/consensus/raft_consensus.h"
+
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager-internal.h"
@@ -41,9 +43,12 @@
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/ts_manager.h"
+
 #include "yb/rpc/rpc_context.h"
+
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tserver/tserver.pb.h"
+
 #include "yb/util/flags/flag_tags.h"
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
@@ -304,16 +309,33 @@ Status TabletHealthManager::AreNodesSafeToTakeDown(
 
 Status TabletHealthManager::CheckMasterTabletHealth(
     const CheckMasterTabletHealthRequestPB *req, CheckMasterTabletHealthResponsePB *resp) {
-  auto peer = catalog_manager_->tablet_peer();
-  auto consensus = VERIFY_RESULT(peer->GetRaftConsensus());
-  if (!consensus) {
+  auto consensus_result = catalog_manager_->tablet_peer()->GetRaftConsensus();
+  if (!consensus_result) {
     return STATUS_FORMAT(IllegalState, "Could not get sys catalog tablet consensus");
   }
-
+  auto& consensus = *consensus_result;
   auto role = consensus->role();
   resp->set_role(role);
   if (role != PeerRole::LEADER) {
     resp->set_follower_lag_ms(consensus->follower_lag_ms());
+  }
+  return Status::OK();
+}
+
+Status TabletHealthManager::GetMasterHeartbeatDelays(
+    const GetMasterHeartbeatDelaysRequestPB* req, GetMasterHeartbeatDelaysResponsePB* resp) {
+  auto consensus_result = catalog_manager_->tablet_peer()->GetConsensus();
+  if (!consensus_result) {
+    return STATUS_FORMAT(IllegalState, "Could not get sys catalog tablet consensus");
+  }
+  auto& consensus = *consensus_result;
+  auto now = MonoTime::Now();
+  for (auto& last_communication_time : consensus->GetFollowerCommunicationTimes()) {
+    auto* heartbeat_delay = resp->add_heartbeat_delay();
+    heartbeat_delay->set_master_uuid(std::move(last_communication_time.peer_uuid));
+    heartbeat_delay->set_last_heartbeat_delta_ms(
+        now.GetDeltaSince(last_communication_time.last_successful_communication)
+            .ToMilliseconds());
   }
   return Status::OK();
 }

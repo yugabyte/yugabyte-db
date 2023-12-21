@@ -292,6 +292,10 @@ class CDCServiceContextImpl : public cdc::CDCServiceContext {
         tablet_server_.metric_entity(), tablet_server_.mem_tracker(), tablet_server_.messenger());
   }
 
+  Result<uint32> GetAutoFlagsConfigVersion() const override {
+    return tablet_server_.ValidateAndGetAutoFlagsConfigVersion();
+  }
+
  private:
   TabletServer& tablet_server_;
 };
@@ -495,6 +499,8 @@ Status TabletServer::Init() {
   } else {
     shared_object().SetPostgresAuthKey(RandomUniformInt<uint64_t>());
   }
+
+  shared_object().SetTserverUuid(fs_manager()->uuid());
 
   return Status::OK();
 }
@@ -1317,6 +1323,10 @@ Status TabletServer::SetCDCServiceEnabled() {
 
 void TabletServer::SetXClusterDDLOnlyMode(bool is_xcluster_read_only_mode) {
   xcluster_read_only_mode_.store(is_xcluster_read_only_mode, std::memory_order_release);
+}
+
+rpc::Messenger* TabletServer::GetMessenger() const {
+  return messenger();
 }
 
 }  // namespace yb::tserver

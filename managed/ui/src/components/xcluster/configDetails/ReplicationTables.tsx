@@ -25,30 +25,45 @@ import { ReplicationLagGraphModal } from './ReplicationLagGraphModal';
 import { YBLabelWithIcon } from '../../common/descriptors';
 import ellipsisIcon from '../../common/media/more.svg';
 import { api, universeQueryKey, xClusterQueryKey } from '../../../redesign/helpers/api';
-import { XClusterModalName, XClusterTableStatus } from '../constants';
+import {
+  XClusterModalName,
+  XClusterTableStatus,
+  XCLUSTER_UNIVERSE_TABLE_FILTERS
+} from '../constants';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import { XClusterTableStatusLabel } from '../XClusterTableStatusLabel';
 import { handleServerError } from '../../../utils/errorHandlingUtils';
 import { AddTableModal } from './addTable/AddTableModal';
+import {
+  RbacValidator,
+  hasNecessaryPerm
+} from '../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { Action, Resource } from '../../../redesign/features/rbac';
+import { getTableName, getTableUuid } from '../../../utils/tableUtils';
 
 import { TableType, TableTypeLabel, YBTable } from '../../../redesign/helpers/dtos';
 import { XClusterTable } from '../XClusterTypes';
 import { XClusterConfig } from '../dtos';
 
-import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
-import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
-import { Action, Resource } from '../../../redesign/features/rbac';
 import styles from './ReplicationTables.module.scss';
 
 interface props {
   xClusterConfig: XClusterConfig;
 
-  isDrConfig?: boolean;
+  // isActive determines whether the component will make periodic
+  // queries for metrics.
+  isActive?: boolean;
+  isDrInterface?: boolean;
 }
 
 const TABLE_MIN_PAGE_SIZE = 10;
 
-export function ReplicationTables({ xClusterConfig, isDrConfig = false }: props) {
+export function ReplicationTables({
+  xClusterConfig,
+  isActive = true,
+  isDrInterface = false
+}: props) {
   const [deleteTableDetails, setDeleteTableDetails] = useState<XClusterTable>();
   const [openTableLagGraphDetails, setOpenTableLagGraphDetails] = useState<XClusterTable>();
 
@@ -57,13 +72,12 @@ export function ReplicationTables({ xClusterConfig, isDrConfig = false }: props)
   const queryClient = useQueryClient();
 
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, {
-      excludeColocatedTables: true
-    }),
+    universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, XCLUSTER_UNIVERSE_TABLE_FILTERS),
     () =>
-      fetchTablesInUniverse(xClusterConfig.sourceUniverseUUID, {
-        excludeColocatedTables: true
-      }).then((respone) => respone.data)
+      fetchTablesInUniverse(
+        xClusterConfig.sourceUniverseUUID,
+        XCLUSTER_UNIVERSE_TABLE_FILTERS
+      ).then((respone) => respone.data)
   );
 
   const sourceUniverseQuery = useQuery(
@@ -81,12 +95,24 @@ export function ReplicationTables({ xClusterConfig, isDrConfig = false }: props)
           if (!err) {
             queryClient.invalidateQueries(xClusterQueryKey.detail(xClusterConfig.uuid));
             dispatch(closeDialog());
-            toast.success(`"${deleteTableDetails?.tableName}" table removed successfully`);
+            toast.success(
+              deleteTableDetails
+                ? `"${getTableName(deleteTableDetails)}" table removed successfully from ${
+                    xClusterConfig.name
+                  }.`
+                : `Table removed successfully from ${xClusterConfig.name}`
+            );
           } else {
             toast.error(
               <span className="alertMsg">
                 <i className="fa fa-exclamation-circle" />
-                <span>{`Remove table from xCluster config failed: ${xClusterConfig.name}`}</span>
+                <span>
+                  {deleteTableDetails
+                    ? `Failed to remove table "${getTableName(deleteTableDetails)}" from ${
+                        xClusterConfig.name
+                      }.`
+                    : `Failed to remove table from ${xClusterConfig.name}.`}
+                </span>
                 <a href={`/tasks/${response.taskUUID}`} target="_blank" rel="noopener noreferrer">
                   View Details
                 </a>
@@ -122,10 +148,8 @@ export function ReplicationTables({ xClusterConfig, isDrConfig = false }: props)
 
   const tablesInConfig = augmentTablesWithXClusterDetails(
     sourceUniverseTablesQuery.data,
-    xClusterConfig.tableDetails,
-    xClusterConfig.txnTableDetails
+    xClusterConfig.tableDetails
   );
-  const isActiveTab = window.location.search === '?tab=tables';
   const sourceUniverse = sourceUniverseQuery.data;
   const isAddTableModalVisible =
     showModal && visibleModal === XClusterModalName.ADD_TABLE_TO_CONFIG;
@@ -134,11 +158,21 @@ export function ReplicationTables({ xClusterConfig, isDrConfig = false }: props)
       <div className={styles.headerSection}>
         <span className={styles.infoText}>Tables selected for Replication</span>
         <div className={styles.actionBar}>
-          {!isDrConfig && (
+          {!isDrInterface && (
             <RbacValidator
               customValidateFunction={(userPerm) => {
-                return find(userPerm, { resourceUUID: xClusterConfig.sourceUniverseUUID, actions: [Action.BACKUP_RESTORE, Action.UPDATE], resourceType: Resource.UNIVERSE }) !== undefined &&
-                  find(userPerm, { resourceUUID: xClusterConfig.targetUniverseUUID, actions: [Action.BACKUP_RESTORE, Action.UPDATE], resourceType: Resource.UNIVERSE }) !== undefined;
+                return (
+                  find(userPerm, {
+                    resourceUUID: xClusterConfig.sourceUniverseUUID,
+                    actions: [Action.BACKUP_RESTORE, Action.UPDATE],
+                    resourceType: Resource.UNIVERSE
+                  }) !== undefined &&
+                  find(userPerm, {
+                    resourceUUID: xClusterConfig.targetUniverseUUID,
+                    actions: [Action.BACKUP_RESTORE, Action.UPDATE],
+                    resourceType: Resource.UNIVERSE
+                  }) !== undefined
+                );
               }}
               isControl
             >
@@ -159,14 +193,19 @@ export function ReplicationTables({ xClusterConfig, isDrConfig = false }: props)
           pagination={tablesInConfig && tablesInConfig.length > TABLE_MIN_PAGE_SIZE}
         >
           <TableHeaderColumn dataField="tableUUID" isKey={true} hidden />
-          <TableHeaderColumn dataField="tableName">Table Name</TableHeaderColumn>
+          <TableHeaderColumn
+            dataField="tableName"
+            dataFormat={(_, xClusterTable) => getTableName(xClusterTable)}
+          >
+            Table Name
+          </TableHeaderColumn>
           <TableHeaderColumn
             dataField="pgSchemaName"
             dataFormat={(cell: string, row: YBTable) => formatSchemaName(row.tableType, cell)}
           >
             Schema Name
           </TableHeaderColumn>
-          {!isDrConfig && (
+          {!isDrInterface && (
             <TableHeaderColumn
               dataField="tableType"
               dataFormat={(cell: TableType) => TableTypeLabel[cell]}
@@ -180,26 +219,26 @@ export function ReplicationTables({ xClusterConfig, isDrConfig = false }: props)
           </TableHeaderColumn>
           <TableHeaderColumn
             dataField="status"
-            dataFormat={(cell: XClusterTableStatus, row: XClusterTable) => (
+            dataFormat={(cell: XClusterTableStatus, xClusterTable: XClusterTable) => (
               <XClusterTableStatusLabel
                 status={cell}
-                streamId={row.streamId}
-                tableUUID={row.tableUUID}
-                nodePrefix={sourceUniverse.universeDetails.nodePrefix}
-                universeUUID={sourceUniverse.universeUUID}
+                streamId={xClusterTable.streamId}
+                sourceUniverseTableUuid={getTableUuid(xClusterTable)}
+                sourceUniverseNodePrefix={sourceUniverse.universeDetails.nodePrefix}
+                sourceUniverseUuid={sourceUniverse.universeUUID}
               />
             )}
           >
             Replication Status
           </TableHeaderColumn>
           <TableHeaderColumn
-            dataFormat={(_cell, row: XClusterTable) => (
+            dataFormat={(_, xClusterTable: XClusterTable) => (
               <span className="lag-text">
                 <CurrentTableReplicationLag
-                  streamId={row.streamId}
-                  tableUUID={row.tableUUID}
+                  streamId={xClusterTable.streamId}
+                  tableId={getTableUuid(xClusterTable)}
                   nodePrefix={sourceUniverse.universeDetails.nodePrefix}
-                  queryEnabled={isActiveTab}
+                  queryEnabled={isActive}
                   sourceUniverseUUID={xClusterConfig.sourceUniverseUUID}
                   xClusterConfigStatus={xClusterConfig.status}
                 />
@@ -230,8 +269,16 @@ export function ReplicationTables({ xClusterConfig, isDrConfig = false }: props)
                   <Dropdown.Menu>
                     <RbacValidator
                       customValidateFunction={() => {
-                        return hasNecessaryPerm({ ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION, onResource: xClusterConfig.sourceUniverseUUID }) &&
-                          hasNecessaryPerm({ ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION, onResource: xClusterConfig.targetUniverseUUID });
+                        return (
+                          hasNecessaryPerm({
+                            ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
+                            onResource: xClusterConfig.sourceUniverseUUID
+                          }) &&
+                          hasNecessaryPerm({
+                            ...ApiPermissionMap.MODIFY_XLCUSTER_REPLICATION,
+                            onResource: xClusterConfig.targetUniverseUUID
+                          })
+                        );
                       }}
                       isControl
                     >
@@ -256,7 +303,7 @@ export function ReplicationTables({ xClusterConfig, isDrConfig = false }: props)
       </div>
       {isAddTableModalVisible && (
         <AddTableModal
-          isDrConfig={isDrConfig}
+          isDrInterface={isDrInterface}
           isVisible={isAddTableModalVisible}
           onHide={hideModal}
           xClusterConfig={xClusterConfig}
@@ -268,13 +315,13 @@ export function ReplicationTables({ xClusterConfig, isDrConfig = false }: props)
           replicationUUID={xClusterConfig.uuid}
           universeUUID={sourceUniverse.universeUUID}
           nodePrefix={sourceUniverse.universeDetails.nodePrefix}
-          queryEnabled={isActiveTab}
+          queryEnabled={isActive}
           visible={visibleModal === XClusterModalName.TABLE_REPLICATION_LAG_GRAPH}
           onHide={hideModal}
         />
       )}
       <DeleteReplicactionTableModal
-        deleteTableName={deleteTableDetails?.tableName ?? ''}
+        deleteTableName={deleteTableDetails ? getTableName(deleteTableDetails) : ''}
         onConfirm={() => {
           removeTableFromXCluster.mutate({
             ...xClusterConfig,

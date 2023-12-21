@@ -62,7 +62,7 @@ public class NodeUniverseManager extends DevopsBase {
   @Inject NodeAgentClient nodeAgentClient;
   @Inject NodeAgentPoller nodeAgentPoller;
   @Inject RuntimeConfGetter confGetter;
-  @Inject LocalNodeManager localNodeManager;
+  @Inject LocalNodeUniverseManager localNodeUniverseManager;
 
   @Override
   protected String getCommandType() {
@@ -357,7 +357,8 @@ public class NodeUniverseManager extends DevopsBase {
       boolean authEnabled) {
     Cluster curCluster = universe.getCluster(node.placementUuid);
     if (curCluster.userIntent.providerType == CloudType.local) {
-      return localNodeManager.runYsqlCommand(node, universe, dbName, ysqlCommand, timeoutSec);
+      return localNodeUniverseManager.runYsqlCommand(
+          node, universe, dbName, ysqlCommand, timeoutSec);
     }
     List<String> command = new ArrayList<>();
     command.add("bash");
@@ -539,6 +540,10 @@ public class NodeUniverseManager extends DevopsBase {
       // Create a new context as a context is immutable.
       context = context.toBuilder().redactedVals(redactedVals).build();
     }
+    Cluster curCluster = universe.getCluster(node.placementUuid);
+    if (curCluster.userIntent.providerType == CloudType.local) {
+      return localNodeUniverseManager.executeNodeAction(universe, node, nodeAction, commandArgs);
+    }
     return shellProcessHandler.run(commandArgs, context);
   }
 
@@ -563,6 +568,11 @@ public class NodeUniverseManager extends DevopsBase {
     params.add(remotePath);
 
     ShellResponse scriptOutput = runScript(node, universe, NODE_UTILS_SCRIPT, params);
+
+    if (!scriptOutput.isSuccess()) {
+      throw new RuntimeException(
+          String.format("Failed to run command. Got error: '%s'", scriptOutput.getMessage()));
+    }
 
     if (scriptOutput.extractRunCommandOutput().trim().equals("1")) {
       return true;

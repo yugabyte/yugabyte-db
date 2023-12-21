@@ -13,7 +13,17 @@ public class Filters extends DefaultHttpFilters {
       CSRFFilter csrfFilter,
       CORSFilter corsFilter,
       RequestLoggingFilter requestLoggingFilter,
-      RequestHeaderFilter requestHeaderFilter) {
-    super(corsFilter, csrfFilter, requestLoggingFilter, requestHeaderFilter);
+      RequestHeaderFilter requestHeaderFilter,
+      HSTSFilter hstsFilter,
+      HAApiFilter haApiFilter,
+      CustomHTTPHeader customHTTPHeader) {
+    super(
+        corsFilter,
+        csrfFilter,
+        requestLoggingFilter,
+        requestHeaderFilter,
+        hstsFilter,
+        haApiFilter,
+        customHTTPHeader);
   }
 }

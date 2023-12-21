@@ -6,6 +6,7 @@ import (
 	"context"
 	"fmt"
 	"node-agent/app/executor"
+	"node-agent/app/session"
 	"node-agent/util"
 	"os"
 	"os/signal"
@@ -44,8 +45,9 @@ func Start() {
 		util.FileLogger().Fatalf(Context(), "Node Agent ID must be set")
 	}
 	executor.Init(Context())
+	session.Init(Context())
 	disableMetricsTLS := config.Bool(util.NodeAgentDisableMetricsTLS)
-	host := config.String(util.NodeIpKey)
+	host := config.String(util.NodeBindIpKey)
 	port := config.String(util.NodePortKey)
 
 	// Change the state of node-agent from UPGRADED to LIVE before starting the service.

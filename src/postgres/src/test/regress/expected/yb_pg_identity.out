@@ -274,6 +274,9 @@ SELECT * FROM itestv11 ORDER BY a;
 -- CREATE TABLE itest5 (a serial, b text);
 -- ALTER TABLE itest5 ALTER COLUMN a ADD GENERATED ALWAYS AS IDENTITY;
 ALTER TABLE itest3 ALTER COLUMN a TYPE int;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 SELECT seqtypid::regtype FROM pg_sequence WHERE seqrelid = 'itest3_a_seq'::regclass;
  seqtypid
 ----------

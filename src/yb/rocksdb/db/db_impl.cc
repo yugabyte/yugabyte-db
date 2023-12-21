@@ -46,6 +46,8 @@
 
 #include <boost/container/small_vector.hpp>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/gutil/stringprintf.h"
 #include "yb/util/string_util.h"
 #include "yb/util/scope_exit.h"
@@ -4016,6 +4018,7 @@ InternalIterator* DBImpl::NewInternalIterator(const ReadOptions& read_options,
 template <bool kSkipLastEntry>
 std::unique_ptr<InternalIterator> DBImpl::NewInternalIndexIterator(
     const ReadOptions& read_options, ColumnFamilyData* cfd, SuperVersion* super_version) {
+  SCOPED_WAIT_STATUS(RocksDB_ReadIO);
   std::unique_ptr<InternalIterator> merge_iter;
   MergeIteratorInHeapBuilder<IteratorWrapperBase<kSkipLastEntry>> merge_iter_builder(
       cfd->internal_comparator().get());

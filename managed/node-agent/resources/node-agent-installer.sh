@@ -17,6 +17,7 @@ SKIP_VERIFY_CERT=""
 #Disable node to Yugabyte Anywhere connection.
 DISABLE_EGRESS="false"
 SILENT_INSTALL="false"
+AIRGAP_INSTALL="false"
 CERT_DIR=""
 CUSTOMER_ID=""
 NODE_NAME=""
@@ -88,6 +89,7 @@ set_log_dir_permission() {
 set_node_agent_base_url() {
   local RESPONSE_FILE="/tmp/session_info_${INSTALL_USER}.json"
   local STATUS_CODE=""
+  set +e
   STATUS_CODE=$(curl -s ${SKIP_VERIFY_CERT:+ "-k"} -w "%{http_code}" -L --request GET \
     "$SESSION_INFO_URL" --header "$HEADER: $HEADER_VAL" --output "$RESPONSE_FILE"
     )
@@ -96,7 +98,6 @@ set_node_agent_base_url() {
     echo "Fail to get session info. Status code $STATUS_CODE"
     exit 1
   fi
-  set +e
   CUSTOMER_ID="$(grep -o '"customerUUID":"[^"]*"' "$RESPONSE_FILE" | cut -d: -f2 | tr -d '"')"
   NODE_AGENT_BASE_URL="$PLATFORM_URL/api/v1/customers/$CUSTOMER_ID/node_agents"
   rm -rf "$RESPONSE_FILE"
@@ -106,6 +107,7 @@ set_node_agent_base_url() {
 uninstall_node_agent() {
   local RESPONSE_FILE="/tmp/node_agent_${INSTALL_USER}.json"
   local STATUS_CODE=""
+  set +e
   STATUS_CODE=$(curl -s ${SKIP_VERIFY_CERT:+ "-k"} -w "%{http_code}" -L --request GET \
     "$NODE_AGENT_BASE_URL?nodeIp=$NODE_IP" --header "$HEADER: $HEADER_VAL" \
     --output "$RESPONSE_FILE"
@@ -117,7 +119,6 @@ uninstall_node_agent() {
   fi
   # Command jq is not available.
   # Continue after pipefail.
-  set +e
   local NODE_AGENT_UUID=""
   NODE_AGENT_UUID="$(grep -o '"uuid":"[^"]*"' "$RESPONSE_FILE" | cut -d: -f2 | tr -d '"')"
   rm -rf "$RESPONSE_FILE"
@@ -127,7 +128,6 @@ uninstall_node_agent() {
     sudo systemctl stop yb-node-agent
     sudo systemctl disable yb-node-agent
   fi
-  set -e
   if [ -n "$NODE_AGENT_UUID" ]; then
     local STATUS_CODE=""
     STATUS_CODE=$(curl -s ${SKIP_VERIFY_CERT:+ "-k"} -w "%{http_code}" -L --request DELETE \
@@ -138,6 +138,7 @@ uninstall_node_agent() {
       exit 1
     fi
   fi
+  set -e
 }
 
 download_package() {
@@ -154,9 +155,11 @@ download_package() {
     mkdir -p "$NODE_AGENT_RELEASE_DIR"
     pushd "$NODE_AGENT_RELEASE_DIR"
     local RESPONSE_CODE=""
+    set +e
     RESPONSE_CODE=$(curl -s ${SKIP_VERIFY_CERT:+ "-k"} -w "%{http_code}" --location --request GET \
     "$NODE_AGENT_DOWNLOAD_URL?downloadType=package&os=$OS&arch=$GO_ARCH_TYPE" \
     --header "$HEADER: $HEADER_VAL" --output "$NODE_AGENT_PKG_TGZ")
+    set -e
     popd
     if [ "$RESPONSE_CODE" -ne 200 ]; then
       echo "x Error while downloading the node agent build package"
@@ -200,7 +203,6 @@ setup_symlink() {
 check_sudo_access() {
   SUDO_ACCESS="false"
   set +e
-  sudo -n pwd >/dev/null 2>&1
   if sudo -n pwd >/dev/null 2>&1; then
     SUDO_ACCESS="true"
   fi
@@ -225,30 +227,40 @@ modify_firewall() {
 modify_selinux() {
   set +e
   if ! command -v semanage >/dev/null 2>&1; then
-    if command -v yum >/dev/null 2>&1; then
-      sudo yum install -y policycoreutils-python-utils
-    elif command -v apt-get >/dev/null 2>&1; then
-      sudo apt-get update -y
-      sudo apt-get install -y semanage-utils
+    if [ "$AIRGAP_INSTALL" = "true" ]; then
+      # The changes made with chcon are temporary in the sense that the context of the file
+      # altered with chcon goes back to default when restorecon is run.
+      # It should not even try to reach out to the repo.
+      sudo chcon -R -t bin_t "$NODE_AGENT_HOME"
+    else
+      if command -v yum >/dev/null 2>&1; then
+        sudo yum install -y policycoreutils-python-utils
+      elif command -v apt-get >/dev/null 2>&1; then
+        sudo apt-get update -y
+        sudo apt-get install -y semanage-utils
+      fi
     fi
   fi
-  sudo semanage port -lC | grep -F "$NODE_PORT" >/dev/null 2>&1
-  if [ "$?" -ne 0 ]; then
-    sudo semanage port -a -t http_port_t -p tcp "$NODE_PORT"
-  fi
-  sudo semanage fcontext -lC | grep -F "$NODE_AGENT_HOME(/.*)?" >/dev/null 2>&1
-  if [ "$?" -ne 0 ]; then
-    sudo semanage fcontext -a -t bin_t "$NODE_AGENT_HOME(/.*)?"
+  # Check if semanage was installed in the previous steps.
+  if command -v semanage >/dev/null 2>&1; then
+    sudo semanage port -lC | grep -F "$NODE_PORT" >/dev/null 2>&1
+    if [ "$?" -ne 0 ]; then
+      sudo semanage port -a -t http_port_t -p tcp "$NODE_PORT"
+    fi
+    sudo semanage fcontext -lC | grep -F "$NODE_AGENT_HOME(/.*)?" >/dev/null 2>&1
+    if [ "$?" -ne 0 ]; then
+      sudo semanage fcontext -a -t bin_t "$NODE_AGENT_HOME(/.*)?"
+    fi
+    sudo restorecon -ir "$NODE_AGENT_HOME"
   fi
   set -e
-  sudo restorecon -ir "$NODE_AGENT_HOME"
 }
 
 install_systemd_service() {
   if [ "$SE_LINUX_STATUS" = "Enforcing" ]; then
     modify_selinux
-    modify_firewall
   fi
+  modify_firewall
   echo "* Installing Node Agent Systemd Service"
   sudo tee "$SYSTEMD_DIR/$SERVICE_NAME"  <<-EOF
   [Unit]
@@ -298,6 +310,8 @@ Options:
     Username of the installation. A sudo user can install service for a non-sudo user.
   --skip_verify_cert (OPTIONAL)
     Specify to skip Yugabyte Anywhere server cert verification during install.
+  --airgap (OPTIONAL)
+    Specify to skip installing semanage utility.
   -h, --help
     Show usage.
 EOT
@@ -470,6 +484,9 @@ while [[ $# -gt 0 ]]; do
     --silent)
       SILENT_INSTALL="true"
     ;;
+    --airgap)
+      AIRGAP_INSTALL="true"
+    ;;
     --node_name)
       NODE_NAME="$2"
       shift
@@ -545,7 +562,7 @@ if [ -z "$INSTALL_USER" ]; then
   INSTALL_USER="$CURRENT_USER"
 elif [ "$INSTALL_USER" != "$CURRENT_USER" ] && [ "$COMMAND" != "install_service" ]; then
   show_usage >&2
-  echo "Different user can be passed only for installing service."
+  echo "Different user is only used for installing service."
   exit 1
 fi
 

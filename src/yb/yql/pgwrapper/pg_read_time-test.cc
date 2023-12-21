@@ -74,21 +74,24 @@ class PgReadTimeTest : public PgMiniTestBase {
     return num_pick_read_time_on_docdb;
   }
 
-  void CheckReadTimePickedOnDocdb(const StmtExecutor& stmt_executor) {
-    CheckReadTimePickingLocation(stmt_executor, true /* read_time_picked_on_docdb */);
+  void CheckReadTimePickedOnDocdb(
+      const StmtExecutor& stmt_executor,
+      uint64_t expected_num_picked_read_time_on_doc_db_metric = 1) {
+    CheckReadTimePickingLocation(stmt_executor, expected_num_picked_read_time_on_doc_db_metric);
   }
 
   void CheckReadTimeProvidedToDocdb(const StmtExecutor& stmt_executor) {
-    CheckReadTimePickingLocation(stmt_executor, false /* read_time_picked_on_docdb */);
+    CheckReadTimePickingLocation(
+        stmt_executor, 0 /* expected_num_picked_read_time_on_doc_db_metric */);
   }
 
  private:
   void CheckReadTimePickingLocation(
-      const StmtExecutor& stmt_executor, bool read_time_picked_on_docdb) {
-    uint64_t initial = GetNumPickedReadTimeOnDocDb();
+      const StmtExecutor& stmt_executor, uint64_t expected_num_picked_read_time_on_doc_db_metric) {
+    const auto initial = GetNumPickedReadTimeOnDocDb();
     stmt_executor();
-    uint64_t diff = GetNumPickedReadTimeOnDocDb() - initial;
-    ASSERT_EQ(diff, (read_time_picked_on_docdb ? 1 : 0));
+    const auto diff = GetNumPickedReadTimeOnDocDb() - initial;
+    ASSERT_EQ(diff, expected_num_picked_read_time_on_doc_db_metric);
   }
 };
 
@@ -233,12 +236,16 @@ TEST_F(PgReadTimeTest, CheckReadTimePickingLocation) {
       });
 
   // 4. no pipeline, single operation in first batch, starts a distributed transation
+  //
+  // expected_num_picked_read_time_on_doc_db_metric is set because in case of a SELECT FOR UPDATE,
+  // a read time is picked in read_query.cc, but an extra picking is done in write_query.cc just
+  // after conflict resolution is done (see DoTransactionalConflictsResolved()).
   CheckReadTimePickedOnDocdb(
       [&conn, kTable]() {
         ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
         ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1 FOR UPDATE", kTable));
         ASSERT_OK(conn.CommitTransaction());
-      });
+      }, 2 /* expected_num_picked_read_time_on_doc_db_metric */);
 
   // 5. no pipeline, multiple operations to various tablets in first batch, starts a distributed
   //    transation
@@ -283,6 +290,37 @@ TEST_F(PgReadTimeTest, CheckReadTimePickingLocation) {
         ASSERT_OK(conn.ExecuteFormat("CALL insert_rows_$0(121, 150)", kSingleTabletTable));
       });
   ASSERT_OK(ResetMaxBatchSize(&conn));
+
+  // Test cases in a read committed txn block (in this isolation level each statement uses a new
+  // latest read point). For each statement, if the new read time for that statement can be picked
+  // on docdb, ensure it is.
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
+  CheckReadTimePickedOnDocdb(
+      [&conn, kTable]() {
+        ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1", kTable));
+      });
+
+  CheckReadTimePickedOnDocdb(
+      [&conn, kTable]() {
+        ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET v=1 WHERE k=1", kTable));
+      });
+
+  CheckReadTimeProvidedToDocdb(
+      [&conn, kTable]() {
+        ASSERT_OK(conn.FetchFormat("SELECT COUNT(*) FROM $0", kTable));
+      });
+
+  CheckReadTimePickedOnDocdb(
+      [&conn, kSingleTabletTable]() {
+        ASSERT_OK(conn.FetchFormat("SELECT COUNT(*) FROM $0", kSingleTabletTable));
+      });
+
+  CheckReadTimePickedOnDocdb(
+      [&conn, kTable]() {
+        ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1 FOR UPDATE", kTable));
+      }, 2 /* expected_num_picked_read_time_on_doc_db_metric */);
+
+  ASSERT_OK(conn.CommitTransaction());
 }
 
 // Test the session configuration parameter yb_read_time which reads the data as of a point in time
@@ -333,7 +371,7 @@ TEST_F(PgMiniTestBase, YB_DISABLE_TEST_IN_SANITIZERS(TestYSQLDumpAsOfTime)) {
   LOG(INFO) << "Create table t2";
   ASSERT_OK(conn.Execute("CREATE TABLE t2 (k2 INT primary key, v2 text);"));
   //  Step 2
-  auto t1 = ASSERT_RESULT(conn.FetchValue<int64_t>(
+  auto t1 = ASSERT_RESULT(conn.FetchRow<PGUint64>(
       Format("SELECT ((EXTRACT (EPOCH FROM CURRENT_TIMESTAMP))*1000000)::bigint")));
   LOG(INFO) << "Current timestamp t=" << std::to_string(t1);
   // Step 3

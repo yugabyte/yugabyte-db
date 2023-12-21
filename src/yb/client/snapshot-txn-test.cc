@@ -19,6 +19,7 @@
 #include <vector>
 
 #include <boost/optional/optional_fwd.hpp>
+#include "gtest/gtest.h"
 
 #include "yb/client/session.h"
 #include "yb/client/table.h"
@@ -37,6 +38,7 @@
 #include "yb/docdb/consensus_frontier.h"
 
 #include "yb/gutil/casts.h"
+#include "yb/gutil/dynamic_annotations.h"
 
 #include "yb/rocksdb/db.h"
 
@@ -79,6 +81,7 @@ DECLARE_uint64(max_transactions_in_status_request);
 DECLARE_uint64(clock_skew_force_crash_bound_usec);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(enable_check_retryable_request_timeout);
+DECLARE_bool(enable_wait_queues);
 
 extern double TEST_delay_create_transaction_probability;
 
@@ -94,10 +97,12 @@ YB_DEFINE_ENUM(BankAccountsOption,
                                 // "update set balance = balance + delta".
 typedef EnumBitSet<BankAccountsOption> BankAccountsOptions;
 
-class SnapshotTxnTest
+YB_STRONGLY_TYPED_BOOL(UseFailOnConflict);
+
+class SnapshotTxnTestBase
     : public TransactionCustomLogSegmentSizeTest<0, TransactionTestBase<MiniCluster>> {
  protected:
-  void SetUp() override {
+  virtual void SetUp() override {
     SetIsolationLevel(IsolationLevel::SNAPSHOT_ISOLATION);
     TransactionTestBase::SetUp();
   }
@@ -111,11 +116,26 @@ class SnapshotTxnTest
   void TestMultiWriteWithRestart();
 };
 
+class SnapshotTxnTest
+    : public SnapshotTxnTestBase, public testing::WithParamInterface<UseFailOnConflict> {
+  void SetUp() override {
+    auto use_fail_on_conflict = GetParam();
+    if (use_fail_on_conflict) {
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
+    }
+    SnapshotTxnTestBase::SetUp();
+  }
+};
+
+INSTANTIATE_TEST_SUITE_P(, SnapshotTxnTest, ::testing::Values(UseFailOnConflict::kFalse));
+INSTANTIATE_TEST_SUITE_P(
+    FailOnConflict, SnapshotTxnTest, ::testing::Values(UseFailOnConflict::kTrue));
+
 bool TransactionalFailure(const Status& status) {
   return status.IsTryAgain() || status.IsExpired() || status.IsNotFound() || status.IsTimedOut();
 }
 
-void SnapshotTxnTest::TestBankAccountsThread(
+void SnapshotTxnTestBase::TestBankAccountsThread(
     int accounts, double select_update_probability, std::atomic<bool>* stop,
     std::atomic<int64_t>* updates, TransactionPool* pool) {
   auto session = CreateSession();
@@ -259,7 +279,7 @@ std::thread StrobeThread(MiniCluster* cluster, std::atomic<bool>* stop) {
   });
 }
 
-void SnapshotTxnTest::TestBankAccounts(
+void SnapshotTxnTestBase::TestBankAccounts(
     BankAccountsOptions options, CoarseDuration duration, int minimal_updates_per_second,
     double select_update_probability) {
   TransactionPool pool(transaction_manager_.get_ptr(), nullptr /* metric_entity */);
@@ -312,7 +332,7 @@ void SnapshotTxnTest::TestBankAccounts(
 
   for (int i = 0; i != kThreads; ++i) {
     threads.AddThreadFunctor(std::bind(
-        &SnapshotTxnTest::TestBankAccountsThread, this, kAccounts, select_update_probability,
+        &SnapshotTxnTestBase::TestBankAccountsThread, this, kAccounts, select_update_probability,
         &threads.stop_flag(), &updates, &pool));
   }
 
@@ -368,19 +388,19 @@ void SnapshotTxnTest::TestBankAccounts(
   }
 }
 
-TEST_F(SnapshotTxnTest, BankAccounts) {
+TEST_P(SnapshotTxnTest, BankAccounts) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disallow_lmp_failures) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_multi_raft_heartbeat_batcher) = false;
   TestBankAccounts({}, 30s, RegularBuildVsSanitizers(10, 1) /* minimal_updates_per_second */);
 }
 
-TEST_F(SnapshotTxnTest, BankAccountsPartitioned) {
+TEST_P(SnapshotTxnTest, BankAccountsPartitioned) {
   TestBankAccounts(
       BankAccountsOptions{BankAccountsOption::kNetworkPartition}, 150s,
       RegularBuildVsSanitizers(10, 1) /* minimal_updates_per_second */);
 }
 
-TEST_F(SnapshotTxnTest, BankAccountsWithTimeStrobe) {
+TEST_P(SnapshotTxnTest, BankAccountsWithTimeStrobe) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_fail_on_out_of_range_clock_skew) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_clock_skew_force_crash_bound_usec) = 0;
   // If clock skew is not bounded, cannot rely on request timeout to reject expired requests.
@@ -391,7 +411,7 @@ TEST_F(SnapshotTxnTest, BankAccountsWithTimeStrobe) {
       RegularBuildVsSanitizers(10, 1) /* minimal_updates_per_second */);
 }
 
-TEST_F(SnapshotTxnTest, BankAccountsWithTimeJump) {
+TEST_P(SnapshotTxnTest, BankAccountsWithTimeJump) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_fail_on_out_of_range_clock_skew) = false;
 
   TestBankAccounts(
@@ -399,7 +419,7 @@ TEST_F(SnapshotTxnTest, BankAccountsWithTimeJump) {
       RegularBuildVsSanitizers(3, 1) /* minimal_updates_per_second */);
 }
 
-TEST_F(SnapshotTxnTest, BankAccountsDelayCreate) {
+TEST_P(SnapshotTxnTest, BankAccountsDelayCreate) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_transaction_rpc_timeout_ms) = 500 * kTimeMultiplier;
   TEST_delay_create_transaction_probability = 0.5;
 
@@ -407,7 +427,7 @@ TEST_F(SnapshotTxnTest, BankAccountsDelayCreate) {
                    0.0 /* select_update_probability */);
 }
 
-TEST_F(SnapshotTxnTest, BankAccountsDelayAddLeaderPending) {
+TEST_P(SnapshotTxnTest, BankAccountsDelayAddLeaderPending) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disallow_lmp_failures) = true;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_multi_raft_heartbeat_batcher) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_mvcc_delay_add_leader_pending_ms) = 20;
@@ -434,7 +454,7 @@ struct PagingReadCounts {
   }
 };
 
-class SingleTabletSnapshotTxnTest : public SnapshotTxnTest {
+class SingleTabletSnapshotTxnTest : public SnapshotTxnTestBase {
  protected:
   int NumTablets() {
     return 1;
@@ -636,7 +656,7 @@ TEST_F_EX(SnapshotTxnTest, InconsistentPaging, SingleTabletSnapshotTxnTest) {
   EXPECT_EQ(counts.failed, 0);
 }
 
-TEST_F(SnapshotTxnTest, HotRow) {
+TEST_P(SnapshotTxnTest, HotRow) {
   constexpr int kBlockSize = RegularBuildVsSanitizers(1000, 100);
   constexpr int kNumBlocks = 10;
   constexpr int kIterations = kBlockSize * kNumBlocks;
@@ -711,7 +731,7 @@ bool IntermittentTxnFailure(const Status& status) {
 // Concurrently execute multiple transactions, each of them writes the same key multiple times.
 // And perform tserver restarts in parallel to it.
 // This test checks that transaction participant state correctly restored after restart.
-void SnapshotTxnTest::TestMultiWriteWithRestart() {
+void SnapshotTxnTestBase::TestMultiWriteWithRestart() {
   constexpr int kNumWritesPerKey = 10;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_load_transaction_delay_ms) = 25;
@@ -826,18 +846,18 @@ void SnapshotTxnTest::TestMultiWriteWithRestart() {
   LOG(INFO) << "Done";
 }
 
-TEST_F(SnapshotTxnTest, MultiWriteWithRestart) {
+TEST_P(SnapshotTxnTest, MultiWriteWithRestart) {
   TestMultiWriteWithRestart();
 }
 
-TEST_F(SnapshotTxnTest, MultiWriteWithRestartAndLongApply) {
+TEST_P(SnapshotTxnTest, MultiWriteWithRestartAndLongApply) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_txn_max_apply_batch_records) = 3;
   TestMultiWriteWithRestart();
 }
 
-using RemoteBootstrapOnStartBase = TransactionCustomLogSegmentSizeTest<128, SnapshotTxnTest>;
+using RemoteBootstrapOnStartBase = TransactionCustomLogSegmentSizeTest<128, SnapshotTxnTestBase>;
 
-void SnapshotTxnTest::TestRemoteBootstrap() {
+void SnapshotTxnTestBase::TestRemoteBootstrap() {
   constexpr int kTransactionsCount = RegularBuildVsSanitizers(100, 10);
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_min_seconds_to_retain) = 1;
   DisableTransactionTimeout();
@@ -996,7 +1016,7 @@ TEST_F_EX(SnapshotTxnTest, ResolveIntents, SingleTabletSnapshotTxnTest) {
   }
 }
 
-TEST_F(SnapshotTxnTest, DeleteOnLoad) {
+TEST_P(SnapshotTxnTest, DeleteOnLoad) {
   constexpr int kTransactions = 400;
 
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_inject_status_resolver_delay_ms) = 150 * kTimeMultiplier;

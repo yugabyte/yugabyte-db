@@ -51,7 +51,7 @@ Create a peering connection.
 | --app-vpc-project-id | Required for GCP. Project ID of the application VPC being peered. GCP only. |
 | --app-vpc-name | Required for GCP. Name of the application VPC being peered. GCP only. |
 | --app-vpc-cidr | Required for AWS. CIDR of the application VPC. Optional for GCP.
-| --app-vpc-account-id=_ID_ | Required for AWS. Account ID of the application VPC. AWS only. |
+| --app-vpc-account-id | Required for AWS. Account ID of the application VPC. AWS only. |
 | --app-vpc-id | Required for AWS. ID of the application VPC. AWS only. |
 | --app-vpc-region | Required for AWS. Region of the application VPC. AWS only. |
 

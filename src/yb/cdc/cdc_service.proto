@@ -89,6 +89,7 @@ message CDCErrorPB {
     INVALID_REQUEST = 10;
     TABLET_SPLIT = 12;
     OPERATION_DISALLOWED = 13;
+    AUTO_FLAGS_CONFIG_VERSION_MISMATCH = 14;
   }
 
   // The error code.
@@ -160,6 +161,7 @@ message CreateCDCStreamRequestPB {
   optional CDCCheckpointType checkpoint_type = 6;
   optional bool transactional = 7; // [default = false]
   optional YQLDatabase db_type = 8 [default = YQL_DATABASE_PGSQL] ;
+  optional CDCSDKSnapshotOption cdcsdk_consistent_snapshot_option = 9;
 }
 
 message CreateCDCStreamResponsePB {
@@ -246,6 +248,9 @@ message GetChangesRequestPB {
 
   // index used to filter out the records we've already streamed.
   optional int32 wal_segment_index = 12 [default = 0];
+
+  // Used only in xCluster streams.
+  optional uint32 auto_flags_config_version = 13;
 }
 
 message KeyValuePairPB {
@@ -450,6 +455,9 @@ message GetChangesResponsePB {
 
   // index used to filter out the records we've already streamed.
   optional int32 wal_segment_index = 11 [default = 0];
+
+  // Only set in xCluster streams when error is AUTO_FLAGS_CONFIG_VERSION_MISMATCH.
+  optional uint32 auto_flags_config_version = 12;
 }
 
 message GetCheckpointRequestPB {
@@ -486,6 +494,8 @@ message UpdateCdcReplicatedIndexRequestPB {
   repeated bytes stream_ids = 9;
   optional fixed64 cdc_sdk_safe_time = 10;
   repeated fixed64 cdc_sdk_safe_times = 11;
+  // Is this an initial retention barrier setting request
+  optional bool initial_retention_barrier = 12;
 }
 
 message UpdateCdcReplicatedIndexResponsePB {

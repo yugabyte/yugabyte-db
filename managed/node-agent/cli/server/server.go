@@ -8,8 +8,9 @@ import (
 
 var (
 	serverCmd = &cobra.Command{
-		Use:   "server ...",
-		Short: "Command for server",
+		Use:    "server ...",
+		Short:  "Command for server",
+		Hidden: true,
 	}
 )
 

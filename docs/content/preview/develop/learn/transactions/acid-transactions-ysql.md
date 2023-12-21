@@ -1,6 +1,6 @@
 ---
 title: ACID Transactions in YSQL
-headerTitle: Transactions
+headerTitle: Transactions in YSQL
 linkTitle: Transactions
 description: Learn how to use Transactions in YSQL on YugabyteDB.
 aliases:

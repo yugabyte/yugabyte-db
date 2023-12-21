@@ -18,26 +18,8 @@ import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.IProviderTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.forms.AbstractTaskParams;
-import com.yugabyte.yw.forms.BackupRequestParams;
-import com.yugabyte.yw.forms.BackupTableParams;
-import com.yugabyte.yw.forms.CertsRotateParams;
-import com.yugabyte.yw.forms.FinalizeUpgradeParams;
-import com.yugabyte.yw.forms.GFlagsUpgradeParams;
-import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
-import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
-import com.yugabyte.yw.forms.ResizeNodeParams;
-import com.yugabyte.yw.forms.RestartTaskParams;
-import com.yugabyte.yw.forms.RestoreBackupParams;
-import com.yugabyte.yw.forms.RollbackUpgradeParams;
-import com.yugabyte.yw.forms.SoftwareUpgradeParams;
-import com.yugabyte.yw.forms.SystemdUpgradeParams;
-import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.*;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
-import com.yugabyte.yw.forms.UniverseTaskParams;
-import com.yugabyte.yw.forms.UpgradeTaskParams;
-import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Customer;
@@ -116,7 +98,8 @@ public class CustomerTaskManager {
               });
 
       Optional<Universe> optUniv =
-          customerTask.getTargetType().isUniverseTarget()
+          (customerTask.getTargetType().isUniverseTarget()
+                  || customerTask.getTargetType().equals(TargetType.Backup))
               ? Universe.maybeGet(customerTask.getTargetUUID())
               : Optional.empty();
       if (LOAD_BALANCER_TASK_TYPES.contains(taskInfo.getTaskType())) {
@@ -262,16 +245,17 @@ public class CustomerTaskManager {
               return;
           }
           taskParams.setPreviousTaskUUID(taskUUID);
-          UUID newTaskUUID = commissioner.submit(taskType, taskParams);
+          taskInfo
+              .getSubTasks()
+              .forEach(
+                  subtask -> {
+                    subtask.delete();
+                  });
+          UUID newTaskUUID = commissioner.submit(taskType, taskParams, taskUUID);
           beginTransaction();
           try {
             customerTask.updateTaskUUID(newTaskUUID);
             customerTask.resetCompletionTime();
-            Optional<TaskInfo> optional = TaskInfo.maybeGet(taskUUID);
-            if (optional.isPresent()) {
-              optional.get().getSubTasks().forEach(st -> st.delete());
-              optional.get().delete();
-            }
             commitTransaction();
           } catch (Exception e) {
             throw new RuntimeException("Unable to delete the previous task info: " + taskUUID);
@@ -312,9 +296,7 @@ public class CustomerTaskManager {
               + "AND (ct.completion_time IS NULL "
               + "OR ti.task_state IN ('"
               + incompleteStates
-              + "') OR "
-              + "(ti.task_state='Aborted' AND ti.details->>'errorString' = 'Platform shutdown'"
-              + " AND ct.completion_time IS NULL))";
+              + "'))";
       // TODO use Finder.
       DB.sqlQuery(query)
           .findList()
@@ -345,8 +327,13 @@ public class CustomerTaskManager {
             CustomerTask.getOrBadRequest(customer.getUuid(), placementModificationTaskUuid);
         SoftwareUpgradeState state =
             getUniverseSoftwareUpgradeStateBasedOnTask(universe, placementModificationTask);
-        universe.updateUniverseSoftwareUpgradeState(state);
-        LOG.debug("Updated universe {} software upgrade state to  {}.", uuid, state);
+        if (!UniverseDefinitionTaskParams.IN_PROGRESS_UNIV_SOFTWARE_UPGRADE_STATES.contains(
+            universe.getUniverseDetails().softwareUpgradeState)) {
+          LOG.debug("Skipping universe upgrade state as actual task was not started.");
+        } else {
+          universe.updateUniverseSoftwareUpgradeState(state);
+          LOG.debug("Updated universe {} software upgrade state to  {}.", uuid, state);
+        }
       }
     }
   }
@@ -417,6 +404,8 @@ public class CustomerTaskManager {
       case CreateKubernetesUniverse:
       case CreateUniverse:
       case EditUniverse:
+      case InstallYbcSoftwareOnK8s:
+      case EditKubernetesUniverse:
       case ReadOnlyClusterCreate:
         taskParams = Json.fromJson(oldTaskParams, UniverseDefinitionTaskParams.class);
         break;
@@ -438,6 +427,9 @@ public class CustomerTaskManager {
       case SoftwareUpgradeYB:
         taskParams = Json.fromJson(oldTaskParams, SoftwareUpgradeParams.class);
         break;
+      case UpdateKubernetesDiskSize:
+        taskParams = Json.fromJson(oldTaskParams, ResizeNodeParams.class);
+        break;
       case FinalizeUpgrade:
         taskParams = Json.fromJson(oldTaskParams, FinalizeUpgradeParams.class);
         break;
@@ -449,6 +441,9 @@ public class CustomerTaskManager {
         taskParams = Json.fromJson(oldTaskParams, VMImageUpgradeParams.class);
         break;
       case RestartUniverse:
+        taskParams = Json.fromJson(oldTaskParams, RestartTaskParams.class);
+        break;
+      case RestartUniverseKubernetesUpgrade:
         taskParams = Json.fromJson(oldTaskParams, RestartTaskParams.class);
         break;
       case RebootUniverse:
@@ -465,6 +460,9 @@ public class CustomerTaskManager {
         break;
       case SystemdUpgrade:
         taskParams = Json.fromJson(oldTaskParams, SystemdUpgradeParams.class);
+        break;
+      case ModifyAuditLoggingConfig:
+        taskParams = Json.fromJson(oldTaskParams, AuditLogConfigParams.class);
         break;
       case AddNodeToUniverse:
       case RemoveNodeFromUniverse:

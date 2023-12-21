@@ -20,6 +20,7 @@
 #include "yb/yql/pgwrapper/pg_locks_test_base.h"
 
 DECLARE_uint64(transaction_heartbeat_usec);
+DECLARE_uint64(refresh_waiter_timeout_ms);
 DECLARE_double(transaction_max_missed_heartbeat_periods);
 DECLARE_int32(transaction_table_num_tablets);
 DECLARE_int32(heartbeat_interval_ms);
@@ -604,6 +605,57 @@ TEST_F(PgGetLockStatusTest, TestPgLocksWhileDDLInProgress) {
     ASSERT_OK(conn.Fetch("SELECT * FROM pg_locks"));
   }
   ASSERT_OK(status_future.get());
+}
+
+TEST_F(PgGetLockStatusTest, TestWaitStartTimeIsConsistentAcrossWaiterReEntries) {
+  constexpr int kMinTxnAgeMs = 1;
+  constexpr auto waiter_refresh_secs = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_refresh_waiter_timeout_ms) = waiter_refresh_secs * 1000;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("SET yb_locks_min_txn_age='$0ms'", kMinTxnAgeMs));
+
+  auto session_1 = ASSERT_RESULT(Init("foo", "1"));
+  auto init_micros = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT DISTINCT(waitend) FROM pg_locks WHERE granted"));
+
+  auto status_future_write_req = std::async(std::launch::async, [&]() -> Status {
+    auto conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    RETURN_NOT_OK(conn.Execute("UPDATE foo SET v=v+1 WHERE k=1"));
+    RETURN_NOT_OK(conn.CommitTransaction());
+    return Status::OK();
+  });
+  auto status_future_read_req = std::async(std::launch::async, [&]() -> Status {
+    auto conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    RETURN_NOT_OK(conn.Fetch("SELECT * FROM foo WHERE k=1 FOR UPDATE"));
+    RETURN_NOT_OK(conn.CommitTransaction());
+    return Status::OK();
+  });
+
+
+  SleepFor(2ms * FLAGS_heartbeat_interval_ms * kTimeMultiplier);
+  auto now_micros = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT NOW()"));
+
+  auto wait_start_time_1_query =
+      "SELECT DISTINCT(waitstart) FROM pg_locks WHERE NOT granted ORDER BY waitstart LIMIT 1";
+  auto wait_start_time_1 = ASSERT_RESULT(conn.FetchRow<int64_t>(wait_start_time_1_query));
+  ASSERT_LE(init_micros, wait_start_time_1);
+  ASSERT_GE(now_micros, wait_start_time_1);
+
+  auto wait_start_time_2_query =
+      "SELECT DISTINCT(waitstart) FROM pg_locks WHERE NOT granted ORDER BY waitstart DESC LIMIT 1";
+  auto wait_start_time_2 = ASSERT_RESULT(conn.FetchRow<int64_t>(wait_start_time_2_query));
+  ASSERT_LE(init_micros, wait_start_time_2);
+  ASSERT_GE(now_micros, wait_start_time_2);
+
+  SleepFor(2 * waiter_refresh_secs * 1s * kTimeMultiplier);
+  ASSERT_EQ(wait_start_time_1, ASSERT_RESULT(conn.FetchRow<int64_t>(wait_start_time_1_query)));
+    ASSERT_EQ(wait_start_time_2, ASSERT_RESULT(conn.FetchRow<int64_t>(wait_start_time_2_query)));
+  ASSERT_OK(session_1.conn->CommitTransaction());
+  ASSERT_OK(status_future_write_req.get());
+  ASSERT_OK(status_future_read_req.get());
 }
 
 class PgGetLockStatusTestRF3 : public PgGetLockStatusTest {

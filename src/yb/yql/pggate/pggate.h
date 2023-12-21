@@ -119,7 +119,8 @@ struct PgApiContext {
 class PgApiImpl {
  public:
   PgApiImpl(PgApiContext context, const YBCPgTypeEntity *YBCDataTypeTable, int count,
-            YBCPgCallbacks pg_callbacks);
+            YBCPgCallbacks pg_callbacks, std::optional<uint64_t> session_id,
+            const YBCAshMetadata *ash_metadata);
   ~PgApiImpl();
 
   const YBCPgCallbacks* pg_callbacks() {
@@ -129,6 +130,8 @@ class PgApiImpl {
   // Interrupt aborts all pending RPCs immediately to unblock main thread.
   void Interrupt();
   void ResetCatalogReadTime();
+
+  uint64_t GetSessionId();
 
   // Initialize a session to process statements that come from the same client connection.
   // If database_name is empty, a session is created without connecting to any database.
@@ -455,6 +458,12 @@ class PgApiImpl {
   Status DmlBindHashCode(
       PgStatement* handle, const std::optional<Bound>& start, const std::optional<Bound>& end);
 
+  Status DmlBindRange(YBCPgStatement handle,
+                      Slice start_value,
+                      bool start_inclusive,
+                      Slice end_value,
+                      bool end_inclusive);
+
   Status DmlAddRowUpperBound(YBCPgStatement handle,
                              int n_col_values,
                              YBCPgExpr *col_values,
@@ -564,6 +573,8 @@ class PgApiImpl {
 
   Status SetDistinctPrefixLength(PgStatement *handle, int distinct_prefix_length);
 
+  Status SetHashBounds(PgStatement *handle, uint16_t low_bound, uint16_t high_bound);
+
   Status ExecSelect(PgStatement *handle, const PgExecParameters *exec_params);
 
   //------------------------------------------------------------------------------------------------
@@ -617,7 +628,7 @@ class PgApiImpl {
   Status EnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms);
   Status EnterSeparateDdlTxnMode();
   bool HasWriteOperationsInDdlTxnMode() const;
-  Status ExitSeparateDdlTxnMode();
+  Status ExitSeparateDdlTxnMode(PgOid db_oid, bool is_silent_modification);
   Status ClearSeparateDdlTxnMode();
   Status SetActiveSubTransaction(SubTransactionId id);
   Status RollbackToSubTransaction(SubTransactionId id);
@@ -625,6 +636,7 @@ class PgApiImpl {
   TxnPriorityRequirement GetTransactionPriorityType() const;
   Result<Uuid> GetActiveTransaction() const;
   Status GetActiveTransactions(YBCPgSessionTxnInfo* infos, size_t num_infos);
+  bool IsDdlMode() const;
 
   //------------------------------------------------------------------------------------------------
   // Expressions.
@@ -696,7 +708,7 @@ class PgApiImpl {
 
   Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
 
-  Result<boost::container::small_vector<RefCntSlice, 2>> GetTableKeyRanges(
+  Result<TableKeyRangesWithHt> GetTableKeyRanges(
       const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
       uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length);
 
@@ -706,6 +718,10 @@ class PgApiImpl {
 
   // Using this function instead of GetRootMemTracker allows us to avoid copying a shared_pointer
   int64_t GetRootMemTrackerConsumption() { return MemTracker::GetRootTrackerConsumption(); }
+
+  uint64_t GetReadTimeSerialNo();
+
+  void ForceReadTimeSerialNo(uint64_t read_time_serial_no);
 
   //------------------------------------------------------------------------------------------------
   // Replication Slots Functions.

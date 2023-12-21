@@ -4,7 +4,6 @@ headertitle: Manage account roles
 linkTitle: Manage account roles
 description: Manage user roles using RBAC in YugabyteDB Managed accounts.
 headcontent: Create custom roles for team members
-image: /images/section_icons/secure/create-roles.png
 aliases:
   - /preview/yugabyte-cloud/cloud-admin/managed-roles/
 menu:

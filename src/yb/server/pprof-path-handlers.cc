@@ -75,7 +75,6 @@
 #include "yb/util/tcmalloc_impl_util.h"
 
 DECLARE_bool(enable_process_lifetime_heap_profiling);
-DECLARE_bool(enable_process_lifetime_heap_sampling);
 DECLARE_string(heap_profile_path);
 DECLARE_string(tmp_dir);
 
@@ -141,8 +140,12 @@ static void PprofHeapHandler(const Webserver::WebRequest& req,
 
   const string title = only_growth ? "In use profile" : "Allocation profile";
 
-  auto profile = GetAllocationProfile(seconds, sample_freq_bytes);
-  auto samples = AggregateAndSortProfile(profile, only_growth, order);
+  Result<tcmalloc::Profile> profile = GetHeapProfile(seconds, sample_freq_bytes);
+  if (!profile.ok()) {
+    (*output) << profile.status().message();
+    return;
+  }
+  auto samples = AggregateAndSortProfile(*profile, only_growth, order);
   GenerateTable(output, samples, title, 1000 /* max_call_stacks */, order);
 #endif  // YB_GOOGLE_TCMALLOC
 
@@ -170,18 +173,13 @@ static void PprofHeapHandler(const Webserver::WebRequest& req,
 #endif  // YB_TCMALLOC_ENABLED
 }
 
-static void PprofHeapSnapshotHandler(const Webserver::WebRequest& req,
-                                     Webserver::WebResponse* resp) {
+void PprofHeapSnapshotHandler(const Webserver::WebRequest& req,
+                              Webserver::WebResponse* resp) {
   std::stringstream *output = &resp->output;
 #if !YB_TCMALLOC_ENABLED
   (*output) << "Heap snapshot is only available if tcmalloc is enabled.";
   return;
 #else
-  if (!FLAGS_enable_process_lifetime_heap_sampling) {
-    (*output) << "FLAGS_enable_process_lifetime_heap_sampling must be set to true to for heap "
-              << "snapshot to work.";
-    return;
-  }
 
   bool peak_heap = ParseLeadingBoolValue(FindWithDefault(req.parsed_args, "peak_heap", ""), false);
   SampleOrder order = ParseSampleOrder(req.parsed_args);

@@ -37,9 +37,6 @@ struct ProducerTabletInfo {
 
   std::string ToString() const;
 
-  // String used as a descriptor id for metrics.
-  std::string MetricsString() const;
-
   struct Hash {
     std::size_t operator()(const ProducerTabletInfo& p) const noexcept;
   };

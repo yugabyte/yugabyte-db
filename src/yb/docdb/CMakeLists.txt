@@ -85,6 +85,7 @@ set(DOCDB_SRCS
 set(DOCDB_DEPS
         yb_dockv
         rocksdb
+        yb_ash
         yb_util
         yb_rocksutil
         yb_common
@@ -135,6 +136,7 @@ ADD_YB_TEST(docdb-test)
 ADD_YB_TEST(docdb-ttl-test)
 ADD_YB_TEST(docdb-test-wrapper)
 ADD_YB_TEST(docrowwiseiterator-test)
+ADD_YB_TEST(external_intents_batch_writer-test)
 ADD_YB_TEST(intent_iterator-test)
 ADD_YB_TEST(randomized_docdb-test)
 ADD_YB_TEST(scan_choices-test)

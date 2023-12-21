@@ -279,7 +279,10 @@ extern void HandleYBTableDescStatus(YBCStatus status, YBCPgTableDesc table);
  */
 extern void YBInitPostgresBackend(const char *program_name,
 								  const char *db_name,
-								  const char *user_name);
+								  const char *user_name,
+								  uint64_t *session_id);
+
+extern bool YbGetCurrentSessionId(uint64_t *session_id);
 
 /*
  * This should be called on all exit paths from the PostgreSQL backend process.
@@ -519,6 +522,12 @@ extern int yb_wait_for_backends_catalog_version_timeout;
  */
 extern bool yb_prefer_bnl;
 
+/*
+ * If true, all fields that vary from run to run are hidden from the
+ * output of EXPLAIN.
+ */
+extern bool yb_explain_hide_non_deterministic_fields;
+
 //------------------------------------------------------------------------------
 // GUC variables needed by YB via their YB pointers.
 extern int StatementTimeout;
@@ -557,6 +566,12 @@ extern bool yb_test_system_catalogs_creation;
 extern bool yb_test_fail_next_ddl;
 
 /*
+ * If set to true, next increment catalog version operation will fail and
+ * reset this back to false.
+ */
+extern bool yb_test_fail_next_inc_catalog_version;
+
+/*
  * Block the given index creation phase.
  * - "indisready": index state change to indisready
  *   (not supported for non-concurrent)
@@ -576,6 +591,12 @@ extern char *yb_test_fail_index_state_change;
  * back upon failure.
 */
 extern bool ddl_rollback_enabled;
+
+/*
+ * GUC to allow user to silence the error saying that advisory locks are not
+ * supported.
+ */
+extern bool yb_silence_advisory_locks_not_supported_error;
 
 /*
  * See also ybc_util.h which contains additional such variable declarations for
@@ -606,18 +627,24 @@ void YbSetIsGlobalDDL();
 
 typedef enum YbSysCatalogModificationAspect
 {
-	YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT = 1,
-	YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE = 2
+	YB_SYS_CAT_MOD_ASPECT_ALTERING_EXISTING_DATA = 1,
+	YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT = 2,
+	YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE = 4
 } YbSysCatalogModificationAspect;
 
 typedef enum YbDdlMode
 {
-	YB_DDL_MODE_SILENT = 0,
+	YB_DDL_MODE_NO_ALTERING = 0,
+
+	YB_DDL_MODE_SILENT_ALTERING =
+		YB_SYS_CAT_MOD_ASPECT_ALTERING_EXISTING_DATA,
 
 	YB_DDL_MODE_VERSION_INCREMENT =
+		YB_SYS_CAT_MOD_ASPECT_ALTERING_EXISTING_DATA |
 		YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT,
 
 	YB_DDL_MODE_BREAKING_CHANGE =
+		YB_SYS_CAT_MOD_ASPECT_ALTERING_EXISTING_DATA |
 		YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT |
 		YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE
 } YbDdlMode;
@@ -992,5 +1019,12 @@ extern void** YbPtrListToArray(const List* str_list, size_t* length);
  * byte added to the end.
  */
 extern char* YbReadWholeFile(const char *filename, int* length, int elevel);
+
+/*
+ * If the tserver gflag --ysql_enable_db_catalog_version_mode is true
+ * but the number of rows in pg_yb_catalog_version is 1, disallow a DDL
+ * statement if it increments the catalog version.
+ */
+extern void YBCheckDdlForDBCatalogVersionMode(YbDdlMode mode);
 
 #endif /* PG_YB_UTILS_H */

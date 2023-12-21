@@ -198,9 +198,14 @@ inline std::optional<Bound> MakeBound(YBCPgBoundType type, uint64_t value) {
 
 Status InitPgGateImpl(const YBCPgTypeEntity* data_type_table,
                       int count,
-                      const PgCallbacks& pg_callbacks) {
-  return WithMaskedYsqlSignals([data_type_table, count, &pg_callbacks] {
-    YBCInitPgGateEx(data_type_table, count, pg_callbacks, nullptr /* context */);
+                      const PgCallbacks& pg_callbacks,
+                      uint64_t *session_id,
+                      const YBCAshMetadata* ash_metadata) {
+  auto opt_session_id = session_id ? std::optional(*session_id) : std::nullopt;
+  return WithMaskedYsqlSignals(
+    [data_type_table, count, &pg_callbacks, opt_session_id, ash_metadata] {
+    YBCInitPgGateEx(data_type_table, count, pg_callbacks, nullptr /* context */, opt_session_id,
+                    ash_metadata);
     return static_cast<Status>(Status::OK());
   });
 }
@@ -300,7 +305,8 @@ PrefetchingCacheMode YBCMapPrefetcherCacheMode(YBCPgSysTablePrefetcherCacheMode 
 //--------------------------------------------------------------------------------------------------
 
 void YBCInitPgGateEx(const YBCPgTypeEntity *data_type_table, int count, PgCallbacks pg_callbacks,
-                     PgApiContext* context) {
+                     PgApiContext* context, std::optional<uint64_t> session_id,
+                     const YBCAshMetadata* ash_metadata) {
   // TODO: We should get rid of hybrid clock usage in YSQL backend processes (see #16034).
   // However, this is added to allow simulating and testing of some known bugs until we remove
   // HybridClock usage.
@@ -318,9 +324,11 @@ void YBCInitPgGateEx(const YBCPgTypeEntity *data_type_table, int count, PgCallba
 
   pgapi_shutdown_done.exchange(false);
   if (context) {
-    pgapi = new pggate::PgApiImpl(std::move(*context), data_type_table, count, pg_callbacks);
+    pgapi = new pggate::PgApiImpl(
+      std::move(*context), data_type_table, count, pg_callbacks, session_id, ash_metadata);
   } else {
-    pgapi = new pggate::PgApiImpl(PgApiContext(), data_type_table, count, pg_callbacks);
+    pgapi = new pggate::PgApiImpl(PgApiContext(), data_type_table, count, pg_callbacks, session_id,
+                                  ash_metadata);
   }
 
   VLOG(1) << "PgGate open";
@@ -328,8 +336,9 @@ void YBCInitPgGateEx(const YBCPgTypeEntity *data_type_table, int count, PgCallba
 
 extern "C" {
 
-void YBCInitPgGate(const YBCPgTypeEntity *data_type_table, int count, PgCallbacks pg_callbacks) {
-  CHECK_OK(InitPgGateImpl(data_type_table, count, pg_callbacks));
+void YBCInitPgGate(const YBCPgTypeEntity *data_type_table, int count, PgCallbacks pg_callbacks,
+                   uint64_t *session_id, const YBCAshMetadata *ash_metadata) {
+  CHECK_OK(InitPgGateImpl(data_type_table, count, pg_callbacks, session_id, ash_metadata));
 }
 
 void YBCDestroyPgGate() {
@@ -388,6 +397,14 @@ YBCStatus YBCValidateJWT(const char *token, const YBCPgJwtAuthOptions *options) 
     return YBCStatusOK();
   }
   return ToYBCStatus(STATUS(InvalidArgument, "Identity match failed"));
+}
+
+bool YBCGetCurrentPgSessionId(uint64_t *session_id) {
+  if (pgapi) {
+    *session_id = pgapi->GetSessionId();
+    return true;
+  }
+  return false;
 }
 
 YBCStatus YBCPgInitSession(const char* database_name, YBCPgExecStatsState* session_stats) {
@@ -1014,6 +1031,12 @@ YBCStatus YBCPgDmlBindHashCodes(
       handle, MakeBound(start_type, start_value), MakeBound(end_type, end_value)));
 }
 
+YBCStatus YBCPgDmlBindRange(YBCPgStatement handle, const char *start_value, size_t start_value_len,
+                            const char *end_value, size_t end_value_len) {
+  return ToYBCStatus(pgapi->DmlBindRange(
+    handle, Slice(start_value, start_value_len), true, Slice(end_value, end_value_len), false));
+}
+
 YBCStatus YBCPgDmlBindTable(YBCPgStatement handle) {
   return ToYBCStatus(pgapi->DmlBindTable(handle));
 }
@@ -1183,6 +1206,10 @@ YBCStatus YBCPgSetForwardScan(YBCPgStatement handle, bool is_forward_scan) {
 
 YBCStatus YBCPgSetDistinctPrefixLength(YBCPgStatement handle, int distinct_prefix_length) {
   return ToYBCStatus(pgapi->SetDistinctPrefixLength(handle, distinct_prefix_length));
+}
+
+YBCStatus YBCPgSetHashBounds(YBCPgStatement handle, uint16_t low_bound, uint16_t high_bound) {
+  return ToYBCStatus(pgapi->SetHashBounds(handle, low_bound, high_bound));
 }
 
 YBCStatus YBCPgExecSelect(YBCPgStatement handle, const YBCPgExecParameters *exec_params) {
@@ -1416,8 +1443,8 @@ bool YBCPgHasWriteOperationsInDdlTxnMode() {
   return pgapi->HasWriteOperationsInDdlTxnMode();
 }
 
-YBCStatus YBCPgExitSeparateDdlTxnMode() {
-  return ToYBCStatus(pgapi->ExitSeparateDdlTxnMode());
+YBCStatus YBCPgExitSeparateDdlTxnMode(YBCPgOid db_oid, bool is_silent_altering) {
+  return ToYBCStatus(pgapi->ExitSeparateDdlTxnMode(db_oid, is_silent_altering));
 }
 
 YBCStatus YBCPgClearSeparateDdlTxnMode() {
@@ -1446,6 +1473,10 @@ YBCStatus YBCPgGetSelfActiveTransaction(YBCPgUuid *txn_id, bool *is_null) {
 
 YBCStatus YBCPgActiveTransactions(YBCPgSessionTxnInfo *infos, size_t num_infos) {
   return ToYBCStatus(pgapi->GetActiveTransactions(infos, num_infos));
+}
+
+bool YBCPgIsDdlMode() {
+  return pgapi->IsDdlMode();
 }
 
 //------------------------------------------------------------------------------------------------
@@ -1718,6 +1749,12 @@ YBCStatus YBCPgCheckIfPitrActive(bool* is_active) {
   return ToYBCStatus(res.status());
 }
 
+uint64_t YBCPgGetReadTimeSerialNo() { return pgapi->GetReadTimeSerialNo(); }
+
+void YBCPgForceReadTimeSerialNo(uint64_t read_time_serial_no) {
+  pgapi->ForceReadTimeSerialNo(read_time_serial_no);
+}
+
 YBCStatus YBCIsObjectPartOfXRepl(YBCPgOid database_oid, YBCPgOid table_oid,
                                  bool* is_object_part_of_xrepl) {
   auto res = pgapi->IsObjectPartOfXRepl(PgObjectId(database_oid, table_oid));
@@ -1736,6 +1773,7 @@ YBCStatus YBCGetTableKeyRanges(
     YBCPgOid database_oid, YBCPgOid table_oid, const char* lower_bound_key,
     size_t lower_bound_key_size, const char* upper_bound_key, size_t upper_bound_key_size,
     uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length,
+    uint64_t* current_tserver_ht,
     void callback(void* callback_param, const char* key, size_t key_size), void* callback_param) {
   auto res = pgapi->GetTableKeyRanges(
       PgObjectId(database_oid, table_oid), Slice(lower_bound_key, lower_bound_key_size),
@@ -1745,10 +1783,14 @@ YBCStatus YBCGetTableKeyRanges(
     return ToYBCStatus(res.status());
   }
 
-  auto& encoded_table_range_slices = *res;
+  auto& encoded_table_range_slices = res->encoded_range_end_keys;
   if (!is_forward) {
     return ToYBCStatus(
         STATUS(NotSupported, "YBCGetTableKeyRanges is not supported yet for reverse order"));
+  }
+
+  if (current_tserver_ht) {
+    *current_tserver_ht = res->current_ht.ToUint64();
   }
 
   for (size_t i = 0; i < encoded_table_range_slices.size(); ++i) {

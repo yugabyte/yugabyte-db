@@ -2111,6 +2111,11 @@ _readYbBatchedNestLoop(void)
 	for (int i = 0; i < local_node->num_hashClauseInfos; i++)
 		local_node->hashClauseInfos[i].outerParamExpr = nodeRead(NULL, 0);
 
+	READ_INT_FIELD(numSortCols);
+	READ_ATTRNUMBER_ARRAY(sortColIdx, local_node->numSortCols);
+	READ_OID_ARRAY(sortOperators, local_node->numSortCols);
+	READ_OID_ARRAY(collations, local_node->numSortCols);
+	READ_BOOL_ARRAY(nullsFirst, local_node->numSortCols);
 	READ_DONE();
 }
 
@@ -2609,6 +2614,22 @@ _readPartitionRangeDatum(void)
 }
 
 /*
+ * _readYbExprParamDesc
+ */
+static YbExprColrefDesc *
+_readYbExprColrefDesc(void)
+{
+	READ_LOCALS(YbExprColrefDesc);
+
+	READ_INT_FIELD(attno);
+	READ_OID_FIELD(typid);
+	READ_INT_FIELD(typmod);
+	READ_OID_FIELD(collid);
+
+	READ_DONE();
+}
+
+/*
  * parseNodeString
  *
  * Given a character string representing a node tree, parseNodeString creates
@@ -2871,6 +2892,8 @@ parseNodeString(void)
 		return_value = _readPartitionBoundSpec();
 	else if (MATCH("PARTITIONRANGEDATUM", 19))
 		return_value = _readPartitionRangeDatum();
+	else if (MATCH("YBEXPRCOLREFDESC", 16))
+		return_value = _readYbExprColrefDesc();
 	else
 	{
 		elog(ERROR, "badly formatted node string \"%.32s\"...", token);

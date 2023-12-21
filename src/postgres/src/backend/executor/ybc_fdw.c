@@ -90,6 +90,9 @@ ybcGetForeignRelSize(PlannerInfo *root,
 
 	ybc_plan = (YbFdwPlanState *) palloc0(sizeof(YbFdwPlanState));
 
+	if (baserel->tuples == 0)
+		baserel->tuples = YBC_DEFAULT_NUM_ROWS;
+
 	/* Set the estimate for the total number of rows (tuples) in this table. */
 	if (yb_enable_optimizer_statistics)
 	{
@@ -97,9 +100,6 @@ ybcGetForeignRelSize(PlannerInfo *root,
 	}
 	else
 	{
-		if (baserel->tuples == 0)
-			baserel->tuples = YBC_DEFAULT_NUM_ROWS;
-
 		/*
 		* Initialize the estimate for the number of rows returned by this query.
 		* This does not yet take into account the restriction clauses, but it will
@@ -141,7 +141,7 @@ ybcGetForeignPaths(PlannerInfo *root,
 													NULL, /* no outer rel either */
 													NULL, /* no extra plan */
 													NULL  /* no options yet */);
-		
+
 		yb_cost_seqscan((Path*) seq_scan_path, root, baserel, NULL);
 		add_path(baserel, (Path*) seq_scan_path);
 	}
@@ -149,7 +149,7 @@ ybcGetForeignPaths(PlannerInfo *root,
 	{
 		Cost startup_cost;
 		Cost total_cost;
-		
+
 		/* Estimate costs */
 		ybcCostEstimate(baserel, YBC_FULL_SCAN_SELECTIVITY,
 						false /* is_backwards scan */,
@@ -482,7 +482,6 @@ ybcIterateForeignScan(ForeignScanState *node)
 	 *
 	 * - YbSeqNext
 	 *   - YbInstantiatePushdownParams
-	 *   - ybc_remote_beginscan
 	 *     - YbDmlAppendQuals/YbDmlAppendColumnRefs
 	 * - IndexScan/IndexNextWithReorder/ExecReScanIndexScan
 	 *   - YbInstantiatePushdownParams

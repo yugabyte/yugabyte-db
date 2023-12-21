@@ -2,7 +2,6 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
-import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
 import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
 import static com.yugabyte.yw.forms.TableDefinitionTaskParams.createFromResponse;
 import static com.yugabyte.yw.forms.TableInfoForm.NamespaceInfoResp;
@@ -16,6 +15,7 @@ import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTableSpaces;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
 import com.yugabyte.yw.common.NodeUniverseManager;
@@ -25,10 +25,12 @@ import com.yugabyte.yw.common.TableSpaceStructures;
 import com.yugabyte.yw.common.TableSpaceUtil;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.common.table.TableInfoUtil;
 import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.CreateTablespaceParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
+import com.yugabyte.yw.forms.TableInfoForm.NamespaceInfoResp;
 import com.yugabyte.yw.forms.TableInfoForm.TableInfoResp;
 import com.yugabyte.yw.forms.TableInfoForm.TablePartitionInfo;
 import com.yugabyte.yw.forms.TableInfoForm.TablePartitionInfoKey;
@@ -55,6 +57,7 @@ import java.util.UUID;
 import java.util.function.BiConsumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import lombok.extern.slf4j.Slf4j;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.CommonTypes;
@@ -70,6 +73,7 @@ import play.Environment;
 import play.libs.Json;
 
 @Singleton
+@Slf4j
 public class UniverseTableHandler {
 
   private static final Logger LOG = LoggerFactory.getLogger(UniverseTableHandler.class);
@@ -95,23 +99,6 @@ public class UniverseTableHandler {
   private static final Set<String> YCQL_SYSTEM_NAMESPACES_LIST =
       new HashSet<>(Arrays.asList("system_schema", "system_auth", "system"));
 
-  private boolean isColocatedParentTable(MasterDdlOuterClass.ListTablesResponsePB.TableInfo table) {
-    return table.getRelationType() == MasterTypes.RelationType.COLOCATED_PARENT_TABLE_RELATION;
-  }
-
-  private boolean isSystemTable(MasterDdlOuterClass.ListTablesResponsePB.TableInfo table) {
-    return table.getRelationType() == MasterTypes.RelationType.SYSTEM_TABLE_RELATION
-        || (table.getTableType() == CommonTypes.TableType.PGSQL_TABLE_TYPE
-            && table.getNamespace().getName().equals(SYSTEM_PLATFORM_DB));
-  }
-
-  private boolean isSystemRedis(MasterDdlOuterClass.ListTablesResponsePB.TableInfo table) {
-    return table.getTableType() == CommonTypes.TableType.REDIS_TABLE_TYPE
-        && table.getRelationType() == MasterTypes.RelationType.SYSTEM_TABLE_RELATION
-        && table.getNamespace().getName().equals("system_redis")
-        && table.getName().equals("redis");
-  }
-
   @Inject
   public UniverseTableHandler(
       Commissioner commissioner,
@@ -133,11 +120,21 @@ public class UniverseTableHandler {
       UUID universeUUID,
       boolean includeParentTableInfo,
       boolean excludeColocatedTables,
-      boolean includeColocatedParentTables) {
+      boolean includeColocatedParentTables,
+      boolean xClusterSupportedOnly) {
     // Validate customer UUID
     Customer customer = Customer.getOrBadRequest(customerUUID);
     // Validate universe UUID
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
+
+    if (xClusterSupportedOnly && (!includeColocatedParentTables || excludeColocatedTables)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "xClusterSupportedOnly: %b, includeColocatedParentTables: %b,"
+                  + " excludeColocatedTables: %b is not supported",
+              xClusterSupportedOnly, includeColocatedParentTables, excludeColocatedTables));
+    }
 
     String universeVersion =
         universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
@@ -161,7 +158,8 @@ public class UniverseTableHandler {
     // First filter out all system tables except redis table.
     tableInfoList =
         tableInfoList.stream()
-            .filter(table -> !isSystemTable(table) || isSystemRedis(table))
+            .filter(
+                table -> !TableInfoUtil.isSystemTable(table) || TableInfoUtil.isSystemRedis(table))
             .collect(Collectors.toList());
     List<TableInfoResp> tableInfoRespList = new ArrayList<>(tableInfoList.size());
 
@@ -169,7 +167,7 @@ public class UniverseTableHandler {
     Map<TablePartitionInfoKey, MasterDdlOuterClass.ListTablesResponsePB.TableInfo>
         colocatedParentTablesMap =
             tableInfoList.stream()
-                .filter(this::isColocatedParentTable)
+                .filter(TableInfoUtil::isColocatedParentTable)
                 .collect(
                     Collectors.toMap(
                         ti -> new TablePartitionInfoKey(ti.getName(), ti.getNamespace().getName()),
@@ -193,18 +191,30 @@ public class UniverseTableHandler {
                       Function.identity()));
     }
 
-    // Fetch colocated keyspaces. excludeColocatedTables effectively means
-    // 'exclude tables from colocated keyspaces'.
-    Set<String> colocatedKeySpaces = Collections.emptySet();
-    if (excludeColocatedTables) {
-      colocatedKeySpaces = getColocatedKeySpaces(tableInfoList);
+    Set<String> excludedKeyspaces = new HashSet<>();
+
+    // Do not allow xcluster replication to be set up for colocated dbs if db rpc does not contain
+    // colocated information.
+    // Note: excludeColocatedTables effectively means 'exclude tables from colocated keyspaces'.
+    if ((!hasColocationInfo && xClusterSupportedOnly) || excludeColocatedTables) {
+      excludedKeyspaces.addAll(getColocatedKeySpaces(tableInfoList));
+    }
+
+    Map<String, String> indexTableMainTableMap = new HashMap<>();
+    // For xCluster table list, we need to also include the main table uuid for each index table.
+    if (xClusterSupportedOnly) {
+      XClusterConfigTaskBase.getMainTableIndexTablesMap(
+              this.ybClientService, universe, XClusterConfigTaskBase.getTableIds(tableInfoList))
+          .forEach(
+              (mainTable, indexTables) ->
+                  indexTables.forEach(
+                      indexTable -> indexTableMainTableMap.put(indexTable, mainTable)));
     }
 
     for (TableInfo table : tableInfoList) {
       TablePartitionInfoKey tableKey =
           new TablePartitionInfoKey(table.getName(), table.getNamespace().getName());
-      if (excludeColocatedTables && colocatedKeySpaces.contains(table.getNamespace().getName())) {
-        // Exclude tables from colocated keyspaces, if needed.
+      if (excludedKeyspaces.contains(table.getNamespace().getName())) {
         continue;
       }
       if (!includeColocatedParentTables && colocatedParentTablesMap.containsKey(tableKey)) {
@@ -225,8 +235,19 @@ public class UniverseTableHandler {
       }
       tableInfoRespList.add(
           buildResponseFromTableInfo(
-                  table, partitionInfo, parentPartitionInfo, tableSizes, hasColocationInfo)
+                  table,
+                  partitionInfo,
+                  parentPartitionInfo,
+                  indexTableMainTableMap.get(XClusterConfigTaskBase.getTableId(table)),
+                  tableSizes,
+                  hasColocationInfo)
               .build());
+    }
+    if (xClusterSupportedOnly) {
+      tableInfoRespList =
+          tableInfoRespList.stream()
+              .filter(XClusterConfigTaskBase::isXClusterSupported)
+              .collect(Collectors.toList());
     }
     return tableInfoRespList;
   }
@@ -560,6 +581,7 @@ public class UniverseTableHandler {
       TableInfo table,
       TablePartitionInfo tablePartitionInfo,
       TableInfo parentTableInfo,
+      String mainTableUuid,
       Map<String, TableSizes> tableSizeMap,
       boolean hasColocationInfo) {
     String id = table.getId().toStringUtf8();
@@ -583,6 +605,9 @@ public class UniverseTableHandler {
     }
     if (parentTableInfo != null) {
       builder.parentTableUUID(getUUIDRepresentation(parentTableInfo.getId().toStringUtf8()));
+    }
+    if (mainTableUuid != null) {
+      builder.mainTableUUID(getUUIDRepresentation(mainTableUuid));
     }
     if (table.hasPgschemaName()) {
       builder.pgSchemaName(table.getPgschemaName());

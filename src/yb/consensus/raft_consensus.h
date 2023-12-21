@@ -177,6 +177,8 @@ class RaftConsensus : public std::enable_shared_from_this<RaftConsensus>,
       const UnsafeChangeConfigRequestPB& req,
       boost::optional<tserver::TabletServerErrorPB::Code>* error_code) override;
 
+  std::vector<FollowerCommunicationTime> GetFollowerCommunicationTimes() override;
+
   PeerRole GetRoleUnlocked() const;
 
   PeerRole role() const override;

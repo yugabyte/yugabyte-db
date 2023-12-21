@@ -96,6 +96,10 @@ void RegisterRpczEntries(
     postgresCallbacks *callbacks, int *num_backends_ptr, rpczEntry **rpczEntriesPointer,
     YbConnectionMetrics *conn_metrics_ptr);
 YBCStatus StartWebserver(struct WebserverWrapper *webserver);
+void SetWebserverConfig(
+    struct WebserverWrapper *webserver,
+    bool enable_access_logging, bool enable_tcmalloc_logging,
+    int webserver_profiler_sample_freq_bytes);
 void RegisterGetYsqlStatStatements(void (*getYsqlStatementStats)(void *));
 void RegisterResetYsqlStatStatements(void (*fn)());
 void WriteStatArrayElemToJson(void *p1, void *p2);

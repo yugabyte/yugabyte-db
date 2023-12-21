@@ -4,7 +4,7 @@ import pluralize from 'pluralize';
 import { Box, Theme, Typography, makeStyles } from '@material-ui/core';
 import { YBModal } from '../../../../components';
 import { Cluster, MasterPlacementMode, UniverseDetails } from '../utils/dto';
-import { getDiffClusterData, getPrimaryCluster } from '../utils/helpers';
+import { getAsyncCluster, getDiffClusterData, getPrimaryCluster } from '../utils/helpers';
 
 const useStyles = makeStyles((theme: Theme) => ({
   greyText: {
@@ -26,6 +26,7 @@ interface PlacementModalProps {
   newConfigData: UniverseDetails;
   oldConfigData: UniverseDetails;
   open: boolean;
+  isPrimary: boolean;
   onClose: () => void;
   onSubmit: () => void;
 }
@@ -34,14 +35,15 @@ export const PlacementModal: FC<PlacementModalProps> = ({
   newConfigData,
   oldConfigData,
   open,
+  isPrimary,
   onClose,
   onSubmit
 }) => {
   const { t } = useTranslation();
   const classes = useStyles();
-  const oldPrimaryCluster = getPrimaryCluster(oldConfigData);
-  const newPrimaryCluster = getPrimaryCluster(newConfigData);
-  const diffClusterData = getDiffClusterData(oldPrimaryCluster, newPrimaryCluster);
+  const oldCluster = isPrimary ? getPrimaryCluster(oldConfigData) : getAsyncCluster(oldConfigData);
+  const newCluster = isPrimary ? getPrimaryCluster(newConfigData) : getAsyncCluster(newConfigData);
+  const diffClusterData = getDiffClusterData(oldCluster, newCluster);
 
   const renderConfig = (cluster: Cluster, isNew: boolean) => {
     const { placementInfo, userIntent } = cluster;
@@ -57,14 +59,14 @@ export const PlacementModal: FC<PlacementModalProps> = ({
         <Typography variant="h5">
           {isNew ? t('universeForm.new') : t('universeForm.current')}
         </Typography>
-        {diffClusterData.masterPlacementChanged && (
+        {isPrimary && diffClusterData.masterPlacementChanged && (
           <Box className={classes.configConfirmationBox}>
             <b>
               {userIntent?.dedicatedNodes
                 ? `${MasterPlacementMode.DEDICATED}`
                 : `${MasterPlacementMode.COLOCATED}`}
             </b>
-            &nbsp;mode
+            &nbsp;{t('universeForm.placementModal.mode')}
           </Box>
         )}
         {(diffClusterData.numNodesChanged || diffClusterData.masterPlacementChanged) && (
@@ -74,14 +76,20 @@ export const PlacementModal: FC<PlacementModalProps> = ({
                 <b>
                   {isNew && diffClusterData.newNodeCount !== diffClusterData.currentNodeCount
                     ? diffClusterData.newNodeCount > diffClusterData.currentNodeCount
-                      ? `Scale Up - ${userIntent?.numNodes}`
-                      : `Scale Down - ${userIntent?.numNodes}`
+                      ? `${t('universeForm.placementModal.scaleUp')} - ${userIntent?.numNodes}`
+                      : `${t('universeForm.placementModal.scaleDown')} - ${userIntent?.numNodes}`
                     : userIntent?.numNodes}
                 </b>
-                &nbsp;nodes
+                &nbsp;{t('universeForm.placementModal.nodes')}
               </Box>
             }
           </>
+        )}
+        {!isPrimary && diffClusterData.oldNumReadReplicas !== diffClusterData.newNumReadReplicas && (
+          <Box className={classes.configConfirmationBox}>
+            {t('universeForm.placementModal.readReplicas')} -&nbsp;
+            <b>{isNew ? diffClusterData.newNumReadReplicas : diffClusterData.oldNumReadReplicas}</b>
+          </Box>
         )}
         <Box mt={1} display="flex" flexDirection="column">
           {placementInfo?.cloudList[0].regionList?.map((region) => (
@@ -96,7 +104,7 @@ export const PlacementModal: FC<PlacementModalProps> = ({
               <Box pl={2}>
                 {region.azList.map((az) => (
                   <Typography key={az.name} variant="body2">
-                    {az.name} - {az.numNodesInAZ} {pluralize('node', az.numNodesInAZ)}{' '}
+                    {az.name} - {az.numNodesInAZ} {pluralize('node', az.numNodesInAZ)}
                   </Typography>
                 ))}
               </Box>
@@ -124,12 +132,14 @@ export const PlacementModal: FC<PlacementModalProps> = ({
       <Box display="flex" width="100%" flexDirection="column" data-testid="full-move-modal">
         <Box>
           <Typography variant="body2">
-            {t('universeForm.placementModal.modalDescription')}
+            {isPrimary
+              ? t('universeForm.placementModal.modalDescription')
+              : t('universeForm.placementModal.modalDescriptionRR')}
           </Typography>
         </Box>
         <Box mt={2} display="flex" flexDirection="row">
-          {oldPrimaryCluster && renderConfig(oldPrimaryCluster, false)}
-          {newPrimaryCluster && renderConfig(newPrimaryCluster, true)}
+          {oldCluster && renderConfig(oldCluster, false)}
+          {newCluster && renderConfig(newCluster, true)}
         </Box>
         <Box mt={2} display="flex" flexDirection="row">
           <Typography variant="body2">{t('universeForm.placementModal.likeToProceed')}</Typography>

@@ -14,6 +14,7 @@
 #include <chrono>
 #include <utility>
 #include <boost/assign.hpp>
+#include "yb/util/backoff_waiter.h"
 #include "yb/util/flags.h"
 #include <gtest/gtest.h>
 
@@ -262,7 +263,7 @@ class CDCSDKStreamTest : public CDCSDKTestBase {
   }
 };
 
-TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(CreateCDCSDKStreamImplicit)) {
+TEST_F(CDCSDKStreamTest, CreateCDCSDKStreamImplicit) {
   // Create a cluster.
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
@@ -270,7 +271,7 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(CreateCDCSDKStreamImplicit)) {
   ASSERT_NE(0, db_stream_id.size());
 }
 
-TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(CreateCDCSDKStreamExplicit)) {
+TEST_F(CDCSDKStreamTest, CreateCDCSDKStreamExplicit) {
   // Create a cluster.
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
@@ -281,7 +282,7 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(CreateCDCSDKStreamExplicit)) {
 
 // This test is to verify the fix for the following:
 // [#10945] Error while creating a DB Stream if any table in the database is without a primary key.
-TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(TestStreamCreation)) {
+TEST_F(CDCSDKStreamTest, TestStreamCreation) {
   // Create a cluster.
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
@@ -299,7 +300,7 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(TestStreamCreation)) {
   ASSERT_NE(0, db_stream_id.size());
 }
 
-TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(TestOnSingleRF)) {
+TEST_F(CDCSDKStreamTest, TestOnSingleRF) {
   // Create a cluster.
   ASSERT_OK(SetUpWithParams(1, 1, false));
 
@@ -307,7 +308,7 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(TestOnSingleRF)) {
   ASSERT_NE(0, db_stream_id.size());
 }
 
-TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(DeleteDBStream)) {
+TEST_F(CDCSDKStreamTest, DeleteDBStream) {
   // Setup cluster.
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
@@ -319,7 +320,7 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(DeleteDBStream)) {
   ASSERT_OK(DeleteCDCStream(db_stream_id));
 }
 
-TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(CreateMultipleStreams)) {
+TEST_F(CDCSDKStreamTest, CreateMultipleStreams) {
   // Setup cluster.
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
@@ -327,7 +328,7 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(CreateMultipleStreams)) {
   ASSERT_EQ(3, stream_ids.size());
 }
 
-TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(DeleteMultipleStreams)) {
+TEST_F(CDCSDKStreamTest, DeleteMultipleStreams) {
   // Setup cluster.
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
@@ -340,28 +341,28 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(DeleteMultipleStreams)) {
   }
 }
 
-TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(ListDBStreams)) {
+TEST_F(CDCSDKStreamTest, ListDBStreams) {
   // Setup cluster.
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   TestListDBStreams(true);
 }
 
-TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(ListDBStreams_NoTablesInDB)) {
+TEST_F(CDCSDKStreamTest, ListDBStreams_NoTablesInDB) {
   // Setup cluster.
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   TestListDBStreams(false);
 }
 
-TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(DBStreamInfoTest)) {
+TEST_F(CDCSDKStreamTest, DBStreamInfoTest) {
   // Set up a cluster with RF 3.
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   TestDBStreamInfo(std::vector<std::string>{kTableName}, {});
 }
 
-TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(DBStreamInfoTest_MultipleTablesInDB)) {
+TEST_F(CDCSDKStreamTest, DBStreamInfoTest_MultipleTablesInDB) {
   // Set up a cluster with RF 3.
   ASSERT_OK(SetUpWithParams(3, 1, false));
   std::vector<std::string> table_names_with_pk = {
@@ -371,14 +372,14 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(DBStreamInfoTest_MultipleTables
   TestDBStreamInfo(table_names_with_pk, table_names_without_pk);
 }
 
-TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(DBStreamInfoTest_NoTablesInDB)) {
+TEST_F(CDCSDKStreamTest, DBStreamInfoTest_NoTablesInDB) {
   // Set up a cluster with RF 3.
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
   TestDBStreamInfo({}, {});
 }
 
-TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(DBStreamInfoTest_AllTablesWithoutPrimaryKey)) {
+TEST_F(CDCSDKStreamTest, DBStreamInfoTest_AllTablesWithoutPrimaryKey) {
   // Set up a cluster with RF 3.
   ASSERT_OK(SetUpWithParams(3, 1, false));
   std::vector<std::string> table_names_without_pk = {"table_without_pk_1", "table_without_pk_2"};
@@ -386,7 +387,7 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(DBStreamInfoTest_AllTablesWitho
   TestDBStreamInfo({}, table_names_without_pk);
 }
 
-TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(CDCWithXclusterEnabled)) {
+TEST_F(CDCSDKStreamTest, CDCWithXclusterEnabled) {
   // Set up an RF 3 cluster.
   ASSERT_OK(SetUpWithParams(3, 1, false));
   auto table = ASSERT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName));
@@ -448,7 +449,7 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(CDCWithXclusterEnabled)) {
   }
 }
 
-TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(ImplicitCheckPointValidate)) {
+TEST_F(CDCSDKStreamTest, ImplicitCheckPointValidate) {
   // Create a cluster.
   ASSERT_OK(SetUpWithParams(3, 1, false));
 
@@ -477,7 +478,7 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(ImplicitCheckPointValidate)) {
   }
 }
 
-TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(ExplicitCheckPointValidate)) {
+TEST_F(CDCSDKStreamTest, ExplicitCheckPointValidate) {
     // Create a cluster.
     ASSERT_OK(SetUpWithParams(3, 1, false));
 
@@ -504,6 +505,39 @@ TEST_F(CDCSDKStreamTest, YB_DISABLE_TEST_IN_TSAN(ExplicitCheckPointValidate)) {
         }
       }
     }
+}
+
+TEST_F(CDCSDKStreamTest, TestPgReplicationSlotCreateWithDropTable) {
+  ASSERT_OK(
+      SetUpWithParams(3 /* replication_factor */, 1 /* num_masters */, false /* colocated */));
+
+  auto conn = ASSERT_RESULT(test_cluster_.ConnectToDB(kNamespaceName));
+
+  ASSERT_OK(conn.Execute(
+      "create table t1 (id int primary key, name text, l_name varchar, hours float);"));
+
+  auto stream_id =
+      ASSERT_RESULT(CreateDBStreamWithReplicationSlot("test_replication_slot_with_drop_table"));
+
+  ASSERT_OK(conn.Execute("DROP TABLE t1"));
+
+  // Drop table will trigger the background thread to start the stream metadata cleanup.
+  // Wait for the metadata cleanup to finish by the background thread.
+  ASSERT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        while (true) {
+          auto resp = GetDBStreamInfo(stream_id);
+          if (resp.ok() && resp->has_error()) {
+            return true;
+          }
+          continue;
+        }
+        return false;
+      },
+      MonoDelta::FromSeconds(60), "Waiting for stream metadata cleanup."));
+
+  // We should be able to create the replication slot again with the same name.
+  ASSERT_RESULT(CreateDBStreamWithReplicationSlot("test_replication_slot_with_drop_table"));
 }
 
 }  // namespace cdc

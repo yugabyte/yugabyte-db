@@ -80,7 +80,7 @@ You can manually provision each node using the pre-provisioning Python script, a
         --mount_points /data \
         --install_node_agent \
         --api_token 999bc9db-ddfb-9fec-a33d-4f8f9fd88db7 \
-        --yba_url http://100.98.0.40:9000 \
+        --yba_url http://10.98.0.40:9000 \
         --node_name onprem_node1 \
         --instance_type c5.large \
         --zone_name us-west-2a 

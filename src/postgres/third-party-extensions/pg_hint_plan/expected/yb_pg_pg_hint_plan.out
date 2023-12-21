@@ -817,11 +817,13 @@ not used hint:
 duplication hint:
 error hint:
 
-                            QUERY PLAN
--------------------------------------------------------------------
+                               QUERY PLAN
+-------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (t1.id = t2.id)
-   ->  Nested Loop
+   ->  YB Batched Nested Loop Join
+         Join Filter: (t3.id = t1.id)
+         Sort Keys: t1.id
          ->  Merge Join
                Merge Cond: (t3.id = t4.id)
                ->  Sort
@@ -831,10 +833,10 @@ error hint:
                      Sort Key: t4.id
                      ->  Seq Scan on t4
          ->  Index Scan using t1_pkey on t1
-               Index Cond: (id = t3.id)
+               Index Cond: (id = ANY (ARRAY[t3.id, $1, $2, ..., $1023]))
    ->  Index Scan using t2_pkey on t2
-         Index Cond: (id = ANY (ARRAY[t1.id, $2, $3, ..., $1024]))
-(15 rows)
+         Index Cond: (id = ANY (ARRAY[t1.id, $1025, $1026, ..., $2047]))
+(17 rows)
 
 /*+Leading(t3 t4 t1)*/
 EXPLAIN (COSTS false) SELECT * FROM t1, t2, t3, t4 WHERE t1.id = t2.id AND t1.id = t3.id AND t1.id = t4.id;
@@ -4371,8 +4373,8 @@ MergeJoin(t1 t2)
 Leading(t1 t2)
 Set(random_page_cost 2.0)
 Rows(t1 t2 +10)
-not used hint:
 Parallel(t1 8 hard)
+not used hint:
 duplication hint:
 error hint:
 

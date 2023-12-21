@@ -62,6 +62,7 @@ public class MetricQueryHelper {
   public static final String TABLE_ID = "table_id";
   public static final String TABLE_NAME = "table_name";
   public static final String NAMESPACE_NAME = "namespace_name";
+  public static final String NAMESPACE_ID = "namespace_id";
   private static final String POD_NAME = "pod_name";
   private static final String CONTAINER_NAME = "container_name";
   private static final String PVC = "persistentvolumeclaim";
@@ -579,8 +580,8 @@ public class MetricQueryHelper {
       // and will return inaccurate results if the universe has a read replica that is
       // not onprem.
       if (!mountRoots.isEmpty()) {
-        HashMap<String, String> mountFilters = new HashMap<>();
-        return mountRoots;
+        // In case we have multiple mount roots - these are separated by comma.
+        return mountRoots.replaceAll(",", "|");
       } else {
         LOG.debug(
             "No mount points found in onprem universe {}",

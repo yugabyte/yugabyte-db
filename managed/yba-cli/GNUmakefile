@@ -22,7 +22,7 @@ PACKAGE_DIR := ${TOP_BUILDDIR}/yba_cli-${VERSION}-${GOOS}-${GOARCH}
 PACKAGE_NAME ?= ${PACKAGE_DIR}.tar.gz
 
 VERSION_METADATA_JSON:=$(CURDIR)/version_metadata.json
-VERSION_TXT:=$(CURDIR)/version.json
+VERSION_TXT:=$(CURDIR)/version.txt
 
 
 all: yba package

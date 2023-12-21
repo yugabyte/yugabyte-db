@@ -48,6 +48,7 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudProviderDelete;
 import com.yugabyte.yw.common.ApiUtils;
+import com.yugabyte.yw.common.AppConfigHelper;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
@@ -203,8 +204,6 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     p2.save();
     Result result = listProviders();
     JsonNode json = Json.parse(contentAsString(result));
-    System.out.println("Testing JSON");
-    System.out.println(json);
 
     assertOk(result);
     assertAuditEntry(0, customer.getUuid());
@@ -218,7 +217,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
             assertValue(config, "AWS_ACCESS_KEY_ID", "SE**********TA");
             assertValue(config, "AWS_SECRET_ACCESS_KEY", "SE**********TA");
           } else {
-            assertValue(config, "GCE_PROJECT", "BAR");
+            assertValue(config, "GCE_HOST_PROJECT", "BAR");
           }
         });
   }
@@ -593,6 +592,17 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   public void testDeleteProviderWithAccessKey() {
     Provider p = ModelFactory.awsProvider(customer);
     AccessKey ak = AccessKey.create(p.getUuid(), "access-key-code", new AccessKey.KeyInfo());
+    KeyInfo keyInfo = ak.getKeyInfo();
+    keyInfo.publicKey =
+        createTempFile(
+            AppConfigHelper.getStoragePath() + "/keys/" + p.getUuid(),
+            UUID.randomUUID().toString(),
+            "ACCESS-KEYS");
+    ak.setKeyInfo(keyInfo);
+    ak.save();
+
+    when(mockAccessManager.getOrCreateKeyFilePath(any()))
+        .thenReturn(AppConfigHelper.getStoragePath() + "/keys/" + p.getUuid());
     CloudProviderDelete.Params params = new CloudProviderDelete.Params();
     params.providerUUID = p.getUuid();
     params.customer = customer;
@@ -608,6 +618,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
       assertNull(e.getMessage());
     }
 
+    assertFalse(new File(keyInfo.publicKey).getParentFile().exists());
     assertEquals(0, AccessKey.getAll(p.getUuid()).size());
     assertNull(Provider.get(p.getUuid()));
     verify(mockAccessManager, times(1))
@@ -650,31 +661,6 @@ public class CloudProviderControllerTest extends FakeDBApplication {
 
     assertEquals(0, InstanceType.findByProvider(p, mockConfGetter).size());
     assertNull(Provider.get(p.getUuid()));
-  }
-
-  @Test
-  public void testDeleteProviderWithMultiRegionAccessKey() {
-    Provider p = ModelFactory.awsProvider(customer);
-    AccessKey ak = AccessKey.create(p.getUuid(), "access-key-code", new AccessKey.KeyInfo());
-    CloudProviderDelete.Params params = new CloudProviderDelete.Params();
-    params.providerUUID = p.getUuid();
-    params.customer = customer;
-
-    try {
-      CloudProviderDelete deleteProviderTask =
-          AbstractTaskBase.createTask(CloudProviderDelete.class);
-      deleteProviderTask.initialize(params);
-      deleteProviderTask.run();
-      // Adding the timeout so as to ensure we wait for the provider deletion to be completed.
-      Thread.sleep(2000);
-    } catch (InterruptedException e) {
-      assertNull(e.getMessage());
-    }
-
-    assertEquals(0, AccessKey.getAll(p.getUuid()).size());
-    assertNull(Provider.get(p.getUuid()));
-    verify(mockAccessManager, times(1))
-        .deleteKeyByProvider(p, ak.getKeyCode(), ak.getKeyInfo().deleteRemote);
   }
 
   @Test
@@ -723,6 +709,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     CloudProviderDelete deleteProviderTask = AbstractTaskBase.createTask(CloudProviderDelete.class);
     deleteProviderTask.initialize(params);
     deleteProviderTask.run();
+
+    assertNull(Provider.get(p.getUuid()));
   }
 
   @Test

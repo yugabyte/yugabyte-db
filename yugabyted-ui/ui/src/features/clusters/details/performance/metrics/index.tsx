@@ -101,7 +101,7 @@ export const Metrics: FC = () => {
   // const isMultiRegionEnabled =
   //   runtimeConfig &&
   //   (runtimeConfig?.MultiRegionEnabled || runtimeConfigAccount?.MultiRegionEnabled);
-  
+
   const isMultiRegionEnabled = false;
   const { data: clusterData } = useGetClusterQuery();
 
@@ -126,12 +126,24 @@ export const Metrics: FC = () => {
   const { data: nodesResponse, isLoading: isClusterNodesLoading } = useGetClusterNodesQuery();
   const hasReadReplica = !!nodesResponse?.data.find((node) => node.is_read_replica);
 
-  const nodesNamesList = useMemo(() => [
-    ALL_NODES,
-    ...(nodesResponse?.data.filter(node => (tab === "PRIMARY" && !node.is_read_replica) || 
-      (tab === "READ_REPLICA" && node.is_read_replica))
-      .map((node) => ({ label: node.name, value: node.name })) ?? [])
-  ], [tab, nodesResponse?.data]);
+  const nodesNamesList = useMemo(
+    () => [
+      ALL_NODES,
+      ...(nodesResponse?.data
+        .filter(
+          (node) =>
+            (tab === "PRIMARY" && !node.is_read_replica) ||
+            (tab === "READ_REPLICA" && node.is_read_replica)
+        )
+        .filter(
+          (node) =>
+            (selectedRegion === "" && selectedZone === "") ||
+            (node.cloud_info.region === selectedRegion && node.cloud_info.zone === selectedZone)
+        )
+        .map((node) => ({ label: node.name, value: node.name })) ?? []),
+    ],
+    [tab, nodesResponse?.data, selectedRegion, selectedZone]
+  );
 
   function handleTabChange(newTab: typeof tab) {
     setTab(newTab);
@@ -175,9 +187,20 @@ export const Metrics: FC = () => {
       relativeInterval,
       queryParams.nodeName,
       displayedCharts ?? [],
-      region
+      queryParams.region
     );
   }, [queryParams.nodeName])
+
+  useEffect(() => {
+    if (queryParams.region) {
+      handleChangeFilterOrChangeDisplayChart(
+        relativeInterval,
+        ALL_NODES.value,
+        displayedCharts ?? [],
+        queryParams.region
+      );
+    }
+  }, [region])
 
   useEffect(() => {
     doRefresh((prev) => prev + 1);
@@ -189,10 +212,10 @@ export const Metrics: FC = () => {
     ALL_REGIONS,
     ...(regionsList.map((region) => ({ label: region.placement_info.cloud_info.region, value: region.placement_info.cloud_info.region })) ?? [])
   ];
-  
+
   const regionData = useMemo(() => {
     const set = new Set<string>();
-    nodesResponse?.data.filter(node => (tab === "PRIMARY" && !node.is_read_replica) || 
+    nodesResponse?.data.filter(node => (tab === "PRIMARY" && !node.is_read_replica) ||
       (tab === "READ_REPLICA" && node.is_read_replica))
       .forEach(node => set.add(node.cloud_info.region + "#" + node.cloud_info.zone));
     return Array.from(set).map(regionZone => {
@@ -281,7 +304,7 @@ export const Metrics: FC = () => {
               onChange={(e) => {
                 handleChangeFilterOrChangeDisplayChart(
                   relativeInterval,
-                  nodeName,
+                  ALL_NODES.value,
                   displayedCharts ?? [],
                   (e.target as HTMLInputElement).value
                 )

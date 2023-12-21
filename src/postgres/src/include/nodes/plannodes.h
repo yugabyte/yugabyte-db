@@ -383,6 +383,8 @@ typedef struct YbSeqScan
 {
 	Scan		scan;
 	PushdownExprs yb_pushdown;
+	double		yb_estimated_num_nexts;
+	double		yb_estimated_num_seeks;
 } YbSeqScan;
 
 /* ----------------
@@ -446,8 +448,8 @@ typedef struct IndexScan
 	ScanDirection indexorderdir;	/* forward or backward or don't care */
 	PushdownExprs yb_idx_pushdown;
 	PushdownExprs yb_rel_pushdown;
-	double		estimated_num_nexts;
-	double		estimated_num_seeks;
+	double		yb_estimated_num_nexts;
+	double		yb_estimated_num_seeks;
 	int         yb_distinct_prefixlen; /* distinct index scan prefix */
 	YbLockMechanism	yb_lock_mechanism;	/* locks possible as part of the scan */
 } IndexScan;
@@ -484,8 +486,8 @@ typedef struct IndexOnlyScan
 	 * In majority of cases it is NULL which means that indexqual will be used for tuple recheck.
 	 */
 	List	   *yb_indexqual_for_recheck;
-	double		estimated_num_nexts;
-	double		estimated_num_seeks;
+	double		yb_estimated_num_nexts;
+	double		yb_estimated_num_seeks;
 	int         yb_distinct_prefixlen; /* distinct index scan prefix */
 } IndexOnlyScan;
 
@@ -769,15 +771,21 @@ typedef struct YbBatchedNestLoop
 {
 	NestLoop nl;
 
-	/*
-	 * Only relevant if we're using the hash batching strategy.
-	 */
+	double first_batch_factor;
+	/* Only relevant if we're using the hash batching strategy. */
 
-	YbBNLHashClauseInfo *hashClauseInfos; /*
-										   * Array of information about each
-										   * hashable join clause.
-										   */
+	/*
+	 * Array of information about each
+	 * hashable join clause.
+	 */
+	YbBNLHashClauseInfo *hashClauseInfos;
 	int num_hashClauseInfos;
+	/* remaining fields are just like the sort-key info in struct Sort */
+	int			numSortCols;		/* number of sort-key columns */
+	AttrNumber *sortColIdx;		/* their indexes in the target list */
+	Oid		   *sortOperators;	/* OIDs of operators to sort them by */
+	Oid		   *collations;		/* OIDs of collations */
+	bool	   *nullsFirst;		/* NULLS FIRST/LAST directions */
 } YbBatchedNestLoop;
 
 typedef struct NestLoopParam

@@ -48,12 +48,11 @@ using SampleStack = std::string;
 typedef std::pair<SampleStack, SampleInfo> Sample;
 
 YB_DEFINE_ENUM(SampleOrder, (kSampledCount)(kSampledBytes)(kEstimatedBytes));
+YB_DEFINE_ENUM(HeapSnapshotType, (kCurrentHeap)(kPeakHeap));
 
 #if YB_GOOGLE_TCMALLOC
 
-tcmalloc::Profile GetAllocationProfile(int seconds, int64_t sample_freq_bytes);
-
-YB_DEFINE_ENUM(HeapSnapshotType, (kCurrentHeap)(kPeakHeap));
+Result<tcmalloc::Profile> GetHeapProfile(int seconds, int64_t sample_freq_bytes);
 
 // If peak_heap is set, gets the snapshot of the heap at peak memory usage.
 tcmalloc::Profile GetHeapSnapshot(HeapSnapshotType snapshot_type);

@@ -400,6 +400,10 @@ public class UniverseMetricProvider implements MetricsProvider {
             .setLabel(KnownAlertLabels.EXPORT_TYPE, exportType)
             .setLabel(KnownAlertLabels.NODE_NAME, nodeDetails.nodeName)
             .setLabel(KnownAlertLabels.NODE_ADDRESS, nodeDetails.cloudInfo.private_ip)
+            .setLabel(KnownAlertLabels.NODE_REGION, nodeDetails.cloudInfo.region)
+            .setLabel(
+                KnownAlertLabels.NODE_CLUSTER_TYPE,
+                universe.getCluster(nodeDetails.placementUuid).clusterType.name())
             .setValue(value);
     if (nodeInstance != null && StringUtils.isNotEmpty(nodeInstance.getDetails().instanceName)) {
       template.setLabel(KnownAlertLabels.NODE_IDENTIFIER, nodeInstance.getDetails().instanceName);

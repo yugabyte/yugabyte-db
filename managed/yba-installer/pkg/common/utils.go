@@ -110,8 +110,8 @@ func HasSudoAccess() bool {
 	return false
 }
 
-// Create a file at a relative path for the non-root case. Have to make the directory before
-// inserting the file in that directory.
+// Create or truncate a file at a relative path for the non-root case. Have to make the directory
+// before inserting the file in that directory.
 func Create(p string) (*os.File, error) {
 	log.Debug("creating file (and parent directories) " + p)
 	if err := MkdirAll(filepath.Dir(p), DirMode); err != nil {
@@ -515,6 +515,18 @@ func setValue(node *yaml.Node, value interface{}) error {
 	case string:
 		vstring := value.(string)
 		node.SetString(vstring)
+	case []string:
+		node.Style = yaml.FlowStyle
+		node.Kind = yaml.SequenceNode
+		// Check if the slice is empty, if not, populate the content
+		if len(value.([]string)) > 0 {
+			var content []*yaml.Node
+			for _, v := range value.([]string) {
+				elem := &yaml.Node{Kind: yaml.ScalarNode, Value: string(v)}
+				content = append(content, elem)
+			}
+			node.Content = content
+		}
 	default:
 		return fmt.Errorf("unexpected type %T", t)
 	}

@@ -10,7 +10,6 @@
 
 package com.yugabyte.yw.common.ha;
 
-import akka.actor.Cancellable;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
@@ -38,6 +37,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import org.apache.pekko.actor.Cancellable;
 import org.apache.velocity.Template;
 import org.apache.velocity.VelocityContext;
 import org.apache.velocity.app.VelocityEngine;
@@ -255,7 +255,7 @@ public class PlatformReplicationHelper {
     return false;
   }
 
-  void exportPlatformInstances(HighAvailabilityConfig config, String remoteInstanceAddr) {
+  boolean exportPlatformInstances(HighAvailabilityConfig config, String remoteInstanceAddr) {
     try {
       PlatformInstanceClient client =
           this.remoteClientFactory.getClient(config.getClusterKey(), remoteInstanceAddr);
@@ -266,10 +266,12 @@ public class PlatformReplicationHelper {
 
       // Export the platform instances to the given remote platform instance.
       client.syncInstances(config.getLastFailover().getTime(), instancesJson);
+      return true;
     } catch (Exception e) {
       LOG.error(
           "Error exporting local platform instances to remote instance " + remoteInstanceAddr, e);
     }
+    return false;
   }
 
   void switchPrometheusToFederated(URL remoteAddr) {
@@ -395,7 +397,7 @@ public class PlatformReplicationHelper {
     }
   }
 
-  void syncToRemoteInstance(PlatformInstance remoteInstance) {
+  boolean syncToRemoteInstance(PlatformInstance remoteInstance) {
     HighAvailabilityConfig config = remoteInstance.getConfig();
     String remoteAddr = remoteInstance.getAddress();
     LOG.debug("Syncing data to " + remoteAddr + "...");
@@ -403,12 +405,11 @@ public class PlatformReplicationHelper {
     // Ensure that the remote instance is demoted if this instance is the most current leader.
     if (!this.demoteRemoteInstance(remoteInstance)) {
       LOG.error("Error demoting remote instance " + remoteAddr);
-
-      return;
+      return false;
     }
 
     // Sync the HA cluster metadata to the remote instance.
-    this.exportPlatformInstances(config, remoteAddr);
+    return this.exportPlatformInstances(config, remoteAddr);
   }
 
   List<File> listBackups(URL leader) {

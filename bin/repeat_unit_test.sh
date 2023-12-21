@@ -231,7 +231,7 @@ fi
 
 if [[ $is_java_test == "false" ]]; then
   abs_test_binary_path=$( find_test_binary "$test_binary_name" )
-  rel_test_binary=${abs_test_binary_path#$BUILD_ROOT/}
+  rel_test_binary=${abs_test_binary_path#"$BUILD_ROOT/"}
   if [[ $rel_test_binary == "$abs_test_binary_path" ]]; then
     fatal "Expected absolute test binary path ('$abs_test_binary_path') to start with" \
           "BUILD_ROOT ('$BUILD_ROOT')"

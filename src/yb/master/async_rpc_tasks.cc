@@ -1100,6 +1100,29 @@ void AsyncAlterTable::HandleResponse(int attempt) {
         break;
     }
   } else {
+    // CDC SDK Create Stream Context
+    // Technically, handling the CDCSDK snapshot flow is part of AlterTable processing. So it is
+    // done before transitioning to complete state.
+    // If there is an error while populating the cdc_state table, it can be ignored here
+    // as it will be handled in CatalogManager::CreateNewXReplStream
+    if (cdc_sdk_stream_id_) {
+      if (resp_.has_cdc_sdk_snapshot_safe_op_id() && resp_.has_propagated_hybrid_time()) {
+        WARN_NOT_OK(
+            master_->catalog_manager()->PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
+                table(), tablet_id(), cdc_sdk_stream_id_, resp_.cdc_sdk_snapshot_safe_op_id(),
+                HybridTime::FromPB(resp_.propagated_hybrid_time()),
+                cdc_sdk_require_history_cutoff_),
+            Format(
+              "$0 failed while populating cdc_state table in AsyncAlterTable::HandleResponse. "
+              "Response $1", description(),
+              resp_.ShortDebugString()));
+      } else {
+        LOG(WARNING) << "Response not as expected. Not inserting any rows into "
+                     << "cdc_state table for stream_id: " << cdc_sdk_stream_id_
+                     << " and tablet id: " << tablet_id();
+      }
+    }
+
     TransitionToCompleteState();
     VLOG_WITH_PREFIX(1)
         << "TS " << permanent_uuid() << " completed: for version " << schema_version_;
@@ -1142,6 +1165,12 @@ bool AsyncAlterTable::SendRequest(int attempt) {
 
     if (l->pb.has_wal_retention_secs()) {
       req.set_wal_retention_secs(l->pb.wal_retention_secs());
+    }
+
+    // Support for CDC SDK Create Stream context
+    if (cdc_sdk_stream_id_) {
+      req.set_retention_requester_id(cdc_sdk_stream_id_.ToString());
+      req.set_cdc_sdk_require_history_cutoff(cdc_sdk_require_history_cutoff_);
     }
 
     req.mutable_schema()->CopyFrom(l->pb.schema());

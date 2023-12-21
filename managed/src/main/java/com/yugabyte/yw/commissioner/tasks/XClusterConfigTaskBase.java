@@ -3,6 +3,7 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import com.google.api.client.util.Throwables;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskExecutor;
@@ -26,9 +27,11 @@ import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.services.YBClientService;
+import com.yugabyte.yw.common.table.TableInfoUtil;
 import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.forms.DrConfigTaskParams;
 import com.yugabyte.yw.forms.ITaskParams;
+import com.yugabyte.yw.forms.TableInfoForm.TableInfoResp;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData;
 import com.yugabyte.yw.forms.XClusterConfigCreateFormData.BootstrapParams;
 import com.yugabyte.yw.forms.XClusterConfigTaskParams;
@@ -108,6 +111,13 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
           XClusterTableConfig.Status.Updating,
           XClusterTableConfig.Status.Bootstrapping);
 
+  // XCluster setup is not supported for system and matview tables.
+  public static final Set<RelationType> X_CLUSTER_SUPPORTED_TABLE_RELATION_TYPE_SET =
+      ImmutableSet.of(
+          RelationType.USER_TABLE_RELATION,
+          RelationType.INDEX_TABLE_RELATION,
+          RelationType.COLOCATED_PARENT_TABLE_RELATION);
+
   private static final Map<XClusterConfigStatusType, List<TaskType>> STATUS_TO_ALLOWED_TASKS =
       new HashMap<>();
 
@@ -183,6 +193,38 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       throw new RuntimeException("xClusterConfig cannot be null");
     }
     return X_CLUSTER_CONFIG_MUST_DELETE_STATUS_LIST.contains(xClusterConfig.getStatus());
+  }
+
+  public static boolean isXClusterSupported(
+      MasterDdlOuterClass.ListTablesResponsePB.TableInfo tableInfo) {
+    if (!X_CLUSTER_SUPPORTED_TABLE_RELATION_TYPE_SET.contains(tableInfo.getRelationType())) {
+      return false;
+    }
+    // We only pass colocated parent tables and not colocated child tables for xcluster.
+    if (TableInfoUtil.isColocatedChildTable(tableInfo)) {
+      return false;
+    }
+    return true;
+  }
+
+  public static boolean isXClusterSupported(TableInfoResp tableInfoResp) {
+    if (!X_CLUSTER_SUPPORTED_TABLE_RELATION_TYPE_SET.contains(tableInfoResp.relationType)) {
+      return false;
+    }
+    // We only pass colocated parent tables and not colocated child tables for xcluster.
+    if (tableInfoResp.isColocatedChildTable()) {
+      return false;
+    }
+    return true;
+  }
+
+  public static Map<Boolean, List<String>> getTableIdsPartitionedByIsXClusterSupported(
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList) {
+    return tableInfoList.stream()
+        .collect(
+            Collectors.partitioningBy(
+                XClusterConfigTaskBase::isXClusterSupported,
+                Collectors.mapping(XClusterConfigTaskBase::getTableId, Collectors.toList())));
   }
 
   public static boolean isTaskAllowed(XClusterConfig xClusterConfig, TaskType taskType) {
@@ -800,7 +842,9 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
    * @return A list of {@link MasterDdlOuterClass.ListTablesResponsePB.TableInfo} containing table
    *     info of the tables whose id is specified at {@code requestedTableIds}
    */
-  // Todo: Break down this method.
+  // Todo: This method is no longer use in the code base. It is only used in the utests and should
+  //  be removed.
+  @Deprecated
   public static Pair<List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo>, Set<String>>
       getRequestedTableInfoListAndVerify(
           YBClientService ybService,
@@ -817,7 +861,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       throw new IllegalArgumentException("requestedTableIds cannot be empty");
     }
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
-        getTableInfoList(ybService, sourceUniverse, true /* excludeSystemTables */);
+        getTableInfoList(ybService, sourceUniverse);
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
         filterTableInfoListByTableIds(sourceTableInfoList, requestedTableIds);
@@ -845,7 +889,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     // Make sure all the tables on the source universe have a corresponding table on the target
     // universe.
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTablesInfoList =
-        getTableInfoList(ybService, targetUniverse, true /* excludeSystemTables */);
+        getTableInfoList(ybService, targetUniverse);
     Map<String, String> sourceTableIdTargetTableIdMap =
         getSourceTableIdTargetTableIdMap(requestedTableInfoList, targetTablesInfoList);
 
@@ -1097,7 +1141,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
 
   /**
    * It assumes table names in both {@code tableInfoListOnSource} and {@code tableInfoListOnTarget}
-   * are unique.
+   * are unique except for colocated parent table names.
    *
    * @param tableInfoListOnSource The list of table info on the source in a namespace.schema for
    *     `PGSQL_TABLE_TYPE` or namespace for others
@@ -1111,6 +1155,15 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoListOnTarget) {
     Map<String, String> sourceTableIdTargetTableIdMap = new HashMap<>();
     Set<String> notFoundTables = new HashSet<>();
+
+    // Find colocated parent table in target universe namespace if exists. There is at most one
+    //  colocated parent table per namespace.
+    MasterDdlOuterClass.ListTablesResponsePB.TableInfo targetColocatedParentTable =
+        tableInfoListOnTarget.stream()
+            .filter(TableInfoUtil::isColocatedParentTable)
+            .findFirst()
+            .orElse(null);
+
     Map<String, String> tableNameTableIdOnTargetMap =
         tableInfoListOnTarget.stream()
             .collect(
@@ -1121,6 +1174,11 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
           String tableIdOnTarget = tableNameTableIdOnTargetMap.get(tableInfo.getName());
           if (tableIdOnTarget != null) {
             sourceTableIdTargetTableIdMap.put(tableInfo.getId().toStringUtf8(), tableIdOnTarget);
+          } else if (TableInfoUtil.isColocatedParentTable(tableInfo)
+              && targetColocatedParentTable != null) {
+            sourceTableIdTargetTableIdMap.put(
+                tableInfo.getId().toStringUtf8(),
+                targetColocatedParentTable.getId().toStringUtf8());
           } else {
             notFoundTables.add(tableInfo.getId().toStringUtf8());
           }
@@ -1217,23 +1275,23 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
   // MasterDdlOuterClass.ListTablesResponsePB.TableInfo.
   // --------------------------------------------------------------------------------
   public static List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> getTableInfoList(
-      YBClientService ybService, Universe universe, boolean excludeSystemTables) {
+      YBClientService ybService, Universe universe) {
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> tableInfoList;
     String universeMasterAddresses = universe.getMasterAddresses();
     String universeCertificate = universe.getCertificateNodetoNode();
     try (YBClient client = ybService.getClient(universeMasterAddresses, universeCertificate)) {
       ListTablesResponse listTablesResponse =
-          client.getTablesList(null /* nameFilter */, excludeSystemTables, null /* namespace */);
+          client.getTablesList(
+              null /* nameFilter */, false /* excludeSystemTables */, null /* namespace */);
       tableInfoList = listTablesResponse.getTableInfoList();
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
-    return tableInfoList;
-  }
-
-  public static List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> getTableInfoList(
-      YBClientService ybService, Universe universe) {
-    return getTableInfoList(ybService, universe, true /* excludeSystemTables */);
+    // DB treats colocated parent tables as system tables. Thus need to filter system tables on YBA
+    // side.
+    return tableInfoList.stream()
+        .filter(tableInfo -> !TableInfoUtil.isSystemTable(tableInfo))
+        .collect(Collectors.toList());
   }
 
   public static List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> getTableInfoList(
@@ -1454,6 +1512,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
               "Some of the tables were not found: was %d, found %d, missing tables: %s",
               tableIds.size(), filteredTableInfoList.size(), missingTableIds));
     }
+    log.debug("filteredTableInfoList is {}", filteredTableInfoList);
     return filteredTableInfoList;
   }
 

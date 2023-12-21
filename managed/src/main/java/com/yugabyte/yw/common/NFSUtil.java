@@ -3,6 +3,7 @@
 package com.yugabyte.yw.common;
 
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.PRECONDITION_FAILED;
 
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
@@ -31,6 +32,7 @@ import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
@@ -133,6 +135,23 @@ public class NFSUtil implements StorageUtil {
             backupLocation, BackupUtil.getPathWithPrefixSuffixJoin(configLocation, bucket));
     location = StringUtils.removeStart(location, "/");
     return location;
+  }
+
+  @Override
+  public void checkStoragePrefixValidity(
+      CustomerConfigData configData,
+      @Nullable String region,
+      String backupLocation,
+      boolean checkBucket) {
+    region = StringUtils.isBlank(region) ? YbcBackupUtil.DEFAULT_REGION_STRING : region;
+    String configLocation = getRegionLocationsMap(configData).get(region);
+    if (!StringUtils.startsWith(backupLocation, configLocation)) {
+      throw new PlatformServiceException(
+          PRECONDITION_FAILED,
+          String.format(
+              "Matching failed for config-location %s and backup-location %s",
+              configLocation, backupLocation));
+    }
   }
 
   @Override

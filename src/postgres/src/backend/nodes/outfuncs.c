@@ -793,6 +793,24 @@ _outYbBatchedNestLoop(StringInfo str, const YbBatchedNestLoop *node)
 		appendStringInfoString(str, " ");
 		outNode(str, node->hashClauseInfos[i].outerParamExpr);
 	}
+
+	WRITE_INT_FIELD(numSortCols);
+
+	appendStringInfoString(str, " :sortColIdx");
+	for (int i = 0; i < node->numSortCols; i++)
+		appendStringInfo(str, " %d", node->sortColIdx[i]);
+
+	appendStringInfoString(str, " :sortOperators");
+	for (int i = 0; i < node->numSortCols; i++)
+		appendStringInfo(str, " %u", node->sortOperators[i]);
+
+	appendStringInfoString(str, " :collations");
+	for (int i = 0; i < node->numSortCols; i++)
+		appendStringInfo(str, " %u", node->collations[i]);
+
+	appendStringInfoString(str, " :nullsFirst");
+	for (int i = 0; i < node->numSortCols; i++)
+		appendStringInfo(str, " %s", booltostr(node->nullsFirst[i]));
 }
 
 static void
@@ -3774,9 +3792,9 @@ _outYbExprColrefDesc(StringInfo str, const YbExprColrefDesc *node)
 	WRITE_NODE_TYPE("YBEXPRCOLREFDESC");
 
 	WRITE_INT_FIELD(attno);
-	WRITE_INT_FIELD(typid);
+	WRITE_OID_FIELD(typid);
 	WRITE_INT_FIELD(typmod);
-	WRITE_INT_FIELD(collid);
+	WRITE_OID_FIELD(collid);
 }
 
 /*

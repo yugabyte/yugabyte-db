@@ -121,6 +121,9 @@ export const FETCH_RUNTIME_CONFIGS_RESPONSE = 'FETCH_RUNTIME_CONFIGS_RESPONSE';
 export const FETCH_RUNTIME_CONFIGS_KEY_INFO = 'FETCH_RUNTIME_CONFIGS_KEY_INFO';
 export const FETCH_RUNTIME_CONFIGS_KEY_INFO_RESPONSE = 'FETCH_RUNTIME_CONFIGS_KEY_INFO_RESPONSE';
 
+export const FETCH_PROVIDER_RUNTIME_CONFIGS = 'FETCH_PROVIDER_RUNTIME_CONFIGS';
+export const FETCH_PROVIDER_RUNTIME_CONFIGS_RESPONSE = 'FETCH_PROVIDER_RUNTIME_CONFIGS_RESPONSE';
+
 export const SET_RUNTIME_CONFIG = 'SET_RUNTIME_CONFIG';
 export const SET_RUNTIME_CONFIG_RESPONSE = 'SET_RUNTIME_CONFIG_RESPONSE';
 
@@ -450,12 +453,21 @@ export function fetchSoftwareVersions() {
 }
 
 export function fetchSoftwareVersionsSuccess(result) {
-  const activeReleases = Object.entries(result?.data)
-    .filter((e) => e[1]?.state === 'ACTIVE')
-    .map((e) => e[0]);
+  const activeReleasesMap = {};
+  const activeReleases = Object.entries(result?.data).filter((e) => {
+    if (e[1]?.state === 'ACTIVE') {
+      activeReleasesMap[e[0]] = e[1];
+      return true;
+    } else return false;
+  });
+
   return {
     type: FETCH_SOFTWARE_VERSIONS_SUCCESS,
-    payload: { ...result, data: activeReleases }
+    payload: {
+      ...result,
+      data: activeReleases.map((e) => e[0]),
+      releasesWithMetadata: activeReleasesMap
+    }
   };
 }
 
@@ -944,6 +956,24 @@ export function fetchRunTimeConfigsKeyInfo() {
 export function fetchRunTimeConfigsKeyInfoResponse(response) {
   return {
     type: FETCH_RUNTIME_CONFIGS_KEY_INFO_RESPONSE,
+    payload: response
+  };
+}
+
+export function fetchProviderRunTimeConfigs(scope, includeInherited = false) {
+  const cUUID = localStorage.getItem('customerId');
+  const request = axios.get(
+    `${ROOT_URL}/customers/${cUUID}/runtime_config/${scope}?includeInherited=${includeInherited}`
+  );
+  return {
+    type: FETCH_PROVIDER_RUNTIME_CONFIGS,
+    payload: request
+  };
+}
+
+export function fetchProviderRunTimeConfigsResponse(response) {
+  return {
+    type: FETCH_PROVIDER_RUNTIME_CONFIGS_RESPONSE,
     payload: response
   };
 }

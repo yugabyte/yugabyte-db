@@ -1228,6 +1228,13 @@ Status get_wal_retention_secs_action(
   return Status::OK();
 }
 
+const auto get_auto_flags_config_args = "";
+Status get_auto_flags_config_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  RETURN_NOT_OK_PREPEND(client->GetAutoFlagsConfig(), "Unable to get AutoFlags config");
+  return Status::OK();
+}
+
 const auto promote_auto_flags_args =
     "[<max_flags_class> (default kExternal) [<promote_non_runtime_flags> (default true) [force]]]";
 Status promote_auto_flags_action(
@@ -1755,7 +1762,8 @@ Status create_cdc_stream_action(
   return Status::OK();
 }
 
-const auto create_change_data_stream_args = "<namespace> [<checkpoint_type>] [<record_type>]";
+const auto create_change_data_stream_args =
+   "<namespace> [<checkpoint_type>] [<record_type>] [<consistent_snapshot_option>]";
 Status create_change_data_stream_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() < 1) {
@@ -1764,8 +1772,11 @@ Status create_change_data_stream_action(
 
   std::string checkpoint_type = yb::ToString("EXPLICIT");
   cdc::CDCRecordType record_type_pb = cdc::CDCRecordType::CHANGE;
+  std::string consistent_snapshot_option = "USE_SNAPSHOT";
   std::string uppercase_checkpoint_type;
   std::string uppercase_record_type;
+  std::string uppercase_consistent_snapshot_option;
+
 
   if (args.size() > 1) {
     ToUpperCase(args[1], &uppercase_checkpoint_type);
@@ -1783,11 +1794,21 @@ Status create_change_data_stream_action(
     }
   }
 
+  if (args.size() > 3) {
+    ToUpperCase(args[3], &uppercase_consistent_snapshot_option);
+    if (uppercase_consistent_snapshot_option != "USE_SNAPSHOT" &&
+        uppercase_consistent_snapshot_option != "NOEXPORT_SNAPSHOT") {
+      return ClusterAdminCli::kInvalidArguments;
+    }
+    consistent_snapshot_option = uppercase_consistent_snapshot_option;
+  }
+
   const string namespace_name = args[0];
   const TypedNamespaceName database = VERIFY_RESULT(ParseNamespaceName(args[0]));
 
   RETURN_NOT_OK_PREPEND(
-      client->CreateCDCSDKDBStream(database, checkpoint_type, record_type_pb),
+      client->CreateCDCSDKDBStream(
+          database, checkpoint_type, record_type_pb, consistent_snapshot_option),
       Format("Unable to create CDC stream for database $0", namespace_name));
   return Status::OK();
 }
@@ -1861,6 +1882,25 @@ Status get_change_data_stream_info_action(
   RETURN_NOT_OK_PREPEND(
       client->GetCDCDBStreamInfo(db_stream_id),
       Format("Unable to list CDC stream info for database stream $0", db_stream_id));
+  return Status::OK();
+}
+
+const auto ysql_backfill_change_data_stream_with_replication_slot_args =
+    "<stream_id> <replication_slot_name>";
+Status ysql_backfill_change_data_stream_with_replication_slot_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 2) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  const string stream_id = args[0];
+  const string replication_slot_name = args[1];
+
+  RETURN_NOT_OK_PREPEND(
+      client->YsqlBackfillReplicationSlotNameToCDCSDKStream(stream_id, replication_slot_name),
+      Format(
+          "Unable to backfill CDC stream $0 with replication slot $1", stream_id,
+          replication_slot_name));
   return Status::OK();
 }
 
@@ -2231,6 +2271,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(upgrade_ysql);
   REGISTER_COMMAND(set_wal_retention_secs);
   REGISTER_COMMAND(get_wal_retention_secs);
+  REGISTER_COMMAND(get_auto_flags_config);
   REGISTER_COMMAND(promote_auto_flags);
   REGISTER_COMMAND(rollback_auto_flags);
   REGISTER_COMMAND(promote_single_auto_flag);
@@ -2269,6 +2310,7 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(list_cdc_streams);
   REGISTER_COMMAND(list_change_data_streams);
   REGISTER_COMMAND(get_change_data_stream_info);
+  REGISTER_COMMAND(ysql_backfill_change_data_stream_with_replication_slot);
   // xCluster commands
   REGISTER_COMMAND(setup_universe_replication);
   REGISTER_COMMAND(delete_universe_replication);

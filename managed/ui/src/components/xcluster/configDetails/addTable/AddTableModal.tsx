@@ -9,14 +9,12 @@ import { TableTypeLabel, Universe, YBTable } from '../../../../redesign/helpers/
 import { assertUnreachableCase, handleServerError } from '../../../../utils/errorHandlingUtils';
 import { YBButton, YBModal } from '../../../common/forms/fields';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
-import { isYbcEnabledUniverse } from '../../../../utils/UniverseUtils';
-import { ParallelThreads } from '../../../backupv2/common/BackupUtils';
 import { YBModalForm } from '../../../common/forms';
 import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
 import {
   BOOTSTRAP_MIN_FREE_DISK_SPACE_GB,
   XClusterConfigAction,
-  XClusterConfigType
+  XCLUSTER_UNIVERSE_TABLE_FILTERS
 } from '../../constants';
 import {
   getTablesForBootstrapping,
@@ -38,21 +36,18 @@ export interface AddTableFormValues {
   tableUUIDs: string[];
   // Bootstrap fields
   storageConfig: { label: string; name: string; regions: any[]; value: string };
-  parallelThreads: number;
 }
 
 export interface AddTableFormErrors {
   tableUUIDs: { title: string; body: string };
   // Bootstrap fields
   storageConfig: string;
-  parallelThreads: string;
 }
 
 export interface AddTableFormWarnings {
   tableUUIDs?: { title: string; body: string };
   // Bootstrap fields
   storageConfig?: string;
-  parallelThreads?: string;
 }
 
 interface AddTableModalProps {
@@ -60,7 +55,7 @@ interface AddTableModalProps {
   onHide: () => void;
   xClusterConfig: XClusterConfig;
 
-  isDrConfig?: boolean;
+  isDrInterface?: boolean;
 }
 
 const MODAL_TITLE = 'Add Tables to Replication';
@@ -75,9 +70,7 @@ export type FormStep = typeof FormStep[keyof typeof FormStep];
 const FIRST_FORM_STEP = FormStep.SELECT_TABLES;
 
 const INITIAL_VALUES: Partial<AddTableFormValues> = {
-  tableUUIDs: [],
-  // Bootstrap fields
-  parallelThreads: ParallelThreads.XCLUSTER_DEFAULT
+  tableUUIDs: []
 };
 
 /**
@@ -87,7 +80,7 @@ export const AddTableModal = ({
   isVisible,
   onHide,
   xClusterConfig,
-  isDrConfig = false
+  isDrInterface = false
 }: AddTableModalProps) => {
   const [currentStep, setCurrentStep] = useState<FormStep>(FIRST_FORM_STEP);
   const [formWarnings, setFormWarnings] = useState<AddTableFormWarnings>();
@@ -106,13 +99,12 @@ export const AddTableModal = ({
   );
 
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, {
-      excludeColocatedTables: true
-    }),
+    universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, XCLUSTER_UNIVERSE_TABLE_FILTERS),
     () =>
-      fetchTablesInUniverse(xClusterConfig.sourceUniverseUUID, {
-        excludeColocatedTables: true
-      }).then((response) => response.data)
+      fetchTablesInUniverse(
+        xClusterConfig.sourceUniverseUUID,
+        XCLUSTER_UNIVERSE_TABLE_FILTERS
+      ).then((response) => response.data)
   );
 
   const configTablesMutation = useMutation(
@@ -122,10 +114,7 @@ export const AddTableModal = ({
           ? {
               tables: bootstrapRequiredTableUUIDs,
               backupRequestParams: {
-                storageConfigUUID: formValues.storageConfig.value,
-                parallelism: formValues.parallelThreads,
-                sse: formValues.storageConfig.name === 'S3',
-                universeUUID: null
+                storageConfigUUID: formValues.storageConfig.value
               }
             }
           : undefined;
@@ -281,7 +270,7 @@ export const AddTableModal = ({
           sourceUniverse,
           sourceUniverseTables,
           isTableSelectionValidated,
-          xClusterConfig.type,
+          xClusterConfig,
           setBootstrapRequiredTableUUIDs,
           setFormWarnings
         )
@@ -315,13 +304,14 @@ export const AddTableModal = ({
                 <TableSelect
                   {...{
                     configAction: XClusterConfigAction.ADD_TABLE,
-                    isDrConfig,
+                    isDrInterface,
                     isFixedTableType: true,
-                    selectedKeyspaces,
+                    initialNamespaceUuids: [],
+                    selectedNamespaceUuids: selectedKeyspaces,
                     selectedTableUUIDs: formik.current.values.tableUUIDs,
                     selectionError: errors.tableUUIDs,
                     selectionWarning: formWarnings?.tableUUIDs,
-                    setSelectedKeyspaces,
+                    setSelectedNamespaceUuids: setSelectedKeyspaces,
                     setSelectedTableUUIDs: (tableUUIDs: string[]) =>
                       setSelectedTableUUIDs(tableUUIDs, formik.current),
                     setTableType: (_) => null,
@@ -356,7 +346,7 @@ const validateForm = async (
   sourceUniverse: Universe,
   sourceUniverseTables: YBTable[],
   isTableSelectionValidated: boolean,
-  xClusterConfigType: XClusterConfigType,
+  xClusterConfig: XClusterConfig,
   setBootstrapRequiredTableUUIDs: (tableUUIDs: string[]) => void,
   setFormWarning: (formWarnings: AddTableFormWarnings) => void
 ) => {
@@ -387,7 +377,9 @@ const validateForm = async (
           sourceUniverse.universeUUID,
           null /* targetUniverseUUID */,
           sourceUniverseTables,
-          xClusterConfigType
+          xClusterConfig.tables,
+          xClusterConfig.type,
+          xClusterConfig.usedForDr
         );
       } catch (error: any) {
         toast.error(
@@ -424,8 +416,8 @@ const validateForm = async (
 
           if (freeDiskSpace !== undefined && freeDiskSpace < BOOTSTRAP_MIN_FREE_DISK_SPACE_GB) {
             warning.tableUUIDs = {
-              title: 'Insufficient disk space.',
-              body: `Some selected tables require bootstrapping. We recommend having at least ${BOOTSTRAP_MIN_FREE_DISK_SPACE_GB} GB of free disk space in the source universe.`
+              title: 'Warning: You may need additional disk space.',
+              body: `Some selected tables require full copying. We recommend having at least ${BOOTSTRAP_MIN_FREE_DISK_SPACE_GB} GB of free disk space in the source universe.`
             };
           }
         }
@@ -438,13 +430,6 @@ const validateForm = async (
       const errors: Partial<AddTableFormErrors> = {};
       if (!values.storageConfig) {
         errors.storageConfig = 'Backup storage configuration is required.';
-      }
-      const shouldValidateParallelThread =
-        values.parallelThreads && isYbcEnabledUniverse(sourceUniverse?.universeDetails);
-      if (shouldValidateParallelThread && values.parallelThreads > ParallelThreads.MAX) {
-        errors.parallelThreads = `Parallel threads must be less than or equal to ${ParallelThreads.MAX}`;
-      } else if (shouldValidateParallelThread && values.parallelThreads < ParallelThreads.MIN) {
-        errors.parallelThreads = `Parallel threads must be greater than or equal to ${ParallelThreads.MIN}`;
       }
 
       throw errors;
@@ -465,11 +450,11 @@ const getFormSubmitLabel = (
         return 'Validate Table Selection';
       }
       if (bootstrapRequired) {
-        return 'Next: Configure Bootstrap';
+        return 'Next: Configure Full Copy';
       }
       return 'Enable Replication';
     case FormStep.CONFIGURE_BOOTSTRAP:
-      return 'Bootstrap and Enable Replication';
+      return 'Full Copy and Enable Replication';
     default:
       return assertUnreachableCase(formStep);
   }

@@ -3,7 +3,6 @@ title: C# Npgsql Smart Driver for YSQL
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect a C# application using Npgsql Smart Driver
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
     identifier: csharp-driver-ysql

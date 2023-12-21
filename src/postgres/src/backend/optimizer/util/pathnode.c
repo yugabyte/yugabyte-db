@@ -1505,11 +1505,14 @@ create_append_path(PlannerInfo *root,
 	 */
 	if (partitioned_rels != NIL && root && rel->reloptkind == RELOPT_BASEREL)
 	{
-		/* YB: Accumulate batching info from subpaths for this "baserel". */
-		Assert(yb_has_same_batching_reqs(subpaths));
+		if (subpaths)
+		{
+			/* YB: Accumulate batching info from subpaths for this "baserel". */
+			Assert(yb_has_same_batching_reqs(subpaths));
 
-		root->yb_cur_batched_relids =
-			YB_PATH_REQ_OUTER_BATCHED((Path *) linitial(subpaths));
+			root->yb_cur_batched_relids =
+				YB_PATH_REQ_OUTER_BATCHED((Path *) linitial(subpaths));
+		}
 		pathnode->path.param_info = get_baserel_parampathinfo(root,
 															  rel,
 															  required_outer);
@@ -2515,12 +2518,6 @@ create_nestloop_path(PlannerInfo *root,
 				jclauses = lappend(jclauses, rinfo);
 		}
 		restrict_clauses = jclauses;
-	}
-
-	if (is_batched)
-	{
-		Assert(yb_bnl_batch_size > 1);
-		pathkeys = NIL;
 	}
 
 	pathnode->path.pathtype = T_NestLoop;

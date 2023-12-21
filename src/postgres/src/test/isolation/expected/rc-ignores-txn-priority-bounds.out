@@ -1,0 +1,48 @@
+Parsed test spec with 3 sessions
+
+starting permutation: s1_txn_pri_lower s1_txn_pri_upper s2_txn_pri_lower s2_txn_pri_upper s1_begin s2_begin s1_update s2_update s1_commit s2_commit s1_select
+step s1_txn_pri_lower: set yb_transaction_priority_lower_bound to 0.1;
+step s1_txn_pri_upper: set yb_transaction_priority_upper_bound to 0.4;
+step s2_txn_pri_lower: set yb_transaction_priority_lower_bound to 0.6;
+step s2_txn_pri_upper: set yb_transaction_priority_upper_bound to 0.9;
+step s1_begin: begin transaction isolation level read committed;
+step s2_begin: begin transaction isolation level read committed;
+step s1_update: update demo set value=1 where id=123;
+step s2_update: update demo set value=2 where id=123; <waiting ...>
+step s1_commit: commit;
+step s2_update: <... completed>
+step s2_commit: commit;
+step s1_select: select * from demo;
+id             value
+
+123            2
+
+starting permutation: s1_txn_pri_lower s1_txn_pri_upper s3_fast_pathtxn_pri_lower s3_fast_pathtxn_pri_upper s1_begin s1_update s3_fast_path_update s1_commit s1_select
+step s1_txn_pri_lower: set yb_transaction_priority_lower_bound to 0.1;
+step s1_txn_pri_upper: set yb_transaction_priority_upper_bound to 0.4;
+step s3_fast_pathtxn_pri_lower: set yb_transaction_priority_lower_bound to 0.45;
+step s3_fast_pathtxn_pri_upper: set yb_transaction_priority_upper_bound to 0.55;
+step s1_begin: begin transaction isolation level read committed;
+step s1_update: update demo set value=1 where id=123;
+step s3_fast_path_update: update demo set value=3 where id=123; <waiting ...>
+step s1_commit: commit;
+step s3_fast_path_update: <... completed>
+step s1_select: select * from demo;
+id             value
+
+123            3
+
+starting permutation: s2_txn_pri_lower s2_txn_pri_upper s3_fast_pathtxn_pri_lower s3_fast_pathtxn_pri_upper s2_begin s2_update s3_fast_path_update s2_commit s2_select
+step s2_txn_pri_lower: set yb_transaction_priority_lower_bound to 0.6;
+step s2_txn_pri_upper: set yb_transaction_priority_upper_bound to 0.9;
+step s3_fast_pathtxn_pri_lower: set yb_transaction_priority_lower_bound to 0.45;
+step s3_fast_pathtxn_pri_upper: set yb_transaction_priority_upper_bound to 0.55;
+step s2_begin: begin transaction isolation level read committed;
+step s2_update: update demo set value=2 where id=123;
+step s3_fast_path_update: update demo set value=3 where id=123; <waiting ...>
+step s2_commit: commit;
+step s3_fast_path_update: <... completed>
+step s2_select: select * from demo;
+id             value
+
+123            3

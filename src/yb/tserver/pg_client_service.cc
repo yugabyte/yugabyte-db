@@ -48,6 +48,7 @@
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/scheduler.h"
 #include "yb/rpc/tasks_pool.h"
+#include "yb/rpc/rpc_introspection.pb.h"
 
 #include "yb/tserver/pg_client_session.h"
 #include "yb/tserver/pg_create_table.h"
@@ -174,7 +175,7 @@ class LockablePgClientSession : public PgClientSession {
         lifetime_(lifetime), expiration_(NewExpiration()) {
   }
 
-  void StartExchange(const Uuid& instance_id) {
+  void StartExchange(const std::string& instance_id) {
     exchange_.emplace(instance_id, id(), Create::kTrue, [this](size_t size) {
       Touch();
       std::shared_ptr<CountDownLatch> latch;
@@ -374,16 +375,20 @@ class PgClientServiceImpl::Impl {
         xcluster_context_(xcluster_context),
         pg_node_level_mutation_counter_(pg_node_level_mutation_counter),
         response_cache_(parent_mem_tracker, metric_entity),
-        instance_id_(Uuid::Generate()),
+        instance_id_(permanent_uuid),
         transaction_builder_([this](auto&&... args) {
           return BuildTransaction(std::forward<decltype(args)>(args)...);
         }) {
+    DCHECK(!permanent_uuid.empty());
     ScheduleCheckExpiredSessions(CoarseMonoClock::now());
     cdc_state_client_init_ = std::make_unique<client::AsyncClientInitializer>(
         "cdc_state_client", std::chrono::milliseconds(FLAGS_cdc_read_rpc_timeout_ms),
         permanent_uuid, tablet_server_opts, metric_entity, parent_mem_tracker, messenger);
     cdc_state_client_init_->Start();
     cdc_state_table_ = std::make_shared<cdc::CDCStateTable>(cdc_state_client_init_.get());
+    if (FLAGS_pg_client_use_shared_memory) {
+      WARN_NOT_OK(SharedExchange::Cleanup(instance_id_), "Cleanup shared memory failed");
+    }
   }
 
   ~Impl() {
@@ -411,7 +416,7 @@ class PgClientServiceImpl::Impl {
         pg_node_level_mutation_counter_, &response_cache_, &sequence_cache_);
     resp->set_session_id(session_id);
     if (FLAGS_pg_client_use_shared_memory) {
-      resp->set_instance_id(instance_id_.data(), instance_id_.size());
+      resp->set_instance_id(instance_id_);
       session_info->session().StartExchange(instance_id_);
     }
 
@@ -785,25 +790,39 @@ class PgClientServiceImpl::Impl {
     if (req->transactions_by_tablet().empty() && req->transaction_ids().empty()) {
       return Status::OK();
     }
-    // TODO(pglocks): parallelize RPCs
-    rpc::RpcController controller;
+
+    std::vector<std::future<Status>> status_futures;
+    status_futures.reserve(remote_tservers.size());
+    std::vector<std::shared_ptr<GetLockStatusResponsePB>> node_responses;
+    node_responses.reserve(remote_tservers.size());
     for (const auto& remote_tserver : remote_tservers) {
       auto proxy = remote_tserver->proxy();
-      GetLockStatusResponsePB node_resp;
-      controller.Reset();
-      auto s = proxy->GetLockStatus(*req, &node_resp, &controller);
+      auto status_promise = std::make_shared<std::promise<Status>>();
+      status_futures.push_back(status_promise->get_future());
+      auto node_resp = std::make_shared<GetLockStatusResponsePB>();
+      node_responses.push_back(node_resp);
+      std::shared_ptr<rpc::RpcController> controller = std::make_shared<rpc::RpcController>();
+      proxy->GetLockStatusAsync(
+          *req, node_resp.get(), controller.get(), [controller, status_promise] {
+            status_promise->set_value(controller->status());
+          });
+    }
+
+    for (size_t i = 0; i < status_futures.size(); i++) {
+      auto& node_resp = node_responses[i];
+      auto s = status_futures[i].get();
       if (!s.ok()) {
         resp->Clear();
         return s;
       }
-      if (node_resp.has_error()) {
+      if (node_resp->has_error()) {
         resp->Clear();
-        *resp->mutable_status() = node_resp.error().status();
+        *resp->mutable_status() = node_resp->error().status();
         return Status::OK();
       }
       auto* node_locks = resp->add_node_locks();
-      node_locks->set_permanent_uuid(remote_tserver->permanent_uuid());
-      node_locks->mutable_tablet_lock_infos()->Swap(node_resp.mutable_tablet_lock_infos());
+      node_locks->set_permanent_uuid(remote_tservers[i]->permanent_uuid());
+      node_locks->mutable_tablet_lock_infos()->Swap(node_resp->mutable_tablet_lock_infos());
       VLOG(4) << "Adding node locks to PgGetLockStatusResponsePB: "
               << node_locks->ShortDebugString();
     }
@@ -915,35 +934,39 @@ class PgClientServiceImpl::Impl {
   Status ListReplicationSlots(
       const PgListReplicationSlotsRequestPB& req, PgListReplicationSlotsResponsePB* resp,
       rpc::RpcContext* context) {
-    std::unordered_map<xrepl::StreamId, uint64_t> stream_to_latest_active_time;
-    Status iteration_status;
-    auto range_result = VERIFY_RESULT(cdc_state_table_->GetTableRange(
-        cdc::CDCStateTableEntrySelector().IncludeActiveTime(), &iteration_status));
-
-    for (auto entry_result : range_result) {
-      RETURN_NOT_OK(entry_result);
-      const auto& entry = *entry_result;
-
-      auto stream_id = entry.key.stream_id;
-      auto active_time = entry.active_time;
-      // If active_time isn't populated, then the (stream_id, tablet_id) pair hasn't been consumed
-      // yet by the client. So treat it is as an inactive case.
-      if (!active_time) {
-        continue;
-      }
-
-      if (stream_to_latest_active_time.contains(stream_id)) {
-        stream_to_latest_active_time[stream_id] =
-            std::max(stream_to_latest_active_time[stream_id], *active_time);
-      } else {
-        stream_to_latest_active_time[stream_id] = *active_time;
-      }
-    }
-    SCHECK(
-        iteration_status.ok(), InternalError, "Unable to read the CDC state table",
-        iteration_status);
-
     auto streams = VERIFY_RESULT(client().ListCDCSDKStreams());
+
+    // Determine latest active time of each stream if there are any.
+    std::unordered_map<xrepl::StreamId, uint64_t> stream_to_latest_active_time;
+    if (!streams.empty()) {
+      Status iteration_status;
+      auto range_result = VERIFY_RESULT(cdc_state_table_->GetTableRange(
+          cdc::CDCStateTableEntrySelector().IncludeActiveTime(), &iteration_status));
+
+      for (auto entry_result : range_result) {
+        RETURN_NOT_OK(entry_result);
+        const auto& entry = *entry_result;
+
+        auto stream_id = entry.key.stream_id;
+        auto active_time = entry.active_time;
+        // If active_time isn't populated, then the (stream_id, tablet_id) pair hasn't been consumed
+        // yet by the client. So treat it is as an inactive case.
+        if (!active_time) {
+          continue;
+        }
+
+        if (stream_to_latest_active_time.contains(stream_id)) {
+          stream_to_latest_active_time[stream_id] =
+              std::max(stream_to_latest_active_time[stream_id], *active_time);
+        } else {
+          stream_to_latest_active_time[stream_id] = *active_time;
+        }
+      }
+      SCHECK(
+          iteration_status.ok(), InternalError, "Unable to read the CDC state table",
+          iteration_status);
+    }
+
     auto current_time = GetCurrentTimeMicros();
     for (const auto& stream : streams) {
       auto stream_id = xrepl::StreamId::FromString(stream.stream_id);
@@ -1077,6 +1100,69 @@ class PgClientServiceImpl::Impl {
     } else {
       resp->set_is_pitr_active(*res);
     }
+    return Status::OK();
+  }
+
+  void GetRpcsWaitStates(yb::rpc::Messenger* messenger, tserver::WaitStatesPB* resp) {
+    rpc::DumpRunningRpcsRequestPB dump_req;
+    rpc::DumpRunningRpcsResponsePB dump_resp;
+
+    dump_req.set_include_traces(false);
+    dump_req.set_get_wait_state(true);
+    dump_req.set_dump_timed_out(false);
+    dump_req.set_get_local_calls(true);
+
+    WARN_NOT_OK(messenger->DumpRunningRpcs(dump_req, &dump_resp), "DumpRunningRpcs failed");
+
+    size_t ignored_calls = 0;
+    size_t ignored_calls_no_wait_state = 0;
+    for (const auto& conns : dump_resp.inbound_connections()) {
+      for (const auto& call : conns.calls_in_flight()) {
+        if (!call.has_wait_state() ||
+            (call.wait_state().has_aux_info() && call.wait_state().aux_info().has_method() &&
+             call.wait_state().aux_info().method() == "ActiveSessionHistory")) {
+          ignored_calls++;
+          if (!call.has_wait_state()) {
+            ignored_calls_no_wait_state++;
+          }
+          continue;
+        }
+        resp->add_wait_states()->CopyFrom(call.wait_state());
+      }
+    }
+    if (dump_resp.has_local_calls()) {
+      for (const auto& call : dump_resp.local_calls().calls_in_flight()) {
+        if (!call.has_wait_state() ||
+            (call.wait_state().has_aux_info() && call.wait_state().aux_info().has_method() &&
+             call.wait_state().aux_info().method() == "ActiveSessionHistory")) {
+          ignored_calls++;
+          if (!call.has_wait_state()) {
+            ignored_calls_no_wait_state++;
+          }
+          continue;
+        }
+        resp->add_wait_states()->CopyFrom(call.wait_state());
+      }
+    }
+    LOG_IF(INFO, VLOG_IS_ON(1) || ignored_calls > 1)
+        << "Ignored " << ignored_calls << " calls. " << ignored_calls_no_wait_state
+        << " without wait state";
+    VLOG(2) << __PRETTY_FUNCTION__
+            << " wait-states: " << yb::ToString(resp->wait_states());
+  }
+
+  void GetTServerWaitStates(tserver::WaitStatesPB* resp) {
+    if (auto* messenger = tablet_server_.GetMessenger()) {
+      GetRpcsWaitStates(messenger, resp);
+    } else {
+      LOG(DFATAL) << __func__ << " got no messenger.";
+    }
+  }
+
+  Status ActiveSessionHistory(
+      const PgActiveSessionHistoryRequestPB& req, PgActiveSessionHistoryResponsePB* resp,
+      rpc::RpcContext* context) {
+    GetTServerWaitStates(resp->mutable_tserver_wait_states());
     return Status::OK();
   }
 
@@ -1463,7 +1549,7 @@ class PgClientServiceImpl::Impl {
 
   PgSequenceCache sequence_cache_;
 
-  const Uuid instance_id_;
+  const std::string instance_id_;
 
   std::array<rw_spinlock, 8> txns_assignment_mutexes_;
   TransactionBuilder transaction_builder_;

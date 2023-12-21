@@ -27,6 +27,8 @@ import com.yugabyte.yw.forms.RuntimeConfigFormData.ConfigEntry;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.common.KeyFromURI;
+import com.yugabyte.yw.models.common.SynchronizedController;
 import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
@@ -175,6 +177,7 @@ public class RuntimeConfController extends AuthenticatedController {
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   @Transactional
+  @SynchronizedController(keyFromURI = @KeyFromURI(pathIndices = {3, 5}))
   public Result setKey(UUID customerUUID, UUID scopeUUID, String path, Http.Request request) {
     String contentType = request.contentType().orElse("UNKNOWN");
     if (!contentType.equals("text/plain")) {

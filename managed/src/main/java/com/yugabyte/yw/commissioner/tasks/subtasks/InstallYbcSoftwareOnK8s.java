@@ -4,6 +4,8 @@ package com.yugabyte.yw.commissioner.tasks.subtasks;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.ITask.Abortable;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -14,6 +16,8 @@ import java.util.Set;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
+@Abortable
+@Retryable
 public class InstallYbcSoftwareOnK8s extends KubernetesTaskBase {
 
   @Inject
@@ -33,8 +37,13 @@ public class InstallYbcSoftwareOnK8s extends KubernetesTaskBase {
       Set<NodeDetails> primaryTservers =
           new HashSet<NodeDetails>(universe.getTServersInPrimaryCluster());
       allTservers.addAll(primaryTservers);
+      /* This calls kubectl cp, it is idempotent */
       installYbcOnThePods(
-          universe.getName(), primaryTservers, false, taskParams().getYbcSoftwareVersion());
+          universe.getName(),
+          primaryTservers,
+          false,
+          taskParams().getYbcSoftwareVersion(),
+          universe.getUniverseDetails().getPrimaryCluster().userIntent.ybcFlags);
 
       if (universe.getUniverseDetails().getReadOnlyClusters().size() != 0) {
         Set<NodeDetails> replicaTservers =
@@ -43,7 +52,11 @@ public class InstallYbcSoftwareOnK8s extends KubernetesTaskBase {
                     universe.getUniverseDetails().getReadOnlyClusters().get(0).uuid));
         allTservers.addAll(replicaTservers);
         installYbcOnThePods(
-            universe.getName(), replicaTservers, true, taskParams().getYbcSoftwareVersion());
+            universe.getName(),
+            replicaTservers,
+            true,
+            taskParams().getYbcSoftwareVersion(),
+            universe.getUniverseDetails().getReadOnlyClusters().get(0).userIntent.ybcFlags);
         performYbcAction(replicaTservers, true, "stop");
       }
 

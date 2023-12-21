@@ -3,7 +3,6 @@ title: Use an ORM
 linkTitle: Use an ORM
 description: C# ORM support for YugabyteDB
 headcontent: C# ORM support for YugabyteDB
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   v2.16:
     identifier: csharp-orm

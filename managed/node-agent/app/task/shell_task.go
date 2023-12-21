@@ -141,10 +141,10 @@ func (s *ShellTask) command(
 }
 
 func (s *ShellTask) userEnv(ctx context.Context, userDetail *util.UserDetail) []string {
-	env := []string{}
+	// Approximate capacity of 100.
+	env := make([]string, 0, 100)
 	// Interactive shell to source ~/.bashrc.
 	cmd, err := s.command(ctx, userDetail, "bash")
-	env = append(env, os.Environ()...)
 	// Create a pseudo tty (non stdin) to act like SSH login.
 	// Otherwise, the child process is stopped because it is a background process.
 	ptty, err := pty.Start(cmd)
@@ -274,6 +274,7 @@ func CreatePreflightCheckParam(
 	if homeDir, ok := provider.Config["YB_HOME_DIR"]; ok {
 		param.YbHomeDir = homeDir
 	}
+	param.NodeExporterPort = provider.Details.NodeExporterPort
 	param.SshPort = provider.SshPort
 	if data := instanceType.Details.VolumeDetailsList; len(data) > 0 {
 		param.MountPaths = make([]string, len(data))

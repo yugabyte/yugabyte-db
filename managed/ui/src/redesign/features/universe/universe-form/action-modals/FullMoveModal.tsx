@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import pluralize from 'pluralize';
 import { Box, Theme, Typography, makeStyles } from '@material-ui/core';
 import { YBModal } from '../../../../components';
-import { getPrimaryCluster } from '../utils/helpers';
+import { getAsyncCluster, getPrimaryCluster } from '../utils/helpers';
 import { Cluster, MasterPlacementMode, UniverseDetails } from '../utils/dto';
 
 const useStyles = makeStyles((theme: Theme) => ({
@@ -26,6 +26,7 @@ interface FMModalProps {
   newConfigData: UniverseDetails;
   oldConfigData: UniverseDetails;
   open: boolean;
+  isPrimary: boolean;
   onClose: () => void;
   onSubmit: () => void;
 }
@@ -34,13 +35,14 @@ export const FullMoveModal: FC<FMModalProps> = ({
   newConfigData,
   oldConfigData,
   open,
+  isPrimary,
   onClose,
   onSubmit
 }) => {
   const { t } = useTranslation();
   const classes = useStyles();
-  const oldPrimaryCluster = getPrimaryCluster(oldConfigData);
-  const newPrimaryCluster = getPrimaryCluster(newConfigData);
+  const oldCluster = isPrimary ? getPrimaryCluster(oldConfigData) : getAsyncCluster(oldConfigData);
+  const newCluster = isPrimary ? getPrimaryCluster(newConfigData) : getAsyncCluster(newConfigData);
 
   const renderConfig = (cluster: Cluster, isNew: boolean) => {
     const { placementInfo, userIntent } = cluster;
@@ -115,8 +117,8 @@ export const FullMoveModal: FC<FMModalProps> = ({
           </Typography>
         </Box>
         <Box mt={2} display="flex" flexDirection="row">
-          {oldPrimaryCluster && renderConfig(oldPrimaryCluster, false)}
-          {newPrimaryCluster && renderConfig(newPrimaryCluster, true)}
+          {oldCluster && renderConfig(oldCluster, false)}
+          {newCluster && renderConfig(newCluster, true)}
         </Box>
         <Box mt={2} display="flex" flexDirection="row">
           <Typography variant="body2">{t('universeForm.fullMoveModal.likeToProceed')}</Typography>

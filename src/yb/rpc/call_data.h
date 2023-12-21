@@ -26,7 +26,9 @@ struct CallData {
  public:
   CallData() : buffer_(EmptyBuffer()) {}
 
-  explicit CallData(size_t size) : buffer_(size) {}
+  explicit CallData(size_t size) : buffer_(RefCntBuffer(size)) {}
+  explicit CallData(RefCntSlice slice) : buffer_(std::move(slice)) {}
+
   class ShouldRejectTag {};
 
   CallData(size_t size, ShouldRejectTag) {}
@@ -42,7 +44,7 @@ struct CallData {
   }
 
   char* data() const {
-    return buffer_.data();
+    return const_cast<char*>(buffer_.data());
   }
 
   bool should_reject() const { return !buffer_; }
@@ -55,19 +57,23 @@ struct CallData {
     return buffer_.size();
   }
 
-  const RefCntBuffer& buffer() const {
-    return buffer_;
+  Slice AsSlice() const {
+    return buffer_.AsSlice();
+  }
+
+  const RefCntBuffer& holder() const {
+    return buffer_.holder();
   }
 
   size_t DynamicMemoryUsage() const { return buffer_.DynamicMemoryUsage(); }
 
  private:
-  static RefCntBuffer EmptyBuffer() {
+  static RefCntSlice EmptyBuffer() {
     static RefCntBuffer result(0);
-    return result;
+    return RefCntSlice(result);
   }
 
-  RefCntBuffer buffer_;
+  RefCntSlice buffer_;
 };
 
 class ReceivedSidecars {

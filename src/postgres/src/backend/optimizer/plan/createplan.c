@@ -190,7 +190,9 @@ static YbSeqScan *make_yb_seqscan(List *qptlist,
 				List *local_quals,
 				List *yb_pushdown_quals,
 				List *yb_pushdown_colrefs,
-				Index scanrelid);
+				Index scanrelid,
+				double yb_estimated_num_nexts,
+				double yb_estimated_num_seeks);
 static SampleScan *make_samplescan(List *qptlist, List *qpqual, Index scanrelid,
 				TableSampleClause *tsc);
 static IndexScan *make_indexscan(List *qptlist, List *qpqual,
@@ -200,15 +202,15 @@ static IndexScan *make_indexscan(List *qptlist, List *qpqual,
 			   List *indexqual, List *indexqualorig,
 			   List *indexorderby, List *indexorderbyorig,
 			   List *indexorderbyops, List *indextlist,
-			   ScanDirection indexscandir, double estimated_num_nexts,
-			   double estimated_num_seeks, YbIndexPathInfo yb_path_info);
+			   ScanDirection indexscandir, double yb_estimated_num_nexts,
+			   double yb_estimated_num_seeks, YbIndexPathInfo yb_path_info);
 static IndexOnlyScan *make_indexonlyscan(List *qptlist, List *qpqual,
 				   List *yb_pushdown_colrefs, List *yb_pushdown_quals,
 				   Index scanrelid, Oid indexid,
 				   List *indexqual, List *indexorderby,
 				   List *indextlist,
-				   ScanDirection indexscandir, double estimated_num_nexts,
-				   double estimated_num_seeks);
+				   ScanDirection indexscandir, double yb_estimated_num_nexts,
+				   double yb_estimated_num_seeks);
 static BitmapIndexScan *make_bitmap_indexscan(Index scanrelid, Oid indexid,
 					  List *indexqual,
 					  List *indexqualorig);
@@ -254,7 +256,7 @@ static YbBatchedNestLoop *make_YbBatchedNestLoop(List *tlist,
 			  List *joinclauses, List *otherclauses, List *nestParams,
 			  Plan *lefttree, Plan *righttree,
 			  JoinType jointype, bool inner_unique,
-			  size_t num_hashClauseInfos,
+			  double first_batch_factor, size_t num_hashClauseInfos,
 			  YbBNLHashClauseInfo *hashClauseInfos);
 static HashJoin *make_hashjoin(List *tlist,
 			  List *joinclauses, List *otherclauses,
@@ -328,6 +330,7 @@ static GatherMerge *create_gather_merge_plan(PlannerInfo *root,
 						 GatherMergePath *best_path);
 
 extern int yb_bnl_batch_size;
+bool yb_bnl_optimize_first_batch;
 
 /*
  * create_plan
@@ -3471,7 +3474,9 @@ create_seqscan_plan(PlannerInfo *root, Path *best_path,
 	if (best_path->parent->is_yb_relation)
 		scan_plan = (SeqScan *) make_yb_seqscan(tlist, local_quals,
 												remote_quals, colrefs,
-												scan_relid);
+												scan_relid,
+												best_path->yb_estimated_num_nexts,
+												best_path->yb_estimated_num_seeks);
 	else
 		scan_plan = make_seqscan(tlist, local_quals, scan_relid);
 
@@ -3825,8 +3830,8 @@ create_indexscan_plan(PlannerInfo *root,
 												fixed_indexorderbys,
 												best_path->indexinfo->indextlist,
 												best_path->indexscandir,
-												best_path->estimated_num_nexts,
-												best_path->estimated_num_seeks);
+												best_path->yb_estimated_num_nexts,
+												best_path->yb_estimated_num_seeks);
 		index_only_scan_plan->yb_indexqual_for_recheck =
 			YbBuildIndexqualForRecheck(fixed_indexquals, best_path->indexinfo);
 		index_only_scan_plan->yb_distinct_prefixlen =
@@ -3852,8 +3857,8 @@ create_indexscan_plan(PlannerInfo *root,
 										 indexorderbyops,
 										 best_path->indexinfo->indextlist,
 										 best_path->indexscandir,
-										 best_path->estimated_num_nexts,
-										 best_path->estimated_num_seeks,
+										 best_path->yb_estimated_num_nexts,
+										 best_path->yb_estimated_num_seeks,
 										 best_path->yb_index_path_info);
 		index_scan_plan->yb_distinct_prefixlen =
 			best_path->yb_index_path_info.yb_distinct_prefixlen;
@@ -4853,6 +4858,7 @@ create_nestloop_plan(PlannerInfo *root,
 	Relids		saveOuterRels = root->curOuterRels;
 
 	bool yb_is_batched;
+	double yb_first_batch_factor = 1.0;
 	size_t yb_num_hashClauseInfos;
 	YbBNLHashClauseInfo *yb_hashClauseInfos;
 
@@ -4949,6 +4955,18 @@ create_nestloop_plan(PlannerInfo *root,
 			current_hinfo->hashOp = hashOpno;
 			current_hinfo++;
 		}
+
+		/* If there is a limit and yb_bnl_optimize_first_batch is on. */
+		if (yb_bnl_optimize_first_batch && root->limit_tuples)
+		{
+			SemiAntiJoinFactors semifactors;
+			compute_semi_anti_join_factors(root, best_path->path.parent,
+										   best_path->outerjoinpath->parent,best_path->innerjoinpath->parent,best_path->jointype, NULL,best_path->joinrestrictinfo,
+										   &semifactors);
+			double output_tuple_per_outer_tuple =
+				semifactors.outer_match_frac * semifactors.match_count;
+			yb_first_batch_factor = 1.0 / output_tuple_per_outer_tuple;
+		}
 	}
 
 
@@ -4986,17 +5004,29 @@ create_nestloop_plan(PlannerInfo *root,
 	nestParams = identify_current_nestloop_params(root, outerrelids);
 	if (yb_is_batched)
 	{
-		join_plan =
-			(NestLoop *) make_YbBatchedNestLoop(tlist,
-												joinclauses,
-												otherclauses,
-												nestParams,
-												outer_plan,
-												inner_plan,
-												best_path->jointype,
-												best_path->inner_unique,
-												yb_num_hashClauseInfos,
-												yb_hashClauseInfos);
+		YbBatchedNestLoop *bnl_plan =
+			make_YbBatchedNestLoop(tlist,
+								   joinclauses,
+								   otherclauses,
+								   nestParams,
+								   outer_plan,
+								   inner_plan,
+								   best_path->jointype,
+								   best_path->inner_unique,
+								   yb_first_batch_factor,
+								   yb_num_hashClauseInfos,
+								   yb_hashClauseInfos);
+		join_plan = (NestLoop *) bnl_plan;
+		(void) prepare_sort_from_pathkeys((Plan *) bnl_plan,
+										  best_path->path.pathkeys,
+										  best_path->path.parent->relids,
+										  NULL,
+										  true,
+										  &bnl_plan->numSortCols,
+										  &bnl_plan->sortColIdx,
+										  &bnl_plan->sortOperators,
+										  &bnl_plan->collations,
+										  &bnl_plan->nullsFirst);
 	}
 	else
 	{
@@ -5585,19 +5615,21 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 			Oid scalar_type = InvalidOid;
 			Oid collid = InvalidOid;
 
-			Expr *inner_expr = (Expr*) linitial(opexpr->args);
+			Expr *inner_expr = (Expr *) linitial(opexpr->args);
 			saop->args = lappend(saop->args, inner_expr);
 
-			if(IsA(inner_expr, RowExpr))
+			Expr *outer_expr = (Expr *) lsecond(opexpr->args);
+			outer_expr = ((YbBatchedExpr *) outer_expr)->orig_expr;
+
+			if(IsA(outer_expr, RowExpr))
 			{
-				RowExpr *rowexpr = (RowExpr *) inner_expr;
+				RowExpr *rowexpr = (RowExpr *) outer_expr;
 				scalar_type = rowexpr->row_typeid;
 			}
 			else
 			{
-				Assert(IsA(inner_expr, Var) || IsA(inner_expr, RelabelType));
-				scalar_type = exprType((Node*) inner_expr);
-				collid = exprCollation((Node*)inner_expr);
+				scalar_type = exprType((Node*) outer_expr);
+				collid = exprCollation((Node*) outer_expr);
 			}
 
 			ArrayExpr *arrexpr = makeNode(ArrayExpr);
@@ -6384,7 +6416,9 @@ make_yb_seqscan(List *qptlist,
 				List *local_quals,
 				List *yb_pushdown_quals,
 				List *yb_pushdown_colrefs,
-				Index scanrelid)
+				Index scanrelid,
+				double yb_estimated_num_nexts,
+				double yb_estimated_num_seeks)
 {
 	YbSeqScan  *node = makeNode(YbSeqScan);
 	Plan	   *plan = &node->scan.plan;
@@ -6394,6 +6428,8 @@ make_yb_seqscan(List *qptlist,
 	plan->lefttree = NULL;
 	plan->righttree = NULL;
 	node->scan.scanrelid = scanrelid;
+	node->yb_estimated_num_nexts = yb_estimated_num_nexts;
+	node->yb_estimated_num_seeks = yb_estimated_num_seeks;
 	node->yb_pushdown.quals = yb_pushdown_quals;
 	node->yb_pushdown.colrefs = yb_pushdown_colrefs;
 
@@ -6435,8 +6471,8 @@ make_indexscan(List *qptlist,
 			   List *indexorderbyops,
 			   List *indextlist,
 			   ScanDirection indexscandir,
-			   double estimated_num_nexts,
-			   double estimated_num_seeks,
+			   double yb_estimated_num_nexts,
+			   double yb_estimated_num_seeks,
 			   YbIndexPathInfo yb_path_info)
 {
 	IndexScan  *node = makeNode(IndexScan);
@@ -6455,8 +6491,8 @@ make_indexscan(List *qptlist,
 	node->indexorderbyops = indexorderbyops;
 	node->indextlist = indextlist;
 	node->indexorderdir = indexscandir;
-	node->estimated_num_nexts = estimated_num_nexts;
-	node->estimated_num_seeks = estimated_num_seeks;
+	node->yb_estimated_num_nexts = yb_estimated_num_nexts;
+	node->yb_estimated_num_seeks = yb_estimated_num_seeks;
 	node->yb_rel_pushdown.colrefs = yb_rel_pushdown_colrefs;
 	node->yb_rel_pushdown.quals = yb_rel_pushdown_quals;
 	node->yb_idx_pushdown.colrefs = yb_idx_pushdown_colrefs;
@@ -6477,8 +6513,8 @@ make_indexonlyscan(List *qptlist,
 				   List *indexorderby,
 				   List *indextlist,
 				   ScanDirection indexscandir,
-				   double estimated_num_nexts,
-				   double estimated_num_seeks)
+				   double yb_estimated_num_nexts,
+				   double yb_estimated_num_seeks)
 {
 	IndexOnlyScan *node = makeNode(IndexOnlyScan);
 	Plan	   *plan = &node->scan.plan;
@@ -6495,8 +6531,8 @@ make_indexonlyscan(List *qptlist,
 	node->indexorderdir = indexscandir;
 	node->yb_pushdown.colrefs = yb_pushdown_colrefs;
 	node->yb_pushdown.quals = yb_pushdown_quals;
-	node->estimated_num_nexts = estimated_num_nexts;
-	node->estimated_num_seeks = estimated_num_seeks;
+	node->yb_estimated_num_nexts = yb_estimated_num_nexts;
+	node->yb_estimated_num_seeks = yb_estimated_num_seeks;
 
 	return node;
 }
@@ -6868,6 +6904,7 @@ make_YbBatchedNestLoop(List *tlist,
 					   Plan *righttree,
 					   JoinType jointype,
 					   bool inner_unique,
+					   double first_batch_factor,
 					   size_t num_hashClauseInfos,
 					   YbBNLHashClauseInfo *hashClauseInfos)
 {
@@ -6882,6 +6919,7 @@ make_YbBatchedNestLoop(List *tlist,
 	node->nl.join.inner_unique = inner_unique;
 	node->nl.join.joinqual = joinclauses;
 	node->nl.nestParams = nestParams;
+	node->first_batch_factor = first_batch_factor;
 	node->num_hashClauseInfos = num_hashClauseInfos;
 	node->hashClauseInfos = hashClauseInfos;
 

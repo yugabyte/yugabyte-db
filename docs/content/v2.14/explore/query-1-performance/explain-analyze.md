@@ -3,7 +3,6 @@ title: Analyze queries with EXPLAIN
 linkTitle: Analyze queries
 description: Query optimization with EXPLAIN and EXPLAIN ANALYZE
 headerTitle: Analyze queries with EXPLAIN
-image: /images/section_icons/index/develop.png
 menu:
   v2.14:
     identifier: explain-analyze

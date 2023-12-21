@@ -799,15 +799,15 @@ CallResponse::CallResponse()
 
 Result<RefCntSlice> CallResponse::ExtractSidecar(size_t idx) const {
   SCHECK(parsed_, IllegalState, "Calling $0 on non parsed response", __func__);
-  return sidecars_.Extract(response_data_.buffer(), idx);
+  return sidecars_.Extract(response_data_.holder(), idx);
 }
 
 Result<SidecarHolder> CallResponse::GetSidecarHolder(size_t idx) const {
-  return sidecars_.GetHolder(response_data_.buffer(), idx);
+  return sidecars_.GetHolder(response_data_.holder(), idx);
 }
 
 size_t CallResponse::TransferSidecars(Sidecars* dest) {
-  return sidecars_.Transfer(response_data_.buffer(), dest);
+  return sidecars_.Transfer(response_data_.holder(), dest);
 }
 
 Status CallResponse::ParseFrom(CallData* call_data) {

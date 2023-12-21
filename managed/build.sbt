@@ -110,9 +110,14 @@ lazy val compileJavaGenClient = taskKey[Int]("Compile generated Java code")
 
 name := "yugaware"
 
+def commonSettings = Seq(
+  scalaVersion := "2.13.12"
+)
+
 lazy val root = (project in file("."))
   .enablePlugins(PlayJava, PlayEbean, SbtWeb, JavaAppPackaging, JavaAgent)
   .disablePlugins(PlayLayoutPlugin)
+  .settings(commonSettings)
   .settings(commands += Command.command("deflake") { state =>
     "test" :: "deflake" :: state
   })
@@ -120,9 +125,8 @@ lazy val root = (project in file("."))
     "testOnly " + args.mkString(" ") :: "deflakeOne " + args.mkString(" "):: state
   })
 
-scalaVersion := "2.12.10"
 javacOptions ++= Seq("-source", "17", "-target", "17")
-Compile / managedClasspath += baseDirectory.value / "target/scala-2.12/"
+Compile / managedClasspath += baseDirectory.value / "target/scala-2.13/"
 version := sys.process.Process("cat version.txt").lineStream_!.head
 Global / onChangedBuildSource := ReloadOnSourceChanges
 
@@ -136,27 +140,23 @@ libraryDependencies ++= Seq(
   "com.google.inject.extensions" % "guice-assistedinject" % "5.1.0",
   "org.postgresql" % "postgresql" % "42.3.3",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
-  "com.typesafe.akka" %% "akka-actor-typed" % "2.8.3",
-  "com.typesafe.akka" %% "akka-slf4j" % "2.8.3",
-  "com.typesafe.akka" %% "akka-protobuf-v3" % "2.8.3",
-  "com.typesafe.akka" %% "akka-stream" % "2.8.3",
-  "com.typesafe.akka" %% "akka-serialization-jackson" % "2.8.3",
+  "ch.qos.logback" % "logback-classic" % "1.4.14",
   "org.codehaus.janino" % "janino" % "3.1.9",
   "org.apache.commons" % "commons-compress" % "1.21",
   "org.apache.commons" % "commons-csv" % "1.9.0",
   "org.apache.httpcomponents" % "httpcore" % "4.4.5",
   "org.apache.httpcomponents" % "httpclient" % "4.5.13",
-  "org.flywaydb" %% "flyway-play" % "7.37.0",
+  "org.flywaydb" %% "flyway-play" % "9.0.0",
   // https://github.com/YugaByte/cassandra-java-driver/releases
   "com.yugabyte" % "cassandra-driver-core" % "3.8.0-yb-7",
   "org.yaml" % "snakeyaml" % "2.1",
   "org.bouncycastle" % "bcpkix-jdk15on" % "1.61",
   "org.springframework.security" % "spring-security-core" % "5.8.3",
-  "com.amazonaws" % "aws-java-sdk-ec2" % "1.12.129",
-  "com.amazonaws" % "aws-java-sdk-kms" % "1.12.129",
-  "com.amazonaws" % "aws-java-sdk-iam" % "1.12.129",
-  "com.amazonaws" % "aws-java-sdk-sts" % "1.12.129",
-  "com.amazonaws" % "aws-java-sdk-s3" % "1.12.129",
+  "com.amazonaws" % "aws-java-sdk-ec2" % "1.12.599",
+  "com.amazonaws" % "aws-java-sdk-kms" % "1.12.599",
+  "com.amazonaws" % "aws-java-sdk-iam" % "1.12.599",
+  "com.amazonaws" % "aws-java-sdk-sts" % "1.12.599",
+  "com.amazonaws" % "aws-java-sdk-s3" % "1.12.599",
   "com.amazonaws" % "aws-java-sdk-elasticloadbalancingv2" % "1.12.327",
   "com.amazonaws" % "aws-java-sdk-route53" % "1.12.400",
   "com.amazonaws" % "aws-java-sdk-cloudtrail" % "1.12.498",
@@ -170,7 +170,8 @@ libraryDependencies ++= Seq(
   "com.azure" % "azure-security-keyvault-keys" % "4.5.0",
   "com.azure" % "azure-storage-blob" % "12.19.1",
   "com.azure.resourcemanager" % "azure-resourcemanager" % "2.28.0",
-  "javax.mail" % "mail" % "1.4.7",
+  "jakarta.mail" % "jakarta.mail-api" % "2.1.2",
+  "org.eclipse.angus" % "jakarta.mail" % "1.0.0",
   "javax.validation" % "validation-api" % "2.0.1.Final",
   "io.prometheus" % "simpleclient" % "0.11.0",
   "io.prometheus" % "simpleclient_hotspot" % "0.11.0",
@@ -179,7 +180,7 @@ libraryDependencies ++= Seq(
   "org.pac4j" %% "play-pac4j" % "9.0.2",
   "org.pac4j" % "pac4j-oauth" % "4.5.7" exclude("commons-io" , "commons-io"),
   "org.pac4j" % "pac4j-oidc" % "4.5.7" exclude("commons-io" , "commons-io"),
-  "com.typesafe.play" %% "play-json" % "2.9.4",
+  "org.playframework" %% "play-json" % "3.0.1",
   "commons-validator" % "commons-validator" % "1.7",
   "org.apache.velocity" % "velocity-engine-core" % "2.3",
   "com.fasterxml.woodstox" % "woodstox-core" % "6.4.0",
@@ -195,7 +196,7 @@ libraryDependencies ++= Seq(
   "com.google.cloud" % "google-cloud-logging" % "3.14.5",
   "com.google.oauth-client" % "google-oauth-client" % "1.34.1",
   "org.projectlombok" % "lombok" % "1.18.26",
-  "com.squareup.okhttp3" % "okhttp" % "4.9.2",
+  "com.squareup.okhttp3" % "okhttp" % "4.12.0",
   "io.kamon" %% "kamon-bundle" % "2.5.9",
   "io.kamon" %% "kamon-prometheus" % "2.5.9",
   "org.unix4j" % "unix4j-command" % "0.6",
@@ -224,8 +225,8 @@ libraryDependencies ++= Seq(
   "com.h2database" % "h2" % "2.1.212" % Test,
   "org.hamcrest" % "hamcrest-core" % "2.2" % Test,
   "pl.pragmatists" % "JUnitParams" % "1.1.1" % Test,
-  "com.icegreen" % "greenmail" % "1.6.1" % Test,
-  "com.icegreen" % "greenmail-junit4" % "1.6.1" % Test,
+  "com.icegreen" % "greenmail" % "2.0.1" % Test,
+  "com.icegreen" % "greenmail-junit4" % "2.0.1" % Test,
   "com.squareup.okhttp3" % "mockwebserver" % "4.9.2" % Test,
   "io.grpc" % "grpc-testing" % "1.48.0" % Test,
   "io.zonky.test" % "embedded-postgres" % "2.0.1" % Test,
@@ -383,7 +384,7 @@ buildDependentArtifacts := {
 
 generateCrdObjects := {
   ybLog("Generating crd classes...")
-  val generatedSourcesDirectory = baseDirectory.value / "target/scala-2.12/"
+  val generatedSourcesDirectory = baseDirectory.value / "target/scala-2.13/"
   val command = s"mvn generate-sources -DoutputDirectory=$generatedSourcesDirectory"
   val status = Process(command, baseDirectory.value / "src/main/java/com/yugabyte/yw/common/operator/").!
   status
@@ -432,7 +433,7 @@ cleanVenv := {
 
 cleanCrd := {
   ybLog("Cleaning CRD generated code...")
-  val generatedSourcesDirectory = baseDirectory.value / "target/scala-2.12/"
+  val generatedSourcesDirectory = baseDirectory.value / "target/scala-2.13/"
   val command = s"mvn clean -DoutputDirectory=$generatedSourcesDirectory"
   val status = Process(command, baseDirectory.value / "src/main/java/com/yugabyte/yw/common/operator/").!
   status
@@ -476,6 +477,8 @@ Universal / packageBin := (Universal / packageBin).dependsOn(versionGenerate, bu
 
 Universal / javaOptions += "-J-XX:G1PeriodicGCInterval=120000"
 
+javaAgents += "io.kamon" % "kanela-agent" % "1.0.18"
+
 runPlatformTask := {
   (Compile / run).toTask("").value
 }
@@ -492,9 +495,9 @@ runPlatform := {
   Project.extract(newState).runTask(runPlatformTask, newState)
 }
 
-libraryDependencies += "org.yb" % "yb-client" % "0.8.72-SNAPSHOT"
-libraryDependencies += "org.yb" % "ybc-client" % "2.0.0.0-b19"
-libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b31"
+libraryDependencies += "org.yb" % "yb-client" % "0.8.75-SNAPSHOT"
+libraryDependencies += "org.yb" % "ybc-client" % "2.0.0.0-b21"
+libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b32"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
@@ -509,8 +512,6 @@ dependencyOverrides += "com.google.guava" % "guava" % "32.1.1-jre"
 // Azure library upgrade tries to upgrade nimbusds to latest version.
 dependencyOverrides += "com.nimbusds" % "oauth2-oidc-sdk" % "7.1.1"
 dependencyOverrides += "org.reflections" % "reflections" % "0.10.2"
-dependencyOverrides += "org.scala-lang.modules" %% "scala-java8-compat" % "1.0.2"
-dependencyOverrides += "org.scala-lang.modules" %% "scala-xml" % "2.1.0"
 
 val jacksonVersion         = "2.15.3"
 
@@ -627,13 +628,13 @@ val swaggerJacksonOverrides = jacksonLibs.map(_ % swaggerJacksonVersion)
 
 lazy val swagger = project
   .dependsOn(root % "compile->compile;test->test")
+  .settings(commonSettings)
   .settings(
     Test / fork := true,
     Test / javaOptions += "-Dconfig.resource=application.test.conf",
     testOptions += Tests.Argument(TestFrameworks.JUnit, "-v", "-q", "-a"),
     libraryDependencies ++= Seq(
-      "com.github.dwickern" %% "swagger-play2.8" % "3.1.0",
-      "io.swagger" % "swagger-core" % "1.6.2"
+      "com.github.dwickern" %% "swagger-play3.0" % "4.0.0"
     ),
 
     dependencyOverrides ++= swaggerJacksonOverrides,

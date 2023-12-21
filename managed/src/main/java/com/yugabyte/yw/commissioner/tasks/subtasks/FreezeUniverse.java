@@ -7,6 +7,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseDefinitionTaskBase;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.Universe.UniverseUpdaterConfig;
 import java.util.Objects;
 import java.util.function.Consumer;
 import javax.inject.Inject;
@@ -37,6 +38,12 @@ public class FreezeUniverse extends UniverseDefinitionTaskBase {
 
   @Override
   public void run() {
-    freezeUniverse(taskParams().callback);
+    UniverseUpdaterConfig updaterConfig =
+        UniverseUpdaterConfig.builder()
+            .callback(taskParams().callback)
+            .checkSuccess(true)
+            .freezeUniverse(true)
+            .build();
+    saveUniverseDetails(taskParams().getUniverseUUID(), getFreezeUniverseUpdater(updaterConfig));
   }
 }

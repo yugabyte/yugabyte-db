@@ -3,7 +3,6 @@ title: Supported versions
 linkTitle: Supported versions
 description: Supported versions for C# drivers, ORMs and AppDev frameworks
 headcontent: Supported versions for C# drivers, ORMs and AppDev frameworks
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   v2.18:
     identifier: csharp-compatibility

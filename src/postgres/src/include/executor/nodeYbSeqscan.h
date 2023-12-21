@@ -24,11 +24,22 @@
 #ifndef NODEYBSEQSCAN_H
 #define NODEYBSEQSCAN_H
 
+#include "access/parallel.h"
 #include "nodes/execnodes.h"
 
 extern YbSeqScanState *ExecInitYbSeqScan(YbSeqScan *node, EState *estate,
 				  int eflags);
 extern void ExecEndYbSeqScan(YbSeqScanState *node);
 extern void ExecReScanYbSeqScan(YbSeqScanState *node);
+
+/* parallel scan support */
+extern void ExecYbSeqScanEstimate(YbSeqScanState *node,
+					  ParallelContext *pcxt);
+extern void ExecYbSeqScanInitializeDSM(YbSeqScanState *node,
+						   ParallelContext *pcxt);
+extern void ExecYbSeqScanReInitializeDSM(YbSeqScanState *node,
+							 ParallelContext *pcxt);
+extern void ExecYbSeqScanInitializeWorker(YbSeqScanState *node,
+							  ParallelWorkerContext *pwcxt);
 
 #endif							/* NODEYBSEQSCAN_H */

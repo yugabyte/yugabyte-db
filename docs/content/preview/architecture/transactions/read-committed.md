@@ -14,45 +14,22 @@ rightNav:
   hideH4: true
 ---
 
-Read Committed is one of the three isolation levels in PostgreSQL, and also its default. A unique property of this isolation level is that, for transactions running with this isolation, clients do not need to retry or handle serialization errors (40001) in application logic.
+Read Committed is one of the three isolation levels in PostgreSQL, and also its default. A unique property of this isolation level is that, for transactions running with this isolation, clients do not need to retry or handle serialization errors (40001) in application logic. The other two isolation levels (Serializable and Repeatable Read) require applications to have retry logic for serialization errors. Also, each statement in a read committed transactions works on a new latest snapshot of the database, implying that any data committed before the statement was issued, is visible to the statement.
 
-The other two isolation levels (Serializable and Repeatable Read) require applications to have retry logic for serialization errors. Read Committed in PostgreSQL works around conflicts by allowing single statements to work on an inconsistent snapshot (in other words, non-conflicting rows are read as of the statement's snapshot, but conflict resolution is done by reading and attempting re-execution or locking on the latest version of the row).
+A read committed transaction in PostgreSQL doesn't raise serialization errors because it internally retries conflicting rows in the statement's execution as of the latest versions of those rows, as soon as conflicting concurrent transactions have finished. This mechanism allows single statements to work on an inconsistent snapshot (in other words, non-conflicting rows are read as of the statement's snapshot, but conflicting rows are re-attempted on the latest version of the row after the conflicting transactions are complete).
 
-YSQL supports the Read Committed isolation level, and its behavior is the same as that of PostgreSQL's [Read Committed level](https://www.postgresql.org/docs/13/transaction-iso.html#XACT-READ-COMMITTED).
+YugabyteDB's Read Committed isolation provides slightly stronger guarantees than PostgreSQL's read committed, while providing the same semantics and benefits, that is, a user doesn't have to retry serialization errors in the application logic (modulo [limitation 2](#limitations) around `ysql_output_buffer_size` which is not of relevance for most OLTP workloads). In YugabyteDB, a read committed transaction retries the whole statement instead of retrying only the conflicting rows. This leads to a stronger guarantee where each statement in a YugabyteDB read committed transaction always uses a consistent snapshot of the database, while in PostgreSQL an inconsistent snapshot can be used for statements when conflicts are present. For a detailed example, see [Stronger guarantees in YugabyteDB's read committed isolation](#yugabytedb-s-implementation-with-a-stronger-guarantee).
 
-## Semantics
+## Implementation and semantics (as in PostgreSQL)
 
-The following two key semantics set apart Read Committed isolation from Repeatable Read in PostgreSQL:
+The following two key semantics set apart Read Committed isolation from Repeatable Read in PostgreSQL (refer [Read Committed level](https://www.postgresql.org/docs/13/transaction-iso.html#XACT-READ-COMMITTED)):
 
 1. Each statement should be able to read everything that was committed before the statement was issued. In other words, each statement runs on the latest snapshot of the database as of when the statement was issued.
-1. Clients never face serialization errors (40001) in read committed isolation level. To achieve this, PostgreSQL re-evaluates statements for conflicting rows based on a set of rules.
-
-### Read restart errors
-
-In addition to the two key requirements, there is an extra YSQL-specific requirement for read committed isolation level: ensure that external clients don't face `kReadRestart` errors that stem from clock skew which is inherent in distributed databases due to the distribution of data across more than one physical node. PostgreSQL doesn't require defining semantics around read restart errors because it is a single-node database without clock skew. When there is clock skew, the following situation can arise in a distributed database like YugabyteDB:
-
-* A client starts a distributed transaction by connecting to YSQL on a node `N1` in the YugabyteDB cluster and issues a statement which reads data from multiple shards on different physical YB-TServers in the cluster. For this issued statement, the read point that defines the snapshot of the database at which the data will be read, is picked on a YB-TServer node `M` based on the current time of that YB-TServer. Depending on the scenario, node `M` may or may not be the same as `N1`, but that is not relevant to this discussion. Consider `T1` to be the chosen read time.
-* The node `N1` might collect data from many shards on different physical YB-TServers. In this pursuit, it will issue requests to many other nodes to read data.
-* Assuming that node `N1` reads from node `N2`, it is possible that data had already been written on node `N2` with a write timestamp `T2` (> `T1`) but it had been written before the read was issued. This could be caused by clock skew if the physical clock on node `N2` ran ahead of node `M`, resulting in the write done in the past still having a write timestamp later than `T1`.
-
-  Note that the clock skew between all nodes in the cluster is always in a [max_clock_skew_usec](../../../reference/configuration/yb-tserver/#max-clock-skew-usec) bound due to clock synchronization algorithms.
-* For writes with a write timestamp later than `T1` + `max_clock_skew`, the database can be sure that these writes were done after the read timestamp had been chosen. But for writes with a write timestamp between `T1` and `T1` + `max_clock_skew`, node `N2` can find itself in an ambiguous situation, such as the following:
-
-  * It should return the data even if the client issued the read from a different node after writing the data, because the following guarantee needs to be maintained: the database should always return data that was committed in the past (past refers to the user-perceived past, and not based on machine clocks).
-
-  * It should not return the data if the write was performed in the future (that is, after the read point had been chosen) **and** had a write timestamp later than the read point. Because if that was allowed, everything written in future would be trivially visible to the read. Note that the latter condition is important because it is okay to return data that was written after the read point was picked if the write timestamp was earlier than the read point (this doesn't break and consistency or isolation guarantees).
-
-* If node `N2` finds writes in the range `(T1, T1+max_clock_skew]`, to avoid breaking the strong guarantee that a reader should always be able to read what was committed earlier and to avoid reading data with a later write timestamp which was also actually written after the read had been issued, node `N2` raises a `Read restart` error.
-
-Some distributed databases handle this specific uncertainty due to clock skew by using algorithms to maintain a tight bound on the clock skew, and then taking the conservative approach of waiting out the clock skew before acknowledging the commit request from the client for each transaction that writes data. YugabyteDB, however, uses various internal mechanisms to reduce the scope of this ambiguity, and if there is still ambiguity in rare cases, the `Read restart` error is surfaced to the client.
-
-For Read Committed isolation, YugabyteDB has stronger mechanisms to ensure that the ambiguity is always resolved internally and `Read restart` errors are not surfaced to the client. In Read Committed transactions, clients do not have to add any retry logic for read restart errors (similarly to serialization errors).
-
-### Handling serialization errors
+1. Clients never face serialization errors (40001) in read committed isolation level. To achieve this, PostgreSQL re-evaluates statements for conflicting rows based on a set of rules as described below.
 
 To handle serialization errors in the database without surfacing them to the client, PostgreSQL takes a number of steps based on the statement type.
 
-#### UPDATE, DELETE, SELECT FOR UPDATE, FOR SHARE, FOR NO KEY UPDATE, FOR KEY SHARE
+### UPDATE, DELETE, SELECT FOR [UPDATE, SHARE, NO KEY UPDATE, KEY SHARE]
 
 * If the subject row is being updated or deleted by other concurrent transactions in a conflicting way, wait for the conflicting transactions to commit or rollback, and then perform validation steps.
 
@@ -62,7 +39,7 @@ To handle serialization errors in the database without surfacing them to the cli
 
 Note that two transactions are `concurrent` if their `read time` to `commit time` ranges overlap. If a transaction has not yet committed, the closing range is the current time. Also, for read committed isolation, there is a `read time` for each statement, and not one for the whole transaction.
 
-##### Validation steps
+#### Validation steps
 
 The validation steps are as follows:
 
@@ -70,14 +47,21 @@ The validation steps are as follows:
 1. If the updated version of a row is deleted, ignore it.
 1. Apply update, delete, or acquire lock on updated version of the row if the `WHERE` clause evaluates to `true` on the updated version of the row.
 
-#### INSERT
+### INSERT
 
 * `ON CONFLICT DO UPDATE`: if a conflict occurs, wait for the conflicting transactions to commit or rollback.
   * If all conflicting transactions rollback, proceed as usual.
   * On commit of any conflicting transaction, traverse the chain of updates, as described in validation step 1, and re-evaluate the latest version of the row for any conflict. If there is no conflict, insert the original row. Otherwise, perform the `DO UPDATE` part on the latest version of the row.
 * `ON CONFLICT DO NOTHING`: if a conflict occurs, do not do anything.
 
-Note that the preceding methodology in PostgreSQL can lead to two different visible semantics. One is the common case; the other is a degenerate situation that can never be seen in practice, but is nevertheless possible and still upholds the semantics of Read Committed isolation. The common case is as follows:
+## YugabyteDB's implementation with a stronger guarantee
+
+Note that the implementation in PostgreSQL (discussed above) can theoretically lead to two different visible semantics:
+
+* A common case which uses an inconsistent snapshot of the database for the same statement's execution.
+* A degenerate situation that is highly unlikely to be seen in practice, but is nevertheless possible and provides a stronger guarantee by using a consistent snapshot for the whole statement while still upholding the semantics of Read Committed isolation.
+
+### Common case in PostgreSQL
 
 ```sql
 CREATE TABLE test (k int primary key, v int);
@@ -217,7 +201,11 @@ select * from test;
 </tbody>
 </table>
 
-As seen above, the UPDATE from transaction 2 first picks the latest snapshot of the database which only has the row (2, 5). The row satisfies the `UPDATE` statement's `WHERE` clause and hence the transaction 2 tries to update the value of `v` from 5 to 100. However, due to an existing conflicting write from transaction 1, it waits for transaction 1 to end. Once transaction 1 commits, it re-reads the latest version of only the conflicting row, and re-evaluates the `WHERE` clause. The clause is still satisfied by the new row (2, 10) and so the value is updated to 100. Note that the newly inserted row (5, 5) isn't updated even though it satisfies the `WHERE` clause of transaction 2's `UPDATE`, because it was not part of the snapshot originally picked by transaction 2's `UPDATE` statement. Hence, it is clear that, to avoid serialization errors, PostgreSQL allows a single statement to run on an inconsistent snapshot, for example: one snapshot which is picked to read all data when the statement is started, and a latest version of the row is used only for each conflicting row as and when required.
+As seen above, the UPDATE from transaction 2 first picks the latest snapshot of the database which only has the row (2, 5). The row satisfies the `UPDATE` statement's `WHERE` clause and hence the transaction 2 tries to update the value of `v` from 5 to 100. However, due to an existing conflicting write from transaction 1, it waits for transaction 1 to end. After transaction 1 commits, it re-reads the latest version of only the conflicting row, and re-evaluates the `WHERE` clause. The clause is still satisfied by the new row (2, 10) and so the value is updated to 100. Note that the newly inserted row (5, 5) isn't updated even though it satisfies the `WHERE` clause of transaction 2's `UPDATE`, because it was not part of the snapshot originally picked by transaction 2's `UPDATE` statement.
+
+So, to avoid serialization errors, PostgreSQL only retries the conflicting rows based on their latest versions, thereby allowing a single statement to run on an inconsistent snapshot. In other words, one snapshot is picked for the statement to read all data and process all non-conflicting rows, and a latest version is used for the conflicting rows.
+
+### The unlikely case in PostgreSQL
 
 The other degenerate scenario that can occur differs in the output of the `UPDATE` in transaction 2:
 
@@ -317,13 +305,23 @@ select * from test;
 </tbody>
 </table>
 
-The preceding outcome can occur via the following step: until Client 1 commits, PostgreSQL on Client 2 is busy with other processing and only after Client 1 commits, transaction on Client 2 is able to pick a snapshot based off the current time for the statement. This leads to both rows being read as part of the snapshot and updated without any observable conflicts. Both outcomes are valid and satisfy the semantics of Read Committed isolation level. And theoretically, the user cannot figure out which one will be seen because the user cannot differentiate between a pause due to waiting for a conflicting transaction or a pause due to the database just being busy or slow. In the second case, the whole statement runs off a single snapshot and it is easier to reason the output.
+The preceding outcome can occur via the following unlikely circumstance: until Client 1 commits, PostgreSQL on Client 2 for some reason is busy or slow, and hasn't yet picked a snapshot for execution. Only after Client 1 commits, transaction on Client 2 picks a snapshot based off the current time for the statement. This leads to both rows being read as part of the snapshot and updated without any observable conflicts.
 
-These two possibilities show that the client cannot have application logic that relies on the expectation that the common case occurs always. Given this, YugabyteDB provides a stronger guarantee that each statement always works off just a single snapshot and no inconsistency is allowed even in case of a some conflicting rows. This leads to YugabyteDB always returning output similar to the second outcome in the above example which is also simpler to reason.
+Both the `common case` and `unlikely` outcomes are valid and satisfy the semantics of Read Committed isolation level. And theoretically, the user cannot figure out which one will be seen because the user cannot differentiate between a pause due to waiting for a conflicting transaction, or a pause due to the database just being busy or slow. Moreover, the `unlikely` case provides a stronger and more intuitive guarantee that the whole statement runs off a single snapshot.
 
-This can change after [#11573](https://github.com/yugabyte/yugabyte-db/issues/11573) is resolved, as mentioned in the roadmap for Read Committed isolation available at [#13557](https://github.com/yugabyte/yugabyte-db/issues/13557).
+These two possibilities show that the client cannot have application logic that relies on the expectation that the common case occurs always. Given this, YugabyteDB provides a stronger guarantee that each statement always works off just a single snapshot, and no inconsistency is allowed even in case of a some conflicting rows. This leads to YugabyteDB always returning output similar to the second outcome in the preceding example which is also simpler to reason.
 
-### Interaction with concurrency control
+This might change in future as per [#11573](https://github.com/yugabyte/yugabyte-db/issues/11573), if it gains interest.
+
+## Read restart errors
+
+[Read Restart errors](../read-restart-error) stem from clock skew which is inherent in distributed databases due to the distribution of data across more than one physical node. PostgreSQL doesn't require defining semantics around read restart errors in read committed isolation because it is a single-node database without clock skew.
+
+In general, YugabyteDB has optimizations to resolve this error internally with best-effort before forwarding it to the external client. However, for Read Committed isolation, YugabyteDB gives a stronger guarantee: no `read restart` errors will be thrown to the external client except when a statement's output exceeds `ysql_output_buffer_size` (the size of the output buffer between YSQL and the external client which has a default of 256KB and is configurable). For most OLTP applications, this would hold always as response sizes are usually in this limit.
+
+YugabyteDB chooses to provide this guarantee as most clients that use read committed with PostgreSQL don't have app-level retries for serialization errors. So, it helps to provide the same guarantee for `read restart` errors which are unique to distributed databases.
+
+## Interaction with concurrency control
 
 Semantics of Read Committed isolation adheres only with the [Wait-on-Conflict](../concurrency-control/#wait-on-conflict) concurrency control policy. This is because a Read Committed transaction has to wait for other transactions to commit or rollback in case of a conflict, and then perform the re-check steps to make progress.
 

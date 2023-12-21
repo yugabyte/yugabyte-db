@@ -42,11 +42,11 @@
 #include "yb/yql/pggate/pg_gate_fwd.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 
 struct DdlMode {
   bool has_docdb_schema_changes{false};
+  std::optional<uint32_t> silently_altered_db;
 
   std::string ToString() const;
   void ToPB(tserver::PgFinishTransactionRequestPB_DdlModePB* dest) const;
@@ -68,7 +68,49 @@ struct PerformResult {
   }
 };
 
-using PerformCallback = std::function<void(const PerformResult&)>;
+struct TableKeyRangesWithHt {
+  boost::container::small_vector<RefCntSlice, 2> encoded_range_end_keys;
+  HybridTime current_ht;
+};
+
+struct PerformData;
+
+class PerformExchangeFuture {
+ public:
+  PerformExchangeFuture() = default;
+  explicit PerformExchangeFuture(std::shared_ptr<PerformData> data)
+      : data_(std::move(data)) {}
+
+  PerformExchangeFuture(PerformExchangeFuture&& rhs) noexcept : data_(std::move(rhs.data_)) {
+  }
+
+  PerformExchangeFuture& operator=(PerformExchangeFuture&& rhs) noexcept {
+    data_ = std::move(rhs.data_);
+    return *this;
+  }
+
+  bool valid() const {
+    return data_ != nullptr;
+  }
+
+  void wait() const;
+  bool ready() const;
+
+  PerformResult get();
+
+ private:
+  std::shared_ptr<PerformData> data_;
+  mutable std::optional<PerformResult> value_;
+};
+
+using PerformResultFuture = std::variant<std::future<PerformResult>, PerformExchangeFuture>;
+
+void Wait(const PerformResultFuture& future);
+bool Ready(const std::future<PerformResult>& future);
+bool Ready(const PerformExchangeFuture& future);
+bool Ready(const PerformResultFuture& future);
+bool Valid(const PerformResultFuture& future);
+PerformResult Get(PerformResultFuture* future);
 
 class PgClient {
  public:
@@ -77,7 +119,9 @@ class PgClient {
 
   Status Start(rpc::ProxyCache* proxy_cache,
                rpc::Scheduler* scheduler,
-               const tserver::TServerSharedObject& tserver_shared_object);
+               const tserver::TServerSharedObject& tserver_shared_object,
+               std::optional<uint64_t> session_id, const YBCAshMetadata* ash_metadata);
+
   void Shutdown();
 
   void SetTimeout(MonoDelta timeout);
@@ -89,7 +133,7 @@ class PgClient {
 
   Result<client::VersionedTablePartitionList> GetTablePartitionList(const PgObjectId& table_id);
 
-  Status FinishTransaction(Commit commit, std::optional<DdlMode> ddl_mode = std::nullopt);
+  Status FinishTransaction(Commit commit, const std::optional<DdlMode>& ddl_mode = {});
 
   Result<master::GetNamespaceInfoResponsePB> GetDatabaseInfo(PgOid oid);
 
@@ -163,18 +207,18 @@ class PgClient {
 
   Status DeleteDBSequences(int64_t db_oid);
 
-  void PerformAsync(
+  PerformResultFuture PerformAsync(
       tserver::PgPerformOptionsPB* options,
-      PgsqlOps* operations,
-      const PerformCallback& callback);
+      PgsqlOps* operations);
 
   Result<bool> CheckIfPitrActive();
 
   Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
 
-  Result<boost::container::small_vector<RefCntSlice, 2>> GetTableKeyRanges(
+  Result<TableKeyRangesWithHt> GetTableKeyRanges(
       const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
-      uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length);
+      uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length,
+      uint64_t read_time_serial_no);
 
   Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo(
       bool size_only, uint32_t db_oid);
@@ -203,5 +247,4 @@ class PgClient {
   std::unique_ptr<Impl> impl_;
 };
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

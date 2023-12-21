@@ -51,8 +51,7 @@ public class YBALifeCycle {
   private void checkIfDowngrade() {
     boolean isFreshInstall =
         !DB.getDefault()
-            .createSqlQuery(
-                "SELECT * FROM information_schema.tables WHERE table_name = 'schema_version'")
+            .sqlQuery("SELECT * FROM information_schema.tables WHERE table_name = 'schema_version'")
             .findOneOrEmpty()
             .isPresent();
     if (isFreshInstall) {

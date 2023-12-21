@@ -748,7 +748,7 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument("--skip_preprovision", action="store_true", default=False)
         self.parser.add_argument("--local_package_path",
                                  required=False,
-                                 help="Path to local directory with the prometheus tarball.")
+                                 help="Path to local directory with third party software tarballs.")
         self.parser.add_argument("--node_exporter_port", type=int, default=9300,
                                  help="The port for node_exporter to bind to.")
         self.parser.add_argument("--node_exporter_user", default="prometheus")
@@ -776,6 +776,14 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument("--install_otel_collector", action="store_true")
         self.parser.add_argument('--otel_col_config_file', default=None,
                                  help="Path to OpenTelemetry Collector config file.")
+        self.parser.add_argument('--otel_col_aws_access_key', default=None,
+                                 help="AWS Access Key used for logs export")
+        self.parser.add_argument('--otel_col_aws_secret_key', default=None,
+                                 help="AWS Secret Key used for logs export.")
+        self.parser.add_argument('--otel_col_gcp_creds_file', default=None,
+                                 help="Path to GCP credentials file used for logs export.")
+        self.parser.add_argument('--ycql_audit_log_level', default=None,
+                                 help="YCQL audit log level.")
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -838,6 +846,14 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
             self.extra_vars.update({"install_otel_collector": args.install_otel_collector})
         if args.otel_col_config_file:
             self.extra_vars.update({"otel_col_config_file_local": args.otel_col_config_file})
+        if args.otel_col_aws_access_key:
+            self.extra_vars.update({"otel_col_aws_access_key": args.otel_col_aws_access_key})
+        if args.otel_col_aws_secret_key:
+            self.extra_vars.update({"otel_col_aws_secret_key": args.otel_col_aws_secret_key})
+        if args.otel_col_gcp_creds_file:
+            self.extra_vars.update({"otel_col_gcp_creds_local": args.otel_col_gcp_creds_file})
+        if args.ycql_audit_log_level:
+            self.extra_vars.update({"ycql_audit_log_level": args.ycql_audit_log_level})
 
         if wait_for_server(self.extra_vars):
             self.cloud.setup_ansible(args).run("yb-server-provision.yml",
@@ -2044,6 +2060,69 @@ class WaitForConnection(AbstractInstancesMethod):
         if not connected:
             host_port_user = get_host_port_user(self.extra_vars)
             raise YBOpsRecoverableError("Connection({}) to host {} by user {} failed at port {}"
+                                        .format(host_port_user["connection_type"],
+                                                host_port_user["host"],
+                                                host_port_user["user"],
+                                                host_port_user["port"]))
+
+
+class ManageOtelCollector(AbstractInstancesMethod):
+    def __init__(self, base_command):
+        super(ManageOtelCollector, self).__init__(base_command, "manage_otel_collector", True)
+
+    def add_extra_args(self):
+        super(ManageOtelCollector, self).add_extra_args()
+
+        self.parser.add_argument("--install_otel_collector", action="store_true")
+        self.parser.add_argument('--otel_col_config_file', default=None,
+                                 help="Path to OpenTelemetry Collector config file.")
+        self.parser.add_argument('--otel_col_aws_access_key', default=None,
+                                 help="AWS Access Key used for logs export")
+        self.parser.add_argument('--otel_col_aws_secret_key', default=None,
+                                 help="AWS Secret Key used for logs export.")
+        self.parser.add_argument('--otel_col_gcp_creds_file', default=None,
+                                 help="Path to GCP credentials file used for logs export.")
+        self.parser.add_argument('--ycql_audit_log_level', default=None,
+                                 help="YCQL audit log level.")
+        self.parser.add_argument("--local_package_path",
+                                 required=False,
+                                 help="Path to local directory with third party software tarballs.")
+
+    def callback(self, args):
+        host_info = self.cloud.get_host_info(args)
+        if not host_info:
+            raise YBOpsRuntimeError("Could not find host {} to provision!".format(
+                args.search_pattern))
+
+        # Update the ansible args (particularly connection params).
+        self.update_ansible_vars_with_args(args)
+        # Set the host and default port.
+        self.extra_vars.update(
+            self.get_server_host_port(host_info, args.custom_ssh_port, default_port=True))
+        # Update with the open port.
+        self.update_open_ssh_port(args)
+
+        if args.local_package_path:
+            self.extra_vars.update({"local_package_path": args.local_package_path})
+        if args.install_otel_collector:
+            self.extra_vars.update({"install_otel_collector": args.install_otel_collector})
+        if args.otel_col_config_file:
+            self.extra_vars.update({"otel_col_config_file_local": args.otel_col_config_file})
+        if args.otel_col_aws_access_key:
+            self.extra_vars.update({"otel_col_aws_access_key": args.otel_col_aws_access_key})
+        if args.otel_col_aws_secret_key:
+            self.extra_vars.update({"otel_col_aws_secret_key": args.otel_col_aws_secret_key})
+        if args.otel_col_gcp_creds_file:
+            self.extra_vars.update({"otel_col_gcp_creds_local": args.otel_col_gcp_creds_file})
+        if args.ycql_audit_log_level:
+            self.extra_vars.update({"ycql_audit_log_level": args.ycql_audit_log_level})
+
+        if wait_for_server(self.extra_vars):
+            self.cloud.setup_ansible(args).run("yb-otel-collector.yml",
+                                               self.extra_vars, host_info)
+        else:
+            host_port_user = get_host_port_user(self.extra_vars)
+            raise YBOpsRecoverableError("Could not connect({}) into node {}:{} using username {}"
                                         .format(host_port_user["connection_type"],
                                                 host_port_user["host"],
                                                 host_port_user["user"],

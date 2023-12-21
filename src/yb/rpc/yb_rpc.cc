@@ -17,6 +17,8 @@
 
 #include <google/protobuf/io/coded_stream.h>
 
+#include "yb/common/common.pb.h"
+
 #include "yb/gutil/casts.h"
 #include "yb/gutil/endian.h"
 
@@ -49,6 +51,7 @@ DEFINE_test_flag(uint64, yb_inbound_big_calls_parse_delay_ms, false,
                  "Test flag for simulating slow parsing of inbound calls larger than "
                  "rpc_throttle_threshold_bytes");
 
+DECLARE_bool(TEST_yb_enable_ash);
 DECLARE_uint64(rpc_connection_timeout_ms);
 DECLARE_int32(rpc_slow_query_threshold_ms);
 DECLARE_int64(rpc_throttle_threshold_bytes);
@@ -175,7 +178,7 @@ Status YBInboundConnectionContext::HandleCall(
     return s;
   }
 
-  s = Store(call.get());
+  s = Store(call);
   if (!s.ok()) {
     return s;
   }
@@ -262,7 +265,7 @@ YBInboundCall::YBInboundCall(RpcMetrics* rpc_metrics, const RemoteMethod& remote
   header_.remote_method = remote_method.serialized_body();
 }
 
-YBInboundCall::~YBInboundCall() {}
+YBInboundCall::~YBInboundCall() = default;
 
 CoarseTimePoint YBInboundCall::GetClientDeadline() const {
   if (header_.timeout_ms == 0) {
@@ -277,6 +280,18 @@ Status YBInboundCall::ParseFrom(const MemTrackerPtr& mem_tracker, CallData* call
 
   RETURN_NOT_OK(ParseYBMessage(*call_data, &header_, &serialized_request_, &received_sidecars_));
   DVLOG(4) << "Parsed YBInboundCall header: " << header_.call_id;
+  // having to get rid of the const for metadata_. Is it better to
+  // create the waitstate after parsing?
+  if (wait_state_) {
+    wait_state_->UpdateMetadata({.rpc_request_id = header_.call_id});
+    wait_state_->set_client_host_port(HostPort(remote_address()));
+    wait_state_->UpdateAuxInfo({
+        .method = method_name().ToBuffer(),
+    });
+  } else {
+    LOG_IF(ERROR, GetAtomicFlag(&FLAGS_TEST_yb_enable_ash))
+        << "Wait state is nullptr for " << ToString();
+  }
 
   consumption_ = ScopedTrackedConsumption(mem_tracker, call_data->size());
   request_data_ = std::move(*call_data);
@@ -320,6 +335,15 @@ bool YBInboundCall::DumpPB(const DumpRunningRpcsRequestPB& req,
   auto my_trace = trace();
   if (req.include_traces() && my_trace) {
     resp->set_trace_buffer(my_trace->DumpToString(true));
+  }
+  if (req.get_wait_state()) {
+    if (const auto& wait_state = this->wait_state()) {
+      // TBD: Add WaitStateInfoPB to the response instead of the string.
+      wait_state->ToPB(resp->mutable_wait_state());
+      TRACE_TO(
+          trace(), "Pulled $0",
+          yb::ToString(ash::WaitStateCode(resp->wait_state().wait_status_code())));
+    }
   }
   resp->set_elapsed_millis(MonoTime::Now().GetDeltaSince(timing_.time_received)
       .ToMilliseconds());
@@ -368,7 +392,7 @@ void YBInboundCall::DoSerialize(ByteBlocks* output) {
 Status YBInboundCall::ParseParam(RpcCallParams* params) {
   RETURN_NOT_OK(ThrottleRpcStatus(consumption_.mem_tracker(), *this));
 
-  auto consumption = params->ParseRequest(serialized_request(), request_data_.buffer());
+  auto consumption = params->ParseRequest(serialized_request(), request_data_.holder());
   if (!consumption.ok()) {
     auto status = consumption.status().CloneAndPrepend(
         Format("Invalid parameter for call $0", header_.RemoteMethodAsString()));
@@ -446,7 +470,7 @@ Slice YBInboundCall::method_name() const {
 }
 
 Result<RefCntSlice> YBInboundCall::ExtractSidecar(size_t idx) const {
-  return received_sidecars_.Extract(request_data_.buffer(), idx);
+  return received_sidecars_.Extract(request_data_.holder(), idx);
 }
 
 Status YBOutboundConnectionContext::HandleCall(

@@ -20,6 +20,7 @@ import static org.yb.AssertionWrappers.fail;
 import java.sql.*;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.yb.pgsql.AutoCommit;
 import org.yb.pgsql.ConnectionEndpoint;
 
 @RunWith(value = YBTestRunnerYsqlConnMgr.class)
@@ -59,6 +60,41 @@ public class TestMisc extends BaseYsqlConnMgr {
     } catch (Exception e)
     {
       LOG.error("Unable to create database", e);
+      fail();
+    }
+  }
+
+  @Test
+  public void testLargePacket() throws Exception {
+    String CREATE_TABLE_SQL = "CREATE TABLE IF NOT EXISTS my_table"
+        + " (ID serial PRIMARY KEY, name TEXT NOT NULL, age INT)";
+
+    StringBuilder insertQuery = new StringBuilder(
+        "INSERT INTO my_table (name, age) VALUES ");
+
+    for (int i = 1; i <= 1000; ++i) {
+      insertQuery.append("('Person', ").append(20 + i).append(")");
+      if (i < 1000) {
+        insertQuery.append(",");
+      }
+    }
+
+    try (Connection connection =
+            getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+                                  .withAutoCommit(AutoCommit.DISABLED)
+                                  .withUser("yugabyte")
+                                  .withPassword("yugabyte")
+                                  .withPreferQueryMode("simple")
+                                  .connect();
+        Statement stmt = connection.createStatement()) {
+
+      stmt.execute(String.format(CREATE_TABLE_SQL));
+
+      // Insert query hangs if ysql conn mgr is unable to process large packet.
+      int rowsAffected = stmt.executeUpdate(insertQuery.toString());
+      assertEquals(1000, rowsAffected);
+    } catch (Exception e) {
+      LOG.error("Unable to execute large queries ", e);
       fail();
     }
   }

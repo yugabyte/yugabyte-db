@@ -37,6 +37,15 @@ import io.ebean.SqlQuery;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.Transactional;
 import io.ebean.annotation.TxIsolation;
+import jakarta.persistence.CascadeType;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.OneToMany;
+import jakarta.persistence.PostRemove;
+import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
+import jakarta.persistence.UniqueConstraint;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Comparator;
@@ -52,16 +61,8 @@ import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
-import javax.persistence.CascadeType;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.Id;
-import javax.persistence.OneToMany;
-import javax.persistence.PostRemove;
-import javax.persistence.Table;
-import javax.persistence.Transient;
-import javax.persistence.UniqueConstraint;
 import lombok.Builder;
+import lombok.Data;
 import lombok.Getter;
 import lombok.Setter;
 import org.apache.commons.lang3.StringUtils;
@@ -86,6 +87,9 @@ public class Universe extends Model {
   public static final String IS_MULTIREGION = "isMultiRegion";
   // Flag for whether we have https on for master/tserver UI
   public static final String HTTPS_ENABLED_UI = "httpsEnabledUI";
+  // Whether all the Kubernetes resources are labeled with universe
+  // name, zone name, etc.
+  public static final String LABEL_K8S_RESOURCES = "labelK8sResources";
 
   // This is a key lock for Universe by UUID.
   public static final KeyLock<UUID> UNIVERSE_KEY_LOCK = new KeyLock<UUID>();
@@ -444,8 +448,9 @@ public class Universe extends Model {
 
   /** Config parameters for the universe updater. */
   @Builder
-  @Getter
+  @Data
   public static class UniverseUpdaterConfig {
+    @Builder.Default private int expectedUniverseVersion = -1;
     private boolean checkSuccess;
     private boolean forceUpdate;
     @Builder.Default private boolean freezeUniverse = true;

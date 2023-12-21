@@ -126,8 +126,9 @@ Status VersionInfo::ReadVersionDataFromFile() {
 
   std::string config_file_path = JoinPathSegments(version_file_path, kVersionJsonFileName);
   std::ifstream json_file(config_file_path);
-  SCHECK(!json_file.fail(),
-          IllegalState, strings::Substitute("Could not open JSON file $0", config_file_path));
+  SCHECK(
+      !json_file.fail(), IllegalState,
+      strings::Substitute("Could not open JSON file $0: $1", config_file_path, strerror(errno)));
 
   rapidjson::IStreamWrapper isw(json_file);
   rapidjson::Document d;

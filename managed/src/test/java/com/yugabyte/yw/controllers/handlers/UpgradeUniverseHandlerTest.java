@@ -2,9 +2,12 @@
 
 package com.yugabyte.yw.controllers.handlers;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -16,17 +19,23 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.backuprestore.ybc.YbcManager;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagDetails;
 import com.yugabyte.yw.common.gflags.GFlagDiffEntry;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UpgradeTaskParams;
+import com.yugabyte.yw.forms.UpgradeWithGFlags;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -39,10 +48,10 @@ import java.util.Map;
 import java.util.UUID;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
-import org.junit.Assert;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
@@ -50,22 +59,27 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
   private UpgradeUniverseHandler handler;
   private GFlagsAuditHandler gFlagsAuditHandler;
   private GFlagsValidationHandler gFlagsValidationHandler;
+  private Commissioner mockCommissioner;
+  private RuntimeConfGetter runtimeConfGetter;
 
   @Before
   public void setUp() {
-    Commissioner mockCommissioner = mock(Commissioner.class);
+    mockCommissioner = mock(Commissioner.class);
     when(mockCommissioner.submit(any(TaskType.class), any(ITaskParams.class)))
         .thenReturn(UUID.randomUUID());
     gFlagsValidationHandler = mock(GFlagsValidationHandler.class);
     gFlagsAuditHandler = new GFlagsAuditHandler(gFlagsValidationHandler);
+    runtimeConfGetter = mock(RuntimeConfGetter.class);
     handler =
         new UpgradeUniverseHandler(
             mockCommissioner,
             mock(KubernetesManagerFactory.class),
             mock(RuntimeConfigFactory.class),
             mock(YbcManager.class),
-            mock(RuntimeConfGetter.class),
-            mock(CertificateHelper.class));
+            runtimeConfGetter,
+            mock(CertificateHelper.class),
+            mock(AutoFlagUtil.class),
+            mock(XClusterUniverseService.class));
   }
 
   private static Object[] tlsToggleCustomTypeNameParams() {
@@ -102,7 +116,7 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     requestParams.enableNodeToNodeEncrypt = nodeAfter;
 
     String result = UpgradeUniverseHandler.generateTypeName(userIntent, requestParams);
-    Assert.assertEquals(expected, result);
+    assertEquals(expected, result);
   }
 
   @Test
@@ -116,10 +130,10 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     oldGFlags.put("stderrthreshold", "1");
     List<GFlagDiffEntry> gFlagDiffEntries =
         gFlagsAuditHandler.generateGFlagEntries(oldGFlags, newGFlags, serverType, softwareVersion);
-    Assert.assertEquals(1, gFlagDiffEntries.size());
-    Assert.assertEquals("stderrthreshold", gFlagDiffEntries.get(0).name);
-    Assert.assertEquals("1", gFlagDiffEntries.get(0).oldValue);
-    Assert.assertEquals(null, gFlagDiffEntries.get(0).newValue);
+    assertEquals(1, gFlagDiffEntries.size());
+    assertEquals("stderrthreshold", gFlagDiffEntries.get(0).name);
+    assertEquals("1", gFlagDiffEntries.get(0).oldValue);
+    assertEquals(null, gFlagDiffEntries.get(0).newValue);
 
     // added gflag
     oldGFlags.clear();
@@ -127,9 +141,9 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     newGFlags.put("minloglevel", "2");
     gFlagDiffEntries =
         gFlagsAuditHandler.generateGFlagEntries(oldGFlags, newGFlags, serverType, softwareVersion);
-    Assert.assertEquals("minloglevel", gFlagDiffEntries.get(0).name);
-    Assert.assertEquals(null, gFlagDiffEntries.get(0).oldValue);
-    Assert.assertEquals("2", gFlagDiffEntries.get(0).newValue);
+    assertEquals("minloglevel", gFlagDiffEntries.get(0).name);
+    assertEquals(null, gFlagDiffEntries.get(0).oldValue);
+    assertEquals("2", gFlagDiffEntries.get(0).newValue);
 
     // updated gflag
     oldGFlags.clear();
@@ -138,9 +152,9 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     newGFlags.put("max_log_size", "1000");
     gFlagDiffEntries =
         gFlagsAuditHandler.generateGFlagEntries(oldGFlags, newGFlags, serverType, softwareVersion);
-    Assert.assertEquals("max_log_size", gFlagDiffEntries.get(0).name);
-    Assert.assertEquals("0", gFlagDiffEntries.get(0).oldValue);
-    Assert.assertEquals("1000", gFlagDiffEntries.get(0).newValue);
+    assertEquals("max_log_size", gFlagDiffEntries.get(0).name);
+    assertEquals("0", gFlagDiffEntries.get(0).oldValue);
+    assertEquals("1000", gFlagDiffEntries.get(0).newValue);
 
     // unchanged gflag
     oldGFlags.clear();
@@ -149,7 +163,7 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     newGFlags.put("max_log_size", "2000");
     gFlagDiffEntries =
         gFlagsAuditHandler.generateGFlagEntries(oldGFlags, newGFlags, serverType, softwareVersion);
-    Assert.assertEquals(0, gFlagDiffEntries.size());
+    assertEquals(0, gFlagDiffEntries.size());
   }
 
   @Test
@@ -169,7 +183,7 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
         constructExpected(
             Collections.singletonList(createDiff("master", "1", null)),
             Collections.singletonList(createDiff("tserver", "2", null))));
-    Assert.assertEquals(expected, payload);
+    assertEquals(expected, payload);
   }
 
   @Test
@@ -196,7 +210,7 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
         constructExpected(
             Collections.singletonList(createDiff("master", "1", "5")),
             Arrays.asList(createDiff("tserver2", null, "2"), createDiff("tserver", "2", null))));
-    Assert.assertEquals(expected, payload);
+    assertEquals(expected, payload);
   }
 
   @Test
@@ -239,7 +253,7 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
         constructExpected(
             Collections.singletonList(createDiff("master", "1", "5")),
             Arrays.asList(createDiff("tserver2", null, "2"), createDiff("tserver", "2", null))));
-    Assert.assertEquals(expected, payload);
+    assertEquals(expected, payload);
   }
 
   @Test
@@ -266,7 +280,314 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
         constructExpected(
             Collections.singletonList(createDiff("master", "1", null)),
             Collections.singletonList(createDiff("tserver", "2", null))));
-    Assert.assertEquals(expected, payload);
+    assertEquals(expected, payload);
+  }
+
+  @Test
+  public void testUpgradeGFlagsOldSchema() throws IOException {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    when(runtimeConfGetter.getConfForScope(any(Customer.class), any())).thenReturn(false);
+    initGflagDefaults();
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              UniverseDefinitionTaskParams.UserIntent userIntent =
+                  details.getPrimaryCluster().userIntent;
+              userIntent.specificGFlags =
+                  SpecificGFlags.construct(Map.of("master", "1"), Map.of("tserver", "1"));
+              userIntent.masterGFlags =
+                  userIntent.specificGFlags.getPerProcessFlags().value.get(ServerType.MASTER);
+              userIntent.tserverGFlags =
+                  userIntent.specificGFlags.getPerProcessFlags().value.get(ServerType.TSERVER);
+              universe.setUniverseDetails(details);
+            });
+    GFlagsUpgradeParams params = new GFlagsUpgradeParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    Map<String, String> masterGFlags = Map.of("asd", "10");
+    Map<String, String> tserverGFlags = Map.of("awesd", "15");
+    params.masterGFlags = masterGFlags;
+    params.tserverGFlags = tserverGFlags;
+    handler.upgradeGFlags(params, c, Universe.getOrBadRequest(u.getUniverseUUID()));
+    ArgumentCaptor<UpgradeTaskParams> paramsArgumentCaptor =
+        ArgumentCaptor.forClass(UpgradeTaskParams.class);
+    verify(mockCommissioner).submit(any(), paramsArgumentCaptor.capture());
+    GFlagsUpgradeParams newParams = (GFlagsUpgradeParams) paramsArgumentCaptor.getValue();
+    // Verifying that specificGFlags field is initialized.
+    assertEquals(
+        SpecificGFlags.construct(masterGFlags, tserverGFlags),
+        newParams.getPrimaryCluster().userIntent.specificGFlags);
+  }
+
+  @Test
+  public void testUpgradeGFlagsOldSchemaWithRRInherited() throws IOException {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
+    when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(fakeTaskUUID);
+    when(runtimeConfGetter.getConfForScope(any(Customer.class), any())).thenReturn(false);
+    initGflagDefaults();
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              UniverseDefinitionTaskParams.UserIntent userIntent =
+                  details.getPrimaryCluster().userIntent;
+              userIntent.specificGFlags =
+                  SpecificGFlags.construct(Map.of("master", "1"), Map.of("tserver", "1"));
+              userIntent.masterGFlags =
+                  userIntent.specificGFlags.getPerProcessFlags().value.get(ServerType.MASTER);
+              userIntent.tserverGFlags =
+                  userIntent.specificGFlags.getPerProcessFlags().value.get(ServerType.TSERVER);
+              universe.setUniverseDetails(details);
+            });
+    UniverseDefinitionTaskParams.UserIntent rrUserIntent =
+        u.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+    rrUserIntent.specificGFlags = SpecificGFlags.constructInherited();
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(), ApiUtils.mockUniverseUpdaterWithReadReplica(rrUserIntent, null));
+    GFlagsUpgradeParams params = new GFlagsUpgradeParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    Map<String, String> masterGFlags = Map.of("asd", "10");
+    Map<String, String> tserverGFlags = Map.of("awesd", "15");
+    params.masterGFlags = masterGFlags;
+    params.tserverGFlags = tserverGFlags;
+    handler.upgradeGFlags(params, c, Universe.getOrBadRequest(u.getUniverseUUID()));
+    ArgumentCaptor<UpgradeTaskParams> paramsArgumentCaptor =
+        ArgumentCaptor.forClass(UpgradeTaskParams.class);
+    verify(mockCommissioner).submit(any(), paramsArgumentCaptor.capture());
+    GFlagsUpgradeParams newParams = (GFlagsUpgradeParams) paramsArgumentCaptor.getValue();
+    // Verifying that specificGFlags field is initialized.
+    assertEquals(
+        SpecificGFlags.construct(masterGFlags, tserverGFlags),
+        newParams.getPrimaryCluster().userIntent.specificGFlags);
+  }
+
+  @Test
+  public void testUpgradeGFlagsOldSchemaWithRRNonInherited() throws IOException {
+    when(runtimeConfGetter.getConfForScope(any(Customer.class), any())).thenReturn(false);
+    initGflagDefaults();
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              UniverseDefinitionTaskParams.UserIntent userIntent =
+                  details.getPrimaryCluster().userIntent;
+              userIntent.specificGFlags =
+                  SpecificGFlags.construct(Map.of("master", "1"), Map.of("tserver", "1"));
+              userIntent.masterGFlags =
+                  userIntent.specificGFlags.getPerProcessFlags().value.get(ServerType.MASTER);
+              userIntent.tserverGFlags =
+                  userIntent.specificGFlags.getPerProcessFlags().value.get(ServerType.TSERVER);
+              universe.setUniverseDetails(details);
+            });
+    UniverseDefinitionTaskParams.UserIntent rrUserIntent =
+        u.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+    rrUserIntent.specificGFlags = SpecificGFlags.construct(Map.of("wer", "3"), Map.of("ere", "5"));
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(), ApiUtils.mockUniverseUpdaterWithReadReplica(rrUserIntent, null));
+    GFlagsUpgradeParams params = new GFlagsUpgradeParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    Map<String, String> masterGFlags = Map.of("asd", "10");
+    Map<String, String> tserverGFlags = Map.of("awesd", "15");
+    params.masterGFlags = masterGFlags;
+    params.tserverGFlags = tserverGFlags;
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                handler.upgradeGFlags(
+                    params, c, Universe.getOrBadRequest(params.getUniverseUUID())));
+    assertEquals(
+        "Cannot upgrade gflags using old fields because read replica has overriden gflags."
+            + " Please modify specificGFlags to do upgrade.",
+        exception.getMessage());
+  }
+
+  @Test
+  public void testUpgradeGFlagsOldSchemaWithRROverridenPerAZ() throws IOException {
+    when(runtimeConfGetter.getConfForScope(any(Customer.class), any())).thenReturn(false);
+    initGflagDefaults();
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              UniverseDefinitionTaskParams.UserIntent userIntent =
+                  details.getPrimaryCluster().userIntent;
+              userIntent.specificGFlags =
+                  SpecificGFlags.construct(Map.of("master", "1"), Map.of("tserver", "1"));
+              userIntent.masterGFlags =
+                  userIntent.specificGFlags.getPerProcessFlags().value.get(ServerType.MASTER);
+              userIntent.tserverGFlags =
+                  userIntent.specificGFlags.getPerProcessFlags().value.get(ServerType.TSERVER);
+              universe.setUniverseDetails(details);
+            });
+    UniverseDefinitionTaskParams.UserIntent rrUserIntent =
+        u.getUniverseDetails().getPrimaryCluster().userIntent.clone();
+    rrUserIntent.specificGFlags = SpecificGFlags.construct(Map.of("wer", "3"), Map.of("ere", "5"));
+    rrUserIntent.specificGFlags.setPerAZ(
+        Map.of(
+            UUID.randomUUID(),
+            SpecificGFlags.construct(Map.of("a", "b"), Map.of("a", "b")).getPerProcessFlags()));
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(), ApiUtils.mockUniverseUpdaterWithReadReplica(rrUserIntent, null));
+    GFlagsUpgradeParams params = new GFlagsUpgradeParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    Map<String, String> masterGFlags = Map.of("asd", "10");
+    Map<String, String> tserverGFlags = Map.of("awesd", "15");
+    params.masterGFlags = masterGFlags;
+    params.tserverGFlags = tserverGFlags;
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                handler.upgradeGFlags(
+                    params, c, Universe.getOrBadRequest(params.getUniverseUUID())));
+    assertEquals(
+        "Cannot upgrade gflags using old fields because there are overrides per az"
+            + " in readonly cluster. Please modify specificGFlags to do upgrade.",
+        exception.getMessage());
+  }
+
+  @Test
+  public void testUpgradeGFlagsOldSchemaWithOverridenPerAZ() throws IOException {
+    when(runtimeConfGetter.getConfForScope(any(Customer.class), any())).thenReturn(false);
+    initGflagDefaults();
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              UniverseDefinitionTaskParams.UserIntent userIntent =
+                  details.getPrimaryCluster().userIntent;
+              userIntent.specificGFlags =
+                  SpecificGFlags.construct(Map.of("master", "1"), Map.of("tserver", "1"));
+              userIntent.specificGFlags.setPerAZ(
+                  Map.of(
+                      UUID.randomUUID(),
+                      SpecificGFlags.construct(Map.of("a", "b"), Map.of("a", "b"))
+                          .getPerProcessFlags()));
+              userIntent.masterGFlags =
+                  userIntent.specificGFlags.getPerProcessFlags().value.get(ServerType.MASTER);
+              userIntent.tserverGFlags =
+                  userIntent.specificGFlags.getPerProcessFlags().value.get(ServerType.TSERVER);
+              universe.setUniverseDetails(details);
+            });
+
+    GFlagsUpgradeParams params = new GFlagsUpgradeParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    params.masterGFlags = Map.of("asd", "10");
+    params.tserverGFlags = Map.of("awesd", "15");
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                handler.upgradeGFlags(
+                    params, c, Universe.getOrBadRequest(params.getUniverseUUID())));
+    assertEquals(
+        "Cannot upgrade gflags using old fields because there are overrides per az"
+            + " in primary cluster. Please modify specificGFlags to do upgrade.",
+        exception.getMessage());
+  }
+
+  @Test
+  public void testUpgradeGFlagsNoOP() throws IOException {
+    when(runtimeConfGetter.getConfForScope(any(Customer.class), any())).thenReturn(false);
+    initGflagDefaults();
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              UniverseDefinitionTaskParams.UserIntent userIntent =
+                  details.getPrimaryCluster().userIntent;
+              userIntent.specificGFlags =
+                  SpecificGFlags.construct(Map.of("master", "1"), Map.of("tserver", "1"));
+              userIntent.masterGFlags =
+                  userIntent.specificGFlags.getPerProcessFlags().value.get(ServerType.MASTER);
+              userIntent.tserverGFlags =
+                  userIntent.specificGFlags.getPerProcessFlags().value.get(ServerType.TSERVER);
+              universe.setUniverseDetails(details);
+            });
+    GFlagsUpgradeParams params = new GFlagsUpgradeParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                handler.upgradeGFlags(
+                    params, c, Universe.getOrBadRequest(params.getUniverseUUID())));
+    assertEquals(UpgradeWithGFlags.SPECIFIC_GFLAGS_NO_CHANGES_ERROR, exception.getMessage());
+  }
+
+  @Test
+  public void testUpgradeGFlagsNoOPSameFlags() throws IOException {
+    when(runtimeConfGetter.getConfForScope(any(Customer.class), any())).thenReturn(false);
+    initGflagDefaults();
+    Customer c = ModelFactory.testCustomer();
+    Universe u = ModelFactory.createUniverse(c.getId());
+    u =
+        Universe.saveDetails(
+            u.getUniverseUUID(),
+            universe -> {
+              UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+              UniverseDefinitionTaskParams.UserIntent userIntent =
+                  details.getPrimaryCluster().userIntent;
+              userIntent.specificGFlags =
+                  SpecificGFlags.construct(Map.of("master", "1"), Map.of("tserver", "1"));
+              userIntent.masterGFlags =
+                  userIntent.specificGFlags.getPerProcessFlags().value.get(ServerType.MASTER);
+              userIntent.tserverGFlags =
+                  userIntent.specificGFlags.getPerProcessFlags().value.get(ServerType.TSERVER);
+              universe.setUniverseDetails(details);
+            });
+    GFlagsUpgradeParams params = new GFlagsUpgradeParams();
+    params.setUniverseUUID(u.getUniverseUUID());
+    params.clusters = u.getUniverseDetails().clusters;
+    params.tserverGFlags =
+        GFlagsUtil.getBaseGFlags(
+            ServerType.TSERVER,
+            u.getUniverseDetails().getPrimaryCluster(),
+            u.getUniverseDetails().clusters);
+    params.masterGFlags =
+        GFlagsUtil.getBaseGFlags(
+            ServerType.MASTER,
+            u.getUniverseDetails().getPrimaryCluster(),
+            u.getUniverseDetails().clusters);
+    PlatformServiceException exception =
+        assertThrows(
+            PlatformServiceException.class,
+            () ->
+                handler.upgradeGFlags(
+                    params, c, Universe.getOrBadRequest(params.getUniverseUUID())));
+    assertEquals(UpgradeWithGFlags.SPECIFIC_GFLAGS_NO_CHANGES_ERROR, exception.getMessage());
   }
 
   private void initGflagDefaults() throws IOException {
@@ -299,4 +620,15 @@ public class UpgradeUniverseHandlerTest extends FakeDBApplication {
     res.put("default", gflag);
     return res;
   }
+
+  //  private   public static UUID buildTaskInfo(UUID parentUUID, TaskType taskType) {
+  //    TaskInfo taskInfo = new TaskInfo(taskType);
+  //    taskInfo.setDetails(Json.newObject());
+  //    taskInfo.setOwner("test-owner");
+  //    if (parentUUID != null) {
+  //      taskInfo.setParentUuid(parentUUID);
+  //    }
+  //    taskInfo.save();
+  //    return taskInfo.getTaskUUID();
+  //  }
 }

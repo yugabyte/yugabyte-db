@@ -2,7 +2,6 @@
 title: Foreign keys
 linkTitle: Foreign keys
 description: Defining Foreign key constraint in YSQL
-image: /images/section_icons/secure/create-roles.png
 menu:
   v2.16:
     identifier: foreign-key-ysql

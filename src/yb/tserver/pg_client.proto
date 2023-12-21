@@ -88,6 +88,8 @@ service PgClientService {
   rpc GetTserverCatalogVersionInfo(PgGetTserverCatalogVersionInfoRequestPB)
       returns (PgGetTserverCatalogVersionInfoResponsePB);
   rpc CancelTransaction(PgCancelTransactionRequestPB) returns (PgCancelTransactionResponsePB);
+  rpc ActiveSessionHistory(PgActiveSessionHistoryRequestPB)
+      returns (PgActiveSessionHistoryResponsePB);
   rpc GetActiveTransactionList(PgGetActiveTransactionListRequestPB)
       returns (PgGetActiveTransactionListResponsePB);
 
@@ -99,6 +101,24 @@ service PgClientService {
   // DEPRECATED
   rpc SetActiveSubTransaction(PgSetActiveSubTransactionRequestPB)
       returns (PgSetActiveSubTransactionResponsePB);
+
+  rpc FetchData(PgFetchDataRequestPB) returns (PgFetchDataResponsePB) {
+    option (yb.rpc.lightweight_method).sides = PROXY;
+  };
+}
+
+// TODO: Remove the OptionalUint32PB helper message after updating protobuf generator to allow
+// 'optional' in proto3
+message OptionalFixed64PB {
+  fixed64 value = 1;
+}
+
+message OptionalUint32PB {
+  uint32 value = 1;
+}
+
+message OptionalUint64PB {
+  uint64 value = 1;
 }
 
 message PgHeartbeatRequestPB {
@@ -306,6 +326,7 @@ message PgFinishTransactionRequestPB {
   message DdlModePB {
     // This transaction contains changes to the DocDB schema protobufs.
     bool has_docdb_schema_changes = 1;
+    OptionalUint32PB silently_altered_db = 2;
   }
 
   uint64 session_id = 1;
@@ -476,21 +497,9 @@ enum ReadTimeManipulation {
   ENSURE_READ_TIME_IS_SET = 2;
 }
 
-// TODO: Remove the OptionalUint32PB helper message after updating protobuf generator to allow
-// 'optional' in proto3
-message OptionalFixed64PB {
-  fixed64 value = 1;
-}
-
-message OptionalUint32PB {
-  uint32 value = 1;
-}
-
-message OptionalUint64PB { uint64 value = 1; }
-
 message PgPerformOptionsPB {
   message CachingInfoPB {
-    uint64 key_group = 1;
+    uint32 key_group = 1;
     bytes key_value = 2;
     OptionalUint32PB lifetime_threshold_ms = 3;
   }
@@ -520,6 +529,8 @@ message PgPerformOptionsPB {
   bool trace_requested = 19;
   bool yb_non_ddl_txn_for_sys_tables_allowed = 21;
   int64 pg_txn_start_us = 22;
+
+  AshMetadataPB ash_metadata = 23;
 }
 
 message PgPerformRequestPB {
@@ -764,6 +775,17 @@ message PgCancelTransactionResponsePB {
   AppStatusPB status = 1;
 }
 
+message PgActiveSessionHistoryRequestPB {}
+
+message WaitStatesPB {
+  repeated WaitStateInfoPB wait_states = 1;
+}
+
+message PgActiveSessionHistoryResponsePB {
+  AppStatusPB status = 1;
+  WaitStatesPB tserver_wait_states = 2;
+}
+
 message PgGetActiveTransactionListRequestPB { OptionalUint64PB session_id = 1; }
 
 message PgGetActiveTransactionListResponsePB {
@@ -784,10 +806,12 @@ message PgGetTableKeyRangesRequestPB {
   uint64 range_size_bytes = 6;
   bool is_forward = 7;
   uint32 max_key_length = 8;
+  uint64 read_time_serial_no = 9;
 }
 
 message PgGetTableKeyRangesResponsePB {
   AppStatusPB status = 1;
+  fixed64 current_ht = 2;
 }
 
 message PgGetNewObjectIdRequestPB {
@@ -797,4 +821,14 @@ message PgGetNewObjectIdRequestPB {
 message PgGetNewObjectIdResponsePB {
   AppStatusPB status = 1;
   uint32 new_oid = 2;
+}
+
+message PgFetchDataRequestPB {
+  uint64 session_id = 1;
+  uint64 data_id = 2;
+}
+
+message PgFetchDataResponsePB {
+  AppStatusPB status = 1;
+  uint32 sidecar = 2;
 }

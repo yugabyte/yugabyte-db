@@ -86,6 +86,10 @@ class LocalYBInboundCall : public YBInboundCall, public RpcCallParams {
     return outbound_call_.lock();
   }
 
+  std::string ToString() const override {
+    return yb::Format("Local call. call-id : $0 ", call_id());
+  }
+
  protected:
   void Respond(AnyMessageConstPtr req, bool is_success) override;
 
@@ -123,6 +127,17 @@ auto HandleCall(InboundCallPtr call, F f) {
     }
   }
 }
+
+class LocalYBInboundCallTracker : public InboundCall::CallProcessedListener {
+ public:
+  void Enqueue(const InboundCallPtr& call) EXCLUDES(lock_);
+  void CallProcessed(InboundCall* call) override EXCLUDES(lock_);
+  Status DumpRunningRpcs(const DumpRunningRpcsRequestPB& req, DumpRunningRpcsResponsePB* resp);
+
+ private:
+  std::mutex lock_;
+  std::unordered_map<uintptr_t, InboundCallWeakPtr> calls_being_handled_ GUARDED_BY(lock_);
+};
 
 } // namespace rpc
 } // namespace yb

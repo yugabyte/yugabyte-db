@@ -15,9 +15,9 @@
       "series": "v2.20",
       "alias": "stable",
       "display": "v2.20 (LTS)",
-      "version": "2.20.0.0",
+      "version": "2.20.0.2",
       "versionShort": "2.20.0",
-      "appVersion": "2.20.0.0-b76",
+      "appVersion": "2.20.0.2-b1",
       "isStable": true,
       "isLTS": true,
       "initialRelease": "2023-11-13",
@@ -35,7 +35,7 @@
       "isSTS": true,
       "initialRelease": "2023-05-16",
       "endOfMaintenance": "2024-05-16",
-      "endOfLife": "2025-11-16"
+      "endOfLife": "2024-11-16"
     },
     {
       "series": "v2.16",
@@ -61,18 +61,6 @@
       "initialRelease": "2022-07-14",
       "endOfMaintenance": "2024-07-14",
       "endOfLife": "2025-01-14"
-    },
-    {
-      "series": "v2.12",
-      "display": "v2.12",
-      "version": "2.12.12.0",
-      "versionShort": "2.12.12",
-      "appVersion": "2.12.12.0-b12",
-      "isStable": true,
-      "isLTS": false,
-      "initialRelease": "2022-02-22",
-      "endOfMaintenance": "2023-02-22",
-      "endOfLife": "2023-08-22"
     }
   ],
   "ybaVersions":

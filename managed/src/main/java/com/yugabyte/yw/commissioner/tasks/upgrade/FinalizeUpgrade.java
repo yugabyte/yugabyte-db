@@ -7,11 +7,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
-import com.yugabyte.yw.common.config.UniverseConfKeys;
-import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.forms.FinalizeUpgradeParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import lombok.extern.slf4j.Slf4j;
 
@@ -50,31 +46,7 @@ public class FinalizeUpgrade extends SoftwareUpgradeTaskBase {
   public void run() {
     runUpgrade(
         () -> {
-          Universe universe = getUniverse();
-          String version =
-              universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
-
-          createUpdateUniverseSoftwareUpgradeStateTask(
-              UniverseDefinitionTaskParams.SoftwareUpgradeState.Finalizing);
-
-          if (!confGetter.getConfForScope(universe, UniverseConfKeys.skipUpgradeFinalize)) {
-            if (taskParams().upgradeSystemCatalog) {
-              // Run YSQL upgrade on the universe.
-              createRunYsqlUpgradeTask(version).setSubTaskGroupType(getTaskSubGroupType());
-            }
-            // Promote all auto flags upto class External.
-            createPromoteAutoFlagTask(
-                    universe.getUniverseUUID(),
-                    true /* ignoreErrors */,
-                    AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS_NAME /* maxClass */)
-                .setSubTaskGroupType(getTaskSubGroupType());
-
-            createUpdateUniverseSoftwareUpgradeStateTask(
-                UniverseDefinitionTaskParams.SoftwareUpgradeState.Ready);
-
-          } else {
-            log.info("Skipping upgrade finalization for universe : " + universe.getUniverseUUID());
-          }
+          createFinalizeUpgradeTasks(taskParams().upgradeSystemCatalog);
         });
   }
 }

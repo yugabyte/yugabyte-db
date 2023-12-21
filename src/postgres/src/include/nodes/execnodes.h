@@ -1300,8 +1300,9 @@ typedef struct SeqScanState
 typedef struct YbSeqScanState
 {
 	ScanState	ss;				/* its first field is NodeTag */
-	// TODO handle;				/* size of parallel heap scan descriptor */
+	Size		pscan_len;		/* size of parallel heap scan descriptor */
 	List	   *aggrefs;		/* aggregate pushdown information */
+	struct YBParallelPartitionKeysData *pscan; /* parallel scan data */
 } YbSeqScanState;
 
 /* ----------------
@@ -1885,6 +1886,14 @@ typedef struct YbBatchedNestLoopState
 
 	bool bnl_outerdone;
 	NLBatchStatus bnl_currentstatus;
+
+	bool is_first_batch_done;
+	int batch_size;
+
+	bool bnl_needs_sorting;
+	bool bnl_is_sorted;
+	Tuplesortstate *bnl_tuple_sort;
+	int64 bound;
 
 	/* State for tuplestore batch strategy */
 	Tuplestorestate *bnl_tupleStoreState;

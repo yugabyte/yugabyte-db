@@ -106,7 +106,7 @@ You need to navigate to **Configs > Infrastructure > On-Premises Datacenters**, 
 - **NTP Setup** lets you to customize the Network Time Protocol server, as follows:
 
   - Select **Manually add NTP Servers** to provide your own NTP servers and allow the cluster nodes to connect to those NTP servers.
-  - Select **Don’t set up NTP** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
+  - Select **Don't set up NTP** to prevent YugabyteDB Anywhere from performing any NTP configuration on the cluster nodes. For data consistency, ensure that NTP is correctly configured on your machine image.
 
 ### Configure hardware for YugabyteDB nodes
 
@@ -126,7 +126,7 @@ Complete the **Regions and Zones** fields, as per the following illustration, to
 
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-3.png)
 
-<br><br>YugabyteDB Anywhere will use these values during the universe creation.
+YugabyteDB Anywhere will use these values during the universe creation.
 
 ## Add YugabyteDB nodes
 
@@ -138,7 +138,7 @@ For each node you want to add, click **Add Instances** to add a YugabyteDB node.
 
 ![Configure On-Premises Cloud Provider](/images/ee/onprem/configure-onprem-5.png)
 
-<br>Note that if you provide a hostname, the universe might experience issues communicating. To resolve this, you need to delete the failed universe and then recreate it with the `use_node_hostname_for_local_tserver ` g-flag enabled.
+Note that if you provide a hostname, the universe might experience issues communicating. To resolve this, you need to delete the failed universe and then recreate it with the `use_node_hostname_for_local_tserver` flag enabled.
 
 ### Provision nodes manually
 
@@ -179,7 +179,7 @@ Optionally, use the `--ask_password` flag if the sudo user requires password aut
 
 1. Repeat step 3 for every node that will participate in the universe.
 
-This completes the on-premises cloud provider configuration. You can proceed to [Configure the backup target](../../backup-target/) or [Create deployments](../../../create-deployments/).
+This completes the on-premises cloud provider configuration. You can proceed to [Configure the backup target](../../backup-target/) or [deploy universes](../../../create-deployments/).
 
 #### Setting up database nodes manually
 
@@ -189,13 +189,13 @@ If the SSH user configured in the on-premises provider does not have sudo privil
 
 For each node, perform the following:
 
-* [Set up time synchronization](#set-up-time-synchronization)
-* [Open incoming TCP ports](#open-incoming-tcp-ip-ports)
-* [Preprovision the node](#preprovision-nodes-manually)
-* [Install Prometheus node exporter](#install-prometheus-node-exporter)
-* [Install backup utilities](#install-backup-utilities)
-* [Set crontab permissions](#set-crontab-permissions)
-* [Install systemd-related database service unit files (optional)](#install-systemd-related-database-service-unit-files)
+- [Set up time synchronization](#set-up-time-synchronization)
+- [Open incoming TCP ports](#open-incoming-tcp-ip-ports)
+- [Preprovision the node](#preprovision-nodes-manually)
+- [Install Prometheus node exporter](#install-prometheus-node-exporter)
+- [Install backup utilities](#install-backup-utilities)
+- [Set crontab permissions](#set-crontab-permissions)
+- [Install systemd-related database service unit files (optional)](#install-systemd-related-database-service-unit-files)
 
 ##### Set up time synchronization
 
@@ -226,9 +226,9 @@ The preceding table is based on the information on the [default ports page](/pre
 
 ##### Preprovision nodes manually
 
-This process carries out all provisioning tasks on the database nodes which require elevated privileges. Once the database nodes have been prepared in this way, the universe creation process from YugabyteDB Anywhere will connect with the nodes only via the `yugabyte` user, and not require any elevation of privileges to deploy and operate the YugabyteDB universe.
+This process carries out all provisioning tasks on the database nodes which require elevated privileges. After the database nodes have been prepared in this way, the universe creation process from YugabyteDB Anywhere will connect with the nodes only via the `yugabyte` user, and not require any elevation of privileges to deploy and operate the YugabyteDB universe.
 
-Physical nodes (or cloud instances) are installed with a standard Centos 7 server image. The following steps are to be performed on each physical node, prior to universe creation:
+Physical nodes (or cloud instances) are installed with a standard CentOS 7 server image. The following steps are to be performed on each physical node, prior to universe creation:
 
 1. Log in to each database node as a user with sudo enabled (the `centos` user in centos7 images).
 
@@ -238,7 +238,7 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
     server <your-time-server-IP-address> prefer iburst
     ```
 
-    <br>Then, run the following command:
+    Then, run the following command:
 
     ```sh
     sudo chronyc makestep   # (force instant sync to NTP server)
@@ -252,13 +252,10 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
     sudo su - yugabyte   # (change to yugabyte user for execution of next steps)
     ```
 
-    <br>
-
     Ensure that the `yugabyte` user has permissions to SSH into the YugabyteDB nodes (as defined in `/etc/ssh/sshd_config`).
 
 1. Copy the SSH public key to each DB node.
 
-    \
     This public key should correspond to the private key entered into the YugabyteDB Anywhere provider.
 
 1. Run the following commands as the `yugabyte` user, after copying the SSH public key file to the user home directory:
@@ -297,7 +294,6 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
 
 1. Install the rsync and OpenSSL packages (sudo is required).
 
-    \
     Note that most Linux distributions include rsync and OpenSSL. If your distribution is missing these packages, install them using the following commands:
 
     ```sh
@@ -305,7 +301,6 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
     sudo yum install rsync
     ```
 
-    \
     For airgapped environments, make sure your Yum repository mirror contains these packages.
 
 1. If running on a virtual machine, execute the following to tune kernel settings (sudo is required):
@@ -317,13 +312,13 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
 
 1. Perform the following to prepare and mount the data volume (separate partition for database data) (sudo is required):
 
-    * List the available storage volumes, as follows:
+    - List the available storage volumes, as follows:
 
       ```sh
       lsblk
       ```
 
-    * Perform the following steps for each available volume (all listed volumes other than the root volume):
+    - Perform the following steps for each available volume (all listed volumes other than the root volume):
 
       ```sh
       sudo mkdir /data   # (or /data1, /data2 etc)
@@ -331,13 +326,13 @@ Physical nodes (or cloud instances) are installed with a standard Centos 7 serve
       sudo vi /etc/fstab
       ```
 
-    * Add the following line to `/etc/fstab`:
+    - Add the following line to `/etc/fstab`:
 
       ```text
       /dev/nvme1n1   /data   xfs   noatime   0   0
       ```
 
-    * Exit from vi, and continue, as follows:
+    - Exit from vi, and continue, as follows:
 
       ```sh
       sudo mount -av # (mounts the new volume using the fstab entry, to validate)
@@ -367,13 +362,13 @@ On each node, perform the following as a user with sudo access:
    sudo mkdir /var/log/prometheus
    sudo mkdir /var/run/prometheus
    sudo mv /tmp/node_exporter-1.3.1.linux-amd64.tar  /opt/prometheus
-   sudo adduser prometheus # (also adds group “prometheus”)
+   sudo adduser prometheus # (also adds group "prometheus")
    sudo chown -R prometheus:prometheus /opt/prometheus
    sudo chown -R prometheus:prometheus /etc/prometheus
    sudo chown -R prometheus:prometheus /var/log/prometheus
    sudo chown -R prometheus:prometheus /var/run/prometheus
    sudo chmod +r /opt/prometheus/node_exporter-1.3.1.linux-amd64.tar
-   sudo su - prometheus (user session is now as user “prometheus”)
+   sudo su - prometheus (user session is now as user "prometheus")
    ```
 
 1. Run the following commands as user `prometheus`:
@@ -389,7 +384,6 @@ On each node, perform the following as a user with sudo access:
    ```sh
    sudo vi /etc/systemd/system/node_exporter.service
    ```
-
 
    Add the following to the `/etc/systemd/system/node_exporter.service` file:
 
@@ -485,8 +479,8 @@ Note that sudo is required to set up this service.
 
 If YugabyteDB Anywhere will be using cron jobs, ensure that the `yugabyte` user is allowed to run crontab:
 
-* If you are using the `cron.allow` file to manage crontab access, add the `yugabyte` user to this file.
-* If you are using the `cron.deny` file, remove the `yugabyte` user from this file.
+- If you are using the `cron.allow` file to manage crontab access, add the `yugabyte` user to this file.
+- If you are using the `cron.deny` file, remove the `yugabyte` user from this file.
 
 If you are not using either file, no changes are required.
 
@@ -503,7 +497,7 @@ If YugabyteDB Anywhere will be using **cron jobs**, make sure the yugabyte user 
 YugabyteDB Anywhere **systemd services** to perform the monitoring operations mentioned above, then make sure ...
 -->
 
-You have finished configuring your on-premises cloud provider. Proceed to [Configure the backup target](../../backup-target/) or [Create deployments](../../../create-deployments/).
+You have finished configuring your on-premises cloud provider. Proceed to [Configure the backup target](../../backup-target/) or [deploy universes](../../../create-deployments/).
 
 ##### Install systemd-related database service unit files
 
@@ -512,7 +506,8 @@ As an alternative to setting crontab permissions, you can install systemd-specif
 1. Enable the `yugabyte` user to run the following commands as sudo or root:
 
    ```sh
-   yugabyte ALL=(ALL:ALL) NOPASSWD: /bin/systemctl start yb-master, \
+   yugabyte ALL=(ALL:ALL) NOPASSWD: \
+   /bin/systemctl start yb-master, \
    /bin/systemctl stop yb-master, \
    /bin/systemctl restart yb-master, \
    /bin/systemctl enable yb-master, \
@@ -555,7 +550,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    /bin/systemctl daemon-reload
    ```
 
-2. Ensure that you have root access and add the following service and timer files to the `/etc/systemd/system` directory (set their ownerships to the `yugabyte` user and 0644 permissions):<br><br>
+2. Ensure that you have root access and add the following service and timer files to the `/etc/systemd/system` directory (set their ownerships to the `yugabyte` user and 0644 permissions):
 
    `yb-master.service`
 
@@ -596,8 +591,6 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=default.target
    ```
 
-   <br><br>
-
    `yb-tserver.service`
 
    ```sh
@@ -637,7 +630,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=default.target
    ```
 
-   <br><br>`yb-zip_purge_yb_logs.service`
+   `yb-zip_purge_yb_logs.service`
 
    ```sh
    [Unit]
@@ -654,8 +647,6 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    [Install]
    WantedBy=multi-user.target
    ```
-
-   <br><br>
 
    `yb-zip_purge_yb_logs.timer`
 
@@ -675,8 +666,6 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=timers.target
    ```
 
-   <br><br>
-
    `yb-clean_cores.service`
 
    ```sh
@@ -694,8 +683,6 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    [Install]
    WantedBy=multi-user.target
    ```
-
-   <br><br>
 
    `yb-clean_cores.timer`
 
@@ -715,8 +702,6 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    WantedBy=timers.target
    ```
 
-   <br><br>
-
    `yb-collect_metrics.service`
 
    ```sh
@@ -734,8 +719,6 @@ As an alternative to setting crontab permissions, you can install systemd-specif
    [Install]
    WantedBy=multi-user.target
    ```
-
-   <br><br>
 
    `yb-collect_metrics.timer`
 
@@ -773,11 +756,11 @@ You can remove YugabyteDB components and configuration from the database server 
 
 - Execute the following command:
 
-  ```shell
-  ./bin/yb-server-ctl.sh clean-instance
-  ```
+    ```shell
+    ./bin/yb-server-ctl.sh clean-instance
+    ```
 
-  <br>This removes all YugabyteDB code and settings from the node, removing it from the Universe.
+    This removes all YugabyteDB code and settings from the node, removing it from the Universe.
 
 {{< note title="Note" >}}
 
@@ -785,7 +768,7 @@ If you cannot find the `bin` directory, it means YugabyteDB Anywhere already cle
 
 {{< /note >}}
 
-You shoud also erase the data from the volume mounted under the `/data` subdirectory, unless this volume is to be permanently erased by the underlying storage subsystem when the volume is deleted.
+You should also erase the data from the volume mounted under the `/data` subdirectory, unless this volume is to be permanently erased by the underlying storage subsystem when the volume is deleted.
 
 To erase this data, execute the following commands from the `centos` user on the node (or any user with access to sudo):
 

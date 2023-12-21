@@ -47,10 +47,11 @@
 #include <gtest/gtest_prod.h>
 
 #include "yb/cdc/cdc_producer.h"
+
 #include "yb/client/client_fwd.h"
-#include "yb/common/common_fwd.h"
 
 #include "yb/common/clock.h"
+#include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_types.h"
@@ -66,9 +67,9 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 
-#include "yb/master/master_fwd.h"
 #include "yb/master/master_client.fwd.h"
 #include "yb/master/master_ddl.fwd.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/master_replication.fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
@@ -335,6 +336,9 @@ class YBClient {
       const std::vector<TableId>& index_ids,
       google::protobuf::RepeatedField<google::protobuf::uint64>* rows_processed_entries);
 
+  Result<master::GetBackfillStatusResponsePB> GetBackfillStatus(
+      const std::vector<std::string_view>& table_ids);
+
   // Delete the specified table.
   // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.
   Status DeleteTable(const YBTableName& table_name, bool wait = true);
@@ -593,7 +597,9 @@ class YBClient {
 
   Result<xrepl::StreamId> CreateCDCSDKStreamForNamespace(
       const NamespaceId& namespace_id, const std::unordered_map<std::string, std::string>& options,
-      const ReplicationSlotName& replication_slot_name = ReplicationSlotName(""));
+      bool populate_namespace_id_as_table_id = false,
+      const ReplicationSlotName& replication_slot_name = ReplicationSlotName(""),
+      const std::optional<CDCSDKSnapshotOption>& consistent_snapshot_option = std::nullopt);
 
   // Delete multiple CDC streams.
   Status DeleteCDCStream(
@@ -628,7 +634,10 @@ class YBClient {
       NamespaceId* ns_id,
       std::vector<TableId>* table_ids,
       std::unordered_map<std::string, std::string>* options,
-      cdc::StreamModeTransactional* transactional);
+      cdc::StreamModeTransactional* transactional,
+      std::optional<uint64_t>* consistent_snapshot_time = nullptr,
+      std::optional<CDCSDKSnapshotOption>* consistent_snapshot_option = nullptr,
+      std::optional<uint64_t>* stream_creation_time = nullptr);
 
   Status GetCDCStream(
       const ReplicationSlotName& replication_slot_name,
@@ -678,6 +687,9 @@ class YBClient {
       uint32_t producer_schema_version,
       uint32_t consumer_schema_version,
       master::UpdateConsumerOnProducerMetadataResponsePB* resp);
+
+  Status XClusterReportNewAutoFlagConfigVersion(
+      const cdc::ReplicationGroupId& replication_group_id, uint32 auto_flag_config_version);
 
   void GetTableLocations(
       const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,

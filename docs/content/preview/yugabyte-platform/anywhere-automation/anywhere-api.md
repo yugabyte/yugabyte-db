@@ -3,7 +3,6 @@ title: YugabyteDB Anywhere REST API
 headerTitle: REST API
 linkTitle: REST API
 description: REST API YugabyteDB Anywhere.
-image: /images/section_icons/explore/administer.png
 headcontent: Manage YugabyteDB Anywhere accounts and deployments using the REST API
 menu:
   preview_yugabyte-platform:
@@ -29,7 +28,7 @@ If you use Python, check out the Jupyter notebooks in the [yugabyte-db GitHub re
     title="Get Started"
     description="Manage YugabyteDB Anywhere using the API."
     buttonText="API Documentation"
-    buttonUrl="https://api-docs.yugabyte.com/docs/yugabyte-platform/"
+    buttonUrl="https://api-docs.yugabyte.com/docs/yugabyte-platform/f10502c9c9623-yugabyte-db-anywhere-api-overview"
   >}}
 
 {{< /sections/2-boxes >}}

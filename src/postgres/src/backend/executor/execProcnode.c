@@ -459,16 +459,6 @@ ExecProcNodeFirst(PlanState *node)
 	return node->ExecProcNode(node);
 }
 
-
-/*
- * Update Yugabyte specific run-time statistics.
- */
-static void
-YbUpdateInstrument(PlanState *node)
-{
-	YbUpdateSessionStats(&node->instrument->yb_instr);
-}
-
 /*
  * ExecProcNode wrapper that performs instrumentation calls.  By keeping
  * this a separate function, we avoid overhead in the normal case where
@@ -484,7 +474,7 @@ ExecProcNodeInstr(PlanState *node)
 	result = node->ExecProcNodeReal(node);
 
 	InstrStopNode(node->instrument, TupIsNull(result) ? 0.0 : 1.0);
-	YbUpdateInstrument(node);
+	YbUpdateSessionStats(&node->instrument->yb_instr);
 
 	return result;
 }
@@ -935,6 +925,18 @@ ExecSetTupleBound(int64 tuples_needed, PlanState *child_node)
 		gstate->tuples_needed = tuples_needed;
 
 		ExecSetTupleBound(tuples_needed, outerPlanState(child_node));
+	}
+	else if (IsA(child_node, YbBatchedNestLoopState))
+	{
+		YbBatchedNestLoopState *bnl_state =
+			(YbBatchedNestLoopState *) child_node;
+		if (bnl_state->bnl_is_sorted)
+		{
+			if (tuples_needed < 0)
+				bnl_state->bound = 0;
+			else
+				bnl_state->bound = tuples_needed;
+		}
 	}
 
 	/*

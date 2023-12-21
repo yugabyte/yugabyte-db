@@ -209,15 +209,17 @@ public class TablesController extends AuthenticatedController {
       UUID customerUUID,
       UUID universeUUID,
       boolean includeParentTableInfo,
-      boolean excludeColocatedTables,
-      boolean includeColocatedParentTables) {
+      @Deprecated boolean excludeColocatedTables,
+      boolean includeColocatedParentTables,
+      boolean xClusterSupportedOnly) {
     List<TableInfoForm.TableInfoResp> resp =
         tableHandler.listTables(
             customerUUID,
             universeUUID,
             includeParentTableInfo,
             excludeColocatedTables,
-            includeColocatedParentTables);
+            includeColocatedParentTables,
+            xClusterSupportedOnly);
     return PlatformResults.withData(resp);
   }
 
@@ -244,10 +246,10 @@ public class TablesController extends AuthenticatedController {
   /**
    * This API will describe a single table.
    *
-   * @param customerUUID UUID of the customer owning the table.
-   * @param universeUUID UUID of the universe in which the table resides.
-   * @param tableUUID UUID of the table to describe.
-   * @return json-serialized description of the table.
+   * @param customerUUID UUID of the customer owning the table
+   * @param universeUUID UUID of the universe in which the table resides
+   * @param tableUUID UUID or ID of the table to describe
+   * @return json-serialized description of the table
    */
   @ApiOperation(
       value = "YbaApi Internal. Describe a table",
@@ -260,8 +262,10 @@ public class TablesController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
-  public Result describe(UUID customerUUID, UUID universeUUID, UUID tableUUID) {
-    return PlatformResults.withData(tableHandler.describe(customerUUID, universeUUID, tableUUID));
+  public Result describe(UUID customerUUID, UUID universeUUID, String tableUUID) {
+    UUID tableUuid =
+        tableUUID.contains("-") ? UUID.fromString(tableUUID) : getUUIDRepresentation(tableUUID);
+    return PlatformResults.withData(tableHandler.describe(customerUUID, universeUUID, tableUuid));
   }
 
   @ApiOperation(

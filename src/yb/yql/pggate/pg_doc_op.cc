@@ -334,13 +334,6 @@ Status PgDocOp::SendRequestImpl(ForceNonBufferable force_non_bufferable) {
   // Populate collected information into protobuf requests before sending to DocDB.
   RETURN_NOT_OK(CreateRequests());
 
-  // Currently, send and receive individual request of a batch is not yet supported
-  // - Among statements, only queries by BASE-YBCTIDs need to be sent and received in batches
-  //   to honor the order of how the BASE-YBCTIDs are kept in the database.
-  // - For other type of statements, it could be more efficient to send them individually.
-  SCHECK(wait_for_batch_completion_, InternalError,
-         "Only send and receive the whole batch is supported");
-
   // Send at most "parallelism_level_" number of requests at one time.
   size_t send_count = std::min(parallelism_level_, active_op_count_);
   VLOG(1) << "Number of operations to send: " << send_count;
@@ -393,8 +386,6 @@ Result<std::list<PgDocResult>> PgDocOp::ProcessResponseImpl(
   auto result = VERIFY_RESULT(ProcessCallResponse(*data.response));
 
   if (data.used_in_txn_limit) {
-    VLOG(5) << "Received used_in_txn_limit_ht in resp=" << data.used_in_txn_limit
-            << ", existing in_txn_limit_ht: " << GetInTxnLimitHt();
     GetInTxnLimitHt() = data.used_in_txn_limit.ToUint64();
   }
   RETURN_NOT_OK(CompleteProcessResponse());
@@ -559,14 +550,14 @@ Result<bool> PgDocReadOp::DoCreateRequests() {
         return false;
       }
     }
-    pgsql_ops_.emplace_back(read_op_);
-    pgsql_ops_.back()->set_active(true);
+    ClonePgsqlOps(1);
+    auto& read_op = GetReadOp(0);
+    read_op.set_active(true);
     active_op_count_ = 1;
     if (req.has_ybctid_column_value()) {
-      const Slice& ybctid =
-        read_op_->read_request().mutable_ybctid_column_value()->mutable_value()->binary_value();
+      const Slice& ybctid = req.ybctid_column_value().value().binary_value();
       const size_t partition = VERIFY_RESULT(table_->FindPartitionIndex(ybctid));
-      return SetLowerUpperBound(&read_op_->read_request(), partition);
+      return SetLowerUpperBound(&read_op.read_request(), partition);
     }
     return true;
   }
@@ -645,16 +636,17 @@ Status PgDocReadOp::DoPopulateDmlByYbctidOps(const YbctidGenerator& generator) {
 }
 
 void PgDocReadOp::InitializeYbctidOperators() {
-  if (pgsql_ops_.empty()) {
-    // First batch.
-    // To honor the indexing order of ybctid values, for each batch of ybctid-binds, select all rows
-    // in the batch and then order them before returning result to Postgres layer.
-    wait_for_batch_completion_ = true;
-    ClonePgsqlOps(table_->GetPartitionListSize());
-  } else {
-    // Second and later batches. Reuse all state variables.
-    ResetInactivePgsqlOps();
+  if (!pgsql_op_arena_) {
+    // First batch, create arena for operations
+    DCHECK(pgsql_ops_.empty());
+    pgsql_op_arena_ = SharedArena();
+  } else if (active_op_count_ == 0) {
+    // All past operations are done, can perform full reset to release memory
+    pgsql_ops_.clear();
+    pgsql_op_arena_->Reset(ResetMode::kKeepLast);
   }
+  ResetInactivePgsqlOps();
+  ClonePgsqlOps(table_->GetPartitionListSize());
 }
 
 LWPgsqlReadRequestPB* PgDocReadOp::PrepareReadReq() {
@@ -1401,6 +1393,15 @@ void PgDocReadOp::ResetInactivePgsqlOps() {
   }
 }
 
+Status PgDocReadOp::ResetPgsqlOps() {
+  SCHECK_EQ(active_op_count_, 0,
+            IllegalState,
+            "Can't reset operations when some of them are active");
+  pgsql_ops_.clear();
+  request_population_completed_ = false;
+  return Status::OK();
+}
+
 void PgDocReadOp::FormulateRequestForRollingUpgrade(LWPgsqlReadRequestPB *read_req) {
   if (read_req->batch_arguments().empty()) {
     return;
@@ -1445,8 +1446,9 @@ void PgDocReadOp::ClonePgsqlOps(size_t op_count) {
   // Allocate batch operator, one per partition.
   DCHECK_GT(op_count, 0);
   pgsql_ops_.reserve(op_count);
+  const auto& arena = pgsql_op_arena_ ? pgsql_op_arena_ : GetSharedArena(read_op_);
   while (pgsql_ops_.size() < op_count) {
-    pgsql_ops_.push_back(read_op_->DeepCopy(read_op_));
+    pgsql_ops_.push_back(read_op_->DeepCopy(arena));
     // Initialize as inactive. Turn it on when setup argument for a specific partition.
     pgsql_ops_.back()->set_active(false);
   }

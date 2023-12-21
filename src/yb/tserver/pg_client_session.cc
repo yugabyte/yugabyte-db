@@ -479,13 +479,18 @@ struct SharedExchangeQueryParams {
 };
 
 struct SharedExchangeQuery : public SharedExchangeQueryParams, public PerformData {
+  std::weak_ptr<PgClientSession> session;
+
   SharedExchange* exchange;
 
   CountDownLatch latch{1};
 
-  SharedExchangeQuery(uint64_t session_id_, PgTableCache* table_cache_, SharedExchange* exchange_)
-      : PerformData(session_id_, table_cache_, &exchange_req, &exchange_resp, &exchange_sidecars),
-        exchange(exchange_) {
+  SharedExchangeQuery(
+      std::shared_ptr<PgClientSession> session_, PgTableCache* table_cache_,
+      SharedExchange* exchange_)
+      : PerformData(
+            session_->id(), table_cache_, &exchange_req, &exchange_resp, &exchange_sidecars),
+        session(std::move(session_)), exchange(exchange_) {
   }
 
   Status Init(size_t size) {
@@ -497,21 +502,37 @@ struct SharedExchangeQuery : public SharedExchangeQueryParams, public PerformDat
   }
 
   void SendResponse() override {
+    using google::protobuf::io::CodedOutputStream;
     rpc::ResponseHeader header;
     header.set_call_id(42);
     auto resp_size = resp.ByteSizeLong();
     sidecars.MoveOffsetsTo(resp_size, header.mutable_sidecar_offsets());
-    auto header_size = header.ByteSizeLong();
-    auto* start = exchange->Obtain(
-        header_size + resp_size + sidecars.size() + kMaxVarint32Length * 2);
+    auto header_size = header.ByteSize();
+    auto body_size = narrow_cast<uint32_t>(resp_size + sidecars.size());
+    auto full_size =
+        CodedOutputStream::VarintSize32(header_size) + header_size +
+        CodedOutputStream::VarintSize32(body_size) + body_size;
+    auto* start = exchange->Obtain(full_size);
+    RefCntBuffer buffer;
+    if (!start) {
+      buffer = RefCntBuffer(full_size);
+      start = pointer_cast<std::byte*>(buffer.data());
+    }
     auto* out = start;
-    out = WriteVarint32ToArray(narrow_cast<uint32_t>(header_size), out);
+    out = WriteVarint32ToArray(header_size, out);
     out = SerializeWithCachedSizesToArray(header, out);
-    out = WriteVarint32ToArray(narrow_cast<uint32_t>(resp_size + sidecars.size()), out);
+    out = WriteVarint32ToArray(body_size, out);
     out = SerializeWithCachedSizesToArray(resp, out);
     sidecars.CopyTo(out);
     out += sidecars.size();
-    exchange->Respond(out - start);
+    DCHECK_EQ(out - start, full_size);
+    if (!buffer) {
+      exchange->Respond(full_size);
+    } else {
+      auto locked_session = session.lock();
+      auto id = locked_session ? locked_session->SaveData(buffer) : 0;
+      exchange->Respond(kTooBigResponseMask | id);
+    }
     latch.CountDown();
   }
 };
@@ -530,6 +551,10 @@ HybridTime GetInTxnLimit(const PgPerformOptionsPB& options, ClockBase* clock) {
   }
   auto in_txn_limit = HybridTime::FromPB(options.in_txn_limit_ht().value());
   return in_txn_limit ? in_txn_limit : clock->Now();
+}
+
+Status Commit(client::YBTransaction* txn, PgResponseCache::Disabler disabler) {
+  return txn->CommitFuture().get();
 }
 
 } // namespace
@@ -684,6 +709,7 @@ Status PgClientSession::CreateReplicationSlot(
 
   auto stream_result = VERIFY_RESULT(client().CreateCDCSDKStreamForNamespace(
       GetPgsqlNamespaceId(req.database_oid()), options,
+      /* populate_namespace_id_as_table_id */ false,
       ReplicationSlotName(req.replication_slot_name())));
   *resp->mutable_stream_id() = stream_result.ToString();
   return Status::OK();
@@ -873,11 +899,15 @@ Status PgClientSession::FinishTransaction(
   auto is_ddl = false;
   auto kind = PgClientSessionKind::kPlain;
   auto has_docdb_schema_changes = false;
+  std::optional<uint32_t> silently_altered_db;
   if (req.has_ddl_mode()) {
     const auto& ddl_mode = req.ddl_mode();
     is_ddl = true;
     kind = PgClientSessionKind::kDdl;
     has_docdb_schema_changes = ddl_mode.has_docdb_schema_changes();
+    if (ddl_mode.has_silently_altered_db()) {
+      silently_altered_db = ddl_mode.silently_altered_db().value();
+    }
   }
   auto& txn = Transaction(kind);
   if (!txn) {
@@ -895,7 +925,11 @@ Status PgClientSession::FinishTransaction(
   Session(kind)->SetTransaction(nullptr);
 
   if (req.commit()) {
-    const auto commit_status = txn_value->CommitFuture().get();
+    const auto commit_status = Commit(
+        txn_value.get(),
+        silently_altered_db ? response_cache_.Disable(*silently_altered_db)
+                            : PgResponseCache::Disabler());
+
     VLOG_WITH_PREFIX_AND_FUNC(2)
         << "ddl: " << is_ddl << ", txn: " << txn_value->id()
         << ", commit: " << commit_status;
@@ -1436,6 +1470,31 @@ Status PgClientSession::UpdateSequenceTuple(
   return Status::OK();
 }
 
+size_t PgClientSession::SaveData(const RefCntBuffer& buffer) {
+  std::lock_guard lock(pending_data_mutex_);
+  for (size_t i = 0; i != pending_data_.size(); ++i) {
+    if (!pending_data_[i]) {
+      pending_data_[i] = buffer;
+      return i;
+    }
+  }
+  pending_data_.push_back(buffer);
+  return pending_data_.size() - 1;
+}
+
+Status PgClientSession::FetchData(
+    const PgFetchDataRequestPB& req, PgFetchDataResponsePB* resp,
+    rpc::RpcContext* context) {
+  size_t data_id = req.data_id();
+  std::lock_guard lock(pending_data_mutex_);
+  if (data_id >= pending_data_.size() || !pending_data_[data_id]) {
+    return STATUS_FORMAT(NotFound, "Data $0 not found for session $1", data_id, id_);
+  }
+  context->sidecars().Start().AddBlock(pending_data_[data_id], 0);
+  pending_data_[data_id].Reset();
+  return Status::OK();
+}
+
 Status PgClientSession::FetchSequenceTuple(
     const PgFetchSequenceTupleRequestPB& req, PgFetchSequenceTupleResponsePB* resp,
     rpc::RpcContext* context) {
@@ -1646,6 +1705,7 @@ void PgClientSession::GetTableKeyRanges(
     yb::tserver::PgGetTableKeyRangesRequestPB const& req,
     yb::tserver::PgGetTableKeyRangesResponsePB* resp, yb::rpc::RpcContext context) {
   const auto table = table_cache_.Get(PgObjectId::GetYbTableIdFromPB(req.table_id()));
+  resp->set_current_ht(clock_->Now().ToUint64());
   if (!table.ok()) {
     StatusToPB(table.status(), resp->mutable_status());
     context.RespondSuccess();
@@ -1654,6 +1714,11 @@ void PgClientSession::GetTableKeyRanges(
 
   auto session = EnsureSession(PgClientSessionKind::kPlain, context.GetClientDeadline());
   auto shared_context = std::make_shared<rpc::RpcContext>(std::move(context));
+  client::YBTransaction* transaction = Transaction(PgClientSessionKind::kPlain).get();
+  if (!transaction && (read_time_serial_no_ != req.read_time_serial_no())) {
+    ResetReadPoint(PgClientSessionKind::kPlain);
+  }
+  read_time_serial_no_ = req.read_time_serial_no();
   GetTableKeyRanges(
       session, *table, req.lower_bound_key(), req.upper_bound_key(), req.max_num_ranges(),
       req.range_size_bytes(), req.is_forward(), req.max_key_length(), &shared_context->sidecars(),
@@ -1769,7 +1834,7 @@ std::shared_ptr<CountDownLatch> PgClientSession::ProcessSharedRequest(
   // TODO(shared_mem) Use the same timeout as RPC scenario.
   const auto kTimeout = std::chrono::seconds(60);
   auto deadline = CoarseMonoClock::now() + kTimeout;
-  auto data = std::make_shared<SharedExchangeQuery>(id_, &table_cache_, exchange);
+  auto data = std::make_shared<SharedExchangeQuery>(shared_this_.lock(), &table_cache_, exchange);
   auto status = data->Init(size);
   if (status.ok()) {
     status = DoPerform(data, deadline, nullptr);

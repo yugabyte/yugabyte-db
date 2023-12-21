@@ -29,6 +29,7 @@ import com.yugabyte.yw.common.rbac.PermissionUtil;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.Users.UserType;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
 import com.yugabyte.yw.models.rbac.Role;
@@ -167,6 +168,14 @@ public class RBACControllerTest extends FakeDBApplication {
               customerUUID.toString(), userUUID.toString());
     }
     return doRequestWithAuthToken("GET", uri, user.createAuthToken());
+  }
+
+  private Result setRoleBindings(UUID customerUUID, UUID userUUID, JsonNode bodyJson) {
+    String uri =
+        String.format(
+            "/api/customers/%s/rbac/role_binding/%s", customerUUID.toString(), userUUID.toString());
+    return doRequestWithAuthTokenAndBody(
+        "POST", String.format(uri, customerUUID.toString()), user.createAuthToken(), bodyJson);
   }
 
   /* ==== API Tests ==== */
@@ -311,7 +320,8 @@ public class RBACControllerTest extends FakeDBApplication {
             + "\"name\": \"custom Read UniverseRole 1\","
             + "\"description\": \"test Description\","
             + "\"permissionList\": ["
-            + "{\"resourceType\": \"UNIVERSE\", \"action\": \"READ\"}"
+            + "{\"resourceType\": \"UNIVERSE\", \"action\": \"READ\"},"
+            + "{\"resourceType\": \"OTHER\", \"action\": \"READ\"}"
             + "]}";
     JsonNode bodyJson = mapper.readValue(createRoleRequestBody, JsonNode.class);
     Result result = createRole(customer.getUuid(), bodyJson);
@@ -384,13 +394,14 @@ public class RBACControllerTest extends FakeDBApplication {
             "customReadUniverseRole1",
             "testDescription",
             RoleType.Custom,
-            new HashSet<>(Arrays.asList(permission1, permission2)));
+            new HashSet<>(Arrays.asList(permission1, permission2, permission4)));
 
     // Filling the JSON object to be passed in the request body
     String createRoleRequestBody =
         "{"
             + "\"permissionList\": ["
-            + "{\"resourceType\": \"UNIVERSE\", \"action\": \"READ\"}"
+            + "{\"resourceType\": \"UNIVERSE\", \"action\": \"READ\"},"
+            + "{\"resourceType\": \"OTHER\", \"action\": \"READ\"}"
             + "]}";
     JsonNode bodyJson = mapper.readValue(createRoleRequestBody, JsonNode.class);
     Result result = editRole(customer.getUuid(), role1.getRoleUUID(), bodyJson);
@@ -410,7 +421,7 @@ public class RBACControllerTest extends FakeDBApplication {
     Role roleDb = Role.get(customer.getUuid(), "customReadUniverseRole1");
     assertEquals(roleResult, roleDb);
     // Verify if permissions got updated correctly.
-    Set<Permission> permissionList = new HashSet<>(Arrays.asList(permission2));
+    Set<Permission> permissionList = new HashSet<>(Arrays.asList(permission2, permission4));
     assertEquals(permissionList, roleDb.getPermissionDetails().getPermissionList());
   }
 
@@ -587,6 +598,19 @@ public class RBACControllerTest extends FakeDBApplication {
     assertEquals(3, roleBindingList.get(user.getUuid()).size());
     assertTrue(roleBindingList.get(user.getUuid()).contains(roleBinding1));
     assertTrue(roleBindingList.get(user.getUuid()).contains(roleBinding2));
+  }
+
+  @Test
+  public void testSetRoleBindingsForLdapUser() {
+    // Set the user to LDAP user.
+    user.setUserType(UserType.ldap);
+    user.setLdapSpecifiedRole(true);
+    user.save();
+
+    // Call API and assert that role bindings cannot be set for users with LDAP specified role.
+    Result result =
+        assertPlatformException(() -> setRoleBindings(customer.getUuid(), user.getUuid(), null));
+    assertEquals(BAD_REQUEST, result.status());
   }
 
   @Test

@@ -27,6 +27,13 @@ func (a *AuthAPIClient) CreateAllClusters() (
 	return a.APIClient.UniverseClusterMutationsApi.CreateAllClusters(a.ctx, a.CustomerUUID)
 }
 
+// UpgradeSoftware upgrades the universe YugabyteDB version
+func (a *AuthAPIClient) UpgradeSoftware(uUUID string) (
+	ybaclient.UniverseUpgradesManagementApiApiUpgradeSoftwareRequest,
+) {
+	return a.APIClient.UniverseUpgradesManagementApi.UpgradeSoftware(a.ctx, a.CustomerUUID, uUUID)
+}
+
 // UniverseYBAVersionCheck checks if the new API request body can be used for the Create
 // Provider API
 func (a *AuthAPIClient) UniverseYBAVersionCheck() (bool, string, error) {

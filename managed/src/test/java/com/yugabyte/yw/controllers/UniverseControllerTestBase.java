@@ -32,6 +32,8 @@ import com.yugabyte.yw.commissioner.HealthChecker;
 import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.CustomWsClientFactory;
 import com.yugabyte.yw.common.CustomWsClientFactoryProvider;
+import com.yugabyte.yw.common.KubernetesManager;
+import com.yugabyte.yw.common.KubernetesManagerFactory;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.ReleaseManager;
@@ -113,6 +115,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
   protected RuntimeConfigFactory runtimeConfigFactory;
   protected ReleaseManager.ReleaseMetadata mockReleaseMetadata;
   protected ReleaseManager.ReleaseMetadata mockYbcReleaseMetadata;
+  protected KubernetesManagerFactory kubernetesManagerFactory;
 
   protected GuiceApplicationBuilder appOverrides(GuiceApplicationBuilder applicationBuilder) {
     return applicationBuilder;
@@ -137,6 +140,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
     mockReleaseManager = mock(ReleaseManager.class);
     healthChecker = mock(HealthChecker.class);
     mockQueryHelper = mock(QueryHelper.class);
+    kubernetesManagerFactory = mock(KubernetesManagerFactory.class);
 
     when(mockRuntimeConfig.getBoolean("yb.cloud.enabled")).thenReturn(false);
     when(mockRuntimeConfig.getBoolean("yb.security.use_oauth")).thenReturn(false);
@@ -147,6 +151,9 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
     when(mockRuntimeConfig.getString("yb.storage.path"))
         .thenReturn("/tmp/" + this.getClass().getSimpleName());
     when(mockRuntimeConfigFactory.globalRuntimeConf()).thenReturn(mockRuntimeConfig);
+
+    KubernetesManager kubernetesManager = mock(KubernetesManager.class);
+    when(kubernetesManagerFactory.getManager()).thenReturn(kubernetesManager);
 
     return appOverrides(new GuiceApplicationBuilder())
         .disable(GuiceModule.class)
@@ -170,6 +177,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
         .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager))
         .overrides(bind(HealthChecker.class).toInstance(healthChecker))
         .overrides(bind(QueryHelper.class).toInstance(mockQueryHelper))
+        .overrides(bind(KubernetesManagerFactory.class).toInstance(kubernetesManagerFactory))
         .overrides(
             bind(CustomWsClientFactory.class).toProvider(CustomWsClientFactoryProvider.class))
         .build();

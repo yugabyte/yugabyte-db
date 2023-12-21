@@ -23,6 +23,8 @@ import {
 import {
   fetchRunTimeConfigs,
   fetchRunTimeConfigsResponse,
+  fetchProviderRunTimeConfigs,
+  fetchProviderRunTimeConfigsResponse,
   getAlerts,
   getAlertsSuccess,
   getAlertsFailure
@@ -94,6 +96,12 @@ const mapDispatchToProps = (dispatch) => {
     },
     showSoftwareUpgradesModal: () => {
       dispatch(openDialog('softwareUpgradesModal'));
+    },
+    showSoftwareUpgradesNewModal: () => {
+      dispatch(openDialog('softwareUpgradesNewModal'));
+    },
+    showRollbackModal: () => {
+      dispatch(openDialog('rollbackModal'));
     },
     showVMImageUpgradeModal: () => {
       dispatch(openDialog('vmImageUpgradeModal'));
@@ -181,6 +189,11 @@ const mapDispatchToProps = (dispatch) => {
     fetchRunTimeConfigs: (universeUUID) => {
       return dispatch(fetchRunTimeConfigs(universeUUID, true)).then((response) =>
         dispatch(fetchRunTimeConfigsResponse(response.payload))
+      );
+    },
+    fetchProviderRunTimeConfigs: (providerUUID) => {
+      return dispatch(fetchProviderRunTimeConfigs(providerUUID, true)).then((response) =>
+        dispatch(fetchProviderRunTimeConfigsResponse(response.payload))
       );
     }
   };

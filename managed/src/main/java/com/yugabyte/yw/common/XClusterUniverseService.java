@@ -2,15 +2,19 @@
 
 package com.yugabyte.yw.common;
 
+import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
+import com.yugabyte.yw.common.gflags.GFlagsValidation.AutoFlagsPerServer;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.services.config.YbClientConfig;
 import com.yugabyte.yw.common.services.config.YbClientConfigFactory;
@@ -65,6 +69,7 @@ public class XClusterUniverseService {
   private final GFlagsValidation gFlagsValidation;
   private final RuntimeConfGetter confGetter;
   private final YBClientService ybService;
+  private final AutoFlagUtil autoFlagUtil;
   private final PlatformExecutorFactory platformExecutorFactory;
   private final YbClientConfigFactory ybClientConfigFactory;
   private static final String IS_BOOTSTRAP_REQUIRED_POOL_NAME =
@@ -78,11 +83,13 @@ public class XClusterUniverseService {
       GFlagsValidation gFlagsValidation,
       RuntimeConfGetter confGetter,
       YBClientService ybService,
+      AutoFlagUtil autoFlagUtil,
       PlatformExecutorFactory platformExecutorFactory,
       YbClientConfigFactory ybClientConfigFactory) {
     this.gFlagsValidation = gFlagsValidation;
     this.confGetter = confGetter;
     this.ybService = ybService;
+    this.autoFlagUtil = autoFlagUtil;
     this.platformExecutorFactory = platformExecutorFactory;
     this.isBootstrapRequiredExecutor =
         platformExecutorFactory.createExecutor(
@@ -124,6 +131,28 @@ public class XClusterUniverseService {
                 return config.getSourceUniverseUUID();
               }
             })
+        .collect(Collectors.toSet());
+  }
+
+  /**
+   * Get the set of universes UUID which are connected to the input universe either as target
+   * universe through a running xCluster config.
+   *
+   * @param universeUUID the universe on which search needs to be performed.
+   * @return the set of universe uuid which are connected to the input universe.
+   */
+  public Set<UUID> getActiveXClusterTargetUniverseSet(UUID universeUUID) {
+    List<XClusterConfig> xClusterConfigs =
+        XClusterConfig.getByUniverseUuid(universeUUID).stream()
+            .filter(
+                xClusterConfig ->
+                    !xClusterConfig
+                        .getStatus()
+                        .equals(XClusterConfig.XClusterConfigStatusType.DeletedUniverse))
+            .collect(Collectors.toList());
+    return xClusterConfigs.stream()
+        .filter(config -> config.getSourceUniverseUUID().equals(universeUUID))
+        .map(config -> config.getTargetUniverseUUID())
         .collect(Collectors.toSet());
   }
 
@@ -180,26 +209,30 @@ public class XClusterUniverseService {
       Universe univUpgradeInProgress,
       String upgradeUniverseSoftwareVersion)
       throws IOException, PlatformServiceException {
-    GFlagsValidation.AutoFlagsPerServer masterAutoFlags =
+    AutoFlagsPerServer masterAutoFlags =
         gFlagsValidation.extractAutoFlags(upgradeUniverseSoftwareVersion, "yb-master");
-    GFlagsValidation.AutoFlagsPerServer tserverAutoFlags =
+    AutoFlagsPerServer tserverAutoFlags =
         gFlagsValidation.extractAutoFlags(upgradeUniverseSoftwareVersion, "yb-tserver");
     // Compare auto flags json for each universe.
     for (Universe univ : universeSet) {
+      // Once rollback support is enabled, auto flags will be promoted through finalize api.
+      if (!confGetter.getConfForScope(univ, UniverseConfKeys.promoteAutoFlag)
+          || CommonUtils.isReleaseEqualOrAfter(
+              Util.YBDB_ROLLBACK_DB_VERSION,
+              univ.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion)) {
+        return false;
+      }
       if (univ.getUniverseUUID().equals(univUpgradeInProgress.getUniverseUUID())) {
         continue;
-      }
-      if (!confGetter.getConfForScope(univ, UniverseConfKeys.promoteAutoFlag)) {
-        return false;
       }
       String softwareVersion =
           univ.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
       if (!CommonUtils.isAutoFlagSupported(softwareVersion)) {
         return false;
       }
-      GFlagsValidation.AutoFlagsPerServer univMasterAutoFlags =
+      AutoFlagsPerServer univMasterAutoFlags =
           gFlagsValidation.extractAutoFlags(softwareVersion, "yb-master");
-      GFlagsValidation.AutoFlagsPerServer univTServerAutoFlags =
+      AutoFlagsPerServer univTServerAutoFlags =
           gFlagsValidation.extractAutoFlags(softwareVersion, "yb-tserver");
       if (!(compareAutoFlagPerServerListByName(
               masterAutoFlags.autoFlagDetails, univMasterAutoFlags.autoFlagDetails)
@@ -563,5 +596,39 @@ public class XClusterUniverseService {
           e.getMessage());
       throw new RuntimeException(e);
     }
+  }
+
+  public Set<UUID> getXClusterTargetUniverseSetToBeImpactedWithUpgradeFinalize(Universe universe)
+      throws IOException {
+    Set<UUID> result = new HashSet<>();
+    Set<UUID> targetUniverseUUIDSet =
+        getActiveXClusterTargetUniverseSet(universe.getUniverseUUID());
+    Set<Universe> targetUniverseSet =
+        targetUniverseUUIDSet.stream().map(Universe::getOrBadRequest).collect(Collectors.toSet());
+    String softwareVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    for (ServerType serverType : ImmutableSet.of(ServerType.MASTER, ServerType.TSERVER)) {
+      Set<String> autoFlagsAfterPromotionOnSourceUniverse =
+          gFlagsValidation.extractAutoFlags(softwareVersion, serverType).autoFlagDetails.stream()
+              .filter(flag -> flag.flagClass >= AutoFlagUtil.EXTERNAL_AUTO_FLAG_CLASS)
+              .map(flag -> flag.name)
+              .collect(Collectors.toSet());
+      for (Universe targetUniverse : targetUniverseSet) {
+        String targetUniverseVersion =
+            targetUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+        if (!CommonUtils.isAutoFlagSupported(targetUniverseVersion)) {
+          result.add(targetUniverse.getUniverseUUID());
+          continue;
+        }
+        Set<String> promotedAutoFlagsOnTargetUniverse =
+            autoFlagUtil.getPromotedAutoFlags(
+                targetUniverse, serverType, AutoFlagUtil.LOCAL_PERSISTED_AUTO_FLAG_CLASS);
+        if (!CommonUtils.isEqualIgnoringOrder(
+            autoFlagsAfterPromotionOnSourceUniverse, promotedAutoFlagsOnTargetUniverse)) {
+          result.add(targetUniverse.getUniverseUUID());
+        }
+      }
+    }
+    return result;
   }
 }

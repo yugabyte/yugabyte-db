@@ -2,8 +2,10 @@ import { useState } from 'react';
 import { TabContext, TabList, TabPanel } from '@material-ui/lab';
 import { makeStyles, Tab, useTheme } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
+import { getXClusterConfig } from '../utils';
 
 import { ReplicationTables } from '../../configDetails/ReplicationTables';
+import { XClusterMetrics } from '../../sharedComponents/XClusterMetrics/XClusterMetrics';
 
 import { DrConfig } from '../dtos';
 
@@ -39,6 +41,7 @@ export const DrConfigDetails = ({ drConfig }: DrConfigDetailsProps) => {
   const classes = useStyles();
   const theme = useTheme();
 
+  const xClusterConfig = getXClusterConfig(drConfig);
   const handleTabChange = (_event: React.ChangeEvent<{}>, newTab: DrConfigTab) => {
     setCurrentTab(newTab);
   };
@@ -57,15 +60,10 @@ export const DrConfigDetails = ({ drConfig }: DrConfigDetailsProps) => {
           <Tab label={t('tab.tables')} value={DrConfigTab.TABLES} />
         </TabList>
         <TabPanel value={DrConfigTab.METRICS}>
-          {/* Below component seems to cause rerendering? */}
-          {/* <ReplicationContainer
-            sourceUniverseUUID={drConfig.xClusterConfig.sourceUniverseUUID}
-            hideHeader={true}
-            replicationUUID={drConfig.xClusterConfig.uuid}
-          /> */}
+          <XClusterMetrics xClusterConfig={xClusterConfig} />
         </TabPanel>
         <TabPanel value={DrConfigTab.TABLES}>
-          <ReplicationTables xClusterConfig={drConfig.xClusterConfig} isDrConfig={true} />
+          <ReplicationTables xClusterConfig={xClusterConfig} isDrInterface={true} />
         </TabPanel>
       </TabContext>
     </div>

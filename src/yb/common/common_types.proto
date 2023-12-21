@@ -155,6 +155,10 @@ enum ReplicationErrorPb {
 
   // Replication is healthy.
   REPLICATION_OK = 5;
+
+  // The AutoFlags config has changed and the new version is not compatible, or
+  // has not yet been validated.
+  REPLICATION_AUTO_FLAG_CONFIG_VERSION_MISMATCH = 6;
 }
 
 // Stateful services.
@@ -162,4 +166,10 @@ enum StatefulServiceKind {
   // Test service.
   TEST_ECHO = 0;
   PG_AUTO_ANALYZE = 1;
+}
+
+// CDC SDK Consistent Snapshot Options
+enum CDCSDKSnapshotOption {
+  NOEXPORT_SNAPSHOT = 1; // Client does not wish to consume snapshot
+  USE_SNAPSHOT = 2; // Client wishes to consume snapshot from the source universe
 }

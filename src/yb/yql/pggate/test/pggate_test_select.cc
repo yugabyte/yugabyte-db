@@ -14,6 +14,7 @@
 //--------------------------------------------------------------------------------------------------
 
 #include "yb/common/constants.h"
+#include "yb/common/hybrid_time.h"
 
 #include "yb/gutil/casts.h"
 #include "yb/gutil/strings/escaping.h"
@@ -338,11 +339,16 @@ Status TestGetTableKeyRanges(
         end_keys->push_back(std::string(key, key_size));
       };
 
+  uint64_t current_tserver_ht = 0;
+  /* Request server HT on the first call for the key ranges */
   CHECK_YBC_STATUS(YBCGetTableKeyRanges(
       database_oid, table_oid, lower_bound_key.cdata(), lower_bound_key.size(),
       upper_bound_key.cdata(), upper_bound_key.size(), max_num_ranges, range_size_bytes,
-      /* is_forward = */ true, max_key_length, &InvokeFunctionWithKeyPtrAndSize, &func));
+      /* is_forward = */ true, max_key_length, &current_tserver_ht,
+      &InvokeFunctionWithKeyPtrAndSize, &func));
   LOG(INFO) << "Got " << end_keys->size() << " ranges";
+  LOG(INFO) << "current tserver HT: " << HybridTime(current_tserver_ht).ToString();
+  SCHECK_GT(current_tserver_ht, 0, InternalError, "No tserver hybrid time");
 
   RETURN_NOT_OK(CheckRanges(*end_keys));
 
@@ -361,10 +367,10 @@ Status TestGetTableKeyRanges(
     const auto prev_size = end_keys->size();
 
     LOG(INFO) << "Starting with: " << Slice(lower_bound).ToDebugHexString();
-
     CHECK_YBC_STATUS(YBCGetTableKeyRanges(
         database_oid, table_oid, lower_bound.data(), lower_bound.size(), nullptr, 0, max_num_ranges,
-        range_size_bytes, true, max_key_length, &InvokeFunctionWithKeyPtrAndSize, &func));
+        range_size_bytes, true, max_key_length, nullptr /* current_tserver_ht */,
+        &InvokeFunctionWithKeyPtrAndSize, &func));
 
     const auto size_diff = end_keys->size() - prev_size;
 

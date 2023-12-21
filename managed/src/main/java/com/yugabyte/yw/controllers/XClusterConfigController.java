@@ -78,7 +78,6 @@ import lombok.extern.slf4j.Slf4j;
 import org.yb.CommonTypes;
 import org.yb.CommonTypes.TableType;
 import org.yb.master.MasterDdlOuterClass;
-import org.yb.master.MasterTypes.RelationType;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -191,24 +190,21 @@ public class XClusterConfigController extends AuthenticatedController {
         createFormData.bootstrapParams);
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
-        XClusterConfigTaskBase.getTableInfoList(
-            ybService, sourceUniverse, true /* excludeSystemTables */);
+        XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
         XClusterConfigTaskBase.filterTableInfoListByTableIds(
             sourceTableInfoList, createFormData.tables);
-    CommonTypes.TableType tableType = XClusterConfigTaskBase.getTableType(requestedTableInfoList);
 
     xClusterCreatePreChecks(
-        createFormData.tables,
-        tableType,
+        requestedTableInfoList,
         createFormData.configType,
         sourceUniverse,
         targetUniverse,
         confGetter);
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList =
-        XClusterConfigTaskBase.getTableInfoList(
-            ybService, targetUniverse, true /* excludeSystemTables */);
+        XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
+
     Map<String, String> sourceTableIdTargetTableIdMap =
         XClusterConfigTaskBase.getSourceTableIdTargetTableIdMap(
             requestedTableInfoList, targetTableInfoList);
@@ -510,6 +506,13 @@ public class XClusterConfigController extends AuthenticatedController {
         xClusterConfig.getTableIdsWithReplicationSetup(), false /* needBootstrap */);
 
     if (!tableIdsToAdd.isEmpty()) {
+      // Add table to xCluster configs used for DR must have bootstrapParams.
+      if (xClusterConfig.isUsedForDr() && Objects.isNull(bootstrapParams)) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            "To add table to an xCluster config used for DR, bootstrapParams in the payload "
+                + "must be passed in");
+      }
       Set<String> allTableIds =
           bootstrapParams == null
               ? tableIdsToAdd
@@ -537,8 +540,7 @@ public class XClusterConfigController extends AuthenticatedController {
       }
 
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
-          XClusterConfigTaskBase.getTableInfoList(
-              ybService, sourceUniverse, true /* excludeSystemTables */);
+          XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
       requestedTableInfoList =
           XClusterConfigTaskBase.filterTableInfoListByTableIds(sourceTableInfoList, allTableIds);
       CommonTypes.TableType tableType = XClusterConfigTaskBase.getTableType(requestedTableInfoList);
@@ -561,9 +563,23 @@ public class XClusterConfigController extends AuthenticatedController {
         }
       }
 
+      // Make sure only supported relations types are passed in by the user.
+      Map<Boolean, List<String>> tableIdsPartitionedByIsXClusterSupported =
+          XClusterConfigTaskBase.getTableIdsPartitionedByIsXClusterSupported(
+              requestedTableInfoList);
+      if (!tableIdsPartitionedByIsXClusterSupported.get(false).isEmpty()) {
+        throw new PlatformServiceException(
+            BAD_REQUEST,
+            String.format(
+                "Only the following relation types are supported for xCluster replication: %s; The"
+                    + " following tables have different relation types or is a colocated child"
+                    + " table: %s",
+                XClusterConfigTaskBase.X_CLUSTER_SUPPORTED_TABLE_RELATION_TYPE_SET,
+                tableIdsPartitionedByIsXClusterSupported.get(false)));
+      }
+
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList =
-          XClusterConfigTaskBase.getTableInfoList(
-              ybService, targetUniverse, true /* excludeSystemTables */);
+          XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
       sourceTableIdTargetTableIdMap =
           XClusterConfigTaskBase.getSourceTableIdTargetTableIdMap(
               requestedTableInfoList, targetTableInfoList);
@@ -777,14 +793,12 @@ public class XClusterConfigController extends AuthenticatedController {
     }
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
-        XClusterConfigTaskBase.getTableInfoList(
-            ybService, sourceUniverse, true /* excludeSystemTables */);
+        XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
         XClusterConfigTaskBase.filterTableInfoListByTableIds(sourceTableInfoList, tableIds);
 
     List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTableInfoList =
-        XClusterConfigTaskBase.getTableInfoList(
-            ybService, targetUniverse, true /* excludeSystemTables */);
+        XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
     Map<String, String> sourceTableIdTargetTableIdMap =
         XClusterConfigTaskBase.getSourceTableIdTargetTableIdMap(
             requestedTableInfoList, targetTableInfoList);
@@ -1023,24 +1037,22 @@ public class XClusterConfigController extends AuthenticatedController {
     allTables.addAll(indexTableIdSet);
     log.debug("The following index tables are added to the list of tables: {}", indexTableIdSet);
 
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
+        XClusterConfigTaskBase.getTableInfoList(ybService, sourceUniverse);
+
+    List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
+        sourceTableInfoList.stream()
+            .filter(tableInfo -> allTables.contains(tableInfo.getId().toStringUtf8()))
+            .collect(Collectors.toList());
+
     // If tables do not exist on the target universe, bootstrapping is required.
     Optional<Set<String>> sourceTableIdsWithNoTableOnTargetUniverseOptional = Optional.empty();
     if (Objects.nonNull(needBootstrapFormData.targetUniverseUUID)) {
       Universe targetUniverse =
           Universe.getOrBadRequest(needBootstrapFormData.targetUniverseUUID, customer);
 
-      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> sourceTableInfoList =
-          XClusterConfigTaskBase.getTableInfoList(
-              ybService, sourceUniverse, true /* excludeSystemTables */);
-
-      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList =
-          sourceTableInfoList.stream()
-              .filter(tableInfo -> allTables.contains(tableInfo.getId().toStringUtf8()))
-              .collect(Collectors.toList());
-
       List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> targetTablesInfoList =
-          XClusterConfigTaskBase.getTableInfoList(
-              ybService, targetUniverse, true /* excludeSystemTables */);
+          XClusterConfigTaskBase.getTableInfoList(ybService, targetUniverse);
       Map<String, String> sourceTableIdTargetTableIdMap =
           XClusterConfigTaskBase.getSourceTableIdTargetTableIdMap(
               requestedTableInfoList, targetTablesInfoList);
@@ -1081,6 +1093,17 @@ public class XClusterConfigController extends AuthenticatedController {
               isBootstrapRequiredMap.put(mainTableId, true);
             }
           });
+
+      // For unsupported tables, bootstrapping is not required because they will never be in
+      // replication.
+      XClusterConfigTaskBase.getTableIdsPartitionedByIsXClusterSupported(requestedTableInfoList)
+          .get(false)
+          .forEach(
+              tableId -> {
+                if (isBootstrapRequiredMap.containsKey(tableId)) {
+                  isBootstrapRequiredMap.put(tableId, false);
+                }
+              });
 
       // The response should include only the requested tables.
       return PlatformResults.withData(
@@ -1192,6 +1215,10 @@ public class XClusterConfigController extends AuthenticatedController {
         validateBackupRequestParamsForBootstrapping(
             bootstrapParams.backupRequestParams, customerUUID);
       }
+    }
+
+    if (formData.tables.isEmpty()) {
+      throw new PlatformServiceException(BAD_REQUEST, "tables in the request cannot be empty");
     }
 
     return formData;
@@ -1378,15 +1405,17 @@ public class XClusterConfigController extends AuthenticatedController {
   }
 
   public static void xClusterCreatePreChecks(
-      Set<String> tableIds,
-      CommonTypes.TableType tableType,
+      List<MasterDdlOuterClass.ListTablesResponsePB.TableInfo> requestedTableInfoList,
       ConfigType configType,
       Universe sourceUniverse,
       Universe targetUniverse,
       RuntimeConfGetter confGetter) {
-    if (tableIds.isEmpty()) {
-      throw new IllegalArgumentException("No tableId specified in the request");
+    if (requestedTableInfoList.isEmpty()) {
+      throw new IllegalArgumentException("requestedTableInfoList is empty");
     }
+    Set<String> tableIds = XClusterConfigTaskBase.getTableIds(requestedTableInfoList);
+    CommonTypes.TableType tableType = XClusterConfigTaskBase.getTableType(requestedTableInfoList);
+
     XClusterConfigTaskBase.verifyTablesNotInReplication(
         tableIds, sourceUniverse.getUniverseUUID(), targetUniverse.getUniverseUUID());
     certsForCdcDirGFlagCheck(sourceUniverse, targetUniverse);
@@ -1415,6 +1444,22 @@ public class XClusterConfigController extends AuthenticatedController {
           "At least one of the universes has a txn xCluster config. There cannot exist any other "
               + "xCluster config when there is a txn xCluster config.");
     }
+
+    // Make sure only supported relations types are passed in by the user.
+    Map<Boolean, List<String>> tableIdsPartitionedByIsXClusterSupported =
+        XClusterConfigTaskBase.getTableIdsPartitionedByIsXClusterSupported(requestedTableInfoList);
+    if (!tableIdsPartitionedByIsXClusterSupported.get(false).isEmpty()) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Only the following relation types are supported for xCluster replication: %s; The"
+                  + " following tables have different relation types or is a colocated child table:"
+                  + " %s",
+              XClusterConfigTaskBase.X_CLUSTER_SUPPORTED_TABLE_RELATION_TYPE_SET,
+              tableIdsPartitionedByIsXClusterSupported.get(false)));
+    }
+
+    // TODO: Validate colocated child tables have the same colocation id.
 
     if (configType.equals(ConfigType.Txn)) {
       XClusterConfigController.transactionalXClusterPreChecks(
@@ -1498,9 +1543,7 @@ public class XClusterConfigController extends AuthenticatedController {
                         sourceTableInfoList.stream()
                             .filter(
                                 tableInfo ->
-                                    !tableInfo
-                                            .getRelationType()
-                                            .equals(RelationType.SYSTEM_TABLE_RELATION)
+                                    XClusterConfigTaskBase.isXClusterSupported(tableInfo)
                                         && tableInfo
                                             .getNamespace()
                                             .getId()

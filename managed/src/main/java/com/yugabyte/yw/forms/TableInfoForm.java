@@ -5,6 +5,7 @@ package com.yugabyte.yw.forms;
 import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -60,6 +61,9 @@ public class TableInfoForm {
     @ApiModelProperty(value = "Parent Table UUID")
     public final UUID parentTableUUID;
 
+    @ApiModelProperty(value = "Main Table UUID of index tables")
+    public final UUID mainTableUUID;
+
     @ApiModelProperty(value = "Postgres schema name of the table", example = "public")
     public final String pgSchemaName;
 
@@ -68,6 +72,17 @@ public class TableInfoForm {
 
     @ApiModelProperty(value = "Colocation parent id")
     public final String colocationParentId;
+
+    @JsonIgnore
+    public boolean isColocatedChildTable() {
+      // Colocated parent tables do not have ParentTableId set.
+      if (this.colocated
+          && this.colocationParentId != null
+          && this.relationType != MasterTypes.RelationType.COLOCATED_PARENT_TABLE_RELATION) {
+        return true;
+      }
+      return false;
+    }
   }
 
   @ApiModel(description = "Namespace information response")

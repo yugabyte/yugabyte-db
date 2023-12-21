@@ -20,6 +20,11 @@ import io.ebean.annotation.EnumValue;
 import io.ebean.annotation.Transactional;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import jakarta.persistence.Id;
 import java.lang.reflect.Field;
 import java.time.Duration;
 import java.time.Instant;
@@ -31,11 +36,6 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.GeneratedValue;
-import javax.persistence.GenerationType;
-import javax.persistence.Id;
 import lombok.Getter;
 import lombok.Setter;
 import org.apache.commons.lang3.StringUtils;
@@ -175,6 +175,9 @@ public class CustomerTask extends Model {
 
     @EnumValue("KubernetesOverridesUpgrade")
     KubernetesOverridesUpgrade,
+
+    @EnumValue("EditKubernetesUniverse")
+    EditKubernetesUniverse,
 
     @EnumValue("CertsRotate")
     CertsRotate,
@@ -336,6 +339,9 @@ public class CustomerTask extends Model {
     @EnumValue("DisableYbc")
     DisableYbc,
 
+    @EnumValue("UpgradeYbcGFlags")
+    UpgradeYbcGFlags,
+
     @EnumValue("ConfigureDBApis")
     ConfigureDBApis,
 
@@ -400,6 +406,8 @@ public class CustomerTask extends Model {
           return completed ? "Upgraded GFlags " : "Upgrading GFlags ";
         case KubernetesOverridesUpgrade:
           return completed ? "Upgraded Kubernetes Overrides " : "Upgrading Kubernetes Overrides ";
+        case EditKubernetesUniverse:
+          return completed ? "Edited Kubernetes Universe  " : "Editing Kubernetes Universe";
         case CertsRotate:
           return completed ? "Updated Certificates " : "Updating Certificates ";
         case TlsToggle:
@@ -495,6 +503,8 @@ public class CustomerTask extends Model {
           return completed ? "Upgraded Ybc" : "Upgrading Ybc";
         case DisableYbc:
           return completed ? "Disabled Ybc" : "Disabling Ybc";
+        case UpgradeYbcGFlags:
+          return completed ? "Upgraded Ybc GFlags" : "Upgrading Ybc GFlags";
         case ConfigureDBApisKubernetes:
         case ConfigureDBApis:
           return completed ? "Configured DB APIs" : "Configuring DB APIs";

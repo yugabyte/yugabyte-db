@@ -493,7 +493,7 @@ Status ExternalMiniCluster::Restart() {
   // Give some more time for the cluster to be ready. If we proceed to run the
   // unit test prematurely before the master/tserver are fully ready, deadlock
   // can happen which leads to test flakiness.
-  SleepFor(2s);
+  SleepFor(2s * kTimeMultiplier);
   running_ = true;
   return Status::OK();
 }
@@ -2006,6 +2006,18 @@ Status ExternalMiniCluster::SetFlagOnTServers(const string& flag, const string& 
   return Status::OK();
 }
 
+void ExternalMiniCluster::AddExtraFlagOnTServers(
+    const std::string& flag, const std::string& value) {
+  for (const auto& tablet_server : tablet_servers_) {
+    tablet_server->AddExtraFlag(flag, value);
+  }
+}
+void ExternalMiniCluster::RemoveExtraFlagOnTServers(const std::string& flag) {
+  for (const auto& tablet_server : tablet_servers_) {
+    tablet_server->RemoveExtraFlag(flag);
+  }
+}
+
 
 uint16_t ExternalMiniCluster::AllocateFreePort() {
   // This will take a file lock ensuring the port does not get claimed by another thread/process
@@ -2051,6 +2063,18 @@ ExternalMaster* ExternalMiniCluster::master(size_t idx) const {
 ExternalTabletServer* ExternalMiniCluster::tablet_server(size_t idx) const {
   CHECK_LT(idx, tablet_servers_.size());
   return tablet_servers_[idx].get();
+}
+
+Status ExternalMiniCluster::WaitForLoadBalancerToBecomeIdle(
+    const std::unique_ptr<yb::client::YBClient>& client, MonoDelta timeout) {
+  // Wait for LB to become idle.
+  RETURN_NOT_OK(WaitFor(
+      [&]() -> Result<bool> {
+        return client->IsLoadBalancerIdle();
+      },
+      timeout,
+      "IsLoadBalancerIdle"));
+  return Status::OK();
 }
 
 //------------------------------------------------------------
@@ -2623,6 +2647,17 @@ Result<HybridTime> ExternalDaemon::GetServerTime() {
   RETURN_NOT_OK(ht.FromUint64(resp.hybrid_time()));
 
   return ht;
+}
+
+void ExternalDaemon::AddExtraFlag(const std::string& flag, const std::string& value) {
+  extra_flags_.push_back(Format("--$0=$1", flag, value));
+}
+
+size_t ExternalDaemon::RemoveExtraFlag(const std::string& flag) {
+  const std::string flag_with_prefix = "--" + flag;
+  return std::erase_if(extra_flags_, [&flag_with_prefix](auto&& flag) {
+    return HasPrefixString(flag, flag_with_prefix);
+  });
 }
 
 LogWaiter::LogWaiter(ExternalDaemon* daemon, const std::string& string_to_wait) :

@@ -39,7 +39,6 @@ import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -79,39 +78,40 @@ public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
   }
 
   @Override
+  protected void createPrecheckTasks(Universe universe) {
+    boolean alwaysWaitForDataMove =
+        confGetter.getConfForScope(getUniverse(), UniverseConfKeys.alwaysWaitForDataMove);
+    if (alwaysWaitForDataMove) {
+      performPrecheck();
+    }
+  }
+
+  @Override
   public void run() {
     try {
       checkUniverseVersion();
       boolean alwaysWaitForDataMove =
           confGetter.getConfForScope(getUniverse(), UniverseConfKeys.alwaysWaitForDataMove);
 
-      lockUniverseForFreezeAndUpdate(taskParams().expectedUniverseVersion);
-
-      if (alwaysWaitForDataMove) {
-        performPrecheck();
-      }
-
-      Consumer<Universe> universeFreezeConsumer =
-          u -> {
-            if (isFirstTry()) {
-              NodeDetails node = u.getNode(taskParams().nodeName);
-              if (node == null) {
-                String msg =
-                    "No node " + taskParams().nodeName + " found in universe " + u.getName();
-                log.error(msg);
-                throw new RuntimeException(msg);
-              }
-              if (node.isMaster) {
-                NodeDetails newMasterNode = findNewMasterIfApplicable(u, node);
-                if (newMasterNode != null && newMasterNode.masterState == null) {
-                  newMasterNode.masterState = MasterState.ToStart;
+      Universe universe =
+          lockAndFreezeUniverseForUpdate(
+              taskParams().expectedUniverseVersion,
+              u -> {
+                NodeDetails node = u.getNode(taskParams().nodeName);
+                if (node == null) {
+                  String msg =
+                      "No node " + taskParams().nodeName + " found in universe " + u.getName();
+                  log.error(msg);
+                  throw new RuntimeException(msg);
                 }
-                node.masterState = MasterState.ToStop;
-              }
-            }
-          };
-
-      Universe universe = freezeUniverse(universeFreezeConsumer);
+                if (node.isMaster) {
+                  NodeDetails newMasterNode = findNewMasterIfApplicable(u, node);
+                  if (newMasterNode != null && newMasterNode.masterState == null) {
+                    newMasterNode.masterState = MasterState.ToStart;
+                  }
+                  node.masterState = MasterState.ToStop;
+                }
+              });
 
       log.info(
           "Started {} task for node {} in univ uuid={}",

@@ -65,7 +65,7 @@
 
 [[redirects]]
   from = "/:version/deploy/docker-swarm/*"
-  to = "/v2.8/deploy/docker/docker-swarm/"
+  to = "https://docs-archive.yugabyte.com/v2.8/deploy/docker/docker-swarm/"
   force = true
 
 ##########################################################
@@ -478,7 +478,7 @@
 
 [[redirects]]
   from = "/preview/manage/enterprise-edition/schedule-data-backup/"
-  to = "/preview/yugabyte-platform/back-up-restore-universes/schedule-data-backups/ysql/"
+  to = "/preview/yugabyte-platform/back-up-restore-universes/schedule-data-backups/"
 
 [[redirects]]
   from = "/preview/reference/default-ports/"
@@ -494,7 +494,7 @@
 
 [[redirects]]
   from = "/preview/releases/release-notes/preview-release/"
-  to = "/preview/releases/release-notes/v2.17/"
+  to = "/preview/releases/release-notes/"
 
 [[redirects]]
   from = "/preview/secure/authentication/client-authentication/"
@@ -614,96 +614,44 @@
 # A few redirects to head off issues with version_menu_pagelinks
 
 [[redirects]]
-  from = "/v2.12/explore/ysql-language-features/sql-feature-support/*"
-  to = "/v2.12/explore/ysql-language-features/"
-  force = true
-
-[[redirects]]
-  from = "/v2.8/explore/ysql-language-features/sql-feature-support/*"
-  to = "/v2.8/explore/ysql-language-features/"
-  force = true
-
-[[redirects]]
-  from = "/v2.12/explore/ysql-language-features/postgresql-compatibility/*"
-  to = "/v2.12/explore/ysql-language-features/"
-  force = true
-
-[[redirects]]
-  from = "/v2.8/explore/ysql-language-features/postgresql-compatibility/*"
-  to = "/v2.8/explore/ysql-language-features/"
-  force = true
-
-[[redirects]]
-  from = "/v2.12/develop/quality-of-service/*"
-  to = "/v2.12/develop/"
-  force = true
-
-[[redirects]]
-  from = "/v2.8/develop/quality-of-service/*"
-  to = "/v2.8/develop/"
-  force = true
-
-[[redirects]]
   from = "/v2.14/develop/build-apps/*"
   to = "/v2.14/develop/learn/"
   force = true
 
 [[redirects]]
-  from = "/v2.12/develop/build-apps/*"
-  to = "/v2.12/develop/learn/"
+  from = "/v2.14/tutorials/*"
+  to = "/preview/tutorials/azure/"
+  force = true
+[[redirects]]
+  from = "/v2.16/tutorials/*"
+  to = "/preview/tutorials/azure/"
+  force = true
+[[redirects]]
+  from = "/v2.18/tutorials/*"
+  to = "/preview/tutorials/azure/"
   force = true
 
 [[redirects]]
-  from = "/v2.8/develop/build-apps/*"
-  to = "/v2.8/develop/learn/"
+  from = "/v2.16/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-script/"
+  to = "/v2.16/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/"
   force = true
 
 [[redirects]]
-  from = "/v2.12/drivers-orms/*"
-  to = "/v2.12/reference/drivers/"
+  from = "/v2.16/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/"
+  to = "/v2.16/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/"
   force = true
 
 [[redirects]]
-  from = "/v2.8/drivers-orms/*"
-  to = "/v2.8/reference/drivers/"
+  from = "/v2.14/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-script/"
+  to = "/v2.14/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/"
   force = true
 
 [[redirects]]
-  from = "/v2.12/explore/ysql-language-features/pg-extensions/*"
-  to = "/v2.12/api/ysql/extensions/"
+  from = "/v2.14/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/"
+  to = "/v2.14/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/"
   force = true
 
-[[redirects]]
-  from = "/v2.8/explore/ysql-language-features/pg-extensions/*"
-  to = "/v2.8/api/ysql/extensions/"
-  force = true
-
-[[redirects]]
-  from = "/v2.12/yugabyte-platform/troubleshoot/cloud-provider-config-issues/*"
-  to = "/v2.12/yugabyte-platform/troubleshoot/"
-  force = true
-[[redirects]]
-  from = "/v2.8/yugabyte-platform/troubleshoot/cloud-provider-config-issues/*"
-  to = "/v2.8/yugabyte-platform/troubleshoot/"
-  force = true
-
-[[redirects]]
-  from = "/v2.12/yugabyte-platform/upgrade/upgrade-yp-kubernetes/"
-  to = "/v2.12/yugabyte-platform/upgrade/"
-  force = true
-[[redirects]]
-  from = "/v2.8/yugabyte-platform/upgrade/upgrade-yp-kubernetes/"
-  to = "/v2.8/yugabyte-platform/upgrade/"
-  force = true
-
-[[redirects]]
-  from = "/v2.12/yugabyte-platform/configure-yugabyte-platform/supported-os-and-arch/"
-  to = "/v2.12/yugabyte-platform/install-yugabyte-platform/"
-  force = true
-[[redirects]]
-  from = "/v2.8/yugabyte-platform/configure-yugabyte-platform/supported-os-and-arch/"
-  to = "/v2.8/yugabyte-platform/install-yugabyte-platform/"
-  force = true
+# YBA High availability
 
 [[redirects]]
   from = "/preview/yugabyte-platform/manage-deployments/high-availability/"
@@ -720,14 +668,6 @@
 [[redirects]]
   from = "/v2.14/yugabyte-platform/administer-yugabyte-platform/high-availability/"
   to = "/v2.14/yugabyte-platform/manage-deployments/high-availability/"
-  force = true
-[[redirects]]
-  from = "/v2.12/yugabyte-platform/administer-yugabyte-platform/high-availability/"
-  to = "/v2.12/yugabyte-platform/manage-deployments/high-availability/"
-  force = true
-[[redirects]]
-  from = "/v2.8/yugabyte-platform/administer-yugabyte-platform/high-availability/"
-  to = "/v2.8/yugabyte-platform/manage-deployments/high-availability/"
   force = true
 
 # Build an app was in quick-start, now in develop
@@ -850,6 +790,11 @@
 [[redirects]]
   from = "/v2.8/*"
   to = "https://docs-archive.yugabyte.com/v2.8/"
+  force = true
+
+[[redirects]]
+  from = "/v2.12/*"
+  to = "https://docs-archive.yugabyte.com/v2.12/"
   force = true
 
 [[redirects]]
@@ -1225,7 +1170,86 @@
   for = "/*"
   [headers.values]
     Strict-Transport-Security = "max-age=31536000; includeSubDomains"
-    Content-Security-Policy = "default-src 'self' 'unsafe-inline'; connect-src 'self' https://www.yugabyte.com https://ka-f.fontawesome.com/releases/ https://www.google-analytics.com/ https://stats.g.doubleclick.net/ https://umbcujcbe8-dsn.algolia.net/ https://umbcujcbe8-1.algolianet.com/ https://umbcujcbe8-2.algolianet.com/ https://umbcujcbe8-3.algolianet.com/ https://raw.githubusercontent.com/; script-src 'self' 'unsafe-eval' 'unsafe-inline' https://cdnjs.cloudflare.com https://maxcdn.bootstrapcdn.com https://cdn.jsdelivr.net https://www.googletagmanager.com/ https://kit.fontawesome.com/ https://www.google-analytics.com/ https://umbcujcbe8-dsn.algolia.net/ https://umbcujcbe8-1.algolianet.com/ https://umbcujcbe8-2.algolianet.com/ https://umbcujcbe8-3.algolianet.com/ https://code.jquery.com/jquery-3.6.0.min.js https://netlify-cdp-loader.netlify.app/; style-src 'self' 'unsafe-inline' https://maxcdn.bootstrapcdn.com https://cdnjs.cloudflare.com https://fonts.googleapis.com https://use.fontawesome.com https://docs.yugabyte.com https://ka-f.fontawesome.com/releases/ https://cdn.jsdelivr.net/gh/rastikerdar/vazir-font@v27.0.1/dist/font-face.css https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.css; font-src 'self' https://docs.yugabyte.com/fonts/ https://cdnjs.cloudflare.com/ https://cdn.jsdelivr.net/ https://use.fontawesome.com https://fonts.gstatic.com https://ka-f.fontawesome.com/releases/; object-src 'none'; img-src 'self' https://www.yugabyte.com https://docs.yugabyte.com/images/favicon.ico https://www.google-analytics.com/ https://raw.githubusercontent.com/ https://portal.azure.com/ https://docs.camunda.org/; child-src 'self' 'unsafe-inline' https://www.youtube.com/ https://app.netlify.com/ https://app.supademo.com/; frame-ancestors 'self' https://deploy-preview-12849--infallible-bardeen-164bc9.netlify.app/ https://yugabyte.thinkific.com/ https://*.yugabyte.com/;"
+    Content-Security-Policy = '''
+        default-src 'self' 'unsafe-inline'
+        ;
+
+        connect-src 'self'
+            https://ka-f.fontawesome.com/releases/
+            https://kapa-widget-proxy-la7dkmplpq-uc.a.run.app
+            https://raw.githubusercontent.com/
+            https://stats.g.doubleclick.net/
+            https://umbcujcbe8-1.algolianet.com/
+            https://umbcujcbe8-2.algolianet.com/
+            https://umbcujcbe8-3.algolianet.com/
+            https://umbcujcbe8-dsn.algolia.net/
+            https://www.google-analytics.com/
+            https://www.yugabyte.com
+        ;
+
+        script-src 'self' 'unsafe-eval' 'unsafe-inline'
+            https://cdn.jsdelivr.net
+            https://cdnjs.cloudflare.com
+            https://code.jquery.com/jquery-3.6.0.min.js
+            https://kit.fontawesome.com/
+            https://maxcdn.bootstrapcdn.com
+            https://netlify-cdp-loader.netlify.app/
+            https://umbcujcbe8-1.algolianet.com/
+            https://umbcujcbe8-2.algolianet.com/
+            https://umbcujcbe8-3.algolianet.com/
+            https://umbcujcbe8-dsn.algolia.net/
+            https://widget.kapa.ai/kapa-widget.bundle.js
+            https://www.google-analytics.com/
+            https://www.google.com/recaptcha/
+            https://www.googletagmanager.com/
+            https://www.gstatic.com/recaptcha/
+        ;
+
+        style-src 'self' 'unsafe-inline'
+            https://cdn.jsdelivr.net/gh/rastikerdar/vazir-font@v27.0.1/dist/font-face.css
+            https://cdn.jsdelivr.net/npm/docsearch.js@2/dist/cdn/docsearch.min.css
+            https://cdnjs.cloudflare.com
+            https://docs.yugabyte.com
+            https://fonts.googleapis.com
+            https://ka-f.fontawesome.com/releases/
+            https://maxcdn.bootstrapcdn.com
+            https://use.fontawesome.com
+        ;
+
+        font-src 'self'
+            https://cdn.jsdelivr.net/
+            https://cdnjs.cloudflare.com/
+            https://docs.yugabyte.com/fonts/
+            https://fonts.gstatic.com
+            https://ka-f.fontawesome.com/releases/
+            https://use.fontawesome.com
+        ;
+
+        object-src 'none'
+        ;
+
+        img-src 'self'
+            https://docs.camunda.org/
+            https://docs.yugabyte.com/images/favicon.ico
+            https://portal.azure.com/
+            https://raw.githubusercontent.com/
+            https://www.google-analytics.com/
+            https://www.yugabyte.com
+        ;
+
+        child-src 'self' 'unsafe-inline'
+            https://app.netlify.com/
+            https://app.supademo.com/
+            https://www.google.com/
+            https://www.youtube.com/
+        ;
+
+        frame-ancestors 'self'
+            https://*.yugabyte.com/
+            https://deploy-preview-12849--infallible-bardeen-164bc9.netlify.app/
+            https://yugabyte.thinkific.com/
+        ;
+'''
     X-Content-Type-Options = "nosniff"
     Referrer-Policy = "strict-origin"
     Permissions-Policy = "disabled"

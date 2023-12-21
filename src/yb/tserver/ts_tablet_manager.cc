@@ -42,7 +42,8 @@
 
 #include <boost/container/static_vector.hpp>
 #include <boost/optional/optional.hpp>
-#include "yb/util/logging.h"
+
+#include "yb/ash/wait_state.h"
 
 #include "yb/client/client.h"
 #include "yb/client/meta_data_cache.h"
@@ -51,11 +52,11 @@
 #include "yb/common/wire_protocol.h"
 
 #include "yb/consensus/consensus.h"
-#include "yb/consensus/multi_raft_batcher.h"
 #include "yb/consensus/consensus_meta.h"
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/metadata.pb.h"
+#include "yb/consensus/multi_raft_batcher.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
 #include "yb/consensus/raft_consensus.h"
@@ -90,12 +91,14 @@
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tools/yb-admin_util.h"
+
 #include "yb/tserver/full_compaction_manager.h"
 #include "yb/tserver/heartbeater.h"
 #include "yb/tserver/remote_bootstrap_client.h"
 #include "yb/tserver/remote_bootstrap_session.h"
 #include "yb/tserver/remote_snapshot_transfer_client.h"
 #include "yb/tserver/tablet_server.h"
+#include "yb/tserver/tablet_validator.h"
 #include "yb/tserver/tserver.pb.h"
 
 #include "yb/util/debug/long_operation_tracker.h"
@@ -105,6 +108,7 @@
 #include "yb/util/fault_injection.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
+#include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
@@ -119,13 +123,19 @@
 using namespace std::literals;
 using namespace std::placeholders;
 
-DEFINE_UNKNOWN_int32(num_tablets_to_open_simultaneously, 0,
+DEFINE_NON_RUNTIME_int32(num_tablets_to_open_simultaneously, 0,
              "Number of threads available to open tablets during startup. If this "
              "is set to 0 (the default), then the number of bootstrap threads will "
              "be set based on the number of data directories. If the data directories "
              "are on some very fast storage device such as SSD or a RAID array, it "
              "may make sense to manually tune this.");
 TAG_FLAG(num_tablets_to_open_simultaneously, advanced);
+
+DEFINE_NON_RUNTIME_int32(num_open_tablets_metadata_simultaneously, 0,
+             "Number of threads available to open tablets' metadata during startup. If this "
+             "is set to 0 (the default), then the number of open metadata threads will "
+             "be set based on the number of CPUs");
+TAG_FLAG(num_open_tablets_metadata_simultaneously, advanced);
 
 DEFINE_UNKNOWN_int32(tablet_start_warn_threshold_ms, 500,
              "If a tablet takes more than this number of millis to start, issue "
@@ -223,6 +233,7 @@ DEFINE_UNKNOWN_int32(read_pool_max_threads, 128,
              "The maximum number of threads allowed for read_pool_. This pool is used "
              "to run multiple read operations, that are part of the same tablet rpc, "
              "in parallel.");
+
 DEFINE_UNKNOWN_int32(read_pool_max_queue_size, 128,
              "The maximum number of tasks that can be held in the queue for read_pool_. This pool "
              "is used to run multiple read operations, that are part of the same tablet rpc, "
@@ -230,6 +241,7 @@ DEFINE_UNKNOWN_int32(read_pool_max_queue_size, 128,
 
 DEFINE_UNKNOWN_int32(post_split_trigger_compaction_pool_max_threads, 1,
              "DEPRECATED. Use full_compaction_pool_max_threads.");
+
 DEFINE_UNKNOWN_int32(post_split_trigger_compaction_pool_max_queue_size, 16,
              "DEPRECATED. Use full_compaction_pool_max_queue_size.");
 
@@ -238,6 +250,7 @@ DEFINE_NON_RUNTIME_int32(full_compaction_pool_max_threads, 1,
              "pool is used to run full compactions on tablets, either on a shceduled basis "
               "or after they have been split and still contain irrelevant data from the tablet "
               "they were sourced from.");
+
 DEFINE_NON_RUNTIME_int32(full_compaction_pool_max_queue_size, 500,
              "The maximum number of tasks that can be held in the pool for "
              "full_compaction_pool_. This pool is used to run full compactions on tablets "
@@ -268,14 +281,16 @@ DEFINE_UNKNOWN_int32(flush_retryable_requests_pool_max_threads, -1,
 DEFINE_test_flag(bool, disable_flush_on_shutdown, false,
                  "Whether to disable flushing memtable on shutdown.");
 
+DEFINE_test_flag(bool, pause_delete_tablet, false,
+                 "Make DeletTablet stuck.");
+
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(disable_deadlock_detection);
 DECLARE_bool(lazily_flush_superblock);
 
 DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
 
-namespace yb {
-namespace tserver {
+namespace yb::tserver {
 
 METRIC_DEFINE_event_stats(server, op_apply_queue_length, "Operation Apply Queue Length",
                         MetricUnit::kTasks,
@@ -316,6 +331,10 @@ METRIC_DEFINE_event_stats(server, op_read_run_time, "Operation Read op Run Time"
 METRIC_DEFINE_event_stats(server, ts_bootstrap_time, "TServer Bootstrap Time",
                         MetricUnit::kMicroseconds,
                         "Time that the tablet server takes to bootstrap all of its tablets.");
+
+METRIC_DEFINE_gauge_uint64(server, ts_open_metadata_time_us, "TServer Open Meta Time",
+                        MetricUnit::kMicroseconds,
+                        "Time that the tablet server takes to open all of its tablets' metadata.");
 
 METRIC_DEFINE_gauge_uint64(server, ts_split_op_apply, "Split Apply",
                         MetricUnit::kOperations,
@@ -511,6 +530,8 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
       METRIC_ts_post_split_compaction_added.Instantiate(server_->metric_entity(), 0);
   ts_live_tablet_peers_metric_ =
       METRIC_ts_live_tablet_peers.Instantiate(server_->metric_entity(), 0);
+  ts_open_metadata_time_us_ =
+      METRIC_ts_open_metadata_time_us.Instantiate(server_->metric_entity(), 0);
 
   mem_manager_ = std::make_shared<TabletMemoryManager>(
       &tablet_options_,
@@ -543,8 +564,8 @@ Status TSTabletManager::Init() {
   // This has to be done in Init() instead of the constructor, since the
   // FsManager isn't initialized until this point.
   int max_bootstrap_threads = FLAGS_num_tablets_to_open_simultaneously;
+  int num_cpus = base::NumCPUs();
   if (max_bootstrap_threads == 0) {
-    int num_cpus = base::NumCPUs();
     if (num_cpus <= 2) {
       max_bootstrap_threads = 2;
     } else {
@@ -580,48 +601,88 @@ Status TSTabletManager::Init() {
         waiting_txn_pool());
   }
 
-  deque<RaftGroupMetadataPtr> metas;
+  struct Metas {
+    std::mutex ready_metas_mutex;
+    std::mutex non_ready_metas_mutex;
+    std::deque<RaftGroupMetadataPtr> ready_metas GUARDED_BY(ready_metas_mutex);
+    std::vector<RaftGroupMetadataPtr> non_ready_metas GUARDED_BY(non_ready_metas_mutex);
+  };
+
+  Metas metas;
+  // Since at this time in the server, we shouldn't be doing any work. Thus, we can
+  // use num_cpus - 1 threads to minimize time to open all metadatas.
+  int max_open_meta_threads = FLAGS_num_open_tablets_metadata_simultaneously;
+  if (max_open_meta_threads == 0) {
+    max_open_meta_threads = num_cpus - 1;
+  }
+  TaskRunner open_metadata_runner;
+  RETURN_NOT_OK(open_metadata_runner.Init(max_open_meta_threads));
 
   // First, load all of the tablet metadata. We do this before we start
   // submitting the actual OpenTablet() tasks so that we don't have to compete
   // for disk resources, etc, with bootstrap processes and running tablets.
   MonoTime start(MonoTime::Now());
   for (const string& tablet_id : tablet_ids) {
-    RaftGroupMetadataPtr meta;
-    RETURN_NOT_OK_PREPEND(OpenTabletMeta(tablet_id, &meta),
-                          "Failed to open tablet metadata for tablet: " + tablet_id);
-    if (PREDICT_FALSE(!CanServeTabletData(meta->tablet_data_state()))) {
-      RETURN_NOT_OK(HandleNonReadyTabletOnStartup(meta));
-      continue;
-    }
-    RegisterDataAndWalDir(
-        fs_manager_, meta->table_id(), meta->raft_group_id(), meta->data_root_dir(),
-        meta->wal_root_dir());
-    if (FLAGS_enable_restart_transaction_status_tablets_first) {
-      // Prioritize bootstrapping transaction status tablets first.
-      if (meta->table_type() == TRANSACTION_STATUS_TABLE_TYPE) {
-        metas.push_front(meta);
+    RETURN_NOT_OK(open_metadata_runner.status());
+    open_metadata_runner.Submit([this, tablet_id, &metas]() -> Status {
+      RaftGroupMetadataPtr meta;
+      RETURN_NOT_OK_PREPEND(OpenTabletMeta(tablet_id, &meta),
+                            "Failed to open tablet metadata for tablet: " + tablet_id);
+      if (PREDICT_FALSE(!CanServeTabletData(meta->tablet_data_state()))) {
+        std::lock_guard lock(metas.non_ready_metas_mutex);
+        metas.non_ready_metas.push_back(meta);
+      } else if (FLAGS_enable_restart_transaction_status_tablets_first &&
+                 meta->table_type() == TRANSACTION_STATUS_TABLE_TYPE) {
+        // Prioritize bootstrapping transaction status tablets first.
+        std::lock_guard lock(metas.ready_metas_mutex);
+        metas.ready_metas.push_front(meta);
       } else {
-        metas.push_back(meta);
+        std::lock_guard lock(metas.ready_metas_mutex);
+        metas.ready_metas.push_back(meta);
       }
-    } else {
-      metas.push_back(meta);
-    }
+      return Status::OK();
+    });
   }
+  // If any open metadata task failed, the TaskRunner will stop waiting for other
+  // pending tasks to complete and immediately return the failure.
+  RETURN_NOT_OK(open_metadata_runner.Wait(StopWaitIfFailed::kTrue));
 
   MonoDelta elapsed = MonoTime::Now().GetDeltaSince(start);
   LOG(INFO) << "Loaded metadata for " << tablet_ids.size() << " tablet in "
             << elapsed.ToMilliseconds() << " ms";
+  ts_open_metadata_time_us_->IncrementBy(elapsed.ToMicroseconds());
+
+  // Validator should be created before tablets are open.
+  tablet_metadata_validator_ = std::make_unique<TabletMetadataValidator>(LogPrefix(), this);
 
   // Now submit the "Open" task for each.
-  for (const RaftGroupMetadataPtr& meta : metas) {
-    scoped_refptr<TransitionInProgressDeleter> deleter;
-    RETURN_NOT_OK(StartTabletStateTransition(
-        meta->raft_group_id(), "opening tablet", &deleter));
+  {
+    std::lock_guard lock(metas.ready_metas_mutex);
+    for (const RaftGroupMetadataPtr& meta : metas.ready_metas) {
+      RegisterDataAndWalDir(
+          fs_manager_, meta->table_id(), meta->raft_group_id(), meta->data_root_dir(),
+          meta->wal_root_dir());
+      scoped_refptr<TransitionInProgressDeleter> deleter;
+      RETURN_NOT_OK(StartTabletStateTransition(
+          meta->raft_group_id(), "opening tablet", &deleter));
 
-    TabletPeerPtr tablet_peer = VERIFY_RESULT(CreateAndRegisterTabletPeer(meta, NEW_PEER));
-    RETURN_NOT_OK(open_tablet_pool_->SubmitFunc(
-        std::bind(&TSTabletManager::OpenTablet, this, meta, deleter)));
+      TabletPeerPtr tablet_peer = VERIFY_RESULT(CreateAndRegisterTabletPeer(meta, NEW_PEER));
+      RETURN_NOT_OK(open_tablet_pool_->SubmitFunc(
+          std::bind(&TSTabletManager::OpenTablet, this, meta, deleter)));
+    }
+  }
+
+  // After the OpenTablet tasks, we then handle the non ready tablets async.
+  {
+    std::lock_guard lock(metas.non_ready_metas_mutex);
+    for (const RaftGroupMetadataPtr& meta : metas.non_ready_metas) {
+      scoped_refptr<TransitionInProgressDeleter> deleter;
+      RETURN_NOT_OK(StartTabletStateTransition(
+          meta->raft_group_id(), "handle non ready tablet", &deleter));
+
+      RETURN_NOT_OK(open_tablet_pool_->SubmitFunc(
+          std::bind(&TSTabletManager::HandleNonReadyTabletOnStartup, this, meta, deleter)));
+    }
   }
 
   // Background task initiation.
@@ -642,6 +703,8 @@ Status TSTabletManager::Init() {
   RETURN_NOT_OK(mem_manager_->Init());
 
   RETURN_NOT_OK(full_compaction_manager_->Init());
+
+  RETURN_NOT_OK(tablet_metadata_validator_->Init());
 
   tablets_cleaner_ = std::make_unique<rpc::Poller>(
       LogPrefix(), std::bind(&TSTabletManager::CleanupSplitTablets, this));
@@ -796,6 +859,7 @@ Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
     const bool colocated,
     const std::vector<SnapshotScheduleId>& snapshot_schedules,
     const std::unordered_set<StatefulServiceKind>& hosted_services) {
+  SCOPED_WAIT_STATUS(CreatingNewTablet);
   if (state() != MANAGER_RUNNING) {
     return STATUS_FORMAT(IllegalState, "Manager is not running: $0", state());
   }
@@ -1391,17 +1455,24 @@ Status TSTabletManager::StartRemoteSnapshotTransfer(
 
 // Create and register a new TabletPeer, given tablet metadata.
 Result<TabletPeerPtr> TSTabletManager::CreateAndRegisterTabletPeer(
-    const RaftGroupMetadataPtr& meta, RegisterTabletPeerMode mode) {
+    const RaftGroupMetadataPtr& meta,
+    RegisterTabletPeerMode mode,
+    MarkDirtyAfterRegister mark_dirty_after_register) {
+  const string& tablet_id = meta->raft_group_id();
   TabletPeerPtr tablet_peer(new tablet::TabletPeer(
       meta,
       local_peer_pb_,
       scoped_refptr<server::Clock>(server_->clock()),
       fs_manager_->uuid(),
-      Bind(&TSTabletManager::ApplyChange, Unretained(this), meta->raft_group_id()),
+      Bind(&TSTabletManager::ApplyChange, Unretained(this), tablet_id),
       metric_registry_,
       this,
       server_->client_future()));
-  RETURN_NOT_OK(RegisterTablet(meta->raft_group_id(), tablet_peer, mode));
+  std::lock_guard lock(mutex_);
+  RETURN_NOT_OK(RegisterTabletUnlocked(tablet_id, tablet_peer, mode));
+  if (mark_dirty_after_register) {
+    InsertOrDie(&dirty_tablets_, tablet_id, TabletReportState{next_report_seq_});
+  }
   return tablet_peer;
 }
 
@@ -1413,6 +1484,7 @@ Status TSTabletManager::DeleteTablet(
     bool hide_only,
     bool keep_data,
     boost::optional<TabletServerErrorPB::Code>* error_code) {
+  TEST_PAUSE_IF_FLAG(TEST_pause_delete_tablet);
 
   if (delete_type != TABLET_DATA_DELETED && delete_type != TABLET_DATA_TOMBSTONED) {
     return STATUS(InvalidArgument, "DeleteTablet() requires an argument that is one of "
@@ -1759,6 +1831,8 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
     VLOG(2) << TabletLogPrefix(tablet->tablet_id())
             << " marking as maybe being compacted after split.";
   }
+
+  tablet_metadata_validator_->ScheduleValidation(*tablet->metadata());
 }
 
 Status TSTabletManager::TriggerAdminCompaction(const TabletPtrs& tablets, bool should_wait) {
@@ -1821,6 +1895,8 @@ void TSTabletManager::StartShutdown() {
   tablets_cleaner_->Shutdown();
 
   verify_tablet_data_poller_->Shutdown();
+
+  tablet_metadata_validator_->Shutdown();
 
   metrics_cleaner_->Shutdown();
 
@@ -1929,6 +2005,12 @@ Status TSTabletManager::RegisterTablet(const TabletId& tablet_id,
                                        const TabletPeerPtr& tablet_peer,
                                        RegisterTabletPeerMode mode) {
   std::lock_guard lock(mutex_);
+  return RegisterTabletUnlocked(tablet_id, tablet_peer, mode);
+}
+
+Status TSTabletManager::RegisterTabletUnlocked(const TabletId& tablet_id,
+                                               const TabletPeerPtr& tablet_peer,
+                                               RegisterTabletPeerMode mode) {
   if (ClosingUnlocked()) {
     auto result = STATUS_FORMAT(
         ShutdownInProgress, "Unable to register tablet peer: $0: closing", tablet_id);
@@ -2418,8 +2500,18 @@ void TSTabletManager::MarkTabletReportAcknowledged(uint32_t acked_seq,
 #endif
 }
 
-Status TSTabletManager::HandleNonReadyTabletOnStartup(
-    const RaftGroupMetadataPtr& meta) {
+void TSTabletManager::HandleNonReadyTabletOnStartup(
+    const RaftGroupMetadataPtr& meta,
+    const scoped_refptr<TransitionInProgressDeleter>& deleter) {
+  Status s = DoHandleNonReadyTabletOnStartup(meta.get(), deleter);
+  LOG_IF(FATAL, !s.ok())
+      << TabletLogPrefix(meta->raft_group_id())
+      << " Failed to handle non ready tablet on tserver startup: " << s;
+}
+
+Status TSTabletManager::DoHandleNonReadyTabletOnStartup(
+    const RaftGroupMetadataPtr& meta,
+    const scoped_refptr<TransitionInProgressDeleter>& deleter) {
   const string& tablet_id = meta->raft_group_id();
   TabletDataState data_state = meta->tablet_data_state();
   CHECK(data_state == TABLET_DATA_DELETED ||
@@ -2456,18 +2548,11 @@ Status TSTabletManager::HandleNonReadyTabletOnStartup(
     RETURN_NOT_OK(DeleteTabletData(meta, data_state, fs_manager_->uuid(), yb::OpId()));
   }
 
-  // We only delete the actual superblock of a TABLET_DATA_DELETED tablet on startup.
-  // TODO: Consider doing this after a fixed delay, instead of waiting for a restart.
-  // See KUDU-941.
-  if (data_state == TABLET_DATA_DELETED) {
-    LOG(INFO) << kLogPrefix << "Deleting tablet superblock";
-    return meta->DeleteSuperBlock();
-  }
-
-  // Register TOMBSTONED tablets so that they get reported to the Master, which
-  // allows us to permanently delete replica tombstones when a table gets deleted.
+  // Register TOMBSTONED tablets and mark dirty so that they get reported to the Master,
+  // which allows us to permanently delete replica tombstones when a table gets deleted.
   if (data_state == TABLET_DATA_TOMBSTONED) {
-    RETURN_NOT_OK(CreateAndRegisterTabletPeer(meta, NEW_PEER));
+    RETURN_NOT_OK(CreateAndRegisterTabletPeer(meta, NEW_PEER,
+        MarkDirtyAfterRegister::kTrue));
   }
 
   return Status::OK();
@@ -3051,8 +3136,7 @@ Status DeleteTabletData(const RaftGroupMetadataPtr& meta,
   // Only TABLET_DATA_DELETED tablets get this far.
   RETURN_NOT_OK(ConsensusMetadata::DeleteOnDiskData(meta->fs_manager(), meta->raft_group_id()));
   MAYBE_FAULT(FLAGS_TEST_fault_crash_after_cmeta_deleted);
-
-  return Status::OK();
+  return meta->DeleteSuperBlock();
 }
 
 void LogAndTombstone(const RaftGroupMetadataPtr& meta,
@@ -3127,5 +3211,4 @@ Status ShutdownAndTombstoneTabletPeerNotOk(
   return status;
 }
 
-} // namespace tserver
-} // namespace yb
+} // namespace yb::tserver

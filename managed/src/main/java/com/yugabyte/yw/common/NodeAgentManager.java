@@ -300,12 +300,12 @@ public class NodeAgentManager {
    * @param nodeAgentUuid node agent UUID.
    * @return the JWT for sending request to the node agent.
    */
+  @VisibleForTesting
   public String getClientToken(UUID nodeAgentUuid, UUID userUuid) {
     PrivateKey privateKey = getNodeAgentPrivateKey(nodeAgentUuid);
     return Jwts.builder()
         .setIssuer("https://www.yugabyte.com")
         .setSubject(ClientType.NODE_AGENT.name())
-        .setIssuedAt(Date.from(Instant.now()))
         .setExpiration(Date.from(Instant.now().plusSeconds(NODE_AGENT_JWT_EXPIRY_SECS)))
         .claim(JWTVerifier.CLIENT_ID_CLAIM.toString(), nodeAgentUuid.toString())
         .claim(JWTVerifier.USER_ID_CLAIM.toString(), userUuid.toString())
