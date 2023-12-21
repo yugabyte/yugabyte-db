@@ -1,5 +1,6 @@
-import { FC, useState } from 'react';
+import { FC, useState, useEffect, useMemo, useCallback } from 'react';
 import _ from 'lodash';
+import { useSelector } from 'react-redux';
 import { useTranslation } from 'react-i18next';
 import { Box, Typography, Link } from '@material-ui/core';
 import { YBTooltip } from '../../../components';
@@ -16,26 +17,23 @@ import {
 } from '../../../../components/universes/helpers/universeHelpers';
 import { Universe } from '../universe-form/utils/dto';
 import { dbVersionWidgetStyles } from './DBVersionWidgetStyles';
+import { getPrimaryCluster } from '../../../../utils/UniverseUtils';
 //icons
 import UpgradeArrow from '../../../assets/upgrade-arrow.svg';
 import WarningExclamation from '../../../assets/warning-triangle.svg';
 
 interface DBVersionWidgetProps {
-  dbVersionValue: string;
-  currentUniverse: Universe;
-  tasks: Record<string, any>;
   higherVersionCount: number;
 }
 
-export const DBVersionWidget: FC<DBVersionWidgetProps> = ({
-  dbVersionValue,
-  currentUniverse,
-  tasks,
-  higherVersionCount
-}) => {
+export const DBVersionWidget: FC<DBVersionWidgetProps> = ({ higherVersionCount }) => {
   const { t } = useTranslation();
   const classes = dbVersionWidgetStyles();
+  const currentUniverse = useSelector((state: any) => state.universe.currentUniverse.data);
+  const tasks = useSelector((state: any) => state.tasks);
   const [openUpgradeModal, setUpgradeModal] = useState(false);
+  const primaryCluster = getPrimaryCluster(currentUniverse.universeDetails.clusters);
+  const dbVersionValue = primaryCluster?.userIntent?.ybSoftwareVersion;
   const minifiedCurrentVersion = dbVersionValue?.split('-')[0];
   const upgradeState = currentUniverse?.universeDetails?.softwareUpgradeState;
   const previousDBVersion = currentUniverse?.universeDetails?.prevYBSoftwareConfig?.softwareVersion;
@@ -47,6 +45,7 @@ export const DBVersionWidget: FC<DBVersionWidgetProps> = ({
   );
 
   const upgradingVersion = universePendingTask?.details?.versionNumbers?.ybSoftwareVersion;
+
   let statusDisplay = (
     <Box display="flex" flexDirection={'row'} alignItems={'center'}>
       <Typography className={classes.versionText}>v{minifiedCurrentVersion}</Typography>
@@ -124,31 +123,33 @@ export const DBVersionWidget: FC<DBVersionWidgetProps> = ({
   }
 
   return (
-    <>
-      <YBWidget
-        noHeader
-        noMargin
-        size={1}
-        className={classes.versionContainer}
-        body={
-          <Box
-            display={'flex'}
-            flexDirection={'row'}
-            pt={3}
-            pl={2}
-            pr={2}
-            width="100%"
-            height={'100%'}
-            justifyContent={'space-between'}
-            alignItems={'center'}
-          >
-            <Typography variant="body1">
-              {t('universeActions.dbRollbackUpgrade.widget.versionLabel')}
-            </Typography>
-            {statusDisplay}
-          </Box>
-        }
-      />
+    <div key="dbVersion">
+      {
+        <YBWidget
+          noHeader
+          noMargin
+          size={1}
+          className={classes.versionContainer}
+          body={
+            <Box
+              display={'flex'}
+              flexDirection={'row'}
+              pt={3}
+              pl={2}
+              pr={2}
+              width="100%"
+              height={'100%'}
+              justifyContent={'space-between'}
+              alignItems={'center'}
+            >
+              <Typography variant="body1">
+                {t('universeActions.dbRollbackUpgrade.widget.versionLabel')}
+              </Typography>
+              {statusDisplay}
+            </Box>
+          }
+        />
+      }
       <DBUpgradeModal
         open={openUpgradeModal}
         onClose={() => {
@@ -156,6 +157,6 @@ export const DBVersionWidget: FC<DBVersionWidgetProps> = ({
         }}
         universeData={currentUniverse}
       />
-    </>
+    </div>
   );
 };

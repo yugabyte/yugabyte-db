@@ -122,7 +122,7 @@
       "dbRollbackUpgrade": {
         "modalTitle": "Upgrade Database",
         "upgradeAction": "Upgrade",
-        "chooseTarget": "1. Choose target Version",
+        "chooseTarget": "1. Choose target version",
         "currentVersion": "Current Version",
         "targetVersion": "Target Version",
         "additionalStep": "An additional step is required based on the selected version.",
