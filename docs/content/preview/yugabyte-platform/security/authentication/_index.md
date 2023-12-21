@@ -13,7 +13,7 @@ weight: 25
 type: indexpage
 ---
 
-YugabyteDB supports LDAP and OIDC for authenticating with databases.
+YugabyteDB supports LDAP and OIDC for database authentication.
 
 ### LDAP
 
