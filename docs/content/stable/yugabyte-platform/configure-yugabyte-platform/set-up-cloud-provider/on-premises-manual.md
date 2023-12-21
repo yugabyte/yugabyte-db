@@ -721,7 +721,7 @@ You can install the YugabyteDB node agent manually. As the `yugabyte` user, do t
    For example, if you run the following:
 
    ```sh
-   node-agent node configure -t 1ba391bc-b522-4c18-813e-71a0e76b060a -u http://100.98.0.42:9000
+   node-agent node configure -t 1ba391bc-b522-4c18-813e-71a0e76b060a -u http://10.98.0.42:9000
    ```
 
    You should get output similar to the following:
@@ -851,7 +851,7 @@ If you need to reconfigure a node agent, you can use the following procedure:
     For example, if you run the following:
 
     ```sh
-    ./installer.sh  -c install -u http://100.98.0.42:9000 -t 301fc382-cf06-4a1b-b5ef-0c8c45273aef
+    ./installer.sh  -c install -u http://10.98.0.42:9000 -t 301fc382-cf06-4a1b-b5ef-0c8c45273aef
     ```
 
     ```output
