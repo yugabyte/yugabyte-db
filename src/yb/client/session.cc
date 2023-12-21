@@ -198,20 +198,7 @@ void BatcherFlushDone(
                     << ": (first op error: " << errors[0]->status() << ")";
 
   internal::BatcherPtr retry_batcher = CreateBatcher(batcher_config);
-  retry_batcher->SetDeadline(done_batcher->deadline());
-
-  for (auto& error : errors) {
-    VLOG_WITH_FUNC(5) << "Retrying " << AsString(error->failed_op())
-                      << " due to: " << error->status();
-    const auto op = error->shared_failed_op();
-    op->ResetTablet();
-    // Transmit failed request id to retry_batcher.
-    if (op->request_id()) {
-      retry_batcher->MoveRequestDetailsFrom(done_batcher, *op->request_id());
-    }
-    retry_batcher->Add(op);
-  }
-
+  retry_batcher->InitFromFailedBatcher(done_batcher, errors);
   DEBUG_ONLY_TEST_SYNC_POINT("BatcherFlushDone:Retry:1");
 
   FlushBatcherAsync(retry_batcher, std::move(callback), batcher_config,

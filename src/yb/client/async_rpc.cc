@@ -392,6 +392,10 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
   if (!ops_.empty()) {
     req_.set_batch_idx(ops_.front().batch_idx);
   }
+  auto start_time_micros = batcher_->rpcs_start_time_micros();
+  if (start_time_micros > 0) {
+    req_.set_start_time_micros(start_time_micros);
+  }
   const auto& metadata = batcher_->in_flight_ops().metadata;
   if (!metadata.transaction.transaction_id.IsNil()) {
     SetMetadata(metadata, data.need_metadata, &req_);
@@ -593,17 +597,11 @@ WriteRpc::WriteRpc(const AsyncRpcData& data)
       const auto& request_detail = batcher_->GetRequestDetails(*first_yb_op->request_id());
       req_.set_request_id(*first_yb_op->request_id());
       req_.set_min_running_request_id(request_detail.min_running_request_id);
-      if (request_detail.start_time_micros > 0) {
-        req_.set_start_time_micros(request_detail.start_time_micros);
-      }
     } else {
       const auto request_pair = batcher_->NextRequestIdAndMinRunningRequestId();
-      if (batcher_->Clock()) {
-        req_.set_start_time_micros(batcher_->Clock()->Now().GetPhysicalValueMicros());
-      }
       req_.set_request_id(request_pair.first);
       req_.set_min_running_request_id(request_pair.second);
-      batcher_->RegisterRequest(request_pair.first, request_pair.second, req_.start_time_micros());
+      batcher_->RegisterRequest(request_pair.first, request_pair.second);
     }
     FillRequestIds(req_.request_id(), &ops_);
   }

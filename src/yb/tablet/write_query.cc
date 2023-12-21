@@ -73,9 +73,9 @@ void SetupKeyValueBatch(const tserver::WriteRequestPB& client_request, LWWritePB
     out_request->set_client_id2(client_request.client_id2());
     out_request->set_request_id(client_request.request_id());
     out_request->set_min_running_request_id(client_request.min_running_request_id());
-    if (client_request.has_start_time_micros()) {
-      out_request->set_start_time_micros(client_request.start_time_micros());
-    }
+  }
+  if (client_request.has_start_time_micros()) {
+    out_request->set_start_time_micros(client_request.start_time_micros());
   }
   out_request->set_batch_idx(client_request.batch_idx());
   // Actually, in production code, we could check for external hybrid time only when there are
@@ -286,6 +286,9 @@ Result<bool> WriteQuery::PrepareExecute() {
   if (client_request_) {
     auto* request = operation().AllocateRequest();
     SetupKeyValueBatch(*client_request_, request);
+    if (client_request_->has_start_time_micros()) {
+      SetRequestStartUs(client_request_->start_time_micros());
+    }
 
     if (!client_request_->redis_write_batch().empty()) {
       return RedisPrepareExecute();
@@ -566,7 +569,7 @@ Status WriteQuery::DoExecute() {
     }
     return docdb::ResolveOperationConflicts(
         doc_ops_, conflict_management_policy, now, write_batch.transaction().pg_txn_start_us(),
-        tablet->doc_db(), partial_range_key_intents, transaction_participant,
+        request_start_us(), tablet->doc_db(), partial_range_key_intents, transaction_participant,
         tablet->metrics(), &prepare_result_.lock_batch,
         wait_queue,
         [this, now](const Result<HybridTime>& result) {
@@ -605,7 +608,7 @@ Status WriteQuery::DoExecute() {
   return docdb::ResolveTransactionConflicts(
       doc_ops_, conflict_management_policy, write_batch, tablet->clock()->Now(),
       read_time_ ? read_time_.read : HybridTime::kMax, write_batch.transaction().pg_txn_start_us(),
-      tablet->doc_db(), partial_range_key_intents,
+      request_start_us(), tablet->doc_db(), partial_range_key_intents,
       transaction_participant, tablet->metrics(),
       &prepare_result_.lock_batch, wait_queue,
       [this](const Result<HybridTime>& result) {
