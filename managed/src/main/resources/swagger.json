@@ -14741,6 +14741,7 @@
           "items" : {
             "$ref" : "#/definitions/XClusterTableConfig"
           },
+          "readOnly" : true,
           "type" : "array",
           "uniqueItems" : true
         },
@@ -14753,7 +14754,6 @@
           "items" : {
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array",
           "uniqueItems" : true
         },
@@ -14946,6 +14946,7 @@
           "items" : {
             "$ref" : "#/definitions/XClusterTableConfig"
           },
+          "readOnly" : true,
           "type" : "array",
           "uniqueItems" : true
         },
@@ -14958,7 +14959,6 @@
           "items" : {
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array",
           "uniqueItems" : true
         },
