@@ -25,9 +25,11 @@ import io.swagger.annotations.ApiModelProperty;
 import java.util.ArrayList;
 import java.util.Collection;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -180,8 +182,6 @@ public class XClusterConfig extends Model {
   private Date modifyTime;
 
   @OneToMany(mappedBy = "config", cascade = CascadeType.ALL, orphanRemoval = true)
-  @ApiModelProperty(value = "Tables participating in this xCluster config")
-  @JsonProperty("tableDetails")
   private Set<XClusterTableConfig> tables = new HashSet<>();
 
   @ApiModelProperty(value = "Replication group name in the target universe cluster config")
@@ -359,14 +359,20 @@ public class XClusterConfig extends Model {
     return tableConfigs;
   }
 
-  @JsonIgnore
+  @ApiModelProperty(value = "Tables participating in this xCluster config")
+  @JsonProperty("tableDetails")
   public Set<XClusterTableConfig> getTableDetails() {
-    return tables;
+    return tables.stream()
+        .sorted(Comparator.comparing(XClusterTableConfig::getStatus))
+        .collect(Collectors.toCollection(LinkedHashSet::new));
   }
 
   @JsonProperty("tables")
   public Set<String> getTableIds() {
-    return this.tables.stream().map(XClusterTableConfig::getTableId).collect(Collectors.toSet());
+    return this.tables.stream()
+        .sorted(Comparator.comparing(XClusterTableConfig::getStatus))
+        .map(XClusterTableConfig::getTableId)
+        .collect(Collectors.toCollection(LinkedHashSet::new));
   }
 
   @JsonIgnore

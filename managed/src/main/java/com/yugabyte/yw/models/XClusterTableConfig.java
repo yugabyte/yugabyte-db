@@ -106,17 +106,16 @@ public class XClusterTableConfig extends Model {
           "Validated, Running, Updating, Warning, Error, Bootstrapping, Failed, UnableToFetch")
   private Status status;
 
+  // Statuses are declared in reverse severity for showing tables in UI with specific order.
   public enum Status {
-    Validated("Validated"),
-    Running("Running"),
+    Failed("Failed"),
+    Error("Error"), // Not stored in YBA DB.
+    Warning("Warning"), // Not stored in YBA DB.
+    UnableToFetch("UnableToFetch"), // Not stored in YBA DB.
     Updating("Updating"),
     Bootstrapping("Bootstrapping"),
-    Failed("Failed"),
-
-    // The following statuses will not be stored in the YBA DB.
-    Error("Error"),
-    Warning("Warning"),
-    UnableToFetch("UnableToFetch");
+    Validated("Validated"),
+    Running("Running");
 
     private final String status;
 
