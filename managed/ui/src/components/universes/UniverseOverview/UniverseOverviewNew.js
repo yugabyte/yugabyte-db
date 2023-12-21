@@ -877,12 +877,7 @@ export default class UniverseOverviewNew extends Component {
             this.getCostWidget(universeInfo)}
           {isRollBackFeatureEnabled && (
             <Col lg={4} md={6} sm={8} xs={12}>
-              <DBVersionWidget
-                dbVersionValue={dbVersionValue}
-                currentUniverse={universeInfo}
-                tasks={tasks}
-                higherVersionCount={updateAvailable}
-              />
+              <DBVersionWidget higherVersionCount={updateAvailable} />
             </Col>
           )}
         </Row>
