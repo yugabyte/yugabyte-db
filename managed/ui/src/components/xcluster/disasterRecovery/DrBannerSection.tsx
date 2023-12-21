@@ -3,9 +3,12 @@ import { Trans, useTranslation } from 'react-i18next';
 import { browserHistory } from 'react-router';
 
 import { YBButton } from '../../../redesign/components';
+import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { YBBanner, YBBannerVariant } from '../../common/descriptors';
 import { YBErrorIndicator } from '../../common/indicators';
 import { XClusterTableStatus } from '../constants';
+
 import { DrConfig, DrConfigState } from './dtos';
 
 interface DrBannerSectionProps {
@@ -147,6 +150,7 @@ export const DrBannerSection = ({
                 components={{ bold: <b /> }}
               />
             </Typography>
+
             <div className={classes.bannerActionButtonContainer}>
               <YBButton variant="secondary" size="large" onClick={openRepairConfigModal}>
                 {t('actionButton.repairDr')}
@@ -165,9 +169,15 @@ export const DrBannerSection = ({
               />
             </Typography>
             <div className={classes.bannerActionButtonContainer}>
-              <YBButton variant="secondary" size="large" onClick={openRestartConfigModal}>
-                {t('actionButton.restartReplication')}
-              </YBButton>
+              <RbacValidator
+                accessRequiredOn={ApiPermissionMap.DR_CONFIG_RESTART}
+                overrideStyle={{ display: 'block' }}
+                isControl
+              >
+                <YBButton variant="secondary" size="large" onClick={openRestartConfigModal}>
+                  {t('actionButton.restartReplication')}
+                </YBButton>
+              </RbacValidator>
             </div>
           </div>
         </YBBanner>

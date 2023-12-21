@@ -36,6 +36,8 @@
 #include <string>
 #include <thread>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/gutil/strings/substitute.h"
 
 #include "yb/rpc/messenger.h"
@@ -329,6 +331,7 @@ void Rpcs::Shutdown() {
     std::unique_lock<std::mutex> lock(*mutex_);
     while (!calls_.empty()) {
       LOG(INFO) << "Waiting calls: " << calls_.size();
+      SCOPED_WAIT_STATUS(Rpcs_WaitOnMutexInShutdown);
       if (cond_.wait_until(lock, deadline) == std::cv_status::timeout) {
         break;
       }

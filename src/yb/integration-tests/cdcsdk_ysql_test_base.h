@@ -134,7 +134,9 @@ DECLARE_bool(enable_tablet_split_of_cdcsdk_streamed_tables);
 DECLARE_bool(cdc_enable_postgres_replica_identity);
 DECLARE_uint64(ysql_cdc_active_replication_slot_window_ms);
 DECLARE_bool(enable_log_retention_by_op_idx);
-DECLARE_bool(TEST_yb_enable_cdc_consistent_snapshot_streams);
+DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
+DECLARE_uint32(cdcsdk_tablet_not_of_interest_timeout_secs);
+DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
 
 namespace yb {
 
@@ -485,6 +487,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const uint32_t num_tservers,
       const bool set_flag_to_a_smaller_value,
       const uint32_t cdc_intent_retention_ms,
+      CDCCheckpointType checkpoint_type,
       const bool extend_expiration = false);
 
   void TestSetCDCCheckpoint(const uint32_t num_tservers, bool initial_checkpoint);
@@ -543,6 +546,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const xrepl::StreamId& stream_id = xrepl::StreamId::Nil());
 
   Result<std::vector<TableId>> GetCDCStreamTableIds(const xrepl::StreamId& stream_id);
+
+  Result<master::GetCDCStreamResponsePB> GetCDCStream(const xrepl::StreamId& stream_id);
 
   uint32_t GetTotalNumRecordsInTablet(
       const xrepl::StreamId& stream_id,
@@ -619,6 +624,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void LogRetentionBarrierAndRelatedDetails(const GetCheckpointResponsePB& checkpoint_result,
                                             const tablet::TabletPeerPtr& tablet_peer);
 
+  void LogRetentionBarrierDetails(const tablet::TabletPeerPtr& tablet_peer);
+
   void ConsumeSnapshotAndVerifyRecords(
       const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
@@ -637,6 +644,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const GetChangesResponsePB& change_resp_after_snapshot);
+
+  void TestCDCLagMetric(CDCCheckpointType checkpoint_type);
 };
 
 }  // namespace cdc

@@ -2729,7 +2729,7 @@ YbParseAdditionalCatalogList(YbPFetchTable **prefetch_tables,
 	const bool preload_additional_tables =
 		*YBCGetGFlags()->ysql_catalog_preload_additional_tables;
 	const char *default_additional_tables =
-		"pg_am,pg_amproc,pg_cast,pg_tablespace";
+		"pg_am,pg_amproc,pg_cast,pg_inherits,pg_policy,pg_proc,pg_tablespace,pg_trigger";
 	const char *extra_tables = NULL;
 
 	if (!IS_NON_EMPTY_STR_FLAG(preload_cat_flag))
@@ -2875,19 +2875,6 @@ YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 			YB_PFETCH_TABLE_YB_PG_PROFILE,
 			YB_PFETCH_TABLE_YB_PG_ROLE_PROFILE,
 			YB_PFETCH_TABLE_PG_CAST
-		};
-		YbRegisterTables(prefetcher, tables, lengthof(tables));
-	}
-
-	if (YbNeedAdditionalCatalogTables())
-	{
-		static const YbPFetchTable tables[] = {
-			YB_PFETCH_TABLE_PG_CAST,
-			YB_PFETCH_TABLE_PG_INHERITS,
-			YB_PFETCH_TABLE_PG_POLICY,
-			YB_PFETCH_TABLE_PG_PROC,
-			YB_PFETCH_TABLE_PG_TABLESPACE,
-			YB_PFETCH_TABLE_PG_TRIGGER
 		};
 		YbRegisterTables(prefetcher, tables, lengthof(tables));
 	}

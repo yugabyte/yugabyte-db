@@ -38,10 +38,12 @@
     },
     "queryError": {
       "failedToFetchUniverselist": "Error fetching universe list.",
-      "failedToFetchCustomerRuntimeCOnfig": "Error fetching runtime configurations for the current customer.",
+      "failedToFetchCustomerRuntimeConfig": "Error fetching runtime configurations for the current customer.",
       "failedToFetchSourceUniverse": "Unable to fetch universe details for source universe UUID: {{universeUuid}}",
       "failedToFetchTargetuniverse": "Unable to fetch universe details for target universe UUID: {{universeUuid}}",
-      "failedToFetchMetrics": "Failed to fetch metrics."
+      "failedToFetchMetrics": "Failed to fetch metrics.",
+      "failedToFetchAlertTemplates": "Failed to fetch alert templates.",
+      "failedToFetchAlertConfigs": "Failed to fetch alert configurations."
     },
     "universeActions": {
       "encryptionAtRest": {
@@ -152,6 +154,12 @@
           "modalMsg1": "After the upgrade is finalized, you won't be able to roll back.",
           "modalMsg2": "Make sure you evaluate the universe performance before finalizing the upgrade.",
           "modalSubmitLabel": "Proceed to finalize the upgrade"
+        },
+        "preFinalizeXcluster": {
+          "modalBody": "This universe is associated with one or more xCluster replications. To avoid disrupting replication, you should upgrade all linked universes to version {{version}} beforefinalizing this universe or any linked universe.",
+          "modalTitle": "Upgrade Linked Universes",
+          "modalSubmit": "Review Universe Replication",
+          "modalProceed": "Proceed Anyway"
         },
         "rollback": {
           "bannerMsg": "The Universe database version upgrade has encountered an issue. To restore the Universe to its normal state, you have the option to either roll back the upgrade or retry the upgrade.",
@@ -445,7 +453,13 @@
       "placementModal": {
         "modalTitle": "Confirm Update",
         "modalDescription": "This operation will scale-up or scale-down the number of the nodes or will change master placement from colocated to dedicated or vice versa",
-        "likeToProceed": "Would you like to proceed?"
+        "modalDescriptionRR": "This operation will either scale-up or scale-down the number of the nodes or will change the configuration of number of read replicas",
+        "likeToProceed": "Would you like to proceed?",
+        "nodes": "nodes",
+        "readReplicas": "Read Replicas",
+        "scaleUp": "Scale Up",
+        "scaleDown": "Scale Down",
+        "mode": "mode"
       },
       "fullMoveModal": {
         "modalTitle": "Confirm Full Move Update",
@@ -566,7 +580,7 @@
           "actionMenu": {
             "label": "Actions",
             "deleteConfig": "Remove disaster recovery",
-            "editDrConfig": "Edit recovery configuration",
+            "editDrConfig": "Edit DR configuration",
             "editDrConfigTarget": "Change DR Replica Universe",
             "editTables": "Select databases and tables",
             "switchover": "Switchover",
@@ -598,11 +612,11 @@
         },
         "switchover": {
           "initiateModal": {
-            "title": "Switchover",
+            "title": "Switchover to DR Replica: {{drReplicaName}}",
             "titleTooltip": "<paragraph>Switch the DR primary with the DR replica after waiting for replication drain so there will be no data loss.</paragraph>Replication drain allows the replication on the DR replica to catch up with the DR primary and be fully synchronized before initiating switchover.",
-            "instructions": "Wait for the standby cluster to be fully synchronized with the primary by <bold>draining replication</bold> before switchover.",
+            "instructions": "Wait for the DR replica cluster to be fully synchronized with the primary by <bold>draining replication</bold> before switchover",
             "noDataLoss": "There will be <bold>no data loss</bold> in switchover.",
-            "confirmationInstructions": "Enter DR Replica universe name to proceed.",
+            "confirmationInstructions": "Enter DR replica universe name to confirm.",
             "submitButton": "Initiate Switchover",
             "note": {
               "stopWorkload": "<bold>Stop application workloads</bold> before initiating switchover as all <bold>writes will be rejected</bold> during failover."
@@ -629,13 +643,13 @@
         },
         "failover": {
           "initiateModal": {
-            "title": "Failover",
+            "title": "Failover to DR Replica: {{drReplicaName}}",
             "description": "Start failover immediately at the cost of <bold>losing some data</bold> that is not replicated to the DR replica.",
             "estimatedDataLoss": {
-              "label": "Estimated Data Loss",
+              "label": "Potential Data Loss",
               "tooltip": "The estimated data loss is determined by the DR replica's safe time lag at the last known safe time."
             },
-            "confirmationInstructions": "Enter DR Replica universe name to proceed.",
+            "confirmationInstructions": "Enter DR Replica universe name to confirm.",
             "submitButton": "Initiate Failover",
             "error": {
               "taskFailure": "Failover task failed.",
@@ -734,7 +748,7 @@
             "step": {
               "selectTargetUniverse": {
                 "instruction": "Select a universe to use as the DR replica",
-                "submitButton": "Next: Select databases",
+                "submitButton": "Next: Select Databases",
                 "drReplica": "DR Replica Universe",
                 "error": {
                   "targetUniverseRequired": "Required.",
@@ -743,13 +757,14 @@
               },
               "selectDatabases": {
                 "instruction": "Select the databases to enable disaster recovery for",
-                "submitButton": "Next: Configure boostrap",
+                "validateButton": "Validate Table Selection",
+                "submitButton": "Next: Configure Full Copy",
                 "pitrSetUpNote": "<bold>Note:</bold> Point-in-time Recovery will be enabled for the selected databases on the DR Replica."
               },
               "configureBootstrap": {
                 "instruction": "Choose the storage config to use for performing the initial copy",
                 "infoText": "Initial full copy is required when the database contains data. Performing an initial full copy requires a backup storage config as an intermediate third party storage, and is time and resource intensive. This is also referred to as bootstrapping or initial seeding.",
-                "submitButton": "Set up and Enable Disaster Recovery",
+                "submitButton": "Next: Confirm Alert Threshold",
                 "backupStorageConfig": {
                   "label": "Backup Storage Config",
                   "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both source and target universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>"
@@ -757,6 +772,14 @@
                 "error": {
                   "backupStorageConfigRequired": "Required."
                 }
+              },
+              "confirmAlert": {
+                "instruction": "Confirm alert threshold for acceptable replication lag",
+                "infoText": "Replication lag measures how far behind in time the DR replica lags the DR primary. You can set alerts on the DR primary to notify you when this lag reaches a specified threshold so that you can take action to correct the lag. Setting up a replication lag alert is optional.",
+                "currentLowestReplicationLagLabel": "Current lowest replication lag alert threshold set on {{sourceUniverseName}}:",
+                "setUpReplicationLagAlertPrompt": "<paragraph>You currently do not have any alerts set up for replication lag on {{sourceUniverseName}}.</paragraph><paragraph>You can configure a replication lag alert using the 'Create Alert Policy' action on the <manageAlertConfigLink>alert configuration page.</manageAlertConfigLink></paragraph>",
+                "editReplicationLagAlertPrompt": "You can edit these replication lag alerts from the <manageAlertConfigLink>alert configuration page.</manageAlertConfigLink>",
+                "submitButton": "Confirm and Enable Disaster Recovery"
               }
             },
             "error": {
@@ -785,10 +808,15 @@
           },
           "editModal": {
             "title": "Edit DR Configuration",
-            "bootstrapConfiguration": "Bootstrap Configuration",
-            "backupStorageConfig": {
-              "label": "Backup Storage Config",
-              "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both source and target universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>"
+            "maxAcceptableReplicationLag": {
+              "sectionHeader": "Max Acceptable Replication Lag",
+              "info": "The lowest alert threshold for replication lag on the DR primary is taken to be the 'max acceptable lag'. Updating the max acceptable replication lag will update the corresponding alert threshold. If the update causes the replication lag alert's threshold to be greater than another from the same universe, then the alert with the lower threshold will be used as the new max acceptable replication lag.",
+              "fieldLabel": "Max Acceptable Replication Lag"
+            },
+            "duration": {
+              "second": "Second",
+              "minute": "Minute",
+              "hour": "Hour"
             },
             "error": {
               "requestFailureLabel": "Edit DR configuration request failed",
@@ -805,13 +833,13 @@
             "step": {
               "selectTargetUniverse": {
                 "drReplica": "DR Replica Universe",
-                "nextButton": "Next: Configure bootstrap",
+                "nextButton": "Next: Configure Full Copy",
                 "error": {
                   "targetUniverseRequired": "Required."
                 }
               },
               "configureBootstrap": {
-                "infoText": "Initial seeding is required when the database contains data. This involves a process called bootstrapping. Bootstrapping requires a backup storage config as an intermediate third party storage, and is <bold>time and resource intensive.</bold>",
+                "infoText": "Initial full copy is required when the database contains data. Performing an initial full copy requires a backup storage config as an intermediate third party storage, and is time and resource intensive. This is also referred to as bootstrapping or initial seeding.",
                 "backupStorageConfig": {
                   "label": "Backup Storage Config",
                   "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both source and target universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>"
@@ -835,10 +863,10 @@
             "instruction": "Select the databases to enable disaster recovery for",
             "step": {
               "selectTables": {
-                "nextButton": "Next: Configure bootstrap"
+                "nextButton": "Next: Configure Full Copy"
               },
               "configureBootstrap": {
-                "infoText": "<paragraph>The selected databases and/or tables contain <bold>data that is not yet replicated</bold> for DR. To enable DR for these databases and/or tables, a bootstrap will be required before aynchronous replication from the DR primary universe to the DR replica universe can be established.</paragraph><paragraph>Are you sure you want to <bold>bootstrap</bold> and add these databases and/or tables?</paragraph>",
+                "infoText": "<paragraph>The selected databases and/or tables contain <bold>data that is not yet replicated</bold> for DR. To enable DR for these databases and/or tables, a fully copy will be required before aynchronous replication from the DR primary universe to the DR replica universe can be established.</paragraph><paragraph>Are you sure you want to perform a <bold>full copy</bold> and add these databases and/or tables?</paragraph>",
                 "backupStorageConfig": {
                   "label": "Backup Storage Config",
                   "tooltip": "<paragraph>Ensure that the backup storage config <bold>can be accessed from both source and target universe.</bold></paragraph><paragraph>Particularly, <bold>Network File System (NFS)</bold> based storage configs may not be accessible from universes in different regions.</paragraph>"
@@ -881,8 +909,8 @@
         "selectTable": {
           "error": {
             "failedToFetchIsBootstrapRequired": {
-              "title": "Table bootstrap verification failed.",
-              "body": "An error occured while verifying whether the selected tables require bootstrapping."
+              "title": "Table full copy verification failed.",
+              "body": "An error occured while verifying whether the selected tables require fully copying."
             },
             "validationMinimumTableUuids": {
               "title": "No tables selected.",
@@ -892,7 +920,7 @@
           "warning": {
             "insufficientDiskSpace": {
               "title": "Warning: You may need additional disk space.",
-              "body": "Some selected tables require bootstrapping. We recommend having at least {{bootstrapMinFreeDiskSpaceGb}} GB of free disk space in the source universe."
+              "body": "Some selected tables require full copying. We recommend having at least {{bootstrapMinFreeDiskSpaceGb}} GB of free disk space in the source universe."
             }
           }
         },
@@ -915,11 +943,16 @@
               "bottom": "Bottom K"
             }
           },
+          "showAlertThresholdReferenceLine": {
+            "label": "Show Alert Threshold",
+            "disabledTooltip": "No replication lag alert thresholds found. Set up a replication lag alert thresholds by creating an alert policy on the DR primary/source universe."
+          },
           "graphTitle": {
             "asyncReplicationSentLag": "Async Replication Lag",
             "consumerSafeTimeLag": "Consumer Safe Time Lag",
             "consumerSafeTimeSkew": "Consumer Safe Time Skew"
-          }
+          },
+          "lowestReplicationLagAlertThresholdLabel": "Lowest Replication Lag Alert Threshold"
         },
         "error": {
           "undefinedXClusterTableType": "The tables in this config have unknown or mixed type.",
@@ -950,16 +983,16 @@
           "step": {
             "selectTables": {
               "instruction": "1. Select the tables you want to restart replication for.",
-              "submitButton": "Next: Configure boostrap"
+              "submitButton": "Next: Configure Full Copy"
             },
             "configureBootstrap": {
-              "instruction": "2. Configure bootstrap.",
-              "submitButton": "Restart Replication"
+              "instruction": "2. Configure Full Copy.",
+              "submitButton": "Create a New Full Copy"
             }
           },
           "error": {
-            "requestFailure": "Restart replication request failed.",
-            "taskFailure": "Restart replication task failed."
+            "requestFailure": "Create full copy request failed.",
+            "taskFailure": "Create full copy task failed."
           }
         }
       },

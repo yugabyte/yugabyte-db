@@ -5,6 +5,7 @@ import { FieldValues } from 'react-hook-form';
 import { useSelector } from 'react-redux';
 import { groupBy } from 'lodash';
 import { Trans, useTranslation } from 'react-i18next';
+import { Link } from 'react-router';
 
 import {
   ReactSelectGroupedOption,
@@ -15,7 +16,6 @@ import { usePillStyles } from '../../../redesign/styles/styles';
 import { IStorageConfig as BackupStorageConfig } from '../../backupv2';
 
 import { Optional } from '../../../redesign/helpers/types';
-import { Link } from 'react-router';
 
 const useSelectStyles = makeStyles((theme) => ({
   optionLabel: {

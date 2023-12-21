@@ -37,6 +37,8 @@
 
 #include <boost/atomic.hpp>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/common/common_types.pb.h"
 
 #include "yb/consensus/log_fwd.h"
@@ -55,7 +57,6 @@
 
 namespace yb {
 class ThreadPool;
-
 namespace tablet {
 class MvccManager;
 class OperationTracker;
@@ -164,6 +165,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
   const MonoTime& start_time() const { return start_time_; }
 
   Trace* trace() { return trace_.get(); }
+  const ash::WaitStateInfoPtr& wait_state() const { return wait_state_; }
 
   Status AddedToLeader(const OpId& op_id, const OpId& committed_op_id) override;
 
@@ -264,6 +266,7 @@ class OperationDriver : public RefCountedThreadSafe<OperationDriver>,
 
   // Trace object for tracing any operations started by this driver.
   scoped_refptr<Trace> trace_;
+  const ash::WaitStateInfoPtr wait_state_;
 
   const MonoTime start_time_;
 

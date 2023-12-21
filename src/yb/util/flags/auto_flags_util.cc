@@ -114,7 +114,9 @@ Result<AutoFlagsInfoMap> GetAvailableAutoFlags() {
 
   string full_path = JoinPathSegments(auto_flags_file_json_path, kAutoFlagsJsonFileName);
   std::ifstream json_file(full_path);
-  SCHECK(!json_file.fail(), IOError, Format("Could not open JSON file $0", full_path));
+  SCHECK(
+      !json_file.fail(), IOError,
+      Format("Could not open JSON file $0: $1", full_path, strerror(errno)));
 
   rapidjson::IStreamWrapper stream_wrapper(json_file);
   Document doc;

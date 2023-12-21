@@ -341,8 +341,10 @@ public class InstanceType extends Model {
         .where()
         .eq("provider_uuid", providerUuid)
         .or()
-        .eq("instance_type_details", null)
-        .eq("instance_type_details::json->>'arch'", null)
+        .isNull("instance_type_details") // Check if instance_type_details is null
+        .jsonNotExists(
+            "instance_type_details",
+            "arch") // Check if "arch" key is not present in instance_type_details JSON
         .endOr()
         .findList();
   }

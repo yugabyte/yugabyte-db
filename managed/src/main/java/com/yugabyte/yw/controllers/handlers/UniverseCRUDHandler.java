@@ -206,7 +206,8 @@ public class UniverseCRUDHandler {
               currentCluster.placementInfo, cluster.placementInfo)
           || isRegionListUpdate(cluster, currentCluster)
           || cluster.userIntent.replicationFactor != currentCluster.userIntent.replicationFactor
-          || isKubernetesVolumeUpdate(cluster, currentCluster)) {
+          || isKubernetesVolumeUpdate(cluster, currentCluster)
+          || isKubernetesNodeSpecUpdate(cluster, currentCluster)) {
         result.add(UniverseDefinitionTaskParams.UpdateOptions.UPDATE);
       } else if (GFlagsUtil.checkGFlagsByIntentChange(
           currentCluster.userIntent, cluster.userIntent)) {
@@ -245,6 +246,16 @@ public class UniverseCRUDHandler {
     return currentCluster.userIntent.providerType == Common.CloudType.kubernetes
         && currentCluster.userIntent.deviceInfo.volumeSize
             < cluster.userIntent.deviceInfo.volumeSize;
+  }
+
+  private boolean isKubernetesNodeSpecUpdate(Cluster cluster, Cluster currentCluster) {
+    return currentCluster.userIntent.providerType == Common.CloudType.kubernetes
+        && (!(Objects.equals(
+                currentCluster.userIntent.tserverK8SNodeResourceSpec,
+                cluster.userIntent.tserverK8SNodeResourceSpec)
+            && Objects.equals(
+                currentCluster.userIntent.masterK8SNodeResourceSpec,
+                cluster.userIntent.masterK8SNodeResourceSpec)));
   }
 
   private boolean isSameInstanceTypes(

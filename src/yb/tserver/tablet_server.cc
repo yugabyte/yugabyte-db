@@ -1325,4 +1325,8 @@ void TabletServer::SetXClusterDDLOnlyMode(bool is_xcluster_read_only_mode) {
   xcluster_read_only_mode_.store(is_xcluster_read_only_mode, std::memory_order_release);
 }
 
+rpc::Messenger* TabletServer::GetMessenger() const {
+  return messenger();
+}
+
 }  // namespace yb::tserver

@@ -237,6 +237,8 @@ class TabletServer : public DbServerBase, public TabletServerIf {
 
   void UpdateTransactionTablesVersion(uint64_t new_version);
 
+  rpc::Messenger* GetMessenger() const override;
+
   virtual Env* GetEnv();
 
   virtual rocksdb::Env* GetRocksDBEnv();

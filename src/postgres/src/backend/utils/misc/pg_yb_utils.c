@@ -559,7 +559,7 @@ YBIsDBCatalogVersionMode()
 			 * then stale read/write RPCs are possible which can lead to wrong
 			 * results;
 			 */
-			elog(INFO, "change to per-db mode");
+			elog(LOG, "change to per-db mode");
 			if (MyDatabaseId != TemplateDbOid)
 			{
 				yb_last_known_catalog_cache_version = 1;
@@ -625,6 +625,43 @@ YBCanEnableDBCatalogVersionMode()
 	 * to have one row per database.
 	 */
 	return (YbGetNumberOfDatabases() > 1);
+}
+
+void
+YBCheckDdlForDBCatalogVersionMode(YbDdlMode mode)
+{
+	/*
+	 * When --ysql_enable_db_catalog_version_mode=true, we only need to check
+	 * for incompatible pg_yb_catalog_version and disallow DDLs that increment
+	 * the catalog version. DDLs that do not increment the catalog version are
+	 * fine because there isn't any problem.
+	 */
+	if (!(mode & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT))
+		return;
+
+	bool db_catalog_version_mode_gflag =
+		YBCIsEnvVarTrueWithDefault("FLAGS_ysql_enable_db_catalog_version_mode",
+								   false);
+	int num_databases = YbGetNumberOfDatabases();
+
+	/*
+	 * Disallow DDL statement when FLAGS_ysql_enable_db_catalog_version_mode
+	 * is on but pg_yb_catalog_version table only has one row. Note that
+	 * the other mismatch (where FLAGS_ysql_enable_db_catalog_version_mode is
+	 * off but pg_yb_catalog_version table has one row per database) is fine
+	 * because we only use the first row (which is for template1) and ignore
+	 * the other rows and therefore table pg_yb_catalog_version is used in the
+	 * global catalog version mode. Also note that due to heart beat delay,
+	 * this rejection is done at best effort.
+	 */
+	if (db_catalog_version_mode_gflag && num_databases == 1)
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("this ddl statement is currently not allowed"),
+				 errdetail("The pg_yb_catalog_version table is not in "
+						   "per-database catalog version mode."),
+				 errhint("Fix pg_yb_catalog_version table to per-database "
+						 "catalog version mode.")));
 }
 
 /*
@@ -1353,16 +1390,31 @@ YBIsInitDbAlreadyDone()
 /*---------------------------------------------------------------------------*/
 
 static ProcessUtility_hook_type prev_ProcessUtility = NULL;
+typedef struct CatalogModificationAspects
+{
+	uint64_t applied;
+	uint64_t pending;
+
+} CatalogModificationAspects;
+
 typedef struct DdlTransactionState
 {
 	int nesting_level;
 	MemoryContext mem_context;
-	uint64_t catalog_modification_aspects;
+	CatalogModificationAspects catalog_modification_aspects;
 	bool is_global_ddl;
 	NodeTag original_node_tag;
 } DdlTransactionState;
 
 static DdlTransactionState ddl_transaction_state = {0};
+
+static void
+MergeCatalogModificationAspects(
+	CatalogModificationAspects *aspects, bool apply) {
+	if (apply)
+		aspects->applied |= aspects->pending;
+	aspects->pending = 0;
+}
 
 static void
 YBResetEnableNonBreakingDDLMode()
@@ -1444,7 +1496,7 @@ YBIncrementDdlNestingLevel(YbDdlMode mode)
 		HandleYBStatus(YBCPgEnterSeparateDdlTxnMode());
 	}
 	++ddl_transaction_state.nesting_level;
-	ddl_transaction_state.catalog_modification_aspects |= mode;
+	ddl_transaction_state.catalog_modification_aspects.pending |= mode;
 }
 
 static YbDdlMode
@@ -1453,7 +1505,8 @@ YbCatalogModificationAspectsToDdlMode(uint64_t catalog_modification_aspects)
 	YbDdlMode mode = catalog_modification_aspects;
 	switch(mode)
 	{
-		case YB_DDL_MODE_SILENT: switch_fallthrough();
+		case YB_DDL_MODE_NO_ALTERING: switch_fallthrough();
+		case YB_DDL_MODE_SILENT_ALTERING: switch_fallthrough();
 		case YB_DDL_MODE_VERSION_INCREMENT: switch_fallthrough();
 		case YB_DDL_MODE_BREAKING_CHANGE: return mode;
 	}
@@ -1464,6 +1517,10 @@ YbCatalogModificationAspectsToDdlMode(uint64_t catalog_modification_aspects)
 void
 YBDecrementDdlNestingLevel()
 {
+	const bool has_write = YBCPgHasWriteOperationsInDdlTxnMode();
+	MergeCatalogModificationAspects(
+		&ddl_transaction_state.catalog_modification_aspects, has_write);
+
 	--ddl_transaction_state.nesting_level;
 	if (yb_test_fail_next_ddl)
 	{
@@ -1483,20 +1540,26 @@ YBDecrementDdlNestingLevel()
 			MemoryContextSwitchTo(ddl_transaction_state.mem_context->parent);
 
 		YBResetEnableNonBreakingDDLMode();
-		const YbDdlMode mode = YbCatalogModificationAspectsToDdlMode(
-			ddl_transaction_state.catalog_modification_aspects);
+		bool increment_done = false;
+		bool is_silent_altering = false;
+		if (has_write)
+		{
+			const YbDdlMode mode = YbCatalogModificationAspectsToDdlMode(
+				ddl_transaction_state.catalog_modification_aspects.applied);
 
-		const bool has_write = YBCPgHasWriteOperationsInDdlTxnMode();
-		const bool increment_done =
-			(mode & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT) &&
-			has_write &&
-			YbIncrementMasterCatalogVersionTableEntry(
-				mode & YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE,
-				ddl_transaction_state.is_global_ddl);
+			increment_done =
+				(mode & YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT) &&
+				YbIncrementMasterCatalogVersionTableEntry(
+					mode & YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE,
+					ddl_transaction_state.is_global_ddl);
 
-		ddl_transaction_state = (DdlTransactionState){};
+			is_silent_altering = (mode == YB_DDL_MODE_SILENT_ALTERING);
+		}
 
-		HandleYBStatus(YBCPgExitSeparateDdlTxnMode());
+		ddl_transaction_state = (DdlTransactionState) {};
+
+		HandleYBStatus(YBCPgExitSeparateDdlTxnMode(
+			MyDatabaseId, is_silent_altering));
 
 		/*
 		 * Optimization to avoid redundant cache refresh on the current session
@@ -1564,6 +1627,7 @@ YbDdlModeOptional YbGetDdlMode(
 	bool is_ddl = true;
 	bool is_version_increment = true;
 	bool is_breaking_change = true;
+	bool is_altering_existing_data = false;
 
 	Node *parsetree = GetActualStmtNode(pstmt);
 	NodeTag node_tag = nodeTag(parsetree);
@@ -1599,7 +1663,6 @@ YbDdlModeOptional YbGetDdlMode(
 		case T_CreatedbStmt:
 		case T_DefineStmt: // CREATE OPERATOR/AGGREGATE/COLLATION/etc
 		case T_CommentStmt: // COMMENT (create new comment)
-		case T_DiscardStmt: // DISCARD ALL/SEQUENCES/TEMP affects only objects of current connection
 		case T_RuleStmt: // CREATE RULE
 		case T_TruncateStmt: // TRUNCATE changes system catalog in case of non-YB (i.e. TEMP) tables
 		case T_YbCreateProfileStmt:
@@ -1751,6 +1814,16 @@ YbDdlModeOptional YbGetDdlMode(
 			is_breaking_change = false;
 			if (!castNode(CreateFunctionStmt, parsetree)->replace)
 				is_version_increment = false;
+			break;
+
+		case T_DiscardStmt: // DISCARD ALL/SEQUENCES/TEMP
+			/*
+			 * This command alters existing data. But this update affects only
+			 * objects of current connection. No version increment is required.
+			 */
+			is_breaking_change = false;
+			is_version_increment = false;
+			is_altering_existing_data = true;
 			break;
 
 		// All T_Drop... tags from nodes.h:
@@ -1932,7 +2005,12 @@ YbDdlModeOptional YbGetDdlMode(
 	if (yb_make_next_ddl_statement_nonbreaking)
 		is_breaking_change = false;
 
+	is_altering_existing_data |= is_version_increment;
+
 	uint64_t aspects = 0;
+	if (is_altering_existing_data)
+		aspects |= YB_SYS_CAT_MOD_ASPECT_ALTERING_EXISTING_DATA;
+
 	if (is_version_increment)
 		aspects |= YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT;
 
@@ -1959,6 +2037,9 @@ YBTxnDdlProcessUtility(
 	const YbDdlModeOptional ddl_mode = YbGetDdlMode(pstmt, context);
 
 	const bool is_ddl = ddl_mode.has_value;
+
+	if (is_ddl)
+		YBCheckDdlForDBCatalogVersionMode(ddl_mode.value);
 
 	PG_TRY();
 	{

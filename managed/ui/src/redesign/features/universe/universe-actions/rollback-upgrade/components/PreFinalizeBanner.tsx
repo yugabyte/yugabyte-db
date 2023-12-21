@@ -5,6 +5,8 @@ import { Box, Typography, Link } from '@material-ui/core';
 import { YBButton } from '../../../../../components';
 import { DBRollbackModal } from '../DBRollbackModal';
 import { PreFinalizeModal } from './PreFinalizeModal';
+import { PreFinalizeXClusterModal } from './PreFinalizeXclusterModal';
+import { getPrimaryCluster } from '../../../universe-form/utils/helpers';
 import { Universe } from '../../../universe-form/utils/dto';
 import { preFinalizeStateStyles } from '../utils/RollbackUpgradeStyles';
 //icons
@@ -17,12 +19,15 @@ interface PreFinalizeBannerProps {
 
 export const PreFinalizeBanner: FC<PreFinalizeBannerProps> = ({ universeData }) => {
   const { universeUUID, universeDetails } = universeData;
-  const prevVersion = _.get(universeDetails, 'prevYBSoftwareConfig.softwareVersion', '').split(
-    '-'
-  )[0];
+  const prevVersion = _.get(universeDetails, 'prevYBSoftwareConfig.softwareVersion', '');
   const { t } = useTranslation();
   const [openPreFinalModal, setPreFinalModal] = useState(false);
   const [openRollBackModal, setRollBackModal] = useState(false);
+  const primaryCluster = _.cloneDeep(getPrimaryCluster(universeDetails));
+  const currentRelease = primaryCluster?.userIntent.ybSoftwareVersion;
+  const universeHasXcluster =
+    universeDetails?.xclusterInfo?.sourceXClusterConfigs?.length > 0 ||
+    universeDetails?.xclusterInfo?.targetXClusterConfigs?.length > 0;
   const classes = preFinalizeStateStyles();
 
   return (
@@ -71,11 +76,20 @@ export const PreFinalizeBanner: FC<PreFinalizeBannerProps> = ({ universeData }) 
           </YBButton>
         </Box>
       </Box>
-      <PreFinalizeModal
-        open={openPreFinalModal}
-        universeUUID={universeUUID}
-        onClose={() => setPreFinalModal(false)}
-      />
+      {universeHasXcluster ? (
+        <PreFinalizeXClusterModal
+          open={openPreFinalModal}
+          universeUUID={universeUUID}
+          currentDBVersion={currentRelease ?? ''}
+          onClose={() => setPreFinalModal(false)}
+        />
+      ) : (
+        <PreFinalizeModal
+          open={openPreFinalModal}
+          universeUUID={universeUUID}
+          onClose={() => setPreFinalModal(false)}
+        />
+      )}
       <DBRollbackModal
         open={openRollBackModal}
         universeData={universeData}

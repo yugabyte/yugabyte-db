@@ -36,6 +36,8 @@ import { Universe } from '../../../../redesign/helpers/dtos';
 import { DrConfig } from '../dtos';
 
 import toastStyles from '../../../../redesign/styles/toastStyles.module.scss';
+import { ApiPermissionMap } from '../../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { RbacValidator } from '../../../../redesign/features/rbac/common/RbacApiPermValidator';
 
 interface RepairDrConfigModalProps {
   drConfig: DrConfig;
@@ -55,7 +57,6 @@ const useStyles = makeStyles((theme) => ({
   },
   optionCard: {
     display: 'flex',
-    flex: '1 1 0px',
     flexDirection: 'column',
 
     minHeight: '188px',
@@ -384,74 +385,92 @@ export const RepairDrConfigModal = ({ drConfig, modalProps }: RepairDrConfigModa
         rules={{ required: t('error.repairTypeRequired') }}
         render={({ field: { onChange } }) => (
           <Box display="flex" gridGap={theme.spacing(1)}>
-            <div
-              className={clsx(
-                classes.optionCard,
-                repairType === RepairType.USE_EXISITING_TARGET_UNIVERSE && classes.selected
-              )}
-              onClick={() =>
-                handleOptionCardClick(RepairType.USE_EXISITING_TARGET_UNIVERSE, onChange)
-              }
-            >
-              <div className={classes.optionCardHeader}>
-                <Typography variant="body1">
-                  {t('option.useExistingTargetUniverse.optionName')}
-                </Typography>
-                <Box display="flex" alignItems="center" marginLeft="auto">
-                  {repairType === RepairType.USE_EXISITING_TARGET_UNIVERSE ? (
-                    <SelectedIcon />
-                  ) : (
-                    <UnselectedIcon />
+            <Box width="50%">
+              <RbacValidator
+                accessRequiredOn={ApiPermissionMap.DR_CONFIG_RESTART}
+                isControl
+                overrideStyle={{ display: 'unset' }}
+              >
+                <div
+                  className={clsx(
+                    classes.optionCard,
+                    repairType === RepairType.USE_EXISITING_TARGET_UNIVERSE && classes.selected
                   )}
-                </Box>
-              </div>
-              <Typography variant="body2">
-                <Trans
-                  i18nKey={`${TRANSLATION_KEY_PREFIX}.option.useExistingTargetUniverse.description`}
-                  values={{
-                    sourceUniverseName: sourceUniverse.name,
-                    targetUniverseName: targetUniverse.name
-                  }}
-                  components={{ bold: <b /> }}
-                />
-              </Typography>
-            </div>
-            <div
-              className={clsx(
-                classes.optionCard,
-                repairType === RepairType.USE_NEW_TARGET_UNIVERSE && classes.selected,
-                !universeOptions.length && classes.disabled
-              )}
-              onClick={() => handleOptionCardClick(RepairType.USE_NEW_TARGET_UNIVERSE, onChange)}
-            >
-              <div className={classes.optionCardHeader}>
-                <Typography variant="body1">
-                  {t('option.useNewTargetUniverse.optionName')}
-                </Typography>
-                <Box display="flex" alignItems="center" marginLeft="auto">
-                  {repairType === RepairType.USE_NEW_TARGET_UNIVERSE ? (
-                    <SelectedIcon />
-                  ) : (
-                    <UnselectedIcon />
+                  onClick={() =>
+                    handleOptionCardClick(RepairType.USE_EXISITING_TARGET_UNIVERSE, onChange)
+                  }
+                >
+                  <div className={classes.optionCardHeader}>
+                    <Typography variant="body1">
+                      {t('option.useExistingTargetUniverse.optionName')}
+                    </Typography>
+                    <Box display="flex" alignItems="center" marginLeft="auto">
+                      {repairType === RepairType.USE_EXISITING_TARGET_UNIVERSE ? (
+                        <SelectedIcon />
+                      ) : (
+                        <UnselectedIcon />
+                      )}
+                    </Box>
+                  </div>
+                  <Typography variant="body2">
+                    <Trans
+                      i18nKey={`${TRANSLATION_KEY_PREFIX}.option.useExistingTargetUniverse.description`}
+                      values={{
+                        sourceUniverseName: sourceUniverse.name,
+                        targetUniverseName: targetUniverse.name
+                      }}
+                      components={{ bold: <b /> }}
+                    />
+                  </Typography>
+                </div>
+              </RbacValidator>
+            </Box>
+            <Box width="50%">
+              <RbacValidator
+                accessRequiredOn={ApiPermissionMap.DR_CONFIG_REPLACE_REPLICA}
+                isControl
+                overrideStyle={{ display: 'unset' }}
+              >
+                <div
+                  className={clsx(
+                    classes.optionCard,
+                    repairType === RepairType.USE_NEW_TARGET_UNIVERSE && classes.selected,
+                    !universeOptions.length && classes.disabled
                   )}
-                </Box>
-              </div>
-              <Typography variant="body2" className={classes.fieldLabel}>
-                {t('option.useNewTargetUniverse.drReplica')}
-              </Typography>
-              <YBReactSelectField
-                control={formMethods.control}
-                name="targetUniverse"
-                options={universeOptions}
-                rules={{
-                  required:
-                    repairType === RepairType.USE_NEW_TARGET_UNIVERSE
-                      ? t('error.fieldRequired')
-                      : false
-                }}
-                isDisabled={isFormDisabled}
-              />
-            </div>
+                  onClick={() =>
+                    handleOptionCardClick(RepairType.USE_NEW_TARGET_UNIVERSE, onChange)
+                  }
+                >
+                  <div className={classes.optionCardHeader}>
+                    <Typography variant="body1">
+                      {t('option.useNewTargetUniverse.optionName')}
+                    </Typography>
+                    <Box display="flex" alignItems="center" marginLeft="auto">
+                      {repairType === RepairType.USE_NEW_TARGET_UNIVERSE ? (
+                        <SelectedIcon />
+                      ) : (
+                        <UnselectedIcon />
+                      )}
+                    </Box>
+                  </div>
+                  <Typography variant="body2" className={classes.fieldLabel}>
+                    {t('option.useNewTargetUniverse.drReplica')}
+                  </Typography>
+                  <YBReactSelectField
+                    control={formMethods.control}
+                    name="targetUniverse"
+                    options={universeOptions}
+                    rules={{
+                      required:
+                        repairType === RepairType.USE_NEW_TARGET_UNIVERSE
+                          ? t('error.fieldRequired')
+                          : false
+                    }}
+                    isDisabled={isFormDisabled}
+                  />
+                </div>
+              </RbacValidator>
+            </Box>
           </Box>
         )}
       />

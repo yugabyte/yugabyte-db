@@ -641,7 +641,7 @@ export default class UniverseOverviewNew extends Component {
     );
   };
 
-  getCPUWidget = (universeInfo) => {
+  getCPUWidget = (universeInfo, isRollBackFeatureEnabled) => {
     // For kubernetes the CPU usage would be in container tab, rest it would be server tab.
     const isItKubernetesUniverse = isKubernetesUniverse(universeInfo);
     const isDedicatedNodes = isDedicatedNodePlacement(universeInfo);
@@ -653,7 +653,12 @@ export default class UniverseOverviewNew extends Component {
     const useK8CustomResources = useK8CustomResourcesObject?.value === 'true';
 
     return (
-      <Col lg={isDedicatedNodes || hasReadReplicaCluster ? 2 : 4} md={4} sm={4} xs={6}>
+      <Col
+        lg={(isDedicatedNodes && !isRollBackFeatureEnabled) || hasReadReplicaCluster ? 2 : 4}
+        md={4}
+        sm={4}
+        xs={6}
+      >
         <StandaloneMetricsPanelContainer
           metricKey={isItKubernetesUniverse ? 'container_cpu_usage' : 'cpu_usage'}
           isDedicatedNodes={isDedicatedNodes && !isItKubernetesUniverse}
@@ -885,7 +890,7 @@ export default class UniverseOverviewNew extends Component {
           {!isRollBackFeatureEnabled && this.getDatabaseWidget(universeInfo, tasks)}
           {this.getPrimaryClusterWidget(universeInfo, isRollBackFeatureEnabled)}
           {this.hasReadReplica(universeInfo) && this.getReadReplicaClusterWidget(universeInfo)}
-          {this.getCPUWidget(universeInfo)}
+          {this.getCPUWidget(universeInfo, isRollBackFeatureEnabled)}
           {isDisabled(currentCustomer.data.features, 'universes.details.health')
             ? this.getAlertWidget(alerts, universeInfo)
             : this.getHealthWidget(universe.healthCheck, universeInfo)}

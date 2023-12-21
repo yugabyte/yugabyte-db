@@ -166,8 +166,9 @@ public class TaskInfo extends Model {
       required = true)
   private String owner;
 
-  public TaskInfo(TaskType taskType) {
+  public TaskInfo(TaskType taskType, UUID taskUUID) {
     this.taskType = taskType;
+    this.uuid = taskUUID;
   }
 
   @JsonIgnore

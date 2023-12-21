@@ -170,6 +170,10 @@ public class ModelFactory {
     return Provider.create(customer.getUuid(), Common.CloudType.kubernetes, "Kubernetes");
   }
 
+  public static Provider kubernetesProvider(Customer customer, String name) {
+    return Provider.create(customer.getUuid(), Common.CloudType.kubernetes, name);
+  }
+
   public static Provider newProvider(Customer customer, Common.CloudType cloud) {
     return Provider.create(customer.getUuid(), cloud, cloud.toString());
   }

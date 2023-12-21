@@ -18,6 +18,8 @@ import { formatBytes, augmentTablesWithXClusterDetails, tableSort } from '../../
 import YBPagination from '../../../tables/YBPagination/YBPagination';
 import { ExpandedConfigTableSelect } from './ExpandedConfigTableSelect';
 import { SortOrder, YBTableRelationType } from '../../../../redesign/helpers/constants';
+import { XCLUSTER_UNIVERSE_TABLE_FILTERS } from '../../constants';
+import { getTableUuid } from '../../../../utils/tableUtils';
 
 import { TableType, Universe, YBTable } from '../../../../redesign/helpers/dtos';
 import { XClusterTable, XClusterTableType } from '../../XClusterTypes';
@@ -68,15 +70,12 @@ export const ConfigTableSelect = ({
   const [sortOrder, setSortOrder] = useState<ReactBSTableSortOrder>(SortOrder.ASCENDING);
 
   const sourceUniverseTablesQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, {
-      excludeColocatedTables: true,
-      xClusterSupportedOnly: true
-    }),
+    universeQueryKey.tables(xClusterConfig.sourceUniverseUUID, XCLUSTER_UNIVERSE_TABLE_FILTERS),
     () =>
-      fetchTablesInUniverse(xClusterConfig.sourceUniverseUUID, {
-        excludeColocatedTables: true,
-        xClusterSupportedOnly: true
-      }).then((response) => response.data)
+      fetchTablesInUniverse(
+        xClusterConfig.sourceUniverseUUID,
+        XCLUSTER_UNIVERSE_TABLE_FILTERS
+      ).then((response) => response.data)
   );
   const sourceUniverseQuery = useQuery<Universe>(
     universeQueryKey.detail(xClusterConfig.sourceUniverseUUID),
@@ -107,78 +106,64 @@ export const ConfigTableSelect = ({
     return <YBErrorIndicator />;
   }
 
-  const toggleTableGroup = (isSelected: boolean, rows: XClusterTable[]) => {
+  const toggleTableGroup = (isSelected: boolean, xClusterTables: XClusterTable[]) => {
     if (isSelected) {
-      const tableUUIDsToAdd: string[] = [];
-      const currentSelectedTableUUIDs = new Set(selectedTableUUIDs);
+      const currentSelectedTableUuids = new Set(selectedTableUUIDs);
 
-      rows.forEach((row) => {
-        if (!currentSelectedTableUUIDs.has(row.tableUUID)) {
-          tableUUIDsToAdd.push(row.tableUUID);
-        }
+      xClusterTables.forEach((xClusterTable) => {
+        currentSelectedTableUuids.add(getTableUuid(xClusterTable));
       });
 
-      setSelectedTableUUIDs([...selectedTableUUIDs, ...tableUUIDsToAdd]);
+      setSelectedTableUUIDs(Array.from(currentSelectedTableUuids));
     } else {
-      const removedTables = new Set(rows.map((row) => row.tableUUID));
+      const removedTableUuids = new Set(
+        xClusterTables.map((xClustertables) => getTableUuid(xClustertables))
+      );
 
       setSelectedTableUUIDs(
-        selectedTableUUIDs.filter((tableUUID) => !removedTables.has(tableUUID))
+        selectedTableUUIDs.filter((tableUUID) => !removedTableUuids.has(tableUUID))
       );
     }
   };
 
-  const handleAllTableSelect = (isSelected: boolean, rows: XClusterTable[]) => {
-    toggleTableGroup(isSelected, rows);
+  const handleTableGroupToggle = (isSelected: boolean, xClusterTables: XClusterTable[]) => {
+    toggleTableGroup(isSelected, xClusterTables);
     return true;
   };
 
-  const handleTableSelect = (row: XClusterTable, isSelected: boolean) => {
-    if (isSelected) {
-      setSelectedTableUUIDs([...selectedTableUUIDs, row.tableUUID]);
-    } else {
-      setSelectedTableUUIDs([
-        ...selectedTableUUIDs.filter((tableUUID: string) => tableUUID !== row.tableUUID)
-      ]);
-    }
+  const handleTableToggle = (xClustertable: XClusterTable, isSelected: boolean) => {
+    toggleTableGroup(isSelected, [xClustertable]);
   };
 
-  const toggleKeyspaceGroup = (isSelected: boolean, rows: RowItem[]) => {
+  const toggleNamespaceGroup = (isSelected: boolean, rows: RowItem[]) => {
     if (isSelected) {
-      const keyspacesToAdd: string[] = [];
-      const currentSelectedKeyspaces = new Set(selectedKeyspaces);
+      const currentSelectedNamespaces = new Set(selectedKeyspaces);
 
       rows.forEach((row) => {
-        if (!currentSelectedKeyspaces.has(row.keyspace)) {
-          keyspacesToAdd.push(row.keyspace);
-        }
+        currentSelectedNamespaces.add(row.keyspace);
       });
-      setSelectedKeyspaces([...selectedKeyspaces, ...keyspacesToAdd]);
+      setSelectedKeyspaces(Array.from(currentSelectedNamespaces));
     } else {
-      const removedKeyspaces = new Set(rows.map((row) => row.keyspace));
+      const removedNamespaceUuids = new Set(rows.map((row) => row.keyspace));
 
       setSelectedKeyspaces(
-        selectedKeyspaces.filter((keyspace: string) => !removedKeyspaces.has(keyspace))
+        selectedKeyspaces.filter((keyspace: string) => !removedNamespaceUuids.has(keyspace))
       );
     }
   };
 
   const handleAllKeyspaceSelect = (isSelected: boolean, rows: RowItem[]) => {
-    const underlyingTables = rows.reduce((table: XClusterTable[], row) => {
+    const selectedTables = rows.reduce((table: XClusterTable[], row) => {
       return table.concat(row.xClusterTables);
     }, []);
 
-    toggleKeyspaceGroup(isSelected, rows);
-    toggleTableGroup(isSelected, underlyingTables);
+    toggleNamespaceGroup(isSelected, rows);
+    toggleTableGroup(isSelected, selectedTables);
     return true;
   };
 
   const handleKeyspaceSelect = (row: RowItem, isSelected: boolean) => {
-    if (isSelected) {
-      setSelectedKeyspaces([...selectedKeyspaces, row.keyspace]);
-    } else {
-      setSelectedKeyspaces(selectedKeyspaces.filter((keyspace) => keyspace !== row.keyspace));
-    }
+    toggleNamespaceGroup(isSelected, [row]);
     toggleTableGroup(isSelected, row.xClusterTables);
   };
 
@@ -234,8 +219,8 @@ export const ConfigTableSelect = ({
               tableType={configTableType}
               sourceUniverseUUID={sourceUniverseUUID}
               sourceUniverseNodePrefix={sourceUniverseNodePrefix}
-              handleTableSelect={handleTableSelect}
-              handleAllTableSelect={handleAllTableSelect}
+              handleTableSelect={handleTableToggle}
+              handleAllTableSelect={handleTableGroupToggle}
             />
           )}
           expandColumnOptions={{

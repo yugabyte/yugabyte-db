@@ -13,6 +13,8 @@
 
 #include "yb/tablet/write_query.h"
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/client/client.h"
 #include "yb/client/error.h"
 #include "yb/client/meta_data_cache.h"
@@ -21,7 +23,6 @@
 #include "yb/client/transaction.h"
 #include "yb/client/yb_op.h"
 
-#include "yb/qlexpr/index.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 
@@ -31,6 +32,8 @@
 #include "yb/docdb/doc_write_batch.h"
 #include "yb/docdb/pgsql_operation.h"
 #include "yb/docdb/redis_operation.h"
+
+#include "yb/qlexpr/index.h"
 
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/operations/write_operation.h"
@@ -73,9 +76,9 @@ void SetupKeyValueBatch(const tserver::WriteRequestPB& client_request, LWWritePB
     out_request->set_client_id2(client_request.client_id2());
     out_request->set_request_id(client_request.request_id());
     out_request->set_min_running_request_id(client_request.min_running_request_id());
-    if (client_request.has_start_time_micros()) {
-      out_request->set_start_time_micros(client_request.start_time_micros());
-    }
+  }
+  if (client_request.has_start_time_micros()) {
+    out_request->set_start_time_micros(client_request.start_time_micros());
   }
   out_request->set_batch_idx(client_request.batch_idx());
   // Actually, in production code, we could check for external hybrid time only when there are
@@ -187,7 +190,15 @@ void WriteQuery::DoStartSynchronization(const Status& status) {
     return;
   }
 
+  SET_WAIT_STATUS(OnCpu_Passive);
   context_->Submit(self.release()->PrepareSubmit(), term_);
+  // Any further update to the wait-state for this RPC should happen based on
+  // the state/transition of the submitted WriteOperation.
+  // We don't want to update this RPC's wait-state when this thread returns from
+  // ServicePoolImpl::Handle call.
+  //
+  // Prevent any further modification to the wait-state on this thread.
+  ash::WaitStateInfo::SetCurrentWaitState(nullptr);
 }
 
 void WriteQuery::Release() {
@@ -286,6 +297,9 @@ Result<bool> WriteQuery::PrepareExecute() {
   if (client_request_) {
     auto* request = operation().AllocateRequest();
     SetupKeyValueBatch(*client_request_, request);
+    if (client_request_->has_start_time_micros()) {
+      SetRequestStartUs(client_request_->start_time_micros());
+    }
 
     if (!client_request_->redis_write_batch().empty()) {
       return RedisPrepareExecute();
@@ -566,7 +580,7 @@ Status WriteQuery::DoExecute() {
     }
     return docdb::ResolveOperationConflicts(
         doc_ops_, conflict_management_policy, now, write_batch.transaction().pg_txn_start_us(),
-        tablet->doc_db(), partial_range_key_intents, transaction_participant,
+        request_start_us(), tablet->doc_db(), partial_range_key_intents, transaction_participant,
         tablet->metrics(), &prepare_result_.lock_batch,
         wait_queue,
         [this, now](const Result<HybridTime>& result) {
@@ -605,7 +619,7 @@ Status WriteQuery::DoExecute() {
   return docdb::ResolveTransactionConflicts(
       doc_ops_, conflict_management_policy, write_batch, tablet->clock()->Now(),
       read_time_ ? read_time_.read : HybridTime::kMax, write_batch.transaction().pg_txn_start_us(),
-      tablet->doc_db(), partial_range_key_intents,
+      request_start_us(), tablet->doc_db(), partial_range_key_intents,
       transaction_participant, tablet->metrics(),
       &prepare_result_.lock_batch, wait_queue,
       [this](const Result<HybridTime>& result) {

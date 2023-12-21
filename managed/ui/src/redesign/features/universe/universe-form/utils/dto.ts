@@ -223,6 +223,7 @@ export interface UniverseDetails {
   softwareUpgradeState: string;
   prevYBSoftwareConfig: { softwareVersion: string };
   universePaused: boolean;
+  xclusterInfo: any;
 }
 
 export type UniverseConfigure = Partial<UniverseDetails>;
@@ -418,6 +419,7 @@ export interface UniverseDetails {
   userAZSelected: boolean;
   enableYbc: boolean;
   updateOptions: string[];
+  xclusterInfo: any;
 }
 
 export interface Resources {

@@ -71,8 +71,6 @@ public class UpgradeUniverseController extends AuthenticatedController {
 
   @Inject GFlagsAuditHandler gFlagsAuditHandler;
 
-  public static final String rollbackSupportRuntimeFlagPath = "yb.upgrade.enable_rollback_support";
-
   /**
    * API that restarts all nodes in the universe. Supports rolling and non-rolling restart
    *
@@ -147,6 +145,50 @@ public class UpgradeUniverseController extends AuthenticatedController {
   }
 
   /**
+   * API that upgrades YugabyteDB DB version in all nodes. Supports rolling and non-rolling upgrade
+   * of the universe. It also support rollback if upgrade is not finalize.
+   *
+   * @param customerUuid ID of customer
+   * @param universeUuid ID of universe
+   * @return Result of update operation with task id
+   */
+  @YbaApi(
+      visibility = YbaApiVisibility.PREVIEW,
+      sinceYBAVersion = "2.20.2.0",
+      runtimeConfigScope = ScopeType.UNIVERSE)
+  @ApiOperation(
+      value =
+          "WARNING: This is a preview API that could change. This is a two step DB software version"
+              + " upgrade, Upgrade DB version and then finalize software which would be same as of"
+              + " upgrade software but additionally support rollback before upgrade finalize. ",
+      notes = "Queues a task to perform DB version upgrade and rolling restart in a universe.",
+      nickname = "upgradeDBVersion",
+      response = YBPTask.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "software_upgrade_params",
+          value = "Software Upgrade Params",
+          dataType = "com.yugabyte.yw.forms.SoftwareUpgradeParams",
+          required = true,
+          paramType = "body"))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
+  public Result upgradeDBVersion(UUID customerUuid, UUID universeUuid, Http.Request request) {
+    return requestHandler(
+        request,
+        upgradeUniverseHandler::upgradeDBVersion,
+        SoftwareUpgradeParams.class,
+        Audit.ActionType.UpgradeSoftware,
+        customerUuid,
+        universeUuid);
+  }
+
+  /**
    * API that finalize YugabyteDB software version upgrade on a universe.
    *
    * @param customerUuid ID of customer
@@ -155,8 +197,7 @@ public class UpgradeUniverseController extends AuthenticatedController {
    */
   @YbaApi(
       visibility = YbaApiVisibility.PREVIEW,
-      sinceYBAVersion = "2.21.0.0-b1",
-      runtimeConfig = rollbackSupportRuntimeFlagPath,
+      sinceYBAVersion = "2.20.2.0",
       runtimeConfigScope = ScopeType.UNIVERSE)
   @ApiOperation(
       value = "WARNING: This is a preview API that could change. Finalize Upgrade.",
@@ -195,8 +236,7 @@ public class UpgradeUniverseController extends AuthenticatedController {
    */
   @YbaApi(
       visibility = YbaApiVisibility.PREVIEW,
-      sinceYBAVersion = "2.21.0.0-b1",
-      runtimeConfig = rollbackSupportRuntimeFlagPath,
+      sinceYBAVersion = "2.20.2.0",
       runtimeConfigScope = ScopeType.UNIVERSE)
   @ApiOperation(
       value = "WARNING: This is a preview API that could change. Rollback Upgrade",
@@ -621,8 +661,7 @@ public class UpgradeUniverseController extends AuthenticatedController {
    */
   @YbaApi(
       visibility = YbaApiVisibility.PREVIEW,
-      sinceYBAVersion = "2.21.0.0-b1",
-      runtimeConfig = rollbackSupportRuntimeFlagPath,
+      sinceYBAVersion = "2.20.2.0",
       runtimeConfigScope = ScopeType.UNIVERSE)
   @ApiOperation(
       value =
@@ -661,8 +700,7 @@ public class UpgradeUniverseController extends AuthenticatedController {
    */
   @YbaApi(
       visibility = YbaApiVisibility.PREVIEW,
-      sinceYBAVersion = "2.21.0.0-b1",
-      runtimeConfig = rollbackSupportRuntimeFlagPath,
+      sinceYBAVersion = "2.20.2.0",
       runtimeConfigScope = ScopeType.UNIVERSE)
   @ApiOperation(
       value = "WARNING: This is a preview API that could change. Finalize Software Upgrade info",

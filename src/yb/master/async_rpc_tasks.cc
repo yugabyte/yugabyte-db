@@ -519,10 +519,10 @@ bool RetryingRpcTask::TransitionToWaitingState(MonitoredTaskState expected) {
 RetryingMasterRpcTask::RetryingMasterRpcTask(
     Master* master,
     ThreadPool* callback_pool,
-    const consensus::RaftPeerPB& peer,
+    consensus::RaftPeerPB&& peer,
     AsyncTaskThrottlerBase* async_task_throttler)
     : RetryingRpcTask(master, callback_pool, async_task_throttler),
-      peer_{peer} {}
+      peer_{std::move(peer)} {}
 
 // Handle the actual work of the RPC callback. This is run on the master's worker
 // pool, rather than a reactor thread, so it may do blocking IO operations.
@@ -784,10 +784,11 @@ bool AsyncCreateReplica::SendRequest(int attempt) {
 AsyncMasterTabletHealthTask::AsyncMasterTabletHealthTask(
     Master* master,
     ThreadPool* callback_pool,
-    const consensus::RaftPeerPB& peer,
+    consensus::RaftPeerPB&& peer,
     std::shared_ptr<AreNodesSafeToTakeDownCallbackHandler> cb_handler)
-  : RetryingMasterRpcTask(
-      master, callback_pool, peer, /* async_task_throttler */ nullptr), cb_handler_{cb_handler} {}
+    : RetryingMasterRpcTask(
+          master, callback_pool, std::move(peer), /* async_task_throttler */ nullptr),
+      cb_handler_{std::move(cb_handler)} {}
 
 void AsyncMasterTabletHealthTask::HandleResponse(int attempt) {
   if (resp_.has_error()) {
@@ -818,7 +819,7 @@ AsyncTserverTabletHealthTask::AsyncTserverTabletHealthTask(
     Master* master,
     ThreadPool* callback_pool,
     std::string permanent_uuid,
-    std::vector<TabletId> tablets,
+    std::vector<TabletId>&& tablets,
     std::shared_ptr<AreNodesSafeToTakeDownCallbackHandler> cb_handler)
   : RetrySpecificTSRpcTask(
       master, callback_pool, std::move(permanent_uuid), /* async_task_throttler */ nullptr),
@@ -1100,23 +1101,9 @@ void AsyncAlterTable::HandleResponse(int attempt) {
         break;
     }
   } else {
-    TransitionToCompleteState();
-    VLOG_WITH_PREFIX(1)
-        << "TS " << permanent_uuid() << " completed: for version " << schema_version_;
-  }
-
-  server::UpdateClock(resp_, master_->clock());
-
-  if (state() == MonitoredTaskState::kComplete) {
-    // TODO: proper error handling here. Not critical, since TSHeartbeat will retry on failure.
-    WARN_NOT_OK(
-        master_->catalog_manager()->HandleTabletSchemaVersionReport(
-            tablet_.get(), schema_version_, epoch(), table()),
-        Format(
-            "$0 failed while running AsyncAlterTable::HandleResponse. Response $1", description(),
-            resp_.ShortDebugString()));
-
     // CDC SDK Create Stream Context
+    // Technically, handling the CDCSDK snapshot flow is part of AlterTable processing. So it is
+    // done before transitioning to complete state.
     // If there is an error while populating the cdc_state table, it can be ignored here
     // as it will be handled in CatalogManager::CreateNewXReplStream
     if (cdc_sdk_stream_id_) {
@@ -1136,6 +1123,22 @@ void AsyncAlterTable::HandleResponse(int attempt) {
                      << " and tablet id: " << tablet_id();
       }
     }
+
+    TransitionToCompleteState();
+    VLOG_WITH_PREFIX(1)
+        << "TS " << permanent_uuid() << " completed: for version " << schema_version_;
+  }
+
+  server::UpdateClock(resp_, master_->clock());
+
+  if (state() == MonitoredTaskState::kComplete) {
+    // TODO: proper error handling here. Not critical, since TSHeartbeat will retry on failure.
+    WARN_NOT_OK(
+        master_->catalog_manager()->HandleTabletSchemaVersionReport(
+            tablet_.get(), schema_version_, epoch(), table()),
+        Format(
+            "$0 failed while running AsyncAlterTable::HandleResponse. Response $1", description(),
+            resp_.ShortDebugString()));
   } else {
     VLOG_WITH_PREFIX(1) << "Task is not completed " << tablet_->ToString() << " for version "
                         << schema_version_;
@@ -1846,9 +1849,9 @@ bool AsyncTsTestRetry::SendRequest(int attempt) {
 //  Class AsyncMasterTestRetry.
 // ============================================================================
 AsyncMasterTestRetry::AsyncMasterTestRetry(
-    Master *master, ThreadPool *callback_pool, const consensus::RaftPeerPB& peer,
-    int32_t num_retries, StdStatusCallback callback)
-    : RetryingMasterRpcTask(master, callback_pool, peer),
+    Master* master, ThreadPool* callback_pool, consensus::RaftPeerPB&& peer, int32_t num_retries,
+    StdStatusCallback callback)
+    : RetryingMasterRpcTask(master, callback_pool, std::move(peer)),
       num_retries_(num_retries),
       callback_(std::move(callback)) {}
 

@@ -1,4 +1,5 @@
 import { FC, useState } from 'react';
+import _ from 'lodash';
 import { useTranslation } from 'react-i18next';
 import { Box, Typography, Link } from '@material-ui/core';
 import { YBTooltip } from '../../../components';
@@ -39,30 +40,33 @@ export const DBVersionWidget: FC<DBVersionWidgetProps> = ({
   const upgradeState = currentUniverse?.universeDetails?.softwareUpgradeState;
   const previousDBVersion = currentUniverse?.universeDetails?.prevYBSoftwareConfig?.softwareVersion;
   const isUniversePaused = currentUniverse?.universeDetails?.universePaused;
-  const minifiedPrevVersion = previousDBVersion?.split('-')[0];
   const universeStatus = getUniverseStatus(currentUniverse);
   const universePendingTask = getUniversePendingTask(
     currentUniverse.universeUUID,
     tasks?.customerTaskList
   );
 
+  const upgradingVersion = universePendingTask?.details?.versionNumbers?.ybSoftwareVersion;
   let statusDisplay = (
     <Box display="flex" flexDirection={'row'} alignItems={'center'}>
       <Typography className={classes.versionText}>v{minifiedCurrentVersion}</Typography>
       &nbsp;
-      {higherVersionCount > 0 && upgradeState === SoftwareUpgradeState.READY && !isUniversePaused && (
-        <>
-          <img src={UpgradeArrow} height="14px" width="14px" alt="--" /> &nbsp;
-          <Link
-            component={'button'}
-            underline="always"
-            onClick={() => setUpgradeModal(true)}
-            className={classes.upgradeLink}
-          >
-            {t('universeActions.dbRollbackUpgrade.widget.upgradeAvailable')}
-          </Link>
-        </>
-      )}
+      {higherVersionCount > 0 &&
+        upgradeState === SoftwareUpgradeState.READY &&
+        !isUniversePaused &&
+        _.isEmpty(universePendingTask) && (
+          <>
+            <img src={UpgradeArrow} height="14px" width="14px" alt="--" /> &nbsp;
+            <Link
+              component={'button'}
+              underline="always"
+              onClick={() => setUpgradeModal(true)}
+              className={classes.upgradeLink}
+            >
+              {t('universeActions.dbRollbackUpgrade.widget.upgradeAvailable')}
+            </Link>
+          </>
+        )}
       {upgradeState === SoftwareUpgradeState.PRE_FINALIZE && (
         <YBTooltip title="Pending upgrade Finalization">
           <img src={WarningExclamation} height={'14px'} width="14px" alt="--" />
@@ -84,7 +88,7 @@ export const DBVersionWidget: FC<DBVersionWidgetProps> = ({
         </YBTooltip>
       )}
       {upgradeState === SoftwareUpgradeState.ROLLBACK_FAILED && (
-        <YBTooltip title={`Failed to rollback to v${minifiedPrevVersion}`}>
+        <YBTooltip title={`Failed to rollback to v${previousDBVersion}`}>
           <span>
             <i className={`fa fa-warning ${classes.errorIcon}`} />
           </span>
@@ -104,7 +108,7 @@ export const DBVersionWidget: FC<DBVersionWidgetProps> = ({
         <Typography variant="body2" className={classes.blueText}>
           {universePendingTask.type === SoftwareUpgradeTaskType.ROLLBACK_UPGRADE &&
             (t('universeActions.dbRollbackUpgrade.widget.rollingBackTooltip', {
-              version: minifiedPrevVersion
+              version: previousDBVersion
             }) as string)}
           {universePendingTask.type === SoftwareUpgradeTaskType.FINALIZE_UPGRADE &&
             (t('universeActions.dbRollbackUpgrade.widget.finalizingTooltip', {
@@ -112,7 +116,7 @@ export const DBVersionWidget: FC<DBVersionWidgetProps> = ({
             }) as string)}
           {universePendingTask.type === SoftwareUpgradeTaskType.SOFTWARE_UPGRADE &&
             (t('universeActions.dbRollbackUpgrade.widget.upgradingTooltip', {
-              version: minifiedCurrentVersion
+              version: upgradingVersion
             }) as string)}
         </Typography>
       </Box>
@@ -147,7 +151,9 @@ export const DBVersionWidget: FC<DBVersionWidgetProps> = ({
       />
       <DBUpgradeModal
         open={openUpgradeModal}
-        onClose={() => setUpgradeModal(false)}
+        onClose={() => {
+          setUpgradeModal(false);
+        }}
         universeData={currentUniverse}
       />
     </>

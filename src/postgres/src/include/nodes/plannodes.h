@@ -771,15 +771,21 @@ typedef struct YbBatchedNestLoop
 {
 	NestLoop nl;
 
-	/*
-	 * Only relevant if we're using the hash batching strategy.
-	 */
+	double first_batch_factor;
+	/* Only relevant if we're using the hash batching strategy. */
 
-	YbBNLHashClauseInfo *hashClauseInfos; /*
-										   * Array of information about each
-										   * hashable join clause.
-										   */
+	/*
+	 * Array of information about each
+	 * hashable join clause.
+	 */
+	YbBNLHashClauseInfo *hashClauseInfos;
 	int num_hashClauseInfos;
+	/* remaining fields are just like the sort-key info in struct Sort */
+	int			numSortCols;		/* number of sort-key columns */
+	AttrNumber *sortColIdx;		/* their indexes in the target list */
+	Oid		   *sortOperators;	/* OIDs of operators to sort them by */
+	Oid		   *collations;		/* OIDs of collations */
+	bool	   *nullsFirst;		/* NULLS FIRST/LAST directions */
 } YbBatchedNestLoop;
 
 typedef struct NestLoopParam

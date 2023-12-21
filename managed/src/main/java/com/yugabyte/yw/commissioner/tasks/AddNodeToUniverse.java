@@ -140,7 +140,7 @@ public class AddNodeToUniverse extends UniverseDefinitionTaskBase {
 
       if (!wasDecommissioned) {
         // Validate instance existence and connectivity before changing the state.
-        createInstanceExistsCheckTasks(universe.getUniverseUUID(), nodeSet);
+        createInstanceExistsCheckTasks(universe.getUniverseUUID(), taskParams(), nodeSet);
       }
 
       // Update Node State to being added if it is not in one of the intermediate states.

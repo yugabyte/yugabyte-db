@@ -233,7 +233,8 @@ pullRpczEntries(void)
      * while we're copying the entry or if its odd. The check for odd is needed for when a backend
      * has begun changing the entry but hasn't finished.
      */
-    for (;;)
+    int attempt = 1;
+    while (yb_pgstat_log_read_activity(beentry, ++attempt))
     {
       int			before_changecount;
       int			after_changecount;
@@ -341,7 +342,7 @@ ws_sighup_handler(SIGNAL_ARGS) {
 	int			save_errno = errno;
 
 	got_SIGHUP = true;
-	SetLatch(&MyProc->procLatch);
+	SetLatch(MyLatch);
 
 	errno = save_errno;
 }
@@ -414,8 +415,8 @@ webserver_worker_main(Datum unused)
   int rc;
   while (!got_SIGTERM)
   {
-    rc = WaitLatch(&MyProc->procLatch, WL_LATCH_SET | WL_POSTMASTER_DEATH, -1, PG_WAIT_EXTENSION);
-    ResetLatch(&MyProc->procLatch);
+    rc = WaitLatch(MyLatch, WL_LATCH_SET | WL_POSTMASTER_DEATH, -1, PG_WAIT_EXTENSION);
+    ResetLatch(MyLatch);
 
 		if (rc & WL_POSTMASTER_DEATH)
 			break;

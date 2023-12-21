@@ -65,8 +65,7 @@ extern int yb_locks_max_transactions;
 
 using namespace std::literals;
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 
 namespace {
 
@@ -327,7 +326,7 @@ class PgClient::Impl : public BigDataFetcher {
     return BuildTablePartitionList(resp.partitions(), table_id);
   }
 
-  Status FinishTransaction(Commit commit, std::optional<DdlMode> ddl_mode) {
+  Status FinishTransaction(Commit commit, const std::optional<DdlMode>& ddl_mode) {
     tserver::PgFinishTransactionRequestPB req;
     req.set_session_id(session_id_);
     req.set_commit(commit);
@@ -523,7 +522,9 @@ class PgClient::Impl : public BigDataFetcher {
 
     if (FLAGS_TEST_yb_enable_ash) {
       // Don't send ASH metadata if it's not set
-      if (ash_metadata_->is_set) {
+      // ash_metadata_ can be null during tests which directly create the
+      // pggate layer without the PG backend.
+      if (ash_metadata_ != nullptr && ash_metadata_->is_set) {
         auto* ash_metadata = options->mutable_ash_metadata();
         ash_metadata->set_yql_endpoint_tserver_uuid(local_tserver_uuid_, 16);
         ash_metadata->set_root_request_id(ash_metadata_->root_request_id, 16);
@@ -965,18 +966,20 @@ class PgClient::Impl : public BigDataFetcher {
 };
 
 std::string DdlMode::ToString() const {
-  return YB_STRUCT_TO_STRING(has_docdb_schema_changes);
+  return YB_STRUCT_TO_STRING(has_docdb_schema_changes, silently_altered_db);
 }
 
 void DdlMode::ToPB(tserver::PgFinishTransactionRequestPB_DdlModePB* dest) const {
   dest->set_has_docdb_schema_changes(has_docdb_schema_changes);
+  if (silently_altered_db) {
+    dest->mutable_silently_altered_db()->set_value(*silently_altered_db);
+  }
 }
 
 PgClient::PgClient() : impl_(new Impl) {
 }
 
-PgClient::~PgClient() {
-}
+PgClient::~PgClient() = default;
 
 Status PgClient::Start(
     rpc::ProxyCache* proxy_cache, rpc::Scheduler* scheduler,
@@ -1006,7 +1009,7 @@ Result<client::VersionedTablePartitionList> PgClient::GetTablePartitionList(
   return impl_->GetTablePartitionList(table_id);
 }
 
-Status PgClient::FinishTransaction(Commit commit, std::optional<DdlMode> ddl_mode) {
+Status PgClient::FinishTransaction(Commit commit, const std::optional<DdlMode>& ddl_mode) {
   return impl_->FinishTransaction(commit, ddl_mode);
 }
 
@@ -1244,5 +1247,4 @@ PerformResult Get(PerformResultFuture* future) {
   }, *future);
 }
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

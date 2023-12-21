@@ -827,7 +827,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
         });
     params.setUniverseUUID(universe.getUniverseUUID());
     providerEditRestrictionManager.onTaskCreated(backupTaskUUID, createBackup, params);
-    TaskInfo backupTaskInfo = new TaskInfo(TaskType.BackupUniverse);
+    TaskInfo backupTaskInfo = new TaskInfo(TaskType.BackupUniverse, null);
     backupTaskInfo.setTaskState(TaskInfo.State.Running);
     backupTaskInfo.setTaskUUID(backupTaskUUID);
     backupTaskInfo.setDetails(Json.newObject());
@@ -860,7 +860,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
         });
     params.setUniverseUUID(universe.getUniverseUUID());
     providerEditRestrictionManager.onTaskCreated(backupTaskUUID, createBackup, params);
-    TaskInfo backupTaskInfo = new TaskInfo(TaskType.BackupUniverse);
+    TaskInfo backupTaskInfo = new TaskInfo(TaskType.BackupUniverse, null);
     backupTaskInfo.setTaskState(TaskInfo.State.Running);
     backupTaskInfo.setTaskUUID(backupTaskUUID);
     backupTaskInfo.setDetails(Json.newObject());

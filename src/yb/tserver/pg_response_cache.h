@@ -16,6 +16,7 @@
 #include <functional>
 #include <memory>
 #include <vector>
+#include <utility>
 
 #include "yb/client/client_fwd.h"
 
@@ -23,7 +24,7 @@
 
 #include "yb/rpc/rpc_fwd.h"
 
-#include "yb/tserver/pg_client.fwd.h"
+#include "yb/tserver/pg_client.pb.h"
 #include "yb/tserver/pg_client_session.h"
 #include "yb/tserver/tserver_fwd.h"
 
@@ -41,6 +42,8 @@ namespace tserver {
 
 class PgResponseCache {
  public:
+  using KeyGroup = decltype(std::declval<PgPerformOptionsPB::CachingInfoPB>().key_group());
+
   PgResponseCache(
       const std::shared_ptr<MemTracker>& parent_mem_tracker, MetricEntity* metric_entity);
   ~PgResponseCache();
@@ -62,6 +65,12 @@ class PgResponseCache {
   Result<Setter> Get(
       PgPerformOptionsPB::CachingInfoPB* cache_info,
       PgPerformResponsePB* response, rpc::Sidecars* sidecars, CoarseTimePoint deadline);
+
+
+  struct DisablerType;
+  using Disabler = std::shared_ptr<DisablerType>;
+
+  [[nodiscard]] Disabler Disable(KeyGroup key_group);
 
  private:
   class Impl;

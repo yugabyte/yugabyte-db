@@ -542,7 +542,7 @@ public class NodeUniverseManager extends DevopsBase {
     }
     Cluster curCluster = universe.getCluster(node.placementUuid);
     if (curCluster.userIntent.providerType == CloudType.local) {
-      return localNodeUniverseManager.executeNodeAction(nodeAction, commandArgs, context);
+      return localNodeUniverseManager.executeNodeAction(universe, node, nodeAction, commandArgs);
     }
     return shellProcessHandler.run(commandArgs, context);
   }
