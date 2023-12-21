@@ -373,8 +373,7 @@ typedef struct YbSampleData *YbSample;
 YbSample ybBeginSample(Relation rel, int targrows);
 bool ybSampleNextBlock(YbSample ybSample);
 int ybFetchSample(YbSample ybSample, HeapTuple *rows);
-TupleTableSlot *ybFetchNext(YBCPgStatement handle,
-			TupleTableSlot *slot, Oid relid);
+void ybFetchNext(YBCPgStatement handle, TupleTableSlot *slot, Oid relid);
 
 int ybParallelWorkers(double numrows);
 
