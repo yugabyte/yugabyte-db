@@ -285,3 +285,10 @@ SELECT * FROM t WHERE h = 1 AND r in(1, 3) FOR KEY SHARE;
 DROP TABLE IF EXISTS address, address2, emp, emp2, emp_par1, emp_par1_1_100, emp_par2, emp_par3,
   fastpath, myemp, myemp2, myemp2_101_200, myemp2_1_100, p1, p2, pk_range_int_asc,
   single_row_decimal, t1, t2, test, test2, serial_test, tlateral1, tlateral2, mytest1, mytest2 CASCADE;
+
+-- insert into temp table in function body
+create temp table compos (f1 int, f2 text);
+create function fcompos1(v compos) returns void as $$
+insert into compos values (v.*);
+$$ language sql;
+select fcompos1(row(1,'one'));

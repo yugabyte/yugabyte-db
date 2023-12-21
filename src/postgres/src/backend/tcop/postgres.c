@@ -809,16 +809,6 @@ pg_analyze_and_rewrite_withcb(RawStmt *parsetree,
 	query = parse_analyze_withcb(parsetree, query_string, parserSetup, parserSetupArg,
 								 queryEnv);
 
-#ifdef YB_TODO
-	/* The IF block needs to be rewrite in this module. */
-	 if (pstate->p_target_relation &&
-		pstate->p_target_relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP
-		&& IsYugaByteEnabled())
-	{
-		SetTxnWithPGRel();
-	}
-#endif
-
 	if (log_parser_stats)
 		ShowUsage("PARSE ANALYSIS STATISTICS");
 
