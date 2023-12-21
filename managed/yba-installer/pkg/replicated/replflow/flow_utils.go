@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common/shell"
@@ -50,32 +51,35 @@ func deleteContainerImagesRegex(regex string) error {
 }
 
 // YbaVersion queries the yba version running in replicated using the api.
-func YbaVersion(config replicatedctl.AppConfig) (string, error) {
+func YbaVersion(config replicatedctl.AppView) (string, error) {
 	// Check if need http or https, while also getting the port
 	var urlSchema string
 	var port int
-	var portEntry replicatedctl.ConfigEntry
-	isHTTPSEntry := config.Get("https_enabled")
-	if isHTTPSEntry == replicatedctl.NilConfigEntry {
-		return "", fmt.Errorf("no https_enabled found")
-	}
-	https, err := isHTTPSEntry.Bool()
-	if err != nil {
-		return "", err
+	var portEntry replicatedctl.ViewItem
+	var https bool
+	isHTTPSEntry, err := config.Get("https_enabled")
+	// if there is no https entry, assume http
+	if err == nil {
+		https = isHTTPSEntry.Value == "1"
+	} else {
+		https = false
 	}
 	if https {
 		urlSchema = "https"
-		portEntry = config.Get("ui_https_port")
+		portEntry, err = config.Get("ui_https_port")
 	} else {
 		urlSchema = "http"
-		portEntry = config.Get("ui_http_port")
+		portEntry, err = config.Get("ui_http_port")
 	}
-	if portEntry == replicatedctl.NilConfigEntry {
-		return "", fmt.Errorf("no %s port entry found", urlSchema)
-	}
-	port, err = portEntry.Int()
-	if err != nil {
-		return "", fmt.Errorf("failed to parse port: %w", err)
+	// If there is not port entry for either, assume defaults
+	// also use defaults if we fail to convert from a string to an int
+	if err == nil {
+		port, err = strconv.Atoi(portEntry.Get())
+		if err != nil {
+			port = defaultPort(https)
+		}
+	} else {
+		port = defaultPort(https)
 	}
 
 	url := fmt.Sprintf("%s://localhost:%d/api/v1/app_version", urlSchema, port)
@@ -90,4 +94,12 @@ func YbaVersion(config replicatedctl.AppConfig) (string, error) {
 		return "", fmt.Errorf("unable to parse version: %w", err)
 	}
 	return result["version"], nil
+}
+
+func defaultPort(isHttps bool) int {
+	if isHttps {
+		return 443
+	} else {
+		return 80
+	}
 }

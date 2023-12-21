@@ -104,9 +104,17 @@ NOTE: THIS FEATURE IS EARLY ACCESS
 		state.Replicated.PrometheusFileUser = statInfo.Uid
 		state.Replicated.PrometheusFileGroup = statInfo.Gid
 
-		version, err := replflow.YbaVersion(config)
+		version, err := replflow.YbaVersion(configView)
 		if err != nil {
-			log.Fatal("unable to validate running YBA version: " + err.Error())
+			if os.Getenv("YBA_MODE") == "dev" {
+				prompt := "could not query yba version due to unexpected replicated settings. Continue " +
+					"without version check?"
+				if !common.UserConfirm(prompt, common.DefaultNo) {
+					log.Fatal("not starting migration")
+				}
+			} else {
+				log.Fatal("unable to validate running YBA version: " + err.Error())
+			}
 		}
 		if version != ybaCtl.Version() {
 			prompt := "Detected version mismatch between active YBA and migration target version. " +
