@@ -126,8 +126,8 @@ DEFINE_test_flag(
     bool, allow_ycql_transactional_xcluster, false,
     "Determines if xCluster transactional replication on YCQL tables is allowed.");
 
-DEFINE_test_flag(bool, yb_enable_cdc_consistent_snapshot_streams, false,
-                 "Enable support for CDC Consistent Snapshot Streams");
+DEFINE_RUNTIME_PREVIEW_bool(yb_enable_cdc_consistent_snapshot_streams, false,
+                            "Enable support for CDC Consistent Snapshot Streams");
 
 DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_int32(master_rpc_timeout_ms);
@@ -870,7 +870,7 @@ Status CatalogManager::CreateNewXReplStream(
         req.cdcsdk_consistent_snapshot_option() == CDCSDKSnapshotOption::USE_SNAPSHOT;
     }
     has_consistent_snapshot_option =
-      has_consistent_snapshot_option && FLAGS_TEST_yb_enable_cdc_consistent_snapshot_streams;
+      has_consistent_snapshot_option && FLAGS_yb_enable_cdc_consistent_snapshot_streams;
 
     // Construct the CDC stream if the producer wasn't bootstrapped.
     auto stream_id =
