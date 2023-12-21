@@ -2705,6 +2705,8 @@ bool
 ybc_getnext_aggslot(IndexScanDesc scan, YBCPgStatement handle,
 					bool index_only_scan)
 {
+	Assert(scan->yb_agg_slot);
+
 	/*
 	 * As of 2023-08-10, the relid passed into ybFetchNext is not going to
 	 * be used as it is only used when there are system targets, not
@@ -2714,8 +2716,7 @@ ybc_getnext_aggslot(IndexScanDesc scan, YBCPgStatement handle,
 	 * TODO(jason): this may need to be revisited when supporting GROUP BY
 	 * aggregate pushdown where system columns are directly targeted.
 	 */
-	scan->yb_agg_slot = ybFetchNext(handle, scan->yb_agg_slot,
-									InvalidOid /* relid */);
+	ybFetchNext(handle, scan->yb_agg_slot, InvalidOid /* relid */);
 	/* For IndexScan, hack to make index_getnext think there are tuples. */
 	if (!index_only_scan)
 		scan->xs_hitup = (HeapTuple) 1;
@@ -3544,7 +3545,7 @@ ybFetchSample(YbSample ybSample, HeapTuple *rows)
  * provided relid and t_ybctid field is set to returned ybctid value. The heap
  * tuple is allocated in the slot's memory context.
  */
-TupleTableSlot *
+void
 ybFetchNext(YBCPgStatement handle,
 			TupleTableSlot *slot, Oid relid)
 {
@@ -3581,8 +3582,6 @@ ybFetchNext(YBCPgStatement handle,
 			MemoryContextSwitchTo(oldcontext);
 		}
 	}
-
-	return slot;
 }
 
 /***************************************************************************
