@@ -631,6 +631,27 @@
   to = "/preview/tutorials/azure/"
   force = true
 
+[[redirects]]
+  from = "/v2.16/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-script/"
+  to = "/v2.16/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/"
+  force = true
+
+[[redirects]]
+  from = "/v2.16/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/"
+  to = "/v2.16/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/"
+  force = true
+
+[[redirects]]
+  from = "/v2.14/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-script/"
+  to = "/v2.14/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/"
+  force = true
+
+[[redirects]]
+  from = "/v2.14/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/"
+  to = "/v2.14/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/"
+  force = true
+
+# YBA High availability
 
 [[redirects]]
   from = "/preview/yugabyte-platform/manage-deployments/high-availability/"
