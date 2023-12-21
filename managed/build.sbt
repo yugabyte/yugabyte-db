@@ -1,6 +1,7 @@
 import jline.console.ConsoleReader
 import play.sbt.PlayImport.PlayKeys.{playInteractionMode, playMonitoredFiles}
 import play.sbt.PlayInteractionMode
+import java.nio.charset.StandardCharsets
 import sbt.Tests._
 
 import scala.sys.process.Process
@@ -8,6 +9,7 @@ import scala.sys.process.Process
 historyPath := Some(file(System.getenv("HOME") + "/.sbt/.yugaware-history"))
 
 useCoursier := false
+
 
 // ------------------------------------------------------------------------------------------------
 // Constants
@@ -89,6 +91,7 @@ lazy val versionGenerate = taskKey[Int]("Add version_metadata.json file")
 
 lazy val buildVenv = taskKey[Int]("Build venv")
 lazy val generateCrdObjects = taskKey[Int]("Generating CRD classes..")
+lazy val generateOssConfig = taskKey[Int]("Generating OSS class.")
 lazy val buildUI = taskKey[Int]("Build UI")
 lazy val buildModules = taskKey[Int]("Build modules")
 lazy val buildDependentArtifacts = taskKey[Int]("Build dependent artifacts")
@@ -100,6 +103,8 @@ lazy val cleanUI = taskKey[Int]("Clean UI")
 lazy val cleanVenv = taskKey[Int]("Clean venv")
 lazy val cleanModules = taskKey[Int]("Clean modules")
 lazy val cleanCrd = taskKey[Int]("Clean CRD")
+lazy val cleanOperatorConfig = taskKey[Unit]("Clean OperatorConfig")
+
 
 
 lazy val compileJavaGenClient = taskKey[Int]("Compile generated Java code")
@@ -126,6 +131,8 @@ lazy val root = (project in file("."))
   })
 
 javacOptions ++= Seq("-source", "17", "-target", "17")
+
+
 Compile / managedClasspath += baseDirectory.value / "target/scala-2.13/"
 version := sys.process.Process("cat version.txt").lineStream_!.head
 Global / onChangedBuildSource := ReloadOnSourceChanges
@@ -319,9 +326,11 @@ externalResolvers := {
 (Compile / compile) := ((Compile / compile) dependsOn buildDependentArtifacts).value
 
 (Compile / compilePlatform) := {
-  (Compile / compile).value
+
+
   Def.sequential(
       generateCrdObjects,
+      generateOssConfig,
       buildVenv,
       releaseModulesLocally
     ).value
@@ -333,6 +342,7 @@ externalResolvers := {
 cleanPlatform := {
   clean.value
   (swagger / clean).value
+  cleanOperatorConfig.value
   cleanCrd.value
   cleanVenv.value
   cleanUI.value
@@ -378,8 +388,29 @@ releaseModulesLocally := {
 buildDependentArtifacts := {
   ybLog("Building dependencies...")
   generateCrdObjects.value
+  generateOssConfig.value
   val status = Process("mvn install -P buildDependenciesOnly", baseDirectory.value / "parent-module").!
   status
+}
+
+generateOssConfig := {
+  ybLog("Generating oss config class.")
+  val srcTemplatePath = (baseDirectory.value / "src/main/resources/templates/OperatorConfig.template").toPath
+  val generatedFilePath = (baseDirectory.value / "target/scala-2.13/com/yugabyte/operator/OperatorConfig.java").toPath
+  val directoryPath =  (baseDirectory.value / "target/scala-2.13/com/yugabyte/operator/").toPath
+
+  java.nio.file.Files.createDirectories(directoryPath)
+
+  val regex = "###OSSMODE###".r
+  val replacement = if (sys.props.getOrElse("communityOperator.enabled", false) == "true") "true" else "false"
+  val source = scala.io.Source.fromFile(srcTemplatePath.toFile)
+  try {
+    val content = regex.replaceAllIn(source.mkString, replacement)
+    java.nio.file.Files.write(generatedFilePath, content.getBytes(StandardCharsets.UTF_8))
+  } finally {
+    source.close()
+  }
+  0 // Assuming success
 }
 
 generateCrdObjects := {
@@ -431,6 +462,14 @@ cleanVenv := {
   status
 }
 
+cleanOperatorConfig := {
+  val filePath = baseDirectory.value / "target/scala-2.13/OperatorConfig.java"
+  val file = sbt.file(filePath.toString)
+  if (file.exists()) {
+    sbt.IO.delete(file)
+  }
+}
+
 cleanCrd := {
   ybLog("Cleaning CRD generated code...")
   val generatedSourcesDirectory = baseDirectory.value / "target/scala-2.13/"
@@ -476,6 +515,8 @@ Universal / packageZipTarball := (Universal / packageZipTarball).dependsOn(versi
 Universal / packageBin := (Universal / packageBin).dependsOn(versionGenerate, buildDependentArtifacts).value
 
 Universal / javaOptions += "-J-XX:G1PeriodicGCInterval=120000"
+
+
 
 javaAgents += "io.kamon" % "kanela-agent" % "1.0.18"
 
