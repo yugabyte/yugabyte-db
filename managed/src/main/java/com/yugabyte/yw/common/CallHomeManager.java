@@ -58,7 +58,7 @@ public class CallHomeManager {
   }
 
   // Email address from YugaByte to which to send diagnostics, if enabled.
-  private final String YB_CALLHOME_URL = "http://yw-diagnostics.yugabyte.com";
+  private final String YB_CALLHOME_URL = "https://yw-diagnostics.yugabyte.com";
 
   public static final Logger LOG = LoggerFactory.getLogger(CallHomeManager.class);
 
