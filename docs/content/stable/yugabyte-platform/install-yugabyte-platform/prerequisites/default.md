@@ -43,18 +43,24 @@ Licensing (such as a license file in the case of YBA Installer or Replicated, or
 
 </ul>
 
+Installing using Replicated requires the following:
+
+- Ability to install and configure [docker-engine](https://docs.docker.com/engine/).
+- Ability to install and configure [Replicated](https://www.replicated.com/install-options/), which is a containerized application itself and needs to pull containers from its own [Replicated.com container registry](https://help.replicated.com/docs/native/getting-started/docker-registries/).
+- Ability to pull Yugabyte container images from the [Quay.io](https://quay.io/) container registry (this will be done by Replicated automatically).
+
 ## Supported Linux distributions
 
 YugabyteDB Anywhere is supported on all Linux distributions that Replicated supports. This includes, but is not limited to the following:
 
 - CentOS 7
-- Alma Linux 8
-- Alma Linux 9
+- AlmaLinux 8
+- AlmaLinux 9
 - Ubuntu 18
 - Ubuntu 20
 - RedHat Enterprise Linux 7
 - RedHat Enterprise Linux 8
-- SUSE Linux Enterprise Server (SLES) 15 SP4 (Tech Preview)
+- SUSE Linux Enterprise Server (SLES) 15 SP4 {{<badge/ea>}}
 
 ## Hardware requirements
 
