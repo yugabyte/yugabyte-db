@@ -26,6 +26,7 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.Set;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.junit.Before;
@@ -44,12 +45,15 @@ public class XClusterUniverseServiceTest extends FakeDBApplication {
   @Mock private YBClientService ybService;
   @Mock private AutoFlagUtil mockAutoFlagUtil;
   @Mock RuntimeConfGetter mockConfGetter;
+  @Mock ThreadPoolExecutor executor;
 
   @Before
   public void setup() {
     ModelFactory.testCustomer();
     defaultUniverse = ModelFactory.createUniverse("univ-1");
     TestHelper.updateUniverseVersion(defaultUniverse, "2.17.0.0-b1");
+    when(mockPlatformExecutorFactory.createExecutor(anyString(), any())).thenReturn(executor);
+
     xClusterUniverseService =
         new XClusterUniverseService(
             mockGFlagsValidation,

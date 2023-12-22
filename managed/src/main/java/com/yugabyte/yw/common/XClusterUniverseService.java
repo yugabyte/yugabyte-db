@@ -37,8 +37,8 @@ import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.concurrent.ThreadPoolExecutor;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
@@ -74,7 +74,7 @@ public class XClusterUniverseService {
   private final YbClientConfigFactory ybClientConfigFactory;
   private static final String IS_BOOTSTRAP_REQUIRED_POOL_NAME =
       "xcluster.is_bootstrap_required_rpc_pool";
-  private final ExecutorService isBootstrapRequiredExecutor;
+  public final ThreadPoolExecutor isBootstrapRequiredExecutor;
   private static final int IS_BOOTSTRAP_REQUIRED_RPC_PARTITION_SIZE = 32;
   private static final int IS_BOOTSTRAP_REQUIRED_RPC_MAX_RETRIES_NUMBER = 4;
 
@@ -364,6 +364,13 @@ public class XClusterUniverseService {
 
         // Make the requests for all the partitions in parallel.
         List<Future<Map<String, Boolean>>> fs = new ArrayList<>();
+
+        int maxPoolSize =
+            confGetter.getGlobalConf(GlobalConfKeys.xclusterBootstrapRequiredRpcMaxThreads);
+        if (maxPoolSize != this.isBootstrapRequiredExecutor.getMaximumPoolSize()) {
+          this.isBootstrapRequiredExecutor.setMaximumPoolSize(maxPoolSize);
+        }
+
         for (Map<String, String> tableIdStreamIdPartition : tableIdStreamIdMapPartitions) {
           fs.add(
               this.isBootstrapRequiredExecutor.submit(
