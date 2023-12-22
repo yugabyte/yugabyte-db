@@ -35,10 +35,13 @@
 #include "catalog/pg_type.h"
 #include "catalog/pg_yb_role_profile.h"
 #include "commands/dbcommands.h"
+#include "libpq/libpq.h"
 #include "libpq/libpq-be.h"
+#include "libpq/pqformat.h"
 #include "pg_yb_utils.h"
 #include "utils/guc.h"
 #include "utils/syscache.h"
+
 #include "yb_ysql_conn_mgr_helper.h"
 
 /* Max size of string that can be stored in shared memory */
@@ -602,51 +605,88 @@ YbHandleSetSessionParam(int yb_client_id)
 		DeleteSharedMemory((key_t) abs(yb_client_id));
 }
 
-Oid
-GetRoleOid(char *user_name, bool *is_superuser)
+/*
+ * This function does checks that are mentioned in InitializeSessionUserId
+ * function present in postinit.c and sets the is_superuser and roleid.
+ *
+ * Function InitializeSessionUserId can't be used here instead,
+ * due to the need of a change in the signature of the function and handling of
+ * failures.
+ *
+ * Checks done in this function:
+ *  		1. Does the role exist.
+ * 			2. Is the role permitted to login.
+ */
+static int8_t
+SetLogicalClientUserDetailsIfValid(const char *rolename, bool *is_superuser,
+						  Oid *roleid)
 {
-	HeapTuple roleTuple = NULL;
-	Oid roleid = InvalidOid;
+	HeapTuple	roleTup;
+	Form_pg_authid rform;
+	char	   *rname;
 
-	/* Get role info from pg_authid */
-	roleTuple = SearchSysCache1(AUTHNAME, PointerGetDatum(user_name));
-	if (HeapTupleIsValid(roleTuple))
+	/* TODO(janand) GH #19951 Do we need support for initializing via OID */
+	Assert(rolename != NULL);
+
+	roleTup = SearchSysCache1(AUTHNAME, PointerGetDatum(rolename));
+	if (!HeapTupleIsValid(roleTup))
 	{
-		Form_pg_authid	rform = (Form_pg_authid) GETSTRUCT(roleTuple);
-		roleid = HeapTupleGetOid(roleTuple);
-		*is_superuser = ((Form_pg_authid) GETSTRUCT(roleTuple))->rolsuper;
+		YbSendFatalForLogicalConnectionPacket();
+		ereport(WARNING,
+				(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
+				 errmsg("role \"%s\" does not exist", rolename)));
 
-		if (!rform->rolcanlogin)
-		{
-			ereport(WARNING,
-					(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
-					 errmsg("role \"%s\" is not permitted to log in",
-							user_name)));
-			roleid = InvalidOid;
-		}
-
-		/* TODO(janand) #18886 Use CountUserBackends to ensure the limit of number of login users */
-
-		ReleaseSysCache(roleTuple);
+		/* No need to call ReleaseSysCache here since the cache is invalid */
+		return -1;
 	}
-	return roleid;
+
+	/* TODO(janand) GH #19951 Do we need support for initializing via OID */
+	rform = (Form_pg_authid) GETSTRUCT(roleTup);
+	*roleid = HeapTupleGetOid(roleTup);
+	rname = NameStr(rform->rolname);
+	*is_superuser = rform->rolsuper;
+
+	/*
+	 * Is role allowed to login at all?
+	 */
+	if (!rform->rolcanlogin)
+	{
+		YbSendFatalForLogicalConnectionPacket();
+		ereport(WARNING,
+				(errcode(ERRCODE_INVALID_AUTHORIZATION_SPECIFICATION),
+				 errmsg("role \"%s\" is not permitted to log in", rname)));
+		ReleaseSysCache(roleTup);
+		return -1;
+	}
+
+	/*
+	 * TODO(janand) GH #18886 Add support for "too many connections for role"
+	 * error.
+	 */
+	ReleaseSysCache(roleTup);
+	return 0;
 }
 
 void
 YbCreateClientId(void)
 {
+	bool		is_superuser;
+	Oid			user;
+	Oid			database;
+
 	/* This feature is only for Ysql Connection Manager */
 	Assert(yb_is_client_ysqlconnmgr);
 
-	bool is_superuser;
-	Oid database = get_database_oid(MyProcPort->database_name, false);
-	Oid user = GetRoleOid(MyProcPort->user_name, &is_superuser);
+	if (SetLogicalClientUserDetailsIfValid(MyProcPort->user_name, &is_superuser, &user) < 0)
+		return;
 
-	if (user == InvalidOid || database == InvalidOid)
+	database = get_database_oid(MyProcPort->database_name, true);
+	if (database == InvalidOid)
 	{
+		YbSendFatalForLogicalConnectionPacket();
 		ereport(WARNING,
-				(errmsg("Unable to fetch user/database oid for the "
-							   "client connection.")));
+				(errmsg("database \"%s\" does not exist",
+						MyProcPort->database_name)));
 		return;
 	}
 
@@ -656,4 +696,23 @@ YbCreateClientId(void)
 		ereport(WARNING, (errhint("shmkey=%d", new_client_id)));
 	else
 		ereport(FATAL, (errmsg("Unable to create the shared memory block")));
+}
+
+/*
+ * `FATALFORLOGICALCONNECTION` packet informs the odyssey that the upcoming
+ * WARNING packet should be treated as a FATAL packet.
+ */
+void
+YbSendFatalForLogicalConnectionPacket()
+{
+	Assert(YbIsClientYsqlConnMgr());
+	StringInfoData buf;
+
+	CHECK_FOR_INTERRUPTS();
+
+	pq_beginmessage(&buf, 'F');
+	pq_endmessage(&buf);
+
+	pq_flush();
+	CHECK_FOR_INTERRUPTS();
 }
