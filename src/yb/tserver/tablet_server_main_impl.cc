@@ -130,6 +130,7 @@ DECLARE_string(ysql_pg_conf);
 DECLARE_string(metric_node_name);
 DECLARE_bool(enable_ysql_conn_mgr);
 DECLARE_bool(enable_ysql);
+DECLARE_bool(enable_ysql_conn_mgr_stats);
 DECLARE_uint32(ysql_conn_mgr_port);
 
 
@@ -249,6 +250,9 @@ int TabletServerMain(int argc, char** argv) {
   call_home = std::make_unique<TserverCallHome>(server.get());
   call_home->ScheduleCallHome();
 
+  if(!FLAGS_enable_ysql_conn_mgr)
+    FLAGS_enable_ysql_conn_mgr_stats = false;
+
   std::unique_ptr<PgSupervisor> pg_supervisor;
   if (FLAGS_start_pgsql_proxy || FLAGS_enable_ysql) {
     auto pg_process_conf_result = PgProcessConf::CreateValidateAndRunInitDb(
@@ -295,8 +299,8 @@ int TabletServerMain(int argc, char** argv) {
 
     // Construct the config file for the Ysql Connection Manager process.
     ysql_conn_mgr_supervisor = std::make_unique<ysql_conn_mgr_wrapper::YsqlConnMgrSupervisor>(
-        ysql_conn_mgr_wrapper::YsqlConnMgrConf(
-            tablet_server_options->fs_opts.data_paths.front()));
+        ysql_conn_mgr_wrapper::YsqlConnMgrConf(tablet_server_options->fs_opts.data_paths.front()),
+        FLAGS_enable_ysql_conn_mgr_stats ? pg_supervisor->GetYsqlConnManagerStatsShmkey() : 0);
 
     LOG_AND_RETURN_FROM_MAIN_NOT_OK(ysql_conn_mgr_supervisor->Start());
   }

@@ -702,7 +702,12 @@ index_getnext_slot(IndexScanDesc scan, ScanDirection direction, TupleTableSlot *
 			if (tid == NULL)
 				break;
 
-			Assert(ItemPointerEquals(tid, &scan->xs_heaptid));
+			/*
+			 * YB should not set TID (neither t_self nor t_ybctid).  Update
+			 * this code after merging with master D31232.
+			 */
+			Assert(IsYBRelation(scan->indexRelation) ||
+				   ItemPointerEquals(tid, &scan->xs_heaptid));
 		}
 
 		/*

@@ -7,7 +7,7 @@ jobs:
     release_artifact: false
 
   - os: centos7
-    compiler: clang15
+    compiler: clang16
     build_type: tsan
     release_artifact: false
 
@@ -17,12 +17,12 @@ jobs:
     release_artifact: false
 
   - os: alma8
-    compiler: clang15
+    compiler: clang16
     build_type: release
     release_artifact: true
 
   - os: alma8
-    compiler: clang15
+    compiler: clang16
     build_type: release
     architecture: aarch64
     release_artifact: true
@@ -51,6 +51,6 @@ jobs:
     release_artifact: true
 
   - os: ubuntu20.04
-    compiler: clang15
+    compiler: clang16
     build_type: debug
     release_artifact: false

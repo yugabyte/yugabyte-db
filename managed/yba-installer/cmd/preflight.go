@@ -12,6 +12,7 @@ import (
 var (
 	skippedPreflightChecks []string
 	upgradePreflightChecks bool
+	migratePreflightChecks bool
 )
 
 var preflightCmd = &cobra.Command{
@@ -40,6 +41,8 @@ var preflightCmd = &cobra.Command{
 		} else {
 			if upgradePreflightChecks {
 				checksToRun = preflight.UpgradeChecks
+			} else if migratePreflightChecks {
+				checksToRun = preflight.ReplicatedMigrateChecks
 			}
 			// TODO: We should allow the user to better specify which checks to run.
 			// Will do this as we implement a set of upgrade preflight checks
@@ -58,6 +61,8 @@ func init() {
 		[]string{}, "Preflight checks to skip by name")
 	preflightCmd.Flags().BoolVar(&upgradePreflightChecks, "upgrade", false,
 		"run preflight checks for upgrade")
+	preflightCmd.Flags().BoolVar(&migratePreflightChecks, "migrate", false,
+		"run preflight checks for replicted migration")
 
 	rootCmd.AddCommand(preflightCmd)
 }

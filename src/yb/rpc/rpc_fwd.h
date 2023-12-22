@@ -109,6 +109,7 @@ class Messenger;
 
 class OutboundCall;
 typedef std::shared_ptr<OutboundCall> OutboundCallPtr;
+typedef std::weak_ptr<OutboundCall> OutboundCallWeakPtr;
 
 class OutboundData;
 typedef std::shared_ptr<OutboundData> OutboundDataPtr;

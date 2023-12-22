@@ -3,41 +3,30 @@
 package com.yugabyte.yw.controllers;
 
 import static com.yugabyte.yw.commissioner.Common.CloudType.aws;
-import static com.yugabyte.yw.common.Util.SYSTEM_PLATFORM_DB;
 import static com.yugabyte.yw.common.Util.getUUIDRepresentation;
-import static com.yugabyte.yw.forms.TableDefinitionTaskParams.createFromResponse;
-import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.annotations.VisibleForTesting;
 import com.google.inject.Inject;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
-import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTableSpaces;
-import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteTableFromUniverse;
-import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceInfo;
-import com.yugabyte.yw.common.TableSpaceStructures.TableSpaceQueryResponse;
-import com.yugabyte.yw.common.TableSpaceUtil;
-import com.yugabyte.yw.common.backuprestore.BackupUtil;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.services.YBClientService;
-import com.yugabyte.yw.common.utils.FileUtils;
+import com.yugabyte.yw.controllers.handlers.UniverseTableHandler;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.CreateTablespaceParams;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
-import com.yugabyte.yw.metrics.MetricQueryHelper;
-import com.yugabyte.yw.metrics.MetricQueryResponse;
+import com.yugabyte.yw.forms.TableInfoForm;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
@@ -46,48 +35,29 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.ColumnDetails;
 import com.yugabyte.yw.models.helpers.CommonUtils;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.TableDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
-import io.swagger.annotations.ApiModel;
-import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.ApiResponse;
 import io.swagger.annotations.ApiResponses;
 import io.swagger.annotations.Authorization;
-import java.io.IOException;
-import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Collections;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
-import java.util.function.BiConsumer;
-import java.util.function.Function;
 import java.util.stream.Collectors;
-import lombok.Builder;
-import lombok.Data;
-import lombok.EqualsAndHashCode;
-import lombok.ToString;
-import lombok.extern.jackson.Jacksonized;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.CommonTypes.TableType;
-import org.yb.CommonTypes.YQLDatabase;
-import org.yb.client.GetTableSchemaResponse;
-import org.yb.client.ListNamespacesResponse;
-import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
-import org.yb.master.MasterTypes.NamespaceIdentifierPB;
 import org.yb.master.MasterTypes.RelationType;
-import play.Environment;
 import play.data.Form;
 import play.libs.Json;
 import play.mvc.Http;
@@ -101,52 +71,24 @@ public class TablesController extends AuthenticatedController {
 
   private static final Logger LOG = LoggerFactory.getLogger(TablesController.class);
 
-  private static final Set<String> PGSQL_SYSTEM_NAMESPACE_LIST =
-      new HashSet<>(Arrays.asList("system_platform", "template0", "template1"));
-  private static final Set<String> YCQL_SYSTEM_NAMESPACES_LIST =
-      new HashSet<>(Arrays.asList("system_schema", "system_auth", "system"));
-
-  private static final String MASTERS_UNAVAILABLE_ERR_MSG =
-      "Expected error. Masters are not currently queryable.";
-
-  private static final String PARTITION_QUERY_PATH = "queries/fetch_table_partitions.sql";
-
-  private static final String MASTER_LEADER_TIMEOUT_CONFIG_PATH =
-      "yb.wait_for_master_leader_timeout";
-  private static final String TABLEGROUP_ID_SUFFIX = ".tablegroup.parent.uuid";
-  private static final String COLOCATED_NAME_SUFFIX = ".colocated.parent.tablename";
-  private static final String COLOCATION_NAME_SUFFIX = ".colocation.parent.tablename";
-
   Commissioner commissioner;
 
   private final YBClientService ybService;
 
-  private final MetricQueryHelper metricQueryHelper;
-
   private final CustomerConfigService customerConfigService;
 
-  private final NodeUniverseManager nodeUniverseManager;
-
-  private final Environment environment;
-
-  private final Config config;
+  private final UniverseTableHandler tableHandler;
 
   @Inject
   public TablesController(
       Commissioner commissioner,
       YBClientService service,
-      MetricQueryHelper metricQueryHelper,
       CustomerConfigService customerConfigService,
-      NodeUniverseManager nodeUniverseManager,
-      Config config,
-      Environment environment) {
+      UniverseTableHandler tableHandler) {
     this.commissioner = commissioner;
     this.ybService = service;
-    this.metricQueryHelper = metricQueryHelper;
     this.customerConfigService = customerConfigService;
-    this.nodeUniverseManager = nodeUniverseManager;
-    this.environment = environment;
-    this.config = config;
+    this.tableHandler = tableHandler;
   }
 
   @ApiOperation(
@@ -161,42 +103,17 @@ public class TablesController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.forms.TableDefinitionTaskParams",
         paramType = "body")
   })
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result create(UUID customerUUID, UUID universeUUID, Http.Request request) {
-    // Validate customer UUID and universe UUID
-    Customer customer = Customer.getOrBadRequest(customerUUID);
-    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
     Form<TableDefinitionTaskParams> formData =
         formFactory.getFormDataOrBadRequest(request, TableDefinitionTaskParams.class);
     TableDefinitionTaskParams taskParams = formData.get();
-    // Submit the task to create the table.
-    if (taskParams.tableDetails == null) {
-      throw new PlatformServiceException(BAD_REQUEST, "Table details can not be null.");
-    }
-    TableDetails tableDetails = taskParams.tableDetails;
-    UUID taskUUID = commissioner.submit(TaskType.CreateCassandraTable, taskParams);
-    LOG.info(
-        "Submitted create table for {}:{}, task uuid = {}.",
-        taskParams.tableUUID,
-        CommonUtils.logTableName(tableDetails.tableName),
-        taskUUID);
-
-    // Add this task uuid to the user universe.
-    // TODO: check as to why we aren't populating the tableUUID from middleware
-    // Which means all the log statements above and below are basically logging null?
-    CustomerTask.create(
-        customer,
-        universe.getUniverseUUID(),
-        taskUUID,
-        CustomerTask.TargetType.Table,
-        CustomerTask.TaskType.Create,
-        tableDetails.tableName);
-    LOG.info(
-        "Saved task uuid {} in customer tasks table for table {}:{}.{}",
-        taskUUID,
-        taskParams.tableUUID,
-        tableDetails.keyspace,
-        CommonUtils.logTableName(tableDetails.tableName));
-
+    UUID taskUUID = tableHandler.create(customerUUID, universeUUID, taskParams);
     auditService()
         .createAuditEntryWithReqBody(
             request, Audit.TargetType.Table, null, Audit.ActionType.Create, taskUUID);
@@ -208,60 +125,25 @@ public class TablesController extends AuthenticatedController {
       nickname = "alterTable",
       response = Object.class,
       responseContainer = "Map")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result alter(UUID cUUID, UUID uniUUID, UUID tableUUID, Request request) {
     return TODO(request);
   }
 
   @ApiOperation(value = "Drop a YugabyteDB table", nickname = "dropTable", response = YBPTask.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result drop(UUID customerUUID, UUID universeUUID, UUID tableUUID, Http.Request request) {
-    // Validate customer UUID
-    Customer customer = Customer.getOrBadRequest(customerUUID);
-    // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
-    final String masterAddresses = universe.getMasterAddresses(true);
-    if (masterAddresses.isEmpty()) {
-      throw new PlatformServiceException(SERVICE_UNAVAILABLE, MASTERS_UNAVAILABLE_ERR_MSG);
-    }
-    String certificate = universe.getCertificateNodetoNode();
-    YBClient client = ybService.getClient(masterAddresses, certificate);
-    GetTableSchemaResponse schemaResponse;
-    try {
-      schemaResponse = client.getTableSchemaByUUID(tableUUID.toString().replace("-", ""));
-    } catch (Exception e) {
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
-    }
-    if (schemaResponse == null) {
-      throw new PlatformServiceException(BAD_REQUEST, "No table for UUID: " + tableUUID);
-    }
-    ybService.closeClient(client, masterAddresses);
-    DeleteTableFromUniverse.Params taskParams = new DeleteTableFromUniverse.Params();
-    taskParams.setUniverseUUID(universeUUID);
-    taskParams.expectedUniverseVersion = -1;
-    taskParams.tableUUID = tableUUID;
-    taskParams.tableName = schemaResponse.getTableName();
-    taskParams.keyspace = schemaResponse.getNamespace();
-    taskParams.masterAddresses = masterAddresses;
-
-    UUID taskUUID = commissioner.submit(TaskType.DeleteTable, taskParams);
-    LOG.info(
-        "Submitted delete table for {}:{}, task uuid = {}.",
-        taskParams.tableUUID,
-        CommonUtils.logTableName(taskParams.getFullName()),
-        taskUUID);
-
-    CustomerTask.create(
-        customer,
-        universeUUID,
-        taskUUID,
-        CustomerTask.TargetType.Table,
-        CustomerTask.TaskType.Delete,
-        taskParams.getFullName());
-    LOG.info(
-        "Saved task uuid {} in customer tasks table for table {}:{}",
-        taskUUID,
-        taskParams.tableUUID,
-        CommonUtils.logTableName(taskParams.getFullName()));
-
+    UUID taskUUID = tableHandler.drop(customerUUID, universeUUID, tableUUID);
     auditService()
         .createAuditEntryWithReqBody(
             request, Audit.TargetType.Table, tableUUID.toString(), Audit.ActionType.Drop, taskUUID);
@@ -273,6 +155,7 @@ public class TablesController extends AuthenticatedController {
       response = Object.class,
       responseContainer = "Map",
       hidden = true)
+  @AuthzPath
   public Result getColumnTypes() {
     ColumnDetails.YQLDataType[] dataTypes = ColumnDetails.YQLDataType.values();
     ObjectNode result = Json.newObject();
@@ -295,298 +178,56 @@ public class TablesController extends AuthenticatedController {
       notes = "Get a list of all defined column types.",
       response = ColumnDetails.YQLDataType.class,
       responseContainer = "List")
+  @AuthzPath
   public Result getYQLDataTypes() {
     return PlatformResults.withData(ColumnDetails.YQLDataType.values());
-  }
-
-  @ApiModel(description = "Table information response")
-  @Builder
-  @Jacksonized
-  static class TableInfoResp {
-
-    @ApiModelProperty(value = "Table ID", accessMode = READ_ONLY)
-    public final String tableID;
-
-    @ApiModelProperty(value = "Table UUID", accessMode = READ_ONLY)
-    public final UUID tableUUID;
-
-    @ApiModelProperty(value = "Keyspace")
-    public final String keySpace;
-
-    @ApiModelProperty(value = "Table type")
-    public final TableType tableType;
-
-    @ApiModelProperty(value = "Table name")
-    public final String tableName;
-
-    @ApiModelProperty(value = "Relation type")
-    public final RelationType relationType;
-
-    @ApiModelProperty(value = "SST size in bytes", accessMode = READ_ONLY)
-    public final double sizeBytes;
-
-    @ApiModelProperty(value = "WAL size in bytes", accessMode = READ_ONLY)
-    public final double walSizeBytes;
-
-    @ApiModelProperty(value = "UI_ONLY", hidden = true)
-    public final boolean isIndexTable;
-
-    @ApiModelProperty(value = "Namespace or Schema")
-    public final String nameSpace;
-
-    @ApiModelProperty(value = "Table space")
-    public final String tableSpace;
-
-    @ApiModelProperty(value = "Parent Table UUID")
-    public final UUID parentTableUUID;
-
-    @ApiModelProperty(value = "Postgres schema name of the table", example = "public")
-    public final String pgSchemaName;
-
-    @ApiModelProperty(value = "Flag, indicating colocated table")
-    public final Boolean colocated;
-
-    @ApiModelProperty(value = "Colocation parent id")
-    public final String colocationParentId;
   }
 
   @ApiOperation(
       value = "List all tables",
       nickname = "getAllTables",
       notes = "Get a list of all tables in the specified universe",
-      response = TableInfoResp.class,
+      response = TableInfoForm.TableInfoResp.class,
       responseContainer = "List")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result listTables(
       UUID customerUUID,
       UUID universeUUID,
       boolean includeParentTableInfo,
       boolean excludeColocatedTables,
       boolean includeColocatedParentTables) {
-
-    // Validate customer UUID
-    Customer customer = Customer.getOrBadRequest(customerUUID);
-    // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
-
-    String universeVersion =
-        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
-    boolean hasColocationInfo =
-        CommonUtils.isReleaseBetween("2.18.1.0-b18", "2.19.0.0-b0", universeVersion)
-            || CommonUtils.isReleaseEqualOrAfter("2.19.0.0-b168", universeVersion);
-
-    final String masterAddresses = universe.getMasterAddresses(true);
-    if (masterAddresses.isEmpty()) {
-      throw new PlatformServiceException(SERVICE_UNAVAILABLE, MASTERS_UNAVAILABLE_ERR_MSG);
-    }
-
-    Map<String, TableSizes> tableSizes = getTableSizesOrEmpty(universe);
-
-    String certificate = universe.getCertificateNodetoNode();
-    ListTablesResponse response =
-        listTablesOrBadRequest(masterAddresses, certificate, false /* excludeSystemTables */);
-    List<TableInfo> tableInfoList = response.getTableInfoList();
-
-    // First filter out all system tables except redis table.
-    tableInfoList =
-        tableInfoList.stream()
-            .filter(table -> !isSystemTable(table) || isSystemRedis(table))
-            .collect(Collectors.toList());
-    List<TableInfoResp> tableInfoRespList = new ArrayList<>(tableInfoList.size());
-
-    // Prepare colocated parent table map.
-    Map<TablePartitionInfoKey, TableInfo> colocatedParentTablesMap =
-        tableInfoList.stream()
-            .filter(this::isColocatedParentTable)
-            .collect(
-                Collectors.toMap(
-                    ti -> new TablePartitionInfoKey(ti.getName(), ti.getNamespace().getName()),
-                    Function.identity()));
-
-    // Fetch table partitions information if needed.
-    Map<TablePartitionInfoKey, TablePartitionInfo> partitionMap = new HashMap<>();
-    Map<TablePartitionInfoKey, TableInfo> tablePartitionInfoToTableInfoMap = new HashMap<>();
-    if (includeParentTableInfo) {
-      Map<String, List<TableInfo>> namespacesToTablesMap =
-          tableInfoList.stream().collect(Collectors.groupingBy(ti -> ti.getNamespace().getName()));
-      for (String namespace : namespacesToTablesMap.keySet()) {
-        partitionMap.putAll(fetchTablePartitionInfo(universe, namespace));
-      }
-
-      tablePartitionInfoToTableInfoMap =
-          tableInfoList.stream()
-              .collect(
-                  Collectors.toMap(
-                      ti -> new TablePartitionInfoKey(ti.getName(), ti.getNamespace().getName()),
-                      Function.identity()));
-    }
-
-    // Fetch colocated keyspaces. excludeColocatedTables effectively means
-    // 'exclude tables from colocated keyspaces'.
-    Set<String> colocatedKeySpaces = Collections.emptySet();
-    if (excludeColocatedTables) {
-      colocatedKeySpaces = getColocatedKeySpaces(tableInfoList);
-    }
-
-    for (TableInfo table : tableInfoList) {
-      TablePartitionInfoKey tableKey =
-          new TablePartitionInfoKey(table.getName(), table.getNamespace().getName());
-      if (excludeColocatedTables && colocatedKeySpaces.contains(table.getNamespace().getName())) {
-        // Exclude tables from colocated keyspaces, if needed.
-        continue;
-      }
-      if (!includeColocatedParentTables && colocatedParentTablesMap.containsKey(tableKey)) {
-        // Exclude colocated parent tables unless they are requested explicitly.
-        continue;
-      }
-      TableInfo parentPartitionInfo = null;
-      TablePartitionInfo partitionInfo = null;
-      if (includeParentTableInfo) {
-        if (partitionMap.containsKey(tableKey)) {
-          // This 'table' is a partition of some table.
-          partitionInfo = partitionMap.get(tableKey);
-          parentPartitionInfo =
-              tablePartitionInfoToTableInfoMap.get(
-                  new TablePartitionInfoKey(partitionInfo.parentTable, partitionInfo.keyspace));
-          LOG.debug("Partition {}, Parent {}", partitionInfo, parentPartitionInfo);
-        }
-      }
-      tableInfoRespList.add(
-          buildResponseFromTableInfo(
-                  table, partitionInfo, parentPartitionInfo, tableSizes, hasColocationInfo)
-              .build());
-    }
-    return PlatformResults.withData(tableInfoRespList);
-  }
-
-  private boolean isColocatedParentTable(TableInfo table) {
-    return table.getRelationType() == RelationType.COLOCATED_PARENT_TABLE_RELATION;
-  }
-
-  private boolean isSystemTable(TableInfo table) {
-    return table.getRelationType() == RelationType.SYSTEM_TABLE_RELATION
-        || (table.getTableType() == TableType.PGSQL_TABLE_TYPE
-            && table.getNamespace().getName().equals(SYSTEM_PLATFORM_DB));
-  }
-
-  private boolean isSystemRedis(TableInfo table) {
-    return table.getTableType() == TableType.REDIS_TABLE_TYPE
-        && table.getRelationType() == RelationType.SYSTEM_TABLE_RELATION
-        && table.getNamespace().getName().equals("system_redis")
-        && table.getName().equals("redis");
-  }
-
-  // Query prometheus for table sizes.
-  private Map<String, TableSizes> getTableSizesOrEmpty(Universe universe) {
-    try {
-      return queryTableSizes(universe.getUniverseDetails().nodePrefix);
-    } catch (RuntimeException e) {
-      LOG.error(
-          "Error querying for table sizes for universe {} from prometheus",
-          universe.getUniverseDetails().nodePrefix,
-          e);
-    }
-    return Collections.emptyMap();
-  }
-
-  private ListTablesResponse listTablesOrBadRequest(
-      String masterAddresses, String certificate, boolean excludeSystemTables) {
-    YBClient client = null;
-    ListTablesResponse response;
-    try {
-      client = ybService.getClient(masterAddresses, certificate);
-      checkLeaderMasterAvailability(client);
-      response = client.getTablesList(null, excludeSystemTables, null);
-    } catch (Exception e) {
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
-    } finally {
-      ybService.closeClient(client, masterAddresses);
-    }
-    if (response == null) {
-      throw new PlatformServiceException(BAD_REQUEST, "Table list can not be empty");
-    }
-    return response;
-  }
-
-  private void checkLeaderMasterAvailability(YBClient client) {
-    long waitForLeaderTimeoutMs = config.getDuration(MASTER_LEADER_TIMEOUT_CONFIG_PATH).toMillis();
-    try {
-      client.waitForMasterLeader(waitForLeaderTimeoutMs);
-    } catch (Exception e) {
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, "Could not find the master leader");
-    }
-  }
-
-  @ApiModel(description = "Namespace information response")
-  @Builder
-  @Jacksonized
-  public static class NamespaceInfoResp {
-
-    @ApiModelProperty(value = "Namespace UUID", accessMode = READ_ONLY)
-    public final UUID namespaceUUID;
-
-    @ApiModelProperty(value = "Namespace name")
-    public final String name;
-
-    @ApiModelProperty(value = "Table type")
-    public final TableType tableType;
-
-    public static NamespaceInfoResp createFromNamespaceIdentifier(
-        NamespaceIdentifierPB namespaceIdentifier) {
-      return buildResponseFromNamespaceIdentifier(namespaceIdentifier).build();
-    }
+    List<TableInfoForm.TableInfoResp> resp =
+        tableHandler.listTables(
+            customerUUID,
+            universeUUID,
+            includeParentTableInfo,
+            excludeColocatedTables,
+            includeColocatedParentTables);
+    return PlatformResults.withData(resp);
   }
 
   @ApiOperation(
       value = "List all namespaces",
       nickname = "getAllNamespaces",
       notes = "Get a list of all namespaces in the specified universe",
-      response = NamespaceInfoResp.class,
+      response = TableInfoForm.NamespaceInfoResp.class,
       responseContainer = "List")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result listNamespaces(
       UUID customerUUID, UUID universeUUID, boolean includeSystemNamespaces) {
-    // Validate customer UUID
-    Customer customer = Customer.getOrBadRequest(customerUUID);
-    // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
-
-    final String masterAddresses = universe.getMasterAddresses(true);
-    if (masterAddresses.isEmpty()) {
-      throw new PlatformServiceException(SERVICE_UNAVAILABLE, MASTERS_UNAVAILABLE_ERR_MSG);
-    }
-
-    String certificate = universe.getCertificateNodetoNode();
-    ListNamespacesResponse response = listNamespacesOrBadRequest(masterAddresses, certificate);
-    List<NamespaceInfoResp> namespaceInfoRespList = new ArrayList<>();
-    for (NamespaceIdentifierPB namespace : response.getNamespacesList()) {
-      if (includeSystemNamespaces) {
-        namespaceInfoRespList.add(buildResponseFromNamespaceIdentifier(namespace).build());
-      } else if (!((namespace.getDatabaseType().equals(YQLDatabase.YQL_DATABASE_PGSQL)
-              && PGSQL_SYSTEM_NAMESPACE_LIST.contains(namespace.getName().toLowerCase()))
-          || (namespace.getDatabaseType().equals(YQLDatabase.YQL_DATABASE_CQL)
-              && YCQL_SYSTEM_NAMESPACES_LIST.contains(namespace.getName().toLowerCase())))) {
-        namespaceInfoRespList.add(buildResponseFromNamespaceIdentifier(namespace).build());
-      }
-    }
-    return PlatformResults.withData(namespaceInfoRespList);
-  }
-
-  private ListNamespacesResponse listNamespacesOrBadRequest(
-      String masterAddresses, String certificate) {
-    YBClient client = null;
-    ListNamespacesResponse response;
-    try {
-      client = ybService.getClient(masterAddresses, certificate);
-      checkLeaderMasterAvailability(client);
-      response = client.getNamespacesList();
-    } catch (Exception e) {
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
-    } finally {
-      ybService.closeClient(client, masterAddresses);
-    }
-    if (response == null) {
-      throw new PlatformServiceException(BAD_REQUEST, "Table list can not be empty");
-    }
-    return response;
+    List<TableInfoForm.NamespaceInfoResp> response =
+        tableHandler.listNamespaces(customerUUID, universeUUID, includeSystemNamespaces);
+    return PlatformResults.withData(response);
   }
 
   /**
@@ -601,34 +242,14 @@ public class TablesController extends AuthenticatedController {
       value = "Describe a table",
       nickname = "describeTable",
       response = TableDefinitionTaskParams.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result describe(UUID customerUUID, UUID universeUUID, UUID tableUUID) {
-    // Validate customer UUID
-    Customer customer = Customer.getOrBadRequest(customerUUID);
-    // Validate universe UUID
-    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
-    YBClient client = null;
-    String masterAddresses = universe.getMasterAddresses(true);
-
-    if (masterAddresses.isEmpty()) {
-      throw new PlatformServiceException(SERVICE_UNAVAILABLE, MASTERS_UNAVAILABLE_ERR_MSG);
-    }
-
-    try {
-      String certificate = universe.getCertificateNodetoNode();
-      client = ybService.getClient(masterAddresses, certificate);
-      GetTableSchemaResponse response =
-          client.getTableSchemaByUUID(tableUUID.toString().replace("-", ""));
-
-      return PlatformResults.withData(createFromResponse(universe, tableUUID, response));
-    } catch (IllegalArgumentException e) {
-      LOG.error("Failed to get schema of table " + tableUUID + " in universe " + universeUUID, e);
-      throw new PlatformServiceException(BAD_REQUEST, e.getMessage());
-    } catch (Exception e) {
-      LOG.error("Failed to get schema of table " + tableUUID + " in universe " + universeUUID, e);
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
-    } finally {
-      ybService.closeClient(client, masterAddresses);
-    }
+    return PlatformResults.withData(tableHandler.describe(customerUUID, universeUUID, tableUUID));
   }
 
   @ApiOperation(
@@ -648,6 +269,12 @@ public class TablesController extends AuthenticatedController {
         required = true,
         dataType = "com.yugabyte.yw.forms.MultiTableBackupRequestParams",
         paramType = "body")
+  })
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
   public Result createMultiTableBackup(UUID customerUUID, UUID universeUUID, Http.Request request) {
     // Validate customer UUID
@@ -731,6 +358,12 @@ public class TablesController extends AuthenticatedController {
         required = true,
         dataType = "com.yugabyte.yw.forms.BackupTableParams",
         paramType = "body")
+  })
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
   // Remove this too.
   public Result createBackup(
@@ -834,6 +467,12 @@ public class TablesController extends AuthenticatedController {
         required = true,
         dataType = "com.yugabyte.yw.forms.BulkImportParams",
         paramType = "body")
+  })
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
   public Result bulkImport(
       UUID customerUUID, UUID universeUUID, UUID tableUUID, Http.Request request) {
@@ -974,7 +613,7 @@ public class TablesController extends AuthenticatedController {
   }
 
   private List<TableInfo> getTableInfosOrEmpty(Universe universe) {
-    final String masterAddresses = universe.getMasterAddresses(true);
+    final String masterAddresses = universe.getMasterAddresses();
     if (masterAddresses.isEmpty()) {
       LOG.warn("Masters are not currently queryable.");
       return Collections.emptyList();
@@ -993,99 +632,31 @@ public class TablesController extends AuthenticatedController {
     }
   }
 
-  private Map<String, TableSizes> queryTableSizes(String nodePrefix) {
-    HashMap<String, TableSizes> result = new HashMap<>();
-    queryAndAppendTableSizeMetric(
-        result, "rocksdb_current_version_sst_files_size", nodePrefix, TableSizes::setSstSizeBytes);
-    queryAndAppendTableSizeMetric(result, "log_wal_size", nodePrefix, TableSizes::setWalSizeBytes);
-    return result;
-  }
-
-  private void queryAndAppendTableSizeMetric(
-      Map<String, TableSizes> tableSizes,
-      String metricName,
-      String nodePrefix,
-      BiConsumer<TableSizes, Double> fieldSetter) {
-
-    // Execute query and check for errors.
-    ArrayList<MetricQueryResponse.Entry> metricValues =
-        metricQueryHelper.queryDirect(
-            "sum by (table_id) (" + metricName + "{node_prefix=\"" + nodePrefix + "\"})");
-
-    for (final MetricQueryResponse.Entry entry : metricValues) {
-      String tableID = entry.labels.get("table_id");
-      if (tableID == null
-          || tableID.isEmpty()
-          || entry.values == null
-          || entry.values.size() == 0) {
-        continue;
-      }
-      fieldSetter.accept(
-          tableSizes.computeIfAbsent(tableID, k -> new TableSizes()),
-          entry.values.get(0).getRight());
-    }
-  }
-
   @ApiOperation(
       value = "List all tablespaces",
       nickname = "getAllTableSpaces",
       notes = "Get a list of all tablespaces of a given universe",
       response = TableSpaceInfo.class,
       responseContainer = "List")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result listTableSpaces(UUID customerUUID, UUID universeUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
 
-    final String masterAddresses = universe.getMasterAddresses(true);
+    final String masterAddresses = universe.getMasterAddresses();
     if (masterAddresses.isEmpty()) {
       String errMsg = "Expected error. Masters are not currently queryable.";
       LOG.warn(errMsg);
       return ok(errMsg);
     }
-
-    LOG.info("Fetching table spaces...");
-    NodeDetails nodeToUse = null;
-    try {
-      nodeToUse = CommonUtils.getServerToRunYsqlQuery(universe);
-    } catch (IllegalStateException ise) {
-      throw new PlatformServiceException(
-          BAD_REQUEST, "Cluster may not have been initialized yet. Please try later");
-    }
-    final String fetchTablespaceQuery =
-        "select jsonb_agg(t) from (select spcname, spcoptions from pg_catalog.pg_tablespace) as t";
-    ShellResponse shellResponse =
-        nodeUniverseManager.runYsqlCommand(nodeToUse, universe, "postgres", fetchTablespaceQuery);
-    if (!shellResponse.isSuccess()) {
-      LOG.warn(
-          "Attempt to fetch tablespace info via node {} failed, response {}:{}",
-          nodeToUse.nodeName,
-          shellResponse.code,
-          shellResponse.message);
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Error while fetching TableSpace information");
-    }
-    String jsonData = CommonUtils.extractJsonisedSqlResponse(shellResponse);
-    List<TableSpaceInfo> tableSpaceInfoRespList = new ArrayList<>();
-    if (jsonData == null || jsonData.isEmpty()) {
-      PlatformResults.withData(tableSpaceInfoRespList);
-    }
-
-    LOG.debug("jsonData {}", jsonData);
-    try {
-      ObjectMapper objectMapper = Json.mapper();
-      List<TableSpaceQueryResponse> tablespaceList =
-          objectMapper.readValue(jsonData, new TypeReference<List<TableSpaceQueryResponse>>() {});
-      tableSpaceInfoRespList =
-          tablespaceList.stream()
-              .filter(x -> !x.tableSpaceName.startsWith("pg_"))
-              .map(TableSpaceUtil::parseToTableSpaceInfo)
-              .collect(Collectors.toList());
-      return PlatformResults.withData(tableSpaceInfoRespList);
-    } catch (IOException ioe) {
-      LOG.error("Unable to parse fetchTablespaceQuery response {}", jsonData, ioe);
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Error while fetching TableSpace information");
-    }
+    List<TableSpaceInfo> tableSpaceInfoRespList =
+        tableHandler.listTableSpaces(customerUUID, universeUUID);
+    return PlatformResults.withData(tableSpaceInfoRespList);
   }
 
   /**
@@ -1105,40 +676,16 @@ public class TablesController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.forms.CreateTablespaceParams",
         paramType = "body")
   })
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result createTableSpaces(UUID customerUUID, UUID universeUUID, Http.Request request) {
-    // Validate customer UUID.
-    Customer customer = Customer.getOrBadRequest(customerUUID);
-    // Validate universe UUID.
-    Universe universe = Universe.getOrBadRequest(universeUUID, customer);
-
-    // Extract tablespaces list.
     CreateTablespaceParams tablespacesInfo =
         parseJsonAndValidate(request, CreateTablespaceParams.class);
-
-    TableSpaceUtil.validateTablespaces(tablespacesInfo, universe);
-
-    CreateTableSpaces.Params taskParams = new CreateTableSpaces.Params();
-    taskParams.setUniverseUUID(universeUUID);
-    taskParams.tablespaceInfos = tablespacesInfo.tablespaceInfos;
-    taskParams.expectedUniverseVersion = universe.getVersion();
-
-    UUID taskUUID = commissioner.submit(TaskType.CreateTableSpacesInUniverse, taskParams);
-    LOG.info("Submitted create tablespaces task, uuid = {}.", taskUUID);
-
-    CustomerTask.create(
-        customer,
-        universe.getUniverseUUID(),
-        taskUUID,
-        CustomerTask.TargetType.Universe,
-        CustomerTask.TaskType.CreateTableSpaces,
-        universe.getName());
-
-    LOG.info(
-        "Saved task uuid {} in customer tasks table for universe {}:{}.",
-        taskUUID,
-        universeUUID,
-        universe.getName());
-
+    UUID taskUUID = tableHandler.createTableSpaces(customerUUID, universeUUID, tablespacesInfo);
     auditService()
         .createAuditEntryWithReqBody(
             request,
@@ -1147,166 +694,5 @@ public class TablesController extends AuthenticatedController {
             Audit.ActionType.CreateTableSpaces,
             taskUUID);
     return new YBPTask(taskUUID, universeUUID).asResult();
-  }
-
-  private Set<String> getColocatedKeySpaces(List<TableInfo> tableInfoList) {
-    Set<String> colocatedKeySpaces = new HashSet<String>();
-    for (TableInfo tableInfo : tableInfoList) {
-      String keySpace = tableInfo.getNamespace().getName();
-      String tableName = tableInfo.getName();
-      if (tableName.endsWith(COLOCATED_NAME_SUFFIX) || tableName.endsWith(COLOCATION_NAME_SUFFIX)) {
-        colocatedKeySpaces.add(keySpace);
-      }
-    }
-    return colocatedKeySpaces;
-  }
-
-  private TableInfoResp.TableInfoRespBuilder buildResponseFromTableInfo(
-      TableInfo table,
-      TablePartitionInfo tablePartitionInfo,
-      TableInfo parentTableInfo,
-      Map<String, TableSizes> tableSizeMap,
-      boolean hasColocationInfo) {
-    String id = table.getId().toStringUtf8();
-    String tableKeySpace = table.getNamespace().getName();
-    TableInfoResp.TableInfoRespBuilder builder =
-        TableInfoResp.builder()
-            .tableID(id)
-            .tableUUID(getUUIDRepresentation(id))
-            .keySpace(tableKeySpace)
-            .tableType(table.getTableType())
-            .tableName(table.getName())
-            .relationType(table.getRelationType())
-            .isIndexTable(table.getRelationType() == RelationType.INDEX_TABLE_RELATION);
-    TableSizes tableSizes = tableSizeMap.get(id);
-    if (tableSizes != null) {
-      builder.sizeBytes(tableSizes.getSstSizeBytes());
-      builder.walSizeBytes(tableSizes.getWalSizeBytes());
-    }
-    if (tablePartitionInfo != null) {
-      builder.tableSpace(tablePartitionInfo.tablespace);
-    }
-    if (parentTableInfo != null) {
-      builder.parentTableUUID(getUUIDRepresentation(parentTableInfo.getId().toStringUtf8()));
-    }
-    if (table.hasPgschemaName()) {
-      builder.pgSchemaName(table.getPgschemaName());
-    }
-    if (hasColocationInfo) {
-      if (!table.hasColocatedInfo()) {
-        builder.colocated(false);
-      } else {
-        builder.colocated(table.getColocatedInfo().getColocated());
-        if (builder.colocated) {
-          if (table.getColocatedInfo().hasParentTableId()) {
-            String parentTableId = table.getColocatedInfo().getParentTableId().toStringUtf8();
-            builder.colocationParentId(parentTableId);
-          }
-        }
-      }
-    }
-    return builder;
-  }
-
-  private static NamespaceInfoResp.NamespaceInfoRespBuilder buildResponseFromNamespaceIdentifier(
-      NamespaceIdentifierPB namespace) {
-    String id = namespace.getId().toStringUtf8();
-    NamespaceInfoResp.NamespaceInfoRespBuilder builder =
-        NamespaceInfoResp.builder()
-            .namespaceUUID(getUUIDRepresentation(id))
-            .tableType(
-                BackupUtil.TABLE_TYPE_TO_YQL_DATABASE_MAP
-                    .inverse()
-                    .get(namespace.getDatabaseType()))
-            .name(namespace.getName());
-    return builder;
-  }
-
-  private Map<TablePartitionInfoKey, TablePartitionInfo> fetchTablePartitionInfo(
-      Universe universe, String dbName) {
-    LOG.info("Fetching table partitions...");
-
-    final String fetchPartitionDataQuery =
-        FileUtils.readResource(PARTITION_QUERY_PATH, environment);
-
-    NodeDetails randomTServer = CommonUtils.getARandomLiveTServer(universe);
-    ShellResponse shellResponse =
-        nodeUniverseManager.runYsqlCommand(
-            randomTServer, universe, dbName, fetchPartitionDataQuery);
-    if (!shellResponse.isSuccess()) {
-      LOG.warn(
-          "Attempt to fetch table partition info for db {} via node {} failed, response {}:{}",
-          dbName,
-          randomTServer.nodeName,
-          shellResponse.code,
-          shellResponse.message);
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Error while fetching Table Partition information");
-    }
-
-    LOG.debug("shell response {}", shellResponse);
-    String jsonData = CommonUtils.extractJsonisedSqlResponse(shellResponse);
-
-    if (jsonData == null || (jsonData = jsonData.trim()).isEmpty()) {
-      return Collections.EMPTY_MAP;
-    }
-    LOG.debug("jsonData = {}", jsonData);
-    try {
-      ObjectMapper objectMapper = Json.mapper();
-      List<TablePartitionInfo> partitionList =
-          objectMapper.readValue(jsonData, new TypeReference<List<TablePartitionInfo>>() {});
-      return partitionList.stream()
-          .map(
-              partition -> {
-                partition.keyspace = dbName;
-                return partition;
-              })
-          .collect(Collectors.toMap(TablePartitionInfo::getKey, Function.identity()));
-    } catch (IOException e) {
-      LOG.error("Error while parsing partition query response {}", jsonData, e);
-      throw new PlatformServiceException(
-          INTERNAL_SERVER_ERROR, "Error while fetching Table Partition information");
-    }
-  }
-
-  @ToString
-  private static class TablePartitionInfo {
-
-    public String tableName;
-
-    public String schemaName;
-
-    public String tablespace;
-
-    public String parentTable;
-
-    public String parentSchema;
-
-    public String parentTablespace;
-
-    public String keyspace;
-
-    public TablePartitionInfo() {}
-
-    public TablePartitionInfoKey getKey() {
-      return new TablePartitionInfoKey(tableName, keyspace);
-    }
-  }
-
-  @EqualsAndHashCode
-  private static class TablePartitionInfoKey {
-    private final String tableName;
-    private final String keyspace;
-
-    public TablePartitionInfoKey(String tableName, String keyspace) {
-      this.tableName = tableName;
-      this.keyspace = keyspace;
-    }
-  }
-
-  @Data
-  private static class TableSizes {
-    private double sstSizeBytes;
-    private double walSizeBytes;
   }
 }

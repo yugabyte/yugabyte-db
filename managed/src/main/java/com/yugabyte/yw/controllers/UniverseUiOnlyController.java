@@ -6,7 +6,10 @@ import static com.yugabyte.yw.controllers.UniverseControllerRequestBinder.bindFo
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.DiskIncreaseFormData;
@@ -20,6 +23,11 @@ import com.yugabyte.yw.forms.UpgradeParams;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -50,6 +58,7 @@ public class UniverseUiOnlyController extends AuthenticatedController {
    *     that is in storage
    */
   @Deprecated
+  @AuthzPath
   public Result getUniverseResourcesOld(UUID customerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     UniverseDefinitionTaskParams taskParams =
@@ -91,6 +100,13 @@ public class UniverseUiOnlyController extends AuthenticatedController {
    * @return UniverseDefinitionTasksParams in a serialized form
    */
   @Deprecated
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation =
+            @Resource(path = Util.UNIVERSE_UUID, sourceType = SourceType.REQUEST_BODY))
+  })
   public Result configure(UUID customerUUID, Http.Request request) {
 
     // Verify the customer with this universe is present.
@@ -122,6 +138,13 @@ public class UniverseUiOnlyController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.UniverseConfigureTaskParams",
           required = true,
           paramType = "body"))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation =
+            @Resource(path = Util.UNIVERSE_UUID, sourceType = SourceType.REQUEST_BODY))
+  })
   public Result getUpdateOptions(UUID customerUUID, Http.Request request) {
     // Verify the customer with this universe is present.
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -147,6 +170,13 @@ public class UniverseUiOnlyController extends AuthenticatedController {
    * @return result of the universe create operation.
    */
   @Deprecated
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.CREATE),
+        resourceLocation =
+            @Resource(path = Util.UNIVERSE_UUID, sourceType = SourceType.REQUEST_BODY))
+  })
   public Result create(UUID customerUUID, Http.Request request) {
     // Verify the customer with this universe is present.
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -172,6 +202,12 @@ public class UniverseUiOnlyController extends AuthenticatedController {
    * @return result of the universe update operation.
    */
   @Deprecated
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result update(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
@@ -195,6 +231,12 @@ public class UniverseUiOnlyController extends AuthenticatedController {
    * @return result of the cluster create operation.
    */
   @Deprecated
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result clusterCreate(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
@@ -222,6 +264,12 @@ public class UniverseUiOnlyController extends AuthenticatedController {
    * @return result of the cluster delete operation.
    */
   @Deprecated
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result clusterDelete(
       UUID customerUUID,
       UUID universeUUID,
@@ -267,6 +315,12 @@ public class UniverseUiOnlyController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.UpgradeParams",
           required = true,
           paramType = "body"))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result upgrade(UUID customerUUID, UUID universeUUID, Http.Request request) {
     LOG.info("Upgrade {} for {}.", customerUUID, universeUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -295,6 +349,12 @@ public class UniverseUiOnlyController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.DiskIncreaseFormData",
           paramType = "body",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result updateDiskSize(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
@@ -325,6 +385,12 @@ public class UniverseUiOnlyController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.TlsConfigUpdateParams",
           required = true,
           paramType = "body"))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
   public Result tlsConfigUpdate(UUID customerUUID, UUID universeUUID, Http.Request request) {
     LOG.info("TLS config update: {} for {}.", customerUUID, universeUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);

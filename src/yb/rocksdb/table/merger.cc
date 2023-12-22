@@ -101,8 +101,7 @@ class MergingIterator final : public InternalIterator {
       }
     }
     direction_ = kForward;
-    CurrentForward();
-    return Entry();
+    return CurrentForward();
   }
 
   const KeyValueEntry& SeekToLast() override {
@@ -134,11 +133,11 @@ class MergingIterator final : public InternalIterator {
           // For the heap modifications below to be correct, current_ must be the current top of the
           // heap.
           DCHECK_EQ(current_, minHeap_.top());
-          current_->Seek(target);
-          UpdateHeapAfterCurrentAdvancement();
-          if (current_ == nullptr || !current_->Valid())
-            return Entry();  // Reached the end.
-          key_vs_target = comparator_->Compare(current_->key(), target);
+          const auto& entry = UpdateHeapAfterCurrentAdvancement(current_->Seek(target));
+          if (!entry.Valid()) {
+            return entry; // Reached the end.
+          }
+          key_vs_target = comparator_->Compare(entry.key, target);
         }
 
         // The current key is >= target, this is what we're looking for.
@@ -177,42 +176,45 @@ class MergingIterator final : public InternalIterator {
     // If we are moving in the forward direction, it is already
     // true for all of the non-current children since current_ is
     // the smallest child and key() == current_->key().
-    if (direction_ != kForward) {
-      // Otherwise, advance the non-current children.  We advance current_
-      // just after the if-block.
-      ClearHeaps();
-      Slice key = current_->key();
-      for (auto& child : children_) {
-        if (&child == current_) {
-          minHeap_.push(&child);
-          continue;
-        }
-        child.Seek(key);
-        if (!child.Valid()) {
-          continue;
-        }
-        if (!comparator_->Equal(key, child.key())) {
-          minHeap_.push(&child);
-          continue;
-        }
-        child.Next();
-        if (child.Valid()) {
-          minHeap_.push(&child);
-        }
-      }
-      direction_ = kForward;
-
-      // The loop advanced all non-current children to be > key() so current_
-      // should still be strictly the smallest key.
+    if (PREDICT_FALSE(direction_ != kForward)) {
+      RebuildForward();
     }
 
     // For the heap modifications below to be correct, current_ must be the current top of the heap.
     DCHECK_EQ(current_, minHeap_.top());
 
     // As current_ points to the current record, move the iterator forward.
-    current_->Next();
-    UpdateHeapAfterCurrentAdvancement();
-    return Entry();
+    return UpdateHeapAfterCurrentAdvancement(current_->Next());
+  }
+
+  void RebuildForward() {
+    // Otherwise, advance the non-current children.  We advance current_
+    // just after the if-block.
+    ClearHeaps();
+    Slice key = current_->key();
+    for (auto& child : children_) {
+      if (&child == current_) {
+        minHeap_.push(&child);
+        continue;
+      }
+      child.Seek(key);
+      if (!child.Valid()) {
+        continue;
+      }
+      if (!comparator_->Equal(key, child.key())) {
+        minHeap_.push(&child);
+        continue;
+      }
+      child.Next();
+      if (child.Valid()) {
+        minHeap_.push(&child);
+      }
+    }
+    min_heap_best_root_child_ = 0;
+    direction_ = kForward;
+
+    // The loop advanced all non-current children to be > key() so current_
+    // should still be strictly the smallest key.
   }
 
   const KeyValueEntry& Prev() override {
@@ -221,7 +223,7 @@ class MergingIterator final : public InternalIterator {
     // If we are moving in the reverse direction, it is already
     // true for all of the non-current children since current_ is
     // the largest child and key() == current_->key().
-    if (direction_ != kReverse) {
+    if (PREDICT_FALSE(direction_ != kReverse)) {
       // Otherwise, retreat the non-current children.  We retreat current_
       // just after the if-block.
       ClearHeaps();
@@ -257,10 +259,11 @@ class MergingIterator final : public InternalIterator {
 
     current_->Prev();
     if (current_->Valid()) {
-      // current is still valid after the Prev() call above.  Call
-      // replace_top() to restore the heap property.  When the same child
-      // iterator yields a sequence of keys, this is cheap.
-      maxHeap_->replace_top(current_);
+      // current is still valid after the Prev() call above.
+      // Adjust heap if current_ key goes after other keys.
+      if (maxHeap_->down_root().first) {
+        return Entry();
+      }
     } else {
       // current stopped being valid, remove it from the heap.
       maxHeap_->pop();
@@ -381,7 +384,7 @@ class MergingIterator final : public InternalIterator {
         return result;
       }
 
-      UpdateHeapAfterCurrentAdvancement();
+      UpdateHeapAfterCurrentAdvancement(current_->Entry());
     } while (Valid());
 
     result.reached_upperbound = true;
@@ -404,6 +407,9 @@ class MergingIterator final : public InternalIterator {
   // child iterators are valid.  This is the top of minHeap_ or maxHeap_
   // depending on the direction.
   IteratorWrapper* current_;
+  size_t min_heap_best_root_child_ = 0;
+  Slice min_heap_best_root_child_key_;
+
   // Which direction is the iterator moving?
   enum Direction {
     kForward,
@@ -415,9 +421,15 @@ class MergingIterator final : public InternalIterator {
   // forward.  Lazily initialize it to save memory.
   std::unique_ptr<MergerMaxIterHeap> maxHeap_;
 
-  void CurrentForward() {
+  const KeyValueEntry& CurrentForward() {
     DCHECK_EQ(direction_, kForward);
-    current_ = !minHeap_.empty() ? minHeap_.top() : nullptr;
+    min_heap_best_root_child_ = 0;
+    if (!minHeap_.empty()) {
+      current_ = minHeap_.top();
+      return current_->Entry();
+    }
+    current_ = nullptr;
+    return KeyValueEntry::Invalid();
   }
 
   void CurrentReverse() {
@@ -427,17 +439,30 @@ class MergingIterator final : public InternalIterator {
   }
 
   // This should be called after calling Next() or a forward seek on the top element.
-  void UpdateHeapAfterCurrentAdvancement() {
-    if (current_->Valid()) {
-      // current_ is still valid after the previous Next() / forward Seek() call.  Call
-      // replace_top() to restore the heap property.  When the same child iterator yields a sequence
-      // of keys, this is cheap.
-      minHeap_.replace_top(current_);
-    } else {
-      // current_ stopped being valid, remove it from the heap.
-      minHeap_.pop();
+  const KeyValueEntry& UpdateHeapAfterCurrentAdvancement(const KeyValueEntry& entry) {
+    // current_ is still valid after the previous Next() / forward Seek() call.
+    // Adjust heap if current_ key goes after other keys.
+    if (entry.Valid() && min_heap_best_root_child_ &&
+        comparator_->Compare(entry.key, min_heap_best_root_child_key_) < 0) {
+      return entry;
     }
-    CurrentForward();
+    return DoUpdateHeapAfterCurrentAdvancement(entry);
+  }
+
+  // Putting this code in a separate function helps compiler to generate faster code.
+  const KeyValueEntry& DoUpdateHeapAfterCurrentAdvancement(const KeyValueEntry& entry) {
+    if (entry.Valid()) {
+      auto [new_best_child, child] = minHeap_.down_root(min_heap_best_root_child_);
+      min_heap_best_root_child_ = new_best_child;
+      if (new_best_child) {
+        min_heap_best_root_child_key_ = (**DCHECK_NOTNULL(child)).key();
+        return entry;
+      }
+      return CurrentForward();
+    }
+    // current_ stopped being valid, remove it from the heap.
+    minHeap_.pop();
+    return CurrentForward();
   }
 };
 

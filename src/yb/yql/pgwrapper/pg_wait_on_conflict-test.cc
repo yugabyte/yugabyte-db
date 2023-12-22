@@ -41,7 +41,6 @@
 #include "yb/util/pb_util.h"
 
 DECLARE_bool(enable_wait_queues);
-DECLARE_bool(enable_deadlock_detection);
 DECLARE_bool(TEST_select_all_status_tablets);
 DECLARE_string(ysql_pg_conf_csv);
 DECLARE_bool(enable_automatic_tablet_splitting);
@@ -58,6 +57,7 @@ DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(TEST_drop_participant_signal);
 DECLARE_int32(send_wait_for_report_interval_ms);
 DECLARE_uint64(TEST_inject_process_update_resp_delay_ms);
+DECLARE_uint64(TEST_delay_rpc_status_req_callback_ms);
 
 using namespace std::literals;
 
@@ -72,7 +72,6 @@ class PgWaitQueuesTest : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = Format(
         "statement_timeout=$0", kClientStatementTimeoutSeconds * 1ms / 1s);
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_deadlock_detection) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_select_all_status_tablets) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_single_shard_waiter_retry_ms) = 10000;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_max_write_restart_attempts) = 0;
@@ -703,13 +702,11 @@ class ConcurrentBlockedWaitersTest {
     auto conn = VERIFY_RESULT(GetDbConn());
     for (int i = 0; i < num_waiters; ++i) {
       auto k = num_waiters + i;
-      auto res = VERIFY_RESULT(conn.FetchFormat("SELECT v FROM foo WHERE k=$0", k));
-      auto v = VERIFY_RESULT(GetInt32(res.get(), 0, 0));
+      auto v = VERIFY_RESULT(conn.FetchValue<int32_t>(Format("SELECT v FROM foo WHERE k=$0", k)));
       EXPECT_EQ(v, k);
     }
     for (int i = -1; i > num_waiters; --i) {
-      auto res = VERIFY_RESULT(conn.FetchFormat("SELECT v FROM foo WHERE k=$0", i));
-      auto v = VERIFY_RESULT(GetInt32(res.get(), 0, 0));
+      auto v = VERIFY_RESULT(conn.FetchValue<int32_t>(Format("SELECT v FROM foo WHERE k=$0", i)));
       EXPECT_EQ(v, i);
     }
     return Status::OK();
@@ -754,22 +751,31 @@ class PgLeaderChangeWaitQueuesTest : public PgConcurrentBlockedWaitersTest {
       60s * kTimeMultiplier,
       Format("Wait for load balancer to balance to $0 tservers.", num_tablet_servers));
   }
+
+  void TestAddServersAndValidate() {
+    constexpr int kNumTablets = 15;
+    constexpr int kNumWaiters = 30;
+
+    ASSERT_OK(SetupData(kNumTablets));
+    ASSERT_OK(cluster_->FlushTablets());
+    auto conn = ASSERT_RESULT(SetupWaitersAndBlocker(kNumWaiters));
+
+    ASSERT_OK(cluster_->AddTabletServer());
+    ASSERT_OK(WaitForLoadBalance(4));
+    ASSERT_OK(cluster_->AddTabletServer());
+    ASSERT_OK(WaitForLoadBalance(5));
+
+    UnblockWaitersAndValidate(&conn, kNumWaiters);
+  }
 };
 
 TEST_F(PgLeaderChangeWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(AddTwoServers)) {
-  constexpr int kNumTablets = 15;
-  constexpr int kNumWaiters = 30;
+  TestAddServersAndValidate();
+}
 
-  ASSERT_OK(SetupData(kNumTablets));
-  ASSERT_OK(cluster_->FlushTablets());
-  auto conn = ASSERT_RESULT(SetupWaitersAndBlocker(kNumWaiters));
-
-  ASSERT_OK(cluster_->AddTabletServer());
-  ASSERT_OK(WaitForLoadBalance(4));
-  ASSERT_OK(cluster_->AddTabletServer());
-  ASSERT_OK(WaitForLoadBalance(5));
-
-  UnblockWaitersAndValidate(&conn, kNumWaiters);
+TEST_F(PgLeaderChangeWaitQueuesTest, AddTwoServersDelayBlockerStatusRpcCallback) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_delay_rpc_status_req_callback_ms) = 100;
+  TestAddServersAndValidate();
 }
 
 TEST_F(PgLeaderChangeWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(StepDownOneServer)) {
@@ -796,7 +802,6 @@ class PgTabletSplittingWaitQueuesTest : public PgTabletSplitTestBase,
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_connection_timeout_ms) = 60000;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_deadlock_detection) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_max_write_restart_attempts) = 0;
     PgTabletSplitTestBase::SetUp();
@@ -840,7 +845,7 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TablegroupUpdateAndSelectForSha
   std::thread th([&] {
     auto conn2 = ASSERT_RESULT(Connect());
     ASSERT_OK(conn2.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
-    auto value = conn2.FetchValue<int>("select v from t1 where k=1 for share");
+    auto value = conn2.FetchValue<int32_t>("select v from t1 where k=1 for share");
     // Should detect the conflict and raise serializable error.
     ASSERT_NOK(value);
     ASSERT_TRUE(value.status().message().Contains("All transparent retries exhausted"));
@@ -862,14 +867,15 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TablegroupSelectForShareAndUpda
 
   // txn1: lock the row in share mode
   ASSERT_OK(conn.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
-  auto value = ASSERT_RESULT(conn.FetchValue<int>("select v from t1 where k=1 for share"));
+  auto value = ASSERT_RESULT(conn.FetchValue<int32_t>("select v from t1 where k=1 for share"));
   ASSERT_EQ(value, 11);
 
   // txn2: do an UPDATE on the same row, should wait for txn1 to commit
   std::thread th([&] {
     auto conn2 = ASSERT_RESULT(Connect());
     ASSERT_OK(conn2.Execute("BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ"));
-    auto value = ASSERT_RESULT(conn2.FetchValue<int>("update t1 set v=111 where k=1 returning v"));
+    auto value = ASSERT_RESULT(conn2.FetchValue<int32_t>(
+        "update t1 set v=111 where k=1 returning v"));
     ASSERT_OK(conn2.Execute("COMMIT"));
     ASSERT_EQ(value, 111);
   });
@@ -888,7 +894,6 @@ class PgWaitQueueContentionStressTest : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = Format(
         "statement_timeout=$0", kClientStatementTimeoutSeconds * 1ms / 1s);
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_deadlock_detection) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_wait_queue_poll_interval_ms) = 2;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_transactions_status_poll_interval_ms) = 5;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_max_write_restart_attempts) = 0;
@@ -1102,7 +1107,7 @@ TEST_F(PgWaitQueuePackedRowTest, YB_DISABLE_TEST_IN_TSAN(TestKeyShareAndUpdate))
   // txn2: do select-for-keyshare on the same row, should be able to lock and get the value.
   std::thread th([&] {
     auto conn2 = ASSERT_RESULT(Connect());
-    auto value = conn2.FetchValue<int>(
+    auto value = conn2.FetchValue<int32_t>(
         "select value from foo where key = 1 for key share");
     ASSERT_OK(value);
     ASSERT_EQ(value.get(), 1);

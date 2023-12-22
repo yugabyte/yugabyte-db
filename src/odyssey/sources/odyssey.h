@@ -148,4 +148,6 @@
 #include "sources/frontend.h"
 #include "sources/backend.h"
 
+#define YB_SUPPORT_FOUND TRUE
+
 #endif /* ODYSSEY_H */

@@ -67,7 +67,10 @@ export const ProviderStatus = {
 } as const;
 export type ProviderStatus = typeof ProviderStatus[keyof typeof ProviderStatus];
 
-export const TRANSITORY_PROVIDER_STATUSES = [ProviderStatus.UPDATING, ProviderStatus.DELETING] as const;
+export const TRANSITORY_PROVIDER_STATUSES = [
+  ProviderStatus.UPDATING,
+  ProviderStatus.DELETING
+] as const;
 
 // --------------------------------------------------------------------------------------
 // Route Constants
@@ -94,7 +97,7 @@ export type NTPSetupType = typeof NTPSetupType[keyof typeof NTPSetupType];
 
 export const VPCSetupType = {
   EXISTING: 'EXISTING',
-  HOST_INSTANCE: 'HOST',
+  HOST_INSTANCE: 'HOSTVPC',
   NEW: 'NEW'
 } as const;
 export type VPCSetupType = typeof VPCSetupType[keyof typeof VPCSetupType];

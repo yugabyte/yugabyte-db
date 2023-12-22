@@ -300,7 +300,7 @@ func (ybdb Ybdb) extractYbdbPackage() error {
 		}
 	}
 
-	common.MkdirAllOrFail(ybdb.ybdbInstallDir, os.ModePerm)
+	common.MkdirAllOrFail(ybdb.ybdbInstallDir, common.DirMode)
 	userName := viper.GetString("service_username")
 	shell.Run("tar", "-zxf", ybdbPackagePath, "-C", ybdb.ybdbInstallDir, "--strip-components", "1")
 	common.Chown(ybdb.ybdbInstallDir, userName, userName, true)

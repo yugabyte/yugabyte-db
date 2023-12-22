@@ -1,7 +1,6 @@
 package helpers
 
 import (
-    "apiserver/cmd/server/logger"
     "encoding/json"
     "errors"
 )
@@ -17,18 +16,18 @@ type HealthCheckFuture struct {
     Error error
 }
 
-func GetHealthCheckFuture(log logger.Logger, nodeHost string, future chan HealthCheckFuture) {
+func (h *HelperContainer) GetHealthCheckFuture(nodeHost string, future chan HealthCheckFuture) {
     healthCheck := HealthCheckFuture{
         HealthCheck: HealthCheckStruct{},
         Error: nil,
     }
-    urls, err := BuildMasterURLs(log, "api/v1/health-check")
+    urls, err := h.BuildMasterURLs("api/v1/health-check")
     if err != nil {
         healthCheck.Error = err
         future <- healthCheck
         return
     }
-    body, err := AttemptGetRequests(log, urls, true)
+    body, err := h.AttemptGetRequests(urls, true)
     if err != nil {
         healthCheck.Error = err
         future <- healthCheck

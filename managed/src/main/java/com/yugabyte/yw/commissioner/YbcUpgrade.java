@@ -37,6 +37,8 @@ import java.util.concurrent.CopyOnWriteArraySet;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.client.YbcClient;
 import org.yb.ybc.ControllerStatus;
+import org.yb.ybc.ShutdownRequest;
+import org.yb.ybc.ShutdownResponse;
 import org.yb.ybc.UpgradeRequest;
 import org.yb.ybc.UpgradeRequest.Builder;
 import org.yb.ybc.UpgradeResponse;
@@ -473,6 +475,15 @@ public class YbcUpgrade {
                     + " universe "
                     + universeUUID
                     + ".");
+          } else {
+            // Verify that required version is upgraded.
+            if (!resp.getCurrentYbcVersion().equals(ybcVersion)) {
+              throw new RuntimeException(
+                  "YBC Upgrade failed as expected ybc version: "
+                      + ybcVersion
+                      + " but found: "
+                      + resp.getCurrentYbcVersion());
+            }
           }
         } catch (Exception e) {
           success = false;
@@ -503,6 +514,37 @@ public class YbcUpgrade {
       return false;
     }
     return true;
+  }
+
+  public synchronized void shutdownYbc(Universe universe) {
+    Integer ybcPort = universe.getUniverseDetails().communicationPorts.ybControllerrRpcPort;
+    String certFile = universe.getCertificateNodetoNode();
+    ShutdownRequest request = ShutdownRequest.newBuilder().build();
+    for (NodeDetails node : universe.getNodes()) {
+      String nodeIp = node.cloudInfo.private_ip;
+      if (unreachableNodes
+          .getOrDefault(universe.getUniverseUUID(), new HashSet<>())
+          .contains(nodeIp)) {
+        continue;
+      }
+      YbcClient client = null;
+      try {
+        client = ybcClientService.getNewClient(nodeIp, ybcPort, certFile);
+        if (client == null) {
+          // Assuming ybc is already dead if YBA is unable to create yb-client.
+          continue;
+        }
+        ShutdownResponse resp = client.shutdown(request);
+        if (!resp.getStatus().getCode().equals(ControllerStatus.OK)) {
+          log.error("YBC shutdown failed with error", resp);
+          throw new RuntimeException("YBC shutdown failed with error: " + resp.getStatus());
+        }
+      } catch (Exception e) {
+        throw e;
+      } finally {
+        ybcClientService.closeClient(client);
+      }
+    }
   }
 
   private void updateUniverseYBCVersion(UUID universeUUID, String ybcVersion) {

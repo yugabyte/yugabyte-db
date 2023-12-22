@@ -175,6 +175,7 @@ public class BootstrapProducer extends XClusterConfigTaskBase {
           throw new RuntimeException(errMsg);
         }
       }
+
       xClusterConfig.update();
 
       if (HighAvailabilityConfig.get().isPresent()) {

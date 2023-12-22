@@ -20,6 +20,7 @@ import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.extended.UserWithFeatures;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.util.Arrays;
 import java.util.UUID;
 import org.apache.commons.io.IOUtils;
 import org.yb.VersionInfo;
@@ -66,6 +67,12 @@ public class TestUtils {
       user.setEmail(email);
     }
     RequestContext.put(TokenAuthenticator.USER, new UserWithFeatures().setUser(user));
+  }
+
+  public static String generateLongString(int length) {
+    char[] chars = new char[length];
+    Arrays.fill(chars, 'A');
+    return new String(chars);
   }
 
   public static GetStatusResponse prepareGetStatusResponse(

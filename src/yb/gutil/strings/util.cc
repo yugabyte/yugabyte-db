@@ -180,14 +180,23 @@ char* AdjustedLastPos(const char* str, char separator, int n) {
 // Misc. routines
 // ----------------------------------------------------------------------
 
-bool IsAscii(const char* str, size_t len) {
+template <typename Fn>
+bool IsCharType(const char* str, size_t len, Fn isType) {
   const char* end = str + len;
   while (str < end) {
-    if (!ascii_isascii(*str++)) {
+    if (!isType(*str++)) {
       return false;
     }
   }
   return true;
+}
+
+bool IsAscii(const char* str, size_t len) {
+  return IsCharType(str, len, ascii_isascii);
+}
+
+bool IsPrint(const char* str, size_t len) {
+  return IsCharType(str, len, ascii_isprint);
 }
 
 // ----------------------------------------------------------------------

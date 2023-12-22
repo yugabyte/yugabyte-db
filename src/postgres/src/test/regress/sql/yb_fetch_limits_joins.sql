@@ -44,15 +44,11 @@ SELECT explain_join_tlarge_tsmall();
 -- #### batch nested loop joins ####
 SET yb_bnl_batch_size = 1024;
 -- now we can request large amounts of rows from the inner table - these are still bound by the size limit
--- YB_TODO: EXPLAIN Index Cond is not showing: Index Cond: (a = ANY (ARRAY[t_large.a, $1, $2, ..., $1023]))
 SELECT explain_join_tsmall_tlarge();
--- YB_TODO: EXPLAIN Index Cond is not showing: Index Cond: (a = ANY (ARRAY[t_small.a, $1, $2, ..., $1023]))
 SELECT explain_join_tlarge_tsmall();
 
 SET yb_fetch_size_limit = '500kB';
--- YB_TODO: EXPLAIN Index Cond is not showing: Index Cond: (a = ANY (ARRAY[t_large.a, $1, $2, ..., $1023]))
 SELECT explain_join_tsmall_tlarge();
--- YB_TODO: EXPLAIN Index Cond is not showing: Index Cond: (a = ANY (ARRAY[t_small.a, $1, $2, ..., $1023]))
 SELECT explain_join_tlarge_tsmall();
 
 -- YB_TODO: tests here onwards fail because proper join is not successfully chosen

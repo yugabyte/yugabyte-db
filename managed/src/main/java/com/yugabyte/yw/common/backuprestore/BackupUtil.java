@@ -189,6 +189,18 @@ public class BackupUtil {
     @ApiModelProperty(value = "Keyspace and tables list for given backup location")
     @Builder.Default
     private PerBackupLocationKeyspaceTables perBackupLocationKeyspaceTables = null;
+
+    @ApiModelProperty(value = "List of tablespaces in backup")
+    @Builder.Default
+    private TablespaceResponse tablespaceResponse = null;
+  }
+
+  @Data
+  @Builder
+  public static class TablespaceResponse {
+    private boolean containsTablespaces;
+    @Builder.Default private List<String> unsupportedTablespaces = null;
+    @Builder.Default private List<String> conflictingTablespaces = null;
   }
 
   @Data
@@ -615,7 +627,8 @@ public class BackupUtil {
   public static Map<String, PerLocationBackupInfo> getBackupLocationBackupInfoMap(
       List<BackupTableParams> backupParamsList,
       boolean selectiveRestoreYbcCheck,
-      boolean filterIndexes) {
+      boolean filterIndexes,
+      Map<String, TablespaceResponse> tablespaceResponsesMap) {
     Map<String, PerLocationBackupInfo> backupLocationTablesMap = new HashMap<>();
     backupParamsList.stream()
         .forEach(
@@ -633,7 +646,8 @@ public class BackupUtil {
                   .isYSQLBackup(isYSQLBackup)
                   .perBackupLocationKeyspaceTables(perLocationKTables)
                   .backupLocation(bP.storageLocation)
-                  .isSelectiveRestoreSupported(selectiveRestoreYbcCheck && !isYSQLBackup);
+                  .isSelectiveRestoreSupported(selectiveRestoreYbcCheck && !isYSQLBackup)
+                  .tablespaceResponse(tablespaceResponsesMap.get(bP.storageLocation));
               backupLocationTablesMap.put(bP.storageLocation, bInfoBuilder.build());
             });
     return backupLocationTablesMap;
@@ -748,6 +762,8 @@ public class BackupUtil {
             bSI -> {
               PerLocationBackupInfo bInfo =
                   preflightResponse.getPerLocationBackupInfoMap().get(bSI.storageLocation);
+
+              // YSQL/YCQL backup category section
               boolean isYSQLBackup = bInfo.getIsYSQLBackup();
               if (!backupTypeMatch(
                   isYSQLBackup, /*To verify*/
@@ -757,6 +773,27 @@ public class BackupUtil {
                     PRECONDITION_FAILED,
                     String.format("Backup category mismatch for location %s", bSI.storageLocation));
               }
+
+              // Tablespaces section
+              if (restoreParams.useTablespaces) {
+                List<String> unsupportedTablespaces =
+                    bInfo.tablespaceResponse.unsupportedTablespaces;
+                List<String> conflictingTablespaces =
+                    bInfo.tablespaceResponse.conflictingTablespaces;
+                if (CollectionUtils.isNotEmpty(unsupportedTablespaces)) {
+                  LOG.warn(
+                      "Attempting tablespaces restore with unsupported topology: {}",
+                      unsupportedTablespaces);
+                }
+                if (CollectionUtils.isNotEmpty(conflictingTablespaces)) {
+                  LOG.warn(
+                      "Attempting tablespaces restore which already exist on target Universe: {}."
+                          + "Note that these will not be overwritten.",
+                      unsupportedTablespaces);
+                }
+              }
+
+              // Selective table restore section
               if (bSI.selectiveTableRestore) {
                 if (!bInfo.getIsSelectiveRestoreSupported()) {
                   throw new PlatformServiceException(

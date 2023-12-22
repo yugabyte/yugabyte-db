@@ -148,20 +148,6 @@ struct ExternalTxnApplyStateData {
 
 using ExternalTxnApplyState = std::map<TransactionId, ExternalTxnApplyStateData>;
 
-class ExternalTxnIntentsState {
- public:
-  IntraTxnWriteId GetWriteIdAndIncrement(const TransactionId& txn_id);
-  // Used by PrepareExternalWriteBatch when applying external transactions.
-  void EraseEntries(const ExternalTxnApplyState& apply_external_transaction);
-  // Used by DocDBCompactionFilterIntents when cleaning up aborted external txns.
-  void EraseEntries(const TransactionIdSet& transactions);
-  size_t EntryCount();
-
- private:
-  std::mutex mutex_;
-  std::unordered_map<TransactionId, IntraTxnWriteId, TransactionIdHash> map_;
-};
-
 Status EnumerateIntents(
     const ArenaList<LWKeyValuePairPB>& kv_pairs,
     const dockv::EnumerateIntentsCallback& functor,

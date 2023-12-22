@@ -52,6 +52,7 @@
 #include "yb/util/memory/memory.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
+#include "yb/util/operation_counter.h"
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
 #include "yb/util/unique_lock.h"
@@ -100,6 +101,12 @@ DEFINE_test_flag(uint64, sleep_before_entering_wait_queue_ms, 0,
 DEFINE_test_flag(bool, drop_participant_signal, false,
                  "If true, do nothing with the commit/abort signal from the participant to the "
                  "wait queue.");
+
+DEFINE_test_flag(uint64, delay_rpc_status_req_callback_ms, 0,
+                 "If non-zero, upon receiving rpc status of a waiter transaction, we pause for set "
+                 "milliseconds before executing the underlying wait-queue callback function. Used "
+                 "in tests to assert that the wait-queue instance isn't deallocated while there "
+                 "are in-progress callback executions.");
 
 METRIC_DEFINE_event_stats(
     tablet, wait_queue_pending_time_waiting, "Wait Queue - Still Waiting Time",
@@ -220,7 +227,8 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
              const std::vector<BlockerDataAndConflictInfo> blockers_,
              const WaitDoneCallback callback_,
              std::unique_ptr<ScopedWaitingTxnRegistration> waiter_registration_, rpc::Rpcs* rpcs,
-             scoped_refptr<EventStats>* finished_waiting_latency)
+             scoped_refptr<EventStats>* finished_waiting_latency,
+             OperationCounter* in_progress_rpc_status_req_callbacks)
       : id(id_),
         subtxn_id(subtxn_id_),
         locks(locks_),
@@ -232,7 +240,8 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
         waiter_registration(std::move(waiter_registration_)),
         finished_waiting_latency_(*finished_waiting_latency),
         unlocked_(locks->Unlock()),
-        rpcs_(*rpcs) {
+        rpcs_(*rpcs),
+        in_progress_rpc_status_req_callbacks_(in_progress_rpc_status_req_callbacks) {
     VLOG_WITH_PREFIX(4) << "Constructed waiter";
   }
 
@@ -309,17 +318,29 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
                   if (instance->handle_ != instance->rpcs_.InvalidHandle()) {
                     instance->rpcs_.Unregister(&instance->handle_);
                   }
+                  // The passed callback 'cb' is bound to a raw WaitQueue::Impl pointer. The below
+                  // protects us from accessing freed up memory of WaitQueue::Impl, as we could
+                  // get here after the wait queue instance has been destructed.
+                  if (instance->is_wait_queue_shutting_down_) {
+                    VLOG(1) << instance->LogPrefix() << "Skipping GetTransactionStatus RPC callback"
+                            << " for waiter as the host wait-queue is shutting down.";
+                    return;
+                  }
+                  instance->in_progress_rpc_status_req_callbacks_->Acquire();
                 }
+                AtomicFlagSleepMs(&FLAGS_TEST_delay_rpc_status_req_callback_ms);
                 cb(status, resp);
+                instance->in_progress_rpc_status_req_callbacks_->Release();
             }),
         &handle_);
   }
 
-  void ShutdownStatusRequest() {
+  void SignalWaitQueueShutdown() {
     UniqueLock l(mutex_);
     if (handle_ != rpcs_.InvalidHandle()) {
       (**handle_).Abort();
     }
+    is_wait_queue_shutting_down_ = true;
   }
 
   bool IsSingleShard() const {
@@ -372,6 +393,10 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
   std::optional<UnlockedBatch> unlocked_ GUARDED_BY(mutex_) = std::nullopt;
   rpc::Rpcs& rpcs_;
   rpc::Rpcs::Handle handle_ GUARDED_BY(mutex_) = rpcs_.InvalidHandle();
+  bool is_wait_queue_shutting_down_ GUARDED_BY(mutex_) = false;
+  // Raw pointer to the host wait-queue's 'in_progress_rpc_status_req_callbacks_'. Shouldn't be
+  // operated on when 'is_wait_queue_shutting_down_' is true.
+  OperationCounter* in_progress_rpc_status_req_callbacks_;
 };
 
 using WaiterDataPtr = std::shared_ptr<WaiterData>;
@@ -707,7 +732,8 @@ class WaitQueue::Impl {
         blockers_per_waiter_(METRIC_wait_queue_blockers_per_waiter.Instantiate(metrics)),
         waiters_per_blocker_(METRIC_wait_queue_waiters_per_blocker.Instantiate(metrics)),
         total_waiters_(METRIC_wait_queue_num_waiters.Instantiate(metrics, 0)),
-        total_blockers_(METRIC_wait_queue_num_blockers.Instantiate(metrics, 0)) {}
+        total_blockers_(METRIC_wait_queue_num_blockers.Instantiate(metrics, 0)),
+        in_progress_rpc_status_req_callbacks_(LogPrefix()) {}
 
   ~Impl() {
     if (StartShutdown()) {
@@ -929,7 +955,7 @@ class WaitQueue::Impl {
     auto waiter_data = std::make_shared<WaiterData>(
         waiter_txn_id, subtxn_id, locks, serial_no, clock_->Now(), status_tablet_id,
         std::move(blocker_datas), std::move(callback), std::move(scoped_reporter), &rpcs_,
-        &finished_waiting_latency_);
+        &finished_waiting_latency_, &in_progress_rpc_status_req_callbacks_);
     if (waiter_data->IsSingleShard()) {
       DCHECK(single_shard_waiters_.size() == 0 ||
              waiter_data->wait_start >= single_shard_waiters_.front()->wait_start);
@@ -1135,12 +1161,14 @@ class WaitQueue::Impl {
     waiter_runner_.Shutdown();
 
     for (const auto& [_, waiter_data] : waiter_status_copy) {
-      waiter_data->ShutdownStatusRequest();
+      waiter_data->SignalWaitQueueShutdown();
       waiter_data->InvokeCallback(kShuttingDownError);
     }
     for (const auto& waiter_data : single_shard_waiters_copy) {
+      waiter_data->SignalWaitQueueShutdown();
       waiter_data->InvokeCallback(kShuttingDownError);
     }
+    in_progress_rpc_status_req_callbacks_.Shutdown();
     return !shutdown_complete_;
   }
 
@@ -1163,8 +1191,7 @@ class WaitQueue::Impl {
   void DumpStatusHtml(std::ostream& out) {
     SharedLock l(mutex_);
     if (shutting_down_) {
-      out << "Shutting down...";
-      return;
+      out << "Shutting down..." << std::endl;
     }
 
     out << "<h2>Txn Waiters:</h2>" << std::endl;
@@ -1320,14 +1347,14 @@ class WaitQueue::Impl {
  private:
   void HandleWaiterStatusFromParticipant(
       WaiterDataPtr waiter, Result<TransactionStatusResult> res) {
-    if (!res.ok() && res.status().IsNotFound()) {
-      {
-        SharedLock l(mutex_);
-        if (shutting_down_) {
-          VLOG_WITH_PREFIX_AND_FUNC(1) << "Skipping status RPC for waiter in shutdown wait queue.";
-          return;
-        }
+    {
+      SharedLock l(mutex_);
+      if (shutting_down_) {
+        VLOG_WITH_PREFIX_AND_FUNC(1) << "Skipping status RPC for waiter in shutdown wait queue.";
+        return;
       }
+    }
+    if (!res.ok() && res.status().IsNotFound()) {
       // Currently it may be the case that a waiting txn has not yet registered with the local
       // txn participant if it has not yet operated on the local tablet. The semantics of
       // txn_status_manager_->RequestStatusAt assume that any requested txn_id has participated on
@@ -1345,6 +1372,13 @@ class WaitQueue::Impl {
   void HandleWaiterStatusRpcResponse(
       const TransactionId& waiter_id, const Status& status,
       const tserver::GetTransactionStatusResponsePB& resp) {
+    {
+      SharedLock l(mutex_);
+      if (shutting_down_) {
+        VLOG_WITH_PREFIX_AND_FUNC(1) << "Skipping status RPC for waiter in shutdown wait queue.";
+        return;
+      }
+    }
     if (status.ok() && resp.status(0) == PENDING) {
       VLOG_WITH_PREFIX(4) << "Waiter status pending " << waiter_id;
       return;
@@ -1560,6 +1594,7 @@ class WaitQueue::Impl {
   scoped_refptr<EventStats> waiters_per_blocker_;
   scoped_refptr<AtomicGauge<uint64_t>> total_waiters_;
   scoped_refptr<AtomicGauge<uint64_t>> total_blockers_;
+  OperationCounter in_progress_rpc_status_req_callbacks_;
 };
 
 WaitQueue::WaitQueue(

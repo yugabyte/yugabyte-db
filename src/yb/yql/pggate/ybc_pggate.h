@@ -151,7 +151,14 @@ YBCStatus YBCReadSequenceTuple(int64_t db_oid,
                                int64_t *last_val,
                                bool *is_called);
 
-YBCStatus YBCDeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
+YBCStatus YBCPgNewDropSequence(const YBCPgOid database_oid,
+                               const YBCPgOid sequence_oid,
+                               YBCPgStatement *handle);
+
+YBCStatus YBCPgExecDropSequence(YBCPgStatement handle);
+
+YBCStatus YBCPgNewDropDBSequences(const YBCPgOid database_oid,
+                                  YBCPgStatement *handle);
 
 // Create database.
 YBCStatus YBCPgNewCreateDatabase(const char *database_name,
@@ -555,6 +562,7 @@ YBCStatus YBCPgRecreateTransaction();
 YBCStatus YBCPgRestartTransaction();
 YBCStatus YBCPgResetTransactionReadPoint();
 YBCStatus YBCPgRestartReadPoint();
+bool YBCIsRestartReadPointRequested();
 YBCStatus YBCPgCommitTransaction();
 YBCStatus YBCPgAbortTransaction();
 YBCStatus YBCPgSetTransactionIsolationLevel(int isolation);
@@ -683,7 +691,8 @@ YBCStatus YBCGetIndexBackfillProgress(YBCPgOid* index_oids, YBCPgOid* database_o
                                       int num_indexes);
 
 void YBCStartSysTablePrefetching(
-    uint64_t latest_known_ysql_catalog_version, YBCPgSysTablePrefetcherCacheMode cache_mode);
+    YBCPgLastKnownCatalogVersionInfo catalog_version,
+    YBCPgSysTablePrefetcherCacheMode cache_mode);
 
 void YBCStopSysTablePrefetching();
 

@@ -8574,6 +8574,9 @@ set_config_option_ext(const char *name, const char *value,
 	bool		prohibitValueChange = false;
 	bool		makeDefault;
 
+	if (source == YSQL_CONN_MGR)
+		Assert(YbIsClientYsqlConnMgr());
+
 	if (elevel == 0)
 	{
 		if (source == PGC_S_DEFAULT || source == PGC_S_FILE)
@@ -8808,8 +8811,13 @@ set_config_option_ext(const char *name, const char *value,
 	 * trying to find out if the value is potentially good, not actually use
 	 * it. Also keep going if makeDefault is true, since we may want to set
 	 * the reset/stacked values even if we can't set the variable itself.
+	 *
+	 * If the previous source was YSQL_CONN_MGR and current source is
+	 * PGC_S_SESSION, then don't ignore the set attempt.
+	 *
+	 * Also, YSQL_CONN_MGR is given highest priority.
 	 */
-	if (record->source > source)
+	if (record->source > source && record->source != YSQL_CONN_MGR)
 	{
 		if (changeVal && !makeDefault)
 		{
@@ -9443,9 +9451,37 @@ set_config_option_ext(const char *name, const char *value,
 		report_needed = true;
 	}
 
+	/*
+	 * Session parameter set by any source will be allowed to be stored in the
+	 * shared memory. But the context must be a `SET STATEMENT` (i.e. PGC_SUSET
+	 * or PGC_USERSET).
+	 *
+	 * Limitation:
+	 * While PGC_INTERNAL, PGC_POSTMASTER and PGC_SIGHUP will be common to all
+	 * the users and thus need not be changed. If logical connection uses
+	 * PGC_SU_BACKEND, PGC_BACKEND context to set a session parameter, (i.e. via
+	 * the use startup packet to set a session parameter) then it won't be
+	 * supported.
+	 *
+	 * TODO (janand) #18884 Support the setting of session parameter via startup
+	 * packet.
+	 *
+	 * TODO (janand) #18885 For RESET command add an identifier,
+	 * 		for better memory management in shared memory.
+	 *
+	 * PGC_SUSET is used in case of a super user use a SET statement.
+	 */
+	if (changeVal && 			/* Add only if the parameter value is changed */
+		source != YSQL_CONN_MGR && /* Don't add the parameter to the changed
+									* list, if it is set from YSQL CONN MGR */
+		(context == PGC_SUSET || context == PGC_USERSET || /* SET statement */
+		 value == NULL))								   /* RESET statement */
+	{
+		YbAddToChangedSessionParametersList(name);
+	}
+
 	return changeVal ? 1 : -1;
 }
-
 
 /*
  * Set the fields for source file and line number the setting came from.

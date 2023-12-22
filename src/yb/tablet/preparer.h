@@ -48,6 +48,8 @@ class Preparer {
   Status Submit(OperationDriver* txn_driver);
   ThreadPoolToken* PoolToken();
 
+  void DumpStatusHtml(std::ostream& out);
+
  private:
   std::unique_ptr<PreparerImpl> impl_;
 };

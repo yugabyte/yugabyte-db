@@ -117,7 +117,7 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   ~Connection();
 
   CoarseTimePoint last_activity_time() const {
-    return last_activity_time_;
+    return last_activity_time_.load(std::memory_order_acquire);
   }
 
   void UpdateLastActivity() override;
@@ -155,6 +155,11 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   // Safe to be called from other threads.
   std::string ToString() const;
 
+  // Dump the connection state for provided call id. This includes the information realted to
+  // connection shutdown time, and whether the call id is present in the active_calls_ or not.
+  // call_ptr is used only for logging to correlate with OutboundCall trace.
+  void QueueDumpConnectionState(int32_t call_id, const void* call_ptr) const;
+
   Direction direction() const { return direction_; }
 
   // Queue a call response back to the client on the server side.
@@ -173,8 +178,9 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
 
   Status DumpPB(const DumpRunningRpcsRequestPB& req, RpcConnectionPB* resp) ON_REACTOR_THREAD;
 
-  // Do appropriate actions after adding outbound call.
-  void OutboundQueued() ON_REACTOR_THREAD;
+  // Do appropriate actions after adding outbound call. If the connection is shutting down,
+  // returns the connection's shutdown status.
+  Status OutboundQueued() ON_REACTOR_THREAD;
 
   // An incoming packet has completed on the client side. This parses the
   // call response, looks up the CallAwaitingResponse, and calls the
@@ -194,12 +200,26 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
     return rpc_metrics_;
   }
 
-  CoarseTimePoint last_activity_time() {
-    return last_activity_time_.load(std::memory_order_acquire);
+  // Returns the connection's shutdown status, or OK if shutdown has not happened yet.
+  Status ShutdownStatus() const;
+
+  bool shutdown_initiated() const {
+    return shutdown_initiated_.load(std::memory_order_acquire);
   }
 
+  bool shutdown_completed() const {
+    return shutdown_completed_.load(std::memory_order_acquire);
+  }
+
+  // Used in Reactor-based stuck outbound call monitoring mechanism.
+  void ForceCallExpiration(const OutboundCallPtr& call) ON_REACTOR_THREAD;
+
  private:
-  Status DoWrite();
+  // Marks the given call as failed and schedules destruction of the connection.
+  void FailCallAndDestroyConnection(const OutboundDataPtr& outbound_data,
+                                    const Status& status) ON_REACTOR_THREAD;
+
+  void ScheduleDestroyConnection(const Status& status) ON_REACTOR_THREAD;
 
   // Does actual outbound data queuing.
   //
@@ -207,8 +227,8 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   // QueueOutboundDataBatch for how this is used.
   //
   // Returns the handle corresponding to the queued call, or std::numeric_limits<size_t>::max() in
-  // case the connection is shutting down.
-  size_t DoQueueOutboundData(OutboundDataPtr call, bool batch) ON_REACTOR_THREAD;
+  // case the handle is unknown, or an error in case the connection is shutting down.
+  Result<size_t> DoQueueOutboundData(OutboundDataPtr call, bool batch) ON_REACTOR_THREAD;
 
   void ProcessResponseQueue() ON_REACTOR_THREAD;
 
@@ -225,6 +245,8 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   StreamReadBuffer& ReadBuffer() override;
 
   void CleanupExpirationQueue(CoarseTimePoint now) ON_REACTOR_THREAD;
+  // call_ptr is used only for logging to correlate with OutboundCall trace.
+  void DumpConnectionState(int32_t call_id, const void* call_ptr) const ON_REACTOR_THREAD;
 
   std::string LogPrefix() const;
 
@@ -263,7 +285,15 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
     int32_t id = 0; // Call id.
     OutboundCallPtr call; // Call object, null if call has expired.
     CoarseTimePoint expires_at; // Expiration time, kMax when call has expired.
-    size_t handle = 0; // Call handle in outbound stream.
+    CallHandle handle = 0; // Call handle in outbound stream.
+
+    std::string ToString(std::optional<CoarseTimePoint> now = std::nullopt) const {
+      return YB_STRUCT_TO_STRING(
+          id,
+          (call, AsString(pointer_cast<const void*>(call.get()))),
+          (expires_at, yb::ToStringRelativeToNow(expires_at, now)),
+          handle);
+    }
   };
 
   class ExpirationTag;
@@ -292,13 +322,14 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   // Fields protected by outbound_data_queue_mtx_
   // ----------------------------------------------------------------------------------------------
 
-  simple_spinlock outbound_data_queue_mtx_;
+  mutable simple_spinlock outbound_data_queue_mtx_;
 
   // Responses we are going to process.
   std::vector<OutboundDataPtr> outbound_data_to_process_ GUARDED_BY(outbound_data_queue_mtx_);
 
   // Starts as Status::OK, gets set to a shutdown status upon Shutdown().
   Status shutdown_status_ GUARDED_BY(outbound_data_queue_mtx_);
+  std::atomic<CoarseTimePoint> shutdown_time_{CoarseTimePoint::min()};
 
   std::shared_ptr<ReactorTask> process_response_queue_task_ GUARDED_BY(outbound_data_queue_mtx_);
 
@@ -307,9 +338,17 @@ class Connection final : public StreamContext, public std::enable_shared_from_th
   // ----------------------------------------------------------------------------------------------
 
   std::atomic<uint64_t> responded_call_count_{0};
+  std::atomic<size_t> active_calls_during_shutdown_{0};
+  std::atomic<size_t> calls_queued_after_shutdown_{0};
+  std::atomic<size_t> responses_queued_after_shutdown_{0};
 
   // The last time we read or wrote from the socket.
-  std::atomic<CoarseTimePoint> last_activity_time_;
+  std::atomic<CoarseTimePoint> last_activity_time_{CoarseTimePoint::min()};
+
+  std::atomic<bool> queued_destroy_connection_{false};
+
+  std::atomic<bool> shutdown_initiated_{false};
+  std::atomic<bool> shutdown_completed_{false};
 };
 
 }  // namespace rpc

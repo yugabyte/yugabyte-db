@@ -230,7 +230,9 @@ Status UpdateReadTime(tserver::PgPerformOptionsPB* options, const ReadHybridTime
 
 class PgSession::RunHelper {
  public:
-  RunHelper(PgSession* pg_session, SessionType session_type, HybridTime in_txn_limit)
+  RunHelper(PgSession* pg_session,
+            SessionType session_type,
+            HybridTime in_txn_limit)
       : pg_session_(*pg_session),
         session_type_(session_type),
         in_txn_limit_(in_txn_limit) {
@@ -425,7 +427,6 @@ Status PgSession::DropDatabase(const std::string& database_name, PgOid database_
   req.set_database_oid(database_oid);
 
   RETURN_NOT_OK(pg_client_.DropDatabase(&req, CoarseTimePoint()));
-  RETURN_NOT_OK(DeleteDBSequences(database_oid));
   return Status::OK();
 }
 
@@ -487,14 +488,6 @@ Result<std::pair<int64_t, bool>> PgSession::ReadSequenceTuple(int64_t db_oid,
                                                               bool is_db_catalog_version_mode) {
   return pg_client_.ReadSequenceTuple(
       db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode);
-}
-
-Status PgSession::DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid) {
-  return pg_client_.DeleteSequenceTuple(db_oid, seq_oid);
-}
-
-Status PgSession::DeleteDBSequences(int64_t db_oid) {
-  return pg_client_.DeleteDBSequences(db_oid);
 }
 
 //--------------------------------------------------------------------------------------------------
@@ -694,9 +687,12 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
   }
   options.set_force_global_transaction(global_transaction);
 
+  // For DDLs, ysql_upgrades and PGCatalog accesses, we always use the default read-time
+  // and effectively skip xcluster_database_consistency which enables reads as of xcluster safetime.
   options.set_use_xcluster_database_consistency(
       yb_xcluster_consistency_level == XCLUSTER_CONSISTENCY_DATABASE &&
-      !(ops_options.use_catalog_session || pg_txn_manager_->IsDdlMode()));
+      !(ops_options.use_catalog_session || pg_txn_manager_->IsDdlMode() ||
+        yb_non_ddl_txn_for_sys_tables_allowed));
 
   auto promise = std::make_shared<std::promise<PerformResult>>();
 

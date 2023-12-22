@@ -84,10 +84,17 @@ class TwoLevelIterator final : public InternalIterator {
   void SaveError(const Status& s) {
     if (status_.ok() && !s.ok()) status_ = s;
   }
-  void SkipEmptyDataBlocksForward();
+  const KeyValueEntry& DoSkipEmptyDataBlocksForward(const KeyValueEntry* entry);
   void SkipEmptyDataBlocksBackward();
   void SetSecondLevelIterator(InternalIterator* iter);
-  void InitDataBlock();
+  bool InitDataBlock();
+
+  const KeyValueEntry& SkipEmptyDataBlocksForward(const KeyValueEntry& entry) {
+    if (PREDICT_TRUE(entry.Valid())) {
+      return entry;
+    }
+    return DoSkipEmptyDataBlocksForward(&entry);
+  }
 
   TwoLevelIteratorState* state_;
   IteratorWrapper first_level_iter_;
@@ -114,22 +121,18 @@ const KeyValueEntry& TwoLevelIterator::Seek(Slice target) {
   }
   first_level_iter_.Seek(target);
 
-  InitDataBlock();
-  if (second_level_iter_.iter() != nullptr) {
-    second_level_iter_.Seek(target);
+  if (!InitDataBlock()) {
+    return KeyValueEntry::Invalid();
   }
-  SkipEmptyDataBlocksForward();
-  return Entry();
+  return SkipEmptyDataBlocksForward(second_level_iter_.Seek(target));
 }
 
 const KeyValueEntry& TwoLevelIterator::SeekToFirst() {
   first_level_iter_.SeekToFirst();
-  InitDataBlock();
-  if (second_level_iter_.iter() != nullptr) {
-    second_level_iter_.SeekToFirst();
+  if (!InitDataBlock()) {
+    return KeyValueEntry::Invalid();
   }
-  SkipEmptyDataBlocksForward();
-  return Entry();
+  return SkipEmptyDataBlocksForward(second_level_iter_.SeekToFirst());
 }
 
 const KeyValueEntry& TwoLevelIterator::SeekToLast() {
@@ -144,9 +147,7 @@ const KeyValueEntry& TwoLevelIterator::SeekToLast() {
 
 const KeyValueEntry& TwoLevelIterator::Next() {
   assert(Valid());
-  second_level_iter_.Next();
-  SkipEmptyDataBlocksForward();
-  return Entry();
+  return SkipEmptyDataBlocksForward(second_level_iter_.Next());
 }
 
 const KeyValueEntry& TwoLevelIterator::Prev() {
@@ -176,27 +177,28 @@ ScanForwardResult TwoLevelIterator::ScanForward(
       return result;
     }
 
-    SkipEmptyDataBlocksForward();
+    SkipEmptyDataBlocksForward(second_level_iter_.Entry());
   } while (Valid());
 
   result.reached_upperbound = true;
   return result;
 }
 
-void TwoLevelIterator::SkipEmptyDataBlocksForward() {
-  while (second_level_iter_.iter() == nullptr ||
-         (!second_level_iter_.Valid() &&
-         !second_level_iter_.status().IsIncomplete())) {
+const KeyValueEntry& TwoLevelIterator::DoSkipEmptyDataBlocksForward(const KeyValueEntry* entry) {
+  for (;;) {
+    if (entry->Valid() || second_level_iter_.status().IsIncomplete()) {
+      return *entry;
+    }
     // Move to next block
     if (!first_level_iter_.Valid()) {
       SetSecondLevelIterator(nullptr);
-      return;
+      return KeyValueEntry::Invalid();
     }
     first_level_iter_.Next();
-    InitDataBlock();
-    if (second_level_iter_.iter() != nullptr) {
-      second_level_iter_.SeekToFirst();
+    if (!InitDataBlock()) {
+      return KeyValueEntry::Invalid();
     }
+    entry = &second_level_iter_.SeekToFirst();
   }
 }
 
@@ -210,8 +212,7 @@ void TwoLevelIterator::SkipEmptyDataBlocksBackward() {
       return;
     }
     first_level_iter_.Prev();
-    InitDataBlock();
-    if (second_level_iter_.iter() != nullptr) {
+    if (InitDataBlock()) {
       second_level_iter_.SeekToLast();
     }
   }
@@ -224,22 +225,25 @@ void TwoLevelIterator::SetSecondLevelIterator(InternalIterator* iter) {
   second_level_iter_.Set(iter);
 }
 
-void TwoLevelIterator::InitDataBlock() {
-  if (!first_level_iter_.Valid()) {
+bool TwoLevelIterator::InitDataBlock() {
+  if (PREDICT_FALSE(!first_level_iter_.Valid())) {
     SetSecondLevelIterator(nullptr);
-  } else {
-    Slice handle = first_level_iter_.value();
-    if (second_level_iter_.iter() != nullptr &&
-        !second_level_iter_.status().IsIncomplete() &&
-        handle.compare(data_block_handle_) == 0) {
-      // second_level_iter is already constructed with this iterator, so
-      // no need to change anything
-    } else {
-      InternalIterator* iter = state_->NewSecondaryIterator(handle);
-      data_block_handle_.assign(handle.cdata(), handle.size());
-      SetSecondLevelIterator(iter);
-    }
+    return false;
   }
+
+  Slice handle = first_level_iter_.value();
+  if (second_level_iter_.iter() != nullptr &&
+      !second_level_iter_.status().IsIncomplete() &&
+      handle.compare(data_block_handle_) == 0) {
+    // second_level_iter is already constructed with this iterator, so
+    // no need to change anything
+  } else {
+    InternalIterator* iter = state_->NewSecondaryIterator(handle);
+    data_block_handle_.assign(handle.cdata(), handle.size());
+    SetSecondLevelIterator(iter);
+  }
+
+  return true;
 }
 
 }  // namespace

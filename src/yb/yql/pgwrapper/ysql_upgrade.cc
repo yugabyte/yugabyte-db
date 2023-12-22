@@ -147,8 +147,8 @@ Result<Version> DetermineAndSetVersion(PGConn* pgconn) {
         "  LIMIT 1");
     pgwrapper::PGResultPtr res = VERIFY_RESULT(pgconn->Fetch(query_str));
     if (PQntuples(res.get()) == 1) {
-      int major_version = VERIFY_RESULT(pgwrapper::GetInt32(res.get(), 0, 0));
-      int minor_version = VERIFY_RESULT(pgwrapper::GetInt32(res.get(), 0, 1));
+      auto major_version = VERIFY_RESULT(pgwrapper::GetValue<int32_t>(res.get(), 0, 0));
+      auto minor_version = VERIFY_RESULT(pgwrapper::GetValue<int32_t>(res.get(), 0, 1));
       Version ver(major_version, minor_version);
       LOG(INFO) << "Version is " << ver;
       return ver;
@@ -384,7 +384,7 @@ Status YsqlUpgradeHelper::Upgrade() {
                                   "  WHERE datname NOT IN ('template0', 'template1');");
       pgwrapper::PGResultPtr res = VERIFY_RESULT(t1_conn->Fetch(query_str));
       for (int i = 0; i < PQntuples(res.get()); i++) {
-        db_names.emplace_back(VERIFY_RESULT(pgwrapper::GetString(res.get(), i, 0)));
+        db_names.emplace_back(VERIFY_RESULT(GetValue<std::string>(res.get(), i, 0)));
       }
     }
   }

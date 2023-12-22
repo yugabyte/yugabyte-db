@@ -48,5 +48,7 @@ export const K8sCertIssuerTypeLabel = {
 export const OnPremRegionFieldLabel = {
   CODE: 'Region Name',
   LOCATION: 'Location',
+  LONGITUDE: 'Longitude',
+  LATITUDE: 'Latitude',
   ZONE_NAME: 'Zone Name'
 } as const;

@@ -19,6 +19,9 @@ export interface YCQLFormFields {
   ycqlCurrentPassword?: string;
   ycqlNewPassword?: string;
   ycqlConfirmNewPassword?: string;
+  overridePorts?: boolean;
+  yqlServerHttpPort?: number;
+  yqlServerRpcPort?: number;
 }
 
 export interface YSQLFormPayload {

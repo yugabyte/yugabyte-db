@@ -78,15 +78,15 @@ void RefinedStream::Shutdown(const Status& status) {
 
 Result<size_t> RefinedStream::Send(OutboundDataPtr data) {
   switch (state_) {
-  case RefinedStreamState::kInitial:
-  case RefinedStreamState::kHandshake:
-    pending_data_.push_back(std::move(data));
-    return std::numeric_limits<size_t>::max();
-  case RefinedStreamState::kEnabled:
-    RETURN_NOT_OK(refiner_->Send(std::move(data)));
-    return std::numeric_limits<size_t>::max();
-  case RefinedStreamState::kDisabled:
-    return lower_stream_->Send(std::move(data));
+    case RefinedStreamState::kInitial:
+    case RefinedStreamState::kHandshake:
+      pending_data_.push_back(std::move(data));
+      return kUnknownCallHandle;
+    case RefinedStreamState::kEnabled:
+      RETURN_NOT_OK(refiner_->Send(std::move(data)));
+      return kUnknownCallHandle;
+    case RefinedStreamState::kDisabled:
+      return lower_stream_->Send(std::move(data));
   }
 
   FATAL_INVALID_ENUM_VALUE(RefinedStreamState, state_);

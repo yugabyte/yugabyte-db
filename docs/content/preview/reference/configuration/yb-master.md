@@ -480,6 +480,14 @@ Clusters created using `yugabyted` always use a default value of `1`.
 
 {{< /note >}}
 
+##### --ysql_colocate_database_by_default
+
+When enabled, all databases created in the cluster are colocated by default. If you enable the flag after creating a cluster, you need to restart the YB-Master and YB-TServer services.
+
+For more details, see [clusters in colocated tables](../../../architecture/docdb-sharding/colocated-tables/#clusters).
+
+Default: `false`
+
 ## Tablet splitting flags
 
 ##### --enable_automatic_tablet_splitting
@@ -735,6 +743,12 @@ The Admin UI for YB-Master is available at <http://localhost:7000>.
 Home page of the YB-Master server that gives a high level overview of the cluster. Not all YB-Master servers in a cluster show identical information.
 
 ![master-home](/images/admin/master-home-binary-with-tables.png)
+
+### Namespaces
+
+List of namespaces present in the cluster.
+
+![master-namespaces](/images/admin/master-namespaces.png)
 
 ### Tables
 

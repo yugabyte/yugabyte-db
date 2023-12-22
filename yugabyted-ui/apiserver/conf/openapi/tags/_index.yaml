@@ -2,3 +2,7 @@
   description: APIs for cluster CRUD
 - name: cluster-info
   description: APIs for getting information about an existing cluster
+- name: voyager-info
+  description: APIs for getting information about Voyager migrations
+- name: voyager-metrics
+  description: APIs for getting Voyager data migrations metrics

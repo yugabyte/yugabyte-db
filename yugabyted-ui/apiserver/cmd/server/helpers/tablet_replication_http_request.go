@@ -18,7 +18,10 @@ type TabletReplicationFuture struct {
     Error error
 }
 
-func GetTabletReplicationFuture(nodeHost string, future chan TabletReplicationFuture) {
+func (h *HelperContainer) GetTabletReplicationFuture(
+    nodeHost string,
+    future chan TabletReplicationFuture,
+) {
     leaderlessTablets := TabletReplicationFuture{
         LeaderlessTablets: []TabletReplicationInfo{},
         Error: nil,

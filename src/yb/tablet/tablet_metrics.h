@@ -127,6 +127,9 @@ class ScopedTabletMetrics final : public TabletMetrics {
 
   void CopyToPgsqlResponse(PgsqlResponsePB* response) const;
 
+  // Returns number of metric changes dumped.
+  size_t Dump(std::stringstream* out) const;
+
   void MergeAndClear(TabletMetrics* target);
 
  private:

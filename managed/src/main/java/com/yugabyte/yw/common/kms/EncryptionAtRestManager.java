@@ -249,6 +249,7 @@ public class EncryptionAtRestManager {
                   + "with config %s",
               universeUUID.toString(), configUUID.toString());
       LOG.error(errMsg, e);
+      throw new RuntimeException(errMsg, e);
     }
     return keyVal;
   }
@@ -406,7 +407,9 @@ public class EncryptionAtRestManager {
       // universe key registry which we need to be the case.
       EncryptionAtRestUtil.activateKeyRef(universeUUID, kmsConfigUUID, keyRef);
     } catch (Exception e) {
-      LOG.error("Error sending universe key to master: ", e);
+      String errMsg = "Error sending universe key to master.";
+      LOG.error(errMsg, e);
+      throw new RuntimeException(errMsg, e);
     } finally {
       ybService.closeClient(client, hostPorts);
     }
@@ -528,7 +531,9 @@ public class EncryptionAtRestManager {
         result = restoreUniverseKeyHistory(ybService, universeUUID, kmsConfigUUID, universeKeys);
       }
     } catch (Exception e) {
-      LOG.error("Error occurred restoring universe key history", e);
+      String errMsg = "Error occurred restoring universe key history.";
+      LOG.error(errMsg, e);
+      throw new RuntimeException(errMsg, e);
     }
 
     return result;
@@ -549,7 +554,9 @@ public class EncryptionAtRestManager {
         result = RestoreKeyResult.RESTORE_SUCCEEDED;
       }
     } catch (Exception e) {
-      LOG.error("Error occurred restoring universe key history", e);
+      String errMsg = "Error occurred restoring universe key history.";
+      LOG.error(errMsg, e);
+      throw new RuntimeException(errMsg, e);
     }
     return result;
   }

@@ -154,6 +154,9 @@ set(UTIL_SRCS
   curl_util.cc
   date_time.cc
   debug-util.cc
+  symbolize.cc
+  libbacktrace_util.cc
+  source_location.cc
   debug/lock_debug.cc
   debug/long_operation_tracker.cc
   debug/trace_event_impl.cc
@@ -256,7 +259,6 @@ set(UTIL_SRCS
   timestamp.cc
   tostring.cc
   trace.cc
-  trilean.cc
   ulimit.cc
   ulimit_util.cc
   url-coding.cc
@@ -392,9 +394,10 @@ ADD_YB_TEST(path_util-test)
 ADD_YB_TEST(priority_queue-test)
 ADD_YB_TEST(priority_thread_pool-test)
 ADD_YB_TEST(pstack_watcher-test)
-ADD_YB_TEST(ref_cnt_buffer-test)
 ADD_YB_TEST(random-test)
 ADD_YB_TEST(random_util-test)
+ADD_YB_TEST(range-test)
+ADD_YB_TEST(ref_cnt_buffer-test)
 ADD_YB_TEST(result-test)
 ADD_YB_TEST(rolling_log-test)
 ADD_YB_TEST(rw_mutex-test)

@@ -13,12 +13,20 @@ package com.yugabyte.yw.controllers;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.ApiResponse;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.PlatformBackupFrequencyFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import java.io.File;
 import java.net.URL;
 import java.time.Duration;
@@ -40,6 +48,12 @@ public class PlatformReplicationController extends AuthenticatedController {
 
   @Inject private PlatformReplicationManager replicationManager;
 
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result startPeriodicBackup(UUID configUUID, Http.Request request) {
     try {
       Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.get(configUUID);
@@ -71,6 +85,12 @@ public class PlatformReplicationController extends AuthenticatedController {
     }
   }
 
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result stopPeriodicBackup(UUID configUUID, Http.Request request) {
     try {
       Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.get(configUUID);
@@ -91,6 +111,12 @@ public class PlatformReplicationController extends AuthenticatedController {
     }
   }
 
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result getBackupInfo(UUID configUUID) {
     try {
       Optional<HighAvailabilityConfig> config = HighAvailabilityConfig.get(configUUID);
@@ -106,6 +132,12 @@ public class PlatformReplicationController extends AuthenticatedController {
     }
   }
 
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result listBackups(UUID configUUID, String leaderAddr) {
     try {
       if (StringUtils.isBlank(leaderAddr)) {

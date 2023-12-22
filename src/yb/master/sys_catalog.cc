@@ -253,15 +253,10 @@ Status SysCatalogTable::CreateAndFlushConsensusMeta(
     FsManager* fs_manager,
     const RaftConfigPB& config,
     int64_t current_term) {
-  std::unique_ptr<ConsensusMetadata> cmeta;
   string tablet_id = kSysCatalogTabletId;
-  RETURN_NOT_OK_PREPEND(ConsensusMetadata::Create(fs_manager,
-                                                  tablet_id,
-                                                  fs_manager->uuid(),
-                                                  config,
-                                                  current_term,
-                                                  &cmeta),
-                        "Unable to persist consensus metadata for tablet " + tablet_id);
+  std::unique_ptr<ConsensusMetadata> cmeta = VERIFY_RESULT_PREPEND(
+      ConsensusMetadata::Create(fs_manager, tablet_id, fs_manager->uuid(), config, current_term),
+      "Unable to persist consensus metadata for tablet " + tablet_id);
   return Status::OK();
 }
 

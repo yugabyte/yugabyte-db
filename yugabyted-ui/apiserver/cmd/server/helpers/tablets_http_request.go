@@ -40,7 +40,8 @@ type TabletsFuture struct {
     Error   error
 }
 
-func GetTabletsFuture(nodeHost string, future chan TabletsFuture) {
+// Gets tablets from a single tserver
+func (h *HelperContainer) GetTabletsFuture(nodeHost string, future chan TabletsFuture) {
     tablets := TabletsFuture{
         Tablets: map[string]TabletInfoStruct{},
         Error: nil,

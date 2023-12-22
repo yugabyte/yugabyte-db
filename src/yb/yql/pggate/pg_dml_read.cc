@@ -20,20 +20,22 @@
 #include <memory>
 #include <utility>
 
-
-#include "yb/dockv/partition.h"
 #include "yb/common/pg_system_attr.h"
 #include "yb/common/ql_datatype.h"
 #include "yb/common/row_mark.h"
 #include "yb/common/schema.h"
 
 #include "yb/dockv/doc_key.h"
+#include "yb/dockv/partition.h"
 #include "yb/dockv/primitive_value.h"
 #include "yb/dockv/value_type.h"
 
+#include "yb/gutil/casts.h"
 #include "yb/gutil/strings/substitute.h"
 
+#include "yb/util/range.h"
 #include "yb/util/slice.h"
+#include "yb/util/status_format.h"
 
 #include "yb/yql/pggate/pg_column.h"
 #include "yb/yql/pggate/pg_expr.h"
@@ -42,13 +44,7 @@
 #include "yb/yql/pggate/pg_tabledesc.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
-#include "yb/util/status_format.h"
-
-using std::vector;
-
-namespace yb {
-namespace pggate {
-
+namespace yb::pggate {
 namespace {
 
 class DocKeyBuilder {
@@ -67,7 +63,7 @@ class DocKeyBuilder {
     return Status::OK();
   }
 
-  dockv::DocKey operator()(const vector<dockv::KeyEntryValue>& range_components) const {
+  dockv::DocKey operator()(const std::vector<dockv::KeyEntryValue>& range_components) const {
     if (!hashed_components_) {
       return dockv::DocKey(range_components);
     }
@@ -76,7 +72,7 @@ class DocKeyBuilder {
 
  private:
   uint16_t hash_;
-  const vector<dockv::KeyEntryValue>* hashed_components_ = nullptr;
+  const std::vector<dockv::KeyEntryValue>* hashed_components_ = nullptr;
 };
 
 inline void ApplyBound(
@@ -86,6 +82,32 @@ inline void ApplyBound(
     mutable_bound->dup_key(dockv::PartitionSchema::EncodeMultiColumnHashValue(bound->value));
     mutable_bound->set_is_inclusive(bound->is_inclusive);
   }
+}
+
+[[nodiscard]] inline bool IsForInOperator(const LWPgsqlExpressionPB& expr) {
+  // For IN operator expr->has_condition() returns 'true'.
+  return expr.has_condition();
+}
+
+[[nodiscard]] bool InOpInversesOperandOrder(SortingType sorting_type, bool is_forward_scan) {
+  switch(sorting_type) {
+    case SortingType::kNotSpecified: return false;
+    case SortingType::kDescending: [[fallthrough]];
+    case SortingType::kDescendingNullsLast: return is_forward_scan;
+    case SortingType::kAscending: [[fallthrough]];
+    case SortingType::kAscendingNullsLast: return !is_forward_scan;
+  }
+  FATAL_INVALID_ENUM_VALUE(SortingType, sorting_type);
+}
+
+// In some cases scan are sensitive to key values order. On DocDB side IN operator processes
+// based on column sort order and scan direction. It is necessary to preserve same order for
+// the constructed ybctids.
+[[nodiscard]] auto InOpOperandsProcessingRange(
+    size_t operands_count, SortingType sorting_type, bool is_forward_scan) {
+  auto operands_range = Range(narrow_cast<int>(operands_count));
+  return InOpInversesOperandOrder(sorting_type, is_forward_scan)
+      ? operands_range.Reversed() : operands_range;
 }
 
 } // namespace
@@ -199,8 +221,7 @@ Status PgDmlRead::ProcessEmptyPrimaryBinds() {
     const auto& column = bind_.ColumnForIndex(index);
     auto expr = column.bind_pb();
     auto colid = column.id();
-    // For IN clause expr->has_condition() returns 'true'.
-    if (!expr || (!expr->has_condition() && !column.ValueBound() &&
+    if (!expr || (!IsForInOperator(*expr) && !column.ValueBound() &&
                   (std::find(tuple_col_ids.begin(), tuple_col_ids.end(), colid) ==
                        tuple_col_ids.end()))) {
       miss_partition_columns = true;
@@ -239,8 +260,7 @@ Status PgDmlRead::ProcessEmptyPrimaryBinds() {
   for (auto index = bind_->num_hash_key_columns(); index < bind_->num_key_columns(); ++index) {
     auto& col = bind_.ColumnForIndex(index);
     auto expr = col.bind_pb();
-    // For IN clause expr->has_condition() returns 'true'.
-    if (expr && expr->has_condition()) {
+    if (expr && IsForInOperator(*expr)) {
       preceding_key_column_missed = true;
       RETURN_NOT_OK(col.MoveBoundKeyInOperator(read_req_.get()));
     } else if (!col.ValueBound()) {
@@ -293,8 +313,7 @@ Status PgDmlRead::Exec(const PgExecParameters *exec_params) {
   const auto row_mark_type = GetRowMarkType(exec_params);
   if (has_doc_op() &&
       !secondary_index_query_ &&
-      IsValidRowMarkType(row_mark_type) &&
-      CanBuildYbctidsFromPrimaryBinds()) {
+      IsAllPrimaryKeysBound()) {
     RETURN_NOT_OK(SubstitutePrimaryBindsWithYbctids(exec_params));
   } else {
     RETURN_NOT_OK(ProcessEmptyPrimaryBinds());
@@ -666,11 +685,11 @@ Status PgDmlRead::SubstitutePrimaryBindsWithYbctids(const PgExecParameters* exec
 }
 
 // Function builds vector of ybctids from primary key binds.
-// Required precondition that one and only one range key component has IN clause and all
+// Required precondition that not more than one range key component has the IN operator and all
 // other key components are set must be checked by caller code.
 Result<std::vector<std::string>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
   auto hashed_values = arena().AllocateArray<LWQLValuePB*>(bind_->num_hash_key_columns());
-  vector<dockv::KeyEntryValue> hashed_components, range_components;
+  std::vector<dockv::KeyEntryValue> hashed_components, range_components;
   hashed_components.reserve(bind_->num_hash_key_columns());
   range_components.reserve(bind_->num_key_columns() - bind_->num_hash_key_columns());
   for (size_t i = 0; i < bind_->num_hash_key_columns(); ++i) {
@@ -682,51 +701,63 @@ Result<std::vector<std::string>> PgDmlRead::BuildYbctidsFromPrimaryBinds() {
   RETURN_NOT_OK(dockey_builder.Prepare(
       hashed_components, hashed_values, bind_->partition_schema()));
 
-  for (size_t i = bind_->num_hash_key_columns(); i < bind_->num_key_columns(); ++i) {
+  struct InOperatorInfo {
+    InOperatorInfo(const PgColumn& column_, size_t placeholder_idx_)
+        : column(column_), placeholder_idx(placeholder_idx_) {}
+
+    const PgColumn& column;
+    const size_t placeholder_idx;
+  };
+
+
+  std::optional<InOperatorInfo> in_operator_info;
+  std::vector<std::string> ybctids;
+  for (auto i = bind_->num_hash_key_columns(); i < bind_->num_key_columns(); ++i) {
     auto& col = bind_.ColumnForIndex(i);
     auto& expr = *col.bind_pb();
-    // For IN clause expr->has_condition() returns 'true'.
-    if (expr.has_condition()) {
-      const auto prefix_len = range_components.size();
-      // Form ybctid for each value in IN clause.
-      size_t count = col.SubExprsCount();
-      std::vector<std::string> ybctids;
-      ybctids.reserve(count);
-      for (size_t idx = 0; idx != count; ++idx) {
-        range_components.push_back(VERIFY_RESULT(col.BuildSubExprKeyColumnValue(idx)));
-        // Range key component has one and only one IN clause,
-        // all remains components has explicit values. Add them as is.
-        for (size_t j = i + 1; j < bind_->num_key_columns(); ++j) {
-          // TODO don't recalculate other columns.
-          auto& suffix_col = bind_.ColumnForIndex(j);
-          range_components.push_back(VERIFY_RESULT(suffix_col.BuildKeyColumnValue()));
-        }
-        const auto doc_key = dockey_builder(range_components);
-        ybctids.push_back(doc_key.Encode().ToStringBuffer());
-        range_components.resize(prefix_len);
-      }
-      return ybctids;
+    if (IsForInOperator(expr)) {
+      DCHECK(!in_operator_info);
+      const auto value_placeholder_idx = range_components.size();
+      range_components.emplace_back();
+      in_operator_info.emplace(col, value_placeholder_idx);
+    } else {
+      range_components.push_back(VERIFY_RESULT(col.BuildKeyColumnValue()));
     }
-
-    range_components.push_back(VERIFY_RESULT(col.BuildKeyColumnValue()));
   }
-  return STATUS(IllegalState, "Can't build ybctids, bad preconditions");
+  if (in_operator_info) {
+    // Form ybctid for each argument in the IN operator.
+    const auto& column = in_operator_info->column;
+    const auto count = column.SubExprsCount();
+    ybctids.reserve(count);
+    const auto idx_range = InOpOperandsProcessingRange(
+        count, column.desc().sorting_type(), read_req_->is_forward_scan());
+    auto& value_placeholder = range_components[in_operator_info->placeholder_idx];
+    for (auto idx : idx_range) {
+      value_placeholder = VERIFY_RESULT(column.BuildSubExprKeyColumnValue(idx));
+      ybctids.push_back(dockey_builder(range_components).Encode().ToStringBuffer());
+    }
+  } else {
+    ybctids.push_back(dockey_builder(range_components).Encode().ToStringBuffer());
+  }
+  return ybctids;
 }
 
-bool PgDmlRead::IsAllPrimaryKeysBound(size_t num_range_components_in_expected) {
+// Returns true in case not more than one range key component has the IN operator
+// and all other key components are set.
+bool PgDmlRead::IsAllPrimaryKeysBound() const {
   if (!bind_) {
     return false;
   }
 
-  int64_t range_components_in_clause_remain = num_range_components_in_expected;
+  int range_components_in_operators_remain = 1;
 
   for (size_t i = 0; i < bind_->num_key_columns(); ++i) {
     auto& col = bind_.ColumnForIndex(i);
-    auto* expr = col.bind_pb();
-    // For IN clause expr->has_condition() returns 'true'.
-    if (expr->has_condition()) {
-      if ((i < bind_->num_hash_key_columns()) || (--range_components_in_clause_remain < 0)) {
-        // unsupported IN clause
+    const auto* expr = col.bind_pb();
+
+    if (IsForInOperator(*expr)) {
+      if ((i < bind_->num_hash_key_columns()) || (--range_components_in_operators_remain < 0)) {
+        // unsupported IN operator
         return false;
       }
     } else if (!col.ValueBound()) {
@@ -734,13 +765,7 @@ bool PgDmlRead::IsAllPrimaryKeysBound(size_t num_range_components_in_expected) {
       return false;
     }
   }
-  return range_components_in_clause_remain == 0;
-}
-
-// Function checks that one and only one range key component has IN clause
-// and all other key components are set.
-bool PgDmlRead::CanBuildYbctidsFromPrimaryBinds() {
-  return IsAllPrimaryKeysBound(1 /* num_range_components_in_expected */);
+  return true;
 }
 
 Status PgDmlRead::BindHashCode(const std::optional<Bound>& start, const std::optional<Bound>& end) {
@@ -764,9 +789,7 @@ bool PgDmlRead::IsReadFromYsqlCatalog() const {
 }
 
 bool PgDmlRead::IsIndexOrderedScan() const {
-  return secondary_index_query_ &&
-      !secondary_index_query_->IsAllPrimaryKeysBound(0 /* num_range_components_in_expected */);
+  return secondary_index_query_ && !secondary_index_query_->IsAllPrimaryKeysBound();
 }
 
-}  // namespace pggate
-}  // namespace yb
+}  // namespace yb::pggate

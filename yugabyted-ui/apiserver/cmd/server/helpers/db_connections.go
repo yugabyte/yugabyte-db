@@ -18,7 +18,7 @@ type PgClientConnectionParams struct {
         Database string
 }
 
-func CreateGoCqlClient(log logger.Logger) *gocql.ClusterConfig {
+func (h *HelperContainer) CreateGoCqlClient(log logger.Logger) *gocql.ClusterConfig {
 
     // Initialize gocql client
     cluster := gocql.NewCluster(HOST)
@@ -42,7 +42,7 @@ func CreateGoCqlClient(log logger.Logger) *gocql.ClusterConfig {
     return cluster
 }
 
-func CreatePgClient(log logger.Logger,
+func (h *HelperContainer) CreatePgClient(log logger.Logger,
         connectionParams PgClientConnectionParams) (*pgxpool.Pool, error) {
 
     var url string

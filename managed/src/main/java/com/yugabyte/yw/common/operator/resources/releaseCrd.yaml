@@ -26,6 +26,8 @@ spec:
                   type: string
                 success:
                   type: boolean
+                resourceUUID:
+                  type: string
             spec:
               type: object
               properties:

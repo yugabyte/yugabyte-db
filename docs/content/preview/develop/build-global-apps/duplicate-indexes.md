@@ -1,5 +1,5 @@
 ---
-title: Duplicate Indexes for  global applications
+title: Duplicate Indexes for global applications
 headerTitle: Duplicate indexes
 linkTitle: Duplicate indexes
 description: Enhance the performance of global applications with Duplicate Indexes

@@ -19,7 +19,10 @@ test: yb_collate_icu_utf8
 
 test: yb_pg_tsearch
 test: yb_pg_tsdicts
+
+# Yugabyte tests
 test: yb_tsdicts
+test: yb_ts_remote_filter
 
 # TODO(neil) Must build postgres with --with-libxml
 # test: yb_pg_xml

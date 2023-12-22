@@ -56,7 +56,7 @@ a := b + c;
 
 In other words, the SQL statement is syntactically analyzed at the time that the subprogram is created—and a syntax error turns the attempt into a no-op. (A corresponding account holds for a _do_ statement. An attempt to execute it isn't made if its defining PL/pgSQL block statement has a syntax error.)
 
-The term of art _dynamic_ (see the section ["execute" statement](./#execute-statement-plpgsql-dynamic-sql-stmt) below) is used when SQL statement text is presented as a _text value_. (Some people prefer the term of art _static_, instead of _embedded_, to contrast with _dynamic_.)
+The term of art _dynamic_ (see the section ["execute" statement](./#the-execute-statement) below) is used when SQL statement text is presented as a _text value_. (Some people prefer the term of art _static_, instead of _embedded_, to contrast with _dynamic_.)
 
 Here is the example. _Not only_ does it serve the purpose of illustrating the _plpgsql_static_bare_sql_stmt_; but _also_ it is a useful tool for re-creating a clean start before running each of the remaining examples on this page.
 
@@ -195,7 +195,7 @@ $body$;
 call s.p(5);
 ```
 
-It finishes silently, showing that the *assert* holds.
+It finishes silently, showing that the _assert_ holds.
 
 Of course, the SQL statement text can be a DDL, too. Dynamic DDLs are especially useful when you don't know identifier names until run-time. Indeed, this is the canonical, and overwhelmingly common, use of Dynamic DDLs.
 
@@ -248,6 +248,7 @@ where
   r.rolname = :quoted_u and
   n.nspname ~'^My';
 ```
+
 This is the result:
 
 ```output
@@ -333,14 +334,14 @@ Briefly, the risk occurs when you want to construct the text of a SQL statement 
 
 (You can reduce the size of the hit-list to about _300 thousand_ by searching for _PostgreSQL "format()" "SQL injection"_. )
 
-You must _always_ must the _format()_ built-in SQL function when you need to define the text of a dynamic SQL statement at run-time. The example above shows you how to do this.
+You must _always_ use the _format()_ built-in SQL function when you need to define the text of a dynamic SQL statement at run-time. The example above shows you how to do this.
 {{< /tip >}}
 
 ### The "perform" statement
 
 _[See the syntax rule above](./#plpgsql-perform-stmt)_
 
-The _perform_ statement lets you execute a select statement that, as a top-level SQL statement, would produce one or many rows. But, critically, it lets you avoid using the _select into_ statement for one row or the _[query for loop]((../../compound-statements/loop-exit-continue/query-for-loop/))_ (or the _[infinite loop]((../../compound-statements/loop-exit-continue/query-for-loop/))_) for many rows. It's the moral equivalent of this:
+The _perform_ statement lets you execute a select statement that, as a top-level SQL statement, would produce one or many rows. But, critically, it lets you avoid using the _select into_ statement for one row or the _[query for loop](../../compound-statements/loop-exit-continue/query-for-loop/)_ (or the _[infinite loop](../../compound-statements/loop-exit-continue/infinite-and-while-loops/#infinite-loop-over-cursor-results)_) for many rows. It's the moral equivalent of this:
 
 ```output
 select ... into null;
@@ -391,14 +392,14 @@ It finishes silently without error.
 
 This _do_ statement immediately above shows the general case, where the _select_ statement whose results you want to throw away must use a _with clause_.
 
- This need arises, for example, when you perform multi-table _insert_, _update_ or _delete_ by encapsulating these statements each with a pro-forma _returning_ clause, and in its own _common table expression (hereinafter _CTE_). Then you cause them to execute by selecting the union of these pro-forma results  from the various _CTEs_. But the results are of no interest. They were simply a necessary device.
+This need arises, for example, when you perform multi-table _insert_, _update_ or _delete_ by encapsulating these statements each with a pro-forma _returning_ clause, and in its own _[CTE](../../../../../../syntax_resources/grammar_diagrams/#common-table-expression)_. Then you cause them to execute by selecting the union of these pro-forma results  from the various _CTEs_. But the results are of no interest. They were simply a necessary device.
 
 <!--- _to_do_ --->
 {{< note title="Coming soon" >}}
-A self-contained, working example will follow will follow.
+A self-contained, working example will follow.
 {{< /note >}}
 
-By for the most common use of _perform_ is when you need to use a SQL built-in, like _pg_sleep()_ that is morally a procedure but that, for implementation reasons, has to be a function. Try this:
+By far the most common use of _perform_ is when you need to use a SQL built-in, like _pg_sleep()_ that is morally a procedure but that, for implementation reasons, has to be a function. Try this:
 
 ```plpgsql
 do $body$

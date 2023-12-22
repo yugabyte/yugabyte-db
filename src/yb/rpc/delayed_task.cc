@@ -117,6 +117,8 @@ void DelayedTask::AbortTask(const Status& abort_status) {
     // We need to call the callback whenever we successfully switch the done_ flag to true, whether
     // or not the task has been scheduled.
     func_(abort_status);
+    // Clear the function to remove all captured resources.
+    func_.clear();
   }
 }
 
@@ -151,6 +153,8 @@ void DelayedTask::TimerHandler(ev::timer& watcher, int revents) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "Execute";
     func_(Status::OK());
   }
+  // Clear the function to remove all captured resources.
+  func_.clear();
 }
 
 void DelayedTask::StopTimer(const Status& abort_status) {

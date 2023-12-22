@@ -6,12 +6,20 @@
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-import { CreateRoleWithContainer } from './CreateRole';
 import { useMethods } from 'react-use';
-import { Box } from '@material-ui/core';
-import { RoleViewContext, initialRoleContextState, roleMethods } from '../RoleContext';
+import { Box, makeStyles } from '@material-ui/core';
 import ListRoles from './ListRoles';
+import { CreateRoleWithContainer } from './CreateRole';
 import { EditRole } from './EditRole';
+import { RoleViewContext, initialRoleContextState, roleMethods } from '../RoleContext';
+
+const useStyles = makeStyles((theme) => ({
+  rbacContainer: {
+    '& .yb-loader-circle': {
+      margin: 'auto'
+    }
+  }
+}));
 
 const ManageRoles = () => {
   const roleContextData = useMethods(roleMethods, initialRoleContextState);
@@ -21,6 +29,8 @@ const ManageRoles = () => {
       formProps: { currentPage }
     }
   ] = roleContextData;
+
+  const classes = useStyles();
 
   const getCurrentView = () => {
     switch (currentPage) {
@@ -35,7 +45,7 @@ const ManageRoles = () => {
 
   return (
     <RoleViewContext.Provider value={([...roleContextData] as unknown) as RoleViewContext}>
-      <Box className="rbac-container">{getCurrentView()}</Box>
+      <Box className={classes.rbacContainer}>{getCurrentView()}</Box>
     </RoleViewContext.Provider>
   );
 };

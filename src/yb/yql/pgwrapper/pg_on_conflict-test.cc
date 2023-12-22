@@ -39,7 +39,6 @@ class PgFailOnConflictTest : public PgOnConflictTest {
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     opts->extra_tserver_flags.push_back("--enable_wait_queues=false");
-    opts->extra_tserver_flags.push_back("--enable_deadlock_detection=false");
   }
 };
 
@@ -289,7 +288,7 @@ void PgOnConflictTest::TestOnConflict(bool kill_master, const MonoDelta& duratio
               if (tuples == 1) {
                 ASSERT_EQ(PQnfields(result->get()), 1);
                 current_batch.read_value = ASSERT_RESULT(
-                    GetString(result->get(), 0, 0));
+                    GetValue<std::string>(result->get(), 0, 0));
               } else {
                 ASSERT_EQ(tuples, 0);
               }
@@ -368,8 +367,8 @@ void PgOnConflictTest::TestOnConflict(bool kill_master, const MonoDelta& duratio
     ASSERT_EQ(cols, 2);
     int rows = PQntuples(res->get());
     for (int i = 0; i != rows; ++i) {
-      auto key = GetInt32(res->get(), i, 0);
-      auto value = GetString(res->get(), i, 1);
+      auto key = GetValue<int32_t>(res->get(), i, 0);
+      auto value = GetValue<std::string>(res->get(), i, 1);
       LOG(INFO) << "  " << key << ": " << value;
     }
     LOG(INFO) << "Total processed: " << processed.load(std::memory_order_acquire);
@@ -431,9 +430,7 @@ TEST_F_EX(PgOnConflictTest, ValidSessionAfterTxnCommitConflict, PgFailOnConflict
   ASSERT_OK(extra_conn.Execute("INSERT INTO test VALUES(1)"));
   ASSERT_NOK(conn.Execute("COMMIT"));
   // Check connection is in valid state after failed COMMIT
-  auto result_ptr = ASSERT_RESULT(conn.Fetch("SELECT * FROM test"));
-  auto value = ASSERT_RESULT(GetInt32(result_ptr.get(), 0, 0));
-  ASSERT_EQ(value, 1);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchValue<int32_t>("SELECT * FROM test")), 1);
 }
 
 } // namespace pgwrapper

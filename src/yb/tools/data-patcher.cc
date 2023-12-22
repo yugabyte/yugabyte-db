@@ -92,32 +92,20 @@ using docdb::StorageDbType;
 YB_DEFINE_ENUM(DataPatcherAction, DATA_PATCHER_ACTIONS);
 YB_DEFINE_ENUM(FileType, (kSST)(kWAL));
 
-const std::string kHelpDescription = "Show help on command";
-
 // ------------------------------------------------------------------------------------------------
 // Help command
 // ------------------------------------------------------------------------------------------------
 
-struct HelpArguments {
-  std::string command;
-};
+const std::string kHelpDescription = kCommonHelpDescription;
+
+using HelpArguments = CommonHelpArguments;
 
 std::unique_ptr<OptionsDescription> HelpOptions() {
-  auto result = std::make_unique<OptionsDescriptionImpl<HelpArguments>>(kHelpDescription);
-  result->positional.add("command", 1);
-  result->hidden.add_options()
-      ("command", po::value(&result->args.command));
-  return result;
+  return CommonHelpOptions();
 }
 
 Status HelpExecute(const HelpArguments& args) {
-  if (args.command.empty()) {
-    ShowCommands<DataPatcherAction>();
-    return Status::OK();
-  }
-
-  ShowHelp(VERIFY_RESULT(ActionByName<DataPatcherAction>(args.command)));
-  return Status::OK();
+  return CommonHelpExecute<DataPatcherAction>(args);
 }
 
 // ------------------------------------------------------------------------------------------------

@@ -173,3 +173,31 @@ CREATE TABLE sample (h int primary key);
 INSERT INTO sample VALUES (24), (262095);
 SELECT * FROM sample WHERE h in (24, 262095) ORDER BY h;
 DROP TABLE sample;
+
+CREATE TABLE in_with_single_asc_key (r INT, v INT, PRIMARY KEY(r ASC)) SPLIT AT VALUES((100));
+INSERT INTO in_with_single_asc_key VALUES(1, 1), (3, 3), (2, 2), (101, 101), (102, 102), (103, 103);
+SELECT * FROM in_with_single_asc_key WHERE r IN (1, 3, 2, 102, 103, 101) ORDER BY r ASC;
+SELECT * FROM in_with_single_asc_key WHERE r IN (1, 3, 2, 102, 103, 101) ORDER BY r DESC;
+DROP TABLE in_with_single_asc_key;
+
+CREATE TABLE in_with_single_desc_key (r INT, v INT, PRIMARY KEY(r DESC)) SPLIT AT VALUES((100));
+INSERT INTO in_with_single_desc_key VALUES(1, 1), (3, 3), (2, 2), (101, 101), (102, 102), (103, 103);
+SELECT * FROM in_with_single_desc_key WHERE r IN (1, 3, 2, 102, 103, 101) ORDER BY r ASC;
+SELECT * FROM in_with_single_desc_key WHERE r IN (1, 3, 2, 102, 103, 101) ORDER BY r DESC;
+DROP TABLE in_with_single_desc_key;
+
+CREATE TABLE in_with_compound_asc_key (r1 INT, r2 INT, v INT, PRIMARY KEY(r1 ASC, r2 ASC)) SPLIT AT VALUES((1, 100));
+INSERT INTO in_with_compound_asc_key VALUES(1, 1, 1), (1, 3, 3), (1, 2, 2), (1, 101, 101), (1, 102, 102), (1, 103, 103);
+SELECT * FROM in_with_compound_asc_key WHERE r1 = 1 AND r2 IN (1, 3, 2, 102, 103, 101) ORDER BY r1 DESC, r2 DESC;
+SELECT * FROM in_with_compound_asc_key WHERE r1 = 1 AND r2 IN (1, 3, 2, 102, 103, 101) ORDER BY r1 DESC, r2 ASC;
+SELECT * FROM in_with_compound_asc_key WHERE r1 = 1 AND r2 IN (1, 3, 2, 102, 103, 101) ORDER BY r1 ASC, r2 DESC;
+SELECT * FROM in_with_compound_asc_key WHERE r1 = 1 AND r2 IN (1, 3, 2, 102, 103, 101) ORDER BY r1 ASC, r2 ASC;
+DROP TABLE in_with_compound_asc_key;
+
+CREATE TABLE in_with_compound_desc_key (r1 INT, r2 INT, v INT, PRIMARY KEY(r1 ASC, r2 DESC)) SPLIT AT VALUES((1, 100));
+INSERT INTO in_with_compound_desc_key VALUES(1, 1, 1), (1, 3, 3), (1, 2, 2), (1, 101, 101), (1, 102, 102), (1, 103, 103);
+SELECT * FROM in_with_compound_desc_key WHERE r1 = 1 AND r2 IN (1, 3, 2, 102, 103, 101) ORDER BY r1 DESC, r2 DESC;
+SELECT * FROM in_with_compound_desc_key WHERE r1 = 1 AND r2 IN (1, 3, 2, 102, 103, 101) ORDER BY r1 DESC, r2 ASC;
+SELECT * FROM in_with_compound_desc_key WHERE r1 = 1 AND r2 IN (1, 3, 2, 102, 103, 101) ORDER BY r1 ASC, r2 DESC;
+SELECT * FROM in_with_compound_desc_key WHERE r1 = 1 AND r2 IN (1, 3, 2, 102, 103, 101) ORDER BY r1 ASC, r2 ASC;
+DROP TABLE in_with_compound_desc_key;

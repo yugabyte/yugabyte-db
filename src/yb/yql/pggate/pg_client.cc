@@ -52,6 +52,10 @@ DECLARE_int32(yb_client_admin_operation_timeout_sec);
 DEFINE_UNKNOWN_uint64(pg_client_heartbeat_interval_ms, 10000,
     "Pg client heartbeat interval in ms.");
 
+DEFINE_NON_RUNTIME_int32(pg_client_extra_timeout_ms, 2000,
+   "Adding this value to RPC call timeout, so postgres could detect timeout by it's own mechanism "
+   "and report it.");
+
 DECLARE_bool(TEST_index_read_multiple_partitions);
 DECLARE_bool(TEST_enable_db_catalog_version_mode);
 
@@ -64,10 +68,6 @@ namespace yb {
 namespace pggate {
 
 namespace {
-
-// Adding this value to RPC call timeout, so postgres could detect timeout by it's own mechanism
-// and report it.
-const auto kExtraTimeout = 2s;
 
 struct PerformData {
   PgsqlOps operations;
@@ -209,7 +209,7 @@ class PgClient::Impl {
   }
 
   void SetTimeout(MonoDelta timeout) {
-    timeout_ = timeout + kExtraTimeout;
+    timeout_ = timeout + MonoDelta::FromMilliseconds(FLAGS_pg_client_extra_timeout_ms);
   }
 
   Result<PgTableDescPtr> OpenTable(
@@ -440,7 +440,7 @@ class PgClient::Impl {
     *req.mutable_options() = std::move(*options);
     PrepareOperations(&req, operations);
 
-    if (exchange_) {
+    if (exchange_ && exchange_->ReadyToSend()) {
       PerformData data(&arena, std::move(*operations), callback);
       ProcessPerformResponse(&data, ExecutePerform(&data, req));
     } else {
@@ -460,7 +460,7 @@ class PgClient::Impl {
     auto* end = pointer_cast<std::byte*>(req.SerializeToArray(pointer_cast<uint8_t*>(out)));
     CHECK_EQ(end - out, size);
 
-    auto res = VERIFY_RESULT(exchange_->SendRequest(nullptr, CoarseMonoClock::now() + timeout_));
+    auto res = VERIFY_RESULT(exchange_->SendRequest(CoarseMonoClock::now() + timeout_));
 
     rpc::CallData call_data(res.size());
     res.CopyTo(call_data.data());

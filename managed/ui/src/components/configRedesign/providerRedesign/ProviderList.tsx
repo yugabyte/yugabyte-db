@@ -4,7 +4,7 @@
  * You may not use this file except in compliance with the License. You may obtain a copy of the License at
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useQuery, useQueryClient } from 'react-query';
 import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { Dropdown, MenuItem } from 'react-bootstrap';

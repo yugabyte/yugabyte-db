@@ -155,6 +155,9 @@ DEFINE_test_flag(double, return_error_on_change_config, 0.0,
 DEFINE_test_flag(bool, pause_before_replicate_batch, false,
                  "Whether to pause before doing DoReplicateBatch.");
 
+DEFINE_test_flag(bool, request_vote_respond_leader_still_alive, false,
+                 "Fake rejection to vote due to leader still alive");
+
 METRIC_DEFINE_counter(tablet, follower_memory_pressure_rejections,
                       "Follower Memory Pressure Rejections",
                       yb::MetricUnit::kRequests,
@@ -244,6 +247,9 @@ DEFINE_UNKNOWN_int64(protege_synchronization_timeout_ms, 1000,
 
 DEFINE_test_flag(bool, skip_election_when_fail_detected, false,
                  "Inside RaftConsensus::ReportFailureDetectedTask, skip normal election.");
+
+DEFINE_test_flag(bool, pause_replica_start_before_triggering_pending_operations, false,
+                 "Whether to pause before triggering pending operations in RaftConsensus::Start");
 
 namespace yb {
 namespace consensus {
@@ -473,6 +479,9 @@ Status RaftConsensus::Start(const ConsensusBootstrapInfo& info) {
       MinimumElectionTimeout());
 
   {
+    if (table_type_ != TableType::TRANSACTION_STATUS_TABLE_TYPE) {
+      TEST_PAUSE_IF_FLAG(TEST_pause_replica_start_before_triggering_pending_operations);
+    }
     ReplicaState::UniqueLock lock;
     RETURN_NOT_OK(state_->LockForStart(&lock));
     state_->ClearLeaderUnlocked();
@@ -622,7 +631,7 @@ Status RaftConsensus::DoStartElection(const LeaderElectionData& data, PreElected
 
     if (start_now) {
       if (state_->HasLeaderUnlocked()) {
-        LOG_WITH_PREFIX(INFO) << "Fail of leader " << state_->GetLeaderUuidUnlocked()
+        LOG_WITH_PREFIX(INFO) << "Fail or stepdown of leader " << state_->GetLeaderUuidUnlocked()
                               << " detected. Triggering leader " << election_name
                               << ", mode=" << data.mode;
       } else {
@@ -2270,7 +2279,7 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
   // Lock ordering: The update lock must be acquired before the ReplicaState lock.
   std::unique_lock<decltype(update_mutex_)> update_guard(update_mutex_, std::defer_lock);
   if (FLAGS_enable_leader_failure_detection) {
-    update_guard.try_lock();
+    auto try_lock_result [[maybe_unused]] = update_guard.try_lock();  // NOLINT
   } else {
     // If failure detection is not enabled, then we can't just reject the vote,
     // because there will be no automatic retry later. So, block for the lock.
@@ -2291,6 +2300,10 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
   // Acquire the replica state lock so we can read / modify the consensus state.
   ReplicaState::UniqueLock state_guard;
   RETURN_NOT_OK(state_->LockForConfigChange(&state_guard));
+
+  if (PREDICT_FALSE(FLAGS_TEST_request_vote_respond_leader_still_alive)) {
+    return RequestVoteRespondLeaderIsAlive(request, response, "fake_peed_uuid");
+  }
 
   // If the node is not in the configuration, allow the vote (this is required by Raft)
   // but log an informational message anyway.
@@ -2370,12 +2383,26 @@ Status RaftConsensus::RequestVote(const VoteRequestPB* request, VoteResponsePB* 
     response->set_remaining_leader_lease_duration_ms(
         narrow_cast<int32_t>(remaining_old_leader_lease.ToMilliseconds()));
     response->set_leader_lease_uuid(state_->old_leader_lease().holder_uuid);
+  } else {
+    remaining_old_leader_lease = state_->RemainingMajorityReplicatedLeaderLeaseDuration();
+    if (remaining_old_leader_lease.Initialized()) {
+      response->set_remaining_leader_lease_duration_ms(
+        narrow_cast<int32_t>(remaining_old_leader_lease.ToMilliseconds()));
+      response->set_leader_lease_uuid(peer_uuid());
+    }
   }
 
   const auto& old_leader_ht_lease = state_->old_leader_ht_lease();
   if (old_leader_ht_lease) {
     response->set_leader_ht_lease_expiration(old_leader_ht_lease.expiration);
     response->set_leader_ht_lease_uuid(old_leader_ht_lease.holder_uuid);
+  } else {
+    const auto ht_lease = VERIFY_RESULT(MajorityReplicatedHtLeaseExpiration(
+        /* min_allowed = */ 0, /* deadline = */ CoarseTimePoint::max()));
+    if (ht_lease) {
+      response->set_leader_ht_lease_expiration(ht_lease);
+      response->set_leader_ht_lease_uuid(peer_uuid());
+    }
   }
 
   // Passed all our checks. Vote granted.

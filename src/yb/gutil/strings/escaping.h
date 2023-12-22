@@ -597,6 +597,10 @@ inline std::string ByteStringToAscii(const std::string& binary_string,
   return result;
 }
 
+inline std::string ByteStringToAscii(const std::string& binary_string) {
+  return ByteStringToAscii(binary_string, binary_string.size());
+}
+
 // Converts the hex from ascii_string into binary data and
 // writes the binary data into binary_string.
 // Empty input successfully converts to empty output.

@@ -2107,8 +2107,8 @@ Status ClusterAdminClient::GetXClusterConfig() {
   MessageToJsonString(
       cluster_config.cluster_config().consumer_registry(), &consumer_registry_output);
   cout << Format(
-              "{\"version\":$0,\"xcluster_producer_registry\":$1,consumer_"
-              "registry:$2}",
+              "{\"version\":$0,\"xcluster_producer_registry\":$1,\"consumer_"
+              "registry\":$2}",
               xcluster_config.xcluster_config().version(), producer_registry_output,
               consumer_registry_output)
        << endl;
@@ -3643,6 +3643,10 @@ Status ClusterAdminClient::CreateCDCSDKDBStream(
   req.set_db_type(ns.db_type);
   if (record_type == yb::ToString("ALL")) {
     req.set_record_type(cdc::CDCRecordType::ALL);
+  } else if (record_type == yb::ToString("FULL_ROW_NEW_IMAGE")) {
+    req.set_record_type(cdc::CDCRecordType::FULL_ROW_NEW_IMAGE);
+  } else if (record_type == yb::ToString("MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES")) {
+    req.set_record_type(cdc::CDCRecordType::MODIFIED_COLUMNS_OLD_AND_NEW_IMAGES);
   } else {
     req.set_record_type(cdc::CDCRecordType::CHANGE);
   }

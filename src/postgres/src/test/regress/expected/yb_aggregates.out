@@ -42,7 +42,7 @@ INSERT INTO ybaggtest
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on ybaggtest
+   ->  Seq Scan on ybaggtest
          Partial Aggregate: true
 (3 rows)
 
@@ -93,7 +93,7 @@ INSERT INTO ybaggtest
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on ybaggtest
+   ->  Seq Scan on ybaggtest
          Partial Aggregate: true
 (3 rows)
 
@@ -144,7 +144,7 @@ INSERT INTO ybaggtest
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on ybaggtest
+   ->  Seq Scan on ybaggtest
          Partial Aggregate: true
 (3 rows)
 
@@ -224,7 +224,7 @@ SELECT COUNT(0) FROM ybaggtest;
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on ybaggtest
+   ->  Seq Scan on ybaggtest
          Partial Aggregate: true
 (3 rows)
 
@@ -272,10 +272,10 @@ SELECT COUNT(0) FROM ybaggtest;
    ->  Seq Scan on ybaggtest
 (2 rows)
 
-           QUERY PLAN
---------------------------------
+         QUERY PLAN
+-----------------------------
  Aggregate
-   ->  YB Seq Scan on ybaggtest
+   ->  Seq Scan on ybaggtest
 (2 rows)
 
                        QUERY PLAN
@@ -325,7 +325,7 @@ SELECT COUNT(0) FROM ybaggtest;
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on ybaggtest
+   ->  Seq Scan on ybaggtest
          Partial Aggregate: true
 (3 rows)
 
@@ -377,7 +377,7 @@ SELECT COUNT(0) FROM ybaggtest;
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on ybaggtest
+   ->  Seq Scan on ybaggtest
          Partial Aggregate: true
 (3 rows)
 
@@ -430,7 +430,7 @@ INSERT INTO ybaggtest (id, int_4, float_4, float_8) VALUES (101, 1, 'NaN', 'NaN'
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on ybaggtest
+   ->  Seq Scan on ybaggtest
          Partial Aggregate: true
 (3 rows)
 
@@ -481,7 +481,7 @@ INSERT INTO ybaggtest (id, int_4, float_4, float_8) VALUES (101, 1, 'NaN', 'NaN'
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on ybaggtest
+   ->  Seq Scan on ybaggtest
          Partial Aggregate: true
 (3 rows)
 
@@ -535,7 +535,7 @@ INSERT INTO ybaggtest (id, int_4, float_4, float_8) VALUES (101, 1, 'NaN', 'NaN'
                         QUERY PLAN
 ----------------------------------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on ybaggtest
+   ->  Seq Scan on ybaggtest
          Remote Filter: (float_4 > '0'::double precision)
          Partial Aggregate: true
 (4 rows)
@@ -576,7 +576,7 @@ INSERT INTO ybaggtest (id, int_4, float_4, float_8) VALUES (101, 1, 'NaN', 'NaN'
                                  QUERY PLAN
 ----------------------------------------------------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on ybaggtest
+   ->  Seq Scan on ybaggtest
          Remote Filter: ((int_4 > 0) AND (float_8 > '0'::double precision))
          Partial Aggregate: true
 (4 rows)
@@ -617,7 +617,7 @@ INSERT INTO ybaggtest (id, int_4, float_4, float_8) VALUES (101, 1, 'NaN', 'NaN'
                            QUERY PLAN
 ----------------------------------------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on ybaggtest
+   ->  Seq Scan on ybaggtest
          Remote Filter: (int_8 = '9223372036854775807'::bigint)
          Partial Aggregate: true
 (4 rows)
@@ -657,7 +657,7 @@ INSERT INTO ybaggtest (id, int_4, float_4, float_8) VALUES (101, 1, 'NaN', 'NaN'
                                       QUERY PLAN
 --------------------------------------------------------------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on ybaggtest
+   ->  Seq Scan on ybaggtest
          Remote Filter: ((int_8 = '9223372036854775807'::bigint) AND (int_2 = 32767))
          Partial Aggregate: true
 (4 rows)
@@ -738,7 +738,7 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on ybaggtest2
+   ->  Seq Scan on ybaggtest2
          Partial Aggregate: true
 (3 rows)
 
@@ -764,10 +764,6 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
      5
 (1 row)
 
--- TODO(#16417): update the following three index only scan explains to have
--- "Partial Aggregate: true" because pushdown will be allowed once the index's
--- constant 1 column is not requested by the aggregate node to the index only
--- scan node when using CP_SMALL_TLIST.
 \set query 'SELECT COUNT(a) FROM ybaggtest2'
 :runnois;
            QUERY PLAN
@@ -780,15 +776,16 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on ybaggtest2
+   ->  Seq Scan on ybaggtest2
          Partial Aggregate: true
 (3 rows)
 
                         QUERY PLAN
 -----------------------------------------------------------
- Aggregate
+ Finalize Aggregate
    ->  Index Only Scan using ybaggtest2index on ybaggtest2
-(2 rows)
+         Partial Aggregate: true
+(3 rows)
 
  count
 -------
@@ -817,15 +814,16 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on ybaggtest2
+   ->  Seq Scan on ybaggtest2
          Partial Aggregate: true
 (3 rows)
 
                         QUERY PLAN
 -----------------------------------------------------------
- Aggregate
+ Finalize Aggregate
    ->  Index Only Scan using ybaggtest2index on ybaggtest2
-(2 rows)
+         Partial Aggregate: true
+(3 rows)
 
  count | count
 -------+-------
@@ -855,15 +853,16 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on ybaggtest2
+   ->  Seq Scan on ybaggtest2
          Partial Aggregate: true
 (3 rows)
 
                         QUERY PLAN
 -----------------------------------------------------------
- Aggregate
+ Finalize Aggregate
    ->  Index Only Scan using ybaggtest2index on ybaggtest2
-(2 rows)
+         Partial Aggregate: true
+(3 rows)
 
  max | min
 -----+-----
@@ -893,7 +892,7 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on ybaggtest2
+   ->  Seq Scan on ybaggtest2
          Partial Aggregate: true
 (3 rows)
 
@@ -931,7 +930,7 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on ybaggtest2
+   ->  Seq Scan on ybaggtest2
          Partial Aggregate: true
 (3 rows)
 
@@ -971,7 +970,7 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
              QUERY PLAN
 ------------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on ybaggtest2
+   ->  Seq Scan on ybaggtest2
          Remote Filter: (a IS NULL)
          Partial Aggregate: true
 (4 rows)
@@ -1012,7 +1011,7 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
                QUERY PLAN
 ----------------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on ybaggtest2
+   ->  Seq Scan on ybaggtest2
          Remote Filter: (a IS NOT NULL)
          Partial Aggregate: true
 (4 rows)
@@ -1066,7 +1065,7 @@ INSERT INTO test VALUES(1), (2), (3);
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on test
+   ->  Seq Scan on test
          Partial Aggregate: true
 (3 rows)
 
@@ -1117,7 +1116,7 @@ INSERT INTO test VALUES(1), (2), (3);
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on test
+   ->  Seq Scan on test
          Partial Aggregate: true
 (3 rows)
 
@@ -1168,7 +1167,7 @@ INSERT INTO test VALUES(1), (2), (3);
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on test
+   ->  Seq Scan on test
          Partial Aggregate: true
 (3 rows)
 
@@ -1219,7 +1218,7 @@ INSERT INTO test VALUES(1), (2), (3);
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on test
+   ->  Seq Scan on test
          Partial Aggregate: true
 (3 rows)
 
@@ -1278,7 +1277,7 @@ INSERT INTO test VALUES(1), (2), (3);
 ----------------------------------------------
  Nested Loop
    ->  Finalize Aggregate
-         ->  YB Seq Scan on test
+         ->  Seq Scan on test
                Partial Aggregate: true
    ->  Index Scan using digit_pkey on digit d
          Index Cond: (k = (count(test.v2)))
@@ -1339,7 +1338,7 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on test
+   ->  Seq Scan on test
          Partial Aggregate: true
 (3 rows)
 
@@ -1390,7 +1389,7 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on test
+   ->  Seq Scan on test
          Partial Aggregate: true
 (3 rows)
 
@@ -1441,7 +1440,7 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on test
+   ->  Seq Scan on test
          Partial Aggregate: true
 (3 rows)
 
@@ -1492,7 +1491,7 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on test
+   ->  Seq Scan on test
          Partial Aggregate: true
 (3 rows)
 
@@ -1549,7 +1548,7 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
 ----------------------------------------------
  Nested Loop
    ->  Finalize Aggregate
-         ->  YB Seq Scan on test
+         ->  Seq Scan on test
                Partial Aggregate: true
    ->  Index Scan using digit_pkey on digit d
          Index Cond: (k = (count(*)))
@@ -1612,7 +1611,7 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
 ----------------------------------------------
  Nested Loop
    ->  Finalize Aggregate
-         ->  YB Seq Scan on test
+         ->  Seq Scan on test
                Partial Aggregate: true
    ->  Index Scan using digit_pkey on digit d
          Index Cond: (k = (count(test.k)))
@@ -1675,7 +1674,7 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
 ----------------------------------------------
  Nested Loop
    ->  Finalize Aggregate
-         ->  YB Seq Scan on test
+         ->  Seq Scan on test
                Partial Aggregate: true
    ->  Index Scan using digit_pkey on digit d
          Index Cond: (k = (count(test.v1)))
@@ -1738,7 +1737,7 @@ INSERT INTO test VALUES(4, NULL, 10), (5, 5, NULL), (6, 5, NULL);
 ----------------------------------------------
  Nested Loop
    ->  Finalize Aggregate
-         ->  YB Seq Scan on test
+         ->  Seq Scan on test
                Partial Aggregate: true
    ->  Index Scan using digit_pkey on digit d
          Index Cond: (k = (count(test.v2)))
@@ -1807,7 +1806,7 @@ AlTER TABLE test DROP v1;
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on test
+   ->  Seq Scan on test
          Partial Aggregate: true
 (3 rows)
 
@@ -1858,7 +1857,7 @@ AlTER TABLE test DROP v1;
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on test
+   ->  Seq Scan on test
          Partial Aggregate: true
 (3 rows)
 
@@ -1909,7 +1908,7 @@ AlTER TABLE test DROP v1;
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on test
+   ->  Seq Scan on test
          Partial Aggregate: true
 (3 rows)
 
@@ -1960,7 +1959,7 @@ AlTER TABLE test DROP v1;
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on test
+   ->  Seq Scan on test
          Partial Aggregate: true
 (3 rows)
 
@@ -2024,10 +2023,10 @@ INSERT INTO t1(c0) VALUES(0.9946693818538820952568357824929989874362945556640625
    ->  Seq Scan on t1
 (2 rows)
 
-       QUERY PLAN
--------------------------
+      QUERY PLAN
+----------------------
  Aggregate
-   ->  YB Seq Scan on t1
+   ->  Seq Scan on t1
 (2 rows)
 
                 QUERY PLAN
@@ -2079,10 +2078,10 @@ INSERT INTO t2 VALUES(1), (2), (3);
    ->  Seq Scan on t2
 (2 rows)
 
-       QUERY PLAN
--------------------------
+      QUERY PLAN
+----------------------
  Aggregate
-   ->  YB Seq Scan on t2
+   ->  Seq Scan on t2
 (2 rows)
 
                 QUERY PLAN
@@ -2134,10 +2133,10 @@ INSERT INTO t3 VALUES(1), (2), (3);
    ->  Seq Scan on t3
 (2 rows)
 
-       QUERY PLAN
--------------------------
+      QUERY PLAN
+----------------------
  Aggregate
-   ->  YB Seq Scan on t3
+   ->  Seq Scan on t3
 (2 rows)
 
                 QUERY PLAN
@@ -2189,10 +2188,10 @@ INSERT INTO t4 VALUES(1), (2), (3);
    ->  Seq Scan on t4
 (2 rows)
 
-       QUERY PLAN
--------------------------
+      QUERY PLAN
+----------------------
  Aggregate
-   ->  YB Seq Scan on t4
+   ->  Seq Scan on t4
 (2 rows)
 
                 QUERY PLAN
@@ -2251,7 +2250,7 @@ INSERT INTO rsplit VALUES (1), (2), (3);
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on rsplit
+   ->  Seq Scan on rsplit
          Remote Filter: (i = 2)
          Partial Aggregate: true
 (4 rows)
@@ -2305,7 +2304,7 @@ INSERT INTO rsplit VALUES (1), (2), (3);
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on rsplit
+   ->  Seq Scan on rsplit
          Remote Filter: (i = 3)
          Partial Aggregate: true
 (4 rows)
@@ -2365,7 +2364,7 @@ INSERT INTO rsplit VALUES (1), (2), (3);
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on pg_type
+   ->  Seq Scan on pg_type
          Partial Aggregate: true
 (3 rows)
 
@@ -2451,6 +2450,221 @@ INSERT INTO tmp SELECT g, -g FROM generate_series(1, 10) g;
 (1 row)
 
 --
+-- Prepared statements.
+--
+CREATE TABLE ptest(k int, i int, v int, primary key(k asc));
+CREATE INDEX NONCONCURRENTLY ptestindex on ptest(i asc);
+INSERT INTO ptest select i, i + 1, i + 2 from generate_series(1, 10) i;
+PREPARE iss as select sum(k) from ptest where k = ANY($1);
+PREPARE ioss as select sum(i) from ptest where i = ANY($1);
+\set prm 'ARRAY[1, 2]'
+\set issexec 'EXECUTE iss(:prm)'
+\set iossexec 'EXECUTE ioss(:prm)'
+\set exec ':explain :issexec; :explain :iossexec; :issexec; :iossexec;'
+:exec
+                     QUERY PLAN
+----------------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using ptest_pkey on ptest
+         Index Cond: (k = ANY ('{1,2}'::integer[]))
+         Partial Aggregate: true
+(4 rows)
+
+                     QUERY PLAN
+----------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ptestindex on ptest
+         Index Cond: (i = ANY ('{1,2}'::integer[]))
+         Partial Aggregate: true
+(4 rows)
+
+ sum
+-----
+   3
+(1 row)
+
+ sum
+-----
+   2
+(1 row)
+
+-- repeat multiple times to make sure the statements are not replanned and cached plan is used
+\set prm 'ARRAY[3, 4]'
+:exec
+                     QUERY PLAN
+----------------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using ptest_pkey on ptest
+         Index Cond: (k = ANY ('{3,4}'::integer[]))
+         Partial Aggregate: true
+(4 rows)
+
+                     QUERY PLAN
+----------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ptestindex on ptest
+         Index Cond: (i = ANY ('{3,4}'::integer[]))
+         Partial Aggregate: true
+(4 rows)
+
+ sum
+-----
+   7
+(1 row)
+
+ sum
+-----
+   7
+(1 row)
+
+\set prm 'ARRAY[5, 6]'
+:exec
+                     QUERY PLAN
+----------------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using ptest_pkey on ptest
+         Index Cond: (k = ANY ('{5,6}'::integer[]))
+         Partial Aggregate: true
+(4 rows)
+
+                     QUERY PLAN
+----------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ptestindex on ptest
+         Index Cond: (i = ANY ('{5,6}'::integer[]))
+         Partial Aggregate: true
+(4 rows)
+
+ sum
+-----
+  11
+(1 row)
+
+ sum
+-----
+  11
+(1 row)
+
+\set prm 'ARRAY[7, 8]'
+:exec
+                 QUERY PLAN
+--------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using ptest_pkey on ptest
+         Index Cond: (k = ANY ($1))
+         Partial Aggregate: true
+(4 rows)
+
+                   QUERY PLAN
+-------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ptestindex on ptest
+         Index Cond: (i = ANY ($1))
+         Partial Aggregate: true
+(4 rows)
+
+ sum
+-----
+  15
+(1 row)
+
+ sum
+-----
+  15
+(1 row)
+
+\set prm 'ARRAY[9, 10]'
+:exec
+                 QUERY PLAN
+--------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using ptest_pkey on ptest
+         Index Cond: (k = ANY ($1))
+         Partial Aggregate: true
+(4 rows)
+
+                   QUERY PLAN
+-------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ptestindex on ptest
+         Index Cond: (i = ANY ($1))
+         Partial Aggregate: true
+(4 rows)
+
+ sum
+-----
+  19
+(1 row)
+
+ sum
+-----
+  19
+(1 row)
+
+\set prm 'ARRAY[11, 12]'
+:exec
+                 QUERY PLAN
+--------------------------------------------
+ Finalize Aggregate
+   ->  Index Scan using ptest_pkey on ptest
+         Index Cond: (k = ANY ($1))
+         Partial Aggregate: true
+(4 rows)
+
+                   QUERY PLAN
+-------------------------------------------------
+ Finalize Aggregate
+   ->  Index Only Scan using ptestindex on ptest
+         Index Cond: (i = ANY ($1))
+         Partial Aggregate: true
+(4 rows)
+
+ sum
+-----
+
+(1 row)
+
+ sum
+-----
+  11
+(1 row)
+
+DEALLOCATE iss;
+DEALLOCATE ioss;
+-- Internal parameters test
+CREATE TABLE nlptest (v1 int, v2 int);
+INSERT INTO nlptest SELECT i*2-1, i*2 FROM generate_series(1,6) i;
+/*+ IndexScan(t2) NestLoop(t1 t2) Leading((t1 t2)) */
+SELECT * FROM (SELECT v1, v2 FROM nlptest t1) AS vw1,
+    LATERAL(SELECT sum(k) FROM ptest t2 WHERE k = ANY(ARRAY[vw1.v1, vw1.v2])) AS vw2
+ORDER BY v1;
+ v1 | v2 | sum
+----+----+-----
+  1 |  2 |   3
+  3 |  4 |   7
+  5 |  6 |  11
+  7 |  8 |  15
+  9 | 10 |  19
+ 11 | 12 |
+(6 rows)
+
+/*+ IndexScan(t2) NestLoop(t1 t2) Leading((t1 t2)) */
+SELECT * FROM (SELECT v1, v2 FROM nlptest t1) AS vw1,
+    LATERAL(SELECT sum(i) FROM ptest t2 WHERE i = ANY(ARRAY[vw1.v1, vw1.v2])) AS vw2
+ORDER BY v1;
+ v1 | v2 | sum
+----+----+-----
+  1 |  2 |   2
+  3 |  4 |   7
+  5 |  6 |  11
+  7 |  8 |  15
+  9 | 10 |  19
+ 11 | 12 |  11
+(6 rows)
+
+DROP TABLE ptest;
+DROP TABLE nlptest;
+--
 -- Colocation.
 --
 CREATE DATABASE co COLOCATION TRUE;
@@ -2474,7 +2688,7 @@ INSERT INTO t VALUES (1, 2, 3), (4, 2, 6);
            QUERY PLAN
 ---------------------------------
  Finalize Aggregate
-   ->  YB Seq Scan on t
+   ->  Seq Scan on t
          Partial Aggregate: true
 (3 rows)
 

@@ -2,7 +2,7 @@ import { MetricMeasure, MetricTypes } from '../components/metrics/constants';
 import { MetricsPanel } from '../components/metrics';
 import { isKubernetesUniverse } from './UniverseUtils';
 import { YBLoading, YBErrorIndicator } from '../components/common/indicators';
-import { isNonEmptyObject } from './ObjectUtils';
+import { isNonEmptyObject, isNonEmptyString } from './ObjectUtils';
 
 export const getTabContent = (
   graph: any,
@@ -10,11 +10,21 @@ export const getTabContent = (
   type: string,
   metricsKey: string[],
   title: string,
-  currentUser: any
+  currentUser: any,
+  isGranularMetricsEnabled: boolean,
+  updateTimestamp: (start: 'object' | number, end: 'object' | number) => void
 ) => {
   let tabData: any = <YBLoading />;
-  if (graph.error?.data) {
-    return <YBErrorIndicator customErrorMessage="Error receiving response from Graph Server" />;
+  if (graph.error?.data && !graph.loading) {
+    return (
+      <YBErrorIndicator
+        customErrorMessage={
+          isNonEmptyString(graph.error?.data?.error)
+            ? graph.error?.data?.error
+            : 'Error receiving response from Graph Server'
+        }
+      />
+    );
   }
 
   const { metrics, prometheusQueryEnabled } = graph;
@@ -53,6 +63,8 @@ export const getTabContent = (
             prometheusQueryEnabled={prometheusQueryEnabled}
             metricMeasure={metricMeasure}
             operations={uniqueOperations}
+            isGranularMetricsEnabled={isGranularMetricsEnabled}
+            updateTimestamp={updateTimestamp}
           />
         ) : null;
       })

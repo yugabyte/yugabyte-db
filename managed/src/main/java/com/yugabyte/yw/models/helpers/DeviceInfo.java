@@ -6,6 +6,9 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import com.yugabyte.yw.common.utils.Pair;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -97,15 +100,22 @@ public class DeviceInfo {
   }
 
   private void checkVolumeBaseInfo() {
+    RuntimeConfGetter runtimeConfGetter =
+        StaticInjectorHolder.injector().instanceOf(RuntimeConfGetter.class);
+    int maxVolumeCount = runtimeConfGetter.getGlobalConf(GlobalConfKeys.maxVolumeCount);
     if (volumeSize == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Volume size field is mandatory");
     } else if (volumeSize <= 0) {
       throw new PlatformServiceException(BAD_REQUEST, "Volume size should be positive");
     }
+
     if (numVolumes == null) {
       throw new PlatformServiceException(BAD_REQUEST, "Number of volumes field is mandatory");
     } else if (numVolumes <= 0) {
       throw new PlatformServiceException(BAD_REQUEST, "Number of volumes should be positive");
+    } else if (numVolumes > maxVolumeCount) {
+      throw new PlatformServiceException(
+          BAD_REQUEST, "Volume number should not exceed maximum limit of " + maxVolumeCount);
     }
   }
 

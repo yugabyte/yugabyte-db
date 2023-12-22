@@ -56,7 +56,7 @@ class IteratorWrapper {
     if (iter_ == nullptr) {
       entry_ = &KeyValueEntry::Invalid();
     } else {
-      Update();
+      Update(iter_->Entry());
       if (iters_pinned_) {
         // Pin new iterator
         Status s = iter_->PinData();
@@ -133,24 +133,26 @@ class IteratorWrapper {
 
   // Methods below require iter() != nullptr
   Status status() const     { assert(iter_); return iter_->status(); }
-  void Next()               { assert(iter_); iter_->Next();        Update(); }
-  void Prev()               { assert(iter_); iter_->Prev();        Update(); }
-  void Seek(const Slice& k) { assert(iter_); iter_->Seek(k);       Update(); }
-  void SeekToFirst()        { assert(iter_); iter_->SeekToFirst(); Update(); }
-  void SeekToLast()         { assert(iter_); iter_->SeekToLast();  Update(); }
+  const KeyValueEntry& Next()               { assert(iter_); return Update(iter_->Next()); }
+  const KeyValueEntry& Prev()               { assert(iter_); return Update(iter_->Prev()); }
+  const KeyValueEntry& Seek(const Slice& k) { assert(iter_); return Update(iter_->Seek(k)); }
+  const KeyValueEntry& SeekToFirst()        { assert(iter_); return Update(iter_->SeekToFirst()); }
+  const KeyValueEntry& SeekToLast()         { assert(iter_); return Update(iter_->SeekToLast()); }
+
   ScanForwardResult ScanForward(
       const Comparator* user_key_comparator, const Slice& upperbound,
       KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) {
     LOG_IF(DFATAL, !iter_) << "Iterator is invalid";
     auto result =
         iter_->ScanForward(user_key_comparator, upperbound, key_filter_callback, scan_callback);
-    Update();
+    Update(iter_->Entry());
     return result;
   }
 
  private:
-  void Update() {
-    entry_ = &iter_->Entry();
+  const KeyValueEntry& Update(const KeyValueEntry& entry) {
+    entry_ = &entry;
+    return entry;
   }
 
   void DeletePinnedIterators(bool is_arena_mode) {

@@ -62,7 +62,7 @@ To view performance metrics, refer to [Use metrics](../troubleshoot/universe-iss
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="performance-advisor/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/explore/monitoring.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/manage/diagnostics.png" aria-hidden="true" />
         <div class="title">Performance advisor</div>
       </div>
       <div class="body">
@@ -75,7 +75,7 @@ To view performance metrics, refer to [Use metrics](../troubleshoot/universe-iss
     <a class="section-link icon-offset" href="latency-histogram/">
       <div class="head">
         <img class="icon" src="/images/section_icons/introduction/benefits.png" aria-hidden="true" />
-        <div class="title">Latency Histogram</div>
+        <div class="title">Latency histogram and P99 latencies</div>
       </div>
       <div class="body">
         Use the Slow Queries dashboard to view latency histogram and P99 latency metrics.

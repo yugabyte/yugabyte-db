@@ -400,6 +400,12 @@ Status KvStoreInfo::LoadFromPB(const std::string& tablet_log_prefix,
   upper_bound_key = pb.upper_bound_key();
   parent_data_compacted = pb.parent_data_compacted();
   last_full_compaction_time = pb.last_full_compaction_time();
+  if (pb.has_post_split_compaction_file_number_upper_bound()) {
+    post_split_compaction_file_number_upper_bound =
+        pb.post_split_compaction_file_number_upper_bound();
+  } else {
+    post_split_compaction_file_number_upper_bound.reset();
+  }
 
   for (const auto& schedule_id : pb.snapshot_schedules()) {
     snapshot_schedules.insert(VERIFY_RESULT(FullyDecodeSnapshotScheduleId(schedule_id)));
@@ -415,6 +421,13 @@ Status KvStoreInfo::MergeWithRestored(
   upper_bound_key = snapshot_kvstoreinfo.upper_bound_key();
   parent_data_compacted = snapshot_kvstoreinfo.parent_data_compacted();
   last_full_compaction_time = snapshot_kvstoreinfo.last_full_compaction_time();
+  if (snapshot_kvstoreinfo.has_post_split_compaction_file_number_upper_bound()) {
+    post_split_compaction_file_number_upper_bound =
+        snapshot_kvstoreinfo.post_split_compaction_file_number_upper_bound();
+  } else {
+    post_split_compaction_file_number_upper_bound.reset();
+  }
+
   return RestoreMissingValuesAndMergeTableSchemaPackings(
       snapshot_kvstoreinfo, primary_table_id, colocated, overwrite);
 }
@@ -515,6 +528,12 @@ void KvStoreInfo::ToPB(const TableId& primary_table_id, KvStoreInfoPB* pb) const
   }
   pb->set_parent_data_compacted(parent_data_compacted);
   pb->set_last_full_compaction_time(last_full_compaction_time);
+  if (post_split_compaction_file_number_upper_bound.has_value()) {
+    pb->set_post_split_compaction_file_number_upper_bound(
+        *post_split_compaction_file_number_upper_bound);
+  } else {
+    pb->clear_post_split_compaction_file_number_upper_bound();
+  }
 
   // Putting primary table first, then all other tables.
   pb->mutable_tables()->Reserve(narrow_cast<int>(tables.size() + 1));
@@ -540,6 +559,7 @@ void KvStoreInfo::UpdateColocationMap(const TableInfoPtr& table_info) {
   }
 }
 
+// TODO(pscompact): do we need to update this for file number upper bound?
 bool KvStoreInfo::TEST_Equals(const KvStoreInfo& lhs, const KvStoreInfo& rhs) {
   auto eq = [](const auto& lhs, const auto& rhs) {
     return DereferencedEqual(lhs, rhs, TableInfo::TEST_Equals);
@@ -1682,6 +1702,7 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
   metadata->kv_store_.rocksdb_dir = GetSubRaftGroupDataDir(raft_group_id);
   metadata->kv_store_.parent_data_compacted = false;
   metadata->kv_store_.last_full_compaction_time = kNoLastFullCompactionTime;
+  metadata->kv_store_.post_split_compaction_file_number_upper_bound.reset();
   *metadata->partition_ = partition;
   metadata->state_ = kInitialized;
   metadata->tablet_data_state_ = TABLET_DATA_INIT_STARTED;
@@ -1944,6 +1965,23 @@ OpId RaftGroupMetadata::MinUnflushedChangeMetadataOpId() const {
   MutexLock l_flush(flush_lock_);
   std::lock_guard lock(data_mutex_);
   return min_unflushed_change_metadata_op_id_;
+}
+
+bool RaftGroupMetadata::OnPostSplitCompactionDone() {
+  std::lock_guard lock(data_mutex_);
+  bool updated = false;
+
+  if (!kv_store_.parent_data_compacted) {
+    kv_store_.parent_data_compacted = true;
+    updated = true;
+  }
+
+  if (kv_store_.post_split_compaction_file_number_upper_bound != 0) {
+    kv_store_.post_split_compaction_file_number_upper_bound = 0;
+    updated = true;
+  }
+
+  return updated;
 }
 
 } // namespace tablet

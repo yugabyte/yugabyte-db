@@ -8,10 +8,12 @@
  */
 import { FC, useReducer, useState } from 'react';
 import moment from 'moment';
+import { Link } from 'react-router';
+import { useMethods } from 'react-use';
 import { RemoteObjSpec, SortOrder, TableHeaderColumn } from 'react-bootstrap-table';
 import { useQuery } from 'react-query';
 import Select, { OptionTypeBase } from 'react-select';
-import { StatusBadge } from '../../common/badge/StatusBadge';
+import { Badge_Types, StatusBadge } from '../../common/badge/StatusBadge';
 import { YBMultiSelectRedesiged } from '../../common/forms/fields';
 import { YBSearchInput } from '../../common/forms/fields/YBSearchInput';
 import { YBLoading } from '../../common/indicators';
@@ -29,6 +31,12 @@ import { getRestoreList } from '../common/RestoreAPI';
 import { DEFAULT_TIME_STATE, TIME_RANGE_OPTIONS } from '../components/BackupList';
 import { RestoreEmpty } from './RestoreEmpty';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
+import { RestoreDetails } from './RestoreDetails';
+import {
+  RestoreDetailsContext,
+  initialRestoreDetailsContextState,
+  restoreDetailsMethods
+} from './RestoreContext';
 import './Restore.scss';
 
 const reactWidgets = require('react-widgets');
@@ -72,6 +80,13 @@ export const Restore: FC<RestoreProps> = ({ universeUUID, type }) => {
   };
 
   const [timeRange, dispatchTimeRange] = useReducer(timeReducer, DEFAULT_TIME_STATE);
+
+  const restoreDetailsContextData = useMethods(
+    restoreDetailsMethods,
+    initialRestoreDetailsContextState
+  );
+
+  const [, { setSelectedRestore }] = restoreDetailsContextData;
 
   const { data: restoreList, isLoading } = useQuery(
     [
@@ -118,154 +133,196 @@ export const Restore: FC<RestoreProps> = ({ universeUUID, type }) => {
     return <RestoreEmpty />;
   }
 
-  return (
-    <div className="restore-v2">
-      <div className="search-filter-options">
-        <div className="search-placeholder">
-          <YBSearchInput
-            placeHolder={`Search ${type === 'ACCOUNT_LEVEL' ? 'target' : 'source'} universe name`}
-            onEnterPressed={(val: string) => setSearchText(val)}
-          />
-        </div>
-        <YBMultiSelectRedesiged
-          className="backup-status-filter"
-          name="statuses"
-          customLabel="Status:"
-          placeholder="Status"
-          isMulti={false}
-          options={RESTORE_STATUS_OPTIONS}
-          value={status}
-          onChange={(value: any) => {
-            setStatus(value ? [value] : []);
+  const getUniverseLink = (row: IRestore, type: 'SOURCE' | 'TARGET') => {
+    if (type === 'SOURCE' && row.sourceUniverseName) {
+      if (row.isSourceUniversePresent) {
+        return (
+          <Link
+            target="_blank"
+            to={`/universes/${row.sourceUniverseUUID}`}
+            className="universeName"
+            onClick={(e) => {
+              e.stopPropagation();
+            }}
+          >
+            {row.sourceUniverseName}
+          </Link>
+        );
+      }
+      return row.sourceUniverseName;
+    }
+    if (type === 'TARGET' && row.targetUniverseName) {
+      return (
+        <Link
+          target="_blank"
+          to={`/universes/${row.universeUUID}`}
+          className="universeName"
+          onClick={(e) => {
+            e.stopPropagation();
           }}
-        />
-        <div className="date-filters no-padding">
-          {timeRange.label === 'Custom' && (
-            <div className="custom-date-picker">
-              <DateTimePicker
-                placeholder="Pick a start time"
-                step={10}
-                formats={DATE_FORMAT}
-                onChange={(time: Date) => {
-                  setCustomStartTime(time);
-                  dispatchTimeRange({
-                    label: 'Custom'
-                  });
-                }}
-              />
-              <span>-</span>
-              <DateTimePicker
-                placeholder="Pick a end time"
-                step={10}
-                formats={DATE_FORMAT}
-                onChange={(time: Date) => {
-                  setCustomEndTime(time);
-                  dispatchTimeRange({
-                    label: 'Custom'
-                  });
-                }}
-              />
-            </div>
-          )}
-          <Select
-            className="time-range"
-            options={TIME_RANGE_OPTIONS}
-            onChange={(value) => {
-              dispatchTimeRange({
-                ...value
-              });
-            }}
-            styles={{
-              input: (styles) => {
-                return { ...styles, ...CALDENDAR_ICON() };
-              },
-              placeholder: (styles) => ({ ...styles, ...CALDENDAR_ICON() }),
-              singleValue: (styles) => ({ ...styles, ...CALDENDAR_ICON() }),
-              menu: (styles) => ({
-                ...styles,
-                zIndex: 10,
-                height: '325px'
-              }),
-              menuList: (base) => ({
-                ...base,
-                minHeight: '325px'
-              })
-            }}
-            defaultValue={TIME_RANGE_OPTIONS.find((t) => t.label === 'All time')}
-            maxMenuHeight={300}
-          ></Select>
-        </div>
-      </div>
-      {isLoading && <YBLoading />}
-      <YBTable
-        data={restoreList?.data.entities ?? []}
-        options={{
-          sizePerPage,
-          onSizePerPageList: setSizePerPage,
-          page,
-          prePage: 'Prev',
-          nextPage: 'Next',
-          onPageChange: (page) => setPage(page),
-          defaultSortOrder: DEFAULT_SORT_DIRECTION.toLowerCase() as SortOrder,
-          defaultSortName: DEFAULT_SORT_COLUMN,
-          onSortChange: (_: any, SortOrder: SortOrder) => setSortDirection(SortOrder.toUpperCase())
-        }}
-        pagination={true}
-        remote={(remoteObj: RemoteObjSpec) => {
-          return {
-            ...remoteObj,
-            pagination: true
-          };
-        }}
-        fetchInfo={{ dataTotalSize: restoreList?.data.totalCount ?? 10 }}
-        hover
-      >
-        <TableHeaderColumn dataField="restoreUUID" isKey={true} hidden={true} />
+        >
+          {row.targetUniverseName}
+        </Link>
+      );
+    }
+    return ENTITY_NOT_AVAILABLE;
+  };
 
-        <TableHeaderColumn
-          dataField="createTime"
-          dataFormat={(time) => ybFormatDate(time)}
-          width="20%"
-          dataSort
-        >
-          Taken At
-        </TableHeaderColumn>
-        <TableHeaderColumn
-          dataField="restoreSizeInBytes"
-          dataFormat={(_, row) => {
-            return row.restoreSizeInBytes ? formatBytes(row.restoreSizeInBytes) : '-';
+  return (
+    <RestoreDetailsContext.Provider
+      value={(restoreDetailsContextData as unknown) as RestoreDetailsContext}
+    >
+      <div className="restore-v2">
+        <div className="search-filter-options">
+          <div className="search-placeholder">
+            <YBSearchInput
+              placeHolder={`Search ${type === 'ACCOUNT_LEVEL' ? 'target' : 'source'} universe name`}
+              onEnterPressed={(val: string) => setSearchText(val)}
+            />
+          </div>
+          <YBMultiSelectRedesiged
+            className="backup-status-filter"
+            name="statuses"
+            customLabel="Status:"
+            placeholder="Status"
+            isMulti={false}
+            options={RESTORE_STATUS_OPTIONS}
+            value={status}
+            onChange={(value: any) => {
+              setStatus(value ? [value] : []);
+            }}
+          />
+          <div className="date-filters no-padding">
+            {timeRange.label === 'Custom' && (
+              <div className="custom-date-picker">
+                <DateTimePicker
+                  placeholder="Pick a start time"
+                  step={10}
+                  formats={DATE_FORMAT}
+                  onChange={(time: Date) => {
+                    setCustomStartTime(time);
+                    dispatchTimeRange({
+                      label: 'Custom'
+                    });
+                  }}
+                />
+                <span>-</span>
+                <DateTimePicker
+                  placeholder="Pick a end time"
+                  step={10}
+                  formats={DATE_FORMAT}
+                  onChange={(time: Date) => {
+                    setCustomEndTime(time);
+                    dispatchTimeRange({
+                      label: 'Custom'
+                    });
+                  }}
+                />
+              </div>
+            )}
+            <Select
+              className="time-range"
+              options={TIME_RANGE_OPTIONS}
+              onChange={(value) => {
+                dispatchTimeRange({
+                  ...value
+                });
+              }}
+              styles={{
+                input: (styles) => {
+                  return { ...styles, ...CALDENDAR_ICON() };
+                },
+                placeholder: (styles) => ({ ...styles, ...CALDENDAR_ICON() }),
+                singleValue: (styles) => ({ ...styles, ...CALDENDAR_ICON() }),
+                menu: (styles) => ({
+                  ...styles,
+                  zIndex: 10,
+                  height: '325px'
+                }),
+                menuList: (base) => ({
+                  ...base,
+                  minHeight: '325px'
+                })
+              }}
+              defaultValue={TIME_RANGE_OPTIONS.find((t) => t.label === 'All time')}
+              maxMenuHeight={300}
+            ></Select>
+          </div>
+        </div>
+        {isLoading && <YBLoading />}
+        <YBTable
+          data={restoreList?.data.entities ?? []}
+          options={{
+            sizePerPage,
+            onSizePerPageList: setSizePerPage,
+            page,
+            prePage: 'Prev',
+            nextPage: 'Next',
+            onPageChange: (page) => setPage(page),
+            onRowClick: (row) => {
+              setSelectedRestore(row);
+            },
+            defaultSortOrder: DEFAULT_SORT_DIRECTION.toLowerCase() as SortOrder,
+            defaultSortName: DEFAULT_SORT_COLUMN,
+            onSortChange: (_: any, SortOrder: SortOrder) =>
+              setSortDirection(SortOrder.toUpperCase())
           }}
-          width="20%"
-        >
-          Size
-        </TableHeaderColumn>
-        <TableHeaderColumn
-          dataField="sourceUniverseName"
-          dataFormat={(sourceName) => (sourceName ? sourceName : ENTITY_NOT_AVAILABLE)}
-          width="20%"
-        >
-          Backup Source Universe
-        </TableHeaderColumn>
-        <TableHeaderColumn
-          dataField="targetUniverseName"
-          dataFormat={(_name, row: IRestore) =>
-            row.targetUniverseName ? row.targetUniverseName : ENTITY_NOT_AVAILABLE
-          }
-          width="20%"
-          hidden={type === 'UNIVERSE_LEVEL'}
-        >
-          Target Universe
-        </TableHeaderColumn>
-        <TableHeaderColumn
-          dataField="state"
-          dataFormat={(state) => {
-            return <StatusBadge statusType={state} customLabel={state} />;
+          pagination={true}
+          remote={(remoteObj: RemoteObjSpec) => {
+            return {
+              ...remoteObj,
+              pagination: true
+            };
           }}
-          width="15%"
+          fetchInfo={{ dataTotalSize: restoreList?.data.totalCount ?? 10 }}
+          hover
         >
-          Status
-        </TableHeaderColumn>
-      </YBTable>
-    </div>
+          <TableHeaderColumn dataField="restoreUUID" isKey={true} hidden={true} />
+
+          <TableHeaderColumn
+            dataField="createTime"
+            dataFormat={(time) => ybFormatDate(time)}
+            width="20%"
+            dataSort
+          >
+            Taken At
+          </TableHeaderColumn>
+          <TableHeaderColumn
+            dataField="restoreSizeInBytes"
+            dataFormat={(_, row) => {
+              return row.restoreSizeInBytes ? formatBytes(row.restoreSizeInBytes) : '-';
+            }}
+            width="20%"
+          >
+            Size
+          </TableHeaderColumn>
+          <TableHeaderColumn
+            dataField="sourceUniverseName"
+            dataFormat={(_sourceName, row: IRestore) => getUniverseLink(row, 'SOURCE')}
+            width="20%"
+          >
+            Backup Source Universe
+          </TableHeaderColumn>
+          <TableHeaderColumn
+            dataField="targetUniverseName"
+            dataFormat={(_targetName, row: IRestore) => getUniverseLink(row, 'TARGET')}
+            width="20%"
+            hidden={type === 'UNIVERSE_LEVEL'}
+          >
+            Target Universe
+          </TableHeaderColumn>
+          <TableHeaderColumn
+            dataField="state"
+            dataFormat={(state: Badge_Types, row: IRestore) => (
+              <StatusBadge statusType={state} customLabel={state} />
+            )}
+            width="15%"
+          >
+            Status
+          </TableHeaderColumn>
+        </YBTable>
+        <RestoreDetails />
+      </div>
+    </RestoreDetailsContext.Provider>
   );
 };

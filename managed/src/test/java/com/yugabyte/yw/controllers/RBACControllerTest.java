@@ -9,6 +9,8 @@ import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertTrue;
 import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.CONFLICT;
+import static play.mvc.Http.Status.NOT_FOUND;
 import static play.mvc.Http.Status.OK;
 import static play.test.Helpers.contentAsString;
 
@@ -18,10 +20,10 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.ObjectReader;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
+import com.yugabyte.yw.common.rbac.Permission;
 import com.yugabyte.yw.common.rbac.PermissionInfo;
-import com.yugabyte.yw.common.rbac.PermissionInfo.Permission;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
-import com.yugabyte.yw.common.rbac.PermissionInfoIdentifier;
 import com.yugabyte.yw.common.rbac.PermissionUtil;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Users;
@@ -59,14 +61,10 @@ public class RBACControllerTest extends FakeDBApplication {
   private ObjectMapper mapper;
 
   // Define test permissions to use later.
-  public PermissionInfoIdentifier permission1 =
-      new PermissionInfoIdentifier(ResourceType.UNIVERSE, Permission.CREATE);
-  public PermissionInfoIdentifier permission2 =
-      new PermissionInfoIdentifier(ResourceType.UNIVERSE, Permission.READ);
-  public PermissionInfoIdentifier permission3 =
-      new PermissionInfoIdentifier(ResourceType.DEFAULT, Permission.DELETE);
-  public PermissionInfoIdentifier permission4 =
-      new PermissionInfoIdentifier(ResourceType.DEFAULT, Permission.READ);
+  public Permission permission1 = new Permission(ResourceType.UNIVERSE, Action.CREATE);
+  public Permission permission2 = new Permission(ResourceType.UNIVERSE, Action.READ);
+  public Permission permission3 = new Permission(ResourceType.OTHER, Action.DELETE);
+  public Permission permission4 = new Permission(ResourceType.OTHER, Action.READ);
 
   @Before
   public void setUp() {
@@ -91,7 +89,7 @@ public class RBACControllerTest extends FakeDBApplication {
       uri =
           String.format(
               "/api/customers/%s/rbac/permissions?resourceType=%s",
-              customerUUID.toString(), resourceType);
+              customerUUID.toString(), resourceType.toLowerCase());
     }
     return doRequestWithAuthToken("GET", uri, user.createAuthToken());
   }
@@ -103,7 +101,8 @@ public class RBACControllerTest extends FakeDBApplication {
     } else {
       uri =
           String.format(
-              "/api/customers/%s/rbac/role?roleType=%s", customerUUID.toString(), roleType);
+              "/api/customers/%s/rbac/role?roleType=%s",
+              customerUUID.toString(), roleType.toLowerCase());
     }
     return doRequestWithAuthToken("GET", uri, user.createAuthToken());
   }
@@ -155,7 +154,7 @@ public class RBACControllerTest extends FakeDBApplication {
 
   @Test
   public void testListDefaultPermissions() throws IOException {
-    Result result = listPermissionsAPI(customer.getUuid(), ResourceType.DEFAULT.toString());
+    Result result = listPermissionsAPI(customer.getUuid(), ResourceType.OTHER.toString());
     assertEquals(OK, result.status());
 
     JsonNode json = Json.parse(contentAsString(result));
@@ -163,8 +162,7 @@ public class RBACControllerTest extends FakeDBApplication {
     List<PermissionInfo> permissionInfoList = reader.readValue(json);
 
     assertEquals(
-        permissionInfoList.size(),
-        permissionUtil.getAllPermissionInfo(ResourceType.DEFAULT).size());
+        permissionInfoList.size(), permissionUtil.getAllPermissionInfo(ResourceType.OTHER).size());
   }
 
   @Test
@@ -291,8 +289,8 @@ public class RBACControllerTest extends FakeDBApplication {
         "{"
             + "\"name\": \"custom Read UniverseRole 1\","
             + "\"description\": \"test Description\","
-            + "\"permission_list\": ["
-            + "{\"resource_type\": \"UNIVERSE\", \"permission\": \"READ\"}"
+            + "\"permissionList\": ["
+            + "{\"resourceType\": \"UNIVERSE\", \"action\": \"READ\"}"
             + "]}";
     JsonNode bodyJson = mapper.readValue(createRoleRequestBody, JsonNode.class);
     Result result = createRole(customer.getUuid(), bodyJson);
@@ -329,8 +327,8 @@ public class RBACControllerTest extends FakeDBApplication {
         "{"
             + "\"name\": \"customReadUniverseRole1\","
             + "\"description\": \"test Description\","
-            + "\"permission_list\": ["
-            + "{\"resource_type\": \"UNIVERSE\", \"permission\": \"READ\"}"
+            + "\"permissionList\": ["
+            + "{\"resourceType\": \"UNIVERSE\", \"action\": \"READ\"}"
             + "]}";
     JsonNode bodyJson = mapper.readValue(createRoleRequestBody, JsonNode.class);
     Result result = assertPlatformException(() -> createRole(customer.getUuid(), bodyJson));
@@ -346,8 +344,8 @@ public class RBACControllerTest extends FakeDBApplication {
         "{"
             + "\"name\": \"customReadUniverseRole1\","
             + "\"description\": \"test Description\","
-            + "\"permission_list\": ["
-            + "{\"resource_type\": \"UNIVERSE\", \"permission\": \"CREATE\"}"
+            + "\"permissionList\": ["
+            + "{\"resourceType\": \"UNIVERSE\", \"action\": \"CREATE\"}"
             + "]}";
     JsonNode bodyJson = mapper.readValue(createRoleRequestBody, JsonNode.class);
     Result result = assertPlatformException(() -> createRole(customer.getUuid(), bodyJson));
@@ -369,8 +367,8 @@ public class RBACControllerTest extends FakeDBApplication {
     // Filling the JSON object to be passed in the request body
     String createRoleRequestBody =
         "{"
-            + "\"permission_list\": ["
-            + "{\"resource_type\": \"UNIVERSE\", \"permission\": \"READ\"}"
+            + "\"permissionList\": ["
+            + "{\"resourceType\": \"UNIVERSE\", \"action\": \"READ\"}"
             + "]}";
     JsonNode bodyJson = mapper.readValue(createRoleRequestBody, JsonNode.class);
     Result result = editRole(customer.getUuid(), role1.getRoleUUID(), bodyJson);
@@ -389,7 +387,7 @@ public class RBACControllerTest extends FakeDBApplication {
     Role roleDb = Role.getAll(customer.getUuid()).get(0);
     assertEquals(roleResult, roleDb);
     // Verify if permissions got updated correctly.
-    Set<PermissionInfoIdentifier> permissionList = new HashSet<>(Arrays.asList(permission2));
+    Set<Permission> permissionList = new HashSet<>(Arrays.asList(permission2));
     assertEquals(permissionList, roleDb.getPermissionDetails().getPermissionList());
   }
 
@@ -408,13 +406,30 @@ public class RBACControllerTest extends FakeDBApplication {
     // We are not allowed to edit a system role through the API.
     String createRoleRequestBody =
         "{"
-            + "\"permission_list\": ["
-            + "{\"resource_type\": \"UNIVERSE\", \"permission\": \"READ\"}"
+            + "\"permissionList\": ["
+            + "{\"resourceType\": \"UNIVERSE\", \"action\": \"READ\"}"
             + "]}";
     JsonNode bodyJson = mapper.readValue(createRoleRequestBody, JsonNode.class);
     Result result =
         assertPlatformException(() -> editRole(customer.getUuid(), role1.getRoleUUID(), bodyJson));
     assertEquals(BAD_REQUEST, result.status());
+    assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
+  public void testEditInvalidCustomRole() throws IOException {
+    // Try to edit role that doesn't exist.
+    // Filling the JSON object to be passed in the request body
+    // We are not allowed to edit a system role through the API.
+    String createRoleRequestBody =
+        "{"
+            + "\"permissionList\": ["
+            + "{\"resourceType\": \"UNIVERSE\", \"action\": \"READ\"}"
+            + "]}";
+    JsonNode bodyJson = mapper.readValue(createRoleRequestBody, JsonNode.class);
+    Result result =
+        assertPlatformException(() -> editRole(customer.getUuid(), UUID.randomUUID(), bodyJson));
+    assertEquals(NOT_FOUND, result.status());
     assertAuditEntry(0, customer.getUuid());
   }
 
@@ -456,6 +471,40 @@ public class RBACControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testDeleteInvalidRoleWithRoleBindings() throws IOException {
+    // Create test role and insert into DB.
+    Role role1 =
+        Role.create(
+            customer.getUuid(),
+            "testSystemRole1",
+            "testDescription",
+            RoleType.Custom,
+            new HashSet<>(Arrays.asList(permission1, permission2, permission3, permission4)));
+
+    // Create test role binding and insert into DB.
+    RoleBinding roleBinding1 =
+        RoleBinding.create(
+            user,
+            RoleBindingType.Custom,
+            role1,
+            new ResourceGroup(
+                new HashSet<>(
+                    Arrays.asList(
+                        ResourceDefinition.builder()
+                            .resourceType(ResourceType.OTHER)
+                            .allowAll(true)
+                            .build()))));
+
+    // Call API and assert that role is not deleted due to existing role bindings.
+    Result result =
+        assertPlatformException(() -> deleteRole(customer.getUuid(), role1.getRoleUUID()));
+    assertEquals(CONFLICT, result.status());
+    assertEquals(1, Role.getAll(customer.getUuid()).size());
+    assertEquals(1, RoleBinding.getAll(user.getUuid()).size());
+    assertAuditEntry(0, customer.getUuid());
+  }
+
+  @Test
   public void testListRoleBindings() throws IOException {
     // Create few test roles and insert into DB.
     Role role1 =
@@ -483,7 +532,7 @@ public class RBACControllerTest extends FakeDBApplication {
                 new HashSet<>(
                     Arrays.asList(
                         ResourceDefinition.builder()
-                            .resourceType(ResourceType.DEFAULT)
+                            .resourceType(ResourceType.OTHER)
                             .allowAll(true)
                             .build()))));
     RoleBinding roleBinding2 =

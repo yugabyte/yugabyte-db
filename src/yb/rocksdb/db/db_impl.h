@@ -199,6 +199,8 @@ class DBImpl : public DB {
 
   virtual SequenceNumber GetLatestSequenceNumber() const override;
 
+  uint64_t GetNextFileNumber() const override;
+
   virtual Status DisableFileDeletions() override;
   virtual Status EnableFileDeletions(bool force) override;
   virtual int IsFileDeletionsEnabled() const;
@@ -321,6 +323,8 @@ class DBImpl : public DB {
                              const Slice* begin, const Slice* end,
                              bool exclusive,
                              CompactionReason compaction_reason,
+                             uint64_t file_number_upper_bound,
+                             uint64_t input_size_limit_per_job,
                              bool disallow_trivial_move = false);
 
   // Return an internal iterator over the current state of the database.
@@ -523,8 +527,8 @@ class DBImpl : public DB {
                                    const CompactionJobStats& job_stats,
                                    int job_id);
 
-  void NotifyOnTrivialCompactionCompleted(
-      const ColumnFamilyData& cfd, const CompactionReason compaction_reason);
+  void NotifyOnNoOpCompactionCompleted(const ColumnFamilyData& cfd,
+                                       const CompactionReason compaction_reason);
 
   Status WriteImpl(const WriteOptions& options, WriteBatch* updates,
                    WriteCallback* callback);
@@ -919,6 +923,7 @@ class DBImpl : public DB {
     bool incomplete;              // only part of requested range compacted
     bool exclusive;               // current behavior of only one manual
     bool disallow_trivial_move;   // Force actual compaction to run
+    bool has_input_size_limit;    // if true, consider the mark incompete after it's actually done
     const InternalKey* begin;     // nullptr means beginning of key range
     const InternalKey* end;       // nullptr means end of key range
     InternalKey* manual_end;      // how far we are compacting

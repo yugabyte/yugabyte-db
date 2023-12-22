@@ -1476,3 +1476,22 @@ templates:
       summary: >-
         Maximum throughput for YCQL operations for universe '{{ $labels.source_name }}'
         is above {{ $labels.threshold }}. Current value is {{ $value | printf "%.0f" }}
+
+  UNIVERSE_OS_UPDATE_REQUIRED:
+    name: Universe OS outdated
+    description: More recent OS version is recommended for this universe.
+    queryTemplate: ybp_universe_os_update_required{universe_uuid="__universeUuid__"}
+      {{ query_condition }} {{ query_threshold }}
+    createForNewCustomer: true
+    defaultThresholdMap:
+      WARNING:
+        threshold: 1.0
+    targetType: UNIVERSE
+    defaultThresholdCondition: LESS_THAN
+    defaultThresholdUnit: STATUS
+    thresholdMaxValue: 1.0
+    thresholdReadOnly: true
+    annotations:
+      summary: >-
+        More recent OS version is recommended for this universe. Consider running VM image
+        upgrade for the nodes to incorporate security patches and address vulnerabilities.

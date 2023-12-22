@@ -403,15 +403,6 @@ export const TableTypeLabel: Record<TableType, string> = {
   TRANSACTION_STATUS_TABLE_TYPE: 'SYSTEM'
 } as const;
 
-export interface MetricsData {
-  type: string;
-  metricsKey: string[];
-  nodePrefixes: string;
-  selectedUniverse: any;
-  title: string;
-  tableName?: string;
-}
-
 export interface GraphFilter {
   startMoment: any;
   endMoment: any;

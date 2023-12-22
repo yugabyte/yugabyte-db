@@ -8,8 +8,11 @@ import com.yugabyte.yw.commissioner.tasks.DeleteCustomerStorageConfig;
 import com.yugabyte.yw.common.CloudUtil;
 import com.yugabyte.yw.common.CloudUtilFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.customer.config.CustomerConfigUI;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
@@ -22,6 +25,11 @@ import com.yugabyte.yw.models.configs.CustomerConfig.ConfigState;
 import com.yugabyte.yw.models.configs.data.CustomerConfigData;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -65,6 +73,12 @@ public class CustomerConfigController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.models.configs.CustomerConfig",
         paramType = "body")
   })
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result create(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     CustomerConfig customerConfig = parseJson(request, CustomerConfig.class);
@@ -84,6 +98,12 @@ public class CustomerConfigController extends AuthenticatedController {
       value = "Delete a customer configuration",
       response = YBPTask.class,
       nickname = "deleteCustomerConfig")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result delete(
       UUID customerUUID, UUID configUUID, boolean isDeleteBackups, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -138,6 +158,12 @@ public class CustomerConfigController extends AuthenticatedController {
       value = "Delete a customer configuration V2",
       response = YBPTask.class,
       nickname = "deleteCustomerConfigV2")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result deleteYb(
       UUID customerUUID, UUID configUUID, boolean isDeleteBackups, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -190,6 +216,12 @@ public class CustomerConfigController extends AuthenticatedController {
       response = CustomerConfigUI.class,
       responseContainer = "List",
       nickname = "getListOfCustomerConfig")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result list(UUID customerUUID) {
     return PlatformResults.withData(customerConfigService.listForUI(customerUUID));
   }
@@ -205,6 +237,12 @@ public class CustomerConfigController extends AuthenticatedController {
         required = true,
         dataType = "com.yugabyte.yw.models.configs.CustomerConfig",
         paramType = "body")
+  })
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result edit(UUID customerUUID, UUID configUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
@@ -237,6 +275,12 @@ public class CustomerConfigController extends AuthenticatedController {
         required = true,
         dataType = "com.yugabyte.yw.models.configs.CustomerConfig",
         paramType = "body")
+  })
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result editYb(UUID customerUUID, UUID configUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
@@ -272,6 +316,12 @@ public class CustomerConfigController extends AuthenticatedController {
         required = true,
         dataType = "com.yugabyte.yw.models.configs.data.CustomerConfigData",
         paramType = "body")
+  })
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result listBuckets(UUID customerUUID, String cloud, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);

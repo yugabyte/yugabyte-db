@@ -33,7 +33,7 @@ For information on using LDAP for authentication with YugabyteDB Anywhere, refer
 
 ## Bind to the LDAP server using TLS
 
-To bind to the LDAP server using TLS, you set the `ldaptls=1` option and the `ysql_hba_conf_csv` flag to the following value:
+To bind to the LDAP server using TLS, include the `ldaptls=1` option in the `ysql_hba_conf_csv` flag as per the following example:
 
 ```sh
 host all yugabyte 127.0.0.1/0 password,"host all all 0.0.0.0/0 ldap ldapserver=ldapserver.example.org ldapbasedn=""dc=example,dc=org"" ldapsearchattribute=uid ldapbinddn=""cn=admin,dc=example,dc=org"" ldapbindpasswd=secret ldaptls=1"

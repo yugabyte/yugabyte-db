@@ -75,6 +75,7 @@
 #include "utils/date.h"
 #include "utils/geo_decls.h"
 #include "utils/inet.h"
+#include "utils/lsyscache.h"
 #include "utils/numeric.h"
 #include "utils/syscache.h"
 #include "utils/timestamp.h"
@@ -1489,39 +1490,56 @@ void YbGetTypeTable(const YBCPgTypeEntity **type_table, int *count) {
 }
 
 int64_t
-YbPostgresEpochToUnixEpoch(int64_t postgres_t)
-{
-	return postgres_t + ((POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) * USECS_PER_DAY);
-
-}
-
-int64_t
 YbUnixEpochToPostgresEpoch(int64_t unix_t)
 {
 	return unix_t - ((POSTGRES_EPOCH_JDATE - UNIX_EPOCH_JDATE) * USECS_PER_DAY);
 }
 
 /*
- * This function creates a TEXTARRAY datum from the given array of C strings.
- * It takes an array of pointers to C strings, the number of elements in the
- * array, and pointers to store the resulting datum and its length. The
- * resulting TEXTARRAY datum is palloc'd, and it contains a copy of the input
- * strings. Therefore, the input strings themselves do not need to be palloc'd.
+ * This function creates an ARRAY datum from the given list of items and returns
+ * a palloc'd ARRAY. Note that item values will be copied into the ARRAY, even
+ * if pass-by-ref type.
  */
 void
-YbConstructTextArrayDatum(const char **strings, const int nelems,
-						  char **datum, size_t *len)
+YbConstructArrayDatum(Oid arraytypoid, const char **items, const int nelems,
+					  char **datum, size_t *len)
 {
+	Oid elemtypoid;
 	ArrayType *array;
 	Datum *elems = NULL;
+	int16 elmlen;
+	bool elmbyval;
+	char elmalign;
 
-	if (nelems > 0) {
+	elemtypoid = get_element_type(arraytypoid);
+
+	if (!OidIsValid(elemtypoid))
+		ereport(ERROR,
+				(errcode(ERRCODE_DATATYPE_MISMATCH),
+					errmsg("subscripted object is not an array")));
+
+	if (nelems > 0)
+	{
 		elems = (Datum *) palloc(nelems * sizeof(Datum));
 		for (int i = 0; i < nelems; i++)
-			elems[i] = CStringGetTextDatum(strings[i]);
+		{
+			switch (arraytypoid)
+			{
+				case TEXTARRAYOID:
+					elems[i] = CStringGetTextDatum(items[i]);
+					break;
+				case UUIDARRAYOID:
+					elems[i] = UUIDPGetDatum(items[i]);
+					break;
+				default:
+					elog(ERROR, "unsupported array type: %d", arraytypoid);
+			}
+		}
 	}
 
-	array = construct_array(elems, nelems, TEXTOID, -1, false, 'i');
+	get_typlenbyvalalign(elemtypoid, &elmlen, &elmbyval, &elmalign);
+
+	array = construct_array(elems, nelems, elemtypoid, elmlen, elmbyval, elmalign);
 
 	*datum = VARDATA_ANY(array);
 	*len = VARSIZE_ANY_EXHDR(array);

@@ -80,6 +80,9 @@ static inline od_route_t *od_route_pool_new(od_route_pool_t *pool,
 		od_route_free(route);
 		return NULL;
 	}
+
+	route->id.yb_stats_index = -1;
+
 	route->rule = rule;
 	if (rule->quantiles_count) {
 		route->stats.enable_quantiles = true;

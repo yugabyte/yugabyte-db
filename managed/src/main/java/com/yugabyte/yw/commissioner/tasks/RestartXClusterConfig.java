@@ -4,6 +4,9 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables;
+import com.yugabyte.yw.common.DrConfigStates.SourceUniverseState;
+import com.yugabyte.yw.common.DrConfigStates.State;
+import com.yugabyte.yw.common.DrConfigStates.TargetUniverseState;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.models.Restore;
 import com.yugabyte.yw.models.Universe;
@@ -49,7 +52,8 @@ public class RestartXClusterConfig extends EditXClusterConfig {
               taskParams().getBootstrapParams().tables, true /* needBootstrap */);
         }
 
-        createXClusterConfigSetStatusTask(XClusterConfig.XClusterConfigStatusType.Updating)
+        createXClusterConfigSetStatusTask(
+                xClusterConfig, XClusterConfig.XClusterConfigStatusType.Updating)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeleteXClusterReplication);
 
         Set<String> tableIds = getTableIds(taskParams().getTableInfoList());
@@ -62,39 +66,58 @@ public class RestartXClusterConfig extends EditXClusterConfig {
         log.info("isRestartWholeConfig is {}", isRestartWholeConfig);
         if (isRestartWholeConfig) {
           createXClusterConfigSetStatusForTablesTask(
-              getTableIds(taskParams().getTableInfoList()), XClusterTableConfig.Status.Updating);
+              xClusterConfig,
+              getTableIds(taskParams().getTableInfoList()),
+              XClusterTableConfig.Status.Updating);
 
           // Delete the replication group.
           createDeleteXClusterConfigSubtasks(
               xClusterConfig, true /* keepEntry */, taskParams().isForced());
 
-          createXClusterConfigSetStatusTask(XClusterConfig.XClusterConfigStatusType.Updating);
+          if (xClusterConfig.isUsedForDr()) {
+            createSetDrStatesTask(
+                    xClusterConfig,
+                    State.Initializing,
+                    SourceUniverseState.Unconfigured,
+                    TargetUniverseState.Unconfigured)
+                .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
+          }
+
+          createXClusterConfigSetStatusTask(
+              xClusterConfig, XClusterConfig.XClusterConfigStatusType.Updating);
 
           createXClusterConfigSetStatusForTablesTask(
-              getTableIds(taskParams().getTableInfoList()), XClusterTableConfig.Status.Updating);
+              xClusterConfig,
+              getTableIds(taskParams().getTableInfoList()),
+              XClusterTableConfig.Status.Updating);
 
           addSubtasksToCreateXClusterConfig(
-              sourceUniverse,
-              targetUniverse,
+              xClusterConfig,
               taskParams().getTableInfoList(),
-              taskParams().getMainTableIndexTablesMap());
+              taskParams().getMainTableIndexTablesMap(),
+              taskParams().getSourceTableIdsWithNoTableOnTargetUniverse(),
+              taskParams().getPitrParams());
         } else {
-          createXClusterConfigSetStatusForTablesTask(tableIds, XClusterTableConfig.Status.Updating);
+          createXClusterConfigSetStatusForTablesTask(
+              xClusterConfig, tableIds, XClusterTableConfig.Status.Updating);
 
           createXClusterConfigModifyTablesTask(
-              tableIds, XClusterConfigModifyTables.Params.Action.REMOVE_FROM_REPLICATION_ONLY);
+              xClusterConfig,
+              tableIds,
+              XClusterConfigModifyTables.Params.Action.REMOVE_FROM_REPLICATION_ONLY);
 
-          createXClusterConfigSetStatusForTablesTask(tableIds, XClusterTableConfig.Status.Updating);
+          createXClusterConfigSetStatusForTablesTask(
+              xClusterConfig, tableIds, XClusterTableConfig.Status.Updating);
 
           addSubtasksToAddTablesToXClusterConfig(
-              sourceUniverse,
-              targetUniverse,
+              xClusterConfig,
               taskParams().getTableInfoList(),
               taskParams().getMainTableIndexTablesMap(),
               tableIds);
         }
 
-        createXClusterConfigSetStatusTask(XClusterConfig.XClusterConfigStatusType.Running)
+        createXClusterConfigSetStatusTask(
+                xClusterConfig, XClusterConfig.XClusterConfigStatusType.Running)
             .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.ConfigureUniverse);
 
         createMarkUniverseUpdateSuccessTasks(targetUniverse.getUniverseUUID())
@@ -116,9 +139,9 @@ public class RestartXClusterConfig extends EditXClusterConfig {
           xClusterConfig.getTableIdsInStatus(
               xClusterConfig.getTableIds(), XClusterTableConfig.Status.Running);
       if (tablesInRunningStatus.isEmpty()) {
-        setXClusterConfigStatus(XClusterConfigStatusType.Failed);
+        xClusterConfig.updateStatus(XClusterConfigStatusType.Failed);
       } else {
-        setXClusterConfigStatus(XClusterConfigStatusType.Running);
+        xClusterConfig.updateStatus(XClusterConfigStatusType.Running);
       }
       // Set tables in updating status to failed.
       Set<String> tablesInUpdatingStatus =

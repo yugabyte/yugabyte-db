@@ -55,6 +55,8 @@ func Install(version string) {
 
 func createInstallDirs() {
 	createDirs := []string{
+		GetBaseInstall(),
+		GetSoftwareRoot(),
 		dm.WorkingDirectory(),
 		filepath.Join(GetBaseInstall(), "data"),
 		filepath.Join(GetBaseInstall(), "data/logs"),
@@ -62,15 +64,19 @@ func createInstallDirs() {
 	}
 
 	for _, dir := range createDirs {
-		if err := MkdirAll(dir, os.ModePerm); err != nil {
-			log.Fatal(fmt.Sprintf("failed creating directory %s: %s", dir, err.Error()))
+		_, err := os.Stat(dir)
+		if os.IsNotExist(err) {
+			if err := MkdirAll(dir, DirMode); err != nil {
+				log.Fatal(fmt.Sprintf("failed creating directory %s: %s", dir, err.Error()))
+			}
 		}
 		// Only change ownership for root installs.
 		if HasSudoAccess() {
-			err := Chown(dir, viper.GetString("service_username"), viper.GetString("service_username"), true)
+			serviceuser := viper.GetString("service_username")
+			err := Chown(dir, serviceuser, serviceuser, true)
 			if err != nil {
 				log.Fatal("failed to change ownership of " + dir + " to " +
-					viper.GetString("service_username") + ": " + err.Error())
+					serviceuser + ": " + err.Error())
 			}
 		}
 	}
@@ -85,7 +91,7 @@ func createUpgradeDirs() {
 	}
 
 	for _, dir := range createDirs {
-		if err := MkdirAll(dir, os.ModePerm); err != nil {
+		if err := MkdirAll(dir, DirMode); err != nil {
 			log.Fatal(fmt.Sprintf("failed creating directory %s: %s", dir, err.Error()))
 		}
 		if HasSudoAccess() {
@@ -112,13 +118,21 @@ func copyBits(vers string) {
 	}
 
 	configDest := path.Join(GetInstallerSoftwareDir(), ConfigDir)
-	if err := Copy(GetTemplatesDir(), configDest, true, false); err != nil {
-		log.Fatal("failed to copy config files: " + err.Error())
+	if _, err := os.Stat(configDest); errors.Is(err, os.ErrNotExist) {
+		if err := Copy(GetTemplatesDir(), configDest, true, false); err != nil {
+			log.Fatal("failed to copy config files: " + err.Error())
+		}
+	} else {
+		log.Debug("skipping template file copy, already exists")
 	}
 
 	cronDest := path.Join(GetInstallerSoftwareDir(), CronDir)
-	if err := Copy(GetCronDir(), cronDest, true, false); err != nil {
-		log.Fatal("failed to copy cron scripts: " + err.Error())
+	if _, err := os.Stat(cronDest); errors.Is(err, os.ErrNotExist) {
+		if err := Copy(GetCronDir(), cronDest, true, false); err != nil {
+			log.Fatal("failed to copy cron scripts: " + err.Error())
+		}
+	} else {
+		log.Debug("skipping cron directory copy, already exists")
 	}
 }
 
@@ -180,9 +194,18 @@ func SetActiveInstallSymlink() {
 }
 
 func setupJDK() {
-	out := shell.Run("tar", "-zxf", GetJavaPackagePath(), "-C", GetInstallerSoftwareDir())
-	if !out.SucceededOrLog() {
-		log.Fatal("failed to setup JDK: " + out.Error.Error())
+	dirName, err := javaDirectoryName()
+	if err != nil {
+		log.Fatal("failed to untar jdk: " + err.Error())
+	}
+	_, err = os.Stat(filepath.Join(GetInstallerSoftwareDir(), dirName))
+	if errors.Is(err, os.ErrNotExist) {
+		out := shell.Run("tar", "-zxf", GetJavaPackagePath(), "-C", GetInstallerSoftwareDir())
+		if !out.SucceededOrLog() {
+			log.Fatal("failed to setup JDK: " + out.Error.Error())
+		}
+	} else {
+		log.Debug("jdk already extracted")
 	}
 }
 
@@ -202,11 +225,30 @@ func setJDKEnvironmentVariable() {
 		log.Fatal("failed to setup JDK environment: " + out.Error.Error())
 	}
 
+	javaExtractedFolderName, err := javaDirectoryName()
+	if err != nil {
+		log.Fatal("failed to setup JDK Environment: " + err.Error())
+	}
+	javaHome := GetInstallerSoftwareDir() + javaExtractedFolderName
+	os.Setenv("JAVA_HOME", javaHome)
+}
+
+func javaDirectoryName() (string, error) {
+	tarArgs := []string{
+		"-tf", GetJavaPackagePath(),
+		"|",
+		"head", "-n", "1",
+	}
+	out := shell.RunShell("tar", tarArgs...)
+	out.LogDebug()
+	if !out.SucceededOrLog() {
+		return "", fmt.Errorf("could not get java folder name: %w", out.Error)
+	}
+
 	javaExtractedFolderName := strings.TrimSuffix(
 		strings.ReplaceAll(out.StdoutString(), " ", ""),
 		"/")
-	javaHome := GetInstallerSoftwareDir() + javaExtractedFolderName
-	os.Setenv("JAVA_HOME", javaHome)
+	return javaExtractedFolderName, nil
 }
 
 func createYugabyteUser() {
@@ -235,7 +277,9 @@ func extractPlatformSupportPackageAndYugabundle(vers string) {
 
 	log.Info("Extracting yugabundle package.")
 
-	RemoveAll(GetInstallerSoftwareDir() + "packages")
+	if err := RemoveAll(filepath.Join(GetInstallerSoftwareDir(), "packages")); err != nil {
+		log.Fatal("failed to remove old packages: " + err.Error())
+	}
 
 	yugabundleBinary := GetInstallerSoftwareDir() + "/yugabundle-" + vers + "-centos-x86_64.tar.gz"
 
@@ -285,7 +329,12 @@ func renameThirdPartyDependencies() {
 
 	//Remove any thirdparty directories if they already exist, so
 	//that the install action is idempotent.
-	RemoveAll(GetInstallerSoftwareDir() + "/thirdparty")
+	if err := RemoveAll(GetInstallerSoftwareDir() + "/thirdparty"); err != nil {
+		log.Fatal("failed to clean thirdparty directory: " + err.Error())
+	}
+	if err := RemoveAll(GetInstallerSoftwareDir() + "/third-party"); err != nil {
+		log.Fatal("failed to clean thirdparty directory: " + err.Error())
+	}
 
 	path := GetInstallerSoftwareDir() + "/packages/thirdparty-deps.tar.gz"
 	rExtract, _ := os.Open(path)
@@ -297,11 +346,6 @@ func renameThirdPartyDependencies() {
 
 	log.Debug(fmt.Sprintf("Completed extracting archive at %s to %s", path, GetInstallerSoftwareDir()))
 	RenameOrFail(GetInstallerSoftwareDir()+"/thirdparty", GetInstallerSoftwareDir()+"/third-party")
-	//TODO: There is an error here because InstallRoot + "/yb-platform/third-party" does not exist
-	/*RunBash("bash",
-	[]string{"-c", "cp -R " + GetInstallerSoftwareDir() + "/third-party" + " " +
-		GetSoftwareRoot() + "/yb-platform/third-party"})
-	*/
 }
 
 func fixConfigValues() {
@@ -348,7 +392,7 @@ func generateSelfSignedCerts() (string, string) {
 	caCertPath := filepath.Join(certsDir, "ca_cert.pem")
 	caKeyPath := filepath.Join(certsDir, "ca_key.pem")
 
-	err := MkdirAll(certsDir, os.ModePerm)
+	err := MkdirAll(certsDir, DirMode)
 	if err != nil && !os.IsExist(err) {
 		log.Fatal(fmt.Sprintf("Unable to create dir %s", certsDir))
 	}

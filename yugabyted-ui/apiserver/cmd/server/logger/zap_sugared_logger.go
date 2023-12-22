@@ -11,15 +11,25 @@ type ZapSugaredLogger struct {
     logger *zap.SugaredLogger
 }
 
-func NewSugaredLogger(debugLevel bool) (*ZapSugaredLogger, error) {
+func NewSugaredLogger(logLevel LogLevel) (*ZapSugaredLogger, error) {
 
     level := zap.InfoLevel
-    if debugLevel {
+    switch logLevel {
+    case Debug:
         level = zap.DebugLevel
+    case Info:
+        level = zap.InfoLevel
+    case Warn:
+        level = zap.WarnLevel
+    case Error:
+        level = zap.ErrorLevel
+    default:
+        println("unknown log level when initializing logger, defaulting to info level logging")
     }
 
     encoderConfig := zap.NewProductionEncoderConfig()
     encoderConfig.EncodeTime = zapcore.ISO8601TimeEncoder
+    encoderConfig.FunctionKey = "func"
     consoleEncoder := zapcore.NewConsoleEncoder(encoderConfig)
 
     consoleDebugging := zapcore.Lock(os.Stdout)
@@ -33,6 +43,7 @@ func NewSugaredLogger(debugLevel bool) (*ZapSugaredLogger, error) {
 
     sugaredLogger := zapLogger.Sugar().WithOptions(
         zap.AddCallerSkip(1),
+        zap.AddCaller(),
     )
     return &ZapSugaredLogger{sugaredLogger}, nil
 }
@@ -43,6 +54,10 @@ func (zapLogger *ZapSugaredLogger) Debugf(format string, args ...interface{}) {
 
 func (zapLogger *ZapSugaredLogger) Infof(format string, args ...interface{}) {
     zapLogger.logger.Infof(format, args...)
+}
+
+func (zapLogger *ZapSugaredLogger) Warnf(format string, args ...interface{}) {
+    zapLogger.logger.Warnf(format, args...)
 }
 
 func (zapLogger *ZapSugaredLogger) Errorf(format string, args ...interface{}) {
@@ -59,5 +74,7 @@ func (zapLogger *ZapSugaredLogger) Cleanup() {
 
 // Ensure that Logger interface is implemented
 var _ Logger = (*ZapSugaredLogger)(nil)
-var Log, _ = NewSugaredLogger(false)
-var DebugLog, _ = NewSugaredLogger(true)
+
+func NewLoggerImpl(logLevel LogLevel) (*ZapSugaredLogger, error) {
+    return NewSugaredLogger(logLevel)
+}

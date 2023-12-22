@@ -118,17 +118,21 @@ func (pg Postgres) Install() error {
 		return err
 	}
 	// Then copy over data files to the intended data dir location
-	pg.setUpDataDir()
+	if err := pg.setUpDataDir(); err != nil {
+		return fmt.Errorf("postgres install failed to setup data directory: %w", err)
+	}
 
 	// Finally update the conf file location to match this new data dir location
 	if err := pg.modifyPostgresConf(); err != nil {
 		return err
 	}
 
-	pg.Start()
+	if err := pg.Start(); err != nil {
+		return fmt.Errorf("postgres install could not start postgres: %w", err)
+	}
 
 	// work to set up LDAP
-	if (viper.GetBool("postgres.install.ldap_enabled")) {
+	if viper.GetBool("postgres.install.ldap_enabled") {
 		if err := pg.setUpLDAP(); err != nil {
 			return err
 		}
@@ -491,7 +495,7 @@ func (pg Postgres) MigrateFromReplicated() error {
 }
 
 // TODO: Error handling for this function (need to return errors from createYugawareDB and start)
-func (pg Postgres) finishMigrateFromReplicated() error {
+func (pg Postgres) replicatedMigrateStep2() error {
 	pg.Start()
 
 	if viper.GetBool("postgres.install.enabled") {
@@ -501,6 +505,11 @@ func (pg Postgres) finishMigrateFromReplicated() error {
 	if !common.HasSudoAccess() {
 		pg.createCronJob()
 	}
+	return nil
+}
+
+// FinishReplicatedMigrate is a no-op for postgres, as this was done via backup, restore.
+func (pg Postgres) FinishReplicatedMigrate() error {
 	return nil
 }
 
@@ -514,6 +523,10 @@ func (pg Postgres) extractPostgresPackage() error {
 }
 
 func (pg Postgres) runInitDB() error {
+	if _, err := os.Stat(pg.ConfFileLocation); !errors.Is(err, os.ErrNotExist) {
+		log.Debug(fmt.Sprintf("pg config %s already exists, skipping init db", pg.ConfFileLocation))
+		return nil
+	}
 	cmdName := pg.PgBin + "/initdb"
 	initDbArgs := []string{
 		"-U",
@@ -559,11 +572,10 @@ func (pg Postgres) modifyPostgresConf() error {
 		return fmt.Errorf("Error writing data directory to %s: %s", pgConfPath, err.Error())
 	}
 
-	_, err = confFile.WriteString(fmt.Sprintf("port = %d", viper.GetInt("postgres.install.port")))
+	_, err = confFile.WriteString(fmt.Sprintf("port = %d\n", viper.GetInt("postgres.install.port")))
 	if err != nil {
 		return fmt.Errorf("Error writing port to %s: %s", pgConfPath, err.Error())
 	}
-
 	return nil
 }
 
@@ -580,9 +592,9 @@ func (pg Postgres) setUpLDAP() error {
 	ldapPort := viper.GetInt("postgres.install.ldap_port")
 	ldapTLS := viper.GetBool("postgres.install.secure_ldap")
 	_, err = hbaConf.WriteString(
-		fmt.Sprintf("host all all all ldap ldapserver=%s ldapprefix=\"%s\" " +
-								"ldapsuffix=\"%s\" ldapport=%d ldaptls=%d",
-								ldapServer, ldapPrefix, ldapSuffix, ldapPort, common.Bool2Int(ldapTLS)))
+		fmt.Sprintf("host all all all ldap ldapserver=%s ldapprefix=\"%s\" "+
+			"ldapsuffix=\"%s\" ldapport=%d ldaptls=%d",
+			ldapServer, ldapPrefix, ldapSuffix, ldapPort, common.Bool2Int(ldapTLS)))
 	if err != nil {
 		return fmt.Errorf("Error writing ldap config to %s: %s", pgHbaConfPath, err.Error())
 	}
@@ -606,18 +618,22 @@ func (pg Postgres) setUpLDAP() error {
 
 // Move required files from initdb to the new data directory
 func (pg Postgres) setUpDataDir() error {
-	if common.HasSudoAccess() {
-		userName := viper.GetString("service_username")
-		// move init conf to data dir
-		out := shell.RunAsUser(userName, "mv", pg.ConfFileLocation, pg.dataDir)
-		if !out.SucceededOrLog() {
-			return fmt.Errorf("failed to move postgres config: %w", out.Error)
+	if _, err := os.Stat(pg.dataDir); errors.Is(err, os.ErrNotExist) {
+		if common.HasSudoAccess() {
+			userName := viper.GetString("service_username")
+			// move init conf to data dir
+			out := shell.RunAsUser(userName, "mv", pg.ConfFileLocation, pg.dataDir)
+			if !out.SucceededOrLog() {
+				return fmt.Errorf("failed to move postgres config: %w", out.Error)
+			}
+		} else {
+			out := shell.Run("mv", pg.ConfFileLocation, pg.dataDir)
+			if !out.SucceededOrLog() {
+				return fmt.Errorf("failed to move config: %w", out.Error)
+			}
 		}
-	} else {
-		out := shell.Run("mv", pg.ConfFileLocation, pg.dataDir)
-		if !out.SucceededOrLog() {
-			return fmt.Errorf("failed to move config: %w", out.Error)
-		}
+	} else if err != nil {
+		return err
 	}
 	// move conf files back to conf location
 	if err := pg.copyConfFiles(); err != nil {
@@ -683,10 +699,15 @@ func (pg Postgres) createCronJob() {
 }
 
 func (pg Postgres) createFilesAndDirs() error {
-	if _, err := common.Create(common.GetBaseInstall() + "/data/logs/postgres.log"); err != nil {
+	f, err := common.Create(common.GetBaseInstall() + "/data/logs/postgres.log")
+	if err != nil && !errors.Is(err, os.ErrExist) {
 		log.Error("Failed to create postgres logfile: " + err.Error())
 		return err
 	}
+	if f != nil {
+		f.Close()
+	}
+
 	// Needed for socket acceptance in the non-root case.
 	if err := common.MkdirAll(pg.MountPath, os.ModePerm); err != nil {
 		log.Error("failed to create " + pg.MountPath + ": " + err.Error())

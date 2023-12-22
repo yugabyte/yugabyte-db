@@ -39,10 +39,7 @@ fi
 # same way as in parallel_schedule.  For now, also enforce ordering to be the
 # same as tests in the same group, even if it is not strictly required.  Ignore
 # some tests:
-# - yb_pg_hint_plan*: these are ported from thirdparty-extension
-# - yb_pg_hypopg: this is ported from thirdparty-extension
 # - yb_pg_numeric_big: this is in GNUmakefile instead of parallel_schedule
-# - yb_pg_orafce*: these are ported from thirdparty-extension
 # - yb_pg_stat: this is a YB test, not ported: prefix "yb_" + name "pg_stat"
 # - yb_pg_stat_backend: this is a YB test, not ported
 TESTS=$(diff \
@@ -50,7 +47,7 @@ TESTS=$(diff \
           <(grep '^test: ' parallel_schedule | sed 's/test: //' | tr ' ' '\n') \
         | grep '^<' \
         | sed 's/< /test: yb_pg_/' \
-        | grep -Ev '^test: yb_pg_(hint_plan|hypopg$|numeric_big$|orafce|stat$|stat_backend$)')
+        | grep -Ev '^test: yb_pg_(numeric_big$|stat$|stat_backend$)')
 if [ -n "$TESTS" ]; then
   echo "$TESTS"
   exit 3

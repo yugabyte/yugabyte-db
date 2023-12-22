@@ -15,9 +15,9 @@ import { Trans, useTranslation } from 'react-i18next';
 import { makeStyles } from '@material-ui/core';
 import { YBInputField, YBModal } from '../../../../components';
 import { RoleContextMethods, RoleViewContext } from '../RoleContext';
-import { IRole } from '../IRoles';
 import { deleteRole } from '../../api';
 import { createErrorMessage } from '../../../universe/universe-form/utils/helpers';
+import { Role } from '../IRoles';
 import ErrorIcon from '../../../../assets/error.svg';
 
 type DeleteRoleProps = {
@@ -41,7 +41,7 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 type DeleteRoleFormProps = {
-  roleName: IRole['name'];
+  roleName: Role['name'];
 };
 
 export const DeleteRoleModal: FC<DeleteRoleProps> = ({ open, onHide }) => {

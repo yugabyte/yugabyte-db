@@ -155,6 +155,8 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
         GFlagsUtil.getGFlagsForNode(node, serverType, newClusterVersion, newClusters);
     Map<String, String> oldGflags =
         GFlagsUtil.getGFlagsForNode(node, serverType, curCluster, curClusters);
-    return !newGflags.equals(oldGflags);
+    boolean result = !newGflags.equals(oldGflags);
+    log.debug("Node {} type {} has changes: {}", node.getNodeName(), serverType, result);
+    return result;
   }
 }

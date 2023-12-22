@@ -274,6 +274,8 @@ class ColumnFamilyData {
       const InternalKey* begin,
       const InternalKey* end,
       CompactionReason compaction_reason,
+      uint64_t file_number_upper_bound,
+      uint64_t input_size_limit,
       InternalKey** compaction_end,
       bool* manual_conflict);
 

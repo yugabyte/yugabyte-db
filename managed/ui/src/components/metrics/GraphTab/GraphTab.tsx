@@ -1,9 +1,10 @@
 // Copyright (c) YugaByte, Inc.
 
-import { FC, useEffect } from 'react';
+import { FC, useEffect, useState } from 'react';
 import { useDispatch, useSelector } from 'react-redux';
 
 import {
+  resetMetrics,
   queryMetrics,
   queryMetricsSuccess,
   queryMetricsFailure,
@@ -11,7 +12,7 @@ import {
 } from '../../../actions/graph';
 import { getTabContent } from '../../../utils/GraphUtils';
 import { isNonEmptyArray, isNonEmptyString } from '../../../utils/ObjectUtils';
-import { MetricsData, GraphFilter, MetricQueryParams } from '../../../redesign/helpers/dtos';
+import { GraphFilter, MetricQueryParams } from '../../../redesign/helpers/dtos';
 import {
   MetricMeasure,
   MetricConsts,
@@ -21,13 +22,24 @@ import {
   NodeType
 } from '../../metrics/constants';
 
+interface MetricsData {
+  type: string;
+  metricsKey: string[];
+  nodePrefixes: string;
+  selectedUniverse: any;
+  title: string;
+  tableName?: string;
+  isGranularMetricsEnabled: boolean;
+}
+
 export const GraphTab: FC<MetricsData> = ({
   type,
   metricsKey,
   nodePrefixes,
   selectedUniverse,
   title,
-  tableName
+  tableName,
+  isGranularMetricsEnabled
 }) => {
   let tabContent = null;
   const { currentUser } = useSelector((state: any) => state.customer);
@@ -47,6 +59,12 @@ export const GraphTab: FC<MetricsData> = ({
     selectedZoneName
   }: GraphFilter = graph.graphFilter;
   const dispatch: any = useDispatch();
+  const [timestamp, setTimestamp] = useState({
+    startTimestamp: startMoment,
+    endTimestamp: endMoment
+  });
+  const startTimestamp = timestamp.startTimestamp;
+  const endTimestamp = timestamp.endTimestamp;
 
   const queryMetricsType = () => {
     const metricsWithSettings = metricsKey.map((metricKey) => {
@@ -70,8 +88,8 @@ export const GraphTab: FC<MetricsData> = ({
 
     const params: any = {
       metricsWithSettings: metricsWithSettings,
-      start: startMoment.format('X'),
-      end: endMoment.format('X')
+      start: typeof startTimestamp === 'object' ? startTimestamp.format('X') : startTimestamp,
+      end: typeof endTimestamp === 'object' ? endTimestamp.format('X') : endTimestamp
     };
     if (isNonEmptyString(nodePrefix) && nodePrefix !== MetricConsts.ALL) {
       params.nodePrefix = nodePrefix;
@@ -115,6 +133,7 @@ export const GraphTab: FC<MetricsData> = ({
   };
 
   const queryMetricsVaues = (params: MetricQueryParams, type: string) => {
+    dispatch(resetMetrics());
     dispatch(queryMetrics(params)).then((response: any) => {
       if (!response.error) {
         dispatch(queryMetricsSuccess(response.payload, type));
@@ -124,9 +143,20 @@ export const GraphTab: FC<MetricsData> = ({
     });
   };
 
+  const updateTimestamp = (start: 'object' | number, end: 'object' | number) => {
+    setTimestamp({
+      startTimestamp: start,
+      endTimestamp: end
+    });
+  };
+
   const setSelectedTabName = (type: string) => {
     dispatch(currentTabSelected(type));
   };
+
+  useEffect(() => {
+    updateTimestamp(startMoment, endMoment);
+  }, [startMoment, endMoment]);
 
   useEffect(() => {
     setSelectedTabName(type);
@@ -135,15 +165,24 @@ export const GraphTab: FC<MetricsData> = ({
   }, [
     nodeName,
     nodePrefix,
-    startMoment,
-    endMoment,
+    startTimestamp,
+    endTimestamp,
     currentSelectedRegion,
     metricMeasure,
     outlierType,
     outlierNumNodes
   ]);
 
-  tabContent = getTabContent(graph, selectedUniverse, type, metricsKey, title, currentUser);
+  tabContent = getTabContent(
+    graph,
+    selectedUniverse,
+    type,
+    metricsKey,
+    title,
+    currentUser,
+    isGranularMetricsEnabled,
+    updateTimestamp
+  );
 
   return <>{tabContent}</>;
 };

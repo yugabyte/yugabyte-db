@@ -200,22 +200,6 @@ public class CustomerTaskTest extends FakeDBApplication {
   }
 
   @Test
-  public void testCascadeDeleteSuccessfulTask_subtasksIncomplete_skipped() {
-    UUID targetUUID = UUID.randomUUID();
-    CustomerTask th =
-        createTaskTree(
-            CustomerTask.TargetType.Table,
-            targetUUID,
-            Create,
-            3,
-            Optional.of(TaskInfo.State.Success),
-            false);
-    th.markAsCompleted();
-    assertEquals(0, th.cascadeDeleteCompleted());
-    assertEquals(th, CustomerTask.findByTaskUUID(th.getTaskUUID()));
-  }
-
-  @Test
   public void testCascadeDeleteFailedTask_subtasksIncomplete_success() {
     UUID targetUUID = UUID.randomUUID();
     CustomerTask th =

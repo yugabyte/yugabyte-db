@@ -9,12 +9,15 @@ import java.util.List;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.util.json.Checker;
+import org.yb.util.json.Checkers;
 import org.yb.util.json.JsonUtil;
 import org.yb.util.json.ObjectChecker;
 import org.yb.util.json.ObjectCheckerBuilder;
 import org.yb.util.json.ValueChecker;
 
+import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
+import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
 public class ExplainAnalyzeUtils {
@@ -33,14 +36,18 @@ public class ExplainAnalyzeUtils {
   public static final String NODE_SEQ_SCAN = "Seq Scan";
   public static final String NODE_SORT = "Sort";
   public static final String NODE_VALUES_SCAN = "Values Scan";
+
   public static final String NODE_YB_BATCHED_NESTED_LOOP = "YB Batched Nested Loop";
-  public static final String NODE_YB_SEQ_SCAN = "YB Seq Scan";
+
+  public static final String PLAN = "Plan";
 
   public static final String OPERATION_INSERT = "Insert";
   public static final String OPERATION_UPDATE = "Update";
 
   public static final String RELATIONSHIP_OUTER_TABLE = "Outer";
   public static final String RELATIONSHIP_INNER_TABLE = "Inner";
+
+  public static final String TOTAL_COST = "Total Cost";
 
   public interface TopLevelCheckerBuilder extends ObjectCheckerBuilder {
     TopLevelCheckerBuilder plan(ObjectChecker checker);
@@ -95,11 +102,12 @@ public class ExplainAnalyzeUtils {
   }
 
   private static void testExplain(
-      Statement stmt, String query, Checker checker, boolean timing) throws Exception {
+      Statement stmt, String query, Checker checker, boolean timing, boolean debug)
+      throws Exception {
     LOG.info("Query: " + query);
     ResultSet rs = stmt.executeQuery(String.format(
-        "EXPLAIN (FORMAT json, ANALYZE true, SUMMARY true, DIST true, TIMING %b) %s",
-        timing, query));
+        "EXPLAIN (FORMAT json, ANALYZE true, SUMMARY true, DIST true, TIMING %b, DEBUG %b) %s",
+        timing, debug, query));
     rs.next();
     JsonElement json = JsonParser.parseString(rs.getString(1));
     LOG.info("Response:\n" + JsonUtil.asPrettyString(json));
@@ -113,11 +121,69 @@ public class ExplainAnalyzeUtils {
 
   public static void testExplain(
       Statement stmt, String query, Checker checker) throws Exception {
-    testExplain(stmt, query, checker, true);
+    testExplain(stmt, query, checker, true, false);
+  }
+
+  public static void testExplainDebug(
+      Statement stmt, String query, Checker checker) throws Exception {
+    testExplain(stmt, query, checker, true, true);
   }
 
   public static void testExplainNoTiming(
       Statement stmt, String query, Checker checker) throws Exception {
-    testExplain(stmt, query, checker, false);
+    testExplain(stmt, query, checker, false, false);
+  }
+
+  private static TopLevelCheckerBuilder makeTopLevelBuilder() {
+    return JsonUtil.makeCheckerBuilder(TopLevelCheckerBuilder.class, false);
+  }
+
+  private static PlanCheckerBuilder makePlanBuilder() {
+    return JsonUtil.makeCheckerBuilder(PlanCheckerBuilder.class, false);
+  }
+
+  public static void checkReadRequests(
+      Statement stmt, String query, String scanType, ValueChecker<Long> readReqChecker,
+      int tableRowCount) throws Exception {
+    Checker checker = makeTopLevelBuilder()
+        .plan(makePlanBuilder()
+            .nodeType(scanType)
+            .actualRows(Checkers.equal(tableRowCount))
+            .build())
+        .storageReadRequests(readReqChecker)
+        .build();
+
+    testExplain(stmt, query, checker);
+  }
+
+    // An opaque holder for costs. The idea of this is for users to only be able
+  // to compare costs in tests and not read into potentially finnicky cost
+  // values.
+  public static class Cost implements Comparable<Cost> {
+    public Cost(double value) {
+      this.value = value;
+    }
+
+    @Override
+    public int compareTo(Cost otherCost) {
+      return Double.compare(this.value, otherCost.value);
+    }
+
+    private double value;
+  }
+
+  public static Cost getExplainTotalCost(Statement stmt, String query)
+  throws Exception {
+    ResultSet rs = stmt.executeQuery(String.format(
+      "EXPLAIN (FORMAT json) %s", query));
+    rs.next();
+    JsonElement json = JsonParser.parseString(rs.getString(1));
+    JsonArray rootArray = json.getAsJsonArray();
+    if (!rootArray.isEmpty()) {
+      JsonObject plan = rootArray.get(0).getAsJsonObject().getAsJsonObject(PLAN);
+      double total_cost = plan.get(TOTAL_COST).getAsDouble();
+      return new Cost(total_cost);
+    }
+    throw new IllegalArgumentException("Explain plan for this query returned empty.");
   }
 }

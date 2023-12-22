@@ -7,6 +7,7 @@ import com.yugabyte.yw.controllers.handlers.GFlagsValidationHandler;
 import com.yugabyte.yw.forms.GFlagsValidationFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Audit;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
@@ -32,6 +33,7 @@ public class GFlagsValidationUiOnlyController extends AuthenticatedController {
    * @return JSON response of all gflags metadata per version, serverType
    */
   @ApiOperation(value = "UI_ONLY", hidden = true)
+  @AuthzPath
   public Result listGFlags(String version, String gflag, String serverType, Boolean mostUsedGFlags)
       throws IOException {
     return PlatformResults.withData(
@@ -44,6 +46,7 @@ public class GFlagsValidationUiOnlyController extends AuthenticatedController {
    * @return JSON response of errors in input gflags
    */
   @ApiOperation(value = "UI_ONLY", hidden = true)
+  @AuthzPath
   public Result validateGFlags(String version, Http.Request request) throws IOException {
     GFlagsValidationFormData gflags = parseJsonAndValidate(request, GFlagsValidationFormData.class);
     auditService()
@@ -57,6 +60,7 @@ public class GFlagsValidationUiOnlyController extends AuthenticatedController {
    * @return JSON response of a input gflag metadata
    */
   @ApiOperation(value = "UI_ONLY", hidden = true)
+  @AuthzPath
   public Result getGFlagMetadata(String version, String gflag, String serverType)
       throws IOException {
     return PlatformResults.withData(

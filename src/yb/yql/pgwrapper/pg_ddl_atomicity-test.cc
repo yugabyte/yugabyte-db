@@ -11,7 +11,13 @@
 // under the License.
 
 #include <condition_variable>
+#include <memory>
 #include <mutex>
+#include <set>
+#include <string>
+#include <string_view>
+#include <vector>
+#include <utility>
 
 #include "yb/client/client_fwd.h"
 #include "yb/client/snapshot_test_util.h"
@@ -28,12 +34,14 @@
 #include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/monotime.h"
+#include "yb/util/string_util.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/timestamp.h"
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 using std::string;
 using std::vector;
@@ -56,7 +64,7 @@ const auto kRenameIndex = "rename_index_test"s;
 const auto kDropIndex = "drop_index_test"s;
 
 const auto kDatabase = "yugabyte"s;
-const auto kDdlVerificationError = "Table is undergoing DDL transaction verification"s;
+const auto kDdlVerificationError = "Table is undergoing DDL transaction verification"sv;
 
 class PgDdlAtomicityTest : public LibPqTestBase {
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
@@ -699,11 +707,12 @@ TEST_F(PgDdlAtomicitySanityTest, TestYsqlTxnStatusReporting) {
 class PgDdlAtomicityParallelDdlTest : public PgDdlAtomicitySanityTest {
  public:
   template<class... Args>
-  Result<bool> RunDdlHelper(const std::string& format, const Args&... args) {
-    return DoRunDdlHelper(Format(format, args...));
+  Result<bool> RunDdlHelper(const std::string& format, Args&&... args) {
+    return DoRunDdlHelper(Format(format, std::forward<Args>(args)...));
   }
+
  private:
-  Result<bool> DoRunDdlHelper(const string& ddl) {
+  Result<bool> DoRunDdlHelper(const std::string& ddl) {
     auto conn = VERIFY_RESULT(Connect());
     auto s = conn.Execute(ddl);
     if (s.ok()) {
@@ -712,25 +721,20 @@ class PgDdlAtomicityParallelDdlTest : public PgDdlAtomicitySanityTest {
 
     const auto msg = s.message().ToBuffer();
     static const auto allowed_msgs = {
-      "Catalog Version Mismatch"s,
-      "could not serialize access due to concurrent update"s,
-      "Restart read required"s,
-      "Transaction aborted"s,
-      "Transaction metadata missing"s,
-      "Unknown transaction, could be recently aborted"s,
-      "Flush: Value write after transaction start"s,
+      "Catalog Version Mismatch"sv,
+      SerializeAccessErrorMessageSubstring(),
+      "Restart read required"sv,
+      "Transaction aborted"sv,
+      "Transaction metadata missing"sv,
+      "Unknown transaction, could be recently aborted"sv,
+      "Flush: Value write after transaction start"sv,
       kDdlVerificationError
     };
-    if (std::find_if(
-        std::begin(allowed_msgs),
-        std::end(allowed_msgs),
-        [&msg] (const string& allowed_msg) {
-          return msg.find(allowed_msg) != string::npos;
-        }) != std::end(allowed_msgs)) {
-      LOG(ERROR) << "Unexpected failure status " << s;
+    if (HasSubstring(msg, allowed_msgs)) {
       return false;
     }
-    return true;
+    LOG(ERROR) << "Unexpected failure status " << s;
+    return s;
   }
 };
 
@@ -1204,9 +1208,9 @@ TEST_F(PgDdlAtomicitySanityTest, DropColumnWithMissingDefaultTest) {
   // Verify data.
   auto check_result = [&res] {
     for (int i = 1; i <= 9; ++i) {
-      const auto value1 = ASSERT_RESULT(GetInt32(res.get(), i - 1, 0));
+      const auto value1 = ASSERT_RESULT(GetValue<int32_t>(res.get(), i - 1, 0));
       ASSERT_EQ(value1, i);
-      const auto value2 = ASSERT_RESULT(GetString(res.get(), i - 1, 1));
+      const auto value2 = ASSERT_RESULT(GetValue<std::string>(res.get(), i - 1, 1));
       if (i <= 3) {
         ASSERT_EQ(value2, "default");
       } else if (i <= 6) {

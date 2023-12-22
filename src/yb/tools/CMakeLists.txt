@@ -223,6 +223,9 @@ ADD_YB_TEST(yb-admin_client-test)
 add_executable(run-with-timeout run-with-timeout.cc)
 target_link_libraries(run-with-timeout yb_util)
 
+add_executable(sys-catalog-tool sys-catalog-tool.cc)
+target_link_libraries(sys-catalog-tool boost_program_options master)
+
 set(YB_BACKUP_TEST_BASE_SRCS
     yb-backup/yb-backup-test_base.cc)
 set(YB_BACKUP_TEST_BASE_DEPS

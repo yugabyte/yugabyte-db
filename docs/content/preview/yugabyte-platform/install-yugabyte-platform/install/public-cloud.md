@@ -57,9 +57,9 @@ Note: If you are using a public cloud such as AWS, GCP, or Azure, but you cannot
     <area alt="AWS prep environment" title="AWS prep environment" href="../../prepare-environment/aws/" coords="166,404,296,480" shape="rect" style="width: 16.5%;height: 4.1%;top: 21.2%;left: 17.5%;">
     <area alt="GCP prep environment" title="GCP prep environment" href="../../prepare-environment/gcp/" coords="378,404,521,480" shape="rect" style="width: 16.5%;height: 4.1%;top: 21.2%;left: 41.8%;">
     <area alt="Azure prep environment" title="Azure prep environment" href="../../prepare-environment/azure/" coords="590,404,746,480" shape="rect" style="width: 16.5%;height: 4.1%;top: 21.2%;left: 66%;">
-    <area alt="Prerequisites" title="Prerequisites" href="../../prerequisites/default/" coords="320,555,581,722" shape="rect" style="width: 30%;height: 9%;top: 29%;left: 35%;">
+    <area alt="Prerequisites" title="Prerequisites" href="../../prerequisites/installer/" coords="320,555,581,722" shape="rect" style="width: 30%;height: 9%;top: 29%;left: 35%;">
     <area alt="Prepare environment" title="Prepare environment" href="../../prepare-environment/aws/" coords="324,558,574,711" shape="rect" style="width: 81%;height: 3.2%;top: 40.3%;left: 9.5%;">
-    <area alt="Online installation" title="Online installation" href="../../install-software/default/" coords="236,1054,394,1112" shape="rect" style="width: 19%;height: 3.4%;top: 55.4%;left: 25.5%;">
-    <area alt="Airgapped installation" title="Airgapped installation" href="../../install-software/airgapped/" coords="502,1053,666,1114" shape="rect" style="width: 19%;height: 3.4%;top: 55.4%;left: 55.5%;">
+    <area alt="Online installation" title="Online installation" href="../../install-software/installer/" coords="236,1054,394,1112" shape="rect" style="width: 19%;height: 3.4%;top: 55.4%;left: 25.5%;">
+    <area alt="Airgapped installation" title="Airgapped installation" href="../../install-software/installer/" coords="502,1053,666,1114" shape="rect" style="width: 19%;height: 3.4%;top: 55.4%;left: 55.5%;">
 </map>
 </div>

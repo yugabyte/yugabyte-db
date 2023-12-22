@@ -140,6 +140,15 @@ int od_reset(od_server_t *server)
 			goto error;
 	}
 
+	/* TODO: Add an if block */
+	{
+		char query_reset[] = "RESET ALL";
+		rc = od_backend_query(server, "reset-resetall", query_reset,
+				      NULL, sizeof(query_reset), wait_timeout, 1);
+		if (rc == -1)
+			goto error;
+	}
+
 	/* ready */
 	return 1;
 drop:

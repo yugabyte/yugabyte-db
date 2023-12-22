@@ -11,6 +11,8 @@
 // under the License.
 
 #include "yb/util/env_util.h"
+#include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_wrapper.h"
+
 #include "yb/yql/process_wrapper/process_wrapper.h"
 
 namespace yb {

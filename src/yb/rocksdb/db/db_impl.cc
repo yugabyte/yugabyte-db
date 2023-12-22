@@ -2165,7 +2165,9 @@ Status DBImpl::CompactRange(const CompactRangeOptions& options,
     // Always compact all files together.
     s = RunManualCompaction(cfd, ColumnFamilyData::kCompactAllLevels,
                             cfd->NumberLevels() - 1, options.target_path_id,
-                            begin, end, exclusive, options.compaction_reason);
+                            begin, end, exclusive, options.compaction_reason,
+                            options.file_number_upper_bound,
+                            options.input_size_limit_per_job);
     final_output_level = cfd->NumberLevels() - 1;
   } else {
     for (int level = 0; level <= max_level_with_files; level++) {
@@ -2200,7 +2202,9 @@ Status DBImpl::CompactRange(const CompactRangeOptions& options,
         }
       }
       s = RunManualCompaction(cfd, level, output_level, options.target_path_id,
-                              begin, end, exclusive, options.compaction_reason);
+                              begin, end, exclusive, options.compaction_reason,
+                              options.file_number_upper_bound,
+                              options.input_size_limit_per_job);
       if (!s.ok()) {
         break;
       }
@@ -2532,21 +2536,26 @@ void DBImpl::NotifyOnCompactionCompleted(
   // flush process.
 }
 
-void DBImpl::NotifyOnTrivialCompactionCompleted(
+void DBImpl::NotifyOnNoOpCompactionCompleted(
     const ColumnFamilyData& cfd, const CompactionReason compaction_reason) {
   mutex_.AssertHeld();
   if (IsShuttingDown()) {
     return;
   }
-  // release lock while notifying events
+
+  // If current version has no files it is considered as fully compacted.
+  const bool is_full_compaction = cfd.current()->storage_info()->num_non_empty_levels() == 0;
+
+  // Release lock while notifying events.
   mutex_.Unlock();
   if (db_options_.listeners.size() > 0) {
     CompactionJobInfo info;
     info.cf_name = cfd.GetName();
     info.status = Status::OK();
     info.thread_id = env_->GetThreadID();
-    info.is_full_compaction = true;
     info.compaction_reason = compaction_reason;
+    info.is_full_compaction = is_full_compaction;
+    info.is_no_op_compaction = true;
     for (auto listener : db_options_.listeners) {
       listener->OnCompactionCompleted(this, info);
     }
@@ -2841,6 +2850,10 @@ SequenceNumber DBImpl::GetLatestSequenceNumber() const {
   return versions_->LastSequence();
 }
 
+uint64_t DBImpl::GetNextFileNumber() const {
+  return versions_->current_next_file_number();
+}
+
 void DBImpl::SubmitCompactionOrFlushTask(std::unique_ptr<ThreadPoolTask> task) {
   mutex_.AssertHeld();
   if (task->Type() == BgTaskType::kCompaction) {
@@ -2853,11 +2866,10 @@ void DBImpl::SubmitCompactionOrFlushTask(std::unique_ptr<ThreadPoolTask> task) {
   }
 }
 
-Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
-                                   int output_level, uint32_t output_path_id,
-                                   const Slice* begin, const Slice* end,
-                                   bool exclusive, CompactionReason compaction_reason,
-                                   bool disallow_trivial_move) {
+Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level, int output_level,
+    uint32_t output_path_id, const Slice* begin, const Slice* end, bool exclusive,
+    CompactionReason compaction_reason, uint64_t file_number_upper_bound,
+    uint64_t input_size_limit_per_job, bool disallow_trivial_move) {
   TEST_SYNC_POINT("DBImpl::RunManualCompaction");
 
   DCHECK(input_level == ColumnFamilyData::kCompactAllLevels ||
@@ -2868,6 +2880,7 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
 
   bool scheduled = false;
   bool manual_conflict = false;
+
   ManualCompaction manual_compaction;
   manual_compaction.cfd = cfd;
   manual_compaction.input_level = input_level;
@@ -2878,6 +2891,8 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
   manual_compaction.incomplete = false;
   manual_compaction.exclusive = exclusive;
   manual_compaction.disallow_trivial_move = disallow_trivial_move;
+  manual_compaction.has_input_size_limit = input_size_limit_per_job > 0;
+
   // For universal compaction, we enforce every manual compaction to compact
   // all files.
   if (begin == nullptr ||
@@ -2952,15 +2967,19 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
                   *manual_compaction.cfd->GetLatestMutableCFOptions(),
                   manual_compaction.input_level, manual_compaction.output_level,
                   manual_compaction.output_path_id, manual_compaction.begin, manual_compaction.end,
-                  compaction_reason, &manual_compaction.manual_end, &manual_conflict)) ==
-             nullptr) &&
+                  compaction_reason, file_number_upper_bound, input_size_limit_per_job,
+                  &manual_compaction.manual_end, &manual_conflict)) == nullptr) &&
          manual_conflict)) {
       DCHECK(!exclusive || !manual_conflict)
           << "exclusive manual compactions should not see a conflict during CompactRange";
       if (manual_conflict) {
         TEST_SYNC_POINT("DBImpl::RunManualCompaction()::Conflict");
       }
-      // Running either this or some other manual compaction
+
+      // TODO(pscompact): what if the system has only one compaction ever and it is finished
+      // right after submitting corresponding compaction task before reaching this point? Seems
+      // we will hang forever here.
+      // Running either this or some other manual compaction.
       bg_cv_.Wait();
       if (IsShuttingDown()) {
         if (!scheduled) {
@@ -2977,7 +2996,7 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
         }
       }
 
-      if (scheduled && manual_compaction.incomplete == true) {
+      if (scheduled && manual_compaction.incomplete) {
         DCHECK(!manual_compaction.in_progress);
         scheduled = false;
         manual_compaction.incomplete = false;
@@ -2986,14 +3005,20 @@ Status DBImpl::RunManualCompaction(ColumnFamilyData* cfd, int input_level,
       if (manual_compaction.compaction == nullptr) {
         manual_compaction.done = true;
 
-        // If there are no files to compact, a trivial full compaction has been completed.
-        if (cfd->current()->storage_info()->num_non_empty_levels() == 0) {
-          NotifyOnTrivialCompactionCompleted(*cfd, compaction_reason);
+        // Let's still notify if there's nothing to compact, however a callback should not be
+        // triggered if compactions are disabled (yes, we still can hit this point, but compaction
+        // picker is initialized as an instance of NullCompactionPicker class).
+        if (cfd->options()->compaction_style != rocksdb::CompactionStyle::kCompactionStyleNone) {
+          RLOG(InfoLogLevel::INFO_LEVEL, db_options_.info_log,
+              "[%s] Manual compaction completed with no op, reason: %s",
+              cfd->GetName().c_str(), ToString(compaction_reason).c_str());
+          NotifyOnNoOpCompactionCompleted(*cfd, compaction_reason);
         }
 
         bg_cv_.SignalAll();
         continue;
       }
+
       manual_compaction.incomplete = false;
       if (db_options_.priority_thread_pool_for_compactions_and_flushes &&
           FLAGS_use_priority_thread_pool_for_compactions) {
@@ -3563,16 +3588,16 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
   }
 
   if (is_manual) {
-    // another thread cannot pick up the same work
+    // Another thread cannot pick up the same work.
     manual_compaction->in_progress = true;
   }
 
-  unique_ptr<Compaction> c;
+  std::unique_ptr<Compaction> c;
   // InternalKey manual_end_storage;
   // InternalKey* manual_end = &manual_end_storage;
   if (is_manual) {
     ManualCompaction* m = manual_compaction;
-    assert(m->in_progress);
+    DCHECK(m->in_progress);
     c = std::move(m->compaction);
     if (!c) {
       m->done = true;
@@ -3617,8 +3642,7 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
     ColumnFamilyData* cfd = c->column_family_data();
 
     // We unreference here because the following code will take a Ref() on
-    // this cfd if it is going to use it (Compaction class holds a
-    // reference).
+    // this cfd if it is going to use it (Compaction class holds a reference).
     // This will all happen under a mutex so we don't have to be afraid of
     // somebody else deleting it.
     if (cfd->Unref()) {
@@ -3800,6 +3824,7 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
       m->status = status;
       m->done = true;
     }
+
     // For universal compaction:
     //   Because universal compaction always happens at level 0, so one
     //   compaction will pick up all overlapped files. No files will be
@@ -3814,21 +3839,27 @@ Result<FileNumbersHolder> DBImpl::BackgroundCompaction(
     // that we compacted the whole range. manual_end should always point
     // to nullptr in case of universal compaction
     if (m->manual_end == nullptr) {
-      m->done = true;
+      // If manual compaction has input size limit per job, we would like to check whether we have
+      // more files to compact.
+      m->done = !m->has_input_size_limit;
     }
     if (!m->done) {
-      // We only compacted part of the requested range.  Update *m
-      // to the range that is left to be compacted.
-      // Universal and FIFO compactions should always compact the whole range
-      assert(m->cfd->ioptions()->compaction_style !=
-                 kCompactionStyleUniversal ||
-             m->cfd->ioptions()->num_levels > 1);
-      assert(m->cfd->ioptions()->compaction_style != kCompactionStyleFIFO);
-      m->tmp_storage = *m->manual_end;
-      m->begin = &m->tmp_storage;
+      if (m->manual_end != nullptr) {
+        LOG_IF(FATAL, m->has_input_size_limit)
+            << "Compaction input size limit is only supported for universal compaction.";
+        // We only compacted part of the requested range.  Update *m
+        // to the range that is left to be compacted.
+        // Universal and FIFO compactions should always compact the whole range
+        assert(m->cfd->ioptions()->compaction_style !=
+                  kCompactionStyleUniversal ||
+              m->cfd->ioptions()->num_levels > 1);
+        assert(m->cfd->ioptions()->compaction_style != kCompactionStyleFIFO);
+        m->tmp_storage = *m->manual_end;
+        m->begin = &m->tmp_storage;
+      }
       m->incomplete = true;
     }
-    m->in_progress = false; // not being processed anymore
+    m->in_progress = false; // Not being processed anymore.
   }
 
   if (is_large_compaction) {

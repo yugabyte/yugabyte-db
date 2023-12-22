@@ -1,0 +1,452 @@
+-- #### Test scans on the table, primary key index and the secondary index without targets #### --
+CREATE TABLE t_kv(k int, v int, PRIMARY KEY(k ASC));
+INSERT INTO t_kv SELECT x, x FROM generate_series(1, 10) AS x;
+INSERT INTO t_kv VALUES (11, 1); -- test duplicate key
+INSERT INTO t_kv VALUES (12, NULL); -- test null values
+-- yb seq scan
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ SeqScan(t_kv) */ SELECT k FROM t_kv;
+                QUERY PLAN
+-------------------------------------------
+ Seq Scan on t_kv (actual rows=12 loops=1)
+(1 row)
+
+/*+ SeqScan(t_kv) */ SELECT k FROM t_kv;
+ k
+----
+  1
+  2
+  3
+  4
+  5
+  6
+  7
+  8
+  9
+ 10
+ 11
+ 12
+(12 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ SeqScan(t_kv) */ SELECT FROM t_kv;
+                QUERY PLAN
+-------------------------------------------
+ Seq Scan on t_kv (actual rows=12 loops=1)
+(1 row)
+
+/*+ SeqScan(t_kv) */ SELECT FROM t_kv;
+--
+(12 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ SeqScan(t_kv) */ SELECT count(1) FROM t_kv;
+                   QUERY PLAN
+------------------------------------------------
+ Finalize Aggregate (actual rows=1 loops=1)
+   ->  Seq Scan on t_kv (actual rows=1 loops=1)
+         Partial Aggregate: true
+(3 rows)
+
+/*+ SeqScan(t_kv) */ SELECT count(1) FROM t_kv;
+ count
+-------
+    12
+(1 row)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ SeqScan(t_kv) */ SELECT count(*) FROM t_kv;
+                   QUERY PLAN
+------------------------------------------------
+ Finalize Aggregate (actual rows=1 loops=1)
+   ->  Seq Scan on t_kv (actual rows=1 loops=1)
+         Partial Aggregate: true
+(3 rows)
+
+/*+ SeqScan(t_kv) */ SELECT count(*) FROM t_kv;
+ count
+-------
+    12
+(1 row)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ SeqScan(t_kv) */ SELECT 1 FROM t_kv;
+                QUERY PLAN
+-------------------------------------------
+ Seq Scan on t_kv (actual rows=12 loops=1)
+(1 row)
+
+/*+ SeqScan(t_kv) */ SELECT 1 FROM t_kv;
+ ?column?
+----------
+        1
+        1
+        1
+        1
+        1
+        1
+        1
+        1
+        1
+        1
+        1
+        1
+(12 rows)
+
+-- seq scan
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT FROM t_kv;
+                QUERY PLAN
+-------------------------------------------
+ Seq Scan on t_kv (actual rows=12 loops=1)
+(1 row)
+
+SELECT FROM t_kv;
+--
+(12 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT k FROM t_kv;
+                QUERY PLAN
+-------------------------------------------
+ Seq Scan on t_kv (actual rows=12 loops=1)
+(1 row)
+
+SELECT k FROM t_kv;
+ k
+----
+  1
+  2
+  3
+  4
+  5
+  6
+  7
+  8
+  9
+ 10
+ 11
+ 12
+(12 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT count(1) FROM t_kv;
+                   QUERY PLAN
+------------------------------------------------
+ Finalize Aggregate (actual rows=1 loops=1)
+   ->  Seq Scan on t_kv (actual rows=1 loops=1)
+         Partial Aggregate: true
+(3 rows)
+
+SELECT count(1) FROM t_kv;
+ count
+-------
+    12
+(1 row)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT count(*) FROM t_kv;
+                   QUERY PLAN
+------------------------------------------------
+ Finalize Aggregate (actual rows=1 loops=1)
+   ->  Seq Scan on t_kv (actual rows=1 loops=1)
+         Partial Aggregate: true
+(3 rows)
+
+SELECT count(*) FROM t_kv;
+ count
+-------
+    12
+(1 row)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) SELECT 1 FROM t_kv;
+                QUERY PLAN
+-------------------------------------------
+ Seq Scan on t_kv (actual rows=12 loops=1)
+(1 row)
+
+SELECT 1 FROM t_kv;
+ ?column?
+----------
+        1
+        1
+        1
+        1
+        1
+        1
+        1
+        1
+        1
+        1
+        1
+        1
+(12 rows)
+
+-- index only scan on the primary index
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv) */ SELECT FROM t_kv;
+                            QUERY PLAN
+------------------------------------------------------------------
+ Index Only Scan using t_kv_pkey on t_kv (actual rows=12 loops=1)
+   Heap Fetches: 0
+(2 rows)
+
+/*+ IndexOnlyScan(t_kv) */ SELECT FROM t_kv;
+--
+(12 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv) */ SELECT k FROM t_kv;
+                QUERY PLAN
+-------------------------------------------
+ Seq Scan on t_kv (actual rows=12 loops=1)
+(1 row)
+
+/*+ IndexOnlyScan(t_kv) */ SELECT k FROM t_kv;
+ k
+----
+  1
+  2
+  3
+  4
+  5
+  6
+  7
+  8
+  9
+ 10
+ 11
+ 12
+(12 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv) */ SELECT count(1) FROM t_kv;
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ Finalize Aggregate (actual rows=1 loops=1)
+   ->  Index Only Scan using t_kv_pkey on t_kv (actual rows=1 loops=1)
+         Heap Fetches: 0
+         Partial Aggregate: true
+(4 rows)
+
+/*+ IndexOnlyScan(t_kv) */ SELECT count(1) FROM t_kv;
+ count
+-------
+    12
+(1 row)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv) */ SELECT count(*) FROM t_kv;
+                              QUERY PLAN
+-----------------------------------------------------------------------
+ Finalize Aggregate (actual rows=1 loops=1)
+   ->  Index Only Scan using t_kv_pkey on t_kv (actual rows=1 loops=1)
+         Heap Fetches: 0
+         Partial Aggregate: true
+(4 rows)
+
+/*+ IndexOnlyScan(t_kv) */ SELECT count(*) FROM t_kv;
+ count
+-------
+    12
+(1 row)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv) */ SELECT 1 FROM t_kv;
+                            QUERY PLAN
+------------------------------------------------------------------
+ Index Only Scan using t_kv_pkey on t_kv (actual rows=12 loops=1)
+   Heap Fetches: 0
+(2 rows)
+
+/*+ IndexOnlyScan(t_kv) */ SELECT 1 FROM t_kv;
+ ?column?
+----------
+        1
+        1
+        1
+        1
+        1
+        1
+        1
+        1
+        1
+        1
+        1
+        1
+(12 rows)
+
+CREATE INDEX t_vi ON t_kv (v asc);
+-- index only scan on the secondary index
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT FROM t_kv;
+                         QUERY PLAN
+-------------------------------------------------------------
+ Index Only Scan using t_vi on t_kv (actual rows=12 loops=1)
+   Heap Fetches: 0
+(2 rows)
+
+/*+ IndexOnlyScan(t_kv t_vi) */ SELECT FROM t_kv;
+--
+(12 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT k FROM t_kv;
+                QUERY PLAN
+-------------------------------------------
+ Seq Scan on t_kv (actual rows=12 loops=1)
+(1 row)
+
+/*+ IndexOnlyScan(t_kv t_vi) */ SELECT k FROM t_kv;
+ k
+----
+  1
+  2
+  3
+  4
+  5
+  6
+  7
+  8
+  9
+ 10
+ 11
+ 12
+(12 rows)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT count(1) FROM t_kv;
+                            QUERY PLAN
+------------------------------------------------------------------
+ Finalize Aggregate (actual rows=1 loops=1)
+   ->  Index Only Scan using t_vi on t_kv (actual rows=1 loops=1)
+         Heap Fetches: 0
+         Partial Aggregate: true
+(4 rows)
+
+/*+ IndexOnlyScan(t_kv t_vi) */ SELECT count(1) FROM t_kv;
+ count
+-------
+    12
+(1 row)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT count(*) FROM t_kv;
+                            QUERY PLAN
+------------------------------------------------------------------
+ Finalize Aggregate (actual rows=1 loops=1)
+   ->  Index Only Scan using t_vi on t_kv (actual rows=1 loops=1)
+         Heap Fetches: 0
+         Partial Aggregate: true
+(4 rows)
+
+/*+ IndexOnlyScan(t_kv t_vi) */ SELECT count(*) FROM t_kv;
+ count
+-------
+    12
+(1 row)
+
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ SELECT 1 FROM t_kv;
+                         QUERY PLAN
+-------------------------------------------------------------
+ Index Only Scan using t_vi on t_kv (actual rows=12 loops=1)
+   Heap Fetches: 0
+(2 rows)
+
+/*+ IndexOnlyScan(t_kv t_vi) */ SELECT 1 FROM t_kv;
+ ?column?
+----------
+        1
+        1
+        1
+        1
+        1
+        1
+        1
+        1
+        1
+        1
+        1
+        1
+(12 rows)
+
+-- #### Test Deleting #### --
+-- seq scan
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) DELETE FROM t_kv;
+                   QUERY PLAN
+-------------------------------------------------
+ Delete on t_kv (actual rows=0 loops=1)
+   ->  Seq Scan on t_kv (actual rows=12 loops=1)
+(2 rows)
+
+INSERT INTO t_kv SELECT x, x FROM generate_series(1, 10) AS x;
+SELECT * FROM t_kv;
+ k  | v
+----+----
+  1 |  1
+  2 |  2
+  3 |  3
+  4 |  4
+  5 |  5
+  6 |  6
+  7 |  7
+  8 |  8
+  9 |  9
+ 10 | 10
+(10 rows)
+
+-- yb seq scan
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ SeqScan(t_kv) */ DELETE FROM t_kv;
+                   QUERY PLAN
+-------------------------------------------------
+ Delete on t_kv (actual rows=0 loops=1)
+   ->  Seq Scan on t_kv (actual rows=10 loops=1)
+(2 rows)
+
+INSERT INTO t_kv SELECT x, x FROM generate_series(1, 10) AS x;
+/*+ SeqScan(t_kv) */ SELECT * FROM t_kv;
+ k  | v
+----+----
+  1 |  1
+  2 |  2
+  3 |  3
+  4 |  4
+  5 |  5
+  6 |  6
+  7 |  7
+  8 |  8
+  9 |  9
+ 10 | 10
+(10 rows)
+
+-- index only scan on the primary index
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_kv_pkey) */ DELETE FROM t_kv;
+                   QUERY PLAN
+-------------------------------------------------
+ Delete on t_kv (actual rows=0 loops=1)
+   ->  Seq Scan on t_kv (actual rows=10 loops=1)
+(2 rows)
+
+INSERT INTO t_kv SELECT x, x FROM generate_series(1, 10) AS x;
+/*+ IndexOnlyScan(t_kv t_kv_pkey) */ SELECT * FROM t_kv;
+ k  | v
+----+----
+  1 |  1
+  2 |  2
+  3 |  3
+  4 |  4
+  5 |  5
+  6 |  6
+  7 |  7
+  8 |  8
+  9 |  9
+ 10 | 10
+(10 rows)
+
+-- index only scan on the secondary index
+EXPLAIN (ANALYZE, COSTS OFF, TIMING OFF, SUMMARY OFF) /*+ IndexOnlyScan(t_kv t_vi) */ DELETE FROM t_kv;
+                   QUERY PLAN
+-------------------------------------------------
+ Delete on t_kv (actual rows=0 loops=1)
+   ->  Seq Scan on t_kv (actual rows=10 loops=1)
+(2 rows)
+
+INSERT INTO t_kv SELECT x, x FROM generate_series(1, 10) AS x;
+/*+ IndexOnlyScan(t_kv t_vi) */ SELECT * FROM t_kv;
+ k  | v
+----+----
+  1 |  1
+  2 |  2
+  3 |  3
+  4 |  4
+  5 |  5
+  6 |  6
+  7 |  7
+  8 |  8
+  9 |  9
+ 10 | 10
+(10 rows)
+
+DROP TABLE t_kv;

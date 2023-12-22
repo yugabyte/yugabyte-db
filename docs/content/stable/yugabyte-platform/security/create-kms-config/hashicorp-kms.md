@@ -113,7 +113,7 @@ You need to configure HashiCorp Vault in order to use it with YugabyteDB Anywher
     }
     ```
 
-1. Generate a token with appropriate permissions (as per the referenced policy) by executing the following command:
+1. If you want to use a token for authentication, generate a token with appropriate permissions (as per the referenced policy) by executing the following command:
 
     ```shell
     vault token create -no-default-policy -policy=trx
@@ -124,6 +124,36 @@ You need to configure HashiCorp Vault in order to use it with YugabyteDB Anywher
     - `ttl` — Time to live (TTL). If not specified, the default TTL of 32 days is used, which means that the generated token will expire after 32 days.
 
     - `period` — If specified, the token can be infinitely renewed.
+
+1. If you want to use AppRole for authentication, do the following:
+
+    - Obtain AppRole credentials by enabling the auth method in the vault using the following command:
+
+        ```sh
+        vault auth enable approle
+        ```
+
+        Refer to [Enable AppRole auth method](https://developer.hashicorp.com/vault/tutorials/cloud/vault-auth-method#enable-approle-auth-method).
+
+    - Generate a role with appropriate permissions (as per the referenced policy) by executing the following command:
+
+        ```sh
+        vault write auth/approle/role/ybahcv token_policies="trx"
+        ```
+
+        You may also specify the following for your token generated from the AppRole:
+
+        - `ttl` — Time to live (TTL). If not specified, the default TTL of 32 days is used, which means that the generated token will expire after 32 days.
+        - `period` — If specified, the token can be infinitely renewed.
+
+    - Obtain the RoleID and SecretID using the following commands:
+
+        ```sh
+        vault read auth/approle/role/ybahcv/role-id
+        vault write -force auth/approle/role/ybahcv/secret-id
+        ```
+
+        Refer to [Generate RoleID and SecretID](https://developer.hashicorp.com/vault/tutorials/cloud/vault-auth-method#generate-roleid-and-secretid).
 
 ## Create a KMS configuration
 
@@ -138,7 +168,13 @@ You can create a new KMS configuration that uses HashiCorp Vault as follows:
     - **Configuration Name** — Enter a meaningful name for your configuration.
     - **KMS Provider** — Select **Hashicorp Vault**.
     - **Vault Address** — Enter the web address of your vault. For example, `http://127.0.0.1:8200`
-    - **Secret Token** — Enter the token you obtained from the vault.
+    - **Authentication Type** — Choose the authentication method to use, Token or AppRole.
+
+        For Token, enter the token you obtained from the vault.
+
+        For AppRole, enter the role ID and corresponding secret ID obtained from the vault. If the vault is configured with namespaces, also enter the namespace used to generate the credentials.
+
+    - **Key Name** - Enter the name of the Master Key in the vault. If you don't provide a key name, the configuration uses the default name key_yugabyte. If a key with that name exists in the vault, the configuration will use it, otherwise a key with that name is created.
     - **Secret Engine** — This is a read-only field with its value set to `transit`. It identifies the secret engine.
     - **Mount Path** — Specify the path to the secret engine in the vault. The default value is `transit/`.
 

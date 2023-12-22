@@ -18,9 +18,9 @@
 
 #include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 DECLARE_bool(enable_wait_queues);
-DECLARE_bool(enable_deadlock_detection);
 
 using namespace std::literals;
 
@@ -44,7 +44,6 @@ class PgRowLockTest : public PgMiniTestBase {
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_deadlock_detection) = false;
     PgMiniTestBase::SetUp();
   }
 };
@@ -132,12 +131,10 @@ void PgRowLockTest::TestStmtBeforeRowLock(
   auto result = read_conn.FetchFormat("SELECT * FROM t FOR $0", row_mark_str);
   if (isolation == IsolationLevel::SNAPSHOT_ISOLATION && statement == TestStatement::kDelete) {
     ASSERT_NOK(result);
-    ASSERT_TRUE(result.status().IsNetworkError()) << result.status();
-    ASSERT_EQ(PgsqlError(result.status()), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE)
-        << result.status();
-    ASSERT_STR_CONTAINS(result.status().ToString(),
-                        "could not serialize access due to concurrent update");
-    ASSERT_OK(read_conn.Execute("ABORT"));
+    const auto& status = result.status();
+    ASSERT_TRUE(status.IsNetworkError()) << status;
+    ASSERT_TRUE(IsSerializeAccessError(status)) << status;
+    ASSERT_OK(read_conn.RollbackTransaction());
   } else {
     ASSERT_OK(result);
     // NOTE: vanilla PostgreSQL expects kKeys rows, but kKeys +/- 1 rows are expected for
@@ -465,44 +462,44 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
 
     // Transaction 1.
     ASSERT_OK(StartTxn(&conn));
-    RowLock(&conn, "SELECT * FROM t WHERE k = 1 FOR UPDATE", cur_name);
+    RowLock(&conn, "SELECT k FROM t WHERE k = 1 FOR UPDATE", cur_name);
 
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR UPDATE"));
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR NO KEY UPDATE"));
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR SHARE"));
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR KEY SHARE"));
+    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR UPDATE"));
+    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR NO KEY UPDATE"));
+    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR SHARE"));
+    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR KEY SHARE"));
 
     ASSERT_OK(conn.Execute("COMMIT"));
 
     // Transaction 2.
     ASSERT_OK(StartTxn(&conn));
-    RowLock(&conn, "SELECT * FROM t WHERE k = 1 FOR NO KEY UPDATE", cur_name);
+    RowLock(&conn, "SELECT k FROM t WHERE k = 1 FOR NO KEY UPDATE", cur_name);
 
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR UPDATE"));
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR NO KEY UPDATE"));
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR SHARE"));
-    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR KEY SHARE"));
+    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR UPDATE"));
+    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR NO KEY UPDATE"));
+    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR SHARE"));
+    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR KEY SHARE"));
 
     ASSERT_OK(conn.Execute("COMMIT"));
 
     // Transaction 3.
     ASSERT_OK(StartTxn(&conn));
-    RowLock(&conn, "SELECT * FROM t WHERE k = 1 FOR SHARE", cur_name);
+    RowLock(&conn, "SELECT k FROM t WHERE k = 1 FOR SHARE", cur_name);
 
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR UPDATE"));
-    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR NO KEY UPDATE"));
-    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR SHARE"));
-    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR KEY SHARE"));
+    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR UPDATE"));
+    ASSERT_NOK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR NO KEY UPDATE"));
+    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR SHARE"));
+    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR KEY SHARE"));
 
     ASSERT_OK(conn.Execute("COMMIT"));
 
     // Transaction 4.
     ASSERT_OK(StartTxn(&conn));
-    RowLock(&conn, "SELECT * FROM t WHERE k = 1 FOR KEY SHARE", cur_name);
+    RowLock(&conn, "SELECT k FROM t WHERE k = 1 FOR KEY SHARE", cur_name);
 
-    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR NO KEY UPDATE"));
-    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR SHARE"));
-    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR KEY SHARE"));
+    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR NO KEY UPDATE"));
+    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR SHARE"));
+    ASSERT_RESULT(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR KEY SHARE"));
 
     ASSERT_OK(conn.Execute("COMMIT"));
 
@@ -510,9 +507,9 @@ class PgMiniTestTxnHelper : public PgMiniTestNoTxnRetry {
     // Check FOR KEY SHARE + FOR UPDATE conflict separately
     // as FOR KEY SHARE uses regular and FOR UPDATE uses high txn priority.
     ASSERT_OK(StartTxn(&conn));
-    RowLock(&conn, "SELECT * FROM t WHERE k = 1 FOR KEY SHARE", cur_name);
+    RowLock(&conn, "SELECT k FROM t WHERE k = 1 FOR KEY SHARE", cur_name);
 
-    ASSERT_OK(FetchInTxn(&extra_conn, "SELECT * FROM t WHERE k = 1 FOR UPDATE"));
+    ASSERT_OK(FetchInTxn(&extra_conn, "SELECT k FROM t WHERE k = 1 FOR UPDATE"));
 
     ASSERT_NOK(conn.Execute("COMMIT"));
   }

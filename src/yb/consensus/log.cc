@@ -210,11 +210,10 @@ DEFINE_UNKNOWN_int64(time_based_wal_gc_clock_delta_usec, 0,
              "skewed hybrid clock, because the clock used for time-based WAL GC is the wall clock, "
              "not hybrid clock.");
 
-DEFINE_UNKNOWN_int64(reuse_unclosed_segment_threshold_bytes, 512_KB,
+DEFINE_RUNTIME_int64(reuse_unclosed_segment_threshold_bytes, INT64_MAX,
             "If the last left in-progress segment size is smaller or equal to this threshold, "
             "Log will reuse this last segment as writable active_segment at tablet bootstrap. "
-            "Otherwise, Log will create a new segment. If this threshold is negative, it means "
-            "WAL reuse feature is disabled");
+            "Otherwise, Log will create a new segment.");
 
 // Validate that log_min_segments_to_retain >= 1
 static bool ValidateLogsToRetain(const char* flagname, int value) {
@@ -966,16 +965,11 @@ Result<bool> Log::ReuseAsActiveSegment(const scoped_refptr<ReadableLogSegment>& 
   auto read_entries = recover_segment->ReadEntries();
   RETURN_NOT_OK(read_entries.status);
   int64_t file_size = read_entries.end_offset;
-  // For now, we want to test reuse unclosed segment feature aggressively in debug builds.
-  // Thus, by using IsDebug(), we can trigger this feature in most restart from a crash scenario.
-  int64_t reuse_unclosed_segment_threshold_bytes = FLAGS_reuse_unclosed_segment_threshold_bytes;
-  if (IsDebug() && reuse_unclosed_segment_threshold_bytes >= 0) {
-    reuse_unclosed_segment_threshold_bytes = max_segment_size_;
-  }
-  if (file_size > reuse_unclosed_segment_threshold_bytes) {
-    LOG(INFO) << "Cannot reuse last WAL segment " << recover_segment->path()
-              << " as active_segment due to its actual file size " << file_size
-              << " is greater than reuse threshold " << reuse_unclosed_segment_threshold_bytes;
+  if (file_size > FLAGS_reuse_unclosed_segment_threshold_bytes) {
+    VLOG_WITH_PREFIX(2)
+        << "Cannot reuse last WAL segment " << recover_segment->path()
+        << " as active_segment due to its actual file size " << file_size
+        << " is greater than reuse threshold " << FLAGS_reuse_unclosed_segment_threshold_bytes;
     RETURN_NOT_OK(recover_segment->RebuildFooterByScanning(read_entries));
     return false;
   }
@@ -992,8 +986,9 @@ Result<bool> Log::ReuseAsActiveSegment(const scoped_refptr<ReadableLogSegment>& 
   auto status = env_util::OpenFileForWrite(opts, get_env(), next_segment_path_,
                                            &next_segment_file_);
   if (!status.ok()) {
-      LOG(INFO) << "Cannot reuse last WAL segment " << next_segment_path_
-                << " as active_segment due to file could not be reopened: " << status.ToString();
+      VLOG_WITH_PREFIX(2)
+          << "Cannot reuse last WAL segment " << next_segment_path_
+          << " as active_segment due to file could not be reopened: " << status.ToString();
       RETURN_NOT_OK(recover_segment->RebuildFooterByScanning(read_entries));
       return false;
   }

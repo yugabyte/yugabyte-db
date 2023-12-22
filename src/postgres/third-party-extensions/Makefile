@@ -1,4 +1,4 @@
-DIRS = pg_hint_plan orafce hypopg postgresql-hll
+DIRS = pg_hint_plan orafce hypopg postgresql-hll pgvector
 BUILDDIRS = $(DIRS:%=build-%)
 INSTALLDIRS = $(DIRS:%=install-%)
 CLEANDIRS = $(DIRS:%=clean-%)

@@ -6,6 +6,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
@@ -137,7 +138,7 @@ public class CheckUpgradeTest extends CommissionerBaseTest {
     flag.name = "FLAG_2";
     AutoFlagsPerServer flagsPerServer = new AutoFlagsPerServer();
     flagsPerServer.autoFlagDetails = Arrays.asList(flag);
-    when(mockGFlagsValidation.extractAutoFlags(any(), any())).thenReturn(flagsPerServer);
+    when(mockGFlagsValidation.extractAutoFlags(any(), anyString())).thenReturn(flagsPerServer);
     CheckUpgrade task = AbstractTaskBase.createTask(CheckUpgrade.class);
     task.initialize(params);
     PlatformServiceException exception =
@@ -177,7 +178,7 @@ public class CheckUpgradeTest extends CommissionerBaseTest {
     flag.name = "FLAG_1";
     AutoFlagsPerServer flagsPerServer = new AutoFlagsPerServer();
     flagsPerServer.autoFlagDetails = Arrays.asList(flag);
-    when(mockGFlagsValidation.extractAutoFlags(any(), any())).thenReturn(flagsPerServer);
+    when(mockGFlagsValidation.extractAutoFlags(any(), anyString())).thenReturn(flagsPerServer);
     CheckUpgrade task = AbstractTaskBase.createTask(CheckUpgrade.class);
     task.initialize(params);
     task.run();

@@ -1345,7 +1345,10 @@ yb_ipath_matches_pk(IndexPath *index_path) {
 
 /*
  * Checks if conditions are suitable to create a path with a single-RPC
- * lock+select, and creates that path.
+ * lock+select, and creates that path. Because plans can be made in isolation
+ * level SERIALIZABLE and executed at a different isolation level, this
+ * is computed even in SERIALIZABLE, even though other logic takes precedence
+ * if executed in SERIALIZABLE.
  */
 static void
 yb_consider_locking_scan(PlannerInfo *root, RelOptInfo *final_rel)
@@ -1358,10 +1361,6 @@ yb_consider_locking_scan(PlannerInfo *root, RelOptInfo *final_rel)
 	 * (meaning locking).
 	 */
 	if (!root->parse->rowMarks)
-		return;
-
-	/* Isolation level SERIALIZABLE is handled by checking for the level. */
-	if (IsolationIsSerializable())
 		return;
 
 	foreach(lc, final_rel->pathlist)
@@ -1394,6 +1393,30 @@ yb_consider_locking_scan(PlannerInfo *root, RelOptInfo *final_rel)
 	/* The new path should dominate the old one because LockRows adds cost. */
 	if (new_path)
 		add_path(final_rel, (Path *) new_path);
+}
+
+/*
+ * We can skip the LockRows node only if we know that it won't be needed, which
+ * means:
+ *  * Must be an IndexScan
+ *  * Must have been determined to YB_LOCK_CLAUSE_ON_PK (meaning, if we're in
+ *    isolation levels READ COMMITTED or REPEATABLE READ, we can lock and read
+ *    in a single RPC).
+ *
+ * Note we can switch isolation levels between planning and execution, for
+ * example in the case of prepared plans. Skipping the LockRows node is easier
+ * if we can meet the above conditions, otherwise we would need more complicated
+ * logic in LockRows to detect this condition and avoid double-locking.
+ */
+static bool
+yb_skip_lockrows(Path *path)
+{
+	IndexPath  *index_scan_path;
+	if (!IsA(path, IndexPath))
+		return false;
+	index_scan_path = castNode(IndexPath, path);
+	return index_scan_path->yb_index_path_info.yb_lock_mechanism ==
+		   YB_LOCK_CLAUSE_ON_PK;
 }
 
 /*--------------------
@@ -1888,9 +1911,14 @@ grouping_planner(PlannerInfo *root, double tuple_fraction)
 		 * handled by the ModifyTable node instead.  However, root->rowMarks
 		 * is what goes into the LockRows node.)
 		 *
-		 * In isolation level SERIALIZABLE, locking is done in the scans.
+		 * In isolation level SERIALIZABLE, locking is done in the scans, but
+		 * the LockRows path usually still needs to be created in case the plan
+		 * created in SERIALIZABLE is executed in isolation level RR or RC.
+		 * However, there is no need for a LockRows node if we do the locking in
+		 * the scan in all isolation levels, which is the case with single-RPC
+		 * locking on a PK.
 		 */
-		if (parse->rowMarks && !IsolationIsSerializable())
+		if (parse->rowMarks && !yb_skip_lockrows(path))
 		{
 			path = (Path *) create_lockrows_path(root, final_rel, path,
 												 root->rowMarks,

@@ -167,6 +167,10 @@ class AbstractInstancesMethod(AbstractMethod):
         self.parser.add_argument("--instance_type",
                                  required=False,
                                  help="The instance type to act on")
+        self.parser.add_argument("--cloud_instance_types", nargs='*',
+                                 required=False,
+                                 default=[],
+                                 help="Priority list of vendor instance types.")
         self.parser.add_argument("--ssh_user",
                                  required=False,
                                  help="The username for ssh")

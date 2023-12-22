@@ -661,11 +661,11 @@ Status PgBackendsTestRf3::TestConcurrentAlterFunc(
     SCHECK_EQ(5, PQnfields(res.get()), IllegalState, "unexpected num fields");
     int num_rows = PQntuples(res.get());
     for (int i = 0; i < num_rows; ++i) {
-      VLOG(1) << "Row: thread=" << GetInt32(res.get(), i, 0)
-              << ", true_version=" << GetInt32(res.get(), i, 1)
-              << ", backend_version=" << GetInt32(res.get(), i, 2)
-              << ", func_version=" << GetInt32(res.get(), i, 3)
-              << ", sleep_sec=" << GetInt32(res.get(), i, 4);
+      VLOG(1) << "Row: thread=" << GetValue<int32_t>(res.get(), i, 0)
+              << ", true_version=" << GetValue<int32_t>(res.get(), i, 1)
+              << ", backend_version=" << GetValue<int32_t>(res.get(), i, 2)
+              << ", func_version=" << GetValue<int32_t>(res.get(), i, 3)
+              << ", sleep_sec=" << GetValue<int32_t>(res.get(), i, 4);
     }
   }
   return Status::OK();

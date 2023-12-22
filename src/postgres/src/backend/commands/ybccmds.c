@@ -149,6 +149,14 @@ YBCCreateDatabase(Oid dboid, const char *dbname, Oid src_dboid, Oid next_oid, bo
 		YbCreateMasterDBCatalogVersionTableEntry(dboid);
 }
 
+static void
+YBCDropDBSequences(Oid dboid)
+{
+	YBCPgStatement sequences_handle;
+	HandleYBStatus(YBCPgNewDropDBSequences(dboid, &sequences_handle));
+	YBSaveDdlHandle(sequences_handle);
+}
+
 void
 YBCDropDatabase(Oid dboid, const char *dbname)
 {
@@ -161,6 +169,15 @@ YBCDropDatabase(Oid dboid, const char *dbname)
 	HandleYBStatusIgnoreNotFound(YBCPgExecDropDatabase(handle), &not_found);
 	if (not_found)
 		return;
+
+	/*
+	 * Enqueue the DDL handle for the sequences of this database to be dropped
+	 * after the transaction commits. As of 2023-09-21, since Drop Database is
+	 * not atomic, this is pointless. However, with #16395, Drop Database will
+	 * be atomic and this will be useful.
+	*/
+	YBCDropDBSequences(dboid);
+
 	if (YBIsDBCatalogVersionMode())
 		YbDeleteMasterDBCatalogVersionTableEntry(dboid);
 }
@@ -818,6 +835,15 @@ YBCDropTable(Relation relation)
 		 */
 		YBSaveDdlHandle(handle);
 	}
+}
+
+void
+YBCDropSequence(Oid sequence_oid)
+{
+	YBCPgStatement handle;
+
+	HandleYBStatus(YBCPgNewDropSequence(MyDatabaseId, sequence_oid, &handle));
+	YBSaveDdlHandle(handle);
 }
 
 /*

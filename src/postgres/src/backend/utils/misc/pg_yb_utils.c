@@ -129,17 +129,23 @@ YbGetLastKnownCatalogCacheVersion()
 		shared_catalog_version : yb_last_known_catalog_cache_version;
 }
 
-uint64_t
+YBCPgLastKnownCatalogVersionInfo
 YbGetCatalogCacheVersionForTablePrefetching()
 {
 	// TODO: In future YBGetLastKnownCatalogCacheVersion must be used instead of
 	//       YbGetMasterCatalogVersion to reduce numer of RPCs to a master.
 	//       But this requires some additional changes. This optimization will
 	//       be done separately.
-	if (!*YBCGetGFlags()->ysql_enable_read_request_caching)
-		return YB_CATCACHE_VERSION_UNINITIALIZED;
-	YBCPgResetCatalogReadTime();
-	return YbGetMasterCatalogVersion();
+	uint64_t version = YB_CATCACHE_VERSION_UNINITIALIZED;
+	bool is_db_catalog_version_mode = YBIsDBCatalogVersionMode();
+	if (*YBCGetGFlags()->ysql_enable_read_request_caching)
+	{
+		YBCPgResetCatalogReadTime();
+		version = YbGetMasterCatalogVersion();
+	}
+	return (YBCPgLastKnownCatalogVersionInfo){
+		.version = version,
+		.is_db_catalog_version_mode = is_db_catalog_version_mode};
 }
 
 void
@@ -185,12 +191,6 @@ IsYugaByteEnabled()
 {
 	/* We do not support Init/Bootstrap processing modes yet. */
 	return YBCPgIsYugaByteEnabled();
-}
-
-bool
-YbIsClientYsqlConnMgr()
-{
-	return IsYugaByteEnabled() && yb_is_client_ysqlconnmgr;
 }
 
 void
@@ -293,12 +293,24 @@ AttrNumber YBGetFirstLowInvalidAttributeNumberFromOid(Oid relid)
 
 int YBAttnumToBmsIndex(Relation rel, AttrNumber attnum)
 {
-	return attnum - YBGetFirstLowInvalidAttributeNumber(rel);
+	return YBAttnumToBmsIndexWithMinAttr(
+		YBGetFirstLowInvalidAttributeNumber(rel), attnum);
 }
 
 AttrNumber YBBmsIndexToAttnum(Relation rel, int idx)
 {
-	return idx + YBGetFirstLowInvalidAttributeNumber(rel);
+	return YBBmsIndexToAttnumWithMinAttr(
+		YBGetFirstLowInvalidAttributeNumber(rel), idx);
+}
+
+int YBAttnumToBmsIndexWithMinAttr(AttrNumber minattr, AttrNumber attnum)
+{
+	return attnum - minattr + 1;
+}
+
+AttrNumber YBBmsIndexToAttnumWithMinAttr(AttrNumber minattr, int idx)
+{
+	return idx + minattr - 1;
 }
 
 /*
@@ -471,7 +483,7 @@ YBSavepointsEnabled()
  * Return true if we are in per-database catalog version mode. In order to
  * use per-database catalog version mode, two conditions must be met:
  *   * --FLAGS_TEST_enable_db_catalog_version_mode=true
- *   * the table pg_yb_catalog_version has one row per database. 
+ *   * the table pg_yb_catalog_version has one row per database.
  * This function takes care of the YSQL upgrade from global catalog version
  * mode to per-database catalog version mode when the default value of
  * --FLAGS_TEST_enable_db_catalog_version_mode is changed to true. In this
@@ -525,24 +537,53 @@ YBIsDBCatalogVersionMode()
 	{
 		cached_is_db_catalog_version_mode = true;
 		/*
-		 * Switching to per-db mode and set catalog version to 1, which is the
-		 * initial per-database catalog version value after the table
-		 * pg_yb_catalog_version is upgraded to have one row per database.
-		 * Note that we assume there are no DDL statements running during
-		 * YSQL upgrade and in particular we do not support concurrent DDL
-		 * statements when switching from global catalog version mode to
-		 * per-database catalog version mode. As of 2023-08-07, this is not
-		 * enforced and therefore if a concurrent DDL statement is executed:
-		 * (1) if this DDL statement also increments a table schema, we still
-		 * have the table schema version mismatch check as a safety net to
-		 * reject stale read/write RPCs;
-		 * (2) if this DDL statement only increments the catalog version,
-		 * then stale read/write RPCs are possible which can lead to wrong
-		 * results;
+		 * If MyDatabaseId is not resolved, the caller is going to set up the
+		 * catalog version in per-database catalog version mode. There is
+		 * no need to set it up here.
 		 */
-		yb_last_known_catalog_cache_version = 1;
-		YbUpdateCatalogCacheVersion(1);
-		elog(DEBUG3, "switching to per-db mode");
+		if (OidIsValid(MyDatabaseId))
+		{
+			/*
+			 * MyDatabaseId is already resolved so the caller may have already
+			 * set up the catalog version in global catalog version mode. The
+			 * upgrade of table pg_yb_catalog_version to per-database catalog
+			 * version mode does not change the catalog version of database
+			 * template1 but will set the initial per-database catalog version
+			 * value to 1 for all other databases. Set catalog version to 1
+			 * except for database template1 to avoid unnecessary catalog cache
+			 * refresh.
+			 * Note that we assume there are no DDL statements running during
+			 * YSQL upgrade and in particular we do not support concurrent DDL
+			 * statements when switching from global catalog version mode to
+			 * per-database catalog version mode. As of 2023-08-07, this is not
+			 * enforced and therefore if a concurrent DDL statement is executed:
+			 * (1) if this DDL statement also increments a table schema, we still
+			 * have the table schema version mismatch check as a safety net to
+			 * reject stale read/write RPCs;
+			 * (2) if this DDL statement only increments the catalog version,
+			 * then stale read/write RPCs are possible which can lead to wrong
+			 * results;
+			 */
+			elog(INFO, "change to per-db mode");
+			if (MyDatabaseId != Template1DbOid)
+			{
+				yb_last_known_catalog_cache_version = 1;
+				YbUpdateCatalogCacheVersion(1);
+			}
+		}
+
+		/*
+		 * YB does write operation buffering to reduce the number of RPCs.
+		 * That is, PG backend can buffer several write operations and send
+		 * them out in a single RPC. Here we dynamically switch from global
+		 * catalog version mode to per-database catalog version mode, so
+		 * flush the buffered write operations. Otherwise, we can end up
+		 * having the first write operations in global catalog version mode,
+		 * and the rest write operations in per-database catalog version.
+		 * Mixing global and per-database catalog versions in a single RPC
+		 * triggers a tserver SCHECK failure.
+		 */
+		YBFlushBufferedOperations();
 		return true;
 	}
 
@@ -772,8 +813,7 @@ YBInitPostgresBackend(
 		callbacks.GetDebugQueryString = &GetDebugQueryString;
 		callbacks.WriteExecOutParam = &YbWriteExecOutParam;
 		callbacks.UnixEpochToPostgresEpoch = &YbUnixEpochToPostgresEpoch;
-		callbacks.PostgresEpochToUnixEpoch= &YbPostgresEpochToUnixEpoch;
-		callbacks.ConstructTextArrayDatum = &YbConstructTextArrayDatum;
+		callbacks.ConstructArrayDatum = &YbConstructArrayDatum;
 		callbacks.CheckUserMap = &check_usermap;
 		YBCInitPgGate(type_table, count, callbacks);
 		YBCInstallTxnDdlHook();
@@ -1692,7 +1732,6 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 		case T_CreateSchemaStmt:
 		case T_CreateStatsStmt:
 		case T_CreateSubscriptionStmt:
-		case T_CreateTableAsStmt:
 		case T_CreateTransformStmt:
 		case T_CreateTrigStmt:
 		case T_CreateUserMappingStmt:
@@ -1768,6 +1807,20 @@ bool IsTransactionalDdlStatement(PlannedStmt *pstmt,
 				break;
 			}
 
+			*is_catalog_version_increment = false;
+			*is_breaking_catalog_change = false;
+			break;
+		}
+		/*
+		 * Create Table As Select need not include the same checks as Create Table as complex tables
+		 * (eg: partitions) cannot be created using this statement.
+		*/
+		case T_CreateTableAsStmt:
+		{
+			/*
+			 * Simple add objects are not breaking changes, and they do not even require
+			 * a version increment because we do not do any negative caching for them.
+			 */
 			*is_catalog_version_increment = false;
 			*is_breaking_catalog_change = false;
 			break;
@@ -3645,6 +3698,10 @@ aggregateStats(YbInstrumentation *instr, const YBCPgExecStats *exec_stats)
 	/* Flush stats */
 	instr->write_flushes.count += exec_stats->num_flushes;
 	instr->write_flushes.wait_time += exec_stats->flush_wait;
+
+	for (int i = 0; i < YB_ANALYZE_METRIC_COUNT; ++i) {
+		instr->storage_metrics[i] += exec_stats->storage_metrics[i];
+	}
 }
 
 static YBCPgExecReadWriteStats
@@ -3668,6 +3725,10 @@ calculateExecStatsDiff(const YbSessionStats *stats, YBCPgExecStats *result)
 
 	result->num_flushes = current->num_flushes - old->num_flushes;
 	result->flush_wait = current->flush_wait - old->flush_wait;
+
+	for (int i = 0; i < YB_ANALYZE_METRIC_COUNT; ++i) {
+		result->storage_metrics[i] = current->storage_metrics[i] - old->storage_metrics[i];
+	}
 }
 
 static void
@@ -3684,6 +3745,12 @@ refreshExecStats(YbSessionStats *stats, bool include_catalog_stats)
 
 	if (include_catalog_stats)
 		old->catalog = current->catalog;
+
+	if (yb_session_stats.current_state.metrics_capture) {
+		for (int i = 0; i < YB_ANALYZE_METRIC_COUNT; ++i) {
+			old->storage_metrics[i] = current->storage_metrics[i];
+		}
+	}
 }
 
 void
@@ -3738,6 +3805,12 @@ void
 YbToggleSessionStatsTimer(bool timing_on)
 {
 	yb_session_stats.current_state.is_timing_required = timing_on;
+}
+
+void
+YbSetMetricsCaptureType(YBCPgMetricsCaptureType metrics_capture)
+{
+	yb_session_stats.current_state.metrics_capture = metrics_capture;
 }
 
 void YbSetCatalogCacheVersion(YBCPgStatement handle, uint64_t version)
@@ -3814,8 +3887,6 @@ bool YbIsBatchedExecution()
 {
 	return yb_is_batched_execution;
 }
-
-bool yb_is_client_ysqlconnmgr = false;
 
 void YbSetIsBatchedExecution(bool value)
 {

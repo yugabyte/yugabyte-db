@@ -83,7 +83,7 @@ To understand which standard SQL features we support, refer to the following tab
 | GIN indexes | ✓ | [GIN indexes](../../indexes-constraints/gin/) |
 | Partial indexes | ✓ | [Partial indexes](../../indexes-constraints/partial-index-ysql/) |
 | Expression indexes | ✓ | [Expression indexes](../../indexes-constraints/expression-index-ysql/) |
-| Multi-column indexes | ✓  | |
+| Multi-column indexes | ✓  | [Multi-column indexes](../../indexes-constraints/secondary-indexes-ysql/#multi-column-index)|
 | Covering indexes | ✓  | [Covering indexes](../../indexes-constraints/covering-index-ysql/) |
 | GiST indexes | ✗ | |
 | BRIN indexes | ✗ | |

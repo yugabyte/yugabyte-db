@@ -45,7 +45,8 @@ export default function (state = INITIAL_STATE, action) {
       };
       const responseData = {
         ...state,
-        loading: false
+        loading: false,
+        error: false
       };
       responseData.metrics = metricData;
       return responseData;
@@ -98,7 +99,8 @@ export default function (state = INITIAL_STATE, action) {
         metrics: {},
         masterMetrics: {},
         loading: false,
-        panelType: null
+        panelType: null,
+        error: null
       };
     case RESET_GRAPH_FILTER:
       // Graph Filter needs to be reset when user jumps to metrics view in different places
