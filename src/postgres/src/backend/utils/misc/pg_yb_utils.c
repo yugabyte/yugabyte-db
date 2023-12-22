@@ -2007,8 +2007,29 @@ static void YBTxnDdlProcessUtility(
 	PG_TRY();
 	{
 		if (is_txn_ddl)
+		{
+			if (YBIsDBCatalogVersionMode())
+				/*
+				 * In order to support concurrent non-global-impact DDLs
+				 * across different databases, call YbInitPinnedCacheIfNeeded
+				 * now which triggers a scan of pg_shdepend and pg_depend.
+				 * This ensure that the scan is done without using a read time
+				 * of the DDL transaction so that yb-master can retry read
+				 * restarts automatically. Otherwise, a read restart error is
+				 * returned to the PG backend the DDL statement will fail
+				 * because DDLs cannot be restarted.
+				 *
+				 * YB NOTE: this implies a performance hit for DDL statements
+				 * that do not need to call YbInitPinnedCacheIfNeeded.
+				 *
+				 * TODO(myang): we can optimize to only read pg_shdepend here
+				 * to reduce its performance penalty.
+				 */
+				YbInitPinnedCacheIfNeeded();
+
 			YBIncrementDdlNestingLevel(is_catalog_version_increment,
 									   is_breaking_catalog_change);
+		}
 
 		if (prev_ProcessUtility)
 			prev_ProcessUtility(pstmt, queryString,
