@@ -7,8 +7,10 @@ org.yb.pgsql.TestPgBatchExecution
 org.yb.pgsql.TestPgCacheConsistency#testCatalogVersionLogging
 org.yb.pgsql.TestPgRegressBackfillIndex
 org.yb.pgsql.TestPgRegressBufferingWithSQLErrors
+org.yb.pgsql.TestPgRegressGin
 org.yb.pgsql.TestPgRegressHashInQueries
 org.yb.pgsql.TestPgRegressMisc#testPgRegressMiscSerial2
 org.yb.pgsql.TestPgRegressNonTxnCopy
+org.yb.pgsql.TestPgRegressSecondaryIndexScan
 org.yb.pgsql.TestPgRegressTabletSplit
 org.yb.pgsql.TestPgTransactions#testSerializableReadDelayWrite

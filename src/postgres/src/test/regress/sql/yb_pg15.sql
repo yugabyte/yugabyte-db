@@ -281,6 +281,13 @@ CREATE TABLE t(h INT, r INT, PRIMARY KEY(h, r));
 INSERT INTO t VALUES(1, 1), (1, 3);
 SELECT * FROM t WHERE h = 1 AND r in(1, 3) FOR KEY SHARE;
 
+-- Test for ItemPointerIsValid assertion failure
+CREATE TYPE rainbow AS ENUM ('red', 'orange', 'yellow', 'green', 'blue', 'purple');
+-- Aggregate pushdown
+SELECT COUNT(*) FROM pg_enum WHERE enumtypid = 'rainbow'::regtype;
+-- IndexOnlyScan
+SELECT enumlabel FROM pg_enum WHERE enumtypid = 'rainbow'::regtype;
+
 -- Cleanup
 DROP TABLE IF EXISTS address, address2, emp, emp2, emp_par1, emp_par1_1_100, emp_par2, emp_par3,
   fastpath, myemp, myemp2, myemp2_101_200, myemp2_1_100, p1, p2, pk_range_int_asc,
