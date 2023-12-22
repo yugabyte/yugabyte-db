@@ -11,26 +11,36 @@ menu:
 type: docs
 ---
 
-If your universe was created using Kubernetes, you have an option of modifying the Helm chart overrides. To do this, navigate to your universe's **Overview**, click **Actions > Edit Kubernetes Overrides** to open the **Kubernetes Overrides** dialog shown in the following illustration:
+If your universe was created using Kubernetes, you have an option of modifying the Helm chart overrides.
 
-![Kubernetes Overrides](/images/yb-platform/kubernetes-config66.png)
+## Edit Kubernetes overrides
 
-Complete the dialog by following instructions provided in [Configure Helm overrides](../../create-deployments/create-universe-multi-zone-kubernetes#configure-helm-overrides).
+To edit Kubernetes overrides, do the following:
 
-## Upgrade universes for GKE service account-based IAM
+1. Navigate to your universe's **Overview**.
 
-Upgrade existing universes to versions that support [GKE service account-based IAM](../../back-up-restore-universes/configure-backup-storage/#gke-service-account-based-iam-gcp-iam) using the following steps:
+1. Click **Actions > Edit Kubernetes Overrides** to open the **Kubernetes Overrides** dialog shown in the following illustration:
+
+    ![Kubernetes Overrides](/images/yb-platform/kubernetes-config66.png)
+
+1. Complete the dialog by following instructions provided in [Configure Helm overrides](../../create-deployments/create-universe-multi-zone-kubernetes#configure-helm-overrides).
+
+### Upgrade universes for GKE service account-based IAM
+
+If you are using Google Cloud Storage (GCS) for backups, you can enable GKE service account-based IAM (GCP IAM) so that Kubernetes universes can access GCS.
+
+Before upgrading a universe for GCP IAM, ensure you have the prerequisites. Refer to [GCP IAM](../../../back-up-restore-universes/configure-backup-storage/#gke-service-account-based-iam-gcp-iam).
+
+To upgrade an existing universe to use GCP IAM, do the following:
 
 1. Upgrade YugabyteDB to a version that supports the feature (2.18.4 or later). For more details, refer to [Upgrade the YugabyteDB software](../../manage-deployments/upgrade-software/).
 
-1. Apply overrides by following the preceding steps in Edit Kubernetes overrides.
+1. Using the steps in [Edit Kubernetes overrides](#edit-kubernetes-overrides), apply the following overrides.
 
-   **Prerequisite:** Provide the Kube namespace of the YugabyteDB universe pods with the annotated Kubernetes service account. This may not be present already, as the service account would not have been used in YugabyteDB Universe pods.
+    **Prerequisite:** Provide the Kube namespace of the YugabyteDB universe pods with the annotated Kubernetes service account. This may not be present already, as the service account would not have been used in YugabyteDB Universe pods.
 
-   Provide the following overrides after upgrading the YugabyteDB software:
-
-   - serviceAccount: Pass the service account name created in [prerequisites](../../back-up-restore-universes/configure-backup-storage/#prerequisites). Note that this service account should be present in the namespace being used for the YugabyteDB pod resources.
-   - [nodeSelector](../../install-yugabyte-platform/install-software/kubernetes/#nodeselector): Pass a node selector override to make sure that the YugabyteDB pods are scheduled on the GKE cluster's worker nodes that have a metadata server running.
+    - serviceAccount: Provide the name of the Kubernetes service account name you created. Note that this service account should be present in the namespace being used for the YugabyteDB pod resources.
+    - [nodeSelector](../../install-yugabyte-platform/install-software/kubernetes/#nodeselector): Pass a node selector override to make sure that the YugabyteDB pods are scheduled on the GKE cluster's worker nodes that have a metadata server running.
 
     ```yaml
     tserver:

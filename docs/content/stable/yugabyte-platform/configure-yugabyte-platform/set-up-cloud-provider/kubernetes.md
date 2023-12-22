@@ -507,7 +507,7 @@ The following overrides are available:
 
 - Overrides to use a secret for LDAP authentication. Refer to [Create secrets for Kubernetes](../../../../secure/authentication/ldap-authentication-ysql/#create-secrets-for-kubernetes).
 
-- Overrides to enable [GKE service account-based IAM](../../../back-up-restore-universes/configure-backup-storage/#gke-service-account-based-iam-gcp-iam) for backup and restores:
+- Overrides to enable [GKE service account-based IAM](../../../back-up-restore-universes/configure-backup-storage/#gke-service-account-based-iam-gcp-iam) for backup and restore using GCS:
 
   ```yaml
   serviceAccount:<KSA_NAME>
@@ -515,7 +515,7 @@ The following overrides are available:
    iam.gke.io/gke-metadata-server-enabled: "true"
   ```
 
-  If you have a multi-zone universe, provide the same overrides for all the zones across multiple regions. The provided namespace(s) should contain the annotated service account to be used as overrides.
+  If you have a multi-zone universe, provide the same overrides for all the zones across multiple regions. The provided namespace(s) should contain the annotated Kubernetes service account to be used as overrides.
 
 ## Configure Kubernetes multi-cluster environment
 

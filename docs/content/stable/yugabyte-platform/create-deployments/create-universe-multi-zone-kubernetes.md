@@ -124,7 +124,7 @@ Optionally, use the **Helm Overrides** section, as follows:
 
   If you specify conflicting overrides, YugabyteDB Anywhere would use the following order of precedence: universe availability zone-level overrides, universe-level overrides, provider overrides.
 
-- If you want to enable [GKE service account-based IAM](../../back-up-restore-universes/configure-backup-storage/#gke-service-account-based-iam-gcp-iam) for backup and restore at the universe level, add the following overrides:
+- If you want to enable [GKE service account-based IAM](../../back-up-restore-universes/configure-backup-storage/#gke-service-account-based-iam-gcp-iam) for backup and restore using GCS at the universe level, add the following overrides:
 
     ```yaml
     tserver:
@@ -136,8 +136,8 @@ Optionally, use the **Helm Overrides** section, as follows:
     {{<note title="Note">}}
   If you don't provide Namespace names for each zone/region during [provider creation](../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes/), add the names using the following steps:
 
-  1. Add the service account to the namespaces where pods are created.
-  1. Use [Edit kubernetes overrides](../../manage-deployments/edit-helm-overrides/#upgrade-universes-for-gke-service-account-based-iam) to add the annotated service account to pods.
+  1. Add the Kubernetes service account to the namespaces where pods are created.
+  1. Follow the steps in [Upgrade universes for GKE service account-based IAM](../../manage-deployments/edit-helm-overrides/#upgrade-universes-for-gke-service-account-based-iam) to add the annotated Kubernetes service account to pods.
     {{</note>}}
 
     To enable the GKE service account service at the provider level, refer to [Overrides](../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#overrides).
