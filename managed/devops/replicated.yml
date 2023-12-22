@@ -107,6 +107,44 @@ cmds:
     cmd: publicip
 
 components:
+  - name: prometheus_conf
+    containers:
+      - source: public
+        image_name: xmartlabs/htpasswd
+        name: prometheus_conf
+        version: latest
+        volumes:
+          - host_path: '{{repl ConfigOption "storage_path"}}/prometheus_configs'
+            container_path: /prometheus_configs
+            permission: "0777"
+        publish_events:
+          - name: Prometheus_config created
+            trigger: container-stop
+            subscriptions:
+              - component: prometheus
+                container: prom/prometheus
+                action: start
+        config_files:
+          - filename: /prometheus_configs/generate_prom_web_conf.sh
+            contents: |
+              #!/bin/sh
+
+              rm -f /prometheus_configs/web.yml
+              touch /prometheus_configs/web.yml
+
+              {{repl if ConfigOptionEquals "prometheus_enable_https" "1"}}
+              echo "tls_server_config:" >> /prometheus_configs/web.yml
+              echo "    cert_file: /prometheus_configs/cert.pem" >> /prometheus_configs/web.yml
+              echo "    key_file: /prometheus_configs/key.pem" >> /prometheus_configs/web.yml
+              {{repl end}}
+              {{repl if ConfigOptionEquals "prometheus_enable_auth" "1"}}
+              echo "basic_auth_users:" >> /prometheus_configs/web.yml
+              htpasswd_out=$(htpasswd -nbB {{repl ConfigOption "prometheus_username"}} {{repl ConfigOption "prometheus_password"}})
+              echo "    ${htpasswd_out/:/: }" >> /prometheus_configs/web.yml
+              {{repl end}}
+        ephemeral: true
+        entrypoint: ["sh", "/prometheus_configs/generate_prom_web_conf.sh"]
+
   - name: pg_upgrade
     containers:
       - source: public
@@ -148,7 +186,7 @@ components:
       - source: public
         image_name: postgres
         name: postgres
-        version: 14.8
+        version: 14.9
         env_vars:
           - name: POSTGRES_DB
             static_val: "yugaware"
@@ -226,7 +264,7 @@ components:
       - source: public
         name: prometheus
         image_name: prom/prometheus
-        version: v2.44.0
+        version: v2.46.0
         volumes:
           - host_path: '{{repl ConfigOption "storage_path"}}/prometheusv2'
             container_path: /prometheus
@@ -257,7 +295,8 @@ components:
             --query.max-samples={{repl ConfigOption \"prometheus_query_max_samples\"}} \
             --query.timeout={{repl ConfigOption \"prometheus_query_timeout\"}} \
             --web.enable-admin-api \
-            --web.enable-lifecycle",
+            --web.enable-lifecycle \
+            --web.config.file=/prometheus_configs/web.yml",
           ]
         publish_events:
           - name: Prometheus started
@@ -267,6 +306,12 @@ components:
                 container: tianon/postgres-upgrade
                 action: start
         config_files:
+          - filename: /prometheus_configs/cert.pem
+            contents: |
+              {{repl ConsoleSetting "tls.cert.data"}}
+          - filename: /prometheus_configs/key.pem
+            contents: |
+              {{repl ConsoleSetting "tls.key.data"}}
           - filename: /prometheus_configs/default_prometheus.yml
             contents: |
               global:
@@ -280,6 +325,16 @@ components:
               scrape_configs:
                 - job_name: 'prometheus'
                   scrape_timeout:  {{repl ConfigOption "prometheus_scrape_timeout"}}
+                  {{repl if ConfigOptionEquals "prometheus_enable_https" "1"}}
+                  scheme: https
+                  tls_config:
+                    insecure_skip_verify: true
+                  {{repl end}}
+                  {{repl if ConfigOptionEquals "prometheus_enable_auth" "1"}}
+                  basic_auth:
+                    username: '{{repl ConfigOption "prometheus_username" }}'
+                    password: '{{repl ConfigOption "prometheus_password" }}'
+                  {{repl end}}
                   static_configs:
                       - targets: [
                         '{{repl ConfigOption "docker_gateway" }}:9190'
@@ -544,8 +599,14 @@ components:
                 devops.home = /opt/yugabyte/devops
                 metrics.host = "{{repl ConfigOption "docker_gateway" }}"
                 metrics.port = 9190
+                metrics.protocol = "{{repl if ConfigOptionEquals "prometheus_enable_https" "1"}}https{{repl else}}http{{repl end}}"
                 metrics.scrape_interval = "{{repl ConfigOption "prometheus_scrape_interval" }}"
-                metrics.external.url = "http://{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}:{{repl ConfigOption "prometheus_external_port"}}"
+                metrics.external.url = "{{repl if ConfigOptionEquals "prometheus_enable_https" "1"}}https{{repl else}}http{{repl end}}://{{repl HostPrivateIpAddress "prometheus" "prom/prometheus" }}:{{repl ConfigOption "prometheus_external_port"}}"
+                {{repl if ConfigOptionEquals "prometheus_enable_auth" "1"}}
+                metrics.auth = true
+                metrics.auth_username = "{{repl ConfigOption "prometheus_username" }}"
+                metrics.auth_password = "{{repl ConfigOption "prometheus_password" }}"
+                {{repl end}}
                 storage.path = /opt/yugabyte/yugaware/data
                 docker.network = bridge
                 seedData = false
@@ -670,7 +731,7 @@ config:
         help_text: Specify protocol-host to be whitelisted in the CORS filter.
       - name: http_enabled
         title: Enable HTTP
-        help_text: When enabled we will listen to http (At least one of http or https should be enabled)
+        help_text: When enabled we will listen to HTTPS (At least one of http or https should be enabled)
         type: bool
         default: '{{repl if ConfigOptionEquals "https_enabled" "1"}}0{{repl else}}1{{repl end}}'
       - name: ui_http_port
@@ -681,7 +742,7 @@ config:
         when: '{{repl ConfigOptionEquals "http_enabled" "1"}}'
       - name: https_enabled
         title: Enable HTTPS
-        help_text: When enabled we will listen to https (At least one of https or http should be enabled)
+        help_text: When enabled we will listen to HTTPS (At least one of HTTPS or HTTP should be enabled)
         type: bool
         default: "1"
       - name: ui_https_port
@@ -774,6 +835,28 @@ config:
         title: How long until query execution times out, default to 30s
         type: text
         default: "30s"
+      - name: prometheus_enable_https
+        title: Enable HTTPS for Promehteus web UI/APIs
+        help_text: When enabled Prometheus will listen to HTTPS
+        type: bool
+        default: "0"
+      - name: prometheus_enable_auth
+        title: Enable basic auth for Promehteus web UI/APIs
+        help_text: When enabled Prometheus will require username/password to access UI/APIs
+        type: bool
+        default: "0"
+      - name: prometheus_username
+        title: Auth Username
+        type: text
+        default: "prometheus"
+        when: '{{repl ConfigOptionEquals "prometheus_enable_auth" "1" }}'
+      - name: prometheus_password
+        title: Auth Password
+        type: password
+        value_cmd:
+          name: dbpass_cmd
+          value_at: 0
+        when: '{{repl ConfigOptionEquals "prometheus_enable_auth" "1" }}'
 
 state:
   ready:

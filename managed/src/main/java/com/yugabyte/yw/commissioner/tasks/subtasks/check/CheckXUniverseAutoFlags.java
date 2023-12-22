@@ -2,47 +2,39 @@
 
 package com.yugabyte.yw.commissioner.tasks.subtasks.check;
 
-import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.params.ServerSubTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ServerSubTaskBase;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.gflags.GFlagDetails;
-import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
-import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.io.IOException;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import org.yb.WireProtocol.AutoFlagsConfigPB;
-import org.yb.client.YBClient;
 
 @Slf4j
 public class CheckXUniverseAutoFlags extends ServerSubTaskBase {
 
-  private final YBClientService ybClientService;
+  private final AutoFlagUtil autoFlagUtil;
   private final GFlagsValidation gFlagsValidation;
 
   @Inject
   protected CheckXUniverseAutoFlags(
       BaseTaskDependencies baseTaskDependencies,
-      YBClientService ybClientService,
-      GFlagsValidation gFlagsValidation) {
+      GFlagsValidation gFlagsValidation,
+      AutoFlagUtil autoFlagUtil) {
     super(baseTaskDependencies);
-    this.ybClientService = ybClientService;
     this.gFlagsValidation = gFlagsValidation;
+    this.autoFlagUtil = autoFlagUtil;
   }
 
   public static class Params extends ServerSubTaskParams {
@@ -90,69 +82,6 @@ public class CheckXUniverseAutoFlags extends ServerSubTaskBase {
   }
 
   /**
-   * Gets auto flag config of a universe.
-   *
-   * @param universe
-   * @return autoFlagConfig
-   */
-  private AutoFlagsConfigPB getAutoFlagConfigForUniverse(Universe universe) {
-    String masterAddresses = universe.getMasterAddresses();
-    String certificate = universe.getCertificateNodetoNode();
-    try (YBClient client = ybClientService.getClient(masterAddresses, certificate)) {
-      return client.autoFlagsConfig().getAutoFlagsConfig();
-    } catch (Exception e) {
-      log.error(
-          "Error occurred while fetching auto flags config for universe " + universe + ": ", e);
-      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
-    }
-  }
-
-  /**
-   * Gets promoted auto flags map with target value on a universe.
-   *
-   * @param universe
-   * @param serverType
-   * @return map of string which contains flags and their values.
-   * @throws IOException
-   */
-  private Map<String, String> getPromotedAutoFlagsWithTargetValues(
-      Universe universe, ServerType serverType) throws IOException {
-    AutoFlagsConfigPB autoFlagsConfigPB = getAutoFlagConfigForUniverse(universe);
-    List<String> promotedAutoFlagsList =
-        autoFlagsConfigPB.getPromotedFlagsList().stream()
-            .filter(
-                promotedFlagsPerProcessPB -> {
-                  return promotedFlagsPerProcessPB
-                      .getProcessName()
-                      .equals(ServerType.MASTER.equals(serverType) ? "yb-master" : "yb-tserver");
-                })
-            .findFirst()
-            .get()
-            .getFlagsList();
-    String version = universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
-    Map<String, GFlagDetails> autoFlagsMetadataMap =
-        gFlagsValidation.listAllAutoFlags(version, serverType.name()).stream()
-            .collect(Collectors.toMap(flagDetails -> flagDetails.name, Function.identity()));
-    Map<String, String> promotedAutoFlagsWithValues = new HashMap<>();
-    for (String flag : promotedAutoFlagsList) {
-      if (autoFlagsMetadataMap.containsKey(flag)) {
-        promotedAutoFlagsWithValues.put(flag, autoFlagsMetadataMap.get(flag).target);
-      }
-    }
-    for (Map.Entry<String, String> entry :
-        GFlagsUtil.getBaseGFlags(
-                serverType,
-                universe.getUniverseDetails().getPrimaryCluster(),
-                universe.getUniverseDetails().clusters)
-            .entrySet()) {
-      if (autoFlagsMetadataMap.containsKey(entry.getKey())) {
-        promotedAutoFlagsWithValues.put(entry.getKey(), entry.getValue());
-      }
-    }
-    return promotedAutoFlagsWithValues;
-  }
-
-  /**
    * Validates that every promoted auto flags of the source universe exists in the target universe.
    *
    * @param sourceUniverse
@@ -162,24 +91,23 @@ public class CheckXUniverseAutoFlags extends ServerSubTaskBase {
    */
   private void checkPromotedAutoFlagsOnTargetUniverse(
       Universe sourceUniverse, Universe targetUniverse, ServerType serverType) throws IOException {
-    String sourceUniverseVersion =
-        sourceUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
-    // Prepare map of promoted auto flags with user overridden auto flags.
-    Map<String, String> promotedAutoFlags =
-        getPromotedAutoFlagsWithTargetValues(sourceUniverse, serverType);
-    promotedAutoFlags =
-        gFlagsValidation.getFilteredAutoFlagsWithNonInitialValue(
-            promotedAutoFlags, sourceUniverseVersion, serverType);
+    // Prepare map of promoted auto flags.
+    Set<String> promotedAndModifiedAutoFlags =
+        autoFlagUtil.getPromotedAutoFlags(
+            sourceUniverse, serverType, AutoFlagUtil.LOCAL_PERSISTED_AUTO_FLAG_CLASS);
     // Fetch set of auto flags supported on target universe.
     String targetUniverseVersion =
         targetUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
     Set<String> supportedAutoFlags =
-        gFlagsValidation.listAllAutoFlags(targetUniverseVersion, serverType.name()).stream()
-            .map(flagDetails -> flagDetails.name)
+        gFlagsValidation
+            .extractAutoFlags(
+                targetUniverseVersion,
+                serverType.equals(ServerType.MASTER) ? "yb-master" : "yb-tserver")
+            .autoFlagDetails.stream()
+            .map(flag -> flag.name)
             .collect(Collectors.toSet());
-    // Compare.
-    promotedAutoFlags.forEach(
-        (flag, value) -> {
+    promotedAndModifiedAutoFlags.forEach(
+        flag -> {
           if (!supportedAutoFlags.contains(flag)) {
             throw new PlatformServiceException(
                 BAD_REQUEST,

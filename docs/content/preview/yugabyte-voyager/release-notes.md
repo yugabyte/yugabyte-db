@@ -13,6 +13,19 @@ type: docs
 
 Included here are the release notes for the YugabyteDB Voyager v1 release series. Content will be added as new notable features and changes are available in the patch releases of the YugabyteDB v1 series.
 
+## v1.5 - September 11, 2023
+
+### New feature
+
+* Support for [live migration](../migrate/live-migrate/) from Oracle databases (with the option of [fall-forward](../migrate/live-fall-forward/)) [Tech Preview].
+
+Note that as the feature in Tech Preview, there are some known limitations. For details, refer to [Live migration limitations](../migrate/live-migrate/#limitations), and [Live migration with fall-forward limitations](../migrate/live-fall-forward/#limitations).
+
+### Key enhancements
+
+* The yb-voyager [export data](../reference/yb-voyager-cli/#export-data) and [export schema](../reference/yb-voyager-cli/#export-schema) commands now support overriding the `pg_dump` arguments internally. The arguments are present at `/etc/yb-voyager/pg_dump-args.ini`. Any additions or modifications to this file will be honoured by yb-voyager.
+* All yb-voyager commands that require a password now support providing passwords using environment variables such as `SOURCE_DB_PASSWORD` and `TARGET_DB_PASSWORD`. This addresses the security concern of a password being leaked via the `ps` command output. In addition, the password will not be present in any configuration or log files on the disk.
+
 ## v1.4 - June 30, 2023
 
 ### Key enhancements
@@ -21,7 +34,7 @@ Included here are the release notes for the YugabyteDB Voyager v1 release series
 
 * In addition to AWS S3, `import data file` now supports directly importing objects (CSV/TEXT files) stored in GCS and Azure Blob Storage. You can specify GCS and Azure Blob Storage "directories" by prefixing them with `gs://` and `https://`.
 
-* When using the [accelerated data export](../migrate-steps/#accelerate-data-export-for-mysql-and-oracle), Voyager can now connect to the source databases using SSL.
+* When using the [accelerated data export](../migrate/migrate-steps/#accelerate-data-export-for-mysql-and-oracle), Voyager can now connect to the source databases using SSL.
 
 * The `analyze-schema` command now reports unsupported data types.
 
@@ -43,7 +56,7 @@ Included here are the release notes for the YugabyteDB Voyager v1 release series
 
 ### Key enhancements
 
-* Export data for MySQL and Oracle is now 2-4x faster. To leverage this performance improvement, set the environment variable `BETA_FAST_DATA_EXPORT=1`. Most features, such as migrating partitioned tables, sequences, and so on, are supported in this mode. Refer to [Export data](../migrate-steps/#export-data) for more details.
+* Export data for MySQL and Oracle is now 2-4x faster. To leverage this performance improvement, set the environment variable `BETA_FAST_DATA_EXPORT=1`. Most features, such as migrating partitioned tables, sequences, and so on, are supported in this mode. Refer to [Export data](../migrate/migrate-steps/#export-data) for more details.
 
 * Added support for characters such as backspace(\b) in quote and escape character with [--file-opts](../reference/yb-voyager-cli/#file-opts) in import data file.
 

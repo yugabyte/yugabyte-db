@@ -604,7 +604,7 @@ TEST_F(TestCQLService, TestCQLStatementEndpoint) {
   string result = buf.ToString();
   ASSERT_STR_CONTAINS(result, "prepared_statements");
   ASSERT_STR_CONTAINS(result, "dummyquery");
-  ASSERT_STR_CONTAINS(result, b2a_hex("dummyqueryid"));
+  ASSERT_STR_CONTAINS(result, std::stoull(b2a_hex("dummyqueryid").substr(0, 16), 0, 16));
 
   // reset the counters and verify
   ASSERT_OK(curl.FetchURL(strings::Substitute("http://$0/statements-reset",

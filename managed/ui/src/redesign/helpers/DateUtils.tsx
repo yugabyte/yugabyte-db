@@ -65,7 +65,7 @@ type FormatDateProps = {
 };
 
 export const YBFormatDate: FC<FormatDateProps> = ({ date, timeFormat }) => {
-  const currentUserTimezone = useSelector((state: any) => state.customer.currentUser.data.timezone);
+  const currentUserTimezone = useSelector((state: any) => state.customer?.currentUser?.data?.timezone);
   return <>{formatDatetime(date, timeFormat, currentUserTimezone)}</>;
 };
 

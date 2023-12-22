@@ -25,7 +25,9 @@
       "areYouSure": "Are you sure ?",
       "delete": "Delete",
       "back": "Back",
-      "selectAll": "Select All"
+      "selectAll": "Select All",
+      "selected": "Selected",
+      "note": "Note :"
     },
     "universeActions": {
       "encryptionAtRest": {
@@ -59,7 +61,7 @@
         "rotatePwdSuccessMsg": "DB credentials for YSQL updated successfully",
         "rotateBothYSQLWarning": "Rotating YSQL Password and Editing YSQL settings should be performed at different times.",
         "disableYSQLWarning1": "Are you sure you want to disable YSQL endpoint ?",
-        "disableYSQLWarning2": "<b>Note :</b> Once you perform this operation, You cannot enable it again."
+        "disableYSQLWarning2": "Once you perform this operation, You cannot enable it again."
       },
       "editYCQLSettings": {
         "modalTitle": "Edit YCQL configuration",
@@ -73,7 +75,8 @@
         "reEnterNewPwd": "Re-enter new password",
         "updateSettingsSuccessMsg": "Updating YCQL configuration is in progress",
         "rotatePwdSuccessMsg": "DB credentials for YCQL updated successfully",
-        "rotateBothYCQLWarning": "Rotating YCQL Password and Editing YCQL settings should be performed at different times."
+        "rotateBothYCQLWarning": "Rotating YCQL Password and Editing YCQL settings should be performed at different times.",
+        "overridePortsLabel": "Override YCQL Default Ports"
       },
       "encryptionInTransit": {
         "title": "Manage encryption in-Transit",
@@ -84,17 +87,19 @@
         "enableNNEncryption": "Enable “Node to Node” Encryption",
         "enableCNEncryption": "Enable “Client to Node” Encryption",
         "enableCNAndNNEncryption": "Enable “Node to Node” and “Client to Node” Encryption",
-        "selectCA": "Select certificate authority",
-        "rotateCA": "Rotate certificate authority",
+        "selectCA": "Select root certificate",
+        "rotateCA": "Rotate root certificate",
         "useRollingUpgrade": "Use rolling upgrade to apply this change",
         "rollingUpgradeInputTitle": "Set the upgrade delay between servers (Seconds)",
         "rotateServerCert": "Rotate server certificate",
         "rotateNToNServerCert": "Rotate “Node to Node” Server Certificate",
         "rotateCToNServerCert": "Rotate “Client to Node” Server Certificate",
         "changeCTNCertWarning": "Note! Changing the client to node root certificate may cause the client to loose connection, please update the certificate used in your client application.",
-        "disableEncryptionWarning": "Rotating certificates (Certificate Authority or Server Certificate) and Enabling/Disabling encryption should be performed at different times.",
-        "disableNNRotationWarning": "You have selected a new Certificates Authority for Node to Node encryption. Rotating a Certificates Authority will automatically rotate its associated Server Certificate.",
-        "disableCNRotationWarning": "You have selected a new Certificates Authority for Client to Node encryption. Rotating a Certificates Authority will automatically rotate its associated Server Certificate."
+        "disableEncryptionWarning": "Rotating certificates (Root Certificate or Server Certificate) and Enabling/Disabling encryption should be performed at different times.",
+        "rootCAModifiedWarning": "You have selected a new Certificates Authority for Node to Node encryption. Rotating a Certificates Authority will automatically rotate its associated Server Certificate.",
+        "clientRootCAModifiedWarning": "You have selected a new Certificates Authority for Client to Node encryption. Rotating a Certificates Authority will automatically rotate its associated Server Certificate.",
+        "enableEITWarning": "Enable Node to Node encryption or Client to Node encryption to enable encryption in transit.",
+        "disableEITWarning": "Note! Enabling/Disabling of “Encryption In Transit” or Enabling/Disabling of “Node to Node” or “Client to Node” encryption will be performed as non rolling upgrade."
       }
     },
     "commonErrors": {
@@ -255,6 +260,7 @@
         "hbaLDAPConfHostSSL": "hostssl database user IP-address auth-method [auth-options]",
         "invalidKey": "Invalid attribute key or missing '=' between key value pair",
         "uploadKeyset": "Need to upload JWKS keyset",
+        "jwksNotSupported": "Please select database versions 2.18 or above to upload JWKS",
         "missingAttributeValue": "Missing value for the attribute key",
         "missingQuoteAttributeValue": "Missing quotes or having spaces within attribute values",
         "nonASCIIDetected": "Non-ASCII value detected",
@@ -297,7 +303,10 @@
         "title": "Instance Configuration",
         "useTimeSync": "Use {{provider}} Time Sync",
         "useTimeSyncHelper": "Enable the {{provider}} Time Sync functionality for the DB servers.",
-        "volumeInfo": "Volume Info"
+        "volumeInfo": "Volume Info",
+        "volumeSizeUnit": "GB",
+        "throughputUnit": "MB/s",
+        "k8VolumeSizeUnit": "Gib"
       },
       "securityConfig": {
         "title": "Security Configurations",
@@ -632,6 +641,7 @@
       "restoreSuccess": "Success. Click <0>here</0> for task details",
       "allKeyspaces": "All Keyspaces",
       "preparingRestore": "Preparing Restore...",
+      "waitingMsg": "This can take a few seconds",
       "backupInfoBanner": {
         "backupSource": "Backup source (universe name)",
         "createdAt": "Created at",
@@ -644,6 +654,7 @@
       "generalSettings": {
         "restore": "Restore",
         "next": "Next",
+        "verifying": "Verifying",
         "universeSelection": {
           "title": "Select target",
           "selectTargetUniverse": "Select target universe",
@@ -703,6 +714,21 @@
         "generalSettings": "General Settings",
         "selectTables": "Select Tables",
         "renameKeyspaces": "Rename keyspace/s"
+      },
+      "tablespaces": {
+        "checkboxTitle": "Restore tablespaces and data to their respective regions",
+        "checkboxHelpText": "<b>Note!</b> If you don't select this option, or the target universe doesn't have a matching topology, all data will be restored to the primary region.",
+        "unSupportedModal": {
+          "title": "Unable to Restore Tablespaces",
+          "warningText": "<b>Note!</b> You can proceed without restoring tablespaces, however none of the tablespaces are preserved and all their data is written to the primary region [location]. After the restore, you will have to re-add all the tablespaces. <a>Learn more</a>",
+          "submitLabel": "Restore Without Tablespaces",
+          "cancelLabel": "Cancel Restore",
+          "subTitle": "Tablespaces that don't meet the requirements for the restore",
+          "logs": "See the <a>logs</a> for more information.",
+          "topologyMismatch": "Topology mismatch with the target Universe",
+          "nameAlreadyExists": "Name already exists in the target universe",
+          "tablespaceName": "Tablespace name"
+        }
       }
     },
     "rbac": {
@@ -713,7 +739,7 @@
           "form": {
             "name": "Name",
             "namePlaceholder": "Role Name",
-            "description": "Description (Optional)",
+            "description": "Description",
             "descriptionPlaceholder": "Role description",
             "selectPermissions": "Select Permissions",
             "selectPermissionSubText": "Select the permissions you want to include in this role.",
@@ -755,9 +781,78 @@
         }
       },
       "permissions": {
+        "title": "Select a role and define its scope by mapping it to applicable Universes.",
+        "connectOnly": "<b>'Connect Only'</b> role is automatically assigned to users without a role, restricting access to login and view their own profile page.",
+        "noUniverses": "There are no Universes deployed in this account. Selected roles will be applied to all future Universes by default. You can modify role's scope after deployment.",
+        "role": "Role",
+        "for": "for",
+        "assignNewRole": "Assign Role",
+        "userAssignedRole": "User’s assigned roles",
         "selectPermissionModal": {
           "title": "Select Permissions"
         }
+      },
+      "users": {
+        "create": {
+          "title": "Add User",
+          "form": {
+            "email": "User Email",
+            "emailPlaceholder": "Add email",
+            "password": "Password",
+            "confirmPassword": "Confirm Password"
+          }
+        },
+        "edit": {
+          "title": "Edit User",
+          "delete": "Delete User"
+        },
+        "list": {
+          "rowsCount": "{{count}} Users",
+          "createUser": "Create User",
+          "search": "search by user email",
+          "table": {
+            "email": "User Email",
+            "createdAt": "Created At",
+            "actions": "Actions",
+            "moreActions": {
+              "editAssignedRoles": "Edit Assigned Roles",
+              "deleteUser": "Delete User"
+            }
+          }
+        }
+      },
+      "policy": {
+        "universeSelection": {
+          "noRole": "Once you select the role, you can select the Universes here.",
+          "editSelection": "Edit Selection",
+          "allFutureUniverses": "All present and future Universes.",
+          "universes": "Universes",
+          "title": {
+            "selectUniverse": "Select Universe",
+            "editUniverse": "Edit universe"
+          },
+          "universeName": "Universe Name",
+          "searchPlaceholder": "Search by universe name...",
+          "includeFutureUniverse": "Include future Universes"
+        }
+      }
+    },
+    "restore": {
+      "restoreDetails": {
+        "title": "Restore Details",
+        "sourceUniverse": "Backup source Universe",
+        "targetUniverse": "Target Universe",
+        "dataRestored": "Data Restored",
+        "timeToRestore": "Time to Restore",
+        "tableType": "Table Type",
+        "backupDate": "Backup Created on",
+        "restoreStatus": "Restore Status",
+        "startTime": "Start Time",
+        "endTime": "End time",
+        "copyUUID": "Copy UUID",
+        "database": "Database",
+        "copyBackupLocation": "Copy backup location",
+        "copied": "Copied"
       }
     }
   }

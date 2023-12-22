@@ -18,7 +18,7 @@ Using YugabyteDB Anywhere (YBA), you can deploy YugabyteDB universes on nodes wi
 
 YBA supports deploying YugabyteDB on both x86 and ARM (aarch64) architecture-based hardware.
 
-Note that support for ARM architectures is unavailable for [airgapped](../../install-yugabyte-platform/install-software/airgapped/) setups, because YBA ARM support for [AWS Graviton](https://aws.amazon.com/ec2/graviton/) requires Internet connectivity.
+Note that support for ARM architectures is unavailable for airgapped setups, because YBA ARM support for [AWS Graviton](https://aws.amazon.com/ec2/graviton/) requires Internet connectivity.
 
 ## Supported operating systems
 

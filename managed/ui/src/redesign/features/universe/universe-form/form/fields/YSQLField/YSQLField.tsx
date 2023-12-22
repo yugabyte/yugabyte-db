@@ -102,7 +102,7 @@ export const YSQLField = ({ disabled, enforceAuth }: YSQLFieldProps): ReactEleme
             </Box>
           )}
 
-          {ysqlAuthEnabled && !disabled && (
+          {(ysqlAuthEnabled || enforceAuth) && !disabled && (
             <Box display="flex" flexDirection="column" mt={3}>
               <Grid container spacing={3} direction="column">
                 <Grid item sm={12} lg={10}>

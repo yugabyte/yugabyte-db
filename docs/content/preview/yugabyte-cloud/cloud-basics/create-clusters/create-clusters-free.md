@@ -95,7 +95,7 @@ To keep your cluster from being paused, you (or, where applicable, an applicatio
 - You can't change the maintenance window schedule, set exclusion periods, or delay cluster maintenance for Sandbox clusters.
 - You can't pause Sandbox clusters.
 - Sandbox clusters have the following resource limitations:
-  - Up to 10 simultaneous connections; more than that will result in increased latencies and dropped connections.
+  - Up to 15 simultaneous connections; more than that will result in increased latencies and dropped connections.
   - Maximum 500 tables or 12.5 million rows; more than that may result in out-of-memory errors. [Large copy operations](../../../cloud-troubleshoot/#connection-dropped-during-copy-operation) (for example, copying many rows of tables with many columns) may also result in out-of-memory errors.
 
 YugabyteDB is a distributed database optimized for deployment across multiple nodes. Because Sandbox clusters are single-node, they are not suitable for proof-of-concept (POC), staging, or performance testing. [Request a free trial](../../../managed-freetrial/) to try out bigger clusters with more resources.

@@ -98,7 +98,9 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     anotherTable = table + "_2";
 
     if (methodName.startsWith("testGrantPermission") ||
-        methodName.startsWith("testRevokePermission")) {
+        methodName.startsWith("testRevokePermission") ||
+        methodName.startsWith("testGrantRole") ||
+        methodName.startsWith("testRevokeRole")) {
       createRole(cs.getSession(), anotherUsername, password, true, false, false);
     }
   }
@@ -974,10 +976,8 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     // Grant AUTHORIZE on grantedRole.
     grantPermission(AUTHORIZE, ROLE, grantedRole, username);
 
-    thrown.expect(UnauthorizedException.class);
-    if (stmtType.equals(GrantRevoke.GRANT)) {
-      cs2.execute(String.format("GRANT %s TO %s", grantedRole, anotherUsername));
-    } else {
+    cs2.execute(String.format("GRANT %s TO %s", grantedRole, anotherUsername));
+    if (stmtType.equals(GrantRevoke.REVOKE)) {
       cs2.execute(String.format("REVOKE %s FROM %s", grantedRole, anotherUsername));
     }
   }
@@ -987,7 +987,7 @@ public class TestAuthorizationEnforcement extends BaseAuthenticationCQLTest {
     String recipientRole = String.format("%s_without_permissions_on_granted", stmtType);
     createRole(cs.getSession(), recipientRole, password, false, false, false);
 
-    // Grant AUTHORIZE on recipientRole */
+    // Grant AUTHORIZE on recipientRole.
     grantPermission(AUTHORIZE, ROLE, recipientRole, username);
 
     thrown.expect(UnauthorizedException.class);

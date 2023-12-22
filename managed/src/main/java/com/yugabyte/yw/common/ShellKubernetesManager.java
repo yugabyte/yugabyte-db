@@ -549,11 +549,16 @@ public class ShellKubernetesManager extends KubernetesManager {
     List<String> commandList =
         ImmutableList.of(
             "kubectl", "get", "sc", storageClassName, "-o", "jsonpath='{.allowVolumeExpansion}'");
-    ShellResponse response =
-        execCommand(config, commandList, false)
-            .processErrors("Unable to read StorageClass volume expansion");
-    String allowsExpansion = deserialize(response.getMessage(), String.class);
-    return allowsExpansion.equalsIgnoreCase("true");
+    ShellResponse response = execCommand(config, commandList, false);
+    if (response.isSuccess()) {
+      String allowsExpansion = deserialize(response.getMessage(), String.class);
+      return allowsExpansion.equalsIgnoreCase("true");
+    }
+    // Could not look into StorageClass.allowVolumeExpansion. This could be due to lack of
+    // permission to read cluster scoped resources. So assume that StorageClass would
+    // allow expansion and skip the validation.
+    log.info("Sufficient permissions not available to validate StorageClass {}", storageClassName);
+    return true;
   }
 
   public void checkAndAddFlagToCommand(List<String> commandList, String flagKey, String flagValue) {

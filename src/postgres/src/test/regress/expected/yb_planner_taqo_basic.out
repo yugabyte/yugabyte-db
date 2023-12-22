@@ -68,26 +68,26 @@ SET yb_enable_base_scans_cost_model = ON;
 SET yb_bnl_batch_size = 1024;
 SET yb_enable_optimizer_statistics = ON;
 EXPLAIN (costs off) SELECT count(*) from t1;
-           QUERY PLAN
----------------------------------
+                   QUERY PLAN
+------------------------------------------------
  Finalize Aggregate
-   ->  Seq Scan on t1
+   ->  Index Only Scan using t1_v1_k2_idx on t1
          Partial Aggregate: true
 (3 rows)
 
 EXPLAIN (costs off) SELECT sum(v1) from t1;
-           QUERY PLAN
----------------------------------
+                   QUERY PLAN
+------------------------------------------------
  Finalize Aggregate
-   ->  Seq Scan on t1
+   ->  Index Only Scan using t1_v1_k2_idx on t1
          Partial Aggregate: true
 (3 rows)
 
 EXPLAIN (costs off) SELECT avg(v1) from t1;
-           QUERY PLAN
----------------------------------
+                   QUERY PLAN
+------------------------------------------------
  Finalize Aggregate
-   ->  Seq Scan on t1
+   ->  Index Only Scan using t1_v1_k2_idx on t1
          Partial Aggregate: true
 (3 rows)
 
@@ -298,7 +298,7 @@ EXPLAIN (costs off) SELECT ts2.k1, ts2.k2, ts3.v1, ts3.v2 FROM ts2 JOIN ts3 ON t
 (11 rows)
 
 EXPLAIN (costs off) SELECT t1.k1, t1.k2, t2.v1, t2.v2 FROM t1 JOIN t2 on t1.k1 = t2.k1 WHERE t1.k1 >= (2500) AND t1.k1 < (25100) AND t2.k1 >= (2500) AND t2.k1 < (25100) GROUP BY t1.k1, t1.k2, t2.v1, t2.v2;
-                              QUERY PLAN                               
+                              QUERY PLAN
 -----------------------------------------------------------------------
  Group
    Group Key: t1.k1, t1.k2, t2.v1, t2.v2
@@ -329,64 +329,64 @@ EXPLAIN (costs off) SELECT t1.k1, t1.k2, t2.v1, t2.v2 FROM t1 JOIN t2 on t1.k1 =
 (10 rows)
 
 EXPLAIN (costs off) SELECT ts2.k1, ts2.k2, ts3.v1, ts3.v2 FROM ts2 JOIN ts3 on ts2.k1 = ts3.k1 WHERE ts2.k1 >= (300) AND ts2.k1 < (3100) AND ts3.k1 >= (300) AND ts3.k1 < (3100) GROUP BY ts2.k1, ts2.k2, ts3.v1, ts3.v2;
-                                                    QUERY PLAN
-------------------------------------------------------------------------------------------------------------------
+                             QUERY PLAN
+---------------------------------------------------------------------
  Group
    Group Key: ts2.k1, ts2.k2, ts3.v1, ts3.v2
    ->  Sort
          Sort Key: ts2.k1, ts2.k2, ts3.v1, ts3.v2
-         ->  YB Batched Nested Loop Join
-               Join Filter: (ts2.k1 = ts3.k1)
-               ->  Index Scan using ts2_pkey on ts2
-                     Index Cond: ((k1 >= 300) AND (k1 < 3100))
+         ->  Hash Join
+               Hash Cond: (ts3.k1 = ts2.k1)
                ->  Index Scan using ts3_pkey on ts3
-                     Index Cond: ((k1 = ANY (ARRAY[ts2.k1, $1, $2, ..., $1023])) AND (k1 >= 300) AND (k1 < 3100))
-(10 rows)
+                     Index Cond: ((k1 >= 300) AND (k1 < 3100))
+               ->  Hash
+                     ->  Index Scan using ts2_pkey on ts2
+                           Index Cond: ((k1 >= 300) AND (k1 < 3100))
+(11 rows)
 
 EXPLAIN (costs off) SELECT ts2.k1, ts2.k2, ts3.v1, ts3.v2 FROM ts2 JOIN ts3 on ts2.k1 = ts3.k1 WHERE ts2.k1 >= (2800) AND ts2.k1 < (3100) AND ts3.k1 >= (300) AND ts3.k1 < (3300) GROUP BY ts2.k1, ts2.k2, ts3.v1, ts3.v2;
-                                                    QUERY PLAN
-------------------------------------------------------------------------------------------------------------------
+                              QUERY PLAN
+----------------------------------------------------------------------
  Group
    Group Key: ts2.k1, ts2.k2, ts3.v1, ts3.v2
    ->  Sort
          Sort Key: ts2.k1, ts2.k2, ts3.v1, ts3.v2
-         ->  YB Batched Nested Loop Join
-               Join Filter: (ts2.k1 = ts3.k1)
-               ->  Index Scan using ts2_pkey on ts2
-                     Index Cond: ((k1 >= 2800) AND (k1 < 3100))
+         ->  Hash Join
+               Hash Cond: (ts3.k1 = ts2.k1)
                ->  Index Scan using ts3_pkey on ts3
-                     Index Cond: ((k1 = ANY (ARRAY[ts2.k1, $1, $2, ..., $1023])) AND (k1 >= 300) AND (k1 < 3300))
-(10 rows)
+                     Index Cond: ((k1 >= 300) AND (k1 < 3300))
+               ->  Hash
+                     ->  Index Scan using ts2_pkey on ts2
+                           Index Cond: ((k1 >= 2800) AND (k1 < 3100))
+(11 rows)
 
 EXPLAIN (costs off) SELECT t1.k1, t1.k2, t2.v1, t2.v2 FROM t1 JOIN t2 ON t1.k1 = t2.k1 AND t1.k2 = t2.k2 WHERE t1.k1 > (1200) AND t1.k1 <= (1300) GROUP BY t1.k1, t1.k2, t2.v1, t2.v2;
-                                                               QUERY PLAN
-----------------------------------------------------------------------------------------------------------------------------------------
+                           QUERY PLAN
+-----------------------------------------------------------------
  Group
    Group Key: t1.k1, t1.k2, t2.v1, t2.v2
    ->  Sort
          Sort Key: t1.k1, t1.k2, t2.v1, t2.v2
-         ->  YB Batched Nested Loop Join
-               Join Filter: ((t1.k1 = t2.k1) AND (t1.k2 = t2.k2))
+         ->  Nested Loop
                ->  Index Scan using t1_pkey on t1
                      Index Cond: ((k1 > 1200) AND (k1 <= 1300))
                ->  Index Scan using t2_pkey on t2
-                     Index Cond: (ROW(k1, k2) = ANY (ARRAY[ROW(t1.k1, t1.k2), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
-(10 rows)
+                     Index Cond: ((k1 = t1.k1) AND (k2 = t1.k2))
+(9 rows)
 
 EXPLAIN (costs off) SELECT t1.k1, t1.k2, t2.v1, t2.v2 FROM t1 JOIN t2 ON t1.k1 = t2.k1 AND t1.k2 = t2.k2 WHERE t1.k1 > (1200) AND t1.k1 <= (1500) GROUP BY t1.k1, t1.k2, t2.v1, t2.v2;
-                                                               QUERY PLAN
-----------------------------------------------------------------------------------------------------------------------------------------
+                           QUERY PLAN
+-----------------------------------------------------------------
  Group
    Group Key: t1.k1, t1.k2, t2.v1, t2.v2
    ->  Sort
          Sort Key: t1.k1, t1.k2, t2.v1, t2.v2
-         ->  YB Batched Nested Loop Join
-               Join Filter: ((t1.k1 = t2.k1) AND (t1.k2 = t2.k2))
+         ->  Nested Loop
                ->  Index Scan using t1_pkey on t1
                      Index Cond: ((k1 > 1200) AND (k1 <= 1500))
                ->  Index Scan using t2_pkey on t2
-                     Index Cond: (ROW(k1, k2) = ANY (ARRAY[ROW(t1.k1, t1.k2), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
-(10 rows)
+                     Index Cond: ((k1 = t1.k1) AND (k2 = t1.k2))
+(9 rows)
 
 EXPLAIN (costs off) SELECT ts2.k1, ts2.k2, ts3.v1, ts3.v2 FROM ts2 JOIN ts3 ON ts2.k1 = ts3.k1 AND ts2.k2 = ts3.k2 WHERE ts2.k1 > (1200) AND ts2.k1 <= (1300) GROUP BY ts2.k1, ts2.k2, ts3.v1, ts3.v2;
                            QUERY PLAN
@@ -993,7 +993,7 @@ EXPLAIN (costs off) SELECT * FROM t1 JOIN t2 ON t1.v1 = t2.v1 WHERE t1.k1 >= (81
 (7 rows)
 
 EXPLAIN (costs off) SELECT * FROM t1 JOIN t2 ON t1.v1 = t2.v1 WHERE t1.k1 >= (8100) AND t1.k1 < (8190) AND t2.k1 >= (8180) AND t2.k1 < (8400);
-                        QUERY PLAN                        
+                        QUERY PLAN
 ----------------------------------------------------------
  Hash Join
    Hash Cond: (t2.v1 = t1.v1)
@@ -1089,7 +1089,7 @@ EXPLAIN (costs off) SELECT * FROM t1 JOIN t2 ON t1.k1 = t2.k1 WHERE t1.k1 >= (81
 (7 rows)
 
 EXPLAIN (costs off) SELECT * FROM t1 JOIN t2 ON t1.k1 = t2.k1 WHERE t1.k1 >= (8100) AND t1.k1 < (8190) AND t2.k1 >= (8180) AND t2.k1 < (8400);
-                        QUERY PLAN                        
+                        QUERY PLAN
 ----------------------------------------------------------
  Merge Join
    Merge Cond: (t2.k1 = t1.k1)
@@ -1114,7 +1114,7 @@ EXPLAIN (costs off) SELECT * FROM t2 JOIN ts2 ON t2.k1 = ts2.k1 WHERE t2.k1 >= (
 (8 rows)
 
 EXPLAIN (costs off) SELECT * FROM t2 JOIN ts2 ON t2.k1 = ts2.k1 WHERE t2.k1 >= (17100) AND t2.k1 < (17190) AND ts2.k1 >= (2180) AND ts2.k1 < (2400);
-                        QUERY PLAN                        
+                        QUERY PLAN
 ----------------------------------------------------------
  Merge Join
    Merge Cond: (t2.k1 = ts2.k1)
@@ -1127,17 +1127,15 @@ EXPLAIN (costs off) SELECT * FROM t2 JOIN ts2 ON t2.k1 = ts2.k1 WHERE t2.k1 >= (
 (8 rows)
 
 EXPLAIN (costs off) SELECT * FROM t2 JOIN ts3 ON t2.k1 = ts3.k1 WHERE t2.k1 >= (17180) AND t2.k1 < (17190) AND ts3.k1 >= (2180) AND ts3.k1 < (2190);
-                        QUERY PLAN
-----------------------------------------------------------
- Merge Join
-   Merge Cond: (t2.k1 = ts3.k1)
+                                              QUERY PLAN
+------------------------------------------------------------------------------------------------------
+ YB Batched Nested Loop Join
+   Join Filter: (t2.k1 = ts3.k1)
    ->  Index Scan using t2_pkey on t2
          Index Cond: ((k1 >= 17180) AND (k1 < 17190))
-   ->  Sort
-         Sort Key: ts3.k1
-         ->  Index Scan using ts3_pkey on ts3
-               Index Cond: ((k1 >= 2180) AND (k1 < 2190))
-(8 rows)
+   ->  Index Scan using ts3_pkey on ts3
+         Index Cond: ((k1 = ANY (ARRAY[t2.k1, $1, $2, ..., $1023])) AND (k1 >= 2180) AND (k1 < 2190))
+(6 rows)
 
 EXPLAIN (costs off) SELECT * FROM t2 JOIN ts3 ON t2.k1 = ts3.k1 WHERE t2.k1 >= (17100) AND t2.k1 < (17190) AND ts3.k1 >= (2180) AND ts3.k1 < (2400);
                                               QUERY PLAN
@@ -1151,7 +1149,7 @@ EXPLAIN (costs off) SELECT * FROM t2 JOIN ts3 ON t2.k1 = ts3.k1 WHERE t2.k1 >= (
 (6 rows)
 
 EXPLAIN (costs off) SELECT * FROM ts2 JOIN ts3 ON ts2.k1 = ts3.k1 WHERE ts2.k1 >= (17180) AND ts2.k1 < (17190) AND ts3.k1 >= (2180) AND ts3.k1 < (2190);
-                                              QUERY PLAN                                               
+                                              QUERY PLAN
 -------------------------------------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: (ts2.k1 = ts3.k1)
@@ -1173,7 +1171,7 @@ EXPLAIN (costs off) SELECT * FROM ts2 JOIN ts3 ON ts2.k1 = ts3.k1 WHERE ts2.k1 >
 (6 rows)
 
 EXPLAIN (costs off) SELECT * FROM t1 JOIN t2 on t1.k1 = t2.k1 WHERE t1.k1 >= (2500) AND t1.k1 < (25100) AND t2.k1 >= (2500) AND t2.k1 < (25100);
-                        QUERY PLAN                         
+                        QUERY PLAN
 -----------------------------------------------------------
  Merge Join
    Merge Cond: (t1.k1 = t2.k1)
@@ -1196,26 +1194,28 @@ EXPLAIN (costs off) SELECT * FROM t1 JOIN t2 on t1.k1 = t2.k1 WHERE t1.k1 >= (24
 (6 rows)
 
 EXPLAIN (costs off) SELECT * FROM ts2 JOIN ts3 on ts2.k1 = ts3.k1 WHERE ts2.k1 >= (300) AND ts2.k1 < (3100) AND ts3.k1 >= (300) AND ts3.k1 < (3100);
-                                              QUERY PLAN
-------------------------------------------------------------------------------------------------------
- YB Batched Nested Loop Join
-   Join Filter: (ts2.k1 = ts3.k1)
-   ->  Index Scan using ts2_pkey on ts2
-         Index Cond: ((k1 >= 300) AND (k1 < 3100))
+                       QUERY PLAN
+---------------------------------------------------------
+ Hash Join
+   Hash Cond: (ts3.k1 = ts2.k1)
    ->  Index Scan using ts3_pkey on ts3
-         Index Cond: ((k1 = ANY (ARRAY[ts2.k1, $1, $2, ..., $1023])) AND (k1 >= 300) AND (k1 < 3100))
-(6 rows)
+         Index Cond: ((k1 >= 300) AND (k1 < 3100))
+   ->  Hash
+         ->  Index Scan using ts2_pkey on ts2
+               Index Cond: ((k1 >= 300) AND (k1 < 3100))
+(7 rows)
 
 EXPLAIN (costs off) SELECT * FROM ts2 JOIN ts3 on ts2.k1 = ts3.k1 WHERE ts2.k1 >= (2800) AND ts2.k1 < (3100) AND ts3.k1 >= (300) AND ts3.k1 < (3300);
-                                              QUERY PLAN
-------------------------------------------------------------------------------------------------------
- YB Batched Nested Loop Join
-   Join Filter: (ts2.k1 = ts3.k1)
-   ->  Index Scan using ts2_pkey on ts2
-         Index Cond: ((k1 >= 2800) AND (k1 < 3100))
+                        QUERY PLAN
+----------------------------------------------------------
+ Hash Join
+   Hash Cond: (ts3.k1 = ts2.k1)
    ->  Index Scan using ts3_pkey on ts3
-         Index Cond: ((k1 = ANY (ARRAY[ts2.k1, $1, $2, ..., $1023])) AND (k1 >= 300) AND (k1 < 3300))
-(6 rows)
+         Index Cond: ((k1 >= 300) AND (k1 < 3300))
+   ->  Hash
+         ->  Index Scan using ts2_pkey on ts2
+               Index Cond: ((k1 >= 2800) AND (k1 < 3100))
+(7 rows)
 
 EXPLAIN (costs off) SELECT * FROM t1 JOIN t2 ON t1.v1 = t2.v1 WHERE t1.k1 in ((810), (8180), (820));
                             QUERY PLAN
@@ -1746,26 +1746,24 @@ EXPLAIN (costs off) SELECT * FROM ts2 FULL JOIN ts3 ON ts2.k1 = ts3.k1 WHERE ts2
 (6 rows)
 
 EXPLAIN (costs off) SELECT * FROM t1 JOIN t2 ON t1.k1 = t2.k1 AND t1.k2 = t2.k2 WHERE t1.k1 > (1200) AND t1.k1 <= (1300);
-                                                         QUERY PLAN
-----------------------------------------------------------------------------------------------------------------------------
- YB Batched Nested Loop Join
-   Join Filter: ((t1.k1 = t2.k1) AND (t1.k2 = t2.k2))
+                     QUERY PLAN
+-----------------------------------------------------
+ Nested Loop
    ->  Index Scan using t1_pkey on t1
          Index Cond: ((k1 > 1200) AND (k1 <= 1300))
    ->  Index Scan using t2_pkey on t2
-         Index Cond: (ROW(k1, k2) = ANY (ARRAY[ROW(t1.k1, t1.k2), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
-(6 rows)
+         Index Cond: ((k1 = t1.k1) AND (k2 = t1.k2))
+(5 rows)
 
 EXPLAIN (costs off) SELECT * FROM t1 JOIN t2 ON t1.k1 = t2.k1 AND t1.k2 = t2.k2 WHERE t1.k1 > (1200) AND t1.k1 <= (1500);
-                                                         QUERY PLAN
-----------------------------------------------------------------------------------------------------------------------------
- YB Batched Nested Loop Join
-   Join Filter: ((t1.k1 = t2.k1) AND (t1.k2 = t2.k2))
+                     QUERY PLAN
+-----------------------------------------------------
+ Nested Loop
    ->  Index Scan using t1_pkey on t1
          Index Cond: ((k1 > 1200) AND (k1 <= 1500))
    ->  Index Scan using t2_pkey on t2
-         Index Cond: (ROW(k1, k2) = ANY (ARRAY[ROW(t1.k1, t1.k2), ROW($1, $1025), ROW($2, $1026), ..., ROW($1023, $2047)]))
-(6 rows)
+         Index Cond: ((k1 = t1.k1) AND (k2 = t1.k2))
+(5 rows)
 
 EXPLAIN (costs off) SELECT * FROM ts2 JOIN ts3 ON ts2.k1 = ts3.k1 AND ts2.k2 = ts3.k2 WHERE ts2.k1 > (1200) AND ts2.k1 <= (1300);
                      QUERY PLAN
@@ -2114,7 +2112,7 @@ EXPLAIN (costs off) SELECT * FROM ts2 JOIN ts3 ON ts2.k1 = ts3.k1 WHERE ts2.k1 =
 (5 rows)
 
 EXPLAIN (costs off) SELECT * FROM t1 LEFT JOIN t2 ON t1.k1 = t2.k1 WHERE t1.k1 = (8180);
-                                     QUERY PLAN                                      
+                                     QUERY PLAN
 -------------------------------------------------------------------------------------
  YB Batched Nested Loop Left Join
    Join Filter: (t1.k1 = t2.k1)
@@ -2125,7 +2123,7 @@ EXPLAIN (costs off) SELECT * FROM t1 LEFT JOIN t2 ON t1.k1 = t2.k1 WHERE t1.k1 =
 (6 rows)
 
 EXPLAIN (costs off) SELECT * FROM t1 LEFT JOIN t2 ON t1.k1 = t2.k1 WHERE t1.k1 = (8100);
-                                     QUERY PLAN                                      
+                                     QUERY PLAN
 -------------------------------------------------------------------------------------
  YB Batched Nested Loop Left Join
    Join Filter: (t1.k1 = t2.k1)
@@ -2136,7 +2134,7 @@ EXPLAIN (costs off) SELECT * FROM t1 LEFT JOIN t2 ON t1.k1 = t2.k1 WHERE t1.k1 =
 (6 rows)
 
 EXPLAIN (costs off) SELECT * FROM t2 LEFT JOIN ts3 ON t2.k1 = ts3.k1 WHERE t2.k1 = (17100);
-                                      QUERY PLAN                                      
+                                      QUERY PLAN
 --------------------------------------------------------------------------------------
  YB Batched Nested Loop Left Join
    Join Filter: (t2.k1 = ts3.k1)
@@ -2147,7 +2145,7 @@ EXPLAIN (costs off) SELECT * FROM t2 LEFT JOIN ts3 ON t2.k1 = ts3.k1 WHERE t2.k1
 (6 rows)
 
 EXPLAIN (costs off) SELECT * FROM t2 LEFT JOIN ts3 ON t2.k1 = ts3.k1 WHERE t2.k1 = (17190);
-                                      QUERY PLAN                                      
+                                      QUERY PLAN
 --------------------------------------------------------------------------------------
  YB Batched Nested Loop Left Join
    Join Filter: (t2.k1 = ts3.k1)
@@ -2158,7 +2156,7 @@ EXPLAIN (costs off) SELECT * FROM t2 LEFT JOIN ts3 ON t2.k1 = ts3.k1 WHERE t2.k1
 (6 rows)
 
 EXPLAIN (costs off) SELECT * FROM ts2 LEFT JOIN ts3 ON ts2.k1 = ts3.k1 WHERE ts2.k1 = (17100);
-                                      QUERY PLAN                                       
+                                      QUERY PLAN
 ---------------------------------------------------------------------------------------
  YB Batched Nested Loop Left Join
    Join Filter: (ts2.k1 = ts3.k1)
@@ -2169,7 +2167,7 @@ EXPLAIN (costs off) SELECT * FROM ts2 LEFT JOIN ts3 ON ts2.k1 = ts3.k1 WHERE ts2
 (6 rows)
   
 EXPLAIN (costs off) SELECT * FROM ts2 LEFT JOIN ts3 ON ts2.k1 = ts3.k1 WHERE ts2.k1 = (17190);
-                                      QUERY PLAN                                       
+                                      QUERY PLAN
 ---------------------------------------------------------------------------------------
  YB Batched Nested Loop Left Join
    Join Filter: (ts2.k1 = ts3.k1)
@@ -2240,7 +2238,7 @@ EXPLAIN (costs off) SELECT * FROM ts2 RIGHT JOIN ts3 ON ts2.k1 = ts3.k1 WHERE ts
 (5 rows)
 
 EXPLAIN (costs off) SELECT * FROM t1 FULL JOIN t2 ON t1.k1 = t2.k1 WHERE t1.k1 = (8180);
-                                     QUERY PLAN                                      
+                                     QUERY PLAN
 -------------------------------------------------------------------------------------
  YB Batched Nested Loop Left Join
    Join Filter: (t1.k1 = t2.k1)
@@ -2249,9 +2247,9 @@ EXPLAIN (costs off) SELECT * FROM t1 FULL JOIN t2 ON t1.k1 = t2.k1 WHERE t1.k1 =
    ->  Index Scan using t2_pkey on t2
          Index Cond: ((k1 = ANY (ARRAY[t1.k1, $1, $2, ..., $1023])) AND (k1 = 8180))
 (6 rows)
-  
+
 EXPLAIN (costs off) SELECT * FROM t1 FULL JOIN t2 ON t1.k1 = t2.k1 WHERE t1.k1 = (8100);
-                                     QUERY PLAN                                      
+                                     QUERY PLAN
 -------------------------------------------------------------------------------------
  YB Batched Nested Loop Left Join
    Join Filter: (t1.k1 = t2.k1)
@@ -2260,9 +2258,9 @@ EXPLAIN (costs off) SELECT * FROM t1 FULL JOIN t2 ON t1.k1 = t2.k1 WHERE t1.k1 =
    ->  Index Scan using t2_pkey on t2
          Index Cond: ((k1 = ANY (ARRAY[t1.k1, $1, $2, ..., $1023])) AND (k1 = 8100))
 (6 rows)
-  
+
 EXPLAIN (costs off) SELECT * FROM t2 FULL JOIN ts3 ON t2.k1 = ts3.k1 WHERE t2.k1 = (17100);
-                                      QUERY PLAN                                      
+                                      QUERY PLAN
 --------------------------------------------------------------------------------------
  YB Batched Nested Loop Left Join
    Join Filter: (t2.k1 = ts3.k1)
@@ -2271,9 +2269,9 @@ EXPLAIN (costs off) SELECT * FROM t2 FULL JOIN ts3 ON t2.k1 = ts3.k1 WHERE t2.k1
    ->  Index Scan using ts3_pkey on ts3
          Index Cond: ((k1 = ANY (ARRAY[t2.k1, $1, $2, ..., $1023])) AND (k1 = 17100))
 (6 rows)
-  
+
 EXPLAIN (costs off) SELECT * FROM t2 FULL JOIN ts3 ON t2.k1 = ts3.k1 WHERE t2.k1 = (17190);
-                                      QUERY PLAN                                      
+                                      QUERY PLAN
 --------------------------------------------------------------------------------------
  YB Batched Nested Loop Left Join
    Join Filter: (t2.k1 = ts3.k1)
@@ -2282,9 +2280,9 @@ EXPLAIN (costs off) SELECT * FROM t2 FULL JOIN ts3 ON t2.k1 = ts3.k1 WHERE t2.k1
    ->  Index Scan using ts3_pkey on ts3
          Index Cond: ((k1 = ANY (ARRAY[t2.k1, $1, $2, ..., $1023])) AND (k1 = 17190))
 (6 rows)
-  
+
 EXPLAIN (costs off) SELECT * FROM ts2 FULL JOIN ts3 ON ts2.k1 = ts3.k1 WHERE ts2.k1 = (17100);
-                                      QUERY PLAN                                       
+                                      QUERY PLAN
 ---------------------------------------------------------------------------------------
  YB Batched Nested Loop Left Join
    Join Filter: (ts2.k1 = ts3.k1)
@@ -2293,9 +2291,9 @@ EXPLAIN (costs off) SELECT * FROM ts2 FULL JOIN ts3 ON ts2.k1 = ts3.k1 WHERE ts2
    ->  Index Scan using ts3_pkey on ts3
          Index Cond: ((k1 = ANY (ARRAY[ts2.k1, $1, $2, ..., $1023])) AND (k1 = 17100))
 (6 rows)
-  
+
 EXPLAIN (costs off) SELECT * FROM ts2 FULL JOIN ts3 ON ts2.k1 = ts3.k1 WHERE ts2.k1 = (17190);
-                                      QUERY PLAN                                       
+                                      QUERY PLAN
 ---------------------------------------------------------------------------------------
  YB Batched Nested Loop Left Join
    Join Filter: (ts2.k1 = ts3.k1)
@@ -2510,9 +2508,11 @@ EXPLAIN (costs off) SELECT * FROM t1 WHERE v1 > (20000) ORDER BY v1 ASC LIMIT 10
                 QUERY PLAN
 -------------------------------------------
  Limit
-   ->  Index Scan using t1_v1_k2_idx on t1
-         Index Cond: (v1 > 20000)
-(3 rows)
+   ->  Sort
+         Sort Key: v1
+         ->  Seq Scan on t1
+               Remote Filter: (v1 > 20000)
+(5 rows)
 
 EXPLAIN (costs off) SELECT * FROM t1 WHERE v1 > (20000) ORDER BY v1 ASC LIMIT 1000000;
                 QUERY PLAN
@@ -2528,9 +2528,11 @@ EXPLAIN (costs off) SELECT * FROM t2 WHERE v1 > (20000) ORDER BY v1 ASC LIMIT 10
                 QUERY PLAN
 -------------------------------------------
  Limit
-   ->  Index Scan using t2_v1_k2_idx on t2
-         Index Cond: (v1 > 20000)
-(3 rows)
+   ->  Sort
+         Sort Key: v1
+         ->  Seq Scan on t2
+               Remote Filter: (v1 > 20000)
+(5 rows)
 
 EXPLAIN (costs off) SELECT * FROM t2 WHERE v1 > (20000) ORDER BY v1 ASC LIMIT 1000000;
                 QUERY PLAN

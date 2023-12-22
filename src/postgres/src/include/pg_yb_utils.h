@@ -41,6 +41,9 @@
 
 #include "yb/yql/pggate/util/ybc_util.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
+#include "yb_ysql_conn_mgr_helper.h"
 
 /*
  * Version of the catalog entries in the relcache and catcache.
@@ -87,7 +90,8 @@ extern void YbResetCatalogCacheVersion();
 
 extern uint64_t YbGetLastKnownCatalogCacheVersion();
 
-extern uint64_t YbGetCatalogCacheVersionForTablePrefetching();
+extern YBCPgLastKnownCatalogVersionInfo
+YbGetCatalogCacheVersionForTablePrefetching();
 
 extern void YbUpdateLastKnownCatalogCacheVersion(uint64_t catalog_cache_version);
 
@@ -108,11 +112,6 @@ extern GeolocationDistance get_tablespace_distance (Oid tablespaceoid);
  * YBIsEnabledInPostgresEnvVar function might be more appropriate.
  */
 extern bool IsYugaByteEnabled();
-
-/*
- * Check whether the connection is made from Ysql Connection Manager.
- */
-extern bool YbIsClientYsqlConnMgr();
 
 extern bool yb_enable_docdb_tracing;
 extern bool yb_read_from_followers;
@@ -201,6 +200,10 @@ extern AttrNumber YBGetFirstLowInvalidAttributeNumberFromOid(Oid relid);
 extern int YBAttnumToBmsIndex(Relation rel, AttrNumber attnum);
 
 extern AttrNumber YBBmsIndexToAttnum(Relation rel, int idx);
+
+extern int YBAttnumToBmsIndexWithMinAttr(AttrNumber minattr, AttrNumber attnum);
+
+extern AttrNumber YBBmsIndexToAttnumWithMinAttr(AttrNumber minattr, int idx);
 
 /*
  * Get primary key columns as bitmap set of a table for real YB columns.
@@ -711,9 +714,21 @@ bool IsYbFdwUser(Oid member);
 extern const uint32 yb_funcs_safe_for_pushdown[];
 
 /*
- * Number of functions in 'yb_funcs_safe_for_modify_fast_path' above.
+ * These functions are unsafe to run in a multi-threaded environment. There is
+ * no specific attribute that identifies them as such, so we have to manually
+ * identify them.
+ */
+extern const uint32 yb_funcs_unsafe_for_pushdown[];
+
+/*
+ * Number of functions in 'yb_funcs_safe_for_pushdown' above.
  */
 extern const int yb_funcs_safe_for_pushdown_count;
+
+/*
+ * Number of functions in 'yb_funcs_unsafe_for_pushdown' above.
+ */
+extern const int yb_funcs_unsafe_for_pushdown_count;
 
 /**
  * Use the YB_PG_PDEATHSIG environment variable to set the signal to be sent to
@@ -796,6 +811,12 @@ void YbRefreshSessionStatsDuringExecution();
  * storage layer need to be timed.
  */
 void YbToggleSessionStatsTimer(bool timing_on);
+
+/**
+ * Update the global flag indicating what metric changes to capture and return
+ * from the tserver to PG.
+ */
+void YbSetMetricsCaptureType(YBCPgMetricsCaptureType metrics_capture);
 
 /*
  * If the tserver gflag --ysql_disable_server_file_access is set to
@@ -964,8 +985,6 @@ extern void decrement_sticky_object_count();
  * Check if there exists a database object that requires a sticky connection.
  */
 extern bool YbIsStickyConnection(int *change);
-
-extern bool yb_is_client_ysqlconnmgr;
 
 /*
  * Creates a shallow copy of the pointer list.

@@ -182,7 +182,7 @@ class PgsqlReadOperation : public DocExprExecutor {
 
   Status GetSpecialColumn(ColumnIdRep column_id, QLValuePB* result);
 
-  Status GetIntents(const Schema& schema, LWKeyValueWriteBatchPB* out);
+  Status GetIntents(const Schema& schema, IsolationLevel level, LWKeyValueWriteBatchPB* out);
 
  private:
   // Execute a READ operator for a given scalar argument.

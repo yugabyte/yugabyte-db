@@ -830,32 +830,21 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 										YbRoleProfileRelationId,
 										&YbLoginProfileCatalogsExist));
 
-		const uint64_t catalog_master_version =
+		const YBCPgLastKnownCatalogVersionInfo catalog_version =
 			YbGetCatalogCacheVersionForTablePrefetching();
-
-		/*
-		 * Call YBIsDBCatalogVersionMode before prefetching is started
-		 * to initialize its static variables.
-		 */
-		bool is_db_catalog_version_mode = YBIsDBCatalogVersionMode();
-		ereport(DEBUG3,
-				(errmsg("is_db_catalog_version_mode=%d",
-						is_db_catalog_version_mode)));
 
 		YBCPgResetCatalogReadTime();
 		YBCStartSysTablePrefetching(
-			catalog_master_version, YB_YQL_PREFETCHER_NO_CACHE);
-		YbRegisterSysTableForPrefetching(
-			AuthIdRelationId);        // pg_authid
-		YbRegisterSysTableForPrefetching(
-			DatabaseRelationId);      // pg_database
+			catalog_version, YB_YQL_PREFETCHER_NO_CACHE);
+		YbRegisterSysTableForPrefetching(AuthIdRelationId);   // pg_authid
+		YbRegisterSysTableForPrefetching(DatabaseRelationId); // pg_database
 
 		if (*YBCGetGFlags()->ysql_enable_profile && YbLoginProfileCatalogsExist)
 		{
 			YbRegisterSysTableForPrefetching(
-				YbProfileRelationId);		// pg_yb_profile
+				YbProfileRelationId);     // pg_yb_profile
 			YbRegisterSysTableForPrefetching(
-				YbRoleProfileRelationId);	// pg_yb_role_profile
+				YbRoleProfileRelationId); // pg_yb_role_profile
 		}
 		YbTryRegisterCatalogVersionTableForPrefetching();
 

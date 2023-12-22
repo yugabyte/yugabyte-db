@@ -68,6 +68,7 @@
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 using std::future;
 using std::pair;
@@ -194,9 +195,9 @@ TEST_F(PgLibPqTest, Simple) {
     auto columns = PQnfields(res.get());
     ASSERT_EQ(2, columns);
 
-    auto key = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+    auto key = ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0));
     ASSERT_EQ(key, 1);
-    auto value = ASSERT_RESULT(GetString(res.get(), 0, 1));
+    auto value = ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 1));
     ASSERT_EQ(value, "hello");
   }
 }
@@ -312,17 +313,9 @@ TEST_F(PgLibPqTest, ReadRestart) {
     SCOPED_TRACE(Format("Reading: $0", read_key));
 
     ASSERT_OK(conn.Execute("BEGIN"));
-
-    auto res = ASSERT_RESULT(conn.FetchFormat("SELECT * FROM t WHERE key = $0", read_key));
-    auto columns = PQnfields(res.get());
-    ASSERT_EQ(1, columns);
-
-    auto lines = PQntuples(res.get());
-    ASSERT_EQ(1, lines);
-
-    auto key = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+    auto key = ASSERT_RESULT(conn.FetchValue<int32_t>(Format(
+        "SELECT * FROM t WHERE key = $0", read_key)));
     ASSERT_EQ(key, read_key);
-
     ASSERT_OK(conn.Execute("ROLLBACK"));
   }
 
@@ -749,10 +742,9 @@ void PgLibPqTest::TestParallelCounter(IsolationLevel isolation) {
 
   // Check each counter
   for (int i = 0; i < kThreads; i++) {
-    auto res = ASSERT_RESULT(conn.FetchFormat("SELECT value FROM t WHERE key = $0", i));
-
-    auto row_val = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
-    ASSERT_EQ(row_val, kIncrements);
+    ASSERT_EQ(ASSERT_RESULT(conn.FetchValue<int32_t>(Format("SELECT value FROM t WHERE key = $0",
+                                                            i))),
+              kIncrements);
   }
 }
 
@@ -788,10 +780,8 @@ void PgLibPqTest::TestConcurrentCounter(IsolationLevel isolation, bool lock_firs
   }
 
   // Check that we incremented exactly the desired number of times
-  auto res = ASSERT_RESULT(conn.Fetch("SELECT value FROM t WHERE key = 0"));
-
-  auto row_val = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
-  ASSERT_EQ(row_val, kThreads * kIncrements);
+  ASSERT_EQ(ASSERT_RESULT(conn.FetchValue<int32_t>("SELECT value FROM t WHERE key = 0")),
+            kThreads * kIncrements);
 }
 
 TEST_F_EX(PgLibPqTest, TestConcurrentCounterSerializable, PgLibPqFailOnConflictTest) {
@@ -1450,9 +1440,7 @@ void PgLibPqTest::PerformSimultaneousTxnsAndVerifyConflicts(
   ASSERT_EQ(PQntuples(res.get()), 1);
 
   auto status = conn2.Execute("DELETE FROM t WHERE a = 1");
-  ASSERT_FALSE(status.ok());
-  ASSERT_EQ(PgsqlError(status), YBPgErrorCode::YB_PG_T_R_SERIALIZATION_FAILURE) << status;
-  ASSERT_STR_CONTAINS(status.ToString(), "could not serialize access due to concurrent update");
+  ASSERT_TRUE(IsSerializeAccessError(status)) <<  status;
   ASSERT_STR_CONTAINS(status.ToString(), "conflicts with higher priority transaction");
 
   ASSERT_OK(conn1.CommitTransaction());
@@ -2087,13 +2075,19 @@ TEST_F_EX(
   auto res = ASSERT_RESULT(conn.Fetch("SELECT * FROM foo ORDER BY a"));
   ASSERT_EQ(PQntuples(res.get()), 3);
   ASSERT_EQ(PQnfields(res.get()), 2);
-  std::vector<std::pair<int, std::string>> values = {
-      std::make_pair(
-          ASSERT_RESULT(GetInt32(res.get(), 0, 0)), ASSERT_RESULT(GetString(res.get(), 0, 1))),
-      std::make_pair(
-          ASSERT_RESULT(GetInt32(res.get(), 1, 0)), ASSERT_RESULT(GetString(res.get(), 1, 1))),
-      std::make_pair(
-          ASSERT_RESULT(GetInt32(res.get(), 2, 0)), ASSERT_RESULT(GetString(res.get(), 2, 1))),
+  std::vector<std::pair<int32_t, std::string>> values = {
+    {
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0)),
+      ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 1)),
+    },
+    {
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0)),
+      ASSERT_RESULT(GetValue<std::string>(res.get(), 1, 1)),
+    },
+    {
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 2, 0)),
+      ASSERT_RESULT(GetValue<std::string>(res.get(), 2, 1)),
+    },
   };
   ASSERT_EQ(values[0].first, 1);
   ASSERT_EQ(values[0].second, "hello");
@@ -2114,9 +2108,9 @@ TEST_F_EX(
   res = ASSERT_RESULT(conn.Fetch("SELECT * FROM bar ORDER BY a DESC"));
   ASSERT_EQ(PQntuples(res.get()), 2);
   ASSERT_EQ(PQnfields(res.get()), 1);
-  std::vector<int> bar_values = {
-      ASSERT_RESULT(GetInt32(res.get(), 0, 0)),
-      ASSERT_RESULT(GetInt32(res.get(), 1, 0)),
+  std::vector bar_values = {
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0)),
   };
   ASSERT_EQ(bar_values[0], 200);
   ASSERT_EQ(bar_values[1], 100);
@@ -2137,8 +2131,8 @@ TEST_F_EX(
   ASSERT_EQ(PQntuples(res.get()), 2);
   ASSERT_EQ(PQnfields(res.get()), 1);
   bar_values = {
-      ASSERT_RESULT(GetInt32(res.get(), 0, 0)),
-      ASSERT_RESULT(GetInt32(res.get(), 1, 0)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0)),
   };
   ASSERT_EQ(bar_values[0], 200);
   ASSERT_EQ(bar_values[1], 100);
@@ -2180,11 +2174,16 @@ TEST_F_EX(
   auto res = ASSERT_RESULT(conn.Fetch("SELECT * FROM odd_a_view ORDER BY a"));
   ASSERT_EQ(PQntuples(res.get()), 2);
   ASSERT_EQ(PQnfields(res.get()), 2);
-  std::vector<std::pair<int, std::string>> values = {
-      std::make_pair(
-          ASSERT_RESULT(GetInt32(res.get(), 0, 0)), ASSERT_RESULT(GetString(res.get(), 0, 1))),
-      std::make_pair(
-          ASSERT_RESULT(GetInt32(res.get(), 1, 0)), ASSERT_RESULT(GetString(res.get(), 1, 1)))};
+  std::vector<std::pair<int32_t, std::string>> values = {
+    {
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0)),
+      ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 1)),
+    },
+    {
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0)),
+      ASSERT_RESULT(GetValue<std::string>(res.get(), 1, 1))
+    },
+  };
   ASSERT_EQ(values[0].first, 1);
   ASSERT_EQ(values[0].second, "hello");
   ASSERT_EQ(values[1].first, 3);
@@ -2335,13 +2334,19 @@ TEST_F_EX(
     ASSERT_EQ(PQntuples(res.get()), 3);
     ASSERT_EQ(PQnfields(res.get()), 2);
     {
-      std::vector<std::pair<int, std::string>> values = {
-          std::make_pair(
-              ASSERT_RESULT(GetInt32(res.get(), 0, 0)), ASSERT_RESULT(GetString(res.get(), 0, 1))),
-          std::make_pair(
-              ASSERT_RESULT(GetInt32(res.get(), 1, 0)), ASSERT_RESULT(GetString(res.get(), 1, 1))),
-          std::make_pair(
-              ASSERT_RESULT(GetInt32(res.get(), 2, 0)), ASSERT_RESULT(GetString(res.get(), 2, 1))),
+      std::vector<std::pair<int32_t, std::string>> values = {
+        {
+          ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0)),
+          ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 1)),
+        },
+        {
+          ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0)),
+          ASSERT_RESULT(GetValue<std::string>(res.get(), 1, 1)),
+        },
+        {
+          ASSERT_RESULT(GetValue<int32_t>(res.get(), 2, 0)),
+          ASSERT_RESULT(GetValue<std::string>(res.get(), 2, 1)),
+        },
       };
       ASSERT_EQ(values[0].first, 1);
       ASSERT_EQ(values[0].second, "hello");
@@ -2360,13 +2365,19 @@ TEST_F_EX(
     ASSERT_EQ(PQntuples(res.get()), 3);
     ASSERT_EQ(PQnfields(res.get()), 2);
     {
-      std::vector<std::pair<int, std::string>> values = {
-          std::make_pair(
-              ASSERT_RESULT(GetInt32(res.get(), 0, 0)), ASSERT_RESULT(GetString(res.get(), 0, 1))),
-          std::make_pair(
-              ASSERT_RESULT(GetInt32(res.get(), 1, 0)), ASSERT_RESULT(GetString(res.get(), 1, 1))),
-          std::make_pair(
-              ASSERT_RESULT(GetInt32(res.get(), 2, 0)), ASSERT_RESULT(GetString(res.get(), 2, 1))),
+      std::vector<std::pair<int32_t, std::string>> values = {
+        {
+          ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0)),
+          ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 1)),
+        },
+        {
+          ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0)),
+          ASSERT_RESULT(GetValue<std::string>(res.get(), 1, 1)),
+        },
+        {
+          ASSERT_RESULT(GetValue<int32_t>(res.get(), 2, 0)),
+          ASSERT_RESULT(GetValue<std::string>(res.get(), 2, 1)),
+        },
       };
       ASSERT_EQ(values[0].first, 1);
       ASSERT_EQ(values[0].second, "hello");
@@ -2383,10 +2394,10 @@ TEST_F_EX(
     ASSERT_EQ(PQntuples(res.get()), 3);
     ASSERT_EQ(PQnfields(res.get()), 1);
     {
-      std::vector<int> values = {
-          ASSERT_RESULT(GetInt32(res.get(), 0, 0)),
-          ASSERT_RESULT(GetInt32(res.get(), 1, 0)),
-          ASSERT_RESULT(GetInt32(res.get(), 2, 0)),
+      std::vector values = {
+          ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0)),
+          ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0)),
+          ASSERT_RESULT(GetValue<int32_t>(res.get(), 2, 0)),
       };
       ASSERT_EQ(values[0], 1);
       ASSERT_EQ(values[1], 2);
@@ -3005,10 +3016,10 @@ TEST_F_EX(PgLibPqTest,
   PGResultPtr res = ASSERT_RESULT(conn->Fetch(query));
   ASSERT_EQ(PQntuples(res.get()), 3);
   ASSERT_EQ(PQnfields(res.get()), 1);
-  std::vector<string> values = {
-    ASSERT_RESULT(GetString(res.get(), 0, 0)),
-    ASSERT_RESULT(GetString(res.get(), 1, 0)),
-    ASSERT_RESULT(GetString(res.get(), 2, 0)),
+  std::vector values = {
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 0)),
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 1, 0)),
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 2, 0)),
   };
   ASSERT_EQ(values[0], "b");
   ASSERT_EQ(values[1], "c");
@@ -3046,12 +3057,12 @@ TEST_F_EX(PgLibPqTest,
   ASSERT_EQ(PQntuples(res.get()), 6);
   ASSERT_EQ(PQnfields(res.get()), 1);
   values = {
-    ASSERT_RESULT(GetString(res.get(), 0, 0)),
-    ASSERT_RESULT(GetString(res.get(), 1, 0)),
-    ASSERT_RESULT(GetString(res.get(), 2, 0)),
-    ASSERT_RESULT(GetString(res.get(), 3, 0)),
-    ASSERT_RESULT(GetString(res.get(), 4, 0)),
-    ASSERT_RESULT(GetString(res.get(), 5, 0)),
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 0)),
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 1, 0)),
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 2, 0)),
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 3, 0)),
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 4, 0)),
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 5, 0)),
   };
   ASSERT_EQ(values[0], "b");
   ASSERT_EQ(values[1], "e");
@@ -3069,12 +3080,12 @@ TEST_F_EX(PgLibPqTest,
   ASSERT_EQ(PQntuples(res.get()), 6);
   ASSERT_EQ(PQnfields(res.get()), 1);
   values = {
-    ASSERT_RESULT(GetString(res.get(), 0, 0)),
-    ASSERT_RESULT(GetString(res.get(), 1, 0)),
-    ASSERT_RESULT(GetString(res.get(), 2, 0)),
-    ASSERT_RESULT(GetString(res.get(), 3, 0)),
-    ASSERT_RESULT(GetString(res.get(), 4, 0)),
-    ASSERT_RESULT(GetString(res.get(), 5, 0)),
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 0)),
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 1, 0)),
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 2, 0)),
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 3, 0)),
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 4, 0)),
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 5, 0)),
   };
   ASSERT_EQ(values[0], "b");
   ASSERT_EQ(values[1], "e");
@@ -3086,11 +3097,7 @@ TEST_F_EX(PgLibPqTest,
   // Test where clause.
   const std::string query2 = Format("SELECT * FROM $0 where id = 'b'", kTableName);
   ASSERT_TRUE(ASSERT_RESULT(conn->HasIndexScan(query2)));
-  res = ASSERT_RESULT(conn->Fetch(query2));
-  ASSERT_EQ(PQntuples(res.get()), 1);
-  ASSERT_EQ(PQnfields(res.get()), 1);
-  const string value = ASSERT_RESULT(GetString(res.get(), 0, 0));
-  ASSERT_EQ(value, "b");
+  ASSERT_EQ(ASSERT_RESULT(conn->FetchValue<std::string>(query2)), "b");
 }
 
 // Test postgres large oid (>= 2^31). Internally postgres oid is an unsigned 32-bit integer. But
@@ -3154,10 +3161,10 @@ TEST_F_EX(PgLibPqTest,
   res = ASSERT_RESULT(conn.Fetch(query));
   ASSERT_EQ(PQntuples(res.get()), 3);
   ASSERT_EQ(PQnfields(res.get()), 1);
-  std::vector<string> enum_values = {
-    ASSERT_RESULT(GetString(res.get(), 0, 0)),
-    ASSERT_RESULT(GetString(res.get(), 1, 0)),
-    ASSERT_RESULT(GetString(res.get(), 2, 0)),
+  std::vector enum_values = {
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 0)),
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 1, 0)),
+    ASSERT_RESULT(GetValue<std::string>(res.get(), 2, 0)),
   };
   ASSERT_EQ(enum_values[0], "a");
   ASSERT_EQ(enum_values[1], "b");
@@ -3303,9 +3310,7 @@ TEST_F_EX(PgLibPqTest,
           PgLibPqYSQLBackendCrash) {
 
   auto conn = ASSERT_RESULT(Connect());
-  auto res = ASSERT_RESULT(conn.Fetch("SELECT pg_backend_pid()"));
-
-  auto backend_pid = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+  auto backend_pid = ASSERT_RESULT(conn.FetchValue<int32_t>("SELECT pg_backend_pid()"));
   std::string file_name = "/proc/" + std::to_string(backend_pid) + "/oom_score_adj";
   std::ifstream fPtr(file_name);
   std::string oom_score_adj;
@@ -3491,7 +3496,6 @@ class PgLibPqTestStatementTimeout : public PgLibPqTest {
     options->extra_tserver_flags.push_back(
         Format("--ysql_pg_conf_csv=statement_timeout=$0", kClientStatementTimeoutSeconds * 1000));
     options->extra_tserver_flags.push_back("--enable_wait_queues=true");
-    options->extra_tserver_flags.push_back("--enable_deadlock_detection=true");
   }
 
   Result<std::future<Status>> ExpectBlockedAsync(
@@ -3658,6 +3662,40 @@ TEST_F(PgLibPqTempTest, DropTempTable) {
 // when calling DISCARD TEMP.
 TEST_F(PgLibPqTempTest, DiscardTempTable) {
   ASSERT_OK(TestRemoveTempTable(false));
+}
+
+// Drop Sequence test.
+TEST_F(PgLibPqTest, DropSequenceTest) {
+  PGConn conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE SEQUENCE foo"));
+
+  // Verify that if DROP SEQUENCE fails, the sequence is actually not
+  // dropped.
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true"));
+  ASSERT_NOK(conn.Execute("DROP SEQUENCE foo"));
+  auto result = ASSERT_RESULT(conn.FetchRowAsString("SELECT nextval('foo')"));
+  LOG(INFO) << "Sequence " << result;
+  ASSERT_EQ(result, "1");
+
+  // Verify same behavior for sequences created using CREATE TABLE.
+  ASSERT_OK(conn.Execute("CREATE TABLE t (k SERIAL)"));
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true"));
+  ASSERT_NOK(conn.Execute("DROP SEQUENCE t_k_seq CASCADE"));
+  result = ASSERT_RESULT(conn.FetchRowAsString("SELECT nextval('t_k_seq')"));
+  LOG(INFO) << "Sequence " << result;
+  ASSERT_EQ(result, "1");
+
+  // Verify same behavior is seen while trying to drop the table.
+  ASSERT_OK(conn.Execute("SET yb_test_fail_next_ddl=true"));
+  ASSERT_NOK(conn.Execute("DROP TABLE t"));
+  result = ASSERT_RESULT(conn.FetchRowAsString("SELECT nextval('t_k_seq')"));
+  LOG(INFO) << "Sequence " << result;
+  ASSERT_EQ(result, "2");
+
+  // Verify that if DROP SEQUENCE is successful, we cannot query the sequence
+  // anymore.
+  ASSERT_OK(conn.Execute("DROP SEQUENCE foo"));
+  ASSERT_NOK(conn.FetchRowAsString("SELECT nextval('foo')"));
 }
 
 } // namespace pgwrapper

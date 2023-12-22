@@ -1,3 +1,5 @@
+// Copyright (c) Yugabyte, Inc.
+
 package com.yugabyte.yw.models.rbac;
 
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
@@ -28,6 +30,7 @@ import lombok.AllArgsConstructor;
 import lombok.Getter;
 import lombok.NoArgsConstructor;
 import lombok.Setter;
+import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
 import play.data.validation.Constraints;
 
@@ -37,6 +40,7 @@ import play.data.validation.Constraints;
 @NoArgsConstructor
 @Getter
 @Setter
+@ToString
 public class RoleBinding extends Model {
 
   @ApiModelProperty(value = "UUID", accessMode = READ_ONLY)
@@ -50,6 +54,11 @@ public class RoleBinding extends Model {
   @JoinColumn(name = "user_uuid", referencedColumnName = "uuid")
   private Users user;
 
+  /**
+   * This shows whether the role binding is system generated or user generated. System generated
+   * role bindings are usually for the LDAP group users. Custom role bindings are when the user sets
+   * the role bindings usually through the UI.
+   */
   public enum RoleBindingType {
     @EnumValue("System")
     System,
@@ -101,6 +110,10 @@ public class RoleBinding extends Model {
     return find.query().where().eq("uuid", roleBindingUUID).findOne();
   }
 
+  public static List<RoleBinding> fetchRoleBindingsForUser(UUID userUUID) {
+    return find.query().where().eq("user_uuid", userUUID).findList();
+  }
+
   public static RoleBinding getOrBadRequest(UUID roleBindingUUID) {
     RoleBinding roleBinding = get(roleBindingUUID);
     if (roleBinding == null) {
@@ -110,8 +123,16 @@ public class RoleBinding extends Model {
     return roleBinding;
   }
 
+  public static List<RoleBinding> getAll() {
+    return find.query().findList();
+  }
+
   public static List<RoleBinding> getAll(UUID userUUID) {
     return find.query().where().eq("user_uuid", userUUID).findList();
+  }
+
+  public static List<RoleBinding> getAllWithRole(UUID roleUUID) {
+    return find.query().where().eq("role_uuid", roleUUID).findList();
   }
 
   public void edit(Role role, ResourceGroup resourceGroup) {

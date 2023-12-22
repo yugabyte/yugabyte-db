@@ -26,9 +26,7 @@ DECLARE_bool(TEST_select_all_status_tablets);
 DECLARE_bool(TEST_txn_status_moved_rpc_force_fail);
 DECLARE_bool(auto_create_local_transaction_tables);
 DECLARE_bool(auto_promote_nonlocal_transactions_to_global);
-DECLARE_bool(enable_deadlock_detection);
 DECLARE_bool(enable_wait_queues);
-DECLARE_bool(enable_deadlock_detection);
 DECLARE_bool(force_global_transactions);
 DECLARE_double(transaction_max_missed_heartbeat_periods);
 DECLARE_int32(TEST_old_txn_status_abort_delay_ms);
@@ -330,7 +328,6 @@ class GeoTransactionsFailOnConflictTest : public GeoTransactionsPromotionTest {
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_deadlock_detection) = false;
     GeoTransactionsPromotionTest::SetUp();
   }
 };
@@ -344,7 +341,6 @@ class GeoPartitionedDeadlockTest : public GeoTransactionsPromotionTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = Format(
         "statement_timeout=$0", kClientStatementTimeoutSeconds);
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_deadlock_detection) = true;
 
     GeoTransactionsPromotionTest::SetUp();
   }

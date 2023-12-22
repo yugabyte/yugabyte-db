@@ -10,6 +10,7 @@ import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.XClusterConfig.XClusterConfigStatusType;
+import java.util.Objects;
 import java.util.Optional;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
@@ -68,7 +69,16 @@ public class DeleteDrConfig extends DeleteXClusterConfig {
           lockUniverseForUpdate(targetUniverse.getUniverseUUID(), targetUniverse.getVersion());
         }
 
-        createDeleteXClusterConfigSubtasks(xClusterConfig, sourceUniverse, targetUniverse);
+        for (XClusterConfig xcc : drConfig.getXClusterConfigs()) {
+          createDeleteXClusterConfigSubtasks(
+              xcc,
+              Objects.nonNull(xClusterConfig.getSourceUniverseUUID())
+                  ? Universe.getOrBadRequest(xClusterConfig.getSourceUniverseUUID())
+                  : null,
+              Objects.nonNull(xClusterConfig.getTargetUniverseUUID())
+                  ? Universe.getOrBadRequest(xClusterConfig.getTargetUniverseUUID())
+                  : null);
+        }
 
         createDeleteDrConfigEntryTask(drConfig)
             .setSubTaskGroupType(SubTaskGroupType.DeleteDrConfig);
@@ -96,7 +106,7 @@ public class DeleteDrConfig extends DeleteXClusterConfig {
       Optional<XClusterConfig> mightDeletedXClusterConfig = maybeGetXClusterConfig();
       if (mightDeletedXClusterConfig.isPresent()
           && !isInMustDeleteStatus(mightDeletedXClusterConfig.get())) {
-        setXClusterConfigStatus(XClusterConfigStatusType.DeletionFailed);
+        mightDeletedXClusterConfig.get().updateStatus(XClusterConfigStatusType.DeletionFailed);
       }
       throw new RuntimeException(e);
     } finally {

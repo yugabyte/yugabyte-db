@@ -334,8 +334,7 @@ TEST_F(TabletSplitITest, PostSplitCompactionDoesntBlockTabletCleanup) {
   const auto first_child_tablet = tablet_peers[0]->shared_tablet();
   ASSERT_OK(first_child_tablet->Flush(tablet::FlushMode::kSync));
   // Force compact on leader, so we can split first_child_tablet.
-  ASSERT_OK(first_child_tablet->ForceFullRocksDBCompact(
-      rocksdb::CompactionReason::kManualCompaction));
+  ASSERT_OK(first_child_tablet->ForceManualRocksDBCompact());
   // Turn off split tablets cleanup in order to later turn it on during compaction of the
   // first_child_tablet to make sure manual compaction won't block tablet shutdown.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_skip_deleting_split_tablets) = true;
@@ -665,7 +664,7 @@ void TabletSplitITest::SplitClientRequestsIds(int split_depth) {
     for (const auto& peer : peers) {
       const auto tablet = peer->shared_tablet();
       ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
-      tablet->TEST_ForceRocksDBCompact();
+      CHECK_OK(tablet->ForceManualRocksDBCompact());
       ASSERT_OK(SplitTablet(catalog_mgr, *tablet));
     }
 
@@ -727,7 +726,7 @@ TEST_F_EX(TabletSplitITest, SplitClientRequestsClean, TabletSplitITestSlowMainen
     for (const auto& peer : peers) {
       const auto tablet = peer->shared_tablet();
       ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
-      tablet->TEST_ForceRocksDBCompact();
+      ASSERT_OK(tablet->ForceManualRocksDBCompact());
       ASSERT_OK(SplitTablet(catalog_mgr, *tablet));
     }
 
@@ -792,7 +791,7 @@ TEST_F(TabletSplitITest, SplitSingleTabletWithLimit) {
     for (const auto& peer : peers) {
       const auto tablet = peer->shared_tablet();
       ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
-      tablet->TEST_ForceRocksDBCompact();
+      ASSERT_OK(tablet->ForceManualRocksDBCompact());
       auto table_info = ASSERT_RESULT(catalog_mgr->FindTable(table_id_pb));
 
       expect_split = table_info->NumPartitions() < FLAGS_tablet_split_limit_per_table;
@@ -1080,7 +1079,7 @@ class AutomaticTabletSplitITest : public TabletSplitITest {
     for (const auto& peer : peers) {
       const auto tablet = peer->shared_tablet();
       RETURN_NOT_OK(tablet->Flush(tablet::FlushMode::kSync));
-      tablet->TEST_ForceRocksDBCompact();
+      CHECK_OK(tablet->ForceManualRocksDBCompact());
     }
     return Status::OK();
   }
@@ -1281,7 +1280,7 @@ TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplittingWaitsForAllPeersCompac
       // Force a manual rocksdb compaction on the peer tablet and wait for it to complete
       const auto tablet = peer->shared_tablet();
       ASSERT_OK(tablet->Flush(tablet::FlushMode::kSync));
-      tablet->TEST_ForceRocksDBCompact();
+      ASSERT_OK(tablet->ForceManualRocksDBCompact());
       ASSERT_OK(LoggedWaitFor(
         [peer]() -> Result<bool> {
           return peer->tablet_metadata()->parent_data_compacted();
@@ -1369,8 +1368,7 @@ TEST_F(AutomaticTabletSplitITest, PrioritizeLargeTablets) {
         tables[i]->name())); // table (default)
     // Compact so that other splits can proceed.
     for (const auto& peer : ListTableActiveTabletPeers(cluster_.get(), tables[i]->id())) {
-      ASSERT_OK(peer->shared_tablet()->ForceFullRocksDBCompact(
-          rocksdb::CompactionReason::kManualCompaction));
+      ASSERT_OK(peer->shared_tablet()->ForceManualRocksDBCompact());
     }
   }
 }
@@ -1462,8 +1460,7 @@ TEST_F(AutomaticTabletSplitITest, AutomaticTabletSplittingMultiPhase) {
 
       // Compact the tablets that split so they can split again in the next iteration.
       for (const auto& peer : split_peers) {
-        ASSERT_OK(peer->shared_tablet()->ForceFullRocksDBCompact(
-            rocksdb::CompactionReason::kManualCompaction));
+        ASSERT_OK(peer->shared_tablet()->ForceManualRocksDBCompact());
       }
 
       // Return once we hit the tablet leader count limit for this phase.
@@ -2140,7 +2137,7 @@ TEST_F(TabletSplitSingleServerITest, SplitKeyNotSupportedForTTLTablets) {
   auto tablet_peer = ASSERT_RESULT(GetSingleTabletLeaderPeer());
   auto tablet = tablet_peer->shared_tablet();
   ASSERT_OK(tablet_peer->shared_tablet()->Flush(tablet::FlushMode::kSync));
-  tablet->TEST_ForceRocksDBCompact();
+  ASSERT_OK(tablet->ForceManualRocksDBCompact());
 
   auto resp = ASSERT_RESULT(SendTServerRpcSyncGetSplitKey(source_tablet_id));
   EXPECT_FALSE(resp.has_error());
@@ -3290,7 +3287,7 @@ TEST_P(TabletSplitSystemRecordsITest, GetSplitKey) {
 
   // Force manual compaction
   ASSERT_OK(FlushTestTable());
-  ASSERT_OK(tablet->ForceFullRocksDBCompact(rocksdb::CompactionReason::kManualCompaction));
+  ASSERT_OK(tablet->ForceManualRocksDBCompact());
   ASSERT_OK(LoggedWaitFor(
       [peer]() -> Result<bool> {
         return peer->tablet_metadata()->parent_data_compacted();

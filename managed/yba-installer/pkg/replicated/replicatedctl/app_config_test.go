@@ -73,3 +73,53 @@ func TestConfigEntryBool(t *testing.T) {
 		t.Errorf("Expected an error, but instead parsed a bool")
 	}
 }
+
+func TestAppConfigViewUnmarshal(t *testing.T) {
+	cfgStr := `[
+		{
+			"Name": "app",
+			"Items": [
+				 {
+					"Name": "item1",
+					"Value": "item 1 value"
+				}
+			]
+		},
+		{
+			"Name": "db",
+			"Items": [
+				 {
+					"Name": "boolTrue",
+					"Value": "1"
+				},
+				{
+					"Name": "boolFalse",
+					"Value": "0"
+				}
+			]
+		}
+	]`
+
+	var appView AppView = AppView{
+		viewItems: make(map[string]ViewItem),
+	}
+	err := json.Unmarshal([]byte(cfgStr), &appView)
+	if err != nil {
+		t.Errorf("failed to unmarshall app view: %s", err)
+	}
+	c, err := appView.Get("item1")
+	if err != nil {
+		t.Errorf("unexpected error: %s", err)
+	}
+	if c.Name != "item1" || c.Value != "item 1 value" {
+		t.Errorf("'item1' config entry does not match")
+	}
+
+	c, err = appView.Get("boolFalse")
+	if err != nil {
+		t.Errorf("unexpected error: %s", err)
+	}
+	if c.Name != "boolFalse" || c.Value != "0" {
+		t.Errorf("'boolFalse' config entry does not match")
+	}
+}

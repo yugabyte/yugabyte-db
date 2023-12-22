@@ -279,6 +279,13 @@ inline bool IsAscii(const GStringPiece& str) {
   return IsAscii(str.data(), str.size());
 }
 
+// Returns whether str has only Ascii printable characters (as defined by ascii_isprint()
+// in strings/ascii_ctype.h).
+bool IsPrint(const char* str, size_t len);
+inline bool IsPrint(const GStringPiece& str) {
+  return IsPrint(str.data(), str.size());
+}
+
 // Returns the immediate lexicographically-following string. This is useful to
 // turn an inclusive range into something that can be used with Bigtable's
 // SetLimitRow():

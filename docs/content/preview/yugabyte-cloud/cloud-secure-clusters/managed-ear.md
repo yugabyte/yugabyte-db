@@ -3,7 +3,7 @@ title: Encryption at rest
 linkTitle: Encryption at rest
 description: YugabyteDB Managed cluster encryption at rest.
 headcontent: Encrypt your YugabyteDB cluster
-beta: /preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag
+earlyAccess: /preview/releases/versioning/#feature-availability
 menu:
   preview_yugabyte-cloud:
     identifier: managed-ear
@@ -14,21 +14,17 @@ type: docs
 
 For added security, you can encrypt your clusters (including backups) using a customer managed key (CMK) residing in a cloud provider Key Management Service (KMS). You grant YugabyteDB Managed access to the key with the requisite permissions to perform cryptographic operations using the key to secure the databases in your clusters.
 
-You enable YugabyteDB cluster encryption at rest (EAR) when you create it. See [Create your cluster](../../cloud-basics/create-clusters/).
+You can enable YugabyteDB EAR for a cluster as follows:
 
-<!-- You can enable YugabyteDB EAR for a cluster as follows:
+- On the **Security** page of the **Create Cluster** wizard when you [create your cluster](../../cloud-basics/create-clusters/).
+- On the cluster **Settings** tab under **Encryption at rest** (database version 2.16.7 and later only).
 
-- On the **Security** page of the **Create Cluster** wizard when you create a cluster.
-- On the cluster **Settings** tab under **Encryption at rest**.
--->
-
-Note that, regardless of whether you enable YugabyteDB EAR for a cluster, YugabyteDB Managed uses volume encryption for all data at rest, including your account data, your clusters, and their backups. Data is AES-256 encrypted using native cloud provider technologies - S3 and EBS volume encryption for AWS, and server-side and persistent disk encryption for GCP. Volume encryption keys are managed by the cloud provider and anchored by hardware security appliances.
+Note that, regardless of whether you enable YugabyteDB EAR for a cluster, YugabyteDB Managed uses volume encryption for all data at rest, including your account data, your clusters, and their backups. Data is AES-256 encrypted using native cloud provider technologies - S3 and EBS volume encryption for AWS, Azure disk encryption, and server-side and persistent disk encryption for GCP. Volume encryption keys are managed by the cloud provider and anchored by hardware security appliances.
 
 ## Limitations
 
-- Currently, you cannot enable cluster EAR for existing clusters.
-- You cannot remove encryption from clusters that have EAR enabled.
-- After EAR is enabled for a cluster, you cannot change keys.
+- You can't enable cluster EAR on clusters with YugabyteDB versions earlier than 2.16.7.
+- Currently, Azure is not supported for CMKs.
 
 Enabling EAR can impact cluster performance. You should monitor your workload after enabling this feature.
 
@@ -69,15 +65,46 @@ For more information on GCP KMS, refer to [Cloud Key Management Service overview
 
 {{< /tabpane >}}
 
-<!--## Encrypt a cluster
+## Encrypt a cluster using a CMK
 
-You can enable EAR for clusters in AWS as follows:
+You can enable EAR using a CMK for clusters in AWS and GCP (database version 2.16.7 and later only) as follows:
 
 1. On the cluster **Settings** tab, select **Encryption at rest**.
-1. Click **Enable Encryption**.
-1. Enter the ARN of the AWS CMK to use to encrypt the cluster.
-1. Enter the Access key of an IAM identity with permissions for the CMK. An access key consists of an **Access key ID** and the **Secret access key**. You would have saved the secret access key to a secure location when you created the access key in AWS.
-1. Click **Encrypt**.
+1. Click **Enable Cluster Encryption at Rest**.
+1. For AWS, provide the following details:
+
+    - **Customer managed key (CMK)**: Enter the Amazon Resource Name (ARN) of the CMK to use to encrypt the cluster.
+    - **Access key**: Provide an access key of an [IAM identity](https://docs.aws.amazon.com/IAM/latest/UserGuide/id.html) with permissions for the CMK. An access key consists of an access key ID and the secret access key.
+
+    For GCP:
+    - **Resource ID**: Enter the resource ID of the key ring where the CMK is stored.
+    - **Service Account Credentials**: Click **Add Key** to select the credentials JSON file you downloaded when creating credentials for the service account that has permissions to encrypt and decrypt using the CMK.
+
+1. Click **Save**.
 
 YugabyteDB Managed validates the key and, if successful, starts encrypting the data. Only new data is encrypted with the new key. Old data remains unencrypted until compaction churn triggers a re-encryption with the new key.
--->
+
+To disable cluster EAR, click **Disable Encryption at Rest**. YugabyteDB Managed uses lazy decryption to decrypt the cluster.
+
+## Rotate your CMK
+
+{{< warning title="Deleting your CMK" >}}
+If you delete a CMK, you will no longer be able to decrypt clusters encrypted using the key. Before deleting a CMK, make sure that you no longer need it. Retain all CMKs used to encrypt data in backups and snapshots.
+{{< /warning >}}
+
+To rotate the CMK used for EAR, do the following:
+
+1. On the cluster **Settings** tab, select **Encryption at rest**.
+1. Click **Edit CMK Configuration**.
+1. For AWS, provide the following details:
+
+    - **Customer managed key (CMK)**: Enter the Amazon Resource Name (ARN) of the new CMK to use to encrypt the cluster.
+    - **Access key**: Provide an access key of an [IAM identity](https://docs.aws.amazon.com/IAM/latest/UserGuide/id.html) with permissions for the CMK. An access key consists of an access key ID and the secret access key.
+
+    For GCP:
+    - **Resource ID**: Enter the resource ID of the key ring where the new CMK is stored.
+    - **Service Account Credentials**: Click **Add Key** to select the credentials JSON file you downloaded when creating credentials for the service account that has permissions to encrypt and decrypt using the CMK.
+
+1. Click **Save**.
+
+YugabyteDB Managed uses lazy decryption and encryption to encrypt the cluster using the new key.

@@ -2,7 +2,7 @@ import { FC } from 'react';
 import _ from 'lodash';
 import { useMutation } from 'react-query';
 import { useTranslation } from 'react-i18next';
-import { useForm, FormProvider } from 'react-hook-form';
+import { useForm, FormProvider, Controller } from 'react-hook-form';
 import { toast } from 'react-toastify';
 import { Box, Divider, Typography } from '@material-ui/core';
 import {
@@ -10,6 +10,8 @@ import {
   YBToggleField,
   YBCheckboxField,
   YBPasswordField,
+  YBLabel,
+  YBInput,
   YBTooltip
 } from '../../../../components';
 import { Universe } from '../../universe-form/utils/dto';
@@ -32,15 +34,18 @@ interface EnableYCQLModalProps {
   onClose: () => void;
   universeData: Universe;
   enforceAuth: boolean;
+  isItKubernetesUniverse: boolean;
 }
 
+const MAX_PORT = 65535;
 const TOAST_OPTIONS = { autoClose: TOAST_AUTO_DISMISS_INTERVAL };
 
 export const EnableYCQLModal: FC<EnableYCQLModalProps> = ({
   open,
   onClose,
   universeData,
-  enforceAuth
+  enforceAuth,
+  isItKubernetesUniverse
 }) => {
   const { t } = useTranslation();
   const classes = dbSettingStyles();
@@ -54,6 +59,9 @@ export const EnableYCQLModal: FC<EnableYCQLModalProps> = ({
         primaryCluster?.userIntent?.enableYCQL && enforceAuth
           ? true
           : primaryCluster?.userIntent?.enableYCQLAuth ?? true,
+      overridePorts: false,
+      yqlServerHttpPort: universeDetails.communicationPorts.yqlServerHttpPort,
+      yqlServerRpcPort: universeDetails.communicationPorts.yqlServerRpcPort,
       ycqlPassword: '',
       ycqlConfirmPassword: '',
       rotateYCQLPassword: false,
@@ -61,10 +69,15 @@ export const EnableYCQLModal: FC<EnableYCQLModalProps> = ({
       ycqlNewPassword: '',
       ycqlConfirmNewPassword: ''
     },
-    mode: 'onChange',
+    mode: 'onTouched',
     reValidateMode: 'onChange'
   });
-  const { control, watch, handleSubmit } = formMethods;
+  const {
+    control,
+    watch,
+    handleSubmit,
+    formState: { isDirty }
+  } = formMethods;
 
   //watchers
   const enableYCQLValue = watch('enableYCQL');
@@ -72,6 +85,7 @@ export const EnableYCQLModal: FC<EnableYCQLModalProps> = ({
   const ycqlPasswordValue = watch('ycqlPassword');
   const rotateYCQLPasswordValue = watch('rotateYCQLPassword');
   const ycqlNewPasswordValue = watch('ycqlNewPassword');
+  const overridePortsValue = watch('overridePorts');
 
   //Enable or Disable  YCQL and YCQLAuth
   const updateYCQLSettings = useMutation(
@@ -129,8 +143,14 @@ export const EnableYCQLModal: FC<EnableYCQLModalProps> = ({
         enableYCQLAuth: values.enableYCQL && values.enableYCQLAuth ? values.enableYCQLAuth : false,
         ycqlPassword: values.ycqlPassword ?? '',
         CommunicationPorts: {
-          yqlServerHttpPort: universeDetails.communicationPorts.yqlServerHttpPort,
-          yqlServerRpcPort: universeDetails.communicationPorts.yqlServerRpcPort
+          yqlServerHttpPort:
+            values.overridePorts && values.yqlServerHttpPort
+              ? values.yqlServerHttpPort
+              : universeDetails.communicationPorts.yqlServerHttpPort,
+          yqlServerRpcPort:
+            values.overridePorts && values.yqlServerRpcPort
+              ? values.yqlServerRpcPort
+              : universeDetails.communicationPorts.yqlServerRpcPort
         }
       };
       try {
@@ -154,6 +174,11 @@ export const EnableYCQLModal: FC<EnableYCQLModalProps> = ({
       onSubmit={handleFormSubmit}
       submitTestId="EnableYCQLModal-Submit"
       cancelTestId="EnableYCQLModal-Close"
+      buttonProps={{
+        primary: {
+          disabled: !isDirty
+        }
+      }}
     >
       <FormProvider {...formMethods}>
         <Box
@@ -294,7 +319,8 @@ export const EnableYCQLModal: FC<EnableYCQLModalProps> = ({
                         pattern: {
                           value: PASSWORD_REGEX,
                           message: t('universeForm.validation.passwordStrength')
-                        }
+                        },
+                        deps: ['ycqlConfirmPassword', 'enableYCQLAuth']
                       }}
                       control={control}
                       fullWidth
@@ -327,6 +353,123 @@ export const EnableYCQLModal: FC<EnableYCQLModalProps> = ({
                   </Box>
                 </>
               )}
+              {!isItKubernetesUniverse && (
+                <>
+                  <Box
+                    display="flex"
+                    flexDirection="row"
+                    alignItems="center"
+                    justifyContent="space-between"
+                    mt={2}
+                  >
+                    <Typography variant="h6">
+                      {t('universeActions.editYCQLSettings.overridePortsLabel')} &nbsp;
+                    </Typography>
+                    <YBTooltip
+                      title={
+                        rotateYCQLPasswordValue
+                          ? t('universeActions.editYCQLSettings.rotateBothYCQLWarning')
+                          : ''
+                      }
+                      placement="top-end"
+                    >
+                      <div>
+                        <YBToggleField
+                          name={'overridePorts'}
+                          inputProps={{
+                            'data-testid': 'EnableYCQLModal-OverrideToggle'
+                          }}
+                          control={control}
+                          disabled={rotateYCQLPasswordValue}
+                        />
+                      </div>
+                    </YBTooltip>
+                  </Box>
+                  {overridePortsValue && (
+                    <>
+                      <Controller
+                        name="yqlServerHttpPort"
+                        render={({ field: { value, onChange } }) => {
+                          return (
+                            <Box
+                              flex={1}
+                              mt={2}
+                              display={'flex'}
+                              width="100%"
+                              flexDirection={'row'}
+                              alignItems={'center'}
+                            >
+                              <Box flexShrink={1}>
+                                <YBLabel dataTestId={`EnableYCQLModal-yqlServerHttpPort`}>
+                                  {t(`universeForm.advancedConfig.yqlServerHttpPort`)}
+                                </YBLabel>
+                              </Box>
+
+                              <Box flex={1} display={'flex'} width="300px">
+                                <YBInput
+                                  disabled={rotateYCQLPasswordValue}
+                                  value={value}
+                                  onChange={onChange}
+                                  onBlur={(event) => {
+                                    let port =
+                                      Number(event.target.value.replace(/\D/g, '')) ||
+                                      universeDetails.communicationPorts.yqlServerHttpPort;
+                                    port = port > MAX_PORT ? MAX_PORT : port;
+                                    onChange(port);
+                                  }}
+                                  inputProps={{
+                                    'data-testid': 'EnableYCQLModal-Input-yqlServerHttpPort'
+                                  }}
+                                />
+                              </Box>
+                            </Box>
+                          );
+                        }}
+                      />
+                      <Controller
+                        name="yqlServerRpcPort"
+                        render={({ field: { value, onChange } }) => {
+                          return (
+                            <Box
+                              flex={1}
+                              mt={2}
+                              display={'flex'}
+                              width="100%"
+                              flexDirection={'row'}
+                              alignItems={'center'}
+                            >
+                              <Box flexShrink={1}>
+                                <YBLabel dataTestId={`EnableYCQLModal-yqlServerRpcPort`}>
+                                  {t(`universeForm.advancedConfig.yqlServerRpcPort`)}
+                                </YBLabel>
+                              </Box>
+
+                              <Box flex={1} display={'flex'} width="300px">
+                                <YBInput
+                                  disabled={rotateYCQLPasswordValue}
+                                  value={value}
+                                  onChange={onChange}
+                                  onBlur={(event) => {
+                                    let port =
+                                      Number(event.target.value.replace(/\D/g, '')) ||
+                                      universeDetails.communicationPorts.yqlServerRpcPort;
+                                    port = port > MAX_PORT ? MAX_PORT : port;
+                                    onChange(port);
+                                  }}
+                                  inputProps={{
+                                    'data-testid': 'EnableYCQLModal-Input-yqlServerRpcPort'
+                                  }}
+                                />
+                              </Box>
+                            </Box>
+                          );
+                        }}
+                      />
+                    </>
+                  )}
+                </>
+              )}
+              {/* rotate password section */}
               {enableYCQLAuthValue && primaryCluster?.userIntent?.enableYCQLAuth && (
                 <>
                   {!enforceAuth && (
@@ -389,7 +532,8 @@ export const EnableYCQLModal: FC<EnableYCQLModalProps> = ({
                               pattern: {
                                 value: PASSWORD_REGEX,
                                 message: t('universeForm.validation.passwordStrength')
-                              }
+                              },
+                              deps: ['ycqlConfirmNewPassword', 'enableYCQLAuth']
                             }}
                             name={'ycqlNewPassword'}
                             control={control}
@@ -411,7 +555,7 @@ export const EnableYCQLModal: FC<EnableYCQLModalProps> = ({
                                   (enableYCQLAuthValue && value === ycqlNewPasswordValue) ||
                                   (t('universeForm.validation.confirmPassword') as string)
                               },
-                              deps: ['ycqlPassword', 'enableYCQLAuth']
+                              deps: ['ycqlNewPassword', 'enableYCQLAuth']
                             }}
                             fullWidth
                             inputProps={{

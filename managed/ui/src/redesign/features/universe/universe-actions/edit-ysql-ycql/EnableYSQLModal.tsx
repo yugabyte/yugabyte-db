@@ -64,10 +64,15 @@ export const EnableYSQLModal: FC<EnableYSQLModalProps> = ({
       ysqlNewPassword: '',
       ysqlConfirmNewPassword: ''
     },
-    mode: 'onChange',
+    mode: 'onTouched',
     reValidateMode: 'onChange'
   });
-  const { control, watch, handleSubmit } = formMethods;
+  const {
+    control,
+    watch,
+    handleSubmit,
+    formState: { isDirty }
+  } = formMethods;
 
   //watchers
   const enableYSQLValue = watch('enableYSQL');
@@ -162,6 +167,11 @@ export const EnableYSQLModal: FC<EnableYSQLModalProps> = ({
       onSubmit={handleFormSubmit}
       submitTestId="EnableYSQLModal-Submit"
       cancelTestId="EnableYSQLModal-Close"
+      buttonProps={{
+        primary: {
+          disabled: !isDirty
+        }
+      }}
     >
       <FormProvider {...formMethods}>
         <Box
@@ -306,7 +316,8 @@ export const EnableYSQLModal: FC<EnableYSQLModalProps> = ({
                         pattern: {
                           value: PASSWORD_REGEX,
                           message: t('universeForm.validation.passwordStrength')
-                        }
+                        },
+                        deps: ['ysqlConfirmPassword', 'enableYSQLAuth']
                       }}
                       control={control}
                       fullWidth
@@ -401,7 +412,8 @@ export const EnableYSQLModal: FC<EnableYSQLModalProps> = ({
                               pattern: {
                                 value: PASSWORD_REGEX,
                                 message: t('universeForm.validation.passwordStrength')
-                              }
+                              },
+                              deps: ['ysqlConfirmNewPassword', 'enableYSQLAuth']
                             }}
                             name={'ysqlNewPassword'}
                             control={control}
@@ -423,7 +435,7 @@ export const EnableYSQLModal: FC<EnableYSQLModalProps> = ({
                                   (enableYSQLAuthValue && value === ysqlNewPasswordValue) ||
                                   (t('universeForm.validation.confirmPassword') as string)
                               },
-                              deps: ['ysqlPassword', 'enableYSQLAuth']
+                              deps: ['ysqlNewPassword', 'enableYSQLAuth']
                             }}
                             fullWidth
                             inputProps={{
@@ -477,6 +489,7 @@ export const EnableYSQLModal: FC<EnableYSQLModalProps> = ({
                   text={
                     <Box display="flex">
                       <Typography variant="body2" className={classes.errorNote}>
+                        <b>{t('common.note')}</b>&nbsp;
                         {t('universeActions.editYSQLSettings.disableYSQLWarning2')}
                       </Typography>
                     </Box>

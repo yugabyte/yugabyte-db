@@ -41,7 +41,6 @@ Read replicas require the following:
 - Partition-by-region clusters do not support read replicas.
 - Read replicas currently need to use the same instance type and node size for all read replica regions.
 - If another [locking cluster operation](../#locking-operations) is already running, you must wait for it to finish.
-- Currently, Azure is not supported for read replicas (coming soon).
 
 ## Add or edit read replicas
 

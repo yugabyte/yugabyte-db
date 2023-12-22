@@ -2484,7 +2484,7 @@ typedef struct YbRunWithPrefetcherContext
 
 static YBCStatus
 YbRunWithPrefetcherImpl(
-	uint64_t catalog_version,
+	YBCPgLastKnownCatalogVersionInfo catalog_version,
 	YBCPgSysTablePrefetcherCacheMode cache_mode,
 	YBCStatus (*func)(YbRunWithPrefetcherContext* ctx),
 	bool keep_prefetcher)
@@ -2530,7 +2530,7 @@ YbRunWithPrefetcher(
 	};
 
 	static const size_t kCacheModesCount = lengthof(cache_modes);
-	const uint64_t catalog_version =
+	const YBCPgLastKnownCatalogVersionInfo catalog_version =
 		YbGetCatalogCacheVersionForTablePrefetching();
 
 	size_t cache_mode_idx =

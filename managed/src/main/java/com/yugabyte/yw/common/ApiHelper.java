@@ -12,10 +12,7 @@ import com.google.inject.Singleton;
 import java.net.HttpURLConnection;
 import java.net.URL;
 import java.time.Duration;
-import java.util.HashMap;
-import java.util.List;
-import java.util.Map;
-import java.util.UUID;
+import java.util.*;
 import java.util.concurrent.CompletionStage;
 import java.util.concurrent.ExecutionException;
 import lombok.Getter;
@@ -42,9 +39,18 @@ public class ApiHelper {
   }
 
   public boolean postRequest(String url) {
+    return postRequest(url, Collections.emptyMap());
+  }
+
+  public boolean postRequest(String url, Map<String, String> headers) {
     try {
-      return wsClient
-          .url(url)
+      WSRequest request = wsClient.url(url);
+      if (!headers.isEmpty()) {
+        for (Map.Entry<String, String> entry : headers.entrySet()) {
+          request.addHeader(entry.getKey(), entry.getValue());
+        }
+      }
+      return request
           .execute("POST")
           .thenApply(wsResponse -> wsResponse.getStatus() == 200)
           .toCompletableFuture()

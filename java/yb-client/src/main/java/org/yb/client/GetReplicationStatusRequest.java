@@ -2,11 +2,8 @@ package org.yb.client;
 
 import com.google.protobuf.Message;
 import io.netty.buffer.ByteBuf;
-import java.util.ArrayList;
-import java.util.List;
 import javax.annotation.Nullable;
 import org.yb.master.MasterReplicationOuterClass;
-import org.yb.master.MasterReplicationOuterClass.ReplicationStatusPB;
 import org.yb.master.MasterTypes.MasterErrorPB;
 import org.yb.util.Pair;
 

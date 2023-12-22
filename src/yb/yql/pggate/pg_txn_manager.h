@@ -58,6 +58,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   Status RestartTransaction();
   Status ResetTransactionReadPoint();
   Status RestartReadPoint();
+  bool IsRestartReadPointRequested();
   void SetActiveSubTransactionId(SubTransactionId id);
   Status CommitTransaction();
   Status AbortTransaction();

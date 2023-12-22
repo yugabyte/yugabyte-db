@@ -261,7 +261,7 @@ int HdrHistogram::CountsArrayIndex(int bucket_index, int sub_bucket_index) const
 }
 
 uint64_t HdrHistogram::CountAt(int bucket_index, int sub_bucket_index) const {
-  return counts_[CountsArrayIndex(bucket_index, sub_bucket_index)];
+  return NoBarrier_Load(&counts_[CountsArrayIndex(bucket_index, sub_bucket_index)]);
 }
 
 uint64_t HdrHistogram::CountInBucketForValue(uint64_t value) const {

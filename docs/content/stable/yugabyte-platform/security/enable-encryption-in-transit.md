@@ -647,8 +647,6 @@ YugabyteDB Anywhere uses TLS to protect data in transit when connecting to other
 
 If you are using self-signed or custom CA certificates, YugabyteDB cannot verify your TLS connections unless you add the certificates to the YugabyteDB Anywhere Trust Store.
 
-Note that self-signed and custom CA certificates cannot be verified for OIDC connections, even if they are uploaded to the trust store. Connections are still encrypted.
-
 ### Add certificates to your trust store
 
 To add a certificate to the YugabyteDB Anywhere Trust Store, do the following:

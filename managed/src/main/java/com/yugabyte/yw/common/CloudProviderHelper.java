@@ -40,7 +40,6 @@ import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.Pod;
 import io.fabric8.kubernetes.api.model.Secret;
 import io.fabric8.kubernetes.client.internal.KubeConfigUtils;
-import java.io.IOException;
 import java.lang.annotation.Annotation;
 import java.lang.annotation.ElementType;
 import java.lang.annotation.Retention;
@@ -353,11 +352,7 @@ public class CloudProviderHelper {
     }
 
     Config kubeconfig = null;
-    try {
-      kubeconfig = KubeConfigUtils.parseConfigFromString(kubeConfigContent);
-    } catch (IOException e) {
-      throw new RuntimeException("Failed to parse kubeconfig", e);
-    }
+    kubeconfig = KubeConfigUtils.parseConfigFromString(kubeConfigContent);
 
     String contextName = kubeconfig.getCurrentContext();
     NamedContext currentContext =

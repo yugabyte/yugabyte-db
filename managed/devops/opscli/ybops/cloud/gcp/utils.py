@@ -718,8 +718,8 @@ class GoogleCloudAdmin():
                     "Instance %s's volume %s has not changed from %s",
                     instance, disk["deviceName"], disk["diskSizeGb"])
 
-    def change_instance_type(self, zone, instance_name, newInstanceType):
-        new_machine_type = f"zones/{zone}/machineTypes/{newInstanceType}"
+    def change_instance_type(self, zone, instance_name, instance_type):
+        new_machine_type = f"zones/{zone}/machineTypes/{instance_type}"
         body = {
             "machineType": new_machine_type
         }
@@ -947,10 +947,16 @@ class GoogleCloudAdmin():
                 static_ip_name, instance_name, region)
             static_ip_body = {"name": static_ip_name, "description": static_ip_description}
             logging.info("[app] Creating " + static_ip_description)
-            self.waiter.wait(self.compute.addresses().insert(
-                project=self.project,
-                region=region,
-                body=static_ip_body).execute(), region=region)
+
+            try:
+                self.waiter.wait(self.compute.addresses().insert(
+                    project=self.project,
+                    region=region,
+                    body=static_ip_body).execute(), region=region)
+            except HttpError as e:
+                if e.resp.status == 409 and 'already exists' in str(e):
+                    logging.warning(f"{static_ip_name} already exists")
+
             static_ip = self.compute.addresses().get(
                 project=self.project,
                 region=region,
@@ -1083,12 +1089,12 @@ class GoogleCloudAdmin():
             current_items.append({'key': 'startup-script', 'value': boot_script})
 
         # Update the instance metadata with the new items list
-        self.compute.instances().setMetadata(
+        self.waiter.wait(self.compute.instances().setMetadata(
             project=self.project,
             zone=args.zone,
             instance=instance['name'],
             body={'fingerprint': metadata.get('fingerprint'), 'items': current_items}
-        ).execute()
+        ).execute(), zone=args.zone)
 
     def modify_tags(self, args, instance, tags_to_set_str, tags_to_remove_str):
         tags_to_set = json.loads(tags_to_set_str) if tags_to_set_str is not None else {}

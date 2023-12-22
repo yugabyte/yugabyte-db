@@ -65,7 +65,7 @@ const std::string kColocatedDatabase = "test_colocated_database";
 constexpr double kSizeBuffer = 0.4;
 
 // Expected size of each table in bytes
-constexpr int kTempTableSize = 464000;
+constexpr auto kTempTableSize = 464000;
 
 std::string GetTableSizeQuery(const std::string& relationType, const std::string& table_name) {
   // query equivalent to \d+ in ysqlsh -E
@@ -120,7 +120,7 @@ Status VerifyTableSize(MiniCluster* cluster,
   sleep(5);
   auto query = GetTableSizeQuery(relationType, table_name);
   auto result = VERIFY_RESULT(conn->Fetch(query));
-  auto pg_size = VERIFY_RESULT(GetInt64(result.get(), 0, 4));
+  auto pg_size = VERIFY_RESULT(GetValue<PGUint64>(result.get(), 0, 4));
 
   // Verify that the actual size in DocDB is the same.
   uint64_t size_from_ts = 0;
@@ -134,16 +134,17 @@ Status VerifyTableSize(MiniCluster* cluster,
       size_from_ts += peer->log()->OnDiskSize();
     }
   }
-  if (size_from_ts != make_unsigned(pg_size)) {
+  if (size_from_ts != pg_size) {
     return STATUS_FORMAT(IllegalState, "Size $0 does not match the size from tablet server $1",
                          pg_size, size_from_ts);
   }
   return Status::OK();
 }
 
-Result<int64> GetTempTableSize(MiniCluster* cluster, PGConn* conn, const std::string& table_name) {
+Result<uint64_t> GetTempTableSize(
+    MiniCluster* cluster, PGConn* conn, const std::string& table_name) {
   auto result = VERIFY_RESULT(conn->Fetch(GetTableSizeQuery("T", table_name)));
-  return GetInt64(result.get(), 0, 4);
+  return GetValue<PGUint64>(result.get(), 0, 4);
 }
 
 // Verify that the size of the table is not set in the output of pg_table_size.
@@ -162,9 +163,9 @@ Status VerifyInvalidTableSize(MiniCluster* cluster,
   return Status::OK();
 }
 
-Status CheckSizeExpectedRange(const int64 actual_size, const int64 expected_size) {
-  int64 lower = expected_size - expected_size * kSizeBuffer;
-  int64 upper = expected_size + expected_size * kSizeBuffer;
+Status CheckSizeExpectedRange(uint64_t actual_size, uint64_t expected_size) {
+  const auto lower = expected_size - expected_size * kSizeBuffer;
+  const auto upper = expected_size + expected_size * kSizeBuffer;
 
   if (actual_size < lower || actual_size > upper) {
     return STATUS_FORMAT(IllegalState, "Size $0 does not fall into the range $1 - $2",

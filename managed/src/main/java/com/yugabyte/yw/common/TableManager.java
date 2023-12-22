@@ -22,6 +22,7 @@ import static com.yugabyte.yw.models.helpers.CustomerConfigConsts.REGION_LOCATIO
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.backuprestore.BackupUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
@@ -79,6 +80,7 @@ public class TableManager extends DevopsBase {
 
   public ShellResponse runCommand(CommandSubType subType, TableManagerParams taskParams) {
     Universe universe = Universe.getOrBadRequest(taskParams.getUniverseUUID());
+    Architecture arch = universe.getUniverseDetails().arch;
     Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
     Region region = Region.get(primaryCluster.userIntent.regionList.get(0));
     UserIntent userIntent = primaryCluster.userIntent;
@@ -304,7 +306,12 @@ public class TableManager extends DevopsBase {
           throw new RuntimeException(
               "Unable to fetch yugabyte release for version: " + userIntent.ybSoftwareVersion);
         }
-        String ybServerPackage = metadata.getFilePath(region);
+        String ybServerPackage;
+        if (arch != null) {
+          ybServerPackage = metadata.getFilePath(arch);
+        } else {
+          ybServerPackage = metadata.getFilePath(region);
+        }
         if (bulkImportParams.instanceCount == 0) {
           bulkImportParams.instanceCount = userIntent.numNodes * EMR_MULTIPLE;
         }

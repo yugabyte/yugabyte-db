@@ -349,6 +349,12 @@ message PgsqlBackfillSpecPB {
   optional bytes next_row_key = 3;
 }
 
+// Make sure this is in sync with YBCPgMetricsCaptureType in ybc_pg_typedefs.h.
+enum PgsqlMetricsCaptureType {
+  PGSQL_METRICS_CAPTURE_NONE = 0;
+  PGSQL_METRICS_CAPTURE_ALL = 1;
+}
+
 // TODO(neil) The protocol for select needs to be changed accordingly when we introduce and cache
 // execution plan in tablet server.
 message PgsqlReadRequestPB {
@@ -509,6 +515,9 @@ message PgsqlReadRequestPB {
 
   // Used only in pg client.
   optional bytes partition_key = 35;
+
+  // What metric changes to return in response.
+  optional PgsqlMetricsCaptureType metrics_capture = 38;
 }
 
 //--------------------------------------------------------------------------------------------------

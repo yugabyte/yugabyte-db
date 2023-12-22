@@ -1097,5 +1097,70 @@ TEST_F(RpcStubTest, OutboundSidecars) {
   }
 }
 
+TEST_F(RpcStubTest, StuckOutboundCallWithActiveConnection) {
+  SendSimpleCall();
+
+  rpc_test::ConcatRequestPB req;
+  req.set_lhs("yuga");
+  req.set_rhs("byte");
+  rpc_test::ConcatResponsePB resp;
+
+  RpcController controller;
+  controller.set_timeout(100ms);
+  controller.TEST_force_stuck_outbound_call();
+
+  rpc_test::AbacusServiceProxy proxy(proxy_cache_.get(), server_hostport_);
+  proxy.ConcatAsync(req, &resp, &controller, []() { LOG(INFO) << "Callback called"; });
+
+  std::this_thread::sleep_for(200ms);
+  ASSERT_FALSE(controller.finished());
+
+  // Dump the call state.
+  LOG(INFO) << controller.CallStateDebugString();
+
+  std::this_thread::sleep_for(2ms);
+
+  // Mark the call as failed.
+  controller.MarkCallAsFailed();
+
+  ASSERT_TRUE(controller.finished());
+  ASSERT_NOK(controller.status());
+}
+
+TEST_F(RpcStubTest, StuckOutboundCallWithClosedConnection) {
+  SendSimpleCall();
+
+  rpc_test::ConcatRequestPB req;
+  req.set_lhs("yuga");
+  req.set_rhs("byte");
+  rpc_test::ConcatResponsePB resp;
+
+  RpcController controller;
+  controller.set_timeout(100ms);
+  controller.TEST_force_stuck_outbound_call();
+
+  rpc_test::AbacusServiceProxy proxy(proxy_cache_.get(), server_hostport_);
+  proxy.ConcatAsync(req, &resp, &controller, []() { LOG(INFO) << "Callback called"; });
+
+  std::this_thread::sleep_for(100ms);
+
+  // Close the connection.
+  client_messenger_->BreakConnectivityTo(ASSERT_RESULT(HostToAddress(server_hostport_.host())));
+
+  ASSERT_FALSE(controller.finished());
+
+  // Dump the call state.
+  LOG(INFO) << controller.CallStateDebugString();
+
+  std::this_thread::sleep_for(2ms);
+
+  // Mark the call as failed.
+  controller.MarkCallAsFailed();
+
+  ASSERT_TRUE(controller.finished());
+  auto s = controller.status();
+  ASSERT_TRUE(s.IsTimedOut()) << s.ToString();
+}
+
 } // namespace rpc
 } // namespace yb

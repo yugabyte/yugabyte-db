@@ -392,6 +392,8 @@ class ReplicaState {
   // returns an uninitialized MonoDelta value.
   MonoDelta RemainingOldLeaderLeaseDuration(CoarseTimePoint* now = nullptr) const;
 
+  MonoDelta RemainingMajorityReplicatedLeaderLeaseDuration() const;
+
   const PhysicalComponentLease& old_leader_ht_lease() const {
     return old_leader_ht_lease_;
   }
@@ -534,7 +536,7 @@ class ReplicaState {
   // is allowed to serve up-to-date reads and accept writes only while the current time is less than
   // this. However, the leader might manage to replicate a lease extension without losing its
   // leadership.
-  CoarseTimePoint majority_replicated_lease_expiration_;
+  mutable CoarseTimePoint majority_replicated_lease_expiration_;
 
   // LEADER only: the latest committed hybrid time lease expiration deadline for the current leader.
   // The leader is allowed to add new log entries only when lease of old leader is expired.

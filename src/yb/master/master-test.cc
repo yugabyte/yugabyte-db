@@ -70,6 +70,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/random_util.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
@@ -90,6 +91,7 @@ DECLARE_bool(TEST_tablegroup_master_only);
 DECLARE_bool(TEST_simulate_port_conflict_error);
 DECLARE_bool(master_register_ts_check_desired_host_port);
 DECLARE_string(use_private_ip);
+DECLARE_bool(master_join_existing_universe);
 
 METRIC_DECLARE_counter(block_cache_misses);
 METRIC_DECLARE_counter(block_cache_hits);
@@ -2461,6 +2463,61 @@ Result<scoped_refptr<NamespaceInfo>> MasterTest::FindNamespaceByName(
   ns_idpb.set_name(name);
   ns_idpb.set_database_type(db_type);
   return mini_master_->catalog_manager().FindNamespace(ns_idpb);
+}
+
+class MasterStartUpTest : public YBTest {
+ public:
+  std::unique_ptr<MiniMaster> CreateMiniMaster(std::string fs_root) {
+    return std::make_unique<MiniMaster>(
+        Env::Default(), std::move(fs_root), AllocateFreePort(), AllocateFreePort(),
+        /* index */ 0);
+  }
+};
+
+TEST_F(MasterStartUpTest, JoinExistingClusterWithoutMasterAddresses) {
+  // Confirm the master enters shell mode with:
+  //     master_addresses.empty() == true
+  //     master_join_existing_universe == true
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_join_existing_universe) = true;
+  auto fs_root = GetTestPath("Master");
+  auto mini_master = CreateMiniMaster(fs_root);
+  mini_master->set_pass_master_addresses(false);
+  ASSERT_OK(mini_master->Start());
+  auto cleanup = ScopeExit([&mini_master] { mini_master->Shutdown(); });
+  ASSERT_TRUE(mini_master->master()->IsShellMode());
+}
+
+TEST_F(MasterStartUpTest, JoinExistingClusterWithMasterAddresses) {
+  // Confirm the master enters shell mode with:
+  //     master_addresses.empty() == false
+  //     master_join_existing_universe == true
+  auto fs_root = GetTestPath("Master1");
+  auto mini_master = CreateMiniMaster(fs_root);
+  ASSERT_OK(mini_master->Start());
+  auto cleanup = ScopeExit([&mini_master] { mini_master->Shutdown(); });
+  // Confirm the master does not enter shell mode without the flag passed.
+  // The MiniMaster class by default sets master_addresses for a new master.
+  ASSERT_FALSE(mini_master->master()->IsShellMode());
+  // Delete the system catalog tablet and restart the master so the master runs through the
+  // initialization logic again.
+  mini_master->Shutdown();
+  ASSERT_OK(Env::Default()->DeleteRecursively(fs_root));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_join_existing_universe) = true;
+  ASSERT_OK(mini_master->Start());
+  ASSERT_TRUE(mini_master->master()->IsShellMode());
+}
+
+TEST_F(MasterStartUpTest, JoinExistingClusterUnsetWithoutMasterAddresses) {
+  // Confirm the master enters shell mode with:
+  //     master_addresses.empty() == true
+  //     master_join_existing_universe == false
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_join_existing_universe) = false;
+  auto fs_root = GetTestPath("Master");
+  auto mini_master = CreateMiniMaster(fs_root);
+  mini_master->set_pass_master_addresses(false);
+  ASSERT_OK(mini_master->Start());
+  auto cleanup = ScopeExit([&mini_master] { mini_master->Shutdown(); });
+  ASSERT_TRUE(mini_master->master()->IsShellMode());
 }
 
 } // namespace master

@@ -70,8 +70,10 @@
 #include "yb/util/debug-util.h"
 #include "yb/util/metrics.h"
 #include "yb/util/result.h"
+#include "yb/util/scope_exit.h"
 #include "yb/util/status_log.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/test_thread_holder.h"
 #include "yb/util/threadpool.h"
 
 METRIC_DECLARE_entity(table);
@@ -84,11 +86,16 @@ DECLARE_uint64(max_group_replicate_batch_size);
 DECLARE_int32(protobuf_message_total_bytes_limit);
 DECLARE_uint64(rpc_max_message_size);
 
+DECLARE_bool(enable_flush_retryable_requests);
 DECLARE_bool(quick_leader_election_on_create);
+DECLARE_bool(TEST_pause_before_copying_retryable_requests);
+DECLARE_bool(TEST_pause_before_flushing_retryable_requests);
+DECLARE_bool(TEST_pause_before_submitting_flush_retryable_requests);
 
 namespace yb {
 namespace tablet {
 
+using namespace std::literals;
 using consensus::ConsensusBootstrapInfo;
 using consensus::ConsensusMetadata;
 using consensus::RaftPeerPB;
@@ -118,6 +125,7 @@ class TabletPeerTest : public YBTabletTest {
 
     ASSERT_OK(ThreadPoolBuilder("raft").Build(&raft_pool_));
     ASSERT_OK(ThreadPoolBuilder("prepare").Build(&tablet_prepare_pool_));
+    ASSERT_OK(ThreadPoolBuilder("flush-retryable-requests").Build(&flush_retryable_requests_pool_));
 
     rpc::MessengerBuilder builder(CURRENT_TEST_NAME());
     messenger_ = ASSERT_RESULT(builder.Build());
@@ -159,13 +167,9 @@ class TabletPeerTest : public YBTabletTest {
     config.add_peers()->CopyFrom(config_peer);
     config.set_opid_index(consensus::kInvalidOpIdIndex);
 
-    std::unique_ptr<ConsensusMetadata> cmeta;
-    ASSERT_OK(ConsensusMetadata::Create(tablet()->metadata()->fs_manager(),
-                                        tablet()->tablet_id(),
-                                        tablet()->metadata()->fs_manager()->uuid(),
-                                        config,
-                                        consensus::kMinimumTerm,
-                                        &cmeta));
+    std::unique_ptr<ConsensusMetadata> cmeta = ASSERT_RESULT(ConsensusMetadata::Create(
+        tablet()->metadata()->fs_manager(), tablet()->tablet_id(),
+        tablet()->metadata()->fs_manager()->uuid(), config, consensus::kMinimumTerm));
 
     ASSERT_OK(ThreadPoolBuilder("log")
                  .unlimited_threads()
@@ -177,12 +181,21 @@ class TabletPeerTest : public YBTabletTest {
         metadata->IsLazySuperblockFlushEnabled()
             ? std::bind(&RaftGroupMetadata::Flush, metadata, OnlyIfDirty::kTrue)
             : noop;
+    TabletPeerWeakPtr peer_weak_ptr(tablet_peer_);
+    auto pre_log_rollover_callback = [peer_weak_ptr]() {
+      auto peer = peer_weak_ptr.lock();
+      if (peer) {
+        Status s = peer->SubmitFlushRetryableRequestsTask();
+        LOG_IF(WARNING, !s.ok() && !s.IsNotSupported())
+            <<  "Failed to submit retryable requests task: " << s.ToString();
+      }
+    };
     ASSERT_OK(Log::Open(LogOptions(), tablet()->tablet_id(), metadata->wal_dir(),
                         metadata->fs_manager()->uuid(), *tablet()->schema(),
                         metadata->schema_version(), table_metric_entity_.get(),
                         tablet_metric_entity_.get(), log_thread_pool_.get(), log_thread_pool_.get(),
                         log_thread_pool_.get(), metadata->cdc_min_replicated_index(), &log,
-                        /* pre_log_rollover_callback = */ {}, new_segment_allocation_callback));
+                        pre_log_rollover_callback, new_segment_allocation_callback));
 
     consensus::RetryableRequestsManager retryable_requests_manager(
         tablet()->tablet_id(),
@@ -204,7 +217,8 @@ class TabletPeerTest : public YBTabletTest {
                                            &retryable_requests_manager,
                                            nullptr /* consensus_meta */,
                                            multi_raft_manager_.get(),
-                                           nullptr /* flush_retryable_requests_pool */));
+                                           flush_retryable_requests_pool_.get()));
+    tablet_peer_->EnableFlushRetryableRequests();
   }
 
   Status StartPeer(const ConsensusBootstrapInfo& info) {
@@ -269,6 +283,19 @@ class TabletPeerTest : public YBTabletTest {
         << "\nResp:\n" << resp.DebugString() << "Req:\n" << req.DebugString();
   }
 
+  template<class Callback>
+  std::unique_ptr<WriteQuery> CreateQuery(TabletPeer* tablet_peer,
+                                          const WriteRequestPB& req,
+                                          WriteResponsePB* resp,
+                                          const Callback& cb) {
+    auto query = std::make_unique<WriteQuery>(
+        /* leader_term */ 1, CoarseTimePoint::max(), tablet_peer,
+        CHECK_RESULT(tablet_peer->shared_tablet_safe()), nullptr, resp);
+    query->set_client_request(req);
+    query->set_callback(cb);
+    return query;
+  }
+
   Status RollLog(TabletPeer* tablet_peer) {
     Synchronizer synchronizer;
     CHECK_OK(tablet_peer->log_->TEST_SubmitFuncToAppendToken([&synchronizer, tablet_peer] {
@@ -326,6 +353,7 @@ class TabletPeerTest : public YBTabletTest {
   std::unique_ptr<ThreadPool> raft_pool_;
   std::unique_ptr<ThreadPool> tablet_prepare_pool_;
   std::unique_ptr<ThreadPool> log_thread_pool_;
+  std::unique_ptr<ThreadPool> flush_retryable_requests_pool_;
   std::shared_ptr<TabletPeer> tablet_peer_;
   std::unique_ptr<consensus::MultiRaftManager> multi_raft_manager_;
 };
@@ -531,15 +559,8 @@ TEST_F_EX(TabletPeerTest, MaxRaftBatchProtobufLimit, TabletPeerProtofBufSizeLimi
 
     req->set_tablet_id(tablet()->tablet_id());
     AddTestRowInsert(i, i, value, req);
-    auto query = std::make_unique<WriteQuery>(
-        /* leader_term = */ 1, CoarseTimePoint::max(), tablet_peer, tablet(), nullptr, resp);
-    query->set_client_request(*req);
-    query->set_callback([&latch, resp](const Status& status) {
-      if (!status.ok()) {
-        StatusToPB(status, resp->mutable_error()->mutable_status());
-      }
-      latch.CountDown();
-    });
+    auto query = CreateQuery(
+        tablet_peer, *req, resp, MakeLatchOperationCompletionCallback(&latch, resp));
     queries.push_back(std::move(query));
   }
 
@@ -589,29 +610,243 @@ TEST_F_EX(TabletPeerTest, SingleOpExceedsRpcMsgLimit, TabletPeerProtofBufSizeLim
 
   WriteRequestPB req;
   WriteResponsePB resp;
-  std::vector<std::unique_ptr<WriteQuery>> queries;
-  queries.reserve(1);
   CountDownLatch latch(1);
 
   auto* const tablet_peer = tablet_peer_.get();
 
   req.set_tablet_id(tablet()->tablet_id());
   AddTestRowInsert(1, 1, value, &req);
-  auto query = std::make_unique<WriteQuery>(
-      /* leader_term = */ 1, CoarseTimePoint::max(), tablet_peer,
-      ASSERT_RESULT(tablet_peer->shared_tablet_safe()), nullptr, &resp);
-  query->set_client_request(req);
-  query->set_callback([&latch, &resp](const Status& status) {
-      if (!status.ok()) {
-      StatusToPB(status, resp.mutable_error()->mutable_status());
-    }
-    latch.CountDown();
-  });
+  auto query = CreateQuery(
+      tablet_peer, req, &resp, MakeLatchOperationCompletionCallback(&latch, &resp));
 
   tablet_peer->WriteAsync(std::move(query));
   latch.Wait();
 
   ASSERT_TRUE(resp.has_error()) << "\n Response:\n" << resp.DebugString();
+}
+
+class RetryableRequestsFlusherTest : public TabletPeerTest {
+ protected:
+  RetryableRequestsFlusherTest() : TabletPeerTest(GetSimpleTestSchema()) {}
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_flush_retryable_requests) = true;
+    TabletPeerTest::SetUp();
+    StartTabletPeer();
+  }
+
+  void StartTabletPeer() {
+    ConsensusBootstrapInfo info;
+    ASSERT_OK(StartPeer(info));
+  }
+
+  Status WaitForFlushState(RetryableRequestsFlushState state) {
+    return WaitFor([&] {
+      return tablet_peer_->TEST_RetryableRequestsFlusherState() == state;
+    }, 10s, Format("Wait for flush state to be $0", state));
+  }
+};
+
+TEST_F(RetryableRequestsFlusherTest, RejectFlushOrSubmitIfFlushingOrSubmitted) {
+  TestThreadHolder thread_holder;
+
+  // If a flush is in progress, the next flush or submit should just return with
+  // AlreadyPresent error.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_retryable_requests) = true;
+  thread_holder.AddThreadFunctor([&] {
+    ASSERT_OK(tablet_peer_->FlushRetryableRequests());
+  });
+  ASSERT_OK(WaitForFlushState(RetryableRequestsFlushState::kFlushing));
+  Status s = tablet_peer_->FlushRetryableRequests();
+  ASSERT_TRUE(s.IsAlreadyPresent());
+  s = tablet_peer_->SubmitFlushRetryableRequestsTask();
+  ASSERT_TRUE(s.IsAlreadyPresent());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_retryable_requests) = false;
+  ASSERT_OK(WaitForFlushState(RetryableRequestsFlushState::kFlushIdle));
+
+  // If a flush is submitted, the next flush or submit should just return with AlreadyPresent error.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_submitting_flush_retryable_requests) = true;
+  thread_holder.AddThreadFunctor([&] {
+    ASSERT_OK(tablet_peer_->SubmitFlushRetryableRequestsTask());
+  });
+  ASSERT_OK(WaitForFlushState(RetryableRequestsFlushState::kFlushSubmitted));
+  s = tablet_peer_->FlushRetryableRequests();
+  ASSERT_TRUE(s.IsAlreadyPresent());
+  s = tablet_peer_->SubmitFlushRetryableRequestsTask();
+  ASSERT_TRUE(s.IsAlreadyPresent());
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_submitting_flush_retryable_requests) = false;
+  ASSERT_OK(WaitForFlushState(RetryableRequestsFlushState::kFlushIdle));
+
+  thread_holder.WaitAndStop(10s);
+}
+
+TEST_F(RetryableRequestsFlusherTest, WaitFlushDoneBeforeCopy) {
+  TestThreadHolder thread_holder;
+
+  std::atomic<int> finish_order{0};
+  // If a flush is in progress, the next copy should wait for flush done.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_retryable_requests) = true;
+  thread_holder.AddThreadFunctor([&] {
+    ASSERT_OK(tablet_peer_->FlushRetryableRequests());
+    auto order = finish_order.fetch_add(1);
+    ASSERT_EQ(order, 0);
+  });
+  ASSERT_OK(WaitForFlushState(RetryableRequestsFlushState::kFlushing));
+  thread_holder.AddThreadFunctor([&] {
+    // There's no data to flush, so CopyRetryableRequestsTo should do nothing.
+    auto res = tablet_peer_->CopyRetryableRequestsTo("fake_path");
+    ASSERT_FALSE(res.ok());
+    ASSERT_TRUE(res.status().IsNotFound());
+    ASSERT_TRUE(res.status().message().Contains("Retryable requests has not been flushed"));
+    auto order = finish_order.fetch_add(1);
+    ASSERT_EQ(order, 1);
+  });
+  SleepFor(1s);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_retryable_requests) = false;
+  ASSERT_OK(WaitForFlushState(RetryableRequestsFlushState::kFlushIdle));
+  thread_holder.WaitAndStop(10s);
+
+  finish_order.store(0);
+  // If a submit is in progress, the next copy should wait for flush done.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_submitting_flush_retryable_requests) = true;
+  thread_holder.AddThreadFunctor([&] {
+    ASSERT_OK(tablet_peer_->SubmitFlushRetryableRequestsTask());
+    auto order = finish_order.fetch_add(1);
+    ASSERT_EQ(order, 0);
+  });
+  ASSERT_OK(WaitForFlushState(RetryableRequestsFlushState::kFlushSubmitted));
+  thread_holder.AddThreadFunctor([&] {
+    // There's no data to flush, so CopyRetryableRequestsTo should do nothing.
+    auto res = tablet_peer_->CopyRetryableRequestsTo("fake_path");
+    ASSERT_FALSE(res.ok());
+    ASSERT_TRUE(res.status().IsNotFound());
+    ASSERT_TRUE(res.status().message().Contains("Retryable requests has not been flushed"));
+    auto order = finish_order.fetch_add(1);
+    ASSERT_EQ(order, 1);
+  });
+  SleepFor(1s);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_submitting_flush_retryable_requests) = false;
+  ASSERT_OK(WaitForFlushState(RetryableRequestsFlushState::kFlushIdle));
+
+  thread_holder.WaitAndStop(10s);
+}
+
+TEST_F(RetryableRequestsFlusherTest, WaitCopyDoneBeforeFlushOrSubmit) {
+  TestThreadHolder thread_holder;
+
+  std::atomic<int> finish_order{0};
+  // If a flush is in progress, the next copy should wait for flush done.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_copying_retryable_requests) = true;
+  thread_holder.AddThreadFunctor([&] {
+    auto res = tablet_peer_->CopyRetryableRequestsTo("fake_path");
+    ASSERT_FALSE(res.ok());
+    ASSERT_TRUE(res.status().IsNotFound());
+    ASSERT_TRUE(res.status().message().Contains("Retryable requests has not been flushed"));
+    auto order = finish_order.fetch_add(1);
+    ASSERT_EQ(order, 0);
+  });
+  ASSERT_OK(WaitForFlushState(RetryableRequestsFlushState::kReading));
+  thread_holder.AddThreadFunctor([&] {
+    ASSERT_OK(tablet_peer_->FlushRetryableRequests());
+    auto order = finish_order.fetch_add(1);
+    ASSERT_EQ(order, 1);
+  });
+  SleepFor(1s);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_copying_retryable_requests) = false;
+  ASSERT_OK(WaitForFlushState(RetryableRequestsFlushState::kFlushIdle));
+  thread_holder.WaitAndStop(10s);
+
+  finish_order.store(0);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_copying_retryable_requests) = true;
+  thread_holder.AddThreadFunctor([&] {
+    auto res = tablet_peer_->CopyRetryableRequestsTo("fake_path");
+    ASSERT_FALSE(res.ok());
+    ASSERT_TRUE(res.status().IsNotFound());
+    ASSERT_TRUE(res.status().message().Contains("Retryable requests has not been flushed"));
+    auto order = finish_order.fetch_add(1);
+    ASSERT_EQ(order, 0);
+  });
+  ASSERT_OK(WaitForFlushState(RetryableRequestsFlushState::kReading));
+  thread_holder.AddThreadFunctor([&] {
+    ASSERT_OK(tablet_peer_->SubmitFlushRetryableRequestsTask());
+    auto order = finish_order.fetch_add(1);
+    ASSERT_EQ(order, 1);
+  });
+  SleepFor(1s);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_copying_retryable_requests) = false;
+  ASSERT_OK(WaitForFlushState(RetryableRequestsFlushState::kFlushIdle));
+
+  thread_holder.WaitAndStop(10s);
+}
+
+TEST_F(RetryableRequestsFlusherTest, WaitFlushIdleBeforeShutdown) {
+  TestThreadHolder thread_holder;
+
+  std::atomic<int> finish_order{0};
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_retryable_requests) = true;
+  thread_holder.AddThreadFunctor([&] {
+    Status s = tablet_peer_->FlushRetryableRequests();
+    ASSERT_TRUE(s.ok() || s.IsIllegalState());
+    auto order = finish_order.fetch_add(1);
+    ASSERT_EQ(order, 0);
+  });
+  ASSERT_OK(WaitForFlushState(RetryableRequestsFlushState::kFlushing));
+  thread_holder.AddThreadFunctor([&] {
+    WARN_NOT_OK(
+        tablet_peer_->Shutdown(
+            ShouldAbortActiveTransactions::kFalse, DisableFlushOnShutdown::kFalse),
+            "Tablet peer shutdown failed");
+    auto order = finish_order.fetch_add(1);
+    ASSERT_EQ(order, 1);
+  });
+  SleepFor(1s);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_retryable_requests) = false;
+
+  thread_holder.WaitAndStop(10s);
+}
+
+class RetryableRequestsFlusherWithLargeBatchTest : public RetryableRequestsFlusherTest {
+ protected:
+  void SetUp() override {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_log_segment_size_bytes) = 5_KB;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_initial_log_segment_size_bytes) = 1_KB;
+    RetryableRequestsFlusherTest::SetUp();
+  }
+};
+
+TEST_F_EX(RetryableRequestsFlusherTest,
+          TestLogRolloverWithSingleBatch,
+          RetryableRequestsFlusherWithLargeBatchTest) {
+  const int kNumOps = 100;
+  std::string value(ANNOTATE_UNPROTECTED_READ(FLAGS_log_segment_size_bytes) + 1, 'X');
+
+  std::vector<WriteRequestPB> requests(kNumOps);
+  std::vector<WriteResponsePB> responses(kNumOps);
+  std::vector<std::unique_ptr<WriteQuery>> queries;
+  queries.reserve(kNumOps);
+  CountDownLatch latch(kNumOps);
+
+  auto* const tablet_peer = tablet_peer_.get();
+
+  for (int i = 0; i < kNumOps; ++i) {
+    auto* req = &requests[i];
+    auto* resp = &responses[i];
+
+    req->set_tablet_id(tablet()->tablet_id());
+    AddTestRowInsert(i, i, value, req);
+    auto query = CreateQuery(
+        tablet_peer, *req, resp, MakeLatchOperationCompletionCallback(&latch, resp));
+    queries.push_back(std::move(query));
+  }
+
+  // Pause at the first flush, and following submission or flush should be skipped.
+  // Otherwise, it will cause deadlock, see https://github.com/yugabyte/yugabyte-db/issues/18946
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_retryable_requests) = true;
+  for (auto& query : queries) {
+    tablet_peer->WriteAsync(std::move(query));
+    SleepFor(10ms);
+  }
+  latch.Wait();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_pause_before_flushing_retryable_requests) = false;
 }
 
 } // namespace tablet

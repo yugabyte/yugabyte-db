@@ -81,7 +81,6 @@ SELECT explain_join_tlarge_tsmall();
 -- #### batch nested loop joins ####
 SET yb_bnl_batch_size = 1024;
 -- now we can request large amounts of rows from the inner table - these are still bound by the size limit
--- YB_TODO: EXPLAIN Index Cond is not showing: Index Cond: (a = ANY (ARRAY[t_large.a, $1, $2, ..., $1023]))
 SELECT explain_join_tsmall_tlarge();
                         explain_join_tsmall_tlarge
 ---------------------------------------------------------------------------
@@ -90,10 +89,10 @@ SELECT explain_join_tsmall_tlarge();
    ->  Seq Scan on t_large (actual rows=5000 loops=1)
          Storage Table Read Requests: 99
    ->  Index Scan using t_small_pkey on t_small (actual rows=1000 loops=5)
-         Storage Table Read Requests: 2
-(6 rows)
+         Index Cond: (a = ANY (ARRAY[t_large.a, $1, $2, ..., $1023]))
+         Storage Table Read Requests: 1
+(7 rows)
 
--- YB_TODO: EXPLAIN Index Cond is not showing: Index Cond: (a = ANY (ARRAY[t_small.a, $1, $2, ..., $1023]))
 SELECT explain_join_tlarge_tsmall();
                         explain_join_tlarge_tsmall
 ---------------------------------------------------------------------------
@@ -102,11 +101,11 @@ SELECT explain_join_tlarge_tsmall();
    ->  Seq Scan on t_small (actual rows=5000 loops=1)
          Storage Table Read Requests: 6
    ->  Index Scan using t_large_pkey on t_large (actual rows=1000 loops=5)
+         Index Cond: (a = ANY (ARRAY[t_small.a, $1, $2, ..., $1023]))
          Storage Table Read Requests: 18
-(6 rows)
+(7 rows)
 
 SET yb_fetch_size_limit = '500kB';
--- YB_TODO: EXPLAIN Index Cond is not showing: Index Cond: (a = ANY (ARRAY[t_large.a, $1, $2, ..., $1023]))
 SELECT explain_join_tsmall_tlarge();
                         explain_join_tsmall_tlarge
 ---------------------------------------------------------------------------
@@ -115,10 +114,10 @@ SELECT explain_join_tsmall_tlarge();
    ->  Seq Scan on t_large (actual rows=5000 loops=1)
          Storage Table Read Requests: 12
    ->  Index Scan using t_small_pkey on t_small (actual rows=1000 loops=5)
+         Index Cond: (a = ANY (ARRAY[t_large.a, $1, $2, ..., $1023]))
          Storage Table Read Requests: 1
-(6 rows)
+(7 rows)
 
--- YB_TODO: EXPLAIN Index Cond is not showing: Index Cond: (a = ANY (ARRAY[t_small.a, $1, $2, ..., $1023]))
 SELECT explain_join_tlarge_tsmall();
                         explain_join_tlarge_tsmall
 ---------------------------------------------------------------------------
@@ -127,8 +126,9 @@ SELECT explain_join_tlarge_tsmall();
    ->  Seq Scan on t_small (actual rows=5000 loops=1)
          Storage Table Read Requests: 3
    ->  Index Scan using t_large_pkey on t_large (actual rows=1000 loops=5)
+         Index Cond: (a = ANY (ARRAY[t_small.a, $1, $2, ..., $1023]))
          Storage Table Read Requests: 2
-(6 rows)
+(7 rows)
 
 -- YB_TODO: tests here onwards fail because proper join is not successfully chosen
 SET yb_bnl_batch_size = 1; -- disable BNLJ

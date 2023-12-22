@@ -22,7 +22,7 @@ func New() *YbaCtlComponent {
 
 // Setup will create the base install directory needed for initialization.
 func (yc *YbaCtlComponent) Setup() error {
-	err := common.MkdirAll(common.YbactlInstallDir(), 0755)
+	err := common.MkdirAll(common.YbactlInstallDir(), common.DirMode)
 	return err
 }
 
@@ -128,7 +128,7 @@ func createHomeBinDir() (string, error) {
 		return "", fmt.Errorf("could not determine home directory: %w", err)
 	}
 	usrBin := filepath.Join(home, ".local", "bin")
-	if err := common.MkdirAll(usrBin, 0755); err != nil {
+	if err := common.MkdirAll(usrBin, common.DirMode); err != nil {
 		return usrBin, fmt.Errorf("could not create directory '%s': %w", usrBin, err)
 	}
 	return usrBin, nil

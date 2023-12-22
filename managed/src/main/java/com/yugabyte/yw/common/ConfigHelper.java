@@ -50,7 +50,8 @@ public class ConfigHelper {
     SoftwareVersion("Software Version"),
     YugawareMetadata("Yugaware Metadata"),
     Security("Security Level"),
-    FileDataSync("Sync File System Data in the DB");
+    FileDataSync("Sync File System Data in the DB"),
+    YBADefaultAMI("Default AMIs version for YBA");
 
     private final String description;
     private final String configFile;

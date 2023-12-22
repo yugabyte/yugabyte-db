@@ -1,5 +1,5 @@
 ---
-title: Migrate to YugabyteDB Voyager
+title: Migrate to YugabyteDB using Voyager
 headerTitle: YugabyteDB Voyager
 linkTitle: YugabyteDB Voyager
 headcontent: Simplify migration from legacy and cloud databases to YugabyteDB
@@ -23,14 +23,15 @@ resources:
     url: https://www.yugabyte.com/voyager/
 ---
 
-Use YugabyteDB Voyager to manage end-to-end database migration, including cluster preparation, schema migration, and data
-migration. Voyager safely migrates data from PostgreSQL, MySQL, and Oracle databases to YugabyteDB Managed, YugabyteDB Anywhere, and the core open source database, YugabyteDB.
+Use YugabyteDB Voyager to manage end-to-end database migration, including cluster preparation, schema migration, and data migration. Voyager safely migrates data from PostgreSQL, MySQL, and Oracle databases to YugabyteDB Managed, YugabyteDB Anywhere, and the core open source database, YugabyteDB.
 
 {{< sections/text-with-right-image
   title="Get Started"
   description="Install YugabyteDB Voyager on different operating systems (RHEL, Ubuntu, macOS), or via environments such as Docker or an Airgapped installation."
+  imageTransparent=true
   buttonText="Install"
   buttonUrl="install-yb-voyager/"
+  imageTransparent=true
   imageAlt="YugabyteDB Voyager" imageUrl="/images/homepage/voyager-transparent.svg"
 >}}
 
@@ -46,7 +47,7 @@ migration. Voyager safely migrates data from PostgreSQL, MySQL, and Oracle datab
     title="Migrate your data"
     description="Migrate your database and verify the results."
     buttonText="migrate"
-    buttonUrl="migrate-steps/"
+    buttonUrl="migrate/"
   >}}
 
   {{< sections/3-box-card

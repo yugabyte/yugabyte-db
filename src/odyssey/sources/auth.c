@@ -9,7 +9,9 @@
 #include <machinarium.h>
 #include <odyssey.h>
 
-#if YB_AUTH_PASSTHROUGH_USED != TRUE
+#define YB_SHMEM_KEY_FORMAT "shmkey="
+
+#ifndef YB_SUPPORT_FOUND
 
 static inline int od_auth_frontend_cleartext(od_client_t *client)
 {
@@ -804,6 +806,13 @@ server_failed : {
 }
 }
 
+bool yb_is_valid_get_client_id_msg(char *data)
+{
+	if (data != NULL)
+		return strncmp(data, YB_SHMEM_KEY_FORMAT, strlen(YB_SHMEM_KEY_FORMAT)) == 0;
+	return false;
+}
+
 int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 {
 	od_global_t *global = client->global;
@@ -836,7 +845,27 @@ int yb_auth_frontend_passthrough(od_client_t *client, od_server_t *server)
 			 server, "Got a packet of type: %s",
 			 kiwi_be_type_to_string(type));
 
-		if (type == KIWI_BE_READY_FOR_QUERY) {
+		if (type == KIWI_BE_NOTICE_RESPONSE) {
+			/* 
+			 * Received a NOTICE packet, it can be the HINT containing the
+			 * client id 
+			 */
+			kiwi_fe_error_t hint;
+			rc = kiwi_fe_read_notice(machine_msg_data(msg),
+						 machine_msg_size(msg), &hint);
+			if (rc == -1) {
+				od_debug(
+					&instance->logger, "get client_id",
+					client, server,
+					"failed to parse error message from server");
+			} else if (client->client_id == 0 &&
+				yb_is_valid_get_client_id_msg(hint.hint)) {
+				client->client_id = atoi(hint.hint + strlen(YB_SHMEM_KEY_FORMAT));
+			}
+		}
+		else if (type == KIWI_BE_READY_FOR_QUERY) {
+			if (client->client_id == 0)
+				return -1;
 			return rc_auth;
 		} else if (type == KIWI_BE_ERROR_RESPONSE) {
 			return -1;
@@ -853,7 +882,7 @@ int od_auth_frontend(od_client_t *client)
 
 	int rc;
 
-#if YB_AUTH_PASSTHROUGH_USED == TRUE
+#ifdef YB_SUPPORT_FOUND
 	rc = yb_execute_on_control_connection(client,
 					      yb_auth_frontend_passthrough);
 	if (rc == -1)

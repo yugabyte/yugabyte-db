@@ -763,6 +763,9 @@ ClientAuthentication(Port *port)
 			if (roleid != InvalidOid)
 				YbResetFailedAttemptsIfAllowed(roleid);
 			sendAuthRequest(port, AUTH_REQ_OK, NULL, 0);
+
+			if (YbIsClientYsqlConnMgr() && port->yb_is_auth_passthrough_req)
+				YbCreateClientId();
 		}
 		else
 		{
@@ -776,7 +779,12 @@ ClientAuthentication(Port *port)
 	}
 
 	if (status == STATUS_OK)
+	{
 		sendAuthRequest(port, AUTH_REQ_OK, NULL, 0);
+
+		if (YbIsClientYsqlConnMgr() && port->yb_is_auth_passthrough_req)
+			YbCreateClientId();
+	}
 	else
 		auth_failed(port, status, logdetail, false /* yb_role_is_locked_out */);
 }

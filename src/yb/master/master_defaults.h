@@ -13,7 +13,8 @@
 
 #pragma once
 
-#include <string>
+#include <stdint.h>
+#include <stddef.h>
 
 namespace yb {
 namespace master {
@@ -54,7 +55,7 @@ static const char* const kXCUniverseId = "universe_id";
 constexpr size_t kXCUniverseIdIdx = 0;
 static const char* const kXCProducerTabletId = "tablet_id";
 constexpr size_t kXCProducerTabletIdIdx = 1;
-static const char* const kXCSafeTime  = "safe_time";
+static const char* const kXCSafeTime = "safe_time";
 constexpr size_t kXCSafeTimeIdx = 2;
 
 static const char* const kPgAutoAnalyzeTableName = "pg_auto_analyze";

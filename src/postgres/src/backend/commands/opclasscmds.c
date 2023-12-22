@@ -381,10 +381,19 @@ DefineOpClass(CreateOpClassStmt *stmt)
 
 	amform = (Form_pg_am) GETSTRUCT(tup);
 	amoid = amform->oid;
-	if (amoid == LSM_AM_OID)
-		ereport(ERROR,
-				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
-				 errmsg("unsupported index method lsm for CREATE OPERATOR FAMILY")));
+	if (IsYugaByteEnabled() && amoid == LSM_AM_OID)
+	{
+		foreach (l, stmt->items)
+		{
+			CreateOpClassItem *item = lfirst_node(CreateOpClassItem, l);
+			if (item->itemtype == OPCLASS_ITEM_STORAGETYPE)
+				ereport(ERROR,
+						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						 errmsg("STORAGE clause not supported for CREATE "
+						 "OPERATOR CLASS with lsm access method")));
+		}
+	}
+
 	amroutine = GetIndexAmRoutineByAmId(amoid, false);
 	ReleaseSysCache(tup);
 
@@ -1223,8 +1232,6 @@ assignProcTypes(OpFamilyMember *member, Oid amoid, Oid typeoid,
 	HeapTuple	proctup;
 	Form_pg_proc procform;
 
-	Assert(amoid != LSM_AM_OID);
-
 	/* Fetch the procedure definition */
 	proctup = SearchSysCache1(PROCOID, ObjectIdGetDatum(member->object));
 	if (!HeapTupleIsValid(proctup))
@@ -1268,18 +1275,20 @@ assignProcTypes(OpFamilyMember *member, Oid amoid, Oid typeoid,
 	 * returning int4, while proc 2 must be a 2-arg proc returning int8.
 	 * Otherwise we don't know.
 	 */
-	else if (amoid == BTREE_AM_OID)
+	else if (amoid == BTREE_AM_OID ||
+			 (IsYugaByteEnabled() && amoid == LSM_AM_OID))
 	{
+		const char *yb_amname = amoid == BTREE_AM_OID ? "btree" : "lsm";
 		if (member->number == BTORDER_PROC)
 		{
 			if (procform->pronargs != 2)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						 errmsg("btree comparison functions must have two arguments")));
+						 errmsg("%s comparison functions must have two arguments", yb_amname)));
 			if (procform->prorettype != INT4OID)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						 errmsg("btree comparison functions must return integer")));
+						 errmsg("%s comparison functions must return integer", yb_amname)));
 
 			/*
 			 * If lefttype/righttype isn't specified, use the proc's input
@@ -1296,11 +1305,12 @@ assignProcTypes(OpFamilyMember *member, Oid amoid, Oid typeoid,
 				procform->proargtypes.values[0] != INTERNALOID)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						 errmsg("btree sort support functions must accept type \"internal\"")));
+						 errmsg("%s sort support functions must accept type \"internal\"",
+						 yb_amname)));
 			if (procform->prorettype != VOIDOID)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						 errmsg("btree sort support functions must return void")));
+						 errmsg("%s sort support functions must return void", yb_amname)));
 
 			/*
 			 * Can't infer lefttype/righttype from proc, so use default rule
@@ -1311,11 +1321,11 @@ assignProcTypes(OpFamilyMember *member, Oid amoid, Oid typeoid,
 			if (procform->pronargs != 5)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						 errmsg("btree in_range functions must have five arguments")));
+						 errmsg("%s in_range functions must have five arguments", yb_amname)));
 			if (procform->prorettype != BOOLOID)
 				ereport(ERROR,
 						(errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
-						 errmsg("btree in_range functions must return boolean")));
+						 errmsg("%s in_range functions must return boolean", yb_amname)));
 
 			/*
 			 * If lefttype/righttype isn't specified, use the proc's input

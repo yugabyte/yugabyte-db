@@ -3,6 +3,7 @@ package com.yugabyte.yw.controllers.handlers;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.google.inject.Inject;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.subtasks.cloud.CloudImageBundleSetup;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -78,14 +79,23 @@ public class ImageBundleHandler {
     ImageBundleDetails details = bundle.getDetails();
     CloudImageBundleSetup.verifyImageBundleDetails(details, provider);
     ImageBundle oBundle = ImageBundle.getOrBadRequest(iBUUID);
+    Architecture arch = oBundle.getDetails().getArch();
     if (oBundle.getUseAsDefault() && !bundle.getUseAsDefault()) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           String.format(
-              "One of the image bundle should be default for the provider %s", provider.getUuid()));
+              "One of the image bundle should be default for the provider %s"
+                  + "for a given architecture %s",
+              provider.getUuid(), arch.toString()));
     } else if (!oBundle.getUseAsDefault() && bundle.getUseAsDefault()) {
       // Change the default image bundle for the provider.
-      ImageBundle prevDefaultImageBundle = ImageBundle.getDefaultForProvider(provider.getUuid());
+      List<ImageBundle> prevDefaultImageBundles =
+          ImageBundle.getDefaultForProvider(provider.getUuid());
+      ImageBundle prevDefaultImageBundle =
+          prevDefaultImageBundles.stream()
+              .filter(iBundle -> iBundle.getDetails().getArch().equals(arch))
+              .findFirst()
+              .get();
       prevDefaultImageBundle.setUseAsDefault(false);
       prevDefaultImageBundle.save();
       oBundle.setUseAsDefault(bundle.getUseAsDefault());

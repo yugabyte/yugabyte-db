@@ -378,6 +378,12 @@ class EnumBitSet {
     return impl_.to_ullong() > rhs.impl_.to_ullong();
   }
 
+  EnumBitSet<Enum> operator~() const {
+    EnumBitSet<Enum> result;
+    result.impl_ = ~impl_;
+    return result;
+  }
+
  private:
   std::bitset<MapSize(static_cast<Enum*>(nullptr))> impl_;
 

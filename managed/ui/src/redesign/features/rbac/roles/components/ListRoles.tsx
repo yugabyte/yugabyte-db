@@ -8,7 +8,6 @@
  */
 
 import { useContext, useState } from 'react';
-import clsx from 'clsx';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { useToggle } from 'react-use';
@@ -20,9 +19,10 @@ import { DeleteRoleModal } from './DeleteRoleModal';
 import { YBButton } from '../../../../components';
 import { YBLoadingCircleIcon } from '../../../../../components/common/indicators';
 import { YBSearchInput } from '../../../../../components/common/forms/fields/YBSearchInput';
+import { RoleTypeComp } from '../../common/RbacUtils';
 
 import { RoleContextMethods, RoleViewContext } from '../RoleContext';
-import { IRole } from '../IRoles';
+import { Role } from '../IRoles';
 import { getAllRoles } from '../../api';
 
 import { Add, ArrowDropDown } from '@material-ui/icons';
@@ -52,16 +52,6 @@ const useStyles = makeStyles((theme) => ({
     '& svg': {
       width: theme.spacing(3),
       height: theme.spacing(3)
-    }
-  },
-  roleType: {
-    borderRadius: theme.spacing(0.5),
-    border: `1px solid ${theme.palette.ybacolors.ybBorderGray}`,
-    padding: '2px 6px',
-    '&.custom': {
-      border: `1px solid ${theme.palette.primary[300]}`,
-      background: theme.palette.primary[200],
-      color: theme.palette.primary[600]
     }
   },
   actions: {
@@ -110,7 +100,7 @@ const ListRoles = () => {
     );
   }
 
-  const getActions = (_: undefined, role: IRole) => {
+  const getActions = (_: undefined, role: Role) => {
     return (
       <MoreActionsMenu
         menuOptions={[
@@ -125,7 +115,14 @@ const ListRoles = () => {
           {
             text: t('table.moreActions.cloneRole'),
             icon: <Clone />,
-            callback: () => {}
+            callback: () => {
+              setCurrentRole({
+                ...role,
+                roleUUID: '',
+                name: ''
+              });
+              setCurrentPage('CREATE_ROLE');
+            }
           },
           {
             text: t('table.moreActions.viewUsers'),
@@ -182,9 +179,7 @@ const ListRoles = () => {
         <TableHeaderColumn
           dataSort
           dataField="roleType"
-          dataFormat={(t: IRole['roleType']) => (
-            <span className={clsx(classes.roleType, t === 'Custom' && 'custom')}>{t}</span>
-          )}
+          dataFormat={(_, role: Role) => <RoleTypeComp role={role} />}
         >
           {t('table.type')}
         </TableHeaderColumn>

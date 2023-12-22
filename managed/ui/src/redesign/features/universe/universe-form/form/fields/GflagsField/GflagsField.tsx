@@ -30,6 +30,7 @@ import Edit from '../../../../../../assets/edit_pen.svg';
 import Close from '../../../../../../assets/close.svg';
 import Plus from '../../../../../../assets/plus.svg';
 import MoreIcon from '../../../../../../assets/ellipsis.svg';
+import '../../../../../../../components/universes/UniverseForm/UniverseForm.scss';
 
 /* TODO : 
 1. Rewrite this file with proper types

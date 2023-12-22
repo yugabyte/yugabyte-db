@@ -31,9 +31,21 @@ import './CustomerMetricsPanel.scss';
  * Move this logic out of render function because we need `selectedUniverse` prop
  * that gets passed down from the `GraphPanelHeader` component.
  */
-const PanelBody = ({ origin, selectedUniverse, nodePrefixes, width, tableName, graph }) => {
+const PanelBody = ({
+  origin,
+  selectedUniverse,
+  nodePrefixes,
+  width,
+  tableName,
+  graph,
+  customer
+}) => {
   let result = null;
-
+  const runtimeConfigs = customer?.runtimeConfigs;
+  const isGranularMetricsEnabled =
+    runtimeConfigs?.data?.configEntries?.find(
+      (c) => c.key === 'yb.ui.feature_flags.granular_metrics'
+    )?.value === 'true';
   const invalidTabType = [];
   const isYSQLOpsEnabled = selectedUniverse?.universeDetails?.clusters?.[0]?.userIntent.enableYSQL;
   // List of default tabs to display based on metrics origin
@@ -65,7 +77,7 @@ const PanelBody = ({ origin, selectedUniverse, nodePrefixes, width, tableName, g
       : invalidTabType.push(MetricTypes.CONTAINER);
   }
 
-  if (currentSelectedNodeType !== NodeType.ALL) {
+  if (currentSelectedNodeType !== NodeType.ALL && origin !== MetricOrigin.TABLE) {
     currentSelectedNodeType === NodeType.MASTER
       ? invalidTabType.push(MetricTypes.TSERVER, MetricTypes.YSQL_OPS, MetricTypes.YCQL_OPS)
       : invalidTabType.push(MetricTypes.MASTER, MetricTypes.MASTER_ADVANCED);
@@ -106,6 +118,7 @@ const PanelBody = ({ origin, selectedUniverse, nodePrefixes, width, tableName, g
                     title={metricContent.title}
                     width={width}
                     tableName={tableName}
+                    isGranularMetricsEnabled={isGranularMetricsEnabled}
                   />
                 </Tab>
               );

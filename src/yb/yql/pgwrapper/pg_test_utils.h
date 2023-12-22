@@ -15,6 +15,7 @@
 
 #include <array>
 #include <functional>
+#include <string_view>
 #include <utility>
 
 #include "yb/gutil/macros.h"
@@ -104,6 +105,12 @@ struct SingleMetricDescriber : public MetricWatcherDeltaDescriberTraits<size_t, 
 };
 
 using SingleMetricWatcher = MetricWatcher<SingleMetricDescriber>;
+
+[[nodiscard]] bool HasTransactionError(const Status& status);
+[[nodiscard]] bool IsRetryable(const Status& status);
+[[nodiscard]] bool IsSerializeAccessError(const Status& status);
+
+[[nodiscard]] std::string_view SerializeAccessErrorMessageSubstring();
 
 } // namespace pgwrapper
 } // namespace yb

@@ -4,7 +4,7 @@ headerTitle: Key-value workload
 linkTitle: Key-value workload
 description: Benchmark YCQL performance with key-value workloads.
 image: /images/section_icons/explore/high_performance.png
-headcontent: Test YugabyteDB performance with a key-value workload.
+headcontent: Benchmark YCQL performance with key-value workloads
 aliases:
   - /preview/benchmark/performance/
   - /preview/benchmark/key-value-workload
@@ -19,14 +19,14 @@ type: docs
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
   <li >
-    <a href="{{< relref "./key-value-workload-ysql.md" >}}" class="nav-link">
+    <a href="../key-value-workload-ysql/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       YSQL
     </a>
   </li>
 
   <li >
-    <a href="{{< relref "./key-value-workload-ycql.md" >}}" class="nav-link active">
+    <a href="../key-value-workload-ycql/" class="nav-link active">
       <i class="icon-cassandra" aria-hidden="true"></i>
       YCQL
     </a>

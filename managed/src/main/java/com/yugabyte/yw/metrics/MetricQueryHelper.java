@@ -15,6 +15,7 @@ import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.common.*;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.ProviderConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.MetricQueryParams;
@@ -38,6 +39,7 @@ import org.joda.time.DateTime;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
+import play.libs.ws.WSClient;
 
 @Singleton
 public class MetricQueryHelper {
@@ -51,6 +53,7 @@ public class MetricQueryHelper {
 
   public static final String MANAGEMENT_COMMAND_RELOAD = "reload";
   public static final String PROMETHEUS_MANAGEMENT_ENABLED = "yb.metrics.management.enabled";
+  public static final String WS_CLIENT_KEY = "yb.metrics.ws";
 
   private static final String CONTAINER_METRIC_PREFIX = "container";
   private static final String NODE_PREFIX = "node_prefix";
@@ -81,7 +84,7 @@ public class MetricQueryHelper {
 
   private final RuntimeConfGetter confGetter;
 
-  private final ApiHelper apiHelper;
+  private final WSClientRefresher wsClientRefresher;
 
   private final MetricUrlProvider metricUrlProvider;
 
@@ -91,12 +94,12 @@ public class MetricQueryHelper {
   public MetricQueryHelper(
       Config appConfig,
       RuntimeConfGetter confGetter,
-      ApiHelper apiHelper,
+      WSClientRefresher wsClientRefresher,
       MetricUrlProvider metricUrlProvider,
       PlatformExecutorFactory platformExecutorFactory) {
     this.appConfig = appConfig;
     this.confGetter = confGetter;
-    this.apiHelper = apiHelper;
+    this.wsClientRefresher = wsClientRefresher;
     this.metricUrlProvider = metricUrlProvider;
     this.platformExecutorFactory = platformExecutorFactory;
   }
@@ -398,18 +401,17 @@ public class MetricQueryHelper {
         Map<String, String> queryParams = params;
         queryParams.put("queryKey", metricSettings.getMetric());
 
-        Map<String, String> specificFilters =
-            filterOverrides.getOrDefault(metricSettings.getMetric(), null);
-        if (specificFilters != null) {
-          additionalFilters.putAll(specificFilters);
-        }
+        Map<String, String> metricAdditionalFilters =
+            filterOverrides.getOrDefault(metricSettings.getMetric(), new HashMap<>());
+        metricAdditionalFilters.putAll(additionalFilters);
 
         Callable<JsonNode> callable =
             new MetricQueryExecutor(
                 metricUrlProvider,
-                apiHelper,
+                getApiHelper(),
+                getAuthHeaders(),
                 queryParams,
-                additionalFilters,
+                metricAdditionalFilters,
                 metricSettings,
                 isRecharts);
         Future<JsonNode> future = threadPool.submit(callable);
@@ -452,8 +454,7 @@ public class MetricQueryHelper {
 
     HashMap<String, String> getParams = new HashMap<>();
     getParams.put("query", promQueryExpression);
-    final JsonNode responseJson =
-        apiHelper.getRequest(queryUrl, new HashMap<>(), /*headers*/ getParams);
+    final JsonNode responseJson = getApiHelper().getRequest(queryUrl, getAuthHeaders(), getParams);
     final MetricQueryResponse metricResponse =
         Json.fromJson(responseJson, MetricQueryResponse.class);
     if (metricResponse.error != null || metricResponse.data == null) {
@@ -466,7 +467,7 @@ public class MetricQueryHelper {
   public List<AlertData> queryAlerts() {
     final String queryUrl = getPrometheusQueryUrl(ALERTS_PATH);
 
-    final JsonNode responseJson = apiHelper.getRequest(queryUrl);
+    final JsonNode responseJson = getApiHelper().getRequest(queryUrl, getAuthHeaders());
     final AlertsResponse response = Json.fromJson(responseJson, AlertsResponse.class);
     if (response.getStatus() != ResponseStatus.success) {
       throw new RuntimeException("Error querying prometheus alerts: " + response);
@@ -480,7 +481,7 @@ public class MetricQueryHelper {
 
   public void postManagementCommand(String command) {
     final String queryUrl = metricUrlProvider.getMetricsManagementUrl() + "/" + command;
-    if (!apiHelper.postRequest(queryUrl)) {
+    if (!getApiHelper().postRequest(queryUrl, getAuthHeaders())) {
       throw new RuntimeException(
           "Failed to perform " + command + " on prometheus instance " + queryUrl);
     }
@@ -601,5 +602,20 @@ public class MetricQueryHelper {
       return "#";
     }
     return otherMountPoints.replaceAll(",", "|");
+  }
+
+  protected ApiHelper getApiHelper() {
+    WSClient wsClient = wsClientRefresher.getClient(WS_CLIENT_KEY);
+    return new ApiHelper(wsClient);
+  }
+
+  private Map<String, String> getAuthHeaders() {
+    Boolean authEnabled = confGetter.getGlobalConf(GlobalConfKeys.metricsAuth);
+    if (!authEnabled) {
+      return Collections.emptyMap();
+    }
+    String username = confGetter.getGlobalConf(GlobalConfKeys.metricsAuthUsername);
+    String password = confGetter.getGlobalConf(GlobalConfKeys.metricsAuthPassword);
+    return AuthUtil.getBasicAuthHeader(username, password);
   }
 }

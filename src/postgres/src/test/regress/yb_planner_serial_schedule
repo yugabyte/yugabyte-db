@@ -9,3 +9,4 @@ test: yb_planner_join_order
 test: yb_planner_size_estimates
 test: yb_planner_heuristic_selectivity
 test: yb_planner_taqo_basic
+test: yb_planner_base_scans_cost_model

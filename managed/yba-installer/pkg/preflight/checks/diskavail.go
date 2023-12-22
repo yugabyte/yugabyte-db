@@ -46,28 +46,9 @@ func (r diskAvailCheck) Execute() Result {
 	}
 
 	baseDir := common.GetBaseInstall()
-
-	if _, existsErr := os.Stat(baseDir); existsErr == nil {
-		err := fileutil.IsDirWriteable(baseDir)
-		if err != nil {
-			res.Error = fmt.Errorf(baseDir + " is not writeable.")
-			res.Status = StatusCritical
-			return res
-		}
-		log.Debug(baseDir + " is writeable.")
-	}
-
-	// walk up the dir path until we find a dir that exists
-	validParentDir, err := common.GetValidParent(baseDir)
+	bytesAvail, err := getFreeBytes(baseDir)
 	if err != nil {
-		res.Error = fmt.Errorf("No valid parent dir for install dir " + baseDir)
-		res.Status = StatusCritical
-		return res
-	}
-	var stat unix.Statfs_t
-	err = unix.Statfs(validParentDir, &stat)
-	if err != nil {
-		res.Error = fmt.Errorf("Cannot read disk availability of " + validParentDir)
+		res.Error = err
 		res.Status = StatusCritical
 		return res
 	}
@@ -78,7 +59,6 @@ func (r diskAvailCheck) Execute() Result {
 		// upgrade
 		minDiskReq = minFreeDiskUpgrade
 	}
-	bytesAvail := stat.Bavail * uint64(stat.Bsize)
 	if bytesAvail < minDiskReq {
 		res.Error = fmt.Errorf(
 			"Availabile disk space on volume %s is less than minimum required %s",
@@ -88,4 +68,27 @@ func (r diskAvailCheck) Execute() Result {
 	}
 
 	return res
+}
+
+func getFreeBytes(path string) (uint64, error) {
+	if _, existsErr := os.Stat(path); existsErr == nil {
+		err := fileutil.IsDirWriteable(path)
+		if err != nil {
+			return 0, fmt.Errorf(path + " is not writeable.")
+		}
+		log.Debug(path + " is writeable.")
+	}
+
+	// walk up the dir path until we find a dir that exists
+	validParentDir, err := common.GetValidParent(path)
+	if err != nil {
+		return 0, fmt.Errorf("No valid parent dir for install dir " + path)
+	}
+
+	var stat unix.Statfs_t
+	err = unix.Statfs(validParentDir, &stat)
+	if err != nil {
+		return 0, fmt.Errorf("Cannot read disk availability of " + validParentDir)
+	}
+	return stat.Bavail * uint64(stat.Bsize), nil
 }

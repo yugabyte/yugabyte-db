@@ -148,7 +148,8 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   MemTracker(int64_t byte_limit, const std::string& id,
              ConsumptionFunctor consumption_functor,
              std::shared_ptr<MemTracker> parent,
-             AddToParent add_to_parent, CreateMetrics create_metrics);
+             AddToParent add_to_parent, CreateMetrics create_metrics,
+             const std::string& metric_name = std::string());
 
   ~MemTracker();
 
@@ -184,8 +185,19 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
       const std::shared_ptr<MemTracker>& parent = std::shared_ptr<MemTracker>(),
       AddToParent add_to_parent = AddToParent::kTrue,
       CreateMetrics create_metrics = CreateMetrics::kTrue) {
-    return CreateTracker(
-        byte_limit, id, ConsumptionFunctor(), parent, add_to_parent, create_metrics);
+    return CreateTracker(byte_limit, id, id /* metric_name */, ConsumptionFunctor(),
+        parent, add_to_parent, create_metrics);
+  }
+
+  static std::shared_ptr<MemTracker> CreateTracker(
+      int64_t byte_limit,
+      const std::string& id,
+      const std::string& metric_name,
+      const std::shared_ptr<MemTracker>& parent = std::shared_ptr<MemTracker>(),
+      AddToParent add_to_parent = AddToParent::kTrue,
+      CreateMetrics create_metrics = CreateMetrics::kTrue) {
+    return CreateTracker(byte_limit, id, metric_name, ConsumptionFunctor(), parent,
+        add_to_parent, create_metrics);
   }
 
   static std::shared_ptr<MemTracker> CreateTracker(
@@ -193,12 +205,35 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
       const std::shared_ptr<MemTracker>& parent = std::shared_ptr<MemTracker>(),
       AddToParent add_to_parent = AddToParent::kTrue,
       CreateMetrics create_metrics = CreateMetrics::kTrue) {
-    return CreateTracker(-1 /* byte_limit */, id, parent, add_to_parent, create_metrics);
+    return CreateTracker(-1 /* byte_limit */, id, id /* metric_name */, parent,
+        add_to_parent, create_metrics);
+  }
+
+  static std::shared_ptr<MemTracker> CreateTracker(
+      const std::string& id,
+      const std::string& metric_name,
+      const std::shared_ptr<MemTracker>& parent = std::shared_ptr<MemTracker>(),
+      AddToParent add_to_parent = AddToParent::kTrue,
+      CreateMetrics create_metrics = CreateMetrics::kTrue) {
+    return CreateTracker(-1 /* byte_limit */, id, metric_name, parent, add_to_parent,
+        create_metrics);
   }
 
   static std::shared_ptr<MemTracker> CreateTracker(
       int64_t byte_limit,
       const std::string& id,
+      ConsumptionFunctor consumption_functor,
+      const std::shared_ptr<MemTracker>& parent = std::shared_ptr<MemTracker>(),
+      AddToParent add_to_parent = AddToParent::kTrue,
+      CreateMetrics create_metrics = CreateMetrics::kTrue) {
+    return CreateTracker(byte_limit, id, id /* metric_name */, consumption_functor,
+        parent, add_to_parent, create_metrics);
+  }
+
+  static std::shared_ptr<MemTracker> CreateTracker(
+      int64_t byte_limit,
+      const std::string& id,
+      const std::string& metric_name,
       ConsumptionFunctor consumption_functor,
       const std::shared_ptr<MemTracker>& parent = std::shared_ptr<MemTracker>(),
       AddToParent add_to_parent = AddToParent::kTrue,
@@ -220,16 +255,38 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   static std::shared_ptr<MemTracker> FindOrCreateTracker(
       int64_t byte_limit,
       const std::string& id,
+      const std::string& metric_name,
       const std::shared_ptr<MemTracker>& parent = std::shared_ptr<MemTracker>(),
       AddToParent add_to_parent = AddToParent::kTrue,
       CreateMetrics create_metrics = CreateMetrics::kTrue);
+
+  static std::shared_ptr<MemTracker> FindOrCreateTracker(
+      int64_t byte_limit,
+      const std::string& id,
+      const std::shared_ptr<MemTracker>& parent = std::shared_ptr<MemTracker>(),
+      AddToParent add_to_parent = AddToParent::kTrue,
+      CreateMetrics create_metrics = CreateMetrics::kTrue) {
+    return FindOrCreateTracker(byte_limit, id, id /* metric_name */,
+        parent, add_to_parent, create_metrics);
+  }
+
+  static std::shared_ptr<MemTracker> FindOrCreateTracker(
+      const std::string& id,
+      const std::string& metric_name,
+      const std::shared_ptr<MemTracker>& parent = std::shared_ptr<MemTracker>(),
+      AddToParent add_to_parent = AddToParent::kTrue,
+      CreateMetrics create_metrics = CreateMetrics::kTrue) {
+    return FindOrCreateTracker(-1 /* byte_limit */, id, metric_name, parent,
+        add_to_parent, create_metrics);
+  }
 
   static std::shared_ptr<MemTracker> FindOrCreateTracker(
       const std::string& id,
       const std::shared_ptr<MemTracker>& parent = std::shared_ptr<MemTracker>(),
       AddToParent add_to_parent = AddToParent::kTrue,
       CreateMetrics create_metrics = CreateMetrics::kTrue) {
-    return FindOrCreateTracker(-1 /* byte_limit */, id, parent, add_to_parent, create_metrics);
+    return FindOrCreateTracker(-1 /* byte_limit */, id, id /* metric_name */,
+        parent, add_to_parent, create_metrics);
   }
 
   void ListDescendantTrackers(
@@ -310,6 +367,7 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   int64_t limit() const { return limit_; }
   bool has_limit() const { return limit_ >= 0; }
   const std::string& id() const { return id_; }
+  const std::string& metric_name() const { return metric_name_; }
 
   // Returns the memory consumed in bytes.
   int64_t consumption() const {
@@ -352,8 +410,7 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   // globally unique.
   std::string ToString() const;
 
-  void SetMetricEntity(const scoped_refptr<MetricEntity>& metric_entity,
-                       const std::string& name_suffix = std::string());
+  void SetMetricEntity(const scoped_refptr<MetricEntity>& metric_entity);
   scoped_refptr<MetricEntity> metric_entity() const;
 
   bool add_to_parent() const {
@@ -399,7 +456,8 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
       ConsumptionFunctor consumption_functor,
       MayExist may_exist,
       AddToParent add_to_parent,
-      CreateMetrics create_metrics);
+      CreateMetrics create_metrics,
+      const std::string& metric_name);
 
   // Variant of FindTracker() that:
   // 1. Must be called with a non-NULL parent, and
@@ -452,6 +510,9 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   bool log_stack_;
 
   AddToParent add_to_parent_;
+
+  // Concatenated with parents tracker's metric name.
+  const std::string metric_name_;
 };
 
 // An std::allocator that manipulates a MemTracker during allocation

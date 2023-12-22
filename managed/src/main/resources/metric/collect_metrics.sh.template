@@ -74,7 +74,10 @@ then
 fi
 
 if [ "$output" = "file" ]; then
-  mkdir -p "$(dirname "$filename")"
+  dirpath="$(dirname "$filename")"
+  mkdir -p "$dirpath"
+  # Allow read by prometheus user.
+  chmod 755 "$dirpath"
   ${YB_HOME_DIR}/bin/node_health.py --metrics_only True --metrics_file "$filename"
 else
   ${YB_HOME_DIR}/bin/node_health.py --metrics_only True

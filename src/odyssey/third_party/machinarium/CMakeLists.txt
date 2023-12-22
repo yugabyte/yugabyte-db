@@ -2,7 +2,7 @@ cmake_minimum_required(VERSION 3.10)
 
 project(machinarium C)
 
-add_compile_options(${OD_EXTRA_COMPILER_FLAGS})
+add_extra_yb_flags_in_odyssey()
 
 set(CLANGCOMPILERSTANDART gnu11)
 

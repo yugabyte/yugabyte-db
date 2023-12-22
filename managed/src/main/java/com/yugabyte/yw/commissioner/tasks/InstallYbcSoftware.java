@@ -63,7 +63,8 @@ public class InstallYbcSoftware extends UniverseDefinitionTaskBase {
               });
 
       // We will need to setup server again in case of systemd to register yb-controller service.
-      if (universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd) {
+      if (!universe.isYbcEnabled()
+          && universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd) {
         // We assume that user has provisioned nodes again with new service files in case of
         // on-prem manual provisioned universe.
         if (!Util.isOnPremManualProvisioning(universe)) {

@@ -22,8 +22,6 @@ import io.yugabyte.operator.v1alpha1.SupportBundleStatus.Status;
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.FileReader;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.time.Instant;
@@ -101,10 +99,10 @@ public class SupportBundleReconciler
 
   @Override
   public void onAdd(io.yugabyte.operator.v1alpha1.SupportBundle bundle) {
-    if (bundle.getStatus().getBundleUUID() != null) {
+    if (bundle.getStatus() != null && bundle.getStatus().getResourceUUID() != null) {
       // TODO: If we hit this path due to a YBA restart, the bundle won't have its final status
       // update. We need a better way of plugging in the 'status update' function into the tasks.
-      log.info("bundle %s is already getting generated", bundle.getStatus().getBundleUUID());
+      log.info("bundle %s is already getting generated", bundle.getStatus().getResourceUUID());
       return;
     }
 
@@ -156,7 +154,6 @@ public class SupportBundleReconciler
         universe.getName());
 
     taskExecutor.waitForTask(taskUUID);
-    updateStatus(bundle, Status.READY, Paths.get(supportBundle.getPath()));
   }
 
   @Override
@@ -169,7 +166,7 @@ public class SupportBundleReconciler
   @Override
   public void onDelete(
       io.yugabyte.operator.v1alpha1.SupportBundle bundle, boolean deletedFinalStateUnknown) {
-    UUID bundleUUID = UUID.fromString(bundle.getStatus().getBundleUUID());
+    UUID bundleUUID = UUID.fromString(bundle.getStatus().getResourceUUID());
     SupportBundle supportBundle = SupportBundle.get(bundleUUID);
     if (supportBundle == null) {
       log.debug("no bundle found");
@@ -188,29 +185,7 @@ public class SupportBundleReconciler
       bundleStatus = new SupportBundleStatus();
     }
     bundleStatus.setStatus(Status.GENERATING);
-    bundleStatus.setBundleUUID(uuid.toString());
-    bundle.setStatus(bundleStatus);
-    resourceClient.inNamespace(namespace).resource(bundle).replaceStatus();
-  }
-
-  private void updateStatus(
-      io.yugabyte.operator.v1alpha1.SupportBundle bundle, Status status, Path localPath) {
-    SupportBundleStatus bundleStatus = bundle.getStatus();
-    if (bundleStatus == null) {
-      bundleStatus = new SupportBundleStatus();
-    }
-    bundleStatus.setStatus(status);
-    String pod = this.yugawarePod;
-    if (this.yugawareNamespace != null) {
-      pod = String.format("%s/%s", this.yugawareNamespace, this.yugawarePod);
-    }
-    if (pod == null) {
-      pod = "<yugaware pod name>";
-    }
-    bundleStatus.setAccess(
-        String.format(
-            "kubectl cp %s:%s ./%s -c yugaware",
-            pod, localPath.toString(), localPath.getFileName().toString()));
+    bundleStatus.setResourceUUID(uuid.toString());
     bundle.setStatus(bundleStatus);
     resourceClient.inNamespace(namespace).resource(bundle).replaceStatus();
   }

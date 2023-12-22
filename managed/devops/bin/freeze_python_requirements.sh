@@ -12,8 +12,8 @@ set -euo pipefail
 
 . "${BASH_SOURCE%/*}"/common.sh
 
-GRPCIO_PY310_VERSION="1.49.1"
-PROTOBUF_PY310_VERSION="4.21.3"
+GRPCIO_PY37_VERSION="1.57.0"
+PROTOBUF_PY37_VERSION="4.23.4"
 
 if [[ ! ${1:-} =~ ^(-y|--yes)$ ]]; then
   echo >&2 "This will remove and re-create the entire virtualenv from ${virtualenv_dir} in order"
@@ -35,12 +35,6 @@ fi
 delete_virtualenv
 activate_virtualenv
 
-if [[ $YB_MANAGED_DEVOPS_USE_PYTHON3 == "0" ]]; then
-  # looks like there is some issue with setuptools and virtualenv on python2.
-  # https://github.com/pypa/virtualenv/issues/1493, adding this requirement
-  pip_install "setuptools<45"
-fi
-
 cd "$yb_devops_home"
 
 log "There should be no pre-installed Python modules in the virtualenv"
@@ -58,15 +52,16 @@ log "Generating $FROZEN_REQUIREMENTS_FILE"
 # https://stackoverflow.com/questions/10326933/case-sensitive-sort-unix-bash
 ( set -x; run_pip freeze | LANG=C sort >"$FROZEN_REQUIREMENTS_FILE" )
 
+# TODO This patch is for build running on python 3.6.
 # Patch grpcio and protobuf versions
-# The current version is only for python <= 3.9.*
-sed -ie "s/\(grpcio.*==.*\)/\1; python_version < '3.10'/" $FROZEN_REQUIREMENTS_FILE
-sed -ie "s/\(protobuf.*==.*\)/\1; python_version < '3.10'/" $FROZEN_REQUIREMENTS_FILE
+# The current version is only for python <= 3.7.*
+sed -ie "s/\(grpcio.*==.*\)/\1;python_version < '3.7'/" $FROZEN_REQUIREMENTS_FILE
+sed -ie "s/\(protobuf.*==.*\)/\1;python_version < '3.7'/" $FROZEN_REQUIREMENTS_FILE
 
-# Now, add our 3.10+ version of grpcio (and grpcio-tools)
-echo "grpcio==${GRPCIO_PY310_VERSION};python_version >= '3.10'" >> $FROZEN_REQUIREMENTS_FILE
-echo "grpcio-tools==${GRPCIO_PY310_VERSION};python_version >= '3.10'" >> $FROZEN_REQUIREMENTS_FILE
-echo "protobuf==${PROTOBUF_PY310_VERSION};python_version >= '3.10'" >> $FROZEN_REQUIREMENTS_FILE
+# Now, add our 3.7+ version of grpcio (and grpcio-tools)
+echo "grpcio==${GRPCIO_PY37_VERSION};python_version >= '3.7'" >> $FROZEN_REQUIREMENTS_FILE
+echo "grpcio-tools==${GRPCIO_PY37_VERSION};python_version >= '3.7'" >> $FROZEN_REQUIREMENTS_FILE
+echo "protobuf==${PROTOBUF_PY37_VERSION};python_version >= '3.7'" >> $FROZEN_REQUIREMENTS_FILE
 
 
 log_empty_line

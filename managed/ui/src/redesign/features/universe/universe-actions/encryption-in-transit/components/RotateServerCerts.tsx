@@ -11,7 +11,8 @@ import {
   NODE_NODE_CERT_FIELD_NAME,
   CLIENT_NODE_CERT_FIELD_NAME,
   ENABLE_NODE_NODE_ENCRYPTION_NAME,
-  ENABLE_CLIENT_NODE_ENCRYPTION_NAME
+  ENABLE_CLIENT_NODE_ENCRYPTION_NAME,
+  USE_SAME_CERTS_FIELD_NAME
 } from '../EncryptionInTransitUtils';
 
 interface RotateServerCertsProps {
@@ -35,14 +36,21 @@ export const RotateServerCerts: FC<RotateServerCertsProps> = ({ initialValues })
   const clientRootCA = watch(CLIENT_NODE_CERT_FIELD_NAME);
   const enableNodeToNodeEncrypt = watch(ENABLE_NODE_NODE_ENCRYPTION_NAME);
   const enableClientToNodeEncrypt = watch(ENABLE_CLIENT_NODE_ENCRYPTION_NAME);
+  const rootAndClientRootCASame = watch(USE_SAME_CERTS_FIELD_NAME);
+  const selfSignedServerCertRotate = watch(ROTATE_NODE_NODE_CERT_FIELD_NAME);
+  const selfSignedClientCertRotate = watch(ROTATE_CLIENT_NODE_CERT_FIELD_NAME);
 
+  //Disable both rotations if (a)->NN or CN encryption toggles are modified
   const rotationDisabled =
     encryptionEnabled &&
     (enableNodeToNodeEncryptInitial !== enableNodeToNodeEncrypt ||
       enableClientToNodeEncryptInitial !== enableClientToNodeEncrypt);
-
+  //NN cert rotation is auto enabled when root cert is modified
   const rootCAModified = encryptionEnabled && rootCAInitial !== rootCA;
-  const clientRootCAModified = encryptionEnabled && clientRootCAInitial !== clientRootCA;
+  //CN cert rotation is auto enabled when root cert is modified
+  const clientRootCAModified =
+    encryptionEnabled &&
+    (clientRootCAInitial !== clientRootCA || (rootAndClientRootCASame && rootCAModified));
 
   return (
     <>
@@ -52,7 +60,7 @@ export const RotateServerCerts: FC<RotateServerCertsProps> = ({ initialValues })
         </Typography>
       </Box>
       <Box mt={1} display="flex" flexDirection="column" className={classes.container}>
-        <Box py={2} px={1} hidden={!enableNodeToNodeEncrypt}>
+        <Box py={2} px={1} hidden={!enableNodeToNodeEncrypt && !rootAndClientRootCASame}>
           <Box display="flex" alignItems="center" justifyContent="space-between">
             <YBTooltip
               title={
@@ -71,6 +79,10 @@ export const RotateServerCerts: FC<RotateServerCertsProps> = ({ initialValues })
                   label={t('universeActions.encryptionInTransit.rotateNToNServerCert')}
                   labelProps={{ className: classes.eitLabels }}
                   disabled={rootCAModified || rotationDisabled}
+                  inputProps={{
+                    'data-testid': 'RotateNNCert-Checkbox'
+                  }}
+                  checked={rootCAModified || selfSignedServerCertRotate}
                 />
               </span>
             </YBTooltip>
@@ -79,7 +91,7 @@ export const RotateServerCerts: FC<RotateServerCertsProps> = ({ initialValues })
 
         <Divider />
 
-        <Box py={2} px={1} hidden={!enableClientToNodeEncrypt}>
+        <Box py={2} px={1} hidden={!enableClientToNodeEncrypt && !rootAndClientRootCASame}>
           <Box display="flex" alignItems="center" justifyContent="space-between">
             <YBTooltip
               title={
@@ -98,6 +110,10 @@ export const RotateServerCerts: FC<RotateServerCertsProps> = ({ initialValues })
                   label={t('universeActions.encryptionInTransit.rotateCToNServerCert')}
                   labelProps={{ className: classes.eitLabels }}
                   disabled={clientRootCAModified || rotationDisabled}
+                  inputProps={{
+                    'data-testid': 'RotateCNCert-Checkbox'
+                  }}
+                  checked={clientRootCAModified || selfSignedClientCertRotate}
                 />
               </span>
             </YBTooltip>

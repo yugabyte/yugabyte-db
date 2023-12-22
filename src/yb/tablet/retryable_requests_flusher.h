@@ -53,22 +53,19 @@ class RetryableRequestsFlusher : public std::enable_shared_from_this<RetryableRe
 
   bool TEST_HasRetryableRequestsOnDisk();
 
-  bool TEST_IsFlushing() {
-    return flush_state() == RetryableRequestsFlushState::kFlushing;
-  }
-
- private:
-  bool TransferState(RetryableRequestsFlushState old_state, RetryableRequestsFlushState new_state);
-  bool SetFlushing(bool expect_idle, RetryableRequestsFlushState* old_value);
-  bool SetSubmitted();
-  void SetIdle();
-  bool SetReading();
-  bool SetShutdown();
-  void WaitForFlushIdle() const;
-
   RetryableRequestsFlushState flush_state() const {
     return flush_state_.load(std::memory_order_acquire);
   }
+
+ private:
+  bool TransferState(RetryableRequestsFlushState* old_state, RetryableRequestsFlushState new_state);
+  bool SetFlushing(bool expect_idle, RetryableRequestsFlushState* old_state);
+  bool SetSubmitted(RetryableRequestsFlushState* old_state);
+  void SetIdle();
+  bool SetReading(RetryableRequestsFlushState* old_state);
+  bool SetShutdown();
+  void WaitForFlushIdleOrShutdown() const;
+  void SetIdleAndNotifyAll();
 
   // Used to notify waiters when each flush is done.
   mutable std::mutex flush_mutex_;

@@ -147,9 +147,9 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
             tableUUIDList: r.allTables
               ? []
               : backupTablesPresentInUniverse.map(
-                  (tableName) =>
-                    find(tablesInUniverse, { tableName, keySpace: r.keyspace })?.tableUUID ?? ''
-                )
+                (tableName) =>
+                  find(tablesInUniverse, { tableName, keySpace: r.keyspace })?.tableUUID ?? ''
+              )
           };
         });
       }
@@ -200,8 +200,8 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
 
   const kmsConfig = kmsConfigs
     ? kmsConfigs.find((config: any) => {
-        return config.metadata.configUUID === backupDetails?.commonBackupInfo?.kmsConfigUUID;
-      })
+      return config.metadata.configUUID === backupDetails?.commonBackupInfo?.kmsConfigUUID;
+    })
     : undefined;
 
   if (!backupDetails) return null;
@@ -338,7 +338,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                 <div>
                   {formatBytes(
                     backupDetails.fullChainSizeInBytes ||
-                      backupDetails.commonBackupInfo.totalBackupSizeInBytes
+                    backupDetails.commonBackupInfo.totalBackupSizeInBytes
                   )}
                 </div>
               </div>
@@ -361,7 +361,6 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                 <div className="header-text">Expiration</div>
                 <div>{ybFormatDate(backupDetails.expiryTime)}</div>
               </div>
-              <span className="flex-divider" />
               <div className="details-storage-config">
                 <div className="header-text">Storage Config</div>
                 <div className="universeLink">
@@ -378,6 +377,14 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
                 <div className="header-text">KMS Config</div>
                 <div>{kmsConfig ? kmsConfig.metadata?.name : '-'}</div>
               </div>
+              {
+                !backupDetails.onDemand && (
+                  <div>
+                    <div className='header-text'>Schedule Name</div>
+                    <div>{backupDetails.scheduleName}</div>
+                  </div>
+                )
+              }
             </div>
             {!storageConfigName && (
               <span className="assign-config-msg">

@@ -1219,12 +1219,12 @@ def update_disk(args, instance_id):
         _wait_for_disk_modifications(ec2_client, vol_ids)
 
 
-def change_instance_type(region, instance_id, new_instance_type):
+def change_instance_type(region, instance_id, instance_type):
     instance = get_client(region).Instance(instance_id)
 
     try:
         # Change instance type
-        instance.modify_attribute(Attribute='instanceType', Value=new_instance_type)
+        instance.modify_attribute(Attribute='instanceType', Value=instance_type)
     except Exception as e:
         raise YBOpsRuntimeError('error executing \"instance.modify_attribute\": {}'.format(repr(e)))
 

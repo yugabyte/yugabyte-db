@@ -226,7 +226,7 @@ class InboundCall : public RpcCall, public MPSCQueueEntry<InboundCall> {
  protected:
   ThreadPoolTask* BindTask(InboundCallHandler* handler, int64_t rpc_queue_limit);
 
-  void NotifyTransferred(const Status& status, Connection* conn) override;
+  void NotifyTransferred(const Status& status, const ConnectionPtr& conn) override;
 
   virtual void Clear();
 

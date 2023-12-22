@@ -45,7 +45,6 @@ import {
   getFeatureState
 } from '../../../utils/LayoutUtils';
 import { SecurityMenu } from '../SecurityModal/SecurityMenu';
-import { DBSettingsMenu } from '../DBSettingsModal/DBSettingsMenu';
 import { UniverseLevelBackup } from '../../backupv2/Universe/UniverseLevelBackup';
 import { UniverseSupportBundle } from '../UniverseSupportBundle/UniverseSupportBundle';
 import { XClusterReplication } from '../../xcluster/XClusterReplication';
@@ -54,6 +53,7 @@ import { EncryptionInTransit } from '../../../redesign/features/universe/univers
 import { EnableYSQLModal } from '../../../redesign/features/universe/universe-actions/edit-ysql-ycql/EnableYSQLModal';
 import { EnableYCQLModal } from '../../../redesign/features/universe/universe-actions/edit-ysql-ycql/EnableYCQLModal';
 import { EditGflagsModal } from '../../../redesign/features/universe/universe-actions/edit-gflags/EditGflags';
+import { UniverseState, getUniverseStatus } from '../helpers/universeHelpers';
 import './UniverseDetail.scss';
 
 const INSTANCE_WITH_EPHEMERAL_STORAGE_ONLY = ['i3', 'c5d', 'c6gd'];
@@ -93,11 +93,6 @@ class UniverseDetail extends Component {
   isRRFlagsEnabled = () => {
     const { featureFlags } = this.props;
     return featureFlags.test.enableRRGflags || featureFlags.released.enableRRGflags;
-  };
-
-  isEditDBSettingsEnabled = () => {
-    const { featureFlags } = this.props;
-    return featureFlags.test.enableConfigureDBApi || featureFlags.released.enableConfigureDBApi;
   };
 
   componentDidMount() {
@@ -197,12 +192,6 @@ class UniverseDetail extends Component {
     browserHistory.replace(browserHistory.getCurrentLocation().pathname);
   };
 
-  transitToDefaultRoute = () => {
-    const currentLocation = this.props.location;
-    currentLocation.query = currentLocation.query.tab ? { tab: currentLocation.query.tab } : {};
-    this.props.router.push(currentLocation);
-  };
-
   handleSubmitManageKey = (res) => {
     if (res.payload.isAxiosError) {
       this.setState({
@@ -238,7 +227,6 @@ class UniverseDetail extends Component {
       universe,
       tasks,
       universe: { currentUniverse, supportedReleases },
-      location: { query, pathname },
       showSoftwareUpgradesModal,
       showVMImageUpgradeModal,
       showTLSConfigurationModal,
@@ -281,10 +269,12 @@ class UniverseDetail extends Component {
     const isReadOnlyUniverse =
       getPromiseState(currentUniverse).isSuccess() &&
       currentUniverse.data.universeDetails.capability === 'READ_ONLY';
+    const universeStatus =
+      getPromiseState(currentUniverse).isSuccess() && getUniverseStatus(currentUniverse?.data);
+    const isUniverseStatusPending = universeStatus.state === UniverseState.PENDING;
 
     const providerUUID = primaryCluster?.userIntent?.provider;
     const provider = providers.data.find((provider) => provider.uuid === providerUUID);
-
     let onPremSkipProvisioning = false;
     if (provider && provider.code === 'onprem') {
       const onPremKey = accessKeys.data.find(
@@ -301,18 +291,13 @@ class UniverseDetail extends Component {
       runtimeConfigs?.data?.configEntries?.find((c) => c.key === 'yb.universe.auth.is_enforced')
         ?.value === 'true';
 
-    const type =
-      pathname.indexOf('edit') < 0
-        ? 'Create'
-        : this.props.params.type
-        ? this.props.params.type === 'primary'
-          ? 'Edit'
-          : 'Async'
-        : 'Edit';
+    const isConfigureYSQLEnabled =
+      runtimeConfigs?.data?.configEntries?.find((c) => c.key === 'yb.configure_db_api.ysql')
+        ?.value === 'true';
 
-    if (pathname === '/universes/create') {
-      return <UniverseFormContainer type="Create" />;
-    }
+    const isConfigureYCQLEnabled =
+      runtimeConfigs?.data?.configEntries?.find((c) => c.key === 'yb.configure_db_api.ycql')
+        ?.value === 'true';
 
     if (
       getPromiseState(currentUniverse).isLoading() ||
@@ -323,24 +308,6 @@ class UniverseDetail extends Component {
       return <YBLoading />;
     } else if (isEmptyObject(currentUniverse.data)) {
       return <span />;
-    }
-
-    if (type === 'Async' || (isNonEmptyObject(query) && query.edit && query.async)) {
-      if (isReadOnlyUniverse) {
-        // not fully legit but mandatory fallback for manually edited query
-        this.transitToDefaultRoute();
-      } else {
-        return <UniverseFormContainer type="Async" />;
-      }
-    }
-
-    if (type === 'Edit' || (isNonEmptyObject(query) && query.edit)) {
-      if (isReadOnlyUniverse) {
-        // not fully legit but mandatory fallback for manually edited query
-        this.transitToDefaultRoute();
-      } else {
-        return <UniverseFormContainer type="Edit" />;
-      }
     }
 
     if (getPromiseState(currentUniverse).isError()) {
@@ -618,7 +585,7 @@ class UniverseDetail extends Component {
                     <>
                       {!universePaused && (
                         <YBMenuItem
-                          disabled={updateInProgress}
+                          disabled={isUniverseStatusPending}
                           onClick={showSoftwareUpgradesModal}
                           availability={getFeatureState(
                             currentCustomer.data.features,
@@ -641,7 +608,10 @@ class UniverseDetail extends Component {
                         runtimeConfigs.data.configEntries.find(
                           (c) => c.key === 'yb.upgrade.vmImage'
                         ).value === 'true' && (
-                          <YBMenuItem disabled={updateInProgress} onClick={showVMImageUpgradeModal}>
+                          <YBMenuItem
+                            disabled={isUniverseStatusPending}
+                            onClick={showVMImageUpgradeModal}
+                          >
                             <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
                               Upgrade VM Image
                             </YBLabelWithIcon>
@@ -649,7 +619,7 @@ class UniverseDetail extends Component {
                         )}
                       {!universePaused && !useSystemd && !isItKubernetesUniverse && (
                         <YBMenuItem
-                          disabled={updateInProgress || onPremSkipProvisioning}
+                          disabled={isUniverseStatusPending || onPremSkipProvisioning}
                           onClick={showUpgradeSystemdModal}
                           availability={getFeatureState(
                             currentCustomer.data.features,
@@ -663,7 +633,7 @@ class UniverseDetail extends Component {
                       )}
                       {!universePaused && enableThirdpartyUpgrade && (
                         <YBMenuItem
-                          disabled={updateInProgress}
+                          disabled={isUniverseStatusPending}
                           onClick={showThirdpartyUpgradeModal}
                           availability={getFeatureState(
                             currentCustomer.data.features,
@@ -687,6 +657,7 @@ class UniverseDetail extends Component {
                               currentCustomer.data.features,
                               'universes.details.overview.editUniverse'
                             )}
+                            disabled={isUniverseStatusPending}
                           >
                             <YBLabelWithIcon icon="fa fa-pencil">Edit Universe</YBLabelWithIcon>
                           </YBMenuItem>
@@ -694,7 +665,7 @@ class UniverseDetail extends Component {
 
                       {!universePaused && !this.isRRFlagsEnabled() && (
                         <YBMenuItem
-                          disabled={updateInProgress}
+                          disabled={isUniverseStatusPending}
                           onClick={showGFlagsModal}
                           availability={getFeatureState(
                             currentCustomer.data.features,
@@ -706,7 +677,7 @@ class UniverseDetail extends Component {
                       )}
                       {!universePaused && this.isRRFlagsEnabled() && (
                         <YBMenuItem
-                          disabled={updateInProgress}
+                          disabled={isUniverseStatusPending}
                           onClick={showGFlagsNewModal}
                           availability={getFeatureState(
                             currentCustomer.data.features,
@@ -717,7 +688,10 @@ class UniverseDetail extends Component {
                         </YBMenuItem>
                       )}
                       {!universePaused && isItKubernetesUniverse && (
-                        <YBMenuItem disabled={updateInProgress} onClick={showHelmOverridesModal}>
+                        <YBMenuItem
+                          disabled={isUniverseStatusPending}
+                          onClick={showHelmOverridesModal}
+                        >
                           <YBLabelWithIcon icon="fa fa-pencil-square">
                             Edit Kubernetes Overrides
                           </YBLabelWithIcon>
@@ -725,7 +699,7 @@ class UniverseDetail extends Component {
                       )}
                       {!universePaused && (
                         <YBMenuItem
-                          disabled={updateInProgress}
+                          disabled={isUniverseStatusPending}
                           onClick={() => showSubmenu('security')}
                           availability={getFeatureState(
                             currentCustomer.data.features,
@@ -738,22 +712,29 @@ class UniverseDetail extends Component {
                           </span>
                         </YBMenuItem>
                       )}
-                      {!universePaused && this.isEditDBSettingsEnabled() && (
+                      {!universePaused && isConfigureYSQLEnabled && (
                         <YBMenuItem
-                          disabled={updateInProgress}
-                          onClick={() => showSubmenu('dbSettings')}
+                          disabled={isUniverseStatusPending}
+                          onClick={showEnableYSQLModal}
                         >
                           <YBLabelWithIcon icon="fa fa-database fa-fw">
-                            Edit YSQL/YCQL Settings
+                            Edit YSQL Configuration
                           </YBLabelWithIcon>
-                          <span className="pull-right">
-                            <i className="fa fa-chevron-right submenu-icon" />
-                          </span>
+                        </YBMenuItem>
+                      )}
+                      {!universePaused && isConfigureYCQLEnabled && (
+                        <YBMenuItem
+                          disabled={isUniverseStatusPending}
+                          onClick={showEnableYCQLModal}
+                        >
+                          <YBLabelWithIcon icon="fa fa-database fa-fw">
+                            Edit YCQL Configuration
+                          </YBLabelWithIcon>
                         </YBMenuItem>
                       )}
                       {!universePaused && (
                         <YBMenuItem
-                          disabled={updateInProgress}
+                          disabled={isUniverseStatusPending}
                           onClick={showRollingRestartModal}
                           availability={getFeatureState(
                             currentCustomer.data.features,
@@ -768,7 +749,7 @@ class UniverseDetail extends Component {
 
                       {!isReadOnlyUniverse && !universePaused && (
                         <YBMenuItem
-                          disabled={updateInProgress}
+                          disabled={isUniverseStatusPending}
                           to={
                             this.isNewUIEnabled()
                               ? `/universes/${uuid}/${
@@ -794,7 +775,7 @@ class UniverseDetail extends Component {
                           closeModal={closeModal}
                           button={
                             <YBMenuItem
-                              disabled={updateInProgress && !backupRestoreInProgress}
+                              disabled={isUniverseStatusPending && !backupRestoreInProgress}
                               onClick={showRunSampleAppsModal}
                             >
                               <YBLabelWithIcon icon="fa fa-terminal">
@@ -829,7 +810,7 @@ class UniverseDetail extends Component {
 
                       {!universePaused && (
                         <YBMenuItem
-                          disabled={updateInProgress}
+                          disabled={isUniverseStatusPending}
                           onClick={handleBackupToggle}
                           availability={getFeatureState(
                             currentCustomer.data.features,
@@ -875,7 +856,7 @@ class UniverseDetail extends Component {
                               currentCustomer.data.features,
                               'universes.details.overview.pausedUniverse'
                             )}
-                            disabled={universePaused && updateInProgress}
+                            disabled={universePaused && isUniverseStatusPending}
                           >
                             <YBLabelWithIcon
                               icon={universePaused ? 'fa fa-play-circle-o' : 'fa fa-pause-circle-o'}
@@ -906,15 +887,6 @@ class UniverseDetail extends Component {
                           editTLSAvailability={editTLSAvailability}
                           showManageKeyModal={showManageKeyModal}
                           manageKeyAvailability={manageKeyAvailability}
-                        />
-                      </>
-                    ),
-                    dbSettings: (backToMainMenu) => (
-                      <>
-                        <DBSettingsMenu
-                          backToMainMenu={backToMainMenu}
-                          showEnableYSQLModal={showEnableYSQLModal}
-                          showEnableYCQLModal={showEnableYCQLModal}
                         />
                       </>
                     )
@@ -968,7 +940,7 @@ class UniverseDetail extends Component {
           universe={currentUniverse.data}
           type="primary"
         />
-        {isCACertRotationEnabled && (
+        {isCACertRotationEnabled && showModal && visibleModal === 'tlsConfigurationModal' && (
           <EncryptionInTransit
             open={showModal && visibleModal === 'tlsConfigurationModal'}
             onClose={() => {
@@ -1019,6 +991,7 @@ class UniverseDetail extends Component {
           }}
           enforceAuth={isAuthEnforced}
           universeData={currentUniverse.data}
+          isItKubernetesUniverse={isItKubernetesUniverse}
         />
 
         <Measure onMeasure={this.onResize.bind(this)}>

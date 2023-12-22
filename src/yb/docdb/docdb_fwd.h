@@ -34,7 +34,6 @@ class DocPgsqlScanSpec;
 class DocQLScanSpec;
 class DocRowwiseIterator;
 class DocWriteBatch;
-class ExternalTxnIntentsState;
 class HistoryRetentionPolicy;
 class IntentAwareIterator;
 class IntentAwareIteratorIf;

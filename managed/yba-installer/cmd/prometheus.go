@@ -358,13 +358,53 @@ func (prom Prometheus) MigrateFromReplicated() error {
 	return nil
 }
 
+// FinishReplicatedMigrate completest the replicated migration prometheus specific tasks
+func (prom Prometheus) FinishReplicatedMigrate() error {
+	links := []string{
+		filepath.Join(prom.DataDir, "storage"),
+		filepath.Join(prom.DataDir, "swamper_targets"),
+		filepath.Join(prom.DataDir, "swamper_rules"),
+	}
+
+	for _, link := range links {
+		if err := common.ResolveSymlink(link); err != nil {
+			return fmt.Errorf("could not complete prometheus migration: %w", err)
+		}
+	}
+
+	userName := viper.GetString("service_username")
+	if err := common.Chown(prom.DataDir, userName, userName, true); err != nil {
+		log.Error("failed to change ownership of " + prom.DataDir + ": " + err.Error())
+		return err
+	}
+	return nil
+}
+
+func (prom Prometheus) RollbackMigration(uid, gid uint32) error {
+	rootDir := common.GetReplicatedBaseDir()
+	replDirs := []string{
+		filepath.Join(rootDir, "prometheusv2"),
+		filepath.Join(rootDir, "/yugaware/swamper_targets"),
+		filepath.Join(rootDir, "yugaware/swamper_rules"),
+	}
+	for _, dir := range replDirs {
+		if err := common.Chown(dir, fmt.Sprintf("%d", uid), fmt.Sprintf("%d", gid), true); err != nil {
+			return fmt.Errorf("failed to reset prometheus directory %s to owner uid %d gid %d: %w",
+				dir, uid, gid, err)
+		}
+	}
+	return nil
+}
+
 func (prom Prometheus) moveAndExtractPrometheusPackage() error {
+
+	packagesPath := common.GetInstallerSoftwareDir() + "/packages"
 
 	srcPath := fmt.Sprintf(
 		"%s/third-party/prometheus-%s.linux-amd64.tar.gz", common.GetInstallerSoftwareDir(),
 		prom.version)
 	dstPath := fmt.Sprintf(
-		"%s/packages/prometheus-%s.linux-amd64.tar.gz", common.GetInstallerSoftwareDir(), prom.version)
+		"%s/prometheus-%s.linux-amd64.tar.gz", packagesPath, prom.version)
 
 	common.CopyFile(srcPath, dstPath)
 	rExtract, errExtract := os.Open(dstPath)
@@ -378,24 +418,30 @@ func (prom Prometheus) moveAndExtractPrometheusPackage() error {
 	if _, err := os.Stat(extPackagePath); err == nil {
 		log.Debug(extPackagePath + " already exists, skipping re-extract.")
 	} else {
-		if err := tar.Untar(rExtract, common.GetInstallerSoftwareDir()+"/packages",
-			tar.WithMaxUntarSize(-1)); err != nil {
+		if err := tar.Untar(rExtract, packagesPath, tar.WithMaxUntarSize(-1)); err != nil {
 			log.Fatal(fmt.Sprintf("failed to extract file %s, error: %s", dstPath, err.Error()))
 		}
 		log.Debug(dstPath + " successfully extracted.")
+	}
+	if common.HasSudoAccess() {
+		userName := viper.GetString("service_username")
+		if err := common.Chown(packagesPath, userName, userName, true); err != nil {
+			return fmt.Errorf("failed to change ownership of %s: %s", packagesPath, err.Error())
+		}
 	}
 	return nil
 }
 
 func (prom Prometheus) createDataDirs() error {
 
-	common.MkdirAll(prom.DataDir+"/storage", os.ModePerm)
-	common.MkdirAll(prom.DataDir+"/swamper_targets", os.ModePerm)
-	common.MkdirAll(prom.DataDir+"/swamper_rules", os.ModePerm)
+	common.MkdirAll(prom.DataDir+"/storage", common.DirMode)
+	common.MkdirAll(prom.DataDir+"/swamper_targets", common.DirMode)
+	common.MkdirAll(prom.DataDir+"/swamper_rules", common.DirMode)
 	log.Debug(prom.DataDir + "/storage /swamper_targets /swamper_rules" + " directories created.")
 
 	// Create the log file
-	if _, err := common.Create(prom.DataDir + "/prometheus.log"); err != nil {
+	if _, err := common.Create(prom.DataDir + "/prometheus.log"); err != nil &&
+		!errors.Is(err, os.ErrExist) {
 		log.Error("Failed to create prometheus log file: " + err.Error())
 		return err
 	}
@@ -424,7 +470,7 @@ func (prom Prometheus) createPrometheusSymlinks() error {
 		promBinaryDir = "/usr/local/bin"
 	} else {
 		// promBinaryDir doesn't exist for non-root mode, lets create it.
-		if err := common.MkdirAll(promBinaryDir, os.ModePerm); err != nil {
+		if err := common.MkdirAll(promBinaryDir, common.DirMode); err != nil {
 			log.Error("failed to create " + promBinaryDir + ": " + err.Error())
 			return err
 		}
@@ -456,7 +502,7 @@ func (prom Prometheus) createPrometheusSymlinks() error {
 }
 
 func (prom Prometheus) migrateReplicatedDirs() error {
-	if err := common.MkdirAll(prom.DataDir, os.ModePerm); err != nil {
+	if err := common.MkdirAll(prom.DataDir, common.DirMode); err != nil {
 		return fmt.Errorf("failed to create %s: %w", prom.DataDir, err)
 	}
 

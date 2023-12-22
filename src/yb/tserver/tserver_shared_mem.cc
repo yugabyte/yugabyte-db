@@ -13,9 +13,9 @@
 
 #include "yb/tserver/tserver_shared_mem.h"
 
+#include <atomic>
 #include <mutex>
 
-#include <boost/interprocess/ipc/message_queue.hpp>
 #include <boost/interprocess/shared_memory_object.hpp>
 
 #include "yb/util/enums.h"
@@ -57,27 +57,39 @@ class SharedExchangeHeader {
     return data() - pointer_cast<std::byte*>(this);
   }
 
+  bool ReadyToSend(bool failed_previous_request) const {
+    return ReadyToSend(state_.load(std::memory_order_acquire), failed_previous_request);
+  }
+
+  bool ReadyToSend(SharedExchangeState state, bool failed_previous_request) const {
+    // Could use this exchange for sending request in two cases:
+    // 1) it is idle, i.e. no request is being processed at this moment.
+    // 2) the previous request was failed, and we received response for this request.
+    return state == SharedExchangeState::kIdle ||
+           (failed_previous_request && state == SharedExchangeState::kResponseSent);
+  }
+
   Result<size_t> SendRequest(
-      boost::interprocess::message_queue* message_queue, uint64_t session_id,
+      bool failed_previous_request, uint64_t session_id,
       size_t size, std::chrono::system_clock::time_point deadline) {
     std::unique_lock<boost::interprocess::interprocess_mutex> lock(mutex_);
-    auto state = state_;
-    if (state != SharedExchangeState::kIdle) {
+    auto state = state_.load(std::memory_order_acquire);
+    if (!ReadyToSend(failed_previous_request)) {
       lock.unlock();
       return STATUS_FORMAT(IllegalState, "Send request in wrong state: $0", state);
     }
-    state_ = SharedExchangeState::kRequestSent;
+    state_.store(SharedExchangeState::kRequestSent, std::memory_order_release);
     data_size_ = size;
     cond_.notify_one();
 
     RETURN_NOT_OK(DoWait(SharedExchangeState::kResponseSent, deadline, &lock));
-    state_ = SharedExchangeState::kIdle;
+    state_.store(SharedExchangeState::kIdle, std::memory_order_release);
     return data_size_;
   }
 
   void Respond(size_t size) {
     std::unique_lock<boost::interprocess::interprocess_mutex> lock(mutex_);
-    auto state = state_;
+    auto state = state_.load(std::memory_order_acquire);
     if (state != SharedExchangeState::kRequestSent) {
       lock.unlock();
       LOG_IF(DFATAL, state != SharedExchangeState::kShutdown)
@@ -86,7 +98,7 @@ class SharedExchangeHeader {
     }
 
     data_size_ = size;
-    state_ = SharedExchangeState::kResponseSent;
+    state_.store(SharedExchangeState::kResponseSent, std::memory_order_release);
     cond_.notify_one();
   }
 
@@ -99,7 +111,7 @@ class SharedExchangeHeader {
 
   void SignalStop() {
     std::unique_lock<boost::interprocess::interprocess_mutex> lock(mutex_);
-    state_ = SharedExchangeState::kShutdown;
+    state_.store(SharedExchangeState::kShutdown, std::memory_order_release);
     cond_.notify_all();
   }
 
@@ -107,15 +119,16 @@ class SharedExchangeHeader {
   Status DoWait(SharedExchangeState expected_state, std::chrono::system_clock::time_point deadline,
                 std::unique_lock<boost::interprocess::interprocess_mutex>* lock) {
     for (;;) {
-      if (state_ == expected_state) {
+      auto state = state_.load(std::memory_order_acquire);
+      if (state == expected_state) {
         return Status::OK();
       }
-      if (state_ == SharedExchangeState::kShutdown) {
+      if (state == SharedExchangeState::kShutdown) {
         lock->unlock();
         return STATUS_FORMAT(ShutdownInProgress, "Shutting down shared exchange");
       }
       if (!cond_.timed_wait(*lock, deadline)) {
-        auto state = state_;
+        state = state_.load(std::memory_order_acquire);
         lock->unlock();
         return STATUS_FORMAT(TimedOut, "Timed out waiting $0, state: $1", expected_state, state);
       }
@@ -124,7 +137,7 @@ class SharedExchangeHeader {
 
   boost::interprocess::interprocess_mutex mutex_;
   boost::interprocess::interprocess_condition cond_;
-  SharedExchangeState state_ = SharedExchangeState::kIdle;
+  std::atomic<SharedExchangeState> state_{SharedExchangeState::kIdle};
   size_t data_size_;
   std::byte data_[0];
 };
@@ -155,7 +168,7 @@ class SharedExchange::Impl {
 
   std::byte* Obtain(size_t required_size) {
     last_size_ = required_size;
-    auto* header = this->header();
+    auto* header = &this->header();
     required_size += header->header_size();
     auto region_size = mapped_region_.get_size();
     if (required_size > region_size) {
@@ -163,7 +176,7 @@ class SharedExchange::Impl {
       auto new_size = ((required_size + page_size - 1) / page_size) * page_size;
       shared_memory_object_.truncate(new_size);
       Reopen();
-      header = this->header();
+      header = &this->header();
     }
     return header->data();
   }
@@ -172,33 +185,45 @@ class SharedExchange::Impl {
     return session_id_;
   }
 
-  Result<Slice> SendRequest(
-      boost::interprocess::message_queue* message_queue, CoarseTimePoint deadline) {
-    auto* header = this->header();
-    auto size = VERIFY_RESULT(header->SendRequest(
-        message_queue, session_id_, last_size_, ToSystem(deadline)));
-    if (size + header->header_size() > mapped_region_.get_size()) {
-      Reopen();
-      header = this->header();
+  Result<Slice> SendRequest(CoarseTimePoint deadline) {
+    auto* header = &this->header();
+    auto size_res = header->SendRequest(
+        failed_previous_request_, session_id_, last_size_, ToSystem(deadline));
+    if (!size_res.ok()) {
+      failed_previous_request_ = true;
+      return size_res.status();
     }
-    return Slice(header->data(), size);
+    failed_previous_request_ = false;
+    if (*size_res + header->header_size() > mapped_region_.get_size()) {
+      Reopen();
+      header = &this->header();
+    }
+    return Slice(header->data(), *size_res);
+  }
+
+  bool ReadyToSend() const {
+    return header().ReadyToSend(failed_previous_request_);
   }
 
   void Respond(size_t size) {
-    header()->Respond(size);
+    header().Respond(size);
   }
 
   Result<size_t> Poll() {
-    return header()->Poll();
+    return header().Poll();
   }
 
   void SignalStop() {
-    header()->SignalStop();
+    header().SignalStop();
   }
 
  private:
-  SharedExchangeHeader* header() {
-    return static_cast<SharedExchangeHeader*>(mapped_region_.get_address());
+  SharedExchangeHeader& header() {
+    return *static_cast<SharedExchangeHeader*>(mapped_region_.get_address());
+  }
+
+  const SharedExchangeHeader& header() const {
+    return *static_cast<SharedExchangeHeader*>(mapped_region_.get_address());
   }
 
   void Reopen() {
@@ -211,6 +236,7 @@ class SharedExchange::Impl {
   boost::interprocess::shared_memory_object shared_memory_object_;
   boost::interprocess::mapped_region mapped_region_;
   size_t last_size_;
+  bool failed_previous_request_ = false;
 };
 
 SharedExchange::SharedExchange(const Uuid& instance_id, uint64_t session_id, Create create) {
@@ -227,9 +253,12 @@ std::byte* SharedExchange::Obtain(size_t required_size) {
   return impl_->Obtain(required_size);
 }
 
-Result<Slice> SharedExchange::SendRequest(
-    boost::interprocess::message_queue* message_queue, CoarseTimePoint deadline) {
-  return impl_->SendRequest(message_queue, deadline);
+Result<Slice> SharedExchange::SendRequest(CoarseTimePoint deadline) {
+  return impl_->SendRequest(deadline);
+}
+
+bool SharedExchange::ReadyToSend() const {
+  return impl_->ReadyToSend();
 }
 
 void SharedExchange::Respond(size_t size) {

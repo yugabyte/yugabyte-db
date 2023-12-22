@@ -81,8 +81,8 @@ set(MASTER_SRCS
   catalog_entity_info.cc
   catalog_manager_bg_tasks.cc
   catalog_loaders.cc
-  cdc_consumer_registry_service.cc
-  cdc_rpc_tasks.cc
+  xcluster_consumer_registry_service.cc
+  xcluster_rpc_tasks.cc
   scoped_leader_shared_lock.cc
   cluster_balance.cc
   cluster_balance_util.cc

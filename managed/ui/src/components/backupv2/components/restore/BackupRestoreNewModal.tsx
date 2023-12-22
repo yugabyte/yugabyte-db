@@ -55,7 +55,7 @@ const BackupRestoreNewModal: FC<BackupRestoreNewModalProps> = ({ backupDetails, 
     const restoreContextData = useMethods(restoreMethods, initialRestoreContextState);
     const currentPageRef = useRef<PageRef>(null);
 
-    const [{ formData: { generalSettings }, formProps: { disableSubmit, submitLabel, currentPage } }, { setBackupDetails, saveGeneralSettingsFormData, moveToPrevPage }] = restoreContextData;
+    const [{ formData: { generalSettings }, formProps: { disableSubmit, submitLabel, currentPage, isSubmitting } }, { setBackupDetails, saveGeneralSettingsFormData, moveToPrevPage }] = restoreContextData;
 
     const { t } = useTranslation();
     const classes = useStyles();
@@ -71,6 +71,13 @@ const BackupRestoreNewModal: FC<BackupRestoreNewModalProps> = ({ backupDetails, 
 
     });
 
+    const getCancelLabel = () => {
+        if(currentPage === 'PREFETCH_CONFIGS' || (currentPage === 'GENERAL_SETTINGS' && !isSubmitting)){
+            return undefined;
+        }
+        return isSubmitting ? t('newRestoreModal.waitingMsg') : t('common.back');
+    };
+
     return (
         <RestoreFormContext.Provider value={[...restoreContextData, { hideModal: onHide }] as unknown as RestoreContext}>
             <YBModal
@@ -79,6 +86,7 @@ const BackupRestoreNewModal: FC<BackupRestoreNewModalProps> = ({ backupDetails, 
                     position: 'fixed',
                     zIndex: 99999
                 }}
+                isSubmitting={isSubmitting}
                 buttonProps={{
                     primary: {
                         disabled: disableSubmit
@@ -87,7 +95,8 @@ const BackupRestoreNewModal: FC<BackupRestoreNewModalProps> = ({ backupDetails, 
                         disabled: getBackButDisableState(currentPage),
                         onClick: () => {
                             currentPageRef.current?.onPrev();
-                        }
+                        },
+                        variant: isSubmitting ? 'ghost' : 'secondary'
                     }
                 }}
                 overrideWidth={'1100px'}
@@ -96,7 +105,7 @@ const BackupRestoreNewModal: FC<BackupRestoreNewModalProps> = ({ backupDetails, 
                 submitLabel={submitLabel}
 
                 title={t('newRestoreModal.title')}
-                cancelLabel={t('common.back')}
+                cancelLabel={getCancelLabel()}
                 dialogContentProps={{
                     dividers: true,
                     className: classes.root
@@ -108,7 +117,7 @@ const BackupRestoreNewModal: FC<BackupRestoreNewModalProps> = ({ backupDetails, 
                 onClose={() => {
                     onHide();
                 }}
-                
+
                 actionsInfo={<YBButton
                     variant='secondary'
                     onClick={() => {

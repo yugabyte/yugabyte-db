@@ -33,6 +33,10 @@ var installCmd = &cobra.Command{
 		if err != nil {
 			log.Fatal("failed to initialize state " + err.Error())
 		}
+		if err := state.TransitionStatus(ybactlstate.InstallingStatus); err != nil {
+			log.Fatal("failed to start install: " + err.Error())
+		}
+
 		if err := ybaCtl.Install(); err != nil {
 			log.Fatal("failed to install yba-ctl: " + err.Error())
 		}
@@ -72,7 +76,6 @@ var installCmd = &cobra.Command{
 			}
 			log.Info("Completed installing component " + name)
 		}
-
 		state.CurrentStatus = ybactlstate.InstalledStatus
 		if err := ybactlstate.StoreState(state); err != nil {
 			log.Fatal("after full install, failed to update state: " + err.Error())

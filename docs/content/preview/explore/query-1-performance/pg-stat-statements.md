@@ -41,7 +41,7 @@ temp_blks_read      | bigint           | Total number of temp blocks read by the
 temp_blks_written   | bigint           | Total number of temp blocks written by the statement |
 blk_read_time       | double precision | Total time the statement spent reading blocks, in milliseconds (if track_io_timing is enabled, otherwise zero) |
 blk_write_time      | double precision | Total time the statement spent writing blocks, in milliseconds (if track_io_timing is enabled, otherwise zero) |
-<!-- yb_latency_histogram | jsonb           | List of key value pairs where key is the latency range and value is the count of times a query was executed |-->
+yb_latency_histogram | jsonb           | List of key value pairs where key is the latency range and value is the count of times a query was executed |
 
 ## Configuration parameters
 
@@ -65,15 +65,15 @@ pg_stat_statements.save = on
 
 To track IO elapsed time, turn on the `track_io_timing` parameter in `postgresql.conf`:
 
- ```sh
- track_io_timing = on
- ```
+```sh
+track_io_timing = on
+```
 
- The `track_activity_query_size` parameter sets the number of characters to display when reporting a SQL query. Raise this value if you're not seeing longer queries in their entirety. For example:
+The `track_activity_query_size` parameter sets the number of characters to display when reporting a SQL query. Raise this value if you're not seeing longer queries in their entirety. For example:
 
- ```sh
- track_activity_query_size = 2048
- ```
+```sh
+track_activity_query_size = 2048
+```
 
 The extension is created by default. To add or remove it manually, use the following statements:
 
@@ -85,7 +85,6 @@ yugabyte=# create extension pg_stat_statements;
 yugabyte=# drop extension pg_stat_statements;
 ```
 
-<!-- Feature due 2.19.1
 ## yb_latency_histogram column
 
 Each row in the `pg_stat_statements` view in YugabyteDB includes the `yb_latency_histogram` column, of type JSONB.
@@ -142,7 +141,106 @@ Time Span (ms) | Resolution (ms)
 209715.2-419430.4 (3.49-6.99 min) | 26214.4 (~26s)
 419430.4-838860.8 (6.99-13.98 min) | 52428.8 (~52s)
 838860.8-1677721.6 (13.98-27.96 min) | 104857.6 (~104s)
--->
+
+You can change the number of buckets using the `yb_hdr_bucket_factor` parameter. Valid values are 8, 16 (default), or 32. For example:
+
+```sh
+pg_stat_statements.yb_hdr_bucket_factor = 32
+```
+
+This changes the buckets as shown in the following table.
+
+Time Span (ms) | Resolution (ms)
+| :--- | :--- |
+| 0-3.2 | 0.1
+3.2-6.4 | 0.2
+6.4-12.8 | 0.4
+12.8-25.6 | 0.8
+25.6-51.2 | 1.6
+51.2-102.4 | 3.2
+102.4-204.8 | 6.4
+204.8-409.6 | 12.8
+409.6-819.2 | 25.6
+819.2-1638.4 | 51.2
+... |
+209715.2-419430.4 (3.49-6.99 min) | 13107.2
+419430.4-838860.8 (6.99-13.98 min) | 26214.4
+838860.8-1677721.6 (13.98-27.96 min) | 52428.8
+
+### Show latency percentiles
+
+Use the `yb_get_percentile` function to show percentiles for a given histogram. This function takes a JSONB histogram (including `yb_latency_histogram`) and a target percentile (double precision) as input.
+
+```sql
+\df yb_get_percentile
+```
+
+```output
+   Schema   |       Name        | Result data type |           Argument data types           | Type
+----------- +-------------------+------------------+-----------------------------------------+------
+ pg_catalog | yb_get_percentile | double precision | hist jsonb, percentile double precision | func
+(1 row)
+```
+
+The following examples show how to display various percentile latencies for a given JSONB histogram.
+
+```sql
+SELECT yb_get_percentile('[{"[0.1,0.2)": 4}, {"[0.2,0.3)": 1}, {"[0.8,0.9)": 1}, {"[1.1,1.2)": 3}, {"[1.5,1.6)": 1}, {"[2.0,2.2)": 4}, {"[3.2,3.6)": 1}]', 99);
+```
+
+```output
+ yb_get_percentile 
+-------------------
+               3.6
+(1 row)
+```
+
+```sql
+SELECT yb_get_percentile('[{"[0.1,0.2)": 4}, {"[0.2,0.3)": 1}, {"[0.8,0.9)": 1}, {"[1.1,1.2)": 3}, {"[1.5,1.6)": 1}, {"[2.0,2.2)": 4}, {"[3.2,3.6)": 1}]', 90);
+```
+
+```output
+ yb_get_percentile 
+-------------------
+               2.2
+(1 row)
+```
+
+```sql
+SELECT yb_get_percentile('[{"[0.1,0.2)": 4}, {"[0.2,0.3)": 1}, {"[0.8,0.9)": 1}, {"[1.1,1.2)": 3}, {"[1.5,1.6)": 1}, {"[2.0,2.2)": 4}, {"[3.2,3.6)": 1}]', 50);
+```
+
+```output
+ yb_get_percentile 
+-------------------
+               1.2
+(1 row)
+```
+
+The following example displays the P99, P95, and P90 latency by augmenting the `pg_stat_statements` output for a specific query:
+
+```sql
+SELECT query, calls, total_time, min_time, max_time, mean_time, rows, 
+  yb_latency_histogram, 
+  yb_get_percentile(yb_latency_histogram, 99),
+  yb_get_percentile(yb_latency_histogram, 95),
+  yb_get_percentile(yb_latency_histogram, 90),
+  FROM pg_stat_statements WHERE query like '%select v from foo where customer_id%';
+```
+
+```output
+query                | select v from foo where customer_id=$1 and day=$2::date for update
+calls                | 33904964
+total_time           | 1122539431.94119
+min_time             | 1.005537
+max_time             | 524.190576
+mean_time            | 33.1084094925296
+rows                 | 33904964
+yb_latency_histogram | [{"[1.0,1.1)": 7658}, {"[1.1,1.2)": 326051}, {"[1.2,1.3)": 984139}, {"[1.3,1.4)": 862572}, {"[1.4,1.5)": 604798}, {"[1.5,1.6)": 662095}, {"[1.6,1.8)": 1258824}, {"[1.8,2.0)": 951168}, {"[2.0,2.2)": 373974}, {"[2.2,2.4)": 107085}, {"[2.4,2.6)": 64638}, {"[2.6,2.8)": 73508}, {"[2.8,3.0)": 81727}, {"[3.0,3.2)": 92673}, {"[3.2,3.6)": 199462}, {"[3.6,4.0)": 216870}, {"[4.0,4.4)": 188390}, {"[4.4,4.8)": 212072}, {"[4.8,5.2)": 249788}, {"[5.2,5.6)": 274928}, {"[5.6,6.0)": 329839}, {"[6.0,6.4)": 484011}, {"[6.4,7.2)": 1198917}, {"[7.2,8.0)": 830484}, {"[8.0,8.8)": 572708}, {"[8.8,9.6)": 451159}, {"[9.6,10.4)": 395841}, {"[10.4,11.2)": 373503}, {"[11.2,12.0)": 451987}, {"[12.0,12.8)": 531331}, {"[12.8,14.4)": 770149}, {"[14.4,16.0)": 632207}, {"[16.0,17.6)": 533134}, {"[17.6,19.2)": 486974}, {"[19.2,20.8)": 426922}, {"[20.8,22.4)": 517026}, {"[22.4,24.0)": 474835}, {"[24.0,25.6)": 419358}, {"[25.6,28.8)": 893763}, {"[28.8,32.0)": 852830}, {"[32.0,35.2)": 819699}, {"[35.2,38.4)": 809411}, {"[38.4,41.6)": 744626}, {"[41.6,44.8)": 769875}, {"[44.8,48.0)": 713671}, {"[48.0,51.2)": 704817}, {"[51.2,57.6)": 1373824}, {"[57.6,64.0)": 1376515}, {"[64.0,70.4)": 1402915}, {"[70.4,76.8)": 1434799}, {"[76.8,83.2)": 1426155}, {"[83.2,89.6)": 1263072}, {"[89.6,96.0)": 919922}, {"[96.0,102.4)": 492696}, {"[102.4,115.2)": 222437}, {"[115.2,128.0)": 10392}, {"[128.0,140.8)": 451}, {"[140.8,153.6)": 146}, {"[153.6,166.4)": 78}, {"[166.4,179.2)": 22}, {"[179.2,192.0)": 1}, {"[307.2,332.8)": 3}, {"[332.8,358.4)": 6}, {"[358.4,384.0)": 3}, {"[384.0,409.6)": 7}, {"[409.6,460.8)": 6}, {"[460.8,512.0)": 15}, {"[512.0,563.2)": 2}]
+p99                  | 102.4
+p95                  | 89.6
+p90                  | 83.2
+```
 
 ## Examples
 
@@ -181,8 +279,8 @@ yugabyte=# \d pg_stat_statements;
  temp_blks_written    | bigint           |           |          |
  blk_read_time        | double precision |           |          |
  blk_write_time       | double precision |           |          |
- ```
-<!--  yb_latency_histogram | jsonb            |           |          |-->
+ yb_latency_histogram | jsonb            |           |          |
+```
 
 ### Top 10 I/O-intensive queries
 
@@ -350,7 +448,4 @@ yugabyte=# select pg_stat_statements_reset();
 
 ## Learn more
 
-- Refer to [View live queries with pg_stat_activity](../pg-stat-activity/) to analyze live queries.
-- Refer to [View COPY progress with pg_stat_progress_copy](../pg-stat-progress-copy/) to track the COPY operation status.
-- Refer to [Analyze queries with EXPLAIN](../explain-analyze/) to optimize YSQL's EXPLAIN and EXPLAIN ANALYZE queries.
-- Refer to [Optimize YSQL queries using pg_hint_plan](../pg-hint-plan/) show the query execution plan generated by YSQL.
+- [Latency histogram and P99 latencies](../../../yugabyte-platform/alerts-monitoring/latency-histogram/) in YugabyteDB Anywhere

@@ -28,15 +28,18 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
 
   private final GFlagsValidation gFlagsValidation;
   private final XClusterUniverseService xClusterUniverseService;
+  private final KubernetesOperatorStatusUpdater kubernetesStatus;
 
   @Inject
   protected GFlagsKubernetesUpgrade(
       BaseTaskDependencies baseTaskDependencies,
       GFlagsValidation gFlagsValidation,
-      XClusterUniverseService xClusterUniverseService) {
+      XClusterUniverseService xClusterUniverseService,
+      KubernetesOperatorStatusUpdater kubernetesStatus) {
     super(baseTaskDependencies);
     this.gFlagsValidation = gFlagsValidation;
     this.xClusterUniverseService = xClusterUniverseService;
+    this.kubernetesStatus = kubernetesStatus;
   }
 
   @Override
@@ -90,8 +93,7 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           Cluster cluster = getUniverse().getUniverseDetails().getPrimaryCluster();
           UserIntent userIntent = cluster.userIntent;
           Universe universe = getUniverse();
-          KubernetesOperatorStatusUpdater.createYBUniverseEventStatus(
-              universe, getName(), getUserTaskUUID());
+          kubernetesStatus.createYBUniverseEventStatus(universe, getName(), getUserTaskUUID());
           // Verify the request params and fail if invalid
           taskParams().verifyParams(universe);
           if (CommonUtils.isAutoFlagSupported(cluster.userIntent.ybSoftwareVersion)) {
@@ -138,8 +140,7 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
             th = t;
             throw t;
           } finally {
-            KubernetesOperatorStatusUpdater.updateYBUniverseStatus(
-                universe, getName(), getUserTaskUUID(), th);
+            kubernetesStatus.updateYBUniverseStatus(universe, getName(), getUserTaskUUID(), th);
           }
         });
   }

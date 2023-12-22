@@ -85,8 +85,7 @@ public class UpgradeYbcTest extends FakeDBApplication {
     when(mockYbcUpgrade.pollUpgradeTaskResult(any(), any(), anyBoolean())).thenReturn(false);
     RuntimeException re = assertThrows(RuntimeException.class, () -> upgradeYbcTask.run());
     assertThat(
-        re.getMessage(),
-        containsString("YBC Upgrade task failed as ybc does not upgraded on master leader."));
+        re.getMessage(), containsString("YBC Upgrade task did not complete in expected time."));
   }
 
   @Test

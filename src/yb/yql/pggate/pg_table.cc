@@ -17,8 +17,15 @@
 
 #include "yb/yql/pggate/pg_tabledesc.h"
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
+namespace {
+
+[[nodiscard]] PgColumn& GetColumnByIndex(std::vector<PgColumn>* columns, size_t index) {
+  CHECK_LT(index + 1, columns->size());
+  return (*columns)[index];
+}
+
+} // namespace
 
 PgTable::PgTable(const PgTableDescPtr& desc)
     : desc_(desc), columns_(std::make_shared<std::vector<PgColumn>>()) {
@@ -38,9 +45,11 @@ Result<PgColumn&> PgTable::ColumnForAttr(int attr_num) {
 }
 
 PgColumn& PgTable::ColumnForIndex(size_t index) {
-  CHECK_LT(index + 1, columns_->size());
-  return (*columns_)[index];
+  return GetColumnByIndex(columns_.get(), index);
 }
 
-}  // namespace pggate
-}  // namespace yb
+const PgColumn& PgTable::ColumnForIndex(size_t index) const {
+  return GetColumnByIndex(columns_.get(), index);
+}
+
+}  // namespace yb::pggate

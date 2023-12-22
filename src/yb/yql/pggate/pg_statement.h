@@ -60,6 +60,8 @@ enum class StmtOp {
   STMT_CREATE_TABLEGROUP,
   STMT_DROP_TABLEGROUP,
   STMT_SAMPLE,
+  STMT_DROP_SEQUENCE,
+  STMT_DROP_DB_SEQUENCES
 };
 
 class PgStatement : public PgMemctx::Registrable {

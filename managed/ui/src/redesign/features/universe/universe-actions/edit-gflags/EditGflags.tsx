@@ -1,4 +1,4 @@
-import React, { FC, useState } from 'react';
+import { FC, useState } from 'react';
 import _ from 'lodash';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
@@ -225,7 +225,7 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({ open, onClose, unive
       open={open}
       titleSeparator
       size="lg"
-      overrideHeight={790}
+      overrideHeight={800}
       overrideWidth={1100}
       cancelLabel={t('common.cancel')}
       submitLabel={t('common.applyChanges')}
@@ -234,11 +234,6 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({ open, onClose, unive
       onSubmit={handleFormSubmit}
       submitTestId="EditGflags-Submit"
       cancelTestId="EditGflags-Close"
-      //   buttonProps={{
-      //     primary: {
-      //       disabled: !isFormValid()
-      //     }
-      //   }}
     >
       <FormProvider {...formMethods}>
         <Box
@@ -251,7 +246,7 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({ open, onClose, unive
         >
           {asyncCluster && (
             <Box className={classes.toggleContainer}>
-              <Box flex={1} display="flex" flexDirection={'row'}>
+              <Box flex={1} display="flex" flexDirection={'row'} alignItems={'center'}>
                 <YBToggle
                   onChange={handleInheritFlagsToggle}
                   disabled={false}

@@ -28,14 +28,16 @@ import org.yb.pgsql.ConnectionEndpoint;
 
 @RunWith(value = YBTestRunnerYsqlConnMgr.class)
 public class TestUnstickyConnections extends BaseYsqlConnMgr {
-    private final int POOL_SIZE = 3; // TODO: Revert to 2 connections after bug fix DB-7395 lands.
+    // TODO: Revert to 2 connections after bug fix DB-7395 lands.
+    // TODO: Change it to appropriate value once the temporary change #18723 is reverted.
+    private final int POOL_SIZE = 1;
 
     @Override
     protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
         super.customizeMiniClusterBuilder(builder);
         Map<String, String> additionalTserverFlags = new HashMap<String, String>() {
             {
-                put("ysql_conn_mgr_pool_size", Integer.toString(POOL_SIZE));
+                put("ysql_conn_mgr_max_conns_per_db", Integer.toString(POOL_SIZE));
             }
         };
 

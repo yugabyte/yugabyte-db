@@ -13,6 +13,8 @@
 #include <libpq-fe.h>
 #include <unistd.h>
 
+#include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
+
 /* Max number connection attempts during the warmup process. */
 #define YB_MAX_CONNECTION_ATTEMPTS 10
 
@@ -25,6 +27,7 @@ typedef struct {
 	od_instance_t *instance;
 	od_router_t *router;
 	int num_warmup_threads;
+	char *database;
 } yb_warmup_info;
 
 PGconn *get_connection(od_instance_t *instance, char *conn_str)
@@ -119,8 +122,9 @@ void *yb_warmup_thread(void *arg)
 	/* Create the connection string */
 	const int conn_str_size =
 		snprintf(NULL, 0,
-			 "host=%s port=%d dbname=yugabyte user=%s password=%s",
+			 "host=%s port=%d dbname=%s user=%s password=%s",
 			 thread_args->config->host, thread_args->config->port,
+			 thread_args->database,
 			 getenv("YB_YSQL_CONN_MGR_USER"),
 			 getenv("YB_YSQL_CONN_MGR_PASSWORD"));
 
@@ -133,8 +137,9 @@ void *yb_warmup_thread(void *arg)
 	char conn_str[conn_str_size + 1];
 
 	int rc = snprintf(conn_str, conn_str_size + 1,
-			  "host=%s port=%d dbname=yugabyte user=%s password=%s",
+			  "host=%s port=%d dbname=%s user=%s password=%s",
 			  thread_args->config->host, thread_args->config->port,
+			  thread_args->database,
 			  getenv("YB_YSQL_CONN_MGR_USER"),
 			  getenv("YB_YSQL_CONN_MGR_PASSWORD"));
 	if (rc < 0) {
@@ -142,6 +147,9 @@ void *yb_warmup_thread(void *arg)
 			 "Unable to create connection string.");
 		return NULL;
 	}
+
+	od_log(&instance->logger, "warmup", NULL, NULL,
+			"Doing warmup for connection string %s", conn_str);
 
 	thread_args->conn_str = conn_str;
 
@@ -157,7 +165,7 @@ void *yb_warmup_thread(void *arg)
 		if (pthread_create(&threads[i], NULL, yb_get_initialized_conn,
 				   (void *)thread_args) == -1) {
 			od_error(&instance->logger, "warmup", NULL, NULL,
-				 "Failed to create warmup threads");
+				 "Failed to create warmup threads with connection str %s.", conn_str);
 		}
 	}
 
@@ -214,6 +222,9 @@ void yb_warmup(od_instance_t *instance, od_config_listen_t *config,
 	if (is_warmup_needed == NULL || strcmp(is_warmup_needed, "true") != 0)
 		return;
 
+	if (getenv(YSQL_CONN_MGR_WARMUP_DB) == NULL)
+		return;
+
 	/* Total number of connections to be created will be same as the size of global pool. */
 	int num_warmup_threads = -1;
 
@@ -227,7 +238,11 @@ void yb_warmup(od_instance_t *instance, od_config_listen_t *config,
 
 			if (rule->pool->routing ==
 			    OD_RULE_POOL_CLIENT_VISIBLE) {
-				num_warmup_threads = rule->pool->size;
+				num_warmup_threads =
+					rule->min_pool_size >
+							num_warmup_threads ?
+						rule->min_pool_size :
+						num_warmup_threads;
 				break;
 			}
 		}
@@ -240,16 +255,31 @@ void yb_warmup(od_instance_t *instance, od_config_listen_t *config,
 		}
 	}
 
-	yb_warmup_info *thread_args =
-		(yb_warmup_info *)malloc(sizeof(yb_warmup_info));
-	thread_args->instance = instance;
-	thread_args->router = router;
-	thread_args->num_warmup_threads = num_warmup_threads;
-	thread_args->config = config;
+	if (num_warmup_threads == 0)
+	{
+		od_log(&instance->logger, "warmup", NULL, NULL,
+			  "Skipping the warmup because min_pool_size is set to 0.");
+		return;
+	}
 
-	pthread_t id;
+	const char *database_name = getenv(YSQL_CONN_MGR_WARMUP_DB);
 
-	pthread_create(&id, NULL, yb_warmup_thread, (void *)thread_args);
+	if (database_name != NULL) {
+		pthread_t id;
+		yb_warmup_info *thread_args =
+			(yb_warmup_info *)malloc(sizeof(yb_warmup_info));
+		thread_args->instance = instance;
+		thread_args->router = router;
+		thread_args->num_warmup_threads = num_warmup_threads;
+		thread_args->config = config;
+		thread_args->database = (char *)malloc(
+			(strlen(database_name) + 1) * sizeof(char));
+		strncpy(thread_args->database, database_name,
+			strlen(database_name) + 1);
+
+		pthread_create(&id, NULL, yb_warmup_thread,
+			       (void *)thread_args);
+	}
 }
 
 static inline od_retcode_t od_system_server_pre_stop(od_system_server_t *server)

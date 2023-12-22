@@ -222,6 +222,7 @@ class CDCServiceImpl : public CDCServiceIf {
   uint32_t GetXClusterConfigVersion() const;
 
  private:
+  friend class XClusterProducerBootstrap;
   FRIEND_TEST(CDCServiceTest, TestMetricsOnDeletedReplication);
   FRIEND_TEST(CDCServiceTestMultipleServersOneTablet, TestMetricsAfterServerFailure);
   FRIEND_TEST(CDCServiceTestMultipleServersOneTablet, TestMetricsUponRegainingLeadership);
@@ -238,13 +239,15 @@ class CDCServiceImpl : public CDCServiceIf {
       const ProducerTabletInfo& producer_tablet, bool ignore_cache = false);
 
   Result<OpId> GetLastCheckpoint(
-      const ProducerTabletInfo& producer_tablet, const CDCRequestSource& request_source);
+      const ProducerTabletInfo& producer_tablet, const CDCRequestSource& request_source,
+      const bool ignore_unpolled_tablets = true);
 
   Result<uint64_t> GetSafeTime(const xrepl::StreamId& stream_id, const TabletId& tablet_id);
 
   Result<CDCSDKCheckpointPB> GetLastCheckpointFromCdcState(
       const xrepl::StreamId& stream_id, const TabletId& tablet_id,
-      const CDCRequestSource& request_source, const TableId& colocated_table_id = "");
+      const CDCRequestSource& request_source, const TableId& colocated_table_id = "",
+      const bool ignore_unpolled_tablets = true);
 
   Status InsertRowForColocatedTableInCDCStateTable(
       const ProducerTabletInfo& producer_tablet,
@@ -313,10 +316,6 @@ class CDCServiceImpl : public CDCServiceIf {
       const TabletId& tablet_id, TabletCDCCheckpointInfo* tablet_info,
       bool enable_update_local_peer_min_index, bool ignore_rpc_failures = true);
 
-  // Returns the latest OpId and safe time from the leader of given tablet.
-  Result<std::pair<OpId, HybridTime>> TabletLeaderLatestEntryOpIdAndSafeTime(
-      const TabletId& tablet_id);
-
   Result<client::internal::RemoteTabletPtr> GetRemoteTablet(
       const TabletId& tablet_id, const bool use_cache = true);
   Result<client::internal::RemoteTabletServer*> GetLeaderTServer(
@@ -338,25 +337,6 @@ class CDCServiceImpl : public CDCServiceIf {
   Status UpdatePeersCdcMinReplicatedIndex(
       const TabletId& tablet_id, const TabletCDCCheckpointInfo& cdc_checkpoint_min,
       bool ignore_failures = true);
-
-  // Used as a callback function for parallelizing async cdc rpc calls.
-  // Given a finished tasks counter, and the number of total rpc calls
-  // in flight, the callback will increment the counter when called, and
-  // set the promise to be fulfilled when all tasks have completed.
-  void XClusterAsyncPromiseCallback(
-      std::promise<void>* const promise, std::atomic<int>* const finished_tasks, int total_tasks);
-
-  Status BootstrapProducerHelperParallelized(
-      const BootstrapProducerRequestPB* req,
-      BootstrapProducerResponsePB* resp,
-      std::vector<CDCStateTableEntry>* entries_to_insert,
-      CDCCreationState* creation_state);
-
-  Status BootstrapProducerHelper(
-      const BootstrapProducerRequestPB* req,
-      BootstrapProducerResponsePB* resp,
-      std::vector<CDCStateTableEntry>* entries_to_insert,
-      CDCCreationState* creation_state);
 
   void ComputeLagMetric(
       int64_t last_replicated_micros, int64_t metric_last_timestamp_micros,
@@ -442,8 +422,7 @@ class CDCServiceImpl : public CDCServiceIf {
   Result<CompositeAttsMap> UpdateCompositeMapInCacheUnlocked(const NamespaceName& ns_name)
       REQUIRES(mutex_);
 
-  Result<bool> IsBootstrapRequiredForTablet(
-      tablet::TabletPeerPtr tablet_peer, const OpId& min_op_id, const CoarseTimePoint& deadline);
+  void AddTabletCheckpoint(OpId op_id, const xrepl::StreamId& stream_id, const TabletId& tablet_id);
 
   rpc::Rpcs rpcs_;
 

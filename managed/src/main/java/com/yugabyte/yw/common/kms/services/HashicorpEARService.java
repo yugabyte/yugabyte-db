@@ -11,11 +11,8 @@
 
 package com.yugabyte.yw.common.kms.services;
 
-import static play.mvc.Http.Status.BAD_REQUEST;
-
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.kms.algorithms.HashicorpVaultAlgorithm;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
@@ -26,8 +23,6 @@ import com.yugabyte.yw.common.kms.util.hashicorpvault.HashicorpVaultConfigParams
 import com.yugabyte.yw.common.kms.util.hashicorpvault.VaultSecretEngineBase;
 import com.yugabyte.yw.forms.EncryptionAtRestConfig;
 import com.yugabyte.yw.models.KmsConfig;
-import java.security.SecureRandom;
-import java.util.Arrays;
 import java.util.List;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -58,9 +53,10 @@ public class HashicorpEARService extends EncryptionAtRestService<HashicorpVaultA
   protected ObjectNode createAuthConfigWithService(UUID configUUID, ObjectNode authConfig) {
     ObjectNode result = null;
 
+    VaultSecretEngineBase engine = null;
     try {
       // creates vault accessor object and validates the token
-      VaultSecretEngineBase engine = HashicorpEARServiceUtil.getVaultSecretEngine(authConfig);
+      engine = HashicorpEARServiceUtil.getVaultSecretEngine(authConfig);
       List<Object> ttlInfo = engine.getTTL();
       result = authConfig;
 
@@ -80,6 +76,7 @@ public class HashicorpEARService extends EncryptionAtRestService<HashicorpVaultA
     try {
       // Check if key with given name in the authConfig exists, else create a new one.
       HashicorpEARServiceUtil.createVaultKEK(configUUID, authConfig);
+      HashicorpEARServiceUtil.testEncryptDecrypt(engine, algorithm, configUUID);
     } catch (Exception e) {
       LOG.error(
           "Error while trying to check/create a key in the vault for config UUID '{}'.",
@@ -240,18 +237,8 @@ public class HashicorpEARService extends EncryptionAtRestService<HashicorpVaultA
     HashicorpEARServiceUtil.updateAuthConfigObj(configUUID, vaultSecretEngine, authConfig);
     final String engineKey = HashicorpEARServiceUtil.getVaultKeyForUniverse(authConfig);
 
-    // Test if able to encrypt.
-    byte[] randomUniverseKey = new byte[32];
-    SecureRandom.getInstanceStrong().nextBytes(randomUniverseKey);
-    byte[] randomEncryptedBytes = vaultSecretEngine.encryptString(engineKey, randomUniverseKey);
-    // Test if able to decrypt.
-    byte[] decryptedBytes = vaultSecretEngine.decryptString(engineKey, randomEncryptedBytes);
-
-    if (!Arrays.equals(decryptedBytes, randomUniverseKey)) {
-      throw new PlatformServiceException(
-          BAD_REQUEST,
-          String.format("Could not get decrypted bytes in Hashicorp KMS config '%s'.", configUUID));
-    }
+    // Test encrypt and decrypt for Hashicorp KMS config with fake data
+    HashicorpEARServiceUtil.testEncryptDecrypt(vaultSecretEngine, engineKey, configUUID);
   }
 
   @Override

@@ -37,7 +37,7 @@ public class TestConnectionLimit extends BaseYsqlConnMgr {
   private final int MAX_PHYSICAL_CONNECTION = 50;
 
   private final int MAX_LOGICAL_CONNECTION = 10000;
-  private final int POOL_SIZE = 33;
+  private final int POOL_SIZE = 22;
   private final int MAX_ROWS = 10000;
 
   @Override
@@ -47,20 +47,19 @@ public class TestConnectionLimit extends BaseYsqlConnMgr {
       {
         put("ysql_max_connections", Integer.toString(MAX_PHYSICAL_CONNECTION));
         put("ysql_conn_mgr_max_client_connections", Integer.toString(MAX_LOGICAL_CONNECTION));
-        put("ysql_conn_mgr_pool_size", Integer.toString(POOL_SIZE));
+        put("ysql_conn_mgr_max_conns_per_db", Integer.toString(POOL_SIZE));
       }
     };
 
     builder.addCommonTServerFlags(additionalTserverFlags);
   }
 
-  // Check that at the time when client is unable to make MAX_PHYSICAL_CONNECTION + 1
-  // connections directly to the database, client can make 2 * MAX_PHYSICAL_CONNECTION connections
+  // Check that client can make 2 * MAX_PHYSICAL_CONNECTION connections
   // to the database via Ysql Connection Manager.
   @Test
   public void testLogicalConnectionLimit() throws Exception {
     // Create the test table.
-    getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.YSQL_CONN_MGR)
+    getConnectionBuilder().withConnectionEndpoint(ConnectionEndpoint.DEFAULT)
                           .connect()
                           .createStatement()
                           .execute("CREATE TABLE T1 (c1 int NOT NULL PRIMARY KEY, c2 text)");
@@ -132,6 +131,9 @@ public class TestConnectionLimit extends BaseYsqlConnMgr {
 
           connection.commit();
         }
+
+        connection.close();
+
       } catch (SQLException e) {
         // Got exception during executing the transaction.
         LOG.error("Unable to execute the query", e);

@@ -2,6 +2,9 @@
 
 package com.yugabyte.yw.controllers;
 
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler;
 import com.yugabyte.yw.controllers.handlers.NodeAgentHandler.NodeAgentDownloadFile;
 import com.yugabyte.yw.forms.NodeAgentForm;
@@ -14,6 +17,11 @@ import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.NodeAgent;
 import com.yugabyte.yw.models.paging.NodeAgentPagedQuery;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -42,6 +50,12 @@ public class NodeAgentController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.NodeAgentForm",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result register(UUID customerUuid, Http.Request request) {
     Customer.getOrBadRequest(customerUuid);
     NodeAgentForm payload = parseJsonAndValidate(request, NodeAgentForm.class);
@@ -60,6 +74,12 @@ public class NodeAgentController extends AuthenticatedController {
       response = NodeAgentResp.class,
       responseContainer = "List",
       nickname = "ListNodeAgents")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result list(UUID customerUuid, String nodeIp) {
     return PlatformResults.withData(nodeAgentHandler.list(customerUuid, nodeIp));
   }
@@ -74,6 +94,12 @@ public class NodeAgentController extends AuthenticatedController {
           paramType = "body",
           dataType = "com.yugabyte.yw.forms.paging.NodeAgentPagedApiQuery",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result page(UUID customerUuid, Http.Request request) {
     Customer.getOrBadRequest(customerUuid);
     NodeAgentPagedApiQuery apiQuery = parseJsonAndValidate(request, NodeAgentPagedApiQuery.class);
@@ -84,6 +110,12 @@ public class NodeAgentController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Get Node Agent", response = NodeAgentResp.class, nickname = "GetNodeAgent")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result get(UUID customerUuid, UUID nodeUuid) {
     return PlatformResults.withData(nodeAgentHandler.get(customerUuid, nodeUuid));
   }

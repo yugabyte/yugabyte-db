@@ -56,7 +56,7 @@ type IndexInfoStruct struct {
 }
 
 // TODO: replace this with a call to a json endpoint so we don't have to parse html
-func ParseTasksFromHtml(body string) ([]IndexTaskStruct, error) {
+func (h *HelperContainer) ParseTasksFromHtml(body string) ([]IndexTaskStruct, error) {
     indexTasks := []IndexTaskStruct{}
 
     tasksRegex, err := regexp.Compile(`(?ms)Last 20 user-initiated jobs started` +
@@ -102,7 +102,7 @@ func ParseTasksFromHtml(body string) ([]IndexTaskStruct, error) {
     return indexTasks, nil
 }
 
-func GetCompletedIndexBackFillInfo() IndexBackFillInfoFuture {
+func (h *HelperContainer) GetCompletedIndexBackFillInfo() IndexBackFillInfoFuture {
     completedIndexBackFillInfoFuture := IndexBackFillInfoFuture{
         IndexBackFillInfo: []map[string]interface{}{},
         Error:             nil,
@@ -125,7 +125,7 @@ func GetCompletedIndexBackFillInfo() IndexBackFillInfoFuture {
         return completedIndexBackFillInfoFuture
     }
 
-    backfilledIndexes, err := ParseTasksFromHtml(string(body))
+    backfilledIndexes, err := h.ParseTasksFromHtml(string(body))
     if err != nil {
         completedIndexBackFillInfoFuture.Error = err
         return completedIndexBackFillInfoFuture
@@ -144,7 +144,11 @@ func GetCompletedIndexBackFillInfo() IndexBackFillInfoFuture {
     return completedIndexBackFillInfoFuture
 }
 
-func GetIndexInfo(pgClient *pgxpool.Pool, indexRelId uint32, future chan IndexInfoStruct) {
+func (h *HelperContainer) GetIndexInfo(
+    pgClient *pgxpool.Pool,
+    indexRelId uint32,
+    future chan IndexInfoStruct,
+) {
     indexInfo := IndexInfoStruct{
         Error: nil,
     }
@@ -179,7 +183,7 @@ func GetIndexInfo(pgClient *pgxpool.Pool, indexRelId uint32, future chan IndexIn
     future <- indexInfo
 }
 
-func convertInterfaceToInt64(val interface{}) int64 {
+func (h *HelperContainer) convertInterfaceToInt64(val interface{}) int64 {
     if val == nil {
         return 0
     } else {
@@ -187,7 +191,10 @@ func convertInterfaceToInt64(val interface{}) int64 {
     }
 }
 
-func GetIndexBackFillInfo(pgClient *pgxpool.Pool, future chan IndexBackFillInfoFuture) {
+func (h *HelperContainer) GetIndexBackFillInfo(
+    pgClient *pgxpool.Pool,
+    future chan IndexBackFillInfoFuture,
+) {
     indexBackFillInfoFuture := IndexBackFillInfoFuture{
         IndexBackFillInfo: []map[string]interface{}{},
         Error:             nil,
@@ -228,7 +235,7 @@ func GetIndexBackFillInfo(pgClient *pgxpool.Pool, future chan IndexBackFillInfoF
                 future <- indexBackFillInfoFuture
                 return
             }
-            go GetIndexInfo(pgClient, indexBackFillInfo.IndexRelId, indexInfoFuture)
+            go h.GetIndexInfo(pgClient, indexBackFillInfo.IndexRelId, indexInfoFuture)
             indexRelIdtoBackFillInfoMap[indexBackFillInfo.IndexRelId] = indexBackFillInfo
         }
 
@@ -250,11 +257,11 @@ func GetIndexBackFillInfo(pgClient *pgxpool.Pool, future chan IndexBackFillInfoF
             return
         }
         indexBackFillInfo := indexRelIdtoBackFillInfoMap[indexInfo.IndexRelId]
-        indexBackFillInfo.TuplesTotal = convertInterfaceToInt64(indexBackFillInfo.TuplesTotal)
-        indexBackFillInfo.TuplesDone = convertInterfaceToInt64(indexBackFillInfo.TuplesDone)
-        indexBackFillInfo.PartitionsTotal = convertInterfaceToInt64(
+        indexBackFillInfo.TuplesTotal = h.convertInterfaceToInt64(indexBackFillInfo.TuplesTotal)
+        indexBackFillInfo.TuplesDone = h.convertInterfaceToInt64(indexBackFillInfo.TuplesDone)
+        indexBackFillInfo.PartitionsTotal = h.convertInterfaceToInt64(
             indexBackFillInfo.PartitionsTotal)
-        indexBackFillInfo.PartitionsDone = convertInterfaceToInt64(
+        indexBackFillInfo.PartitionsDone = h.convertInterfaceToInt64(
             indexBackFillInfo.PartitionsDone)
 
 

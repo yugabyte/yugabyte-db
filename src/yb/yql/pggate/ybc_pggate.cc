@@ -36,6 +36,8 @@
 #include "yb/dockv/reader_projection.h"
 #include "yb/dockv/value_type.h"
 
+#include "yb/gutil/casts.h"
+
 #include "yb/server/skewed_clock.h"
 
 #include "yb/util/atomic.h"
@@ -642,8 +644,19 @@ YBCStatus YBCReadSequenceTuple(int64_t db_oid,
       db_oid, seq_oid, ysql_catalog_version, is_db_catalog_version_mode, last_val, is_called));
 }
 
-YBCStatus YBCDeleteSequenceTuple(int64_t db_oid, int64_t seq_oid) {
-  return ToYBCStatus(pgapi->DeleteSequenceTuple(db_oid, seq_oid));
+YBCStatus YBCPgNewDropSequence(const YBCPgOid database_oid,
+                               const YBCPgOid sequence_oid,
+                               YBCPgStatement *handle) {
+  return ToYBCStatus(pgapi->NewDropSequence(database_oid, sequence_oid, handle));
+}
+
+YBCStatus YBCPgExecDropSequence(YBCPgStatement handle) {
+  return ToYBCStatus(pgapi->ExecDropSequence(handle));
+}
+
+YBCStatus YBCPgNewDropDBSequences(const YBCPgOid database_oid,
+                                  YBCPgStatement *handle) {
+  return ToYBCStatus(pgapi->NewDropDBSequences(database_oid, handle));
 }
 
 // Table Operations -------------------------------------------------------------------------------
@@ -1344,6 +1357,10 @@ YBCStatus YBCPgRestartReadPoint() {
   return ToYBCStatus(pgapi->RestartReadPoint());
 }
 
+bool YBCIsRestartReadPointRequested() {
+  return pgapi->IsRestartReadPointRequested();
+}
+
 YBCStatus YBCPgCommitTransaction() {
   return ToYBCStatus(pgapi->CommitTransaction());
 }
@@ -1640,7 +1657,8 @@ void* YBCPgGetThreadLocalErrStatus() {
 }
 
 void YBCStartSysTablePrefetching(
-  uint64_t latest_known_ysql_catalog_version, YBCPgSysTablePrefetcherCacheMode cache_mode) {
+  YBCPgLastKnownCatalogVersionInfo version_info,
+  YBCPgSysTablePrefetcherCacheMode cache_mode) {
   PrefetchingCacheMode mode = PrefetchingCacheMode::NO_CACHE;
   switch (cache_mode) {
     case YB_YQL_PREFETCHER_TRUST_CACHE:
@@ -1656,7 +1674,10 @@ void YBCStartSysTablePrefetching(
     default:
       break;
   }
-  pgapi->StartSysTablePrefetching(PrefetcherOptions{latest_known_ysql_catalog_version, mode});
+  pgapi->StartSysTablePrefetching(PrefetcherOptions{
+      {version_info.version, version_info.is_db_catalog_version_mode},
+      mode,
+      implicit_cast<uint64_t>(yb_fetch_row_limit)});
 }
 
 void YBCStopSysTablePrefetching() {

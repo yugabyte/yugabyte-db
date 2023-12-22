@@ -13,21 +13,15 @@ package com.yugabyte.yw.models.migrations;
 import com.fasterxml.jackson.annotation.JsonBackReference;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonManagedReference;
-import com.fasterxml.jackson.databind.JsonNode;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common.CloudType;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.DbJson;
 import io.ebean.annotation.Encrypted;
 import java.util.List;
 import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
-import java.util.stream.Collectors;
 import javax.persistence.CascadeType;
 import javax.persistence.Column;
 import javax.persistence.Entity;
@@ -35,12 +29,10 @@ import javax.persistence.Id;
 import javax.persistence.ManyToOne;
 import javax.persistence.OneToMany;
 import javax.persistence.Table;
-import javax.persistence.Transient;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.Getter;
 import lombok.Setter;
-import play.libs.Json;
 
 /** Snapshot View of ORM entities at the time migration V_252 was added. */
 public class V_252 {
@@ -223,54 +215,6 @@ public class V_252 {
       private String ybImage;
       private String sshUserOverride;
       private Integer sshPortOverride;
-    }
-  }
-
-  @Entity
-  @Table(name = "universe")
-  public static class Universe extends Model {
-
-    public static final Finder<UUID, Universe> find = new Finder<UUID, Universe>(Universe.class) {};
-
-    @Id public UUID universeUUID;
-
-    public String name;
-
-    @Column(columnDefinition = "TEXT", nullable = false)
-    private String universeDetailsJson;
-
-    @Transient private UniverseDefinitionTaskParams universeDetails;
-
-    public UniverseDefinitionTaskParams getUniverseDetails() {
-      return universeDetails;
-    }
-
-    public void setUniverseDetails(UniverseDefinitionTaskParams details) {
-      universeDetailsJson = Json.stringify(Json.toJson(details));
-      universeDetails = details;
-    }
-
-    private static Universe fillUniverseDetails(Universe universe) {
-      JsonNode detailsJson = Json.parse(universe.universeDetailsJson);
-      universe.universeDetails = Json.fromJson(detailsJson, UniverseDefinitionTaskParams.class);
-
-      // For backwards compatibility from {universeDetails: {"userIntent": <foo>, "placementInfo":
-      // <bar>}}
-      // to {universeDetails: {clusters: [{"userIntent": <foo>, "placementInfo": <bar>},...]}}
-      if (detailsJson != null
-          && !detailsJson.isNull()
-          && (!detailsJson.has("clusters") || detailsJson.get("clusters").size() == 0)) {
-        UserIntent userIntent = Json.fromJson(detailsJson.get("userIntent"), UserIntent.class);
-        PlacementInfo placementInfo =
-            Json.fromJson(detailsJson.get("placementInfo"), PlacementInfo.class);
-        universe.universeDetails.upsertPrimaryCluster(userIntent, placementInfo);
-      }
-      return universe;
-    }
-
-    public static Set<Universe> getAllWithoutResources(Customer customer) {
-      List<Universe> rawList = find.query().where().eq("customer_id", customer.id).findList();
-      return rawList.stream().peek(Universe::fillUniverseDetails).collect(Collectors.toSet());
     }
   }
 }

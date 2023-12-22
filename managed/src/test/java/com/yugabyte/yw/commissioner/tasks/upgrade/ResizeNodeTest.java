@@ -45,7 +45,6 @@ import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.converters.Nullable;
-import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.time.DateUtils;
 import org.junit.Before;
 import org.junit.Rule;
@@ -58,7 +57,6 @@ import org.yb.client.ListMastersResponse;
 import play.libs.Json;
 
 @RunWith(JUnitParamsRunner.class)
-@Slf4j
 public class ResizeNodeTest extends UpgradeTaskTest {
 
   @Rule public MockitoRule rule = MockitoJUnit.rule();
@@ -254,6 +252,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       targetIntent.deviceInfo.throughput = NEW_DISK_THROUGHPUT;
     }
 
+    createInstanceType(UUID.fromString(currentIntent.provider), curInstanceTypeCode);
     createInstanceType(UUID.fromString(currentIntent.provider), targetInstanceTypeCode);
     assertEquals(
         expected,
@@ -354,7 +353,7 @@ public class ResizeNodeTest extends UpgradeTaskTest {
       String targetTserverConf,
       String targetMasterConf,
       boolean expected) {
-    Pair<Integer, Integer> counts = modifyToDedicated();
+    modifyToDedicated();
     Common.CloudType cloudType = Common.CloudType.valueOf(cloudTypeStr);
     UniverseDefinitionTaskParams.UserIntent currentIntent = createIntent(cloudType, null, null);
     currentIntent.masterDeviceInfo = currentIntent.deviceInfo.clone();
@@ -573,7 +572,6 @@ public class ResizeNodeTest extends UpgradeTaskTest {
     userIntent.deviceInfo.storageType = PublicCloudConstants.StorageType.GP3;
     userIntent.deviceInfo.throughput = NEW_DISK_THROUGHPUT;
     TaskInfo taskInfo = submitTask(taskParams);
-    List<TaskInfo> subTasks = taskInfo.getSubTasks();
     assertEquals(Success, taskInfo.getTaskState());
     assertUniverseData(false, false);
     Universe universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());

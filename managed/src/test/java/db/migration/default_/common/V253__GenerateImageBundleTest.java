@@ -1,39 +1,18 @@
 package db.migration.default_.common;
 
-import static com.yugabyte.yw.common.TestHelper.createTempFile;
 import static org.junit.Assert.assertEquals;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.when;
 
-import com.google.common.collect.ImmutableList;
-import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
-import com.yugabyte.yw.commissioner.Common;
-import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.TestHelper;
-import com.yugabyte.yw.forms.CertificateParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
-import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
-import com.yugabyte.yw.models.AvailabilityZone;
-import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.ImageBundleDetails;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
-import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
-import com.yugabyte.yw.models.helpers.DeviceInfo;
-import com.yugabyte.yw.models.helpers.NodeDetails;
-import com.yugabyte.yw.models.helpers.PlacementInfo;
-import java.io.IOException;
-import java.security.NoSuchAlgorithmException;
-import java.util.Date;
+import java.util.List;
 import java.util.Map;
-import java.util.UUID;
 import org.junit.Before;
 import org.junit.Test;
 
@@ -76,7 +55,9 @@ public class V253__GenerateImageBundleTest extends FakeDBApplication {
 
     V253__GenerateImageBundle.generateImageBundles();
     defaultProvider.refresh();
-    ImageBundle defaultImageBundle = ImageBundle.getDefaultForProvider(defaultProvider.getUuid());
+    List<ImageBundle> defaultImageBundles =
+        ImageBundle.getDefaultForProvider(defaultProvider.getUuid());
+    ImageBundle defaultImageBundle = defaultImageBundles.get(0);
 
     assertEquals(1, defaultProvider.getImageBundles().size());
     assertEquals(defaultImageBundle.getUuid(), defaultProvider.getImageBundles().get(0).getUuid());
@@ -102,98 +83,5 @@ public class V253__GenerateImageBundleTest extends FakeDBApplication {
         defaultProvider.getImageBundles().get(0).getName());
     assertEquals(
         "test_image_id", defaultProvider.getImageBundles().get(0).getDetails().getGlobalYbImage());
-  }
-
-  @Test
-  public void generateImageBundleUniverses() {
-    Provider defaultProvider = ModelFactory.awsProvider(defaultCustomer);
-
-    // Create test region and Availability Zones
-    Region region = Region.create(defaultProvider, "us-west-1", "us-west-1", "yb-image-1");
-    AvailabilityZone az1 = AvailabilityZone.createOrThrow(region, "az-1", "AZ 1", "subnet-1");
-    AvailabilityZone az2 = AvailabilityZone.createOrThrow(region, "az-2", "AZ 2", "subnet-2");
-    AvailabilityZone az3 = AvailabilityZone.createOrThrow(region, "az-3", "AZ 3", "subnet-3");
-    Universe defaultUniverse;
-
-    // Create test certificate
-    UUID certUUID = UUID.randomUUID();
-    Date date = new Date();
-    CertificateParams.CustomCertInfo customCertInfo = new CertificateParams.CustomCertInfo();
-    customCertInfo.rootCertPath = "rootCertPath";
-    customCertInfo.nodeCertPath = "nodeCertPath";
-    customCertInfo.nodeKeyPath = "nodeKeyPath";
-    createTempFile("upgrade_task_test_ca.crt", CERT_CONTENTS);
-    try {
-      CertificateInfo.create(
-          certUUID,
-          defaultCustomer.getUuid(),
-          "test",
-          date,
-          date,
-          TestHelper.TMP_PATH + "/upgrade_task_test_ca.crt",
-          customCertInfo);
-    } catch (IOException | NoSuchAlgorithmException ignored) {
-    }
-
-    // Create default universe
-    UniverseDefinitionTaskParams.UserIntent userIntent =
-        new UniverseDefinitionTaskParams.UserIntent();
-    userIntent.ybSoftwareVersion = "old-version";
-    userIntent.accessKeyCode = "demo-access";
-    userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.providerType = Common.CloudType.valueOf(defaultProvider.getCode());
-    userIntent.provider = defaultProvider.getUuid().toString();
-    userIntent.deviceInfo = new DeviceInfo();
-    userIntent.deviceInfo.volumeSize = 100;
-    userIntent.deviceInfo.numVolumes = 2;
-
-    defaultUniverse = ModelFactory.createUniverse(defaultCustomer.getId(), certUUID);
-
-    PlacementInfo placementInfo = new PlacementInfo();
-    PlacementInfoUtil.addPlacementZone(az1.getUuid(), placementInfo, 1, 1, false);
-    PlacementInfoUtil.addPlacementZone(az2.getUuid(), placementInfo, 1, 1, true);
-    PlacementInfoUtil.addPlacementZone(az3.getUuid(), placementInfo, 1, 1, false);
-    userIntent.numNodes =
-        placementInfo.cloudList.get(0).regionList.get(0).azList.stream()
-            .mapToInt(p -> p.numNodesInAZ)
-            .sum();
-
-    defaultUniverse =
-        Universe.saveDetails(
-            defaultUniverse.getUniverseUUID(),
-            ApiUtils.mockUniverseUpdater(userIntent, placementInfo, true));
-
-    Universe.UniverseUpdater updater =
-        universe -> {
-          UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-          Cluster primaryCluster = universeDetails.getPrimaryCluster();
-          UserIntent clusterUserIntent = primaryCluster.userIntent;
-          clusterUserIntent.regionList = ImmutableList.of(region.getUuid());
-          universe.setUniverseDetails(universeDetails);
-
-          for (NodeDetails node : universeDetails.nodeDetailsSet) {
-            node.nodeUuid = UUID.randomUUID();
-            node.machineImage = "test-image-in-node";
-            node.cloudInfo = new CloudSpecificInfo();
-            node.cloudInfo.region = "us-west-1";
-            node.cloudInfo.cloud = Common.CloudType.aws.toString();
-          }
-
-          clusterUserIntent.providerType = Common.CloudType.aws;
-          clusterUserIntent.deviceInfo = new DeviceInfo();
-          clusterUserIntent.deviceInfo.storageType = StorageType.Persistent;
-        };
-
-    defaultUniverse = Universe.saveDetails(defaultUniverse.getUniverseUUID(), updater);
-    V253__GenerateImageBundle.generateImageBundles();
-    defaultProvider.refresh();
-
-    assertEquals(2, defaultProvider.getImageBundles().size());
-    assertEquals(
-        String.format("for_provider_%s", defaultProvider.getName()),
-        defaultProvider.getImageBundles().get(0).getName());
-    assertEquals(
-        String.format("for_universe_%s", defaultUniverse.getName()),
-        defaultProvider.getImageBundles().get(1).getName());
   }
 }

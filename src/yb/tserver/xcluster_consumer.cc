@@ -78,8 +78,7 @@ static bool ValidateXClusterSafeTimeUpdateInterval(const char* flagname, int32 v
 
 DEFINE_validator(xcluster_safe_time_update_interval_secs, &ValidateXClusterSafeTimeUpdateInterval);
 
-DEFINE_test_flag(
-    bool, xcluster_disable_delete_old_pollers, false,
+DEFINE_test_flag(bool, xcluster_disable_delete_old_pollers, false,
     "Disables the deleting of old xcluster pollers that are no longer needed.");
 
 DECLARE_int32(cdc_read_rpc_timeout_ms);
@@ -131,14 +130,13 @@ Result<std::unique_ptr<XClusterConsumer>> XClusterConsumer::Create(
   }
 
   auto local_client = std::make_unique<XClusterClient>();
-  if (FLAGS_use_node_to_node_encryption) {
-    rpc::MessengerBuilder messenger_builder("xcluster-consumer");
+  rpc::MessengerBuilder messenger_builder("xcluster-consumer");
 
+  if (FLAGS_use_node_to_node_encryption) {
     local_client->secure_context = VERIFY_RESULT(server::SetupSecureContext(
         "", "", server::SecureContextType::kInternal, &messenger_builder));
-
-    local_client->messenger = VERIFY_RESULT(messenger_builder.Build());
   }
+  local_client->messenger = VERIFY_RESULT(messenger_builder.Build());
 
   local_client->client = VERIFY_RESULT(
       client::YBClientBuilder()
@@ -227,6 +225,7 @@ void XClusterConsumer::Shutdown() {
 
   // TODO: Shutdown the client after the thread pool shutdown, otherwise we seem to get stuck. This
   // ordering indicates some bug in the client shutdown code.
+
   for (auto& [replication_id, client] : clients_to_shutdown) {
     client->Shutdown();
   }
@@ -518,10 +517,11 @@ void XClusterConsumer::TriggerPollForNewTablets() {
         bool use_local_tserver =
             streams_with_local_tserver_optimization_.find(producer_tablet_info.stream_id) !=
             streams_with_local_tserver_optimization_.end();
-        auto xcluster_poller = std::make_shared<XClusterPoller>(
+        std::shared_ptr<XClusterPoller> xcluster_poller = std::make_unique<XClusterPoller>(
             producer_tablet_info, consumer_tablet_info, thread_pool_.get(), rpcs_.get(),
-            local_client_, remote_clients_[replication_group_id], this, use_local_tserver,
-            last_compatible_consumer_schema_version, rate_limiter_.get(), get_leader_term_);
+            local_client_, remote_clients_[replication_group_id], this,
+            last_compatible_consumer_schema_version, get_leader_term_);
+        xcluster_poller->Init(use_local_tserver, rate_limiter_.get());
 
         UpdatePollerSchemaVersionMaps(xcluster_poller, producer_tablet_info.stream_id);
 
@@ -619,9 +619,9 @@ bool XClusterConsumer::ShouldContinuePolling(
     return true;
   }
 
-  if (poller.IsFailed()) {
-    // All failed pollers need to be deleted. If the tablet leader is still on this node they will
-    // be recreated.
+  if (poller.IsFailed() || poller.IsStuck()) {
+    // All failed and stuck pollers need to be deleted. If the tablet leader is still on this node
+    // they will be recreated.
     return false;
   }
 

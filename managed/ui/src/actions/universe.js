@@ -116,11 +116,6 @@ export const GET_HEALTH_CHECK_RESPONSE = 'GET_HEALTH_CHECK_RESPONSE';
 export const SET_ENCRYPTION_KEY = 'SET_ENCRYPTION_KEY';
 export const SET_ENCRYPTION_KEY_RESPONSE = 'SET_ENCRYPTION_KEY_RESPONSE';
 
-export const IMPORT_UNIVERSE = 'IMPORT_UNIVERSE';
-export const IMPORT_UNIVERSE_INIT = 'IMPORT_UNIVERSE_INIT';
-export const IMPORT_UNIVERSE_RESPONSE = 'IMPORT_UNIVERSE_RESPONSE';
-export const IMPORT_UNIVERSE_RESET = 'IMPORT_UNIVERSE_RESET';
-
 export const SET_ALERTS_CONFIG = 'SET_ALERTS_CONFIG';
 export const SET_ALERTS_CONFIG_RESPONSE = 'SET_ALERTS_CONFIG_RESPONSE';
 
@@ -689,34 +684,6 @@ export function setEncryptionKeyResponse(response) {
   return {
     type: SET_ENCRYPTION_KEY_RESPONSE,
     payload: response
-  };
-}
-
-export function importUniverseInit() {
-  return {
-    type: IMPORT_UNIVERSE_INIT
-  };
-}
-
-export function importUniverse(values) {
-  const customerUUID = localStorage.getItem('customerId');
-  const request = axios.post(`${ROOT_URL}/customers/${customerUUID}/universes/import`, values);
-  return {
-    type: IMPORT_UNIVERSE,
-    payload: request
-  };
-}
-
-export function importUniverseResponse(response) {
-  return {
-    type: IMPORT_UNIVERSE_RESPONSE,
-    payload: response
-  };
-}
-
-export function importUniverseReset() {
-  return {
-    type: IMPORT_UNIVERSE_RESET
   };
 }
 

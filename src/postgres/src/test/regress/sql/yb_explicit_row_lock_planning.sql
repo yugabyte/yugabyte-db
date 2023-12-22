@@ -146,4 +146,54 @@ COMMIT;
 EXPLAIN (COSTS OFF, FORMAT JSON)
 SELECT * FROM yb_locks_t WHERE k=5 FOR UPDATE;
 
+-- Test that prepared statements made in isolation level RR with a LockRows node do not
+-- crash when executed in isolation level SERIALIZABLE.
+SET yb_lock_pk_single_rpc TO OFF;
+-- Store prepared plans right away.
+SET yb_test_planner_custom_plan_threshold to 1;
+PREPARE yb_locks_plan_rr (int) AS SELECT * FROM yb_locks_t WHERE k=$1 FOR UPDATE;
+EXECUTE yb_locks_plan_rr(1);
+-- The $1 in the EXPLAIN output tells you it's a stored plan.
+EXPLAIN (COSTS OFF)
+EXECUTE yb_locks_plan_rr(1);
+
+BEGIN ISOLATION LEVEL SERIALIZABLE;
+EXECUTE yb_locks_plan_rr(1);
+-- The LockRows node has a "no-op" annotation.
+EXPLAIN (COSTS OFF)
+EXECUTE yb_locks_plan_rr(1);
+-- In JSON mode, the LockRows node has an "Executes" field set to false.
+EXPLAIN (COSTS OFF, FORMAT JSON)
+EXECUTE yb_locks_plan_rr(1);
+COMMIT;
+
+-- Test that prepared statements made in isolation level SERIALIZABLE, but for a PK, are
+-- able to lock PK when run in RR and RC.
+SET yb_lock_pk_single_rpc TO ON;
+BEGIN ISOLATION LEVEL SERIALIZABLE;
+PREPARE yb_locks_plan_ser (int) AS SELECT * FROM yb_locks_t WHERE k=$1 FOR UPDATE;
+EXECUTE yb_locks_plan_ser(1);
+EXPLAIN (COSTS OFF)
+EXECUTE yb_locks_plan_ser(1);
+COMMIT;
+
+EXECUTE yb_locks_plan_ser(1);
+EXPLAIN (COSTS OFF)
+EXECUTE yb_locks_plan_ser(1);
+
+-- Test that prepared statements made in isolation level SERIALIZABLE, for a non-PK, have
+-- a LockRows node that functions in RR and RC.
+BEGIN ISOLATION LEVEL SERIALIZABLE;
+PREPARE yb_locks_plan_ser_all (int) AS SELECT * FROM yb_locks_t FOR UPDATE;
+EXECUTE yb_locks_plan_ser_all(1);
+EXPLAIN (COSTS OFF)
+EXECUTE yb_locks_plan_ser_all(1);
+COMMIT;
+EXECUTE yb_locks_plan_ser_all(1);
+EXPLAIN (COSTS OFF)
+EXECUTE yb_locks_plan_ser_all(1);
+
+-- Reset
+SET yb_lock_pk_single_rpc TO DEFAULT;
+SET yb_test_planner_custom_plan_threshold TO DEFAULT;
 DROP TABLE yb_locks_t, yb_locks_t2, yb_locks_tasc, yb_locks_partition;

@@ -257,7 +257,7 @@ TEST_F(ColocationConcurrencyTest, InsertAndIndexBackfillOnSeparateTables) {
     ASSERT_EQ(PQntuples(res.get()), 50);
     ASSERT_EQ(PQnfields(res.get()), 2);
     for (int i = 0; i < 50; ++i) {
-      ASSERT_EQ(i, ASSERT_RESULT(GetInt32(res.get(), i, 0)));
+      ASSERT_EQ(i, ASSERT_RESULT(GetValue<int32_t>(res.get(), i, 0)));
     }
 
     // Verify t2 has rows equal to counter.
@@ -356,7 +356,7 @@ TEST_F(ColocationConcurrencyTest, CreateAndTruncateOnSeparateTables) {
     ASSERT_EQ(PQntuples(res.get()), 50);
     ASSERT_EQ(PQnfields(res.get()), 2);
     for (int i = 0; i < 50; ++i) {
-      ASSERT_EQ(i, ASSERT_RESULT(GetInt32(res.get(), i, 0)));
+      ASSERT_EQ(i, ASSERT_RESULT(GetValue<int32_t>(res.get(), i, 0)));
     }
 
     // Verify t2 has 0 rows

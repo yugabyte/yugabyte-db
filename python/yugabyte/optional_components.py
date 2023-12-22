@@ -13,15 +13,17 @@
 
 import argparse
 
-from typing import List
+from typing import List, Set, Tuple
+from sys_detection import is_linux
 
 
 COMPONENT_DESCRIPTIONS = {
     'yugabyted_ui': 'yugabyted UI',
-    'odyssey': 'Odyssey (the PostgreSQL connection pooler)',
+    'odyssey': 'Odyssey PostgreSQL connection pooler',
 }
 
-COMPONENTS_ENABLED_BY_DEFAULT = {'yugabyted_ui'}
+COMPONENTS_ENABLED_BY_DEFAULT: Set[str] = {'yugabyted_ui'}
+COMPONENTS_ENABLED_BY_DEFAULT_ON_LINUX: Set[str] = {'odyssey'}
 
 
 class OptionalComponents:
@@ -60,6 +62,20 @@ class OptionalComponents:
         ) + ')'
 
 
+def get_optional_component_default(component_name: str) -> Tuple[bool, str]:
+    """
+    Returns whether the given component is enabled or disabled by default, and a string description
+    of the reason why it is so.
+    """
+    if component_name in COMPONENTS_ENABLED_BY_DEFAULT:
+        return True, 'enabled by default'
+
+    if is_linux() and component_name in COMPONENTS_ENABLED_BY_DEFAULT_ON_LINUX:
+        return True, 'enabled by default on Linux'
+
+    return False, 'disabled by default'
+
+
 def add_optional_component_arguments(arg_parser: argparse.ArgumentParser) -> None:
     for component_name, component_description in COMPONENT_DESCRIPTIONS.items():
         for enabling in [True, False]:
@@ -75,15 +91,11 @@ def add_optional_component_arguments(arg_parser: argparse.ArgumentParser) -> Non
             if component_name == 'yugabyted_ui' and not enabling:
                 # For backward compatibility in yb_release.py, we also support the old flag name.
                 flag_names.append('skip_yugabyted_ui_build')
-            enabled_by_default = component_name in COMPONENTS_ENABLED_BY_DEFAULT
-            default_value_description = ''
-            if enabling:
-                default_value_description = (
-                    ' (enabled by default)'
-                    if enabled_by_default else ' (disabled by default)')
-            help_text = (
-                ('Enable' if enabling else 'Disable') + ' building ' +
-                component_description +
+            enabled_by_default, default_value_description = get_optional_component_default(
+                    component_name)
+            help_text = '%s building %s (%s)' % (
+                'Enable' if enabling else 'Disable',
+                component_description,
                 default_value_description
             )
             arg_parser.add_argument(
@@ -101,7 +113,7 @@ def optional_components_from_args(args: argparse.Namespace) -> OptionalComponent
         var_name = component_name + '_enabled'
         is_enabled = getattr(args, var_name)
         if is_enabled is None:
-            is_enabled = component_name in COMPONENTS_ENABLED_BY_DEFAULT
+            is_enabled = get_optional_component_default(component_name)[0]
         constructor_args[var_name] = is_enabled
 
     return OptionalComponents(**constructor_args)

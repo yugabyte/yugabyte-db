@@ -141,7 +141,8 @@ export const MetricTypesWithOperations = {
       'master_multiraft_consensus_update_latency',
       'master_table_ops',
       'master_cpu_util_secs',
-      'master_yb_rpc_connections'
+      'master_yb_rpc_connections',
+      'master_leaderless_and_underreplicated_tablets'
     ]
   },
   master_advanced: {

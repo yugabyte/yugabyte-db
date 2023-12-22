@@ -268,6 +268,25 @@ void CopyRocksDBStatisticsToPgsqlResponse(
   }
 }
 
+size_t DumpRocksDBStatistics(
+    const rocksdb::Statistics& statistics,
+    std::span<const std::pair<uint32_t, uint32_t>> tickers,
+    const char* name_prefix,
+    std::stringstream* out) {
+  size_t dumped = 0;
+  for (const auto& [_, rocksdb_index] : tickers) {
+    auto ticker = statistics.getTickerCount(rocksdb_index);
+    // Don't dump unchanged statistics.
+    if (ticker == 0) {
+      continue;
+    }
+    const auto& ticker_name = rocksdb::TickersNameMap[rocksdb_index].second;
+    (*out) << name_prefix << ticker_name << ": " << ticker << '\n';
+    ++dumped;
+  }
+  return dumped;
+}
+
 } // namespace
 
 DocDBStatistics::DocDBStatistics():
@@ -296,6 +315,15 @@ void DocDBStatistics::MergeAndClear(
     rocksdb::Statistics* intentsdb_statistics) {
   regulardb_statistics_->MergeAndClear(regulardb_statistics);
   intentsdb_statistics_->MergeAndClear(intentsdb_statistics);
+}
+
+size_t DocDBStatistics::Dump(std::stringstream* out) const {
+  size_t dumped = 0;
+  dumped += DumpRocksDBStatistics(
+      *regulardb_statistics_, std::span{kRegularDBTickers}, "" /* name_prefix */, out);
+  dumped += DumpRocksDBStatistics(
+      *intentsdb_statistics_, std::span{kIntentsDBTickers}, "intentsdb_" /* name_prefix */, out);
+  return dumped;
 }
 
 void DocDBStatistics::CopyToPgsqlResponse(PgsqlResponsePB* response) const {

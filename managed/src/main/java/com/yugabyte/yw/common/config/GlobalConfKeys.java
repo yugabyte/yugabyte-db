@@ -63,6 +63,16 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Use custom CPU/Memory for kubernetes nodes. Once enabled, shouldn't be disabled.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
+
+  public static final ConfKeyInfo<Boolean> useSingleZone =
+      new ConfKeyInfo<>(
+          "yb.use_single_zone",
+          ScopeType.GLOBAL,
+          "Use single zone node placement in case of create universe",
+          "Use single zone node placement in case of create universe",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+
   public static final ConfKeyInfo<Boolean> useOauth =
       new ConfKeyInfo<>(
           "yb.security.use_oauth",
@@ -626,6 +636,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Enable detailed security logs",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static ConfKeyInfo<Integer> maxVolumeCount =
+      new ConfKeyInfo<>(
+          "yb.max_volume_count",
+          ScopeType.GLOBAL,
+          "Maximum Volume Count",
+          "Maximum Volume Count",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static ConfKeyInfo<Boolean> fsStatelessSuppressError =
       new ConfKeyInfo<>(
           "yb.fs_stateless.suppress_error",
@@ -738,6 +756,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           ScopeType.GLOBAL,
           "Whether YBA supports transactional xCluster configs",
           "It indicates whether YBA should support transactional xCluster configs",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> disasterRecoveryEnabled =
+      new ConfKeyInfo<>(
+          "yb.xcluster.dr.enabled",
+          ScopeType.GLOBAL,
+          "Enable disaster recovery",
+          "It indicates whether creating disaster recovery configs are enabled",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Boolean> enableYbcForXCluster =
@@ -960,7 +986,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Disables Image Bundle Validation",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
-
   public static final ConfKeyInfo<Duration> devopsCommandTimeout =
       new ConfKeyInfo<>(
           "yb.devops.command_timeout",
@@ -969,7 +994,6 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Devops command timeout",
           ConfDataType.DurationType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
-
   public static final ConfKeyInfo<String> ybcCompatibleDbVersion =
       new ConfKeyInfo<>(
           "ybc.compatible_db_version",
@@ -978,4 +1002,52 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Minimum YBDB version which supports YBC",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> metricsAuth =
+      new ConfKeyInfo<>(
+          "yb.metrics.auth",
+          ScopeType.GLOBAL,
+          "Prometheus auth enabled",
+          "Enables basic authentication for Prometheus web UI/APIs access",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> metricsAuthUsername =
+      new ConfKeyInfo<>(
+          "yb.metrics.auth_username",
+          ScopeType.GLOBAL,
+          "Prometheus auth username",
+          "Username, used for request authentication against embedded Prometheus",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<String> metricsAuthPassword =
+      new ConfKeyInfo<>(
+          "yb.metrics.auth_password",
+          ScopeType.GLOBAL,
+          "Prometheus auth password",
+          "Password, used for request authentication against embedded Prometheus",
+          ConfDataType.StringType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> forceYbcShutdownDuringUpgrade =
+      new ConfKeyInfo<>(
+          "ybc.upgrade.force_shutdown",
+          ScopeType.GLOBAL,
+          "Force YBC Shutdown during upgrade",
+          "For YBC Shutdown during upgrade",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> useNewRbacAuthz =
+      new ConfKeyInfo<>(
+          "yb.rbac.use_new_authz",
+          ScopeType.GLOBAL,
+          "New RBAC Authz feature",
+          "New RBAC Authz feature with custom role creation",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> enableVMOSPatching =
+      new ConfKeyInfo<>(
+          "yb.provider.vm_os_patching",
+          ScopeType.GLOBAL,
+          "VM OS Patching",
+          "Enables VM OS Patching with image bundles",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

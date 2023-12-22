@@ -139,6 +139,8 @@ export const GCP_KMS_REGIONS = [
       { value: 'us-central1', label: 'Iowa (us-central1)' },
       { value: 'us-east1', label: 'South Carolina (us-east1)' },
       { value: 'us-east4', label: 'N. Virginia (us-east4)' },
+      { value: 'us-east5', label: 'Ohio (us-east5)' },
+      { value: 'us-south1', label: 'Texas (us-south1)' },
       { value: 'us-west1', label: 'Oregon (us-west1)' },
       { value: 'us-west2', label: 'Los Angeles (us-west2)' },
       { value: 'us-west3', label: 'Salt Lake City (us-west3)' },

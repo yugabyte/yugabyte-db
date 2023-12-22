@@ -26,7 +26,6 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
@@ -48,13 +47,11 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.net.HostAndPort;
 import com.google.protobuf.ByteString;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
-import com.yugabyte.yw.common.NodeUniverseManager;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TableSpaceStructures.PlacementBlock;
@@ -64,12 +61,12 @@ import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.audit.AuditService;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.utils.FileUtils;
-import com.yugabyte.yw.controllers.TablesController.TableInfoResp;
+import com.yugabyte.yw.controllers.handlers.UniverseTableHandler;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
 import com.yugabyte.yw.forms.CreateTablespaceParams;
 import com.yugabyte.yw.forms.TableDefinitionTaskParams;
-import com.yugabyte.yw.metrics.MetricQueryHelper;
+import com.yugabyte.yw.forms.TableInfoForm.TableInfoResp;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
@@ -112,13 +109,11 @@ import org.yb.ColumnSchema;
 import org.yb.CommonTypes.TableType;
 import org.yb.Schema;
 import org.yb.Type;
-import org.yb.client.GetTableSchemaResponse;
 import org.yb.client.ListTablesResponse;
 import org.yb.client.YBClient;
 import org.yb.master.MasterDdlOuterClass.ListTablesResponsePB.TableInfo;
 import org.yb.master.MasterTypes;
 import org.yb.master.MasterTypes.RelationType;
-import play.Environment;
 import play.libs.Json;
 import play.mvc.Http;
 import play.mvc.Result;
@@ -133,13 +128,10 @@ public class TablesControllerTest extends FakeDBApplication {
   private YBClient mockClient;
   private AuditService auditService;
   private ListTablesResponse mockListTablesResponse;
-  private GetTableSchemaResponse mockSchemaResponse;
-  private NodeUniverseManager mockNodeUniverseManager;
-  private Environment mockedEnvironment;
   MockedStatic<FileUtils> mockedFileUtils;
   private Customer customer;
-  private Config mockConfig;
   private Users user;
+  private UniverseTableHandler tableHandler;
 
   private Schema getFakeSchema() {
     List<ColumnSchema> columnSchemas = new LinkedList<>();
@@ -154,28 +146,16 @@ public class TablesControllerTest extends FakeDBApplication {
   @Before
   public void setUp() {
     mockClient = mock(YBClient.class);
-    mockConfig = mock(Config.class);
     mockListTablesResponse = mock(ListTablesResponse.class);
-    mockSchemaResponse = mock(GetTableSchemaResponse.class);
-    mockNodeUniverseManager = mock(NodeUniverseManager.class);
-    mockedEnvironment = mock(Environment.class);
     when(mockService.getClient(any(), any())).thenReturn(mockClient);
-    mockNodeUniverseManager = mock(NodeUniverseManager.class);
+    tableHandler = spy(app.injector().instanceOf(UniverseTableHandler.class));
 
     auditService = new AuditService();
     Commissioner commissioner = app.injector().instanceOf(Commissioner.class);
-    MetricQueryHelper metricQueryHelper = app.injector().instanceOf(MetricQueryHelper.class);
     CustomerConfigService customerConfigService =
         app.injector().instanceOf(CustomerConfigService.class);
     tablesController =
-        new TablesController(
-            commissioner,
-            mockService,
-            metricQueryHelper,
-            customerConfigService,
-            mockNodeUniverseManager,
-            mockConfig,
-            mockedEnvironment);
+        new TablesController(commissioner, mockService, customerConfigService, tableHandler);
     tablesController.setAuditService(auditService);
 
     mockedFileUtils = Mockito.mockStatic(FileUtils.class);
@@ -1034,7 +1014,7 @@ public class TablesControllerTest extends FakeDBApplication {
     when(mockListTablesResponse.getTableInfoList()).thenReturn(tableInfoList);
     when(mockClient.getTablesList()).thenReturn(mockListTablesResponse);
     Universe universe = mock(Universe.class);
-    when(universe.getMasterAddresses(anyBoolean())).thenReturn("fake_address");
+    when(universe.getMasterAddresses()).thenReturn("fake_address");
     when(universe.getCertificateNodetoNode()).thenReturn("fake_certificate");
 
     // Disallow on Index Table.

@@ -64,6 +64,9 @@ public class TestTserverHealthChecks extends BaseYBClientTest {
     // Without this flag, we'll end up deleting the failed tablet, and the count of failed_tablets
     // will be 0.
     flagMap.put("TEST_disable_tablet_deletion", "true");
+    // Set the tablet_creation_timeout_ms to 30 sec so that the tablet marked as failed will be
+    // replaced after 30 sec and the CreateTable operation finishs successfully.
+    flagMap.put("tablet_creation_timeout_ms", "30000");
     return flagMap;
   }
 
@@ -89,9 +92,7 @@ public class TestTserverHealthChecks extends BaseYBClientTest {
   private JsonElement getTserverHealthValue(String host, int port, String key) throws Exception {
     try {
       // Call the health-check JSON endpoint.
-      URL url = new URL(String.format("http://%s:%d/api/v1/health-check",
-                                      host,
-                                      port));
+      URL url = new URL(String.format("http://%s:%d/api/v1/health-check", host, port));
       Scanner scanner = new Scanner(url.openConnection().getInputStream());
       JsonParser parser = new JsonParser();
       JsonElement tree = parser.parse(scanner.useDelimiter("\\A").next());

@@ -241,18 +241,29 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
       LOG(WARNING) << "Performing a write with row lock " << RowMarkType_Name(row_mark_)
                    << " when only reads are expected";
     }
-    intent_types_ = dockv::GetIntentTypesForWrite(isolation_level_);
 
     // We cannot recover from failures here, because it means that we cannot apply replicated
     // operation.
     RETURN_NOT_OK(EnumerateIntents(
-        put_batch_.write_pairs(), std::ref(*this), partial_range_key_intents_));
+        put_batch_.write_pairs(),
+        [this, intent_types = dockv::GetIntentTypesForWrite(isolation_level_)](
+            auto ancestor_doc_key, auto full_doc_key, auto value, auto* key, auto last_key, auto) {
+          return (*this)(intent_types, ancestor_doc_key, full_doc_key, value, key, last_key);
+        },
+        partial_range_key_intents_));
   }
 
   if (!put_batch_.read_pairs().empty()) {
-    intent_types_ = dockv::GetIntentTypesForRead(isolation_level_, row_mark_);
     RETURN_NOT_OK(EnumerateIntents(
-        put_batch_.read_pairs(), std::ref(*this), partial_range_key_intents_));
+        put_batch_.read_pairs(),
+        [this, intent_types = dockv::GetIntentTypesForRead(isolation_level_, row_mark_)](
+            auto ancestor_doc_key, auto full_doc_key,
+            const auto& value, auto* key, auto last_key, auto is_row_lock) {
+          return (*this)(
+              dockv::GetIntentTypes(intent_types, is_row_lock), ancestor_doc_key,
+              full_doc_key, value, key, last_key);
+        },
+        partial_range_key_intents_));
   }
 
   return Finish();
@@ -260,16 +271,14 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
 
 // Using operator() to pass this object conveniently to EnumerateIntents.
 Status TransactionalWriter::operator()(
-    dockv::AncestorDocKey ancestor_doc_key, dockv::FullDocKey, Slice value_slice,
-    dockv::KeyBytes* key, dockv::LastKey last_key) {
+    dockv::IntentTypeSet intent_types, dockv::AncestorDocKey ancestor_doc_key, dockv::FullDocKey,
+    Slice intent_value, dockv::KeyBytes* key, dockv::LastKey last_key) {
   if (ancestor_doc_key) {
-    weak_intents_[key->data()] |= MakeWeak(intent_types_);
+    weak_intents_[key->data()] |= MakeWeak(intent_types);
     return Status::OK();
   }
-
   const auto transaction_value_type = ValueEntryTypeAsChar::kTransactionId;
   const auto write_id_value_type = ValueEntryTypeAsChar::kWriteId;
-  const auto row_lock_value_type = ValueEntryTypeAsChar::kRowLock;
   IntraTxnWriteId big_endian_write_id = BigEndian::FromHost32(intra_txn_write_id_);
 
   const auto subtransaction_value_type = KeyEntryTypeAsChar::kSubTransactionId;
@@ -291,17 +300,13 @@ Status TransactionalWriter::operator()(
       subtransaction_id,
       Slice(&write_id_value_type, 1),
       Slice::FromPod(&big_endian_write_id),
-      value_slice,
+      intent_value,
   }};
-  // Store a row lock indicator rather than data (in value_slice) for row lock intents.
-  if (IsValidRowMarkType(row_mark_)) {
-    value.back() = Slice(&row_lock_value_type, 1);
-  }
 
   ++intra_txn_write_id_;
 
   char intent_type[2] = { KeyEntryTypeAsChar::kIntentTypeSet,
-                          static_cast<char>(intent_types_.ToUIntPtr()) };
+                          static_cast<char>(intent_types.ToUIntPtr()) };
 
   DocHybridTimeBuffer doc_ht_buffer;
 
@@ -678,15 +683,14 @@ void RemoveIntentsContext::Complete(rocksdb::DirectWriteHandler* handler) {
 }
 
 ExternalIntentsBatchWriter::ExternalIntentsBatchWriter(
-    std::reference_wrapper<const LWKeyValueWriteBatchPB> put_batch, HybridTime hybrid_time,
-    rocksdb::DB* intents_db, rocksdb::WriteBatch* intents_write_batch,
-    ExternalTxnIntentsState* external_txns_intents_state,
+    std::reference_wrapper<const LWKeyValueWriteBatchPB> put_batch, HybridTime write_hybrid_time,
+    HybridTime batch_hybrid_time, rocksdb::DB* intents_db, rocksdb::WriteBatch* intents_write_batch,
     SchemaPackingProvider* schema_packing_provider)
     : FrontierSchemaVersionUpdater(schema_packing_provider),
       put_batch_(put_batch),
-      hybrid_time_(hybrid_time),
-      intents_write_batch_(intents_write_batch),
-      external_txns_intents_state_(external_txns_intents_state) {
+      write_hybrid_time_(write_hybrid_time),
+      batch_hybrid_time_(batch_hybrid_time),
+      intents_write_batch_(intents_write_batch) {
   if (put_batch_.apply_external_transactions().size() > 0) {
     intents_db_iter_ = CreateRocksDBIterator(
         intents_db, &docdb::KeyBounds::kNoBounds, docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
@@ -729,11 +733,8 @@ Result<ExternalTxnApplyState> ProcessApplyExternalTransactions(
 }  // namespace
 
 Status ExternalIntentsBatchWriter::PrepareApplyExternalIntentsBatch(
-    HybridTime commit_ht,
-    const SubtxnSet& aborted_subtransactions,
-    const Slice& original_input_value,
-    rocksdb::DirectWriteHandler* regular_write_handler,
-    IntraTxnWriteId* write_id) {
+    const Slice& original_input_value, ExternalTxnApplyStateData* apply_data,
+    rocksdb::DirectWriteHandler* regular_write_handler) {
   auto input_value = original_input_value;
   DocHybridTimeBuffer doc_ht_buffer;
   RETURN_NOT_OK(input_value.consume_byte(KeyEntryTypeAsChar::kUuid));
@@ -753,7 +754,7 @@ Status ExternalIntentsBatchWriter::PrepareApplyExternalIntentsBatch(
     input_value.remove_prefix(sizeof(SubTransactionId));
     RETURN_NOT_OK(input_value.consume_byte(KeyEntryTypeAsChar::kExternalIntents));
   }
-  if (aborted_subtransactions.Test(subtransaction_id)) {
+  if (apply_data->aborted_subtransactions.Test(subtransaction_id)) {
     // Skip applying provisional writes that belong to subtransactions that got aborted.
     return Status::OK();
   }
@@ -775,13 +776,13 @@ Status ExternalIntentsBatchWriter::PrepareApplyExternalIntentsBatch(
     input_value.remove_prefix(value_size);
     std::array<Slice, 2> key_parts = {{
         output_key,
-        doc_ht_buffer.EncodeWithValueType(commit_ht, *write_id),
+        doc_ht_buffer.EncodeWithValueType(apply_data->commit_ht, apply_data->write_id),
     }};
     std::array<Slice, 1> value_parts = {{
         output_value,
     }};
     regular_write_handler->Put(key_parts, value_parts);
-    ++*write_id;
+    ++apply_data->write_id;
 
     // Update min/max schema version.
     RETURN_NOT_OK(UpdateSchemaVersion(output_key, output_value));
@@ -806,8 +807,6 @@ Status ExternalIntentsBatchWriter::PrepareApplyExternalIntents(
     key_upperbound.AppendKeyEntryType(KeyEntryType::kMaxByte);
     intents_db_iter_upperbound_ = key_upperbound.AsSlice();
 
-    IntraTxnWriteId& write_id = apply_data.write_id;
-
     intents_db_iter_.Seek(key_prefix);
     while (intents_db_iter_.Valid()) {
       const Slice input_key(intents_db_iter_.key());
@@ -816,9 +815,8 @@ Status ExternalIntentsBatchWriter::PrepareApplyExternalIntents(
         break;
       }
 
-      RETURN_NOT_OK(PrepareApplyExternalIntentsBatch(
-          apply_data.commit_ht, apply_data.aborted_subtransactions, intents_db_iter_.value(),
-          handler, &write_id));
+      RETURN_NOT_OK(
+          PrepareApplyExternalIntentsBatch(intents_db_iter_.value(), &apply_data, handler));
 
       intents_write_batch_->SingleDelete(input_key);
 
@@ -831,12 +829,8 @@ Status ExternalIntentsBatchWriter::PrepareApplyExternalIntents(
 }
 
 Result<bool> ExternalIntentsBatchWriter::AddExternalPairToWriteBatch(
-    const yb::docdb::LWKeyValuePairPB& kv_pair,
-    ExternalTxnApplyState* apply_external_transactions,
-    rocksdb::DirectWriteHandler* regular_write_handler) {
-  DocHybridTimeBuffer doc_ht_buffer;
-  dockv::DocHybridTimeWordBuffer inverted_doc_ht_buffer;
-
+    const yb::docdb::LWKeyValuePairPB& kv_pair, ExternalTxnApplyState* apply_external_transactions,
+    rocksdb::DirectWriteHandler* regular_write_handler, IntraTxnWriteId* write_id) {
   SCHECK(!kv_pair.key().empty(), InvalidArgument, "Write pair key cannot be empty.");
   SCHECK(!kv_pair.value().empty(), InvalidArgument, "Write pair value cannot be empty.");
 
@@ -861,23 +855,29 @@ Result<bool> ExternalIntentsBatchWriter::AddExternalPairToWriteBatch(
   auto it = apply_external_transactions->find(txn_id);
   if (it != apply_external_transactions->end()) {
     // The same write operation could contain external intents and instruct us to apply them.
-    RETURN_NOT_OK(PrepareApplyExternalIntentsBatch(
-        it->second.commit_ht, it->second.aborted_subtransactions, key_value, regular_write_handler,
-        &it->second.write_id));
+    RETURN_NOT_OK(PrepareApplyExternalIntentsBatch(key_value, &it->second, regular_write_handler));
     return false;
   }
 
-  IntraTxnWriteId write_id = external_txns_intents_state_->GetWriteIdAndIncrement(txn_id);
-
-  auto hybrid_time = kv_pair.has_external_hybrid_time() ? HybridTime(kv_pair.external_hybrid_time())
-                                                        : hybrid_time_;
+  // Use our local batch hybrid time and WriteId from this batch. Each batch is guaranteed to have a
+  // unique hybrid time, so this is guaranteed to be unique for this tablet.
+  // We do not use external hybrid time as we can have two producer tablets replicating to the same
+  // consumer tablet, in which case both can have the same transaction id and external hybrid time
+  // values.
+  // Note: This is not idempotent. If the same external intent is written multiple times, it
+  // will have multiple entries in intents db each with a different local hybrid time. The
+  // duplicates will get removed when we APPLY the transaction and move the records to regular db.
+  // Since all the records will have the same commit hybrid time, they will be deduped.
+  DocHybridTimeBuffer doc_ht_buffer;
+  dockv::DocHybridTimeWordBuffer inverted_doc_ht_buffer;
   std::array<Slice, 2> key_parts = {{
       Slice(kv_pair.key()),
-      doc_ht_buffer.EncodeWithValueType(hybrid_time, write_id),
+      doc_ht_buffer.EncodeWithValueType(batch_hybrid_time_, *write_id),
   }};
   key_parts[1] = dockv::InvertEncodedDocHT(key_parts[1], &inverted_doc_ht_buffer);
   constexpr size_t kNumValueParts = 1;
   intents_write_batch_->Put(key_parts, {&key_value, kNumValueParts});
+  ++(*write_id);
 
   return false;
 }
@@ -892,17 +892,12 @@ Status ExternalIntentsBatchWriter::Apply(rocksdb::DirectWriteHandler* handler) {
   DocHybridTimeBuffer doc_ht_buffer;
   IntraTxnWriteId write_id = 0;
   for (const auto& write_pair : put_batch_.write_pairs()) {
-    if (VERIFY_RESULT(
-            AddExternalPairToWriteBatch(write_pair, &apply_external_transactions, handler))) {
-      HandleExternalRecord(write_pair, hybrid_time_, &doc_ht_buffer, handler, &write_id);
+    if (VERIFY_RESULT(AddExternalPairToWriteBatch(
+            write_pair, &apply_external_transactions, handler, &write_id))) {
+      HandleExternalRecord(write_pair, write_hybrid_time_, &doc_ht_buffer, handler, &write_id);
 
       RETURN_NOT_OK(UpdateSchemaVersion(write_pair.key(), write_pair.value()));
     }
-  }
-
-  //  Cleanup the txn, write_id map for transactions which are being applied as part of this batch.
-  if (external_txns_intents_state_) {
-    external_txns_intents_state_->EraseEntries(apply_external_transactions);
   }
 
   return Status::OK();

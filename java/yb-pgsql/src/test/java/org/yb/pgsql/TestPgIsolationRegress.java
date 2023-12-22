@@ -27,10 +27,6 @@ public class TestPgIsolationRegress extends BasePgSQLTest {
   protected Map<String, String> getTServerFlags() {
     Map<String, String> flagMap = super.getTServerFlags();
     flagMap.put("yb_enable_read_committed_isolation", "true");
-    flagMap.put("enable_wait_queues", "false");
-    flagMap.put("enable_deadlock_detection", "false");
-    // Setting the below flag stabilizes yb_lock_status tests.
-    flagMap.put("TEST_delay_before_get_old_transactions_heartbeat_intervals", "2");
     return flagMap;
   }
 
@@ -51,19 +47,6 @@ public class TestPgIsolationRegress extends BasePgSQLTest {
   }
 
   @Test
-  public void isolationRegressWithWaitQueues() throws Exception {
-    Map<String, String> flags = super.getTServerFlags();
-    flags.put("enable_wait_queues", "true");
-    flags.put("enable_deadlock_detection", "true");
-    flags.put("auto_promote_nonlocal_transactions_to_global", "false");
-
-    restartClusterWithFlags(Collections.emptyMap(), flags);
-    runIsolationRegressTest();
-    // Revert back to old set of flags for other test methods
-    restartClusterWithFlags(Collections.emptyMap(), Collections.emptyMap());
-  }
-
-  @Test
   public void withDelayedTxnApply() throws Exception {
     // The reason for running all tests in the schedule again with
     // TEST_inject_sleep_before_applying_intents_ms is the following: our tests usually have very
@@ -75,20 +58,6 @@ public class TestPgIsolationRegress extends BasePgSQLTest {
     restartClusterWithFlags(Collections.emptyMap(),
                             Collections.singletonMap("TEST_inject_sleep_before_applying_intents_ms",
                                                      "100"));
-    runIsolationRegressTest();
-    // Revert back to old set of flags for other test methods
-    restartClusterWithFlags(Collections.emptyMap(), Collections.emptyMap());
-  }
-
-  @Test
-  public void withDelayedTxnApplyWithWaitQueues() throws Exception {
-    Map<String, String> flags = super.getTServerFlags();
-    flags.put("TEST_inject_sleep_before_applying_intents_ms", "100");
-    flags.put("enable_wait_queues", "true");
-    flags.put("enable_deadlock_detection", "true");
-    flags.put("auto_promote_nonlocal_transactions_to_global", "false");
-
-    restartClusterWithFlags(Collections.emptyMap(), flags);
     runIsolationRegressTest();
     // Revert back to old set of flags for other test methods
     restartClusterWithFlags(Collections.emptyMap(), Collections.emptyMap());

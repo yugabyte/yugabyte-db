@@ -8,6 +8,9 @@ import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.PrometheusConfigManager;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.forms.CloudProviderFormData;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
@@ -20,6 +23,11 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.JsonFieldsValidator;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
@@ -49,6 +57,12 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
    * @return JSON response of newly created provider
    */
   @ApiOperation(value = "UI_ONLY", nickname = "createCloudProvider", hidden = true)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result create(UUID customerUUID, Http.Request request) throws IOException {
     JsonNode reqBody = CloudInfoInterface.mayBeMassageRequest(request.body().asJson(), false);
     CloudProviderFormData cloudProviderFormData =
@@ -101,6 +115,12 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
   // TODO: This is temporary endpoint, so we can setup docker, will move this
   // to standard provider bootstrap route soon.
   @ApiOperation(value = "setupDocker", notes = "Unused", hidden = true)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result setupDocker(UUID customerUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 
@@ -121,6 +141,12 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
 
   // For creating the a multi-cluster kubernetes provider.
   @ApiOperation(value = "UI_ONLY", nickname = "createKubernetes", hidden = true)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.CREATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result createKubernetes(UUID customerUUID, Http.Request request) throws IOException {
     JsonNode requestBody = request.body().asJson();
     KubernetesProviderFormData formData =
@@ -150,6 +176,12 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
               + " inside a Kubernetes cluster. Returns the discovered information as a JSON, which"
               + " is similar to the one which is passed to the createKubernetes method.",
       response = KubernetesProviderFormData.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result getSuggestedKubernetesConfigs(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     return PlatformResults.withRawData(
@@ -159,6 +191,12 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
   /** Deprecated because uses GET for state mutating method and now getting audited. */
   @Deprecated
   @ApiOperation(value = "UI_ONLY", hidden = true)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result initialize(UUID customerUUID, UUID providerUUID) {
     Customer.getOrBadRequest(customerUUID);
     Provider provider = Provider.getOrBadRequest(customerUUID, providerUUID);
@@ -167,6 +205,12 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "UI_ONLY", hidden = true)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result bootstrap(UUID customerUUID, UUID providerUUID, Http.Request request) {
     // TODO(bogdan): Need to manually parse maps, maybe add try/catch on parse?
     Customer customer = Customer.getOrBadRequest(customerUUID);
@@ -186,6 +230,12 @@ public class CloudProviderUiOnlyController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "cleanup", notes = "Unimplemented", hidden = true)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result cleanup(UUID customerUUID, UUID providerUUID) {
     // TODO(bogdan): this is not currently used, be careful about the API...
     return YBPSuccess.empty();

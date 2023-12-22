@@ -1,0 +1,57 @@
+[
+  {
+    "resourceType": "OTHER",
+    "action": "CREATE",
+    "name": "Create Resource",
+    "description": "Permission to create a resource instance.",
+    "permissionValidOnResource": false,
+    "prerequisitePermissions": [
+      {
+        "resourceType": "OTHER",
+        "action": "READ"
+      }
+    ]
+  },
+  {
+    "resourceType": "OTHER",
+    "action": "READ",
+    "name": "View Resource",
+    "description": "Permission to read a resource instance.",
+    "permissionValidOnResource": true,
+    "prerequisitePermissions": []
+  },
+  {
+    "resourceType": "OTHER",
+    "action": "UPDATE",
+    "name": "Update Resource",
+    "description": "Permission to update a resource instance.",
+    "permissionValidOnResource": true,
+    "prerequisitePermissions": [
+      {
+        "resourceType": "OTHER",
+        "action": "READ"
+      }
+    ]
+  },
+  {
+    "resourceType": "OTHER",
+    "action": "DELETE",
+    "name": "Delete Resource",
+    "description": "Permission to delete a resource instance.",
+    "permissionValidOnResource": true,
+    "prerequisitePermissions": [
+      {
+        "resourceType": "OTHER",
+        "action": "READ"
+      }
+    ]
+  },
+  {
+    "resourceType": "OTHER",
+    "action": "SUPER_ADMIN_ACTIONS",
+    "name": "Super Admin Actions",
+    "description": "Gives all the super admin permissions like HA, runtime configs, etc.",
+    "permissionValidOnResource": false,
+    "prerequisitePermissions": []
+  }
+]

@@ -34,6 +34,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.cloud.CloudAPI;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.FakeApiHelper;
@@ -799,6 +800,7 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     Map<String, ImageBundleDetails.BundleInfo> regionImageInfo = new HashMap<>();
     regionImageInfo.put("us-west-1", new ImageBundleDetails.BundleInfo());
     details.setRegions(regionImageInfo);
+    details.setArch(Architecture.x86_64);
     details.setGlobalYbImage("yb_image");
     ImageBundle.create(p, "ib-1", details, true);
 

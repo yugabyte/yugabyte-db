@@ -408,6 +408,12 @@ CoarseMonoClock::Duration ClockResolution<CoarseMonoClock>() {
 }
 
 std::string ToString(CoarseMonoClock::TimePoint time_point) {
+  if (time_point == CoarseTimePoint::min()) {
+    return "-inf";
+  }
+  if (time_point == CoarseTimePoint::max()) {
+    return "+inf";
+  }
   return MonoDelta(time_point.time_since_epoch()).ToString();
 }
 
@@ -421,6 +427,33 @@ std::chrono::steady_clock::time_point ToSteady(CoarseTimePoint time_point) {
 
 bool IsInitialized(CoarseTimePoint time_point) {
   return MonoDelta(time_point.time_since_epoch()).Initialized();
+}
+
+bool IsExtremeValue(CoarseTimePoint time_point) {
+  return time_point == CoarseTimePoint::min() || time_point == CoarseTimePoint::max();
+}
+
+std::string ToStringRelativeToNow(CoarseTimePoint t, CoarseTimePoint now) {
+  if (IsExtremeValue(t) || IsExtremeValue(now)) {
+    return ToString(t);
+  }
+  return Format("$0 ($1)", t, ToStringRelativeToNowOnly(t, now));
+}
+
+std::string ToStringRelativeToNow(CoarseTimePoint t, std::optional<CoarseTimePoint> now) {
+  if (now)
+    return ToStringRelativeToNow(t, *now);
+  return ToString(t);
+}
+
+std::string ToStringRelativeToNowOnly(CoarseTimePoint t, CoarseTimePoint now) {
+  if (t < now) {
+    return Format("$0 ago", now - t);
+  }
+  if (t > now) {
+    return Format("$0 from now", t - now);
+  }
+  return "now";
 }
 
 } // namespace yb

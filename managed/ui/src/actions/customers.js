@@ -239,7 +239,7 @@ export function registerResponse(response) {
 }
 
 export function fetchPasswordPolicy() {
-  const cUUID = localStorage.getItem('customerId');
+  const cUUID = localStorage.getItem('customerId') ?? DEFAULT_RUNTIME_GLOBAL_SCOPE;
   const request = axios.get(`${ROOT_URL}/customers/${cUUID}/password_policy`);
   return {
     type: FETCH_PASSWORD_POLICY,

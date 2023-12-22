@@ -576,19 +576,7 @@ set_rel_pathlist(PlannerInfo *root, RelOptInfo *rel,
 				else
 				{
 					/* Plain relation */
-					if (IsYBRelationById(rte->relid))
-					{
-						/*
-						 * Using a foreign scan which will use the YB FDW by
-						 * default.
-						 */
-						set_foreign_pathlist(root, rel, rte);
-					}
-					else
-					{
-						/* Use regular scan for initdb tables. */
-						set_plain_rel_pathlist(root, rel, rte);
-					}
+					set_plain_rel_pathlist(root, rel, rte);
 				}
 				break;
 			case RTE_SUBQUERY:
