@@ -5,6 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { Box, Typography, Link } from '@material-ui/core';
 import { YBTooltip } from '../../../components';
 import { YBWidget } from '../../../../components/panels';
+import clsx from 'clsx';
 import { YBLoadingCircleIcon } from '../../../../components/common/indicators';
 import { DBUpgradeModal } from '../universe-actions/rollback-upgrade/DBUpgradeModal';
 import { isNonEmptyObject } from '../../../../utils/ObjectUtils';
@@ -15,7 +16,6 @@ import {
   UniverseState,
   SoftwareUpgradeTaskType
 } from '../../../../components/universes/helpers/universeHelpers';
-import { Universe } from '../universe-form/utils/dto';
 import { dbVersionWidgetStyles } from './DBVersionWidgetStyles';
 import { getPrimaryCluster } from '../../../../utils/UniverseUtils';
 //icons
@@ -74,18 +74,18 @@ export const DBVersionWidget: FC<DBVersionWidgetProps> = ({ higherVersionCount }
       {[SoftwareUpgradeState.FINALIZE_FAILED, SoftwareUpgradeState.UPGRADE_FAILED].includes(
         upgradeState
       ) && (
-        <YBTooltip
-          title={
-            upgradeState === SoftwareUpgradeState.FINALIZE_FAILED
-              ? `Failed to finalize upgrade to v${minifiedCurrentVersion}`
-              : `Failed to upgrade database version to v${minifiedCurrentVersion}`
-          }
-        >
-          <span>
-            <i className={`fa fa-warning ${classes.errorIcon}`} />
-          </span>
-        </YBTooltip>
-      )}
+          <YBTooltip
+            title={
+              upgradeState === SoftwareUpgradeState.FINALIZE_FAILED
+                ? `Failed to finalize upgrade to v${minifiedCurrentVersion}`
+                : `Failed to upgrade database version to v${minifiedCurrentVersion}`
+            }
+          >
+            <span>
+              <i className={`fa fa-warning ${classes.errorIcon}`} />
+            </span>
+          </YBTooltip>
+        )}
       {upgradeState === SoftwareUpgradeState.ROLLBACK_FAILED && (
         <YBTooltip title={`Failed to rollback to v${previousDBVersion}`}>
           <span>
@@ -129,7 +129,7 @@ export const DBVersionWidget: FC<DBVersionWidgetProps> = ({ higherVersionCount }
           noHeader
           noMargin
           size={1}
-          className={classes.versionContainer}
+          className={clsx('overview-widget-database', classes.versionContainer)}
           body={
             <Box
               display={'flex'}

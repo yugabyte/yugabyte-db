@@ -473,7 +473,9 @@ public class NodeUniverseManager extends DevopsBase {
         if (bundles.size() > 0) {
           Architecture arch = universe.getUniverseDetails().arch;
           ImageBundle defaultBundle = ImageBundleUtil.getDefaultBundleForUniverse(arch, bundles);
-          imageBundleUUID = defaultBundle.getUuid();
+          if (defaultBundle != null) {
+            imageBundleUUID = defaultBundle.getUuid();
+          }
         }
       }
       if (imageBundleUUID != null) {
