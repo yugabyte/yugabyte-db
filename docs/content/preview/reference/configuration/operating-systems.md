@@ -15,7 +15,7 @@ type: docs
 
 YugabyteDB supports the following operating systems and architectures.
 
-Unless otherwise noted, x86 operating systems are supported on all supported versions of YugabyteDB and YugabyteDB Anywhere. ARM support was added in v2.18.1.
+Unless otherwise noted, operating systems are supported on all supported versions of YugabyteDB and YugabyteDB Anywhere.
 
 | Operating system | x86            | ARM            | Notes |
 | :--------------- | :------------- | :------------- | :--- |
@@ -35,7 +35,7 @@ Unless otherwise noted, x86 operating systems are supported on all supported ver
 
 YugabyteDB Anywhere supports the following operating systems and architectures.
 
-Unless otherwise noted, operating systems are supported on all supported versions of YugabyteDB and YugabyteDB Anywhere.
+Unless otherwise noted, x86 operating systems are supported on all supported versions of YugabyteDB and YugabyteDB Anywhere. YugabyteDB Anywhere added ARM support in v2.18.
 
 | Operating system | x86            | ARM            | Notes |
 | :--------------- | :------------- | :------------- | :--- |
