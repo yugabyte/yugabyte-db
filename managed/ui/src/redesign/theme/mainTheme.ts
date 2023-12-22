@@ -331,8 +331,9 @@ export const mainTheme = createTheme({
         lineHeight: 1.25,
         paddingLeft: '16px !important',
         '&[aria-disabled=true]': {
-          pointerEvents: 'auto'
-        }
+          pointerEvents: 'none'
+        },
+        color: '#232329'
       },
       groupLabel: {
         fontSize: 13,
@@ -342,6 +343,9 @@ export const mainTheme = createTheme({
         minHeight: 32,
         lineHeight: 1.25,
         paddingLeft: '16px !important'
+      },
+      groupUl: {
+        borderBottom: '1px solid #E9EEF2'
       },
       '&$disabled': {
         cursor: 'not-allowed'

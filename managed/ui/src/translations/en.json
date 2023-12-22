@@ -6,11 +6,13 @@
       "applyChanges": "Apply Changes",
       "cancel": "Cancel",
       "confirm": "Confirm",
+      "continue": "Continue",
       "create": "Create",
       "genericFailure": "Something went wrong. Please try again.",
       "no": "No",
       "proceed": "Proceed",
       "requiredField": "Required field",
+      "fieldRequired": "This field is required",
       "save": "Save",
       "validateAndSave": "Validate and Save",
       "yes": "Yes",
@@ -27,7 +29,9 @@
       "back": "Back",
       "selectAll": "Select All",
       "selected": "Selected",
-      "note": "Note :"
+      "note": "Note :",
+      "reload": "Reload",
+      "seconds": "Seconds"
     },
     "task": {
       "viewDetails": "View Details"
@@ -114,6 +118,61 @@
         "disableEITWarning": "Note! Enabling/Disabling of “Encryption In Transit” or Enabling/Disabling of “Node to Node” or “Client to Node” encryption will be performed as non rolling upgrade.",
         "xClusterRotateCaWarning": "Note! Rotating node to node CA certs for universes participating in xCluster replication as the source universe will interrupt the replication and require a restart of the xCluster config to resume replication after TLS rotation is completed.",
         "xClusterToggleEncryptionWarning": "Note! Toggling on/off encryption for universes participating in xCluster replication will interrupt the replication. To enable replication again, please ensure all participating universes have matching TLS encryption setting and restart the affected xCluster configurations."
+      },
+      "dbRollbackUpgrade": {
+        "modalTitle": "Upgrade Database",
+        "upgradeAction": "Upgrade",
+        "chooseTarget": "1. Choose target version",
+        "currentVersion": "Current Version",
+        "targetVersion": "Target Version",
+        "additionalStep": "An additional step is required based on the selected version.",
+        "additionalStepInfo": "After the upgrade is completed, you'll need to manually finalize the upgrade to finish the process.",
+        "configureUpgrade": "2. Configure upgrade details",
+        "rolllingUpgradeLabel": "Rolling upgrade (upgrade nodes one at a time)",
+        "upgradeDelayLabel": "Upgrade delay between Nodes:",
+        "footerMsg1": "Once the upgrade is finished, you can assess Universe performance and ",
+        "footerMsg2": "if any unusual behavior is detected.",
+        "rollbackPrevious": "roll back to the previous version",
+        "avoidDisruption": "Avoid disruption to xCluster replication",
+        "xclusterWarning": "This universe is part of one or more xCluster replications. To minimize disruptions to these replications during the upgrade process, you should, if possible, upgrade the target universe first.",
+        "rollbackUpgradeTite": "Roll Back Upgrade",
+        "rollbackModalMsg": "Are you sure you wish to roll back to ",
+        "rollbackOnenode": "Rollback one node at a time",
+        "delayBwRollback": "Delay between rollbacks:",
+        "proceedRollback": "Proceed with Rollback",
+        "version": "version",
+        "preFinalize": {
+          "finalizeUpgrade": "Finalize Upgrade",
+          "rollback": "Roll back to the previous version",
+          "bannerMsg1": "Next Step: Evaluate the Universe and finalize the upgrade",
+          "bannerMsg2": "You should now evaluate the universe performance.",
+          "bannerMsg3": "If you are OK with the upgrade, click ",
+          "bannerMsg4": "to complete the process.Otherwise, click ",
+          "bannerMsg5": " to revert the upgrade.",
+          "evaluationLink": "View recommended evaluation steps",
+          "modalTitle": "One last reminder before we proceed...",
+          "modalMsg1": "After the upgrade is finalized, you won't be able to roll back.",
+          "modalMsg2": "Make sure you evaluate the universe performance before finalizing the upgrade.",
+          "modalSubmitLabel": "Proceed to finalize the upgrade"
+        },
+        "preFinalizeXcluster": {
+          "modalBody": "This universe is associated with one or more xCluster replications. To avoid disrupting replication, you should upgrade all linked universes to version {{version}} beforefinalizing this universe or any linked universe.",
+          "modalTitle": "Upgrade Linked Universes",
+          "modalSubmit": "Review Universe Replication",
+          "modalProceed": "Proceed Anyway"
+        },
+        "rollback": {
+          "bannerMsg": "The Universe database version upgrade has encountered an issue. To restore the Universe to its normal state, you have the option to either roll back the upgrade or retry the upgrade.",
+          "viewTask": "View Task Details",
+          "retryTask": "Retry Task"
+        },
+        "widget": {
+          "versionLabel": "Version",
+          "upgradeAvailable": "Upgrade Available",
+          "rollingBackTooltip": "Rolling back to v{{version}}",
+          "finalizingTooltip": "Finalizing v{{version}}",
+          "upgradingTooltip": "Upgrading to v{{version}}"
+        }
       }
     },
     "commonErrors": {
@@ -132,6 +191,8 @@
     "universeForm": {
       "master": "Master",
       "tserver": "TServer",
+      "viewPrimary": "Primary",
+      "viewReadReplica": "Read Replica",
       "configReadReplica": "Configure read replica",
       "createUniverse": "Create universe",
       "current": "Current :",
@@ -262,11 +323,14 @@
         "gFlagUpdateOptions": "G-Flag Update Options",
         "rollingMsg": "Apply all changes using a rolling restart (slower, zero downtime)",
         "nonRollingMsg": "Apply all changes immediately, using a concurrent restart (faster, some downtime)",
-        "nonRestart": "Apply all changes which do not require a restart immediately",
-        "nonRestartRuntime": "apply remaining changes the next time the database is restarted",
+        "nonRestart": "Apply all changes which do not require a restart immediately; ",
+        "nonRestartRuntime": " apply remaining changes the next time the database is restarted",
         "delayBetweenServers": "Delay Between Servers :",
         "seconds": "seconds",
-        "inheritRRModalBody": "Apply the same Flags to both Primary Cluster and Read replica? <br /> This will override all the Flags that are currently applied to Read replica<br /> by Primary Cluster’s Flag.",
+        "inheritRRModalBody": "Apply the same Flags to both Primary Cluster and Read replica? \n<br/> This will override all the Flags that are currently applied to Read replica <br/> by Primary Cluster’s Flag.",
+        "inheritRRModalLine1": "Apply the same Flags to both Primary Cluster and Read replica?",
+        "inheritRRModalLine2": "This will override all the Flags that are currently applied to Read replica",
+        "inheritRRModalLine3": "by Primary Cluster’s Flag.",
         "inheritRRModalConfirmMsg": "Are you sure you want to continue with the changes?",
         "validationError": "Fix all the errors shown below to proceed",
         "hbaLDAPConfLocal": "local database user auth-method [auth-options]",
@@ -285,7 +349,11 @@
         "identConfDescriptionSecond": "Enter each mapping as a new row, comprising the map-name, external user name, and database user name. ",
         "identConfDescriptionMore": "To incorporate user name mappings from this flag, add them to the authentication methods that use external user names in hba_conf_csv file. ",
         "readMore": "Read More",
-        "readLess": "Read Less"
+        "readLess": "Read Less",
+        "flagsModifiedModalBody1": "The Gflags has been modified in another tab/browser/device.",
+        "flagsModifiedModalBody2": "If you don't want to lose modified flags, please reload the page.",
+        "flagsModifiedModalLine1": "Do you want to reload ?",
+        "flagsModifiedModalLine2": "Note that current changes will be lost."
       },
       "helmOverrides": {
         "addK8sOverrides": "Add Kubernetes Overrides",
@@ -381,6 +449,17 @@
       "smartResizeModal": {
         "modalDescription": "This operation will migrate this universe and all its data to a completely new set of nodes Or alternatively you could try smart resize (This will change VM image {{value}} for existing nodes)",
         "buttonLabel": "Do Smart Resize"
+      },
+      "placementModal": {
+        "modalTitle": "Confirm Update",
+        "modalDescription": "This operation will scale-up or scale-down the number of the nodes or will change master placement from colocated to dedicated or vice versa",
+        "modalDescriptionRR": "This operation will either scale-up or scale-down the number of the nodes or will change the configuration of number of read replicas",
+        "likeToProceed": "Would you like to proceed?",
+        "nodes": "nodes",
+        "readReplicas": "Read Replicas",
+        "scaleUp": "Scale Up",
+        "scaleDown": "Scale Down",
+        "mode": "mode"
       },
       "fullMoveModal": {
         "modalTitle": "Confirm Full Move Update",
