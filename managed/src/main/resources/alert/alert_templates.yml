@@ -1265,7 +1265,6 @@ templates:
     description: SSH Key expires soon
     queryTemplate: ybp_universe_ssh_key_expiry_day{universe_uuid="__universeUuid__"}
       {{ query_condition }} {{ query_threshold }}
-    createForNewCustomer: true
     defaultThresholdMap:
       SEVERE:
         paramName: yb.alert.ssh_key_config_expiry_days_severe

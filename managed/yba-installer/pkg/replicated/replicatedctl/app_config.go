@@ -202,6 +202,7 @@ func (ac *AppConfig) ExportYbaCtl() error {
 						}
 						continue
 					}
+					common.SetYamlValue(common.InputFile(), ybaCtlPath, e.Value)
 				}
 			}
 		}

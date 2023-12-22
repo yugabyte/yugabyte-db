@@ -506,7 +506,8 @@ As an alternative to setting crontab permissions, you can install systemd-specif
 1. Enable the `yugabyte` user to run the following commands as sudo or root:
 
    ```sh
-   yugabyte ALL=(ALL:ALL) NOPASSWD: /bin/systemctl start yb-master, \
+   yugabyte ALL=(ALL:ALL) NOPASSWD: \
+   /bin/systemctl start yb-master, \
    /bin/systemctl stop yb-master, \
    /bin/systemctl restart yb-master, \
    /bin/systemctl enable yb-master, \

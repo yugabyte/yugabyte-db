@@ -22,11 +22,16 @@ if [ "$is_mac" == false ] && \
    [ -d "$yb_devops_home/pex/pexEnv" ]; then
 
   activate_pex
-  set -x
   pythonpath=$(head -n 1 "$pex_venv_dir/bin/ansible-playbook")
-  [[ "$pythonpath" =~ ^#\!\/.*python.* ]] || fatal "Could not find valid shebang in PEX environment"
-  # Remove the #! from beginning of python path
-  ${pythonpath:2} $pex_venv_dir/bin/ansible-playbook "$@"
+  if [[ "$pythonpath" =~ ^#\!\/.* ]]; then
+    # Remove the #! from beginning of shebang
+    set -x
+    ${pythonpath:2} $pex_venv_dir/bin/ansible-playbook "$@"
+  else
+    log "Found \"$pythonpath\" shebang in PEX ansible-playbook script, invoking directly."
+    set -x
+    ansible-playbook "$@"
+  fi
 
 else
   activate_virtualenv

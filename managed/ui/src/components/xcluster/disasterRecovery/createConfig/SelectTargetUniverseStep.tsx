@@ -1,4 +1,4 @@
-import { Box, makeStyles, Typography, useTheme } from '@material-ui/core';
+import { makeStyles, Typography, useTheme } from '@material-ui/core';
 import { useFormContext } from 'react-hook-form';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
@@ -8,11 +8,11 @@ import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { YBReactSelectField } from '../../../configRedesign/providerRedesign/components/YBReactSelect/YBReactSelectField';
 import { api, universeQueryKey } from '../../../../redesign/helpers/api';
 import { getUniverseStatus } from '../../../universes/helpers/universeHelpers';
-
-import { Universe } from '../../../../redesign/helpers/dtos';
+import { DR_DROPDOWN_SELECT_INPUT_WIDTH } from '../constants';
 import { CreateDrConfigFormValues } from './CreateConfigModal';
 import { getPrimaryCluster } from '../../../../utils/universeUtilsTyped';
-import { DR_DROPDOWN_SELECT_INPUT_WIDTH } from '../constants';
+
+import { Universe } from '../../../../redesign/helpers/dtos';
 
 interface SelectTargetUniverseStepProps {
   isFormDisabled: boolean;

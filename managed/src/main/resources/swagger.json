@@ -1496,7 +1496,7 @@
           "type" : "boolean"
         },
         "isSoftwareRollbackAllowed" : {
-          "description" : "Available since YBA version 2.21.0.0.",
+          "description" : "Available since YBA version 2.20.2.0",
           "readOnly" : true,
           "type" : "boolean"
         },
@@ -1543,7 +1543,7 @@
         },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
-          "description" : "Previous software version related data"
+          "description" : "WARNING: This is a preview API that could change. Previous software version related data"
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
@@ -3269,7 +3269,7 @@
           "type" : "boolean"
         },
         "isSoftwareRollbackAllowed" : {
-          "description" : "Available since YBA version 2.21.0.0.",
+          "description" : "Available since YBA version 2.20.2.0",
           "readOnly" : true,
           "type" : "boolean"
         },
@@ -3316,7 +3316,7 @@
         },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
-          "description" : "Previous software version related data"
+          "description" : "WARNING: This is a preview API that could change. Previous software version related data"
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
@@ -5040,14 +5040,12 @@
       "description" : "Finalize Upgrade Info Response",
       "properties" : {
         "impactedXClusterConnectedUniverse" : {
-          "description" : "WARNING: This is a preview API that could change. Set of xCluster connected universes uuids to be impacted ",
+          "description" : "WARNING: This is a preview API that could change. List of xCluster connected universes details to be impacted ",
           "items" : {
-            "format" : "uuid",
-            "type" : "string"
+            "$ref" : "#/definitions/ImpactedXClusterConnectedUniverse"
           },
           "readOnly" : true,
-          "type" : "array",
-          "uniqueItems" : true
+          "type" : "array"
         }
       },
       "type" : "object"
@@ -5127,7 +5125,7 @@
           "type" : "boolean"
         },
         "isSoftwareRollbackAllowed" : {
-          "description" : "Available since YBA version 2.21.0.0.",
+          "description" : "Available since YBA version 2.20.2.0",
           "readOnly" : true,
           "type" : "boolean"
         },
@@ -5174,7 +5172,7 @@
         },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
-          "description" : "Previous software version related data"
+          "description" : "WARNING: This is a preview API that could change. Previous software version related data"
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
@@ -5308,6 +5306,9 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "sharedVPCProject" : {
+          "type" : "string"
+        },
         "useHostCredentials" : {
           "type" : "boolean"
         },
@@ -5437,7 +5438,7 @@
           "type" : "boolean"
         },
         "isSoftwareRollbackAllowed" : {
-          "description" : "Available since YBA version 2.21.0.0.",
+          "description" : "Available since YBA version 2.20.2.0",
           "readOnly" : true,
           "type" : "boolean"
         },
@@ -5490,7 +5491,7 @@
         },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
-          "description" : "Previous software version related data"
+          "description" : "WARNING: This is a preview API that could change. Previous software version related data"
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
@@ -5737,6 +5738,27 @@
           },
           "description" : "Regions override for image bundle",
           "type" : "object"
+        }
+      },
+      "type" : "object"
+    },
+    "ImpactedXClusterConnectedUniverse" : {
+      "properties" : {
+        "universeName" : {
+          "description" : "WARNING: This is a preview API that could change. Impacted Universe name ",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "universeUUID" : {
+          "description" : "WARNING: This is a preview API that could change. Impacted Universe UUID ",
+          "format" : "uuid",
+          "readOnly" : true,
+          "type" : "string"
+        },
+        "ybSoftwareVersion" : {
+          "description" : "WARNING: This is a preview API that could change. Impacted Universe version ",
+          "readOnly" : true,
+          "type" : "string"
         }
       },
       "type" : "object"
@@ -6201,7 +6223,7 @@
           "type" : "boolean"
         },
         "isSoftwareRollbackAllowed" : {
-          "description" : "Available since YBA version 2.21.0.0.",
+          "description" : "Available since YBA version 2.20.2.0",
           "readOnly" : true,
           "type" : "boolean"
         },
@@ -6248,7 +6270,7 @@
         },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
-          "description" : "Previous software version related data"
+          "description" : "WARNING: This is a preview API that could change. Previous software version related data"
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
@@ -9347,7 +9369,7 @@
           "type" : "boolean"
         },
         "isSoftwareRollbackAllowed" : {
-          "description" : "Available since YBA version 2.21.0.0.",
+          "description" : "Available since YBA version 2.20.2.0",
           "readOnly" : true,
           "type" : "boolean"
         },
@@ -9400,7 +9422,7 @@
         },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
-          "description" : "Previous software version related data"
+          "description" : "WARNING: This is a preview API that could change. Previous software version related data"
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
@@ -9643,7 +9665,7 @@
           "type" : "boolean"
         },
         "isSoftwareRollbackAllowed" : {
-          "description" : "Available since YBA version 2.21.0.0.",
+          "description" : "Available since YBA version 2.20.2.0",
           "readOnly" : true,
           "type" : "boolean"
         },
@@ -9690,7 +9712,7 @@
         },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
-          "description" : "Previous software version related data"
+          "description" : "WARNING: This is a preview API that could change. Previous software version related data"
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
@@ -10616,7 +10638,7 @@
           "type" : "boolean"
         },
         "isSoftwareRollbackAllowed" : {
-          "description" : "Available since YBA version 2.21.0.0.",
+          "description" : "Available since YBA version 2.20.2.0",
           "readOnly" : true,
           "type" : "boolean"
         },
@@ -10663,7 +10685,7 @@
         },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
-          "description" : "Previous software version related data"
+          "description" : "WARNING: This is a preview API that could change. Previous software version related data"
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
@@ -11184,7 +11206,7 @@
           "type" : "boolean"
         },
         "isSoftwareRollbackAllowed" : {
-          "description" : "Available since YBA version 2.21.0.0.",
+          "description" : "Available since YBA version 2.20.2.0",
           "readOnly" : true,
           "type" : "boolean"
         },
@@ -11231,7 +11253,7 @@
         },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
-          "description" : "Previous software version related data"
+          "description" : "WARNING: This is a preview API that could change. Previous software version related data"
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
@@ -11699,7 +11721,7 @@
           "type" : "boolean"
         },
         "isSoftwareRollbackAllowed" : {
-          "description" : "Available since YBA version 2.21.0.0.",
+          "description" : "Available since YBA version 2.20.2.0",
           "readOnly" : true,
           "type" : "boolean"
         },
@@ -11746,7 +11768,7 @@
         },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
-          "description" : "Previous software version related data"
+          "description" : "WARNING: This is a preview API that could change. Previous software version related data"
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
@@ -12292,7 +12314,7 @@
           "type" : "boolean"
         },
         "isSoftwareRollbackAllowed" : {
-          "description" : "Available since YBA version 2.21.0.0.",
+          "description" : "Available since YBA version 2.20.2.0",
           "readOnly" : true,
           "type" : "boolean"
         },
@@ -12339,7 +12361,7 @@
         },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
-          "description" : "Previous software version related data"
+          "description" : "WARNING: This is a preview API that could change. Previous software version related data"
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
@@ -12548,7 +12570,7 @@
           "type" : "boolean"
         },
         "isSoftwareRollbackAllowed" : {
-          "description" : "Available since YBA version 2.21.0.0.",
+          "description" : "Available since YBA version 2.20.2.0",
           "readOnly" : true,
           "type" : "boolean"
         },
@@ -12595,7 +12617,7 @@
         },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
-          "description" : "Previous software version related data"
+          "description" : "WARNING: This is a preview API that could change. Previous software version related data"
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
@@ -12877,7 +12899,7 @@
           "type" : "boolean"
         },
         "isSoftwareRollbackAllowed" : {
-          "description" : "Available since YBA version 2.21.0.0.",
+          "description" : "Available since YBA version 2.20.2.0",
           "readOnly" : true,
           "type" : "boolean"
         },
@@ -12921,7 +12943,7 @@
         },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
-          "description" : "Previous software version related data"
+          "description" : "WARNING: This is a preview API that could change. Previous software version related data"
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
@@ -13110,7 +13132,7 @@
           "type" : "boolean"
         },
         "isSoftwareRollbackAllowed" : {
-          "description" : "Available since YBA version 2.21.0.0.",
+          "description" : "Available since YBA version 2.20.2.0",
           "readOnly" : true,
           "type" : "boolean"
         },
@@ -13154,7 +13176,7 @@
         },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
-          "description" : "Previous software version related data"
+          "description" : "WARNING: This is a preview API that could change. Previous software version related data"
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
@@ -13340,7 +13362,7 @@
           "type" : "boolean"
         },
         "isSoftwareRollbackAllowed" : {
-          "description" : "Available since YBA version 2.21.0.0.",
+          "description" : "Available since YBA version 2.20.2.0",
           "readOnly" : true,
           "type" : "boolean"
         },
@@ -13384,7 +13406,7 @@
         },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
-          "description" : "Previous software version related data"
+          "description" : "WARNING: This is a preview API that could change. Previous software version related data"
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
@@ -13797,7 +13819,7 @@
           "type" : "boolean"
         },
         "isSoftwareRollbackAllowed" : {
-          "description" : "Available since YBA version 2.21.0.0.",
+          "description" : "Available since YBA version 2.20.2.0",
           "readOnly" : true,
           "type" : "boolean"
         },
@@ -13844,7 +13866,7 @@
         },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
-          "description" : "Previous software version related data"
+          "description" : "WARNING: This is a preview API that could change. Previous software version related data"
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
@@ -14048,7 +14070,7 @@
           "additionalProperties" : {
             "type" : "string"
           },
-          "description" : "User-defined gflags for master. Deprecated since YBA version 2.18.5.0, use specificGFlags",
+          "description" : "User-defined gflags for master. Deprecated since YBA version 2.18.6.0, use specificGFlags",
           "type" : "object"
         },
         "masterInstanceType" : {
@@ -14095,7 +14117,7 @@
           "additionalProperties" : {
             "type" : "string"
           },
-          "description" : "User-defined gflags for tserver. Deprecated since YBA version 2.18.5.0, use specificGFlags",
+          "description" : "User-defined gflags for tserver. Deprecated since YBA version 2.18.6.0, use specificGFlags",
           "type" : "object"
         },
         "tserverK8SNodeResourceSpec" : {
@@ -14432,7 +14454,7 @@
           "type" : "boolean"
         },
         "isSoftwareRollbackAllowed" : {
-          "description" : "Available since YBA version 2.21.0.0.",
+          "description" : "Available since YBA version 2.20.2.0",
           "readOnly" : true,
           "type" : "boolean"
         },
@@ -14487,7 +14509,7 @@
         },
         "prevYBSoftwareConfig" : {
           "$ref" : "#/definitions/PrevYBSoftwareConfig",
-          "description" : "Previous software version related data"
+          "description" : "WARNING: This is a preview API that could change. Previous software version related data"
         },
         "previousTaskUUID" : {
           "description" : "Previous task UUID of a retry",
@@ -14719,6 +14741,7 @@
           "items" : {
             "$ref" : "#/definitions/XClusterTableConfig"
           },
+          "readOnly" : true,
           "type" : "array",
           "uniqueItems" : true
         },
@@ -14731,7 +14754,6 @@
           "items" : {
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array",
           "uniqueItems" : true
         },
@@ -14924,6 +14946,7 @@
           "items" : {
             "$ref" : "#/definitions/XClusterTableConfig"
           },
+          "readOnly" : true,
           "type" : "array",
           "uniqueItems" : true
         },
@@ -14936,7 +14959,6 @@
           "items" : {
             "type" : "string"
           },
-          "readOnly" : true,
           "type" : "array",
           "uniqueItems" : true
         },
@@ -25942,6 +25964,58 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Upgrade Certs",
+        "tags" : [ "Universe Upgrades Management" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/universes/{uniUUID}/upgrade/db_version" : {
+      "post" : {
+        "description" : "Queues a task to perform DB version upgrade and rolling restart in a universe.",
+        "operationId" : "upgradeDBVersion",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "uniUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "Software Upgrade Params",
+          "in" : "body",
+          "name" : "software_upgrade_params",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/SoftwareUpgradeParams"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "responsesObject" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/YBPTask"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "WARNING: This is a preview API that could change. This is a two step DB software version upgrade, Upgrade DB version and then finalize software which would be same as of upgrade software but additionally support rollback before upgrade finalize. ",
         "tags" : [ "Universe Upgrades Management" ]
       }
     },

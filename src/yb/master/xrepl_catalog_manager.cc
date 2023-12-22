@@ -131,8 +131,8 @@ DEFINE_test_flag(
 DEFINE_RUNTIME_AUTO_bool(cdc_enable_postgres_replica_identity, kLocalPersisted, false, true,
     "Enable new record types in CDC streams");
 
-DEFINE_test_flag(bool, yb_enable_cdc_consistent_snapshot_streams, false,
-                 "Enable support for CDC Consistent Snapshot Streams");
+DEFINE_RUNTIME_PREVIEW_bool(yb_enable_cdc_consistent_snapshot_streams, false,
+                            "Enable support for CDC Consistent Snapshot Streams");
 
 DEFINE_RUNTIME_bool(enable_backfilling_cdc_stream_with_replication_slot, false,
     "When enabled, allows adding a replication slot name to an existing CDC stream via the yb-admin"
@@ -893,7 +893,7 @@ Status CatalogManager::CreateNewXReplStream(
         req.cdcsdk_consistent_snapshot_option() == CDCSDKSnapshotOption::USE_SNAPSHOT;
     }
     has_consistent_snapshot_option =
-      has_consistent_snapshot_option && FLAGS_TEST_yb_enable_cdc_consistent_snapshot_streams;
+      has_consistent_snapshot_option && FLAGS_yb_enable_cdc_consistent_snapshot_streams;
 
     // Construct the CDC stream if the producer wasn't bootstrapped.
     auto stream_id =
@@ -1164,6 +1164,8 @@ Status CatalogManager::PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
     const yb::HybridTime& proposed_snapshot_time,
     bool require_history_cutoff) {
 
+  TEST_SYNC_POINT("PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails::Start");
+
   LOG_WITH_FUNC(INFO) << "Table id: " << table->id()
                       << "Tablet id: " << tablet_id
                       << ", Stream id:" << cdc_sdk_stream_id.ToString()
@@ -1197,9 +1199,7 @@ Status CatalogManager::PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
     entries.push_back(std::move(col_entry));
   }
 
-  RETURN_NOT_OK(cdc_state_table_->InsertEntries(entries));
-
-  return Status::OK();
+  return cdc_state_table_->InsertEntries(entries);
 }
 
 Status CatalogManager::BackfillMetadataForCDC(

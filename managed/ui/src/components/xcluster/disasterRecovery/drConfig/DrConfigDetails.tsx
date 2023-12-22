@@ -5,7 +5,7 @@ import { useTranslation } from 'react-i18next';
 import { getXClusterConfig } from '../utils';
 
 import { ReplicationTables } from '../../configDetails/ReplicationTables';
-import { XClusterMetrics } from '../../sharedComponents/XClusterMetrics';
+import { XClusterMetrics } from '../../sharedComponents/XClusterMetrics/XClusterMetrics';
 
 import { DrConfig } from '../dtos';
 

@@ -35,6 +35,7 @@ import {
 } from './XClusterTypes';
 import { XClusterConfig, XClusterTableDetails } from './dtos';
 import { MetricTrace, TableType, Universe, YBTable } from '../../redesign/helpers/dtos';
+import { IAlertConfiguration as AlertConfiguration } from '../../redesign/features/alerts/TemplateComposer/ICustomVariables';
 
 import './ReplicationUtils.scss';
 
@@ -435,6 +436,20 @@ export const formatUuidFromXCluster = (tableUuid: string) =>
   tableUuid.replace(
     /^([0-9a-f]{8})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{12})$/,
     '$1-$2-$3-$4-$5'
+  );
+
+export const getStrictestReplicationLagAlertConfig = (
+  alertConfigs: AlertConfiguration[] | undefined
+): AlertConfiguration | undefined =>
+  alertConfigs?.reduce(
+    (strictestReplicationLagAlertConfig: any, currentReplicationLagAlertConfig: any) =>
+      strictestReplicationLagAlertConfig?.thresholds?.SEVERE?.threshold &&
+      (!currentReplicationLagAlertConfig?.thresholds?.SEVERE?.threshold ||
+        strictestReplicationLagAlertConfig.thresholds.SEVERE.threshold <=
+          currentReplicationLagAlertConfig.thresholds.SEVERE.threshold)
+        ? strictestReplicationLagAlertConfig
+        : currentReplicationLagAlertConfig,
+    {}
   );
 
 export const tableSort = <RowType,>(

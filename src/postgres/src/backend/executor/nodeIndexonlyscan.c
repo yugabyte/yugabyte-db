@@ -152,7 +152,8 @@ IndexOnlyNext(IndexOnlyScanState *node)
 		 * Set reference to slot in scan desc so that YB amgettuple can use it
 		 * during aggregate pushdown.
 		 */
-		scandesc->yb_agg_slot = slot;
+		if (scandesc->yb_aggrefs)
+			scandesc->yb_agg_slot = slot;
 	}
 
 	/*

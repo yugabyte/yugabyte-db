@@ -173,7 +173,7 @@ export const InitiateSwitchoverModal = ({ drConfig, modalProps }: InitiateSwitch
   const isFormDisabled = isSubmitting || confirmationText !== targetUniverseName;
   const modalTitle = (
     <Typography variant="h4" component="span" className={classes.modalTitle}>
-      {t('title')}
+      {t('title', { drReplicaName: targetUniverseName })}
       <YBTooltip
         title={
           <Typography variant="body2">

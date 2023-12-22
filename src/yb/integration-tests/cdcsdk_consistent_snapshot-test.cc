@@ -21,12 +21,13 @@ class CDCSDKConsistentSnapshotTest : public CDCSDKYsqlTest {
  public:
   void SetUp() override {
     CDCSDKYsqlTest::SetUp();
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_yb_enable_cdc_consistent_snapshot_streams) = true;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_tablet_split_of_cdcsdk_streamed_tables) = true;
 
     // Disable pg replication command support to ensure that consistent snapshot feature
     // works independently.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_commands) = false;
+
   }
 
 };
@@ -51,13 +52,13 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestCSStreamSnapshotEstablishment) {
   // 1. snapshot_key must be null
   // 2. Checkpoint should be X.Y where X, Y > 0
   // 3. History cutoff time should be HybridTime::kInvalid
-  // 4. Checkpoint index Y (in X.Y) < cdc_min_replicated_index
+  // 4. Checkpoint index Y (in X.Y) >= cdc_min_replicated_index
   // 5. cdc_sdk_min_checkpoint_op_id.index = cdc_min_replicated_index
   LogRetentionBarrierAndRelatedDetails(checkpoint_result, tablet_peer);
   ASSERT_GT(checkpoint_result.checkpoint().op_id().term(), 0);
   ASSERT_GT(checkpoint_result.checkpoint().op_id().index(), 0);
   ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
-  ASSERT_LT(checkpoint_result.checkpoint().op_id().index(),
+  ASSERT_GE(checkpoint_result.checkpoint().op_id().index(),
             tablet_peer->get_cdc_min_replicated_index());
   ASSERT_EQ(tablet_peer->cdc_sdk_min_checkpoint_op_id().index,
             tablet_peer->get_cdc_min_replicated_index());
@@ -74,13 +75,13 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestCSStreamSnapshotEstablishment) {
   // 1. snapshot_key must not be null
   // 2. Checkpoint should be X.Y where X, Y > 0
   // 3. snapshot_time > history cut off time
-  // 4. Checkpoint index Y (in X.Y) <= cdc_min_replicated_index
+  // 4. Checkpoint index Y (in X.Y) >= cdc_min_replicated_index
   // 5. cdc_sdk_min_checkpoint_op_id.index = cdc_min_replicated_index
   LogRetentionBarrierAndRelatedDetails(checkpoint_result, tablet_peer);
   ASSERT_GT(checkpoint_result.checkpoint().op_id().term(), 0);
   ASSERT_GT(checkpoint_result.checkpoint().op_id().index(), 0);
   ASSERT_GT(std::get<0>(snapshot_time_key_pair), tablet_peer->get_cdc_sdk_safe_time().ToUint64());
-  ASSERT_LE(checkpoint_result.checkpoint().op_id().index(),
+  ASSERT_GE(checkpoint_result.checkpoint().op_id().index(),
             tablet_peer->get_cdc_min_replicated_index());
   ASSERT_EQ(tablet_peer->cdc_sdk_min_checkpoint_op_id().index,
             tablet_peer->get_cdc_min_replicated_index());
@@ -138,6 +139,43 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestConsistentSnapshotMetadataPersistence) 
       ASSERT_EQ(state, master::SysCDCStreamEntryPB_State::SysCDCStreamEntryPB_State_ACTIVE);
     }
   }
+}
+
+// Test related to race between UpdatePeersAndMetrics and stream creation in
+// setting retention barriers
+TEST_F(CDCSDKConsistentSnapshotTest, TestRetentionBarrierSettingRace) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 10;
+  google::SetVLOGLevel("tablet*", 1);
+  SyncPoint::GetInstance()->LoadDependency(
+      {{"Tablet::SetAllInitialCDCSDKRetentionBarriers::End", "UpdatePeersAndMetrics::Start"},
+       {"UpdateTabletPeersWithMaxCheckpoint::Done",
+        "PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails::Start"}});
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
+  auto tablet_peer =
+      ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets.begin()->tablet_id()));
+  auto stream_id = ASSERT_RESULT(CreateDBStream());
+  ASSERT_TRUE(DeleteCDCStream(stream_id));
+  // Create a Consistent Snapshot Stream with USE_SNAPSHOT option
+  auto stream1_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  // Check that UpdatePeersAndMetrics has been blocked from releasing retention barriers
+  auto checkpoint_result =
+      ASSERT_RESULT(GetCDCSnapshotCheckpoint(stream1_id, tablet_peer->tablet_id()));
+  LogRetentionBarrierAndRelatedDetails(checkpoint_result, tablet_peer);
+  ASSERT_NE(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+  ASSERT_LT(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
+  ASSERT_LT(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
+
+  // Now, drop the consistent snapshot stream and check that retention barriers are released
+  ASSERT_TRUE(DeleteCDCStream(stream1_id));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 1;
+  SleepFor(MonoDelta::FromSeconds(5));
+  ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+  ASSERT_EQ(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
+  ASSERT_EQ(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
 }
 
 // Insert a row before snapshot. Insert a row after snapshot.
@@ -1292,6 +1330,23 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesOnUnpolledSplitTablets)
     ASSERT_EQ(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
     ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
   }
+
+}
+
+TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesWhenNoStreamsOnTablet) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 120;
+
+  auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
+  auto tablet_peer =
+      ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets.begin()->tablet_id()));
+
+  // Create a Consistent Snapshot Stream
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  ASSERT_TRUE(DeleteCDCStream(stream_id));
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 5;
+  VerifyTransactionParticipant(tablets[0].tablet_id(), OpId::Max());
 
 }
 

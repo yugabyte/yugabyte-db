@@ -306,9 +306,9 @@ public class GFlagsValidation {
         fetchGFlagFilesFromTarGZipInputStream(
             inputStream, version, Collections.singletonList(Util.AUTO_FLAG_FILENAME), releasesPath);
       } catch (Exception e) {
-        LOG.error("Error in extracting flags form DB package: ", e);
+        LOG.error("Error in extracting flags from DB package: ", e);
         throw new PlatformServiceException(
-            INTERNAL_SERVER_ERROR, "Error in extracting flags form DB package");
+            INTERNAL_SERVER_ERROR, "Error in extracting flags from DB package");
       }
     }
     ObjectMapper objectMapper = new ObjectMapper();

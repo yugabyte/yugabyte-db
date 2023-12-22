@@ -387,8 +387,9 @@ class RaftGroupMetadata : public RefCountedThreadSafe<RaftGroupMetadata>,
 
   bool is_under_cdc_sdk_replication() const;
 
-  Result<bool> SetAllInitialCDCSDKRetentionBarriers(
-      OpId cdc_sdk_op_id, HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff);
+  Result<bool> SetAllCDCRetentionBarriers(
+      int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, HybridTime cdc_sdk_history_cutoff,
+      bool require_history_cutoff, bool initial_retention_barrier);
 
   Status SetIsUnderXClusterReplicationAndFlush(bool is_under_xcluster_replication);
 

@@ -160,6 +160,8 @@ class PgLibPqTest : public LibPqTestBase {
 
   Status TestDuplicateCreateTableRequest(PGConn conn);
 
+  void TestSecondaryIndexInsertSelect();
+
   void KillPostmasterProcessOnTservers();
 
   Result<string> GetSchemaName(const string& relname, PGConn* conn);
@@ -879,7 +881,7 @@ TEST_F(PgLibPqTest, TestConcurrentCounterReadCommitted) {
   TestConcurrentCounter(IsolationLevel::READ_COMMITTED);
 }
 
-TEST_F(PgLibPqTest, SecondaryIndexInsertSelect) {
+void PgLibPqTest::TestSecondaryIndexInsertSelect() {
   constexpr int kThreads = 4;
 
   auto conn = ASSERT_RESULT(Connect());
@@ -921,6 +923,21 @@ TEST_F(PgLibPqTest, SecondaryIndexInsertSelect) {
   }
 
   holder.WaitAndStop(60s);
+}
+
+TEST_F(PgLibPqTest, SecondaryIndexInsertSelect) {
+  TestSecondaryIndexInsertSelect();
+}
+
+class PgLibPqWithSharedMemTest : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back("--pg_client_use_shared_memory=true");
+    UpdateMiniClusterFailOnConflict(options);
+  }
+};
+
+TEST_F_EX(PgLibPqTest, SecondaryIndexInsertSelectWithSharedMem, PgLibPqWithSharedMemTest) {
+  TestSecondaryIndexInsertSelect();
 }
 
 void AssertRows(PGConn *conn, int expected_num_rows) {

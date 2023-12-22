@@ -898,7 +898,7 @@ public class ReleaseManager {
               rm.filePath =
                   FileDataService.fixFilePath(ybLocalPattern, rm.filePath, ybReleasesPath);
             } catch (Exception e) {
-              log.warn("Error replacing release {}. Skipping.", rm.filePath);
+              log.warn("Error {} replacing release {}. Skipping.", e.getMessage(), rm.filePath);
             }
 
             // Fix up packages list.
@@ -908,7 +908,10 @@ public class ReleaseManager {
                     try {
                       p.path = FileDataService.fixFilePath(ybLocalPattern, p.path, ybReleasesPath);
                     } catch (Exception e) {
-                      log.warn("Error replacing packages release {}. Skipping.", p.path);
+                      log.warn(
+                          "Error {} replacing packages release {}. Skipping.",
+                          e.getMessage(),
+                          p.path);
                     }
                   });
             }
@@ -918,7 +921,7 @@ public class ReleaseManager {
             rm.chartPath =
                 FileDataService.fixFilePath(ybLocalPattern, rm.chartPath, ybReleasesPath);
           } catch (Exception e) {
-            log.warn("Error replacing chart {}. Skipping.", rm.chartPath);
+            log.warn("Error {} replacing chart {}. Skipping.", e.getMessage(), rm.chartPath);
           }
           updatedReleases.put(version, rm);
         });
@@ -934,7 +937,7 @@ public class ReleaseManager {
           try {
             rm.filePath = FileDataService.fixFilePath(ybLocalPattern, rm.filePath, ybcReleasesPath);
           } catch (Exception e) {
-            log.warn("Error replacing ybc release {}. Skipping.", rm.filePath);
+            log.warn("Error {} replacing ybc release {}. Skipping.", e.getMessage(), rm.filePath);
           }
           if (rm.packages != null && !rm.packages.isEmpty()) {
             rm.packages.forEach(
@@ -942,7 +945,10 @@ public class ReleaseManager {
                   try {
                     p.path = FileDataService.fixFilePath(ybLocalPattern, p.path, ybcReleasesPath);
                   } catch (Exception e) {
-                    log.warn("Error replacing packages ybc release {}. Skipping.", p.path);
+                    log.warn(
+                        "Error {} replacing packages ybc release {}. Skipping.",
+                        e.getMessage(),
+                        p.path);
                   }
                 });
           }

@@ -2088,7 +2088,7 @@ Status HandleGetChangesForSnapshotRequest(
     client::YBClient* client, GetChangesResponsePB* resp, SchemaDetailsMap* cached_schema_details,
     const TableId& colocated_table_id, const tablet::TabletPtr& tablet_ptr, string* table_name,
     CDCSDKCheckpointPB* checkpoint, bool* checkpoint_updated, HybridTime* safe_hybrid_time_resp) {
-  auto txn_participant = tablet_ptr->transaction_participant();
+
   ReadHybridTime time;
 
   // It is first call in snapshot then take snapshot.
@@ -2104,14 +2104,9 @@ Status HandleGetChangesForSnapshotRequest(
 
     LOG(INFO) << "CDC snapshot initialization is started, by setting checkpoint as: " << data.op_id
               << ", for tablet_id: " << tablet_id << " stream_id: " << stream_id;
-    if (txn_participant) {
-      txn_participant->SetIntentRetainOpIdAndTime(
-          data.op_id, MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)));
-    } else {
-      RETURN_NOT_OK(tablet_peer->SetCDCSDKRetainOpIdAndTime(
-          data.op_id, MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)),
-          data.log_ht));
-    }
+    RETURN_NOT_OK(tablet_peer->SetAllInitialCDCSDKRetentionBarriers(
+        data.op_id, data.log_ht, true /* require_history_cutoff */));
+
     RETURN_NOT_OK(tablet_peer->GetLastReplicatedData(&data));
     time = ReadHybridTime::SingleTime(data.log_ht);
     // Use the last replicated hybrid time as a safe time for snapshot operation. so that

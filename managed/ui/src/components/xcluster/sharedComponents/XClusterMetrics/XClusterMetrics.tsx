@@ -2,60 +2,63 @@ import { useCallback, useState } from 'react';
 import { useQuery } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import moment from 'moment';
-import { Box, makeStyles, useTheme } from '@material-ui/core';
+import { Box, Typography, useTheme } from '@material-ui/core';
 import { Dropdown, MenuItem } from 'react-bootstrap';
 import {
   CartesianGrid,
   Legend,
   Line,
   LineChart,
+  ReferenceLine,
   ResponsiveContainer,
   Tooltip,
   XAxis,
   YAxis
 } from 'recharts';
-import { ToggleButton, ToggleButtonGroup } from '@material-ui/lab';
+import { ToggleButton } from '@material-ui/lab';
 
-import { api, metricQueryKey, universeQueryKey } from '../../../redesign/helpers/api';
-import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import {
+  alertConfigQueryKey,
+  api,
+  metricQueryKey,
+  universeQueryKey
+} from '../../../../redesign/helpers/api';
+import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
+import {
+  AlertName,
   DEFAULT_METRIC_TIME_RANGE_OPTION,
   MetricName,
   METRIC_TIME_RANGE_OPTIONS,
   PollingIntervalMs,
   TimeRangeType
-} from '../constants';
+} from '../../constants';
 import {
   adaptMetricDataForRecharts,
   formatUuidFromXCluster,
   getMetricTimeRange
-} from '../ReplicationUtils';
-import { CustomDatePicker } from '../../metrics/CustomDatePicker/CustomDatePicker';
-import { formatDatetime, YBTimeFormats } from '../../../redesign/helpers/DateUtils';
-import { CHART_RESIZE_DEBOUNCE } from '../../../redesign/helpers/constants';
-import { YBInput } from '../../../redesign/components';
-import { assertUnreachableCase } from '../../../utils/errorHandlingUtils';
-import { YBMetricGraphTitle } from '../../../redesign/components/YBMetricGraphTitle/YBMetricGraphTitle';
+} from '../../ReplicationUtils';
+import { CustomDatePicker } from '../../../metrics/CustomDatePicker/CustomDatePicker';
+import { formatDatetime, YBTimeFormats } from '../../../../redesign/helpers/DateUtils';
+import { CHART_RESIZE_DEBOUNCE } from '../../../../redesign/helpers/constants';
+import { assertUnreachableCase } from '../../../../utils/errorHandlingUtils';
+import { YBMetricGraphTitle } from '../../../../redesign/components/YBMetricGraphTitle/YBMetricGraphTitle';
+import { getAlertConfigurations } from '../../../../actions/universe';
+import { MetricsFilter } from './MetricsFilter';
 
-import { MetricTimeRangeOption } from '../XClusterTypes';
-import { XClusterConfig } from '../dtos';
+import { MetricTimeRangeOption } from '../../XClusterTypes';
+import { XClusterConfig } from '../../dtos';
 import {
   MetricSettings,
   MetricsQueryParams,
   MetricsQueryResponse,
   MetricTrace
-} from '../../../redesign/helpers/dtos';
-import { NodeAggregation, SplitMode, SplitType } from '../../metrics/dtos';
+} from '../../../../redesign/helpers/dtos';
+import { NodeAggregation, SplitMode, SplitType } from '../../../metrics/dtos';
+import { YBTooltip } from '../../../../redesign/components';
 
 interface ConfigReplicationLagGraphProps {
   xClusterConfig: XClusterConfig;
 }
-
-const useStyles = makeStyles(() => ({
-  numericInput: {
-    width: '60px'
-  }
-}));
 
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.xCluster.metricsPanel';
 
@@ -69,15 +72,50 @@ export const XClusterMetrics = ({ xClusterConfig }: ConfigReplicationLagGraphPro
   const [customEndMoment, setCustomEndMoment] = useState(
     getMetricTimeRange(DEFAULT_METRIC_TIME_RANGE_OPTION).endMoment
   );
-  const [metricsNodeAggregation, setMetricsNodeAggregation] = useState<NodeAggregation>(
-    NodeAggregation.MAX
+  const [showAlertThresholdReferenceLine, setShowAlertThresholdReferenceLIne] = useState<boolean>(
+    false
   );
-  const [metricsSplitType, setMetricsSplitType] = useState<SplitType>(SplitType.NONE);
-  const [metricsSplitMode, setMetricsSplitMode] = useState<SplitMode>(SplitMode.NONE);
-  const [metricsSplitCount, setMetricsSplitCount] = useState<number>(1);
+  const [replicationLagMetricsNodeAggregation, setReplicationLagMetricsNodeAggregation] = useState<
+    NodeAggregation
+  >(NodeAggregation.MAX);
+  const [replicationLagMetricsSplitType, setReplicationLagMetricsSplitType] = useState<SplitType>(
+    SplitType.NONE
+  );
+  const [replicationLagMetricsSplitMode, setReplicationLagMetricsSplitMode] = useState<SplitMode>(
+    SplitMode.NONE
+  );
+  const [replicationLagMetricsSplitCount, setReplicationLagMetricsSplitCount] = useState<number>(1);
+
+  const [
+    consumerSafeTimeLagMetricsNodeAggregation,
+    setConsumerSafeTimeLagMetricsNodeAggregation
+  ] = useState<NodeAggregation>(NodeAggregation.MAX);
+  const [consumerSafeTimeLagMetricsSplitType, setConsumerSafeTimeLagMetricsSplitType] = useState<
+    SplitType
+  >(SplitType.NONE);
+  const [consumerSafeTimeLagMetricsSplitMode, setConsumerSafeTimeLagMetricsSplitMode] = useState<
+    SplitMode
+  >(SplitMode.NONE);
+  const [consumerSafeTimeLagMetricsSplitCount, setConsumerSafeTimeLagMetricsSplitCount] = useState<
+    number
+  >(1);
+
+  const [
+    consumerSafeTimeSkewMetricsNodeAggregation,
+    setConsumerSafeTimeSkewMetricsNodeAggregation
+  ] = useState<NodeAggregation>(NodeAggregation.MAX);
+  const [consumerSafeTimeSkewMetricsSplitType, setConsumerSafeTimeSkewMetricsSplitType] = useState<
+    SplitType
+  >(SplitType.NONE);
+  const [consumerSafeTimeSkewMetricsSplitMode, setConsumerSafeTimeSkewMetricsSplitMode] = useState<
+    SplitMode
+  >(SplitMode.NONE);
+  const [
+    consumerSafeTimeSkewMetricsSplitCount,
+    setConsumerSafeTimeSkewMetricsSplitCount
+  ] = useState<number>(1);
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const theme = useTheme();
-  const classes = useStyles();
 
   const sourceUniverseQuery = useQuery(
     universeQueryKey.detail(xClusterConfig.sourceUniverseUUID),
@@ -94,6 +132,20 @@ export const XClusterMetrics = ({ xClusterConfig }: ConfigReplicationLagGraphPro
     () => api.fetchUniverseNamespaces(xClusterConfig.targetUniverseUUID)
   );
 
+  const alertConfigFilter = {
+    name: AlertName.REPLICATION_LAG,
+    targetUuid: xClusterConfig.sourceUniverseUUID
+  };
+  const alertConfigQuery = useQuery<any[]>(alertConfigQueryKey.list(alertConfigFilter), () =>
+    getAlertConfigurations(alertConfigFilter)
+  );
+  const maxAcceptableLag = alertConfigQuery.data?.length
+    ? Math.min(
+        ...alertConfigQuery.data.map(
+          (alertConfig: any): number => alertConfig.thresholds.SEVERE.threshold
+        )
+      )
+    : undefined;
   const isCustomTimeRange = selectedTimeRangeOption.type === TimeRangeType.CUSTOM;
   const metricTimeRange = isCustomTimeRange
     ? { startMoment: customStartMoment, endMoment: customEndMoment }
@@ -103,10 +155,10 @@ export const XClusterMetrics = ({ xClusterConfig }: ConfigReplicationLagGraphPro
   const isFixedTimeRange = isCustomTimeRange;
   const replicationLagMetricSettings = {
     metric: MetricName.ASYNC_REPLICATION_SENT_LAG,
-    nodeAggregation: metricsNodeAggregation,
-    splitType: metricsSplitType,
-    splitMode: metricsSplitMode,
-    splitCount: metricsSplitCount
+    nodeAggregation: replicationLagMetricsNodeAggregation,
+    splitType: replicationLagMetricsSplitType,
+    splitMode: replicationLagMetricsSplitMode,
+    splitCount: replicationLagMetricsSplitCount
   };
   const replciationLagMetricRequestParams: MetricsQueryParams = {
     metricsWithSettings: [replicationLagMetricSettings],
@@ -144,33 +196,26 @@ export const XClusterMetrics = ({ xClusterConfig }: ConfigReplicationLagGraphPro
 
   const consumerSafeTimeLagMetricSettings = {
     metric: MetricName.CONSUMER_SAFE_TIME_LAG,
-    nodeAggregation: metricsNodeAggregation,
-    splitType: metricsSplitType,
-    splitMode: metricsSplitMode,
-    splitCount: metricsSplitCount
+    nodeAggregation: consumerSafeTimeLagMetricsNodeAggregation,
+    splitType: consumerSafeTimeLagMetricsSplitType,
+    splitMode: consumerSafeTimeLagMetricsSplitMode,
+    splitCount: consumerSafeTimeLagMetricsSplitCount
   };
-  const consumerSafeTimeSkewMetricSettings = {
-    metric: MetricName.CONSUMER_SAFE_TIME_SKEW,
-    nodeAggregation: metricsNodeAggregation,
-    splitType: metricsSplitType,
-    splitMode: metricsSplitMode,
-    splitCount: metricsSplitCount
-  };
-  const consumerSafeTimeMetricRequestParams: MetricsQueryParams = {
-    metricsWithSettings: [consumerSafeTimeLagMetricSettings, consumerSafeTimeSkewMetricSettings],
+  const consumerSafeTimeLagMetricRequestParams: MetricsQueryParams = {
+    metricsWithSettings: [consumerSafeTimeLagMetricSettings],
     nodePrefix: targetUniverseQuery.data?.universeDetails.nodePrefix,
     start: metricTimeRange.startMoment.format('X'),
     end: metricTimeRange.endMoment.format('X')
   };
-  const consumerSafeTimeMetricsQuery = useQuery(
+  const consumerSafeTimeLagMetricsQuery = useQuery(
     isFixedTimeRange
-      ? metricQueryKey.detail(consumerSafeTimeMetricRequestParams)
+      ? metricQueryKey.detail(consumerSafeTimeLagMetricRequestParams)
       : metricQueryKey.latest(
-          consumerSafeTimeMetricRequestParams,
+          consumerSafeTimeLagMetricRequestParams,
           selectedTimeRangeOption.value,
           selectedTimeRangeOption.type
         ),
-    () => api.fetchMetrics(consumerSafeTimeMetricRequestParams),
+    () => api.fetchMetrics(consumerSafeTimeLagMetricRequestParams),
     {
       enabled: !!targetUniverseQuery.data,
       // It is unnecessary to refetch metric traces when the interval is fixed as subsequent
@@ -178,34 +223,56 @@ export const XClusterMetrics = ({ xClusterConfig }: ConfigReplicationLagGraphPro
       staleTime: isFixedTimeRange ? Infinity : 0,
       refetchInterval: isFixedTimeRange ? false : PollingIntervalMs.XCLUSTER_METRICS,
       select: useCallback((metricQueryResponse: MetricsQueryResponse) => {
-        const {
-          data: consumerSafeTimeLagMetricTraces = [],
-          ...consumerSafeTimeLagMetricQueryMetadata
-        } = metricQueryResponse.consumer_safe_time_lag ?? {};
-        const {
-          data: consumerSafeTimeSkewMetricTraces = [],
-          ...consumerSafeTimeSkewMetricQueryMetadata
-        } = metricQueryResponse.consumer_safe_time_skew ?? {};
+        const { data: metricTraces = [], ...metricQueryMetadata } =
+          metricQueryResponse.consumer_safe_time_lag ?? {};
         return {
-          [MetricName.CONSUMER_SAFE_TIME_LAG]: {
-            ...consumerSafeTimeLagMetricQueryMetadata,
-            metricTraces: consumerSafeTimeLagMetricTraces,
-            metricData: adaptMetricDataForRecharts(consumerSafeTimeLagMetricTraces, (trace) =>
-              getUniqueTraceId(trace)
-            )
-          },
-          [MetricName.CONSUMER_SAFE_TIME_SKEW]: {
-            ...consumerSafeTimeSkewMetricQueryMetadata,
-            metricTraces: consumerSafeTimeSkewMetricTraces,
-            metricData: adaptMetricDataForRecharts(consumerSafeTimeSkewMetricTraces, (trace) =>
-              getUniqueTraceId(trace)
-            )
-          }
+          ...metricQueryMetadata,
+          metricTraces,
+          metricData: adaptMetricDataForRecharts(metricTraces, (trace) => getUniqueTraceId(trace))
         };
       }, [])
     }
   );
 
+  const consumerSafeTimeSkewMetricSettings = {
+    metric: MetricName.CONSUMER_SAFE_TIME_SKEW,
+    nodeAggregation: consumerSafeTimeSkewMetricsNodeAggregation,
+    splitType: consumerSafeTimeSkewMetricsSplitType,
+    splitMode: consumerSafeTimeSkewMetricsSplitMode,
+    splitCount: consumerSafeTimeSkewMetricsSplitCount
+  };
+  const consumerSafeTimeSkewMetricRequestParams: MetricsQueryParams = {
+    metricsWithSettings: [consumerSafeTimeSkewMetricSettings],
+    nodePrefix: targetUniverseQuery.data?.universeDetails.nodePrefix,
+    start: metricTimeRange.startMoment.format('X'),
+    end: metricTimeRange.endMoment.format('X')
+  };
+  const consumerSafeTimeSkewMetricsQuery = useQuery(
+    isFixedTimeRange
+      ? metricQueryKey.detail(consumerSafeTimeSkewMetricRequestParams)
+      : metricQueryKey.latest(
+          consumerSafeTimeSkewMetricRequestParams,
+          selectedTimeRangeOption.value,
+          selectedTimeRangeOption.type
+        ),
+    () => api.fetchMetrics(consumerSafeTimeSkewMetricRequestParams),
+    {
+      enabled: !!targetUniverseQuery.data,
+      // It is unnecessary to refetch metric traces when the interval is fixed as subsequent
+      // queries will return the same data.
+      staleTime: isFixedTimeRange ? Infinity : 0,
+      refetchInterval: isFixedTimeRange ? false : PollingIntervalMs.XCLUSTER_METRICS,
+      select: useCallback((metricQueryResponse: MetricsQueryResponse) => {
+        const { data: metricTraces = [], ...metricQueryMetadata } =
+          metricQueryResponse.consumer_safe_time_skew ?? {};
+        return {
+          ...metricQueryMetadata,
+          metricTraces,
+          metricData: adaptMetricDataForRecharts(metricTraces, (trace) => getUniqueTraceId(trace))
+        };
+      }, [])
+    }
+  );
   if (sourceUniverseQuery.isError) {
     return (
       <YBErrorIndicator
@@ -229,7 +296,11 @@ export const XClusterMetrics = ({ xClusterConfig }: ConfigReplicationLagGraphPro
   // IMPROVEMENT: Isolate the error message to the graph for which metrics failed to load.
   //              Draw a placeholder graph showing no data and an error message.
   //              Tracking with PLAT-11663
-  if (configReplicationLagMetricQuery.isError || consumerSafeTimeMetricsQuery.isError) {
+  if (
+    configReplicationLagMetricQuery.isError ||
+    consumerSafeTimeLagMetricsQuery.isError ||
+    consumerSafeTimeSkewMetricsQuery.isError
+  ) {
     return (
       <YBErrorIndicator
         customErrorMessage={t('failedToFetchMetrics', {
@@ -248,36 +319,16 @@ export const XClusterMetrics = ({ xClusterConfig }: ConfigReplicationLagGraphPro
     return <YBLoading />;
   }
 
-  const handleMetricNodeAggregationChange = (
-    _event: React.MouseEvent<HTMLElement>,
-    metricsNodeAggregation: NodeAggregation
-  ) => {
-    setMetricsNodeAggregation(metricsNodeAggregation);
-  };
-  const handleMetricsSplitTypeChange = (
-    _event: React.MouseEvent<HTMLElement>,
-    metricsSplitType: SplitType
-  ) => {
-    setMetricsSplitType(metricsSplitType);
-  };
-  const handleMetricsSplitModeChange = (
-    _event: React.MouseEvent<HTMLElement>,
-    metricsSplitMode: SplitMode
-  ) => {
-    setMetricsSplitMode(metricsSplitMode);
-  };
   const handleTimeRangeChange = (eventKey: any) => {
     const selectedOption = METRIC_TIME_RANGE_OPTIONS[eventKey];
     if (selectedOption.type !== 'divider') {
       setSelectedTimeRangeOption(selectedOption);
     }
   };
-
   const menuItems = METRIC_TIME_RANGE_OPTIONS.map((option, idx) => {
     if (option.type === 'divider') {
       return <MenuItem divider key={`${idx}_divider`} />;
     }
-
     return (
       <MenuItem
         onSelect={handleTimeRangeChange}
@@ -289,6 +340,9 @@ export const XClusterMetrics = ({ xClusterConfig }: ConfigReplicationLagGraphPro
       </MenuItem>
     );
   });
+
+  const handleToggleShowAlertThresholdReferenceLine = () =>
+    setShowAlertThresholdReferenceLIne(!showAlertThresholdReferenceLine);
 
   const namespaceUuidToNamespace = targetUniverseNamespaceQuery.data
     ? Object.fromEntries(
@@ -304,65 +358,20 @@ export const XClusterMetrics = ({ xClusterConfig }: ConfigReplicationLagGraphPro
     layout: undefined,
     metricTraces: []
   };
-  const consumerSafeTimeMetrics = consumerSafeTimeMetricsQuery.data ?? {
-    [MetricName.CONSUMER_SAFE_TIME_LAG]: { metricData: [], layout: undefined, metricTraces: [] },
-    [MetricName.CONSUMER_SAFE_TIME_SKEW]: { metricData: [], layout: undefined, metricTraces: [] }
+  const consumerSafeTimeLagMetrics = consumerSafeTimeLagMetricsQuery.data ?? {
+    metricData: [],
+    layout: undefined,
+    metricTraces: []
   };
+  const consumerSafeTimeSkewMetrics = consumerSafeTimeSkewMetricsQuery.data ?? {
+    metricData: [],
+    layout: undefined,
+    metricTraces: []
+  };
+
   return (
     <div>
       <Box display="flex">
-        <Box display="flex" flexDirection="column" gridGap={theme.spacing(1)}>
-          <ToggleButtonGroup
-            value={metricsNodeAggregation}
-            exclusive
-            onChange={handleMetricNodeAggregationChange}
-          >
-            <ToggleButton value={NodeAggregation.MAX}>
-              {t('graphFilter.nodeAggregation.max')}
-            </ToggleButton>
-            <ToggleButton value={NodeAggregation.MIN}>
-              {t('graphFilter.nodeAggregation.min')}
-            </ToggleButton>
-            <ToggleButton value={NodeAggregation.AVERAGE}>
-              {t('graphFilter.nodeAggregation.average')}
-            </ToggleButton>
-          </ToggleButtonGroup>
-          <ToggleButtonGroup
-            value={metricsSplitType}
-            exclusive
-            onChange={handleMetricsSplitTypeChange}
-          >
-            <ToggleButton value={SplitType.NONE}>{t('graphFilter.splitType.cluster')}</ToggleButton>
-            <ToggleButton value={SplitType.NODE}>{t('graphFilter.splitType.node')}</ToggleButton>
-            <ToggleButton value={SplitType.NAMESPACE}>
-              {t('graphFilter.splitType.namespace')}
-            </ToggleButton>
-            <ToggleButton value={SplitType.TABLE}>{t('graphFilter.splitType.table')}</ToggleButton>
-          </ToggleButtonGroup>
-          <Box display="flex" gridGap={theme.spacing(1)}>
-            <ToggleButtonGroup
-              value={metricsSplitMode}
-              exclusive
-              onChange={handleMetricsSplitModeChange}
-            >
-              <ToggleButton value={SplitMode.NONE}>{t('graphFilter.splitMode.all')}</ToggleButton>
-              <ToggleButton value={SplitMode.TOP}>{t('graphFilter.splitMode.top')}</ToggleButton>
-              <ToggleButton value={SplitMode.BOTTOM}>
-                {t('graphFilter.splitMode.bottom')}
-              </ToggleButton>
-            </ToggleButtonGroup>
-            {metricsSplitMode !== SplitMode.NONE && (
-              <YBInput
-                className={classes.numericInput}
-                type="number"
-                inputProps={{ min: 1, 'data-testid': 'XClusterMetrics-SplitCountInput' }}
-                value={metricsSplitCount}
-                onChange={(event) => setMetricsSplitCount(parseInt(event.target.value))}
-                inputMode="numeric"
-              />
-            )}
-          </Box>
-        </Box>
         <Box marginLeft="auto">
           {selectedTimeRangeOption.type === TimeRangeType.CUSTOM && (
             <CustomDatePicker
@@ -390,16 +399,60 @@ export const XClusterMetrics = ({ xClusterConfig }: ConfigReplicationLagGraphPro
           width="100%"
           height="600px"
         >
-          <YBMetricGraphTitle
-            title={t('graphTitle.asyncReplicationSentLag')}
-            metricsLinkUseBrowserFqdn={configReplicationLagMetrics.metricsLinkUseBrowserFqdn}
-            directUrls={configReplicationLagMetrics.directURLs}
-          />
+          <Box display="flex" justifyContent="space-between">
+            <YBMetricGraphTitle
+              title={t('graphTitle.asyncReplicationSentLag')}
+              metricsLinkUseBrowserFqdn={configReplicationLagMetrics.metricsLinkUseBrowserFqdn}
+              directUrls={configReplicationLagMetrics.directURLs}
+            />
+            <Box display="flex" gridGap={theme.spacing(2)}>
+              <YBTooltip
+                title={
+                  maxAcceptableLag === undefined
+                    ? t('showAlertThresholdReferenceLine.disabledTooltip')
+                    : ''
+                }
+                placement="top"
+              >
+                <span>
+                  <ToggleButton
+                    value="check"
+                    selected={showAlertThresholdReferenceLine}
+                    onChange={handleToggleShowAlertThresholdReferenceLine}
+                    disabled={maxAcceptableLag === undefined}
+                  >
+                    <Box display="flex" gridGap={theme.spacing(0.5)} alignItems="center">
+                      <i className="fa fa-bell" aria-hidden="true" />
+                      <Typography variant="body2" display="inline" component="span">
+                        {t('showAlertThresholdReferenceLine.label')}
+                      </Typography>
+                    </Box>
+                  </ToggleButton>
+                </span>
+              </YBTooltip>
+              <MetricsFilter
+                metricsNodeAggregation={replicationLagMetricsNodeAggregation}
+                metricsSplitType={replicationLagMetricsSplitType}
+                metricsSplitMode={replicationLagMetricsSplitMode}
+                metricsSplitCount={replicationLagMetricsSplitCount}
+                metricsSplitTypeOptions={[
+                  SplitType.NAMESPACE,
+                  SplitType.NODE,
+                  SplitType.NONE,
+                  SplitType.TABLE
+                ]}
+                setMetricsNodeAggregation={setReplicationLagMetricsNodeAggregation}
+                setMetricsSplitType={setReplicationLagMetricsSplitType}
+                setMetricsSplitMode={setReplicationLagMetricsSplitMode}
+                setMetricsSplitCount={setReplicationLagMetricsSplitCount}
+              />
+            </Box>
+          </Box>
           <ResponsiveContainer width="100%" height="100%" debounce={CHART_RESIZE_DEBOUNCE}>
             <LineChart
               data={configReplicationLagMetrics.metricData}
               margin={{
-                top: theme.spacing(2),
+                top: theme.spacing(3),
                 bottom: theme.spacing(2),
                 left: theme.spacing(2),
                 right: theme.spacing(2)
@@ -438,6 +491,15 @@ export const XClusterMetrics = ({ xClusterConfig }: ConfigReplicationLagGraphPro
                   />
                 );
               })}
+              {maxAcceptableLag !== undefined && showAlertThresholdReferenceLine && (
+                <ReferenceLine
+                  y={maxAcceptableLag}
+                  stroke="#EF5824"
+                  label={{ value: t('lowestReplicationLagAlertThresholdLabel'), position: 'top' }}
+                  ifOverflow="extendDomain"
+                  strokeDasharray="4 4"
+                />
+              )}
             </LineChart>
           </ResponsiveContainer>
         </Box>
@@ -448,16 +510,29 @@ export const XClusterMetrics = ({ xClusterConfig }: ConfigReplicationLagGraphPro
           width="100%"
           height="600px"
         >
-          <YBMetricGraphTitle
-            title={t('graphTitle.consumerSafeTimeLag')}
-            metricsLinkUseBrowserFqdn={configReplicationLagMetrics.metricsLinkUseBrowserFqdn}
-            directUrls={configReplicationLagMetrics.directURLs}
-          />
+          <Box display="flex" justifyContent="space-between">
+            <YBMetricGraphTitle
+              title={t('graphTitle.consumerSafeTimeLag')}
+              metricsLinkUseBrowserFqdn={consumerSafeTimeLagMetrics.metricsLinkUseBrowserFqdn}
+              directUrls={consumerSafeTimeLagMetrics.directURLs}
+            />
+            <MetricsFilter
+              metricsNodeAggregation={consumerSafeTimeLagMetricsNodeAggregation}
+              metricsSplitType={consumerSafeTimeLagMetricsSplitType}
+              metricsSplitMode={consumerSafeTimeLagMetricsSplitMode}
+              metricsSplitCount={consumerSafeTimeLagMetricsSplitCount}
+              metricsSplitTypeOptions={[SplitType.NAMESPACE, SplitType.NONE]}
+              setMetricsNodeAggregation={setConsumerSafeTimeLagMetricsNodeAggregation}
+              setMetricsSplitType={setConsumerSafeTimeLagMetricsSplitType}
+              setMetricsSplitMode={setConsumerSafeTimeLagMetricsSplitMode}
+              setMetricsSplitCount={setConsumerSafeTimeLagMetricsSplitCount}
+            />
+          </Box>
           <ResponsiveContainer width="100%" height="100%" debounce={CHART_RESIZE_DEBOUNCE}>
             <LineChart
-              data={consumerSafeTimeMetrics[MetricName.CONSUMER_SAFE_TIME_LAG].metricData}
+              data={consumerSafeTimeLagMetrics.metricData}
               margin={{
-                top: theme.spacing(2),
+                top: theme.spacing(3),
                 bottom: theme.spacing(2),
                 left: theme.spacing(2),
                 right: theme.spacing(2)
@@ -478,26 +553,24 @@ export const XClusterMetrics = ({ xClusterConfig }: ConfigReplicationLagGraphPro
                 isAnimationActive={false}
               />
               <Legend />
-              {consumerSafeTimeMetrics[MetricName.CONSUMER_SAFE_TIME_LAG].metricTraces.map(
-                (trace, index) => {
-                  const timeSeriesKey = getUniqueTraceId(trace);
-                  const timeSeriesName = getUniqueTraceName(
-                    consumerSafeTimeLagMetricSettings,
-                    trace,
-                    namespaceUuidToNamespace
-                  );
-                  return (
-                    <Line
-                      key={timeSeriesKey}
-                      name={timeSeriesName}
-                      type="linear"
-                      dataKey={timeSeriesKey}
-                      stroke={traceStrokes[index]}
-                      unit=" ms"
-                    />
-                  );
-                }
-              )}
+              {consumerSafeTimeLagMetrics.metricTraces.map((trace, index) => {
+                const timeSeriesKey = getUniqueTraceId(trace);
+                const timeSeriesName = getUniqueTraceName(
+                  consumerSafeTimeLagMetricSettings,
+                  trace,
+                  namespaceUuidToNamespace
+                );
+                return (
+                  <Line
+                    key={timeSeriesKey}
+                    name={timeSeriesName}
+                    type="linear"
+                    dataKey={timeSeriesKey}
+                    stroke={traceStrokes[index]}
+                    unit=" ms"
+                  />
+                );
+              })}
             </LineChart>
           </ResponsiveContainer>
         </Box>
@@ -508,16 +581,29 @@ export const XClusterMetrics = ({ xClusterConfig }: ConfigReplicationLagGraphPro
           width="100%"
           height="600px"
         >
-          <YBMetricGraphTitle
-            title={t('graphTitle.consumerSafeTimeSkew')}
-            metricsLinkUseBrowserFqdn={configReplicationLagMetrics.metricsLinkUseBrowserFqdn}
-            directUrls={configReplicationLagMetrics.directURLs}
-          />
+          <Box display="flex" justifyContent="space-between">
+            <YBMetricGraphTitle
+              title={t('graphTitle.consumerSafeTimeSkew')}
+              metricsLinkUseBrowserFqdn={consumerSafeTimeSkewMetrics.metricsLinkUseBrowserFqdn}
+              directUrls={consumerSafeTimeSkewMetrics.directURLs}
+            />
+            <MetricsFilter
+              metricsNodeAggregation={consumerSafeTimeSkewMetricsNodeAggregation}
+              metricsSplitType={consumerSafeTimeSkewMetricsSplitType}
+              metricsSplitMode={consumerSafeTimeSkewMetricsSplitMode}
+              metricsSplitCount={consumerSafeTimeSkewMetricsSplitCount}
+              metricsSplitTypeOptions={[SplitType.NAMESPACE, SplitType.NONE]}
+              setMetricsNodeAggregation={setConsumerSafeTimeSkewMetricsNodeAggregation}
+              setMetricsSplitType={setConsumerSafeTimeSkewMetricsSplitType}
+              setMetricsSplitMode={setConsumerSafeTimeSkewMetricsSplitMode}
+              setMetricsSplitCount={setConsumerSafeTimeSkewMetricsSplitCount}
+            />
+          </Box>
           <ResponsiveContainer width="100%" height="100%" debounce={CHART_RESIZE_DEBOUNCE}>
             <LineChart
-              data={consumerSafeTimeMetrics[MetricName.CONSUMER_SAFE_TIME_SKEW].metricData}
+              data={consumerSafeTimeSkewMetrics.metricData}
               margin={{
-                top: theme.spacing(2),
+                top: theme.spacing(3),
                 bottom: theme.spacing(2),
                 left: theme.spacing(2),
                 right: theme.spacing(2)
@@ -538,26 +624,24 @@ export const XClusterMetrics = ({ xClusterConfig }: ConfigReplicationLagGraphPro
                 isAnimationActive={false}
               />
               <Legend />
-              {consumerSafeTimeMetrics[MetricName.CONSUMER_SAFE_TIME_SKEW].metricTraces.map(
-                (trace, index) => {
-                  const timeSeriesKey = getUniqueTraceId(trace);
-                  const timeSeriesName = getUniqueTraceName(
-                    consumerSafeTimeSkewMetricSettings,
-                    trace,
-                    namespaceUuidToNamespace
-                  );
-                  return (
-                    <Line
-                      key={timeSeriesKey}
-                      name={timeSeriesName}
-                      type="linear"
-                      dataKey={timeSeriesKey}
-                      stroke={traceStrokes[index]}
-                      unit=" ms"
-                    />
-                  );
-                }
-              )}
+              {consumerSafeTimeSkewMetrics.metricTraces.map((trace, index) => {
+                const timeSeriesKey = getUniqueTraceId(trace);
+                const timeSeriesName = getUniqueTraceName(
+                  consumerSafeTimeSkewMetricSettings,
+                  trace,
+                  namespaceUuidToNamespace
+                );
+                return (
+                  <Line
+                    key={timeSeriesKey}
+                    name={timeSeriesName}
+                    type="linear"
+                    dataKey={timeSeriesKey}
+                    stroke={traceStrokes[index]}
+                    unit=" ms"
+                  />
+                );
+              })}
             </LineChart>
           </ResponsiveContainer>
         </Box>

@@ -25,6 +25,8 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
+DECLARE_bool(TEST_yb_enable_ash);
+
 namespace yb {
 namespace rpc {
 
@@ -82,6 +84,14 @@ LocalYBInboundCall::LocalYBInboundCall(
     CoarseTimePoint deadline)
     : YBInboundCall(rpc_metrics, remote_method), outbound_call_(outbound_call),
       deadline_(deadline) {
+  if (wait_state_) {
+    wait_state_->UpdateMetadata({.rpc_request_id = reinterpret_cast<int64_t>(this)});
+    wait_state_->set_client_host_port(HostPort(remote_address()));
+    wait_state_->UpdateAuxInfo({.method = method_name().ToBuffer()});
+  } else {
+    LOG_IF(ERROR, GetAtomicFlag(&FLAGS_TEST_yb_enable_ash))
+        << "Wait state is nullptr for " << ToString();
+  }
 }
 
 const Endpoint& LocalYBInboundCall::remote_address() const {

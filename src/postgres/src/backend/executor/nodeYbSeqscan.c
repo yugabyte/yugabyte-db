@@ -204,9 +204,8 @@ YbSeqNext(YbSeqScanState *node)
 
 		/* capture all fetch allocations in the short-lived context */
 		oldcontext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
-		slot = ybFetchNext(ybScan->handle,
-						   slot,
-						   RelationGetRelid(node->ss.ss_currentRelation));
+		ybFetchNext(ybScan->handle, slot,
+					RelationGetRelid(node->ss.ss_currentRelation));
 		MemoryContextSwitchTo(oldcontext);
 
 		/*

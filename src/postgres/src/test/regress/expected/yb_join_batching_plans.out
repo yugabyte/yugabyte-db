@@ -525,15 +525,16 @@ analyze q1;
 analyze q2;
 -- Make sure a sort node is inserted above a batched NL join when appropriate
 explain (costs off) select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
-                 QUERY PLAN
---------------------------------------------
+                               QUERY PLAN
+-------------------------------------------------------------------------
  Limit
-   ->  Nested Loop
+   ->  YB Batched Nested Loop Join
          Join Filter: (q1.c2 = q2.c2)
+         Sort Keys: q1.c1
          ->  Index Scan using q1_pkey on q1
-         ->  Materialize
-               ->  Seq Scan on q2
-(6 rows)
+         ->  Index Scan using q2_pkey on q2
+               Index Cond: (c2 = ANY (ARRAY[q1.c2, $1, $2, ..., $1023]))
+(7 rows)
 
 create table q3(a int, b int, c name, primary key(a,b));
 create index q3_range on q3(a asc);

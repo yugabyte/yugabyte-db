@@ -63,12 +63,18 @@ DEFINE_RUNTIME_int32(rpc_slow_query_threshold_ms, 10000,
     "Traces for calls that take longer than this threshold (in ms) are logged");
 TAG_FLAG(rpc_slow_query_threshold_ms, advanced);
 
+DECLARE_bool(TEST_yb_enable_ash);
+
 namespace yb {
 namespace rpc {
 
 InboundCall::InboundCall(ConnectionPtr conn, RpcMetrics* rpc_metrics,
                          CallProcessedListener* call_processed_listener)
-    : trace_holder_(Trace::MaybeGetNewTrace()),
+    : wait_state_(
+          GetAtomicFlag(&FLAGS_TEST_yb_enable_ash)
+              ? std::make_shared<ash::WaitStateInfo>(ash::AshMetadata{})
+              : nullptr),
+      trace_holder_(Trace::MaybeGetNewTrace()),
       trace_(trace_holder_.get()),
       conn_(std::move(conn)),
       rpc_metrics_(rpc_metrics ? rpc_metrics : &conn_->rpc_metrics()),
@@ -76,6 +82,7 @@ InboundCall::InboundCall(ConnectionPtr conn, RpcMetrics* rpc_metrics,
   TRACE_TO(trace(), "Created InboundCall");
   IncrementCounter(rpc_metrics_->inbound_calls_created);
   IncrementGauge(rpc_metrics_->inbound_calls_alive);
+  SET_WAIT_STATUS_TO(wait_state_, OnCpu_Passive);
 }
 
 InboundCall::~InboundCall() {
@@ -92,6 +99,7 @@ InboundCall::~InboundCall() {
 }
 
 void InboundCall::NotifyTransferred(const Status& status, const ConnectionPtr& /*conn*/) {
+  SET_WAIT_STATUS_TO(wait_state_, Rpc_Done);
   if (status.ok()) {
     TRACE_TO(trace(), "Transfer finished");
   } else {
@@ -211,6 +219,7 @@ void InboundCall::QueueResponse(bool is_success) {
   } else {
     LOG_WITH_PREFIX(DFATAL) << "Response already queued";
   }
+  SET_WAIT_STATUS_TO(wait_state_, OnCpu_Passive);
 }
 
 std::string InboundCall::LogPrefix() const {

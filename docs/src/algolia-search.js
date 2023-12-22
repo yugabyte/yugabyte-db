@@ -356,7 +356,11 @@ import algoliasearch from 'algoliasearch';
   addSearchEvents();
 
   document.addEventListener('keydown', (event) => {
-    if (event.code === 'Slash' || event.code === 'NumpadDivide') {
+    if (event.target.nodeName === 'TEXTAREA') {
+      return;
+    }
+
+    if (event.key === '/' || event.code === 'NumpadDivide') {
       document.querySelector('body').classList.add('search-focus');
       if (searchURLParameter('query')) {
         searchInput.setAttribute('value', searchURLParameter('query'));

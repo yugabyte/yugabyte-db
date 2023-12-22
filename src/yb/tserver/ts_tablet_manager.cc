@@ -43,6 +43,8 @@
 #include <boost/container/static_vector.hpp>
 #include <boost/optional/optional.hpp>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/client/client.h"
 #include "yb/client/meta_data_cache.h"
 #include "yb/client/transaction_manager.h"
@@ -278,6 +280,9 @@ DEFINE_UNKNOWN_int32(flush_retryable_requests_pool_max_threads, -1,
 
 DEFINE_test_flag(bool, disable_flush_on_shutdown, false,
                  "Whether to disable flushing memtable on shutdown.");
+
+DEFINE_test_flag(bool, pause_delete_tablet, false,
+                 "Make DeletTablet stuck.");
 
 DECLARE_bool(enable_wait_queues);
 DECLARE_bool(disable_deadlock_detection);
@@ -854,6 +859,7 @@ Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
     const bool colocated,
     const std::vector<SnapshotScheduleId>& snapshot_schedules,
     const std::unordered_set<StatefulServiceKind>& hosted_services) {
+  SCOPED_WAIT_STATUS(CreatingNewTablet);
   if (state() != MANAGER_RUNNING) {
     return STATUS_FORMAT(IllegalState, "Manager is not running: $0", state());
   }
@@ -1478,6 +1484,7 @@ Status TSTabletManager::DeleteTablet(
     bool hide_only,
     bool keep_data,
     boost::optional<TabletServerErrorPB::Code>* error_code) {
+  TEST_PAUSE_IF_FLAG(TEST_pause_delete_tablet);
 
   if (delete_type != TABLET_DATA_DELETED && delete_type != TABLET_DATA_TOMBSTONED) {
     return STATUS(InvalidArgument, "DeleteTablet() requires an argument that is one of "
@@ -2541,14 +2548,6 @@ Status TSTabletManager::DoHandleNonReadyTabletOnStartup(
     RETURN_NOT_OK(DeleteTabletData(meta, data_state, fs_manager_->uuid(), yb::OpId()));
   }
 
-  // We only delete the actual superblock of a TABLET_DATA_DELETED tablet on startup.
-  // TODO: Consider doing this after a fixed delay, instead of waiting for a restart.
-  // See KUDU-941.
-  if (data_state == TABLET_DATA_DELETED) {
-    LOG(INFO) << kLogPrefix << "Deleting tablet superblock";
-    return meta->DeleteSuperBlock();
-  }
-
   // Register TOMBSTONED tablets and mark dirty so that they get reported to the Master,
   // which allows us to permanently delete replica tombstones when a table gets deleted.
   if (data_state == TABLET_DATA_TOMBSTONED) {
@@ -3137,8 +3136,7 @@ Status DeleteTabletData(const RaftGroupMetadataPtr& meta,
   // Only TABLET_DATA_DELETED tablets get this far.
   RETURN_NOT_OK(ConsensusMetadata::DeleteOnDiskData(meta->fs_manager(), meta->raft_group_id()));
   MAYBE_FAULT(FLAGS_TEST_fault_crash_after_cmeta_deleted);
-
-  return Status::OK();
+  return meta->DeleteSuperBlock();
 }
 
 void LogAndTombstone(const RaftGroupMetadataPtr& meta,

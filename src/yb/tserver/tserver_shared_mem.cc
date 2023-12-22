@@ -54,6 +54,95 @@ std::chrono::system_clock::time_point ToSystem(CoarseTimePoint tp) {
   return base + std::chrono::duration_cast<SystemClock::duration>(tp.time_since_epoch());
 }
 
+#if defined(BOOST_INTERPROCESS_POSIX_PROCESS_SHARED)
+class Semaphore {
+ public:
+  explicit Semaphore(unsigned int initial_count) {
+    int ret = sem_init(&impl_, 1, initial_count);
+    CHECK_NE(ret, -1);
+  }
+
+  Semaphore(const Semaphore&) = delete;
+  void operator=(const Semaphore&) = delete;
+
+  ~Semaphore() {
+    CHECK_EQ(sem_destroy(&impl_), 0);
+  }
+
+  Status Post() {
+    return ResToStatus(sem_post(&impl_), "Post");
+  }
+
+  Status Wait() {
+    return ResToStatus(sem_wait(&impl_), "Wait");
+  }
+
+  template<class TimePoint>
+  Status TimedWait(const TimePoint &abs_time) {
+    // Posix does not support infinity absolute time so handle it here
+    if (boost::interprocess::ipcdetail::is_pos_infinity(abs_time)) {
+      return Wait();
+    }
+
+    auto tspec = boost::interprocess::ipcdetail::timepoint_to_timespec(abs_time);
+    int res = sem_timedwait(&impl_, &tspec);
+    if (res == 0) {
+      return Status::OK();
+    }
+    if (res > 0) {
+      // buggy glibc, copy the returned error code to errno
+      errno = res;
+    }
+    if (errno == ETIMEDOUT) {
+      static const Status timed_out_status = STATUS(TimedOut, "Timed out waiting semaphore");
+      return timed_out_status;
+    }
+    if (errno == EINTR) {
+      return Status::OK();
+    }
+    return ResToStatus(res, "TimedWait");
+  }
+
+ private:
+  static Status ResToStatus(int res, const char* op) {
+    if (res == 0) {
+      return Status::OK();
+    }
+    return STATUS_FORMAT(RuntimeError, "$0 on semaphore failed: $1", op, errno);
+  }
+
+  sem_t impl_;
+};
+#else
+class Semaphore {
+ public:
+  explicit Semaphore(unsigned int initial_count) : impl_(initial_count) {
+  }
+
+  Status Post() {
+    impl_.post();
+    return Status::OK();
+  }
+
+  Status Wait() {
+    impl_.wait();
+    return Status::OK();
+  }
+
+  template<class TimePoint>
+  Status TimedWait(const TimePoint &abs_time) {
+    if (!impl_.timed_wait(abs_time)) {
+      static const Status timed_out_status = STATUS(TimedOut, "Timed out waiting semaphore");
+      return timed_out_status;
+    }
+    return Status::OK();
+  }
+
+ private:
+  boost::interprocess::interprocess_semaphore impl_;
+};
+#endif
+
 YB_DEFINE_ENUM(SharedExchangeState,
                (kIdle)(kRequestSent)(kResponseSent)(kShutdown));
 
@@ -91,8 +180,7 @@ class SharedExchangeHeader {
     }
     state_.store(SharedExchangeState::kRequestSent, std::memory_order_release);
     data_size_ = size;
-    request_semaphore_.post();
-    return Status::OK();
+    return request_semaphore_.Post();
   }
 
   bool ResponseReady() {
@@ -115,7 +203,7 @@ class SharedExchangeHeader {
 
     data_size_ = size;
     state_.store(SharedExchangeState::kResponseSent, std::memory_order_release);
-    response_semaphore_.post();
+    WARN_NOT_OK(response_semaphore_.Post(), "Respond failed");
   }
 
   Result<size_t> Poll() {
@@ -127,36 +215,33 @@ class SharedExchangeHeader {
 
   void SignalStop() {
     state_.store(SharedExchangeState::kShutdown, std::memory_order_release);
-    request_semaphore_.post();
+    WARN_NOT_OK(request_semaphore_.Post(), "SignalStop failed");
   }
 
  private:
   Status DoWait(
       SharedExchangeState expected_state,
       std::chrono::system_clock::time_point deadline,
-      boost::interprocess::interprocess_semaphore* semaphore) {
+      Semaphore* semaphore) {
     auto state = state_.load(std::memory_order_acquire);
     for (;;) {
       if (state == SharedExchangeState::kShutdown) {
         return STATUS_FORMAT(ShutdownInProgress, "Shutting down shared exchange");
       }
-      if (!semaphore->timed_wait(deadline)) {
-        state = state_.load(std::memory_order_acquire);
-        return STATUS_FORMAT(TimedOut, "Timed out waiting $0, state: $1", expected_state, state);
-      }
+      auto wait_status = semaphore->TimedWait(deadline);
       state = state_.load(std::memory_order_acquire);
       if (state == expected_state) {
         return Status::OK();
       }
-      if (state != SharedExchangeState::kShutdown) {
-        return STATUS_FORMAT(
-            IllegalState, "Wait finished in wrong state: $0, expected: $1", state, expected_state);
+      if (wait_status.IsTimedOut()) {
+        return STATUS_FORMAT(TimedOut, "Timed out waiting $0, state: $1", expected_state, state);
       }
+      RETURN_NOT_OK(wait_status);
     }
   }
 
-  boost::interprocess::interprocess_semaphore request_semaphore_{0};
-  boost::interprocess::interprocess_semaphore response_semaphore_{0};
+  Semaphore request_semaphore_{0};
+  Semaphore response_semaphore_{0};
   std::atomic<SharedExchangeState> state_{SharedExchangeState::kIdle};
   size_t data_size_;
   std::byte data_[0];

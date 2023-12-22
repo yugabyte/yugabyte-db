@@ -24,6 +24,7 @@
 
 #include <boost/algorithm/string/join.hpp>
 
+#include "yb/ash/wait_state.h"
 #include "yb/client/client.h"
 #include "yb/client/transaction_rpc.h"
 #include "yb/common/hybrid_time.h"
@@ -57,6 +58,7 @@
 #include "yb/util/shared_lock.h"
 #include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
+#include "yb/util/trace.h"
 #include "yb/util/unique_lock.h"
 
 DEFINE_RUNTIME_uint64(wait_for_relock_unblocked_txn_keys_ms, 0,
@@ -236,7 +238,8 @@ struct WaiterLockStatusInfo {
 // and are discarded.
 struct WaiterData : public std::enable_shared_from_this<WaiterData> {
   WaiterData(const TransactionId id_, SubTransactionId subtxn_id_, LockBatch* const locks_,
-             uint64_t serial_no_, int64_t txn_start_us_, HybridTime wait_start_,
+             uint64_t serial_no_, int64_t txn_start_us_, uint64_t request_start_us_,
+             HybridTime wq_entry_time_,
              const TabletId& status_tablet_,
              const std::vector<BlockerDataAndConflictInfo> blockers_,
              const WaitDoneCallback callback_,
@@ -248,9 +251,11 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
         locks(locks_),
         serial_no(serial_no_),
         txn_start_us(txn_start_us_),
-        wait_start(wait_start_),
+        request_start_us(request_start_us_),
+        wq_entry_time(wq_entry_time_),
         status_tablet(status_tablet_),
         blockers(std::move(blockers_)),
+        wait_state(ash::WaitStateInfo::CurrentWaitState()),
         callback(std::move(callback_)),
         waiter_registration(std::move(waiter_registration_)),
         finished_waiting_latency_(*finished_waiting_latency),
@@ -270,14 +275,24 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
   LockBatch* const locks;
   const uint64_t serial_no;
   const int64_t txn_start_us;
-  const HybridTime wait_start;
+  // Tracks the time at which the query layer started this request. This remains consistent across
+  // query-layer retries and wait queue re-entries. The field is used to report wait start time in
+  // pg_locks.
+  const uint64_t request_start_us;
+  // Tracks when this WaiterData instance was created, used for periodically resuming waiters
+  // with TimedOut status so as to make them re-do conflict resolution.
+  const HybridTime wq_entry_time;
   const TabletId status_tablet;
   const std::vector<BlockerDataAndConflictInfo> blockers;
+  const ash::WaitStateInfoPtr wait_state;
   const WaitDoneCallback callback;
   std::unique_ptr<ScopedWaitingTxnRegistration> waiter_registration;
 
   void InvokeCallback(const Status& waiter_status, HybridTime resume_ht = HybridTime::kInvalid) {
     VLOG_WITH_PREFIX(4) << "Invoking waiter callback " << waiter_status;
+    ADOPT_WAIT_STATE(wait_state);
+    SET_WAIT_STATUS(OnCpu_Passive);
+    SCOPED_WAIT_STATUS(OnCpu_Active);
     auto status = waiter_status;
     {
       UniqueLock l(mutex_);
@@ -390,7 +405,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
     auto info = WaiterLockStatusInfo {
       .id = id,
       .subtxn_id = subtxn_id,
-      .wait_start = wait_start,
+      .wait_start = HybridTime::FromMicros(request_start_us),
       .locks = unlocked_ ? unlocked_->Get() : LockBatchEntries{},
       .blockers = {},
     };
@@ -410,7 +425,7 @@ struct WaiterData : public std::enable_shared_from_this<WaiterData> {
 
  private:
   int64_t MicrosSinceCreation() const {
-    return GetCurrentTimeMicros() - wait_start.GetPhysicalValueMicros();
+    return GetCurrentTimeMicros() - wq_entry_time.GetPhysicalValueMicros();
   }
 
   scoped_refptr<EventStats>& finished_waiting_latency_;
@@ -878,7 +893,8 @@ class WaitQueue::Impl {
 
   Result<bool> MaybeWaitOnLocks(
       const TransactionId& waiter_txn_id, SubTransactionId subtxn_id, LockBatch* locks,
-      const TabletId& status_tablet_id, uint64_t serial_no, int64_t txn_start_us,
+      const TabletId& status_tablet_id, uint64_t serial_no,
+      int64_t txn_start_us, uint64_t request_start_us,
       WaitDoneCallback callback) {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "waiter_txn_id=" << waiter_txn_id
                                  << " status_tablet_id=" << status_tablet_id;
@@ -908,8 +924,10 @@ class WaitQueue::Impl {
         }
 
         RETURN_NOT_OK(SetupWaiterUnlocked(
-            waiter_txn_id, subtxn_id, locks, status_tablet_id, serial_no, txn_start_us,
+            waiter_txn_id, subtxn_id, locks, status_tablet_id, serial_no,
+            txn_start_us, request_start_us,
             std::move(callback), std::move(blocker_datas), std::move(blockers)));
+        TRACE("pre-wait will block");
         return true;
       } else {
         // It's possible that between checking above with a shared lock and checking again with a
@@ -921,13 +939,16 @@ class WaitQueue::Impl {
       VLOG_WITH_PREFIX_AND_FUNC(4) << "Pre-wait found no blockers for " << waiter_txn_id;
     }
 
+    TRACE("pre-wait no blocks");
     return false;
   }
 
   Status WaitOn(
       const TransactionId& waiter_txn_id, SubTransactionId subtxn_id, LockBatch* locks,
       std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet_id,
-      uint64_t serial_no, int64_t txn_start_us, WaitDoneCallback callback) {
+      uint64_t serial_no, int64_t txn_start_us, uint64_t request_start_us,
+      WaitDoneCallback callback) {
+    TRACE_FUNC();
     AtomicFlagSleepMs(&FLAGS_TEST_sleep_before_entering_wait_queue_ms);
     VLOG_WITH_PREFIX_AND_FUNC(4) << "waiter_txn_id=" << waiter_txn_id
                                  << " blockers=" << *blockers
@@ -992,17 +1013,20 @@ class WaitQueue::Impl {
 
       return SetupWaiterUnlocked(
           waiter_txn_id, subtxn_id, locks, status_tablet_id, serial_no, txn_start_us,
-          std::move(callback), std::move(blocker_datas), std::move(blockers));
+          request_start_us, std::move(callback), std::move(blocker_datas), std::move(blockers));
     }
   }
 
   Status SetupWaiterUnlocked(
       const TransactionId& waiter_txn_id, SubTransactionId subtxn_id, LockBatch* locks,
-      const TabletId& status_tablet_id, uint64_t serial_no, int64_t txn_start_us,
+      const TabletId& status_tablet_id, uint64_t serial_no,
+      int64_t txn_start_us, uint64_t request_start_us,
       WaitDoneCallback callback, std::vector<BlockerDataAndConflictInfo>&& blocker_datas,
       std::shared_ptr<ConflictDataManager> blockers) REQUIRES(mutex_) {
     // TODO(wait-queues): similar to pg, we can wait 1s or so before beginning deadlock detection.
     // See https://github.com/yugabyte/yugabyte-db/issues/13576
+    TRACE_FUNC();
+    SET_WAIT_STATUS(ConflictResolution_WaitOnConflictingTxns);
     auto scoped_reporter = waiting_txn_registry_->Create();
     if (!waiter_txn_id.IsNil()) {
       // If waiter_txn_id is Nil, then we're processing a single-shard transaction. We do not have
@@ -1021,12 +1045,12 @@ class WaitQueue::Impl {
     }
 
     auto waiter_data = std::make_shared<WaiterData>(
-        waiter_txn_id, subtxn_id, locks, serial_no, txn_start_us, clock_->Now(), status_tablet_id,
-        std::move(blocker_datas), std::move(callback), std::move(scoped_reporter), &rpcs_,
-        &finished_waiting_latency_, &in_progress_rpc_status_req_callbacks_);
+        waiter_txn_id, subtxn_id, locks, serial_no, txn_start_us, request_start_us, clock_->Now(),
+        status_tablet_id, std::move(blocker_datas), std::move(callback), std::move(scoped_reporter),
+        &rpcs_, &finished_waiting_latency_, &in_progress_rpc_status_req_callbacks_);
     if (waiter_data->IsSingleShard()) {
       DCHECK(single_shard_waiters_.size() == 0 ||
-             waiter_data->wait_start >= single_shard_waiters_.front()->wait_start);
+             waiter_data->wq_entry_time >= single_shard_waiters_.front()->wq_entry_time);
       single_shard_waiters_.push_front(waiter_data);
     } else {
       waiter_status_[waiter_txn_id] = waiter_data;
@@ -1113,7 +1137,7 @@ class WaitQueue::Impl {
 
     for (const auto& waiter : waiters) {
       auto duration_us =
-          clock_->Now().GetPhysicalValueMicros() - waiter->wait_start.GetPhysicalValueMicros();
+          clock_->Now().GetPhysicalValueMicros() - waiter->wq_entry_time.GetPhysicalValueMicros();
       auto seconds = duration_us * 1us / 1s;
       VLOG_WITH_PREFIX_AND_FUNC(4) << waiter->id << " waiting for " << seconds << " seconds";
       pending_time_waiting_->Increment(duration_us);
@@ -1683,19 +1707,22 @@ WaitQueue::~WaitQueue() = default;
 Status WaitQueue::WaitOn(
     const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
     std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet_id,
-    uint64_t serial_no, int64_t txn_start_us, WaitDoneCallback callback) {
+    uint64_t serial_no, int64_t txn_start_us, uint64_t request_start_us,
+    WaitDoneCallback callback) {
   return impl_->WaitOn(
-      waiter, subtxn_id, locks, std::move(blockers), status_tablet_id, serial_no, txn_start_us,
-      callback);
+      waiter, subtxn_id, locks, std::move(blockers), status_tablet_id, serial_no,
+      txn_start_us, request_start_us, callback);
 }
 
 
 Result<bool> WaitQueue::MaybeWaitOnLocks(
     const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
-    const TabletId& status_tablet_id, uint64_t serial_no, int64_t txn_start_us,
+    const TabletId& status_tablet_id, uint64_t serial_no,
+    int64_t txn_start_us, uint64_t request_start_us,
     WaitDoneCallback callback) {
   return impl_->MaybeWaitOnLocks(
-      waiter, subtxn_id, locks, status_tablet_id, serial_no, txn_start_us, callback);
+      waiter, subtxn_id, locks, status_tablet_id, serial_no,
+      txn_start_us, request_start_us, callback);
 }
 
 void WaitQueue::Poll(HybridTime now) {

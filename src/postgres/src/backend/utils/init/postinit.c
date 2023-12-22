@@ -700,10 +700,11 @@ InitPostgresImpl(const char *in_dbname, Oid dboid, const char *username,
 		YBInitPostgresBackend("postgres", in_dbname, username, session_id);
 
 	/*
-	 * Set client_addr and client_host which will remain constant
-	 * throughout the session.
+	 * Set client_addr and client_host in ASH metadata which will remain
+	 * constant throughout the session. We don't want to do this during
+	 * bootstrap because it won't have client address anyway.
 	 */
-	if (IsYugaByteEnabled() && YBEnableAsh())
+	if (IsYugaByteEnabled() && YBEnableAsh() && !bootstrap)
 		YbSetAshClientAddrAndPort();
 
 	if (IsYugaByteEnabled() && !bootstrap)
@@ -1391,11 +1392,19 @@ ThereIsAtLeastOneRole(void)
  * pg_getnameinfo_all returns non-zero value, a warning is printed with the error
  * code and ASH keeps working without client address and port for the current PG
  * backend.
+ *
+ * ASH samples only normal backends and this excludes background workers.
+ * So it's fine in that case to not set the client address.
  */
 static void
 YbSetAshClientAddrAndPort()
 {
-	Assert(MyProcPort != NULL);
+	/* Background workers which creates a postgres backend may have null MyProcPort. */
+	if (MyProcPort == NULL)
+	{
+		Assert(MyProc->isBackgroundWorker == true);
+		return;
+	}
 
 	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
 
