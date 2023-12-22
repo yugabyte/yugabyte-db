@@ -322,8 +322,7 @@ public class AppInit {
 
         if (confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorEnabled)) {
           if (!HighAvailabilityConfig.isFollower()) {
-            kubernetesOperator.init(
-                confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace));
+            kubernetesOperator.init();
           } else {
             log.info("Detected follower instance, not initializing kubernetes operator");
           }
