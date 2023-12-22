@@ -76,3 +76,5 @@ extern void YbHandleSetSessionParam(int yb_client_id);
 extern void YbCreateClientId();
 
 extern void YbSetUserContext(const Oid roleid, const bool is_superuser, const char *rname);
+
+extern void YbSendFatalForLogicalConnectionPacket();
