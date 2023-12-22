@@ -2513,6 +2513,7 @@ components:
       type: object
     ConnectionStatsItem:
       properties:
+      # GH #19722 : Structure of Ysql Connection Manager stats have changed.
         pool:
           type: string
         active_logical_connections:

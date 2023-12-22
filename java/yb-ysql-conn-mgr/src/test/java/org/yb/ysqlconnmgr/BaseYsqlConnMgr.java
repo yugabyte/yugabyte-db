@@ -32,7 +32,7 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
 
   protected String getHbaConf()
   {
-    return "host all all all trust, local all yugabyte trust";
+    return "host all all all trust, local all all trust";
   }
 
   @Override
