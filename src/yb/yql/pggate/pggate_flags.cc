@@ -80,6 +80,9 @@ DEPRECATE_FLAG(bool, ysql_enable_update_batching, "10_2022");
 DEFINE_UNKNOWN_bool(ysql_suppress_unsupported_error, false,
             "Suppress ERROR on use of unsupported SQL statement and use WARNING instead");
 
+DEFINE_NON_RUNTIME_bool(ysql_suppress_unsafe_alter_notice, false,
+    "Suppress NOTICE on use of unsafe ALTER statements");
+
 DEFINE_UNKNOWN_int32(ysql_sequence_cache_minval, 100,
              "Set how many sequence numbers to be preallocated in cache.");
 

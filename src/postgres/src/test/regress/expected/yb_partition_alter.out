@@ -35,6 +35,18 @@ SELECT * FROM root_list_parent;
 ALTER TABLE root_list_parent ADD COLUMN foo text not null; -- fails due to not null constraint
 ERROR:  column "foo" contains null values
 ALTER TABLE root_list_parent ADD COLUMN foo text not null DEFAULT 'abc'; -- passes
+NOTICE:  adding a column with a default value may lead to inconsistencies
+DETAIL:  Existing rows are not backfilled with the default value.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/4415. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+NOTICE:  adding a column with a default value may lead to inconsistencies
+DETAIL:  Existing rows are not backfilled with the default value.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/4415. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+NOTICE:  adding a column with a default value may lead to inconsistencies
+DETAIL:  Existing rows are not backfilled with the default value.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/4415. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+NOTICE:  adding a column with a default value may lead to inconsistencies
+DETAIL:  Existing rows are not backfilled with the default value.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/4415. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 -- Rename a column belonging to the parent table.
 ALTER TABLE root_list_parent RENAME COLUMN list_part_key TO list_part_key_renamed;
 -- Note: Incorrect output here for 'foo' because of #9970.

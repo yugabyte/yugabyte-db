@@ -763,6 +763,9 @@ COMMENT ON COLUMN ft1.c1 IS 'foreign column';
 COMMENT ON COLUMN ft1.c1 IS NULL;
 ALTER FOREIGN TABLE ft1 ADD COLUMN c4 integer;
 ALTER FOREIGN TABLE ft1 ADD COLUMN c5 integer DEFAULT 0;
+NOTICE:  adding a column with a default value may lead to inconsistencies
+DETAIL:  Existing rows are not backfilled with the default value.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/4415. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ALTER FOREIGN TABLE ft1 ADD COLUMN c6 integer;
 ALTER FOREIGN TABLE ft1 ADD COLUMN c7 integer NOT NULL;
 ALTER FOREIGN TABLE ft1 ADD COLUMN c8 integer;
@@ -1508,6 +1511,9 @@ FDW options: (delimiter ',', quote '"', "be quoted" 'value')
 -- add attributes recursively
 ALTER TABLE fd_pt1 ADD COLUMN c4 integer;
 ALTER TABLE fd_pt1 ADD COLUMN c5 integer DEFAULT 0;
+NOTICE:  adding a column with a default value may lead to inconsistencies
+DETAIL:  Existing rows are not backfilled with the default value.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/4415. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ALTER TABLE fd_pt1 ADD COLUMN c6 integer;
 ALTER TABLE fd_pt1 ADD COLUMN c7 integer NOT NULL;
 ALTER TABLE fd_pt1 ADD COLUMN c8 integer;

@@ -17,6 +17,9 @@ COMMENT ON TABLE attmp IS NULL;
 ALTER TABLE attmp ADD COLUMN xmin integer; -- fails
 ERROR:  column name "xmin" conflicts with a system column name
 ALTER TABLE attmp ADD COLUMN a int4 default 3;
+NOTICE:  adding a column with a default value may lead to inconsistencies
+DETAIL:  Existing rows are not backfilled with the default value.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/4415. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ALTER TABLE attmp ADD COLUMN b name;
 ALTER TABLE attmp ADD COLUMN c text;
 ALTER TABLE attmp ADD COLUMN d float8;

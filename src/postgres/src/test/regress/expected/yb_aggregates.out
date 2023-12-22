@@ -137,7 +137,13 @@ CREATE TABLE digit(k INT PRIMARY KEY, v TEXT NOT NULL);
 INSERT INTO digit VALUES(1, 'one'), (2, 'two'), (3, 'three'), (4, 'four'), (5, 'five'), (6, 'six');
 CREATE TABLE test(k INT PRIMARY KEY);
 ALTER TABLE test ADD v1 int DEFAULT 5;
+NOTICE:  adding a column with a default value may lead to inconsistencies
+DETAIL:  Existing rows are not backfilled with the default value.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/4415. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 ALTER TABLE test ADD v2 int DEFAULT 10;
+NOTICE:  adding a column with a default value may lead to inconsistencies
+DETAIL:  Existing rows are not backfilled with the default value.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/4415. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 INSERT INTO test VALUES(1), (2), (3);
 SELECT COUNT(*) FROM test;
  count

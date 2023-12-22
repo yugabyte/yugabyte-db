@@ -5991,6 +5991,18 @@ ATExecAddColumn(List **wqueue, AlteredTableInfo *tab, Relation rel,
 		 */
 		if (!rawEnt->missingMode)
 			tab->rewrite |= AT_REWRITE_DEFAULT_VAL;
+		else if (!YBSuppressUnsafeAlterNotice())
+		{
+			ereport(NOTICE,
+					(errmsg("adding a column with a default value may lead to"
+							" inconsistencies"),
+					 errdetail("Existing rows are not backfilled with the"
+							   " default value."),
+					 errhint("See https://github.com/yugabyte/yugabyte-db/issues/4415."
+							 " Set 'ysql_suppress_unsafe_alter_notice'"
+							 " yb-tserver gflag to true to suppress this"
+							 " notice.")));
+		}
 	}
 
 	/*
@@ -7782,6 +7794,16 @@ YBCloneRelationSetPrimaryKey(Relation old_rel, IndexStmt* stmt, ObjectAddress* r
 	if (old_rel->rd_rel->relhassubclass)
 		elog(ERROR, "changing primary key of a table having children tables "
 		            "is not yet implemented");
+
+	if (!YBSuppressUnsafeAlterNotice())
+		ereport(NOTICE,
+				(errmsg("table rewrite may lead to inconsistencies"),
+				 errdetail("Concurrent DMLs may not be reflected in the new"
+						   " table."),
+				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/"
+						 "19860. Set 'ysql_suppress_unsafe_alter_notice'"
+						 " yb-tserver gflag to true to suppress this"
+						 " notice.")));
 
 	YbGetTableProperties(old_rel); /* Force lazy loading */
 

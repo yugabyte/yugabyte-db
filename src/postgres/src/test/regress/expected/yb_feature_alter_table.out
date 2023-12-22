@@ -275,24 +275,36 @@ drop table atacc1;
 -- test dropping primary key constraints
 CREATE TABLE with_simple_pk_i (i int PRIMARY KEY);
 ALTER TABLE with_simple_pk_i DROP CONSTRAINT with_simple_pk_i_pkey;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 INSERT INTO with_simple_pk_i VALUES (1);
 INSERT INTO with_simple_pk_i VALUES (1);
 DROP TABLE with_simple_pk_i;
 --
 CREATE TABLE with_simple_pk_ij (i int, j int, PRIMARY KEY(i, j));
 ALTER TABLE with_simple_pk_ij DROP CONSTRAINT with_simple_pk_ij_pkey;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 INSERT INTO with_simple_pk_ij VALUES (1, 1);
 INSERT INTO with_simple_pk_ij VALUES (1, 1);
 DROP TABLE with_simple_pk_ij;
 --
 CREATE TABLE with_named_pk_i (i int CONSTRAINT named_pk_i PRIMARY KEY);
 ALTER TABLE with_named_pk_i DROP CONSTRAINT named_pk_i;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 INSERT INTO with_named_pk_i VALUES (1);
 INSERT INTO with_named_pk_i VALUES (1);
 DROP TABLE with_named_pk_i;
 --
 CREATE TABLE with_named_pk_ij (i int, j int, CONSTRAINT named_pk_ij PRIMARY KEY (i HASH, j ASC));
 ALTER TABLE with_named_pk_ij DROP CONSTRAINT named_pk_ij;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 INSERT INTO with_named_pk_ij VALUES (1, 1);
 INSERT INTO with_named_pk_ij VALUES (1, 1);
 DROP TABLE with_named_pk_ij;
@@ -836,6 +848,9 @@ INSERT INTO foobar VALUES ('key', 'value');
 ALTER TABLE foobar ADD COLUMN v2 text not null; -- fails due to not null constraint
 ERROR:  column "v2" contains null values
 ALTER TABLE foobar ADD COLUMN v2 text not null DEFAULT 'abc'; -- passes
+NOTICE:  adding a column with a default value may lead to inconsistencies
+DETAIL:  Existing rows are not backfilled with the default value.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/4415. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 DROP TABLE foobar;
 --
 -- Check that attaching or detaching a partitioned partition correctly leads

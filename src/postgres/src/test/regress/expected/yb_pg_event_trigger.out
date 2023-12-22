@@ -330,6 +330,9 @@ NOTICE:  Event Trigger for drop
 ALTER TABLE evttrig.one ALTER COLUMN col_b DROP DEFAULT;
 NOTICE:  Event Trigger for drop
 ALTER TABLE evttrig.one DROP CONSTRAINT one_pkey;
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 NOTICE:  Event Trigger for drop
 NOTICE:  Event Trigger for drop
 DROP INDEX evttrig.one_idx;
@@ -369,6 +372,9 @@ insert into rewriteme
 alter table rewriteme alter column foo type numeric;
 ERROR:  This ALTER TABLE command is not yet supported.
 alter table rewriteme add column baz int default 0;
+NOTICE:  adding a column with a default value may lead to inconsistencies
+DETAIL:  Existing rows are not backfilled with the default value.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/4415. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
 -- test with more than one reason to rewrite a single table
 CREATE OR REPLACE FUNCTION test_evtrig_no_rewrite() RETURNS event_trigger
 LANGUAGE plpgsql AS $$

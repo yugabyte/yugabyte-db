@@ -79,6 +79,11 @@ extern bool YBIsUsingYBParser();
 extern int YBUnsupportedFeatureSignalLevel();
 
 /**
+ * Returns whether unsafe ALTER notice should be suppressed.
+ */
+extern bool YBSuppressUnsafeAlterNotice();
+
+/**
  * Returns whether non-transactional COPY gflag is enabled.
  */
 extern bool YBIsNonTxnCopyEnabled();
