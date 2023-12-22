@@ -107,11 +107,9 @@ You can configure access control for the GCS bucket as follows:
 
 Google Kubernetes Engine (GKE) uses a concept known as "Workload Identity" to provide a secure way to allow a Kubernetes service account (KSA) in your GKE cluster to act as an IAM service account so that your Kubernetes universes can access GCS for backups.
 
-In GKE, each pod can be associated with a KSA. The KSA is used to authenticate and authorize the pod to interact with other Google Cloud services.
+In GKE, each pod can be associated with a KSA. The KSA is used to authenticate and authorize the pod to interact with other Google Cloud services. An IAM service account is a Google Cloud resource that allows applications to make authorized calls to Google Cloud APIs.
 
-An IAM service account is a Google Cloud resource that allows applications to make authorized calls to Google Cloud APIs.
-
-Workload Identity links a KSA to a GCS account using annotations in the KSA. Pods that use the configured KSA automatically authenticate as the IAM service account when accessing Google Cloud APIs.
+Workload Identity links a KSA to an IAM account using annotations in the KSA. Pods that use the configured KSA automatically authenticate as the IAM service account when accessing Google Cloud APIs.
 
 By using Workload Identity, you avoid the need for manually managing service account keys or tokens in your applications running on GKE. This approach enhances security and simplifies the management of credentials.
 
