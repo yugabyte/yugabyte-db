@@ -2656,7 +2656,9 @@ public class NodeManager extends DevopsBase {
           ImageBundle.getDefaultForProvider(nodeTaskParam.getProvider().getUuid());
       if (bundles.size() > 0) {
         ImageBundle bundle = ImageBundleUtil.getDefaultBundleForUniverse(arch, bundles);
-        imageBundleUUID = bundle.getUuid();
+        if (bundle != null) {
+          imageBundleUUID = bundle.getUuid();
+        }
       }
     }
 

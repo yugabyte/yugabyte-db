@@ -15,7 +15,10 @@ import {
   getUniverseStatusIcon
 } from '../../../../universes/helpers/universeHelpers';
 import { UniverseAlertBadge } from '../../../../universes/YBUniverseItem/UniverseAlertBadge';
+import { ImageBundleDefaultTag, ImageBundleYBActiveTag, getImageBundleUsedByUniverse } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
 import { ClusterPill } from '../../components/ClusterPill';
+import { YBProvider } from '../../types';
+import { ImageBundleType } from '../../../../../redesign/features/universe/universe-form/utils/dto';
 
 import styles from './UniverseTable.module.scss';
 
@@ -25,9 +28,10 @@ export interface UniverseItem extends Universe {
 
 interface UniverseTableProps {
   linkedUniverses: UniverseItem[];
+  providerConfig: YBProvider;
 }
 
-export const UniverseTable = ({ linkedUniverses }: UniverseTableProps) => {
+export const UniverseTable = ({ linkedUniverses, providerConfig }: UniverseTableProps) => {
   return (
     <div className={styles.bootstrapTableContainer}>
       <BootstrapTable tableContainerClass={styles.bootstrapTable} data={linkedUniverses}>
@@ -40,6 +44,13 @@ export const UniverseTable = ({ linkedUniverses }: UniverseTableProps) => {
           Universe
         </TableHeaderColumn>
         <TableHeaderColumn dataFormat={formatUniverseStatus}>Universe Status</TableHeaderColumn>
+        <TableHeaderColumn dataFormat={(_, row) => {
+          return formatLinuxVersion(row, providerConfig);
+        }}>Linux Version</TableHeaderColumn>
+        <TableHeaderColumn dataFormat={(_, row) => {
+          return <div className={styles.alertBadge}><UniverseAlertBadge universeUUID={row.universeUUID} listView /></div>;
+        }}
+          dataAlign='center' />
         <TableHeaderColumn dataFormat={formatUniverseActions} />
       </BootstrapTable>
     </div>
@@ -66,7 +77,6 @@ const formatUniverseStatus = (_: unknown, row: UniverseItem) => {
         {getUniverseStatusIcon(state)}
         <span>{state.text}</span>
       </div>
-      <UniverseAlertBadge universeUUID={row.universeUUID} listView />
     </div>
   );
 };
@@ -74,3 +84,13 @@ const formatUniverseStatus = (_: unknown, row: UniverseItem) => {
 const formatUniverseActions = (_: unknown, row: UniverseItem) => (
   <Link to={`/universes/${row.universeUUID}`}>Open Universe</Link>
 );
+
+const formatLinuxVersion = (row: UniverseItem, providerConfig: YBProvider) => {
+  const imageBundle = getImageBundleUsedByUniverse(row.universeDetails, [providerConfig]);
+  if (!imageBundle) return '';
+  return <div className={styles.universeLinuxVersion}>
+    {imageBundle.name.length > 20 ? `${imageBundle.name.substring(0, 20)}...` : imageBundle.name}
+    {imageBundle.metadata?.type === ImageBundleType.YBA_ACTIVE && (<ImageBundleYBActiveTag />)}
+    {imageBundle.useAsDefault && <ImageBundleDefaultTag />}
+  </div>;
+};

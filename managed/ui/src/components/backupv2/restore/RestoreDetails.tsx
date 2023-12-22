@@ -26,7 +26,6 @@ import { IRestore, Restore_States } from '../common/IRestore';
 import { RestoreContextMethods, RestoreDetailsContext } from './RestoreContext';
 import { TableType } from '../../../redesign/helpers/dtos';
 import ArrowRight from '../components/restore/icons/RightArrowCircled.svg';
-import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
 import { useToggle } from 'react-use';
 import clsx from 'clsx';
 

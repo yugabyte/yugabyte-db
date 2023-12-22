@@ -154,7 +154,7 @@ public class ImageBundleUtil {
           defaultBundles.stream()
               .filter(bundle -> bundle.getDetails().getArch().equals(arch))
               .findFirst()
-              .get();
+              .orElse(null);
     }
 
     return defaultBundle;

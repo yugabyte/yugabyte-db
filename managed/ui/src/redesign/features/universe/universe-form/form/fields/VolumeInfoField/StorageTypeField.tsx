@@ -16,7 +16,8 @@ import {
   DEVICE_INFO_FIELD,
   MASTER_DEVICE_INFO_FIELD,
   PROVIDER_FIELD,
-  INSTANCE_TYPE_FIELD
+  INSTANCE_TYPE_FIELD,
+  CPU_ARCHITECTURE_FIELD
 } from '../../../utils/constants';
 
 const useStyles = makeStyles((theme) => ({
@@ -42,6 +43,7 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disableStorageType
   const masterFieldValue = useWatch({ name: MASTER_DEVICE_INFO_FIELD });
   const provider = useWatch({ name: PROVIDER_FIELD });
   const instanceType = useWatch({ name: INSTANCE_TYPE_FIELD });
+  const cpuArch = useWatch({ name: CPU_ARCHITECTURE_FIELD });
   const { setValue } = useFormContext<UniverseFormData>();
 
   //field actions
@@ -88,8 +90,8 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disableStorageType
 
   //get instance details
   const { data: instanceTypes } = useQuery(
-    [QUERY_KEY.getInstanceTypes, provider?.uuid],
-    () => api.getInstanceTypes(provider?.uuid),
+    [QUERY_KEY.getInstanceTypes, provider?.uuid, cpuArch],
+    () => api.getInstanceTypes(provider?.uuid, [], cpuArch),
     { enabled: !!provider?.uuid }
   );
 

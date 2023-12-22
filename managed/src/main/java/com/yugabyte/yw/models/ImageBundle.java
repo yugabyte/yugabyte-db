@@ -235,6 +235,7 @@ public class ImageBundle extends Model {
     ImageBundle defaultBundle = ImageBundleUtil.getDefaultBundleForUniverse(arch, defaultBundles);
     for (Cluster cluster : universe.getUniverseDetails().clusters) {
       if (cluster.userIntent.imageBundleUUID == null
+          && defaultBundle != null
           && imageBundleUUID.equals(defaultBundle.getUuid())) {
         return true;
       } else if (cluster.userIntent.imageBundleUUID != null

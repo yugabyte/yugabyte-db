@@ -73,7 +73,10 @@ import {
   ImageBundle
 } from '../../types';
 import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { constructImageBundlePayload } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
+import { CloudType } from '../../../../../redesign/helpers/dtos';
 
 interface GCPProviderEditFormProps {
   editProvider: EditProvider;
@@ -505,6 +508,7 @@ export const GCPProviderEditForm = ({
                 </FormHelperText>
               )}
             </FieldGroup>
+            <LinuxVersionCatalog control={formMethods.control as any} providerType={CloudType.gcp} viewMode='EDIT' providerStatus={providerConfig.usabilityState} />
             <FieldGroup heading="SSH Key Pairs">
               <FormField>
                 <FieldLabel>SSH User</FieldLabel>
@@ -773,6 +777,8 @@ const constructProviderPayload = async (
       );
     }
   }
+  
+  const imageBundles = constructImageBundlePayload(formValues);
 
   let sshPrivateKeyContent = '';
   try {
@@ -859,7 +865,7 @@ const constructProviderPayload = async (
       ...(formValues.sshPort && { sshPort: formValues.sshPort }),
       ...(formValues.sshUser && { sshUser: formValues.sshUser })
     },
-    imageBundles: formValues.imageBundles,
+    imageBundles,
     regions: [
       ...formValues.regions.map<GCPRegionMutation>((regionFormValues) => {
         const existingRegion = findExistingRegion<GCPProvider, GCPRegion>(

@@ -30,7 +30,8 @@ import {
   MASTER_DEVICE_INFO_FIELD,
   INSTANCE_TYPE_FIELD,
   MASTER_INSTANCE_TYPE_FIELD,
-  MASTER_PLACEMENT_FIELD
+  MASTER_PLACEMENT_FIELD,
+  CPU_ARCHITECTURE_FIELD
 } from '../../../utils/constants';
 
 interface VolumeInfoFieldProps {
@@ -86,6 +87,7 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   const instanceType = isDedicatedMasterField
     ? useWatch({ name: MASTER_INSTANCE_TYPE_FIELD })
     : useWatch({ name: INSTANCE_TYPE_FIELD });
+  const cpuArch = useWatch({ name: CPU_ARCHITECTURE_FIELD });
   const masterPlacement = useWatch({ name: MASTER_PLACEMENT_FIELD });
   const provider = useWatch({ name: PROVIDER_FIELD });
 
@@ -102,8 +104,8 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
 
   //get instance details
   const { data: instanceTypes } = useQuery(
-    [QUERY_KEY.getInstanceTypes, provider?.uuid],
-    () => api.getInstanceTypes(provider?.uuid),
+    [QUERY_KEY.getInstanceTypes, provider?.uuid, cpuArch],
+    () => api.getInstanceTypes(provider?.uuid, [], cpuArch),
     { enabled: !!provider?.uuid }
   );
   const instance = instanceTypes?.find((item) => item.instanceTypeCode === instanceType);
