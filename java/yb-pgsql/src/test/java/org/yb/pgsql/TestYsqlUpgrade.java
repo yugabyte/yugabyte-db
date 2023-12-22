@@ -678,7 +678,6 @@ public class TestYsqlUpgrade extends BasePgSQLTest {
          Statement stmt2 = conn2.createStatement();
          Statement stmt3 = conn2.createStatement()) {
       setSystemRelsModificationGuc(stmt1, true);
-      setAllowNonDdlTxnsGuc(stmt1, true);
 
       String createViewSqlPat =
           "CREATE OR REPLACE VIEW pg_catalog.test_view_to_change"
