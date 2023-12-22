@@ -42,6 +42,8 @@
 #include "utils/guc.h"
 #include "utils/syscache.h"
 
+#include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
+
 #include "yb_ysql_conn_mgr_helper.h"
 
 /* Max size of string that can be stored in shared memory */
@@ -539,8 +541,13 @@ SetSessionParameterFromSharedMemory(key_t client_shmem_key)
 		(struct shmem_session_parameter*) 
 				(shared_memory_ptr + sizeof(struct ysql_conn_mgr_shmem_header));
 
-	/* Set the user context */
+	/*
+	 * Due to "pool per user, db combination" setting the user context
+	 * is not required.
+	 */
+#if YB_YSQL_CONN_MGR_POOL_MODE == POOL_PER_DB
 	YbSetUserContext(shmem_header.user, shmem_header.is_superuser, shmem_header.rolename);
+#endif
 
 	int shmem_itr;
 	for (shmem_itr = 0; shmem_itr < shmem_header.session_parameter_array_len;
