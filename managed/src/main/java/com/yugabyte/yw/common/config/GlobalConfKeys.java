@@ -1160,4 +1160,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "If Kubernetes Operator thread fails, crash YBA",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Integer> xclusterBootstrapRequiredRpcMaxThreads =
+      new ConfKeyInfo<>(
+          "yb.xcluster.is_bootstrap_required_rpc_pool.max_threads",
+          ScopeType.GLOBAL,
+          "XCluster isBootstrapRequired rpc max parallel threads",
+          "Sets the maximum allowed number of threads to be run concurrently for xcluster"
+              + " isBootstrapRequired rpc",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

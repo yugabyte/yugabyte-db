@@ -27,8 +27,8 @@ import java.io.IOException;
 import java.time.ZoneOffset;
 import java.time.ZonedDateTime;
 import java.util.*;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
 import org.hamcrest.CoreMatchers;
 import org.hamcrest.Matchers;
 import org.hamcrest.core.IsInstanceOf;
@@ -63,7 +63,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     MetricConfig metricConfig = MetricConfig.create("valid_metric", configJson);
     metricConfig.save();
     validMetric = metricConfig.getConfig();
-    ExecutorService executor = Executors.newFixedThreadPool(1);
+    ThreadPoolExecutor executor = (ThreadPoolExecutor) Executors.newFixedThreadPool(1);
     when(mockAppConfig.getString("yb.metrics.url")).thenReturn("foo://bar/api/v1");
     when(mockAppConfig.getString("yb.metrics.scrape_interval")).thenReturn("1s");
     when(mockPlatformExecutorFactory.createFixedExecutor(any(), anyInt(), any()))
