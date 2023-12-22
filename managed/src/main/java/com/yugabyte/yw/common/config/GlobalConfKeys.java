@@ -1143,4 +1143,12 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " Communication will still be encrypted.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> KubernetesOperatorCrashYbaOnOperatorFail =
+      new ConfKeyInfo<>(
+          "yb.kubernetes.operator.crash_yba_on_operator_failure",
+          ScopeType.GLOBAL,
+          "Crash YBA if Kubernentes Operator thread fails",
+          "If Kubernetes Operator thread fails, crash YBA",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.BETA));
 }

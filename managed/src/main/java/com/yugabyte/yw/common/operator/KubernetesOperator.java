@@ -9,6 +9,8 @@ import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.SupportBundleUtil;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
+import com.yugabyte.yw.common.config.GlobalConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.customer.config.CustomerConfigService;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
@@ -26,6 +28,7 @@ import io.yugabyte.operator.v1alpha1.Release;
 import io.yugabyte.operator.v1alpha1.RestoreJob;
 import io.yugabyte.operator.v1alpha1.StorageConfig;
 import io.yugabyte.operator.v1alpha1.SupportBundle;
+import java.lang.Thread.UncaughtExceptionHandler;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import org.slf4j.Logger;
@@ -48,6 +51,8 @@ public class KubernetesOperator {
 
   @Inject private YBReconcilerFactory reconcilerFactory;
 
+  @Inject private RuntimeConfGetter confGetter;
+
   public MixedOperation<Release, KubernetesResourceList<Release>, Resource<Release>> releasesClient;
   public MixedOperation<Backup, KubernetesResourceList<Backup>, Resource<Backup>> backupClient;
   public MixedOperation<RestoreJob, KubernetesResourceList<RestoreJob>, Resource<RestoreJob>>
@@ -62,7 +67,8 @@ public class KubernetesOperator {
 
   public static final Logger LOG = LoggerFactory.getLogger(KubernetesOperator.class);
 
-  public void init(String namespace) {
+  public void init() {
+    String namespace = confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace);
     LOG.info("Creating KubernetesOperator thread");
     Thread kubernetesOperatorThread =
         new Thread(
@@ -268,6 +274,19 @@ public class KubernetesOperator {
                 throw new RuntimeException("Operator Initialization Failed");
               }
             });
+
+    // Add exception handler
+    if (confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorCrashYbaOnOperatorFail)) {
+      Thread.UncaughtExceptionHandler operatorFailHandler =
+          new UncaughtExceptionHandler() {
+            @Override
+            public void uncaughtException(Thread operatorThread, Throwable t) {
+              LOG.error("Kubernetes operator thread failed", t);
+              System.exit(1);
+            }
+          };
+      kubernetesOperatorThread.setUncaughtExceptionHandler(operatorFailHandler);
+    }
     kubernetesOperatorThread.start();
   }
 }
