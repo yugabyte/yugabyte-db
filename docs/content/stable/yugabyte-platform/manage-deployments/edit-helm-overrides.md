@@ -13,7 +13,7 @@ type: docs
 
 If your universe was created using Kubernetes, you have an option of modifying the Helm chart overrides. To do this, navigate to your universe's **Overview**, click **Actions > Edit Kubernetes Overrides** to open the **Kubernetes Overrides** dialog shown in the following illustration:
 
-![img](/images/yb-platform/kubernetes-config66.png)
+![Kubernetes Overrides](/images/yb-platform/kubernetes-config66.png)
 
 Complete the dialog by following instructions provided in [Configure Helm overrides](../../create-deployments/create-universe-multi-zone-kubernetes#configure-helm-overrides).
 
@@ -21,7 +21,7 @@ Complete the dialog by following instructions provided in [Configure Helm overri
 
 Upgrade existing universes to versions that support [GKE service account-based IAM](../../back-up-restore-universes/configure-backup-storage/#gke-service-account-based-iam-gcp-iam) using the following steps:
 
-1. Upgrade YugabyteDB to a version which supports the feature (2.18.x or later). For more details, refer to [Upgrade the YugabyteDB software](../../manage-deployments/upgrade-software/).
+1. Upgrade YugabyteDB to a version that supports the feature (2.18.4 or later). For more details, refer to [Upgrade the YugabyteDB software](../../manage-deployments/upgrade-software/).
 
 1. Apply overrides by following the preceding steps in Edit Kubernetes overrides.
 

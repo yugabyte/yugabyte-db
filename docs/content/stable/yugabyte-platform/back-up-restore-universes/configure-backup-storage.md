@@ -86,7 +86,7 @@ You can configure Google Cloud Storage (GCS) as your backup target, as follows:
 
 1. Use the **Configuration Name** field to provide a meaningful name for your backup configuration.
 
-1. Complete the **GCS Bucket** field.
+1. Enter the URI of your GCS bucket in the **GCS Bucket** field. For example, `gs://gcp-bucket/test_backups`.
 
 1. Select **Use GCP IAM** if you're using [GKE service account](#gke-service-account-based-iam-gcp-iam) for backup and restore.
 
@@ -103,23 +103,23 @@ You can configure access control for the GCS bucket as follows:
 
 ### GKE service account-based IAM (GCP IAM)
 
-Google Kubernetes Engine (GKE) uses a concept known as "Workload Identity" to provide a secure way to allow a Kubernetes service account in your GKE cluster to act as an IAM service account. Workload Identity links a Kubernetes service account to a GCS account using annotations in the Kubernetes service account. Pods that use the configured Kubernetes service account automatically authenticate as the IAM service account when accessing Google Cloud APIs.
+Google Kubernetes Engine (GKE) uses a concept known as "Workload Identity" to provide a secure way to allow a Kubernetes service account (KSA) in your GKE cluster to act as an IAM service account. Workload Identity links a KSA to a GCS account using annotations in the KSA. Pods that use the configured KSA automatically authenticate as the IAM service account when accessing Google Cloud APIs.
 
 By using Workload Identity, you avoid the need for manually managing service account keys or tokens in your applications running on GKE. This approach enhances security and simplifies the management of credentials.
 
 Details about additional terminology associated with GKE Service account are as follows:
 
-1. **Kubernetes service account (KSA):** In GKE, each pod can be associated with a KSA. This is used to authenticate and authorize the pod to interact with other Google Cloud services.
+- **Kubernetes service account**: In GKE, each pod can be associated with a KSA. This is used to authenticate and authorize the pod to interact with other Google Cloud services.
 
-1. **IAM service accounts:** Google Cloud resources that allow applications to make authorized calls to Google Cloud APIs.
+- **IAM service accounts**: Google Cloud resources that allow applications to make authorized calls to Google Cloud APIs.
 
 #### Prerequisites
 
 1. The GKE cluster hosting the pods should have Workload Identity enabled. The worker nodes of this GKE cluster should have the GKE metadata server enabled.
 
-1. The IAM service account, which is to be used to annotate the KSA should have sufficient permissions to read, write, list, and delete objects in GCS.
+1. The IAM service account, which is used to annotate the KSA, should have sufficient permissions to read, write, list, and delete objects in GCS.
 
-1. The KSA, which is annotated with the IAM service account, should be present in the same namespace where the pod resources for YugabyteDB Anywhere and YugabyteDB universes are expected. For distinct namespaces, each namespace should consist of the annotated KSA.
+1. The KSA, which is annotated with the IAM service account, should be present in the same namespace where the pod resources for YugabyteDB Anywhere and YugabyteDB universes are expected. If you have multiple namespaces, each namespace should include the annotated KSA.
 
 For more details, see [Use Workload Identity](https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity) in the GKE documentation.
 
