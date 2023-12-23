@@ -7,6 +7,7 @@ import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static com.yugabyte.yw.common.Util.YUGABYTE_DB;
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.CREATE;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
@@ -24,6 +25,8 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.ShellResponse;
+import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.YcqlQueryExecutor;
 import com.yugabyte.yw.common.backuprestore.BackupHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
@@ -35,6 +38,7 @@ import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseTableHandler;
 import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.RestartTaskParams;
+import com.yugabyte.yw.forms.RunQueryFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
@@ -87,6 +91,7 @@ import org.junit.BeforeClass;
 import org.junit.Rule;
 import org.junit.rules.TestWatcher;
 import org.junit.runner.Description;
+import org.yb.CommonTypes.TableType;
 import org.yb.client.GetMasterClusterConfigResponse;
 import org.yb.client.YBClient;
 import org.yb.master.CatalogEntityInfo;
@@ -173,6 +178,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
   protected YBClientService ybClientService;
   protected RuntimeConfGetter confGetter;
   protected BackupHelper backupHelper;
+  protected YcqlQueryExecutor ycqlQueryExecutor;
   protected UniverseTableHandler tableHandler;
 
   @BeforeClass
@@ -360,6 +366,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     ybClientService = app.injector().instanceOf(YBClientService.class);
     confGetter = app.injector().instanceOf(RuntimeConfGetter.class);
     backupHelper = app.injector().instanceOf(BackupHelper.class);
+    ycqlQueryExecutor = app.injector().instanceOf(YcqlQueryExecutor.class);
     tableHandler = app.injector().instanceOf(UniverseTableHandler.class);
 
     Pair<Integer, Integer> ipRange = getIpRange();
@@ -590,11 +597,18 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
   }
 
   protected void initYSQL(Universe universe) {
-    initYSQL(universe, "some_table");
+    initYSQL(universe, "some_table", false);
   }
 
   protected void initYSQL(Universe universe, String tableName) {
+    initYSQL(universe, tableName, false);
+  }
+
+  protected void initYSQL(Universe universe, String tableName, boolean authEnabled) {
     NodeDetails nodeDetails = universe.getUniverseDetails().nodeDetailsSet.iterator().next();
+    if (StringUtils.isBlank(tableName)) {
+      tableName = "some_table";
+    }
     ShellResponse response =
         localNodeUniverseManager.runYsqlCommand(
             nodeDetails,
@@ -602,7 +616,8 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
             YUGABYTE_DB,
             String.format(
                 "CREATE TABLE %s (id int, name text, age int, PRIMARY KEY(id, name))", tableName),
-            10);
+            10,
+            authEnabled);
     assertTrue(response.isSuccess());
     response =
         localNodeUniverseManager.runYsqlCommand(
@@ -613,7 +628,8 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
                 "insert into %s values (1, 'John', 20), "
                     + "(2, 'Mary', 18), (10000, 'Stephen', 50)",
                 tableName),
-            10);
+            10,
+            authEnabled);
     assertTrue(response.isSuccess());
   }
 
@@ -631,7 +647,15 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
 
   protected void verifyYSQL(
       Universe universe, boolean readFromRR, String dbName, String tableName) {
+    verifyYSQL(universe, readFromRR, dbName, tableName, false);
+  }
+
+  protected void verifyYSQL(
+      Universe universe, boolean readFromRR, String dbName, String tableName, boolean authEnabled) {
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    if (StringUtils.isBlank(tableName)) {
+      tableName = "some_table";
+    }
     UUID cluserUUID =
         readFromRR
             ? universe.getUniverseDetails().getReadOnlyClusters().get(0).uuid
@@ -643,9 +667,73 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
             .get();
     ShellResponse response =
         localNodeUniverseManager.runYsqlCommand(
-            nodeDetails, universe, dbName, String.format("select count(*) from %s", tableName), 10);
+            nodeDetails,
+            universe,
+            dbName,
+            String.format("select count(*) from %s", tableName),
+            10,
+            authEnabled);
     assertTrue(response.isSuccess());
     assertEquals("3", LocalNodeManager.getRawCommandOutput(response.getMessage()));
+  }
+
+  protected void initYCQL(Universe universe) {
+    initYCQL(universe, false, "");
+  }
+
+  protected void initYCQL(Universe universe, boolean authEnabled, String password) {
+    RunQueryFormData formData = new RunQueryFormData();
+    // Create `yugabyte` keyspace.
+    formData.query = "CREATE KEYSPACE IF NOT EXISTS yugabyte;";
+    formData.tableType = TableType.YQL_TABLE_TYPE;
+    JsonNode response =
+        ycqlQueryExecutor.executeQuery(
+            universe, formData, true, Util.DEFAULT_YCQL_USERNAME, password);
+    assertFalse(response.has("error"));
+
+    // Create table.
+    formData.query =
+        "CREATE TABLE yugabyte.some_table (id int, name text, age int, PRIMARY KEY((id, name)));";
+    response =
+        ycqlQueryExecutor.executeQuery(
+            universe, formData, true, Util.DEFAULT_YCQL_USERNAME, password);
+    assertFalse(response.has("error"));
+
+    // Insert Data.
+    formData.query = "INSERT INTO yugabyte.some_table (id, name, age) VALUES (1, 'John', 20);";
+    response =
+        ycqlQueryExecutor.executeQuery(
+            universe, formData, true, Util.DEFAULT_YCQL_USERNAME, password);
+    assertFalse(response.has("error"));
+
+    formData.query = "INSERT INTO yugabyte.some_table (id, name, age) VALUES (2, 'Mary', 18);";
+    response =
+        ycqlQueryExecutor.executeQuery(
+            universe, formData, true, Util.DEFAULT_YCQL_USERNAME, password);
+    assertFalse(response.has("error"));
+
+    formData.query =
+        "INSERT INTO yugabyte.some_table (id, name, age) VALUES (10000, 'Stephen', 50);";
+    response =
+        ycqlQueryExecutor.executeQuery(
+            universe, formData, true, Util.DEFAULT_YCQL_USERNAME, password);
+    assertFalse(response.has("error"));
+  }
+
+  protected void verifyYCQL(Universe universe) {
+    verifyYCQL(universe, false, "");
+  }
+
+  protected void verifyYCQL(Universe universe, boolean authEnabled, String password) {
+    RunQueryFormData formData = new RunQueryFormData();
+    formData.query = "select count(*) from yugabyte.some_table;";
+    formData.tableType = TableType.YQL_TABLE_TYPE;
+
+    JsonNode response =
+        ycqlQueryExecutor.executeQuery(
+            universe, formData, true, Util.DEFAULT_YCQL_USERNAME, password);
+    assertFalse(response.has("error"));
+    assertEquals("3", response.get("result").get(0).get("count").asText());
   }
 
   protected TaskInfo doAddReadReplica(

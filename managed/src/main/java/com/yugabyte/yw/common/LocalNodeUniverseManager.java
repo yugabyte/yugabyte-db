@@ -13,6 +13,7 @@ package com.yugabyte.yw.common;
 import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_SUCCESS;
 
 import com.google.inject.Inject;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -32,16 +33,35 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public class LocalNodeUniverseManager {
 
+  private static final String YSQL_PASSWORD = "Pass@123";
   @Inject LocalNodeManager localNodeManager;
 
   public ShellResponse runYsqlCommand(
       NodeDetails node, Universe universe, String dbName, String ysqlCommand, long timeoutSec) {
+    return runYsqlCommand(node, universe, dbName, ysqlCommand, timeoutSec, false);
+  }
+
+  public ShellResponse runYsqlCommand(
+      NodeDetails node,
+      Universe universe,
+      String dbName,
+      String ysqlCommand,
+      long timeoutSec,
+      boolean authEnabled) {
     UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
     LocalCloudInfo cloudInfo = LocalNodeManager.getCloudInfo(node, universe);
     List<String> bashCommand = new ArrayList<>();
     bashCommand.add(cloudInfo.getYugabyteBinDir() + "/ysqlsh");
     bashCommand.add("-h");
-    bashCommand.add(node.cloudInfo.private_ip);
+    if (authEnabled) {
+      String customTmpDirectory = GFlagsUtil.getCustomTmpDirectory(node, universe);
+      bashCommand.add(
+          String.format(
+              "%s/.yb.%s:%s",
+              customTmpDirectory, node.cloudInfo.private_ip, node.ysqlServerRpcPort));
+    } else {
+      bashCommand.add(node.cloudInfo.private_ip);
+    }
     bashCommand.add("-t");
     bashCommand.add("-p");
     bashCommand.add(String.valueOf(node.ysqlServerRpcPort));

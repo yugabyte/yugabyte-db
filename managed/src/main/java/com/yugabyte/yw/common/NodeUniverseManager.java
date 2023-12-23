@@ -358,7 +358,7 @@ public class NodeUniverseManager extends DevopsBase {
     Cluster curCluster = universe.getCluster(node.placementUuid);
     if (curCluster.userIntent.providerType == CloudType.local) {
       return localNodeUniverseManager.runYsqlCommand(
-          node, universe, dbName, ysqlCommand, timeoutSec);
+          node, universe, dbName, ysqlCommand, timeoutSec, authEnabled);
     }
     List<String> command = new ArrayList<>();
     command.add("bash");
