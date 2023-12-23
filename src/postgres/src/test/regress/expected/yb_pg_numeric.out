@@ -764,9 +764,17 @@ SELECT 'NaN'::float8::numeric;
 (1 row)
 
 SELECT 'Infinity'::float8::numeric;
-ERROR:  cannot convert infinity to numeric
+ numeric
+----------
+ Infinity
+(1 row)
+
 SELECT '-Infinity'::float8::numeric;
-ERROR:  cannot convert infinity to numeric
+  numeric
+-----------
+ -Infinity
+(1 row)
+
 SELECT 'NaN'::float4::numeric;
  numeric 
 ---------
@@ -774,9 +782,17 @@ SELECT 'NaN'::float4::numeric;
 (1 row)
 
 SELECT 'Infinity'::float4::numeric;
-ERROR:  cannot convert infinity to numeric
+ numeric
+----------
+ Infinity
+(1 row)
+
 SELECT '-Infinity'::float4::numeric;
-ERROR:  cannot convert infinity to numeric
+  numeric
+-----------
+ -Infinity
+(1 row)
+
 -- Simple check that ceil(), floor(), and round() work correctly
 CREATE TABLE ceil_floor_round (a numeric);
 INSERT INTO ceil_floor_round VALUES ('-5.5');
@@ -2050,3 +2066,29 @@ SELECT VAL FROM num_data_with_pk WHERE id = '2.2';
 --------
  -22.22
 (1 row)
+
+--
+-- Tests for factorial
+--
+SELECT factorial(4);
+ factorial
+-----------
+        24
+(1 row)
+
+SELECT factorial(15);
+   factorial
+---------------
+ 1307674368000
+(1 row)
+
+SELECT factorial(100000);
+ERROR:  value overflows numeric format
+SELECT factorial(0);
+ factorial
+-----------
+         1
+(1 row)
+
+SELECT factorial(-4);
+ERROR:  factorial of a negative number is undefined
