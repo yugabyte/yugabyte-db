@@ -11,8 +11,11 @@ import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.TaskExecutor;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.common.gflags.SpecificGFlags.PerProcessFlags;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
 import com.yugabyte.yw.common.utils.Pair;
@@ -31,6 +34,7 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
 import com.yugabyte.yw.forms.UniverseResp;
+import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -404,18 +408,12 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       log.info("Updating Kubernetes Overrides");
       updateOverridesYbUniverse(
           universeDetails, cust, ybUniverse, incomingIntent.universeOverrides);
-    } else if (!(currentUserIntent.masterGFlags.equals(incomingIntent.masterGFlags))
-        || !(currentUserIntent.tserverGFlags.equals(incomingIntent.tserverGFlags))) {
+    } else if (checkIfGFlagsChanged(universe, currentUserIntent)) {
       if (checkAndHandleUniverseLock(universe, OperatorWorkQueue.ResourceAction.UPDATE)) {
         return;
       }
       log.info("Updating Gflags");
-      updateGflagsYbUniverse(
-          universeDetails,
-          cust,
-          ybUniverse,
-          incomingIntent.masterGFlags,
-          incomingIntent.tserverGFlags);
+      updateGflagsYbUniverse(universeDetails, cust, ybUniverse);
     } else if (currentUserIntent.numNodes != incomingIntent.numNodes) {
       if (checkAndHandleUniverseLock(universe, OperatorWorkQueue.ResourceAction.UPDATE)) {
         return;
@@ -468,11 +466,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   }
 
   private UUID updateGflagsYbUniverse(
-      UniverseDefinitionTaskParams taskParams,
-      Customer cust,
-      YBUniverse ybUniverse,
-      Map<String, String> masterGflags,
-      Map<String, String> tserverGflags) {
+      UniverseDefinitionTaskParams taskParams, Customer cust, YBUniverse ybUniverse) {
     KubernetesGFlagsUpgradeParams requestParams = new KubernetesGFlagsUpgradeParams();
 
     ObjectMapper mapper =
@@ -487,8 +481,6 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     } catch (Exception e) {
       log.error("Failed at creating upgrade software params", e);
     }
-    requestParams.masterGFlags = masterGflags;
-    requestParams.tserverGFlags = tserverGflags;
 
     Universe oldUniverse =
         Universe.maybeGetUniverseByName(cust.getId(), ybUniverse.getMetadata().getName())
@@ -663,13 +655,72 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       userIntent.enableYCQLAuth = true;
       userIntent.ycqlPassword = password;
     }
-    if (ybUniverse.getSpec().getMasterGFlags() != null) {
-      userIntent.masterGFlags = new HashMap<>(ybUniverse.getSpec().getMasterGFlags());
-    }
-    if (ybUniverse.getSpec().getTserverGFlags() != null) {
-      userIntent.tserverGFlags = new HashMap<>(ybUniverse.getSpec().getTserverGFlags());
-    }
+    setGFlagsForUserIntent(ybUniverse, userIntent, provider);
     return userIntent;
+  }
+
+  private boolean checkIfGFlagsChanged(Universe universe, UserIntent oldIntent) {
+    UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
+    Cluster primaryCluster = universeDetails.getPrimaryCluster();
+    return universe.getNodesByCluster(primaryCluster.uuid).stream()
+        .filter(
+            nD -> {
+              // Old gflags for servers
+              Map<String, String> oldTserverGFlags =
+                  oldIntent.specificGFlags.getGFlags(nD.getAzUuid(), ServerType.TSERVER);
+              Map<String, String> oldMasterGFlags =
+                  oldIntent.specificGFlags.getGFlags(nD.getAzUuid(), ServerType.MASTER);
+
+              // New gflags for servers
+              Map<String, String> newTserverGFlags =
+                  primaryCluster.userIntent.specificGFlags.getGFlags(
+                      nD.getAzUuid(), ServerType.TSERVER);
+              Map<String, String> newMasterGFlags =
+                  primaryCluster.userIntent.specificGFlags.getGFlags(
+                      nD.getAzUuid(), ServerType.MASTER);
+              return !(oldTserverGFlags.equals(newTserverGFlags)
+                  && oldMasterGFlags.equals(newMasterGFlags));
+            })
+        .findAny()
+        .isPresent();
+  }
+
+  private void setGFlagsForUserIntent(
+      YBUniverse ybUniverse, UserIntent userIntent, Provider provider) {
+    SpecificGFlags specificGFlags = new SpecificGFlags();
+    if (ybUniverse.getSpec().getGFlags() != null) {
+      SpecificGFlags.PerProcessFlags perProcessFlags = new PerProcessFlags();
+      if (ybUniverse.getSpec().getGFlags().getTserverGFlags() != null) {
+        perProcessFlags.value.put(
+            ServerType.TSERVER, ybUniverse.getSpec().getGFlags().getTserverGFlags());
+      }
+      if (ybUniverse.getSpec().getGFlags().getMasterGFlags() != null) {
+        perProcessFlags.value.put(
+            ServerType.MASTER, ybUniverse.getSpec().getGFlags().getMasterGFlags());
+      }
+      specificGFlags.setPerProcessFlags(perProcessFlags);
+      if (ybUniverse.getSpec().getGFlags().getPerAZ() != null) {
+        Map<UUID, SpecificGFlags.PerProcessFlags> azOverridesMap = new HashMap<>();
+        ybUniverse.getSpec().getGFlags().getPerAZ().entrySet().stream()
+            .forEach(
+                e -> {
+                  Optional<AvailabilityZone> oAz =
+                      AvailabilityZone.maybeGetByCode(provider, e.getKey());
+                  if (oAz.isPresent()) {
+                    SpecificGFlags.PerProcessFlags pPFlags = new PerProcessFlags();
+                    if (e.getValue().getTserverGFlags() != null) {
+                      pPFlags.value.put(ServerType.TSERVER, e.getValue().getTserverGFlags());
+                    }
+                    if (e.getValue().getMasterGFlags() != null) {
+                      pPFlags.value.put(ServerType.MASTER, e.getValue().getMasterGFlags());
+                    }
+                    azOverridesMap.put(oAz.get().getUuid(), pPFlags);
+                  }
+                });
+        specificGFlags.setPerAZ(azOverridesMap);
+      }
+      userIntent.specificGFlags = specificGFlags;
+    }
   }
 
   // getSecret find a secret in the namespace an operator is listening on.
