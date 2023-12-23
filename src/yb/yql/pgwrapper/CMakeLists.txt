@@ -25,6 +25,8 @@ ADD_YB_LIBRARY(yb_pgwrapper
                SRCS ${PGWRAPPER_SRCS}
                DEPS ${PGWRAPPER_LIBS})
 
+include_directories(${YB_BUILD_ROOT}/postgres_build/src/include)
+
 # We indirectly use some headers that are generated while processing the protobufs below.
 add_dependencies(
   yb_pgwrapper

@@ -1148,7 +1148,21 @@ class PosixEnv : public Env {
       if (errno == EXDEV) {
         return STATUS(NotSupported, "No cross FS links allowed");
       }
-      return STATUS_IO_ERROR(src, errno);
+      return STATUS_IO_ERROR(Format("Link $0 => $1", target, src), errno);
+    }
+    return Status::OK();
+  }
+
+  Status SymlinkPath(const std::string& pointed_to, const std::string& new_symlink) override {
+    // Unlink if already linked.
+    if (unlink(new_symlink.c_str()) != 0) {
+      // It's ok for the link not to exist already.
+      if (errno != ENOENT) {
+        return STATUS_IO_ERROR(Format("Unlink $0", new_symlink), errno);
+      }
+    }
+    if (symlink(pointed_to.c_str(), new_symlink.c_str()) != 0) {
+      return STATUS_IO_ERROR(Format("Symlink $0 => $1", new_symlink, pointed_to), errno);
     }
     return Status::OK();
   }
@@ -1309,6 +1323,17 @@ class PosixEnv : public Env {
       *is_dir = S_ISDIR(sbuf.st_mode);
     }
     return s;
+  }
+
+  Result<bool> IsSymlink(const std::string& path) override {
+    TRACE_EVENT1("io", "PosixEnv::InSymlink", "path", path);
+    ThreadRestrictions::AssertIOAllowed();
+    struct stat sbuf;
+    if (lstat(path.c_str(), &sbuf) != 0) {
+      return STATUS_IO_ERROR(path, errno);
+    } else {
+      return S_ISLNK(sbuf.st_mode);
+    }
   }
 
   Result<bool> IsExecutableFile(const std::string& path) override {

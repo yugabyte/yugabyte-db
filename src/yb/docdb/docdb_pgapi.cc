@@ -32,6 +32,7 @@
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
 
+#include "ybgate/ybgate_cpp_util.h"
 #include "ybgate/ybgate_status.h"
 
 // This file comes from this directory:
