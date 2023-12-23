@@ -128,17 +128,15 @@ Optionally, use the **Helm Overrides** section, as follows:
 
     ```yaml
     tserver:
-      serviceAccount:<KSA_NAME>
+      serviceAccount: <KSA_NAME>
     nodeSelector:
       iam.gke.io/gke-metadata-server-enabled: "true"
     ```
 
-    {{<note title="Note">}}
-  If you don't provide Namespace names for each zone/region during [provider creation](../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes/), add the names using the following steps:
+    If you don't provide namespace names for each zone/region during [provider creation](../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes/), add the names using the following steps:
 
-  1. Add the Kubernetes service account to the namespaces where pods are created.
-  1. Follow the steps in [Upgrade universes for GKE service account-based IAM](../../manage-deployments/edit-helm-overrides/#upgrade-universes-for-gke-service-account-based-iam) to add the annotated Kubernetes service account to pods.
-    {{</note>}}
+    1. Add the Kubernetes service account to the namespaces where the pods are created.
+    1. Follow the steps in [Upgrade universes for GKE service account-based IAM](../../manage-deployments/edit-helm-overrides/#upgrade-universes-for-gke-service-account-based-iam) to add the annotated Kubernetes service account to pods.
 
     To enable the GKE service account service at the provider level, refer to [Overrides](../../configure-yugabyte-platform/set-up-cloud-provider/kubernetes/#overrides).
 

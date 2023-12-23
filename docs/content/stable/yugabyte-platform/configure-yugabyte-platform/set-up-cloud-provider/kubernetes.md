@@ -510,7 +510,7 @@ The following overrides are available:
 - Overrides to enable [GKE service account-based IAM](../../../back-up-restore-universes/configure-backup-storage/#gke-service-account-based-iam-gcp-iam) for backup and restore using GCS:
 
   ```yaml
-  serviceAccount:<KSA_NAME>
+  serviceAccount: <KSA_NAME>
   nodeSelector:
    iam.gke.io/gke-metadata-server-enabled: "true"
   ```

@@ -439,12 +439,12 @@ Before enabling GCP IAM, ensure you have the prerequisites. Refer to [GCP IAM](.
 
 To enable GCP IAM, provide the following additional helm values during installation to a version which supports this feature (v2.18.4 or later):
 
-- serviceAccount: Provide the name of the Kubernetes service account name you created. Note that this service account should be present in the namespace being used for the YugabyteDB pod resources.
-- [nodeSelector](#nodeselector): Pass a node selector override to make sure YBA pods are scheduled on GKE cluster's worker nodes which have metadata server running.
+- serviceAccount: Provide the name of the Kubernetes service account you created. Note that this service account should be present in the namespace being used for the YugabyteDB pod resources.
+- [nodeSelector](#nodeselector): Pass a node selector override to make sure YBA pods are scheduled on the GKE cluster's worker nodes which have a metadata server running.
 
     ```yaml
     yugaware:
-    ....serviceAccount:<KSA_NAME>
+    ....serviceAccount: <KSA_NAME>
     nodeSelector:
     ....iam.gke.io/gke-metadata-server-enabled: "true"
     ```

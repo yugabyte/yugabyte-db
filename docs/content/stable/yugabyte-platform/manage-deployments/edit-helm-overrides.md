@@ -25,11 +25,11 @@ To edit Kubernetes overrides, do the following:
 
 1. Complete the dialog by following instructions provided in [Configure Helm overrides](../../create-deployments/create-universe-multi-zone-kubernetes#configure-helm-overrides).
 
-### Upgrade universes for GKE service account-based IAM
+## Upgrade universes for GKE service account-based IAM
 
 If you are using Google Cloud Storage (GCS) for backups, you can enable GKE service account-based IAM (GCP IAM) so that Kubernetes universes can access GCS.
 
-Before upgrading a universe for GCP IAM, ensure you have the prerequisites. Refer to [GCP IAM](../../../back-up-restore-universes/configure-backup-storage/#gke-service-account-based-iam-gcp-iam).
+Before upgrading a universe for GCP IAM, ensure you have the prerequisites. Refer to [GCP IAM](../../back-up-restore-universes/configure-backup-storage/#gke-service-account-based-iam-gcp-iam).
 
 To upgrade an existing universe to use GCP IAM, do the following:
 
@@ -37,14 +37,12 @@ To upgrade an existing universe to use GCP IAM, do the following:
 
 1. Using the steps in [Edit Kubernetes overrides](#edit-kubernetes-overrides), apply the following overrides.
 
-    **Prerequisite:** Provide the Kube namespace of the YugabyteDB universe pods with the annotated Kubernetes service account. This may not be present already, as the service account would not have been used in YugabyteDB Universe pods.
-
-    - serviceAccount: Provide the name of the Kubernetes service account name you created. Note that this service account should be present in the namespace being used for the YugabyteDB pod resources.
+    - serviceAccount: Provide the name of the Kubernetes service account you created. Note that this service account should be present in the namespace being used for the YugabyteDB pod resources.
     - [nodeSelector](../../install-yugabyte-platform/install-software/kubernetes/#nodeselector): Pass a node selector override to make sure that the YugabyteDB pods are scheduled on the GKE cluster's worker nodes that have a metadata server running.
 
     ```yaml
     tserver:
-      serviceAccount:<KSA_NAME>
+      serviceAccount: <KSA_NAME>
     nodeSelector:
       iam.gke.io/gke-metadata-server-enabled: "true"
     ```
