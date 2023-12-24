@@ -1,5 +1,5 @@
 ---
-title: Steps to perform live migration of your database using YugabyteDB Voyager
+title: Steps to perform live migration of your database with fall-back using YugabyteDB Voyager
 headerTitle: Live migration with fall-back
 linkTitle: Live migration with fall-back
 headcontent: Steps for a live migration with fall-back using YugabyteDB Voyager

@@ -509,30 +509,6 @@
   to = "/preview/yugabyte-cloud/"
 
 [[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/"
-  to = "/preview/develop/build-apps/"
-
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-csharp/"
-  to = "/preview/develop/build-apps/csharp/cloud-ysql-csharp/"
-
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-go/"
-  to = "/preview/develop/build-apps/go/cloud-ysql-go/"
-
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-node/"
-  to = "/preview/develop/build-apps/nodejs/cloud-ysql-node/"
-
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-python/"
-  to = "/preview/develop/build-apps/python/cloud-ysql-python/"
-
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-yb-jdbc/"
-  to = "/preview/develop/build-apps/java/cloud-ysql-yb-jdbc/"
-
-[[redirects]]
   from = "/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/"
   to = "/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/aws/"
 
@@ -671,6 +647,14 @@
   force = true
 
 # Build an app was in quick-start, now in develop
+
+[[redirects]]
+  from = "/preview/quick-start/build-apps/*"
+  to = "/preview/develop/build-apps/"
+
+[[redirects]]
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/"
+  to = "/preview/develop/build-apps/"
 
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-add-ip/"
@@ -858,7 +842,7 @@
 
 [[redirects]]
   from = "/preview/develop/build-apps/python/ysql-aiopg/"
-  to = "/preview/integrations/aiopg/"
+  to = "/preview/drivers-orms/python/aiopg/"
   force = true
 
 # Manual import was in migrate, now in manage
