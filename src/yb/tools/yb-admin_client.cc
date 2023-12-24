@@ -2884,7 +2884,7 @@ Result<rapidjson::Document> ClusterAdminClient::RestoreSnapshotSchedule(
     }
     std::this_thread::sleep_until(std::min(deadline, now + 100ms));
   }
-  
+
   return document;
 }
 
