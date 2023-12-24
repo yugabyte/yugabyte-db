@@ -5295,7 +5295,7 @@ TEST_F(YbAdminSnapshotScheduleTest, DBNameInRestoreSnapshotSchedule) {
         "restore_snapshot_schedule", schedule_id, pre_transaction_time.ToFormattedString(),
         "--timeout_ms", std::to_string(600000 * kTimeMultiplier)));
 
-  std::string out_db_name = ASSERT_RESULT(Get(out, "db_name")).get().GetString();
+  std::string out_db_name = ASSERT_RESULT(Get(out, "db_restored")).get().GetString();
   ASSERT_EQ(out_db_name, db_name);
 }
 
