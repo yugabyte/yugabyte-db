@@ -346,7 +346,7 @@ The following overrides are available:
 
 - Overrides to publish node IP as the server broadcast address.
 
-  By default, YB-Master and YB-TServer pod fully-qualified domain names (FQDN) are used in the cluster as the server broadcast address. To publish the IPs of the nodes on which YB-TServer pods are deployed, add the following YAML to each zone override configuration:
+  By default, YB-Master and YB-TServer pod fully-qualified domain names (FQDN) are used in the cluster as the server broadcast address. To publish the IP addresses of the nodes on which YB-TServer pods are deployed, add the following YAML to each zone override configuration:
 
   ```yml
   tserver:
@@ -563,7 +563,7 @@ Refer to [Multi-Region YugabyteDB Deployments on Kubernetes with Istio](https://
 
 ### Configure the cloud provider for MCS
 
-Once you have the cluster set up, follow the instructions in [Configure the Kubernetes cloud provider](#), and refer to this section for region and zone configuration required for multi-region universes.
+After you have the cluster set up, follow the instructions in [Configure the Kubernetes cloud provider](#provider-settings), and refer to this section for region and zone configuration required for multi-region universes.
 
 #### Configure region and zone for GKE MCS
 
