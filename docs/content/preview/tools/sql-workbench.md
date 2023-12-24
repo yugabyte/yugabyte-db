@@ -84,7 +84,7 @@ You have now configured the PostgreSQL JDBC driver to work with YugabyteDB and c
 For more information, see:
 
 - [JDBC Drivers](http://www.sql-workbench.net/manual/jdbc-setup.html) in the SQL Workbench/J user manual.
-- [PostgreSQL JDBC Driver](https://jdbc.postgresql.org/documentation/documentation.html) documentation.
+- [PostgreSQL JDBC Driver](https://jdbc.postgresql.org/documentation/) documentation.
 
 ### Create a YugabyteDB connection profile
 

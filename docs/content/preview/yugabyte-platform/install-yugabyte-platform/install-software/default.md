@@ -6,6 +6,7 @@ description: Install the YugabyteDB Anywhere software.
 headContent: Install YBA software using Replicated and Docker containers
 aliases:
   - /preview/yugabyte-platform/install-yugabyte-platform/install-software/airgapped/
+  - /preview/yugabyte-platform/install-yugabyte-platform/install-software/replicated/
 menu:
   preview_yugabyte-platform:
     parent: install-yugabyte-platform

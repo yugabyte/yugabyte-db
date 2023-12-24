@@ -425,7 +425,7 @@ The following overrides are available:
     tolerations: []
   ```
 
-  Tolerations work in combination with taints: `Taints` are applied on nodes and `Tolerations` are applied to pods. Taints and tolerations ensure that pods do not schedule onto inappropriate nodes. You need to set `nodeSelector` to schedule YugabyteDB pods onto specific nodes, and then use taints and tolerations to prevent other pods from getting scheduled on the dedicated nodes, if required. For more information, see [toleration](../../../install-yugabyte-platform/install-software/kubernetes/#toleration) and [Toleration API](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.22/#toleration-v1-core).
+  Tolerations work in combination with taints: `Taints` are applied on nodes and `Tolerations` are applied to pods. Taints and tolerations ensure that pods do not schedule onto inappropriate nodes. You need to set `nodeSelector` to schedule YugabyteDB pods onto specific nodes, and then use taints and tolerations to prevent other pods from getting scheduled on the dedicated nodes, if required. For more information, see [toleration](../../../install-yugabyte-platform/install-software/kubernetes/#toleration) and [Toleration API](https://kubernetes.io/docs/reference/generated/kubernetes-api/v1.24/#toleration-v1-core).
 
 - Overrides to use `nodeSelector` to schedule YB-Master and YB-TServer pods on dedicated nodes:
 
