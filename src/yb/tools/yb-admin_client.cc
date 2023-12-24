@@ -2857,7 +2857,34 @@ Result<rapidjson::Document> ClusterAdminClient::RestoreSnapshotSchedule(
 
   AddStringField("snapshot_id", snapshot_id.ToString(), &document, &document.GetAllocator());
   AddStringField("restoration_id", restoration_id.ToString(), &document, &document.GetAllocator());
+  
+  // Add optional field of restored database name.
+  for (;;) {
+    RpcController rpc2;
+    rpc2.set_deadline(deadline);
 
+    master::ListSnapshotSchedulesRequestPB list_req;
+    master::ListSnapshotSchedulesResponsePB list_resp;
+    list_req.set_snapshot_schedule_id(schedule_id.data(), schedule_id.size());
+
+    auto list_status = master_backup_proxy_->ListSnapshotSchedules(list_req, &list_resp, &rpc2);
+    if (list_status.ok() && !list_resp.has_error() && list_resp.schedules_size() > 0) {
+      const auto& filter = list_resp.schedules(0).options().filter();
+      // The user input should only have 1 entry, at namespace level.
+      if (filter.tables().tables_size() == 1) {
+        const auto db_name = filter.tables().tables(0).namespace_().name();
+        AddStringField("db_restored", db_name, &document, &document.GetAllocator());
+        break;
+      }
+    }
+
+    auto now = CoarseMonoClock::now();
+    if (now >= deadline) {
+      break;
+    }
+    std::this_thread::sleep_until(std::min(deadline, now + 100ms));
+  }
+  
   return document;
 }
 
