@@ -110,8 +110,6 @@ public class AppInit {
     try {
       log.info("Yugaware Application has started");
 
-      String mode = config.getString("yb.mode");
-
       if (!environment.isTest()) {
         // only start thread dump collection for YBM at this time
         if (config.getBoolean("yb.cloud.enabled")) {
@@ -146,15 +144,13 @@ public class AppInit {
                     .toString());
         fileDataService.syncFileData(storagePath, ywFileDataSynced);
 
-        if (mode.equals("PLATFORM")) {
-          String devopsHome = config.getString("yb.devops.home");
-          if (devopsHome == null || devopsHome.length() == 0) {
-            throw new RuntimeException("yb.devops.home is not set in application.conf");
-          }
+        String devopsHome = config.getString("yb.devops.home");
+        if (devopsHome == null || devopsHome.length() == 0) {
+          throw new RuntimeException("yb.devops.home is not set in application.conf");
+        }
 
-          if (storagePath == null || storagePath.length() == 0) {
-            throw new RuntimeException(("yb.storage.path is not set in application.conf"));
-          }
+        if (storagePath == null || storagePath.length() == 0) {
+          throw new RuntimeException(("yb.storage.path is not set in application.conf"));
         }
 
         boolean vmOsPatchingEnabled = confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching);
