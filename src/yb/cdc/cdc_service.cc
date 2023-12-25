@@ -175,7 +175,7 @@ DEFINE_RUNTIME_int32(xcluster_get_changes_max_send_rate_mbps, 100,
 DEFINE_RUNTIME_bool(enable_xcluster_stat_collection, true,
     "When enabled, stats are collected from xcluster streams for reporting purposes.");
 
-DEFINE_RUNTIME_uint32(cdcsdk_tablet_not_of_interest_timeout_secs, 15*60,
+DEFINE_RUNTIME_uint32(cdcsdk_tablet_not_of_interest_timeout_secs, 4 * 60 * 60,
                       "Timeout after which it can be inferred that tablet is not of interest "
                       "for the stream");
 
