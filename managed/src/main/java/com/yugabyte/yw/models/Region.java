@@ -57,7 +57,7 @@ import javax.persistence.OneToMany;
 import javax.persistence.Transient;
 import lombok.Getter;
 import lombok.Setter;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import play.data.validation.Constraints;
 import play.libs.Json;
 

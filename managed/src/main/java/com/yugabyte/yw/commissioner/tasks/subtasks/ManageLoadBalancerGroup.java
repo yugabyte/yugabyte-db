@@ -19,7 +19,7 @@ import java.util.Set;
 import java.util.UUID;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.MapUtils;
+import org.apache.commons.collections4.MapUtils;
 
 @Slf4j
 public class ManageLoadBalancerGroup extends UniverseTaskBase {

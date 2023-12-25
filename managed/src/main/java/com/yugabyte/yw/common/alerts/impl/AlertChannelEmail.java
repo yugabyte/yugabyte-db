@@ -18,7 +18,7 @@ import java.util.List;
 import javax.inject.Inject;
 import javax.mail.MessagingException;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 
 @Slf4j
 @Singleton
