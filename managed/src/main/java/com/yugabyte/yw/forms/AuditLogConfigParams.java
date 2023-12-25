@@ -8,7 +8,7 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonDeserialize(converter = AuditLogConfigParams.Converter.class)

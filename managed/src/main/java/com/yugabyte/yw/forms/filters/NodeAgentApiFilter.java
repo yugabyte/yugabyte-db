@@ -7,7 +7,7 @@ import com.yugabyte.yw.models.filters.NodeAgentFilter;
 import java.util.Set;
 import java.util.UUID;
 import lombok.Data;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 
 @Data
 public class NodeAgentApiFilter {
