@@ -1019,4 +1019,13 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + "and the node does not have any tablets assigned to it in the tserver quorum.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<Boolean> enableDbQueryApi =
+      new ConfKeyInfo<>(
+          "yb.security.enable_db_query_api",
+          ScopeType.UNIVERSE,
+          "Enable .../run_query API for the universe",
+          "Enables the ability to execute SQL queries through YBA API",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

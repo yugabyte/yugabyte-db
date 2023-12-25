@@ -101,8 +101,8 @@ public class DbLdapSync extends UniverseTaskBase {
       respDB = ysqlQueryExecutor.runUserDbCommands(YSQL_GET_USERS, "", universe);
     } else {
       RunQueryFormData queryFormData = new RunQueryFormData();
-      queryFormData.query = YCQL_GET_USERS;
-      queryFormData.tableType = TableType.YQL_TABLE_TYPE;
+      queryFormData.setQuery(YCQL_GET_USERS);
+      queryFormData.setTableType(TableType.YQL_TABLE_TYPE);
       respDB = ycqlQueryExecutor.executeQuery(universe, queryFormData, true, dbUser, password);
     }
 
@@ -266,8 +266,8 @@ public class DbLdapSync extends UniverseTaskBase {
       int i = 0;
       for (String query : queries) {
         RunQueryFormData queryFormData = new RunQueryFormData();
-        queryFormData.query = query;
-        queryFormData.tableType = TableType.YQL_TABLE_TYPE;
+        queryFormData.setQuery(query);
+        queryFormData.setTableType(TableType.YQL_TABLE_TYPE);
         JsonNode resp =
             ycqlQueryExecutor.executeQuery(
                 getUniverse(),
