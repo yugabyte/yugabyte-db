@@ -184,9 +184,9 @@ public class QueryHelper {
               callable =
                   () -> {
                     RunQueryFormData ysqlQuery = new RunQueryFormData();
-                    ysqlQuery.query =
-                        slowQuerySqlWithLimit(config, universe, supportsLatencyHistogram);
-                    ysqlQuery.db_name = "postgres";
+                    ysqlQuery.setQuery(
+                        slowQuerySqlWithLimit(config, universe, supportsLatencyHistogram));
+                    ysqlQuery.setDbName("postgres");
                     return ysqlQueryExecutor.executeQueryInNodeShell(
                         universe,
                         ysqlQuery,
@@ -220,8 +220,8 @@ public class QueryHelper {
               callable =
                   () -> {
                     RunQueryFormData ysqlQuery = new RunQueryFormData();
-                    ysqlQuery.query = RESET_QUERY_SQL;
-                    ysqlQuery.db_name = "postgres";
+                    ysqlQuery.setQuery(RESET_QUERY_SQL);
+                    ysqlQuery.setDbName("postgres");
                     return ysqlQueryExecutor.executeQueryInNodeShell(universe, ysqlQuery, node);
                   };
               Future<JsonNode> future = threadPool.submit(callable);
@@ -424,8 +424,8 @@ public class QueryHelper {
   public JsonNode listDatabaseNames(Universe universe) {
     NodeDetails randomTServer = CommonUtils.getARandomLiveTServer(universe);
     RunQueryFormData ysqlQuery = new RunQueryFormData();
-    ysqlQuery.query = LIST_USER_DATABASES_SQL;
-    ysqlQuery.db_name = "postgres";
+    ysqlQuery.setQuery(LIST_USER_DATABASES_SQL);
+    ysqlQuery.setDbName("postgres");
     return ysqlQueryExecutor.executeQueryInNodeShell(universe, ysqlQuery, randomTServer);
   }
 

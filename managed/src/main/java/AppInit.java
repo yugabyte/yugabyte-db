@@ -102,8 +102,6 @@ public class AppInit {
       throws ReflectiveOperationException {
     log.info("Yugaware Application has started");
 
-    String mode = config.getString("yb.mode");
-
     if (!environment.isTest()) {
       // Check if we have provider data, if not, we need to seed the database
       if (Customer.find.query().where().findCount() == 0 && config.getBoolean("yb.seedData")) {
@@ -133,15 +131,13 @@ public class AppInit {
                   .toString());
       fileDataService.syncFileData(storagePath, ywFileDataSynced);
 
-      if (mode.equals("PLATFORM")) {
-        String devopsHome = config.getString("yb.devops.home");
-        if (devopsHome == null || devopsHome.length() == 0) {
-          throw new RuntimeException("yb.devops.home is not set in application.conf");
-        }
+      String devopsHome = config.getString("yb.devops.home");
+      if (devopsHome == null || devopsHome.length() == 0) {
+        throw new RuntimeException("yb.devops.home is not set in application.conf");
+      }
 
-        if (storagePath == null || storagePath.length() == 0) {
-          throw new RuntimeException(("yb.storage.path is not set in application.conf"));
-        }
+      if (storagePath == null || storagePath.length() == 0) {
+        throw new RuntimeException(("yb.storage.path is not set in application.conf"));
       }
 
       // temporarily revert due to PLAT-2434

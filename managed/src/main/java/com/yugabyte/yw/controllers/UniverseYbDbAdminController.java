@@ -36,7 +36,6 @@ import io.swagger.annotations.ApiImplicitParams;
 import io.swagger.annotations.ApiOperation;
 import io.swagger.annotations.Authorization;
 import java.util.UUID;
-import play.data.Form;
 import play.mvc.Http;
 import play.mvc.Result;
 
@@ -181,11 +180,10 @@ public class UniverseYbDbAdminController extends AuthenticatedController {
   public Result runQuery(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getValidUniverseOrBadRequest(universeUUID, customer);
-    Form<RunQueryFormData> formData =
-        formFactory.getFormDataOrBadRequest(request, RunQueryFormData.class);
+    RunQueryFormData formData = parseJsonAndValidate(request, RunQueryFormData.class);
 
     JsonNode queryResult =
-        universeYbDbAdminHandler.validateRequestAndExecuteQuery(universe, formData.get(), request);
+        universeYbDbAdminHandler.validateRequestAndExecuteQuery(universe, formData);
     auditService()
         .createAuditEntryWithReqBody(
             request,
