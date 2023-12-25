@@ -17,6 +17,12 @@ SET check_function_bodies = false;
 SET client_min_messages = warning;
 SET row_security = off;
 
+-- Set variable use_tablespaces (if not already set)
+\if :{?use_tablespaces}
+\else
+\set use_tablespaces false
+\endif
+
 --
 -- Name: hint_plan; Type: SCHEMA; Schema: -; Owner: yugabyte_test
 --
@@ -35,7 +41,9 @@ DROP EXTENSION IF EXISTS pg_hint_plan;
 SELECT pg_catalog.binary_upgrade_create_empty_extension('pg_hint_plan', 'hint_plan', false, '1.3.7', '{16549,16547}', '{"",""}', ARRAY[]::pg_catalog.text[]);
 
 
-SET default_tablespace = '';
+\if :use_tablespaces
+    SET default_tablespace = '';
+\endif
 
 --
 -- Name: grp1; Type: TABLEGROUP; Schema: -; Owner: tablegroup_test_user
@@ -61,7 +69,9 @@ CREATE TABLEGROUP grp2;
 
 ALTER TABLEGROUP grp2 OWNER TO tablegroup_test_user;
 
-SET default_tablespace = tsp1;
+\if :use_tablespaces
+    SET default_tablespace = tsp1;
+\endif
 
 --
 -- Name: grp_with_spc; Type: TABLEGROUP; Schema: -; Owner: tablegroup_test_user; Tablespace: tsp1
@@ -75,7 +85,9 @@ CREATE TABLEGROUP grp_with_spc;
 
 ALTER TABLEGROUP grp_with_spc OWNER TO tablegroup_test_user;
 
-SET default_tablespace = '';
+\if :use_tablespaces
+    SET default_tablespace = '';
+\endif
 
 SET default_with_oids = false;
 
