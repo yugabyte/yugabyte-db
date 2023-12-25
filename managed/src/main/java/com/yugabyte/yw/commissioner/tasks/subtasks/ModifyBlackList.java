@@ -21,8 +21,7 @@ import java.util.Collection;
 import java.util.List;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.yb.CommonNet.HostPortPB;
 import org.yb.client.ModifyMasterClusterConfigBlacklist;
 import org.yb.client.YBClient;

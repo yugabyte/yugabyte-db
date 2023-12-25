@@ -15,7 +15,7 @@ import java.util.Optional;
 import java.util.TimeZone;
 import java.util.stream.Stream;
 
-import org.apache.commons.collections.MapUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 

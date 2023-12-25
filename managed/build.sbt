@@ -132,8 +132,10 @@ libraryDependencies ++= Seq(
   "org.postgresql" % "postgresql" % "42.3.3",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
   "org.codehaus.janino" % "janino" % "3.1.6",
-  "org.apache.commons" % "commons-compress" % "1.21",
-  "org.apache.commons" % "commons-csv" % "1.9.0",
+  "org.apache.commons" % "commons-lang3" % "3.13.0",
+  "org.apache.commons" % "commons-collections4" % "4.4",
+  "org.apache.commons" % "commons-compress" % "1.25.0",
+  "org.apache.commons" % "commons-csv" % "1.10.0",
   "org.apache.httpcomponents" % "httpcore" % "4.4.5",
   "org.apache.httpcomponents" % "httpclient" % "4.5.13",
   "org.flywaydb" %% "flyway-play" % "4.0.0",
@@ -165,13 +167,13 @@ libraryDependencies ++= Seq(
   "org.pac4j" % "pac4j-oauth" % "3.7.0" exclude("commons-io" , "commons-io"),
   "org.pac4j" % "pac4j-oidc" % "3.7.0" exclude("commons-io" , "commons-io"),
   "com.typesafe.play" %% "play-json" % "2.6.14",
+  "commons-validator" % "commons-validator" % "1.8.0",
   "org.asynchttpclient" % "async-http-client" % "2.2.1",
-  "commons-validator" % "commons-validator" % "1.7",
   "org.apache.velocity" % "velocity-engine-core" % "2.3",
   "com.fasterxml.woodstox" % "woodstox-core" % "6.4.0",
   "com.jayway.jsonpath" % "json-path" % "2.6.0",
-  "commons-io" % "commons-io" % "2.8.0",
-  "commons-codec" % "commons-codec" % "1.15",
+  "commons-io" % "commons-io" % "2.15.1",
+  "commons-codec" % "commons-codec" % "1.16.0",
   "com.google.apis" % "google-api-services-compute" % "v1-rev20220506-1.32.1",
   "com.google.apis" % "google-api-services-iam" % "v1-rev20211104-1.32.1",
   "com.google.cloud" % "google-cloud-compute" % "1.9.1",
@@ -455,6 +457,7 @@ dependencyOverrides ++= jacksonOverrides
 
 excludeDependencies += "org.eclipse.jetty" % "jetty-io"
 excludeDependencies += "org.eclipse.jetty" % "jetty-server"
+excludeDependencies += "commons-collections" % "commons-collections"
 
 concurrentRestrictions in Global := Seq(Tags.limitAll(16))
 
