@@ -20,7 +20,7 @@ import java.util.UUID;
 import javax.annotation.Nullable;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
-import org.apache.commons.collections.MapUtils;
+import org.apache.commons.collections4.MapUtils;
 
 @Data
 @ApiModel(description = "GFlags for current cluster")

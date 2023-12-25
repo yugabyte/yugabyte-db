@@ -23,8 +23,8 @@ import java.nio.file.Path;
 import java.util.*;
 import javax.inject.Inject;
 import javax.inject.Singleton;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.collections.MapUtils;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.yaml.snakeyaml.Yaml;
 import play.Environment;
 

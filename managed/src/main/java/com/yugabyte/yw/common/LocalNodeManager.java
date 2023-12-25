@@ -68,7 +68,7 @@ import java.util.stream.IntStream;
 import javax.inject.Singleton;
 import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.MapUtils;
+import org.apache.commons.collections4.MapUtils;
 import play.libs.Json;
 
 /** Node manager that runs all the processes locally. Processess are bind to loopback interfaces. */
