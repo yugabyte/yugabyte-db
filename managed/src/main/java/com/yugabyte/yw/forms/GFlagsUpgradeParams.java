@@ -26,7 +26,7 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 
 @JsonIgnoreProperties(ignoreUnknown = true)
 @JsonDeserialize(converter = GFlagsUpgradeParams.Converter.class)

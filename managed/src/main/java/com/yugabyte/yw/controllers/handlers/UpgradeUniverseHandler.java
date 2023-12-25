@@ -54,7 +54,7 @@ import java.util.List;
 import java.util.UUID;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.MapUtils;
+import org.apache.commons.collections4.MapUtils;
 
 @Slf4j
 @Singleton

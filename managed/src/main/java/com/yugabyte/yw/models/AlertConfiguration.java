@@ -54,7 +54,7 @@ import lombok.Data;
 import lombok.EqualsAndHashCode;
 import lombok.Value;
 import lombok.experimental.Accessors;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 
 @Entity
 @Data
