@@ -684,36 +684,36 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
   protected void initYCQL(Universe universe, boolean authEnabled, String password) {
     RunQueryFormData formData = new RunQueryFormData();
     // Create `yugabyte` keyspace.
-    formData.query = "CREATE KEYSPACE IF NOT EXISTS yugabyte;";
-    formData.tableType = TableType.YQL_TABLE_TYPE;
+    formData.setQuery("CREATE KEYSPACE IF NOT EXISTS yugabyte;");
+    formData.setTableType(TableType.YQL_TABLE_TYPE);
     JsonNode response =
         ycqlQueryExecutor.executeQuery(
             universe, formData, true, Util.DEFAULT_YCQL_USERNAME, password);
     assertFalse(response.has("error"));
 
     // Create table.
-    formData.query =
-        "CREATE TABLE yugabyte.some_table (id int, name text, age int, PRIMARY KEY((id, name)));";
+    formData.setQuery(
+        "CREATE TABLE yugabyte.some_table (id int, name text, age int, PRIMARY KEY((id, name)));");
     response =
         ycqlQueryExecutor.executeQuery(
             universe, formData, true, Util.DEFAULT_YCQL_USERNAME, password);
     assertFalse(response.has("error"));
 
     // Insert Data.
-    formData.query = "INSERT INTO yugabyte.some_table (id, name, age) VALUES (1, 'John', 20);";
+    formData.setQuery("INSERT INTO yugabyte.some_table (id, name, age) VALUES (1, 'John', 20);");
     response =
         ycqlQueryExecutor.executeQuery(
             universe, formData, true, Util.DEFAULT_YCQL_USERNAME, password);
     assertFalse(response.has("error"));
 
-    formData.query = "INSERT INTO yugabyte.some_table (id, name, age) VALUES (2, 'Mary', 18);";
+    formData.setQuery("INSERT INTO yugabyte.some_table (id, name, age) VALUES (2, 'Mary', 18);");
     response =
         ycqlQueryExecutor.executeQuery(
             universe, formData, true, Util.DEFAULT_YCQL_USERNAME, password);
     assertFalse(response.has("error"));
 
-    formData.query =
-        "INSERT INTO yugabyte.some_table (id, name, age) VALUES (10000, 'Stephen', 50);";
+    formData.setQuery(
+        "INSERT INTO yugabyte.some_table (id, name, age) VALUES (10000, 'Stephen', 50);");
     response =
         ycqlQueryExecutor.executeQuery(
             universe, formData, true, Util.DEFAULT_YCQL_USERNAME, password);
@@ -726,8 +726,8 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
 
   protected void verifyYCQL(Universe universe, boolean authEnabled, String password) {
     RunQueryFormData formData = new RunQueryFormData();
-    formData.query = "select count(*) from yugabyte.some_table;";
-    formData.tableType = TableType.YQL_TABLE_TYPE;
+    formData.setQuery("select count(*) from yugabyte.some_table;");
+    formData.setTableType(TableType.YQL_TABLE_TYPE);
 
     JsonNode response =
         ycqlQueryExecutor.executeQuery(

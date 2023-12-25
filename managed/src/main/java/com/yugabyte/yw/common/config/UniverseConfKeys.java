@@ -987,4 +987,13 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " This skips the storage config/success marker based validations done before B/R.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+
+  public static final ConfKeyInfo<Boolean> enableDbQueryApi =
+      new ConfKeyInfo<>(
+          "yb.security.enable_db_query_api",
+          ScopeType.UNIVERSE,
+          "Enable .../run_query API for the universe",
+          "Enables the ability to execute SQL queries through YBA API",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }
