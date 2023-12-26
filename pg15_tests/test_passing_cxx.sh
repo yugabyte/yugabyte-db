@@ -7,7 +7,7 @@ found_failure=false
 while read -r line; do
   test_program=$(cut -f 1 <<<"$line")
   test_descriptor=$(cut -f 2 <<<"$line")
-  test_output_path="$test_result_dir"/"$test_descriptor".txt
+  test_output_path="$test_result_dir"/"${test_descriptor//\//_}".txt
 
   # Run test, capturing out/err to file.
   set +e

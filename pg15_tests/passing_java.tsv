@@ -5,6 +5,7 @@ org.yb.pgsql.TestPgAlterTableColumnType#testMultipleRewrites
 org.yb.pgsql.TestPgAlterTableColumnType#testSplitOptions
 org.yb.pgsql.TestPgBatchExecution
 org.yb.pgsql.TestPgCacheConsistency#testCatalogVersionLogging
+org.yb.pgsql.TestPgExplainAnalyzeMetrics
 org.yb.pgsql.TestPgRegressBackfillIndex
 org.yb.pgsql.TestPgRegressBufferingWithSQLErrors
 org.yb.pgsql.TestPgRegressGin

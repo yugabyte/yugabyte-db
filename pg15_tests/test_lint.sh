@@ -13,7 +13,7 @@ EOT
 # passing_foo.tsv should be sorted and have no duplicates.
 find . -name 'passing_*.tsv' \
   | while read -r tsv; do
-  sort -cu "$tsv"
+  LC_ALL=C sort -cu "$tsv"
 done
 
 find . -name '*.sh' \
