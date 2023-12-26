@@ -2551,6 +2551,16 @@ static struct config_int ConfigureNamesInt[] =
 	},
 
 	{
+		{"ysql_conn_mgr_sticky_object_count", PGC_INTERNAL, CUSTOM_OPTIONS,
+			gettext_noop("Shows the count of database objects that require a sticky connection within this session."),
+			NULL
+		},
+		&ysql_conn_mgr_sticky_object_count,
+		0, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"max_standby_archive_delay", PGC_SIGHUP, REPLICATION_STANDBY,
 			gettext_noop("Sets the maximum delay before canceling queries when a hot standby server is processing archived WAL data."),
 			NULL,

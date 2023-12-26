@@ -3992,13 +3992,13 @@ bool YbIsColumnPartOfKey(Relation rel, const char *column_name)
 }
 
 /*
- * ```yb_committed_sticky_object_count``` is the count of the database objects
+ * ```ysql_conn_mgr_sticky_object_count``` is the count of the database objects
  * that requires the sticky connection
  * These objects are
  * 1. WITH HOLD CURSORS
  * 2. TEMP TABLE
  */
-int yb_committed_sticky_object_count = 0;
+int ysql_conn_mgr_sticky_object_count = 0;
 
 /*
  * ```YbIsStickyConnection(int *change)``` updates the number of objects that requires a sticky
@@ -4008,10 +4008,10 @@ int yb_committed_sticky_object_count = 0;
  */
 bool YbIsStickyConnection(int *change)
 {
-	yb_committed_sticky_object_count += *change;
+	ysql_conn_mgr_sticky_object_count += *change;
 	*change = 0; /* Since it is updated it will be set to 0 */
-	elog(DEBUG5, "Number of sticky objects: %d", yb_committed_sticky_object_count);
-	return (yb_committed_sticky_object_count > 0);
+	elog(DEBUG5, "Number of sticky objects: %d", ysql_conn_mgr_sticky_object_count);
+	return (ysql_conn_mgr_sticky_object_count > 0);
 }
 
 void**
