@@ -79,7 +79,7 @@ export default class ClusterInfoPanel extends Component {
       return <div className='universe-detail-widget-image-bundle' title={img.name}>
         {img.name.length > 15 ? `${img.name.substring(0, 15)}...` : img.name}
         {img.metadata?.type === ImageBundleType.YBA_ACTIVE && <ImageBundleYBActiveTag />}
-        {img.metadata.type === ImageBundleType.YBA_DEPRECATED && (
+        {img.metadata?.type === ImageBundleType.YBA_DEPRECATED && (
           <ImageBundleDefaultTag
             text={"Retired"}
             icon={<></>}
