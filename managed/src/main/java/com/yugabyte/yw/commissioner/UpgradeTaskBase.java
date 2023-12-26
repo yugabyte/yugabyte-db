@@ -18,6 +18,8 @@ import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.forms.UniverseTaskParams.CommunicationPorts;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
@@ -330,7 +332,10 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
               .setSubTaskGroupType(subGroupType);
           if (processType.equals(ServerType.TSERVER) && node.isYsqlServer) {
             createWaitForServersTasks(
-                    singletonNodeList, ServerType.YSQLSERVER, context.getUserIntent())
+                    singletonNodeList,
+                    ServerType.YSQLSERVER,
+                    context.getUserIntent(),
+                    context.getCommunicationPorts())
                 .setSubTaskGroupType(subGroupType);
           }
 
@@ -587,16 +592,40 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       NodeDetails node,
       ServerType processType,
       Map<String, String> oldGflags,
-      Map<String, String> newGflags) {
+      Map<String, String> newGflags,
+      UniverseTaskParams.CommunicationPorts communicationPorts) {
     AnsibleConfigureServers.Params params =
         getAnsibleConfigureServerParams(
             userIntent, node, processType, UpgradeTaskType.GFlags, UpgradeTaskSubType.None);
     params.gflags = newGflags;
     params.gflagsToRemove = GFlagsUtil.getDeletedGFlags(oldGflags, newGflags);
+    if (communicationPorts != null) {
+      params.communicationPorts = communicationPorts;
+      params.overrideNodePorts = true;
+    }
     AnsibleConfigureServers task = createTask(AnsibleConfigureServers.class);
     task.initialize(params);
     task.setUserTaskUUID(getUserTaskUUID());
     return task;
+  }
+
+  protected void createServerConfFileUpdateTasks(
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      List<NodeDetails> nodes,
+      Set<ServerType> processTypes,
+      UniverseDefinitionTaskParams.Cluster curCluster,
+      Collection<UniverseDefinitionTaskParams.Cluster> curClusters,
+      UniverseDefinitionTaskParams.Cluster newCluster,
+      Collection<UniverseDefinitionTaskParams.Cluster> newClusters) {
+    createServerConfFileUpdateTasks(
+        userIntent,
+        nodes,
+        processTypes,
+        curCluster,
+        curClusters,
+        newCluster,
+        newClusters,
+        null /* communicationPorts */);
   }
 
   /**
@@ -609,6 +638,7 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
    * @param curClusters set of current clusters.
    * @param newCluster updated new cluster.
    * @param newClusters set of updated new clusters.
+   * @param communicationPorts new communication ports on DB nodes.
    */
   protected void createServerConfFileUpdateTasks(
       UniverseDefinitionTaskParams.UserIntent userIntent,
@@ -617,7 +647,8 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       UniverseDefinitionTaskParams.Cluster curCluster,
       Collection<UniverseDefinitionTaskParams.Cluster> curClusters,
       UniverseDefinitionTaskParams.Cluster newCluster,
-      Collection<UniverseDefinitionTaskParams.Cluster> newClusters) {
+      Collection<UniverseDefinitionTaskParams.Cluster> newClusters,
+      UniverseTaskParams.CommunicationPorts communicationPorts) {
     // If the node list is empty, we don't need to do anything.
     if (nodes.isEmpty()) {
       return;
@@ -634,7 +665,8 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
       Map<String, String> oldGFlags =
           GFlagsUtil.getGFlagsForNode(node, processType, curCluster, curClusters);
       subTaskGroup.addSubTask(
-          getAnsibleConfigureServerTask(userIntent, node, processType, oldGFlags, newGFlags));
+          getAnsibleConfigureServerTask(
+              userIntent, node, processType, oldGFlags, newGFlags, communicationPorts));
     }
     subTaskGroup.setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
@@ -863,6 +895,8 @@ public abstract class UpgradeTaskBase extends UniverseDefinitionTaskBase {
     // Set this field to access client userIntent during runtime as
     // usually universeDetails are updated only at the end of task.
     UniverseDefinitionTaskParams.UserIntent userIntent;
+    // Set this field to provide custom communication ports during runtime.
+    CommunicationPorts communicationPorts;
     @Builder.Default boolean skipStartingProcesses = false;
     String targetSoftwareVersion;
     Consumer<NodeDetails> postAction;

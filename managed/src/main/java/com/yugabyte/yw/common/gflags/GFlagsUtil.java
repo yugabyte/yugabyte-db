@@ -371,13 +371,28 @@ public class GFlagsUtil {
     Map<String, String> ybcFlags = new TreeMap<>();
     ybcFlags.put("v", Integer.toString(1));
     ybcFlags.put("server_address", serverAddresses);
-    ybcFlags.put("server_port", Integer.toString(node.ybControllerRpcPort));
+    ybcFlags.put(
+        "server_port",
+        Integer.toString(
+            taskParam.overrideNodePorts
+                ? taskParam.communicationPorts.ybControllerrRpcPort
+                : node.ybControllerRpcPort));
     ybcFlags.put("log_dir", getYbHomeDir(providerUUID) + YBC_LOG_SUBDIR);
     ybcFlags.put("cores_dir", getYbHomeDir(providerUUID) + CORES_DIR_PATH);
 
     ybcFlags.put("yb_master_address", node.cloudInfo.private_ip);
-    ybcFlags.put("yb_master_webserver_port", Integer.toString(node.masterHttpPort));
-    ybcFlags.put("yb_tserver_webserver_port", Integer.toString(node.tserverHttpPort));
+    ybcFlags.put(
+        "yb_master_webserver_port",
+        Integer.toString(
+            taskParam.overrideNodePorts
+                ? taskParam.communicationPorts.masterHttpPort
+                : node.masterHttpPort));
+    ybcFlags.put(
+        "yb_tserver_webserver_port",
+        Integer.toString(
+            taskParam.overrideNodePorts
+                ? taskParam.communicationPorts.tserverHttpPort
+                : node.tserverHttpPort));
 
     // For "yb_tserver_address", private_ip works for cloud cases,
     // since pgsql_bind_address is set to 0.0.0.0 or private_ip.
@@ -491,25 +506,36 @@ public class GFlagsUtil {
     NodeDetails node = universe.getNode(taskParam.nodeName);
     String masterAddresses = universe.getMasterAddresses(false, useSecondaryIp);
     String privateIp = node.cloudInfo.private_ip;
+    int tserverRpcPort =
+        taskParam.overrideNodePorts
+            ? taskParam.communicationPorts.tserverRpcPort
+            : node.tserverRpcPort;
+    int tserverHttpPort =
+        taskParam.overrideNodePorts
+            ? taskParam.communicationPorts.tserverHttpPort
+            : node.tserverHttpPort;
+    int redisServerHttpPort =
+        taskParam.overrideNodePorts
+            ? taskParam.communicationPorts.redisServerHttpPort
+            : node.redisServerHttpPort;
+    int redisServerRpcPort =
+        taskParam.overrideNodePorts
+            ? taskParam.communicationPorts.redisServerRpcPort
+            : node.redisServerRpcPort;
 
     if (useHostname) {
-      gflags.put(
-          SERVER_BROADCAST_ADDRESSES,
-          String.format("%s:%s", privateIp, Integer.toString(node.tserverRpcPort)));
+      gflags.put(SERVER_BROADCAST_ADDRESSES, String.format("%s:%s", privateIp, tserverRpcPort));
       gflags.put(USE_NODE_HOSTNAME_FOR_LOCAL_TSERVER, "true");
     } else {
       gflags.put(SERVER_BROADCAST_ADDRESSES, "");
     }
-    gflags.put(
-        RPC_BIND_ADDRESSES,
-        String.format("%s:%s", privateIp, Integer.toString(node.tserverRpcPort)));
+    gflags.put(RPC_BIND_ADDRESSES, String.format("%s:%s", privateIp, tserverRpcPort));
     gflags.put(TSERVER_MASTER_ADDRS, masterAddresses);
 
     if (useSecondaryIp) {
-      String bindAddressPrimary =
-          String.format("%s:%s", node.cloudInfo.private_ip, node.tserverRpcPort);
+      String bindAddressPrimary = String.format("%s:%s", node.cloudInfo.private_ip, tserverRpcPort);
       String bindAddressSecondary =
-          String.format("%s:%s", node.cloudInfo.secondary_private_ip, node.tserverRpcPort);
+          String.format("%s:%s", node.cloudInfo.secondary_private_ip, tserverRpcPort);
       String bindAddresses = bindAddressSecondary + "," + bindAddressPrimary;
       gflags.put(RPC_BIND_ADDRESSES, bindAddresses);
     } else if (isDualNet) {
@@ -519,15 +545,13 @@ public class GFlagsUtil {
       gflags.put(USE_PRIVATE_IP, "cloud");
     }
 
-    gflags.put(WEBSERVER_PORT, Integer.toString(node.tserverHttpPort));
+    gflags.put(WEBSERVER_PORT, Integer.toString(tserverHttpPort));
     gflags.put(WEBSERVER_INTERFACE, privateIp);
     gflags.put(
         REDIS_PROXY_BIND_ADDRESS,
-        String.format("%s:%s", privateIp, Integer.toString(node.redisServerRpcPort)));
+        String.format("%s:%s", privateIp, Integer.toString(redisServerRpcPort)));
     if (userIntent.enableYEDIS) {
-      gflags.put(
-          REDIS_PROXY_WEBSERVER_PORT,
-          Integer.toString(taskParam.communicationPorts.redisServerHttpPort));
+      gflags.put(REDIS_PROXY_WEBSERVER_PORT, Integer.toString(redisServerHttpPort));
     } else {
       gflags.put(START_REDIS_PROXY, "false");
     }
@@ -576,8 +600,18 @@ public class GFlagsUtil {
       gflags.put(ENABLE_YSQL, "true");
       gflags.put(
           PSQL_PROXY_BIND_ADDRESS,
-          String.format("%s:%s", pgsqlProxyBindAddress, node.ysqlServerRpcPort));
-      gflags.put(PSQL_PROXY_WEBSERVER_PORT, Integer.toString(node.ysqlServerHttpPort));
+          String.format(
+              "%s:%s",
+              pgsqlProxyBindAddress,
+              taskParam.overrideNodePorts
+                  ? taskParam.communicationPorts.ysqlServerRpcPort
+                  : node.ysqlServerRpcPort));
+      gflags.put(
+          PSQL_PROXY_WEBSERVER_PORT,
+          Integer.toString(
+              taskParam.overrideNodePorts
+                  ? taskParam.communicationPorts.ysqlServerHttpPort
+                  : node.ysqlServerHttpPort));
       if (taskParam.enableYSQLAuth) {
         gflags.put(YSQL_ENABLE_AUTH, "true");
         gflags.put(YSQL_HBA_CONF_CSV, "local all yugabyte trust");
@@ -656,8 +690,18 @@ public class GFlagsUtil {
       gflags.put(START_CQL_PROXY, "true");
       gflags.put(
           CSQL_PROXY_BIND_ADDRESS,
-          String.format("%s:%s", cqlProxyBindAddress, node.yqlServerRpcPort));
-      gflags.put(CSQL_PROXY_WEBSERVER_PORT, Integer.toString(node.yqlServerHttpPort));
+          String.format(
+              "%s:%s",
+              cqlProxyBindAddress,
+              taskParam.overrideNodePorts
+                  ? taskParam.communicationPorts.yqlServerRpcPort
+                  : node.yqlServerRpcPort));
+      gflags.put(
+          CSQL_PROXY_WEBSERVER_PORT,
+          Integer.toString(
+              taskParam.overrideNodePorts
+                  ? taskParam.communicationPorts.yqlServerHttpPort
+                  : node.yqlServerHttpPort));
       if (taskParam.enableYCQLAuth) {
         gflags.put(USE_CASSANDRA_AUTHENTICATION, "true");
       } else {
@@ -768,11 +812,19 @@ public class GFlagsUtil {
     NodeDetails node = universe.getNode(taskParam.nodeName);
     String masterAddresses = universe.getMasterAddresses(false, useSecondaryIp);
     String privateIp = node.cloudInfo.private_ip;
+    int masterRpcPort =
+        taskParam.overrideNodePorts
+            ? taskParam.communicationPorts.masterRpcPort
+            : node.masterRpcPort;
+    int masterHttpPort =
+        taskParam.overrideNodePorts
+            ? taskParam.communicationPorts.masterHttpPort
+            : node.masterHttpPort;
 
     if (useHostname) {
       gflags.put(
           SERVER_BROADCAST_ADDRESSES,
-          String.format("%s:%s", privateIp, Integer.toString(node.masterRpcPort)));
+          String.format("%s:%s", privateIp, Integer.toString(masterRpcPort)));
       gflags.put(USE_NODE_HOSTNAME_FOR_LOCAL_TSERVER, "true");
     } else {
       gflags.put(SERVER_BROADCAST_ADDRESSES, "");
@@ -784,22 +836,19 @@ public class GFlagsUtil {
       gflags.put(MASTER_ADDRESSES, "");
     }
 
-    gflags.put(
-        RPC_BIND_ADDRESSES,
-        String.format("%s:%s", privateIp, Integer.toString(node.masterRpcPort)));
+    gflags.put(RPC_BIND_ADDRESSES, String.format("%s:%s", privateIp, masterRpcPort));
 
     if (useSecondaryIp) {
-      String bindAddressPrimary =
-          String.format("%s:%s", node.cloudInfo.private_ip, node.masterRpcPort);
+      String bindAddressPrimary = String.format("%s:%s", node.cloudInfo.private_ip, masterRpcPort);
       String bindAddressSecondary =
-          String.format("%s:%s", node.cloudInfo.secondary_private_ip, node.masterRpcPort);
+          String.format("%s:%s", node.cloudInfo.secondary_private_ip, masterRpcPort);
       String bindAddresses = bindAddressSecondary + "," + bindAddressPrimary;
       gflags.put(RPC_BIND_ADDRESSES, bindAddresses);
     } else if (isDualNet) {
       gflags.put(USE_PRIVATE_IP, "cloud");
     }
 
-    gflags.put(WEBSERVER_PORT, Integer.toString(node.masterHttpPort));
+    gflags.put(WEBSERVER_PORT, Integer.toString(masterHttpPort));
     gflags.put(WEBSERVER_INTERFACE, privateIp);
 
     boolean notifyPeerOnRemoval =
