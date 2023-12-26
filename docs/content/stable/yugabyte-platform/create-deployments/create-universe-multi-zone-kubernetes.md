@@ -166,7 +166,7 @@ By default each zone gets its own TServer service which can be used to connect t
 
 Note that this requires all the zone deployments to be in the same namespace.
 
-1. Set the following Kubernetes overrides to add universe name label on the TServer pods. You can do this during universe creation or by modifying the Kubernetes overrides of an existing universe.
+1. Set the following Kubernetes overrides to add universe name label on the TServer pods. You can do this [during universe creation](#configure-helm-overrides) or by [modifying the Kubernetes overrides](../../manage-deployments/edit-helm-overrides/) of an existing universe.
    ```yaml
    tserver:
      podLabels:
