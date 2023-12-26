@@ -31,22 +31,6 @@
      "(.*/py.typed)"
   ],
   "linters": {
-    "go-files": {
-        "type": "golint",
-        "include": "(^managed/.*[.]go$)",
-        "exclude": [
-            "(^managed/.*/third-party$)",
-            "(^managed/.*/generated$)"
-        ]
-    },
-    "go-files-length": {
-        "type": "text",
-        "text.max-line-length": 100,
-        "include": "(^managed/.*[.]go$)",
-        "severity": {
-            "2": "disabled"
-        }
-    },
     "script-and-regex.script": {
       "type": "script-and-regex",
       "include": "(^managed/.*[.]java$)",
