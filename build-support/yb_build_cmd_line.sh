@@ -22,7 +22,7 @@ set_clean_build() {
   remove_build_root_before_build=true
 }
 
-show_help() {
+yb_build_show_help() {
   cat >&2 <<-EOT
 yb_build.sh (or "ybd") is the main build tool for Yugabyte Database.
 Usage: ${0##*/} [<options>] [<build_type>] [<target_keywords>] [<yb_env_var_settings>]
