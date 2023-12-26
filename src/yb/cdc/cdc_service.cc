@@ -2545,17 +2545,6 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
         continue;
       }
       latest_active_time = last_active_time_cdc_state_table;
-
-      // If the tablet_id, stream_id pair have OpId::Min() as checkpoint,
-      // but the LastReplicatedTime is not set, we know this was
-      // a child tablet (refer: UpdateCDCProducerOnTabletSplit).
-      // We will not update the checkpoint details.
-      // This check is to be done after CheckTabletNotOfInterest and CheckStreamActive because if
-      // stream is not of interest / expired for parent tablet, then it should be the same status
-      // for the child tablets as well.
-      if (checkpoint == OpId::Min() && last_replicated_time_str.empty()) {
-        continue;
-      }
     }
 
     // Ignoring those non-bootstarped CDCSDK stream
