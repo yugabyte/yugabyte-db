@@ -1259,6 +1259,7 @@ public class PlacementInfoUtil {
       NodeDetails currentNode = nodeIter.next();
       if (currentNode.isInPlacement(clusterUUID)
           && currentNode.azUuid.equals(targetAZUuid)
+          && currentNode.state == NodeState.ToBeAdded
           && !currentNode.isMaster) {
         nodeIter.remove();
 
