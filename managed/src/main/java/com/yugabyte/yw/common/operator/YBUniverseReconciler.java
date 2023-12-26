@@ -598,17 +598,21 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     // userIntent.preferredRegion = preferredRegion;
     if (confGetter.getGlobalConf(GlobalConfKeys.usek8sCustomResources)) {
       K8SNodeResourceSpec masterResourceSpec = new K8SNodeResourceSpec();
-      masterResourceSpec.setCpuCoreCount(
-          ybUniverse.getSpec().getMasterK8SNodeResourceSpec().getCpuCoreCount());
-      masterResourceSpec.setMemoryGib(
-          ybUniverse.getSpec().getMasterK8SNodeResourceSpec().getMemoryGib());
+      if (ybUniverse.getSpec().getMasterK8SNodeResourceSpec() != null) {
+        masterResourceSpec.setCpuCoreCount(
+            ybUniverse.getSpec().getMasterK8SNodeResourceSpec().getCpuCoreCount());
+        masterResourceSpec.setMemoryGib(
+            ybUniverse.getSpec().getMasterK8SNodeResourceSpec().getMemoryGib());
+      }
       userIntent.masterK8SNodeResourceSpec = masterResourceSpec;
 
       K8SNodeResourceSpec tserverResourceSpec = new K8SNodeResourceSpec();
-      tserverResourceSpec.setCpuCoreCount(
-          ybUniverse.getSpec().getTserverK8SNodeResourceSpec().getCpuCoreCount());
-      tserverResourceSpec.setMemoryGib(
-          ybUniverse.getSpec().getTserverK8SNodeResourceSpec().getMemoryGib());
+      if (ybUniverse.getSpec().getTserverK8SNodeResourceSpec() != null) {
+        tserverResourceSpec.setCpuCoreCount(
+            ybUniverse.getSpec().getTserverK8SNodeResourceSpec().getCpuCoreCount());
+        tserverResourceSpec.setMemoryGib(
+            ybUniverse.getSpec().getTserverK8SNodeResourceSpec().getMemoryGib());
+      }
       userIntent.tserverK8SNodeResourceSpec = tserverResourceSpec;
     } else {
       userIntent.instanceType = ybUniverse.getSpec().getInstanceType();
