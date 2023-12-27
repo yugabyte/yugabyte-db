@@ -187,11 +187,11 @@ public class NFSUtil implements StorageUtil {
     Map<String, Boolean> bulkCheckFileExistsMap = new HashMap<>();
     NodeDetails node = universe.getRunningTserversInPrimaryCluster().get(0);
     String identifierUUID = UUID.randomUUID().toString();
-    String sourceFilesToCheckFilename = identifierUUID + "-" + "bulk_check_files_node";
+    String sourceFilesToCheckFilename = identifierUUID + "-bulk_check_files_node";
     String sourceFilesToCheckPath =
         BackupUtil.getPathWithPrefixSuffixJoin(
             nodeUniverseManager.getLocalTmpDir(), sourceFilesToCheckFilename);
-    String targetLocalFilename = identifierUUID + "-" + "bulk_check_files_output_node";
+    String targetLocalFilename = identifierUUID + "-bulk_check_files_output_node";
     String targetLocalFilepath =
         BackupUtil.getPathWithPrefixSuffixJoin(
             nodeUniverseManager.getLocalTmpDir(), targetLocalFilename);

@@ -693,7 +693,7 @@ public class AZUtil implements CloudUtil {
 
       String filter =
           String.format(
-              "eventTimestamp ge '%s' and " + "eventTimestamp le '%s' and resourceID eq '%s'",
+              "eventTimestamp ge '%s' and eventTimestamp le '%s' and resourceID eq '%s'",
               startTime, Instant.now().toString(), resourceID);
 
       PagedIterable<EventDataInner> eventList =

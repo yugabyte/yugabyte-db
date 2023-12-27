@@ -492,7 +492,7 @@ public class NodeInstanceController extends AuthenticatedController {
       if (!CertificateInfo.isCertificateValid(taskParams.rootCA)) {
         String errMsg =
             String.format(
-                "The certificate %s needs info. Update the cert" + " and retry.",
+                "The certificate %s needs info. Update the cert and retry.",
                 CertificateInfo.get(taskParams.rootCA).getLabel());
         log.error(errMsg);
         throw new PlatformServiceException(BAD_REQUEST, errMsg);
