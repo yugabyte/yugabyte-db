@@ -191,7 +191,7 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
     <YBModal
       open={open}
       titleSeparator
-      size="sm"
+      size="md"
       overrideHeight={universeHasXcluster ? '810px' : '720px'}
       overrideWidth="800px"
       onClose={onClose}
