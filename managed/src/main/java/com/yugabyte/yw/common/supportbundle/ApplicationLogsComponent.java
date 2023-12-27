@@ -44,7 +44,7 @@ public class ApplicationLogsComponent implements SupportBundleComponent {
   public void downloadComponent(
       Customer customer, Universe universe, Path bundlePath, NodeDetails node) throws IOException {
     String logDir = config.getString("log.override.path");
-    String destDir = bundlePath.toString() + "/" + "application_logs";
+    String destDir = bundlePath.toString() + "/application_logs";
     Path destPath = Paths.get(destDir);
     Files.createDirectories(destPath);
     File source = new File(logDir);
@@ -73,7 +73,7 @@ public class ApplicationLogsComponent implements SupportBundleComponent {
     log.info("[ApplicationLogsComponent] logDirAbsolute = '{}'", logDirAbsolute);
 
     // Create "application_logs" folder inside the support bundle folder
-    String destDir = bundlePath.toString() + "/" + "application_logs";
+    String destDir = bundlePath.toString() + "/application_logs";
     Files.createDirectories(Paths.get(destDir));
     File source = new File(logDirAbsolute);
     File dest = new File(destDir);

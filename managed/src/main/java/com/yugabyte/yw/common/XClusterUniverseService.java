@@ -452,7 +452,7 @@ public class XClusterUniverseService {
       if (resp.hasError()) {
         throw new RuntimeException(
             String.format(
-                "GetReplicationStatus RPC call with %s has errors in " + "xCluster config %s: %s",
+                "GetReplicationStatus RPC call with %s has errors in xCluster config %s: %s",
                 xClusterConfig.getReplicationGroupName(), xClusterConfig, resp.errorMessage()));
       }
       List<ReplicationStatusPB> statuses = resp.getStatuses();

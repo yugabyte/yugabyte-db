@@ -1049,7 +1049,7 @@ public class PlacementInfoUtil {
     if (numNodes > 0 && numNodes < replicationFactor) {
       String errMsg =
           String.format(
-              "Number of nodes %d cannot be less than the replication " + " factor %d.",
+              "Number of nodes %d cannot be less than the replication factor %d.",
               numNodes, replicationFactor);
       LOG.error(errMsg);
       throw new UnsupportedOperationException(errMsg);
@@ -2001,7 +2001,7 @@ public class PlacementInfoUtil {
     while (numTotalMasters > 0) {
       if (zones.isEmpty()) {
         throw new IllegalStateException(
-            "No zones left to place masters. " + "Not enough tserver nodes selected");
+            "No zones left to place masters. Not enough tserver nodes selected");
       }
       PlacementAZ az = zones.remove();
       az.replicationFactor++;

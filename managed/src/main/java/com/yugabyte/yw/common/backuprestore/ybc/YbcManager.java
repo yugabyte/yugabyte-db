@@ -319,7 +319,7 @@ public class YbcManager {
                 && !throttleParamsSetResponse.getStatus().getCode().equals(ControllerStatus.OK)) {
               throw new RuntimeException(
                   String.format(
-                      "Failed to set throttle params on" + " node {} universe {} with error: {}",
+                      "Failed to set throttle params on node %s universe %s with error: %s",
                       nodeIp,
                       universe.getUniverseUUID().toString(),
                       throttleParamsSetResponse.getStatus()));

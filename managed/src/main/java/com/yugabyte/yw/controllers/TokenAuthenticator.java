@@ -151,7 +151,7 @@ public class TokenAuthenticator extends Action.Simple {
       Matcher matcher = pattern.matcher(path);
       UUID custUUID = null;
       String patternForUUID =
-          "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}" + "-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
+          "[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}";
       String patternForHost = ".+:[0-9]{4,5}";
 
       // Allow for disabling authentication on proxy endpoint so that

@@ -120,12 +120,14 @@ class PlatformThreadPoolExecutor extends MDCAwareThreadPoolExecutor {
           return false;
         }
       }
-      log.debug(
-          "Queueing task - pool size: {}, active size: {}, max size: {}, queue size: {}",
-          currentSize,
-          activeCount,
-          executor.getMaximumPoolSize(),
-          queue.size());
+      if (availableCount == 0 && log.isDebugEnabled()) {
+        log.debug(
+            "Queueing task - pool size: {}, active size: {}, max size: {}, queue size: {}",
+            currentSize,
+            activeCount,
+            executor.getMaximumPoolSize(),
+            queue.size());
+      }
       return queue.offer(e);
     }
 

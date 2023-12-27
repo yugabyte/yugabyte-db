@@ -104,7 +104,7 @@ public class BackupUtil {
   public static final String UNIVERSE_UUID_IDENTIFIER_STRING =
       "(univ-[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}/)";
   public static final String BACKUP_IDENTIFIER_STRING =
-      "(.*?)" + "(%s)?" + UNIVERSE_UUID_IDENTIFIER_STRING + "((ybc_)?backup-(.*))";
+      "(.*?)(%s)?" + UNIVERSE_UUID_IDENTIFIER_STRING + "((ybc_)?backup-(.*))";
   public static final String YBC_BACKUP_LOCATION_IDENTIFIER_STRING =
       "(/?)" + UNIVERSE_UUID_IDENTIFIER_STRING + "(" + YBC_BACKUP_IDENTIFIER + ")";
   public static final Pattern PATTERN_FOR_YBC_BACKUP_LOCATION =
