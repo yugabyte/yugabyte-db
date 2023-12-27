@@ -34,7 +34,7 @@ public class AuditLogRegexGenerator {
           }
         } else {
           // Append all collected tokens + % + character itself.
-          result += outputTokens(collectedTokens, namedTokens, '%') + "%" + "[" + current + "]";
+          result += outputTokens(collectedTokens, namedTokens, '%') + "%[" + current + "]";
         }
       } else {
         if (current == '%' && !lastPercent) {

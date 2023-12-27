@@ -37,7 +37,7 @@ public class YBInformerFactory {
         informer = (SharedIndexInformer<T>) cachedInformer;
         if (informer.isRunning()) {
           log.trace(
-              "informer for %s already created and running, returning cached instance",
+              "informer for {} already created and running, returning cached instance",
               type.getName());
           return informer;
         }
