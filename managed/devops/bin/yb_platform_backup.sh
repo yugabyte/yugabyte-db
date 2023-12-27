@@ -514,7 +514,7 @@ restore_backup() {
   fi
 
   db_backup_path="${untar_dir}"/"${PLATFORM_DUMP_FNAME}"
-  trap 'delete_db_backup ${db_backup_path}' RETURN
+  trap 'delete_postgres_backup ${db_backup_path}' RETURN
   restore_postgres_backup "${db_backup_path}" "${db_username}" "${db_host}" "${db_port}" \
   "${verbose}" "${yba_installer}" "${pgrestore_path}"
 
