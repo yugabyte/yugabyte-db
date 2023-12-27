@@ -116,7 +116,7 @@ public class RedactingService {
 
   public static String redactString(String input) {
     String length = ((Integer) input.length()).toString();
-    String regex = "(.)" + "{" + length + "}";
+    String regex = "(.){" + length + "}";
     String output = input.replaceAll(regex, SECRET_REPLACEMENT);
     return output;
   }

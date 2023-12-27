@@ -337,7 +337,7 @@ public class Restore extends Model {
     }
     if (filter.isOnlyShowDeletedSourceUniverses()) {
       String sourceUniverseNotExists =
-          "t0.source_universe_uuid not in" + "(select U.universe_uuid from universe U)";
+          "t0.source_universe_uuid not in (select U.universe_uuid from universe U)";
       query.raw(sourceUniverseNotExists);
     }
     return query;

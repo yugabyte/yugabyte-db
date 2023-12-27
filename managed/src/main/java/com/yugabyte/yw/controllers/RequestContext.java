@@ -23,24 +23,20 @@ public class RequestContext {
     Map<TypedKey<?>, Object> current = context.get();
     if (current == null) {
       context.set(new HashMap<>());
-      log.trace(
-          "[" + Thread.currentThread().getName() + "]" + " Created new context for key " + key);
+      log.trace("[{}] Created new context for key {}", Thread.currentThread().getName(), key);
     }
     context.get().put(key, value);
-    log.trace(
-        "[" + Thread.currentThread().getName() + "]" + " Set key " + key + " to value " + value);
+    log.trace("[{}] Set key {} to value {}", Thread.currentThread().getName(), key, value);
   }
 
   public static <T> void putIfAbsent(TypedKey<T> key, T value) {
     Map<TypedKey<?>, Object> current = context.get();
     if (current == null) {
       context.set(new HashMap<>());
-      log.trace(
-          "[" + Thread.currentThread().getName() + "]" + " Created new context for key " + key);
+      log.trace("[{}] Created new context for key {}", Thread.currentThread().getName(), key);
     }
     context.get().putIfAbsent(key, value);
-    log.trace(
-        "[" + Thread.currentThread().getName() + "]" + " Set key " + key + " to value " + value);
+    log.trace("[{}] Set key {} to value {}", Thread.currentThread().getName(), key, value);
   }
 
   @SuppressWarnings("unchecked")
@@ -81,7 +77,7 @@ public class RequestContext {
     keys.forEach(
         key -> {
           current.remove(key);
-          log.trace("[" + Thread.currentThread().getName() + "]" + " Removed key " + key);
+          log.trace("[{}] Removed key {}", Thread.currentThread().getName(), key);
         });
   }
 }

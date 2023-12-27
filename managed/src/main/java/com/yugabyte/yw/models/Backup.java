@@ -931,13 +931,12 @@ public class Backup extends Model {
       query.endOr();
     }
     if (filter.isOnlyShowDeletedUniverses()) {
-      String universeNotExists =
-          "t0.universe_uuid not in" + "(select U.universe_uuid from universe U)";
+      String universeNotExists = "t0.universe_uuid not in (select U.universe_uuid from universe U)";
       query.raw(universeNotExists);
     }
     if (filter.isOnlyShowDeletedConfigs()) {
       String configNotExists =
-          "t0.storage_config_uuid not in" + "(select C.config_uuid from customer_config C)";
+          "t0.storage_config_uuid not in (select C.config_uuid from customer_config C)";
       query.raw(configNotExists);
     }
     return query;

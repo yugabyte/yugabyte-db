@@ -888,7 +888,7 @@ public class TaskExecutor {
 
     @Override
     public String toString() {
-      return "task-info {" + taskInfo.toString() + "}" + ", task {" + task.getName() + "}";
+      return "task-info {" + taskInfo.toString() + "}, task {" + task.getName() + "}";
     }
 
     public UUID getTaskUUID() {

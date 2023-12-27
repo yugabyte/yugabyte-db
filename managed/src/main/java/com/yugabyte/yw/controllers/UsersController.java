@@ -585,7 +585,7 @@ public class UsersController extends AuthenticatedController {
 
         if (formData.getRole() == Users.Role.SuperAdmin) {
           throw new PlatformServiceException(
-              BAD_REQUEST, "Can't Assign the role of " + "SuperAdmin to another user.");
+              BAD_REQUEST, "Can't Assign the role of SuperAdmin to another user.");
         }
 
         if (user.getUserType() == UserType.ldap && user.isLdapSpecifiedRole() == true) {

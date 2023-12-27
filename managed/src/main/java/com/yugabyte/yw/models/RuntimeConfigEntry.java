@@ -153,6 +153,6 @@ public class RuntimeConfigEntry extends Model {
 
   @Override
   public String toString() {
-    return "RuntimeConfigEntry{" + "idKey=" + idKey + ", value='" + value + '\'' + '}';
+    return "RuntimeConfigEntry{idKey=" + idKey + ", value='" + value + "\'}";
   }
 }

@@ -297,7 +297,7 @@ public class ImportController extends AuthenticatedController {
         results.checks.put("is_provider_present", "FAILURE");
         results.error =
             String.format(
-                "Providers for the customer: %s and type: %s" + " are not present",
+                "Providers for the customer: %s and type: %s are not present",
                 customer.getUuid(), importForm.providerType);
         throw new PlatformServiceException(INTERNAL_SERVER_ERROR, results.error);
       }
@@ -403,7 +403,7 @@ public class ImportController extends AuthenticatedController {
       results.checks.put("is_provider_present", "FAILURE");
       results.error =
           String.format(
-              "Providers for the customer: %s and type: %s" + " are not present",
+              "Providers for the customer: %s and type: %s are not present",
               customer.getUuid(), importForm.providerType);
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, Json.toJson(results));
     }

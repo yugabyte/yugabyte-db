@@ -454,7 +454,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         // Ephemeral storage AWS instances should not have storage type
         if (deviceInfo.storageType != null) {
           throw new PlatformServiceException(
-              BAD_REQUEST, "AWS instance with ephemeral storage can't have" + " storageType set");
+              BAD_REQUEST, "AWS instance with ephemeral storage can't have storageType set");
         }
       } else {
         if (cloudType.isRequiresStorageType() && deviceInfo.storageType == null) {
