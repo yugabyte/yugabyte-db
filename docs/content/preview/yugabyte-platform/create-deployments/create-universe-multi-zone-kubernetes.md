@@ -160,13 +160,13 @@ You can create a connection to a node as follows:
 
 For information on how to connect to the universe from the Kubernetes cluster, as well as remotely, see [Connect YugabyteDB clusters](../../../deploy/kubernetes/clients/#connect-tls-secured-yugabytedb-cluster-deployed-by-helm-charts).
 
-### Create common TServer service for zones
+### Create common YB-TServer service for zones
 
-By default, each zone has its own YB-TServer service, and you can use this service to connect to the universe. Optionally, you can create a common service across all zones as follows. 
+By default, each zone has its own YB-TServer service, and you can use this service to connect to the universe. Optionally, you can create an additional highly available common service across all zones as follows.
 
 Note that this requires all the zone deployments to be in the same namespace.
 
-1. Set the following Kubernetes overrides to add the universe-name label on the TServer pods. You can do this when you [create the universe](#configure-helm-overrides) or by [modifying the Kubernetes overrides](../../manage-deployments/edit-helm-overrides/) of an existing universe.
+1. Set the following Kubernetes overrides to add the universe-name label on the YB-TServer pods. You can do this when you [create the universe](#configure-helm-overrides) or by [modifying the Kubernetes overrides](../../manage-deployments/edit-helm-overrides/) of an existing universe.
 
    ```yaml
    tserver:
@@ -209,4 +209,3 @@ Note that this requires all the zone deployments to be in the same namespace.
    ```
 
 After the service YAML is applied, in this example you would access the universe at `yb-k8s-common-tserver.yb-prod-yb-k8s.svc.cluster.local`.
-
