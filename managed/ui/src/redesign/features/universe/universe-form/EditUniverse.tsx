@@ -5,7 +5,13 @@ import { browserHistory } from 'react-router';
 import { toast } from 'react-toastify';
 import { UniverseFormContext } from './UniverseFormContainer';
 import { UniverseForm } from './form/UniverseForm';
-import { FullMoveModal, PlacementModal, ResizeNodeModal, SmartResizeModal } from './action-modals';
+import {
+  FullMoveModal,
+  KubernetesPlacementModal,
+  PlacementModal,
+  ResizeNodeModal,
+  SmartResizeModal
+} from './action-modals';
 import { YBLoading } from '../../../../components/common/indicators';
 import { api, QUERY_KEY } from './utils/api';
 import { getPlacements } from './form/fields/PlacementsField/PlacementsFieldHelper';
@@ -58,6 +64,7 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid, isViewMode }) => {
   const [showRNModal, setRNModal] = useState(false); //RN -> Resize Nodes
   const [showSRModal, setSRModal] = useState(false); //SR -> Smart Resize
   const [showPlacementModal, setPlacementModal] = useState(false);
+  const [showK8Modal, setK8Modal] = useState(false);
   const [universePayload, setUniversePayload] = useState<UniverseDetails | null>(null);
 
   const { isLoading: isUniverseLoading, data: originalData } = useQuery(
@@ -171,7 +178,7 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid, isViewMode }) => {
         else if (updateOptions.includes(UpdateActions.SMART_RESIZE_NON_RESTART)) setRNModal(true);
         else if (updateOptions.includes(UpdateActions.FULL_MOVE)) setFMModal(true);
         else setPlacementModal(true);
-      } else submitEditUniverse(finalPayload);
+      } else setK8Modal(true);
     } else
       toast.warn('Nothing to update - no fields changed', {
         autoClose: TOAST_AUTO_DISMISS_INTERVAL
@@ -228,6 +235,16 @@ export const EditUniverse: FC<EditUniverseProps> = ({ uuid, isViewMode }) => {
               oldConfigData={originalData.universeDetails}
               newConfigData={universePayload}
               onClose={() => setPlacementModal(false)}
+              onSubmit={() => submitEditUniverse(universePayload)}
+            />
+          )}
+          {showK8Modal && (
+            <KubernetesPlacementModal
+              open={showK8Modal}
+              isPrimary={true}
+              oldConfigData={originalData.universeDetails}
+              newConfigData={universePayload}
+              onClose={() => setK8Modal(false)}
               onSubmit={() => submitEditUniverse(universePayload)}
             />
           )}
