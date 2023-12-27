@@ -467,6 +467,19 @@
         "scaleDown": "Scale Down",
         "mode": "mode"
       },
+      "kubernetesPlacementModal": {
+        "modalTitle": "Confirm Update",
+        "modalDescription": "This operation shows the difference between old and new configuration for primary cluster",
+        "modalDescriptionRR": "This operation shows the difference between old and new configuration for read replica cluster",
+        "likeToProceed": "Would you like to proceed?",
+        "nodes": "nodes",
+        "cores": "CPU cores",
+        "memory": "Memory(Gib)",
+        "volumeSize": "Volume Size(Gib)",
+        "readReplicas": "Read Replicas",
+        "scaleUp": "Scale Up",
+        "scaleDown": "Scale Down"
+      },
       "fullMoveModal": {
         "modalTitle": "Confirm Full Move Update",
         "submitLabel": "Do full move",
