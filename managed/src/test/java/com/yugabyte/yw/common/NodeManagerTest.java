@@ -528,9 +528,9 @@ public class NodeManagerTest extends FakeDBApplication {
       boolean useHostname) {
     Map<String, String> gflags = new HashMap<>();
     String processType = params.getProperty("processType");
-    gflags.put("placement_cloud", configureParams.getProvider().getCode());
-    gflags.put("placement_region", configureParams.getRegion().getCode());
-    gflags.put("placement_zone", configureParams.getAZ().getCode());
+    gflags.put("placement_cloud", configureParams.getProvider().code);
+    gflags.put("placement_region", configureParams.getRegion().code);
+    gflags.put("placement_zone", configureParams.getAZ().code);
     if (ServerType.MASTER.name().equals(processType)) {
       gflags.put("master_join_existing_universe", "true");
     }

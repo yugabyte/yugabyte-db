@@ -130,8 +130,10 @@ libraryDependencies ++= Seq(
   "org.postgresql" % "postgresql" % "42.2.25",
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
   "org.codehaus.janino" % "janino" % "3.1.6",
-  "org.apache.commons" % "commons-compress" % "1.21",
-  "org.apache.commons" % "commons-csv" % "1.9.0",
+  "org.apache.commons" % "commons-lang3" % "3.13.0",
+  "org.apache.commons" % "commons-collections4" % "4.4",
+  "org.apache.commons" % "commons-compress" % "1.25.0",
+  "org.apache.commons" % "commons-csv" % "1.10.0",
   "org.apache.httpcomponents" % "httpcore" % "4.4.5",
   "org.apache.httpcomponents" % "httpclient" % "4.5.13",
   "org.flywaydb" %% "flyway-play" % "4.0.0",
@@ -147,8 +149,8 @@ libraryDependencies ++= Seq(
   "com.amazonaws" % "aws-java-sdk-s3" % "1.12.599",
   "net.minidev" % "json-smart" % "2.5.0",
   "com.cronutils" % "cron-utils" % "9.1.6",
-  "com.azure" % "azure-storage-blob" % "12.7.0",
-  "com.azure" % "azure-core" % "1.1.0",
+  "com.azure" % "azure-core" % "1.32.0",
+  "com.azure" % "azure-storage-blob" % "12.19.1",
   "io.prometheus" % "simpleclient" % "0.11.0",
   "io.prometheus" % "simpleclient_hotspot" % "0.11.0",
   "io.prometheus" % "simpleclient_servlet" % "0.11.0",
@@ -157,13 +159,13 @@ libraryDependencies ++= Seq(
   "org.pac4j" % "pac4j-oauth" % "3.7.0" exclude("commons-io" , "commons-io"),
   "org.pac4j" % "pac4j-oidc" % "3.7.0" exclude("commons-io" , "commons-io"),
   "com.typesafe.play" %% "play-json" % "2.6.14",
+  "commons-validator" % "commons-validator" % "1.8.0",
   "org.asynchttpclient" % "async-http-client" % "2.2.1",
-  "commons-validator" % "commons-validator" % "1.7",
   "org.apache.velocity" % "velocity-engine-core" % "2.3",
   "com.fasterxml.woodstox" % "woodstox-core" % "6.4.0",
   "com.jayway.jsonpath" % "json-path" % "2.6.0",
-  "commons-io" % "commons-io" % "2.8.0",
-  "commons-codec" % "commons-codec" % "1.15",
+  "commons-io" % "commons-io" % "2.15.1",
+  "commons-codec" % "commons-codec" % "1.16.0",
   "com.google.cloud" % "google-cloud-storage" % "2.2.1",
   "com.google.oauth-client" % "google-oauth-client" % "1.34.1",
   "org.projectlombok" % "lombok" % "1.18.26",
@@ -400,6 +402,9 @@ libraryDependencies ++= Seq(
 
 dependencyOverrides += "com.google.protobuf" % "protobuf-java" % "latest.integration"
 dependencyOverrides += "com.google.guava" % "guava" % "32.1.1-jre"
+// SSO functionality only works on the older version of nimbusds.
+// Azure library upgrade tries to upgrade nimbusds to latest version.
+dependencyOverrides += "com.nimbusds" % "oauth2-oidc-sdk" % "7.1.1"
 // TODO(Shashank): Remove these in Step 3:
 
 val jacksonVersion         = "2.15.3"
@@ -423,6 +428,7 @@ dependencyOverrides ++= jacksonOverrides
 
 excludeDependencies += "org.eclipse.jetty" % "jetty-io"
 excludeDependencies += "org.eclipse.jetty" % "jetty-server"
+excludeDependencies += "commons-collections" % "commons-collections"
 
 concurrentRestrictions in Global := Seq(Tags.limitAll(16))
 

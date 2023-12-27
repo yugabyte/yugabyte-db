@@ -50,7 +50,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.MapUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import scala.concurrent.ExecutionContext;
 import scala.concurrent.duration.Duration;

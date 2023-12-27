@@ -36,7 +36,7 @@ import java.util.stream.Stream;
 import javax.inject.Singleton;
 import lombok.Value;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 
 /**
  * Metric store. Used to store last metric value in-memory and return the list of metrics to

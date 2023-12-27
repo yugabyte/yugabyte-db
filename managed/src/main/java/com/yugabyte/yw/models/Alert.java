@@ -185,6 +185,7 @@ public class Alert extends Model implements AlertLabelsProvider {
   private UUID configurationUuid;
 
   @NotNull
+  @Enumerated(EnumType.STRING)
   @ApiModelProperty(value = "Alert configuration type", accessMode = READ_ONLY)
   private AlertConfiguration.TargetType configurationType;
 
