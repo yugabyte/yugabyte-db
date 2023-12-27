@@ -503,15 +503,15 @@ TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestGetChangesMultipleStre
   LOG(INFO) << "Number of records on first stream after split: " << received_records_1;
 
   const int expected_total_records_2 = 200;
-
   std::map<TabletId, CDCSDKCheckpointPB> tablet_to_checkpoint_2;
   tablet_to_checkpoint_2[tablets.Get(0).tablet_id()] = change_resp_2.cdc_sdk_checkpoint();
+  SleepFor(MonoDelta::FromSeconds(2 * kTimeMultiplier));
   int64 received_records_2 = ASSERT_RESULT(GetChangeRecordCount(
       stream_id_2, table, tablets, tablet_to_checkpoint_2, expected_total_records_2));
 
   ASSERT_EQ(received_records_2, expected_total_records_2);
 
-  LOG(INFO) << "Number of records on first stream after split: " << received_records_2;
+  LOG(INFO) << "Number of records on second stream after split: " << received_records_2;
 }
 
 TEST_F(CDCSDKTabletSplitTest, YB_DISABLE_TEST_IN_TSAN(TestSetCDCCheckpointAfterTabletSplit)) {

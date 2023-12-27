@@ -1312,7 +1312,11 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesOnUnpolledSplitTablets)
     auto tablet_peer =
         ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablet.tablet_id()));
     LogRetentionBarrierDetails(tablet_peer);
-    ASSERT_NE(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+    if (tablet.tablet_id() == tablets[0].tablet_id()) {
+      ASSERT_NE(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+    } else {
+      ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+    }
     ASSERT_LT(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
     ASSERT_LT(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
   }
