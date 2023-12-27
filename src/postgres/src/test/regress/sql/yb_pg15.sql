@@ -299,3 +299,17 @@ create function fcompos1(v compos) returns void as $$
 insert into compos values (v.*);
 $$ language sql;
 select fcompos1(row(1,'one'));
+
+-- very basic REINDEX
+CREATE TABLE yb (i int PRIMARY KEY, j int);
+CREATE INDEX NONCONCURRENTLY ON yb (j);
+UPDATE pg_index SET indisvalid = false
+    WHERE indexrelid = 'yb_j_idx'::regclass;
+\c
+REINDEX INDEX yb_j_idx;
+UPDATE pg_index SET indisvalid = false
+    WHERE indexrelid = 'yb_j_idx'::regclass;
+\c
+\set VERBOSITY terse
+REINDEX(verbose) INDEX yb_j_idx;
+\set VERBOSITY default

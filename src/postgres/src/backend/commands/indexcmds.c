@@ -3158,7 +3158,7 @@ ExecReindex(ParseState *pstate, ReindexStmt *stmt, bool isTopLevel)
 	}
 
 	/* Yugabyte only support verbose option */
-	if (IsYugaByteEnabled() && !verbose)
+	if (IsYugaByteEnabled() && (concurrently || tablespacename))
 		ereport(ERROR,
 				(errcode(ERRCODE_SYNTAX_ERROR),
 				 errmsg("Only REINDEX with VERBOSE option is supported")));
