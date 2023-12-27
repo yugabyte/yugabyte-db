@@ -7,7 +7,7 @@ menu:
   preview_yugabyte-platform:
     parent: security
     identifier: enable-encryption-in-transit
-    weight: 29
+    weight: 40
 rightNav:
   hideH4: true
 type: docs
