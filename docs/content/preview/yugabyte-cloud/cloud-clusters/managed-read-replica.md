@@ -23,7 +23,7 @@ For more information on read replicas and follower reads in YugabyteDB, see the 
 - [Read replicas](../../../architecture/docdb-replication/read-replicas/)
 - [Follower reads](../../../explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/)
 
-Each read replica cluster can have its own [replication factor](../../../architecture/docdb-replication/replication/#replication-factor). The replication factor determines how many copies of your primary data the replica has; multiple copies ensure the availability of the replica in case of a node outage. Replicas do not participate in the primary cluster [RAFT](../../../architecture/docdb-replication/replication/#raft-replication) consensus, and do not affect the fault tolerance of the primary cluster or contribute to failover.
+Each read replica cluster can have its own [replication factor](../../../architecture/docdb-replication/replication/#replication-factor). The replication factor determines how many copies of your primary data the read replica has; multiple copies ensure the availability of the replica in case of a node outage. Replicas do not participate in the primary cluster [RAFT](../../../architecture/docdb-replication/replication/#raft-replication) consensus, and do not affect the fault tolerance of the primary cluster or contribute to failover.
 
 You can delete, modify, and scale read replicas. Adding or removing nodes incurs a load on the replica. Perform scaling operations when the replica isn't experiencing heavy traffic. Scaling during times of heavy traffic can temporarily degrade performance and increase the length of time of the scaling operation.
 
