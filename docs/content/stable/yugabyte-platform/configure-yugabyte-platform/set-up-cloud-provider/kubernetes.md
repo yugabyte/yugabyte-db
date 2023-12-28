@@ -507,6 +507,16 @@ The following overrides are available:
 
 - Overrides to use a secret for LDAP authentication. Refer to [Create secrets for Kubernetes](../../../../secure/authentication/ldap-authentication-ysql/#create-secrets-for-kubernetes).
 
+- Overrides to enable [GKE service account-based IAM](../../../back-up-restore-universes/configure-backup-storage/#gke-service-account-based-iam-gcp-iam) for backup and restore using GCS:
+
+  ```yaml
+  serviceAccount: <KSA_NAME>
+  nodeSelector:
+   iam.gke.io/gke-metadata-server-enabled: "true"
+  ```
+
+  If you have a multi-zone universe, provide the same overrides for all the zones across multiple regions. The provided namespace(s) should contain the annotated Kubernetes service account to be used as overrides.
+
 ## Configure Kubernetes multi-cluster environment
 
 If you plan to create multi-region YugabyteDB universes, you can set up [Multi-Cluster Services](https://git.k8s.io/enhancements/keps/sig-multicluster/1645-multi-cluster-services-api) (MCS) across your Kubernetes clusters. This section covers implementation specific details for setting up MCS on various cloud providers and service mesh tools.
