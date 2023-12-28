@@ -19,15 +19,12 @@ public class UniverseMetadata extends Model implements ModelWithId<UUID> {
 
   @Id @NotNull private UUID id;
 
+  @NotNull private UUID customerId;
+
   @NotNull private String apiToken;
 
   // TODO will need to think of HA scenarios.
   @NotNull @URL private String platformUrl;
 
   @NotNull @URL private String metricsUrl;
-
-  @Override
-  public void generateId() {
-    id = UUID.randomUUID();
-  }
 }
