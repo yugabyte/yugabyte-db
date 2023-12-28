@@ -7,7 +7,8 @@ public interface ModelWithId<K> {
     return getId() != null;
   }
 
-  void generateId();
+  default void generateId() {}
+  ;
 
   boolean delete();
 }

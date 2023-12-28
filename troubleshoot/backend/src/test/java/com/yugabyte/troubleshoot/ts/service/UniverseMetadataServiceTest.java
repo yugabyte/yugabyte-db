@@ -74,8 +74,9 @@ public class UniverseMetadataServiceTest {
   public static UniverseMetadata testData() {
     return new UniverseMetadata()
         .setId(UUID.randomUUID())
+        .setCustomerId(UUID.randomUUID())
         .setApiToken("test_token")
         .setMetricsUrl("http://localhost:9090")
-        .setPlatformUrl("http://localhost");
+        .setPlatformUrl("http://localhost:9000");
   }
 }
