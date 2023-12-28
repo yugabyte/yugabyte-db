@@ -169,6 +169,29 @@ Result<ChildTransactionData> ChildTransactionData::FromPB(const ChildTransaction
   return result;
 }
 
+bool CanAbortTransaction(const Status& status,
+                         const TransactionMetadata& txn_metadata,
+                         const YBSubTransaction& subtransaction) {
+  // We don't abort the transaction in the following scenarios:
+  // 1. When we face a kSkipLocking error, so as to make further progress.
+  // 2. When running a transaction with READ COMMITTED isolation where the current subtransaction
+  //    id is not at the default value, and we face a kConflict/kReadRestart error. This is because
+  //    YB PG backend retries kConflict and kReadRestart errors for READ COMMITTED isolation by
+  //    restarting statements instead of the whole transaction if the statment is in a transactional
+  //    block. Else it restarts the whole transaction, in which case we can abort the current one.
+  //
+  //    See 'IsInTransactionBlock' function in src/postgres/src/backend/tcop/postgres.c for details.
+  const TransactionError txn_err(status);
+  if (txn_err.value() == TransactionErrorCode::kSkipLocking) {
+    return false;
+  }
+  if (txn_metadata.isolation == IsolationLevel::READ_COMMITTED && subtransaction.active()) {
+    return txn_err.value() != TransactionErrorCode::kReadRestartRequired &&
+           txn_err.value() != TransactionErrorCode::kConflict;
+  }
+  return true;
+}
+
 YB_DEFINE_ENUM(MetadataState, (kMissing)(kMaybePresent)(kPresent));
 
 std::string YBSubTransaction::ToString() const {
@@ -501,24 +524,13 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           }
         }
       } else {
-        const TransactionError txn_err(status);
-        // We don't abort the txn in case of a kSkipLocking error to make further progress.
-        // READ COMMITTED isolation retries errors of kConflict and kReadRestart by restarting
-        // statements instead of the whole txn and hence should avoid aborting the txn in this case
-        // too.
-        bool avoid_abort =
-            (txn_err.value() == TransactionErrorCode::kSkipLocking) ||
-            (metadata_.isolation == IsolationLevel::READ_COMMITTED &&
-              (txn_err.value() == TransactionErrorCode::kReadRestartRequired ||
-                txn_err.value() == TransactionErrorCode::kConflict));
-        if (!avoid_abort) {
+        if (CanAbortTransaction(status, metadata_, subtransaction_)) {
           auto state = state_.load(std::memory_order_acquire);
           VLOG_WITH_PREFIX(4) << "Abort desired, state: " << AsString(state);
           if (state == TransactionState::kRunning) {
             abort = true;
             // State will be changed to aborted in SetError
           }
-
           SetErrorUnlocked(status, "Flush");
         }
       }
