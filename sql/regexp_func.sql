@@ -5,7 +5,7 @@ SET client_encoding = utf8;
 \set VERBOSITY terse
 \set ECHO all
 
-SET search_path TO oracle,"$user", public, pg_catalog;
+SET search_path TO oracle, "$user", public, pg_catalog;
 
 ----
 -- Tests for REGEXP_LIKE()
@@ -46,6 +46,10 @@ SELECT REGEXP_LIKE('ORANGE' || chr(10) || 'GREEN', '^..([aeiou])\1', 'im');
 -- Tests for REGEXP_COUNT()
 ----
 
+-- ORACLE> SELECT REGEXP_COUNT('a,b' || chr(10) || 'c','[^,]+') FROM DUAL; -> 2
+SELECT REGEXP_COUNT('a,b' || chr(10) || 'c','[^,]+');
+-- ORACLE> SELECT REGEXP_COUNT('a,b' || chr(10) || 'c','b.c') FROM DUAL; -> 0
+SELECT REGEXP_COUNT('a,b' || chr(10) || 'c','b.c');
 -- ORACLE> SELECT REGEXP_COUNT('a'||CHR(10)||'d', 'a.d') FROM DUAL; -> 0
 SELECT REGEXP_COUNT('a'||CHR(10)||'d', 'a.d');
 -- ORACLE> SELECT REGEXP_COUNT('a'||CHR(10)||'d', 'a.d', 1, 'm') FROM DUAL; -> 0
@@ -175,6 +179,10 @@ SELECT REGEXP_INSTR('123 123456 1234567, 1234567 1234567 12', '[^ ]+', 1, 6, 1, 
 -- Tests for REGEXP_SUBSTR()
 ----
 
+-- ORACLE> SELECT REGEXP_SUBSTR('a,b'||chr(10)||'c','[^,]+',1,2) FROM DUAL; -> b and c
+SELECT REGEXP_SUBSTR('a,b'||chr(10)||'c','[^,]+',1,2);
+-- ORACLE> SELECT REGEXP_SUBSTR('a,b'||chr(10)||'c','.',1,4) FROM DUAL; -> c
+SELECT REGEXP_SUBSTR('a,b'||chr(10)||'c','.',1,4);
 -- ORACLE> SELECT REGEXP_SUBSTR('number of your street, zipcode town, FR', ',[^,]+') FROM DUAL; -> , zipcode town
 SELECT REGEXP_SUBSTR('number of your street, zipcode town, FR', ',[^,]+');
 -- ORACLE> SELECT REGEXP_SUBSTR('http://www.example.com/products', 'http://([[:alnum:]]+\.?){3,4}/?') FROM DUAL; -> http://www.example.com/
