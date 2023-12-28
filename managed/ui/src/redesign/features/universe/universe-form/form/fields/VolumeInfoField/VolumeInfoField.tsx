@@ -24,6 +24,8 @@ import {
   UniverseFormData,
   VolumeType
 } from '../../../utils/dto';
+import { IsOsPatchingEnabled } from '../../../../../../../components/configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
+
 import {
   PROVIDER_FIELD,
   DEVICE_INFO_FIELD,
@@ -102,10 +104,12 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   // Update field is based on master or tserver field in dedicated mode
   const UPDATE_FIELD = isDedicatedMasterField ? MASTER_DEVICE_INFO_FIELD : DEVICE_INFO_FIELD;
 
+  const isOsPatchingEnabled = IsOsPatchingEnabled();
+
   //get instance details
   const { data: instanceTypes } = useQuery(
-    [QUERY_KEY.getInstanceTypes, provider?.uuid, cpuArch],
-    () => api.getInstanceTypes(provider?.uuid, [], cpuArch),
+    [QUERY_KEY.getInstanceTypes, provider?.uuid, isOsPatchingEnabled ? cpuArch : null],
+    () => api.getInstanceTypes(provider?.uuid, [], isOsPatchingEnabled ? cpuArch : null),
     { enabled: !!provider?.uuid }
   );
   const instance = instanceTypes?.find((item) => item.instanceTypeCode === instanceType);

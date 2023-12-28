@@ -7,6 +7,8 @@ import { YBLabel, YBAutoComplete } from '../../../../../../components';
 import { api, QUERY_KEY } from '../../../utils/api';
 import { getActiveDBVersions, sortVersionStrings } from './DBVersionHelper';
 import { DEFAULT_ADVANCED_CONFIG, UniverseFormData, YBSoftwareMetadata } from '../../../utils/dto';
+import { IsOsPatchingEnabled } from '../../../../../../../components/configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
+
 import {
   SOFTWARE_VERSION_FIELD,
   PROVIDER_FIELD,
@@ -45,9 +47,12 @@ export const DBVersionField = ({ disabled }: DBVersionFieldProps): ReactElement 
   const provider = useWatch({ name: PROVIDER_FIELD });
   const cpuArch = useWatch({ name: CPU_ARCHITECTURE_FIELD });
 
+  const isOsPatchingEnabled = IsOsPatchingEnabled();
+
+
   const { data, isLoading } = useQuery(
-    [QUERY_KEY.getDBVersions, cpuArch],
-    () => api.getDBVersions(true, cpuArch),
+    [QUERY_KEY.getDBVersions, isOsPatchingEnabled ? cpuArch : null],
+    () => api.getDBVersions(true, isOsPatchingEnabled ? cpuArch : null),
     {
       enabled: !!provider?.uuid,
       onSuccess: (data) => {
