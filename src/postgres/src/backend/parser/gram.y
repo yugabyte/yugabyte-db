@@ -7364,7 +7364,7 @@ drop_type_name:
 			| EVENT TRIGGER							{ $$ = OBJECT_EVENT_TRIGGER; }
 			| EXTENSION								{ $$ = OBJECT_EXTENSION; }
 			| FOREIGN DATA_P WRAPPER				{ $$ = OBJECT_FDW; }
-			| opt_procedural LANGUAGE	{ parser_ybc_not_support(@1, "DROP LANGUAGE"); $$ = OBJECT_LANGUAGE; }
+			| opt_procedural LANGUAGE				{ $$ = OBJECT_LANGUAGE; }
 			| PUBLICATION	{ parser_ybc_not_support(@1, "DROP PUBLICATION"); $$ = OBJECT_PUBLICATION; }
 			| SCHEMA								{ $$ = OBJECT_SCHEMA; }
 			| SERVER								{ $$ = OBJECT_FOREIGN_SERVER; }
