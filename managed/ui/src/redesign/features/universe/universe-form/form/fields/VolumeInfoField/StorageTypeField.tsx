@@ -12,6 +12,8 @@ import {
   getIopsByStorageType
 } from './VolumeInfoFieldHelper';
 import { StorageType, UniverseFormData, CloudType } from '../../../utils/dto';
+import { IsOsPatchingEnabled } from '../../../../../../../components/configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
+
 import {
   DEVICE_INFO_FIELD,
   MASTER_DEVICE_INFO_FIELD,
@@ -88,10 +90,12 @@ export const StorageTypeField: FC<StorageTypeFieldProps> = ({ disableStorageType
     }
   }, [fieldValue.storageType, masterFieldValue?.storageType]);
 
+  const isOsPatchingEnabled = IsOsPatchingEnabled();
+
   //get instance details
   const { data: instanceTypes } = useQuery(
-    [QUERY_KEY.getInstanceTypes, provider?.uuid, cpuArch],
-    () => api.getInstanceTypes(provider?.uuid, [], cpuArch),
+    [QUERY_KEY.getInstanceTypes, provider?.uuid, isOsPatchingEnabled ? cpuArch : null],
+    () => api.getInstanceTypes(provider?.uuid, [], isOsPatchingEnabled ? cpuArch : null),
     { enabled: !!provider?.uuid }
   );
 

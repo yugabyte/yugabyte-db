@@ -20,6 +20,8 @@ import {
   canUseSpotInstance
 } from './InstanceTypeFieldHelper';
 import { NodeType } from '../../../../../../utils/dtos';
+import { IsOsPatchingEnabled } from '../../../../../../../components/configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
+
 import {
   AvailabilityZone,
   CloudType,
@@ -99,9 +101,11 @@ export const InstanceTypeField = ({
     api.fetchRunTimeConfigs(true, provider?.uuid)
   );
 
+  const isOsPatchingEnabled = IsOsPatchingEnabled();
+
   const { data, isLoading, refetch } = useQuery(
-    [QUERY_KEY.getInstanceTypes, provider?.uuid, JSON.stringify(zones), cpuArch],
-    () => api.getInstanceTypes(provider?.uuid, zones, cpuArch),
+    [QUERY_KEY.getInstanceTypes, provider?.uuid, JSON.stringify(zones), isOsPatchingEnabled ? cpuArch : null],
+    () => api.getInstanceTypes(provider?.uuid, zones, isOsPatchingEnabled ? cpuArch : null),
     {
       enabled: !!provider?.uuid && zones.length > 0,
       onSuccess: (data) => {
