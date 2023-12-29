@@ -12,6 +12,9 @@ menu:
     weight: 2600
 type: indexpage
 ---
+
+## Server management
+
 YugabyteDB uses a two-server architecture, with YB-TServers managing the data and YB-Masters managing the metadata. You can use the yb-tserver and yb-master binaries to start and configure the servers.
 
 For simplified deployment, use the yugabyted utility. yugabyted acts as a parent server across the YB-TServer and YB-Masters servers.
@@ -55,6 +58,8 @@ For simplified deployment, use the yugabyted utility. yugabyted acts as a parent
   </div>
 
 </div>
+
+## Operating system and ports
 
 <div class="row">
 
