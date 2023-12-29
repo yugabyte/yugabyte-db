@@ -43,23 +43,9 @@ Licensing (such as a license file in the case of YBA Installer or Replicated, or
 
 </ul>
 
-## Supported Linux distributions
-
-You can install YugabyteDB Anywhere using YBA Installer on the following Linux distributions:
-
-- CentOS 7
-- Alma Linux 8
-- Alma Linux 9
-- Ubuntu 18
-- Ubuntu 20
-- RedHat Enterprise Linux 7
-- RedHat Enterprise Linux 8
-- SUSE Linux Enterprise Server (SLES) 15 SP4 ([Tech Preview](/preview/releases/versioning/#feature-availability))
-
-YugabyteDB Anywhere may also work on other Linux distributions; contact your YugabyteDB support representative if you need added support.
-
 ## Software requirements
 
+- A [supported operating system](../../../../reference/configuration/operating-systems/#yugabytedb-anywhere).
 - Python v3.8 to 3.11 must be installed.
 
 ## Hardware requirements
