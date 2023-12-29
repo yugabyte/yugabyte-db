@@ -61,7 +61,7 @@ Display the backup policy of a specified cluster.
 
 | Flag | Description |
 | :--- | :--- |
-| --cluster-name | Required. Name of the cluster of which you want to view the backup policy. |
+| --cluster-name | Required. Name of the cluster whose policy you want to view. |
 
 ### update
 
