@@ -61,7 +61,7 @@ import java.util.Objects;
 import java.util.UUID;
 import javax.inject.Singleton;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.MapUtils;
+import org.apache.commons.collections4.MapUtils;
 import play.libs.Json;
 
 @Slf4j

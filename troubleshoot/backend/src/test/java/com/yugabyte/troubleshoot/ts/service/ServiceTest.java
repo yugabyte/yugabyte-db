@@ -14,7 +14,9 @@ import org.springframework.core.annotation.AliasFor;
 @Retention(RetentionPolicy.RUNTIME)
 @SpringBootTest
 @FlywayTest
-@AutoConfigureEmbeddedDatabase(type = AutoConfigureEmbeddedDatabase.DatabaseType.POSTGRES)
+@AutoConfigureEmbeddedDatabase(
+    type = AutoConfigureEmbeddedDatabase.DatabaseType.POSTGRES,
+    provider = AutoConfigureEmbeddedDatabase.DatabaseProvider.ZONKY)
 public @interface ServiceTest {
   @AliasFor(annotation = AutoConfigureEmbeddedDatabase.class, attribute = "refresh")
   RefreshMode refresh() default RefreshMode.BEFORE_EACH_TEST_METHOD;

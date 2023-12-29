@@ -63,8 +63,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.StreamSupport;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.collections.MapUtils;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.ybc.CloudStoreSpec;
 import play.libs.Json;
@@ -693,7 +693,7 @@ public class AZUtil implements CloudUtil {
 
       String filter =
           String.format(
-              "eventTimestamp ge '%s' and " + "eventTimestamp le '%s' and resourceID eq '%s'",
+              "eventTimestamp ge '%s' and eventTimestamp le '%s' and resourceID eq '%s'",
               startTime, Instant.now().toString(), resourceID);
 
       PagedIterable<EventDataInner> eventList =

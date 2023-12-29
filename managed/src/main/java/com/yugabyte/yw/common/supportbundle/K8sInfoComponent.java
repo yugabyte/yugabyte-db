@@ -206,7 +206,7 @@ class K8sInfoComponent implements SupportBundleComponent {
   public void runCommandsOnPlatformNamespace(String platformNamespace, String destDir)
       throws IOException {
     // Create the platform namespace directory
-    String platformNamespaceDirPath = destDir + "/" + "platform_namespace_" + platformNamespace;
+    String platformNamespaceDirPath = destDir + "/platform_namespace_" + platformNamespace;
     supportBundleUtil.createDirectories(platformNamespaceDirPath);
 
     // Get pods, events, configmaps, services with full output to the platform namespace directory
@@ -305,7 +305,7 @@ class K8sInfoComponent implements SupportBundleComponent {
       KubernetesManager kubernetesManager = kubernetesManagerFactory.getManager();
 
       // Create the component directory in the support bundle.
-      String destDir = bundlePath.toString() + "/" + "k8s_info";
+      String destDir = bundlePath.toString() + "/k8s_info";
       supportBundleUtil.createDirectories(destDir);
 
       // Get all clusters in the universe (primary, read replicas).

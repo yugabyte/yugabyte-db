@@ -431,6 +431,24 @@ In addition, it is recommended to set a large initial storage size, because resi
 <!-- TODO: update this when we revisit the "Pull and push YugabyteDB Docker images to private container registry" section as part of PLAT-6797  -->
 <!-- ### Pull images from private registry -->
 
+## Enable GKE service account-based IAM
+
+If you are using Google Cloud Storage (GCS) for backups, you can enable GKE service account-based IAM (GCP IAM) so that Kubernetes universes can access GCS.
+
+Before enabling GCP IAM, ensure you have the prerequisites. Refer to [GCP IAM](../../../back-up-restore-universes/configure-backup-storage/#gke-service-account-based-iam-gcp-iam).
+
+To enable GCP IAM, provide the following additional helm values during installation to a version which supports this feature (v2.18.4 or later):
+
+- serviceAccount: Provide the name of the Kubernetes service account you created. Note that this service account should be present in the namespace being used for the YugabyteDB pod resources.
+- [nodeSelector](#nodeselector): Pass a node selector override to make sure YBA pods are scheduled on the GKE cluster's worker nodes which have a metadata server running.
+
+    ```yaml
+    yugaware:
+    ....serviceAccount: <KSA_NAME>
+    nodeSelector:
+    ....iam.gke.io/gke-metadata-server-enabled: "true"
+    ```
+
 ## Delete the Helm installation of YugabyteDB Anywhere
 
 To delete the Helm installation, run the following command:

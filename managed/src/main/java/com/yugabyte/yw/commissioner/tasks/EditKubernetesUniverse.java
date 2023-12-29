@@ -26,6 +26,7 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -79,7 +80,11 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       // some precheck operations to verify kubeconfig, svcaccount, connectivity to universe here ?
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
       kubernetesStatus.createYBUniverseEventStatus(
-          universe, taskParams().getKubernetesResourceDetails(), getName(), getUserTaskUUID());
+          universe,
+          taskParams().getKubernetesResourceDetails(),
+          getName(),
+          getUserTaskUUID(),
+          UniverseState.EDITING);
       // Reset any state from previous tasks if this is a new invocation.
       UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
       // This value is used by subsequent calls to helper methods for
@@ -198,6 +203,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           taskParams().getKubernetesResourceDetails(),
           getName(),
           getUserTaskUUID(),
+          (th != null) ? UniverseState.ERROR : UniverseState.READY,
           th);
       unlockUniverseForUpdate();
     }

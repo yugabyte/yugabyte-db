@@ -52,7 +52,7 @@ KIWI_API static inline int kiwi_fe_read_key(char *data, uint32_t size,
 	return 0;
 }
 
-KIWI_API static inline int yb_kiwi_fe_is_authok_packet(char *data, uint32_t size)
+KIWI_API static inline int yb_kiwi_fe_auth_packet_type(char *data, uint32_t size)
 {
 
 	kiwi_header_t *header = (kiwi_header_t *)data;
@@ -68,7 +68,7 @@ KIWI_API static inline int yb_kiwi_fe_is_authok_packet(char *data, uint32_t size
 	rc = kiwi_read32(&type, &pos, &pos_size);
 	if (kiwi_unlikely(rc == -1))
 		return -1;
-	return (type == 0);
+	return type;
 }
 
 KIWI_API static inline int kiwi_fe_read_auth(char *data, uint32_t size,

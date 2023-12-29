@@ -2349,7 +2349,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_is_client_ysqlconnmgr", PGC_SU_BACKEND, CUSTOM_OPTIONS,
+		{"yb_is_client_ysqlconnmgr", PGC_BACKEND, CUSTOM_OPTIONS,
 			gettext_noop("Identifies that connection is created by "
 						"Ysql Connection Manager."),
 			NULL
@@ -2547,6 +2547,16 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&yb_locks_max_transactions,
 		16, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"ysql_conn_mgr_sticky_object_count", PGC_INTERNAL, CUSTOM_OPTIONS,
+			gettext_noop("Shows the count of database objects that require a sticky connection within this session."),
+			NULL
+		},
+		&ysql_conn_mgr_sticky_object_count,
+		0, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -2883,7 +2893,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_MS
 		},
 		&RetryMinBackoffMsecs,
-		100, 0, INT_MAX,
+		10, 0, INT_MAX,
 		check_min_backoff, NULL, NULL
 	},
 
@@ -3820,6 +3830,24 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_max_query_layer_retries", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Max number of internal query layer retries of a statement"),
+			gettext_noop("Max number of query layer retries of a statement for the following errors: "
+						 "serialization error (40001), \"Restart read required\" (40001), "
+						 "deadlock detected (40P01). In Repeatable Read and Serializable isolation levels, the "
+						 "query layer only retries errors faced in the first statement of a transation. In "
+						 "READ COMMITTED isolation, the query layer has the ability to do retries for any "
+						 "statement in a transaction. Retries are not possible if some response data has "
+						 "already been sent to the client while the query is still executing. This happens if "
+						 "the output buffer, the size of which is configurable using the TServer gflag "
+						 "ysql_output_buffer_size, has filled atleast once and is flushed."),
+		},
+		&yb_max_query_layer_retries,
+		60, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL, NULL
@@ -4074,7 +4102,7 @@ static struct config_real ConfigureNamesReal[] =
 			GUC_UNIT_MS
 		},
 		&RetryBackoffMultiplier,
-		2.0, 1.0, 1e10,
+		1.2, 1.0, 1e10,
 		check_backoff_multiplier, NULL, NULL
 	},
 

@@ -491,30 +491,25 @@ void LogIndex::SetMinIndexedSegmentNumber(const int64_t segment_number) {
   min_indexed_segment_number_.store(segment_number, std::memory_order_release);
 }
 
-Result<bool> LogIndex::LoadFromSegment(ReadableLogSegment* segment) {
-  const auto segment_number = segment->header().sequence_number();
+Result<bool> LogIndex::LazyLoadOneSegment(ReadableLogSegment* segment) {
+  int64_t first_op_index = INT64_MAX;
+  const auto loaded = VERIFY_RESULT(LoadFromSegment(segment, &first_op_index));
+  // Loading of this segment is skipped because it's already loaded.
+  if (!loaded) {
+    return true;
+  }
+
+  const auto current_segment_number = segment->header().sequence_number();
   const auto min_indexed_segment_number = GetMinIndexedSegmentNumber();
-  // kNoIndexForFullWalSegment means this object doesn't have index for any WAL
-  // segment.
-  if (min_indexed_segment_number != kNoIndexForFullWalSegment &&
-      segment_number >= min_indexed_segment_number) {
-    // Already loaded.
-    return true;
-  }
-
-  const auto has_footer = segment->HasFooter();
-  if (has_footer && segment->footer().num_entries() == 0) {
-    return true;
-  }
-
-  VLOG_WITH_FUNC(1) << "path: " << segment->path() << " footer: "
-                    << (has_footer ? segment->footer().ShortDebugString() : "---");
-
-  const auto first_op_index = VERIFY_RESULT(DoLoadFromSegment(segment));
-
+  RSTATUS_DCHECK(
+      min_indexed_segment_number == current_segment_number + 1 ||
+          min_indexed_segment_number == kNoIndexForFullWalSegment,
+      IllegalState,
+      Format("Min indexed segment should be kNoIndexForFullWalSegment or $0, actual: $1",
+             current_segment_number + 1, min_indexed_segment_number));
   // Here we rely on initial value (kNoIndexForFullWalSegment) to be larger than any other possible
   // value stored inside min_indexed_segment_number_.
-  UpdateAtomicMin(&min_indexed_segment_number_, segment_number);
+  UpdateAtomicMin(&min_indexed_segment_number_, current_segment_number);
 
   if (first_op_index <= max_gced_op_index_.load(std::memory_order_acquire)) {
     // GC removed at least beginning of Raft operations we have just loaded index for.
@@ -524,6 +519,30 @@ Result<bool> LogIndex::LoadFromSegment(ReadableLogSegment* segment) {
   // If GC happens after returning from this function, caller might try to load previous segment
   // using this function, will get true from next invocation and will stop loading. This is
   // harmless.
+  return true;
+}
+
+Result<bool> LogIndex::LoadFromSegment(ReadableLogSegment* segment, int64_t* first_op_index) {
+  const auto segment_number = segment->header().sequence_number();
+  const auto min_indexed_segment_number = GetMinIndexedSegmentNumber();
+  // kNoIndexForFullWalSegment means this object doesn't have index for any WAL
+  // segment.
+  if (min_indexed_segment_number != kNoIndexForFullWalSegment &&
+      segment_number >= min_indexed_segment_number) {
+    // Already loaded.
+    return false;
+  }
+
+  const auto has_footer = segment->HasFooter();
+  if (has_footer && segment->footer().num_entries() == 0) {
+    // Nothing to load, treat it as loaded.
+    return true;
+  }
+
+  VLOG_WITH_FUNC(1) << "path: " << segment->path() << " footer: "
+                    << (has_footer ? segment->footer().ShortDebugString() : "---");
+
+  *first_op_index = VERIFY_RESULT(DoLoadFromSegment(segment));
   return true;
 }
 
@@ -559,7 +578,7 @@ Result<int64_t> LogIndex::RebuildFromSegmentEntries(ReadableLogSegment* segment)
 }
 
 Result<int64_t> LogIndex::DoLoadFromSegment(ReadableLogSegment* segment) {
-  if (!segment->HasFooter() || segment->footer().index_start_offset() <= 0) {
+  if (!segment->HasLogIndexInFooter()) {
     return RebuildFromSegmentEntries(segment);
   }
 

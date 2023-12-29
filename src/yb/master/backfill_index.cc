@@ -125,17 +125,18 @@ DEFINE_test_flag(int32, slowdown_backfill_alter_table_rpcs_ms, 0,
     "Slows down the send alter table rpc's so that the master may be stopped between "
     "different phases.");
 
-DEFINE_test_flag(
-    int32, slowdown_backfill_job_deletion_ms, 0,
+DEFINE_test_flag(int32, slowdown_backfill_job_deletion_ms, 0,
     "Slows down backfill job deletion so that backfill job can be read by test.");
 
-DEFINE_test_flag(
-    bool, skip_index_backfill, false,
+DEFINE_test_flag(bool, skip_index_backfill, false,
     "Skips backfilling the data on tservers and leaves the index in inconsistent state.");
 
-DEFINE_test_flag(
-    bool, block_do_backfill, false,
+DEFINE_test_flag(bool, block_do_backfill, false,
     "Block DoBackfill from proceeding.");
+
+DEFINE_test_flag(bool, simulate_cannot_enable_compactions, false,
+    "Skips updating an index table to GC delete markers and sending of the corresponding RPC "
+    "to the TServer.");
 
 namespace yb {
 namespace master {
@@ -1184,6 +1185,17 @@ Status BackfillTable::ClearCheckpointStateInTablets() {
   return Status::OK();
 }
 
+bool BackfillTable::GetIndexTableRetainsDeleteMarkers(const PersistentTableInfo& index_table) {
+  CHECK(index_table.is_index());
+  return index_table.schema().table_properties().retain_delete_markers();
+}
+
+void BackfillTable::UnsetIndexTableRetainsDeleteMarkers(PersistentTableInfo* index_table) {
+  CHECK_NOTNULL(index_table);
+  CHECK(index_table->is_index());
+  index_table->pb.mutable_schema()->mutable_table_properties()->set_retain_delete_markers(false);
+}
+
 Status BackfillTable::AllowCompactionsToGCDeleteMarkers(
     const TableId &index_table_id) {
   DVLOG(3) << __PRETTY_FUNCTION__;
@@ -1209,10 +1221,10 @@ Status BackfillTable::AllowCompactionsToGCDeleteMarkers(
     }
     first_run = false;
     {
-      VLOG(2) << __func__ << ": Trying to lock index table for Read";
-      auto l = index_table_info->LockForRead();
-      auto state = l->pb.state();
-      if (!l->is_running()) {
+      VLOG_WITH_FUNC(2) << "Trying to lock index table for Read";
+      auto index_table_rlock = index_table_info->LockForRead();
+      auto state = index_table_rlock->pb.state();
+      if (!index_table_rlock->is_running() || FLAGS_TEST_simulate_cannot_enable_compactions) {
         LOG(ERROR) << "Index " << index_table_id << " is in state "
                    << SysTablesEntryPB_State_Name(state) << " : cannot enable compactions on it";
         // Treating it as success so that we can proceed with updating other indexes.
@@ -1220,15 +1232,14 @@ Status BackfillTable::AllowCompactionsToGCDeleteMarkers(
       }
       is_ready = state == SysTablesEntryPB::RUNNING;
     }
-    VLOG(2) << __func__ << ": Unlocked index table for Read";
+    VLOG_WITH_FUNC(2) << "Unlocked index table for Read";
   } while (!is_ready);
   {
     TRACE("Locking index table");
-    VLOG(2) << __func__ << ": Trying to lock index table for Write";
-    auto l = index_table_info->LockForWrite();
-    VLOG(2) << __func__ << ": locked index table for Write";
-    l.mutable_data()->pb.mutable_schema()->mutable_table_properties()
-        ->set_retain_delete_markers(false);
+    VLOG_WITH_FUNC(2) << "Trying to lock index table for Write";
+    auto index_table_wlock = index_table_info->LockForWrite();
+    VLOG_WITH_FUNC(2) << "Locked index table for Write";
+    UnsetIndexTableRetainsDeleteMarkers(index_table_wlock.mutable_data());
 
     // Update sys-catalog with the new indexed table info.
     TRACE("Updating index table metadata on disk");
@@ -1240,9 +1251,9 @@ Status BackfillTable::AllowCompactionsToGCDeleteMarkers(
 
     // Update the in-memory state.
     TRACE("Committing in-memory state");
-    l.Commit();
+    index_table_wlock.Commit();
   }
-  VLOG(2) << __func__ << ": Unlocked index table for Read";
+  VLOG_WITH_FUNC(2) << "Unlocked index table for Read";
   VLOG(1) << "Sending backfill done requests to the Index table";
   RETURN_NOT_OK(SendRpcToAllowCompactionsToGCDeleteMarkers(index_table_info));
   VLOG(1) << "DONE Sending backfill done requests to the Index table";

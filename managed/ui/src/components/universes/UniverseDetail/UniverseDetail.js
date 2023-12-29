@@ -51,13 +51,16 @@ import { EncryptionInTransit } from '../../../redesign/features/universe/univers
 import { EnableYSQLModal } from '../../../redesign/features/universe/universe-actions/edit-ysql-ycql/EnableYSQLModal';
 import { EnableYCQLModal } from '../../../redesign/features/universe/universe-actions/edit-ysql-ycql/EnableYCQLModal';
 import { EditGflagsModal } from '../../../redesign/features/universe/universe-actions/edit-gflags/EditGflags';
+import { UpgradeLinuxVersionModal } from '../../configRedesign/providerRedesign/components/linuxVersionCatalog/UpgradeLinuxVersionModal';
 import { DBUpgradeModal } from '../../../redesign/features/universe/universe-actions/rollback-upgrade/DBUpgradeModal';
 import { DBRollbackModal } from '../../../redesign/features/universe/universe-actions/rollback-upgrade/DBRollbackModal';
 import { UniverseState, getUniverseStatus, SoftwareUpgradeState } from '../helpers/universeHelpers';
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { DrPanel } from '../../xcluster/disasterRecovery/DrPanel';
+import { VM_PATCHING_RUNTIME_CONFIG } from '../../configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
 import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
+
 //icons
 import ClockRewind from '../../../redesign/assets/clock-rewind.svg';
 
@@ -235,6 +238,7 @@ class UniverseDetail extends Component {
       universe,
       universe: { currentUniverse, supportedReleases },
       showSoftwareUpgradesModal,
+      showLinuxSoftwareUpgradeModal,
       showSoftwareUpgradesNewModal,
       showRollbackModal,
       showVMImageUpgradeModal,
@@ -347,6 +351,11 @@ class UniverseDetail extends Component {
     const isRollBackFeatureEnabled =
       runtimeConfigs?.data?.configEntries?.find(
         (c) => c.key === 'yb.upgrade.enable_rollback_support'
+      )?.value === 'true';
+
+    const isOsPatchingEnabled =
+      runtimeConfigs?.data?.configEntries?.find(
+        (c) => c.key === VM_PATCHING_RUNTIME_CONFIG
       )?.value === 'true';
 
     if (
@@ -723,8 +732,33 @@ class UniverseDetail extends Component {
                           </YBMenuItem>
                         </RbacValidator>
                       )}
+                      {
+                        !universePaused && isOsPatchingEnabled && (
+                          <RbacValidator
+                            isControl
+                            accessRequiredOn={{
+                              onResource: uuid,
+                              ...ApiPermissionMap.MODIFY_UNIVERSE
+                            }}
+                          >
+                            <YBMenuItem
+                              disabled={isUniverseStatusPending}
+                              onClick={showLinuxSoftwareUpgradeModal}
+                              availability={getFeatureState(
+                                currentCustomer.data.features,
+                                'universes.details.overview.upgradeSoftware'
+                              )}
+                            >
+                              <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
+                                Upgrade Linux Version
+                              </YBLabelWithIcon>
+                            </YBMenuItem>
+                          </RbacValidator>
+                        )
+                      }
                       {!universePaused &&
                         runtimeConfigs &&
+                        !isOsPatchingEnabled &&
                         getPromiseState(runtimeConfigs).isSuccess() &&
                         runtimeConfigs.data.configEntries.find(
                           (c) => c.key === 'yb.upgrade.vmImage'
@@ -1186,6 +1220,13 @@ class UniverseDetail extends Component {
             this.props.getUniverseInfo(currentUniverse.data.universeUUID);
           }}
           isGFlagMultilineConfEnabled={isGFlagMultilineConfEnabled}
+          universeData={currentUniverse.data}
+        />
+        <UpgradeLinuxVersionModal
+          visible={showModal && visibleModal === 'linuxVersionUpgradeModal'}
+          onHide={() => {
+            closeModal();
+          }}
           universeData={currentUniverse.data}
         />
 

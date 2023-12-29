@@ -43,7 +43,7 @@ public class MetricSettings {
   SplitMode splitMode = SplitMode.NONE;
 
   @ApiModelProperty(
-      value = "YbaApi Internal. Defines set of labels, which we use for a " + "split query")
+      value = "YbaApi Internal. Defines set of labels, which we use for a split query")
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.14.4.0")
   SplitType splitType = SplitType.NONE;
 

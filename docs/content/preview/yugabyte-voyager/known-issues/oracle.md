@@ -315,7 +315,7 @@ OR
 
 ### %TYPE syntax is unsupported
 
-**GitHub**: [Issue #19169](https://github.com/yugabyte/yb-voyager/issues/19169)
+**GitHub**: [Issue #19169](https://github.com/yugabyte/yugabyte-db/issues/19169)
 
 **Description**: In Oracle, the `%TYPE` is a virtual column that is used to declare a variable, column, or parameter with the same data type as an existing database column. An equivalent does not does exist in PostgreSQL and therefore in YugabyteDB.
 

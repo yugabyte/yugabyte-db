@@ -20,9 +20,8 @@ For information on how row-level explicit locking clauses behave with these conc
 ## Fail-on-Conflict
 
 This is the default concurrency control strategy and is applicable for `Repeatable Read` and `Serializable` isolation levels.
-It is not applicable for [Read Committed](../read-committed/) isolation.
 
-In this mode, transactions are assigned random priorities with some exceptions as described in [Transaction Priorities](../transaction-priorities/).
+In this mode, transactions are assigned random priorities with some exceptions as described in [Transaction Priorities](../transaction-priorities/). As an exception, all transactions in Read Committed isolation have the same priority set to the highest value (in other words, no transaction can preempt an active Read Committed isolation transaction).
 
 If a conflict occurs, a transaction with the lower priority is aborted. There are two possibilities when a transaction T1 tries to read, write, or lock a row in a mode conflicting with other concurrent transactions:
 
@@ -301,7 +300,7 @@ commit;
 
 ### Best-effort internal retries for first statement in a transaction
 
-Note that we see the error message `All transparent retries exhausted` in the preceding example because if the transaction T1, when executing the first statement, finds another concurrent conflicting transaction with equal or higher priority, then T1 will perform a few retries with exponential backoff before giving up in anticipation that the other transaction will be done in some time. The number of retries are configurable by the `ysql_max_write_restart_attempts` YB-TServer flag and the exponential backoff parameters are the same as the ones described in [Performance tuning](../read-committed/#performance-tuning).
+Note that we see the error message `All transparent retries exhausted` in the preceding example because if the transaction T1, when executing the first statement, finds another concurrent conflicting transaction with equal or higher priority, then T1 will perform a few retries with exponential backoff before giving up in anticipation that the other transaction will be done in some time. The number of retries are configurable by the `yb_max_query_layer_retries` session variable and the exponential backoff parameters are the same as the ones described in [Performance tuning](../read-committed/#performance-tuning).
 
 Each retry will use a newer snapshot of the database in anticipation that the conflicts might not occur. This is done because if the read time of the new snapshot is higher than the commit time of the earlier conflicting transaction T2, the conflicts with T2 would essentially be voided as T1 and T2 would no longer be "concurrent".
 
@@ -325,12 +324,6 @@ In this mode, transactions are not assigned priorities. If a conflict occurs whe
 `Wait-on-Conflict` behavior can be enabled by setting the YB-TServer flag `enable_wait_queues=true`, which will enable use of in-memory wait queues that provide waiting semantics when conflicts are detected between transactions. A rolling restart is needed for the flag to take effect. Without this flag set, transactions operate in the priority based `Fail-on-Conflict` mode by default.
 
 Because T1 can make progress only if the conflicting transactions didn't commit any conflicting permanent modifications, there are some intricacies in the behaviour. The list of exhaustive cases possible are detailed below in the Examples section.
-
-{{< note >}}
-
-Semantics of [Read Committed](../read-committed/) isolation make sense only with the Wait-on-Conflict behaviour. Refer to [Interaction with concurrency control](../read-committed/#interaction-with-concurrency-control) for more information.
-
-{{</note >}}
 
 {{< note title="Best-effort internal retries also apply to Wait-on-Conflict policy" >}}
 

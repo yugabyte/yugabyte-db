@@ -47,7 +47,7 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.builder.HashCodeBuilder;
 import play.data.validation.Constraints;
@@ -460,7 +460,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         // Ephemeral storage AWS instances should not have storage type
         if (deviceInfo.storageType != null) {
           throw new PlatformServiceException(
-              BAD_REQUEST, "AWS instance with ephemeral storage can't have" + " storageType set");
+              BAD_REQUEST, "AWS instance with ephemeral storage can't have storageType set");
         }
       } else {
         if (cloudType.isRequiresStorageType() && deviceInfo.storageType == null) {

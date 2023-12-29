@@ -32,17 +32,59 @@ spec:
                   rule: self == oldSelf
               instanceType:
                 type: string
+              masterK8SNodeResourceSpec:
+                type: object
+                properties:
+                  memoryGib:
+                    type: number
+                    minimum: 2.0
+                    maximum: 1000.0
+                    default: 4.0
+                  cpuCoreCount:
+                    type: number
+                    minimum: 0.5
+                    maximum: 100.0
+                    default: 2.0
+              tserverK8SNodeResourceSpec:
+                type: object
+                properties:
+                  memoryGib:
+                    type: number
+                    minimum: 2.0
+                    maximum: 1000.0
+                    default: 4.0
+                  cpuCoreCount:
+                    type: number
+                    minimum: 0.5
+                    maximum: 100.0
+                    default: 2.0
               assignPublicIP:
                 type: boolean
-              masterGFlags:
+              gFlags:
                 type: object
-                additionalProperties:
-                  type: string
-              tserverGFlags:
-                type: object
-                additionalProperties:
-                  type: string
-                  x-kubernetes-preserve-unknown-fields: true
+                properties:
+                  tserverGFlags:
+                    type: object
+                    additionalProperties:
+                      type: string
+                  masterGFlags:
+                    type: object
+                    additionalProperties:
+                      type: string
+                  perAZ:
+                    type: object
+                    additionalProperties:
+                      type: object
+                      properties:
+                        tserverGFlags:
+                          type: object
+                          additionalProperties:
+                            type: string
+                        masterGFlags:
+                          type: object
+                          additionalProperties:
+                            type: string
+
               useTimeSync:
                 type: boolean
               enableYSQL:
@@ -187,29 +229,6 @@ spec:
                 # Helm chart can have a bunch more properties.
                 additionalProperties: true
                 properties:
-                  storage:
-                    type: object
-                    properties:
-                      ephemeral:
-                        type: boolean
-                      master:
-                        type: object
-                        properties:
-                          count:
-                            type: integer
-                          size:
-                            type: string
-                          storageClass:
-                            type: string
-                      tserver:
-                        type: object
-                        properties:
-                          count:
-                            type: integer
-                          size:
-                            type: string
-                          storageClass:
-                            type: string
                   resource:
                     type: object
                     properties:
@@ -1293,6 +1312,8 @@ spec:
             properties:
               universeStatus:
                 type: string
+              universeState:
+                type: string
               sqlEndpoints:
                 type: array
                 items:
@@ -1306,6 +1327,15 @@ spec:
 
     subresources:
       status: {}
+    additionalPrinterColumns:
+    - name: State
+      type: string
+      description: The state of the universe
+      jsonPath: .status.universeState
+    - name: Software Version
+      type: string
+      description: The Software version of the Universe
+      jsonPath: .spec.ybSoftwareVersion
   names:
     kind: YBUniverse
     plural: ybuniverses

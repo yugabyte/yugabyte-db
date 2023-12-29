@@ -120,7 +120,7 @@ class PgApiImpl {
  public:
   PgApiImpl(PgApiContext context, const YBCPgTypeEntity *YBCDataTypeTable, int count,
             YBCPgCallbacks pg_callbacks, std::optional<uint64_t> session_id,
-            const YBCAshMetadata *ash_metadata);
+            const YBCAshMetadata *ash_metadata, bool *is_ash_metadata_set);
   ~PgApiImpl();
 
   const YBCPgCallbacks* pg_callbacks() {
@@ -167,6 +167,7 @@ class PgApiImpl {
   Result<uint64_t> GetSharedCatalogVersion(std::optional<PgOid> db_oid = std::nullopt);
   Result<uint32_t> GetNumberOfDatabases();
   uint64_t GetSharedAuthKey() const;
+  const unsigned char *GetLocalTserverUuid() const;
 
   Status NewTupleExpr(
     YBCPgStatement stmt, const YBCPgTypeEntity *tuple_type_entity,

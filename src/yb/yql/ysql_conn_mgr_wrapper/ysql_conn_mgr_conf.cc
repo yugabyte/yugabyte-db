@@ -11,8 +11,6 @@
 // under the License.
 //
 
-// TODO(janand): Block the client from using the user same as that of the control connection.
-
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_wrapper.h"
 
 #include <fstream>

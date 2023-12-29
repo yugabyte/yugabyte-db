@@ -10713,15 +10713,18 @@
         "db_name" : {
           "type" : "string"
         },
+        "node_name" : {
+          "type" : "string"
+        },
         "query" : {
           "type" : "string"
         },
-        "tableType" : {
+        "table_type" : {
           "enum" : [ "YQL_TABLE_TYPE", "REDIS_TABLE_TYPE", "PGSQL_TABLE_TYPE", "TRANSACTION_STATUS_TABLE_TYPE" ],
           "type" : "string"
         }
       },
-      "required" : [ "db_name", "query", "tableType" ],
+      "required" : [ "db_name", "node_name", "query", "table_type" ],
       "type" : "object"
     },
     "RuntimeConfigData" : {

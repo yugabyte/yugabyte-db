@@ -1219,6 +1219,125 @@ TEST_F(PgCatalogVersionTest, DisallowCatalogVersionBumpDDL) {
                       "per-database catalog version mode");
 }
 
+TEST_F(PgCatalogVersionTest, SqlCrossDBLoadWithDDL) {
+
+  const std::vector<std::vector<string>> ddlLists = {
+    {
+      "CREATE INDEX idx1 ON $0 (k)",
+      "DROP INDEX idx1",
+    },
+    {
+      "CREATE TABLE tempTable1 AS SELECT * FROM $0 limit 1000000",
+      "ALTER TABLE tempTable1 RENAME TO tempTable1_new",
+      "DROP TABLE tempTable1_new",
+    },
+    {
+      "CREATE MATERIALIZED VIEW mv1 as SELECT k from $0 limit 10000",
+      "REFRESH MATERIALIZED VIEW mv1",
+      "DROP MATERIALIZED VIEW mv1",
+    },
+    {
+      "ALTER TABLE $0 ADD newColumn1 TEXT DEFAULT 'dummyString'",
+      "ALTER TABLE $0 DROP newColumn1",
+    },
+    {
+      "ALTER TABLE $0 ADD newColumn2 TEXT NULL",
+      "ALTER TABLE $0 DROP newColumn2",
+    },
+    {
+      "CREATE VIEW view1_$0 AS SELECT k from $0",
+      "DROP VIEW view1_$0",
+    },
+    {
+      "ALTER TABLE $0 ADD newColumn3 TEXT DEFAULT 'dummyString'",
+      "ALTER TABLE $0 ALTER newColumn3 TYPE VARCHAR(1000)",
+      "ALTER TABLE $0 DROP newColumn3",
+    },
+    {
+      "CREATE TABLE tempTable2 AS SELECT * FROM $0 limit 1000000",
+      "CREATE INDEX idx2 ON tempTable2(k)",
+      "ALTER TABLE $0 ADD newColumn4 TEXT DEFAULT 'dummyString'",
+      "ALTER TABLE tempTable2 ADD newColumn2 TEXT DEFAULT 'dummyString'",
+      "TRUNCATE table $0 cascade",
+      "ALTER TABLE $0 DROP newColumn4",
+      "ALTER TABLE tempTable2 DROP newColumn2",
+      "DROP INDEX idx2",
+      "DROP TABLE tempTable2",
+    },
+    {
+      "CREATE VIEW view2_$0 AS SELECT k from $0",
+      "CREATE MATERIALIZED VIEW mv2 as SELECT k from $0 limit 10000",
+      "REFRESH MATERIALIZED VIEW mv2",
+      "DROP MATERIALIZED VIEW mv2",
+      "DROP VIEW view2_$0",
+    },
+  };
+  const std::vector<string> tableList = {
+    "tb_0",
+    "tb_1",
+  };
+
+  auto conn_yugabyte = ASSERT_RESULT(Connect());
+  ASSERT_OK(PrepareDBCatalogVersion(&conn_yugabyte));
+  RestartClusterWithDBCatalogVersionMode();
+
+  const int num_databases = 3;
+  std::vector<string> db_names;
+  for (int i = 0; i < num_databases; ++i) {
+    db_names.emplace_back(Format("sqlcrossdb_$0", i));
+  }
+  conn_yugabyte = ASSERT_RESULT(Connect());
+  constexpr auto* kTestUser = "test_user";
+  ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE USER $0", kTestUser));
+  for (const auto& db_name : db_names) {
+    ASSERT_OK(conn_yugabyte.ExecuteFormat("CREATE DATABASE $0", db_name));
+  }
+
+  for (const auto& db_name : db_names) {
+    // On each database, create the tables.
+    auto conn_test = ASSERT_RESULT(ConnectToDBAsUser(db_name, kTestUser));
+    for (const auto& table_name : tableList) {
+      auto query = Format(
+          "CREATE TABLE IF NOT EXISTS $0 "
+          "(k varchar PRIMARY KEY, v1 VARCHAR, v2 integer, "
+          "v3 money, v4 JSONB, v5 TIMESTAMP, v6 bool, v7 DATE, "
+          "v8 TIME, v9 VARCHAR, v10 integer, v11 money, v12 JSONB, "
+          "v13 TIMESTAMP, v14 bool, v15 DATE, v16 TIME, v17 VARCHAR, "
+          "v18 integer, v19 money, v20 JSONB, "
+          "v21 TIMESTAMP, v22 bool, v23 DATE, v24 TIME, v25 VARCHAR, "
+          "v26 integer, v27 money, v28 JSONB, v29 TIMESTAMP, v30 bool)",
+        table_name);
+      LOG(INFO) << db_name << ":" << query;
+      ASSERT_OK(conn_test.Execute(query));
+    }
+  }
+  TestThreadHolder thread_holder;
+  const int iterations = IsTsan() ? 2 : 4;
+  for (const auto& db_name : db_names) {
+    thread_holder.AddThreadFunctor([this, &ddlLists, &tableList, &db_name] {
+
+      for (int i = 0; i < iterations; ++i) {
+        auto conn_test = ASSERT_RESULT(ConnectToDBAsUser(db_name, kTestUser));
+        for (const auto& table_name : tableList) {
+          // Randomly pick 3 lists of DDLs from ddlLists.
+          for (int j = 0; j < 3; ++j) {
+            const auto max_index = static_cast<int>(ddlLists.size() - 1);
+            const size_t random_index = RandomUniformInt(0, max_index);
+            // Run the DDLs in the current randomly selected DDL list.
+            for (const auto& query : ddlLists[random_index]) {
+              auto ddlQuery = Format(query, table_name);
+              LOG(INFO) << "Executing (" << i << "," << j << ") "
+                        << db_name << ":" << table_name << " ddl: " << ddlQuery;
+              ASSERT_OK(conn_test.Execute(ddlQuery));
+            }
+          }
+        }
+      }
+    });
+  }
+  thread_holder.Stop();
+}
+
 TEST_F(PgCatalogVersionTest, NonBreakingDDLMode) {
   const string kDatabaseName = "yugabyte";
 

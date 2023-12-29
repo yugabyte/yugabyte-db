@@ -11,8 +11,8 @@ import (
 var HTTPHACheck = &httpHACheck{"http-ha", true}
 
 type httpHACheck struct {
-	name				string
-	skipAllowed	bool
+	name        string
+	skipAllowed bool
 }
 
 // Name gets the name of the check
@@ -28,31 +28,26 @@ func (hhc httpHACheck) SkipAllowed() bool {
 // Execute will check whether or not HA is enabled in an HTTP Replicated
 func (hhc httpHACheck) Execute() Result {
 	res := Result{
-		Check: hhc.name,
+		Check:  hhc.name,
 		Status: StatusPassed,
 	}
 
 	// Dump replicated settings
 	replCtl := replicatedctl.New(replicatedctl.Config{})
-	config, err := replCtl.AppConfigExport()
+	config, err := replCtl.AppConfigView()
 	if err != nil {
 		res.Error = fmt.Errorf("failed to export replicated app config: " + err.Error())
 		res.Status = StatusCritical
 		return res
 	}
 
-	isHTTPSEntry := config.Get("https_enabled")
-	if isHTTPSEntry == replicatedctl.NilConfigEntry {
-		res.Error = fmt.Errorf("no https_enabled found")
-		res.Status = StatusCritical
-		return res
-	}
-
-	https, err := isHTTPSEntry.Bool()
+	var https bool
+	// If there is no https entry, or it is not parsable, assume http.
+	isHTTPSEntry, err := config.Get("https_enabled")
 	if err != nil {
-		res.Error = err
-		res.Status = StatusCritical
-		return res
+		https = false
+	} else {
+		https = isHTTPSEntry.Get() == "1"
 	}
 
 	// HTTPS HA can be migrated automatically

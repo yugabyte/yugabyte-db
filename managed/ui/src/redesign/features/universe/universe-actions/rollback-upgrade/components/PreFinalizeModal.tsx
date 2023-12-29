@@ -1,10 +1,17 @@
 import { FC } from 'react';
 import { toast } from 'react-toastify';
+import { useDispatch } from 'react-redux';
 import { useMutation } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { Box, Typography, Link } from '@material-ui/core';
 import { YBModal } from '../../../../../components';
 import { api } from '../../../../../utils/api';
+import { fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../../../../actions/universe';
+import {
+  fetchCustomerTasks,
+  fetchCustomerTasksSuccess,
+  fetchCustomerTasksFailure
+} from '../../../../../../actions/tasks';
 import { createErrorMessage, transitToUniverse } from '../../../universe-form/utils/helpers';
 import { TOAST_AUTO_DISMISS_INTERVAL } from '../../../universe-form/utils/constants';
 import { preFinalizeStateStyles } from '../utils/RollbackUpgradeStyles';
@@ -22,7 +29,7 @@ const TOAST_OPTIONS = { autoClose: TOAST_AUTO_DISMISS_INTERVAL };
 export const PreFinalizeModal: FC<PreFinalizeModalProps> = ({ open, onClose, universeUUID }) => {
   const { t } = useTranslation();
   const classes = preFinalizeStateStyles();
-
+  const dispatch = useDispatch();
   //Upgrade Software
   const finalizeUpgrade = useMutation(
     () => {
@@ -31,6 +38,19 @@ export const PreFinalizeModal: FC<PreFinalizeModalProps> = ({ open, onClose, uni
     {
       onSuccess: () => {
         toast.success('Finalize upgrade initiated', TOAST_OPTIONS);
+        dispatch(fetchCustomerTasks() as any).then((response: any) => {
+          if (!response.error) {
+            dispatch(fetchCustomerTasksSuccess(response.payload));
+          } else {
+            dispatch(fetchCustomerTasksFailure(response.payload));
+          }
+        });
+        //Universe upgrade state is not updating immediately
+        setTimeout(() => {
+          dispatch(fetchUniverseInfo(universeUUID) as any).then((response: any) => {
+            dispatch(fetchUniverseInfoResponse(response.payload));
+          });
+        }, 2000);
         transitToUniverse(universeUUID);
         onClose();
       },

@@ -519,7 +519,6 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 	/*
 	 * IndexScan(SysTable, Index) --> HeapTuple.
 	 */
-	scan->xs_ctup.t_ybctid = 0;
 	bool has_tuple = false;
 	if (ybscan->prepare_params.index_only_scan)
 	{
@@ -536,7 +535,6 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 		HeapTuple tuple = ybc_getnext_heaptuple(ybscan, dir, &scan->xs_recheck);
 		if (tuple)
 		{
-			scan->xs_ctup.t_ybctid = tuple->t_ybctid;
 			scan->xs_hitup = tuple;
 			scan->xs_hitupdesc = RelationGetDescr(scan->heapRelation);
 			has_tuple = true;

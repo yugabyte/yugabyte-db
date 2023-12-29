@@ -20,6 +20,8 @@ A read committed transaction in PostgreSQL doesn't raise serialization errors be
 
 YugabyteDB's Read Committed isolation provides slightly stronger guarantees than PostgreSQL's read committed, while providing the same semantics and benefits, that is, a user doesn't have to retry serialization errors in the application logic (modulo [limitation 2](#limitations) around `ysql_output_buffer_size` which is not of relevance for most OLTP workloads). In YugabyteDB, a read committed transaction retries the whole statement instead of retrying only the conflicting rows. This leads to a stronger guarantee where each statement in a YugabyteDB read committed transaction always uses a consistent snapshot of the database, while in PostgreSQL an inconsistent snapshot can be used for statements when conflicts are present. For a detailed example, see [Stronger guarantees in YugabyteDB's read committed isolation](#yugabytedb-s-implementation-with-a-stronger-guarantee).
 
+NOTE: Retries for the statement in YugabyteDB's Read Committed isolation are limited to the per-session configurable GUC variable `yb_max_query_layer_retries`. To set it at the cluster level, use the `ysql_pg_conf_csv` TServer gflag. If a serialization error isn't resolved within `yb_max_query_layer_retries`, the error will be returned to the client.
+
 ## Implementation and semantics (as in PostgreSQL)
 
 The following two key semantics set apart Read Committed isolation from Repeatable Read in PostgreSQL (refer [Read Committed level](https://www.postgresql.org/docs/13/transaction-iso.html#XACT-READ-COMMITTED)):
@@ -309,7 +311,7 @@ The preceding outcome can occur via the following unlikely circumstance: until C
 
 Both the `common case` and `unlikely` outcomes are valid and satisfy the semantics of Read Committed isolation level. And theoretically, the user cannot figure out which one will be seen because the user cannot differentiate between a pause due to waiting for a conflicting transaction, or a pause due to the database just being busy or slow. Moreover, the `unlikely` case provides a stronger and more intuitive guarantee that the whole statement runs off a single snapshot.
 
-These two possibilities show that the client cannot have application logic that relies on the expectation that the common case occurs always. Given this, YugabyteDB provides a stronger guarantee that each statement always works off just a single snapshot, and no inconsistency is allowed even in case of a some conflicting rows. This leads to YugabyteDB always returning output similar to the second outcome in the preceding example which is also simpler to reason.
+These two possibilities show that the client cannot have application logic that relies on the expectation that the common case occurs always. YugabyteDB implements Read Committed isolation by undoing and retrying a statement whenever serialization errors occur. This provides a stronger guarantee that each statement always works off just a single snapshot, and no inconsistency is allowed even in case of a some conflicting rows. This leads to YugabyteDB always returning output similar to the second outcome in the preceding example which is also simpler to reason.
 
 This might change in future as per [#11573](https://github.com/yugabyte/yugabyte-db/issues/11573), if it gains interest.
 
@@ -323,15 +325,13 @@ YugabyteDB chooses to provide this guarantee as most clients that use read commi
 
 ## Interaction with concurrency control
 
-Semantics of Read Committed isolation adheres only with the [Wait-on-Conflict](../concurrency-control/#wait-on-conflict) concurrency control policy. This is because a Read Committed transaction has to wait for other transactions to commit or rollback in case of a conflict, and then perform the re-check steps to make progress.
-
-As the [Fail-on-Conflict](../concurrency-control/#fail-on-conflict) concurrency control policy doesn't make sense for Read Committed, even if this policy is set for use on the cluster (by having the YB-TServer flag `enable_wait_queues=false`), transactions in Read Committed isolation will still provide `Wait-on-Conflict` semantics. For providing `Wait-on-Conflict` semantics without wait queues, YugabyteDB relies on an indefinite retry-backoff mechanism with exponential delays when conflicts are detected. The retries are at the statement level. Each retry will use a newer snapshot of the database in anticipation that the conflicts might not occur. This is done because if the read time of the new snapshot is higher than the commit time of the earlier conflicting transaction T2, the conflicts with T2 would essentially be voided as T1's statement and T2 would no longer be "concurrent".
-
-However, when Read Committed isolation provides Wait-on-Conflict semantics without wait queues, the following limitations exist:
+Read Committed isolation faces the following limitations if using [Fail-on-Conflict](../concurrency-control/#fail-on-conflict) instead of the default [Wait-on-Conflict](../concurrency-control/#wait-on-conflict) concurrency control policy:
 
 * You may have to manually tune the exponential backoff parameters for performance, as described in [Performance tuning](#performance-tuning).
-* Your application may have to rely on statement timeouts to [avoid deadlocks](#avoid-deadlocks-in-read-committed-transactions).
+* Deadlock cycles will not be automatically detected and broken quickly. Instead, the `yb_max_query_layer_retries` GUC variable will ensure that statements aren't stuck in deadlocks forever.
 * There may be unfairness during contention due to the retry-backoff mechanism, resulting in high P99 latencies.
+
+The retries for serialization errors are done at the statement level. Each retry will use a newer snapshot of the database in anticipation that the conflicts might not occur. This is done because if the read time of the new snapshot is higher than the commit time of the earlier conflicting transaction T2, the conflicts with T2 would essentially be voided as T1's statement and T2 would no longer be "concurrent".
 
 ## Usage
 
@@ -1394,159 +1394,6 @@ commit;
 </tbody>
 </table>
 
-### Avoid deadlocks in read committed transactions
-
-When wait queues are not enabled, that is, YB-TServer GFlag `enable_wait_queues=false`, configure a statement timeout to avoid deadlocks. A different statement timeout can be set for each session using the `statement_timeout` YSQL parameter. Also, a single statement timeout can be applied globally to all sessions by setting the `statement_timeout` YSQL parameter in `ysql_pg_conf_csv` YB-TServer GFlag on cluster startup.
-
-When using wait queues, automatic deadlock detection and resolution can be enabled using YB-TServer GFlag `enable_deadlock_detection=true`. It is strongly recommended to use this setting when using wait queues.
-
-```sql
-truncate table test;
-insert into test values (1, 5);
-insert into test values (2, 5);
-```
-
-<table class="no-alter-colors">
-  <thead>
-    <tr>
-    <th>
-    Client 1
-    </th>
-    <th>
-    Client 2
-    </th>
-    </tr>
-  </thead>
-  <tbody>
-  <tr>
-   <td>
-
-```sql
-begin transaction isolation level read committed;
-```
-
-   </td>
-   <td>
-   </td>
-  </tr>
-  <tr>
-   <td>
-   </td>
-   <td>
-
-```sql
-begin transaction isolation level read committed;
-```
-
-   </td>
-  </tr>
-  <tr>
-   <td>
-   </td>
-   <td>
-
-```sql
-set statement_timeout=2000;
-```
-
-   </td>
-  </tr>
-  <tr>
-   <td>
-
-```sql
-update test set v=5 where k=1;
-```
-
-```output
-UPDATE 1
-```
-
-   </td>
-   <td>
-   </td>
-  </tr>
-  <tr>
-   <td>
-   </td>
-   <td>
-
-```sql
-update test set v=5 where k=2;
-```
-
-```output
-UPDATE 1
-```
-
-   </td>
-  </tr>
-  <tr>
-   <td>
-
-```sql
-update test set v=5 where k=2;
-```
-
-```output
-(waits)
-```
-
-   </td>
-   <td>
-   </td>
-  </tr>
-  <tr>
-   <td>
-   </td>
-   <td>
-
-```sql
-update test set v=5 where k=1;
-```
-
-```output
-ERROR:  cancelling statement due to statement timeout
-```
-
-   </td>
-  </tr>
-  <tr>
-   <td>
-   </td>
-   <td>
-
-```sql
-rollback;
-```
-
-   </td>
-  </tr>
-  <tr>
-   <td>
-
-```output
-UPDATE 1
-```
-
-   </td>
-   <td>
-   </td>
-  </tr>
-  <tr>
-   <td>
-
-```sql
-commit;
-```
-
-   </td>
-   <td>
-   </td>
-  </tr>
-</tbody>
-</table>
-
 ## Cross-feature interaction
 
 Read Committed interacts with the following feature:
@@ -1570,7 +1417,7 @@ Read Committed interacts with the following feature:
 Read Committed isolation has the following additional limitations when `enable_wait_queues=false` (see [Wait-on-Conflict](../concurrency-control/#wait-on-conflict) and [Interaction with concurrency control](#interaction-with-concurrency-control)):
 
 * You may have to manually tune the exponential backoff parameters for performance, as described in [Performance tuning](#performance-tuning).
-* Your application may have to rely on statement timeouts to [avoid deadlocks](#avoid-deadlocks-in-read-committed-transactions).
+* Deadlock cycles will not be automatically detected and broken quickly. Instead, the `yb_max_query_layer_retries` GUC variable will ensure that statements aren't stuck in deadlocks forever.
 * There may be unfairness during contention due to the retry-backoff mechanism, resulting in high P99 latencies.
 
 ## Considerations
@@ -1581,7 +1428,7 @@ Adding this new isolation level does not affect the performance of existing isol
 
 ### Performance tuning
 
-If a statement in the Read Committed isolation level faces a conflict, it is retried with exponential backoff until the statement times out. The following parameters control the backoff:
+If a statement in the Read Committed isolation level faces a conflict, it is retried. If using [Fail-on-Conflict](../concurrency-control/#fail-on-conflict) concurrency control mode, the retries are done with exponential backoff until the statement times out or the `yb_max_query_layer_retries` are exhuasted, whichever happens first. The following parameters control the backoff:
 
 * `retry_max_backoff` is the maximum backoff in milliseconds between retries.
 * `retry_min_backoff` is the minimum backoff in milliseconds between retries.

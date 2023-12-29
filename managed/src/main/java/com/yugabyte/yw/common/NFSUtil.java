@@ -34,7 +34,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.yb.ybc.BackupServiceNfsDirDeleteRequest;
 import org.yb.ybc.CloudStoreSpec;
@@ -187,11 +187,11 @@ public class NFSUtil implements StorageUtil {
     Map<String, Boolean> bulkCheckFileExistsMap = new HashMap<>();
     NodeDetails node = universe.getRunningTserversInPrimaryCluster().get(0);
     String identifierUUID = UUID.randomUUID().toString();
-    String sourceFilesToCheckFilename = identifierUUID + "-" + "bulk_check_files_node";
+    String sourceFilesToCheckFilename = identifierUUID + "-bulk_check_files_node";
     String sourceFilesToCheckPath =
         BackupUtil.getPathWithPrefixSuffixJoin(
             nodeUniverseManager.getLocalTmpDir(), sourceFilesToCheckFilename);
-    String targetLocalFilename = identifierUUID + "-" + "bulk_check_files_output_node";
+    String targetLocalFilename = identifierUUID + "-bulk_check_files_output_node";
     String targetLocalFilepath =
         BackupUtil.getPathWithPrefixSuffixJoin(
             nodeUniverseManager.getLocalTmpDir(), targetLocalFilename);

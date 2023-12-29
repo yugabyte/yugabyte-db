@@ -103,6 +103,7 @@
 #include "sources/query.h"
 #include "sources/auth_query.h"
 #include "sources/hba.h"
+#include "sources/yb_auth_passthrough.h"
 
 #include "sources/od_dlsym.h"
 #include "sources/daemon.h"

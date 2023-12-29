@@ -1,8 +1,9 @@
 ---
 title: High availability of YugabyteDB Anywhere
 headerTitle: Enable high availability
-linkTitle: Enable high availability
 description: Make YugabyteDB Anywhere highly available
+headcontent: Configure standby instances of YugabyteDB Anywhere
+linkTitle: Enable high availability
 menu:
   stable_yugabyte-platform:
     identifier: platform-high-availability
@@ -170,7 +171,7 @@ To remove a standby instance from a HA cluster, you need to remove it from the a
 
 1. On the active instance's list, click **Delete Instance** for the standby instance to be removed.
 
-1. On the standby instance you wish to remove from the HA cluster, click **Delete Configuration** on the **Admin** tab.
+1. On the standby instance you wish to remove from the HA cluster, on the **Admin > High Availability** tab, click **Delete Configuration**.
 
 The standby instance is now a standalone instance again.
 

@@ -832,7 +832,7 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotForColocatedTablet) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_snapshot_batch_size) = 100;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_update_local_peer_min_index) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
-  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_state_checkpoint_update_interval_ms) = 0;
   ASSERT_OK(SetUpWithParams(3, 1, true /* colocated */));
 
   // ASSERT_OK(CreateColocatedObjects(&test_cluster_));
@@ -858,51 +858,22 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestSnapshotForColocatedTablet) {
 
   xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
 
-  auto verify_all_snapshot_records = [&](CDCSDKCheckpointPB& cp_resp,
-                                         const TableId& req_table_id, const TableName& table_name) {
-    bool first_call = true;
-    int64_t seen_snapshot_records = 0;
-    GetChangesResponsePB change_resp;
-    while (true) {
-      if (first_call) {
-        change_resp =
-            ASSERT_RESULT(UpdateCheckpoint(stream_id, tablets, cp_resp, req_table_id));
-        first_call = false;
-      } else {
-        change_resp =
-            ASSERT_RESULT(UpdateCheckpoint(stream_id, tablets, &change_resp, req_table_id));
-      }
-
-      for (const auto& record : change_resp.cdc_sdk_proto_records()) {
-        if (record.row_message().op() == RowMessage::READ) {
-          seen_snapshot_records += 1;
-          ASSERT_EQ(record.row_message().table(), table_name);
-        }
-      }
-
-      if (change_resp.cdc_sdk_checkpoint().key().empty() &&
-          change_resp.cdc_sdk_checkpoint().write_id() == 0 &&
-          change_resp.cdc_sdk_checkpoint().snapshot_time() == 0) {
-        ASSERT_EQ(seen_snapshot_records, snapshot_recrods_per_table);
-        break;
-      }
-    }
-  };
-
   // Assert that we get all records from the first table: "test1".
   auto req_table_id = GetColocatedTableId("test1");
   ASSERT_NE(req_table_id, "");
   auto cp_resp =
-    ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id(), req_table_id));
-  verify_all_snapshot_records(cp_resp, req_table_id, "test1");
+      ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id(), req_table_id));
+  VerifySnapshotOnColocatedTables(
+      stream_id, tablets, cp_resp, req_table_id, "test1", snapshot_recrods_per_table);
   LOG(INFO) << "Verified snapshot records for table: test1";
 
   // Assert that we get all records from the second table: "test2".
   req_table_id = GetColocatedTableId("test2");
   ASSERT_NE(req_table_id, "");
   cp_resp =
-    ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id(), req_table_id));
-  verify_all_snapshot_records(cp_resp, req_table_id, "test2");
+      ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id(), req_table_id));
+  VerifySnapshotOnColocatedTables(
+      stream_id, tablets, cp_resp, req_table_id, "test2", snapshot_recrods_per_table);
   LOG(INFO) << "Verified snapshot records for table: test2";
 }
 
@@ -1312,7 +1283,11 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestReleaseResourcesOnUnpolledSplitTablets)
     auto tablet_peer =
         ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablet.tablet_id()));
     LogRetentionBarrierDetails(tablet_peer);
-    ASSERT_NE(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+    if (tablet.tablet_id() == tablets[0].tablet_id()) {
+      ASSERT_NE(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+    } else {
+      ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+    }
     ASSERT_LT(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
     ASSERT_LT(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
   }

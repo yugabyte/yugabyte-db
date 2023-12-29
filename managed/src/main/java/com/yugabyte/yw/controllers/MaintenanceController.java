@@ -79,7 +79,7 @@ public class MaintenanceController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. " + "List maintenance windows",
+      value = "WARNING: This is a preview API that could change. List maintenance windows",
       response = MaintenanceWindow.class,
       responseContainer = "List",
       nickname = "listOfMaintenanceWindows")
@@ -136,7 +136,7 @@ public class MaintenanceController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. " + "Create maintenance window",
+      value = "WARNING: This is a preview API that could change. Create maintenance window",
       response = MaintenanceWindow.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -172,7 +172,7 @@ public class MaintenanceController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. " + "Update maintenance window",
+      value = "WARNING: This is a preview API that could change. Update maintenance window",
       response = MaintenanceWindow.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -214,7 +214,7 @@ public class MaintenanceController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. " + "Delete maintenance window",
+      value = "WARNING: This is a preview API that could change. Delete maintenance window",
       response = YBPSuccess.class)
   @AuthzPath({
     @RequiredPermissionOnResource(

@@ -30,11 +30,16 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   protected static final int NUM_TSERVER = 3;
   private static final String DEFAULT_PG_USER = "yugabyte";
 
+  protected String getHbaConf()
+  {
+    return "host all all all trust, local all all trust";
+  }
+
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
     Map<String, String> additionalTserverFlags = new HashMap<String, String>() {
       {
-          put("ysql_hba_conf_csv", "host all all all trust, local all yugabyte trust");
+          put("ysql_hba_conf_csv", getHbaConf());
           put("ysql_conn_mgr_use_unix_conn", "true");
       }
     };
