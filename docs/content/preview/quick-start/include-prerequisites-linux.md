@@ -6,11 +6,7 @@ private = true
 
 Before installing YugabyteDB, ensure that you have the following available:
 
-1. One of the following operating systems:
-
-    - <i class="icon-centos"></i> CentOS 7 or later
-
-    - <i class="icon-ubuntu"></i> Ubuntu 16.04 or later
+1. One of the [supported operating systems](/preview/reference/configuration/operating-systems/).
 
 1. Python 3. To check the version, execute the following command:
 
