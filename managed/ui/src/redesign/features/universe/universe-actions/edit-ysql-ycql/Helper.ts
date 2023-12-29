@@ -28,7 +28,7 @@ export interface YSQLFormPayload {
   enableYSQL: boolean;
   enableYSQLAuth: boolean;
   ysqlPassword: string;
-  CommunicationPorts: {
+  communicationPorts: {
     ysqlServerHttpPort: number;
     ysqlServerRpcPort: number;
   };
@@ -38,7 +38,7 @@ export interface YCQLFormPayload {
   enableYCQL: boolean;
   enableYCQLAuth: boolean;
   ycqlPassword: string;
-  CommunicationPorts: {
+  communicationPorts: {
     yqlServerHttpPort: number;
     yqlServerRpcPort: number;
   };

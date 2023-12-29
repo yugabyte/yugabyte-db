@@ -52,7 +52,7 @@ class XClusterManager : public XClusterManagerIf {
 
   Status RunLoaders();
 
-  void SysCatalogLoaded(const SysCatalogLoadingState& state);
+  void SysCatalogLoaded();
 
   void DumpState(std::ostream* out, bool on_disk_dump = false) const;
 

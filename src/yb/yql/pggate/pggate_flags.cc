@@ -54,9 +54,6 @@ DEFINE_UNKNOWN_uint64(ysql_session_max_batch_size, 3072,
 DEFINE_UNKNOWN_bool(ysql_non_txn_copy, false,
             "Execute COPY inserts non-transactionally.");
 
-DEFINE_UNKNOWN_int32(ysql_max_read_restart_attempts, 20,
-             "How many read restarts can we try transparently before giving up");
-
 DEFINE_test_flag(bool, ysql_disable_transparent_cache_refresh_retry, false,
     "Never transparently retry commands that fail with cache version mismatch error");
 
@@ -113,11 +110,12 @@ DEFINE_UNKNOWN_int32(ysql_select_parallelism, -1,
             "Number of read requests to issue in parallel to tablets of a table "
             "for SELECT.");
 
-DEFINE_UNKNOWN_int32(ysql_max_write_restart_attempts, 20,
-             "Max number of restart attempts made for writes on transaction conflicts.");
-
 DEFINE_UNKNOWN_bool(ysql_sleep_before_retry_on_txn_conflict, true,
             "Whether to sleep before retrying the write on transaction conflicts.");
+
+DEPRECATE_FLAG(int32, ysql_max_read_restart_attempts, "12_2023");
+
+DEPRECATE_FLAG(int32, ysql_max_write_restart_attempts, "12_2023");
 
 // Flag for disabling runContext to Postgres's portal. Currently, each portal has two contexts.
 // - PortalContext whose lifetime lasts for as long as the Portal object.
@@ -162,6 +160,4 @@ TAG_FLAG(ysql_enable_create_database_oid_collision_retry, advanced);
 
 DEFINE_NON_RUNTIME_bool(ysql_use_relcache_file, true, "Use relcache init file");
 
-DEFINE_NON_RUNTIME_PREVIEW_bool(enable_yb_ash, false,
-                                "True to enable Active Session History");
-TAG_FLAG(enable_yb_ash, hidden);
+DECLARE_bool(TEST_yb_enable_ash);

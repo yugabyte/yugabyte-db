@@ -55,6 +55,9 @@
 /* Ignore both vacuum and analyze backends */
 #define		PROCARRAY_FLAGS_VACUUM_ANALYZE	PROCARRAY_FLAGS_DEFAULT | PROCARRAY_VACUUM_FLAG | PROCARRAY_ANALYZE_FLAG
 
+typedef bool (*YbStoreAshSample)(PGPROC *proc, int num_procs, TimestampTz sample_time,
+									int *samples_stored);
+
 extern Size ProcArrayShmemSize(void);
 extern void CreateSharedProcArray(void);
 extern void ProcArrayAdd(PGPROC *proc);
@@ -124,5 +127,8 @@ extern void ProcArraySetReplicationSlotXmin(TransactionId xmin,
 
 extern void ProcArrayGetReplicationSlotXmin(TransactionId *xmin,
 								TransactionId *catalog_xmin);
+
+extern void YbStoreAshSamples(YbStoreAshSample store_ash_sample,
+							  TimestampTz sample_time);
 
 #endif							/* PROCARRAY_H */

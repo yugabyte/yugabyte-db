@@ -55,6 +55,11 @@ DEFINE_test_flag(int32, delay_tablet_export_metadata_ms, 0,
                  "How much time in milliseconds to delay before exporting tablet metadata during "
                  "snapshot creation.");
 
+DEFINE_RUNTIME_int32(max_wait_for_aborting_transactions_during_restore_ms, 200,
+                     "How much time in milliseconds to wait for tablet transactions to abort while "
+                     "applying the raft restore operation to a tablet.");
+TAG_FLAG(max_wait_for_aborting_transactions_during_restore_ms, advanced);
+
 namespace yb {
 namespace tablet {
 
@@ -240,12 +245,20 @@ Status TabletSnapshots::Restore(SnapshotOperation* operation) {
   auto restore_at = HybridTime::FromPB(request.snapshot_hybrid_time());
   auto restoration_id = TryFullyDecodeTxnSnapshotRestorationId(request.restoration_id());
 
+  // This logic is to partially restore the sequences tablet. Because the sequences tablet is shared
+  // among all YSQL dbs we do not want to restore the entire tablet.
   if (request.db_oid()) {
     RETURN_NOT_OK(RestorePartialRows(operation));
     return tablet().RestoreStarted(restoration_id);
   }
 
   VLOG_WITH_PREFIX_AND_FUNC(1) << YB_STRUCT_TO_STRING(snapshot_dir, restore_at);
+  auto deadline =
+      CoarseMonoClock::Now() +
+      MonoDelta::FromMilliseconds(FLAGS_max_wait_for_aborting_transactions_during_restore_ms);
+  WARN_NOT_OK(
+      tablet().AbortSQLTransactions(deadline),
+      Format("Cannot abort transactions for tablet $0 during restore", tablet().tablet_id()));
 
   if (!snapshot_dir.empty()) {
     RETURN_NOT_OK_PREPEND(

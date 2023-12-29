@@ -395,6 +395,9 @@ Status ReadQuery::DoPerform() {
       write_batch.mutable_subtransaction()->set_subtransaction_id(
           req_->subtransaction().subtransaction_id());
     }
+    if (req_->has_start_time_micros()) {
+      query->SetRequestStartUs(req_->start_time_micros());
+    }
     // TODO(dtxn) write request id
 
     RETURN_NOT_OK(leader_peer.tablet->CreateReadIntents(

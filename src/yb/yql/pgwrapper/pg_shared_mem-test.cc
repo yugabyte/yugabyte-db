@@ -118,4 +118,15 @@ TEST_F(PgSharedMemTest, Crash) {
   ASSERT_TRUE(conn_result.status().IsNetworkError());
 }
 
+TEST_F(PgSharedMemTest, Batches) {
+  auto conn = ASSERT_RESULT(Connect());
+
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT PRIMARY KEY)"));
+  ASSERT_OK(SetMaxBatchSize(&conn, 4));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT GENERATE_SERIES(1, 10)"));
+
+  auto value = AsString(ASSERT_RESULT(conn.FetchRows<int32_t>("SELECT * FROM t ORDER BY key")));
+  ASSERT_EQ(value, "[1, 2, 3, 4, 5, 6, 7, 8, 9, 10]");
+}
+
 } // namespace yb::pgwrapper

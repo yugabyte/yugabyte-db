@@ -109,6 +109,17 @@ public class Commissioner {
    * @param taskParams the task parameters.
    */
   public UUID submit(TaskType taskType, ITaskParams taskParams) {
+    return submit(taskType, taskParams, null);
+  }
+
+  /**
+   * Creates a new task runnable to run the required task, and submits it to the TaskExecutor.
+   *
+   * @param taskType the task type.
+   * @param taskParams the task parameters.
+   * @param taskUUID the task UUID
+   */
+  public UUID submit(TaskType taskType, ITaskParams taskParams, UUID taskUUID) {
     RunnableTask taskRunnable = null;
     try {
       if (runtimeConfGetter.getGlobalConf(
@@ -120,11 +131,11 @@ public class Commissioner {
             "Executing TaskType {} with params {}", taskType.toString(), redactedJson.toString());
       }
       // Create the task runnable object based on the various parameters passed in.
-      taskRunnable = taskExecutor.createRunnableTask(taskType, taskParams);
+      taskRunnable = taskExecutor.createRunnableTask(taskType, taskParams, taskUUID);
       // Add the consumer to handle before task if available.
       taskRunnable.setTaskExecutionListener(getTaskExecutionListener());
       onTaskCreated(taskRunnable, taskParams);
-      UUID taskUUID = taskExecutor.submit(taskRunnable, executor);
+      taskUUID = taskExecutor.submit(taskRunnable, executor);
       // Add this task to our queue.
       runningTasks.put(taskUUID, taskRunnable);
       return taskRunnable.getTaskUUID();
@@ -157,11 +168,12 @@ public class Commissioner {
    * check the task status for the final state.
    *
    * @param taskUUID the UUID of the task to be aborted.
+   * @param force skip some checks like abortable if it is set.
    * @return true if the task is found running and abort is triggered successfully, else false.
    */
-  public boolean abortTask(UUID taskUUID) {
+  public boolean abortTask(UUID taskUUID, boolean force) {
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
-    if (!isTaskAbortable(taskInfo.getTaskType())) {
+    if (!force && !isTaskAbortable(taskInfo.getTaskType())) {
       throw new PlatformServiceException(
           BAD_REQUEST, String.format("Invalid task type: Task %s cannot be aborted", taskUUID));
     }
@@ -175,7 +187,7 @@ public class Commissioner {
       // Resume if it is already paused to abort faster.
       latch.countDown();
     }
-    Optional<TaskInfo> optional = taskExecutor.abort(taskUUID);
+    Optional<TaskInfo> optional = taskExecutor.abort(taskUUID, force);
     boolean success = optional.isPresent();
     if (success && BackupUtil.BACKUP_TASK_TYPES.contains(taskInfo.getTaskType())) {
       Backup.fetchAllBackupsByTaskUUID(taskUUID)

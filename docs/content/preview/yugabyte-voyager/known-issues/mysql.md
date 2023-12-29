@@ -134,7 +134,7 @@ Suggested workaround is as follows:
 
 **GitHub**: [Issue #137](https://github.com/yugabyte/yb-voyager/issues/137)
 
-**Description**: If your MYSQL schema contains spatial datatypes, the migration will not complete as this migration type is not yet supported by YugabyteDB Voyager. Supporting spatial datatypes will require extra dependencies such as [PostGIS](https://postgis.net/) to be installed.
+**Description**: If your MYSQL schema contains spatial data types, the migration will not complete as this migration type is not yet supported by YugabyteDB Voyager. Supporting spatial data types will require extra dependencies such as [PostGIS](https://postgis.net/) to be installed.
 
 **Workaround** : None. A workaround is currently being explored.
 
@@ -397,7 +397,7 @@ Choose one from the following suggested changes to the schema.
 
 **GitHub**: [Issue #708](https://github.com/yugabyte/yb-voyager/issues/708)
 
-**Description**: If you re-initializate a variable in a function in MySQL using the set statement, the variable is declared twice with different datatypes in the exported schema.
+**Description**: If you re-initializate a variable in a function in MySQL using the set statement, the variable is declared twice with different data types in the exported schema.
 
 **Workaround**: Manually remove the extra declaration of the variable from the exported schema file.
 
@@ -485,7 +485,7 @@ The exported schema is as follows:
 ```sql
 CREATE TABLE text_types (
     id bigint,
-	  tt text DEFAULT _utf8mb4\'c\',
+    tt text DEFAULT _utf8mb4\'c\',
     te text DEFAULT _utf8mb4\'abc\',
     mt text DEFAULT _utf8mb4\'abc\',
     lt text DEFAULT _utf8mb4\'abc\'

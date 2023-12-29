@@ -14,9 +14,13 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import java.time.Duration;
 import java.util.ArrayList;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 
+/**
+ * @deprecated - Use CheckFollowerLag
+ */
+@Deprecated
 @Slf4j
 public class WaitForFollowerLag extends AbstractTaskBase {
 

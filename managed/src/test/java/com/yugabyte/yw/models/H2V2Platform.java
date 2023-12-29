@@ -11,7 +11,7 @@ package com.yugabyte.yw.models;
 
 import io.ebean.BackgroundExecutor;
 import io.ebean.config.dbplatform.PlatformIdGenerator;
-import io.ebean.config.dbplatform.h2.H2Platform;
+import io.ebean.platform.h2.H2Platform;
 import javax.sql.DataSource;
 
 public class H2V2Platform extends H2Platform {

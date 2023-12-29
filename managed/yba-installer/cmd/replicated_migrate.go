@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/spf13/cobra"
+	"github.com/spf13/viper"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/common"
 	log "github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/logging"
 	"github.com/yugabyte/yugabyte-db/managed/yba-installer/pkg/preflight"
@@ -20,7 +21,7 @@ import (
 
 var baseReplicatedMigration = &cobra.Command{
 	Use:   "replicated-migrate",
-	Short: "Commands to handle migrating from replicated to a YBA-Installer instance.",
+	Short: "Commands to handle migrating from replicated to a YBA-Installer instance. [EA]",
 	Long: `replicated-migrate subcommands provide a workflow to move from a replicated based install
 to one managed by YBA Installer. The general workflow should follow:
 1. [Optional] config: Generate the yba-ctl.yml from replicated config
@@ -28,16 +29,21 @@ to one managed by YBA Installer. The general workflow should follow:
 3. finish: Complete the migration
 
 Rollback is also available to move back to a replicated install if and only if 'finish' has not been
-run.
+run and you have not upgraded during migration.
+
+NOTE: THIS FEATURE IS EARLY ACCESS
 `,
 }
 
 var replicatedMigrationStart = &cobra.Command{
 	Use:   "start",
-	Short: "start the replicated migration process.",
-	Long: "Start the process to migrate from replicated to YBA-Installer. This will migrate all data" +
-		" and configs from the replicated YugabyteDB Anywhere install to one managed by YBA-Installer." +
-		" The migration will stop, but not delete, all replicated app instances.",
+	Short: "start the replicated migration process. [EA]",
+	Long: `Start the process to migrate from replicated to YBA-Installer. This will migrate all data
+and configs from the replicated YugabyteDB Anywhere install to one managed by YBA-Installer.
+The migration will stop, but not delete, all replicated app instances.
+
+NOTE: THIS FEATURE IS EARLY ACCESS
+`,
 	Run: func(cmd *cobra.Command, args []string) {
 		state, err := ybactlstate.Initialize()
 		if err != nil {
@@ -98,9 +104,17 @@ var replicatedMigrationStart = &cobra.Command{
 		state.Replicated.PrometheusFileUser = statInfo.Uid
 		state.Replicated.PrometheusFileGroup = statInfo.Gid
 
-		version, err := replflow.YbaVersion(config)
+		version, err := replflow.YbaVersion(configView)
 		if err != nil {
-			log.Fatal("unable to validate running YBA version: " + err.Error())
+			if os.Getenv("YBA_MODE") == "dev" {
+				prompt := "could not query yba version due to unexpected replicated settings. Continue " +
+					"without version check?"
+				if !common.UserConfirm(prompt, common.DefaultNo) {
+					log.Fatal("not starting migration")
+				}
+			} else {
+				log.Fatal("unable to validate running YBA version: " + err.Error())
+			}
 		}
 		if version != ybaCtl.Version() {
 			prompt := "Detected version mismatch between active YBA and migration target version. " +
@@ -122,6 +136,7 @@ var replicatedMigrationStart = &cobra.Command{
 		if err != nil {
 			log.Fatal("failed to migrated replicated config to yba-ctl config: " + err.Error())
 		}
+		state.RootInstall = viper.GetString("installRoot")
 
 		//re-init after exporting config
 		initServices()
@@ -269,9 +284,10 @@ var replicatedMigrationStart = &cobra.Command{
 
 var replicatedMigrateFinish = &cobra.Command{
 	Use:   "finish",
-	Short: "Complete the replicated migration, fully deleting the replicated install",
+	Short: "Complete the replicated migration, fully deleting the replicated install [EA]",
 	Long: "Complete the replicated migration. This will fully move data over from replicated to " +
-		"yba installer, delete replicated data, and remove all replicated containers.",
+		"yba installer, delete replicated data, and remove all replicated containers." +
+		"\n\nNOTE: THIS FEATURE IS EARLY ACCESS",
 	PreRun: func(cmd *cobra.Command, args []string) {
 		prompt := `replicated-migrate finish will completely uninstall replicated, completing the
 migration to yba-installer. This involves deleting the storage directory (default /opt/yugabyte).
@@ -307,7 +323,7 @@ Are you sure you want to continue?`
 
 var replicatedMigrationConfig = &cobra.Command{
 	Use:   "config",
-	Short: "generated yba-ctl.yml equivalent of replicated config",
+	Short: "generated yba-ctl.yml equivalent of replicated config [EA]",
 	Run: func(cmd *cobra.Command, args []string) {
 		ctl := replicatedctl.New(replicatedctl.Config{})
 		config, err := ctl.AppConfigExport()
@@ -331,10 +347,11 @@ var replicatedMigrationConfig = &cobra.Command{
 var replicatedRollbackCmd = &cobra.Command{
 	Use: "rollback",
 	Short: "allows rollback from an unfinished migrate back to replicated install. Any changes " +
-		"made since migrate will not be available after rollback",
+		"made since migrate will not be available after rollback. [EA]",
 	Long: "After a replicated migrate has been started and before the finish command runs, allows " +
 		"rolling back to the replicated install. As this is a rollback, any changes made to YBA after " +
-		"migrate will not be reflected after the rollback completes",
+		"migrate will not be reflected after the rollback completes.\n\n" +
+		"NOTE: THIS FEATURE IS EARLY ACCESS",
 	Run: func(cmd *cobra.Command, args []string) {
 		state, err := ybactlstate.Initialize()
 		if err != nil {
@@ -430,7 +447,5 @@ func init() {
 		replicatedMigrateFinish, replicatedRollbackCmd)
 
 	// Feature flag replicated migration for now
-	if os.Getenv("YBA_MODE") == "dev" {
-		rootCmd.AddCommand(baseReplicatedMigration)
-	}
+	rootCmd.AddCommand(baseReplicatedMigration)
 }

@@ -16,6 +16,8 @@
 
 #include <fstream>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/common/pgsql_error.h"
 #include "yb/common/transaction_error.h"
 #include "yb/common/wire_protocol.h"
@@ -30,6 +32,7 @@
 #include "yb/util/init.h"
 #include "yb/util/logging.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/thread.h"
@@ -384,6 +387,36 @@ double YBCEvalHashValueSelectivity(int32_t hash_low, int32_t hash_high) {
 
 void YBCInitThreading() {
   InitThreading();
+}
+
+void YBCGenerateAshRootRequestId(unsigned char *root_request_id) {
+  uint64_t a = RandomUniformInt<uint64_t>();
+  uint64_t b = RandomUniformInt<uint64_t>();
+  std::memcpy(root_request_id, &a, sizeof(uint64_t));
+  std::memcpy(root_request_id + sizeof(uint64_t), &b, sizeof(uint64_t));
+}
+
+#define RETURN_WITH_DCHECK(enum) \
+  do { \
+    DCHECK_NOTNULL(ToCString(enum)); \
+    return strdup(ToCString(enum) + 1); /* remove the 'k' prefix */ \
+  } while (0)
+
+const char* YBCGetWaitEventName(uint32_t wait_event_info) {
+  RETURN_WITH_DCHECK(static_cast<ash::WaitStateCode>(wait_event_info));
+}
+
+const char* YBCGetWaitEventClass(uint32_t wait_event_info) {
+  /* The highest 8 bits are needed to get the wait event class */
+  uint8_t class_id = narrow_cast<uint8_t>(wait_event_info >> YB_ASH_CLASS_POSITION);
+  RETURN_WITH_DCHECK(static_cast<ash::Class>(class_id));
+}
+
+const char* YBCGetWaitEventComponent(uint32_t wait_event_info) {
+  /* The highest 4 bits are needed to get the wait event component */
+  uint8_t comp_id = narrow_cast<uint8_t>(wait_event_info >>
+      (YB_ASH_CLASS_POSITION + YB_ASH_CLASS_BITS));
+  RETURN_WITH_DCHECK(static_cast<ash::Component>(comp_id));
 }
 
 } // extern "C"

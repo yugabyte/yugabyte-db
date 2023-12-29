@@ -160,6 +160,8 @@ class PgLibPqTest : public LibPqTestBase {
 
   Status TestDuplicateCreateTableRequest(PGConn conn);
 
+  void TestSecondaryIndexInsertSelect();
+
   void KillPostmasterProcessOnTservers();
 
   Result<string> GetSchemaName(const string& relname, PGConn* conn);
@@ -879,7 +881,7 @@ TEST_F(PgLibPqTest, TestConcurrentCounterReadCommitted) {
   TestConcurrentCounter(IsolationLevel::READ_COMMITTED);
 }
 
-TEST_F(PgLibPqTest, SecondaryIndexInsertSelect) {
+void PgLibPqTest::TestSecondaryIndexInsertSelect() {
   constexpr int kThreads = 4;
 
   auto conn = ASSERT_RESULT(Connect());
@@ -921,6 +923,21 @@ TEST_F(PgLibPqTest, SecondaryIndexInsertSelect) {
   }
 
   holder.WaitAndStop(60s);
+}
+
+TEST_F(PgLibPqTest, SecondaryIndexInsertSelect) {
+  TestSecondaryIndexInsertSelect();
+}
+
+class PgLibPqWithSharedMemTest : public PgLibPqTest {
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    options->extra_tserver_flags.push_back("--pg_client_use_shared_memory=true");
+    UpdateMiniClusterFailOnConflict(options);
+  }
+};
+
+TEST_F_EX(PgLibPqTest, SecondaryIndexInsertSelectWithSharedMem, PgLibPqWithSharedMemTest) {
+  TestSecondaryIndexInsertSelect();
 }
 
 void AssertRows(PGConn *conn, int expected_num_rows) {
@@ -2727,12 +2744,7 @@ void PgLibPqTest::AddTSToLoadBalanceMultipleInstances(
       },
       timeout,
       "wait for load balancer to be active"));
-  ASSERT_OK(WaitFor(
-      [&]() -> Result<bool> {
-        return client->IsLoadBalancerIdle();
-      },
-      timeout,
-      "wait for load balancer to be idle"));
+  ASSERT_OK(cluster_->WaitForLoadBalancerToBecomeIdle(client, timeout));
 }
 
 void PgLibPqTest::VerifyLoadBalance(const std::map<std::string, int>& ts_loads) {
@@ -2755,11 +2767,12 @@ void PgLibPqTest::VerifyLoadBalance(const std::map<std::string, int>& ts_loads) 
 void PgLibPqTest::TestLoadBalanceMultipleColocatedDB(
     GetParentTableTabletLocation getParentTableTabletLocation) {
   constexpr int num_databases = 3;
-  const auto timeout = 60s;
+  const auto timeout = 60s * kTimeMultiplier;
   const std::string database_prefix = "co";
   std::map<std::string, int> ts_loads;
-
   auto client = ASSERT_RESULT(cluster_->CreateClient());
+  // Stabilize the load balancer.
+  ASSERT_OK(cluster_->WaitForLoadBalancerToBecomeIdle(client, timeout));
   auto conn = ASSERT_RESULT(Connect());
 
   for (int i = 0; i < num_databases; ++i) {
@@ -2794,12 +2807,14 @@ TEST_F(PgLibPqTest, LoadBalanceMultipleColocatedDB) {
 
 TEST_F(PgLibPqTest, LoadBalanceMultipleTablegroups) {
   constexpr int num_databases = 3;
-  const auto timeout = 60s;
+  const auto timeout = 60s * kTimeMultiplier;
   const std::string database_prefix = "test_db";
   const std::string tablegroup_prefix = "tg";
   std::map<std::string, int> ts_loads;
 
   auto client = ASSERT_RESULT(cluster_->CreateClient());
+  // Stabilize the load balancer.
+  ASSERT_OK(cluster_->WaitForLoadBalancerToBecomeIdle(client, timeout));
   auto conn = ASSERT_RESULT(Connect());
 
   for (int i = 0; i < num_databases; ++i) {
@@ -3189,6 +3204,16 @@ class PgLibPqYSQLBackendCrash: public PgLibPqTest {
  protected:
   const std::string expected_backend_oom_score = "123";
   const std::string expected_webserver_oom_score = "456";
+
+  void GetPostmasterPid(std::string *postmaster_pid) {
+    auto conn = ASSERT_RESULT(Connect());
+    auto backend_pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
+
+    ASSERT_TRUE(RunShellProcess(Format("ps -o ppid= $0", backend_pid), postmaster_pid));
+
+    postmaster_pid->erase(std::remove(postmaster_pid->begin(), postmaster_pid->end(), '\n'),
+                          postmaster_pid->end());
+  }
 };
 
 TEST_F_EX(PgLibPqTest,
@@ -3205,6 +3230,25 @@ TEST_F_EX(PgLibPqTest,
     "SELECT query_text, termination_reason FROM yb_terminated_queries";
   auto row = ASSERT_RESULT((conn3.FetchRow<std::string, std::string>(get_yb_terminated_queries)));
   ASSERT_EQ(row, (decltype(row){"SELECT pg_stat_statements_reset()", "Terminated by SIGKILL"}));
+}
+
+TEST_F_EX(PgLibPqTest,
+          YB_DISABLE_TEST_IN_TSAN(TestWebserverKill),
+          PgLibPqYSQLBackendCrash) {
+
+  string postmaster_pid;
+  GetPostmasterPid(&postmaster_pid);
+
+  string message;
+  for (int i = 0; i < 50; i++) {
+    ASSERT_OK(WaitFor([postmaster_pid]() -> Result<bool> {
+      string count;
+      RunShellProcess(Format("pgrep -f 'YSQL webserver' -P $0 | wc -l", postmaster_pid), &count);
+      return count[0] == '1';
+    }, 1500ms, "Webserver restarting..."));
+    ASSERT_TRUE(RunShellProcess(Format("pkill -9 -f 'YSQL webserver' -P $0", postmaster_pid),
+                                &message));
+  }
 }
 
 #ifdef __linux__
@@ -3224,11 +3268,8 @@ TEST_F_EX(PgLibPqTest,
           TestOomScoreAdjPGWebserver,
           PgLibPqYSQLBackendCrash) {
 
-  // Find the postmaster pid (parent process of our webserver)
   string postmaster_pid;
-  auto conn = ASSERT_RESULT(Connect());
-  auto backend_pid = ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT pg_backend_pid()"));
-  RunShellProcess(Format("ps -o ppid= $0", backend_pid), &postmaster_pid);
+  GetPostmasterPid(&postmaster_pid);
 
   // Get the webserver pid using postmaster pid
   string webserver_pid;

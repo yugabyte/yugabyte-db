@@ -9,6 +9,8 @@ import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.Transactional;
+import jakarta.persistence.EmbeddedId;
+import jakarta.persistence.Entity;
 import java.nio.charset.StandardCharsets;
 import java.util.HashMap;
 import java.util.List;
@@ -16,8 +18,6 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import javax.persistence.EmbeddedId;
-import javax.persistence.Entity;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -153,6 +153,6 @@ public class RuntimeConfigEntry extends Model {
 
   @Override
   public String toString() {
-    return "RuntimeConfigEntry{" + "idKey=" + idKey + ", value='" + value + '\'' + '}';
+    return "RuntimeConfigEntry{idKey=" + idKey + ", value='" + value + "\'}";
   }
 }

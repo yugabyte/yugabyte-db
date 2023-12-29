@@ -31,9 +31,13 @@
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
+#include "yb/util/sync_point.h"
 
 DEFINE_test_flag(int32, inject_status_resolver_delay_ms, 0,
                  "Inject delay before launching transaction status resolver RPC.");
+
+DEFINE_test_flag(int32, inject_status_resolver_unregister_rpc_delay_ms, 0,
+                 "Inject delay before unregistering rpc call after receiving the response.");
 
 DEFINE_test_flag(int32, inject_status_resolver_complete_delay_ms, 0,
                  "Inject delay before counting down latch in transaction status resolver "
@@ -220,7 +224,8 @@ class TransactionStatusResolver::Impl {
                       const tserver::GetTransactionStatusResponsePB& response,
                       int request_size) {
     VLOG_WITH_PREFIX(2) << "Received statuses: " << status << ", " << response.ShortDebugString();
-
+    DEBUG_ONLY_TEST_SYNC_POINT("TransactionStatusResolver::Impl::StatusReceived");
+    AtomicFlagSleepMs(&FLAGS_TEST_inject_status_resolver_unregister_rpc_delay_ms);
     rpcs_.Unregister(&handle_);
 
     if (status.ok() && response.has_error()) {

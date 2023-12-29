@@ -192,7 +192,7 @@ export const Metrics: FC = () => {
   }, [queryParams.nodeName])
 
   useEffect(() => {
-    if (nodeName && !nodesNamesList.find((node) => node.value === nodeName)) {
+    if (queryParams.region) {
       handleChangeFilterOrChangeDisplayChart(
         relativeInterval,
         ALL_NODES.value,
@@ -304,7 +304,7 @@ export const Metrics: FC = () => {
               onChange={(e) => {
                 handleChangeFilterOrChangeDisplayChart(
                   relativeInterval,
-                  nodeName,
+                  ALL_NODES.value,
                   displayedCharts ?? [],
                   (e.target as HTMLInputElement).value
                 )

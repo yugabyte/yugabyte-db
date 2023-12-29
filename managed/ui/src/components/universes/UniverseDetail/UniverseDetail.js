@@ -51,13 +51,16 @@ import { EncryptionInTransit } from '../../../redesign/features/universe/univers
 import { EnableYSQLModal } from '../../../redesign/features/universe/universe-actions/edit-ysql-ycql/EnableYSQLModal';
 import { EnableYCQLModal } from '../../../redesign/features/universe/universe-actions/edit-ysql-ycql/EnableYCQLModal';
 import { EditGflagsModal } from '../../../redesign/features/universe/universe-actions/edit-gflags/EditGflags';
+import { UpgradeLinuxVersionModal } from '../../configRedesign/providerRedesign/components/linuxVersionCatalog/UpgradeLinuxVersionModal';
 import { DBUpgradeModal } from '../../../redesign/features/universe/universe-actions/rollback-upgrade/DBUpgradeModal';
 import { DBRollbackModal } from '../../../redesign/features/universe/universe-actions/rollback-upgrade/DBRollbackModal';
 import { UniverseState, getUniverseStatus, SoftwareUpgradeState } from '../helpers/universeHelpers';
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { DrPanel } from '../../xcluster/disasterRecovery/DrPanel';
+import { VM_PATCHING_RUNTIME_CONFIG } from '../../configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
 import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
+
 //icons
 import ClockRewind from '../../../redesign/assets/clock-rewind.svg';
 
@@ -233,9 +236,9 @@ class UniverseDetail extends Component {
       modal,
       modal: { showModal, visibleModal },
       universe,
-      tasks,
       universe: { currentUniverse, supportedReleases },
       showSoftwareUpgradesModal,
+      showLinuxSoftwareUpgradeModal,
       showSoftwareUpgradesNewModal,
       showRollbackModal,
       showVMImageUpgradeModal,
@@ -332,6 +335,10 @@ class UniverseDetail extends Component {
       runtimeConfigs?.data?.configEntries?.find(
         (config) => config.key === RuntimeConfigKey.IS_GFLAG_MULTILINE_ENABLED
       )?.value === 'true';
+    const isGFlagAllowDuringPrefinalize =
+      runtimeConfigs?.data?.configEntries?.find(
+        (config) => config.key === RuntimeConfigKey.GFLAGS_ALLOW_DURING_PREFINALIZE
+      )?.value === 'true';
 
     const isConfigureYSQLEnabled =
       runtimeConfigs?.data?.configEntries?.find((c) => c.key === 'yb.configure_db_api.ysql')
@@ -344,6 +351,11 @@ class UniverseDetail extends Component {
     const isRollBackFeatureEnabled =
       runtimeConfigs?.data?.configEntries?.find(
         (c) => c.key === 'yb.upgrade.enable_rollback_support'
+      )?.value === 'true';
+
+    const isOsPatchingEnabled =
+      runtimeConfigs?.data?.configEntries?.find(
+        (c) => c.key === VM_PATCHING_RUNTIME_CONFIG
       )?.value === 'true';
 
     if (
@@ -464,27 +476,10 @@ class UniverseDetail extends Component {
             <QueriesViewer isPerfAdvisorEnabled={isPerfAdvisorEnabled} />
           </Tab.Pane>
         ),
-
-        isNotHidden(currentCustomer.data.features, 'universes.details.replication') && (
-          <Tab.Pane
-            eventKey={'replication'}
-            tabtitle="Replication"
-            key="replication-tab"
-            mountOnEnter={true}
-            unmountOnExit={true}
-            disabled={isDisabled(currentCustomer.data.features, 'universes.details.replication')}
-          >
-            {featureFlags.released.enableXCluster || featureFlags.test.enableXCluster ? (
-              <XClusterReplication currentUniverseUUID={currentUniverse.data.universeUUID} />
-            ) : (
-              <ReplicationContainer />
-            )}
-          </Tab.Pane>
-        ),
         isNotHidden(currentCustomer.data.features, 'universes.details.recovery') && isDrEnabled && (
           <Tab.Pane
             eventKey={'recovery'}
-            tabtitle="Recovery"
+            tabtitle="Disaster Recovery"
             key="recovery-tab"
             mountOnEnter={true}
             unmountOnExit={true}
@@ -510,49 +505,65 @@ class UniverseDetail extends Component {
               visibleModal={visibleModal}
             />
           </Tab.Pane>
+        ),
+        isNotHidden(currentCustomer.data.features, 'universes.details.replication') && (
+          <Tab.Pane
+            eventKey={'replication'}
+            tabtitle="xCluster Replication"
+            key="replication-tab"
+            mountOnEnter={true}
+            unmountOnExit={true}
+            disabled={isDisabled(currentCustomer.data.features, 'universes.details.replication')}
+          >
+            {featureFlags.released.enableXCluster || featureFlags.test.enableXCluster ? (
+              <XClusterReplication currentUniverseUUID={currentUniverse.data.universeUUID} />
+            ) : (
+              <ReplicationContainer />
+            )}
+          </Tab.Pane>
         )
       ],
       //tabs relevant for non-imported universes only
       ...(isReadOnlyUniverse
         ? []
         : [
-            isNotHidden(currentCustomer.data.features, 'universes.details.backups') && (
-              <Tab.Pane
-                eventKey={'backups'}
-                tabtitle={<>Backups</>}
-                key="backups-tab"
-                mountOnEnter={true}
-                unmountOnExit={true}
-                disabled={isDisabled(currentCustomer.data.features, 'universes.details.backups')}
-              >
-                {featureFlags.test['backupv2'] || featureFlags.released['backupv2'] ? (
-                  <UniverseLevelBackup />
-                ) : (
-                  <ListBackupsContainer currentUniverse={currentUniverse.data} />
-                )}
-              </Tab.Pane>
-            ),
+          isNotHidden(currentCustomer.data.features, 'universes.details.backups') && (
+            <Tab.Pane
+              eventKey={'backups'}
+              tabtitle={<>Backups</>}
+              key="backups-tab"
+              mountOnEnter={true}
+              unmountOnExit={true}
+              disabled={isDisabled(currentCustomer.data.features, 'universes.details.backups')}
+            >
+              {featureFlags.test['backupv2'] || featureFlags.released['backupv2'] ? (
+                <UniverseLevelBackup />
+              ) : (
+                <ListBackupsContainer currentUniverse={currentUniverse.data} />
+              )}
+            </Tab.Pane>
+          ),
 
-            isNotHidden(currentCustomer.data.features, 'universes.details.health') && (
-              <Tab.Pane
-                eventKey={'health'}
-                tabtitle="Health"
-                key="health-tab"
-                mountOnEnter={true}
-                unmountOnExit={true}
-                disabled={isDisabled(currentCustomer.data.features, 'universes.details.heath')}
-              >
-                <UniverseHealthCheckList
-                  universe={universe}
-                  currentCustomer={currentCustomer}
-                  currentUser={currentUser}
-                  closeModal={closeModal}
-                  visibleModal={visibleModal}
-                  isNodeAgentEnabled={isProviderNodeAgentEnabled && isNodeAgentClientEnabled}
-                />
-              </Tab.Pane>
-            )
-          ])
+          isNotHidden(currentCustomer.data.features, 'universes.details.health') && (
+            <Tab.Pane
+              eventKey={'health'}
+              tabtitle="Health"
+              key="health-tab"
+              mountOnEnter={true}
+              unmountOnExit={true}
+              disabled={isDisabled(currentCustomer.data.features, 'universes.details.heath')}
+            >
+              <UniverseHealthCheckList
+                universe={universe}
+                currentCustomer={currentCustomer}
+                currentUser={currentUser}
+                closeModal={closeModal}
+                visibleModal={visibleModal}
+                isNodeAgentEnabled={isProviderNodeAgentEnabled && isNodeAgentClientEnabled}
+              />
+            </Tab.Pane>
+          )
+        ])
     ].filter((element) => element);
 
     const currentBreadCrumb = (
@@ -638,44 +649,7 @@ class UniverseDetail extends Component {
                   parentDropdownOpen={this.state.actionsDropdownOpen}
                   mainMenu={(showSubmenu) => (
                     <>
-                      {!universePaused &&
-                        (!isRollBackFeatureEnabled ||
-                          (universeHasXcluster && isRollBackFeatureEnabled)) && (
-                          <RbacValidator
-                            isControl
-                            accessRequiredOn={{
-                              onResource: uuid,
-                              ...ApiPermissionMap.MODIFY_UNIVERSE
-                            }}
-                          >
-                            <YBMenuItem
-                              disabled={
-                                isUniverseStatusPending ||
-                                [
-                                  SoftwareUpgradeState.PRE_FINALIZE,
-                                  SoftwareUpgradeState.FINALIZE_FAILED,
-                                  SoftwareUpgradeState.ROLLBACK_FAILED,
-                                  SoftwareUpgradeState.UPGRADE_FAILED
-                                ].includes(upgradeState)
-                              }
-                              onClick={showSoftwareUpgradesModal}
-                              availability={getFeatureState(
-                                currentCustomer.data.features,
-                                'universes.details.overview.upgradeSoftware'
-                              )}
-                            >
-                              <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
-                                Upgrade Software
-                              </YBLabelWithIcon>
-                              {this.showUpgradeMarker() && (
-                                <span className="badge badge-pill badge-red pull-right">
-                                  {updateAvailable}
-                                </span>
-                              )}
-                            </YBMenuItem>
-                          </RbacValidator>
-                        )}
-                      {!universePaused && !universeHasXcluster && isRollBackFeatureEnabled && (
+                      {!universePaused && !isRollBackFeatureEnabled && (
                         <RbacValidator
                           isControl
                           accessRequiredOn={{
@@ -686,12 +660,37 @@ class UniverseDetail extends Component {
                           <YBMenuItem
                             disabled={
                               isUniverseStatusPending ||
-                              [
-                                SoftwareUpgradeState.PRE_FINALIZE,
-                                SoftwareUpgradeState.FINALIZE_FAILED,
-                                SoftwareUpgradeState.ROLLBACK_FAILED,
-                                SoftwareUpgradeState.UPGRADE_FAILED
-                              ].includes(upgradeState)
+                              [SoftwareUpgradeState.PRE_FINALIZE].includes(upgradeState)
+                            }
+                            onClick={showSoftwareUpgradesModal}
+                            availability={getFeatureState(
+                              currentCustomer.data.features,
+                              'universes.details.overview.upgradeSoftware'
+                            )}
+                          >
+                            <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
+                              Upgrade Software
+                            </YBLabelWithIcon>
+                            {this.showUpgradeMarker() && (
+                              <span className="badge badge-pill badge-red pull-right">
+                                {updateAvailable}
+                              </span>
+                            )}
+                          </YBMenuItem>
+                        </RbacValidator>
+                      )}
+                      {!universePaused && isRollBackFeatureEnabled && (
+                        <RbacValidator
+                          isControl
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.MODIFY_UNIVERSE
+                          }}
+                        >
+                          <YBMenuItem
+                            disabled={
+                              isUniverseStatusPending ||
+                              [SoftwareUpgradeState.PRE_FINALIZE].includes(upgradeState)
                             }
                             onClick={showSoftwareUpgradesNewModal}
                             availability={getFeatureState(
@@ -710,10 +709,31 @@ class UniverseDetail extends Component {
                           </YBMenuItem>
                         </RbacValidator>
                       )}
-                      {!universePaused &&
-                        isRollBackAllowed &&
-                        !universeHasXcluster &&
-                        isRollBackFeatureEnabled && (
+                      {!universePaused && isRollBackAllowed && isRollBackFeatureEnabled && (
+                        <RbacValidator
+                          isControl
+                          accessRequiredOn={{
+                            onResource: uuid,
+                            ...ApiPermissionMap.MODIFY_UNIVERSE
+                          }}
+                        >
+                          <YBMenuItem
+                            disabled={isUniverseStatusPending}
+                            onClick={showRollbackModal}
+                            availability={getFeatureState(
+                              currentCustomer.data.features,
+                              'universes.details.overview.upgradeSoftware'
+                            )}
+                          >
+                            <YBLabelWithIcon>
+                              <img src={ClockRewind} height="16px" width="16px" />
+                              &nbsp; Roll Back Upgrade
+                            </YBLabelWithIcon>
+                          </YBMenuItem>
+                        </RbacValidator>
+                      )}
+                      {
+                        !universePaused && isOsPatchingEnabled && (
                           <RbacValidator
                             isControl
                             accessRequiredOn={{
@@ -722,25 +742,23 @@ class UniverseDetail extends Component {
                             }}
                           >
                             <YBMenuItem
-                              disabled={
-                                isUniverseStatusPending ||
-                                [SoftwareUpgradeState.FINALIZE_FAILED].includes(upgradeState)
-                              }
-                              onClick={showRollbackModal}
+                              disabled={isUniverseStatusPending}
+                              onClick={showLinuxSoftwareUpgradeModal}
                               availability={getFeatureState(
                                 currentCustomer.data.features,
                                 'universes.details.overview.upgradeSoftware'
                               )}
                             >
-                              <YBLabelWithIcon>
-                                <img src={ClockRewind} height="16px" width="16px" />
-                                &nbsp; Roll Back Upgrade
+                              <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
+                                Upgrade Linux Version
                               </YBLabelWithIcon>
                             </YBMenuItem>
                           </RbacValidator>
-                        )}
+                        )
+                      }
                       {!universePaused &&
                         runtimeConfigs &&
+                        !isOsPatchingEnabled &&
                         getPromiseState(runtimeConfigs).isSuccess() &&
                         runtimeConfigs.data.configEntries.find(
                           (c) => c.key === 'yb.upgrade.vmImage'
@@ -753,14 +771,7 @@ class UniverseDetail extends Component {
                             }}
                           >
                             <YBMenuItem
-                              disabled={
-                                isUniverseStatusPending ||
-                                [
-                                  SoftwareUpgradeState.FINALIZE_FAILED,
-                                  SoftwareUpgradeState.ROLLBACK_FAILED,
-                                  SoftwareUpgradeState.UPGRADE_FAILED
-                                ].includes(upgradeState)
-                              }
+                              disabled={isUniverseStatusPending}
                               onClick={showVMImageUpgradeModal}
                             >
                               <YBLabelWithIcon icon="fa fa-arrow-up fa-fw">
@@ -778,15 +789,7 @@ class UniverseDetail extends Component {
                           }}
                         >
                           <YBMenuItem
-                            disabled={
-                              isUniverseStatusPending ||
-                              onPremSkipProvisioning ||
-                              [
-                                SoftwareUpgradeState.FINALIZE_FAILED,
-                                SoftwareUpgradeState.ROLLBACK_FAILED,
-                                SoftwareUpgradeState.UPGRADE_FAILED
-                              ].includes(upgradeState)
-                            }
+                            disabled={isUniverseStatusPending || onPremSkipProvisioning}
                             onClick={showUpgradeSystemdModal}
                             availability={getFeatureState(
                               currentCustomer.data.features,
@@ -808,14 +811,7 @@ class UniverseDetail extends Component {
                           }}
                         >
                           <YBMenuItem
-                            disabled={
-                              isUniverseStatusPending ||
-                              [
-                                SoftwareUpgradeState.FINALIZE_FAILED,
-                                SoftwareUpgradeState.ROLLBACK_FAILED,
-                                SoftwareUpgradeState.UPGRADE_FAILED
-                              ].includes(upgradeState)
-                            }
+                            disabled={isUniverseStatusPending}
                             onClick={showThirdpartyUpgradeModal}
                             availability={getFeatureState(
                               currentCustomer.data.features,
@@ -847,14 +843,7 @@ class UniverseDetail extends Component {
                                 currentCustomer.data.features,
                                 'universes.details.overview.editUniverse'
                               )}
-                              disabled={
-                                isUniverseStatusPending ||
-                                [
-                                  SoftwareUpgradeState.FINALIZE_FAILED,
-                                  SoftwareUpgradeState.ROLLBACK_FAILED,
-                                  SoftwareUpgradeState.UPGRADE_FAILED
-                                ].includes(upgradeState)
-                              }
+                              disabled={isUniverseStatusPending}
                             >
                               <YBLabelWithIcon icon="fa fa-pencil">Edit Universe</YBLabelWithIcon>
                             </YBMenuItem>
@@ -867,16 +856,13 @@ class UniverseDetail extends Component {
                             onResource: uuid,
                             ...ApiPermissionMap.UPGRADE_UNIVERSE_GFLAGS
                           }}
+                          overrideStyle={{ display: 'block' }}
                         >
                           <YBMenuItem
                             disabled={
                               isUniverseStatusPending ||
-                              [
-                                SoftwareUpgradeState.PRE_FINALIZE,
-                                SoftwareUpgradeState.FINALIZE_FAILED,
-                                SoftwareUpgradeState.ROLLBACK_FAILED,
-                                SoftwareUpgradeState.UPGRADE_FAILED
-                              ].includes(upgradeState)
+                              ([SoftwareUpgradeState.PRE_FINALIZE].includes(upgradeState) &&
+                                !isGFlagAllowDuringPrefinalize)
                             }
                             onClick={showGFlagsModal}
                             availability={getFeatureState(
@@ -895,16 +881,13 @@ class UniverseDetail extends Component {
                             onResource: uuid,
                             ...ApiPermissionMap.UPGRADE_UNIVERSE_GFLAGS
                           }}
+                          overrideStyle={{ display: 'block' }}
                         >
                           <YBMenuItem
                             disabled={
                               isUniverseStatusPending ||
-                              [
-                                SoftwareUpgradeState.PRE_FINALIZE,
-                                SoftwareUpgradeState.FINALIZE_FAILED,
-                                SoftwareUpgradeState.ROLLBACK_FAILED,
-                                SoftwareUpgradeState.UPGRADE_FAILED
-                              ].includes(upgradeState)
+                              ([SoftwareUpgradeState.PRE_FINALIZE].includes(upgradeState) &&
+                                !isGFlagAllowDuringPrefinalize)
                             }
                             onClick={showGFlagsNewModal}
                             availability={getFeatureState(
@@ -925,14 +908,7 @@ class UniverseDetail extends Component {
                           }}
                         >
                           <YBMenuItem
-                            disabled={
-                              isUniverseStatusPending ||
-                              [
-                                SoftwareUpgradeState.FINALIZE_FAILED,
-                                SoftwareUpgradeState.ROLLBACK_FAILED,
-                                SoftwareUpgradeState.UPGRADE_FAILED
-                              ].includes(upgradeState)
-                            }
+                            disabled={isUniverseStatusPending}
                             onClick={showHelmOverridesModal}
                           >
                             <YBLabelWithIcon icon="fa fa-pencil-square">
@@ -950,14 +926,7 @@ class UniverseDetail extends Component {
                           }}
                         >
                           <YBMenuItem
-                            disabled={
-                              isUniverseStatusPending ||
-                              [
-                                SoftwareUpgradeState.FINALIZE_FAILED,
-                                SoftwareUpgradeState.ROLLBACK_FAILED,
-                                SoftwareUpgradeState.UPGRADE_FAILED
-                              ].includes(upgradeState)
-                            }
+                            disabled={isUniverseStatusPending}
                             onClick={() => showSubmenu('security')}
                             availability={getFeatureState(
                               currentCustomer.data.features,
@@ -980,14 +949,7 @@ class UniverseDetail extends Component {
                           isControl
                         >
                           <YBMenuItem
-                            disabled={
-                              isUniverseStatusPending ||
-                              [
-                                SoftwareUpgradeState.FINALIZE_FAILED,
-                                SoftwareUpgradeState.ROLLBACK_FAILED,
-                                SoftwareUpgradeState.UPGRADE_FAILED
-                              ].includes(upgradeState)
-                            }
+                            disabled={isUniverseStatusPending}
                             onClick={showEnableYSQLModal}
                           >
                             <YBLabelWithIcon icon="fa fa-database fa-fw">
@@ -1005,14 +967,7 @@ class UniverseDetail extends Component {
                           isControl
                         >
                           <YBMenuItem
-                            disabled={
-                              isUniverseStatusPending ||
-                              [
-                                SoftwareUpgradeState.FINALIZE_FAILED,
-                                SoftwareUpgradeState.ROLLBACK_FAILED,
-                                SoftwareUpgradeState.UPGRADE_FAILED
-                              ].includes(upgradeState)
-                            }
+                            disabled={isUniverseStatusPending}
                             onClick={showEnableYCQLModal}
                           >
                             <YBLabelWithIcon icon="fa fa-database fa-fw">
@@ -1030,14 +985,7 @@ class UniverseDetail extends Component {
                           }}
                         >
                           <YBMenuItem
-                            disabled={
-                              isUniverseStatusPending ||
-                              [
-                                SoftwareUpgradeState.FINALIZE_FAILED,
-                                SoftwareUpgradeState.ROLLBACK_FAILED,
-                                SoftwareUpgradeState.UPGRADE_FAILED
-                              ].includes(upgradeState)
-                            }
+                            disabled={isUniverseStatusPending}
                             onClick={showRollingRestartModal}
                             availability={getFeatureState(
                               currentCustomer.data.features,
@@ -1056,23 +1004,17 @@ class UniverseDetail extends Component {
                           isControl
                           accessRequiredOn={{
                             onResource: uuid,
-                            ...this.hasReadReplica(universeInfo) ? ApiPermissionMap.GET_UNIVERSES_BY_ID : ApiPermissionMap.CREATE_READ_REPLICA
+                            ...(this.hasReadReplica(universeInfo)
+                              ? ApiPermissionMap.GET_UNIVERSES_BY_ID
+                              : ApiPermissionMap.CREATE_READ_REPLICA)
                           }}
                         >
                           <YBMenuItem
-                            disabled={
-                              isUniverseStatusPending ||
-                              [
-                                SoftwareUpgradeState.FINALIZE_FAILED,
-                                SoftwareUpgradeState.ROLLBACK_FAILED,
-                                SoftwareUpgradeState.UPGRADE_FAILED
-                              ].includes(upgradeState)
-                            }
+                            disabled={isUniverseStatusPending}
                             to={
                               this.isNewUIEnabled()
-                                ? `/universes/${uuid}/${
-                                    this.hasReadReplica(universeInfo) ? 'edit' : 'create'
-                                  }/async`
+                                ? `/universes/${uuid}/${this.hasReadReplica(universeInfo) ? 'edit' : 'create'
+                                }/async`
                                 : `/universes/${uuid}/edit/async`
                             }
                             availability={getFeatureState(
@@ -1101,14 +1043,7 @@ class UniverseDetail extends Component {
                             closeModal={closeModal}
                             button={
                               <YBMenuItem
-                                disabled={
-                                  (isUniverseStatusPending && !backupRestoreInProgress) ||
-                                  [
-                                    SoftwareUpgradeState.FINALIZE_FAILED,
-                                    SoftwareUpgradeState.ROLLBACK_FAILED,
-                                    SoftwareUpgradeState.UPGRADE_FAILED
-                                  ].includes(upgradeState)
-                                }
+                                disabled={isUniverseStatusPending && !backupRestoreInProgress}
                                 onClick={showRunSampleAppsModal}
                               >
                                 <YBLabelWithIcon icon="fa fa-terminal">
@@ -1122,33 +1057,33 @@ class UniverseDetail extends Component {
 
                       {(featureFlags.test['supportBundle'] ||
                         featureFlags.released['supportBundle']) && (
-                        <>
-                          <MenuItem divider />
-                          {!universePaused && (
-                            <RbacValidator
-                              isControl
-                              accessRequiredOn={{
-                                onResource: uuid,
-                                ...ApiPermissionMap.GET_SUPPORT_BUNDLE
-                              }}
-                            >
-                              <UniverseSupportBundle
-                                currentUniverse={currentUniverse.data}
-                                modal={modal}
-                                closeModal={closeModal}
-                                button={
-                                  <YBMenuItem onClick={showSupportBundleModal}>
-                                    <YBLabelWithIcon icon="fa fa-file-archive-o">
-                                      Support Bundles
-                                    </YBLabelWithIcon>
-                                  </YBMenuItem>
-                                }
-                              />
-                            </RbacValidator>
-                          )}
-                          <MenuItem divider />
-                        </>
-                      )}
+                          <>
+                            <MenuItem divider />
+                            {!universePaused && (
+                              <RbacValidator
+                                isControl
+                                accessRequiredOn={{
+                                  onResource: uuid,
+                                  ...ApiPermissionMap.GET_SUPPORT_BUNDLE
+                                }}
+                              >
+                                <UniverseSupportBundle
+                                  currentUniverse={currentUniverse.data}
+                                  modal={modal}
+                                  closeModal={closeModal}
+                                  button={
+                                    <YBMenuItem onClick={showSupportBundleModal}>
+                                      <YBLabelWithIcon icon="fa fa-file-archive-o">
+                                        Support Bundles
+                                      </YBLabelWithIcon>
+                                    </YBMenuItem>
+                                  }
+                                />
+                              </RbacValidator>
+                            )}
+                            <MenuItem divider />
+                          </>
+                        )}
 
                       {!universePaused && (
                         <RbacValidator
@@ -1159,14 +1094,7 @@ class UniverseDetail extends Component {
                           }}
                         >
                           <YBMenuItem
-                            disabled={
-                              isUniverseStatusPending ||
-                              [
-                                SoftwareUpgradeState.FINALIZE_FAILED,
-                                SoftwareUpgradeState.ROLLBACK_FAILED,
-                                SoftwareUpgradeState.UPGRADE_FAILED
-                              ].includes(upgradeState)
-                            }
+                            disabled={isUniverseStatusPending}
                             onClick={handleBackupToggle}
                             availability={getFeatureState(
                               currentCustomer.data.features,
@@ -1181,7 +1109,7 @@ class UniverseDetail extends Component {
                               }
                             >
                               {currentUniverse.data.universeConfig &&
-                              currentUniverse.data.universeConfig.takeBackups === 'true'
+                                currentUniverse.data.universeConfig.takeBackups === 'true'
                                 ? 'Disable Backup'
                                 : 'Enable Backup'}
                             </YBLabelWithIcon>
@@ -1292,6 +1220,13 @@ class UniverseDetail extends Component {
             this.props.getUniverseInfo(currentUniverse.data.universeUUID);
           }}
           isGFlagMultilineConfEnabled={isGFlagMultilineConfEnabled}
+          universeData={currentUniverse.data}
+        />
+        <UpgradeLinuxVersionModal
+          visible={showModal && visibleModal === 'linuxVersionUpgradeModal'}
+          onHide={() => {
+            closeModal();
+          }}
           universeData={currentUniverse.data}
         />
 

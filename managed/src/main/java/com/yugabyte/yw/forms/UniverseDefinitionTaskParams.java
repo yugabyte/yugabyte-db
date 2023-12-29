@@ -47,7 +47,7 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.builder.HashCodeBuilder;
 import play.data.validation.Constraints;
@@ -153,9 +153,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
   // Set to true when software rollback is allowed.
   @ApiModelProperty(
-      value = "Available since YBA version 2.21.0.0.",
+      value = "Available since YBA version 2.20.2.0",
       accessMode = AccessMode.READ_ONLY)
-  @YbaApi(visibility = YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.21.0.0")
+  @YbaApi(visibility = YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.20.2.0")
   public boolean isSoftwareRollbackAllowed = false;
 
   public enum SoftwareUpgradeState {
@@ -460,7 +460,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         // Ephemeral storage AWS instances should not have storage type
         if (deviceInfo.storageType != null) {
           throw new PlatformServiceException(
-              BAD_REQUEST, "AWS instance with ephemeral storage can't have" + " storageType set");
+              BAD_REQUEST, "AWS instance with ephemeral storage can't have storageType set");
         }
       } else {
         if (cloudType.isRequiresStorageType() && deviceInfo.storageType == null) {
@@ -619,6 +619,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @ApiModelProperty public K8SNodeResourceSpec tserverK8SNodeResourceSpec;
 
+    @Data
     public static class K8SNodeResourceSpec {
       // Memory in GiB
       public Double memoryGib = 4.0;
@@ -720,8 +721,19 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // Info of all the gflags that the user would like to save to the universe. These will be
     // used during edit universe, for example, to set the flags on new nodes to match
     // existing nodes' settings.
-    @ApiModelProperty public Map<String, String> masterGFlags = new HashMap<>();
-    @ApiModelProperty public Map<String, String> tserverGFlags = new HashMap<>();
+    @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.18.6.0")
+    @Deprecated
+    @ApiModelProperty(
+        "User-defined gflags for master. "
+            + "Deprecated since YBA version 2.18.6.0, use specificGFlags")
+    public Map<String, String> masterGFlags = new HashMap<>();
+
+    @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.18.6.0")
+    @Deprecated
+    @ApiModelProperty(
+        "User-defined gflags for tserver. "
+            + "Deprecated since YBA version 2.18.6.0, use specificGFlags")
+    public Map<String, String> tserverGFlags = new HashMap<>();
 
     // Flags for YB-Controller.
     @ApiModelProperty public Map<String, String> ybcFlags = new HashMap<>();
@@ -739,7 +751,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @Nullable @ApiModelProperty public DeviceInfo masterDeviceInfo;
 
     // New version of gflags. If present - replaces old masterGFlags/tserverGFlags thing
-    @ApiModelProperty public SpecificGFlags specificGFlags;
+    @ApiModelProperty("User-defined gflags for all processes.")
+    public SpecificGFlags specificGFlags;
 
     // Overrides for some of user intent values per AZ or/and process type.
     @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.19.3.0")
@@ -1324,7 +1337,11 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
   }
 
-  @ApiModelProperty("Previous software version related data")
+  @ApiModelProperty(
+      value =
+          "WARNING: This is a preview API that could change. Previous software version related"
+              + " data")
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.20.2.0")
   public PrevYBSoftwareConfig prevYBSoftwareConfig;
 
   @Data

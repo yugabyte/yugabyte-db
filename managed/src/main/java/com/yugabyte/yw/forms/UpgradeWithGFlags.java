@@ -21,6 +21,8 @@ import play.mvc.Http;
 
 @Slf4j
 public class UpgradeWithGFlags extends UpgradeTaskParams {
+  public static final String SPECIFIC_GFLAGS_NO_CHANGES_ERROR =
+      "No changes in gflags (modify specificGflags in cluster)";
 
   public Map<String, String> masterGFlags;
   public Map<String, String> tserverGFlags;
@@ -79,8 +81,7 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
       }
     }
     if (isFirstTry && !hasClustersToUpdate) {
-      throw new PlatformServiceException(
-          Http.Status.BAD_REQUEST, "No changes in gflags (modify specificGflags in cluster)");
+      throw new PlatformServiceException(Http.Status.BAD_REQUEST, SPECIFIC_GFLAGS_NO_CHANGES_ERROR);
     }
   }
 

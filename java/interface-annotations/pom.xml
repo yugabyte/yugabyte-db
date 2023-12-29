@@ -21,7 +21,7 @@
   <parent>
     <groupId>org.yb</groupId>
     <artifactId>yb-parent</artifactId>
-    <version>0.8.73-SNAPSHOT</version>
+    <version>0.8.75-SNAPSHOT</version>
   </parent>
 
   <artifactId>interface-annotations</artifactId>

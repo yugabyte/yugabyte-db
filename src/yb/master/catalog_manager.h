@@ -149,8 +149,6 @@ using PlacementId = std::string;
 
 typedef std::unordered_map<TabletId, TabletServerId> TabletToTabletServerMap;
 
-typedef std::unordered_set<TableId> TableIdSet;
-
 typedef std::unordered_map<TablespaceId, boost::optional<ReplicationInfoPB>>
   TablespaceIdToReplicationInfoMap;
 
@@ -326,6 +324,12 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status WaitForCreateTableToFinish(const TableId& table_id, CoarseTimePoint deadline);
 
+  Status IsAlterTableInProgress(const TableId& table_id,
+                                 CoarseTimePoint deadline,
+                                 bool* alter_in_progress);
+
+  Status WaitForAlterTableToFinish(const TableId& table_id, CoarseTimePoint deadline);
+
   // Check if the transaction status table creation is done.
   //
   // This is called at the end of IsCreateTableDone if the table has transactions enabled.
@@ -365,11 +369,17 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                          GetBackfillJobsResponsePB* resp,
                          rpc::RpcContext* rpc);
 
-  // Gets the index permissions of the specified index tables. The response will contain all the
+  // Gets the backfilling status of the specified index tables. The response will contain all the
   // specified tables with either their index permissions or an error in the corresponding field.
   Status GetBackfillStatus(const GetBackfillStatusRequestPB* req,
                            GetBackfillStatusResponsePB* resp,
                            rpc::RpcContext* rpc);
+
+  // Gets the backfilling status of the specified index tables. The result is provided via
+  // the callback for every index from the indexes argument. If the indexes argument is empty,
+  // the result is provided for every index of the specified indexed table. The callback must have
+  // the following signature: void (const Status&, const TableId&, IndexStatusPB::BackfillStatus).
+  void GetBackfillStatus(const TableId& indexed_table_id, TableIdSet&& indexes, auto&& callback);
 
   // Backfill the indexes for the specified table.
   // Used for backfilling YCQL defered indexes when triggered from yb-admin.
@@ -2005,7 +2015,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   void Started();
 
-  void SysCatalogLoaded(const SysCatalogLoadingState& state);
+  void SysCatalogLoaded(SysCatalogLoadingState&& state);
 
   // Ensure the sys catalog tablet respects the leader affinity and blacklist configuration.
   // Chooses an unblacklisted master in the highest priority affinity location to step down to. If
@@ -2688,7 +2698,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                                const std::vector<TableId>& table_ids,
                                bool has_consistent_snapshot_option,
                                bool consistent_snapshot_option_use,
-                               uint64_t consistent_snapshot_time);
+                               uint64_t consistent_snapshot_time,
+                               uint64_t stream_creation_time);
 
   Status SetAllCDCSDKRetentionBarriers(
       const CreateCDCStreamRequestPB& req, rpc::RpcContext* rpc, const LeaderEpoch& epoch,
@@ -2978,7 +2989,10 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   // Check if this tablet is being kept for xcluster replication or cdcsdk.
   bool RetainedByXRepl(const TabletId& tablet_id);
 
-  void StartPostLoadTasks(const SysCatalogLoadingState& state);
+  using SysCatalogPostLoadTasks = std::vector<std::pair<std::function<void()>, std::string>>;
+  void StartPostLoadTasks(SysCatalogPostLoadTasks&& post_load_tasks);
+
+  void StartWriteTableToSysCatalogTasks(TableIdSet&& tables_to_persist);
 
   bool IsTableXClusterConsumerUnlocked(const TableInfo& table_info) const REQUIRES_SHARED(mutex_);
 
@@ -3044,6 +3058,13 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status MaybeRestoreInitialSysCatalogSnapshotAndReloadSysCatalog(SysCatalogLoadingState* state)
       REQUIRES(mutex_);
+
+  // Validates the indexes backfill status and updates their in-memory state if necessary; adds
+  // such indexes to the tables_to_persist to write their updated state on disk. The first input
+  // argument should be considered as an indexes collection grouped by the indexed table id, which
+  // is required to have more effective validation performance.
+  void ValidateIndexTablesPostLoad(std::unordered_map<TableId, TableIdSet>&& indexes_map,
+                                   TableIdSet* tables_to_persist) EXCLUDES(mutex_);
 
   // Should be bumped up when tablet locations are changed.
   std::atomic<uintptr_t> tablet_locations_version_{0};

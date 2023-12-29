@@ -1,0 +1,43 @@
+!!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat
+exporters:
+  datadog/DD: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$DataDogExporter
+    api: {key: apikey, site: ddsite}
+    retry_on_failure: {enabled: true, initial_interval: 1m, max_interval: 1800m}
+    sending_queue: {enabled: true, storage: file_storage/queue}
+extensions:
+  file_storage/queue: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$StorageExtension
+    compaction: {directory: /mnt/d0/otel-collector/queue, on_rebound: true, on_start: true,
+      rebound_needed_threshold_mib: 100, rebound_trigger_threshold_mib: 10}
+    directory: /mnt/d0/otel-collector/queue
+processors:
+  attributes/DD: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$AttributesProcessor
+    actions:
+    - {action: upsert, key: tag, value: value}
+    - {action: upsert, key: additionalTag, value: otherValue}
+    - {action: upsert, key: host.name, value: test-node}
+receivers:
+  filelog/ysql: !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FileLogReceiver
+    attributes: {audit_log_type: ysql}
+    exclude: [/home/yugabyte/tserver/logs/*.gz]
+    include: [/home/yugabyte/tserver/logs/postgresql-*.log]
+    operators:
+    - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$FilterOperator {
+      expr: 'body not matches "^.*LOG:  AUDIT:.*$"', type: filter}
+    - !!com.yugabyte.yw.common.audit.otel.OtelCollectorConfigFormat$RegexOperator
+      on_error: drop
+      regex: '^((?P<timestamp_without_ms>\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2} \w{3})[
+        ][|][ ]([^ ]+)[ ][:][ ]LOG:  AUDIT: (?P<audit_type>\w+),(?P<statement_id>\d+),(?P<substatement_id>\d+),(?P<class>\w+),(?P<command>[^,]+),(?P<object_type>[^,]*),(?P<object_name>[^,]*),(?P<statement>.*))|(.*)$'
+      timestamp: {layout: '%Y-%m-%d %H:%M:%S %Z', parse_from: attributes.timestamp_without_ms}
+      type: regex_parser
+    start_at: beginning
+    storage: file_storage/queue
+service:
+  extensions: [file_storage/queue]
+  pipelines:
+    logs/DD:
+      exporters: [datadog/DD]
+      processors: [attributes/DD]
+      receivers: [filelog/ysql]
+  telemetry:
+    logs:
+      output_paths: [/home/yugabyte/otel-collector/logs/otel-collector.logs]

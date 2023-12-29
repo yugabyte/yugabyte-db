@@ -24,6 +24,7 @@ import { getUniverseStatus } from '../universes/helpers/universeHelpers';
 import { UnavailableUniverseStates, YBTableRelationType } from '../../redesign/helpers/constants';
 import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
 import { SortOrder } from '../../redesign/helpers/constants';
+import { getTableUuid } from '../../utils/tableUtils';
 
 import {
   Metrics,
@@ -34,6 +35,7 @@ import {
 } from './XClusterTypes';
 import { XClusterConfig, XClusterTableDetails } from './dtos';
 import { MetricTrace, TableType, Universe, YBTable } from '../../redesign/helpers/dtos';
+import { IAlertConfiguration as AlertConfiguration } from '../../redesign/features/alerts/TemplateComposer/ICustomVariables';
 
 import './ReplicationUtils.scss';
 
@@ -436,6 +438,20 @@ export const formatUuidFromXCluster = (tableUuid: string) =>
     '$1-$2-$3-$4-$5'
   );
 
+export const getStrictestReplicationLagAlertConfig = (
+  alertConfigs: AlertConfiguration[] | undefined
+): AlertConfiguration | undefined =>
+  alertConfigs?.reduce(
+    (strictestReplicationLagAlertConfig: any, currentReplicationLagAlertConfig: any) =>
+      strictestReplicationLagAlertConfig?.thresholds?.SEVERE?.threshold &&
+      (!currentReplicationLagAlertConfig?.thresholds?.SEVERE?.threshold ||
+        strictestReplicationLagAlertConfig.thresholds.SEVERE.threshold <=
+          currentReplicationLagAlertConfig.thresholds.SEVERE.threshold)
+        ? strictestReplicationLagAlertConfig
+        : currentReplicationLagAlertConfig,
+    {}
+  );
+
 export const tableSort = <RowType,>(
   a: RowType,
   b: RowType,
@@ -489,7 +505,7 @@ export const augmentTablesWithXClusterDetails = (
   const ybTableMap = new Map<string, YBTable>();
   ybTable.forEach((table) => {
     const { tableUUID, ...tableDetails } = table;
-    const adaptedTableUUID = formatUuidForXCluster(tableUUID);
+    const adaptedTableUUID = formatUuidForXCluster(getTableUuid(table));
     ybTableMap.set(adaptedTableUUID, { ...tableDetails, tableUUID: adaptedTableUUID });
   });
   const tables = xClusterConfigTables.reduce((tables: XClusterTable[], table) => {
@@ -509,24 +525,37 @@ export const augmentTablesWithXClusterDetails = (
 
 /**
  * Return the UUIDs for tables which require bootstrapping.
- * May throw an error.
+ * May throw an error if the need_bootstrap query fails.
  */
 export const getTablesForBootstrapping = async (
-  selectedTableUUIDs: string[],
-  sourceUniverseUUID: string,
-  targetUniverseUUID: string | null,
+  selectedTableUuids: string[],
+  sourceUniverseUuid: string,
+  targetUniverseUuid: string | null,
   sourceUniverseTables: YBTable[],
-  xClusterConfigType: XClusterConfigType
+  tableUuidsInConfig: string[],
+  xClusterConfigType: XClusterConfigType,
+  isUsedForDr: boolean
 ) => {
   // Check if bootstrap is required, for each selected table
   let bootstrapTest: { [tableUUID: string]: boolean } = {};
 
   bootstrapTest = await isBootstrapRequired(
-    sourceUniverseUUID,
-    targetUniverseUUID,
-    selectedTableUUIDs.map(formatUuidForXCluster),
+    sourceUniverseUuid,
+    targetUniverseUuid,
+    selectedTableUuids.map(formatUuidForXCluster),
     xClusterConfigType
   );
+  if (isUsedForDr) {
+    // For DR, we always need to collect backup storage config for bootstrapping when the
+    // user adds a new table to the config. The need_bootstrap endpoint will not return true for this
+    // case. Thus, we need to set the test to true for these tables.
+    const tableUuidsInConfigSet = new Set(tableUuidsInConfig);
+    selectedTableUuids.forEach((tableUuid) => {
+      if (!tableUuidsInConfigSet.has(tableUuid)) {
+        bootstrapTest[tableUuid] = true;
+      }
+    });
+  }
 
   const bootstrapRequiredTableUUIDs = new Set<string>();
   if (bootstrapTest) {
@@ -540,16 +569,19 @@ export const getTablesForBootstrapping = async (
         // Ignore all index tables and non-YSQL tables.
         return;
       }
+      // If a single YSQL table requires bootstrapping, then we must submit all table UUIDs
+      // under the same database in the bootstrap param because the backup and restore is only available at a
+      // database level.
       const tableUUIDs = ysqlKeyspaceToTableUUIDs.get(table.keySpace);
       if (tableUUIDs !== undefined) {
-        tableUUIDs.add(formatUuidForXCluster(table.tableUUID));
+        tableUUIDs.add(formatUuidForXCluster(getTableUuid(table)));
       } else {
         ysqlKeyspaceToTableUUIDs.set(
           table.keySpace,
-          new Set<string>([formatUuidForXCluster(table.tableUUID)])
+          new Set<string>([formatUuidForXCluster(getTableUuid(table))])
         );
       }
-      ysqlTableUUIDToKeyspace.set(formatUuidForXCluster(table.tableUUID), table.keySpace);
+      ysqlTableUUIDToKeyspace.set(formatUuidForXCluster(getTableUuid(table)), table.keySpace);
     });
 
     Object.entries(bootstrapTest).forEach(([tableUUID, bootstrapRequired]) => {

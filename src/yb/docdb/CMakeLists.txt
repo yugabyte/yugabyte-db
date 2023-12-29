@@ -85,6 +85,7 @@ set(DOCDB_SRCS
 set(DOCDB_DEPS
         yb_dockv
         rocksdb
+        yb_ash
         yb_util
         yb_rocksutil
         yb_common

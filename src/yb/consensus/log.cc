@@ -44,6 +44,8 @@
 
 #include <boost/algorithm/string/predicate.hpp>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"
 
@@ -569,6 +571,7 @@ Status Log::Open(const LogOptions &options,
                  const PreLogRolloverCallback& pre_log_rollover_callback,
                  NewSegmentAllocationCallback callback,
                  CreateNewSegment create_new_segment) {
+  SCOPED_WAIT_STATUS(WAL_Open);
 
   RETURN_NOT_OK_PREPEND(env_util::CreateDirIfMissing(options.env, DirName(wal_dir)),
                         Substitute("Failed to create table wal dir $0", DirName(wal_dir)));
@@ -731,6 +734,7 @@ Status Log::CloseCurrentSegment() {
   footer_builder_.set_close_timestamp_micros(close_timestamp_micros);
   Status status;
   {
+    SCOPED_WAIT_STATUS(WAL_Close);
     std::lock_guard lock(active_segment_mutex_);
     status = active_segment_->WriteIndexWithFooterAndClose(log_index_.get(),
                                                            &footer_builder_);
@@ -895,6 +899,7 @@ Status Log::DoAppend(LogEntryBatch* entry_batch, SkipWalWrite skip_wal_write) {
     int64_t start_offset = active_segment_->written_offset();
 
     LOG_SLOW_EXECUTION(WARNING, 50, "Append to log took a long time") {
+      SCOPED_WAIT_STATUS(WAL_Write);
       SCOPED_LATENCY_METRIC(metrics_, append_latency);
       LongOperationTracker long_operation_tracker(
           "Log append", FLAGS_consensus_log_scoped_watch_delay_append_threshold_ms * 1ms);
@@ -1099,6 +1104,7 @@ Status Log::EnsureSegmentInitializedUnlocked() {
 // might not be necessary. We only call ::DoSync directly before we call ::CloseCurrentSegment
 Status Log::DoSync() {
   // Acquire the lock over active_segment_ to prevent segment rollover in the interim.
+  SCOPED_WAIT_STATUS(WAL_Sync);
   std::lock_guard lock(active_segment_mutex_);
   if (active_segment_->IsClosed()) {
     return Status::OK();
@@ -1801,6 +1807,7 @@ WritableFileOptions Log::GetNewSegmentWritableFileOptions() {
 }
 
 Status Log::PreAllocateNewSegment() {
+  SCOPED_WAIT_STATUS(WAL_AllocateNewSegment);
   TRACE_EVENT1("log", "PreAllocateNewSegment", "file", next_segment_path_);
   CHECK_EQ(allocation_state(), SegmentAllocationState::kAllocationInProgress);
 
@@ -1864,6 +1871,7 @@ Status Log::SwitchToAllocatedSegment() {
   RETURN_NOT_OK(new_segment->WriteHeader(header));
   // Calling Sync() here is important because it ensures the file has a complete WAL header
   // on disk before renaming the file.
+  SCOPED_WAIT_STATUS(WAL_Sync);
   RETURN_NOT_OK(new_segment->Sync());
 
   const auto new_segment_path =
@@ -1907,6 +1915,7 @@ Status Log::SwitchToAllocatedSegment() {
 }
 
 Status Log::ReplaceSegmentInReaderUnlocked() {
+  SCOPED_WAIT_STATUS(WAL_Open);
   // We should never switch to a new segment if we wrote nothing to the old one.
   CHECK(active_segment_->IsClosed());
   shared_ptr<RandomAccessFile> readable_file;

@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <chrono>
 #include <utility>
+#include <vector>
 
 #include <boost/assign.hpp>
 #include <gmock/gmock.h>
@@ -133,7 +134,9 @@ DECLARE_bool(enable_tablet_split_of_cdcsdk_streamed_tables);
 DECLARE_bool(cdc_enable_postgres_replica_identity);
 DECLARE_uint64(ysql_cdc_active_replication_slot_window_ms);
 DECLARE_bool(enable_log_retention_by_op_idx);
-DECLARE_bool(TEST_yb_enable_cdc_consistent_snapshot_streams);
+DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
+DECLARE_uint32(cdcsdk_tablet_not_of_interest_timeout_secs);
+DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
 
 namespace yb {
 
@@ -229,7 +232,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   Status WriteRowsHelper(
       uint32_t start, uint32_t end, Cluster* cluster, bool flag, uint32_t num_cols = 2,
-      const char* const table_name = kTableName, const vector<string>& optional_cols_name = {});
+      const char* const table_name = kTableName, const vector<string>& optional_cols_name = {},
+      const bool trasaction_enabled = true);
 
   Status CreateTableWithoutPK(Cluster* cluster);
 
@@ -346,7 +350,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void PrepareChangeRequestWithExplicitCheckpoint(
       GetChangesRequestPB* change_req, const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
-      const CDCSDKCheckpointPB& cp, const int tablet_idx = 0);
+      const CDCSDKCheckpointPB* from_op_id, const CDCSDKCheckpointPB* explicit_checkpoint,
+      const TableId table_id = "", const int tablet_idx = 0);
 
   void PrepareSetCheckpointRequest(
       SetCDCCheckpointRequestPB* set_checkpoint_req,
@@ -357,6 +362,20 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       bool initial_checkpoint,
       const uint64_t cdc_sdk_safe_time,
       bool bootstrap);
+
+  bool IsDMLRecord(const CDCSDKProtoRecordPB& record) {
+    return record.row_message().op() == RowMessage::INSERT
+        || record.row_message().op() == RowMessage::UPDATE
+        || record.row_message().op() == RowMessage::DELETE
+        || record.row_message().op() == RowMessage::READ;
+  }
+
+  Result<int64> GetChangeRecordCount(
+      const xrepl::StreamId& stream_id, const YBTableName& table,
+      const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
+      std::map<TabletId, CDCSDKCheckpointPB> tablet_to_checkpoint,
+      const int64 expected_total_records, bool explicit_checkpointing_enabled = false,
+      std::map<TabletId, std::vector<CDCSDKProtoRecordPB>> records = {});
 
   Result<SetCDCCheckpointResponsePB> SetCDCCheckpoint(
       const xrepl::StreamId& stream_id,
@@ -452,7 +471,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   Result<GetChangesResponsePB> GetChangesFromCDCWithExplictCheckpoint(
       const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
-      const CDCSDKCheckpointPB* cp = nullptr,
+      const CDCSDKCheckpointPB* from_op_id = nullptr,
+      const CDCSDKCheckpointPB* explicit_checkpoint = nullptr,
+      const TableId& colocated_table_id = "",
       int tablet_idx = 0);
 
   bool DeleteCDCStream(const xrepl::StreamId& db_stream_id);
@@ -469,9 +490,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const uint32_t num_tservers,
       const bool set_flag_to_a_smaller_value,
       const uint32_t cdc_intent_retention_ms,
+      CDCCheckpointType checkpoint_type,
       const bool extend_expiration = false);
 
-  void TestSetCDCCheckpoint(const uint32_t num_tservers, bool initial_checkpoint);
+  void TestSetCDCCheckpoint(CDCCheckpointType checkpoint_type);
 
   Result<GetChangesResponsePB> VerifyIfDDLRecordPresent(
       const xrepl::StreamId& stream_id,
@@ -528,6 +550,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   Result<std::vector<TableId>> GetCDCStreamTableIds(const xrepl::StreamId& stream_id);
 
+  Result<master::GetCDCStreamResponsePB> GetCDCStream(const xrepl::StreamId& stream_id);
+
   uint32_t GetTotalNumRecordsInTablet(
       const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
@@ -549,6 +573,13 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void CDCSDKAlterWithSysCatalogCompaction(bool packed_row);
   void CDCSDKIntentsBatchReadWithAlterAndTabletLeaderSwitch(bool packed_row);
 
+  void WaitForCompaction(YBTableName table);
+  void VerifySnapshotOnColocatedTables(
+      xrepl::StreamId stream_id,
+      google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets,
+      const CDCSDKCheckpointPB& snapshot_bootstrap_checkpoint, const TableId& req_table_id,
+      const TableName& table_name, int64_t snapshot_records_per_table);
+
   Result<std::string> GetValueFromMap(const QLMapValuePB& map_value, const std::string& key);
 
   template <class T>
@@ -563,6 +594,7 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
 
   void GetRecordsAndSplitCount(
       const xrepl::StreamId& stream_id, const TabletId& tablet_id, const TableId& table_id,
+      CDCCheckpointType checkpoint_type,
       int* record_count, int* total_records, int* total_splits);
 
   void PerformSingleAndMultiShardInserts(
@@ -580,6 +612,9 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   TableId GetColocatedTableId(const std::string& req_table_name);
 
   void AssertSafeTimeAsExpectedInTabletPeers(
+      const TabletId& tablet_id, const HybridTime expected_safe_time);
+
+  void AssertSafeTimeAsExpectedInTabletPeersForConsistentSnapshot(
       const TabletId& tablet_id, const HybridTime expected_safe_time);
 
   Status WaitForGetChangesToFetchRecords(
@@ -602,6 +637,8 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
   void LogRetentionBarrierAndRelatedDetails(const GetCheckpointResponsePB& checkpoint_result,
                                             const tablet::TabletPeerPtr& tablet_peer);
 
+  void LogRetentionBarrierDetails(const tablet::TabletPeerPtr& tablet_peer);
+
   void ConsumeSnapshotAndVerifyRecords(
       const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
@@ -620,6 +657,27 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const xrepl::StreamId& stream_id,
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const GetChangesResponsePB& change_resp_after_snapshot);
+
+  void TestCDCLagMetric(CDCCheckpointType checkpoint_type);
+
+  void TestMultipleStreamOnSameTablet(CDCCheckpointType checkpoint_type);
+
+  void TestMultipleActiveStreamOnSameTablet(CDCCheckpointType checkpoint_type);
+
+  void TestActiveAndInactiveStreamOnSameTablet(CDCCheckpointType checkpoint_type);
+
+  void TestCheckpointPersistencyAllNodesRestart(CDCCheckpointType checkpoint_type);
+
+  void TestIntentCountPersistencyAllNodesRestart(CDCCheckpointType checkpoint_type);
+
+  void TestHighIntentCountPersistencyAllNodesRestart(CDCCheckpointType checkpoint_type);
+
+  void TestIntentCountPersistencyBootstrap(CDCCheckpointType checkpoint_type);
+
+  void ConsumeSnapshotAndPerformDML(
+      xrepl::StreamId stream_id, YBTableName table,
+      google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets,
+      CDCSDKCheckpointPB checkpoint, GetChangesResponsePB* change_resp);
 };
 
 }  // namespace cdc

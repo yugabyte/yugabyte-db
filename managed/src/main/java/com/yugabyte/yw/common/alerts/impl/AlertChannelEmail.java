@@ -13,12 +13,12 @@ import com.yugabyte.yw.models.Alert;
 import com.yugabyte.yw.models.AlertChannel;
 import com.yugabyte.yw.models.AlertTemplateVariable;
 import com.yugabyte.yw.models.Customer;
+import jakarta.mail.MessagingException;
 import java.util.Collections;
 import java.util.List;
 import javax.inject.Inject;
-import javax.mail.MessagingException;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 
 @Slf4j
 @Singleton

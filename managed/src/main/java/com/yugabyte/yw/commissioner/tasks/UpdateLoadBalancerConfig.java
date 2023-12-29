@@ -15,7 +15,7 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 
 @Slf4j
 public class UpdateLoadBalancerConfig extends UniverseDefinitionTaskBase {
@@ -40,7 +40,7 @@ public class UpdateLoadBalancerConfig extends UniverseDefinitionTaskBase {
       // Update the universe DB with the changes to be performed and set the 'updateInProgress' flag
       // to prevent other updates from happening.
       universe =
-          lockUniverseForUpdate(
+          lockAndFreezeUniverseForUpdate(
               taskParams().expectedUniverseVersion,
               u -> {
                 // Get expected LB config

@@ -119,7 +119,8 @@ struct PgApiContext {
 class PgApiImpl {
  public:
   PgApiImpl(PgApiContext context, const YBCPgTypeEntity *YBCDataTypeTable, int count,
-            YBCPgCallbacks pg_callbacks, std::optional<uint64_t> session_id);
+            YBCPgCallbacks pg_callbacks, std::optional<uint64_t> session_id,
+            const YBCAshMetadata *ash_metadata, bool *is_ash_metadata_set);
   ~PgApiImpl();
 
   const YBCPgCallbacks* pg_callbacks() {
@@ -166,6 +167,7 @@ class PgApiImpl {
   Result<uint64_t> GetSharedCatalogVersion(std::optional<PgOid> db_oid = std::nullopt);
   Result<uint32_t> GetNumberOfDatabases();
   uint64_t GetSharedAuthKey() const;
+  const unsigned char *GetLocalTserverUuid() const;
 
   Status NewTupleExpr(
     YBCPgStatement stmt, const YBCPgTypeEntity *tuple_type_entity,
@@ -627,7 +629,7 @@ class PgApiImpl {
   Status EnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms);
   Status EnterSeparateDdlTxnMode();
   bool HasWriteOperationsInDdlTxnMode() const;
-  Status ExitSeparateDdlTxnMode();
+  Status ExitSeparateDdlTxnMode(PgOid db_oid, bool is_silent_modification);
   Status ClearSeparateDdlTxnMode();
   Status SetActiveSubTransaction(SubTransactionId id);
   Status RollbackToSubTransaction(SubTransactionId id);

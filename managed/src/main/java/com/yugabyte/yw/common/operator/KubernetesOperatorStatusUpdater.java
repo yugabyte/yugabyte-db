@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common.operator;
 
+import com.google.inject.Inject;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.models.Universe;
@@ -42,6 +43,7 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
 
   private final Config k8sClientConfig;
 
+  @Inject
   public KubernetesOperatorStatusUpdater(RuntimeConfGetter confGetter) {
     namespace = confGetter.getGlobalConf(GlobalConfKeys.KubernetesOperatorNamespace);
     ConfigBuilder confBuilder = new ConfigBuilder();
@@ -75,13 +77,17 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
    */
   @Override
   public void createYBUniverseEventStatus(
-      Universe universe, KubernetesResourceDetails universeName, String taskName, UUID taskUUID) {
+      Universe universe,
+      KubernetesResourceDetails universeName,
+      String taskName,
+      UUID taskUUID,
+      UniverseState universeState) {
     if (universe.getUniverseDetails().isKubernetesOperatorControlled) {
       try {
         String eventStr =
             String.format(
                 "Starting task %s (%s) on universe %s", taskName, taskUUID, universe.getName());
-        this.updateUniverseStatus(universe, universeName, eventStr);
+        this.updateUniverseStatus(universe, universeName, eventStr, universeState);
       } catch (Exception e) {
         log.warn("Error in creating Kubernetes Operator Universe status", e);
       }
@@ -180,6 +186,7 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
       KubernetesResourceDetails universeName,
       String taskName,
       UUID taskUUID,
+      UniverseState state,
       Throwable t) {
     if (universe.getUniverseDetails().isKubernetesOperatorControlled) {
       try {
@@ -189,7 +196,7 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
         String statusStr =
             String.format(
                 "Task %s (%s) on universe %s %s", taskName, taskUUID, universe.getName(), status);
-        updateUniverseStatus(universe, universeName, statusStr);
+        updateUniverseStatus(universe, universeName, statusStr, state);
       } catch (Exception e) {
         log.warn("Error in creating Kubernetes Operator Universe status", e);
       }
@@ -197,7 +204,7 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
   }
 
   private void updateUniverseStatus(
-      Universe u, KubernetesResourceDetails universeName, String status) {
+      Universe u, KubernetesResourceDetails universeName, String status, UniverseState state) {
     try (final KubernetesClient kubernetesClient =
         new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
       YBUniverse ybUniverse = getYBUniverse(kubernetesClient, universeName);
@@ -211,6 +218,8 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
       YBUniverseStatus ybUniverseStatus = new YBUniverseStatus();
       ybUniverseStatus.setCqlEndpoints(cqlEndpoints);
       ybUniverseStatus.setSqlEndpoints(sqlEndpoints);
+      ybUniverseStatus.setUniverseStatus(status);
+      ybUniverseStatus.setUniverseState(state.getUniverseStateString());
       log.info("Universe status is: {}", status);
       ybUniverse.setStatus(ybUniverseStatus);
       kubernetesClient

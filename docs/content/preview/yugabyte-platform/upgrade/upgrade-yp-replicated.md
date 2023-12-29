@@ -11,6 +11,14 @@ menu:
 type: docs
 ---
 
+{{< note title="Replicated end of life" >}}
+
+YugabyteDB Anywhere will end support for Replicated installation at the end of 2024. You can migrate existing Replicated YugabyteDB Anywhere installations using YBA Installer. See [Migrate from Replicated](../../install-yugabyte-platform/install-software/installer/#migrate-from-replicated).
+
+To perform the migration, you must first upgrade your installation to v2.20.1 or later using Replicated.
+
+{{< /note >}}
+
 You can use [Replicated](https://www.replicated.com/) to upgrade your YugabyteDB Anywhere to a newer version.
 
 To start the upgrade, log in to the Replicated Admin Console via <https://:8800> and then perform the following:

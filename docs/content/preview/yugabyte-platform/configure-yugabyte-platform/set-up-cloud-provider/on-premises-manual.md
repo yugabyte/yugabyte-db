@@ -76,7 +76,7 @@ Database servers need incoming TCP/IP access enabled to the following ports, for
 | TCP | 13000 | YSQL HTTP (for DB statistics gathering) |
 | TCP | 18018 | YB Controller |
 
-The preceding table is based on the information on the [default ports page](/preview/reference/configuration/default-ports/).
+The preceding table is based on the information on the [default ports page](../../../../reference/configuration/default-ports/).
 
 ## Pre-provision nodes manually
 
@@ -84,7 +84,7 @@ This process carries out all provisioning tasks on the database nodes which requ
 
 Physical nodes (or cloud instances) are installed with a standard CentOS 7 server image. The following steps are to be performed on each physical node, prior to universe creation:
 
-1. Log in to each database node as a user with sudo enabled (the `centos` user in centos7 images).
+1. Log in to each database node as a user with sudo enabled (the `centos` user in CentOS 7 images).
 
 1. Add the following line to the `/etc/chrony.conf` file:
 
@@ -101,12 +101,12 @@ Physical nodes (or cloud instances) are installed with a standard CentOS 7 serve
 1. Add a new `yugabyte:yugabyte` user and group with the default login shell `/bin/bash` that you set via the `-s` flag, as follows:
 
     ```bash
-    sudo useradd -s /bin/bash --create-home --home-dir <yugabyte-home> yugabyte  # (add user yugabyte and create its home directory as specified in <yugabyte-home>)
+    sudo useradd -s /bin/bash --create-home --home-dir <yugabyte_home> yugabyte  # (add user yugabyte and create its home directory as specified in <yugabyte_home>)
     sudo passwd yugabyte   # (add a password to the yugabyte user)
     sudo su - yugabyte   # (change to yugabyte user for execution of next steps)
     ```
 
-    `yugabyte-home` is the path to the Yugabyte home directory. If you set a custom path for the yugabyte user's home in the YugabyteDB Anywhere UI, you must use the same path here. Otherwise, you can omit the `--home-dir` flag.
+    `yugabyte_home` is the path to the Yugabyte home directory. If you set a custom path for the yugabyte user's home in the YugabyteDB Anywhere UI, you must use the same path here. Otherwise, you can omit the `--home-dir` flag.
 
     Ensure that the `yugabyte` user has permissions to SSH into the YugabyteDB nodes (as defined in `/etc/ssh/sshd_config`).
 
@@ -124,7 +124,7 @@ Physical nodes (or cloud instances) are installed with a standard CentOS 7 serve
     cd ~yugabyte
     mkdir .ssh
     chmod 700 .ssh
-    cat <pubkey file> >> .ssh/authorized_keys
+    cat <pubkey_file> >> .ssh/authorized_keys
     chmod 400 .ssh/authorized_keys
     exit   # (exit from the yugabyte user back to previous user)
     ```
@@ -234,13 +234,13 @@ On each node, perform the following as a user with sudo access:
     sudo mkdir /etc/prometheus
     sudo mkdir /var/log/prometheus
     sudo mkdir /var/run/prometheus
-    sudo mv /tmp/node_exporter-1.3.1.linux-amd64.tar  /opt/prometheus
+    sudo mv /tmp/node_exporter-1.3.1.linux-amd64.tar.gz  /opt/prometheus
     sudo adduser --shell /bin/bash prometheus # (also adds group "prometheus")
     sudo chown -R prometheus:prometheus /opt/prometheus
     sudo chown -R prometheus:prometheus /etc/prometheus
     sudo chown -R prometheus:prometheus /var/log/prometheus
     sudo chown -R prometheus:prometheus /var/run/prometheus
-    sudo chmod +r /opt/prometheus/node_exporter-1.3.1.linux-amd64.tar
+    sudo chmod +r /opt/prometheus/node_exporter-1.3.1.linux-amd64.tar.gz
     sudo su - prometheus (user session is now as user "prometheus")
     ```
 
@@ -380,7 +380,7 @@ As an alternative to setting crontab permissions, you can install systemd-specif
 1. Enable the `yugabyte` user to run the following commands as sudo or root:
 
     ```sh
-    yugabyte ALL=(ALL:ALL) NOPASSWD:
+    yugabyte ALL=(ALL:ALL) NOPASSWD: \
     /bin/systemctl start yb-master, \
     /bin/systemctl stop yb-master, \
     /bin/systemctl restart yb-master, \
@@ -698,11 +698,11 @@ As an alternative to setting crontab permissions, you can install systemd-specif
 
 The node agent is used to manage communication between YugabyteDB Anywhere and the node. YugabyteDB Anywhere uses node agents to communicate with the nodes, and once installed, YugabyteDB Anywhere no longer requires SSH or sudo access to nodes.
 
-(Node agents are installed onto instances automatically when adding instances or running the pre-provisioning script using the `--install_node_agent` flag.)
+Node agents are installed onto instances automatically when adding instances or running the pre-provisioning script using the `--install_node_agent` flag.
 
-You can install the YugabyteDB node agent manually as follows:
+You can install the YugabyteDB node agent manually. As the `yugabyte` user, do the following:
 
-1. Download the installer from YugabyteDB Anywhere using the API token of the Super Admin, as follows:
+1. Download the installer from YugabyteDB Anywhere using the [API token](../../../anywhere-automation/#authentication) of the Super Admin, as follows:
 
    ```sh
    curl https://<yugabytedb_anywhere_address>/api/v1/node_agents/download --fail --header 'X-AUTH-YW-API-TOKEN: <api_token>' > installer.sh && chmod +x installer.sh
@@ -715,10 +715,16 @@ You can install the YugabyteDB node agent manually as follows:
 1. Run the following command to download the node agent's `.tgz` file which installs and starts the interactive configuration:
 
    ```sh
-   ./installer.sh -c install -u https://<yugabytedb_anywhere_address> -t <api_token>
+   ./installer.sh -c install -u https://<yba_address>:9000 -t <api_token>
    ```
 
-   For example, if you execute `./installer.sh  -c install -u http://100.98.0.42:9000 -t 301fc382-cf06-4a1b-b5ef-0c8c45273aef`, expect the following output:
+   For example, if you run the following:
+
+   ```sh
+   ./installer.sh  -c install -u http://10.98.0.42:9000 -t 301fc382-cf06-4a1b-b5ef-0c8c45273aef
+   ```
+
+   You should get output similar to the following:
 
    ```output
    * Starting YB Node Agent install
@@ -745,16 +751,20 @@ You can install the YugabyteDB node agent manually as follows:
            Enter the option number: 1
            • Completed Node Agent Configuration
            • Node Agent Registration Successful
-   You can install a systemd service on linux machines by running sudo node-agent-installer.sh -c install-service --user yugabyte (Requires sudo access).
+   You can install a systemd service on linux machines by running sudo node-agent-installer.sh -c install_service --user yugabyte (Requires sudo access).
    ```
 
-1. Run the following command to enable the node agent as a systemd service, which is required for self-upgrade and other functions:
+1. Run the `install_service` command as a sudo user:
 
-   ```sh
-   sudo node-agent-installer.sh -c install-service --user yugabyte
-   ```
+    ```sh
+    sudo node-agent-installer.sh -c install_service --user yugabyte
+    ```
+
+    This installs node agent as a systemd service. This is required so that the node agent can perform self-upgrade, database installation and configuration, and other functions.
 
 When the installation has been completed, the configurations are saved in the `config.yml` file located in the `node-agent/config/` directory. You should refrain from manually changing values in this file.
+
+After the installation, you may need to either sign out and back in, or edit the ~/.bashrc file as the `yugabyte` user to add the node agent binary to your PATH.
 
 ### Preflight check
 
@@ -776,50 +786,111 @@ If the preflight check is successful, you add the node to the provider (if requi
 node-agent node preflight-check --add_node
 ```
 
-### Additional commands
+### Reconfigure a node agent
 
-Even though the node agent installation, configuration, and registration are sufficient, the following supplementary commands are also supported:
+If you need to reconfigure a node agent, you can use the following procedure:
 
-- `node-agent node unregister` is used for un-registering the node and node agent from YugabyteDB Anywhere. This can be done to restart the registration process.
-- `node-agent node register` is used for registering a node and node agent to YugabyteDB Anywhere if they were unregistered manually. Registering an already registered node agent fails as YugabyteDB Anywhere keeps a record of the node agent with this IP.
-- `node-agent service start` and `node-agent service stop` are used for starting or stopping the node agent as a gRPC server.
-- `node-agent node preflight-check` is used for checking if a node is configured as a YugabyteDB Anywhere node.
+1. If the node instance has been added to a provider, remove the node instance from the provider.
 
-#### Manual registration
+1. Run the following command:
 
-To enable secured communication, the node agent is automatically registered during its installation so YugabyteDB Anywhere is aware of its existence. You can also register and unregister the node agent manually during configuration.
+    ```sh
+    node-agent node unregister
+    ```
 
-The following is the node agent registration command:
+    After running this command, YBA no longer recognizes the node agent. However, if the node agent configuration is corrupted, the command may fail. In this case, unregister the node agent using the API as follows:
 
-```sh
-node-agent node register --api-token <api_token>
-```
+    - Obtain the node agent ID:
 
-If you need to overwrite any previously configured values, you can use the following parameters in the registration command:
+        ```sh
+        curl -k --header 'X-AUTH-YW-API-TOKEN:<api_token>' https://<yba_address>/api/v1/customers/<customer_id>/node_agents?nodeIp=<node_agent_ip>
+        ```
 
-- `--node_ip` represents the node IP address.
-- `--url` represents the YugabyteDB Anywhere address.
+        You should see output similar to the following:
 
-For secured communication, YugabyteDB Anywhere generates a key pair (private, public, and server certificate) that is sent to the node agent as part of its registration process.
+        ```output.json
+        [{
+            "uuid":"ec7654b1-cf5c-4a3b-aee3-b5e240313ed2",
+            "name":"node1",
+            "ip":"10.9.82.61",
+            "port":9070,
+            "customerUuid":"f33e3c9b-75ab-4c30-80ad-cba85646ea39",
+            "version":"2.18.6.0-PRE_RELEASE",
+            "state":"READY",
+            "updatedAt":"2023-12-19T23:56:43Z",
+            "config":{
+                "certPath":"/opt/yugaware/node-agent/certs/f33e3c9b-75ab-4c30-80ad-cba85646ea39/ec7654b1-cf5c-4a3b-aee3-b5e240313ed2/0",
+                "offloadable":false
+                },
+            "osType":"LINUX",
+            "archType":"AMD64",
+            "home":"/home/yugabyte/node-agent",
+            "versionMatched":true,
+            "reachable":false
+        }]
+        ```
 
-<!--
+    - Use the value of the field `uuid` as `<node_agent_id>` in the following command:
 
-You can obtain a list of existing node agents using the following API:
+        ```sh
+        curl -k -X DELETE --header 'X-AUTH-YW-API-TOKEN:<api_token>' https://<yba_address>/api/v1/customers/<customer_id>/node_agents/<node_agent_id>
+        ```
 
-```http
-GET /api/v1/customers/<customer_id>/node_agents
-```
+1. Stop the systemd service as a sudo user.
 
-To unregister a node agent, use the following API:
+    ```sh
+    sudo systemctl stop yb-node-agent
+    ```
 
-```http
-DELETE /api/v1/customers/<customer_id>/node_agents/<node_agent_id>
-```
+1. Run the `configure` command to start the interactive configuration. This also registers the node agent with YBA.
 
--->
+    ```sh
+    node-agent node configure -t <api_token> -u https://<yba_address>:9000
+    ```
 
-To unregister a node agent, use the following command:
+    For example, if you run the following:
 
-```sh
-node-agent node unregister
-```
+    ```sh
+    node-agent node configure -t 1ba391bc-b522-4c18-813e-71a0e76b060a -u http://10.98.0.42:9000
+    ```
+
+    ```output
+    * The current value of Node Name is set to node1; Enter new value or enter to skip: 
+    * The current value of Node IP is set to 10.9.82.61; Enter new value or enter to skip: 
+    * Select your Onprem Provider.
+    1. Provider ID: b56d9395-1dda-47ae-864b-7df182d07fa7, Provider Name: onprem-provision-test1
+    * The current value is Provider ID: b56d9395-1dda-47ae-864b-7df182d07fa7, Provider Name: onprem-provision-test1.
+        Enter new option number or enter to skip: 
+    * Select your Instance Type.
+    1. Instance Code: c5.large
+    * The current value is Instance Code: c5.large.
+        Enter new option number or enter to skip: 
+    * Select your Region.
+    1. Region ID: 0a185358-3de0-41f2-b106-149be3bf07dd, Region Code: us-west-2
+    * The current value is Region ID: 0a185358-3de0-41f2-b106-149be3bf07dd, Region Code: us-west-2.
+        Enter new option number or enter to skip: 
+    * Select your Zone.
+    1. Zone ID: c9904f64-a65b-41d3-9afb-a7249b2715d1, Zone Code: us-west-2a
+    * The current value is Zone ID: c9904f64-a65b-41d3-9afb-a7249b2715d1, Zone Code: us-west-2a.
+        Enter new option number or enter to skip: 
+    • Completed Node Agent Configuration
+    • Node Agent Registration Successful
+    ```
+
+1. Start the Systemd service as a sudo user.
+
+    ```sh
+    sudo systemctl start yb-node-agent
+    ```
+
+1. Verify that the service is up.
+
+    ```sh
+    sudo systemctl status yb-node-agent
+    ```
+
+1. Run preflight checks and add the node as `yugabyte` user.
+
+    ```sh
+    node-agent node preflight-check --add_node
+    ```

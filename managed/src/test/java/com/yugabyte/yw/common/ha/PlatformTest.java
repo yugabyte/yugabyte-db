@@ -23,8 +23,6 @@ import static play.libs.Files.singletonTemporaryFileCreator;
 import static play.test.Helpers.contentAsString;
 import static play.test.Helpers.fakeRequest;
 
-import akka.stream.javadsl.Source;
-import akka.util.ByteString;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableMap;
@@ -54,6 +52,8 @@ import java.util.Map;
 import java.util.Random;
 import java.util.UUID;
 import org.apache.commons.io.FileUtils;
+import org.apache.pekko.stream.javadsl.Source;
+import org.apache.pekko.util.ByteString;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Rule;

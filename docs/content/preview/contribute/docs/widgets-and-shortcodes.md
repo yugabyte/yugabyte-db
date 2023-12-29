@@ -3,7 +3,6 @@ title: Widgets and shortcodes
 headerTitle: Widgets and shortcodes
 linkTitle: Widgets and shortcodes
 description: Widgets and shortcodes
-image: /images/section_icons/index/quick_start.png
 menu:
   preview:
     identifier: widgets-and-shortcodes

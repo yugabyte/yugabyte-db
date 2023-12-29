@@ -2,7 +2,6 @@
 title: Unique indexes
 linkTitle:  Unique indexes
 description: Using Unique indexes in YSQL
-image: /images/section_icons/secure/create-roles.png
 menu:
   v2.14:
     identifier: unique-index-ysql

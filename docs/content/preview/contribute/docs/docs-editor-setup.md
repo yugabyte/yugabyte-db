@@ -3,7 +3,6 @@ title: Set up your editor
 headerTitle: 'Optional: editor setup'
 linkTitle: Editor setup
 description: Optional setup steps for selected text editors
-image: /images/section_icons/index/quick_start.png
 menu:
   preview:
     identifier: docs-editor-setup

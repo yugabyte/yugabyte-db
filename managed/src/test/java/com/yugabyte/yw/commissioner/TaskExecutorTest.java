@@ -117,7 +117,8 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.ThirdpartySoftwareUpgrade,
           TaskType.FinalizeUpgrade,
           TaskType.CertsRotate,
-          TaskType.SystemdUpgrade);
+          TaskType.SystemdUpgrade,
+          TaskType.ModifyAuditLoggingConfig);
 
   @Override
   protected Application provideApplication() {
@@ -194,20 +195,20 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
               Object[] objects = inv.getArguments();
               ITask task = (ITask) objects[0];
               // Create a new task info object.
-              TaskInfo taskInfo = new TaskInfo(TaskType.BackupUniverse);
+              TaskInfo taskInfo = new TaskInfo(TaskType.BackupUniverse, null);
               taskInfo.setDetails(
                   RedactingService.filterSecretFields(task.getTaskDetails(), RedactionTarget.APIS));
               taskInfo.setOwner("test-owner");
               return taskInfo;
             })
         .when(taskExecutor)
-        .createTaskInfo(any());
+        .createTaskInfo(any(), any());
   }
 
   @Test
   public void testTaskSubmission() {
     ITask task = mockTaskCommon(false);
-    RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task, null);
     UUID taskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
     TaskInfo taskInfo = waitForTask(taskUUID);
     List<TaskInfo> subTaskInfos = taskInfo.getSubTasks();
@@ -219,7 +220,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
   public void testTaskFailure() {
     ITask task = mockTaskCommon(false);
     doThrow(new RuntimeException("Error occurred in task")).when(task).run();
-    RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task, null);
     UUID outTaskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
     TaskInfo taskInfo = waitForTask(outTaskUUID);
     List<TaskInfo> subTaskInfos = taskInfo.getSubTasks();
@@ -247,7 +248,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
         .when(task)
         .run();
 
-    RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task, null);
     taskUUIDRef.set(taskRunner.getTaskUUID());
     UUID taskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
     TaskInfo taskInfo = waitForTask(taskUUID);
@@ -279,7 +280,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
         .run();
 
     doThrow(new RuntimeException("Error occurred in subtask")).when(subTask).run();
-    RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task, null);
     taskUUIDRef.set(taskRunner.getTaskUUID());
     UUID taskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
     TaskInfo taskInfo = waitForTask(taskUUID);
@@ -310,10 +311,10 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
         .when(task)
         .run();
 
-    RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task, null);
     UUID taskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
     try {
-      assertThrows(RuntimeException.class, () -> taskExecutor.abort(taskUUID));
+      assertThrows(RuntimeException.class, () -> taskExecutor.abort(taskUUID, false));
     } finally {
       latch.countDown();
     }
@@ -354,7 +355,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
         .when(subTask1)
         .run();
 
-    RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task, null);
     taskUUIDRef.set(taskRunner.getTaskUUID());
     UUID taskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
     if (!latch1.await(200, TimeUnit.SECONDS)) {
@@ -363,7 +364,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
     assertEquals(TaskInfo.State.Running, taskInfo.getTaskState());
     // Stop the task
-    taskExecutor.abort(taskUUID);
+    taskExecutor.abort(taskUUID, false);
     latch2.countDown();
 
     taskInfo = waitForTask(taskUUID);
@@ -408,7 +409,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
         .run();
 
     AtomicInteger test = new AtomicInteger(0);
-    RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task, null);
     taskUUIDRef.set(taskRunner.getTaskUUID());
     taskRunner.setTaskExecutionListener(
         new TaskExecutionListener() {
@@ -467,7 +468,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
             })
         .when(task)
         .run();
-    RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task, null);
     taskUUIDRef.set(taskRunner.getTaskUUID());
     UUID taskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
     TaskInfo taskInfo = waitForTask(taskUUID);
@@ -510,7 +511,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
         .run();
 
     // CompletableFuture.supplyAsync(() -> TaskExecutor.this.shutdown(Duration.ofMinutes(5))));
-    RunnableTask taskRunner1 = taskExecutor.createRunnableTask(task);
+    RunnableTask taskRunner1 = taskExecutor.createRunnableTask(task, null);
     UUID taskUUID = taskExecutor.submit(taskRunner1, executor);
     // Wait for the task to be running.
     latch1.await();
@@ -524,7 +525,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
     TaskInfo taskInfo = TaskInfo.getOrBadRequest(taskUUID);
     // Aborted due to shutdown.
     assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
-    RunnableTask taskRunner2 = taskExecutor.createRunnableTask(task);
+    RunnableTask taskRunner2 = taskExecutor.createRunnableTask(task, null);
     // This should get rejected as the executor is already shutdown.
     assertThrows(
         IllegalStateException.class,
@@ -534,7 +535,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
   @Test
   public void testRunnableTaskCallstack() {
     ITask task = mockTaskCommon(false);
-    RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task, null);
     String[] callstack = taskRunner.getCreatorCallstack();
     assertThat(
         callstack[0],
@@ -572,11 +573,11 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
         .when(task)
         .run();
 
-    RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task, null);
     UUID taskUUID = taskExecutor.submit(taskRunner, Executors.newFixedThreadPool(1));
     taskUUIDRef.set(taskUUID);
     latch.await();
-    taskExecutor.abort(taskUUID);
+    taskExecutor.abort(taskUUID, false);
     TaskInfo taskInfo = waitForTask(taskUUID);
     verify(subTask).setUserTaskUUID(eq(taskUUID));
     assertEquals(TaskInfo.State.Aborted, taskInfo.getTaskState());
@@ -612,7 +613,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
             })
         .when(subTask)
         .run();
-    RunnableTask taskRunner = taskExecutor.createRunnableTask(task);
+    RunnableTask taskRunner = taskExecutor.createRunnableTask(task, null);
     doAnswer(
             inv -> {
               RunnableTask runnable = taskExecutor.getRunnableTask(taskUUIDRef.get());
@@ -650,6 +651,6 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
   public void testTaskValidationFailure() {
     ITask task = mockTaskCommon(false);
     doThrow(new RuntimeException("Validation failed")).when(task).validateParams(true);
-    assertThrows(PlatformServiceException.class, () -> taskExecutor.createRunnableTask(task));
+    assertThrows(PlatformServiceException.class, () -> taskExecutor.createRunnableTask(task, null));
   }
 }

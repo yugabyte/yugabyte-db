@@ -1,19 +1,18 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import { AxiosError } from 'axios';
-import { FormikActions, FormikErrors, FormikProps } from 'formik';
-import { makeStyles, Typography } from '@material-ui/core';
+import { Typography } from '@material-ui/core';
 import { toast } from 'react-toastify';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { useTranslation } from 'react-i18next';
+import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 
 import {
   fetchTablesInUniverse,
   fetchTaskUntilItCompletes
 } from '../../../../actions/xClusterReplication';
-import { YBModalForm } from '../../../common/forms';
 import { YBErrorIndicator, YBLoading } from '../../../common/indicators';
 import { formatUuidForXCluster } from '../../ReplicationUtils';
-import { XClusterConfigAction } from '../../constants';
+import { AlertName, XClusterConfigAction, XCLUSTER_UNIVERSE_TABLE_FILTERS } from '../../constants';
 import { assertUnreachableCase, handleServerError } from '../../../../utils/errorHandlingUtils';
 import {
   api,
@@ -21,68 +20,62 @@ import {
   drConfigQueryKey,
   universeQueryKey
 } from '../../../../redesign/helpers/api';
-import { YBButton, YBModal } from '../../../common/forms/fields';
-import { TableSelect } from '../../sharedComponents/tableSelect/TableSelect';
-import { getPrimaryCluster } from '../../../../utils/universeUtilsTyped';
-import { SelectTargetUniverseStep } from './SelectTargetUniverseStep';
-import { ConfigureBootstrapStep } from './ConfigureBootstrapStep';
 import { generateUniqueName } from '../../../../redesign/helpers/utils';
+import { YBButton, YBModal, YBModalProps } from '../../../../redesign/components';
+import { CurrentFormStep } from './CurrentFormStep';
+import { StorageConfigOption } from '../../sharedComponents/ReactSelectStorageConfig';
+import { DurationUnit, DURATION_UNIT_TO_MS } from '../constants';
 
 import { TableType, Universe, YBTable } from '../../../../redesign/helpers/dtos';
 
 import toastStyles from '../../../../redesign/styles/toastStyles.module.scss';
+import { createAlertConfiguration, getAlertTemplates } from '../../../../actions/universe';
 
 export interface CreateDrConfigFormValues {
   targetUniverse: { label: string; value: Universe };
-  tableUUIDs: string[];
-  // Bootstrap configuration fields
-  storageConfig: { label: string; name: string; regions: any[]; value: string };
+  namespaceUuids: string[];
+  tableUuids: string[];
+  storageConfig: StorageConfigOption;
+  replicationLagAlertThreshold: number;
+  replicationLagAlertThresholdUnit: { label: string; value: DurationUnit };
 }
 
 export interface CreateDrConfigFormErrors {
   targetUniverse: string;
-  tableUUIDs: { title: string; body: string };
-  // Bootstrap configuration fields
+  namespaceUuids: { title: string; body: string };
   storageConfig: string;
+  replicationLagAlertThreshold: string;
+  replicationLagAlertThresholdUnit: string;
 }
 
 export interface CreateXClusterConfigFormWarnings {
   targetUniverse?: string;
-  tableUUIDs?: { title: string; body: string };
-  // Bootstrap configuration fields
+  namespaceUuids?: { title: string; body: string };
   storageConfig?: string;
 }
 
 interface CreateConfigModalProps {
-  onHide: Function;
-  visible: boolean;
+  modalProps: YBModalProps;
   sourceUniverseUuid: string;
 }
-const useStyles = makeStyles((theme) => ({
-  formInstruction: {
-    marginBottom: theme.spacing(3)
-  }
-}));
 
 export const FormStep = {
   SELECT_TARGET_UNIVERSE: 'selectTargetUniverse',
   SELECT_TABLES: 'selectDatabases',
-  CONFIGURE_BOOTSTRAP: 'configureBootstrap'
+  CONFIGURE_BOOTSTRAP: 'configureBootstrap',
+  CONFIGURE_ALERT: 'configureAlert'
 } as const;
 export type FormStep = typeof FormStep[keyof typeof FormStep];
 
+const MODAL_NAME = 'CreateConfigModal';
 const FIRST_FORM_STEP = FormStep.SELECT_TARGET_UNIVERSE;
-const MODAL_TITLE = 'Configure Active-Active Single Master Disaster Recovery (DR)';
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery.config.createModal';
+const SELECT_TABLE_TRANSLATION_KEY_PREFIX = 'clusterDetail.xCluster.selectTable';
 
-export const CreateConfigModal = ({
-  onHide,
-  visible,
-  sourceUniverseUuid
-}: CreateConfigModalProps) => {
-  const [currentStep, setCurrentStep] = useState<FormStep>(FIRST_FORM_STEP);
+export const CreateConfigModal = ({ modalProps, sourceUniverseUuid }: CreateConfigModalProps) => {
+  const [currentFormStep, setCurrentFormStep] = useState<FormStep>(FIRST_FORM_STEP);
   const [isTableSelectionValidated, setIsTableSelectionValidated] = useState(false);
-  const [formWarnings, setFormWarnings] = useState<CreateXClusterConfigFormWarnings>({});
+  const [tableSelectionError, setTableSelectionError] = useState<{ title: string; body: string }>();
 
   // The purpose of committedTargetUniverse is to store the targetUniverse field value prior
   // to the user submitting their target universe step.
@@ -90,12 +83,8 @@ export const CreateConfigModal = ({
   // target universe.
   const [committedTargetUniverseUUID, setCommittedTargetUniverseUUID] = useState<string>();
 
-  const [selectedKeyspaces, setSelectedKeyspaces] = useState<string[]>([]);
-
-  const formik = useRef({} as FormikProps<CreateDrConfigFormValues>);
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const queryClient = useQueryClient();
-  const classes = useStyles();
 
   const drConfigMutation = useMutation(
     (formValues: CreateDrConfigFormValues) => {
@@ -103,15 +92,17 @@ export const CreateConfigModal = ({
         name: `dr-config-${generateUniqueName()}`,
         sourceUniverseUUID: sourceUniverseUuid,
         targetUniverseUUID: formValues.targetUniverse.value.universeUUID,
-        dbs: selectedKeyspaces.map(formatUuidForXCluster),
-        bootstrapBackupParams: {
-          storageConfigUUID: formValues.storageConfig.value
+        dbs: formValues.namespaceUuids.map(formatUuidForXCluster),
+        bootstrapParams: {
+          backupRequestParams: {
+            storageConfigUUID: formValues.storageConfig.value.uuid
+          }
         }
       };
       return api.createDrConfig(createDrConfigRequest);
     },
     {
-      onSuccess: (response, values) => {
+      onSuccess: async (response, values) => {
         const invalidateQueries = () => {
           queryClient.invalidateQueries(drConfigQueryKey.detail(response.resourceUUID));
           // The new DR config will update the sourceXClusterConfigs for the source universe and
@@ -154,8 +145,25 @@ export const CreateConfigModal = ({
             {t('success.requestSuccess')}
           </Typography>
         );
-        closeModal();
+        modalProps.onClose();
         fetchTaskUntilItCompletes(response.taskUUID, handleTaskCompletion, invalidateQueries);
+
+        // Set up universe level alert for replication lag.
+        const alertTemplateFilter = {
+          name: AlertName.REPLICATION_LAG
+        };
+        const alertTemplates = await getAlertTemplates(alertTemplateFilter);
+        // There should only be one alert template for replication lag.
+        const alertTemplate = alertTemplates[0];
+        alertTemplate.active = true;
+        alertTemplate.thresholds.SEVERE.threshold =
+          values.replicationLagAlertThreshold *
+          DURATION_UNIT_TO_MS[values.replicationLagAlertThresholdUnit.value];
+        alertTemplate.target = {
+          all: false,
+          uuids: [sourceUniverseUuid]
+        };
+        createAlertConfiguration(alertTemplate);
       },
       onError: (error: Error | AxiosError) =>
         handleServerError(error, { customErrorLabel: t('error.request') })
@@ -163,102 +171,138 @@ export const CreateConfigModal = ({
   );
 
   const tablesQuery = useQuery<YBTable[]>(
-    universeQueryKey.tables(sourceUniverseUuid, {
-      excludeColocatedTables: true,
-      xClusterSupportedOnly: true
-    }),
+    universeQueryKey.tables(sourceUniverseUuid, XCLUSTER_UNIVERSE_TABLE_FILTERS),
     () =>
-      fetchTablesInUniverse(sourceUniverseUuid, {
-        excludeColocatedTables: true,
-        xClusterSupportedOnly: true
-      }).then((response) => response.data)
+      fetchTablesInUniverse(sourceUniverseUuid, XCLUSTER_UNIVERSE_TABLE_FILTERS).then(
+        (response) => response.data
+      )
   );
-  const universeQuery = useQuery<Universe>(universeQueryKey.detail(sourceUniverseUuid), () =>
+  const sourceUniverseQuery = useQuery<Universe>(universeQueryKey.detail(sourceUniverseUuid), () =>
     api.fetchUniverse(sourceUniverseUuid)
   );
 
-  /**
-   * Wrapper around setFieldValue from formik.
-   * Reset `isTableSelectionValidated` to false if changing
-   * a validated table selection.
-   */
-  const setSelectedTableUUIDs = (
-    tableUUIDs: string[],
-    formikActions: FormikActions<CreateDrConfigFormValues>
-  ) => {
-    if (isTableSelectionValidated) {
-      // We need to validate the new selection.
-      setIsTableSelectionValidated(false);
+  const formMethods = useForm<CreateDrConfigFormValues>({
+    defaultValues: {
+      namespaceUuids: [],
+      tableUuids: [],
+      replicationLagAlertThresholdUnit: {
+        label: t('step.configureAlert.duration.second'),
+        value: DurationUnit.SECOND
+      }
     }
-    formikActions.setFieldValue('tableUUIDs', tableUUIDs);
+  });
+
+  const modalTitle = t('title');
+  const cancelLabel = t('cancel', { keyPrefix: 'common' });
+  if (
+    tablesQuery.isLoading ||
+    tablesQuery.isIdle ||
+    sourceUniverseQuery.isLoading ||
+    sourceUniverseQuery.isIdle
+  ) {
+    return (
+      <YBModal
+        title={modalTitle}
+        cancelLabel={cancelLabel}
+        submitTestId={`${MODAL_NAME}-SubmitButton`}
+        cancelTestId={`${MODAL_NAME}-CancelButton`}
+        {...modalProps}
+      >
+        <YBLoading />
+      </YBModal>
+    );
+  }
+
+  if (tablesQuery.isError || sourceUniverseQuery.isError) {
+    return (
+      <YBModal
+        title={modalTitle}
+        cancelLabel={cancelLabel}
+        submitTestId={`${MODAL_NAME}-SubmitButton`}
+        cancelTestId={`${MODAL_NAME}-CancelButton`}
+        {...modalProps}
+      >
+        <YBErrorIndicator
+          customErrorMessage={t('failedToFetchSourceUniverse', {
+            keyPrefix: 'clusterDetail.xCluster.error',
+            universeUuid: sourceUniverseUuid
+          })}
+        />
+      </YBModal>
+    );
+  }
+
+  /**
+   * Reset the selection back to defaults.
+   */
+  const resetTableSelection = () => {
+    // resetField() will also clear errors unless
+    // `keepError` option is passed.
+    formMethods.resetField('namespaceUuids');
+    formMethods.resetField('tableUuids');
+    setTableSelectionError(undefined);
   };
 
-  const resetTableSelection = (formikActions: FormikActions<CreateDrConfigFormValues>) => {
-    setSelectedTableUUIDs([], formikActions);
-    setSelectedKeyspaces([]);
-    setFormWarnings((formWarnings) => {
-      const { tableUUIDs, ...newformWarnings } = formWarnings;
-      return newformWarnings;
-    });
-  };
-  const resetModalState = () => {
-    setCurrentStep(FIRST_FORM_STEP);
-    setIsTableSelectionValidated(false);
-    setFormWarnings({});
-    setSelectedKeyspaces([]);
-  };
-  const closeModal = () => {
-    resetModalState();
-    onHide();
-  };
-
-  const handleFormSubmit = (
-    values: CreateDrConfigFormValues,
-    actions: FormikActions<CreateDrConfigFormValues>
-  ) => {
-    switch (currentStep) {
+  const onSubmit: SubmitHandler<CreateDrConfigFormValues> = async (formValues) => {
+    switch (currentFormStep) {
       case FormStep.SELECT_TARGET_UNIVERSE:
-        if (values.targetUniverse.value.universeUUID !== committedTargetUniverseUUID) {
+        if (formValues.targetUniverse.value.universeUUID !== committedTargetUniverseUUID) {
           // Reset table selection when changing target universe.
           // This is because the current table selection may be invalid for
           // the new target universe.
-          resetTableSelection(actions);
-          setCommittedTargetUniverseUUID(values.targetUniverse.value.universeUUID);
+          resetTableSelection();
+          setCommittedTargetUniverseUUID(formValues.targetUniverse.value.universeUUID);
         }
-        setCurrentStep(FormStep.SELECT_TABLES);
-        actions.setSubmitting(false);
+        setCurrentFormStep(FormStep.SELECT_TABLES);
         return;
-      case FormStep.SELECT_TABLES: {
-        if (!isTableSelectionValidated) {
-          // Validation in validateForm just passed.
+      case FormStep.SELECT_TABLES:
+        if (formValues.namespaceUuids.length <= 0) {
+          formMethods.setError('namespaceUuids', {
+            type: 'min',
+            message: t('error.validationMinimumNamespaceUuids')
+          });
+          // The TableSelect component expects error objects with title and body fields.
+          // React-hook-form only allows string error messages.
+          // Thus, we need an store these error objects separately.
+          setTableSelectionError({
+            title: t('error.validationMinimumTableUuids.title', {
+              keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
+            }),
+            body: t('error.validationMinimumTableUuids.body', {
+              keyPrefix: SELECT_TABLE_TRANSLATION_KEY_PREFIX
+            })
+          });
+          setIsTableSelectionValidated(false);
+        } else {
           setIsTableSelectionValidated(true);
-          actions.setSubmitting(false);
-          return;
+          setCurrentFormStep(FormStep.CONFIGURE_BOOTSTRAP);
         }
-
-        // Table selection has already been validated.
-        setCurrentStep(FormStep.CONFIGURE_BOOTSTRAP);
-        actions.setSubmitting(false);
         return;
-      }
       case FormStep.CONFIGURE_BOOTSTRAP:
-        drConfigMutation.mutate(values, { onSettled: () => actions.setSubmitting(false) });
+        setCurrentFormStep(FormStep.CONFIGURE_ALERT);
         return;
+      case FormStep.CONFIGURE_ALERT:
+        return drConfigMutation.mutateAsync(formValues);
       default:
-        assertUnreachableCase(currentStep);
+        return assertUnreachableCase(currentFormStep);
     }
   };
 
-  const handleBackNavigation = (currentStep: Exclude<FormStep, typeof FIRST_FORM_STEP>) => {
-    switch (currentStep) {
+  const handleBackNavigation = () => {
+    switch (currentFormStep) {
+      case FIRST_FORM_STEP:
+        return;
       case FormStep.SELECT_TABLES:
-        setCurrentStep(FormStep.SELECT_TARGET_UNIVERSE);
+        setCurrentFormStep(FormStep.SELECT_TARGET_UNIVERSE);
         return;
       case FormStep.CONFIGURE_BOOTSTRAP:
-        setCurrentStep(FormStep.SELECT_TABLES);
+        setCurrentFormStep(FormStep.SELECT_TABLES);
+        return;
+      case FormStep.CONFIGURE_ALERT:
+        setCurrentFormStep(FormStep.CONFIGURE_BOOTSTRAP);
         return;
       default:
-        assertUnreachableCase(currentStep);
+        assertUnreachableCase(currentFormStep);
     }
   };
 
@@ -268,210 +312,94 @@ export const CreateConfigModal = ({
         return t('step.selectTargetUniverse.submitButton');
       case FormStep.SELECT_TABLES:
         if (!validTableSelection) {
-          return 'Validate Table Selection';
+          return t('step.selectDatabases.validateButton');
         }
         return t('step.selectDatabases.submitButton');
       case FormStep.CONFIGURE_BOOTSTRAP:
         return t('step.configureBootstrap.submitButton');
+      case FormStep.CONFIGURE_ALERT:
+        return t('step.confirmAlert.submitButton');
       default:
         return assertUnreachableCase(formStep);
     }
   };
 
-  const submitLabel = getFormSubmitLabel(currentStep, isTableSelectionValidated);
-  if (
-    tablesQuery.isLoading ||
-    tablesQuery.isIdle ||
-    universeQuery.isLoading ||
-    universeQuery.isIdle
-  ) {
-    return (
-      <YBModal
-        size="large"
-        title={MODAL_TITLE}
-        visible={visible}
-        onHide={() => {
-          closeModal();
-        }}
-        submitLabel={submitLabel}
-      >
-        <YBLoading />
-      </YBModal>
-    );
-  }
+  const setSelectedNamespaces = (namespaces: string[]) => {
+    // Reset validated flag and clear any existing errors.
+    // The new table/namespace selection will need to be (re)validated.
+    setIsTableSelectionValidated(false);
+    setTableSelectionError(undefined);
+    formMethods.clearErrors('namespaceUuids');
 
-  if (tablesQuery.isError || universeQuery.isError) {
-    return (
-      <YBModal
-        size="large"
-        title={MODAL_TITLE}
-        visible={visible}
-        onHide={() => {
-          closeModal();
-        }}
-      >
-        <YBErrorIndicator customErrorMessage="Encounter an error fetching information for tables from the source universe." />
-      </YBModal>
-    );
-  }
-
-  const INITIAL_VALUES: Partial<CreateDrConfigFormValues> = {
-    tableUUIDs: []
+    // We will run any required validation on selected namespaces & tables all at once when the
+    // user clicks on the validation my selection button.
+    formMethods.setValue('namespaceUuids', namespaces, { shouldValidate: false });
   };
+  const setSelectedTableUuids = (tableUuids: string[]) => {
+    // Reset validated flag and clear any existing errors.
+    // The new table/namespace selection will need to be (re)validated.
+    setIsTableSelectionValidated(false);
+    setTableSelectionError(undefined);
+    formMethods.clearErrors('tableUuids');
+
+    // We will run any required validation on selected namespaces & tables all at once when the
+    // user clicks on the validation my selection button.
+    formMethods.setValue('tableUuids', tableUuids, { shouldValidate: false });
+  };
+
+  const sourceUniverse = sourceUniverseQuery.data;
+  const submitLabel = getFormSubmitLabel(currentFormStep, isTableSelectionValidated);
+  const selectedTableUuids = formMethods.watch('tableUuids');
+  const selectedNamespaceUuids = formMethods.watch('namespaceUuids');
+  const targetUniverseUuid = formMethods.watch('targetUniverse.value.universeUUID');
+  const isFormDisabled = formMethods.formState.isSubmitting;
   return (
-    <YBModalForm
-      size="large"
-      title={MODAL_TITLE}
-      visible={visible}
-      validate={(values: CreateDrConfigFormValues) =>
-        validateForm(
-          values,
-          currentStep,
-          universeQuery.data,
-          isTableSelectionValidated,
-          setFormWarnings
-        )
-      }
-      // Perform validation for select table only when user submits.
-      validateOnChange={currentStep !== FormStep.SELECT_TABLES}
-      validateOnBlur={currentStep !== FormStep.SELECT_TABLES}
-      onFormSubmit={handleFormSubmit}
-      initialValues={INITIAL_VALUES}
+    <YBModal
+      title={modalTitle}
       submitLabel={submitLabel}
-      onHide={() => {
-        closeModal();
-      }}
+      cancelLabel={cancelLabel}
+      buttonProps={{ primary: { disabled: isFormDisabled } }}
+      onSubmit={formMethods.handleSubmit(onSubmit)}
+      submitTestId={`${MODAL_NAME}-SubmitButton`}
+      cancelTestId={`${MODAL_NAME}-CancelButton`}
+      isSubmitting={formMethods.formState.isSubmitting}
+      maxWidth="xl"
+      size={currentFormStep === FormStep.SELECT_TABLES ? 'fit' : 'md'}
+      overrideWidth="960px"
       footerAccessory={
-        currentStep === FIRST_FORM_STEP ? (
-          <YBButton
-            btnClass="btn"
-            btnText={t('cancel', { keyPrefix: 'common' })}
-            onClick={closeModal}
-          />
-        ) : (
-          <YBButton
-            btnClass="btn"
-            btnText={t('back', { keyPrefix: 'common' })}
-            onClick={() => handleBackNavigation(currentStep)}
-          />
+        currentFormStep !== FIRST_FORM_STEP && (
+          <YBButton variant="secondary" onClick={handleBackNavigation}>
+            {t('back', { keyPrefix: 'common' })}
+          </YBButton>
         )
       }
-      render={(formikProps: FormikProps<CreateDrConfigFormValues>) => {
-        // workaround for outdated version of Formik to access form methods outside of <Formik>
-        formik.current = formikProps;
-
-        if (
-          tablesQuery.isLoading ||
-          tablesQuery.isIdle ||
-          universeQuery.isLoading ||
-          universeQuery.isIdle
-        ) {
-          return <YBLoading />;
-        }
-
-        if (tablesQuery.isError || universeQuery.isError) {
-          return <YBErrorIndicator />;
-        }
-
-        switch (currentStep) {
-          case FormStep.SELECT_TARGET_UNIVERSE:
-            return (
-              <SelectTargetUniverseStep formik={formik} currentUniverseUuid={sourceUniverseUuid} />
-            );
-          case FormStep.SELECT_TABLES: {
-            // Casting because FormikValues and FormikError have different types.
-            const errors = formik.current.errors as FormikErrors<CreateDrConfigFormErrors>;
-            const { values } = formik.current;
-            return (
-              <>
-                <div className={classes.formInstruction}>
-                  {t('step.selectDatabases.instruction')}
-                </div>
-                <TableSelect
-                  {...{
-                    configAction: XClusterConfigAction.CREATE,
-                    handleTransactionalConfigCheckboxClick: () => {},
-                    isDrInterface: true,
-                    isFixedTableType: false,
-                    isTransactionalConfig: true,
-                    initialNamespaceUuids: [],
-                    selectedNamespaceUuids: selectedKeyspaces,
-                    selectedTableUUIDs: values.tableUUIDs,
-                    selectionError: errors.tableUUIDs,
-                    selectionWarning: formWarnings?.tableUUIDs,
-                    setSelectedNamespaceUuids: setSelectedKeyspaces,
-                    setSelectedTableUUIDs: (tableUUIDs: string[]) =>
-                      setSelectedTableUUIDs(tableUUIDs, formik.current),
-                    setTableType: () => {},
-                    sourceUniverseUUID: sourceUniverseUuid,
-                    tableType: TableType.PGSQL_TABLE_TYPE,
-                    targetUniverseUUID: values.targetUniverse.value.universeUUID
-                  }}
-                />
-              </>
-            );
-          }
-          case FormStep.CONFIGURE_BOOTSTRAP:
-            return <ConfigureBootstrapStep formik={formik} />;
-          default:
-            return assertUnreachableCase(currentStep);
-        }
-      }}
-    />
+      {...modalProps}
+    >
+      <FormProvider {...formMethods}>
+        <CurrentFormStep
+          currentFormStep={currentFormStep}
+          isFormDisabled={isFormDisabled}
+          sourceUniverse={sourceUniverse}
+          tableSelectProps={{
+            configAction: XClusterConfigAction.CREATE,
+            handleTransactionalConfigCheckboxClick: () => {},
+            isDrInterface: true,
+            isFixedTableType: false,
+            isTransactionalConfig: true,
+            initialNamespaceUuids: [],
+            selectedNamespaceUuids: selectedNamespaceUuids,
+            selectedTableUUIDs: selectedTableUuids,
+            selectionError: tableSelectionError,
+            selectionWarning: undefined,
+            setSelectedNamespaceUuids: setSelectedNamespaces,
+            setSelectedTableUUIDs: setSelectedTableUuids,
+            setTableType: () => {}, // DR is only available for YSQL
+            sourceUniverseUUID: sourceUniverseUuid,
+            tableType: TableType.PGSQL_TABLE_TYPE,
+            targetUniverseUUID: targetUniverseUuid
+          }}
+        />
+      </FormProvider>
+    </YBModal>
   );
-};
-
-const validateForm = async (
-  values: CreateDrConfigFormValues,
-  currentStep: FormStep,
-  sourceUniverse: Universe,
-  isTableSelectionValidated: boolean,
-  setFormWarnings: (formWarnings: CreateXClusterConfigFormWarnings) => void
-) => {
-  // Since our formik verision is < 2.0 , we need to throw errors instead of
-  // returning them in custom async validation:
-  // https://github.com/jaredpalmer/formik/issues/1392#issuecomment-606301031
-
-  switch (currentStep) {
-    case FormStep.SELECT_TARGET_UNIVERSE: {
-      const errors: Partial<CreateDrConfigFormErrors> = {};
-
-      if (!values.targetUniverse) {
-        errors.targetUniverse = 'DR replica universe is required.';
-      } else if (
-        getPrimaryCluster(values.targetUniverse.value.universeDetails.clusters)?.userIntent
-          ?.enableNodeToNodeEncrypt !==
-        getPrimaryCluster(sourceUniverse?.universeDetails.clusters)?.userIntent
-          ?.enableNodeToNodeEncrypt
-      ) {
-        errors.targetUniverse =
-          'The DR replica must have the same Encryption in-Transit (TLS) configuration as the source universe. Edit the TLS configuration to proceed.';
-      }
-
-      throw errors;
-    }
-    case FormStep.SELECT_TABLES: {
-      const errors: Partial<CreateDrConfigFormErrors> = {};
-      const warnings: CreateXClusterConfigFormWarnings = {};
-      if (!isTableSelectionValidated) {
-        if (!values.tableUUIDs || values.tableUUIDs.length === 0) {
-          errors.tableUUIDs = {
-            title: 'No databases selected.',
-            body: 'Select at least 1 database to proceed'
-          };
-        }
-        setFormWarnings(warnings);
-      }
-      throw errors;
-    }
-    case FormStep.CONFIGURE_BOOTSTRAP: {
-      const errors: Partial<CreateDrConfigFormErrors> = {};
-      if (!values.storageConfig) {
-        errors.storageConfig = 'Backup storage configuration is required.';
-      }
-      throw errors;
-    }
-    default:
-      throw {};
-  }
 };

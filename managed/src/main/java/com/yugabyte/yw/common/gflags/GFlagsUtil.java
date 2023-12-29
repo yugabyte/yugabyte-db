@@ -62,8 +62,8 @@ import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import javax.annotation.Nullable;
-import org.apache.commons.collections.CollectionUtils;
-import org.apache.commons.collections.MapUtils;
+import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.csv.CSVFormat;
 import org.apache.commons.csv.CSVParser;
 import org.apache.commons.csv.CSVPrinter;
@@ -173,6 +173,10 @@ public class GFlagsUtil {
   public static final String NOTIFY_PEER_OF_REMOVAL_FROM_CLUSTER =
       "notify_peer_of_removal_from_cluster";
   public static final String MASTER_JOIN_EXISTING_UNIVERSE = "master_join_existing_universe";
+
+  private static final Pattern LOG_LINE_PREFIX_PATTERN =
+      Pattern.compile("^\"?\\s*log_line_prefix\\s*=\\s*'?([^']+)'?\\s*\"?$");
+  private static final String DEFAULT_LOG_LINE_PREFIX = "%m [%p] ";
 
   private static final Set<String> GFLAGS_FORBIDDEN_TO_OVERRIDE =
       ImmutableSet.<String>builder()
@@ -673,6 +677,7 @@ public class GFlagsUtil {
       if (auditLogConfig.getYcqlAuditConfig() != null
           && auditLogConfig.getYcqlAuditConfig().isEnabled()) {
         YCQLAuditConfig ycqlAuditConfig = auditLogConfig.getYcqlAuditConfig();
+        result.put("ycql_enable_audit_log", "true");
         if (CollectionUtils.isNotEmpty(ycqlAuditConfig.getIncludedCategories())) {
           result.put(
               "ycql_audit_included_categories",
@@ -918,6 +923,7 @@ public class GFlagsUtil {
     }
     // Merge the `ysql_hba_conf_csv` post pre-processing the hba conf for jwt if required.
     mergeCSVs(userGFlags, platformGFlags, YSQL_HBA_CONF_CSV);
+    mergeCSVs(userGFlags, platformGFlags, YSQL_PG_CONF_CSV);
   }
 
   /**
@@ -975,6 +981,14 @@ public class GFlagsUtil {
       UniverseTaskBase.ServerType serverType,
       UniverseDefinitionTaskParams.Cluster cluster,
       Collection<UniverseDefinitionTaskParams.Cluster> allClusters) {
+    return getGFlagsForAZ(node != null ? node.azUuid : null, serverType, cluster, allClusters);
+  }
+
+  public static Map<String, String> getGFlagsForAZ(
+      @Nullable UUID azUuid,
+      UniverseTaskBase.ServerType serverType,
+      UniverseDefinitionTaskParams.Cluster cluster,
+      Collection<UniverseDefinitionTaskParams.Cluster> allClusters) {
     UserIntent userIntent = cluster.userIntent;
     UniverseDefinitionTaskParams.Cluster primary =
         allClusters.stream()
@@ -986,12 +1000,12 @@ public class GFlagsUtil {
         if (cluster.clusterType == UniverseDefinitionTaskParams.ClusterType.PRIMARY) {
           throw new IllegalStateException("Primary cluster has inherit gflags");
         }
-        return getGFlagsForNode(node, serverType, primary, allClusters);
+        return getGFlagsForAZ(azUuid, serverType, primary, allClusters);
       }
-      return userIntent.specificGFlags.getGFlags(node, serverType);
+      return userIntent.specificGFlags.getGFlags(azUuid, serverType);
     } else {
       if (cluster.clusterType == UniverseDefinitionTaskParams.ClusterType.ASYNC) {
-        return getGFlagsForNode(node, serverType, primary, allClusters);
+        return getGFlagsForAZ(azUuid, serverType, primary, allClusters);
       }
       return serverType == UniverseTaskBase.ServerType.MASTER
           ? userIntent.masterGFlags
@@ -1366,5 +1380,25 @@ public class GFlagsUtil {
       return true;
     }
     return cluster.userIntent.specificGFlags.isInheritFromPrimary();
+  }
+
+  public static String getLogLinePrefix(String pgConfCsv) {
+    if (StringUtils.isEmpty(pgConfCsv)) {
+      return DEFAULT_LOG_LINE_PREFIX;
+    }
+    try {
+      CSVParser parser = new CSVParser(new StringReader(pgConfCsv), CSVFormat.DEFAULT);
+      for (CSVRecord record : parser) {
+        for (String entry : record.toList()) {
+          Matcher matcher = LOG_LINE_PREFIX_PATTERN.matcher(entry);
+          if (matcher.matches()) {
+            return matcher.group(1);
+          }
+        }
+      }
+    } catch (IOException e) {
+      throw new RuntimeException("Failed to parse CSV", e);
+    }
+    return DEFAULT_LOG_LINE_PREFIX;
   }
 }

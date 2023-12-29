@@ -3,7 +3,6 @@ title: Benchmark YSQL performance with large datasets
 headerTitle: Large datasets
 linkTitle: Large datasets
 description: Benchmark YSQL performance with large datasets
-image: /images/section_icons/architecture/concepts.png
 headcontent: Benchmark YSQL performance with large datasets
 menu:
   preview:

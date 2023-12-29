@@ -12,8 +12,8 @@ package com.yugabyte.yw.models;
 
 import com.fasterxml.jackson.annotation.JsonIgnore;
 import io.ebean.Model;
+import jakarta.persistence.Embeddable;
 import java.util.UUID;
-import javax.persistence.Embeddable;
 import javax.validation.constraints.NotNull;
 import lombok.Data;
 import lombok.EqualsAndHashCode;

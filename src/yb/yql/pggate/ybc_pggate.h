@@ -26,7 +26,8 @@ extern "C" {
 // This must be called exactly once to initialize the YB/PostgreSQL gateway API before any other
 // functions in this API are called.
 void YBCInitPgGate(const YBCPgTypeEntity *YBCDataTypeTable, int count,
-                   YBCPgCallbacks pg_callbacks, uint64_t *session_id);
+                   YBCPgCallbacks pg_callbacks, uint64_t *session_id,
+                   const YBCAshMetadata *ash_metadata, bool *is_ash_metadata_set);
 void YBCDestroyPgGate();
 void YBCInterruptPgGate();
 
@@ -75,6 +76,9 @@ YBCStatus YBCGetNumberOfDatabases(uint32_t* num_databases);
 
 // Return auth_key to the local tserver's postgres authentication key stored in shared memory.
 uint64_t YBCGetSharedAuthKey();
+
+// Return UUID of the local tserver
+const unsigned char* YBCGetLocalTserverUuid();
 
 // Get access to callbacks.
 const YBCPgCallbacks* YBCGetPgCallbacks();
@@ -582,7 +586,7 @@ YBCStatus YBCPgSetEnableTracing(bool tracing);
 YBCStatus YBCPgEnableFollowerReads(bool enable_follower_reads, int32_t staleness_ms);
 YBCStatus YBCPgEnterSeparateDdlTxnMode();
 bool YBCPgHasWriteOperationsInDdlTxnMode();
-YBCStatus YBCPgExitSeparateDdlTxnMode();
+YBCStatus YBCPgExitSeparateDdlTxnMode(YBCPgOid db_oid, bool is_silent_altering);
 YBCStatus YBCPgClearSeparateDdlTxnMode();
 YBCStatus YBCPgSetActiveSubTransaction(uint32_t id);
 YBCStatus YBCPgRollbackToSubTransaction(uint32_t id);
@@ -781,7 +785,8 @@ struct PgApiContext;
 
 void YBCInitPgGateEx(
     const YBCPgTypeEntity *data_type_table, int count, YBCPgCallbacks pg_callbacks,
-    PgApiContext *context, std::optional<uint64_t> session_id);
+    PgApiContext *context, std::optional<uint64_t> session_id,
+    const YBCAshMetadata* ash_metadata, bool *is_ash_metadata_set);
 
 } // namespace pggate
 } // namespace yb

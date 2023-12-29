@@ -15,15 +15,21 @@
 
 #include <arpa/inet.h>
 
+#include "yb/util/debug-util.h"
 #include "yb/util/tostring.h"
 #include "yb/util/trace.h"
+
+DEFINE_test_flag(bool, yb_enable_ash, false, "True to enable Active Session History");
+DEFINE_test_flag(bool, export_wait_state_names, yb::IsDebug(), "Exports wait-state name as a "
+                 "human understandable string.");
+
 
 namespace yb::ash {
 
 namespace {
   // The current wait_state_ for this thread.
   thread_local WaitStateInfoPtr threadlocal_wait_state_;
-}
+}  // namespace
 
 void AshMetadata::set_client_host_port(const HostPort &host_port) {
   client_host_port = host_port;
@@ -115,7 +121,7 @@ void WaitStateInfo::SetCurrentWaitState(WaitStateInfoPtr wait_state) {
   threadlocal_wait_state_ = std::move(wait_state);
 }
 
-WaitStateInfoPtr WaitStateInfo::CurrentWaitState() {
+const WaitStateInfoPtr& WaitStateInfo::CurrentWaitState() {
   if (!threadlocal_wait_state_) {
     VLOG_WITH_FUNC(3) << " returning nullptr";
   }
@@ -123,7 +129,7 @@ WaitStateInfoPtr WaitStateInfo::CurrentWaitState() {
 }
 
 //
-// ScopedWaitState
+// ScopedAdoptWaitState
 //
 ScopedAdoptWaitState::ScopedAdoptWaitState(WaitStateInfoPtr wait_state)
     : prev_state_(WaitStateInfo::CurrentWaitState()) {
@@ -137,24 +143,23 @@ ScopedAdoptWaitState::~ScopedAdoptWaitState() {
 //
 // ScopedWaitStatus
 //
-ScopedWaitStatus::ScopedWaitStatus(WaitStateInfoPtr wait_state, WaitStateCode code)
-    : wait_state_(std::move(wait_state)), code_(code) {
-  if (wait_state_) {
-    prev_code_ = wait_state_->code();
-    wait_state_->set_code(code_);
-  }
+ScopedWaitStatus::ScopedWaitStatus(WaitStateCode code)
+    : code_(code),
+      prev_code_(
+          WaitStateInfo::CurrentWaitState()
+              ? WaitStateInfo::CurrentWaitState()->mutable_code().exchange(code_)
+              : code_) {
 }
 
 ScopedWaitStatus::~ScopedWaitStatus() {
-  if (wait_state_) {
+  const auto &wait_state = WaitStateInfo::CurrentWaitState();
+  if (wait_state) {
     auto expected = code_;
-    if (!wait_state_->mutable_code().compare_exchange_strong(expected, prev_code_)) {
+    if (!wait_state->mutable_code().compare_exchange_strong(expected, prev_code_)) {
       VLOG(3) << __func__ << " not reverting to prev_code_: " << prev_code_ << " since "
               << " current_code: " << expected << " is not " << code_;
     }
   }
-  wait_state_ = nullptr;
-  prev_code_ = WaitStateCode::Unused;
 }
 
 }  // namespace yb::ash

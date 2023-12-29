@@ -16,7 +16,7 @@ You can install YugabyteDB Anywhere (YBA) using the following methods:
 
 | Method | Using | Use If |
 | :--- | :--- | :--- |
-| YBA Installer | yba-ctl CLI | You are performing a new installation. |
+| YBA Installer | yba-ctl CLI | You are performing a new installation.<br>You are ready to migrate from a Replicated installation. {{<badge/ea>}} |
 | Replicated | Docker containers | Your installation already uses Replicated. |
 | Kubernetes | Helm chart | You're deploying in Kubernetes. |
 
@@ -42,6 +42,12 @@ Licensing (such as a license file in the case of YBA Installer or Replicated, or
   </li>
 
 </ul>
+
+{{< note title="Replicated end of life" >}}
+
+YugabyteDB Anywhere will end support for Replicated installation at the end of 2024. You can migrate existing Replicated YugabyteDB Anywhere installations using YBA Installer. See [Migrate from Replicated](../../install-software/installer/#migrate-from-replicated).
+
+{{< /note >}}
 
 ## Supported Linux distributions
 
@@ -97,8 +103,8 @@ Installing YugabyteDB Anywhere on airgapped hosts (without access to any Interne
         ```
 
 - Ensure that the following ports are open on the YugabyteDB Anywhere host:
-  - `8800` – HTTP access to the Replicated UI
-  - `80` – HTTP access to the YugabyteDB Anywhere UI
-  - `22` – SSH
+  - 8800 – HTTP access to the Replicated UI
+  - 80 or 443 – HTTP and HTTPS access to the YugabyteDB Anywhere UI, respectively
+  - 22 – SSH
 - Obtain the YugabyteDB Anywhere airgapped install package. Contact {{% support-platform %}} for more information.
 - Sign the Yugabyte license agreement. Contact {{% support-platform %}} for more information.

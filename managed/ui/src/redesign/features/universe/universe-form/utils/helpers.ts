@@ -154,7 +154,7 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
 
   const { userIntent } = cluster;
 
-  let data: UniverseFormData = {
+  const data: UniverseFormData = {
     cloudConfig: {
       universeName: userIntent.universeName,
       provider: {
@@ -188,6 +188,8 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
       enableEncryptionAtRest: !!encryptionAtRestConfig.encryptionAtRestEnabled,
       kmsConfig: encryptionAtRestConfig?.kmsConfigUUID ?? null,
       tserverK8SNodeResourceSpec: userIntent.tserverK8SNodeResourceSpec,
+      arch: universeData.arch,
+      imageBundleUUID: userIntent.imageBundleUUID,
       rootCA
     },
     advancedConfig: {
@@ -245,7 +247,7 @@ export const getUserIntent = (
   } = formData;
   const { masterGFlags, tserverGFlags } = transformFlagArrayToObject(gFlags);
 
-  let intent: UserIntent = {
+  const intent: UserIntent = {
     universeName: cloudConfig.universeName,
     provider: cloudConfig.provider?.uuid as string,
     providerType: cloudConfig.provider?.code as CloudType,
@@ -270,7 +272,8 @@ export const getUserIntent = (
     ybSoftwareVersion: advancedConfig.ybSoftwareVersion,
     enableIPV6: advancedConfig.enableIPV6,
     enableExposingService: advancedConfig.enableExposingService,
-    useSystemd: advancedConfig.useSystemd
+    useSystemd: advancedConfig.useSystemd,
+    imageBundleUUID: instanceConfig.imageBundleUUID!
   };
 
   if (enableRRGflags) {
@@ -363,7 +366,7 @@ export const createUniverse = async ({
     //patch - end
 
     // now everything is ready to create universe
-    let response = await api.createUniverse(finalPayload);
+    const response = await api.createUniverse(finalPayload);
 
     //redirect to task page
     response?.universeUUID && transitToUniverse(response.universeUUID);
@@ -376,11 +379,11 @@ export const createUniverse = async ({
 };
 
 export const createReadReplica = async (configurePayload: UniverseConfigure) => {
-  let universeUUID = configurePayload.universeUUID;
+  const universeUUID = configurePayload.universeUUID;
   if (!universeUUID) return false;
   try {
     // now everything is ready to create async cluster
-    let response = await api.createCluster(configurePayload, universeUUID);
+    const response = await api.createCluster(configurePayload, universeUUID);
     response && transitToUniverse(universeUUID);
     return response;
   } catch (error) {
@@ -391,11 +394,11 @@ export const createReadReplica = async (configurePayload: UniverseConfigure) => 
 };
 
 export const editReadReplica = async (configurePayload: UniverseConfigure) => {
-  let universeUUID = configurePayload.universeUUID;
+  const universeUUID = configurePayload.universeUUID;
   if (!universeUUID) return false;
   try {
     // now everything is ready to edit universe
-    let response = await api.editUniverse(configurePayload, universeUUID);
+    const response = await api.editUniverse(configurePayload, universeUUID);
     response && transitToUniverse(universeUUID);
     return response;
   } catch (error) {
@@ -410,15 +413,19 @@ export const getDiffClusterData = (currentClusterConfig?: Cluster, newClusterCon
     return {
       masterPlacementChanged: false,
       numNodesChanged: false,
-      currentNodeCount: false,
-      newNodeCount: false
-    }
+      currentNodeCount: 0,
+      newNodeCount: 0,
+      oldNumReadReplicas: 0,
+      newNumReadReplicas: 0
+    };
   }
 
   return {
     masterPlacementChanged: currentClusterConfig?.userIntent?.dedicatedNodes !== newClusterConfig?.userIntent?.dedicatedNodes,
     numNodesChanged: currentClusterConfig?.userIntent?.numNodes !== newClusterConfig?.userIntent?.numNodes,
     currentNodeCount: currentClusterConfig?.userIntent?.numNodes,
-    newNodeCount: newClusterConfig?.userIntent?.numNodes
-  }
-}
+    newNodeCount: newClusterConfig?.userIntent?.numNodes,
+    oldNumReadReplicas: currentClusterConfig?.userIntent?.replicationFactor,
+    newNumReadReplicas: newClusterConfig?.userIntent?.replicationFactor,
+  };
+};

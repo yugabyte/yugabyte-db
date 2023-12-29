@@ -272,6 +272,7 @@ set(TSERVER_DEPS
   server_common
   server_process
   tablet
+  yb_ash
   yb_client
   yb_pggate_flags
   ysql_upgrade

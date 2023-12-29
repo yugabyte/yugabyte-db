@@ -11,7 +11,7 @@ menu:
 type: docs
 ---
 
-Clusters [replicated across regions](../../create-clusters-topology/#replicate-across-regions) include a minimum of 3 nodes spread across 3 regions with a replication factor (RF) of 3. You can add or remove nodes in increments of 3 (each region has the same number of nodes).
+Clusters [replicated across regions](../../create-clusters-topology/#replicate-across-regions) include a minimum of 3 nodes across 3 regions, providing region-level [fault tolerance](../../create-clusters-overview/#fault-tolerance). You can add or remove nodes in increments of 1 per region (each region has the same number of nodes).
 
 {{< youtube id="fCjTB8IuTuA" title="Create a multi-region cluster in YugabyteDB Managed" >}}
 
@@ -33,7 +33,7 @@ In cases where the cluster has read replicas and a client connects to a read rep
 
 Multi-region replicated clusters include the following features:
 
-- Replicated synchronously across 3 regions with a [replication factor](../../../../architecture/docdb-replication/replication/) (RF) of 3.
+- Replicated synchronously across 3 to 7 regions.
 - No limit on cluster size - choose any cluster size based on your use case.
 - Horizontal and vertical scaling - add or remove nodes and vCPUs, and add storage to suit your production loads.
 - VPC networking required.
@@ -70,6 +70,14 @@ Select **Multi-Region Deployment** and set the following options.
 ![Add Cluster Wizard - Multi-region data distribution](/images/yb-cloud/cloud-addcluster-multisync-data.png)
 
 Set **Data Distribution** to **Replicate across regions**.
+
+Select the [Fault tolerance](../../create-clusters-overview/#fault-tolerance) for the cluster, as follows:
+
+- Resilient to 1 region outage; requires a minimum of 3 nodes across 3 regions.
+- Resilient to 2 region outages; requires a minimum of 5 nodes across 5 regions.
+- Resilient to 3 region outages; requires a minimum of 7 nodes across 7 regions.
+
+Clusters can be scaled in increments of 1 per region; for example, a cluster with fault tolerance of 2 regions can be scaled in multiples of 5 nodes, one per region.
 
 #### Select regions and node size
 

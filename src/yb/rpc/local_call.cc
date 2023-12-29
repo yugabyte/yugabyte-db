@@ -25,6 +25,8 @@
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
 
+DECLARE_bool(TEST_yb_enable_ash);
+
 namespace yb {
 namespace rpc {
 
@@ -60,6 +62,7 @@ const std::shared_ptr<LocalYBInboundCall>& LocalOutboundCall::CreateLocalInbound
   const MonoDelta timeout = controller()->timeout();
   const CoarseTimePoint deadline =
       timeout.Initialized() ? start_ + timeout : CoarseTimePoint::max();
+
   auto outbound_call = std::static_pointer_cast<LocalOutboundCall>(shared_from(this));
   inbound_call_ = InboundCall::Create<LocalYBInboundCall>(
       &rpc_metrics(), remote_method(), outbound_call, deadline);
@@ -81,6 +84,14 @@ LocalYBInboundCall::LocalYBInboundCall(
     CoarseTimePoint deadline)
     : YBInboundCall(rpc_metrics, remote_method), outbound_call_(outbound_call),
       deadline_(deadline) {
+  if (wait_state_) {
+    wait_state_->UpdateMetadata({.rpc_request_id = reinterpret_cast<int64_t>(this)});
+    wait_state_->set_client_host_port(HostPort(remote_address()));
+    wait_state_->UpdateAuxInfo({.method = method_name().ToBuffer()});
+  } else {
+    LOG_IF(ERROR, GetAtomicFlag(&FLAGS_TEST_yb_enable_ash))
+        << "Wait state is nullptr for " << ToString();
+  }
 }
 
 const Endpoint& LocalYBInboundCall::remote_address() const {
@@ -115,6 +126,7 @@ void LocalYBInboundCall::Respond(AnyMessageConstPtr resp, bool is_success) {
     auto status = STATUS(RemoteError, "Local call error", error->message());
     call->SetFailed(std::move(status), std::move(error));
   }
+  NotifyTransferred(Status::OK(), /* ConnectionPtr */ nullptr);
 }
 
 Status LocalYBInboundCall::ParseParam(RpcCallParams* params) {
@@ -127,6 +139,46 @@ Result<size_t> LocalYBInboundCall::ParseRequest(Slice param, const RefCntBuffer&
 
 AnyMessageConstPtr LocalYBInboundCall::SerializableResponse() {
   return outbound_call()->response();
+}
+
+namespace {
+
+uintptr_t AsKey(const InboundCall* call) {
+  return reinterpret_cast<uintptr_t>(call);
+}
+
+} // namespace
+
+void LocalYBInboundCallTracker::CallProcessed(InboundCall* call) {
+  std::lock_guard lg(lock_);
+  calls_being_handled_.erase(AsKey(call));
+}
+
+void LocalYBInboundCallTracker::Enqueue(const InboundCallPtr& call) {
+    call->SetCallProcessedListener(this);
+    auto call_id = AsKey(call.get());
+
+    std::lock_guard lg(lock_);
+    calls_being_handled_.emplace(call_id, call);
+}
+
+Status LocalYBInboundCallTracker::DumpRunningRpcs(
+    const DumpRunningRpcsRequestPB& req, DumpRunningRpcsResponsePB* resp) {
+  decltype(calls_being_handled_) active_calls;
+  {
+    std::lock_guard lg(lock_);
+    active_calls = calls_being_handled_;
+  }
+  auto* local_calls = resp->mutable_local_calls();
+  local_calls->set_remote_ip("local calls");
+  local_calls->set_state(RpcConnectionPB::StateType::RpcConnectionPB_StateType_OPEN);
+  local_calls->mutable_calls_in_flight()->Reserve(yb::narrow_cast<int>(active_calls.size()));
+  for (const auto& [_, weak_call] : active_calls) {
+    if (auto ptr = weak_call.lock()) {
+      ptr->DumpPB(req, local_calls->add_calls_in_flight());
+    }
+  }
+  return Status::OK();
 }
 
 } // namespace rpc

@@ -596,7 +596,10 @@ Status TabletPeer::Shutdown(
   auto is_shutdown_initiated = StartShutdown();
 
   if (should_abort_active_txns) {
-    RETURN_NOT_OK(AbortSQLTransactions());
+    // Once raft group state enters QUIESCING state,
+    // new queries cannot be processed from then onwards.
+    // Aborting any remaining active transactions in the tablet.
+    AbortSQLTransactions();
   }
 
   if (is_shutdown_initiated) {
@@ -607,22 +610,15 @@ Status TabletPeer::Shutdown(
   return Status::OK();
 }
 
-Status TabletPeer::AbortSQLTransactions() const {
-  // Once raft group state enters QUIESCING state,
-  // new queries cannot be processed from then onwards.
-  // Aborting any remaining active transactions in the tablet.
-  if (tablet_ && tablet_->table_type() == TableType::PGSQL_TABLE_TYPE) {
-    if (tablet_->transaction_participant()) {
-      HybridTime maxCutoff = HybridTime::kMax;
-      LOG(INFO) << "Aborting transactions that started prior to " << maxCutoff
-                << " for tablet id " << tablet_->tablet_id();
-      CoarseTimePoint deadline = CoarseMonoClock::Now() +
-          MonoDelta::FromMilliseconds(FLAGS_ysql_transaction_abort_timeout_ms);
-      WARN_NOT_OK(tablet_->transaction_participant()->StopActiveTxnsPriorTo(maxCutoff, deadline),
-                  "Cannot abort transactions for tablet " + tablet_->tablet_id());
-    }
+void TabletPeer::AbortSQLTransactions() const {
+  if (!tablet_) {
+    return;
   }
-  return Status::OK();
+  auto deadline =
+      CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_ysql_transaction_abort_timeout_ms);
+  WARN_NOT_OK(
+      tablet_->AbortSQLTransactions(deadline),
+      "Cannot abort transactions for tablet " + tablet_->tablet_id());
 }
 
 Status TabletPeer::CheckRunning() const {
@@ -1069,14 +1065,14 @@ Result<std::pair<OpId, HybridTime>> TabletPeer::GetOpIdAndSafeTimeForXReplBootst
 
   // The bootstrap_time is the minium time from which the provided OpId will be transactionally
   // consistent. It is important to call AbortSQLTransactions, which resolves the pending
-  // transactions and aborts the active ones. This step will synchronizes our clock with the
+  // transactions and aborts the active ones. This step synchronizes our clock with the
   // transaction status tablet clock, ensuring that the bootstrap_time we compute later is correct.
   // Ex: Our safe time is 100, and we have a pending intent for which the log got GCed. So this
   // transaction cannot be replicated. If the transaction is still active it needs to be aborted.
   // If, the coordinator is at 110 and the transaction was committed at 105. We need to move our
   // clock to 110 and pick a higher bootstrap_time so that the commit is not part of the bootstrap.
   if (GetAtomicFlag(&FLAGS_abort_active_txns_during_xrepl_bootstrap)) {
-    RETURN_NOT_OK(AbortSQLTransactions());
+    AbortSQLTransactions();
   }
   auto bootstrap_time = VERIFY_RESULT(tablet->SafeTime(RequireLease::kTrue));
   return std::make_pair(std::move(op_id), std::move(bootstrap_time));
@@ -1258,6 +1254,64 @@ Result<MonoDelta> TabletPeer::GetCDCSDKIntentRetainTime(const int64_t& cdc_sdk_l
     }
   }
   return cdc_sdk_intent_retention;
+}
+
+Result<bool> TabletPeer::SetAllCDCRetentionBarriers(
+    int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, MonoDelta cdc_sdk_op_id_expiration,
+    HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff,
+    bool initial_retention_barrier) {
+
+  auto tablet = VERIFY_RESULT(shared_tablet_safe());
+  Log* log = log_atomic_.load(std::memory_order_acquire);
+
+  {
+    std::lock_guard lock(cdc_min_replicated_index_lock_);
+    cdc_min_replicated_index_refresh_time_ = MonoTime::Now();
+  }
+
+  if (initial_retention_barrier) {
+    RETURN_NOT_OK(tablet->SetAllInitialCDCRetentionBarriers(
+        log, cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_history_cutoff,
+        require_history_cutoff));
+    return true;
+  } else {
+    return tablet->MoveForwardAllCDCRetentionBarriers(
+        log, cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration,
+        cdc_sdk_history_cutoff, require_history_cutoff);
+  }
+}
+
+// Applies to both CDCSDK and XCluster streams attempting to set their initial
+// retention barrier
+Result<bool> TabletPeer::SetAllInitialCDCRetentionBarriers(
+    int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, HybridTime cdc_sdk_history_cutoff,
+    bool require_history_cutoff) {
+
+  MonoDelta cdc_sdk_op_id_expiration =
+      MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms));
+  return SetAllCDCRetentionBarriers(
+      cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration, cdc_sdk_history_cutoff,
+      require_history_cutoff, true /* initial_retention_barrier */);
+}
+
+// Applies only to CDCSDK streams
+Result<bool> TabletPeer::SetAllInitialCDCSDKRetentionBarriers(
+    OpId cdc_sdk_op_id, HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff) {
+
+  return SetAllInitialCDCRetentionBarriers(
+      cdc_sdk_op_id.index, cdc_sdk_op_id, cdc_sdk_history_cutoff, require_history_cutoff);
+}
+
+// Applies to the combined requirement of both CDCSDK and XCluster streams.
+// UpdatePeersAndMetrics will call this with the strictest requirements
+// corresponding to the slowest consumer of this tablet among all streams.
+Result<bool> TabletPeer::MoveForwardAllCDCRetentionBarriers(
+    int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, MonoDelta cdc_sdk_op_id_expiration,
+    HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff) {
+
+  return SetAllCDCRetentionBarriers(
+      cdc_wal_index, cdc_sdk_intents_op_id, cdc_sdk_op_id_expiration, cdc_sdk_history_cutoff,
+      require_history_cutoff, false /* initial_retention_barrier */);
 }
 
 std::unique_ptr<Operation> TabletPeer::CreateOperation(consensus::LWReplicateMsg* replicate_msg) {

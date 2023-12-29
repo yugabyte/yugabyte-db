@@ -4,7 +4,6 @@ headerTitle: Monitor cluster activity
 linkTitle: Cluster activity
 description: View the activity on your cluster.
 headcontent: View the activity on your cluster
-image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:
     identifier: monitor-activity

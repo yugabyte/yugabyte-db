@@ -3,7 +3,6 @@ title: Django ORM
 headerTitle: Use an ORM
 linkTitle: Use an ORM
 description: Python Django ORM support for YugabyteDB
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   v2.18:
     identifier: django-orm

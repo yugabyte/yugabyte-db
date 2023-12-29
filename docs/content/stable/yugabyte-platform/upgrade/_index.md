@@ -12,7 +12,7 @@ menu:
 type: indexpage
 ---
 
-You can upgrade YugabyteDB Anywhere to a newer version.
+If you installed YugabyteDB Anywhere using YBA Installer, use YBA Installer to perform the upgrade. Refer to [Upgrade](../install-yugabyte-platform/install-software/installer/#upgrade).
 
 <div class="row">
 

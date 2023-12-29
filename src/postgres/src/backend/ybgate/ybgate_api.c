@@ -1478,3 +1478,12 @@ HeapDeformTuple(uintptr_t datum, void *attrs, size_t natts, uintptr_t *values,
 	/* Break down the tuple into fields */
 	heap_deform_tuple(&tuple, tupdesc, values, nulls);
 }
+
+YbgStatus YbgGetPgVersion(const char **version)
+{
+	PG_SETUP_ERROR_REPORTING();
+
+	*version = PG_VERSION;
+
+	PG_STATUS_OK();
+}

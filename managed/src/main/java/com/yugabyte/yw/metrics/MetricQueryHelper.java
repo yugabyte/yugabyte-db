@@ -33,7 +33,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.joda.time.DateTime;
 import org.slf4j.Logger;
@@ -580,8 +580,8 @@ public class MetricQueryHelper {
       // and will return inaccurate results if the universe has a read replica that is
       // not onprem.
       if (!mountRoots.isEmpty()) {
-        HashMap<String, String> mountFilters = new HashMap<>();
-        return mountRoots;
+        // In case we have multiple mount roots - these are separated by comma.
+        return mountRoots.replaceAll(",", "|");
       } else {
         LOG.debug(
             "No mount points found in onprem universe {}",
