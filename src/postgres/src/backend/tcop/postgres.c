@@ -457,7 +457,7 @@ SocketBackend(StringInfo inBuf)
 			break;
 
 		case 'A': /* Auth Passthrough Request */
-			maxmsglen = PQ_LARGE_MESSAGE_LIMIT;
+			maxmsglen = PQ_SMALL_MESSAGE_LIMIT;
 			if (!YbIsClientYsqlConnMgr())
 				ereport(FATAL,
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
@@ -465,7 +465,7 @@ SocketBackend(StringInfo inBuf)
 			break;
 
 		case 's': /* SET SESSION PARAMETER */
-
+			maxmsglen = PQ_SMALL_MESSAGE_LIMIT;
 			if (!YbIsClientYsqlConnMgr())
 				ereport(FATAL,
 						(errcode(ERRCODE_PROTOCOL_VIOLATION),
