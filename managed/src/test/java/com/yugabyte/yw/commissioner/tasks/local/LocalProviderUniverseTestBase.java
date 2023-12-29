@@ -6,6 +6,8 @@ import static com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest.waitForTas
 import static com.yugabyte.yw.common.TestHelper.testDatabase;
 import static com.yugabyte.yw.common.Util.YUGABYTE_DB;
 import static com.yugabyte.yw.forms.UniverseConfigureTaskParams.ClusterOperationType.CREATE;
+import static org.hamcrest.MatcherAssert.assertThat;
+import static org.hamcrest.Matchers.lessThan;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertTrue;
@@ -18,6 +20,7 @@ import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.LocalNodeManager;
 import com.yugabyte.yw.common.LocalNodeUniverseManager;
@@ -26,6 +29,7 @@ import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.ReleaseManager;
+import com.yugabyte.yw.common.RetryTaskUntilCondition;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.YcqlQueryExecutor;
@@ -83,6 +87,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import kamon.instrumentation.play.GuiceModule;
@@ -118,6 +123,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
 
   private static final String YB_PATH_ENV_KEY = "YB_PATH";
   private static final String BASE_DIR_ENV_KEY = "TEST_BASE_DIR";
+  private static final String SKIP_WAIT_FOR_CLUSTER_ENV_KEY = "YB_SKIP_WAIT_FOR_CLUSTER";
 
   private static final String DEFAULT_BASE_DIR = "/tmp/testing";
   protected static String YBC_VERSION;
@@ -131,7 +137,7 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
 
   public static Map<String, String> GFLAGS = new HashMap<>();
 
-  @Rule public Timeout globalTimeout = Timeout.seconds(600);
+  private SimpleSqlPayload simpleSqlPayload;
 
   static {
     GFLAGS.put("load_balancer_max_over_replicated_tablets", "15");
@@ -179,6 +185,8 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
   protected static String os;
   protected static String subDir;
   protected static String testName;
+  // Whether to wait until all old tservers are removed from quorum and new ones are added.
+  protected static boolean waitForClusterToStabilize;
 
   protected LocalNodeManager localNodeManager;
   protected LocalNodeUniverseManager localNodeUniverseManager;
@@ -205,9 +213,12 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
       arch = "x86_64";
     }
 
+    waitForClusterToStabilize = System.getenv(SKIP_WAIT_FOR_CLUSTER_ENV_KEY) == null;
     setUpYBSoftware(os, arch);
     subDir = DATE_FORMAT.format(new Date());
   }
+
+  @Rule public Timeout globalTimeout = Timeout.seconds(600);
 
   private static void setUpBaseDir() {
     if (System.getenv(BASE_DIR_ENV_KEY) != null) {
@@ -510,6 +521,9 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
 
   private void tearDown(boolean failed) {
     log.info("tear down " + testName + " failed " + failed);
+    if (simpleSqlPayload != null) {
+      simpleSqlPayload.stop();
+    }
     if (!failed || !KEEP_FAILED_UNIVERSE) {
       localNodeManager.shutdown();
       try {
@@ -830,6 +844,19 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
         CatalogEntityInfo.PlacementInfoPB readReplicas = replicationInfo.getReadReplicas(0);
         verifyCluster(asyncCluster, readReplicas);
       }
+      if (waitForClusterToStabilize) {
+        RetryTaskUntilCondition condition =
+            new RetryTaskUntilCondition<>(
+                () -> {
+                  try {
+                    return CheckClusterConsistency.checkCurrentServers(client, universe, true);
+                  } catch (Exception e) {
+                    return Collections.singletonList("Got error: " + e.getMessage());
+                  }
+                },
+                List::isEmpty);
+        condition.retryUntilCond(10, TimeUnit.MINUTES.toSeconds(2));
+      }
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
@@ -943,5 +970,16 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
     } catch (Exception e) {
       throw new RuntimeException(e);
     }
+  }
+
+  protected void initAndStartPayload(Universe universe) {
+    simpleSqlPayload = new SimpleSqlPayload(5, 2, 200, universe);
+    simpleSqlPayload.init();
+    simpleSqlPayload.start();
+  }
+
+  protected void verifyPayload() {
+    simpleSqlPayload.stop();
+    assertThat("Low percent errors", simpleSqlPayload.getErrorPercent(), lessThan(0.1d));
   }
 }
