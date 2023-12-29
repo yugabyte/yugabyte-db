@@ -2570,6 +2570,7 @@ static struct config_bool ConfigureNamesBool[] =
 		false,
 		NULL, NULL, NULL
 	},
+#endif
 
 	{
 		{"yb_enable_sequence_pushdown", PGC_USERSET, QUERY_TUNING_METHOD,
@@ -2605,7 +2606,6 @@ static struct config_bool ConfigureNamesBool[] =
 		false,
 		NULL, NULL, NULL
 	},
-#endif
 
 	{
 		{"yb_is_client_ysqlconnmgr", PGC_SU_BACKEND, CUSTOM_OPTIONS,
@@ -4243,11 +4243,6 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
-#ifdef YB_TODO
-	/* deepthi@yugabyte
-	 * - QUERY_TUNING is no longer defined in Postgres source code.
-	 * - Please make appropriate modification.
-	 */
 	{
 		{"yb_wait_for_backends_catalog_version_timeout", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("Timeout in milliseconds to wait for backends to reach"
@@ -4264,6 +4259,11 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
+#ifdef YB_TODO
+	/* deepthi@yugabyte
+	 * - QUERY_TUNING is no longer defined in Postgres source code.
+	 * - Please make appropriate modification.
+	 */
 	{
 		{"yb_test_planner_custom_plan_threshold", PGC_USERSET, QUERY_TUNING,
 			gettext_noop("The number of times to force custom plan generation "
