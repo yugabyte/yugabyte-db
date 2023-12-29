@@ -77,7 +77,7 @@ Select the [Fault tolerance](../../create-clusters-overview/#fault-tolerance) fo
 - Resilient to 2 region outages; requires a minimum of 5 nodes across 5 regions.
 - Resilient to 3 region outages; requires a minimum of 7 nodes across 7 regions.
 
-Clusters can be scaled in increments of 1 per region; for example, a cluster with fault tolerance of 2 regions can be scaled in multiples of 5 nodes, one per region.
+Clusters can be scaled in increments of 1 node per region; for example, a cluster with fault tolerance of 2 regions can be scaled in multiples of 5 nodes, one per region.
 
 #### Select regions and node size
 
