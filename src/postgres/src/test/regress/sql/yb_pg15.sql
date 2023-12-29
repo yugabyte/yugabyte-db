@@ -313,3 +313,8 @@ UPDATE pg_index SET indisvalid = false
 \set VERBOSITY terse
 REINDEX(verbose) INDEX yb_j_idx;
 \set VERBOSITY default
+
+-- internal collation
+create table texttab (t text);
+insert into texttab values ('a');
+select count(*) from texttab group by t;
