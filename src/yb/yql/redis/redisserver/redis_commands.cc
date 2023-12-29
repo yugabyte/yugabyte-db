@@ -463,7 +463,10 @@ void HandlePublish(LocalCommandData data) {
   const string& channel = data.arg(1).ToBuffer();
   const string& published_message = data.arg(2).ToBuffer();
 
-  data.context()->service_data()->ForwardToInterestedProxies(
+  // asrivastava: Is there use-after-move here? We get a clang-tidy warning for
+  // bugprone-use-after-move.
+  auto* service_data = data.context()->service_data();
+  service_data->ForwardToInterestedProxies(
       channel, published_message, [data = std::move(data)](int val) {
         RedisResponsePB response;
         response.set_code(RedisResponsePB::OK);

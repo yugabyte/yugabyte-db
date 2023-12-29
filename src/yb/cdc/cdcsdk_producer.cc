@@ -2561,7 +2561,7 @@ Status GetChangesForCDCSDK(
 
             (*cached_schema_details)[table_id] = SchemaDetails{
                 .schema_version = msg->change_metadata_request().schema_version(),
-                .schema = std::make_shared<Schema>(std::move(current_schema))};
+                .schema = std::make_shared<Schema>(current_schema)};
             changed_schema_version = msg->change_metadata_request().schema_version();
             auto result = client->GetTableSchemaFromSysCatalog(table_id, msg->hybrid_time());
             if (!result.ok()) {

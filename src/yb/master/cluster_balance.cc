@@ -659,12 +659,6 @@ void ClusterLoadBalancer::RecordActivity(bool tasks_added_in_this_run, uint32_t 
     }
   }
 
-  // Mutate circular buffer.
-  cbuf_activities_.push_back(std::move(ai));
-
-  // Update state.
-  is_idle_.store(num_idle_runs_ == cbuf_activities_.size(), std::memory_order_release);
-
   // Two interesting cases when updating can_perform_global_operations_ state:
   // If we previously couldn't balance global load, but now the LB is idle, enable global balancing.
   // If we previously could balance global load, but now the LB is busy, then it is busy balancing
@@ -672,6 +666,12 @@ void ClusterLoadBalancer::RecordActivity(bool tasks_added_in_this_run, uint32_t 
   // enabled up until we perform a non-global balancing move (see GetLoadToMove()).
   // TODO(julien) some small improvements can be made here, such as ignoring leader stepdown tasks.
   can_perform_global_operations_ = can_perform_global_operations_ || ai.IsIdle();
+
+  // Mutate circular buffer.
+  cbuf_activities_.push_back(std::move(ai));
+
+  // Update state.
+  is_idle_.store(num_idle_runs_ == cbuf_activities_.size(), std::memory_order_release);
 
   last_load_balance_run_ = MonoTime::Now();
 }
