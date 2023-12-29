@@ -9,6 +9,7 @@ import java.lang.annotation.Target;
 import org.flywaydb.test.annotation.FlywayTest;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.core.annotation.AliasFor;
+import org.springframework.test.context.ActiveProfiles;
 
 @Target({ElementType.TYPE})
 @Retention(RetentionPolicy.RUNTIME)
@@ -17,6 +18,7 @@ import org.springframework.core.annotation.AliasFor;
 @AutoConfigureEmbeddedDatabase(
     type = AutoConfigureEmbeddedDatabase.DatabaseType.POSTGRES,
     provider = AutoConfigureEmbeddedDatabase.DatabaseProvider.ZONKY)
+@ActiveProfiles("test")
 public @interface ServiceTest {
   @AliasFor(annotation = AutoConfigureEmbeddedDatabase.class, attribute = "refresh")
   RefreshMode refresh() default RefreshMode.BEFORE_EACH_TEST_METHOD;
