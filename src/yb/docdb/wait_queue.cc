@@ -1224,8 +1224,9 @@ class WaitQueue::Impl {
     // queue to ensure their wait-for relationships are re-registered with their coordinator
     // pointing to the correct blocker status tablet.
     if (promoted_blocker) {
+      auto status_time = res.status_time;
       for (const auto& waiter : promoted_blocker->Signal(std::move(res), clock_->Now())) {
-        InvokeWaiterCallback(Status::OK(), waiter, res.status_time);
+        InvokeWaiterCallback(Status::OK(), waiter, status_time);
       }
     }
   }

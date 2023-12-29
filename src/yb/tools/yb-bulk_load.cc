@@ -558,8 +558,9 @@ Status BulkLoad::RunBulkLoad() {
 
     // Reinitialize rocksdb if needed.
     if (current_tablet_id.empty() || current_tablet_id != tablet_id) {
-      // Flush all of the data before opening a new rocksdb.
+      // Flush all of the data for this tablet before opening a new rocksdb for the new tablet.
       RETURN_NOT_OK(FinishTabletProcessing(current_tablet_id, std::move(rows)));
+      rows.clear();
       RETURN_NOT_OK(InitDBUtil(tablet_id));
     }
     current_tablet_id = tablet_id;
@@ -568,6 +569,7 @@ Status BulkLoad::RunBulkLoad() {
     // Flush the batch if necessary.
     if (rows.size() >= FLAGS_row_batch_size) {
       RETURN_NOT_OK(RetryableSubmit(std::move(rows)));
+      rows.clear();
     }
   }
 

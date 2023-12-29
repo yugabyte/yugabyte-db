@@ -719,7 +719,7 @@ Status TabletPeer::SubmitUpdateTransaction(
   auto scoped_read_operation = VERIFY_RESULT(operation->tablet_safe())
                                    ->CreateScopedRWOperationBlockingRocksDbShutdownStart();
   if (!scoped_read_operation.ok()) {
-    auto status = MoveStatus(scoped_read_operation);
+    auto status = MoveStatus(scoped_read_operation).CloneAndPrepend(operation->ToString());
     operation->CompleteWithStatus(status);
     return status;
   }
