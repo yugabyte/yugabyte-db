@@ -30,6 +30,7 @@ import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.directory.api.util.Strings;
@@ -138,37 +139,34 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
       com.yugabyte.yw.models.Backup backup, String taskName, UUID taskUUID) {
     try {
       if (backup != null) {
-        String universeName = backup.getUniverseName();
-        Universe universe = Universe.getUniverseByName(universeName);
-        if (universe == null
-            || universe.getUniverseDetails() == null
-            || !universe.getUniverseDetails().isKubernetesOperatorControlled) {
-          log.trace("universe is not operator owned, skipping status update");
-          return;
-        }
-        log.info("Update Backup Status called for task {} ", taskUUID);
-        try (final KubernetesClient kubernetesClient =
-            new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
+        UUID universeUUID = backup.getUniverseUUID();
+        Optional<Universe> universeOpt = Universe.maybeGet(universeUUID);
+        if (universeOpt.isPresent()
+            && universeOpt.get().getUniverseDetails().isKubernetesOperatorControlled) {
+          log.info("Update Backup Status called for task {} ", taskUUID);
+          try (final KubernetesClient kubernetesClient =
+              new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
 
-          for (Backup backupCr :
-              kubernetesClient.resources(Backup.class).inNamespace(namespace).list().getItems()) {
-            if (backupCr.getStatus().getTaskUUID().equals(taskUUID.toString())) {
-              // Found our backup.
-              log.info("Found Backup {} task {} ", backupCr, taskUUID);
-              BackupStatus status = backupCr.getStatus();
+            for (Backup backupCr :
+                kubernetesClient.resources(Backup.class).inNamespace(namespace).list().getItems()) {
+              if (backupCr.getStatus().getTaskUUID().equals(taskUUID.toString())) {
+                // Found our backup.
+                log.info("Found Backup {} task {} ", backupCr, taskUUID);
+                BackupStatus status = backupCr.getStatus();
 
-              status.setMessage("Backup State: " + backup.getState().name());
-              status.setResourceUUID(backup.getBackupUUID().toString());
-              status.setTaskUUID(taskUUID.toString());
+                status.setMessage("Backup State: " + backup.getState().name());
+                status.setResourceUUID(backup.getBackupUUID().toString());
+                status.setTaskUUID(taskUUID.toString());
 
-              backupCr.setStatus(status);
-              kubernetesClient
-                  .resources(Backup.class)
-                  .inNamespace(namespace)
-                  .resource(backupCr)
-                  .replaceStatus();
-              log.info("Updated Status for Backup CR {}", backupCr);
-              break;
+                backupCr.setStatus(status);
+                kubernetesClient
+                    .resources(Backup.class)
+                    .inNamespace(namespace)
+                    .resource(backupCr)
+                    .replaceStatus();
+                log.info("Updated Status for Backup CR {}", backupCr);
+                break;
+              }
             }
           }
         }
