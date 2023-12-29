@@ -3,7 +3,7 @@ source "${BASH_SOURCE[0]%/*}"/common.sh
 
 failing_java_test TestPgRegressPgMisc
 grep_in_java_test \
-  "failed tests: [yb_pg_create_operator, yb_pg_create_table, yb_pg_create_type, yb_pg_with]" \
+  "failed tests: [yb_pg_create_operator, yb_pg_create_type, yb_pg_with]" \
   TestPgRegressPgMisc
 failing_java_test TestPgRegressTrigger
 grep_in_java_test \
