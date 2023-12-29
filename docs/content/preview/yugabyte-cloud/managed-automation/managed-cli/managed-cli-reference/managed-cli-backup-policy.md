@@ -16,7 +16,7 @@ Use the `backup policy` resource to change the cluster backup policy, including 
 
 - update the cluster backup policy
 - enable and disable the backup policy
-- list backup policies
+- display the cluster backup policy
 
 The default policy for clusters is to back up every day with 8-day retention.
 
