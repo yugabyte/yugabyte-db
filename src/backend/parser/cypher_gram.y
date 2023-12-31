@@ -21,16 +21,8 @@
 #include "postgres.h"
 
 #include "nodes/makefuncs.h"
-#include "nodes/nodes.h"
-#include "nodes/parsenodes.h"
-#include "nodes/pg_list.h"
-#include "nodes/primnodes.h"
-#include "nodes/value.h"
 #include "parser/parser.h"
 
-#include "nodes/ag_nodes.h"
-#include "nodes/cypher_nodes.h"
-#include "parser/ag_scanner.h"
 #include "parser/cypher_gram.h"
 #include "parser/cypher_parse_node.h"
 #include "parser/scansup.h"

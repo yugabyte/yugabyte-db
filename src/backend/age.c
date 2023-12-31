@@ -17,10 +17,6 @@
  * under the License.
  */
 
-#include "postgres.h"
-
-#include "fmgr.h"
-
 #include "catalog/ag_catalog.h"
 #include "nodes/ag_nodes.h"
 #include "optimizer/cypher_paths.h"

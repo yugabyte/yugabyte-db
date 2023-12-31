@@ -19,31 +19,21 @@
 
 #include "postgres.h"
 
-#include "catalog/pg_type_d.h"
 #include "nodes/makefuncs.h"
 #include "nodes/nodeFuncs.h"
-#include "nodes/nodes.h"
-#include "nodes/parsenodes.h"
-#include "nodes/pg_list.h"
-#include "nodes/primnodes.h"
 #include "parser/analyze.h"
 #include "parser/parse_coerce.h"
 #include "parser/parse_collate.h"
-#include "parser/parse_node.h"
 #include "parser/parse_relation.h"
 #include "parser/parse_target.h"
 #include "utils/builtins.h"
 
 #include "catalog/ag_graph.h"
-#include "nodes/ag_nodes.h"
 #include "parser/cypher_analyze.h"
 #include "parser/cypher_clause.h"
-#include "parser/cypher_item.h"
-#include "parser/cypher_parse_node.h"
 #include "parser/cypher_parser.h"
 #include "utils/ag_func.h"
 #include "utils/age_session_info.h"
-#include "utils/agtype.h"
 
 /*
  * extra_node is a global variable to this source to store, at the moment, the

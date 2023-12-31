@@ -25,8 +25,6 @@
 #include "postgres.h"
 
 #include "mb/pg_wchar.h"
-#include "nodes/primnodes.h"
-#include "parser/parse_node.h"
 
 #include "parser/cypher_parse_node.h"
 

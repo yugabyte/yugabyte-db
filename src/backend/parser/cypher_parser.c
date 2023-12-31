@@ -19,10 +19,8 @@
 
 #include "postgres.h"
 
-#include "nodes/pg_list.h"
 #include "parser/scansup.h"
 
-#include "parser/ag_scanner.h"
 #include "parser/cypher_gram.h"
 #include "parser/cypher_keywords.h"
 #include "parser/cypher_parser.h"

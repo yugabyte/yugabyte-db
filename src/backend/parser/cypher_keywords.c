@@ -24,12 +24,7 @@
 
 #include "postgres.h"
 
-#include "access/attnum.h"
-#include "access/htup.h"
-#include "access/tupdesc.h"
-#include "catalog/pg_type.h"
 #include "common/keywords.h"
-#include "fmgr.h"
 #include "funcapi.h"
 
 #include "parser/cypher_gram.h"

@@ -24,19 +24,12 @@
 
 #include "postgres.h"
 
-#include "access/attnum.h"
 #include "nodes/makefuncs.h"
-#include "nodes/nodes.h"
-#include "nodes/parsenodes.h"
-#include "nodes/pg_list.h"
-#include "nodes/primnodes.h"
-#include "parser/parse_node.h"
 #include "parser/parse_relation.h"
 #include "parser/parse_target.h"
 
 #include "parser/cypher_expr.h"
 #include "parser/cypher_item.h"
-#include "parser/cypher_parse_node.h"
 
 static List *ExpandAllTables(ParseState *pstate, int location);
 static List *expand_rel_attrs(ParseState *pstate, RangeTblEntry *rte,
