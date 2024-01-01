@@ -25,7 +25,6 @@ rightNav:
 
 ##### Installation
 
-- [How are the build artifacts packaged and stored for YugabyteDB Anywhere?](#how-are-the-build-artifacts-packaged-and-stored-for-yugabytedb-anywhere)
 - [How does YugabyteDB Anywhere installation work?](#how-does-yugabytedb-anywhere-installation-work)
 - [What are the OS requirements and permissions to run YugabyteDB Anywhere?](#what-are-the-os-requirements-and-permissions-to-run-yugabytedb-anywhere)
 

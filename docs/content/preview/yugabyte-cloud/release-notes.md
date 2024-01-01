@@ -19,6 +19,12 @@ On this page:
 
 ## Change log
 
+### December 27, 2023
+
+**New Features**
+
+- Support for enhanced [fault tolerance](../cloud-basics/create-clusters-overview/#fault-tolerance). YugabyteDB Managed clusters are fault tolerant, meaning they continue to serve reads and writes even with the loss of a node, availability zone, or region. You can now configure clusters with node- or region-level fault tolerance to be resilient to up to three domain outages. For example, you can create a cluster with region-level fault tolerance that can continue to serve reads and writes without interruption even if two of its regions become unavailable.
+
 ### December 4, 2023
 
 **New Features**
