@@ -9,7 +9,7 @@ menu:
   v2.18_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: back-up-restore-universes
-weight: 640
+weight: 650
 type: indexpage
 ---
 
@@ -41,6 +41,18 @@ Configurable performance parameters and incremental backups are mediated using t
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="schedule-data-backups/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
+        <div class="title">Schedule universe data backups</div>
+      </div>
+      <div class="body">
+        Create backup schedules to regularly back up universe data.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="back-up-universe-data/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
@@ -65,21 +77,9 @@ Configurable performance parameters and incremental backups are mediated using t
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="schedule-data-backups/">
-      <div class="head">
-        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
-        <div class="title">Schedule universe data backups</div>
-      </div>
-      <div class="body">
-        Create backup schedules to regularly back up universe data.
-      </div>
-    </a>
-  </div>
-
-  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="pitr/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/manage/pitr.png" aria-hidden="true" />
         <div class="title">Perform point-in-time recovery</div>
       </div>
       <div class="body">
