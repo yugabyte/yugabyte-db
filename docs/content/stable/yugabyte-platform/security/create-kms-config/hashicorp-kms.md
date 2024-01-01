@@ -15,7 +15,7 @@ Encryption at rest uses a master key to encrypt and decrypt universe keys. The m
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="../aws-kms.md" class="nav-link">
+    <a href="../aws-kms/" class="nav-link">
       <i class="fa-brands fa-aws" aria-hidden="true"></i>
       AWS KMS
     </a>

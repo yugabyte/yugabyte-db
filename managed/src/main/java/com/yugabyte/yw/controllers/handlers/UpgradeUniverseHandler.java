@@ -273,8 +273,10 @@ public class UpgradeUniverseHandler {
     try {
       requestParams.verifyParams(universe, true);
     } catch (PlatformServiceException p) {
-      if (!p.getMessage().equals(UpgradeWithGFlags.SPECIFIC_GFLAGS_NO_CHANGES_ERROR)
-          || !checkGFlagsProvidedInOldSchema(universe, requestParams)) {
+      boolean oldChemaPossible =
+          p.getMessage().equals(UpgradeWithGFlags.SPECIFIC_GFLAGS_NO_CHANGES_ERROR)
+              || p.getMessage().equals(UpgradeWithGFlags.EMPTY_SPECIFIC_GFLAGS);
+      if (!oldChemaPossible || !checkGFlagsProvidedInOldSchema(universe, requestParams)) {
         throw p;
       } else { // Used old maps to upgrade cluster in new scheme.
         // Verify params again (to check for other errors)

@@ -21,7 +21,7 @@ The following ports must be opened for intra-cluster communication (they do not 
 * 9100 - YB-TServer RPC
 * 18018 - YB Controller
 
-The following ports must be exposed for intra-cluster communication, and you should expose these ports to administrators or users monitoring the system, as these ports provide diagnostic troubleshooting and metrics:
+The following ports must be exposed for intra-cluster communication. You should expose these ports to administrators or users monitoring the system, as these ports provide diagnostic troubleshooting and metrics:
 
 * 9300 - Prometheus metrics
 * 7000 - YB-Master HTTP endpoint
@@ -59,7 +59,7 @@ The following actions are performed with sudo access:
 * Create the `prometheus:prometheus` user and group.
 
   {{< tip title="Tip" >}}
-If you are using the LDAP directory for managing system users, you can preprovision Yugabyte and Prometheus users, as follows:
+If you are using the LDAP directory for managing system users, you can pre-provision Yugabyte and Prometheus users, as follows:
 
 * Ensure that the `yugabyte` user belongs to the `yugabyte` group.
 
@@ -113,7 +113,7 @@ By default, YugabyteDB Anywhere uses OpenSSH for SSH to remote nodes. YugabyteDB
 
 To upload the Tectia license, manually copy it at `${storage_path}/yugaware/data/licenses/<license.txt>`, where *storage_path* is the path provided during the Replicated installation.
 
-Once the license is uploaded, YugabyteDB Anywhere exposes the runtime flag `yb.security.ssh2_enabled` that you need to enable, as per the following example:
+After the license is uploaded, YugabyteDB Anywhere exposes the runtime flag `yb.security.ssh2_enabled` that you need to enable, as per the following example:
 
 ```shell
 curl --location --request PUT 'http://<ip>/api/v1/customers/<customer_uuid>/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.security.ssh2_enabled'

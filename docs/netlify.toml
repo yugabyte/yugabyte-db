@@ -49,6 +49,11 @@
   to = "/preview/explore/change-data-capture/"
   force = true
 
+[[redirects]]
+  from = "/preview/integrations/change-data-capture/*"
+  to = "/preview/explore/change-data-capture/"
+  force = true
+
 # CDC java console client is documented on its repo only now
 
 [[redirects]]
@@ -369,6 +374,10 @@
   to = "/preview/explore/linear-scalability/"
 
 [[redirects]]
+  from = "/preview/explore/follower-reads/linux/"
+  to = "/preview/explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/"
+
+[[redirects]]
   from = "/preview/explore/multi-region-deployments/follower-reads-ycql/"
   to = "/preview/explore/ysql-language-features/going-beyond-sql/follower-reads-ycql/"
 
@@ -501,6 +510,10 @@
   to = "/preview/secure/enable-authentication/ysql_hba_conf-configuration/"
 
 [[redirects]]
+  from = "/preview/secure/authentication/ysql-authentication/"
+  to = "/preview/secure/enable-authentication/ysql_hba_conf-configuration/"
+
+[[redirects]]
   from = "/preview/secure/authentication/ldap-authentication/"
   to = "/preview/secure/authentication/ldap-authentication-ysql/"
 
@@ -626,6 +639,20 @@
   from = "/v2.14/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/"
   to = "/v2.14/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/"
   force = true
+
+[[redirects]]
+  from = "/v2.18/reference/configuration/operating-systems/"
+  to = "/v2.18/deploy/checklist/"
+  force = true
+[[redirects]]
+  from = "/v2.16/reference/configuration/operating-systems/"
+  to = "/v2.16/deploy/checklist/"
+  force = true
+[[redirects]]
+  from = "/v2.14/reference/configuration/operating-systems/"
+  to = "/v2.14/deploy/checklist/"
+  force = true
+
 
 # YBA High availability
 

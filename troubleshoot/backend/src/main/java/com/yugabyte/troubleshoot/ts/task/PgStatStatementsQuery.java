@@ -21,6 +21,7 @@ import lombok.Data;
 import lombok.experimental.Accessors;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Profile;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.scheduling.concurrent.ThreadPoolTaskExecutor;
 import org.springframework.stereotype.Component;
@@ -28,6 +29,7 @@ import org.springframework.stereotype.Component;
 @Component
 @Configuration
 @Slf4j
+@Profile("!test")
 public class PgStatStatementsQuery {
 
   public static final String MINIMUM_VERSION_THRESHOLD_LATENCY_HISTOGRAM_SUPPORT_2_18 =
@@ -86,6 +88,7 @@ public class PgStatStatementsQuery {
   @Scheduled(
       fixedRateString = "${task.pg_stat_statements_query.period}",
       initialDelayString = "PT5S")
+  @Profile("!test")
   public void processAllUniverses() {
     for (UniverseMetadata universeMetadata : universeMetadataService.listAll()) {
       UniverseDetails details = universeDetailsService.get(universeMetadata.getId());
