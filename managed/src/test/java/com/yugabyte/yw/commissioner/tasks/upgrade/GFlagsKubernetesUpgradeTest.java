@@ -43,6 +43,7 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
 
   private static final List<TaskType> UPGRADE_TASK_SEQUENCE =
       ImmutableList.of(
+          TaskType.FreezeUniverse,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesCommandExecutor,
           TaskType.KubernetesWaitForPod,
@@ -101,6 +102,7 @@ public class GFlagsKubernetesUpgradeTest extends KubernetesUpgradeTaskTest {
   private static List<JsonNode> createUpgradeResult(boolean isSingleAZ) {
     String namespace = isSingleAZ ? "demo-universe" : "demo-universe-az-2";
     return ImmutableList.of(
+        Json.toJson(ImmutableMap.of()),
         Json.toJson(
             ImmutableMap.of("commandType", KubernetesCommandExecutor.CommandType.POD_INFO.name())),
         Json.toJson(
