@@ -61,10 +61,10 @@ Download the application and provide settings specific to your Azure OpenAI Serv
 1. Initialize the project:
 
     ```sh
-    cd {project_dir}/backend
-    npm init
-    cd {project_dir}/frontend
-    npm init
+    cd {project_dir}
+    npm i
+    cd frontend
+    npm i
     ```
 
 1. Open the `{project_dir}/application.properties.ini` file and provide the Azure OpenAI specific settings:
