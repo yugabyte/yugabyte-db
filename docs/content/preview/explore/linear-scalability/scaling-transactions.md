@@ -3,7 +3,7 @@ title: Scaling Transactions
 headerTitle: Transactions
 linkTitle: Scaling transactions
 description: Transactions
-headcontent: Transaction performance when scaling out
+headcontent: Transaction performance when scaling horizontally
 menu:
   preview:
     identifier: scaling-transactions-bench

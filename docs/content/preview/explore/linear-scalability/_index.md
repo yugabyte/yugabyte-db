@@ -30,12 +30,12 @@ type: indexpage
 Depending on your business, you may find you need to scale for a variety of reasons:
 
 - Growing user base. Your application becomes popular, users love your app, and the user base is growing. Or you might need high throughput right from the get go, and need to add capacity quickly.
-- Seasonal traffic. Occasionally, you have to handle a lot more transactions per second than usual. Black Friday and Cyber Monday retail traffic, or streaming for special events like the Superbowl or World Cup, for example. Yugabyte can handle 10k requests/sec/node with ease, and is tested for 1 million [reads](./scaling-reads/) and [writes](./scaling-writes/).
-- Growing datasets. For example, you have an IoT app or an audit database that keeps growing rapidly on a daily basis. YugabyteDB has customers with ~600TB of data. These systems have to handle high volume of writes on a regular basis.
+- Seasonal traffic. Occasionally, you have to handle a lot more transactions per second than usual. Black Friday and Cyber Monday retail traffic, or streaming for special events like the Superbowl or World Cup, for example.
+- Growing datasets. For example, you have an IoT app or an audit database that keeps growing rapidly on a daily basis. These systems have to handle high volume of writes on a regular basis.
 - Change in business priorities. Scaling needs are often unpredictable. To take one example, retail priorities shifted radically when Covid entered the picture. With a database that can scale, you can pivot quickly when the business environment shifts.
 - New geographies. Your user base grows more geographically diverse, expanding to new regions, and you need to add to your presence globally by adding more data centers in different continents.
 
-Given this fluctuating reality and always-on expectations of users, being able to scale seamlessly is as important as being able to scale. Scaling needs to be:
+Given this fluctuating reality and the always-on expectations of users, being able to scale seamlessly is as important as being able to scale. Scaling needs to be:
 
 - Easy. Scaling should be operationally simple to do.
 - Elastic. You should be able to scale up and down as needed.
@@ -49,18 +49,18 @@ To learn more, see [Sharding and rebalancing](sharding-rebalancing/).
 
 ## How to scale
 
-Depending on your specific requirements, you scale your database to achieve one or more of the following:
+Depending on your specific requirements, you scale your database to support one or more of the following:
 
 - More transactions per second
-- Support for more concurrent client connections
+- More concurrent client connections
 - Larger datasets
-- Add more regions to expand global presence
+- Additional regions for an expanding global presence
 
-You can scale in two ways:
+You can achieve this in two ways:
 
 - Vertical scaling (scale up)
 
-  Vertical scaling is the traditional way to scale monolithic databases, and involves upgrading the existing hardware or resources of each of the nodes in your cluster. Instead of adding more machines, you enhance the capabilities of a single machine by increasing its CPU, memory, storage, and so on.
+  Vertical scaling is the standard way to scale traditional databases, and involves upgrading the existing hardware or resources of each of the nodes in your cluster. Instead of adding more machines, you enhance the capabilities of a single machine by increasing its CPU, memory, storage, and so on.
 
   Vertical scaling is often limited by the capacity of a single server and can get expensive as you move to more powerful hardware. Although you retain the same number of nodes, which could simplify your operations, eventually hardware resources reach their limits, and further scaling up might not be feasible.
 
@@ -68,17 +68,17 @@ You can scale in two ways:
 
   Horizontal scaling is the process of [adding more nodes](./node-addition/) to a distributed database to handle increased load and data. Horizontal scaling is the most common scaling model in YugabyteDB, and has several advantages, including:
 
-  - **Improved performance** - More nodes can process requests in parallel, reducing response times.
-  - **Cost-effectiveness** - You can use commodity hardware, which is generally less expensive than high-end servers.
-  - **Elastic scaling** - You can add new nodes as needed to accommodate growth or scale-out temporarily to handle high traffic for special events such as Black Friday shopping or a major news outbreak. After the event, you can reduce the size of the cluster (*scale in*) by draining all the data from some of the nodes (or Kubernetes pods) and removing them from the universe.
-  - **Limitless scalability** - There's no practical limit to the number of servers you can add.
-  - **Less disruptive** - You don't need to move your application, and only need to move a portion of your data when you add a node.
+  - Improved performance - More nodes can process requests in parallel, reducing response times. [Reads](./scaling-reads/), [writes](./scaling-writes/), and [transactions](./scaling-transactions/) scale linearly as you add nodes.
+  - Cost-effectiveness - You can use commodity hardware, which is generally less expensive than high-end servers.
+  - Elastic scaling - You can add new nodes as needed to accommodate growth or scale-out temporarily to handle high traffic for special events such as Black Friday shopping or a major news outbreak. After the event, you can reduce the size of the cluster (*scale in*) by draining all the data from some of the nodes (or Kubernetes pods) and removing them from the cluster.
+  - Limitless scalability - There's no practical limit to the number of servers you can add.
+  - Less disruptive - You don't need to move your application, and only need to move a portion of your data when you add a node.
 
   Horizontal scaling is also the most practical way to expand to new regions.
 
-YugabyteDB supports both vertical and horizontal scaling. Because YugabyteDB is distributed, scaling is operationally straightforward, performed without any service disruption, and with horizontal scaling, [reads](./scaling-reads/), [writes](./scaling-writes/), and [transactions](./scaling-transactions/) scale linearly.
+YugabyteDB supports both vertical and horizontal scaling. Because YugabyteDB is distributed, scaling is operationally straightforward and performed without any service disruption.
 
-The following table lists the pros and cons of horizontal and vertical scaling of a YugabyteDB cluster.
+Depending on your application needs and budget constraints, you can use a combination of both horizontal and vertical scaling to achieve the desired performance and scalability goals. The following table lists the pros and cons of horizontal and vertical scaling of a YugabyteDB cluster.
 
 |                         |                           Horizontal Scaling/Scale out                            |                                Vertical Scaling/Scale up                                |
 | ----------------------- | --------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
@@ -86,11 +86,9 @@ The following table lists the pros and cons of horizontal and vertical scaling o
 | **Ease of effort**      | Add new nodes to the cluster                                                      | Add more powerful nodes, drain the old nodes, and remove them from the cluster           |
 | **Fault tolerance**     | Increases as more nodes are added                                           | Remains the same                                                                        |
 | **Cluster&nbsp;rebalancing** | Faster                                                                            | Slower                                                                                  |
-| **Future scaling**      | More nodes can be added                                                           | Limited to the most powerful machines available currently                                   |
+| **Future scaling**      | More nodes can be always be added                                                      | Limited to the most powerful machines available currently                                   |
 | **Added costs**         | Cost of newer machines                                                            | Difference in cost between the new and old machines                                          |
 | **Disk**                | Same disks as other nodes can be used as data and connections will be distributed | Along with CPU and memory, disks should also be upgraded to handle increased workloads |
-
-Depending on your application needs and budget constraints, you can use a combination of both horizontal and vertical scaling to achieve the desired performance and scalability goals.
 
 ## When to scale
 
