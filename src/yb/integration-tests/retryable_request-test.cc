@@ -24,6 +24,8 @@
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/integration-tests/yb_table_test_base.h"
 
+#include "yb/master/catalog_manager_if.h"
+#include "yb/master/sys_catalog.h"
 #include "yb/tablet/tablet.h"
 #include "yb/tablet/tablet_peer.h"
 
@@ -43,6 +45,7 @@ DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_int32(retryable_request_timeout_secs);
 DECLARE_bool(TEST_asyncrpc_finished_set_timedout);
 DECLARE_bool(TEST_pause_before_replicate_batch);
+DECLARE_int32(ysql_client_read_write_timeout_ms);
 
 namespace yb {
 namespace integration_tests {
@@ -91,6 +94,10 @@ class SingleServerRetryableRequestTest : public RetryableRequestTest {
   }
 
   size_t num_tablet_servers() override { return 1; }
+
+  std::shared_ptr<consensus::RaftConsensus> GetMasterRaftConsensus() {
+    return mini_cluster_->mini_master()->catalog_manager().tablet_peer()->shared_raft_consensus();
+  }
 };
 
 TEST_F_EX(RetryableRequestTest, YqlRequestTimeoutSecs, SingleServerRetryableRequestTest) {
@@ -117,6 +124,60 @@ TEST_F_EX(RetryableRequestTest, YqlRequestTimeoutSecs, SingleServerRetryableRequ
   ASSERT_OK(tablet_server->server()->tablet_manager()->GetTabletPeer(tablet_id, &tablet_peer));
   ASSERT_EQ(tablet_peer->shared_raft_consensus()->TEST_RetryableRequestTimeoutSecs(), 660);
   DeleteTable();
+}
+
+TEST_F_EX(RetryableRequestTest, TestRetryableRequestTimeoutSecs, SingleServerRetryableRequestTest) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retryable_request_timeout_secs) = 660;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 60000;
+  ASSERT_EQ(client::RetryableRequestTimeoutSecs(TableType::PGSQL_TABLE_TYPE), 600);
+  ASSERT_EQ(client::RetryableRequestTimeoutSecs(TableType::YQL_TABLE_TYPE), 60);
+  ASSERT_EQ(client::SysCatalogRetryableRequestTimeoutSecs(), 600);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 601000;
+  ASSERT_EQ(client::RetryableRequestTimeoutSecs(TableType::PGSQL_TABLE_TYPE), 601);
+  ASSERT_EQ(client::RetryableRequestTimeoutSecs(TableType::YQL_TABLE_TYPE), 601);
+  ASSERT_EQ(client::SysCatalogRetryableRequestTimeoutSecs(), 601);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 661000;
+  ASSERT_EQ(client::RetryableRequestTimeoutSecs(TableType::PGSQL_TABLE_TYPE), 660);
+  ASSERT_EQ(client::RetryableRequestTimeoutSecs(TableType::YQL_TABLE_TYPE), 660);
+  ASSERT_EQ(client::SysCatalogRetryableRequestTimeoutSecs(), 660);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_client_read_write_timeout_ms) = 60000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 60000;
+  ASSERT_EQ(client::RetryableRequestTimeoutSecs(TableType::PGSQL_TABLE_TYPE), 60);
+  ASSERT_EQ(client::RetryableRequestTimeoutSecs(TableType::YQL_TABLE_TYPE), 60);
+  ASSERT_EQ(client::SysCatalogRetryableRequestTimeoutSecs(), 60);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_client_read_write_timeout_ms) = 661000;
+  ASSERT_EQ(client::RetryableRequestTimeoutSecs(TableType::PGSQL_TABLE_TYPE), 660);
+  ASSERT_EQ(client::RetryableRequestTimeoutSecs(TableType::YQL_TABLE_TYPE), 60);
+  ASSERT_EQ(client::SysCatalogRetryableRequestTimeoutSecs(), 660);
+}
+
+TEST_F_EX(RetryableRequestTest, SysCatalogRequestTimeoutSecs, SingleServerRetryableRequestTest) {
+  auto master = mini_cluster_->mini_master();
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_retryable_request_timeout_secs) = 660;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 60000;
+  ASSERT_OK(master->Restart());
+  ASSERT_EQ(GetMasterRaftConsensus()->TEST_RetryableRequestTimeoutSecs(), 600);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 601000;
+  ASSERT_OK(master->Restart());
+  ASSERT_EQ(GetMasterRaftConsensus()->TEST_RetryableRequestTimeoutSecs(), 601);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 661000;
+  ASSERT_OK(master->Restart());
+  ASSERT_EQ(GetMasterRaftConsensus()->TEST_RetryableRequestTimeoutSecs(), 660);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_client_read_write_timeout_ms) = 60000;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = 60000;
+  ASSERT_OK(master->Restart());
+  ASSERT_EQ(GetMasterRaftConsensus()->TEST_RetryableRequestTimeoutSecs(), 60);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_client_read_write_timeout_ms) = 661000;
+  ASSERT_OK(master->Restart());
+  ASSERT_EQ(GetMasterRaftConsensus()->TEST_RetryableRequestTimeoutSecs(), 660);
 }
 
 TEST_F_EX(RetryableRequestTest, TestRetryableRequestTooOld, SingleServerRetryableRequestTest) {
