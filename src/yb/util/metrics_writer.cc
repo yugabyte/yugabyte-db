@@ -118,12 +118,12 @@ Status PrometheusWriter::WriteSingleEntry(
   auto metric_type = metric_type_it->second;
 
   if (aggregation_levels & kStreamLevel) {
-    DCHECK(metric_type == kCdcMetricEntityName || metric_type == kCdcsdkMetricEntityName);
+    DCHECK(metric_type == kXClusterMetricEntityName || metric_type == kCdcsdkMetricEntityName);
     auto stream_id_it = attr.find("stream_id");
     DCHECK(stream_id_it != attr.end());
     AddAggregatedEntry(stream_id_it->second, attr, name, value, aggregation_function,
         type, description);
-    // Metrics from cdc or cdcsdk entity should only be exposed on stream level.
+    // Metrics from xcluster or cdcsdk entity should only be exposed on stream level.
     DCHECK(aggregation_levels == kStreamLevel);
   }
 

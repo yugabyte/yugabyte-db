@@ -13,7 +13,8 @@ import {
   updateAlertConfiguration
 } from '../../actions/universe';
 import { YBErrorIndicator, YBLoading } from '../common/indicators';
-import { REPLICATION_LAG_ALERT_NAME } from './constants';
+import { AlertName } from './constants';
+import { alertConfigQueryKey } from '../../redesign/helpers/api';
 
 import './ConfigureMaxLagTimeModal.scss';
 
@@ -25,8 +26,8 @@ const validationSchema = Yup.object().shape({
 
 interface Props {
   onHide: Function;
-  visible: boolean;
-  currentUniverseUUID: string;
+  isVisible: boolean;
+  sourceUniverseUuid: string;
 }
 
 interface FormValues {
@@ -36,7 +37,11 @@ interface FormValues {
 
 const DEFAULT_THRESHOLD = 180_000;
 
-export function ConfigureMaxLagTimeModal({ onHide, visible, currentUniverseUUID }: Props) {
+export function ConfigureReplicationLagAlertModal({
+  onHide,
+  isVisible,
+  sourceUniverseUuid
+}: Props) {
   const [alertConfigurationUUID, setAlertConfigurationUUID] = useState(null);
   const formik = useRef<any>();
   const queryClient = useQueryClient();
@@ -46,16 +51,15 @@ export function ConfigureMaxLagTimeModal({ onHide, visible, currentUniverseUUID 
     enableAlert: true
   };
 
-  const configurationFilter = {
-    name: REPLICATION_LAG_ALERT_NAME,
-    targetUuid: currentUniverseUUID
+  const alertConfigFilter = {
+    name: AlertName.REPLICATION_LAG,
+    targetUuid: sourceUniverseUuid
   };
-
   const { isLoading, isError } = useQuery(
-    ['getAlertConfigurations', configurationFilter],
-    () => getAlertConfigurations(configurationFilter),
+    alertConfigQueryKey.list(alertConfigFilter),
+    () => getAlertConfigurations(alertConfigFilter),
     {
-      enabled: visible,
+      enabled: isVisible,
       onSuccess: (data) => {
         if (Array.isArray(data) && data.length > 0) {
           let lowestThresholdIndex = 0;
@@ -79,7 +83,7 @@ export function ConfigureMaxLagTimeModal({ onHide, visible, currentUniverseUUID 
 
   const submit = async (values: FormValues, formikBag: FormikProps<FormValues>) => {
     const templateFilter = {
-      name: REPLICATION_LAG_ALERT_NAME
+      name: AlertName.REPLICATION_LAG
     };
     const alertTemplates = await getAlertTemplates(templateFilter);
     const template = alertTemplates[0];
@@ -87,7 +91,7 @@ export function ConfigureMaxLagTimeModal({ onHide, visible, currentUniverseUUID 
     template.thresholds.SEVERE.threshold = values.maxLag;
     template.target = {
       all: false,
-      uuids: [currentUniverseUUID]
+      uuids: [sourceUniverseUuid]
     };
 
     try {
@@ -99,7 +103,7 @@ export function ConfigureMaxLagTimeModal({ onHide, visible, currentUniverseUUID 
       }
 
       formikBag.setSubmitting(false);
-      queryClient.invalidateQueries(['alert', 'configurations', configurationFilter]);
+      queryClient.invalidateQueries(alertConfigQueryKey.list(alertConfigFilter));
       onHide();
     } catch (error) {
       formikBag.setSubmitting(false);
@@ -108,7 +112,7 @@ export function ConfigureMaxLagTimeModal({ onHide, visible, currentUniverseUUID 
 
   return (
     <YBModalForm
-      visible={visible}
+      visible={isVisible}
       title="Define Max Acceptable Lag Time"
       validationSchema={validationSchema}
       onFormSubmit={submit}

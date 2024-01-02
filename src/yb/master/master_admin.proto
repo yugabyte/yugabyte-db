@@ -223,6 +223,18 @@ message AreNodesSafeToTakeDownResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message GetMasterHeartbeatDelaysRequestPB { }
+
+message GetMasterHeartbeatDelaysResponsePB {
+  message MasterHeartbeatDelay {
+    optional bytes master_uuid = 1;
+    optional int64 last_heartbeat_delta_ms = 2;
+  }
+
+  optional MasterErrorPB error = 1;
+  repeated MasterHeartbeatDelay heartbeat_delay = 2;
+}
+
 service MasterAdmin {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -251,6 +263,8 @@ service MasterAdmin {
 
   rpc AreNodesSafeToTakeDown(AreNodesSafeToTakeDownRequestPB)
       returns (AreNodesSafeToTakeDownResponsePB);
+  rpc GetMasterHeartbeatDelays(GetMasterHeartbeatDelaysRequestPB)
+      returns (GetMasterHeartbeatDelaysResponsePB);
 
   rpc DdlLog(DdlLogRequestPB) returns (DdlLogResponsePB);
 

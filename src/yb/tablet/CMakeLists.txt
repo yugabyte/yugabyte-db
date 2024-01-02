@@ -137,6 +137,7 @@ target_link_libraries(tablet
   yb_common
   gutil
   server_common
+  yb_ash
   yb_fs
   yb_rocksutil
   yb_util

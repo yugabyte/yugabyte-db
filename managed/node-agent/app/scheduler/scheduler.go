@@ -74,8 +74,7 @@ func (s *Scheduler) executeTask(ctx context.Context, taskID uuid.UUID) error {
 	}()
 	err := executor.GetInstance().ExecuteTask(ctx, info.handler)
 	if err != nil {
-		err := fmt.Errorf("Failed to submit job %s. Error: %s", taskID, err)
-		util.FileLogger().Errorf(ctx, err.Error())
+		util.FileLogger().Errorf(ctx, "Failed to submit job %s. Error: %s", taskID, err)
 		return err
 	}
 	return nil

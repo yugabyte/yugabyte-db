@@ -19,6 +19,8 @@
  *
  *--------------------------------------------------------------------------------------------------
  */
+#ifndef YBPGINHERITSCACHE_H
+#define YBPGINHERITSCACHE_H
 
 #include "postgres.h"
 #include "access/htup.h"
@@ -55,3 +57,5 @@ extern void ReleaseYbPgInheritsCacheEntry(YbPgInheritsCacheEntry entry);
 extern void ReleaseYbPgInheritsChildEntry(YbPgInheritsCacheChildEntry entry);
 
 extern void YbPgInheritsCacheInvalidate(Oid relid);
+
+#endif

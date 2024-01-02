@@ -18,6 +18,8 @@ import { YBPanelItem } from '../../panels';
 import { StorageConfigDeleteModal } from './StorageConfigDeleteModal';
 import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { userhavePermInRoleBindings } from '../../../redesign/features/rbac/common/RbacUtils';
+import { Action, Resource } from '../../../redesign/features/rbac';
 
 
 /**
@@ -158,16 +160,22 @@ export const BackupList = (props) => {
               deleteStorageConfig(configData);
             }}
           />
-          <MenuItem
-            onClick={() => {
-              setConfigData(configName);
-              setUniverseDetails([...universeDetails]);
-              setIsUniverseVisible(true);
-            }}
-            data-testid={`${currTab}-BackupList-ShowUniverses`}
+          <RbacValidator
+            customValidateFunction={() => userhavePermInRoleBindings(Resource.UNIVERSE, Action.READ)}
+            isControl
+            overrideStyle={{ display: 'block' }}
           >
-            Show Universes
-          </MenuItem>
+            <MenuItem
+              onClick={() => {
+                setConfigData(configName);
+                setUniverseDetails([...universeDetails]);
+                setIsUniverseVisible(true);
+              }}
+              data-testid={`${currTab}-BackupList-ShowUniverses`}
+            >
+              Show Universes
+            </MenuItem>
+          </RbacValidator>
         </DropdownButton>
       </>
     );

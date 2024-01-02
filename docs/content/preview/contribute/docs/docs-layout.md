@@ -3,7 +3,6 @@ title: Find the right page or section
 headerTitle: Find the right page or section
 linkTitle: Docs layout
 description: Find the right location in the YugabyteDB docs
-image: /images/section_icons/index/quick_start.png
 menu:
   preview:
     identifier: docs-layout

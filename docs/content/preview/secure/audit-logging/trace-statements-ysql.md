@@ -2,7 +2,6 @@
 title: Trace executed statements in YSQL
 headerTitle: Manually trace executed statements in YSQL
 description: Tracing executed statements in YSQL.
-image: /images/section_icons/secure/authentication.png
 menu:
   preview:
     name: Trace statements
@@ -29,8 +28,18 @@ Note that in a YugabyteDB cluster with multiple nodes, session identifier is not
 
 To log the appropriate session information, you need to set the following configuration flags for your YB-TServers:
 
-- Set [ysql_log_statement](../../../reference/configuration/yb-tserver/#ysql-log-statement) YB-TServer configuration flag to all to turn on statement logging in the PostgreSQL logs.
-- Set the `log_line_prefix` PostgreSQL logging option to log timestamp, PostgreSQL PID, and session identifier. Refer to [PostgreSQL server options](../../../reference/configuration/yb-tserver/#postgresql-server-options).
+- Set [ysql_log_statement](../../../reference/configuration/yb-tserver/#ysql-log-statement) YB-TServer configuration flag to `all` to turn on statement logging in the PostgreSQL logs.
+- Set the `log_line_prefix` PostgreSQL server option to log timestamp, PostgreSQL PID, and session identifier.
+
+    YugabyteDB includes additional logging options so that you can record distributed location information. For example:
+
+    ```sh
+    --ysql_pg_conf_csv="log_line_prefix='%m [%p %l %c] %q[%C %R %Z %H] [%r%a %u %d] '"
+    ```
+
+    The parameters are similar to that of PostgreSQL, with the addition of H, C, R, and Z to add host, cloud, region, and zone information relevant to distributed systems. You can also add `%U` and `%N` to add the cluster UUID, and node and cluster name respectively.
+
+    For information on setting server options in YugabyteDB, refer to [PostgreSQL server options](../../../reference/configuration/yb-tserver/#postgresql-server-options).
 
 ## Review logs
 
@@ -41,10 +50,10 @@ Session information is written to the PostgreSQL logs, located in the YugabyteDB
 Create a local cluster and configure `ysql_log_statement` to log all statements, and `log_line_prefix` to log timestamp, PostgreSQL PID, and session identifier as follows:
 
 ```sh
-./bin/yb-ctl create --tserver_flags="ysql_log_statement=all,ysql_pg_conf_csv=\"log_line_prefix='timestamp: %m, pid: %p session: %c '\"" --rf 1
+./bin/yugabyted start --tserver_flags="ysql_log_statement=all,ysql_pg_conf_csv=\"log_line_prefix='timestamp: %m, pid: %p session: %c '\""
 ```
 
-For local clusters created using yb-ctl, `postgresql` logs are located in `~/yugabyte-data/node-1/disk-1/yb-data/tserver/logs`.
+For local clusters created using yugabyted, `postgresql` logs are located in `~/var/data/yb-data/tserver/logs`.
 
 Connect to the cluster using ysqlsh as follows:
 
@@ -64,7 +73,7 @@ yugabyte=#
 Execute the following commands:
 
 ```sql
-yugabyte=# CREATE TABLE my_table ( h int, r int, v int, primary key(h,r));
+CREATE TABLE my_table ( h int, r int, v int, primary key(h,r));
 ```
 
 ```output
@@ -72,7 +81,7 @@ CREATE TABLE
 ```
 
 ```sql
-yugabyte=# INSERT INTO my_table VALUES (1, 1, 1);
+INSERT INTO my_table VALUES (1, 1, 1);
 ```
 
 ```output
@@ -91,7 +100,7 @@ timestamp: 2022-10-24 16:51:01.258 UTC --pid: 1930 session: 6356c208.78a LOG:  s
 Start an explicit transaction as follows:
 
 ```sql
-yugabyte=# BEGIN;
+BEGIN;
 ```
 
 ```output
@@ -99,7 +108,7 @@ BEGIN
 ```
 
 ```sql
-yugabyte=# INSERT INTO my_table VALUES (2,2,2);
+INSERT INTO my_table VALUES (2,2,2);
 ```
 
 ```output
@@ -107,7 +116,7 @@ INSERT 0 1
 ```
 
 ```sql
-yugabyte=# DELETE FROM my_table WHERE h = 1;
+DELETE FROM my_table WHERE h = 1;
 ```
 
 ```output
@@ -115,7 +124,7 @@ DELETE 1
 ```
 
 ```sql
-yugabyte=# COMMIT;
+COMMIT;
 ```
 
 ```output
@@ -151,8 +160,8 @@ Start two sessions and execute transactions concurrently as follows:
    <td>
 
 ```sql
-yugabyte=# BEGIN;
-yugabyte=# INSERT INTO my_table VALUES (5,2,2);
+BEGIN;
+INSERT INTO my_table VALUES (5,2,2);
 ```
 
    </td>
@@ -165,9 +174,9 @@ yugabyte=# INSERT INTO my_table VALUES (5,2,2);
    <td>
 
 ```sql
-yugabyte=# BEGIN;
-yugabyte=# INSERT INTO my_table VALUES (6,2,2);
-yugabyte=# COMMIT;
+BEGIN;
+INSERT INTO my_table VALUES (6,2,2);
+COMMIT;
 ```
 
    </td>
@@ -200,4 +209,4 @@ timestamp: 2022-10-24 17:05:25.404 UTC --pid: 1930 session: 6356c208.78a LOG:  s
 
 ## Next steps
 
-Use `pg_audit` to enable logging for specific databases, tables, or specific sets of operations. See [Configure audit logging in YSQL](../audit-logging-ysql).
+Use `pgaudit` to enable logging for specific databases, tables, or specific sets of operations. See [Configure audit logging in YSQL](../audit-logging-ysql).

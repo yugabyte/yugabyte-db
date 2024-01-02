@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include <future>
 #include <memory>
 
 #include "yb/gutil/ref_counted.h"
@@ -32,6 +33,8 @@ class Message;
 namespace yb {
 namespace pggate {
 
+class PerformFuture;
+class PerformExchangeFuture;
 class PgClient;
 class PgDml;
 class PgExpr;
@@ -42,6 +45,9 @@ class PgTuple;
 class PgsqlOp;
 class PgsqlReadOp;
 class PgsqlWriteOp;
+
+struct BufferableOperations;
+struct PerformResult;
 
 using PgTableDescPtr = scoped_refptr<PgTableDesc>;
 using PgsqlOpPtr = std::shared_ptr<PgsqlOp>;

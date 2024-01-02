@@ -35,4 +35,4 @@ Learn how you can minimize application latencies for users in widely dispersed g
 ## Limitations
 
 - Labs are time-limited to three hours.
-- You can only run one instance of a lab at a time. If someone else is running the lab, try again later.
+- You can only run one instance of a lab in your account at a time. If another team member is running the lab, try again later.

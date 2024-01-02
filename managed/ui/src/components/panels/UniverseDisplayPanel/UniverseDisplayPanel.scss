@@ -15,6 +15,7 @@
 
     padding-top: 12px;
     padding-bottom: 12px;
+
     &.btn-orange {
       margin-left: 15px;
     }
@@ -24,6 +25,7 @@
     }
   }
 }
+
 .universe-display-item-container,
 .schedule-display-item-container {
   max-height: 220px;
@@ -46,7 +48,7 @@
     box-shadow: 0 0.12em 2px rgba(colors.$YB_DARK_GRAY_2, 0.05), 0 0.5em 10px rgba(colors.$YB_DARK_GRAY_2, 0.07);
   }
 
-  & > *:not(.dropdown-menu) {
+  &>*:not(.dropdown-menu) {
     position: relative;
     z-index: 1;
   }
@@ -114,8 +116,8 @@
   }
 }
 
-a:hover > .universe-display-item-container,
-a:hover > .schedule-display-item-container,
+a:hover>.universe-display-item-container,
+a:hover>.schedule-display-item-container,
 .create-universe-button:hover {
   &:before {
     @include mixins.transition(0.3s);
@@ -174,14 +176,15 @@ a:hover > .schedule-display-item-container,
     border: 1px dotted color.adjust(rgba(colors.$YB_VIOLET, 0.35), $saturation: -20%);
   }
 
-  & > .btn-icon {
-    @include mixins.transition(0.125s);
-  }
-  & > .display-name {
+  &>.btn-icon {
     @include mixins.transition(0.125s);
   }
 
-  & > .button-group {
+  &>.display-name {
+    @include mixins.transition(0.125s);
+  }
+
+  &>.button-group {
     position: absolute;
     top: 0;
     left: 0;
@@ -291,16 +294,17 @@ a:hover > .schedule-display-item-container,
   }
 
   &:hover {
-    & > .btn-icon {
+    &>.btn-icon {
       @include mixins.transition(0.35s);
       transform: translate(0, -10px);
     }
-    & > .display-name {
+
+    &>.display-name {
       @include mixins.transition(0.35s);
       transform: translate(0, 10px);
     }
 
-    & > .button-group {
+    &>.button-group {
       a.btn {
         opacity: 1;
         @include mixins.transition-property(0.35s, opacity, 0s);
@@ -325,6 +329,7 @@ a:hover > .schedule-display-item-container,
   font-weight: 300;
   text-align: center;
   margin-bottom: 30px;
+
   span {
     display: block;
     margin-top: 10px;
@@ -336,12 +341,14 @@ a:hover > .schedule-display-item-container,
     font-size: 30px;
     font-weight: 500;
     letter-spacing: -0.02em;
+
     div {
       margin: 0 auto 20px;
       line-height: 1.2em;
       color: colors.$YB_VIOLET_TEXT;
     }
   }
+
   a {
     max-width: 220px;
     margin: 50px auto;
@@ -351,5 +358,21 @@ a:hover > .schedule-display-item-container,
 
 .universe-create-date {
   font-size: 12px;
+  font-weight: 500;
+}
+
+.universe-detail-widget-image-bundle {
+  display: flex;
+  gap: 8px;
+}
+
+.upgradeLinuxVersionText {
+  display: flex;
+  color: #EF5824;
+  gap: 8px;
+  justify-content: flex-end;
+  align-items: center;
+  cursor: pointer;
+  font-size: 13px;
   font-weight: 500;
 }

@@ -47,7 +47,11 @@ import { NTP_SERVER_REGEX } from '../constants';
 
 import { AZURegionMutation, AZUAvailabilityZoneMutation } from '../../types';
 import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { constructImageBundlePayload } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
+import { CloudType } from '../../../../../redesign/helpers/dtos';
+import { ImageBundle } from '../../../../../redesign/features/universe/universe-form/utils/dto';
 
 interface AZUProviderCreateFormProps {
   createInfraProvider: CreateInfraProvider;
@@ -73,6 +77,7 @@ export interface AZUProviderCreateFormFieldValues {
   sshPort: number;
   sshPrivateKeyContent: File;
   sshUser: string;
+  imageBundles: ImageBundle[]
 }
 
 export const DEFAULT_FORM_VALUES: Partial<AZUProviderCreateFormFieldValues> = {
@@ -314,6 +319,7 @@ export const AZUProviderCreateForm = ({
                 </FormHelperText>
               )}
             </FieldGroup>
+            <LinuxVersionCatalog control={formMethods.control as any} providerType={CloudType.azu} viewMode='CREATE'/>
             <FieldGroup heading="SSH Key Pairs">
               <FormField>
                 <FieldLabel>SSH User</FieldLabel>
@@ -447,6 +453,8 @@ const constructProviderPayload = async (formValues: AZUProviderCreateFormFieldVa
     throw new Error(`An error occurred while processing the SSH private key file: ${error}`);
   }
 
+  const imageBundles = constructImageBundlePayload(formValues);
+
   const allAccessKeysPayload = constructAccessKeysCreatePayload(
     formValues.sshKeypairManagement,
     formValues.sshKeypairName,
@@ -499,6 +507,7 @@ const constructProviderPayload = async (formValues: AZUProviderCreateFormFieldVa
         name: azFormValues.code,
         subnet: azFormValues.subnet
       }))
-    }))
+    })),
+    imageBundles
   };
 };

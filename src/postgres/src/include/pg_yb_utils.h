@@ -627,18 +627,24 @@ void YbSetIsGlobalDDL();
 
 typedef enum YbSysCatalogModificationAspect
 {
-	YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT = 1,
-	YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE = 2
+	YB_SYS_CAT_MOD_ASPECT_ALTERING_EXISTING_DATA = 1,
+	YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT = 2,
+	YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE = 4
 } YbSysCatalogModificationAspect;
 
 typedef enum YbDdlMode
 {
-	YB_DDL_MODE_SILENT = 0,
+	YB_DDL_MODE_NO_ALTERING = 0,
+
+	YB_DDL_MODE_SILENT_ALTERING =
+		YB_SYS_CAT_MOD_ASPECT_ALTERING_EXISTING_DATA,
 
 	YB_DDL_MODE_VERSION_INCREMENT =
+		YB_SYS_CAT_MOD_ASPECT_ALTERING_EXISTING_DATA |
 		YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT,
 
 	YB_DDL_MODE_BREAKING_CHANGE =
+		YB_SYS_CAT_MOD_ASPECT_ALTERING_EXISTING_DATA |
 		YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT |
 		YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE
 } YbDdlMode;
@@ -1013,5 +1019,12 @@ extern void** YbPtrListToArray(const List* str_list, size_t* length);
  * byte added to the end.
  */
 extern char* YbReadWholeFile(const char *filename, int* length, int elevel);
+
+/*
+ * If the tserver gflag --ysql_enable_db_catalog_version_mode is true
+ * but the number of rows in pg_yb_catalog_version is 1, disallow a DDL
+ * statement if it increments the catalog version.
+ */
+extern void YBCheckDdlForDBCatalogVersionMode(YbDdlMode mode);
 
 #endif /* PG_YB_UTILS_H */

@@ -61,8 +61,7 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     }
   }
 
-  @Override
-  protected void freezeUniverseInTxn(Universe universe) {
+  private void freezeUniverseInTxn(Universe universe) {
     // The universe parameter in this callback has local changes which may be needed by
     // the methods inside e.g updateInProgress field.
     // Fetch the task params from the DB to start from fresh on retry.
@@ -106,13 +105,12 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
 
   @Override
   public void run() {
-    super.runUpdateTasks(this::runTask);
-  }
-
-  private void runTask() {
     log.info("Started {} task for uuid={}", getName(), taskParams().getUniverseUUID());
+    checkUniverseVersion();
     String errorString = null;
-    Universe universe = getUniverse();
+    Universe universe =
+        lockAndFreezeUniverseForUpdate(
+            taskParams().expectedUniverseVersion, this::freezeUniverseInTxn);
     try {
       if (taskParams().getPrimaryCluster() != null) {
         dedicatedNodesChanged.set(

@@ -216,9 +216,9 @@ alter_table = 'ALTER' 'TABLE' table_expr
                         alter_table_action { ',' alter_table_action } ;
 
 alter_table_action =
-  ( 'ADD' [ 'COLUMN' ] column_name data_type [ alter_column_constraint { alter_column_constraint } ]
+  ( 'ADD' [ 'COLUMN' ] [ 'IF' 'NOT' 'EXISTS' ] column_name data_type [ alter_column_constraint { alter_column_constraint } ]
     | 'RENAME' 'TO' table_name
-    | 'DROP' [ 'COLUMN' ] column_name [ 'RESTRICT' | 'CASCADE' ]
+    | 'DROP' [ 'COLUMN' ] [ 'IF' 'EXISTS' ] column_name [ 'RESTRICT' | 'CASCADE' ]
     | 'ALTER' [ 'COLUMN' ] column_name [ 'SET DATA' ]
       'TYPE' data_type [ 'COLLATE' collation ] [ 'USING' expression ]
     | 'ADD' alter_table_constraint

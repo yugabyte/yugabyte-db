@@ -33,6 +33,9 @@ message CDCStreamInfoPB {
   optional bytes namespace_id = 4;
   optional bool transactional = 5; // [default = false]
   optional string cdcsdk_ysql_replication_slot_name = 6;
+  optional uint64 cdcsdk_consistent_snapshot_time = 7;
+  optional CDCSDKSnapshotOption cdcsdk_consistent_snapshot_option = 8;
+  optional uint64 stream_creation_time = 9;
 }
 
 message ValidateReplicationInfoRequestPB {
@@ -494,6 +497,15 @@ message XClusterReportNewAutoFlagConfigVersionResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB {
+  optional bytes stream_id = 1;
+  optional string cdcsdk_ysql_replication_slot_name = 2;
+}
+
+message YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
 service MasterReplication {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -559,4 +571,9 @@ service MasterReplication {
   rpc XClusterReportNewAutoFlagConfigVersion(
       XClusterReportNewAutoFlagConfigVersionRequestPB)
       returns (XClusterReportNewAutoFlagConfigVersionResponsePB);
+
+  // Backfill a replication slot name to an existing CDCSDK stream.
+  rpc YsqlBackfillReplicationSlotNameToCDCSDKStream(
+      YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB)
+      returns (YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB);
 }

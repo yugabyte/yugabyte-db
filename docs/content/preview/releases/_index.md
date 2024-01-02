@@ -2,7 +2,7 @@
 title: Releases in YugabyteDB
 headerTitle: Releases
 linkTitle: Releases
-description: An overview of the preview and current stable YugabyteDB database releases, and upcoming releases.
+description: Release support policy, versioning, and feature availability for YugabyteDB.
 image: /images/section_icons/index/quick_start.png
 aliases:
   - /preview/releases/releases-overview/

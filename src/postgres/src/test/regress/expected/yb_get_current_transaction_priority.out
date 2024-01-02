@@ -46,7 +46,11 @@
 -- i.e., kHighPriTxnUpperBound, then a single value "Highest priority transaction" is returned
 -- without any float.
 SET yb_transaction_priority_lower_bound = 0.4;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
 SET yb_transaction_priority_upper_bound = 0.4;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
 CREATE TABLE test (k int primary key, v varchar(100));
 INSERT INTO test values (1, '1');
 -- (1) Check that transaction priority is 0 until a distributed txn is started.
@@ -204,7 +208,11 @@ SELECT * FROM test ORDER BY k;
 COMMIT;
 -- (5) Highest priority
 SET yb_transaction_priority_upper_bound = 1;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
 SET yb_transaction_priority_lower_bound = 1;
+NOTICE:  priorities don't exist for read committed isolation transations, the transaction will wait for conflicting transactions to commit before proceeding
+DETAIL:  this also applies to other isolation levels if using Wait-on-Conflict concurrency control
 BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ;
 SELECT * FROM test WHERE k = 1 FOR UPDATE;
  k | v

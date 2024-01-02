@@ -3,7 +3,6 @@ title: Build the YugabyteDB docs locally
 headerTitle: Build the docs
 linkTitle: Build the docs
 description: Build the YugabyteDB docs locally
-image: /images/section_icons/index/quick_start.png
 menu:
   preview:
     identifier: docs-build
@@ -129,6 +128,8 @@ When the build is done, the `yugabyte-db/docs/public` folder contains a full HTM
 * If the live-reload server (`npm start`) is returning a Hugo error &mdash; say, about shortcodes &mdash; re-run `hugo mod clean`, followed by `npm start`. Also, be sure you've followed the instructions on this page to [configure Hugo](#configure-hugo).
 
 * Make sure your tools are up-to-date. Run `brew update` periodically, and if it reports anything out of date, run `brew upgrade`.
+
+* If you get an error about missing modules, try running `npm install`.
 
 ## Next steps
 

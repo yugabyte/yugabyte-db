@@ -125,7 +125,7 @@ Status CQLConnectionContext::HandleCall(
     }
   }
 
-  s = Store(call.get());
+  s = Store(call);
   if (!s.ok()) {
     return s;
   }

@@ -11,9 +11,7 @@ import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.fail;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
-import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.ArgumentMatchers.anyList;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
@@ -47,7 +45,6 @@ import java.util.Arrays;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import junitparams.JUnitParamsRunner;
@@ -70,6 +67,9 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
   @Rule public MockitoRule rule = MockitoJUnit.rule();
 
   @InjectMocks private SoftwareUpgrade softwareUpgrade;
+
+  private static final String OLD_VERSION = "2.15.0.0-b1";
+  private static final String NEW_VERSION = "2.17.0.0-b1";
 
   private static final List<TaskType> ROLLING_UPGRADE_TASK_SEQUENCE_MASTER =
       ImmutableList.of(
@@ -315,7 +315,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
                 new HashMap<>(ImmutableMap.of("nodeName", nodeName, "nodeCount", 1));
 
             if (taskType.equals(TaskType.AnsibleConfigureServers)) {
-              String version = "2.17.0.0-b1";
+              String version = NEW_VERSION;
               String taskSubType =
                   subTaskGroupType.equals(DownloadingSoftware) ? "Download" : "Install";
               assertValues.putAll(
@@ -357,7 +357,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
           Map<String, Object> assertValues =
               new HashMap<>(ImmutableMap.of("nodeNames", nodes, "nodeCount", nodes.size()));
           if (taskType.equals(TaskType.AnsibleConfigureServers)) {
-            String version = "2.17.0.0-b1";
+            String version = NEW_VERSION;
             assertValues.putAll(
                 ImmutableMap.of(
                     "ybSoftwareVersion", version, "processType", serverType.toString()));
@@ -395,10 +395,10 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
 
   @Test
   public void testSoftwareUpgrade() {
-    updateDefaultUniverseTo5Nodes(true);
+    updateDefaultUniverseTo5Nodes(true, OLD_VERSION);
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
-    taskParams.ybSoftwareVersion = "2.17.0.0-b1";
+    taskParams.ybSoftwareVersion = NEW_VERSION;
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
     mockDBServerVersion(
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
@@ -440,13 +440,13 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
 
   @Test
   public void testSoftwareUpgradeAndInstallYbc() {
-    updateDefaultUniverseTo5Nodes(true);
+    updateDefaultUniverseTo5Nodes(true, OLD_VERSION);
     TestHelper.updateUniverseSystemdDetails(defaultUniverse);
 
     Mockito.doNothing().when(mockYbcManager).waitForYbc(any(), any());
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
-    taskParams.ybSoftwareVersion = "2.17.0.0-b1";
+    taskParams.ybSoftwareVersion = NEW_VERSION;
     taskParams.installYbc = true;
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
     mockDBServerVersion(
@@ -489,7 +489,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
 
   @Test
   public void testSoftwareUpgradeAndPromoteAutoFlagsOnOthers() {
-    updateDefaultUniverseTo5Nodes(true);
+    updateDefaultUniverseTo5Nodes(true, OLD_VERSION);
 
     Universe xClusterUniv = ModelFactory.createUniverse("univ-2");
     XClusterConfig.create(
@@ -499,7 +499,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         "test-3", xClusterUniv.getUniverseUUID(), xClusterUniv2.getUniverseUUID());
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
-    taskParams.ybSoftwareVersion = "2.17.0.0-b1";
+    taskParams.ybSoftwareVersion = NEW_VERSION;
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
     mockDBServerVersion(
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
@@ -520,10 +520,10 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
 
   @Test
   public void testSoftwareUpgradeNoSystemCatalogUpgrade() {
-    updateDefaultUniverseTo5Nodes(true);
+    updateDefaultUniverseTo5Nodes(true, OLD_VERSION);
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
-    taskParams.ybSoftwareVersion = "2.17.0.0-b1";
+    taskParams.ybSoftwareVersion = NEW_VERSION;
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
     taskParams.upgradeSystemCatalog = false;
     mockDBServerVersion(
@@ -566,14 +566,14 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
   @Test
   @Parameters({"false", "true"})
   public void testSoftwareUpgradeWithReadReplica(boolean enableYSQL) {
-    updateDefaultUniverseTo5Nodes(enableYSQL);
+    updateDefaultUniverseTo5Nodes(enableYSQL, OLD_VERSION);
 
     // Adding Read Replica cluster.
     UniverseDefinitionTaskParams.UserIntent userIntent =
         new UniverseDefinitionTaskParams.UserIntent();
     userIntent.numNodes = 3;
     userIntent.replicationFactor = 3;
-    userIntent.ybSoftwareVersion = "old-version";
+    userIntent.ybSoftwareVersion = OLD_VERSION;
     userIntent.accessKeyCode = "demo-access";
     userIntent.regionList = ImmutableList.of(region.getUuid());
     userIntent.enableYSQL = enableYSQL;
@@ -595,7 +595,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
             ApiUtils.mockUniverseUpdaterWithReadReplica(userIntent, pi));
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
-    taskParams.ybSoftwareVersion = "2.17.0.0-b1";
+    taskParams.ybSoftwareVersion = NEW_VERSION;
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
     mockDBServerVersion(
         defaultUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion,
@@ -637,10 +637,10 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
 
   @Test
   public void testSoftwareNonRollingUpgrade() {
-    updateDefaultUniverseTo5Nodes(true);
+    updateDefaultUniverseTo5Nodes(true, OLD_VERSION);
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
-    taskParams.ybSoftwareVersion = "2.17.0.0-b1";
+    taskParams.ybSoftwareVersion = NEW_VERSION;
     taskParams.upgradeOption = UpgradeOption.NON_ROLLING_UPGRADE;
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
 
@@ -697,7 +697,7 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
   @Test
   public void testSoftwareUpgradeRetries() {
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
-    taskParams.ybSoftwareVersion = "2.17.0.0-b1";
+    taskParams.ybSoftwareVersion = NEW_VERSION;
     taskParams.expectedUniverseVersion = -1;
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
@@ -715,10 +715,10 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
 
   @Test
   public void testPartialSoftwareUpgrade() {
-    updateDefaultUniverseTo5Nodes(true);
+    updateDefaultUniverseTo5Nodes(true, OLD_VERSION);
 
     SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
-    taskParams.ybSoftwareVersion = "2.17.0.0-b1";
+    taskParams.ybSoftwareVersion = NEW_VERSION;
     taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
     int masterTserverNodesCount =
         defaultUniverse.getMasters().size() + defaultUniverse.getTServers().size();
@@ -757,47 +757,5 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     verify(mockNodeUniverseManager, times(10)).runCommand(any(), any(), anyList(), any());
     assertEquals(100.0, taskInfo.getPercentCompleted(), 0);
     assertEquals(Success, taskInfo.getTaskState());
-  }
-
-  // Configures default universe to have 5 nodes with RF=3.
-  private void updateDefaultUniverseTo5Nodes(boolean enableYSQL) {
-    UniverseDefinitionTaskParams.UserIntent userIntent =
-        new UniverseDefinitionTaskParams.UserIntent();
-    userIntent.numNodes = 5;
-    userIntent.replicationFactor = 3;
-    userIntent.ybSoftwareVersion = "old-version";
-    userIntent.accessKeyCode = "demo-access";
-    userIntent.regionList = ImmutableList.of(region.getUuid());
-    userIntent.enableYSQL = enableYSQL;
-    userIntent.provider = defaultProvider.getUuid().toString();
-
-    PlacementInfo pi = new PlacementInfo();
-    PlacementInfoUtil.addPlacementZone(az1.getUuid(), pi, 1, 2, false);
-    PlacementInfoUtil.addPlacementZone(az2.getUuid(), pi, 1, 1, true);
-    PlacementInfoUtil.addPlacementZone(az3.getUuid(), pi, 1, 2, false);
-
-    defaultUniverse =
-        Universe.saveDetails(
-            defaultUniverse.getUniverseUUID(),
-            ApiUtils.mockUniverseUpdater(
-                userIntent, "host", true /* setMasters */, false /* updateInProgress */, pi));
-  }
-
-  private void mockDBServerVersion(String oldVersion, String newVersion, int count) {
-    mockDBServerVersion(oldVersion, count, newVersion, count);
-  }
-
-  private void mockDBServerVersion(
-      String oldVersion, int oldVersionCount, String newVersion, int newVersionCount) {
-    List<Optional<String>> response = new ArrayList<>();
-    for (int i = 1; i < oldVersionCount; i++) {
-      response.add(Optional.of(oldVersion));
-    }
-    for (int i = 0; i < newVersionCount; i++) {
-      response.add(Optional.of(newVersion));
-    }
-    Optional<String>[] resp = response.toArray(new Optional[0]);
-    when(mockYBClient.getServerVersion(any(), anyString(), anyInt()))
-        .thenReturn(Optional.of(oldVersion), resp);
   }
 }

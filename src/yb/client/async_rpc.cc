@@ -13,6 +13,8 @@
 
 #include "yb/client/async_rpc.h"
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/client/batcher.h"
 #include "yb/client/client_error.h"
 #include "yb/client/in_flight_op.h"
@@ -374,6 +376,9 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
     : AsyncRpc(data, consistency_level) {
   req_.set_allocated_tablet_id(const_cast<std::string*>(&tablet_invoker_.tablet()->tablet_id()));
   req_.set_include_trace(IsTracingEnabled());
+  if (const auto& wait_state = ash::WaitStateInfo::CurrentWaitState()) {
+    wait_state->MetadataToPB(req_.mutable_ash_metadata());
+  }
   const ConsistentReadPoint* read_point = batcher_->read_point();
   bool has_read_time = false;
   if (read_point) {
@@ -391,6 +396,10 @@ AsyncRpcBase<Req, Resp>::AsyncRpcBase(
   }
   if (!ops_.empty()) {
     req_.set_batch_idx(ops_.front().batch_idx);
+  }
+  auto start_time_micros = batcher_->rpcs_start_time_micros();
+  if (start_time_micros > 0) {
+    req_.set_start_time_micros(start_time_micros);
   }
   const auto& metadata = batcher_->in_flight_ops().metadata;
   if (!metadata.transaction.transaction_id.IsNil()) {
@@ -593,17 +602,11 @@ WriteRpc::WriteRpc(const AsyncRpcData& data)
       const auto& request_detail = batcher_->GetRequestDetails(*first_yb_op->request_id());
       req_.set_request_id(*first_yb_op->request_id());
       req_.set_min_running_request_id(request_detail.min_running_request_id);
-      if (request_detail.start_time_micros > 0) {
-        req_.set_start_time_micros(request_detail.start_time_micros);
-      }
     } else {
       const auto request_pair = batcher_->NextRequestIdAndMinRunningRequestId();
-      if (batcher_->Clock()) {
-        req_.set_start_time_micros(batcher_->Clock()->Now().GetPhysicalValueMicros());
-      }
       req_.set_request_id(request_pair.first);
       req_.set_min_running_request_id(request_pair.second);
-      batcher_->RegisterRequest(request_pair.first, request_pair.second, req_.start_time_micros());
+      batcher_->RegisterRequest(request_pair.first, request_pair.second);
     }
     FillRequestIds(req_.request_id(), &ops_);
   }

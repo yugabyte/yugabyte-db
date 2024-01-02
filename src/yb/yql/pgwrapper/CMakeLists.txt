@@ -17,6 +17,7 @@ set(YB_PCH_DEP_LIBS opid_proto)
 set(PGWRAPPER_SRCS
     pg_wrapper.cc)
 set(PGWRAPPER_LIBS
+    yb_ash
     yb_common
     yb_pggate_flags
     yb_process_wrapper
@@ -24,6 +25,8 @@ set(PGWRAPPER_LIBS
 ADD_YB_LIBRARY(yb_pgwrapper
                SRCS ${PGWRAPPER_SRCS}
                DEPS ${PGWRAPPER_LIBS})
+
+include_directories(${YB_BUILD_ROOT}/postgres_build/src/include)
 
 # We indirectly use some headers that are generated while processing the protobufs below.
 add_dependencies(

@@ -16,7 +16,7 @@ You can install YugabyteDB Anywhere (YBA) using the following methods:
 
 | Method | Using | Use If |
 | :--- | :--- | :--- |
-| YBA Installer | yba-ctl CLI | You are performing a new installation. |
+| YBA Installer | yba-ctl CLI | You are performing a new installation.<br>You are ready to migrate from a Replicated installation. {{<badge/ea>}} |
 | Replicated | Docker containers | Your installation already uses Replicated. |
 | Kubernetes | Helm chart | You're deploying in Kubernetes. |
 
@@ -43,18 +43,30 @@ Licensing (such as a license file in the case of YBA Installer or Replicated, or
 
 </ul>
 
+{{< note title="Replicated end of life" >}}
+
+YugabyteDB Anywhere will end support for Replicated installation at the end of 2024. You can migrate existing Replicated YugabyteDB Anywhere installations using YBA Installer. See [Migrate from Replicated](../../install-software/installer/#migrate-from-replicated).
+
+{{< /note >}}
+
+Installing using Replicated requires the following:
+
+- Ability to install and configure [docker-engine](https://docs.docker.com/engine/).
+- Ability to install and configure [Replicated](https://www.replicated.com/install-options/), which is a containerized application itself and needs to pull containers from its own [Replicated.com container registry](https://help.replicated.com/docs/native/getting-started/docker-registries/).
+- Ability to pull Yugabyte container images from the [Quay.io](https://quay.io/) container registry (this will be done by Replicated automatically).
+
 ## Supported Linux distributions
 
 YugabyteDB Anywhere is supported on all Linux distributions that Replicated supports. This includes, but is not limited to the following:
 
 - CentOS 7
-- Alma Linux 8
-- Alma Linux 9
+- AlmaLinux 8
+- AlmaLinux 9
 - Ubuntu 18
 - Ubuntu 20
 - RedHat Enterprise Linux 7
 - RedHat Enterprise Linux 8
-- SUSE Linux Enterprise Server (SLES) 15 SP4 (Tech Preview)
+- SUSE Linux Enterprise Server (SLES) 15 SP4 {{<badge/ea>}}
 
 ## Hardware requirements
 
@@ -97,8 +109,8 @@ Installing YugabyteDB Anywhere on airgapped hosts (without access to any Interne
         ```
 
 - Ensure that the following ports are open on the YugabyteDB Anywhere host:
-  - `8800` – HTTP access to the Replicated UI
-  - `80` – HTTP access to the YugabyteDB Anywhere UI
-  - `22` – SSH
+  - 8800 – HTTP access to the Replicated UI
+  - 80 or 443 – HTTP and HTTPS access to the YugabyteDB Anywhere UI, respectively
+  - 22 – SSH
 - Obtain the YugabyteDB Anywhere airgapped install package. Contact {{% support-platform %}} for more information.
 - Sign the Yugabyte license agreement. Contact {{% support-platform %}} for more information.

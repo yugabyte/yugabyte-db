@@ -2,7 +2,6 @@
 title: Views
 linkTitle: Views
 description: Views in YSQL
-image: /images/section_icons/secure/create-roles.png
 menu:
   preview:
     identifier: advanced-features-views

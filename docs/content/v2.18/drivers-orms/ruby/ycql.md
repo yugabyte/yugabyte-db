@@ -3,7 +3,6 @@ title: YugabyteDB Ruby Driver for YCQL
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect an application using YugabyteDB Ruby driver for YCQL
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   v2.18:
     identifier: ycql-ruby-driver

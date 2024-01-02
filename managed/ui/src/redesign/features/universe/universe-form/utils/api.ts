@@ -15,8 +15,10 @@ import {
   HelmOverridesError,
   UniverseResource,
   YBSoftwareMetadata,
+  ImageBundle,
 } from './dto';
 import { EditGflagPayload } from '../../universe-actions/edit-gflags/GflagHelper';
+import { ArchitectureType } from '../../../../../components/configRedesign/providerRedesign/constants';
 
 // define unique names to use them as query keys
 export enum QUERY_KEY {
@@ -34,7 +36,8 @@ export enum QUERY_KEY {
   fetchCustomerRunTimeConfigs = 'fetchCustomerRunTimeConfigs',
   fetchProviderRunTimeConfigs = 'fetchProviderRunTimeConfigs',
   validateHelmYAML = 'validateHelmYAML',
-  editGflag = 'upgradeGflags'
+  editGflag = 'upgradeGflags',
+  getLinuxVersions = 'linuxVersions'
 }
 
 const DEFAULT_RUNTIME_GLOBAL_SCOPE = '00000000-0000-0000-0000-000000000000';
@@ -135,29 +138,32 @@ class ApiService {
     return axios.post<Universe>(requestUrl, data).then((resp) => resp.data);
   };
 
-  getInstanceTypes = (providerId?: string, zones: string[] = []): Promise<InstanceType[]> => {
+  getInstanceTypes = (providerId?: string, zones: string[] = [], arch = null): Promise<InstanceType[]> => {
     if (providerId) {
-      let requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerId}/instance_types`;
+      const requestUrl = new URL(`${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerId}/instance_types`, document.baseURI);
       if (zones.length) {
-        requestUrl =
-          requestUrl +
-          '?' +
-          zones.map((item: string) => `zone=${encodeURIComponent(item)}`).join('&');
+        zones.forEach((item) => {
+          requestUrl.searchParams.append('zone', encodeURIComponent(item));
+        });
       }
-      return axios.get<InstanceType[]>(requestUrl).then((resp) => resp.data);
+      if (arch !== null) {
+        requestUrl.searchParams.append('arch', encodeURIComponent(arch));
+      }
+      return axios.get<InstanceType[]>(requestUrl.toString()).then((resp) => resp.data);
     } else {
       return Promise.reject('Querying instance types failed: no provider ID provided');
     }
   };
 
-  getDBVersions = (includeMetadata: boolean = false): Promise<string[] | Record<string,YBSoftwareMetadata>> => {
+  getDBVersions = (includeMetadata: boolean = false, arch = null): Promise<string[] | Record<string, YBSoftwareMetadata>> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/releases`;
-    
-    return axios.get<string[] | Record<string,YBSoftwareMetadata>>(requestUrl, {
-        params: {
-          includeMetadata
-        }
-      }).then((resp) => resp.data);
+
+    return axios.get<string[] | Record<string, YBSoftwareMetadata>>(requestUrl, {
+      params: {
+        includeMetadata,
+        arch
+      }
+    }).then((resp) => resp.data);
   };
 
   getDBVersionsByProvider = (providerId?: string): Promise<string[]> => {
@@ -201,7 +207,16 @@ class ApiService {
   // check if exception was caused by canceling previous request
   isRequestCancelError(error: unknown): boolean {
     return axios.isCancel(error);
-  }
+  };
+
+  getLinuxVersions = (providerUUID: string, arch: ArchitectureType | null = null): Promise<ImageBundle[]> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerUUID}/image_bundle`;
+    return axios.get<ImageBundle[]>(requestUrl, {
+      params: {
+        arch
+      }
+    }).then((resp) => resp.data);
+  };
 }
 
 export const api = new ApiService();

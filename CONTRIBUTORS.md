@@ -160,3 +160,4 @@ This is a list of people who have contributed code to the [YugabyteDB](https://g
 * [mdbridge](https://github.com/mdbridge)
 * [hbhanawat](https://github.com/hbhanawat)
 * [asrinivasanyb](https://github.com/asrinivasanyb)
+* [devansh-ism](https://github.com/devansh-ism)

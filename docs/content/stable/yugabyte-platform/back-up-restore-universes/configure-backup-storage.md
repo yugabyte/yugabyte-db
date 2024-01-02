@@ -10,6 +10,8 @@ menu:
     identifier: configure-backup-storage
     weight: 10
 type: docs
+rightNav:
+  hideH4: true
 ---
 
 Before you can back up universes, you need to configure a storage location for your backups.
@@ -80,22 +82,52 @@ You can configure Google Cloud Storage (GCS) as your backup target, as follows:
 
 1. Navigate to **Configs > Backup > Google Cloud Storage**.
 
-2. Click **Create GCS Backup** to access the configuration form shown in the following illustration:
+1. Click **Create GCS Backup** to access the configuration form shown in the following illustration:
 
-    ![GCS Configuration](/images/yp/cloud-provider-configuration-backup-gcs.png)
+    ![GCS Configuration](/images/yp/cloud-provider-configuration-backup-gcs-stable.png)
 
-3. Use the **Configuration Name** field to provide a meaningful name for your backup configuration.
+1. Use the **Configuration Name** field to provide a meaningful name for your backup configuration.
 
-4. Complete the **GCS Bucket** and **GCS Credentials** fields.
+1. Enter the URI of your GCS bucket in the **GCS Bucket** field. For example, `gs://gcp-bucket/test_backups`.
+
+1. Select **Use GCP IAM** if you're using [GKE service account](#gke-service-account-based-iam-gcp-iam) for backup and restore.
+
+1. Complete the **GCS Credentials** field.
 
     For information on how to obtain GCS credentials, see [Cloud Storage authentication](https://cloud.google.com/storage/docs/authentication).
 
-5. Click **Save**.
+1. Click **Save**.
 
 You can configure access control for the GCS bucket as follows:
 
 - Provide the required access control list (ACL) and set it as either uniform or fine-grained (for object-level access).
 - Add permissions, such as roles and members.
+
+### GKE service account-based IAM (GCP IAM)
+
+Google Kubernetes Engine (GKE) uses a concept known as "Workload Identity" to provide a secure way to allow a Kubernetes service account (KSA) in your GKE cluster to act as an IAM service account so that your Kubernetes universes can access GCS for backups.
+
+In GKE, each pod can be associated with a KSA. The KSA is used to authenticate and authorize the pod to interact with other Google Cloud services. An IAM service account is a Google Cloud resource that allows applications to make authorized calls to Google Cloud APIs.
+
+Workload Identity links a KSA to an IAM account using annotations in the KSA. Pods that use the configured KSA automatically authenticate as the IAM service account when accessing Google Cloud APIs.
+
+By using Workload Identity, you avoid the need for manually managing service account keys or tokens in your applications running on GKE. This approach enhances security and simplifies the management of credentials.
+
+#### Prerequisites
+
+- The GKE cluster hosting the pods should have Workload Identity enabled. The worker nodes of this GKE cluster should have the GKE metadata server enabled.
+
+- The IAM service account, which is used to annotate the KSA, should have sufficient permissions to read, write, list, and delete objects in GCS.
+
+- The KSA, which is annotated with the IAM service account, should be present in the same namespace where the pod resources for YugabyteDB Anywhere and YugabyteDB universes are expected. If you have multiple namespaces, each namespace should include the annotated KSA.
+
+For instructions on setting up Workload Identity, see [Use Workload Identity](https://cloud.google.com/kubernetes-engine/docs/how-to/workload-identity) in the GKE documentation.
+
+To enable GCP IAM when installing YBA, refer to [Enable GKE service account-based IAM](../../install-yugabyte-platform/install-software/kubernetes/#enable-gke-service-account-based-iam).
+
+To enable GCP IAM during universe creation, refer to [Configure Helm overrides](../../create-deployments/create-universe-multi-zone-kubernetes/#configure-helm-overrides).
+
+To upgrade an existing universe with GCP IAM, refer to [Upgrade universes for GKE service account-based IAM support](../../manage-deployments/edit-helm-overrides/#upgrade-universes-for-gke-service-account-based-iam).
 
 ## Azure Storage
 

@@ -4,7 +4,6 @@ headertitle: Manage account users
 linkTitle: Manage account users
 description: Manage access to your YugabyteDB Managed account and your clusters.
 headcontent: Invite team members to your YugabyteDB Managed account
-image: /images/section_icons/secure/create-roles.png
 aliases:
   - /preview/yugabyte-cloud/cloud-admin/manage-access/
 menu:
@@ -17,25 +16,13 @@ type: docs
 
 Invite team members to your account so that they can create and manage clusters, manage billing, audit account activity, and more. Account users are assigned [roles](../managed-roles/), which can be customized to provide access to only the actions and resources needed to perform their tasks.
 
-You can also manage the login methods available to users for signing in to your YugabyteDB Managed account.
+Users can log in to YugabyteDB Managed using an email-based account, a social login, or federated authentication via an external identity provider (IdP). For information on using social logins and federated authentication, refer to [Authentication](../managed-authentication/).
 
 (To access a cluster database, you need to ask a user with administrative privileges on the database for the username and password of a [database user created on your behalf](../../cloud-secure-clusters/add-users/).)
 
 The **Users** tab displays a list of users that are either active or have been invited, including their email, display name, role, and status.
 
 ![Users page](/images/yb-cloud/managed-admin-users.png)
-
-## Manage login methods
-
-Users can log in to YugabyteDB Managed using either an email-based account or a social login. The available social logins include Google, GitHub, and LinkedIn. All three are enabled by default.
-
-To manage the social logins available to users, do the following:
-
-1. Navigate to **Security > Access Control > Authentication**, then click **Edit Configuration** to display the **Login Methods** dialog.
-1. Enable the social logins you want to use.
-1. Click **Save Changes**.
-
-If you revoke a social login that is already in use, users using that social login can either [reset their password](#reset-your-password) to configure email-based login, or sign in using a different social login. The social account must be associated with the same email address.
 
 ## Invite users
 

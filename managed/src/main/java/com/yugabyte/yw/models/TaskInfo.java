@@ -26,6 +26,11 @@ import io.ebean.annotation.WhenCreated;
 import io.ebean.annotation.WhenModified;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import jakarta.persistence.Column;
+import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.Id;
 import java.util.Collection;
 import java.util.Collections;
 import java.util.Date;
@@ -36,14 +41,9 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import javax.persistence.Column;
-import javax.persistence.Entity;
-import javax.persistence.EnumType;
-import javax.persistence.Enumerated;
-import javax.persistence.Id;
 import lombok.Getter;
 import lombok.Setter;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import play.data.validation.Constraints;
 
 @Entity
@@ -166,8 +166,9 @@ public class TaskInfo extends Model {
       required = true)
   private String owner;
 
-  public TaskInfo(TaskType taskType) {
+  public TaskInfo(TaskType taskType, UUID taskUUID) {
     this.taskType = taskType;
+    this.uuid = taskUUID;
   }
 
   @JsonIgnore

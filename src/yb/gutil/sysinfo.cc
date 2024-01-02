@@ -80,7 +80,7 @@
 #include "yb/gutil/sysinfo.h"
 #include "yb/gutil/walltime.h"
 
-DEFINE_UNKNOWN_int32(num_cpus, 0, "Number of CPU cores used in calculations");
+DEFINE_NON_RUNTIME_int32(num_cpus, 0, "Number of CPU cores used in calculations");
 
 // This isn't in the 'base' namespace in tcmallc. But, tcmalloc
 // exports these functions, so we need to namespace them to avoid

@@ -21,6 +21,10 @@ import play.mvc.Http;
 
 @Slf4j
 public class UpgradeWithGFlags extends UpgradeTaskParams {
+  public static final String SPECIFIC_GFLAGS_NO_CHANGES_ERROR =
+      "No changes in gflags (modify specificGflags in cluster)";
+  public static final String EMPTY_SPECIFIC_GFLAGS =
+      "Primary cluster should have non-empty specificGFlags";
 
   public Map<String, String> masterGFlags;
   public Map<String, String> tserverGFlags;
@@ -46,8 +50,7 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
       }
       if (newCluster.clusterType == ClusterType.PRIMARY) {
         if (newCluster.userIntent.specificGFlags == null) {
-          throw new PlatformServiceException(
-              Http.Status.BAD_REQUEST, "Primary cluster should have non-empty specificGFlags");
+          throw new PlatformServiceException(Http.Status.BAD_REQUEST, EMPTY_SPECIFIC_GFLAGS);
         }
         if (newCluster.userIntent.specificGFlags.isInheritFromPrimary()) {
           throw new PlatformServiceException(
@@ -79,8 +82,7 @@ public class UpgradeWithGFlags extends UpgradeTaskParams {
       }
     }
     if (isFirstTry && !hasClustersToUpdate) {
-      throw new PlatformServiceException(
-          Http.Status.BAD_REQUEST, "No changes in gflags (modify specificGflags in cluster)");
+      throw new PlatformServiceException(Http.Status.BAD_REQUEST, SPECIFIC_GFLAGS_NO_CHANGES_ERROR);
     }
   }
 

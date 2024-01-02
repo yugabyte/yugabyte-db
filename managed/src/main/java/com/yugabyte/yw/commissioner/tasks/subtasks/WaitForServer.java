@@ -109,8 +109,8 @@ public class WaitForServer extends ServerSubTaskBase {
 
   private boolean checkPostgresStatus(Universe universe) {
     RunQueryFormData runQueryFormData = new RunQueryFormData();
-    runQueryFormData.query = "SELECT version()";
-    runQueryFormData.db_name = "system_platform";
+    runQueryFormData.setQuery("SELECT version()");
+    runQueryFormData.setDbName("system_platform");
     UniverseDefinitionTaskParams.UserIntent userIntent = taskParams().userIntent;
     if (userIntent == null) {
       userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;

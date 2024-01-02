@@ -256,7 +256,7 @@ Status PgTxnManager::SetDeferrable(bool deferrable) {
 
 uint64_t PgTxnManager::NewPriority(TxnPriorityRequirement txn_priority_requirement) {
   if (txn_priority_requirement == kHighestPriority) {
-    return txn_priority_highpri_upper_bound;
+    return yb::kHighPriTxnUpperBound;
   }
 
   if (txn_priority_requirement == kHigherPriorityRange) {
@@ -325,8 +325,8 @@ Status PgTxnManager::CalculateIsolation(
     }
     isolation_level_ = docdb_isolation;
 
-    VLOG_TXN_STATE(2) << "effective isolation level: "
-                      << IsolationLevel_Name(docdb_isolation)
+    VLOG_TXN_STATE(2) << "effective isolation level: " << IsolationLevel_Name(docdb_isolation)
+                      << " priority_: " << priority_
                       << "; transaction started successfully.";
   }
 
@@ -377,7 +377,7 @@ Status PgTxnManager::FinishTransaction(Commit commit) {
   // However if there are failures afterwards (i.e. during COMMIT or catalog version increment),
   // then we might get here with a ddl_txn_. Clean it up in that case.
   if (IsDdlMode() && !commit) {
-    RETURN_NOT_OK(ExitSeparateDdlTxnMode(commit));
+    RETURN_NOT_OK(ExitSeparateDdlTxnModeWithAbort());
   }
 
   if (!txn_in_progress_) {
@@ -424,13 +424,28 @@ Status PgTxnManager::EnterSeparateDdlTxnMode() {
   return Status::OK();
 }
 
-Status PgTxnManager::ExitSeparateDdlTxnMode(Commit commit) {
+Status PgTxnManager::ExitSeparateDdlTxnModeWithAbort() {
+  return ExitSeparateDdlTxnMode({});
+}
+
+Status PgTxnManager::ExitSeparateDdlTxnModeWithCommit(uint32_t db_oid, bool is_silent_altering) {
+  return ExitSeparateDdlTxnMode(
+      DdlCommitInfo{.db_oid = db_oid, .is_silent_altering = is_silent_altering});
+}
+
+Status PgTxnManager::ExitSeparateDdlTxnMode(const std::optional<DdlCommitInfo>& commit_info) {
   VLOG_TXN_STATE(2);
   if (!IsDdlMode()) {
-    RSTATUS_DCHECK(!commit, IllegalState, "Commit ddl txn called when not in a DDL transaction");
+    RSTATUS_DCHECK(
+        !commit_info, IllegalState, "Commit ddl txn called when not in a DDL transaction");
     return Status::OK();
   }
-  RETURN_NOT_OK(client_->FinishTransaction(commit, ddl_mode_));
+  decltype(ddl_mode_) ddl_mode;
+  ddl_mode = ddl_mode_;
+  if (commit_info && commit_info->is_silent_altering) {
+    ddl_mode->silently_altered_db = commit_info->db_oid;
+  }
+  RETURN_NOT_OK(client_->FinishTransaction(commit_info ? Commit::kTrue : Commit::kFalse, ddl_mode));
   ddl_mode_.reset();
   return Status::OK();
 }

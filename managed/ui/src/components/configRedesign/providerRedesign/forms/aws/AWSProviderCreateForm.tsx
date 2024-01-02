@@ -68,7 +68,10 @@ import { getInvalidFields, useValidationStyles } from './utils';
 import { YBPError, YBPStructuredError } from '../../../../../redesign/helpers/dtos';
 import { AWSAvailabilityZoneMutation, AWSRegionMutation, YBProviderMutation } from '../../types';
 import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
+import { IsOsPatchingEnabled, constructImageBundlePayload } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
+import { ImageBundle } from '../../../../../redesign/features/universe/universe-form/utils/dto';
 
 interface AWSProviderCreateFormProps {
   createInfraProvider: CreateInfraProvider;
@@ -94,6 +97,7 @@ export interface AWSProviderCreateFormFieldValues {
   sshUser: string;
   vpcSetupType: VPCSetupType;
   ybImageType: YBImageType;
+  imageBundles: ImageBundle[]
 }
 
 export type QuickValidationErrorKeys = {
@@ -191,6 +195,8 @@ export const AWSProviderCreateForm = ({
   });
 
   const hostInfoQuery = useQuery(hostInfoQueryKey.ALL, () => api.fetchHostInfo());
+  
+  const isOsPatchingEnabled = IsOsPatchingEnabled();
 
   if (hostInfoQuery.isLoading || hostInfoQuery.isIdle) {
     return <YBLoading />;
@@ -326,6 +332,8 @@ export const AWSProviderCreateForm = ({
   const vpcSetupType = formMethods.watch('vpcSetupType', defaultValues.vpcSetupType);
   const ybImageType = formMethods.watch('ybImageType', defaultValues.ybImageType);
   const isFormDisabled = getIsFormDisabled(formMethods.formState) || isForceSubmitting;
+  const imagebundles = formMethods.watch('imageBundles', defaultValues.imageBundles);
+
   return (
     <Box display="flex" justifyContent="center">
       <FormProvider {...formMethods}>
@@ -424,15 +432,19 @@ export const AWSProviderCreateForm = ({
                 ) : null
               }
             >
-              <FormField>
-                <FieldLabel>AMI Type</FieldLabel>
-                <YBRadioGroupField
-                  name="ybImageType"
-                  control={formMethods.control}
-                  options={YB_IMAGE_TYPE_OPTIONS}
-                  orientation={RadioGroupOrientation.HORIZONTAL}
-                />
-              </FormField>
+              {
+                !isOsPatchingEnabled && (
+                  <FormField>
+                    <FieldLabel>AMI Type</FieldLabel>
+                    <YBRadioGroupField
+                      name="ybImageType"
+                      control={formMethods.control}
+                      options={YB_IMAGE_TYPE_OPTIONS}
+                      orientation={RadioGroupOrientation.HORIZONTAL}
+                    />
+                  </FormField>
+                )
+              }
               <FormField>
                 <FieldLabel>VPC Setup</FieldLabel>
                 <YBRadioGroupField
@@ -458,6 +470,7 @@ export const AWSProviderCreateForm = ({
                 </FormHelperText>
               ) : null}
             </FieldGroup>
+            <LinuxVersionCatalog control={formMethods.control} providerType={ProviderCode.AWS} viewMode='CREATE' />
             <FieldGroup
               heading="SSH Key Pairs"
               infoTitle="SSH Key Pairs"
@@ -616,6 +629,10 @@ export const AWSProviderCreateForm = ({
           regionSelection={regionSelection}
           vpcSetupType={vpcSetupType}
           ybImageType={ybImageType}
+          imageBundles={imagebundles}
+          onImageBundleSubmit={(images) => {
+            formMethods.setValue("imageBundles", images);
+          }}
         />
       )}
       <DeleteRegionModal
@@ -632,6 +649,7 @@ const constructProviderPayload = async (
   formValues: AWSProviderCreateFormFieldValues
 ): Promise<YBProviderMutation> => {
   let sshPrivateKeyContent = '';
+
   try {
     sshPrivateKeyContent =
       formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
@@ -647,6 +665,9 @@ const constructProviderPayload = async (
     sshPrivateKeyContent,
     formValues.skipKeyValidateAndUpload
   );
+
+  const imageBundles = constructImageBundlePayload(formValues);
+
   return {
     code: ProviderCode.AWS,
     name: formValues.providerName,
@@ -691,6 +712,7 @@ const constructProviderPayload = async (
         name: azFormValues.code,
         subnet: azFormValues.subnet
       }))
-    }))
+    })),
+    imageBundles
   };
 };

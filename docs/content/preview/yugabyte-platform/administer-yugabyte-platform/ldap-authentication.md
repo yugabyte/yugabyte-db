@@ -1,6 +1,6 @@
 ---
 title: Enable YugabyteDB Anywhere authentication via LDAP
-headerTitle: Enable YugabyteDB Anywhere authentication via LDAP
+headerTitle: Enable authentication
 description: Use LDAP for authentication in YugabyteDB Anywhere.
 headcontent: Manage YugabyteDB Anywhere users using LDAP
 linkTitle: Configure authentication
@@ -44,25 +44,27 @@ If configured by the LDAP server, YugabyteDB Anywhere can prevent the user from 
 
 You can use the YugabyteDB Anywhere UI to enable LDAP authentication for YugabyteDB Anywhere login, as follows:
 
-- Navigate to **Admin > User Management > User Authentication**.
+1. Navigate to **Admin > Access Management > User Authentication > LDAP Configuration**.
 
-- Complete the fields in the **LDAP Configuration** page shown in the following illustration:
+1. Select **Enable LDAP** and complete the fields in the **LDAP Configuration** page shown in the following illustration:
 
-  ![LDAP authentication](/images/yb-platform/ldap-auth-1.png)
+    ![LDAP authentication](/images/yb-platform/ldap-auth-1.png)
 
-  With the exception of the following fields, the descriptions of the preceding settings are provided in [Use the YugabyteDB Anywhere API](#use-the-yugabytedb-anywhere-api).
+    With the exception of the following fields, the descriptions of the preceding settings are provided in [Use the YugabyteDB Anywhere API](#use-the-yugabytedb-anywhere-api).
 
-  - The **LDAP URL** field value represents a combination of the `ldap_url` and `ldap_port` values separated by a colon, as in `0.0.0.0:9000`.
+    - The **LDAP URL** field value represents a combination of the `ldap_url` and `ldap_port` values separated by a colon, as in `0.0.0.0:9000`.
 
-  - The **Binding Mechanism** field allows you to select one of the following:
-    - **Simple Bind**, in which case you can proceed with the typical configuration.
-    - **Search and Bind**, in which case you are presented with a dialog to enter the **Search Attribute** value used for searching and binding. Note that this requires you to complete the **Service Account Details** fields.
+    - The **Binding Mechanism** field allows you to select one of the following:
+      - **Simple Bind**, in which case you can proceed with the typical configuration.
+      - **Search and Bind**, in which case you are presented with a dialog to enter the **Search Attribute** value used for searching and binding. Note that this requires you to complete the **Service Account Details** fields.
 
-  - The **Bind DN** field value represents the distinguished name (DN) used for searching and binding.
+    - The **Bind DN** field value represents the distinguished name (DN) used for searching and binding.
 
-  - You can map LDAP groups to [YugabyteDB Anywhere roles](../../security/authorization-platform/#roles) by enabling group mapping. See [Role management](#role-management).
+    - You can map LDAP groups to [YugabyteDB Anywhere roles](../anywhere-rbac/#roles) by enabling group mapping. See [Role management](#role-management).
 
-  - Optionally, enter your LDAP service account credentials. If you are using group mapping, these credentials are required.
+    - Optionally, enter your LDAP service account credentials. If you are using group mapping, these credentials are required.
+
+1. Click **Save**.
 
 ### Use the YugabyteDB Anywhere API
 
@@ -212,11 +214,11 @@ You can manage LDAP roles in YugabyteDB Anywhere using a combination of the foll
 
 ### Group mapping
 
-You can map LDAP groups to [YugabyteDB Anywhere roles](../../security/authorization-platform/#roles). Upon login, the user's role is assigned based on whatever role their LDAP group has been mapped to in YugabyteDB Anywhere. If a user is in multiple mapped LDAP groups, YugabyteDB Anywhere performs a union of all the roles that are chosen as a result of group mapping and assigns the union to the user.
+You can map LDAP groups to [YugabyteDB Anywhere roles](../anywhere-rbac/#roles). Upon login, the user's role is assigned based on whatever role their LDAP group has been mapped to in YugabyteDB Anywhere. If a user is in multiple mapped LDAP groups, YugabyteDB Anywhere performs a union of all the roles that are chosen as a result of group mapping and assigns the union to the user.
 
 To map LDAP groups to YugabyteDB Anywhere roles, do the following:
 
-1. Navigate to **Admin > User Management > User Authentication** and select **LDAP Configuration**.
+1. Navigate to **Admin > Access Management > User Authentication** and select **LDAP Configuration**.
 
 1. Under **Role Settings**, enable the **Define Role to Group Mapping** option.
 
@@ -247,16 +249,16 @@ When a LDAP user logs in to YugabyteDB Anywhere, the system handles role assignm
 
 - If group mapping is enabled:
 
-  - If YugabyteDB Anywhere can obtain a valid role from the LDAP server (from either `yugabytePlatformRole` or group mappings), it assigns the role to the user. If both are defined, the union of roles is assigned. You can't subsequently [change the role for this user](../../security/authorization-platform/#create-modify-and-delete-users) in the **User Management** tab.
-  - If YugabyteDB Anywhere is unable to obtain a valid role from the LDAP server, the user is assigned the ReadOnly role. You can subsequently change the role for the user in the **User Management** tab.
+  - If YugabyteDB Anywhere can obtain a valid role from the LDAP server (from either `yugabytePlatformRole` or group mappings), it assigns the role to the user. If both are defined, the union of roles is assigned. You can't subsequently [change the role for this user](../anywhere-rbac/#create-modify-and-delete-roles) in the **Access Management** tab.
+  - If YugabyteDB Anywhere is unable to obtain a valid role from the LDAP server, the user is assigned the ReadOnly role. You can subsequently change the role for the user in the **Access Management** tab.
 
 - If group mapping is disabled:
 
-  - If YugabyteDB Anywhere can obtain a valid role from `yugabytePlatformRole`, it assigns the role to the user. You can't subsequently change the role for this user in the **User Management** tab.
+  - If YugabyteDB Anywhere can obtain a valid role from `yugabytePlatformRole`, it assigns the role to the user. You can't subsequently change the role for this user in the **Access Management** tab.
   - If YugabyteDB Anywhere is unable to obtain a valid role from `yugabytePlatformRole`, it assigns roles depending on whether the user is new or returning.
 
     New users are assigned the ReadOnly role.
 
     For a returning a user, YugabyteDB Anywhere assumes that the user's role was previously set by the administrator (regardless of whether the user's role was actually settable by the administrator), and retains that role. For this reason, if you use LDAP and plan to upgrade to a version of YugabyteDB Anywhere that supports group mapping (v2.18.1 or later), you should enable group mapping.
 
-    In either case, you can subsequently change the role for the user in the **User Management** tab.
+    In either case, you can subsequently change the role for the user in the **Access Management** tab.

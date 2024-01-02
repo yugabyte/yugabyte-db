@@ -22,6 +22,9 @@
 #include "storage/pg_sema.h"
 #include "storage/proclist_types.h"
 
+/* YB includes */
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
+
 /*
  * Each backend advertises up to PGPROC_MAX_CACHED_SUBXIDS TransactionIds
  * for non-aborted subtransactions of its current top transaction.  These
@@ -224,6 +227,30 @@ struct PGPROC
 	 * how to clean up after it. Restart the postmaster in those cases.
 	 */
 	bool		ybTerminationStarted;
+
+	/*
+	 * True when we are in a critical section. Set by START_CRIT_SECTION and
+	 * reset by END_CRIT_SECTION when we leave our last critical section.
+	 *
+	 * There may be cases where MyProc is NULL and we enter a critical section.
+	 * These cases should be caught by ybInitializationCompleted and cause a
+	 * postmaster restart anyway.
+	 *
+	 * In critical sections, ERRORs are escalated to PANICs, causing a
+	 * postmaster restart. We also restart the postmaster if a process dies
+	 * while in a critical section.
+	 */
+	bool		ybEnteredCriticalSection;
+
+	/*
+	 * yb_ash_metadata and yb_is_ash_metadata_set are protected by
+	 * yb_ash_metadata_lock instead of backendLock.
+	 * TODO: Investigate if yb_ash_metadata_lock is really needed, or can we
+	 * use backendLock itself if there is no significant drop in performance.
+	 */
+	LWLock		yb_ash_metadata_lock;
+	YBCAshMetadata yb_ash_metadata;
+	bool		yb_is_ash_metadata_set;
 };
 
 /* NOTE: "typedef struct PGPROC PGPROC" appears in storage/lock.h. */
@@ -321,6 +348,7 @@ extern bool log_lock_waits;
 extern int	RetryMaxBackoffMsecs;
 extern int	RetryMinBackoffMsecs;
 extern double RetryBackoffMultiplier;
+extern int yb_max_query_layer_retries;
 
 /* Metrics */
 extern int *yb_too_many_conn;

@@ -50,6 +50,7 @@ set(INTEGRATION_TESTS_SRCS
   external_mini_cluster.cc
   external_yb_controller.cc
   external_mini_cluster_fs_inspector.cc
+  external_mini_cluster_validator.cc
   load_balancer_test_util.cc
   load_generator.cc
   mini_cluster.cc
@@ -200,6 +201,7 @@ ADD_YB_TEST(cdcsdk_before_image-test)
 ADD_YB_TEST(cdcsdk_consistent_stream-test)
 ADD_YB_TEST(cdcsdk_snapshot-test)
 ADD_YB_TEST(cdcsdk_tablet_split-test)
+ADD_YB_TEST(cdcsdk_consistent_snapshot-test)
 ADD_YB_TEST(transaction-test)
 ADD_YB_TEST(encryption-test)
 ADD_YB_TEST(secure_connection_test)

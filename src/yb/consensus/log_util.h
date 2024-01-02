@@ -194,6 +194,8 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
 
   // Reads all entries of the provided segment.
   //
+  // If start_offset_to_read is specified, should use it as the starting point to read.
+  //
   // If the log is corrupted (i.e. the returned 'Status' is 'Corruption') all
   // the log entries read up to the corrupted one are returned in the 'entries'
   // vector.
@@ -204,7 +206,8 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
   // Will stop after reading max_entries_to_read entries.
   ReadEntriesResult ReadEntries(
       int64_t max_entries_to_read = std::numeric_limits<int64_t>::max(),
-      EntriesToRead entries_to_read = EntriesToRead::kAll);
+      EntriesToRead entries_to_read = EntriesToRead::kAll,
+      std::optional<int64_t> start_offset_to_read = std::nullopt);
 
   // Reads the metadata of the first entry in the segment
   Result<FirstEntryMetadata> ReadFirstEntryMetadata();
@@ -241,6 +244,10 @@ class ReadableLogSegment : public RefCountedThreadSafe<ReadableLogSegment> {
 
   bool IsInitialized() const {
     return is_initialized_;
+  }
+
+  bool HasLogIndexInFooter() const {
+    return HasFooter() && footer().index_start_offset() > 0;
   }
 
   // Returns the parent directory where log segments are stored.

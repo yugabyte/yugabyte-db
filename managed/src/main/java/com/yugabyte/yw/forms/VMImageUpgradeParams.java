@@ -61,7 +61,7 @@ public class VMImageUpgradeParams extends UpgradeTaskParams {
           "Map of region UUID to SSH User override. Deprecated since "
               + "YBA version 2.18.0.0, Use imageBundle instead.",
       required = false,
-      example = "{\n" + "    'b28e0813-4866-4a2d-89f3-52265766d666':" + " 'ec2-user',\n" + "  }")
+      example = "{\n    'b28e0813-4866-4a2d-89f3-52265766d666': 'ec2-user',\n  }")
   public Map<UUID, String> sshUserOverrideMap = new HashMap<>();
 
   @ApiModelProperty("ImageBundle to be used for upgrade")

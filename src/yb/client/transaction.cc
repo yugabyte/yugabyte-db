@@ -99,6 +99,9 @@ DEFINE_test_flag(int32, txn_status_moved_rpc_send_delay_ms, 0,
 DEFINE_test_flag(int32, old_txn_status_abort_delay_ms, 0,
                  "Inject delay before sending abort to old transaction status tablet.");
 
+DEFINE_test_flag(int32, new_txn_status_initial_heartbeat_delay_ms, 0,
+                 "Inject delay before sending initial heartbeat to new transaction status tablet.");
+
 DEFINE_test_flag(uint64, override_transaction_priority, 0,
                  "Override priority of transactions if nonzero.");
 
@@ -161,6 +164,29 @@ Result<ChildTransactionData> ChildTransactionData::FromPB(const ChildTransaction
     result.local_limits.emplace(entry.first, HybridTime(entry.second));
   }
   return result;
+}
+
+bool CanAbortTransaction(const Status& status,
+                         const TransactionMetadata& txn_metadata,
+                         const YBSubTransaction& subtransaction) {
+  // We don't abort the transaction in the following scenarios:
+  // 1. When we face a kSkipLocking error, so as to make further progress.
+  // 2. When running a transaction with READ COMMITTED isolation where the current subtransaction
+  //    id is not at the default value, and we face a kConflict/kReadRestart error. This is because
+  //    YB PG backend retries kConflict and kReadRestart errors for READ COMMITTED isolation by
+  //    restarting statements instead of the whole transaction if the statment is in a transactional
+  //    block. Else it restarts the whole transaction, in which case we can abort the current one.
+  //
+  //    See 'IsInTransactionBlock' function in src/postgres/src/backend/tcop/postgres.c for details.
+  const TransactionError txn_err(status);
+  if (txn_err.value() == TransactionErrorCode::kSkipLocking) {
+    return false;
+  }
+  if (txn_metadata.isolation == IsolationLevel::READ_COMMITTED && subtransaction.active()) {
+    return txn_err.value() != TransactionErrorCode::kReadRestartRequired &&
+           txn_err.value() != TransactionErrorCode::kConflict;
+  }
+  return true;
 }
 
 YB_DEFINE_ENUM(MetadataState, (kMissing)(kMaybePresent)(kPresent));
@@ -504,24 +530,13 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
           }
         }
       } else {
-        const TransactionError txn_err(status);
-        // We don't abort the txn in case of a kSkipLocking error to make further progress.
-        // READ COMMITTED isolation retries errors of kConflict and kReadRestart by restarting
-        // statements instead of the whole txn and hence should avoid aborting the txn in this case
-        // too.
-        bool avoid_abort =
-            (txn_err.value() == TransactionErrorCode::kSkipLocking) ||
-            (metadata_.isolation == IsolationLevel::READ_COMMITTED &&
-              (txn_err.value() == TransactionErrorCode::kReadRestartRequired ||
-                txn_err.value() == TransactionErrorCode::kConflict));
-        if (!avoid_abort) {
+        if (CanAbortTransaction(status, metadata_, subtransaction_)) {
           auto state = state_.load(std::memory_order_acquire);
           VLOG_WITH_PREFIX(4) << "Abort desired, state: " << AsString(state);
           if (state == TransactionState::kRunning) {
             abort = true;
             // State will be changed to aborted in SetError
           }
-
           SetErrorUnlocked(status, "Flush");
         }
       }
@@ -1299,7 +1314,11 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
   }
 
   bool CheckAbortToOldStatusTabletNeeded() {
-    auto old_status_tablet_state = old_status_tablet_state_.load(std::memory_order_acquire);
+    OldTransactionState old_status_tablet_state = OldTransactionState::kRunning;
+
+    old_status_tablet_state_.compare_exchange_strong(
+        old_status_tablet_state, OldTransactionState::kAborting, std::memory_order_acq_rel);
+
     switch (old_status_tablet_state) {
       case OldTransactionState::kAborting: FALLTHROUGH_INTENDED;
       case OldTransactionState::kAborted:
@@ -1321,8 +1340,6 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       const YBTransactionPtr& transaction,
       internal::RemoteTabletPtr old_status_tablet) {
     VLOG_WITH_PREFIX(1) << "Sending abort to old status tablet";
-
-    old_status_tablet_state_.store(OldTransactionState::kAborting, std::memory_order_release);
 
     if (PREDICT_FALSE(FLAGS_TEST_old_txn_status_abort_delay_ms > 0)) {
       std::this_thread::sleep_for(FLAGS_TEST_old_txn_status_abort_delay_ms * 1ms);
@@ -1559,12 +1576,17 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
       }
       SendAbortToOldStatusTabletIfNeeded(TransactionRpcDeadline(), transaction, old_status_tablet);
     } else {
-      SendHeartbeat(status, metadata_.transaction_id, transaction_->shared_from_this(),
-                    SendHeartbeatToNewTablet(promoting));
-    }
-
-    if (promoting) {
-      SendUpdateTransactionStatusLocationRpcs();
+      auto send_new_heartbeat = [this, status, promoting](const Status&) {
+        SendHeartbeat(status, metadata_.transaction_id, transaction_->shared_from_this(),
+                      SendHeartbeatToNewTablet(promoting));
+      };
+      if (PREDICT_FALSE(FLAGS_TEST_new_txn_status_initial_heartbeat_delay_ms > 0)) {
+        manager_->client()->messenger()->scheduler().Schedule(
+            std::move(send_new_heartbeat),
+            std::chrono::milliseconds(FLAGS_TEST_new_txn_status_initial_heartbeat_delay_ms));
+      } else {
+        send_new_heartbeat(Status::OK());
+      }
     }
 
     for (const auto& waiter : waiters) {
@@ -1869,6 +1891,7 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
                 state != TransactionState::kAborted) {
               LOG_WITH_PREFIX(DFATAL) << "Transaction status promoted but not in promoting state";
             }
+            SendUpdateTransactionStatusLocationRpcs();
           }
           FALLTHROUGH_INTENDED;
         case TransactionStatus::CREATED:
@@ -1950,6 +1973,12 @@ class YBTransaction::Impl final : public internal::TxnBatcherIf {
     VLOG_WITH_PREFIX(2) << "DoSendUpdateTransactionStatusLocationRpcs()";
 
     UniqueLock lock(mutex_);
+
+    if (state_.load(std::memory_order_acquire) == TransactionState::kPromoting) {
+      VLOG_WITH_PREFIX(1) << "Initial heartbeat to new status tablet has not completed yet, "
+                          << "skipping UpdateTransactionStatusLocation rpcs for now";
+      return;
+    }
 
     if (transaction_status_move_tablets_.empty()) {
       auto old_status_tablet = old_status_tablet_;

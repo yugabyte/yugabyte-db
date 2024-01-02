@@ -111,11 +111,11 @@ templates:
     createForNewCustomer: true
     defaultThresholdMap:
       SEVERE:
-        threshold: 1.0
+        threshold: 0.0
     targetType: PLATFORM
-    defaultThresholdCondition: LESS_THAN
+    defaultThresholdCondition: GREATER_THAN
     defaultThresholdUnit: STATUS
-    thresholdMaxValue: 1.0
+    thresholdMaxValue: 0.0
     thresholdReadOnly: true
     annotations:
       summary: >-
@@ -1265,7 +1265,6 @@ templates:
     description: SSH Key expires soon
     queryTemplate: ybp_universe_ssh_key_expiry_day{universe_uuid="__universeUuid__"}
       {{ query_condition }} {{ query_threshold }}
-    createForNewCustomer: true
     defaultThresholdMap:
       SEVERE:
         paramName: yb.alert.ssh_key_config_expiry_days_severe

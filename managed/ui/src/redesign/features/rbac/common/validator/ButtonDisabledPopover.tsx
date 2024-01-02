@@ -30,7 +30,7 @@ export const ButtonDisabledPopover = ({
   };
 
   const onClick = (e: React.MouseEvent<HTMLDivElement>) => {
-    if(!e?.target || !e?.currentTarget) return;
+    if (!e?.target || !e?.currentTarget) return;
     e?.preventDefault?.();
     e?.stopPropagation?.();
     e && handleClick(e);
@@ -44,7 +44,21 @@ export const ButtonDisabledPopover = ({
   useClickAway(ref, handleClose);
 
   return (
-    <div ref={ref} onClick={onClick}>
+    <div ref={ref} onClick={onClick} style={{ position: 'relative' }}>
+      {/* this div wraps over the children and blocks it's events */}
+      <div
+        id="rbac-child-wrapper"
+        data-testid="rbac-child-wrapper"
+        style={{
+          position: 'absolute',
+          width: '100%',
+          height: '100%',
+          zIndex: '50',
+          top: '0',
+          left: '0',
+          cursor: 'pointer'
+        }}
+      />
       {reactChild}
       <Popover
         id={'rbac-perm-error'}

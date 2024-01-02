@@ -20,6 +20,8 @@ import {
   canUseSpotInstance
 } from './InstanceTypeFieldHelper';
 import { NodeType } from '../../../../../../utils/dtos';
+import { IsOsPatchingEnabled } from '../../../../../../../components/configRedesign/providerRedesign/components/linuxVersionCatalog/LinuxVersionUtils';
+
 import {
   AvailabilityZone,
   CloudType,
@@ -37,7 +39,8 @@ import {
   MASTER_DEVICE_INFO_FIELD,
   MASTER_PLACEMENT_FIELD,
   SPOT_INSTANCE_FIELD,
-  PLACEMENTS_FIELD
+  PLACEMENTS_FIELD,
+  CPU_ARCHITECTURE_FIELD
 } from '../../../utils/constants';
 import { useFormFieldStyles } from '../../../universeMainStyle';
 
@@ -78,6 +81,8 @@ export const InstanceTypeField = ({
 
   //watchers
   const provider = useWatch({ name: PROVIDER_FIELD });
+  const cpuArch = useWatch({ name: CPU_ARCHITECTURE_FIELD });
+
   const deviceInfo = isDedicatedMasterField
     ? useWatch({ name: MASTER_DEVICE_INFO_FIELD })
     : useWatch({ name: DEVICE_INFO_FIELD });
@@ -96,9 +101,11 @@ export const InstanceTypeField = ({
     api.fetchRunTimeConfigs(true, provider?.uuid)
   );
 
+  const isOsPatchingEnabled = IsOsPatchingEnabled();
+
   const { data, isLoading, refetch } = useQuery(
-    [QUERY_KEY.getInstanceTypes, provider?.uuid, JSON.stringify(zones)],
-    () => api.getInstanceTypes(provider?.uuid, zones),
+    [QUERY_KEY.getInstanceTypes, provider?.uuid, JSON.stringify(zones), isOsPatchingEnabled ? cpuArch : null],
+    () => api.getInstanceTypes(provider?.uuid, zones, isOsPatchingEnabled ? cpuArch : null),
     {
       enabled: !!provider?.uuid && zones.length > 0,
       onSuccess: (data) => {

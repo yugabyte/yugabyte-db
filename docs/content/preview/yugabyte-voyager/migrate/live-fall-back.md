@@ -1,5 +1,5 @@
 ---
-title: Steps to perform live migration of your database using YugabyteDB Voyager
+title: Steps to perform live migration of your database with fall-back using YugabyteDB Voyager
 headerTitle: Live migration with fall-back
 linkTitle: Live migration with fall-back
 headcontent: Steps for a live migration with fall-back using YugabyteDB Voyager
@@ -18,6 +18,10 @@ type: docs
 When migrating a database, it's prudent to have a backup strategy in case the new database doesn't work as expected. A fall-back approach involves streaming changes from the YugabyteDB (target) database back to the source database after the cutover operation, enabling you to cutover to the source database at any point.
 
 A fall-back approach allows you to test the system end-to-end. This workflow is especially important in heterogeneous migration scenarios, in which source and target databases are using different engines.
+
+{{< warning title="Important" >}}
+This workflow has the potential to alter your source database. Make sure you fully understand the implications of these changes before proceeding.
+{{< /warning >}}
 
 ## Fall-back workflow
 
@@ -196,7 +200,7 @@ DROP USER ybvoyager;
 
 ## Create an export directory
 
-yb-voyager keeps all of its migration state, including exported schema and data, in a local directory called the *export directory*.
+yb-voyager keeps all of its migration state, including exported schema and data, in a local directory called the _export directory_.
 
 Before starting migration, you should create the export directory on a file system that has enough space to keep the entire source database. Next, you should provide the path of the export directory as a mandatory argument (`--export-dir`) to each invocation of the yb-voyager command in an environment variable.
 
@@ -207,7 +211,7 @@ export EXPORT_DIR=$HOME/export-dir
 
 The export directory has the following sub-directories and files:
 
-- `reports` directory contains the generated *Schema Analysis Report*.
+- `reports` directory contains the generated _Schema Analysis Report_.
 - `schema` directory contains the source database schema translated to PostgreSQL. The schema is partitioned into smaller files by the schema object type such as tables, views, and so on.
 - `data` directory contains CSV (Comma Separated Values) files that are passed to the COPY command on the target YugabyteDB database.
 - `metainfo` and `temp` directories are used by yb-voyager for internal bookkeeping.
@@ -393,7 +397,7 @@ Some important metrics such as the number of events, ingestion rate, and so on, 
 | -----------------------------  |  ----------------------------- |
 ```
 
-The entire import process is designed to be _restartable_ if yb-voyager terminates when the data import is in progress. If restarted, the data import resumes from its current state.
+The entire import process is designed to be _restartable_ if yb-voyager terminates while the data import is in progress. If restarted, the data import resumes from its current state.
 
 {{< note title="Note">}}
 The arguments `table-list` and `exclude-table-list` are not supported in live migration.
@@ -529,7 +533,9 @@ For more details, refer to the GitHub issue [#360](https://github.com/yugabyte/y
 
 ### Cutover to the source (Optional)
 
-During this phase, switch your application over from the target YugabyteDB database back to the source database. As this step is _optional_, perform it only if the target YugabyteDB database is not working as expected.
+During this phase, switch your application over from the target YugabyteDB database back to the source database.
+
+Perform this step only if the target YugabyteDB database is not working as expected.
 
 Keep monitoring the metrics displayed for `export data from target` and `import data to source` processes. After you notice that the import of events to the source database is catching up to the exported events from the target YugabyteDB database, you are ready to cutover. You can use the "Remaining events" metric displayed in the `import data to source` process to help you determine the cutover.
 Perform the following steps as part of the cutover process:
@@ -611,4 +617,4 @@ In addition to the Live migration [limitations](../live-migrate/#limitations), t
 1. Fall-back is unsupported with a YugabyteDB cluster running on YugabyteDB Managed.
 1. SSL Connectivity is unsupported for export or streaming events from YugabyteDB during `export data from target`.
 1. In the fall-back phase, you need to manually disable (and subsequently re-enable if required) constraints/indexes/triggers on the source database.
-1. yb-voyager provides limited support for datatypes during CDC of `export data from target` phase. For example, datatypes such as DECIMAL and Timestamp are not supported.
+1. yb-voyager provides limited support for data types during CDC of `export data from target` phase. For example, data types such as DECIMAL and Timestamp are not supported.

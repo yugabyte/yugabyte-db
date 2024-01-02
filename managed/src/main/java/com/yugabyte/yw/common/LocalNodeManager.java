@@ -1,5 +1,5 @@
 /*
- * Copyright 2019 YugaByte, Inc. and Contributors
+ * Copyright 2023 YugaByte, Inc. and Contributors
  *
  * Licensed under the Polyform Free Trial License 1.0.0 (the "License"); you
  * may not use this file except in compliance with the License. You
@@ -16,6 +16,7 @@ import static com.yugabyte.yw.common.ShellResponse.ERROR_CODE_SUCCESS;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.base.Joiner;
+import com.google.common.base.Predicate;
 import com.google.common.collect.Sets;
 import com.google.inject.Inject;
 import com.typesafe.config.Config;
@@ -24,8 +25,12 @@ import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleClusterServerCtl;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
 import com.yugabyte.yw.commissioner.tasks.subtasks.InstanceActions;
+import com.yugabyte.yw.commissioner.tasks.subtasks.TransferXClusterCerts;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.gflags.GFlagsUtil;
+import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.common.utils.FileUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
@@ -43,22 +48,30 @@ import java.io.InputStreamReader;
 import java.io.OutputStreamWriter;
 import java.net.InetAddress;
 import java.net.ServerSocket;
+import java.nio.charset.Charset;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
+import java.nio.file.Paths;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.PosixFileAttributeView;
 import java.nio.file.attribute.PosixFilePermission;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.stream.Collectors;
+import java.util.stream.IntStream;
 import javax.inject.Singleton;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.MapUtils;
+import org.apache.commons.collections4.MapUtils;
+import org.apache.commons.io.input.ReversedLinesFileReader;
 import play.libs.Json;
 
 /** Node manager that runs all the processes locally. Processess are bind to loopback interfaces. */
@@ -69,8 +82,15 @@ public class LocalNodeManager {
   public static final String TSERVER_EXECUTABLE = "yb-tserver";
   public static final String CONTROLLER_EXECUTABLE = "yb-controller-server";
 
-  private static final String LOOPBACK_PREFIX = "127.0.0.";
-  private static final String COMMAND_OUTPUT_PREFIX = "Command output:";
+  private static final String MAX_MEM_RATIO_TSERVER = "0.1";
+  private static final String MAX_MEM_RATIO_MASTER = "0.05";
+
+  private static final int ERROR_LINES_TO_DUMP = 100;
+  private static final int OUT_LINES_TO_DUMP = 20;
+  private static final int EXIT_LINES_TO_DUMP = 30;
+
+  private static final String LOOPBACK_PREFIX = "127.0.";
+  public static final String COMMAND_OUTPUT_PREFIX = "Command output:";
   private static final boolean RUN_LOG_THREADS = false;
 
   private Map<Integer, String> predefinedConfig = null;
@@ -78,10 +98,20 @@ public class LocalNodeManager {
 
   private Map<String, NodeInfo> nodesByNameMap = new ConcurrentHashMap<>();
 
+  private SpecificGFlags additionalGFlags;
+
+  @Setter private int ipRangeStart = 2;
+  @Setter private int ipRangeEnd = 100;
+
   @Inject private RuntimeConfGetter confGetter;
 
   public void setPredefinedConfig(Map<Integer, String> predefinedConfig) {
     this.predefinedConfig = predefinedConfig;
+  }
+
+  public void setAdditionalGFlags(SpecificGFlags additionalGFlags) {
+    log.debug("Set additional gflags: {}", additionalGFlags.getPerProcessFlags().value);
+    this.additionalGFlags = additionalGFlags;
   }
 
   // Temporary method.
@@ -92,7 +122,7 @@ public class LocalNodeManager {
             process -> {
               try {
                 log.debug("Destroying {}", process.pid());
-                process.destroy();
+                killProcess(process.pid());
               } catch (Exception e) {
                 log.error("Failed to destroy process " + process, e);
               }
@@ -100,12 +130,20 @@ public class LocalNodeManager {
     nodesByNameMap.clear();
   }
 
+  private void killProcess(long pid) throws IOException, InterruptedException {
+    int exitCode = Runtime.getRuntime().exec(String.format("kill -SIGTERM %d", pid)).waitFor();
+    if (exitCode != 0) {
+      throw new IllegalStateException(
+          String.format("Failed to kill process %d - exit code is %d", pid, exitCode));
+    }
+  }
+
   private enum NodeState {
     CREATED,
     PROVISIONED
   }
 
-  private class NodeInfo {
+  public class NodeInfo {
     private final String name;
     private final String region;
     private final UUID azUIID;
@@ -170,62 +208,21 @@ public class LocalNodeManager {
     return result;
   }
 
-  public ShellResponse runYsqlCommand(
-      NodeDetails node, Universe universe, String dbName, String ysqlCommand, long timeoutSec) {
-    UniverseDefinitionTaskParams.Cluster cluster = universe.getCluster(node.placementUuid);
-    LocalCloudInfo cloudInfo = getCloudInfo(node, universe);
-    List<String> bashCommand = new ArrayList<>();
-    bashCommand.add(cloudInfo.getYugabyteBinDir() + "/ysqlsh");
-    bashCommand.add("-h");
-    bashCommand.add(node.cloudInfo.private_ip);
-    bashCommand.add("-t");
-    bashCommand.add("-p");
-    bashCommand.add(String.valueOf(node.ysqlServerRpcPort));
-    bashCommand.add("-U");
-    bashCommand.add("yugabyte");
-    bashCommand.add("-d");
-    bashCommand.add(dbName);
-    bashCommand.add("-c");
-    ysqlCommand = ysqlCommand.replace("\"", "");
-    bashCommand.add(ysqlCommand);
-
-    ProcessBuilder processBuilder =
-        new ProcessBuilder(bashCommand.toArray(new String[0])).redirectErrorStream(true);
-    if (cluster.userIntent.enableClientToNodeEncrypt && !cluster.userIntent.enableYSQLAuth) {
-      processBuilder.environment().put("sslmode", "require");
-    }
-    try {
-      log.debug("Running command {}", String.join(" ", bashCommand));
-      Process process = processBuilder.start();
-      long timeOut = timeoutSec * 1000;
-      while (process.isAlive() && timeOut > 0) {
-        Thread.sleep(50);
-        timeOut -= 50;
-      }
-      if (process.isAlive()) {
-        throw new RuntimeException("Timed out waiting for query");
-      }
-      return ShellResponse.create(process.exitValue(), COMMAND_OUTPUT_PREFIX + getOutput(process));
-    } catch (IOException | InterruptedException e) {
-      throw new RuntimeException(e);
-    }
-  }
-
   public static String getRawCommandOutput(String str) {
     String result = str.replaceFirst(COMMAND_OUTPUT_PREFIX, "");
     return result.strip();
   }
 
-  private LocalCloudInfo getCloudInfo(NodeDetails nodeDetails, Universe universe) {
+  public static LocalCloudInfo getCloudInfo(NodeDetails nodeDetails, Universe universe) {
     return getCloudInfo(universe.getCluster(nodeDetails.placementUuid).userIntent);
   }
 
-  private LocalCloudInfo getCloudInfo(UniverseDefinitionTaskParams.UserIntent userIntent) {
+  public static LocalCloudInfo getCloudInfo(UniverseDefinitionTaskParams.UserIntent userIntent) {
     Provider provider = Provider.getOrBadRequest(UUID.fromString(userIntent.provider));
     return CloudInfoInterface.get(provider);
   }
 
-  private String getOutput(Process process) throws IOException {
+  public static String getOutput(Process process) throws IOException {
     StringBuilder builder = new StringBuilder();
     String separator = System.getProperty("line.separator");
     String line = null;
@@ -324,6 +321,9 @@ public class LocalNodeManager {
         nodesByNameMap.remove(nodeInfo.name);
         response = ShellResponse.create(ERROR_CODE_SUCCESS, "Success!");
         break;
+      case Transfer_XCluster_Certs:
+        transferXClusterCerts(nodeTaskParam, nodeInfo, userIntent);
+        break;
       default:
     }
     log.debug("Response is {} for {} ", response, type);
@@ -333,8 +333,115 @@ public class LocalNodeManager {
     return response;
   }
 
+  public void dumpProcessOutput(
+      Universe universe, String nodeName, UniverseTaskBase.ServerType serverType) {
+
+    NodeDetails nodeDetails = universe.getNode(nodeName);
+    if (nodeDetails == null) {
+      log.warn("Node {} not found", nodeName);
+      return;
+    }
+    UniverseDefinitionTaskParams.UserIntent intent =
+        universe.getCluster(nodeDetails.placementUuid).userIntent;
+    NodeInfo nodeInfo = nodesByNameMap.get(nodeName);
+    Process process = nodeInfo.processMap.get(serverType);
+    String logsDir = getLogsDir(intent, serverType, nodeInfo);
+    String processLogName = "yb-" + serverType.name().toLowerCase();
+    try {
+      File errFile = new File(logsDir + processLogName + ".ERROR");
+      if (errFile.exists()) {
+        log.error(
+            "Node {} process {} last {} error logs: \n {}",
+            nodeName,
+            serverType,
+            ERROR_LINES_TO_DUMP,
+            getLogOutput(
+                nodeName + "_" + serverType + "_ERR", errFile, (l) -> true, ERROR_LINES_TO_DUMP));
+      }
+
+      File outFile = new File(logsDir + processLogName + ".INFO");
+      if (outFile.exists()) {
+        log.error(
+            "Node {} process {} last {} kills: \n {}",
+            nodeName,
+            serverType,
+            EXIT_LINES_TO_DUMP,
+            getLogOutput(
+                nodeName + "_" + serverType + "_EXIT",
+                outFile,
+                (l) -> l.contains("exited with code"),
+                EXIT_LINES_TO_DUMP));
+
+        log.error(
+            "Node {} process {} last {} output lines: \n {}",
+            nodeName,
+            serverType,
+            OUT_LINES_TO_DUMP,
+            getLogOutput(
+                nodeName + "_" + serverType + "_OUT", outFile, (l) -> true, OUT_LINES_TO_DUMP));
+      }
+
+    } catch (IOException ignored) {
+    }
+  }
+
+  private String getLogOutput(String prefix, File file, Predicate<String> filter, int maxLines)
+      throws IOException {
+    StringBuilder stringBuilder = new StringBuilder();
+    String line;
+    int counter = 0;
+    try (ReversedLinesFileReader reader =
+        new ReversedLinesFileReader(file, Charset.defaultCharset())) {
+      while (counter < maxLines) {
+        line = reader.readLine();
+        if (line == null) {
+          break;
+        }
+        if (filter.apply(line)) {
+          counter++;
+          stringBuilder.append("\n");
+          stringBuilder.append(line);
+        }
+      }
+    }
+    return stringBuilder.toString();
+  }
+
+  private void transferXClusterCerts(
+      NodeTaskParams taskParams,
+      NodeInfo nodeInfo,
+      UniverseDefinitionTaskParams.UserIntent userIntent) {
+    TransferXClusterCerts.Params tParams = (TransferXClusterCerts.Params) taskParams;
+    String homeDir = getNodeRoot(userIntent, nodeInfo);
+    String producerCertsDirOnTarget =
+        replaceYbHome(tParams.producerCertsDirOnTarget.getAbsolutePath(), userIntent, nodeInfo);
+    String replicationGroupName = tParams.replicationGroupName;
+    String path = producerCertsDirOnTarget + "/" + replicationGroupName;
+    switch (tParams.action.toString()) {
+      case "copy":
+        try {
+          copyCerts(path, tParams.rootCertPath.getAbsolutePath());
+        } catch (IOException e) {
+          throw new RuntimeException(e);
+        }
+        break;
+      case "remove":
+        File producerCertsDir = new File(path);
+        if (producerCertsDir.exists()) {
+          FileUtils.deleteDirectory(producerCertsDir);
+        }
+        break;
+      default:
+    }
+  }
+
   private Map<String, String> getGFlagsFromArgs(Map<String, String> args, String key) {
     return (Map<String, String>) Json.fromJson(Json.parse(args.get(key)), Map.class);
+  }
+
+  private String replaceYbHome(
+      String path, UniverseDefinitionTaskParams.UserIntent userIntent, NodeInfo nodeInfo) {
+    return path.replace(CommonUtils.DEFAULT_YB_HOME_DIR, getNodeRoot(userIntent, nodeInfo));
   }
 
   private void processAndWriteGFLags(
@@ -346,8 +453,16 @@ public class LocalNodeManager {
     try {
       for (String key : new ArrayList<>(gflags.keySet())) {
         String value = gflags.get(key);
-        value = value.replace(CommonUtils.DEFAULT_YB_HOME_DIR, getNodeRoot(userIntent, nodeInfo));
+        value = replaceYbHome(value, userIntent, nodeInfo);
         gflags.put(key, value);
+      }
+      if (!gflags.containsKey(GFlagsUtil.DEFAULT_MEMORY_LIMIT_TO_RAM_RATIO)
+          && serverType != UniverseTaskBase.ServerType.CONTROLLER) {
+        gflags.put(
+            GFlagsUtil.DEFAULT_MEMORY_LIMIT_TO_RAM_RATIO,
+            serverType == UniverseTaskBase.ServerType.TSERVER
+                ? MAX_MEM_RATIO_TSERVER
+                : MAX_MEM_RATIO_MASTER);
       }
       processCerts(args, gflags, nodeInfo, userIntent);
       writeGFlagsToFile(userIntent, gflags, serverType, nodeInfo);
@@ -392,12 +507,16 @@ public class LocalNodeManager {
       }
       File targetFile = new File(baseDirFile + "/" + certName);
       Files.copy(certFile.toPath(), targetFile.toPath(), StandardCopyOption.REPLACE_EXISTING);
-      PosixFileAttributeView attributeView =
-          Files.getFileAttributeView(
-              targetFile.toPath(), PosixFileAttributeView.class, LinkOption.NOFOLLOW_LINKS);
-      attributeView.setPermissions(
-          Set.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE));
+      setFilePermissions(targetFile.getAbsolutePath());
     }
+  }
+
+  public void setFilePermissions(String filePath) throws IOException {
+    PosixFileAttributeView attributeView =
+        Files.getFileAttributeView(
+            Paths.get(filePath), PosixFileAttributeView.class, LinkOption.NOFOLLOW_LINKS);
+    attributeView.setPermissions(
+        Set.of(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE));
   }
 
   private void startProcessForNode(
@@ -433,7 +552,7 @@ public class LocalNodeManager {
     log.info("Starting process: {}", Joiner.on(" ").join(args));
     try {
       Process proc = procBuilder.start();
-      Thread.sleep(100);
+      Thread.sleep(200);
       if (!proc.isAlive()) {
         throw new RuntimeException(
             "Process exited with code " + proc.exitValue() + " and output " + getOutput(proc));
@@ -462,7 +581,11 @@ public class LocalNodeManager {
       UniverseTaskBase.ServerType serverType,
       NodeInfo nodeInfo)
       throws IOException {
-    log.debug("Write gflags {} to file {}", gflags, serverType);
+    Map<String, String> gflagsToWrite = new LinkedHashMap<>(gflags);
+    if (additionalGFlags != null) {
+      gflagsToWrite.putAll(additionalGFlags.getPerProcessFlags().value.get(serverType));
+    }
+    log.debug("Write gflags {} to file {}", gflagsToWrite, serverType);
     File flagFileTmpPath = new File(getNodeGFlagsFile(userIntent, serverType, nodeInfo));
     if (!flagFileTmpPath.exists()) {
       flagFileTmpPath.getParentFile().mkdirs();
@@ -471,8 +594,8 @@ public class LocalNodeManager {
     try (FileOutputStream fis = new FileOutputStream(flagFileTmpPath);
         OutputStreamWriter writer = new OutputStreamWriter(fis);
         BufferedWriter buf = new BufferedWriter(writer)) {
-      for (String key : gflags.keySet()) {
-        buf.write("--" + key + "=" + gflags.get(key));
+      for (String key : gflagsToWrite.keySet()) {
+        buf.write("--" + key + "=" + gflagsToWrite.get(key));
         buf.newLine();
       }
       buf.flush();
@@ -523,8 +646,11 @@ public class LocalNodeManager {
             nodeDetails.tserverRpcPort,
             nodeDetails.ysqlServerHttpPort,
             nodeDetails.yqlServerRpcPort);
-    for (int suffix = 2; suffix < 255; suffix++) {
-      String ip = LOOPBACK_PREFIX + suffix;
+    List<Integer> ips =
+        IntStream.range(ipRangeStart, ipRangeEnd).boxed().collect(Collectors.toList());
+    Collections.shuffle(ips);
+    for (Integer lastTwoBytes : ips) {
+      String ip = LOOPBACK_PREFIX + ((lastTwoBytes >> 8) & 0xFF) + "." + (lastTwoBytes & 0xFF);
       if (usedIPs.contains(ip)) {
         continue;
       }
@@ -562,8 +688,13 @@ public class LocalNodeManager {
     return ShellResponse.create(ShellResponse.ERROR_CODE_SUCCESS, jsonNode.toString());
   }
 
-  private String getNodeRoot(
-      UniverseDefinitionTaskParams.UserIntent userIntent, NodeInfo nodeInfo) {
+  public String getNodeRoot(UniverseDefinitionTaskParams.UserIntent userIntent, NodeInfo nodeInfo) {
+    String binDir = getCloudInfo(userIntent).getDataHomeDir();
+    return binDir + "/" + nodeInfo.ip + "-" + nodeInfo.name.substring(nodeInfo.name.length() - 2);
+  }
+
+  public String getNodeRoot(UniverseDefinitionTaskParams.UserIntent userIntent, String nodeName) {
+    NodeInfo nodeInfo = nodesByNameMap.get(nodeName);
     String binDir = getCloudInfo(userIntent).getDataHomeDir();
     return binDir + "/" + nodeInfo.ip + "-" + nodeInfo.name.substring(nodeInfo.name.length() - 2);
   }
@@ -614,7 +745,7 @@ public class LocalNodeManager {
       String key = args.get(i);
       if (key.startsWith("--")) {
         String value = "";
-        if (i < args.size() - 1 && !args.get(i + 1).startsWith("--")) {
+        if (i < args.size() - 1 && (args.get(i + 1) == null || !args.get(i + 1).startsWith("--"))) {
           value = args.get(++i);
         }
         result.put(key, value);

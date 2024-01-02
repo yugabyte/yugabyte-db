@@ -256,7 +256,7 @@ static YbBatchedNestLoop *make_YbBatchedNestLoop(List *tlist,
 			  List *joinclauses, List *otherclauses, List *nestParams,
 			  Plan *lefttree, Plan *righttree,
 			  JoinType jointype, bool inner_unique,
-			  size_t num_hashClauseInfos,
+			  double first_batch_factor, size_t num_hashClauseInfos,
 			  YbBNLHashClauseInfo *hashClauseInfos);
 static HashJoin *make_hashjoin(List *tlist,
 			  List *joinclauses, List *otherclauses,
@@ -330,6 +330,7 @@ static GatherMerge *create_gather_merge_plan(PlannerInfo *root,
 						 GatherMergePath *best_path);
 
 extern int yb_bnl_batch_size;
+bool yb_bnl_optimize_first_batch;
 
 /*
  * create_plan
@@ -4857,6 +4858,7 @@ create_nestloop_plan(PlannerInfo *root,
 	Relids		saveOuterRels = root->curOuterRels;
 
 	bool yb_is_batched;
+	double yb_first_batch_factor = 1.0;
 	size_t yb_num_hashClauseInfos;
 	YbBNLHashClauseInfo *yb_hashClauseInfos;
 
@@ -4953,6 +4955,18 @@ create_nestloop_plan(PlannerInfo *root,
 			current_hinfo->hashOp = hashOpno;
 			current_hinfo++;
 		}
+
+		/* If there is a limit and yb_bnl_optimize_first_batch is on. */
+		if (yb_bnl_optimize_first_batch && root->limit_tuples)
+		{
+			SemiAntiJoinFactors semifactors;
+			compute_semi_anti_join_factors(root, best_path->path.parent,
+										   best_path->outerjoinpath->parent,best_path->innerjoinpath->parent,best_path->jointype, NULL,best_path->joinrestrictinfo,
+										   &semifactors);
+			double output_tuple_per_outer_tuple =
+				semifactors.outer_match_frac * semifactors.match_count;
+			yb_first_batch_factor = 1.0 / output_tuple_per_outer_tuple;
+		}
 	}
 
 
@@ -4990,17 +5004,29 @@ create_nestloop_plan(PlannerInfo *root,
 	nestParams = identify_current_nestloop_params(root, outerrelids);
 	if (yb_is_batched)
 	{
-		join_plan =
-			(NestLoop *) make_YbBatchedNestLoop(tlist,
-												joinclauses,
-												otherclauses,
-												nestParams,
-												outer_plan,
-												inner_plan,
-												best_path->jointype,
-												best_path->inner_unique,
-												yb_num_hashClauseInfos,
-												yb_hashClauseInfos);
+		YbBatchedNestLoop *bnl_plan =
+			make_YbBatchedNestLoop(tlist,
+								   joinclauses,
+								   otherclauses,
+								   nestParams,
+								   outer_plan,
+								   inner_plan,
+								   best_path->jointype,
+								   best_path->inner_unique,
+								   yb_first_batch_factor,
+								   yb_num_hashClauseInfos,
+								   yb_hashClauseInfos);
+		join_plan = (NestLoop *) bnl_plan;
+		(void) prepare_sort_from_pathkeys((Plan *) bnl_plan,
+										  best_path->path.pathkeys,
+										  best_path->path.parent->relids,
+										  NULL,
+										  true,
+										  &bnl_plan->numSortCols,
+										  &bnl_plan->sortColIdx,
+										  &bnl_plan->sortOperators,
+										  &bnl_plan->collations,
+										  &bnl_plan->nullsFirst);
 	}
 	else
 	{
@@ -6878,6 +6904,7 @@ make_YbBatchedNestLoop(List *tlist,
 					   Plan *righttree,
 					   JoinType jointype,
 					   bool inner_unique,
+					   double first_batch_factor,
 					   size_t num_hashClauseInfos,
 					   YbBNLHashClauseInfo *hashClauseInfos)
 {
@@ -6892,6 +6919,7 @@ make_YbBatchedNestLoop(List *tlist,
 	node->nl.join.inner_unique = inner_unique;
 	node->nl.join.joinqual = joinclauses;
 	node->nl.nestParams = nestParams;
+	node->first_batch_factor = first_batch_factor;
 	node->num_hashClauseInfos = num_hashClauseInfos;
 	node->hashClauseInfos = hashClauseInfos;
 

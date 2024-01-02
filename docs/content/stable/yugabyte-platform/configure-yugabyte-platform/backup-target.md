@@ -77,7 +77,7 @@ You can configure Google Cloud Storage (GCS) as a backup target as follows:
 
 3. Complete the form shown in the following illustration:
 
-   ![GCS Backup Configuration](/images/yp/cloud-provider-config-backup-gcs2.png)
+   ![GCS Backup Configuration](/images/yp/cloud-provider-configuration-backup-gcs-stable.png)
 
 4. Click **Save**.
 

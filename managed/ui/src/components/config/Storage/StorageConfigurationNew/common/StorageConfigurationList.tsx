@@ -27,6 +27,8 @@ import { IStorageProviders } from '../IStorageConfigs';
 import { deleteCustomerConfig } from './StorageConfigApi';
 import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { userhavePermInRoleBindings } from '../../../../../redesign/features/rbac/common/RbacUtils';
+import { Action, Resource } from '../../../../../redesign/features/rbac';
 
 interface StorageConfigurationListProps {
   type: IStorageProviders;
@@ -133,15 +135,23 @@ export const StorageConfigurationList: FC<StorageConfigurationListProps> = ({
               )}
             </MenuItem>
           </RbacValidator>
-          <MenuItem
-            onClick={() => {
-              setConfigData(configName);
-              setUniverseDetails([...universeDetails]);
-              setIsUniverseVisible(true);
-            }}
+          <RbacValidator
+            customValidateFunction={() =>
+              userhavePermInRoleBindings(Resource.UNIVERSE, Action.READ)
+            }
+            isControl
+            overrideStyle={{ display: 'block' }}
           >
-            Show Universes
-          </MenuItem>
+            <MenuItem
+              onClick={() => {
+                setConfigData(configName);
+                setUniverseDetails([...universeDetails]);
+                setIsUniverseVisible(true);
+              }}
+            >
+              Show Universes
+            </MenuItem>
+          </RbacValidator>
         </DropdownButton>
       </>
     );

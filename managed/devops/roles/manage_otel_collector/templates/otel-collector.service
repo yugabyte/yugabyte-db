@@ -33,5 +33,9 @@ LimitCORE=infinity
 LimitNOFILE=1048576
 LimitNPROC=12000
 
+Environment="AWS_PROFILE=otel-collector"
+Environment="GOOGLE_APPLICATION_CREDENTIALS={{yb_home_dir}}/otel-collector/gcp_creds"
+Environment="HOME={{yb_home_dir}}"
+
 [Install]
 WantedBy=default.target

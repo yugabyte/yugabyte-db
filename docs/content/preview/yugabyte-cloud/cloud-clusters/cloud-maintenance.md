@@ -3,7 +3,6 @@ title: Maintenance windows
 linkTitle: Maintenance windows
 description: Manage maintenance windows for clusters in YugabyteDB Managed.
 headcontent: Manage cluster maintenance windows and set exclusion periods
-image: /images/section_icons/manage/backup.png
 menu:
   preview_yugabyte-cloud:
     identifier: cloud-maintenance
@@ -65,7 +64,7 @@ Yugabyte performs rolling maintenance and upgrades on multi-node clusters with z
 
 - Dropped connections - Connections to the stopped node are dropped. Verify your connection pool, driver, and application to ensure they handle dropped connections correctly. Any failures need to be retried.
 - Less bandwidth - During maintenance, traffic is diverted to the running nodes. To mitigate this, set your maintenance window to a low traffic period. You can also add nodes (scale out) prior to the upgrade.
-- Not [highly available](../../../architecture/core-functions/high-availability/) - During maintenance, one node is always offline. In a multi-node cluster (that is, with a [replication factor](../../../architecture/docdb-replication/replication/) of 3), if one of the remaining nodes goes down, you can no longer access the database.
+- May not be [highly available](../../../architecture/core-functions/high-availability/) - During maintenance, one node is always offline. In a multi-node cluster with a [fault tolerance](../../cloud-basics/create-clusters-overview/#fault-tolerance) of 1, if one of the remaining nodes goes down (for a total of 2 nodes offline), you can no longer access the database.
 
 ## Critical maintenance
 

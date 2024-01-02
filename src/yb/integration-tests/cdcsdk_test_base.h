@@ -27,6 +27,7 @@
 
 DECLARE_int32(cdc_read_rpc_timeout_ms);
 DECLARE_int32(cdc_write_rpc_timeout_ms);
+DECLARE_int32(master_ts_rpc_timeout_ms);
 DECLARE_bool(TEST_check_broadcast_address);
 DECLARE_bool(flush_rocksdb_on_shutdown);
 
@@ -41,13 +42,22 @@ DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_bool(cdc_populate_safepoint_record);
 DECLARE_uint32(max_replication_slots);
 DECLARE_bool(TEST_ysql_yb_enable_replication_commands);
+DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
+DECLARE_int32(cleanup_split_tablets_interval_sec);
 
 namespace yb {
 using client::YBClient;
 using client::YBTableName;
 
 namespace cdc {
-constexpr int kRpcTimeout = NonTsanVsTsan(60, 120);
+// TODO(#19752): Remove the YB_DISABLE_TEST_IN_TSAN
+#define CDCSDK_TESTS_FOR_ALL_CHECKPOINT_OPTIONS(fixture, test_name)                       \
+  TEST_F(fixture, YB_DISABLE_TEST_IN_TSAN(test_name##Explicit)) { test_name(EXPLICIT); }  \
+                                                                                          \
+  TEST_F(fixture, YB_DISABLE_TEST_IN_TSAN(test_name##Implicit)) { test_name(IMPLICIT); }
+
+constexpr int kRpcTimeout = 60 * kTimeMultiplier;
+constexpr int kFlushTimeoutSecs = 30 * kTimeMultiplier;
 static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
 static const std::string kReplicationSlotName = "test_replication_slot";
@@ -104,12 +114,19 @@ class CDCSDKTestBase : public YBTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_read_rpc_timeout_ms) = (kRpcTimeout / 4) * 1000;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_write_rpc_timeout_ms) = (kRpcTimeout / 4) * 1000;
 
+    // This timeout is used in the cdc_state_table client. So set to a custom value for sanitizer
+    // builds to avoid timeouts while waiting for the table creation.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_master_ts_rpc_timeout_ms) = 30 * 1000 * kTimeMultiplier;
+
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_check_broadcast_address) = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_flush_rocksdb_on_shutdown) = false;
 
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_commands) = true;
 
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 0;
+
     google::SetVLOGLevel("cdc*", 4);
+    google::SetVLOGLevel("tablet*", 1);
   }
 
   void TearDown() override;
@@ -138,6 +155,9 @@ class CDCSDKTestBase : public YBTest {
   Status SetUpWithParams(
       uint32_t replication_factor, uint32_t num_masters = 1, bool colocated = false,
       bool cdc_populate_safepoint_record = false);
+
+  Result<google::protobuf::RepeatedPtrField<master::TabletLocationsPB>> SetUpWithOneTablet(
+      uint32_t replication_factor, uint32_t num_masters = 1, bool colocated = false);
 
   Result<YBTableName> GetTable(
       Cluster* cluster,
@@ -214,6 +234,13 @@ class CDCSDKTestBase : public YBTest {
       const std::string& replication_slot_name,
       CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::NOEXPORT_SNAPSHOT,
       CDCRecordType record_type = CDCRecordType::CHANGE);
+
+  Result<xrepl::StreamId> CreateConsistentSnapshotStream(
+      CDCSDKSnapshotOption snapshot_option = CDCSDKSnapshotOption::USE_SNAPSHOT,
+      CDCCheckpointType checkpoint_type = CDCCheckpointType::EXPLICIT,
+      CDCRecordType record_type = CDCRecordType::CHANGE);
+
+  Result<xrepl::StreamId> CreateDBStreamBasedOnCheckpointType(CDCCheckpointType checkpoint_type);
 
  protected:
   // Every test needs to initialize this cdc_proxy_.

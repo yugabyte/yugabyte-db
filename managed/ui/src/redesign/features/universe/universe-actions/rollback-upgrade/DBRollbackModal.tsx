@@ -1,12 +1,19 @@
 import { FC } from 'react';
 import _ from 'lodash';
 import { toast } from 'react-toastify';
+import { useDispatch } from 'react-redux';
 import { useMutation } from 'react-query';
 import { useTranslation } from 'react-i18next';
 import { useForm, FormProvider } from 'react-hook-form';
 import { Box, Typography } from '@material-ui/core';
 import { YBModal, YBCheckboxField, YBInputField, YBLabel } from '../../../../components';
 import { api } from '../../../../utils/api';
+import { fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../../../actions/universe';
+import {
+  fetchCustomerTasks,
+  fetchCustomerTasksSuccess,
+  fetchCustomerTasksFailure
+} from '../../../../../actions/tasks';
 import { createErrorMessage, transitToUniverse } from '../../universe-form/utils/helpers';
 import { Universe } from '../../universe-form/utils/dto';
 import { TOAST_AUTO_DISMISS_INTERVAL } from '../../universe-form/utils/constants';
@@ -26,9 +33,8 @@ export const DBRollbackModal: FC<DBRollbackModalProps> = ({ open, onClose, unive
   const { t } = useTranslation();
   const classes = dbUpgradeFormStyles();
   const { universeDetails, universeUUID } = universeData;
-  const prevVersion = _.get(universeDetails, 'prevYBSoftwareConfig.softwareVersion', '').split(
-    '-'
-  )[0];
+  const prevVersion = _.get(universeDetails, 'prevYBSoftwareConfig.softwareVersion', '');
+  const dispatch = useDispatch();
   const formMethods = useForm<DBRollbackFormFields>({
     defaultValues: {
       rollingUpgrade: true,
@@ -37,7 +43,8 @@ export const DBRollbackModal: FC<DBRollbackModalProps> = ({ open, onClose, unive
     mode: 'onChange',
     reValidateMode: 'onChange'
   });
-  const { control, handleSubmit } = formMethods;
+  const { control, handleSubmit, watch } = formMethods;
+  const isRollingUpgrade = watch('rollingUpgrade');
 
   //rollback upgrade
   const rollingUpgrade = useMutation(
@@ -47,6 +54,19 @@ export const DBRollbackModal: FC<DBRollbackModalProps> = ({ open, onClose, unive
     {
       onSuccess: () => {
         toast.success('Rollback form submitted successfully', TOAST_OPTIONS);
+        dispatch(fetchCustomerTasks() as any).then((response: any) => {
+          if (!response.error) {
+            dispatch(fetchCustomerTasksSuccess(response.payload));
+          } else {
+            dispatch(fetchCustomerTasksFailure(response.payload));
+          }
+        });
+        //Universe upgrade state is not updating immediately
+        setTimeout(() => {
+          dispatch(fetchUniverseInfo(universeUUID) as any).then((response: any) => {
+            dispatch(fetchUniverseInfoResponse(response.payload));
+          });
+        }, 2000);
         transitToUniverse(universeUUID);
         onClose();
       },
@@ -126,6 +146,7 @@ export const DBRollbackModal: FC<DBRollbackModalProps> = ({ open, onClose, unive
                   type="number"
                   name="timeDelay"
                   fullWidth
+                  disabled={!isRollingUpgrade}
                   inputProps={{
                     autoFocus: true,
                     'data-testid': 'time-delay'

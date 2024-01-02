@@ -84,7 +84,8 @@ public class V231__ProviderDetailsPersist extends BaseJavaMigration {
     final Map<String, String> oldToNewConfigKeyMap =
         new HashMap<String, String>() {
           {
-            put("project_id", "host_project_id");
+            put("GCE_HOST_PROJECT", "host_project_id");
+            put("project_id", "project_id");
             put("GOOGLE_APPLICATION_CREDENTIALS", "config_file_path");
             put("CUSTOM_GCE_NETWORK", "network");
             put(CloudProviderHelper.YB_FIREWALL_TAGS, CloudProviderHelper.YB_FIREWALL_TAGS);

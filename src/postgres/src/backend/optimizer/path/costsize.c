@@ -4279,10 +4279,8 @@ yb_get_bnl_extra_quals(NestPath *joinpath)
 	{
 		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
 		if (!yb_can_batch_rinfo(rinfo, joinpath->outerjoinpath->parent->relids,
-										joinpath->innerjoinpath->parent->relids))
-		{
+								joinpath->innerjoinpath->parent->relids))
 			bnl_extra_quals = lappend(bnl_extra_quals, rinfo);
-		}
 	}
 	return bnl_extra_quals;
 }

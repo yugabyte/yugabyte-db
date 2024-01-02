@@ -3,7 +3,6 @@ title: YugabyteDB node-postgres Smart Driver
 headerTitle: Connect an application
 linkTitle: Connect an app
 description: Connect an application using YugabyteDB Node.js smart driver for YSQL
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   preview:
     identifier: yugabyte-node-driver

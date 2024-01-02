@@ -43,10 +43,14 @@
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/tablet_peer.h"
 #include "yb/tablet/tablet.h"
+#include "yb/tablet/tablet_types.pb.h"
 #include "yb/tablet/transaction_participant.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
+#include "yb/util/opid.h"
+#include "yb/util/status.h"
+#include "yb/util/status_format.h"
 
 using std::string;
 
@@ -1079,6 +1083,8 @@ Status PopulateCDCSDKWriteRecord(
   // We'll use DocDB key hash to identify the records that belong to the same row.
   Slice prev_key;
 
+  uint32_t records_added = 0;
+
   bool colocated = tablet_ptr->metadata()->colocated();
   Schema schema = Schema();
   SchemaVersion schema_version = std::numeric_limits<uint32_t>::max();
@@ -1117,6 +1123,16 @@ Status PopulateCDCSDKWriteRecord(
                                     row_message->op() == RowMessage_Op_UPDATE)) {
       Slice sub_doc_key = key;
       dockv::SubDocKey decoded_key;
+
+      // With tablet splits we will end up reading records from this tablet's ancestors -
+      // only process records that are in this tablet's key range.
+      const auto& key_bounds = tablet_ptr->key_bounds();
+      if (!key_bounds.IsWithinBounds(key)) {
+        VLOG(1) << "Key for the read record is not within tablet bounds, skipping the key: "
+                << primary_key.data();
+        continue;
+      }
+
       RETURN_NOT_OK(decoded_key.DecodeFrom(&sub_doc_key, dockv::HybridTimeRequired::kFalse));
       if (colocated) {
         colocation_id = decoded_key.doc_key().colocation_id();
@@ -1164,6 +1180,7 @@ Status PopulateCDCSDKWriteRecord(
 
       // Write pair contains record for different row. Create a new CDCRecord in this case.
       proto_record = resp->add_cdc_sdk_proto_records();
+      ++records_added;
       row_message = proto_record->mutable_row_message();
       modified_columns.clear();
       row_message->set_pgschema_name(schema.SchemaName());
@@ -1303,6 +1320,14 @@ Status PopulateCDCSDKWriteRecord(
   }
 
   if (FLAGS_cdc_populate_end_markers_transactions) {
+    // If there are no records added, we do not need to populate the begin-commit block
+    // and we should return from here.
+    if (records_added == 0 && !resp->mutable_cdc_sdk_proto_records()->empty()) {
+      VLOG(2) << "Removing the added BEGIN record because there are no other records to add";
+      resp->mutable_cdc_sdk_proto_records()->RemoveLast();
+      return Status::OK();
+    }
+
     FillCommitRecordForSingleShardTransaction(
         OpId(msg->id().term(), msg->id().index()), tablet_peer, resp, msg->hybrid_time());
   }
@@ -2063,7 +2088,7 @@ Status HandleGetChangesForSnapshotRequest(
     client::YBClient* client, GetChangesResponsePB* resp, SchemaDetailsMap* cached_schema_details,
     const TableId& colocated_table_id, const tablet::TabletPtr& tablet_ptr, string* table_name,
     CDCSDKCheckpointPB* checkpoint, bool* checkpoint_updated, HybridTime* safe_hybrid_time_resp) {
-  auto txn_participant = tablet_ptr->transaction_participant();
+
   ReadHybridTime time;
 
   // It is first call in snapshot then take snapshot.
@@ -2079,14 +2104,9 @@ Status HandleGetChangesForSnapshotRequest(
 
     LOG(INFO) << "CDC snapshot initialization is started, by setting checkpoint as: " << data.op_id
               << ", for tablet_id: " << tablet_id << " stream_id: " << stream_id;
-    if (txn_participant) {
-      txn_participant->SetIntentRetainOpIdAndTime(
-          data.op_id, MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)));
-    } else {
-      RETURN_NOT_OK(tablet_peer->SetCDCSDKRetainOpIdAndTime(
-          data.op_id, MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)),
-          data.log_ht));
-    }
+    RETURN_NOT_OK(tablet_peer->SetAllInitialCDCSDKRetentionBarriers(
+        data.op_id, data.log_ht, true /* require_history_cutoff */));
+
     RETURN_NOT_OK(tablet_peer->GetLastReplicatedData(&data));
     time = ReadHybridTime::SingleTime(data.log_ht);
     // Use the last replicated hybrid time as a safe time for snapshot operation. so that
@@ -2184,6 +2204,7 @@ Status GetChangesForCDCSDK(
     SchemaDetailsMap* cached_schema_details,
     OpId* last_streamed_op_id,
     const int64_t& safe_hybrid_time_req,
+    const std::optional<uint64_t> consistent_snapshot_time,
     const int& wal_segment_index_req,
     int64_t* last_readable_opid_index,
     const TableId& colocated_table_id,
@@ -2198,7 +2219,6 @@ Status GetChangesForCDCSDK(
   // previously declared 'checkpoint' or the 'from_op_id'.
   bool checkpoint_updated = false;
   bool report_tablet_split = false;
-  OpId split_op_id = OpId::Invalid();
   bool snapshot_operation = false;
   bool pending_intents = false;
   int wal_segment_index = GetWalSegmentIndex(wal_segment_index_req);
@@ -2314,6 +2334,16 @@ Status GetChangesForCDCSDK(
     bool saw_non_actionable_message = false;
     std::unordered_set<std::string> streamed_txns;
 
+    if (tablet_ptr->metadata()->tablet_data_state() == tablet::TABLET_DATA_SPLIT_COMPLETED) {
+      // This indicates that the tablet being polled has been split and in this case we should
+      // tell the client immediately about the split.
+      LOG(INFO) << "Tablet split detected for tablet " << tablet_id
+                << ", moving to children tablets immediately";
+
+      return STATUS_FORMAT(
+        TabletSplit, "Tablet split detected on $0", tablet_id);
+    }
+
     // It's possible that a batch of messages in read_ops after fetching from
     // 'ReadReplicatedMessagesForCDC' , will not have any actionable messages. In which case we
     // keep retrying by fetching the next batch, until either we get an actionable message or reach
@@ -2385,8 +2415,21 @@ Status GetChangesForCDCSDK(
         // We should not stream messages we have already streamed again in this case,
         // except for "SPLIT_OP" messages which can appear with a hybrid_time lower than
         // safe_hybrid_time_req.
-        if (FLAGS_cdc_enable_consistent_records && safe_hybrid_time_req >= 0 &&
-            GetTransactionCommitTime(msg) <= (uint64_t)safe_hybrid_time_req &&
+
+        uint64_t commit_time_threshold = 0;
+        if (consistent_snapshot_time.has_value()) {
+          if (safe_hybrid_time_req >= 0) {
+            commit_time_threshold = std::max((uint64_t)safe_hybrid_time_req,
+                                             *consistent_snapshot_time);
+          } else {
+            commit_time_threshold = *consistent_snapshot_time;
+          }
+        }
+        VLOG(3) << "Commit time Threshold = " << commit_time_threshold;
+        VLOG(3) << "Txn commit time       = " << GetTransactionCommitTime(msg);
+
+        if (FLAGS_cdc_enable_consistent_records &&
+            GetTransactionCommitTime(msg) <= commit_time_threshold &&
             msg->op_type() != yb::consensus::OperationType::SPLIT_OP) {
           VLOG_WITH_FUNC(2)
               << "Received a message in wal_segment with commit_time <= request safe time."
@@ -2579,7 +2622,8 @@ Status GetChangesForCDCSDK(
             saw_split_op = true;
 
             // We first verify if a split has indeed occured succesfully by checking if there are
-            // two children tablets for the tablet.
+            // two children tablets for the tablet. This check also verifies if the SPLIT_OP
+            // belongs to the current tablet
             if (!(VerifyTabletSplitOnParentTablet(table_id, tablet_id, client))) {
               // We could verify the tablet split succeeded. This is possible when the child tablets
               // of a split are not running yet.
@@ -2602,8 +2646,7 @@ Status GetChangesForCDCSDK(
               } else {
                 // If 'GetChangesForCDCSDK' was called with the OpId just before the SplitOp's
                 // record, and if there is no more data to stream and we can notify the client
-                // about the split and update the checkpoint. At this point, we will store the
-                // split_op_id.
+                // about the split and update the checkpoint.
                 LOG(INFO) << "Found SPLIT_OP record with OpId: " << op_id
                           << ", for parent tablet: " << tablet_id
                           << ", and if we did not see any other records we will report the tablet "
@@ -2614,7 +2657,7 @@ Status GetChangesForCDCSDK(
                     &next_checkpoint_index, all_checkpoints, &checkpoint, last_streamed_op_id,
                     &safe_hybrid_time_resp, &wal_segment_index);
                 checkpoint_updated = true;
-                split_op_id = op_id;
+                report_tablet_split = true;
               }
             }
           } break;
@@ -2658,12 +2701,14 @@ Status GetChangesForCDCSDK(
     }
   }
 
-  // If the split_op_id is equal to the checkpoint i.e the OpId of the last actionable message, we
-  // know that after the split there are no more actionable messages, and this confirms that the
-  // SPLIT OP was succesfull.
-  if (!snapshot_operation && split_op_id.term == checkpoint.term() &&
-      split_op_id.index == checkpoint.index()) {
-    report_tablet_split = true;
+  // If the GetChanges call is not for snapshot and then we know that a split has indeed been
+  // successful then we should report the split to the client.
+  if (!snapshot_operation && report_tablet_split) {
+    LOG(INFO) << "Tablet split detected for tablet " << tablet_id
+              << ", moving to children tablets immediately";
+    return STATUS_FORMAT(
+      TabletSplit, "Tablet split detected on $0", tablet_id
+    );
   }
 
   if (consumption) {
@@ -2691,11 +2736,6 @@ Status GetChangesForCDCSDK(
 
   if (last_streamed_op_id->index > 0) {
     last_streamed_op_id->ToPB(resp->mutable_checkpoint()->mutable_op_id());
-  }
-
-  if (report_tablet_split) {
-    return STATUS_FORMAT(
-        TabletSplit, "Tablet Split on tablet: $0, no more records to stream", tablet_id);
   }
 
   // We do not populate SAFEPOINT records in two scenarios:

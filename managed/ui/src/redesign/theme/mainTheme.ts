@@ -325,23 +325,25 @@ export const mainTheme = createTheme({
       option: {
         fontSize: 13,
         fontWeight: 400,
-        paddingTop: 6,
-        paddingBottom: 6,
+        padding: '6px 16px',
         minHeight: 32,
         lineHeight: 1.25,
-        paddingLeft: '16px !important',
         '&[aria-disabled=true]': {
-          pointerEvents: 'auto'
-        }
+          pointerEvents: 'none'
+        },
+        color: '#232329'
       },
       groupLabel: {
-        fontSize: 13,
-        fontWeight: 400,
-        paddingTop: 6,
-        paddingBottom: 6,
-        minHeight: 32,
-        lineHeight: 1.25,
-        paddingLeft: '16px !important'
+        fontSize: 11.5,
+        fontWeight: 600,
+        lineHeight: '16px',
+        color: '#67666C',
+        padding: '6px 16px',
+        minHeight: '32px',
+        marginTop: '8px'
+      },
+      groupUl: {
+        borderBottom: '1px solid #E9EEF2'
       },
       '&$disabled': {
         cursor: 'not-allowed'

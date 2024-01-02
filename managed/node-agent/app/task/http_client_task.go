@@ -207,6 +207,44 @@ func (handler *PostNodeInstanceHandler) Result() *map[string]model.NodeInstanceR
 	return handler.result
 }
 
+type DeleteNodeInstanceHandler struct {
+	result *model.ResponseMessage
+}
+
+func NewDeleteNodeInstanceHandler() *DeleteNodeInstanceHandler {
+	return &DeleteNodeInstanceHandler{}
+}
+
+func (handler *DeleteNodeInstanceHandler) Handle(ctx context.Context) (any, error) {
+	config := util.CurrentConfig()
+	headers, err := platformHeadersWithJWT(ctx, config)
+	if err != nil {
+		return nil, err
+	}
+	res, err := httpClient().Do(
+		ctx,
+		http.MethodDelete,
+		util.PlatformDeleteNodeInstanceEndpoint(
+			config.String(util.CustomerIdKey),
+			config.String(util.ProviderIdKey),
+			config.String(util.NodeIpKey),
+		),
+		headers,
+		nil,
+		nil,
+	)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	handler.result = &model.ResponseMessage{}
+	return UnmarshalResponse(ctx, handler.result, res)
+}
+
+func (handler *DeleteNodeInstanceHandler) Result() *model.ResponseMessage {
+	return handler.result
+}
+
 type GetProvidersHandler struct {
 	apiToken string
 	result   *[]model.Provider
@@ -483,6 +521,44 @@ func (handler *GetVersionHandler) Handle(ctx context.Context) (any, error) {
 }
 
 func (handler *GetVersionHandler) Result() *model.VersionRequest {
+	return handler.result
+}
+
+type GetNodeAgentHandler struct {
+	apiToken string
+	result   *model.NodeAgent
+}
+
+func NewGetNodeAgentHandler(apiToken string) *GetNodeAgentHandler {
+	return &GetNodeAgentHandler{apiToken: apiToken}
+}
+
+func (handler *GetNodeAgentHandler) Handle(ctx context.Context) (any, error) {
+	config := util.CurrentConfig()
+	headers, err := platformHeadersWithAuth(ctx, config, handler.apiToken)
+	if err != nil {
+		return nil, err
+	}
+	res, err := httpClient().Do(ctx, http.MethodGet,
+		util.PlatformGetNodeAgentEndpoint(config.String(util.CustomerIdKey), config.String(util.NodeIpKey)),
+		headers, nil, nil)
+	if err != nil {
+		return nil, err
+	}
+	defer res.Body.Close()
+	nodeAgents := []*model.NodeAgent{}
+	_, err = UnmarshalResponse(ctx, &nodeAgents, res)
+	if err != nil {
+		return nil, err
+	}
+	if len(nodeAgents) == 0 {
+		return nil, util.ErrNotExist
+	}
+	handler.result = nodeAgents[0]
+	return handler.result, nil
+}
+
+func (handler *GetNodeAgentHandler) Result() *model.NodeAgent {
 	return handler.result
 }
 

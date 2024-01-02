@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/cdc/cdc_metrics.h"
+#include "yb/cdc/xrepl_metrics.h"
 #include "yb/cdc/cdc_service.h"
 #include "yb/client/client.h"
 #include "yb/client/table.h"
@@ -173,12 +173,10 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
 
       for (const auto& stream_id : stream_ids_) {
         for (const auto& tablet_id : producer_tablet_ids_) {
-          std::shared_ptr<cdc::CDCTabletMetrics> metrics =
-              std::static_pointer_cast<cdc::CDCTabletMetrics>(
-                  cdc_service->GetCDCTabletMetrics({{}, stream_id, tablet_id}));
+          auto metrics = GetXClusterTabletMetrics(*cdc_service, tablet_id, stream_id);
 
-          if (metrics && metrics->last_read_hybridtime->value()) {
-            producer_tablet_read_time_[tablet_id] = metrics->last_read_hybridtime->value();
+          if (metrics && metrics.get()->last_read_hybridtime->value()) {
+            producer_tablet_read_time_[tablet_id] = metrics.get()->last_read_hybridtime->value();
             count++;
           }
         }
@@ -198,12 +196,11 @@ class XClusterConsistencyTest : public XClusterYsqlTestBase {
 
       for (const auto& stream_id : stream_ids_) {
         for (const auto& tablet_id : producer_tablet_ids_) {
-          std::shared_ptr<cdc::CDCTabletMetrics> metrics =
-              std::static_pointer_cast<cdc::CDCTabletMetrics>(
-                  cdc_service->GetCDCTabletMetrics({{}, stream_id, tablet_id}));
+          auto metrics = GetXClusterTabletMetrics(*cdc_service, tablet_id, stream_id);
 
           if (metrics &&
-              metrics->last_read_hybridtime->value() > producer_tablet_read_time_[tablet_id]) {
+              metrics.get()->last_read_hybridtime->value() >
+                  producer_tablet_read_time_[tablet_id]) {
             count++;
           }
         }

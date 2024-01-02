@@ -304,6 +304,9 @@ class Env {
   virtual Status LinkFile(const std::string& src,
                                   const std::string& target) = 0;
 
+  // Symlink new_symlink to pointed_to. Unlinks new_symlink if it's already linked.
+  virtual Status SymlinkPath(const std::string& pointed_to, const std::string& new_symlink) = 0;
+
   // Read link's actual target
   virtual Result<std::string> ReadLink(const std::string& link) = 0;
 
@@ -382,6 +385,9 @@ class Env {
 
   // Like IsDirectory, but non-existence of the given path is not considered an error.
   Result<bool> DoesDirectoryExist(const std::string& path);
+
+  // Checks if the file is a symlink. Returns an error if it doesn't exist.
+  virtual Result<bool> IsSymlink(const std::string& path) = 0;
 
   // Checks if the given path is an executable file. If the file does not exist
   // we simply return false rather than consider that an error.
@@ -716,6 +722,7 @@ class EnvWrapper : public Env {
   Result<uint64_t> GetBlockSize(const std::string& f) override;
   Result<FilesystemStats> GetFilesystemStatsBytes(const std::string& f) override;
   Status LinkFile(const std::string& s, const std::string& t) override;
+  Status SymlinkPath(const std::string& pointed_to, const std::string& new_symlink) override;
   Result<std::string> ReadLink(const std::string& s) override;
   Status RenameFile(const std::string& s, const std::string& t) override;
   Status LockFile(const std::string& f, FileLock** l, bool r) override;
@@ -740,6 +747,7 @@ class EnvWrapper : public Env {
 
   Status GetExecutablePath(std::string* path) override;
   Status IsDirectory(const std::string& path, bool* is_dir) override;
+  Result<bool> IsSymlink(const std::string& path) override;
   Result<bool> IsExecutableFile(const std::string& path) override;
   Status Walk(const std::string& root,
               DirectoryOrder order,

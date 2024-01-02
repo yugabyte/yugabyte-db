@@ -41,7 +41,7 @@ import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.MapUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.lang3.StringUtils;
 import play.libs.Json;
@@ -62,7 +62,7 @@ public class NodeUniverseManager extends DevopsBase {
   @Inject NodeAgentClient nodeAgentClient;
   @Inject NodeAgentPoller nodeAgentPoller;
   @Inject RuntimeConfGetter confGetter;
-  @Inject LocalNodeManager localNodeManager;
+  @Inject LocalNodeUniverseManager localNodeUniverseManager;
 
   @Override
   protected String getCommandType() {
@@ -357,7 +357,8 @@ public class NodeUniverseManager extends DevopsBase {
       boolean authEnabled) {
     Cluster curCluster = universe.getCluster(node.placementUuid);
     if (curCluster.userIntent.providerType == CloudType.local) {
-      return localNodeManager.runYsqlCommand(node, universe, dbName, ysqlCommand, timeoutSec);
+      return localNodeUniverseManager.runYsqlCommand(
+          node, universe, dbName, ysqlCommand, timeoutSec, authEnabled);
     }
     List<String> command = new ArrayList<>();
     command.add("bash");
@@ -472,7 +473,9 @@ public class NodeUniverseManager extends DevopsBase {
         if (bundles.size() > 0) {
           Architecture arch = universe.getUniverseDetails().arch;
           ImageBundle defaultBundle = ImageBundleUtil.getDefaultBundleForUniverse(arch, bundles);
-          imageBundleUUID = defaultBundle.getUuid();
+          if (defaultBundle != null) {
+            imageBundleUUID = defaultBundle.getUuid();
+          }
         }
       }
       if (imageBundleUUID != null) {
@@ -538,6 +541,10 @@ public class NodeUniverseManager extends DevopsBase {
     if (MapUtils.isNotEmpty(redactedVals)) {
       // Create a new context as a context is immutable.
       context = context.toBuilder().redactedVals(redactedVals).build();
+    }
+    Cluster curCluster = universe.getCluster(node.placementUuid);
+    if (curCluster.userIntent.providerType == CloudType.local) {
+      return localNodeUniverseManager.executeNodeAction(universe, node, nodeAction, commandArgs);
     }
     return shellProcessHandler.run(commandArgs, context);
   }

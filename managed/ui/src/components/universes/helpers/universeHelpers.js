@@ -57,6 +57,9 @@ export const SoftwareUpgradeTaskType = {
  *  - error - The error string from the current universe
  */
 export const getUniverseStatus = (universe) => {
+  if (!universe) {
+    return { state: UniverseState.UNKNOWN, error: '' };
+  }
   const {
     updateInProgress,
     updateSucceeded,

@@ -114,6 +114,7 @@ export const CreateUniverse: FC = () => {
       encryptionAtRestConfig: {
         key_op: primaryData.instanceConfig.enableEncryptionAtRest ? 'ENABLE' : 'UNDEFINED'
       },
+      arch: primaryData.instanceConfig.arch!,
       clusters: [
         {
           clusterType: ClusterType.PRIMARY,

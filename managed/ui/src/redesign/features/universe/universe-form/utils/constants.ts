@@ -39,6 +39,8 @@ export const ROOT_CERT_FIELD = 'instanceConfig.rootCA';
 export const NODE_TO_NODE_ENCRYPT_FIELD = 'instanceConfig.enableNodeToNodeEncrypt';
 export const EAR_FIELD = 'instanceConfig.enableEncryptionAtRest';
 export const KMS_CONFIG_FIELD = 'instanceConfig.kmsConfig';
+export const CPU_ARCHITECTURE_FIELD = 'instanceConfig.arch';
+export const LINUX_VERSION_FIELD = 'instanceConfig.imageBundleUUID';
 
 //Advanced config
 export const SYSTEMD_FIELD = 'advancedConfig.useSystemd';
@@ -110,7 +112,9 @@ export const PRIMARY_FIELDS = [
   CUSTOMIZE_PORT_FIELD,
   UNIVERSE_OVERRIDES_FIELD,
   AZ_OVERRIDES_FIELD,
-  MASTER_PLACEMENT_FIELD
+  MASTER_PLACEMENT_FIELD,
+  CPU_ARCHITECTURE_FIELD,
+  LINUX_VERSION_FIELD
 ];
 
 export const ASYNC_FIELDS = [
@@ -141,7 +145,9 @@ export const ASYNC_FIELDS = [
   EAR_FIELD,
   MASTER_PLACEMENT_FIELD,
   USER_TAGS_FIELD,
-  INHERIT_FLAGS_FROM_PRIMARY
+  INHERIT_FLAGS_FROM_PRIMARY,
+  CPU_ARCHITECTURE_FIELD,
+  LINUX_VERSION_FIELD
 ];
 
 export const INHERITED_FIELDS_FROM_PRIMARY = [
@@ -162,7 +168,9 @@ export const INHERITED_FIELDS_FROM_PRIMARY = [
   ACCESS_KEY_FIELD,
   ROOT_CERT_FIELD,
   EAR_FIELD,
-  USER_TAGS_FIELD
+  USER_TAGS_FIELD,
+  CPU_ARCHITECTURE_FIELD,
+  LINUX_VERSION_FIELD
 ];
 
 export const PASSWORD_REGEX = /^(?=.*[0-9])(?=.*[!@#$%^&*])(?=.*[a-z])(?=.*[A-Z])[a-zA-Z0-9!@#$%^&*]{8,256}$/;

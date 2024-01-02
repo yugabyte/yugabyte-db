@@ -14,8 +14,32 @@ import java.util.UUID;
  * cases. This also allows for easy implementation of the no-op class.
  */
 public interface OperatorStatusUpdater {
+
+  public enum UniverseState {
+    CREATING("Creating"),
+    READY("Ready"),
+    ERROR("Error"),
+    EDITING("Editing"),
+    DELETING("Deleting"),
+    PAUSED("Paused");
+
+    UniverseState(String universeState) {
+      this.universeState = universeState;
+    }
+
+    public String getUniverseStateString() {
+      return universeState;
+    }
+
+    private String universeState;
+  }
+
   default void createYBUniverseEventStatus(
-      Universe universe, KubernetesResourceDetails universeName, String taskName, UUID taskUUID) {
+      Universe universe,
+      KubernetesResourceDetails universeName,
+      String taskName,
+      UUID taskUUID,
+      UniverseState universeState) {
     // no-op implementation
   }
 
@@ -33,6 +57,7 @@ public interface OperatorStatusUpdater {
       KubernetesResourceDetails universeName,
       String taskName,
       UUID taskUUID,
+      UniverseState state,
       Throwable t) {
     // no-op implementation
   }

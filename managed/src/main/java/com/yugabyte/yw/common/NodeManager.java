@@ -53,23 +53,19 @@ import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UniverseTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.VMImageUpgradeParams.VmUpgradeTaskType;
-import com.yugabyte.yw.models.AccessKey;
+import com.yugabyte.yw.models.*;
 import com.yugabyte.yw.models.AccessKey.KeyInfo;
-import com.yugabyte.yw.models.CertificateInfo;
-import com.yugabyte.yw.models.Customer;
-import com.yugabyte.yw.models.ImageBundle;
-import com.yugabyte.yw.models.InstanceType;
-import com.yugabyte.yw.models.NodeInstance;
-import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.models.ProviderDetails;
-import com.yugabyte.yw.models.Region;
-import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
+import com.yugabyte.yw.models.helpers.audit.UniverseLogsExporterConfig;
+import com.yugabyte.yw.models.helpers.audit.YCQLAuditConfig;
 import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
+import com.yugabyte.yw.models.helpers.telemetry.AWSCloudWatchConfig;
+import com.yugabyte.yw.models.helpers.telemetry.GCPCloudMonitoringConfig;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -92,8 +88,8 @@ import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.MapUtils;
 import org.apache.commons.collections4.CollectionUtils;
+import org.apache.commons.collections4.MapUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.bouncycastle.asn1.x509.GeneralName;
 import org.slf4j.Logger;
@@ -142,6 +138,8 @@ public class NodeManager extends DevopsBase {
   @Inject NodeAgentPoller nodeAgentPoller;
 
   @Inject OtelCollectorConfigGenerator otelCollectorConfigGenerator;
+
+  @Inject TelemetryProviderService telemetryProviderService;
 
   @Inject LocalNodeManager localNodeManager;
 
@@ -1839,11 +1837,21 @@ public class NodeManager extends DevopsBase {
             // aws uses instance_type to determine device names for mounting
             addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, true);
           }
+
+          UniverseDefinitionTaskParams.Cluster cluster =
+              universe.getCluster(nodeTaskParam.placementUuid);
+          Map<String, String> gflags =
+              GFlagsUtil.getGFlagsForAZ(
+                  nodeTaskParam.azUuid,
+                  ServerType.TSERVER,
+                  cluster,
+                  universe.getUniverseDetails().clusters);
           addOtelColArgs(
               commandArgs,
               taskParam,
               taskParam.otelCollectorEnabled,
               userIntent.auditLogConfig,
+              GFlagsUtil.getLogLinePrefix(gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
               provider,
               userIntent);
 
@@ -2357,6 +2365,7 @@ public class NodeManager extends DevopsBase {
               params,
               params.installOtelCollector,
               params.auditLogConfig,
+              GFlagsUtil.getLogLinePrefix(params.gflags.get(GFlagsUtil.YSQL_PG_CONF_CSV)),
               provider,
               userIntent);
           commandArgs.addAll(getAccessKeySpecificCommand(nodeTaskParam, type));
@@ -2647,7 +2656,9 @@ public class NodeManager extends DevopsBase {
           ImageBundle.getDefaultForProvider(nodeTaskParam.getProvider().getUuid());
       if (bundles.size() > 0) {
         ImageBundle bundle = ImageBundleUtil.getDefaultBundleForUniverse(arch, bundles);
-        imageBundleUUID = bundle.getUuid();
+        if (bundle != null) {
+          imageBundleUUID = bundle.getUuid();
+        }
       }
     }
 
@@ -2659,6 +2670,7 @@ public class NodeManager extends DevopsBase {
       NodeTaskParams taskParams,
       boolean installOtelCollector,
       AuditLogConfig config,
+      String logLinePrefix,
       Provider provider,
       UserIntent userIntent) {
     if (installOtelCollector) {
@@ -2671,13 +2683,61 @@ public class NodeManager extends DevopsBase {
         && (config.getYcqlAuditConfig() == null || !config.getYcqlAuditConfig().isEnabled())) {
       return;
     }
-    if (CollectionUtils.isNotEmpty(config.getUniverseLogsExporterConfig())) {
+    commandArgs.add("--ycql_audit_log_level");
+    if (config.getYcqlAuditConfig() != null) {
+      YCQLAuditConfig.YCQLAuditLogLevel logLevel =
+          config.getYcqlAuditConfig().getLogLevel() != null
+              ? config.getYcqlAuditConfig().getLogLevel()
+              : YCQLAuditConfig.YCQLAuditLogLevel.ERROR;
+      commandArgs.add(logLevel.name());
+    } else {
+      commandArgs.add("NONE");
+    }
+    if (config.isExportActive()
+        && CollectionUtils.isNotEmpty(config.getUniverseLogsExporterConfig())) {
+
       commandArgs.add("--otel_col_config_file");
       commandArgs.add(
           otelCollectorConfigGenerator
-              .generateConfigFile(taskParams, provider, userIntent, config)
+              .generateConfigFile(taskParams, provider, userIntent, config, logLinePrefix)
               .toAbsolutePath()
               .toString());
+
+      for (UniverseLogsExporterConfig logsExporterConfig : config.getUniverseLogsExporterConfig()) {
+        TelemetryProvider telemetryProvider =
+            telemetryProviderService.get(logsExporterConfig.getExporterUuid());
+        switch (telemetryProvider.getConfig().getType()) {
+          case AWS_CLOUDWATCH -> {
+            AWSCloudWatchConfig awsCloudWatchConfig =
+                (AWSCloudWatchConfig) telemetryProvider.getConfig();
+            if (StringUtils.isNotEmpty(awsCloudWatchConfig.getAccessKey())) {
+              commandArgs.add("--otel_col_aws_access_key");
+              commandArgs.add(awsCloudWatchConfig.getAccessKey());
+            }
+            if (StringUtils.isNotEmpty(awsCloudWatchConfig.getSecretKey())) {
+              commandArgs.add("--otel_col_aws_secret_key");
+              commandArgs.add(awsCloudWatchConfig.getSecretKey());
+            }
+          }
+          case GCP_CLOUD_MONITORING -> {
+            GCPCloudMonitoringConfig gcpCloudMonitoringConfig =
+                (GCPCloudMonitoringConfig) telemetryProvider.getConfig();
+            if (gcpCloudMonitoringConfig.getCredentials() != null) {
+              Path path =
+                  fileHelperService.createTempFile(
+                      "otel_collector_gcp_creds_"
+                          + taskParams.getUniverseUUID()
+                          + "_"
+                          + taskParams.nodeUuid,
+                      ".json");
+              String filePath = path.toAbsolutePath().toString();
+              FileUtils.writeJsonFile(filePath, gcpCloudMonitoringConfig.getCredentials());
+              commandArgs.add("--otel_col_gcp_creds_file");
+              commandArgs.add(filePath);
+            }
+          }
+        }
+      }
     }
   }
 }

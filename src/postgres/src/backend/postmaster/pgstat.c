@@ -74,6 +74,7 @@
 #include "commands/progress.h"
 #include "pg_yb_utils.h"
 #include "utils/syscache.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 
 /* ----------
  * Timer definitions.
@@ -3514,7 +3515,8 @@ pgstat_read_current_status(void)
 		 * the source backend is between increment steps.)	We use a volatile
 		 * pointer here to ensure the compiler doesn't try to get cute.
 		 */
-		for (;;)
+		int attempt = 1;
+		while (yb_pgstat_log_read_activity(beentry, ++attempt))
 		{
 			int			before_changecount;
 			int			after_changecount;
@@ -3602,7 +3604,11 @@ pgstat_get_wait_event_type(uint32 wait_event_info)
 
 	/* report process as not waiting. */
 	if (wait_event_info == 0)
+	{
+		if (IsYugaByteEnabled() && YBEnableAsh())
+			return "YsqlQuery";
 		return NULL;
+	}
 
 	classId = wait_event_info & 0xFF000000;
 
@@ -3637,6 +3643,8 @@ pgstat_get_wait_event_type(uint32 wait_event_info)
 			break;
 		default:
 			event_type = "???";
+			if (IsYugaByteEnabled() && YBEnableAsh())
+				event_type = YBCGetWaitEventClass(wait_event_info);
 			break;
 	}
 
@@ -3658,7 +3666,11 @@ pgstat_get_wait_event(uint32 wait_event_info)
 
 	/* report process as not waiting. */
 	if (wait_event_info == 0)
+	{
+		if (IsYugaByteEnabled() && YBEnableAsh())
+			return "QueryProcessing";
 		return NULL;
+	}
 
 	classId = wait_event_info & 0xFF000000;
 	eventId = wait_event_info & 0x0000FFFF;
@@ -3714,6 +3726,8 @@ pgstat_get_wait_event(uint32 wait_event_info)
 			}
 		default:
 			event_name = "unknown wait event";
+			if (IsYugaByteEnabled() && YBEnableAsh())
+				event_name = YBCGetWaitEventName(wait_event_info);
 			break;
 	}
 
@@ -4242,7 +4256,8 @@ pgstat_get_backend_current_activity(int pid, bool checkUser)
 		volatile PgBackendStatus *vbeentry = beentry;
 		bool		found;
 
-		for (;;)
+		int attempt = 1;
+		while (yb_pgstat_log_read_activity(vbeentry, ++attempt))
 		{
 			int			before_changecount;
 			int			after_changecount;
@@ -7061,4 +7076,20 @@ yb_pgstat_add_session_info(uint64_t session_id)
 	vbeentry->yb_session_id = session_id;
 
 	PGSTAT_END_WRITE_ACTIVITY(vbeentry);
+}
+
+bool
+yb_pgstat_log_read_activity(volatile PgBackendStatus *beentry, int attempt) {
+	if (attempt >= YB_MAX_BEENTRIES_ATTEMPTS)
+	{
+		elog(WARNING, "backend status entry for pid %d required %d "
+			 "attempts, using inconsistent results",
+			 (beentry)->st_procpid, attempt);
+		return false;
+	}
+	if (attempt % YB_BEENTRY_LOGGING_INTERVAL == 0)
+		elog(WARNING, "backend status entry for pid %d required %d "
+			 "attempts, continuing to retry",
+			 (beentry)->st_procpid, attempt);
+	return true;
 }

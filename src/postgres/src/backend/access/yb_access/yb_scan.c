@@ -2492,7 +2492,8 @@ ybcBeginScan(Relation relation,
 			 PushdownExprs *idx_pushdown,
 			 List *aggrefs,
 			 int distinct_prefixlen,
-			 YBCPgExecParameters *exec_params)
+			 YBCPgExecParameters *exec_params,
+			 bool is_internal_scan)
 {
 	/* Set up Yugabyte scan description */
 	YbScanDesc ybScan = (YbScanDesc) palloc0(sizeof(YbScanDescData));
@@ -2566,12 +2567,15 @@ ybcBeginScan(Relation relation,
 
 	/*
 	 * Set the current syscatalog version (will check that we are up to
-	 * date). Avoid it for syscatalog tables so that we can still use this
-	 * for refreshing the caches when we are behind.
-	 * Note: This works because we do not allow modifying schemas
-	 * (alter/drop) for system catalog tables.
+	 * date). Avoid it for internal syscatalog requests because that is the way
+	 * it has been since the early days of YSQL. For tighter correctness, it
+	 * should be sent for syscatalog requests, but this will result in more
+	 * cases of catalog version mismatch.
+	 * TODO(jason): revisit this for #15080. Condition could instead be
+	 * (!IsBootstrapProcessingMode()) which skips initdb and catalog
+	 * prefetching.
 	 */
-	if (!IsSystemRelation(relation))
+	if (!(is_internal_scan && IsSystemRelation(relation)))
 		YbSetCatalogCacheVersion(ybScan->handle,
 								 YbGetCatalogCacheVersion());
 
@@ -2701,6 +2705,8 @@ bool
 ybc_getnext_aggslot(IndexScanDesc scan, YBCPgStatement handle,
 					bool index_only_scan)
 {
+	Assert(scan->yb_agg_slot);
+
 	/*
 	 * As of 2023-08-10, the relid passed into ybFetchNext is not going to
 	 * be used as it is only used when there are system targets, not
@@ -2710,8 +2716,7 @@ ybc_getnext_aggslot(IndexScanDesc scan, YBCPgStatement handle,
 	 * TODO(jason): this may need to be revisited when supporting GROUP BY
 	 * aggregate pushdown where system columns are directly targeted.
 	 */
-	scan->yb_agg_slot = ybFetchNext(handle, scan->yb_agg_slot,
-									InvalidOid /* relid */);
+	ybFetchNext(handle, scan->yb_agg_slot, InvalidOid /* relid */);
 	/* For IndexScan, hack to make index_getnext think there are tuples. */
 	if (!index_only_scan)
 		scan->xs_hitup = (HeapTuple) 1;
@@ -2847,7 +2852,8 @@ SysScanDesc ybc_systable_begin_default_scan(Relation relation,
 								NULL /* idx_pushdown */,
 								NULL /* aggrefs */,
 								0 /* distinct_prefixlen */,
-								NULL /* exec_params */);
+								NULL /* exec_params */,
+								true /* is_internal_scan */);
 
 	scan->base.vtable = &yb_default_scan;
 
@@ -2875,7 +2881,8 @@ HeapScanDesc ybc_heap_beginscan(Relation relation,
 									 NULL /* idx_pushdown */,
 									 NULL /* aggrefs */,
 									 0 /* distinct_prefixlen */,
-									 NULL /* exec_params */);
+									 NULL /* exec_params */,
+									 true /* is_internal_scan */);
 
 	/* Set up Postgres sys table scan description */
 	HeapScanDesc scan_desc = (HeapScanDesc) palloc0(sizeof(HeapScanDescData));
@@ -3538,7 +3545,7 @@ ybFetchSample(YbSample ybSample, HeapTuple *rows)
  * provided relid and t_ybctid field is set to returned ybctid value. The heap
  * tuple is allocated in the slot's memory context.
  */
-TupleTableSlot *
+void
 ybFetchNext(YBCPgStatement handle,
 			TupleTableSlot *slot, Oid relid)
 {
@@ -3575,8 +3582,6 @@ ybFetchNext(YBCPgStatement handle,
 			MemoryContextSwitchTo(oldcontext);
 		}
 	}
-
-	return slot;
 }
 
 /***************************************************************************

@@ -32,6 +32,7 @@ add_library(yb_fs fs_manager.cc)
 
 target_link_libraries(yb_fs
   fs_proto
+  yb_ash
   yb_util
   gutil)
 

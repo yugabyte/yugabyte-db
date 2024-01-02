@@ -142,6 +142,7 @@ DECLARE_bool(enable_update_local_peer_min_index);
 DECLARE_bool(TEST_xcluster_fail_snapshot_transfer);
 DECLARE_bool(TEST_xcluster_fail_restore_consumer_snapshot);
 DECLARE_double(TEST_xcluster_simulate_random_failure_after_apply);
+DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
 
 namespace yb {
 
@@ -1294,7 +1295,7 @@ TEST_P(XClusterTest, PollAndObserveIdleDampening) {
   // After creating the cluster, make sure all tablets being polled for.
   ASSERT_OK(CorrectlyPollingAllTablets(1));
 
-  // Write some Info and query GetChanges to setup the CDCTabletMetrics.
+  // Write some Info and query GetChanges to setup the XClusterTabletMetrics.
   ASSERT_OK(InsertRowsAndVerify(0, 5));
 
   /*****************************************************************
@@ -1361,8 +1362,7 @@ TEST_P(XClusterTest, PollAndObserveIdleDampening) {
   // Find the CDCTabletMetric associated with the above pair.
   auto cdc_service = dynamic_cast<cdc::CDCServiceImpl*>(
       cdc_ts->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
-  std::shared_ptr<cdc::CDCTabletMetrics> metrics = std::static_pointer_cast<cdc::CDCTabletMetrics>(
-      cdc_service->GetCDCTabletMetrics({{}, stream_id, tablet_id}));
+  auto metrics = ASSERT_RESULT(GetXClusterTabletMetrics(*cdc_service, tablet_id, stream_id));
 
   /***********************************
    * Setup Complete.  Starting test. *
@@ -2712,14 +2712,14 @@ TEST_P(XClusterTest, TestNonZeroLagMetricsWithoutGetChange) {
       [&]() { return cdc_service->CDCEnabled(); }, MonoDelta::FromSeconds(30), "IsCDCEnabled"));
 
   // Check that the time_since_last_getchanges metric is updated, even without GetChanges.
-  std::shared_ptr<cdc::CDCTabletMetrics> metrics;
+  std::shared_ptr<xrepl::XClusterTabletMetrics> metrics;
   ASSERT_OK(WaitFor(
       [&]() {
-        metrics = std::static_pointer_cast<cdc::CDCTabletMetrics>(
-            cdc_service->GetCDCTabletMetrics({{}, stream_id, tablet_id}));
-        if (!metrics) {
+        auto metrics_result = GetXClusterTabletMetrics(*cdc_service, tablet_id, stream_id);
+        if (!metrics_result) {
           return false;
         }
+        metrics = metrics_result.get();
         return metrics->time_since_last_getchanges->value() > 0;
       },
       MonoDelta::FromSeconds(30),
@@ -3420,11 +3420,14 @@ TEST_F_EX(XClusterTest, PollerShutdownWithLongPollDelay, XClusterTestNoParam) {
 // This test creates a cluster with 4 tservers, and a table with RF3. It then adds a fourth peer and
 // ensures the cdc checkpoint is set on all tservers.
 TEST_F_EX(XClusterTest, CdcCheckpointPeerMove, XClusterTestNoParam) {
+  google::SetVLOGLevel("tablet", 1);
+  google::SetVLOGLevel("tablet_metadata", 1);
   const uint32_t kReplicationFactor = 3, kTabletCount = 1, kNumMasters = 1, kNumTservers = 4;
   ASSERT_OK(SetUpWithParams(
       {kTabletCount}, {kTabletCount}, kReplicationFactor, kNumMasters, kNumTservers));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 2;
   ASSERT_TRUE(FLAGS_enable_update_local_peer_min_index);
 
   ASSERT_OK(SetupReplication());
@@ -3518,6 +3521,21 @@ TEST_F_EX(XClusterTest, CdcCheckpointPeerMove, XClusterTestNoParam) {
   ASSERT_OK(VerifyRowsMatch());
   ASSERT_OK(wait_for_checkpoint());
   ASSERT_GE(max_found_checkpoint, min_expected_checkpoint);
+
+  for (auto& tablet_server : producer_cluster()->mini_tablet_servers()) {
+    for (const auto& tablet_peer : tablet_server->server()->tablet_manager()->GetTabletPeers()) {
+      if (tablet_peer->tablet_id() != tablet_id) {
+        continue;
+      }
+      auto cdc_sdk_intents_barrier = tablet_peer->cdc_sdk_min_checkpoint_op_id();
+      auto cdc_sdk_history_barrier = tablet_peer->get_cdc_sdk_safe_time();
+      LOG(INFO) << "TServer: " << tablet_server->server()->ToString()
+                << ", CDCSDK Intents barrier: " << cdc_sdk_intents_barrier
+                << ", CDCSDK history barrier: " << cdc_sdk_history_barrier;
+      ASSERT_EQ(cdc_sdk_intents_barrier, OpId::Invalid());
+      ASSERT_EQ(cdc_sdk_history_barrier, HybridTime::kInvalid);
+    }
+  }
 }
 
 TEST_F_EX(XClusterTest, FetchBootstrapCheckpointsFromLeaders, XClusterTestNoParam) {

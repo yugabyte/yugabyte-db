@@ -37,6 +37,8 @@
 #include <string>
 #include <vector>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
@@ -134,7 +136,7 @@ DEFINE_UNKNOWN_int32(max_wait_for_safe_time_ms, 5000,
              "Maximum time in milliseconds to wait for the safe time to advance when trying to "
              "scan at the given hybrid_time.");
 
-DEFINE_UNKNOWN_int32(num_concurrent_backfills_allowed, -1,
+DEFINE_RUNTIME_int32(num_concurrent_backfills_allowed, -1,
              "Maximum number of concurrent backfill jobs that is allowed to run.");
 
 DEFINE_test_flag(bool, tserver_noop_read_write, false, "Respond NOOP to read/write.");
@@ -217,6 +219,10 @@ DEFINE_test_flag(bool, fail_alter_schema_after_abort_transactions, false,
 
 DEFINE_test_flag(bool, txn_status_moved_rpc_force_fail, false,
                  "Force updates in transaction status location to fail.");
+
+DEFINE_test_flag(bool, txn_status_moved_rpc_force_fail_retryable, true,
+                 "Forced updates in transaction status location failure should be retryable "
+                 "error.");
 
 DEFINE_test_flag(int32, txn_status_moved_rpc_handle_delay_ms, 0,
                  "Inject delay to slowdown handling of updates in transaction status location.");
@@ -360,6 +366,7 @@ class WriteQueryCompletionCallback {
         trace_(include_trace_ ? Trace::CurrentTrace() : nullptr) {}
 
   void operator()(Status status) const {
+    SCOPED_WAIT_STATUS(OnCpu_Active);
     VLOG(1) << __PRETTY_FUNCTION__ << " completing with status " << status;
     // When we don't need to return any data, we could return success on duplicate request.
     if (status.IsAlreadyPresent() &&
@@ -629,6 +636,7 @@ void TabletServiceAdminImpl::BackfillIndex(
   const CoarseTimePoint &deadline = context.GetClientDeadline();
   const auto coarse_start = CoarseMonoClock::Now();
   {
+    SCOPED_WAIT_STATUS(BackfillIndex_WaitForAFreeSlot);
     std::unique_lock<std::mutex> l(backfill_lock_);
     while (num_tablets_backfilling_ >= FLAGS_num_concurrent_backfills_allowed) {
       if (backfill_cond_.wait_until(l, deadline) == std::cv_status::timeout) {
@@ -956,7 +964,17 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
   }
   auto operation = std::make_unique<ChangeMetadataOperation>(
       tablet.tablet, tablet.peer->log());
-  operation->AllocateRequest()->CopyFrom(*req);
+  auto request = operation->AllocateRequest();
+  request->CopyFrom(*req);
+
+  // CDC SDK Create Stream Context
+  if (req->has_retention_requester_id()) {
+    auto status = SetupCDCSDKRetention(req, resp, tablet.peer);
+    if (!status.ok()) {
+      SetupErrorAndRespond(resp->mutable_error(), status, &context);
+      return;
+    }
+  }
 
   operation->set_completion_callback(
       MakeRpcOperationCompletionCallback(std::move(context), resp, server_->Clock()));
@@ -965,6 +983,40 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
   // Submit the alter schema op. The RPC will be responded to asynchronously.
   tablet.peer->Submit(std::move(operation), tablet.leader_term);
 }
+
+Status TabletServiceAdminImpl::SetupCDCSDKRetention(const tablet::ChangeMetadataRequestPB* req,
+                                                    ChangeMetadataResponsePB* resp,
+                                                    const TabletPeerPtr& tablet_peer) {
+
+  tablet::RemoveIntentsData data;
+  auto s = tablet_peer->GetLastReplicatedData(&data);
+  if (s.ok()) {
+    LOG_WITH_PREFIX(INFO) << "Proposed cdc_sdk_snapshot_safe_op_id: " << data.op_id
+                          << ", time: " << data.log_ht;
+    resp->mutable_cdc_sdk_snapshot_safe_op_id()->set_term(data.op_id.term);
+    resp->mutable_cdc_sdk_snapshot_safe_op_id()->set_index(data.op_id.index);
+  } else {
+    LOG_WITH_PREFIX(WARNING) << "CDCSDK Create Stream context: "
+                             << "Could not get snapshot_safe_opid: "
+                             << s;
+    return s;
+  }
+
+  // Now, from this point on, till the Followers Apply the ChangeMetadataOperation,
+  // any proposed history cutoff they process can only be less than Now()
+  auto require_history_cutoff =
+      req->has_cdc_sdk_require_history_cutoff() && req->cdc_sdk_require_history_cutoff();
+  auto res = tablet_peer->SetAllInitialCDCSDKRetentionBarriers(
+      data.op_id, server_->Clock()->Now(), require_history_cutoff);
+  // If there was an error while setting the retention barrier cutoff, respond with an error
+  if (!res.ok()) {
+    WARN_NOT_OK(res, "CDCSDK Create Stream context: Unable to set history cutoff");
+    RETURN_NOT_OK(res);
+  }
+
+  return Status::OK();
+}
+
 
 #define VERIFY_RESULT_OR_RETURN(expr) RESULT_CHECKER_HELPER( \
     expr, \
@@ -1284,7 +1336,11 @@ Status TabletServiceImpl::HandleUpdateTransactionStatusLocation(
   }
 
   if (PREDICT_FALSE(FLAGS_TEST_txn_status_moved_rpc_force_fail)) {
-    return STATUS(IllegalState, "UpdateTransactionStatusLocation forced to fail");
+    if (FLAGS_TEST_txn_status_moved_rpc_force_fail_retryable) {
+      return STATUS(IllegalState, "UpdateTransactionStatusLocation forced to fail");
+    } else {
+      return STATUS(Expired, "UpdateTransactionStatusLocation forced to fail");
+    }
   }
 
   auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(req->transaction_id()));
@@ -1847,6 +1903,7 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
   // First, check tserver's catalog version.
   const std::string db_ver_tag = Format("[DB $0, V $1]", database_oid, catalog_version);
   uint64_t ts_catalog_version = 0;
+  SCOPED_WAIT_STATUS(WaitForYsqlBackendsCatalogVersion);
   Status s = Wait(
       [catalog_version, database_oid, this, &ts_catalog_version]() -> Result<bool> {
         // TODO(jason): using the gflag to determine per-db mode may not work for initdb, so make
@@ -2075,6 +2132,13 @@ void TabletServiceImpl::Write(const WriteRequestPB* req,
     return;
   }
 
+  const auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
+  if (wait_state && req->has_tablet_id()) {
+    wait_state->UpdateAuxInfo(ash::AshAuxInfo{.tablet_id = req->tablet_id(), .method = "Write"});
+  }
+  if (wait_state && req->has_ash_metadata()) {
+    wait_state->UpdateMetadataFromPB(req->ash_metadata());
+  }
   auto status = PerformWrite(req, resp, &context);
   if (!status.ok()) {
     SetupErrorAndRespond(resp->mutable_error(), std::move(status), &context);
@@ -2105,6 +2169,13 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
     return;
   }
 
+  const auto& wait_state = ash::WaitStateInfo::CurrentWaitState();
+  if (wait_state && req->has_tablet_id()) {
+    wait_state->UpdateAuxInfo(ash::AshAuxInfo{.tablet_id = req->tablet_id(), .method = "Read"});
+  }
+  if (wait_state && req->has_ash_metadata()) {
+    wait_state->UpdateMetadataFromPB(req->ash_metadata());
+  }
   PerformRead(server_, this, req, resp, std::move(context));
 }
 
