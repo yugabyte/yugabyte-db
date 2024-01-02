@@ -12,9 +12,11 @@ menu:
 type: docs
 ---
 
-Transactions are a set of SQL statements that are expected to be executed atomically. Getting a transaction to work correctly involves multiple components.
+Transactions are a set of SQL statements that are expected to be executed atomically. Transactions scale linearly in YugabyteDB as more nodes are added to the cluster.
 
-In the simplest explanation, the node the client connects to acts as the transaction manager. The node acquires the necessary locks, talks to the leaders for the keys involved in the transaction, the transaction is committed to the leader, and finally replicated to the respective followers.
+## How transactions work
+
+Getting a transaction to work correctly involves multiple components. In the simplest explanation, the node the client connects to acts as the transaction manager. The node acquires the necessary locks, talks to the leaders for the keys involved in the transaction, the transaction is committed to the leader, and finally replicated to the respective followers.
 
 ![How does a transaction work](/images/explore/scalability/scaling-transactions-working.png)
 
@@ -22,7 +24,7 @@ In the simplest explanation, the node the client connects to acts as the transac
 To understand how transactions work in detail, see [Transactional I/O](../../../architecture/transactions/transactional-io-path/)
 {{</tip>}}
 
-## OLTP Benchmark
+## OLTP benchmark
 
 The [Transaction Processing System Benchmark(TPC-C)](https://www.tpc.org/tpcc/detail5.asp) is the gold standard for measuring the transaction processing capacity of a database. It simulates order entry for a wholesale parts supplier. It includes a mixture of transaction types, including the following:
 
@@ -33,7 +35,7 @@ The [Transaction Processing System Benchmark(TPC-C)](https://www.tpc.org/tpcc/de
 
 The performance metric measures the number of new orders that can be processed per minute and is expressed in transactions per minute (TPM-C). The benchmark is designed to simulate business expansion by increasing the number of warehouses.
 
-## TPC-C Results
+## TPC-C results
 
 The following shows the results for the TPC-C benchmark using the following configuration:
 
