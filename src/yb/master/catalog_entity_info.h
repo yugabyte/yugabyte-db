@@ -78,6 +78,7 @@ struct TabletLeaderLeaseInfo {
   bool initialized = false;
   consensus::LeaderLeaseStatus leader_lease_status =
       consensus::LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
+  // Expiration time of leader ht lease, invalid when leader_lease_status != HAS_LEASE.
   MicrosTime ht_lease_expiration = 0;
   // Number of heartbeats that current tablet leader doesn't have a valid lease.
   uint64 heartbeats_without_leader_lease = 0;
@@ -277,6 +278,11 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   void set_last_update_time(const MonoTime& ts);
   MonoTime last_update_time() const;
 
+  // Update last_time_with_valid_leader_ to the Now().
+  void UpdateLastTimeWithValidLeader();
+  MonoTime last_time_with_valid_leader() const;
+  void TEST_set_last_time_with_valid_leader(const MonoTime& time);
+
   // Accessors for the last reported schema version.
   bool set_reported_schema_version(const TableId& table_id, uint32_t version);
   uint32_t reported_schema_version(const TableId& table_id);
@@ -337,6 +343,11 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   // The last time the replica locations were updated.
   // Also set when the Master first attempts to create the tablet.
   MonoTime last_update_time_ GUARDED_BY(lock_);
+
+  // The last time the tablet has a valid leader, a valid leader is:
+  // 1. with peer role LEADER.
+  // 2. has not-expired lease.
+  MonoTime last_time_with_valid_leader_ GUARDED_BY(lock_);
 
   // The locations in the latest Raft config where this tablet has been
   // reported. The map is keyed by tablet server UUID.

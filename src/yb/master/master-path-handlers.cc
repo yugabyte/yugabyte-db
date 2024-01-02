@@ -96,18 +96,17 @@ DEFINE_UNKNOWN_int32(
 DEFINE_RUNTIME_bool(master_webserver_require_https, false,
     "Require HTTPS when redirecting master UI requests to the leader.");
 
-DEFINE_RUNTIME_uint64(master_maximum_heartbeats_without_lease, 10,
-    "After this number of heartbeats without a valid lease for a tablet, treat it as leaderless.");
-
-DEFINE_RUNTIME_uint32(maximum_tablet_leader_lease_expired_secs, 2 * 60,
-    "If the leader lease in master's view has expired for this amount of seconds, "
-    "report it as a leaderless tablet.");
+DEFINE_RUNTIME_uint32(leaderless_tablet_alert_delay_secs, 2 * 60,
+    "From master's view, if the tablet doesn't have a valid leader for this amount of seconds, "
+    "alert it as a leaderless tablet.");
 
 DECLARE_int32(ysql_tablespace_info_refresh_secs);
 
 DECLARE_string(webserver_ca_certificate_file);
 
 DECLARE_string(webserver_certificate_file);
+
+DEPRECATE_FLAG(uint64, master_maximum_heartbeats_without_lease, "12_2023");
 
 namespace yb {
 
@@ -2027,76 +2026,18 @@ std::vector<std::pair<TabletInfoPtr, std::string>> MasterPathHandlers::GetLeader
   std::vector<std::pair<TabletInfoPtr, std::string>> leaderless_tablets;
 
   auto nonsystem_tablets = GetNonSystemTablets();
-  const auto now_usec = master_->clock()->Now().GetPhysicalValueMicros();
-  const auto maximum_heartbeats =
-      GetAtomicFlag(&FLAGS_master_maximum_heartbeats_without_lease);
-  const auto max_lease_expired_secs =
-      GetAtomicFlag(&FLAGS_maximum_tablet_leader_lease_expired_secs);
-
   for (TabletInfoPtr t : nonsystem_tablets) {
     if (t.get()->LockForRead()->is_deleted()) {
       continue;
     }
-    auto rm = t.get()->GetReplicaLocations();
-    bool leader_only_mode = rm->size() == 1;
-
-    std::string leaderless_reason = "Leader peer not found";
-    auto has_leader = std::any_of(
-      rm->begin(), rm->end(),
-      [&leaderless_reason, max_lease_expired_secs, leader_only_mode, maximum_heartbeats, now_usec](
-          const auto &item) {
-        if (item.second.role != PeerRole::LEADER) {
-          return false;
-        }
-        const auto kReasonPrefix =
-            Format("Leader peer $0: ", item.second.ts_desc->permanent_uuid());
-        auto leader_lease_info = item.second.leader_lease_info;
-        // CHECK 1:
-        // If the leader lease info is not initialized or it's leader only mode,
-        // treat it as leaderlss if the leader node is crashed/partitioned by checking
-        // TimeSinceHeartbeat().
-        if (!leader_lease_info.initialized || leader_only_mode) {
-          const auto time_since_heartbeat_secs =
-              item.second.ts_desc->TimeSinceHeartbeat().ToSeconds();
-          if (time_since_heartbeat_secs > max_lease_expired_secs) {
-            leaderless_reason = kReasonPrefix +
-                Format("no heartbeats received from leader node in last $0 seconds, "
-                       "might be node crash or network partition",
-                       time_since_heartbeat_secs);
-            return false;
-          }
-          return true;
-        }
-
-        // CHECK 2:
-        // If the leader doesn't have valid lease for enough time, also treat it as leaderless.
-        if (leader_lease_info.leader_lease_status != consensus::LeaderLeaseStatus::HAS_LEASE &&
-            leader_lease_info.heartbeats_without_leader_lease >= maximum_heartbeats) {
-          leaderless_reason =
-               kReasonPrefix + Format("no leader lease in $0 heartbeats",
-                                      leader_lease_info.heartbeats_without_leader_lease);
-          return false;
-        }
-
-        // CHECK 3:
-        // Check if the ht_lease of leader has been expired.
-        // It's possible that the leader node is partitioned and master cannot receive any
-        // heartbeats from it and it can pass CHECK 2.
-        if (now_usec > leader_lease_info.ht_lease_expiration +
-                max_lease_expired_secs * 1000 * 1000) {
-          leaderless_reason = kReasonPrefix + Format(
-              "leader lease expired for more than $0 seconds, lease_exp: $1 now: $2, "
-              "possibly false positive if the leader just had trouble communicating with master",
-              max_lease_expired_secs,
-              leader_lease_info.ht_lease_expiration,
-              now_usec);
-          return false;
-        }
-        return true;
-      });
-
-    if (!has_leader) {
-      leaderless_tablets.push_back(std::make_pair(t, leaderless_reason));
+    const auto time_since_valid_leader_secs =
+        MonoTime::Now().GetDeltaSince(t->last_time_with_valid_leader()).ToSeconds();
+    if (time_since_valid_leader_secs >
+            GetAtomicFlag(&FLAGS_leaderless_tablet_alert_delay_secs)) {
+      leaderless_tablets.push_back(std::make_pair(
+          t,
+          Format("No valid leader reported for $0 seconds",
+                 time_since_valid_leader_secs)));
     }
   }
   return leaderless_tablets;
@@ -3232,13 +3173,12 @@ string MasterPathHandlers::RaftConfigToHtml(const std::vector<TabletReplica>& lo
       html << Format("  <li><b>LEADER: $0 ($1)</b></li>\n", location_html, leader_lease_status);
       if (leader_lease_info.leader_lease_status == consensus::LeaderLeaseStatus::HAS_LEASE) {
         // Get the remaining milliseconds of the current valid lease.
-        boost::posix_time::ptime start(boost::gregorian::date(1970, 1, 1));
-        auto now_utc = boost::posix_time::microsec_clock::universal_time();
+        const auto now_usec = boost::posix_time::microseconds(
+            master_->clock()->Now().GetPhysicalValueMicros());
         auto ht_lease_usec = boost::posix_time::microseconds(leader_lease_info.ht_lease_expiration);
-        auto diff = ht_lease_usec - (now_utc - start);
+        auto diff = ht_lease_usec - now_usec;
         html << Format("Remaining ht_lease (may be stale): $0 ms<br>\n", diff.total_milliseconds());
-      } else if (leader_lease_info.heartbeats_without_leader_lease >=
-                     GetAtomicFlag(&FLAGS_master_maximum_heartbeats_without_lease)) {
+      } else if (leader_lease_info.heartbeats_without_leader_lease > 0) {
         html << Format(
             "Cannot replicate lease for past <b><font color='red'>$0</font></b> heartbeats<br>",
             leader_lease_info.heartbeats_without_leader_lease);
