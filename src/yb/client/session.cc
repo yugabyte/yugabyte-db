@@ -439,6 +439,11 @@ int YsqlClientReadWriteTimeoutMs() {
       : FLAGS_ysql_client_read_write_timeout_ms);
 }
 
+int SysCatalogRetryableRequestTimeoutSecs() {
+  return std::max(RetryableRequestTimeoutSecs(TableType::PGSQL_TABLE_TYPE),
+                  RetryableRequestTimeoutSecs(TableType::YQL_TABLE_TYPE));
+}
+
 int RetryableRequestTimeoutSecs(TableType table_type) {
   const int client_timeout_ms = table_type == TableType::PGSQL_TABLE_TYPE
       ? YsqlClientReadWriteTimeoutMs()

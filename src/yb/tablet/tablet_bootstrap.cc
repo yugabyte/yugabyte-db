@@ -65,6 +65,7 @@
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/thread_annotations.h"
 
+#include "yb/master/sys_catalog_constants.h"
 #include "yb/rpc/rpc_fwd.h"
 #include "yb/rpc/lightweight_message.h"
 
@@ -497,10 +498,13 @@ class TabletBootstrap {
     const bool has_blocks = VERIFY_RESULT(OpenTablet());
 
     if (data_.retryable_requests_manager) {
+      const auto retryable_request_timeout_secs = meta_->IsSysCatalog()
+          ? client::SysCatalogRetryableRequestTimeoutSecs()
+          : client::RetryableRequestTimeoutSecs(tablet_->table_type());
+      data_.retryable_requests_manager->retryable_requests().SetRequestTimeout(
+          retryable_request_timeout_secs);
       data_.retryable_requests_manager->retryable_requests().SetMetricEntity(
           tablet_->GetTabletMetricsEntity());
-      data_.retryable_requests_manager->retryable_requests().SetRequestTimeout(
-          client::RetryableRequestTimeoutSecs(tablet_->table_type()));
     }
 
     // Load retryable requests after metrics entity has been instantiated.
