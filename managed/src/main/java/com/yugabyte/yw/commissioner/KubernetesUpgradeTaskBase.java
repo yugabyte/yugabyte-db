@@ -43,12 +43,11 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
   // Wrapper that takes care of common pre and post upgrade tasks and user has
   // flexibility to manipulate subTaskGroupQueue through the lambda passed in parameter
   public void runUpgrade(Runnable upgradeLambda) {
+    checkUniverseVersion();
+    Universe universe =
+        lockAndFreezeUniverseForUpdate(
+            taskParams().expectedUniverseVersion, null /* Txn callback */);
     try {
-      checkUniverseVersion();
-      // Update the universe DB with the update to be performed and set the
-      // 'updateInProgress' flag to prevent other updates from happening.
-      Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-
       if (taskParams().nodePrefix == null) {
         taskParams().nodePrefix = universe.getUniverseDetails().nodePrefix;
       }
@@ -74,7 +73,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
     } catch (Throwable t) {
       log.error("Error executing task {} with error={}.", getName(), t);
       if (taskParams().getUniverseSoftwareUpgradeStateOnFailure() != null) {
-        Universe universe = getUniverse();
+        universe = getUniverse();
         if (!UniverseDefinitionTaskParams.IN_PROGRESS_UNIV_SOFTWARE_UPGRADE_STATES.contains(
             universe.getUniverseDetails().softwareUpgradeState)) {
           log.debug("Skipping universe upgrade state as actual task was not started.");
@@ -369,5 +368,9 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
         }
       }
     }
+  }
+
+  protected void createSoftwareUpgradePrecheckTasks(String ybSoftwareVersion) {
+    createCheckUpgradeTask(ybSoftwareVersion).setSubTaskGroupType(getTaskSubGroupType());
   }
 }
