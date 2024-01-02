@@ -2,10 +2,10 @@ name: Python Driver Tests
 
 on:
   push:
-    branches: [ "master", "PG15" ]
+    branches: [ "PG15" ]
 
   pull_request:
-    branches: [ "master", "PG15" ]
+    branches: [ "PG15" ]
 
 jobs:
   build:
@@ -18,25 +18,9 @@ jobs:
     steps:
     - uses: actions/checkout@v3
 
-    - name: Set tag based on branch
-      run: |
-        if [[ "$GITHUB_EVENT_NAME" == "push" ]]; then
-          if [[ "$GITHUB_REF" == "refs/heads/master" ]]; then
-            echo "TAG=latest" >> $GITHUB_ENV
-          elif [[ "$GITHUB_REF" == "refs/heads/PG15" ]]; then
-            echo "TAG=PG15_latest" >> $GITHUB_ENV
-          fi
-        elif [[ "$GITHUB_EVENT_NAME" == "pull_request" ]]; then
-          if [[ "$GITHUB_BASE_REF" == "master" ]]; then
-            echo "TAG=latest" >> $GITHUB_ENV
-          elif [[ "$GITHUB_BASE_REF" == "PG15" ]]; then
-            echo "TAG=PG15_latest" >> $GITHUB_ENV
-          fi
-        fi
-
     - name: Run apache/age docker image
       run: |
-        export TAG=$TAG
+        export TAG=PG15_latest
         docker-compose up -d
 
     - name: Set up python
