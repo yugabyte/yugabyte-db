@@ -40,6 +40,11 @@ DEFINE_bool(master_enable_universe_uuid_heartbeat_check, false,
     "response.");
 TAG_FLAG(master_enable_universe_uuid_heartbeat_check, advanced);
 
+DEFINE_test_flag(bool, skip_processing_tablet_metadata, false,
+                 "Whether to skip processing tablet metadata for TSHeartbeat.");
+
+DECLARE_bool(enable_heartbeat_pg_catalog_versions_cache);
+
 DECLARE_int32(heartbeat_rpc_timeout_ms);
 
 DECLARE_CAPABILITY(TabletReportLimit);
@@ -246,7 +251,8 @@ class MasterHeartbeatServiceImpl : public MasterServiceBase, public MasterHeartb
       auto safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
 
       safe_time_left = CoarseMonoClock::Now() + (FLAGS_heartbeat_rpc_timeout_ms * 1ms / 2);
-      if (rpc.GetClientDeadline() > safe_time_left) {
+      if (rpc.GetClientDeadline() > safe_time_left &&
+          PREDICT_TRUE(!ANNOTATE_UNPROTECTED_READ(FLAGS_TEST_skip_processing_tablet_metadata))) {
         std::unordered_map<TabletId, TabletLeaderMetricsPB> id_to_leader_metrics;
         for (auto& info : req->leader_info()) {
           id_to_leader_metrics[info.tablet_id()] = info;

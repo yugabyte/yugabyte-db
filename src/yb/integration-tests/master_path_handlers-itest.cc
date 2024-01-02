@@ -67,11 +67,10 @@ DECLARE_bool(TEST_tserver_disable_heartbeat);
 
 DECLARE_int32(follower_unavailable_considered_failed_sec);
 
-DECLARE_uint64(master_maximum_heartbeats_without_lease);
-DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
 DECLARE_int32(cleanup_split_tablets_interval_sec);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
 DECLARE_bool(enable_automatic_tablet_splitting);
+DECLARE_int32(leaderless_tablet_alert_delay_secs);
 
 namespace yb {
 namespace master {
@@ -238,6 +237,9 @@ TEST_F(MasterPathHandlersItest, TestDeadTServers) {
 }
 
 TEST_F(MasterPathHandlersItest, TestTabletReplicationEndpoint) {
+  // Alert for leaderless tablet is delayed for FLAGS_leaderless_tablet_alert_delay_secs secodns.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_leaderless_tablet_alert_delay_secs) =
+      FLAGS_heartbeat_interval_ms / 1000 * 5;
   auto table = CreateTestTable(kNumTablets);
 
   // Choose a tablet to orphan and take note of the servers which are leaders/followers for this
@@ -615,6 +617,12 @@ TEST_F_EX(MasterPathHandlersItest, TestTablePlacementInfo, MasterPathHandlersExt
 
 class MasterPathHandlersLeaderlessITest : public MasterPathHandlersExternalItest {
  public:
+  void SetUp() override {
+    opts_.extra_tserver_flags.push_back(
+        {Format("--tserver_heartbeat_metrics_interval_ms=$0", kTserverHeartbeatMetricsIntervalMs)});
+    MasterPathHandlersExternalItest::SetUp();
+  }
+
   void CreateSingleTabletTestTable() {
     table_ = CreateTestTable(1);
   }
@@ -633,13 +641,31 @@ class MasterPathHandlersLeaderlessITest : public MasterPathHandlersExternalItest
     return "";
   }
 
+  Status WaitForLeaderPeer(const TabletId& tablet_id, uint64_t leader_idx) {
+    return WaitFor([&] {
+      const auto current_leader_idx_result = cluster_->GetTabletLeaderIndex(tablet_id);
+      if (current_leader_idx_result.ok()) {
+        return *current_leader_idx_result == leader_idx;
+      }
+      return false;
+    },
+    10s,
+    Format("Peer $0 becomes leader of tablet $1",
+           cluster_->tablet_server(leader_idx)->uuid(),
+           tablet_id));
+  }
+
+  bool HasLeaderPeer(const TabletId& tablet_id) {
+    const auto current_leader_idx_result = cluster_->GetTabletLeaderIndex(tablet_id);
+    return current_leader_idx_result.ok();
+  }
+
   std::shared_ptr<client::YBTable> table_;
+  static constexpr int kTserverHeartbeatMetricsIntervalMs = 1000;
 };
 
 TEST_F(MasterPathHandlersLeaderlessITest, TestLeaderlessTabletEndpoint) {
-  ASSERT_OK(cluster_->SetFlagOnMasters("maximum_tablet_leader_lease_expired_secs", "5"));
-  ASSERT_OK(cluster_->SetFlagOnMasters("master_maximum_heartbeats_without_lease", "2"));
-  ASSERT_OK(cluster_->SetFlagOnTServers("tserver_heartbeat_metrics_interval_ms", "1000"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("leaderless_tablet_alert_delay_secs", "5"));
   CreateSingleTabletTestTable();
   auto tablet_id = GetSingleTabletId();
 
@@ -703,11 +729,118 @@ TEST_F(MasterPathHandlersLeaderlessITest, TestLeaderlessTabletEndpoint) {
   }, 20s * kTimeMultiplier, "leaderless tablet endpoint becomes empty"));
 }
 
+TEST_F(MasterPathHandlersLeaderlessITest, TestLeaderChange) {
+  const auto kMaxLeaderLeaseExpiredMs = 5000;
+  const auto kHtLeaseDurationMs = 2000;
+  const auto kMaxTabletWithoutValidLeaderMs = 5000;
+  ASSERT_OK(cluster_->SetFlagOnMasters("maximum_tablet_leader_lease_expired_secs",
+                                       std::to_string(kMaxLeaderLeaseExpiredMs / 1000)));
+  ASSERT_OK(cluster_->SetFlagOnMasters("leaderless_tablet_alert_delay_secs",
+                                       std::to_string(kMaxTabletWithoutValidLeaderMs / 1000)));
+  ASSERT_OK(cluster_->SetFlagOnTServers("ht_lease_duration_ms",
+                                        std::to_string(kHtLeaseDurationMs)));
+  CreateSingleTabletTestTable();
+  auto tablet_id = GetSingleTabletId();
+
+  SleepFor(kTserverHeartbeatMetricsIntervalMs * 2ms);
+
+  // Initially the leaderless tablets list should be empty.
+  string result = GetLeaderlessTabletsString();
+  ASSERT_EQ(result.find(tablet_id), string::npos);
+
+  const auto leader_idx = CHECK_RESULT(cluster_->GetTabletLeaderIndex(tablet_id));
+  const auto leader = cluster_->tablet_server(leader_idx);
+  const auto follower_idx = (leader_idx + 1) % 3;
+
+  auto ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(
+      cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>(), &cluster_->proxy_cache()));
+
+  const auto new_leader_idx = follower_idx;
+  const auto new_leader = cluster_->tablet_server(new_leader_idx);
+  ASSERT_OK(itest::LeaderStepDown(
+      ts_map[leader->uuid()].get(), tablet_id, ts_map[new_leader->uuid()].get(), 10s));
+  ASSERT_OK(WaitForLeaderPeer(tablet_id, new_leader_idx));
+
+  // Wait the old leader's tracked leader lease to be expired. The maximum wait time is
+  // (ht_lease_duration + max_leader_lease_expired).
+  SleepFor((kHtLeaseDurationMs + kMaxLeaderLeaseExpiredMs) * 1ms);
+
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_skip_processing_tablet_metadata", "true"));
+  ASSERT_OK(itest::LeaderStepDown(
+      ts_map[new_leader->uuid()].get(), tablet_id, ts_map[leader->uuid()].get(), 10s));
+  ASSERT_OK(WaitForLeaderPeer(tablet_id, leader_idx));
+
+  // Wait the next ts heartbeat to report new leader.
+  SleepFor(kTserverHeartbeatMetricsIntervalMs * 2ms);
+
+  // We don't expect to be leaderless even though the lease is expired because not enough
+  // time has passed for us to alert.
+  result = GetLeaderlessTabletsString();
+  ASSERT_EQ(result.find(tablet_id), string::npos);
+
+  SleepFor(kMaxTabletWithoutValidLeaderMs * 1ms);
+  result = GetLeaderlessTabletsString();
+  ASSERT_NE(result.find(tablet_id), string::npos);
+
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_skip_processing_tablet_metadata", "false"));
+  SleepFor(kTserverHeartbeatMetricsIntervalMs * 2ms);
+  result = GetLeaderlessTabletsString();
+  ASSERT_EQ(result.find(tablet_id), string::npos);
+}
+
+TEST_F(MasterPathHandlersLeaderlessITest, TestAllFollowers) {
+  const auto kMaxTabletWithoutValidLeaderMs = 5000;
+  ASSERT_OK(cluster_->SetFlagOnMasters("leaderless_tablet_alert_delay_secs",
+                                       std::to_string(kMaxTabletWithoutValidLeaderMs / 1000)));
+  CreateSingleTabletTestTable();
+  auto tablet_id = GetSingleTabletId();
+
+  // Initially the leaderless tablets list should be empty.
+  string result = GetLeaderlessTabletsString();
+  ASSERT_EQ(result.find(tablet_id), string::npos);
+
+  // Disable new leader election after leader stepdown.
+  ASSERT_OK(cluster_->SetFlagOnTServers("stepdown_disable_graceful_transition", "true"));
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_skip_election_when_fail_detected", "true"));
+
+  const auto leader_idx = CHECK_RESULT(cluster_->GetTabletLeaderIndex(tablet_id));
+  const auto leader = cluster_->tablet_server(leader_idx);
+  auto ts_map = ASSERT_RESULT(itest::CreateTabletServerMap(
+      cluster_->GetLeaderMasterProxy<master::MasterClusterProxy>(), &cluster_->proxy_cache()));
+  // Leader step down and don't assign new leader, all three peers should be FOLLOWER.
+  ASSERT_OK(itest::LeaderStepDown(
+      ts_map[leader->uuid()].get(), tablet_id, nullptr, 10s));
+
+  // Wait for next TS heartbeat to report all three followers.
+  ASSERT_FALSE(HasLeaderPeer(tablet_id));
+  SleepFor(kTserverHeartbeatMetricsIntervalMs * 2ms);
+
+  // Shouldn't report it as leaderless before kMaxTabletWithoutValidLeaderMs.
+  result = GetLeaderlessTabletsString();
+  ASSERT_EQ(result.find(tablet_id), string::npos);
+
+  ASSERT_OK(WaitFor([&] {
+    string result = GetLeaderlessTabletsString();
+    return result.find(tablet_id) != string::npos &&
+           result.find("No valid leader reported") != string::npos;
+  }, 20s * kTimeMultiplier, "leaderless tablet endpoint catch the tablet"));
+
+  ASSERT_OK(cluster_->SetFlagOnTServers("TEST_skip_election_when_fail_detected", "false"));
+
+  ASSERT_OK(WaitFor([&] {
+    string result = GetLeaderlessTabletsString();
+    return result.find(tablet_id) == string::npos;
+  }, 20s * kTimeMultiplier, "leaderless tablet endpoint becomes empty"));
+}
+
 TEST_F(MasterPathHandlersItest, TestLeaderlessDeletedTablet) {
   auto table = CreateTestTable(kNumTablets);
+  const auto kLeaderlessTabletAlertDelaySecs = 5;
 
   // Prevent heartbeats from overwriting replica locations.
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_tserver_disable_heartbeat) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_leaderless_tablet_alert_delay_secs) =
+      kLeaderlessTabletAlertDelaySecs;
 
   auto& catalog_mgr = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
   auto table_info = catalog_mgr.GetTableInfo(table->id());
@@ -715,12 +848,15 @@ TEST_F(MasterPathHandlersItest, TestLeaderlessDeletedTablet) {
   ASSERT_EQ(tablets.size(), kNumTablets);
 
   // Make all tablets leaderless.
+  MonoTime last_time_with_valid_leader_override = MonoTime::Now();
+  last_time_with_valid_leader_override.SubtractDelta(kLeaderlessTabletAlertDelaySecs * 1s);
   for (auto& tablet : tablets) {
     auto replicas = std::make_shared<TabletReplicaMap>(*tablet->GetReplicaLocations());
     for (auto& replica : *replicas) {
       replica.second.role = PeerRole::FOLLOWER;
     }
     tablet->SetReplicaLocations(replicas);
+    tablet->TEST_set_last_time_with_valid_leader(last_time_with_valid_leader_override);
   }
   auto running_tablet = tablets[0];
   auto deleted_tablet = tablets[1];
