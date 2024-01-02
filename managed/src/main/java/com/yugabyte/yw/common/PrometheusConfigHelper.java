@@ -13,10 +13,9 @@ package com.yugabyte.yw.common;
 import com.google.inject.Inject;
 import com.google.inject.Singleton;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
-import com.yugabyte.yw.metrics.MetricUrlProvider;
+import com.yugabyte.yw.metrics.MetricQueryHelper;
 import java.io.File;
 import lombok.extern.slf4j.Slf4j;
-import play.libs.Json;
 
 // Contains all the helper methods related to managing Prometheus
 // configuration file.
@@ -30,16 +29,12 @@ public class PrometheusConfigHelper {
 
   private final RuntimeConfGetter confGetter;
 
-  private final MetricUrlProvider metricUrlProvider;
-
-  private final ApiHelper apiHelper;
+  private final MetricQueryHelper metricQueryHelper;
 
   @Inject
-  public PrometheusConfigHelper(
-      RuntimeConfGetter confGetter, MetricUrlProvider metricUrlProvider, ApiHelper apiHelper) {
+  public PrometheusConfigHelper(RuntimeConfGetter confGetter, MetricQueryHelper metricQueryHelper) {
     this.confGetter = confGetter;
-    this.metricUrlProvider = metricUrlProvider;
-    this.apiHelper = apiHelper;
+    this.metricQueryHelper = metricQueryHelper;
   }
 
   public String getPrometheusHost() {
@@ -65,11 +60,7 @@ public class PrometheusConfigHelper {
 
   public void reloadPrometheusConfig() {
     try {
-      String baseUrl = metricUrlProvider.getMetricsInternalUrl();
-      String reloadUrl = baseUrl + "/-/reload";
-
-      // Send the reload request.
-      this.apiHelper.postRequest(reloadUrl, Json.newObject());
+      metricQueryHelper.postManagementCommand(MetricQueryHelper.MANAGEMENT_COMMAND_RELOAD);
     } catch (Exception e) {
       log.error("Error reloading prometheus config", e);
     }

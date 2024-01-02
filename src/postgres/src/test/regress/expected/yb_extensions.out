@@ -90,9 +90,9 @@ select pg_get_userbyid(userid),datname,query,calls,rows,shared_blks_hit,shared_b
 
 -- SeqScan forces YbSeqScan node with NodeTag near the end of the list in nodes.h
 explain (analyze, costs off, summary off, timing off) /*+SeqScan(test)*/ select a, b from test;
-                 QUERY PLAN
----------------------------------------------
- YB Seq Scan on test (actual rows=2 loops=1)
+                QUERY PLAN
+------------------------------------------
+ Seq Scan on test (actual rows=2 loops=1)
 (1 row)
 
 -- GHI 14498: different queryid may indicate NodeTag added to the middle of the list

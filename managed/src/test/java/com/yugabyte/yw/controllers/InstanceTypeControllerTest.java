@@ -31,6 +31,7 @@ import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Sets;
 import com.yugabyte.yw.cloud.CloudAPI;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
@@ -77,12 +78,20 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   }
 
   private JsonNode doListInstanceTypesAndVerify(UUID providerUUID, int status) {
-    return doListFilteredInstanceTypeAndVerify(providerUUID, status);
+    return doListFilteredInstanceTypeAndVerify(providerUUID, status, null);
+  }
+
+  private JsonNode doListInstanceTypesAndVerify(UUID providerUUID, int status, Architecture arch) {
+    return doListFilteredInstanceTypeAndVerify(providerUUID, status, arch);
   }
 
   private JsonNode doListFilteredInstanceTypeAndVerify(
-      UUID providerUUID, int status, String... zones) {
+      UUID providerUUID, int status, Architecture arch, String... zones) {
     String zoneParams = Arrays.stream(zones).collect(Collectors.joining("&zone=", "?zone=", ""));
+    String archParam = "";
+    if (arch != null) {
+      archParam = String.format("&arch=%s", arch.toString());
+    }
     Result result =
         doRequest(
             "GET",
@@ -91,7 +100,8 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
                 + "/providers/"
                 + providerUUID
                 + "/instance_types"
-                + zoneParams);
+                + zoneParams
+                + archParam);
     assertEquals(status, result.status());
     return Json.parse(contentAsString(result));
   }
@@ -142,6 +152,11 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   }
 
   private Map<String, InstanceType> setUpValidInstanceTypes(int numInstanceTypes) {
+    return setUpValidInstanceTypes(numInstanceTypes, null);
+  }
+
+  private Map<String, InstanceType> setUpValidInstanceTypes(
+      int numInstanceTypes, Architecture arch) {
     Map<String, InstanceType> instanceTypes = new HashMap<>(numInstanceTypes);
     for (int i = 0; i < numInstanceTypes; ++i) {
       InstanceType.VolumeDetails volDetails = new InstanceType.VolumeDetails();
@@ -151,6 +166,10 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
       instanceDetails.volumeDetailsList.add(volDetails);
       instanceDetails.setDefaultMountPaths();
       String code = "c3.i" + i;
+      if (arch != null) {
+        instanceDetails.arch = arch;
+        code = code + arch.toString();
+      }
       instanceTypes.put(
           code, InstanceType.upsert(awsProvider.getUuid(), code, 2, 10.5, instanceDetails));
     }
@@ -182,11 +201,21 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
   }
 
   @Test
+  public void testListInstanceTypeArchFilter() {
+    Map<String, InstanceType> instanceTypes = setUpValidInstanceTypes(2, Architecture.x86_64);
+    instanceTypes.putAll(setUpValidInstanceTypes(1, Architecture.aarch64));
+    JsonNode json = doListInstanceTypesAndVerify(awsProvider.getUuid(), OK, Architecture.x86_64);
+    assertEquals(2, json.size());
+    json = doListInstanceTypesAndVerify(awsProvider.getUuid(), OK, Architecture.aarch64);
+    assertEquals(1, json.size());
+  }
+
+  @Test
   public void testListInstanceTypeWithValidProviderUUID_filtered_ignoreNoCloud() {
     Map<String, InstanceType> instanceTypes = setUpValidInstanceTypes(2);
     when(mockCloudAPIFactory.get(any())).thenReturn(null);
     JsonNode json =
-        doListFilteredInstanceTypeAndVerify(awsProvider.getUuid(), OK, "zone1", "zone2");
+        doListFilteredInstanceTypeAndVerify(awsProvider.getUuid(), OK, null, "zone1", "zone2");
     checkListResponse(instanceTypes, json);
   }
 
@@ -198,7 +227,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     when(mockCloudAPIFactory.get(any())).thenReturn(mockCloudAPI);
     when(mockCloudAPI.offeredZonesByInstanceType(any(), any(), any())).thenThrow(thrown);
     JsonNode json =
-        doListFilteredInstanceTypeAndVerify(awsProvider.getUuid(), OK, "zone1", "zone2");
+        doListFilteredInstanceTypeAndVerify(awsProvider.getUuid(), OK, null, "zone1", "zone2");
     checkListResponse(instanceTypes, json);
   }
 
@@ -217,7 +246,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
         .thenReturn(allInstancesEverywhere);
 
     JsonNode json =
-        doListFilteredInstanceTypeAndVerify(awsProvider.getUuid(), OK, "zone1", "zone2");
+        doListFilteredInstanceTypeAndVerify(awsProvider.getUuid(), OK, null, "zone1", "zone2");
     checkListResponse(instanceTypes, json);
 
     verify(mockCloudAPI, times(1))
@@ -240,7 +269,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     when(mockCloudAPI.offeredZonesByInstanceType(any(), any(), any())).thenReturn(cloudResponse);
 
     JsonNode json =
-        doListFilteredInstanceTypeAndVerify(awsProvider.getUuid(), OK, "zone1", "zone2");
+        doListFilteredInstanceTypeAndVerify(awsProvider.getUuid(), OK, null, "zone1", "zone2");
     assertEquals(0, json.size());
 
     verify(mockCloudAPI, times(1))
@@ -261,7 +290,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     when(mockCloudAPI.offeredZonesByInstanceType(any(), any(), any())).thenReturn(cloudResponse);
 
     JsonNode json =
-        doListFilteredInstanceTypeAndVerify(awsProvider.getUuid(), OK, "zone1", "zone2");
+        doListFilteredInstanceTypeAndVerify(awsProvider.getUuid(), OK, null, "zone1", "zone2");
     assertEquals(1, json.size());
     InstanceType expectedInstanceType = instanceTypes.get("c3.i1");
     assertValue(json.path(0), "instanceTypeCode", expectedInstanceType.getInstanceTypeCode());
@@ -344,6 +373,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     volumeDetails.volumeSizeGB = 10;
     details.volumeDetailsList.add(volumeDetails);
     details.setDefaultMountPaths();
+    details.arch = Architecture.x86_64;
     ObjectNode instanceTypeJson = Json.newObject();
     ObjectNode idKey = Json.newObject();
     idKey.put("instanceTypeCode", "test-i1");
@@ -388,6 +418,7 @@ public class InstanceTypeControllerTest extends FakeDBApplication {
     volumeDetails.volumeSizeGB = 10;
     details.volumeDetailsList.add(volumeDetails);
     details.setDefaultMountPaths();
+    details.arch = Architecture.x86_64;
     ObjectNode instanceTypeJson = Json.newObject();
     ObjectNode idKey = Json.newObject();
     idKey.put("instanceTypeCode", sharedInstanceTypeCode);

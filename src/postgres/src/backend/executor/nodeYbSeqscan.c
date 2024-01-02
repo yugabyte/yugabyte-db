@@ -240,7 +240,7 @@ ExecInitYbSeqScan(YbSeqScan *node, EState *estate, int eflags)
 	/* YB_TODO(review)(amartsinchyk@yugabyte): requires review and testing */
 	ExecInitScanTupleSlot(estate, &scanstate->ss,
 						  RelationGetDescr(scanstate->ss.ss_currentRelation),
-						  table_slot_callbacks(scanstate->ss.ss_currentRelation));
+						  &TTSOpsVirtual);
 
 	/*
 	 * Initialize result type and projection.
@@ -290,12 +290,6 @@ ExecEndYbSeqScan(YbSeqScanState *node)
 	 */
 	if (tsdesc != NULL)
 		ybc_heap_endscan(tsdesc);
-
-	/*
-	 * close heap scan
-	 */
-	if (tsdesc != NULL)
-		table_endscan(tsdesc);
 }
 
 /* ----------------------------------------------------------------

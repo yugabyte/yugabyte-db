@@ -124,7 +124,7 @@ SELECT deptype FROM pg_depend
     WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass;
                               QUERY PLAN
 -----------------------------------------------------------------------
- YB Seq Scan on pg_depend
+ Seq Scan on pg_depend
    Remote Filter: ((classid = '1259'::oid) AND (objid = '54321'::oid))
 (2 rows)
 
@@ -193,7 +193,7 @@ EXPLAIN (costs off)
 SELECT i FROM yb WHERE j = -5;
               QUERY PLAN
 --------------------------------------
- YB Seq Scan on yb
+ Seq Scan on yb
    Remote Filter: (j = '-5'::integer)
 (2 rows)
 
@@ -392,7 +392,7 @@ SELECT deptype FROM pg_depend
     WHERE classid = 'pg_class'::regclass and objid = 'yb'::regclass;
                               QUERY PLAN
 -----------------------------------------------------------------------
- YB Seq Scan on pg_depend
+ Seq Scan on pg_depend
    Remote Filter: ((classid = '1259'::oid) AND (objid = '54321'::oid))
 (2 rows)
 
@@ -427,7 +427,7 @@ EXPLAIN (costs off)
 SELECT i FROM yb WHERE j = -5;
               QUERY PLAN
 --------------------------------------
- YB Seq Scan on yb
+ Seq Scan on yb
    Remote Filter: (j = '-5'::integer)
 (2 rows)
 
@@ -482,6 +482,21 @@ UPDATE pg_index SET indisvalid = false
 REINDEX (VERBOSE) INDEX yb_j_idx;
 INFO:  index "yb_j_idx" was reindexed
 \set VERBOSITY default
+-- unsupported command/options
+REINDEX INDEX CONCURRENTLY yb_j_idx;
+ERROR:  REINDEX CONCURRENTLY not supported yet
+LINE 1: REINDEX INDEX CONCURRENTLY yb_j_idx;
+        ^
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+REINDEX (VERBOSE) INDEX CONCURRENTLY yb_j_idx;
+ERROR:  REINDEX CONCURRENTLY not supported yet
+LINE 1: REINDEX (VERBOSE) INDEX CONCURRENTLY yb_j_idx;
+        ^
+HINT:  Please report the issue on https://github.com/YugaByte/yugabyte-db/issues
+REINDEX (CONCURRENTLY) INDEX yb_j_idx;
+ERROR:  Only REINDEX with VERBOSE option is supported
+REINDEX (tablespace somespace) INDEX yb_j_idx;
+ERROR:  Only REINDEX with VERBOSE option is supported
 -- shared system index
 REINDEX INDEX pg_database_datname_index; -- fail
 ERROR:  cannot reindex shared system indexes

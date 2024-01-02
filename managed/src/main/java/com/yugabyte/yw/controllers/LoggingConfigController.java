@@ -6,12 +6,20 @@ import ch.qos.logback.core.joran.spi.JoranException;
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.common.logging.LogUtil;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.AuditLoggingConfig;
 import com.yugabyte.yw.forms.PlatformLoggingConfig;
 import com.yugabyte.yw.forms.PlatformResults;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
 import io.swagger.annotations.ApiImplicitParams;
@@ -47,6 +55,12 @@ public class LoggingConfigController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.forms.PlatformLoggingConfig",
         paramType = "body")
   })
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result setLoggingSettings(Http.Request request) throws JoranException {
     PlatformLoggingConfig data =
         formFactory.getFormDataOrBadRequest(request, PlatformLoggingConfig.class).get();
@@ -77,6 +91,12 @@ public class LoggingConfigController extends AuthenticatedController {
         required = true,
         dataType = "com.yugabyte.yw.forms.AuditLoggingConfig",
         paramType = "body")
+  })
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result setAuditLoggingSettings(Http.Request request) throws JoranException {
     AuditLoggingConfig data =

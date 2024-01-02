@@ -16,6 +16,9 @@
 
 #include "access/xlogdefs.h"
 
+/* Yugabyte includes */
+#include "common/pg_yb_common.h"
+
 
 /* ----------------
  *		Special transaction ID values
@@ -109,8 +112,33 @@ FullTransactionIdRetreat(FullTransactionId *dest)
 	 * For 64bit xids these can't be reached as part of a wraparound as they
 	 * can in the 32bit case.
 	 */
-	if (FullTransactionIdPrecedes(*dest, FirstNormalFullTransactionId))
-		return;
+	/*
+	 * YB note: FullTransactionIdRetreat is used to initialize
+	 * ShmemVariableCache->latestCompletedXid in StartupXLOG. PG11 used
+	 * macro TransactionIdRetreat instead.
+	 * For context, 3 indicates
+	 * FirstNormalTransactionId/FirstNormalFullTransactionId.
+	 *
+	 *  - TransactionIdRetreat: for dest = 3 as input, sets dest to 2^32-1 on
+	 * completion
+	 *  - FullTransactionIdRetreat: for dest->value = 3 as input, set
+	 * dest->value to 2 on completion
+	 *
+	 * This difference causes assertion
+	 * TransactionIdIsNormal(CurrentRunningXacts->latestCompletedXid) in
+	 * procarray.c to fail on every checkpoint run in YB with pg15. This seems
+	 * to be bug on PG's part. This surfaced in YB because we do not update
+	 * ShmemVariableCache->latestCompletedXid after initialization. Disabling
+	 * the below if-block to keep the behaviour of TransactionIdRetreat and
+	 * FullTransactionIdRetreat the same. Even if it is not a PG bug, it should
+	 * be okay because ShmemVariableCache->latestCompletedXid is not used much
+	 * in YB.
+	 */
+	if (!YBIsEnabledInPostgresEnvVar())
+	{
+		if (FullTransactionIdPrecedes(*dest, FirstNormalFullTransactionId))
+			return;
+	}
 
 	/*
 	 * But we do need to step over XIDs that'd appear special only for 32bit

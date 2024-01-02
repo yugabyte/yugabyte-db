@@ -4,6 +4,9 @@
 # Postgres Testsuites: Porting from PostgreSQL original tests.
 # This suite includes all tests on geometry datatypes that are enabled for YugaByte.
 ####################################################################################################
+# Dependency for yb_pg_point.
+test: yb_pg_test_setup
+
 test: yb_pg_point
 test: yb_pg_lseg
 test: yb_pg_line

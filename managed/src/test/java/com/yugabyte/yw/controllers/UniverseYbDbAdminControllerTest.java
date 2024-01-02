@@ -166,7 +166,7 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
     // cloud customer, neither YSQL nor YCQL user
     "true,,,,, false, false, Need to provide YSQL and/or YCQL username.",
     // non-cloud customer but change in password of default user
-    "false, yugabyte, Admin@123, cassandra, Admin@123, true, true,"
+    "false, yugabyte, Admin@321, cassandra, Admin@321, true, true,"
   })
   // @formatter:on
   public void testSetDatabaseCredentials(
@@ -220,6 +220,56 @@ public class UniverseYbDbAdminControllerTest extends UniverseControllerTestBase 
       assertErrorResponse(result, responseError);
       assertAuditEntry(0, customer.getUuid());
     }
+  }
+
+  @Test
+  public void testSetOldDatabaseCredentials() {
+    Universe u = createUniverse(customer.getId());
+    UniverseDefinitionTaskParams details = u.getUniverseDetails();
+    UniverseDefinitionTaskParams.UserIntent userIntent = details.getPrimaryCluster().userIntent;
+    userIntent.enableYSQLAuth = true;
+    userIntent.enableYCQLAuth = true;
+    details.upsertPrimaryCluster(userIntent, null);
+    u.setUniverseDetails(details);
+    u.save();
+    ObjectNode bodyJson =
+        Json.newObject()
+            .put("ycqlAdminUsername", "cassandra")
+            .put("ysqlAdminUsername", "yugabyte")
+            .put("ycqlCurrAdminPassword", "Admin@123")
+            .put("ysqlCurrAdminPassword", "Admin@123")
+            .put("ycqlAdminPassword", "Admin@123")
+            .put("ysqlAdminPassword", "Admin@123")
+            .put("dbName", "test");
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + u.getUniverseUUID()
+            + "/update_db_credentials";
+
+    // Test if provided new and old ycql password are same.
+    Result result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    Mockito.verifyNoMoreInteractions(mockYcqlQueryExecutor, mockYsqlQueryExecutor);
+    assertErrorResponse(result, "Please provide new YCQL password.");
+    assertAuditEntry(0, customer.getUuid());
+    bodyJson.put("ycqlAdminPassword", "Admin@321");
+    // Test if provided new and old ysql password are same.
+    result =
+        assertPlatformException(
+            () -> doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson));
+    Mockito.verifyNoMoreInteractions(mockYcqlQueryExecutor, mockYsqlQueryExecutor);
+    assertErrorResponse(result, "Please provide new YSQL password.");
+    assertAuditEntry(0, customer.getUuid());
+    bodyJson.put("ysqlAdminPassword", "Admin@321");
+    // Test that checks passes when new passwords are provided.
+    result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    Mockito.verify(mockYcqlQueryExecutor, times(1)).updateAdminPassword(any(), any());
+    Mockito.verify(mockYsqlQueryExecutor, times(1)).updateAdminPassword(any(), any());
+    assertOk(result);
+    assertAuditEntry(1, customer.getUuid());
   }
 
   @Test

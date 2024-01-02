@@ -934,10 +934,6 @@ CheckpointerShmemInit(void)
 void
 RequestCheckpoint(int flags)
 {
-	/* Not applicable to Yugabyte as it doesn't use PG WAL. */
-	if (IsYugaByteEnabled())
-		return;
-
   /*
    * YB: ignoring user requested checkpoints for now
    */

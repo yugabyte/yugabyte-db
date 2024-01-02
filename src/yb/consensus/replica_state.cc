@@ -1344,6 +1344,25 @@ MonoDelta ReplicaState::RemainingOldLeaderLeaseDuration(CoarseTimePoint* now) co
   return result;
 }
 
+MonoDelta ReplicaState::RemainingMajorityReplicatedLeaderLeaseDuration() const {
+  MonoDelta result;
+  if (majority_replicated_lease_expiration_ == CoarseTimeLease::NoneValue()) {
+    return result;
+  }
+  CoarseTimePoint now_local = CoarseMonoClock::Now();
+  if (now_local > majority_replicated_lease_expiration_) {
+    // Reset the majority replicated leader lease expiration time so that we
+    // don't have to check it anymore.
+    LOG_WITH_PREFIX(INFO)
+        << "Reset our lease: "
+        << MonoDelta(CoarseMonoClock::now() - majority_replicated_lease_expiration_);
+    majority_replicated_lease_expiration_ = CoarseTimeLease::NoneValue();
+  } else {
+    result = majority_replicated_lease_expiration_ - now_local;
+  }
+  return result;
+}
+
 Result<MicrosTime> ReplicaState::MajorityReplicatedHtLeaseExpiration(
     MicrosTime min_allowed, CoarseTimePoint deadline) const {
   if (FLAGS_ht_lease_duration_ms == 0) {

@@ -151,7 +151,7 @@ public class XClusterConfigModifyTables extends XClusterConfigTaskBase {
                     xClusterConfig.getUuid(), resp.errorMessage());
             throw new RuntimeException(errMsg);
           }
-          waitForXClusterOperation(client::isAlterUniverseReplicationDone);
+          waitForXClusterOperation(xClusterConfig, client::isAlterUniverseReplicationDone);
 
           // Get the stream ids from the target universe and put it in the Platform DB for the
           // added tables to the xCluster config.

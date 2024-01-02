@@ -13,6 +13,7 @@ import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableSet;
 import com.google.common.collect.Iterables;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
@@ -178,6 +179,8 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // if we want to use a different SSH_USER instead of  what is defined in the accessKey
   // Use imagebundle to overwrite the sshPort
   @Nullable @ApiModelProperty @Deprecated public String sshUserOverride;
+
+  @ApiModelProperty public Architecture arch;
 
   /** Allowed states for an imported universe. */
   public enum ImportedState {
@@ -598,6 +601,12 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty() public String ysqlPassword;
 
     @ApiModelProperty() public String ycqlPassword;
+
+    @ApiModelProperty(hidden = true)
+    public boolean defaultYsqlPassword = false;
+
+    @ApiModelProperty(hidden = true)
+    public boolean defaultYcqlPassword = false;
 
     @ApiModelProperty() public Long kubernetesOperatorVersion;
 

@@ -1,3 +1,5 @@
+Run build first.
+
 Run individual tests like
 
     pg15_tests/test_D29226.sh fastdebug --gcc11
@@ -8,19 +10,24 @@ Run a test n times like
 
 Run all tests once like
 
-    pg15_tests/run_all_tests.sh fastdebug --clang16
+    pg15_tests/run_shell_tests.sh fastdebug --clang16
+    pg15_tests/run_passing_cxx_tests.sh fastdebug --clang16
+    pg15_tests/run_passing_java_tests.sh fastdebug --clang16
 
-Add tests by adding a new test file following the existing conventions.  Make
-sure it passes 10x in a row to avoid introducing flaky tests, and make sure all
-tests pass (at least once) to avoid regressions.  Note: these tests are not
-covered by jenkins.
+Add passing tests into passing_cxx.tsv or passing_java.tsv.
+
+Add shell tests by adding a new test_*.sh file following the existing
+conventions.
+
+Make sure new tests pass 10x in a row to avoid introducing flaky tests, and
+make sure all tests pass (at least once) to avoid regressions.  Note: it may be
+more convenient to use jenkins to cover passing tests:
+
+    pg15_tests/run_shell_tests.sh fastdebug --clang16
+    # ...and trigger jenkins
 
 In the later stages of pg15, there will be no more need for these tests because
-the underlying tests will pass.  For now, these tests are most useful to assert
-parts of tests pass or that tests only fail due to known errors.  There are
-still some tests here that assert underlying tests completely pass, and that's
-useful in the early stage where most tests fail because it is hard to tell from
-detective whether known-passing tests are still passing.
+the underlying tests will pass.
 
 (When, in the future, deactivating these tests, don't forget to remove the line
 in .arclint.)

@@ -28,7 +28,7 @@ SELECT beid, datname
     FROM pg_stat_get_backend_idset() beid
     JOIN pg_database d
     ON pg_stat_get_backend_dbid(beid) = d.oid
-    WHERE datname = current_database();
+    WHERE datname = current_database() ORDER BY beid;
 
 -- Test pg_stat_get_backend_dbid for backends with postgres database after
 -- switching current connection to postgres database.

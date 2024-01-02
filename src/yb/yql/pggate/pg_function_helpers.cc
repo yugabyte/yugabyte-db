@@ -150,41 +150,65 @@ Result<QLValuePB> SetValueHelper<bool>::Apply(const bool bool_val, const DataTyp
 }
 
 template <typename Container>
-Result<QLValuePB> ConvertStringArrayToQLValue(const Container& str_vals, const DataType data_type) {
-  if (data_type != DataType::BINARY) {
-    return STATUS_FORMAT(InvalidArgument, "unexpected string array type $0", data_type);
-  }
+Result<QLValuePB> ConvertArrayToQLValue(
+    const Container& array_vals, YBCPgOid oid,
+    std::function<const char*(const typename Container::value_type&)> get_item_pointer) {
   QLValuePB value_pb;
   size_t size;
   char* value;
 
-  if (str_vals.size() > std::numeric_limits<int>::max()) {
+  if (array_vals.size() > std::numeric_limits<int>::max()) {
     return STATUS(InvalidArgument, "overflow in conversion to int");
   }
 
-  int count = static_cast<int>(str_vals.size());
-  std::vector<const char*> strings;
-  strings.reserve(count);
+  int count = static_cast<int>(array_vals.size());
+  std::vector<const char*> pointer_vals;
+  pointer_vals.reserve(count);
 
-  for (const auto& str : str_vals) {
-    strings.push_back(str.c_str());
+  for (const typename Container::value_type& item : array_vals) {
+    pointer_vals.push_back(get_item_pointer(item));
   }
 
-  // This makes a copy of the strings and returns a new palloc'd datum representing the TEXT array.
-  YBCGetPgCallbacks()->ConstructTextArrayDatum(strings.data(), count, &value, &size);
+  // This makes a copy of the items and returns a new palloc'd datum representing the ARRAY.
+  YBCGetPgCallbacks()->ConstructArrayDatum(oid, pointer_vals.data(), count, &value, &size);
 
   value_pb.set_binary_value(value, size);
   return value_pb;
 }
 
 Result<QLValuePB> SetValueHelper<std::vector<std::string>>::Apply(
-    const std::vector<std::string>& str_vals, const DataType data_type) {
-  return ConvertStringArrayToQLValue(str_vals, data_type);
+    const std::vector<std::string>& str_vals, YBCPgOid oid) {
+  return ConvertArrayToQLValue(
+      str_vals, oid, [](const std::string& item) -> const char* { return item.data(); });
 }
 
 Result<QLValuePB> SetValueHelper<google::protobuf::RepeatedPtrField<std::string>>::Apply(
-    const google::protobuf::RepeatedPtrField<std::string>& str_vals, const DataType data_type) {
-  return ConvertStringArrayToQLValue(str_vals, data_type);
+    const google::protobuf::RepeatedPtrField<std::string>& str_vals, YBCPgOid oid) {
+  return ConvertArrayToQLValue(
+      str_vals, oid, [](const std::string& item) -> const char* { return item.data(); });
+}
+
+Result<QLValuePB> SetValueHelper<std::vector<TransactionId>>::Apply(
+    const std::vector<TransactionId>& transaction_vals, YBCPgOid oid) {
+  return ConvertArrayToQLValue(transaction_vals, oid, [](const TransactionId& item) -> const char* {
+    return reinterpret_cast<const char*>(item.data());
+  });
+}
+
+Status SetColumnValueFromQLValue(
+    const ColumnId& column, const std::string& col_name, PgTableRow* row,
+    Result<yb::QLValuePB>&& ql_value) {
+  if (!ql_value.ok()) {
+    return ql_value.status().CloneAndPrepend(
+        Format("failed to set QLValuePB for column $0", column));
+  }
+
+  Status s = row->SetValue(column, *ql_value);
+  if (!s.ok()) {
+    return s.CloneAndPrepend(Format("failed to set value for column $0", col_name));
+  }
+
+  return Status::OK();
 }
 
 Result<ValueAndIsNullPair<uint32_t>> GetValueHelper<uint32_t>::Retrieve(
@@ -210,12 +234,13 @@ Result<ValueAndIsNullPair<Uuid>> GetValueHelper<Uuid>::Retrieve(
       VERIFY_RESULT(Uuid::FullyDecode(Slice(ql_val.binary_value()))), false);
 }
 
-Result<std::pair<ColumnId, DataType>> ColumnIndexAndType(
+Result<std::tuple<ColumnId, YBCPgOid, DataType>> ColumnIndexAndType(
     const std::string& col_name, const Schema& schema) {
   const auto column_id = VERIFY_RESULT(schema.ColumnIdByName(col_name));
   const auto column = VERIFY_RESULT(schema.column_by_id(column_id));
+  const YBCPgOid oid = column.get().pg_type_oid();
   const DataType data_type = column.get().type_info()->type;
-  return std::make_pair(column_id, data_type);
+  return std::make_tuple(column_id, oid, data_type);
 }
 
 }  // namespace util

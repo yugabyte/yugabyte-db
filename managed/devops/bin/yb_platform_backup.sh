@@ -29,7 +29,7 @@ USER=$(whoami)
 PLATFORM_DUMP_FNAME="platform_dump.sql"
 PLATFORM_DB_NAME="yugaware"
 PROMETHEUS_SNAPSHOT_DIR="prometheus_snapshot"
-YUGABUNDLE_BACKUP_DIR="yugabundle_backup"
+MIGRATION_BACKUP_DIR="migration_backup"
 PYTHON_EXECUTABLE=""
 find_python_executable
 # This is the UID for nobody user which is used by the prometheus container as the default user.
@@ -188,7 +188,7 @@ restore_postgres_backup() {
 
   # Run pg_restore.
   echo "Restoring Yugabyte Platform DB backup ${backup_path}..."
-  if [[ "$yugabundle" = true ]]; then
+  if [[ "$migration" = true ]]; then
     set +e
   fi
   docker_aware_cmd "postgres" "${restore_cmd}"
@@ -552,9 +552,9 @@ restore_backup() {
   # The version_metadata.json file is always present in a release package, and it would have
   # been stored during create_backup(), so we don't need to check if the file exists before
   # restoring it from the restore path.
-  bp1=$(cat ${r_pth} | ${PYTHON_EXECUTABLE} -c ${version_command})
-  bp2=$(cat ${r_pth} | ${PYTHON_EXECUTABLE} -c ${build_command})
-  back_plat_version=${bp1}-${bp2}
+  backup_yba_version="eval cat ${r_pth} | ${PYTHON_EXECUTABLE} -c ${version_command}"
+  backup_yba_build="eval cat ${r_pth} | ${PYTHON_EXECUTABLE} -c ${build_command}"
+  back_plat_version=${backup_yba_version}-${backup_yba_build}
 
   if [ ${curr_platform_version} != ${back_plat_version} ]
   then
@@ -570,14 +570,14 @@ restore_backup() {
   modify_service yb-platform stop
 
   db_backup_path="${destination}/${PLATFORM_DUMP_FNAME}"
-  yugabackup="${destination}"/"${YUGABUNDLE_BACKUP_DIR}"
+  yugabackup="${destination}"/"${MIGRATION_BACKUP_DIR}"
   trap 'delete_db_backup ${db_backup_path}' RETURN
   tar_cmd="tar -xzf"
   if [[ "${verbose}" = true ]]; then
     tar_cmd="tar -xzvf"
   fi
-  if [[ "${yugabundle}" = true ]]; then
-    # Copy over yugabundle backup data into the correct yba-installer paths
+  if [[ "${migration}" = true ]]; then
+    # Copy over migration backup data into the correct yba-installer paths
     db_backup_path="${yugabackup}"/"${PLATFORM_DUMP_FNAME}"
     rm -rf "${yugabackup}"
     mkdir -p "${yugabackup}"
@@ -623,11 +623,17 @@ restore_backup() {
     set_prometheus_data_dir "${prometheus_host}" "${prometheus_port}" "${data_dir}"
     modify_service prometheus stop
     run_sudo_cmd "rm -rf ${PROMETHEUS_DATA_DIR}/*"
-    if [[ "${yba_installer}" = true ]] && [[ "${yugabundle}" = true ]]; then
+    if [[ "${yba_installer}" = true ]] && [[ "${migration}" = true ]]; then
       run_sudo_cmd "mv ${yugabackup}/${PROMETHEUS_SNAPSHOT_DIR}/*/* \
       ${PROMETHEUS_DATA_DIR}"
       backup_targets=$(find "${yugabackup}" -name swamper_targets -type d)
-      run_sudo_cmd "cp -Tr ${backup_targets} ${destination}/data/prometheus/swamper_targets"
+      if  [[ "$backup_targets" != "" ]] && [[ -d "$backup_targets" ]]; then
+        run_sudo_cmd "cp -Tr ${backup_targets} ${destination}/data/prometheus/swamper_targets"
+      fi
+      backup_rules=$(find "${yugabackup}" -name swamper_rules -type d)
+      if  [[ "$backup_rules" != "" ]] && [[ -d "$backup_rules" ]]; then
+        run_sudo_cmd "cp -Tr ${backup_rules} ${destination}/data/prometheus/swamper_rules"
+      fi
       run_sudo_cmd "chown -R ${yba_user}:${yba_user} ${destination}/data/prometheus"
     elif [[ "${yba_installer}" = true ]]; then
       run_sudo_cmd "mv ${destination}/${PROMETHEUS_SNAPSHOT_DIR}/*/* ${PROMETHEUS_DATA_DIR}"
@@ -649,8 +655,8 @@ restore_backup() {
     mkdir -p "${destination}/release"
   fi
 
-  if [[ "$yugabundle" = true ]]; then
-    rm -rf "${destination}/${YUGABUNDLE_BACKUP_DIR}"
+  if [[ "$migration" = true ]]; then
+    rm -rf "${destination}/${MIGRATION_BACKUP_DIR}"
   fi
   if [[ "$yba_installer" = true ]]; then
     run_sudo_cmd "chown -R ${yba_user}:${yba_user} ${ybai_data_dir}"
@@ -718,7 +724,7 @@ print_restore_usage() {
   echo "  --yba_installer                yba_installer backup (default: false)"
   echo "  --ybdb                         ybdb restore (default: false)"
   echo "  --ysqlsh_path                  path to ysqlsh to restore ybdb (default: false)"
-  echo "  --yugabundle                   yugabundle backup restore (default: false)"
+  echo "  --migration                    migration from Replicated or Yugabundle (default: false)"
   echo "  --ybai_data_dir                YBA data dir (default: /opt/yugabyte/data/yb-platform)"
   echo "  -?, --help                     show restore help, then exit"
   echo
@@ -769,7 +775,7 @@ plain_sql=false
 ybdb=false
 ysql_dump_path=""
 ysqlsh_path=""
-yugabundle=false
+migration=false
 ybai_data_dir=/opt/yugabyte/data/yb-platform
 yba_user=yugabyte
 
@@ -990,7 +996,12 @@ case $command in
           shift 2
           ;;
         --yugabundle)
-          yugabundle=true
+          echo "--yugabundle is deprecated. Please use --migration instead."
+          migration=true
+          shift
+          ;;
+        --migration)
+          migration=true
           shift
           ;;
         --ybai_data_dir)

@@ -547,26 +547,27 @@ EXPLAIN (SUMMARY OFF, TIMING OFF, COSTS OFF) SELECT DISTINCT att.attname as name
 	    att.attnum > 0
 	    AND att.attisdropped IS FALSE
 	ORDER BY att.attnum LIMIT 1;
-                                                      QUERY PLAN
-----------------------------------------------------------------------------------------------------------------------
+                                                     QUERY PLAN
+---------------------------------------------------------------------------------------------------------------------
  Limit
-   ->  Unique
-         ->  Sort
-               Sort Key: att.attnum, att.attname, (format_type(ty.oid, NULL::integer)), att.attnotnull, att.atthasdef
+   ->  Sort
+         Sort Key: att.attnum
+         ->  HashAggregate
+               Group Key: att.attnum, att.attname, format_type(ty.oid, NULL::integer), att.attnotnull, att.atthasdef
                ->  Nested Loop
                      ->  Index Scan using pg_attribute_relid_attnum_index on pg_attribute att
                            Index Cond: (attnum > 0)
                            Filter: (attisdropped IS FALSE)
                      ->  Index Scan using pg_type_oid_index on pg_type ty
                            Index Cond: (oid = att.atttypid)
-(10 rows)
+(11 rows)
 
 -- check system columns in YbSeqScan(#18485)
 explain (costs off)
 /*+ SeqScan(nr2) */ SELECT tableoid::regclass, * from nr2 where i = 1;
         QUERY PLAN
 --------------------------
- YB Seq Scan on nr2
+ Seq Scan on nr2
    Remote Filter: (i = 1)
 (2 rows)
 

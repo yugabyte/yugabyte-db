@@ -15,10 +15,8 @@ spec:
   enableVolumeEncryption: false
   ybSoftwareVersion: 2.17.1.0-b439
   enableYSQLAuth: true
-  ysqlPassword: Test123!
   enableYCQL: true
   enableYCQLAuth: true
-  ycqlPassword: Test123!
   enableIPV6: false
   enableExposingService: NONE
   accessKeyCode: ''
@@ -32,10 +30,10 @@ spec:
     resource:
       master:
         requests:
-          cpu: 2
+          cpu: "2"
           memory: 2Gi
         limits:
-          cpu: 2
+          cpu: "2"
           memory: 2Gi
       tserver:
         requests:
@@ -44,9 +42,58 @@ spec:
         limits:
           cpu: 2
           memory: 4Gi
+    master:
+      affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: security
+                operator: In
+                values:
+                - S1
+            topologyKey: topology.kubernetes.io/zone
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: security
+                  operator: In
+                  values:
+                  - S2
+              topologyKey: topology.kubernetes.io/zone
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: app
+                operator: In
+                values:
+                - "yb-tserver"
+            topologyKey: kubernetes.io/hostname
     tserver:
       affinity:
+        podAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchExpressions:
+              - key: security
+                operator: In
+                values:
+                - S1
+            topologyKey: topology.kubernetes.io/zone
         podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+          - weight: 100
+            podAffinityTerm:
+              labelSelector:
+                matchExpressions:
+                - key: security
+                  operator: In
+                  values:
+                  - S2
+              topologyKey: topology.kubernetes.io/zone
           requiredDuringSchedulingIgnoredDuringExecution:
           - labelSelector:
               matchExpressions:

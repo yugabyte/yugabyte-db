@@ -4,6 +4,7 @@ import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.RestoreUniverseKeysTaskBase;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.kms.EncryptionAtRestManager.RestoreKeyResult;
+import com.yugabyte.yw.common.kms.util.EncryptionAtRestUtil;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.models.Universe;
 import javax.inject.Inject;
@@ -71,6 +72,9 @@ public class RestoreUniverseKeysYb extends RestoreUniverseKeysTaskBase {
             // to that state
             client.disableEncryptionAtRestInMemory();
             universe.incrementVersion();
+            // Need to set KMS config UUID in the target universe since there are universe keys now.
+            EncryptionAtRestUtil.updateUniverseKMSConfigIfNotExists(
+                universe.getUniverseUUID(), taskParams().kmsConfigUUID);
           }
       }
     } catch (Exception e) {

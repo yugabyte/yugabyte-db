@@ -161,9 +161,9 @@ Status CombineExternalIntents(
 
   auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(transaction_state.transaction_id()));
   SCHECK_EQ(transaction_state.tablets().size(), 1, InvalidArgument, "Wrong tablets number");
-  auto status_tablet = VERIFY_RESULT(Uuid::FromHexString(transaction_state.tablets()[0]));
+  auto source_tablet = VERIFY_RESULT(Uuid::FromHexString(transaction_state.tablets()[0]));
 
-  Provider provider(status_tablet, &pairs, schema_versions_map, out);
+  Provider provider(source_tablet, &pairs, schema_versions_map, out);
   docdb::CombineExternalIntents(txn_id, subtransaction_id, &provider);
   return provider.GetOutcome();
 }

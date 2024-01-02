@@ -300,8 +300,20 @@ public class UniverseResourceDetails {
             && userIntent.deviceInfo.volumeSize != null
             && userIntent.deviceInfo.numVolumes != null) {
           details.addVolumeCount(userIntent.deviceInfo.numVolumes);
-          details.addVolumeSizeGB(
-              userIntent.deviceInfo.volumeSize * userIntent.deviceInfo.numVolumes);
+          // Check correct volume size based of type of node
+          if (node.isTserver) {
+            details.addVolumeSizeGB(
+                userIntent.deviceInfo.volumeSize * userIntent.deviceInfo.numVolumes);
+          } else if (node.isMaster) {
+            // if populated masterDeviceInfo use that, else use deviceInfo.
+            if (userIntent.masterDeviceInfo != null) {
+              details.addVolumeSizeGB(
+                  userIntent.masterDeviceInfo.volumeSize * userIntent.masterDeviceInfo.numVolumes);
+            } else {
+              details.addVolumeSizeGB(
+                  userIntent.deviceInfo.volumeSize * userIntent.deviceInfo.numVolumes);
+            }
+          }
 
           if (userIntent.deviceInfo.diskIops != null) {
             details.gp3FreePiops = userIntent.deviceInfo.diskIops;
@@ -310,22 +322,37 @@ public class UniverseResourceDetails {
             details.gp3FreeThroughput = userIntent.deviceInfo.throughput;
           }
         }
-        if (node.cloudInfo != null
-            && node.cloudInfo.az != null
-            && node.cloudInfo.instance_type != null) {
+        if (node.cloudInfo != null && node.cloudInfo.az != null) {
           details.addAz(node.cloudInfo.az);
-          InstanceType instanceType =
-              context.getInstanceType(
-                  UUID.fromString(userIntent.provider), node.cloudInfo.instance_type);
-          if (instanceType == null) {
-            LOG.error(
-                "Couldn't find instance type "
-                    + node.cloudInfo.instance_type
-                    + " for provider "
-                    + userIntent.providerType);
+          // If we have resource spec use that.
+          if (userIntent.tserverK8SNodeResourceSpec != null) {
+            if (node.isTserver) {
+              details.addMemSizeGB(userIntent.tserverK8SNodeResourceSpec.memoryGib);
+              details.addNumCores(userIntent.tserverK8SNodeResourceSpec.cpuCoreCount);
+            }
+            // Check for master and add its resources too
+            if (userIntent.masterK8SNodeResourceSpec != null) {
+              if (node.isMaster) {
+                details.addMemSizeGB(userIntent.masterK8SNodeResourceSpec.memoryGib);
+                details.addNumCores(userIntent.masterK8SNodeResourceSpec.cpuCoreCount);
+              }
+            }
           } else {
-            details.addMemSizeGB(instanceType.getMemSizeGB());
-            details.addNumCores(instanceType.getNumCores());
+            if (node.cloudInfo.instance_type != null) {
+              InstanceType instanceType =
+                  context.getInstanceType(
+                      UUID.fromString(userIntent.provider), node.cloudInfo.instance_type);
+              if (instanceType == null) {
+                LOG.error(
+                    "Couldn't find instance type "
+                        + node.cloudInfo.instance_type
+                        + " for provider "
+                        + userIntent.providerType);
+              } else {
+                details.addMemSizeGB(instanceType.getMemSizeGB());
+                details.addNumCores(instanceType.getNumCores());
+              }
+            }
           }
         }
       }

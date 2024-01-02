@@ -85,10 +85,6 @@ Status PgDml::AppendTargetPB(PgExpr *target) {
                       IllegalState, "Combining aggregate and non aggregate targets");
   }
 
-  if (target->is_system()) {
-    has_system_targets_ = true;
-  }
-
   if (is_aggregate) {
     auto aggregate = down_cast<PgAggregateOperator*>(target);
     aggregate->set_index(narrow_cast<int>(targets_.size()));
@@ -458,10 +454,6 @@ Result<bool> PgDml::GetNextRow(PgTuple *pg_tuple) {
 
 bool PgDml::has_aggregate_targets() const {
   return has_aggregate_targets_;
-}
-
-bool PgDml::has_system_targets() const {
-  return has_system_targets_;
 }
 
 Result<YBCPgColumnInfo> PgDml::GetColumnInfo(int attr_num) const {

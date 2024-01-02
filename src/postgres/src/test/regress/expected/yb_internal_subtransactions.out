@@ -44,7 +44,7 @@ SELECT /*+ SeqScan(t) */ * FROM subtrans_foo t WHERE k > 0 AND v > 0 ORDER BY k;
 ----------------------------------------------
  Sort
    Sort Key: k
-   ->  YB Seq Scan on subtrans_foo t
+   ->  Seq Scan on subtrans_foo t
          Remote Filter: ((k > 0) AND (v > 0))
 (4 rows)
 
@@ -61,7 +61,7 @@ SELECT /*+ IndexScan(t subtrans_foo_pkey) */ * FROM subtrans_foo t WHERE k > 0 A
 ----------------------------------------------
  Sort
    Sort Key: k
-   ->  YB Seq Scan on subtrans_foo t
+   ->  Seq Scan on subtrans_foo t
          Remote Filter: ((k > 0) AND (v > 0))
 (4 rows)
 
@@ -78,7 +78,7 @@ SELECT /*+ IndexScan(t subtrans_foo_v_key) */ * FROM subtrans_foo t WHERE k > 0 
 ----------------------------------------------
  Sort
    Sort Key: k
-   ->  YB Seq Scan on subtrans_foo t
+   ->  Seq Scan on subtrans_foo t
          Remote Filter: ((k > 0) AND (v > 0))
 (4 rows)
 

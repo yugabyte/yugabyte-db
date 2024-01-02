@@ -136,7 +136,7 @@ YB_STRONGLY_TYPED_BOOL(PostApplyCleanup);
 } // namespace
 
 constexpr size_t kRunningTransactionSize = sizeof(RunningTransaction);
-const std::string kParentMemTrackerId = "transactions";
+const std::string kParentMemTrackerId = "Transactions";
 
 std::string TransactionApplyData::ToString() const {
   return YB_STRUCT_TO_STRING(
@@ -173,7 +173,8 @@ class TransactionParticipant::Impl
     auto parent_mem_tracker = MemTracker::FindOrCreateTracker(
         kParentMemTrackerId, tablets_mem_tracker);
     mem_tracker_ = MemTracker::CreateTracker(Format("$0-$1", kParentMemTrackerId,
-        participant_context_.tablet_id()), parent_mem_tracker);
+        participant_context_.tablet_id()), /* metric_name */ "PerTransaction",
+            parent_mem_tracker, AddToParent::kTrue, CreateMetrics::kFalse);
   }
 
   ~Impl() {

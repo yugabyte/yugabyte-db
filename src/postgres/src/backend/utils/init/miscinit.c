@@ -56,7 +56,7 @@
 #include "utils/pidfile.h"
 #include "utils/syscache.h"
 #include "utils/varlena.h"
-
+#include "yb_ysql_conn_mgr_helper.h"
 
 #define DIRECTORY_LOCK_FILE		"postmaster.pid"
 
@@ -1737,4 +1737,18 @@ pg_bindtextdomain(const char *domain)
 		pg_bind_textdomain_codeset(domain);
 	}
 #endif
+}
+
+void YbSetUserContext(const Oid roleid, const bool is_superuser, const char *rname){
+	/* change the auth user */
+	AuthenticatedUserId = roleid;
+	AuthenticatedUserIsSuperuser = is_superuser;
+
+	SetSessionUserId(roleid, is_superuser);
+
+	SetConfigOption("session_authorization", rname,
+					PGC_INTERNAL, PGC_S_OVERRIDE);
+	SetConfigOption("is_superuser",
+					is_superuser ? "on" : "off",
+					PGC_INTERNAL, PGC_S_OVERRIDE);
 }

@@ -237,13 +237,14 @@ class BaseDeltaIterator final : public Iterator {
   const KeyValueEntry& UpdateCurrent() {
     while (true) {
       WriteEntry delta_entry;
-      if (DeltaValid()) {
+      auto delta_valid = DeltaValid();
+      if (delta_valid) {
         delta_entry = delta_iterator_->Entry();
       }
       equal_keys_ = false;
       if (!BaseValid()) {
         // Base has finished.
-        if (!DeltaValid()) {
+        if (!delta_valid) {
           // Finished
           return KeyValueEntry::Invalid();
         }
@@ -254,7 +255,7 @@ class BaseDeltaIterator final : public Iterator {
           current_at_base_ = false;
           return Entry();
         }
-      } else if (!DeltaValid()) {
+      } else if (!delta_valid) {
         // Delta has finished.
         current_at_base_ = true;
         return Entry();

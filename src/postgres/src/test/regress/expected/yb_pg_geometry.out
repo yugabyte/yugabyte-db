@@ -143,12 +143,7 @@ SELECT '' AS thirty, p.f1, l.s, p.f1 ## l.s AS closest
         | (10,10)    | [(10,-10),(-3,-4)]            | (2.39024390244,-6.48780487805)
         | (10,10)    | [(-1000000,200),(300000,-40)] | (10.000993742,15.3827690473)
         | (10,10)    | [(11,22),(33,44)]             | (11,22)
-        |            | [(1,2),(3,4)]                 |
-        |            | [(0,0),(6,6)]                 |
-        |            | [(10,-10),(-3,-4)]            |
-        |            | [(-1000000,200),(300000,-40)] |
-        |            | [(11,22),(33,44)]             |
-(35 rows)
+(30 rows)
 
 --
 -- Boxes
@@ -193,11 +188,7 @@ SELECT '' AS twentyfour, b.f1 + p.f1 AS translation
             | (13,13),(11,11)
             | (12.5,13.5),(12.5,12.5)
             | (13,13),(13,13)
-            |
-            |
-            |
-            |
-(28 rows)
+(24 rows)
 
 SELECT '' AS twentyfour, b.f1 - p.f1 AS translation
    FROM BOX_TBL b, POINT_TBL p ORDER BY p.f1[0], p.f1[1], b.id;
@@ -227,11 +218,7 @@ SELECT '' AS twentyfour, b.f1 - p.f1 AS translation
             | (-7,-7),(-9,-9)
             | (-7.5,-6.5),(-7.5,-7.5)
             | (-7,-7),(-7,-7)
-            |
-            |
-            |
-            |
-(28 rows)
+(24 rows)
 
 -- scaling and rotation
 SELECT '' AS twentyfour, b.f1 * p.f1 AS rotation
@@ -262,11 +249,7 @@ SELECT '' AS twentyfour, b.f1 * p.f1 AS rotation
             | (0,60),(0,20)
             | (0,60),(-10,50)
             | (0,60),(0,60)
-            |
-            |
-            |
-            |
-(28 rows)
+(24 rows)
 
 SELECT '' AS twenty, b.f1 / p.f1 AS rotation
    FROM BOX_TBL b, POINT_TBL p
@@ -305,8 +288,7 @@ SELECT f1::box
  (0,0),(0,0)
  (5.1,34.5),(5.1,34.5)
  (10,10),(10,10)
-
-(7 rows)
+(6 rows)
 
 SELECT bound_box(a.f1, b.f1)
 	FROM BOX_TBL a, BOX_TBL b ORDER BY a.id, b.id;
@@ -417,11 +399,7 @@ SELECT '' AS twentyfour, p.f1, poly.f1, poly.f1 @> p.f1 AS contains
             | (10,10)    | ((3,1),(3,3),(1,0)) | f
             | (10,10)    | ((0,0))             | f
             | (10,10)    | ((0,1),(0,1))       | f
-            |            | ((2,0),(2,4),(0,0)) |
-            |            | ((3,1),(3,3),(1,0)) |
-            |            | ((0,0))             |
-            |            | ((0,1),(0,1))       |
-(28 rows)
+(24 rows)
 
 SELECT '' AS twentyfour, p.f1, poly.f1, p.f1 <@ poly.f1 AS contained
    FROM POLYGON_TBL poly, POINT_TBL p ORDER BY p.f1[0], p.f1[1], poly.id;
@@ -451,11 +429,7 @@ SELECT '' AS twentyfour, p.f1, poly.f1, p.f1 <@ poly.f1 AS contained
             | (10,10)    | ((3,1),(3,3),(1,0)) | f
             | (10,10)    | ((0,0))             | f
             | (10,10)    | ((0,1),(0,1))       | f
-            |            | ((2,0),(2,4),(0,0)) |
-            |            | ((3,1),(3,3),(1,0)) |
-            |            | ((0,0))             |
-            |            | ((0,1),(0,1))       |
-(28 rows)
+(24 rows)
 
 SELECT '' AS four, npoints(f1) AS npoints, f1 AS polygon
    FROM POLYGON_TBL ORDER BY id;
@@ -537,8 +511,7 @@ SELECT '' AS six, circle(f1, 50.0)
      | <(0,0),50>
      | <(5.1,34.5),50>
      | <(10,10),50>
-     |
-(7 rows)
+(6 rows)
 
 SELECT '' AS four, circle(f1)
    FROM BOX_TBL ORDER BY id;

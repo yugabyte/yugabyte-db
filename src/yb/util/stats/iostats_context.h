@@ -20,6 +20,8 @@
 
 #pragma once
 
+#include <stdint.h>
+
 #include <string>
 
 // A thread local context for gathering io-stats efficiently and transparently.

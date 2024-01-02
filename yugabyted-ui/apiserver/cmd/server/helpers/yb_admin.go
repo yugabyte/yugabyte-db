@@ -10,12 +10,12 @@ type YBAdminFuture struct {
     Error  error
 }
 
-func RunYBAdminFuture(params []string, future chan YBAdminFuture) {
+func (h *HelperContainer) RunYBAdminFuture(params []string, future chan YBAdminFuture) {
     ybAdminFuture := YBAdminFuture{
         Result: "",
         Error:  nil,
     }
-    path, err := FindBinaryLocation("yb-admin")
+    path, err := h.FindBinaryLocation("yb-admin")
     if err != nil {
         ybAdminFuture.Error = err
         future <- ybAdminFuture

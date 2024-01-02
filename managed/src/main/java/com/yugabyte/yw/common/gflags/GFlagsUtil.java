@@ -2,6 +2,7 @@
 
 package com.yugabyte.yw.common.gflags;
 
+import static com.yugabyte.yw.common.Util.getDataDirectoryPath;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
@@ -364,7 +365,12 @@ public class GFlagsUtil {
       ybcFlags.putAll(userIntent.ybcFlags);
     }
     // Append the custom_tmp gflag to the YBC gflag.
-    ybcFlags.put(TMP_DIRECTORY, GFlagsUtil.getCustomTmpDirectory(node, universe));
+    String ybcTempDir = GFlagsUtil.getCustomTmpDirectory(node, universe);
+    // PLAT-10007 use ybc-data instead of /tmp
+    if (ybcTempDir.equals("/tmp")) {
+      ybcTempDir = getDataDirectoryPath(universe, node, config) + "/ybc-data";
+    }
+    ybcFlags.put(TMP_DIRECTORY, ybcTempDir);
     if (EncryptionInTransitUtil.isRootCARequired(taskParam)) {
       String ybHomeDir = getYbHomeDir(providerUUID);
       String certsNodeDir = CertificateHelper.getCertsNodeDir(ybHomeDir);
@@ -663,18 +669,23 @@ public class GFlagsUtil {
     List<Map<String, String>> masterAndTserverGFlags =
         Arrays.asList(userIntent.masterGFlags, userIntent.tserverGFlags);
     if (userIntent.specificGFlags != null) {
-      masterAndTserverGFlags =
-          Arrays.asList(
-              userIntent
-                  .specificGFlags
-                  .getPerProcessFlags()
-                  .value
-                  .getOrDefault(UniverseTaskBase.ServerType.MASTER, new HashMap<>()),
-              userIntent
-                  .specificGFlags
-                  .getPerProcessFlags()
-                  .value
-                  .getOrDefault(UniverseTaskBase.ServerType.TSERVER, new HashMap<>()));
+      if (userIntent.specificGFlags.isInheritFromPrimary()) {
+        return;
+      }
+      if (userIntent.specificGFlags.getPerProcessFlags() != null) {
+        masterAndTserverGFlags =
+            Arrays.asList(
+                userIntent
+                    .specificGFlags
+                    .getPerProcessFlags()
+                    .value
+                    .getOrDefault(UniverseTaskBase.ServerType.MASTER, new HashMap<>()),
+                userIntent
+                    .specificGFlags
+                    .getPerProcessFlags()
+                    .value
+                    .getOrDefault(UniverseTaskBase.ServerType.TSERVER, new HashMap<>()));
+      }
     }
     for (Map<String, String> gflags : masterAndTserverGFlags) {
       GFLAG_TO_INTENT_ACCESSOR.forEach(
@@ -1022,7 +1033,10 @@ public class GFlagsUtil {
     Path tmpDirectoryPath =
         FileUtils.getOrCreateTmpDirectory(
             confGetter.getGlobalConf(GlobalConfKeys.ybTmpDirectoryPath));
-    Path localGflagFilePath = tmpDirectoryPath.resolve(node.getNodeUuid().toString());
+    Path localGflagFilePath = tmpDirectoryPath;
+    if (node.getNodeUuid() != null) {
+      localGflagFilePath = tmpDirectoryPath.resolve(node.getNodeUuid().toString());
+    }
     if (!Files.isDirectory(localGflagFilePath)) {
       try {
         Files.createDirectory(localGflagFilePath);

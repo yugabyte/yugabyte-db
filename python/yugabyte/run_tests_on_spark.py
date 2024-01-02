@@ -1081,6 +1081,24 @@ def collect_tests(args: argparse.Namespace) -> List[yb_dist_tests.TestDescriptor
 
     test_descriptors = sorted(java_test_descriptors) + sorted(cpp_test_descriptors)
 
+    # YB_TODO: BEGIN temporary modifications
+    # For pg15, run only tests that we expect to pass.  To run more in addition to that, pass
+    # jenkins DSL "test regex", and that will be combined with the expected-pass tests.
+    src_root = yb_dist_tests.get_global_conf().yb_src_root
+    pg15_test_descriptors = subprocess.run(['awk', '{print$NF}',
+                                            f'{src_root}/pg15_tests/passing_cxx.tsv',
+                                            f'{src_root}/pg15_tests/passing_java.tsv'],
+                                           stdout=subprocess.PIPE,
+                                           text=True,
+                                           check=True).stdout.rstrip().split('\n')
+    # TODO(jason): remove this workaround after next merge with master.
+    pg15_test_descriptors = [f".*{descriptor}" for descriptor in pg15_test_descriptors]
+    if args.test_filter_re:
+        args.test_filter_re += '|' + '|'.join(pg15_test_descriptors)
+    else:
+        args.test_filter_re = '|'.join(pg15_test_descriptors)
+    # YB_TODO: END temporary modifications
+
     if args.test_filter_re:
         test_filter_re_compiled = re.compile(args.test_filter_re)
         num_tests_before_filtering = len(test_descriptors)

@@ -18,6 +18,7 @@
 #include "yb/util/monotime.h"
 #include "yb/util/size_literals.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 using std::string;
 
@@ -91,7 +92,6 @@ void LibPqTestBase::UpdateMiniClusterFailOnConflict(ExternalMiniClusterOptions* 
   // This test depends on fail-on-conflict concurrency control to perform its validation.
   // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
   options->extra_tserver_flags.push_back("--enable_wait_queues=false");
-  options->extra_tserver_flags.push_back("--enable_deadlock_detection=false");
 }
 
 // Test that repeats example from this article:
@@ -159,11 +159,11 @@ void LibPqTestBase::SerializableColoringHelper(int min_duration_seconds) {
         auto lines = PQntuples(res->get());
         ASSERT_EQ(kKeys, lines);
         for (int j = 0; j != lines; ++j) {
-          if (ASSERT_RESULT(GetInt32(res->get(), j, 1)) == color) {
+          if (ASSERT_RESULT(GetValue<int32_t>(res->get(), j, 1)) == color) {
             continue;
           }
 
-          auto key = ASSERT_RESULT(GetInt32(res->get(), j, 0));
+          auto key = ASSERT_RESULT(GetValue<int32_t>(res->get(), j, 0));
           auto status = connection.ExecuteFormat(
               "UPDATE t SET color = $1 WHERE key = $0", key, color);
           if (!status.ok()) {
@@ -200,8 +200,8 @@ void LibPqTestBase::SerializableColoringHelper(int min_duration_seconds) {
 
     std::vector<int32_t> zeroes, ones;
     for (int i = 0; i != lines; ++i) {
-      auto key = ASSERT_RESULT(GetInt32(res.get(), i, 0));
-      auto current = ASSERT_RESULT(GetInt32(res.get(), i, 1));
+      auto key = ASSERT_RESULT(GetValue<int32_t>(res.get(), i, 0));
+      auto current = ASSERT_RESULT(GetValue<int32_t>(res.get(), i, 1));
       if (current == 0) {
         zeroes.push_back(key);
       } else {

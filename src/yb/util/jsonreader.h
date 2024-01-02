@@ -41,6 +41,13 @@
 
 #include "yb/util/status_fwd.h"
 
+namespace google {
+namespace protobuf {
+class FieldDescriptor;
+class Message;
+} // namespace protobuf
+} // namespace google
+
 namespace yb {
 
 // Wraps the JSON parsing functionality of rapidjson::Document.
@@ -75,6 +82,10 @@ class JsonReader {
                       const char* field,
                       int64_t* result) const;
 
+  Status ExtractUInt64(const rapidjson::Value* object,
+                       const char* field,
+                       uint64_t* result) const;
+
   Status ExtractString(const rapidjson::Value* object,
                        const char* field,
                        std::string* result) const;
@@ -89,12 +100,27 @@ class JsonReader {
                             const char* field,
                             std::vector<const rapidjson::Value*>* result) const;
 
+  Status ExtractProtobuf(const rapidjson::Value* object,
+                         const char* field,
+                         google::protobuf::Message* pb) const;
+
   const rapidjson::Value* root() const { return &document_; }
 
  private:
   Status ExtractField(const rapidjson::Value* object,
                       const char* field,
                       const rapidjson::Value** result) const;
+
+  Status ExtractProtobufMessage(const rapidjson::Value& value,
+                                google::protobuf::Message* pb) const;
+
+  Status ExtractProtobufField(const rapidjson::Value& value,
+                              google::protobuf::Message* pb,
+                              const google::protobuf::FieldDescriptor* field) const;
+
+  Status ExtractProtobufRepeatedField(const rapidjson::Value& value,
+                                      google::protobuf::Message* pb,
+                                      const google::protobuf::FieldDescriptor* field) const;
 
   std::string text_;
   rapidjson::Document document_;

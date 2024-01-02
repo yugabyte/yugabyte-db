@@ -23,6 +23,7 @@ import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
+import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.cloud.PublicCloudConstants.StorageType;
 import com.yugabyte.yw.commissioner.CallHome;
 import com.yugabyte.yw.commissioner.Commissioner;
@@ -141,6 +142,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
     when(mockRuntimeConfig.getBoolean("yb.security.use_oauth")).thenReturn(false);
     when(mockRuntimeConfig.getInt("yb.fs_stateless.max_files_count_persist")).thenReturn(100);
     when(mockRuntimeConfig.getBoolean("yb.fs_stateless.suppress_error")).thenReturn(true);
+    when(mockRuntimeConfig.getInt("yb.max_volume_count")).thenReturn(32);
     when(mockRuntimeConfig.getLong("yb.fs_stateless.max_file_size_bytes")).thenReturn((long) 10000);
     when(mockRuntimeConfig.getString("yb.storage.path"))
         .thenReturn("/tmp/" + this.getClass().getSimpleName());
@@ -246,7 +248,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
     when(mockReleaseManager.getReleaseByVersion(any())).thenReturn(mockReleaseMetadata);
     doReturn("/opt/yugabyte/releases/2.17.4.0-b10/yb-2.17.4.0-b10-linux-x86_64.tar.gz")
         .when(mockReleaseMetadata)
-        .getFilePath(any());
+        .getFilePath(Architecture.x86_64);
     // when(mockReleaseMetadata.getFilePath(any()))
     //     .thenReturn("/opt/yugabyte/releases/2.17.4.0-b10/yb-2.17.4.0-b10-linux-x86_64.tar.gz");
 
@@ -257,7 +259,7 @@ public class UniverseControllerTestBase extends PlatformGuiceApplicationBaseTest
         .thenReturn(mockYbcReleaseMetadata);
     doReturn("/opt/yugabyte/ybc/releases/1.0.0-b18/ybc-1.0.0-b18-linux-x86_64.tar.gz")
         .when(mockYbcReleaseMetadata)
-        .getFilePath(any());
+        .getFilePath(Architecture.x86_64);
     // when(mockYbcReleaseMetadata.getFilePath(any()))
     //     .thenReturn("/opt/yugabyte/ybc/releases/1.0.0-b18/ybc-1.0.0-b18-linux-x86_64.tar.gz");
   }

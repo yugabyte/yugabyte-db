@@ -15,10 +15,10 @@ import { Box, Grid, makeStyles } from '@material-ui/core';
 import Container from '../../common/Container';
 import { YBButton } from '../../../../components';
 import { CreateRole } from './CreateRole';
+import { DeleteRoleModal } from './DeleteRoleModal';
 
 import { ReactComponent as ArrowLeft } from '../../../../assets/arrow_left.svg';
 import { ReactComponent as Delete } from '../../../../assets/trashbin.svg';
-import { DeleteRoleModal } from './DeleteRoleModal';
 
 const useStyles = makeStyles((theme) => ({
   root: {
@@ -34,7 +34,7 @@ const useStyles = makeStyles((theme) => ({
     fontWeight: 700
   },
   menuContainer: {
-    width: '255px',
+    width: '242px',
     padding: theme.spacing(3),
     paddingLeft: 0,
     borderRight: `1px solid ${theme.palette.ybacolors.ybBorderGray}`
@@ -43,6 +43,8 @@ const useStyles = makeStyles((theme) => ({
     padding: '12px 16px',
     marginBottom: theme.spacing(2),
     cursor: 'pointer',
+    width: '220px',
+    height: '40px',
     '&.active': {
       borderRadius: theme.spacing(1),
       border: '1px solid #C8C8C8',

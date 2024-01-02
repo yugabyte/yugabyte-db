@@ -34,15 +34,18 @@
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_format.h"
+#include "yb/util/string_util.h"
 #include "yb/util/test_thread_holder.h"
 #include "yb/util/tsan_util.h"
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 using std::string;
 
 using namespace std::chrono_literals;
+using namespace std::literals;
 
 namespace yb {
 namespace pgwrapper {
@@ -106,6 +109,17 @@ class PgIndexBackfillTest : public LibPqTestBase {
     return true;
   }
 
+  Status WaitForIndexStateFlags(const IndexStateFlags& index_state_flags,
+                                const std::string& index_name = kIndexName) {
+    RETURN_NOT_OK(WaitFor(
+        [this, &index_name, &index_state_flags] {
+          return IsAtTargetIndexStateFlags(index_name, index_state_flags);
+        },
+        30s,
+        Format("get index state flags: $0", index_state_flags)));
+    return Status::OK();
+  }
+
   Status WaitForIndexProgressOutput(const std::string columns, const std::string expected_result) {
     return WaitFor(
       [this, &columns, &expected_result]() -> Result<bool> {
@@ -121,6 +135,15 @@ class PgIndexBackfillTest : public LibPqTestBase {
       },
       30s,
       Format("Wait for index progress columns $0 to be $1", columns, expected_result));
+  }
+
+  Status WaitForIndexScan(const std::string& query) {
+    return WaitFor(
+        [this, &query] {
+          return conn_->HasIndexScan(query);
+        },
+        30s,
+        "Wait for IndexScan");
   }
 
   bool HasClientTimedOut(const Status& s);
@@ -208,28 +231,19 @@ bool PgIndexBackfillTest::HasClientTimedOut(const Status& s) {
 
 void PgIndexBackfillTest::TestSimpleBackfill(const std::string& table_create_suffix) {
   ASSERT_OK(conn_->ExecuteFormat(
-    "CREATE TABLE $0 (c char, i int, p point) $1",
-    kTableName,
-    table_create_suffix));
-  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES ('a', 0, '(1, 2)')", kTableName));
-  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES ('y', -5, '(0, -2)')", kTableName));
-  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES ('b', 100, '(868, 9843)')", kTableName));
+      "CREATE TABLE $0 (c CHAR, i INT, p POINT) $1", kTableName, table_create_suffix));
+  ASSERT_OK(conn_->ExecuteFormat(
+      "INSERT INTO $0 VALUES ('a', 0, '(1, 2)'), ('y', -5, '(0, -2)'), ('b', 100, '(868, 9843)')",
+      kTableName));
   ASSERT_OK(conn_->ExecuteFormat("CREATE INDEX ON $0 (c ASC)", kTableName));
 
   // Index scan to verify contents of index table.
-  const std::string query = Format("SELECT * FROM $0 ORDER BY c", kTableName);
+  const auto query = Format("SELECT c, i FROM $0 ORDER BY c", kTableName);
   ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
-  PGResultPtr res = ASSERT_RESULT(conn_->Fetch(query));
-  ASSERT_EQ(PQntuples(res.get()), 3);
-  ASSERT_EQ(PQnfields(res.get()), 3);
-  std::array<int, 3> values = {
-    ASSERT_RESULT(GetInt32(res.get(), 0, 1)),
-    ASSERT_RESULT(GetInt32(res.get(), 1, 1)),
-    ASSERT_RESULT(GetInt32(res.get(), 2, 1)),
-  };
-  ASSERT_EQ(values[0], 0);
-  ASSERT_EQ(values[1], 100);
-  ASSERT_EQ(values[2], -5);
+
+  const auto values = ASSERT_RESULT((conn_->FetchAll<char, int32_t>(query)));
+  decltype(values) expected_values = {{'a', 0}, {'b', 100}, {'y', -5}};
+  ASSERT_EQ(values, expected_values);
 }
 
 // Checks that retain_delete_markers is false after index creation.
@@ -343,8 +357,8 @@ TEST_F(PgIndexBackfillTest, Partial) {
     ASSERT_EQ(PQntuples(res.get()), 2);
     ASSERT_EQ(PQnfields(res.get()), 1);
     std::array<int, 2> values = {
-      ASSERT_RESULT(GetInt32(res.get(), 0, 0)),
-      ASSERT_RESULT(GetInt32(res.get(), 1, 0)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0)),
     };
     ASSERT_EQ(values[0], -1);
     ASSERT_EQ(values[1], -2);
@@ -358,8 +372,8 @@ TEST_F(PgIndexBackfillTest, Partial) {
     ASSERT_EQ(PQntuples(res.get()), 2);
     ASSERT_EQ(PQnfields(res.get()), 1);
     std::array<int, 2> values = {
-      ASSERT_RESULT(GetInt32(res.get(), 0, 0)),
-      ASSERT_RESULT(GetInt32(res.get(), 1, 0)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0)),
     };
     ASSERT_EQ(values[0], 4);
     ASSERT_EQ(values[1], 3);
@@ -387,14 +401,14 @@ TEST_F(PgIndexBackfillTest, Expression) {
   ASSERT_EQ(PQnfields(res.get()), 3);
   std::array<std::array<int, 3>, 2> values = {{
     {
-      ASSERT_RESULT(GetInt32(res.get(), 0, 0)),
-      ASSERT_RESULT(GetInt32(res.get(), 0, 1)),
-      ASSERT_RESULT(GetInt32(res.get(), 0, 2)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 1)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 2)),
     },
     {
-      ASSERT_RESULT(GetInt32(res.get(), 1, 0)),
-      ASSERT_RESULT(GetInt32(res.get(), 1, 1)),
-      ASSERT_RESULT(GetInt32(res.get(), 1, 2)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 0)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 1)),
+      ASSERT_RESULT(GetValue<int32_t>(res.get(), 1, 2)),
     },
   }};
   ASSERT_EQ(values[0][0], 14);
@@ -874,22 +888,16 @@ TEST_F_EX(PgIndexBackfillTest,
       const std::string msg = status.message().ToBuffer();
       const std::string relation_already_exists_msg = Format(
           "relation \"$0\" already exists", kIndexName);
-      const std::vector<std::string> allowed_msgs{
-        "Catalog Version Mismatch",
-        "could not serialize access due to concurrent update",
-        "Restart read required",
-        "Transaction aborted",
-        "Transaction metadata missing",
-        "Unknown transaction, could be recently aborted",
-        relation_already_exists_msg,
+      const auto allowed_msgs = {
+        "Catalog Version Mismatch"sv,
+        SerializeAccessErrorMessageSubstring(),
+        "Restart read required"sv,
+        "Transaction aborted"sv,
+        "Transaction metadata missing"sv,
+        "Unknown transaction, could be recently aborted"sv,
+        std::string_view(relation_already_exists_msg),
       };
-      ASSERT_TRUE(std::find_if(
-          std::begin(allowed_msgs),
-          std::end(allowed_msgs),
-          [&msg] (const std::string allowed_msg) {
-            return msg.find(allowed_msg) != std::string::npos;
-          }) != std::end(allowed_msgs))
-        << status;
+      ASSERT_TRUE(HasSubstring(msg, allowed_msgs)) << status;
       LOG(INFO) << "ignoring conflict error: " << status.message().ToBuffer();
       if (msg.find("Restart read required") == std::string::npos
           && msg.find(relation_already_exists_msg) == std::string::npos) {
@@ -907,11 +915,9 @@ TEST_F_EX(PgIndexBackfillTest,
   LOG(INFO) << "Checking postgres schema";
   {
     // Check number of indexes.
-    PGResultPtr res = ASSERT_RESULT(conn_->FetchFormat(
-        "SELECT indexname FROM pg_indexes WHERE tablename = '$0'", kTableName));
-    ASSERT_EQ(PQntuples(res.get()), 1);
-    const std::string actual = ASSERT_RESULT(GetString(res.get(), 0, 0));
-    ASSERT_EQ(actual, kIndexName);
+    ASSERT_EQ(ASSERT_RESULT(conn_->FetchValue<std::string>(
+                Format("SELECT indexname FROM pg_indexes WHERE tablename = '$0'", kTableName))),
+              kIndexName);
 
     // Check whether index is public using index scan.
     ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
@@ -966,10 +972,7 @@ TEST_F_EX(PgIndexBackfillTest,
   LOG(INFO) << "Checking if index still works";
   {
     ASSERT_TRUE(ASSERT_RESULT(conn_->HasIndexScan(query)));
-    PGResultPtr res = ASSERT_RESULT(conn_->Fetch(query));
-    ASSERT_EQ(PQntuples(res.get()), 1);
-    int32_t value = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
-    ASSERT_EQ(value, 7);
+    ASSERT_EQ(ASSERT_RESULT(conn_->FetchValue<int32_t>(query)), 7);
   }
 }
 
@@ -1283,21 +1286,16 @@ TEST_F_EX(PgIndexBackfillTest,
 
   // Index scan to verify contents of index table.
   const std::string query = Format("SELECT * FROM $0 WHERE j = 113", kTableName);
-  ASSERT_OK(WaitFor(
-      [this, &query] {
-        return conn_->HasIndexScan(query);
-      },
-      30s,
-      "Wait for IndexScan"));
+  ASSERT_OK(WaitForIndexScan(query));
   PGResultPtr res = ASSERT_RESULT(conn_->Fetch(query));
   int lines = PQntuples(res.get());
   ASSERT_EQ(1, lines);
   int columns = PQnfields(res.get());
   ASSERT_EQ(2, columns);
-  int32_t key = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
+  auto key = ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 0));
   ASSERT_EQ(key, 3);
   // Make sure that the update is visible.
-  int32_t value = ASSERT_RESULT(GetInt32(res.get(), 0, 1));
+  auto value = ASSERT_RESULT(GetValue<int32_t>(res.get(), 0, 1));
   ASSERT_EQ(value, 113);
 }
 
@@ -1346,12 +1344,7 @@ TEST_F_EX(PgIndexBackfillTest,
       int key = std::get<1>(tup);
       const auto& label = std::get<2>(tup);
 
-      ASSERT_OK(WaitFor(
-          [this, &index_state_flags] {
-            return IsAtTargetIndexStateFlags(kIndexName, index_state_flags);
-          },
-          30s,
-          Format("get index state flags: $0", index_state_flags)));
+      ASSERT_OK(WaitForIndexStateFlags(index_state_flags));
       LOG(INFO) << "running UPDATE on i = " << key;
       ASSERT_OK(conn_->ExecuteFormat("UPDATE $0 SET j = j + 100 WHERE i = $1", kTableName, key));
       LOG(INFO) << "done running UPDATE on i = " << key;
@@ -1375,20 +1368,9 @@ TEST_F_EX(PgIndexBackfillTest,
         "WITH j_idx AS (SELECT * FROM $0 ORDER BY j) SELECT j FROM j_idx WHERE i = $1",
         kTableName,
         key);
-    ASSERT_OK(WaitFor(
-        [this, &query] {
-          return conn_->HasIndexScan(query);
-        },
-        30s,
-        "Wait for IndexScan"));
-    PGResultPtr res = ASSERT_RESULT(conn_->Fetch(query));
-    int lines = PQntuples(res.get());
-    ASSERT_EQ(1, lines);
-    int columns = PQnfields(res.get());
-    ASSERT_EQ(1, columns);
+    ASSERT_OK(WaitForIndexScan(query));
     // Make sure that the update is visible.
-    int value = ASSERT_RESULT(GetInt32(res.get(), 0, 0));
-    ASSERT_EQ(value, key + 110);
+    ASSERT_EQ(ASSERT_RESULT(conn_->FetchValue<int32_t>(query)), key + 110);
   }
 }
 
@@ -1498,12 +1480,7 @@ TEST_F_EX(PgIndexBackfillTest,
       const IndexStateFlags index_state_flags{IndexStateFlag::kIndIsLive};
 
       LOG(INFO) << "Wait for indislive index state flag";
-      ASSERT_OK(WaitFor(
-          [this, &index_state_flags] {
-            return IsAtTargetIndexStateFlags(kIndexName, index_state_flags);
-          },
-          30s,
-          Format("get index state flags: $0", index_state_flags)));
+      ASSERT_OK(WaitForIndexStateFlags(index_state_flags));
 
       LOG(INFO) << "Do delete and insert";
       ASSERT_OK(conn_->ExecuteFormat("DELETE FROM $0 WHERE i = 1", kTableName));
@@ -2056,7 +2033,7 @@ TEST_F_EX(PgIndexBackfillTest,
   // Assert that the phase is still "backfilling" and that the number of tuples done is still 0
   // within this txn.
   res = ASSERT_RESULT(conn_->Fetch(index_progress_query));
-  ASSERT_EQ(ASSERT_RESULT(GetString(res.get(), 0, 0)), "backfilling");
+  ASSERT_EQ(ASSERT_RESULT(GetValue<std::string>(res.get(), 0, 0)), "backfilling");
   ASSERT_EQ(ASSERT_RESULT(GetValue<PGUint64>(res.get(), 0, 1)), 0);
   ASSERT_OK(conn_->ExecuteFormat("COMMIT"));
 }
@@ -2173,6 +2150,53 @@ TEST_F_EX(PgIndexBackfillTest,
       kTestDatabaseName, num_rows_indexed_table)));
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
   thread_holder_.Stop();
+}
+
+// Make sure transaction is not aborted by getting safe time.  Simulate the following:
+//   Session A                                    Session B
+//   --------------------------                   ---------------------------------
+//   CREATE INDEX
+//   - indislive
+//   - indisready
+//                                                BEGIN
+//                                                UPDATE a row of the indexed table
+//   - backfill
+//     - get safe time for read
+//                                                COMMIT
+//     - do the actual backfill
+//   - indisvalid
+// TODO(#19000): enable for TSAN.
+TEST_F_EX(PgIndexBackfillTest,
+          YB_DISABLE_TEST_IN_TSAN(NoAbortTxn),
+          PgIndexBackfillBlockDoBackfill) {
+  ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int PRIMARY KEY, j int) SPLIT INTO 1 TABLETS",
+                                 kTableName));
+  ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 2), (3, 4)", kTableName));
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "backfill"));
+
+  thread_holder_.AddThreadFunctor([this] {
+    LOG(INFO) << "Begin create thread";
+    PGConn create_conn = ASSERT_RESULT(ConnectToDB(kDatabaseName));
+    ASSERT_OK(create_conn.ExecuteFormat("CREATE INDEX $0 ON $1 (j ASC)", kIndexName, kTableName));
+  });
+  ASSERT_OK(WaitForIndexStateFlags(
+      IndexStateFlags{IndexStateFlag::kIndIsLive, IndexStateFlag::kIndIsReady}));
+  // Reset connection to eliminate cache/heartbeat-delay issues of indislive=t, indisready=t.
+  conn_->Reset();
+
+  LOG(INFO) << "Begin txn";
+  ASSERT_OK(conn_->Execute("BEGIN"));
+  ASSERT_OK(conn_->ExecuteFormat("UPDATE $0 SET j = 5 WHERE i = 3", kTableName));
+  ASSERT_OK(cluster_->SetFlagOnTServers("ysql_yb_test_block_index_phase", "none"));
+  ASSERT_OK(WaitForBackfillSafeTime(kYBTableName));
+  ASSERT_OK(conn_->Execute("COMMIT"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
+  thread_holder_.Stop();
+
+  LOG(INFO) << "Validate data";
+  const std::string query = Format("SELECT * FROM $0 ORDER BY j", kTableName);
+  ASSERT_OK(WaitForIndexScan(query));
+  ASSERT_EQ("1, 2; 3, 5", ASSERT_RESULT(conn_->FetchAllAsString(query)));
 }
 
 } // namespace pgwrapper

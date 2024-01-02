@@ -68,7 +68,7 @@ class RefinedStream : public Stream, public StreamContext {
   std::string ToString() const override;
 
   // Implementation StreamContext
-  Result<size_t> ProcessReceived(ReadBufferFull read_buffer_full) ON_REACTOR_THREAD override;
+  Result<CallHandle> ProcessReceived(ReadBufferFull read_buffer_full) ON_REACTOR_THREAD override;
   void Connected() ON_REACTOR_THREAD override;
 
   void UpdateLastActivity() override;

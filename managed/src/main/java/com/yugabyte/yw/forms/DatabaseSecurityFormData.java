@@ -53,6 +53,22 @@ public class DatabaseSecurityFormData {
         throw new PlatformServiceException(BAD_REQUEST, "Invalid username.");
       }
     }
+
+    ycqlCurrAdminPassword = Util.removeEnclosingDoubleQuotes(ycqlCurrAdminPassword);
+    ycqlAdminPassword = Util.removeEnclosingDoubleQuotes(ycqlAdminPassword);
+    if (!StringUtils.isEmpty(ycqlAdminPassword) && !StringUtils.isEmpty(ycqlCurrAdminPassword)) {
+      if (StringUtils.equals(ycqlAdminPassword, ycqlCurrAdminPassword)) {
+        throw new PlatformServiceException(BAD_REQUEST, "Please provide new YCQL password.");
+      }
+    }
+
+    ysqlCurrAdminPassword = Util.removeEnclosingDoubleQuotes(ysqlCurrAdminPassword);
+    ysqlAdminPassword = Util.removeEnclosingDoubleQuotes(ysqlAdminPassword);
+    if (!StringUtils.isEmpty(ysqlAdminPassword) && !StringUtils.isEmpty(ysqlCurrAdminPassword)) {
+      if (StringUtils.equals(ysqlAdminPassword, ysqlCurrAdminPassword)) {
+        throw new PlatformServiceException(BAD_REQUEST, "Please provide new YSQL password.");
+      }
+    }
   }
 
   public void validatePassword(PasswordPolicyService policyService) {

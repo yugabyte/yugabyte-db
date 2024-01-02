@@ -28,6 +28,8 @@ import semantic_version  # type: ignore
 import pathlib
 
 from overrides import overrides
+from sys_detection import local_sys_conf
+
 from typing import List, Dict, Optional, Any, Set, Callable
 
 from yugabyte_pycommon import (  # type: ignore
@@ -60,6 +62,7 @@ from yugabyte.cmake_cache import CMakeCache, load_cmake_cache
 from yugabyte.file_util import mkdir_p
 from yugabyte.string_util import compute_sha256
 from yugabyte.timestamp_saver import TimestampSaver
+from yugabyte.common_util import get_target_arch
 
 
 ALLOW_REMOTE_COMPILATION = True
@@ -528,8 +531,19 @@ class PostgresBuilder(YbBuildToolBase):
                 './configure',
                 '--prefix', self.pg_prefix,
                 '--with-extra-version=-YB-' + self.get_yb_version(),
-                '--enable-depend',
-                '--enable-nls',
+                '--enable-depend'
+        ]
+        if (local_sys_conf().short_os_name_and_version() != 'ubuntu23.04' or
+                get_target_arch() != 'x86_64' or
+                self.compiler_type != 'gcc13'):
+            # With GCC 13 build on Ubuntu 23.04, we run into an error where Postgres configure
+            # complains about not finding the msgfmt tool if we try to build Postgres with NLS.
+            # This fails on our Ubuntu 23.04 x86_64 build infra Docker image but might work in a
+            # different environment.
+            #
+            # TODO(mbautin): fix the root cause of this.
+            configure_cmd_line.append('--enable-nls')
+        configure_cmd_line += [
                 '--with-icu',
                 '--with-ldap',
                 '--with-openssl',

@@ -25,6 +25,7 @@
 #include "utils/memutils.h"
 
 /* Yugabyte includes */
+#include "catalog/pg_collation.h"
 #include "nodes/makefuncs.h"
 #include "pg_yb_utils.h"
 
@@ -599,14 +600,14 @@ TupleHashTableHash_internal(struct tuplehash_hash *tb,
 		if (!isNull)			/* treat nulls as having hash key 0 */
 		{
 			uint32		hkey;
+
 			/* YB doesn't support collations with hash functions. */
-			if (IsYugaByteEnabled())
-				hkey = DatumGetUInt32(FunctionCall1(&hashfunctions[i],
+			Oid yb_collation = (IsYugaByteEnabled() ?
+								DEFAULT_COLLATION_OID :
+								hashtable->tab_collations[i]);
+			hkey = DatumGetUInt32(FunctionCall1Coll(&hashfunctions[i],
+													yb_collation,
 													attr));
-			else
-				hkey = DatumGetUInt32(FunctionCall1Coll(&hashfunctions[i],
-														hashtable->tab_collations[i],
-														attr));
 			hashkey ^= hkey;
 		}
 	}

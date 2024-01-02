@@ -53,6 +53,8 @@ public class MetricQueryHelperTest extends FakeDBApplication {
 
   @Mock RuntimeConfGetter runtimeConfGetter;
 
+  @Mock WSClientRefresher wsClientRefresher;
+
   MetricConfigDefinition validMetric;
 
   @Before
@@ -67,6 +69,7 @@ public class MetricQueryHelperTest extends FakeDBApplication {
     when(mockPlatformExecutorFactory.createFixedExecutor(any(), anyInt(), any()))
         .thenReturn(executor);
     when(runtimeConfGetter.getStaticConf()).thenReturn(mockAppConfig);
+    when(runtimeConfGetter.getGlobalConf(GlobalConfKeys.metricsAuth)).thenReturn(false);
     when(runtimeConfGetter.getGlobalConf(GlobalConfKeys.metricsLinkUseBrowserFqdn))
         .thenReturn(true);
 
@@ -75,9 +78,14 @@ public class MetricQueryHelperTest extends FakeDBApplication {
         new MetricQueryHelper(
             mockAppConfig,
             runtimeConfGetter,
-            mockApiHelper,
+            wsClientRefresher,
             metricUrlProvider,
-            mockPlatformExecutorFactory);
+            mockPlatformExecutorFactory) {
+          @Override
+          protected ApiHelper getApiHelper() {
+            return mockApiHelper;
+          }
+        };
   }
 
   @Test
@@ -365,9 +373,9 @@ public class MetricQueryHelperTest extends FakeDBApplication {
 
     ArgumentCaptor<String> queryUrl = ArgumentCaptor.forClass(String.class);
 
-    when(mockApiHelper.getRequest(anyString())).thenReturn(responseJson);
+    when(mockApiHelper.getRequest(anyString(), any())).thenReturn(responseJson);
     List<AlertData> alerts = metricQueryHelper.queryAlerts();
-    verify(mockApiHelper).getRequest(queryUrl.capture());
+    verify(mockApiHelper).getRequest(queryUrl.capture(), any());
 
     assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/api/v1/alerts")));
 
@@ -394,13 +402,13 @@ public class MetricQueryHelperTest extends FakeDBApplication {
 
     ArgumentCaptor<String> queryUrl = ArgumentCaptor.forClass(String.class);
 
-    when(mockApiHelper.getRequest(anyString())).thenReturn(responseJson);
+    when(mockApiHelper.getRequest(anyString(), any())).thenReturn(responseJson);
     try {
       metricQueryHelper.queryAlerts();
     } catch (Exception e) {
       assertThat(e, CoreMatchers.instanceOf(RuntimeException.class));
     }
-    verify(mockApiHelper).getRequest(queryUrl.capture());
+    verify(mockApiHelper).getRequest(queryUrl.capture(), any());
 
     assertThat(queryUrl.getValue(), allOf(notNullValue(), equalTo("foo://bar/api/v1/alerts")));
   }

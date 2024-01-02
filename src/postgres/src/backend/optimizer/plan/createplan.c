@@ -225,7 +225,8 @@ static IndexOnlyScan *make_indexonlyscan(List *qptlist, List *qpqual,
 										 List *indexqual, List *recheckqual,
 										 List *indexorderby,
 										 List *indextlist,
-										 ScanDirection indexscandir);
+										 ScanDirection indexscandir, double estimated_num_nexts,
+										 double estimated_num_seeks);
 static BitmapIndexScan *make_bitmap_indexscan(Index scanrelid, Oid indexid,
 											  List *indexqual,
 											  List *indexqualorig);
@@ -1072,6 +1073,13 @@ use_physical_tlist(PlannerInfo *root, Path *path, int flags)
 	 * create_append_plan instructs its children to return an exact tlist).
 	 */
 	if (rel->reloptkind != RELOPT_BASEREL)
+		return false;
+
+	/*
+	 * Exact tlist is beneficial for YB relations, in this case only referenced
+	 * columns are fetched from remote tserver.
+	 */
+	if (rel->is_yb_relation)
 		return false;
 
 	/*
@@ -4270,7 +4278,9 @@ create_indexscan_plan(PlannerInfo *root,
 												stripped_indexquals,
 												fixed_indexorderbys,
 												indexinfo->indextlist,
-												best_path->indexscandir);
+												best_path->indexscandir,
+												best_path->estimated_num_nexts,
+												best_path->estimated_num_seeks);
 		index_only_scan_plan->yb_indexqual_for_recheck =
 			YbBuildIndexqualForRecheck(fixed_indexquals, best_path->indexinfo);
 		index_only_scan_plan->yb_distinct_prefixlen =
@@ -6249,11 +6259,11 @@ replace_nestloop_params_mutator(Node *node, PlannerInfo *root)
 								   (void *) root);
 }
 
-
-static List *
-yb_get_fixed_batched_indexquals(PlannerInfo *root, IndexPath *index_path)
+static void
+yb_get_batched_indexquals(PlannerInfo *root, IndexPath *index_path,
+						  List **stripped_indexquals, List **fixed_indexquals)
 {
-	List *batched_quals = NIL;
+	Assert(bms_num_members(index_path->path.parent->relids) == 1);
 	if (!bms_is_empty(root->yb_cur_batched_relids))
 	{
 		ListCell *lc;
@@ -6273,21 +6283,23 @@ yb_get_fixed_batched_indexquals(PlannerInfo *root, IndexPath *index_path)
 
 				if (tmp_batched)
 				{
-					OpExpr *op = (OpExpr *) tmp_batched->clause;
+					Node *clause = (Node *) tmp_batched->clause;
 
-					if (list_member_ptr(batched_quals, op))
+					if (list_member_ptr(*stripped_indexquals, clause))
 						continue;
-
-					op = copyObject(op);
-					linitial(op->args) = fix_indexqual_operand(linitial(op->args),
-														index_path->indexinfo,
-														indexcol);
-					batched_quals = lappend(batched_quals, op);
+					
+					*stripped_indexquals = lappend(*stripped_indexquals, clause);
+					clause = copyObject(clause);
+					clause = fix_indexqual_clause(root, index_path->indexinfo,
+												  indexcol, clause,
+												  iclause->indexcols);
+					*fixed_indexquals = lappend(*fixed_indexquals, clause);
 				}
 			}
 		}
 	}
-	return batched_quals;
+	*fixed_indexquals = yb_zip_batched_exprs(root, *fixed_indexquals, true);
+	*stripped_indexquals = yb_zip_batched_exprs(root, *stripped_indexquals, false);
 }
 
 /*
@@ -6318,21 +6330,12 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
 	List	   *stripped_indexquals;
 	List	   *fixed_indexquals;
 	ListCell   *lc;
-	List	   *rinfos;
 
 	stripped_indexquals = fixed_indexquals = NIL;
 
-	List *batched_quals = yb_get_fixed_batched_indexquals(root, index_path);
-	batched_quals = yb_zip_batched_exprs(root, batched_quals, true);
+	yb_get_batched_indexquals(root, index_path, &stripped_indexquals,
+							  &fixed_indexquals);
 
-	foreach(lc, batched_quals)
-	{
-		Expr *clause = (Expr *) lfirst(lc);
-		Node *fixed_clause = replace_nestloop_params(root, (Node *) clause);
-		fixed_indexquals = lappend(fixed_indexquals, fixed_clause);
-	}
-
-	rinfos = NIL;
 	foreach(lc, index_path->indexclauses)
 	{
 		IndexClause *iclause = lfirst_node(IndexClause, lc);
@@ -6358,13 +6361,7 @@ fix_indexqual_references(PlannerInfo *root, IndexPath *index_path,
 			clause = fix_indexqual_clause(root, index, indexcol,
 										  clause, iclause->indexcols);
 			fixed_indexquals = lappend(fixed_indexquals, clause);
-			rinfos = lappend(rinfos, rinfo);
 		}
-	}
-
-	if(!bms_is_empty(root->yb_cur_batched_relids) && IsYugaByteEnabled())
-	{
-		stripped_indexquals = yb_get_actual_batched_clauses(root, rinfos, (Path *) index_path);
 	}
 
 	*stripped_indexquals_p = stripped_indexquals;
@@ -6423,6 +6420,9 @@ fix_indexqual_clause(PlannerInfo *root, IndexOptInfo *index, int indexcol,
 	if (IsA(clause, OpExpr))
 	{
 		OpExpr	   *op = (OpExpr *) clause;
+
+		if (list_length(op->args) != 2)
+			elog(ERROR, "indexqual clause is not binary opclause");
 
 		/* Replace the indexkey expression with an index Var. */
 		linitial(op->args) = fix_indexqual_operand(linitial(op->args),
@@ -7053,7 +7053,9 @@ make_indexonlyscan(List *qptlist,
 				   List *recheckqual,
 				   List *indexorderby,
 				   List *indextlist,
-				   ScanDirection indexscandir)
+				   ScanDirection indexscandir,
+				   double estimated_num_nexts,
+				   double estimated_num_seeks)
 {
 	IndexOnlyScan *node = makeNode(IndexOnlyScan);
 	Plan	   *plan = &node->scan.plan;
@@ -7071,6 +7073,8 @@ make_indexonlyscan(List *qptlist,
 	node->indexorderdir = indexscandir;
 	node->yb_pushdown.colrefs = yb_pushdown_colrefs;
 	node->yb_pushdown.quals = yb_pushdown_quals;
+	node->estimated_num_nexts = estimated_num_nexts;
+	node->estimated_num_seeks = estimated_num_seeks;
 
 	return node;
 }

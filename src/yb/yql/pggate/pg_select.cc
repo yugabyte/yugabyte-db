@@ -56,7 +56,8 @@ Status PgSelect::Prepare() {
   }
 
   // Allocate READ requests to send to DocDB.
-  auto read_op = ArenaMakeShared<PgsqlReadOp>(arena_ptr(), &arena(), *target_, is_region_local_);
+  auto read_op = ArenaMakeShared<PgsqlReadOp>(
+      arena_ptr(), &arena(), *target_, is_region_local_, pg_session_->metrics().metrics_capture());
   read_req_ = std::shared_ptr<LWPgsqlReadRequestPB>(read_op, &read_op->read_request());
 
   auto doc_op = std::make_shared<PgDocReadOp>(pg_session_, &target_, std::move(read_op));

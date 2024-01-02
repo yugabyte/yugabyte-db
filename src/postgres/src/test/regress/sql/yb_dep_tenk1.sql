@@ -3,12 +3,15 @@
 --
 -- The queries are taken from the relevant dependency files.  Since it is
 -- faster to run this rather than each file itself (e.g. dependency chain
--- create_function_1, create_type, create_table, copy, create_index), prefer
--- using this.
+-- test_setup, create_index), prefer using this.
 --
 
 --
--- yb_pg_create_table
+-- test_setup
+--
+
+\getenv abs_srcdir PG_ABS_SRCDIR
+
 --
 
 CREATE TABLE tenk1 (
@@ -29,21 +32,9 @@ CREATE TABLE tenk1 (
 	stringu2	name,
 	string4		name
 );
-
---
--- copy
---
-
-\getenv abs_srcdir PG_ABS_SRCDIR
-
---
-
 \set filename :abs_srcdir '/data/tenk.data'
 COPY tenk1 FROM :'filename';
-
---
-
-ANALYZE tenk1;
+VACUUM ANALYZE tenk1;
 
 --
 -- yb_pg_create_index

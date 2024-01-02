@@ -18,7 +18,6 @@ import org.yb.master.MasterTypes.MasterErrorPB;
 @Slf4j
 public class PromoteAutoFlags extends ServerSubTaskBase {
 
-  private final String MAX_AUTO_FLAG_CLASS = "kExternal";
   private final boolean PROMOTE_NON_RUNTIME_FLAG = true;
 
   @Inject
@@ -30,6 +29,7 @@ public class PromoteAutoFlags extends ServerSubTaskBase {
     // Whether to ignore errors during subtask execution. It will be used when the parent task is
     // forced.
     public boolean ignoreErrors;
+    public String maxClass;
   }
 
   @Override
@@ -52,7 +52,7 @@ public class PromoteAutoFlags extends ServerSubTaskBase {
       Universe universe = Universe.getOrBadRequest(taskParams().getUniverseUUID());
       PromoteAutoFlagsResponse resp =
           client.promoteAutoFlags(
-              MAX_AUTO_FLAG_CLASS,
+              taskParams().maxClass,
               PROMOTE_NON_RUNTIME_FLAG,
               confGetter.getConfForScope(universe, UniverseConfKeys.promoteAutoFlagsForceFully));
       if (resp.hasError()) {

@@ -14,15 +14,23 @@ import static com.yugabyte.yw.models.ScopedRuntimeConfig.GLOBAL_SCOPE_UUID;
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.config.ConfKeyInfo;
 import com.yugabyte.yw.common.config.RuntimeConfService;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.forms.RuntimeConfigFormData;
 import com.yugabyte.yw.forms.RuntimeConfigFormData.ScopedConfig;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.rbac.annotations.AuthzPath;
+import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
+import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
+import com.yugabyte.yw.rbac.annotations.Resource;
+import com.yugabyte.yw.rbac.enums.SourceType;
 import io.ebean.annotation.Transactional;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
@@ -67,6 +75,7 @@ public class RuntimeConfController extends AuthenticatedController {
       response = String.class,
       responseContainer = "List",
       notes = "List all the mutable runtime config keys")
+  @AuthzPath
   public Result listKeys() {
     return mutableKeysResult;
   }
@@ -76,6 +85,7 @@ public class RuntimeConfController extends AuthenticatedController {
       response = ConfKeyInfo.class,
       responseContainer = "List",
       notes = "List all the mutable runtime config keys with metadata")
+  @AuthzPath
   public Result listKeyInfo() {
     return PlatformResults.withData(keyMetaData.values());
   }
@@ -88,6 +98,12 @@ public class RuntimeConfController extends AuthenticatedController {
               + "List includes the Global scope that spans multiple customers, scope for customer "
               + "specific overrides for current customer and one scope each for each universe and "
               + "provider.")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result listScopes(UUID customerUUID, Http.Request request) {
     boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(request);
     return PlatformResults.withData(
@@ -98,6 +114,12 @@ public class RuntimeConfController extends AuthenticatedController {
       value = "List configuration entries for a scope",
       response = ScopedConfig.class,
       notes = "Lists all runtime config entries for a given scope for current customer.")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result getConfig(
       UUID customerUUID, UUID scopeUUID, boolean includeInherited, Http.Request request) {
     boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(request);
@@ -110,6 +132,12 @@ public class RuntimeConfController extends AuthenticatedController {
       nickname = "getConfigurationKey",
       response = String.class,
       produces = "text/plain")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   public Result getKey(UUID customerUUID, UUID scopeUUID, String path, Http.Request request) {
     boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(request);
     return ok(runtimeConfService.getKeyOrBadRequest(customerUUID, scopeUUID, path, isSuperAdmin));
@@ -126,6 +154,12 @@ public class RuntimeConfController extends AuthenticatedController {
           paramType = "body",
           dataType = "java.lang.String",
           required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   @Transactional
   public Result setKey(UUID customerUUID, UUID scopeUUID, String path, Http.Request request) {
     String contentType = request.contentType().orElse("UNKNOWN");
@@ -150,6 +184,12 @@ public class RuntimeConfController extends AuthenticatedController {
   }
 
   @ApiOperation(value = "Delete a configuration key", response = YBPSuccess.class)
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
   @Transactional
   public Result deleteKey(UUID customerUUID, UUID scopeUUID, String path, Http.Request request) {
     boolean isSuperAdmin = tokenAuthenticator.superAdminAuthentication(request);

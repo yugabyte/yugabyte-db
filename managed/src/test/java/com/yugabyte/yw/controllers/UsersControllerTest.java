@@ -349,7 +349,7 @@ public class UsersControllerTest extends FakeDBApplication {
                 .cookie(validCookie)
                 .bodyJson(params));
     testUser1 = Users.get(testUser1.getUuid());
-    assertEquals(testUser1.getTimezone(), "America/Toronto");
+    assertEquals(testUser1.getTimezone(), "");
     assertTrue(hashBuilder.isValid("new-Password1!", testUser1.getPasswordHash()));
     assertEquals(testUser1.getRole(), Role.ReadOnly);
     assertAuditEntry(1, customer1.getUuid());
@@ -398,6 +398,7 @@ public class UsersControllerTest extends FakeDBApplication {
     params.put("password", "new-Password1!");
     params.put("confirmPassword", "new-Password1!");
     params.put("role", "Admin");
+    params.put("timezone", testTimezone1);
     Http.Cookie validCookie = Http.Cookie.builder("authToken", authTokenTest).build();
     Result result =
         route(

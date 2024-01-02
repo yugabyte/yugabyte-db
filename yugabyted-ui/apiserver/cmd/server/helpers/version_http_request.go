@@ -25,7 +25,7 @@ type VersionInfoFuture struct {
     Error error
 }
 
-func GetVersionFuture(hostName string, future chan VersionInfoFuture) {
+func (h *HelperContainer) GetVersionFuture(hostName string, future chan VersionInfoFuture) {
     versionInfo := VersionInfoFuture{
         VersionInfo: VersionInfoStruct{},
         Error: nil,

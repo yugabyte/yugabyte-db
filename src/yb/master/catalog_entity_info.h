@@ -1255,9 +1255,11 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
   DISALLOW_COPY_AND_ASSIGN(CDCStreamInfo);
 };
 
+typedef scoped_refptr<CDCStreamInfo> CDCStreamInfoPtr;
+
 class UniverseReplicationInfoBase {
  public:
-  Result<std::shared_ptr<CDCRpcTasks>> GetOrCreateCDCRpcTasks(
+  Result<std::shared_ptr<XClusterRpcTasks>> GetOrCreateXClusterRpcTasks(
       google::protobuf::RepeatedPtrField<HostPortPB> producer_masters);
 
  protected:
@@ -1268,10 +1270,10 @@ class UniverseReplicationInfoBase {
 
   const cdc::ReplicationGroupId replication_group_id_;
 
-  std::shared_ptr<CDCRpcTasks> cdc_rpc_tasks_;
+  std::shared_ptr<XClusterRpcTasks> xcluster_rpc_tasks_;
   std::string master_addrs_;
 
-  // Protects cdc_rpc_tasks_.
+  // Protects xcluster_rpc_tasks_.
   mutable rw_spinlock lock_;
 };
 

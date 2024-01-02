@@ -143,6 +143,7 @@ class RowPackerBase {
 // Packs the row with V1 encoding.
 class RowPackerV1 : public RowPackerBase {
  public:
+  static constexpr PackedRowVersion kVersion = PackedRowVersion::kV1;
   using PackedValue = PackedValueV1;
 
   template <class... Args>
@@ -181,6 +182,7 @@ class RowPackerV1 : public RowPackerBase {
 // Packs the row with V2 encoding.
 class RowPackerV2 : public RowPackerBase {
  public:
+  static constexpr PackedRowVersion kVersion = PackedRowVersion::kV2;
   using PackedValue = PackedValueV2;
 
   // Flat to mark whether packed row has nulls or not.

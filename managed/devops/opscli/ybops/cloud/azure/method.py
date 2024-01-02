@@ -359,7 +359,7 @@ class AzureChangeInstanceTypeMethod(ChangeInstanceTypeMethod):
         super(AzureChangeInstanceTypeMethod, self).__init__(base_command)
 
     def _change_instance_type(self, args, host_info):
-        self.cloud.change_instance_type(host_info, args.instance_type)
+        self.cloud.change_instance_type(host_info, args.instance_type, args.cloud_instance_types)
 
     def _host_info(self, args, host_info):
         return host_info

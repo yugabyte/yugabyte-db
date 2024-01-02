@@ -354,9 +354,28 @@ kiwi_fe_write_authentication(machine_msg_t *msg, char *username, char *database,
 	pos = (char *)machine_msg_data(msg) + offset;
 	kiwi_write8(&pos, KIWI_FE_AUTH);
 	kiwi_write32(&pos, size - sizeof(uint8_t));
-	kiwi_write(&pos, username, strlen(username) + 1); //username
-	kiwi_write(&pos, database, strlen(database) + 1); //database
-	kiwi_write(&pos, peer, strlen(peer) + 1); //host
+	kiwi_write(&pos, username, strlen(username) + 1); // username
+	kiwi_write(&pos, database, strlen(database) + 1); // database
+	kiwi_write(&pos, peer, strlen(peer) + 1); // host
+	return msg;
+}
+
+KIWI_API static inline machine_msg_t *
+kiwi_fe_write_set_client_id(machine_msg_t *msg, int arg)
+{
+	int size = sizeof(kiwi_header_t) + sizeof(uint32_t);
+	int offset = 0;
+	if (msg)
+		offset = machine_msg_size(msg);
+	msg = machine_msg_create_or_advance(msg, size);
+	if (kiwi_unlikely(msg == NULL))
+		return NULL;
+	char *pos;
+	pos = (char *)machine_msg_data(msg) + offset;
+	kiwi_write8(&pos, KIWI_FE_SET_SESSION_PARAMETER);
+	kiwi_write32(&pos, size - sizeof(uint8_t));
+	kiwi_write32(&pos, arg); // client_id
+
 	return msg;
 }
 

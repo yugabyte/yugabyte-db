@@ -1076,3 +1076,12 @@ INSERT INTO num_data_with_pk VALUES ('2.2','-22.22');
 INSERT INTO num_data_with_pk VALUES ('3.3','-33.33');
 SELECT * FROM num_data_with_pk ORDER BY id;
 SELECT VAL FROM num_data_with_pk WHERE id = '2.2';
+
+--
+-- Tests for factorial
+--
+SELECT factorial(4);
+SELECT factorial(15);
+SELECT factorial(100000);
+SELECT factorial(0);
+SELECT factorial(-4);

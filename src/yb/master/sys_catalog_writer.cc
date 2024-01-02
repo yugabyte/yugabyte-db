@@ -234,5 +234,45 @@ Status EnumerateSysCatalog(
   return Status::OK();
 }
 
+Status EnumerateAllSysCatalogEntries(
+    tablet::Tablet* tablet, const Schema& schema, const SysCatalogEntryCallback& callback) {
+  dockv::ReaderProjection projection(schema);
+  auto iter = VERIFY_RESULT(tablet->NewUninitializedDocRowIterator(
+      projection, ReadHybridTime::Max(), /* table_id= */ "",
+      CoarseTimePoint::max(), tablet::AllowBootstrappingState::kTrue));
+
+  return EnumerateAllSysCatalogEntries(iter.get(), schema, callback);
+}
+
+Status EnumerateAllSysCatalogEntries(
+    docdb::DocRowwiseIterator* doc_iter, const Schema& schema,
+    const SysCatalogEntryCallback& callback) {
+  const auto type_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(kSysCatalogTableColType));
+  const auto entry_id_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(kSysCatalogTableColId));
+  const auto metadata_col_idx = VERIFY_RESULT(schema.ColumnIndexByName(
+      kSysCatalogTableColMetadata));
+
+  const dockv::KeyEntryValues empty_hash_components;
+  docdb::DocQLScanSpec spec(
+      schema, boost::none /* hash_code */, boost::none /* max_hash_code */,
+      empty_hash_components, nullptr  /* req */,
+      nullptr /* if_req */, rocksdb::kDefaultQueryId);
+  RETURN_NOT_OK(doc_iter->Init(spec));
+
+  qlexpr::QLTableRow value_map;
+  QLValue found_entry_type, entry_id, metadata;
+  while (VERIFY_RESULT(doc_iter->FetchNext(&value_map))) {
+    RETURN_NOT_OK(value_map.GetValue(schema.column_id(type_col_idx), &found_entry_type));
+    RETURN_NOT_OK(value_map.GetValue(schema.column_id(entry_id_col_idx), &entry_id));
+    RETURN_NOT_OK(value_map.GetValue(schema.column_id(metadata_col_idx), &metadata));
+    SCHECK_EQ(metadata.type(), InternalType::kBinaryValue, Corruption,
+              "System catalog snapshot is corrupted, or is built using different build type");
+    RETURN_NOT_OK(callback(
+        found_entry_type.int8_value(), entry_id.binary_value(), metadata.binary_value()));
+  }
+
+  return Status::OK();
+}
+
 } // namespace master
 } // namespace yb

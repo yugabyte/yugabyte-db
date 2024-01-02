@@ -41,6 +41,7 @@ using dockv::PgValue;
 using dockv::ReaderProjection;
 using util::GetValue;
 using util::SetColumnValue;
+using util::SetColumnArrayValue;
 //--------------------------------------------------------------------------------------------------
 // PgFunctionParams
 //--------------------------------------------------------------------------------------------------
@@ -144,7 +145,7 @@ Result<PgTableRow> AddLock(
     const ReaderProjection& projection, const Schema& schema, const std::string& node_id,
     const TableId& parent_table_id, const std::string& tablet_id, const yb::LockInfoPB& lock,
     const TransactionId& transaction_id, HybridTime wait_start_ht = HybridTime::kMin,
-    const std::vector<std::string>& blocking_txn_ids = {}) {
+    const std::vector<TransactionId>& blocking_txn_ids = {}) {
   DCHECK_NE(lock.has_wait_end_ht(), wait_start_ht != HybridTime::kMin);
   PgTableRow row(projection);
   RETURN_NOT_OK(row.SetNullOrMissingResult(schema));
@@ -181,7 +182,7 @@ Result<PgTableRow> AddLock(
   std::transform(lock.modes().begin(), lock.modes().end(), modes.begin(), [](const auto& mode) {
     return LockMode_Name(static_cast<LockMode>(mode));
   });
-  if (modes.size() > 0) RETURN_NOT_OK(SetColumnValue("mode", modes, schema, &row));
+  if (modes.size() > 0) RETURN_NOT_OK(SetColumnArrayValue("mode", modes, schema, &row));
 
   RETURN_NOT_OK(SetColumnValue("granted", lock.has_wait_end_ht() ? true : false, schema, &row));
 
@@ -211,9 +212,9 @@ Result<PgTableRow> AddLock(
   RETURN_NOT_OK(SetColumnValue("is_explicit", lock.is_explicit(), schema, &row));
 
   if (lock.hash_cols().size() > 0)
-    RETURN_NOT_OK(SetColumnValue("hash_cols", lock.hash_cols(), schema, &row));
+    RETURN_NOT_OK(SetColumnArrayValue("hash_cols", lock.hash_cols(), schema, &row));
   if (lock.range_cols().size() > 0)
-    RETURN_NOT_OK(SetColumnValue("range_cols", lock.range_cols(), schema, &row));
+    RETURN_NOT_OK(SetColumnArrayValue("range_cols", lock.range_cols(), schema, &row));
   if (lock.attnum())
     RETURN_NOT_OK(SetColumnValue("attnum", lock.attnum(), schema, &row));
   if (lock.has_column_id())
@@ -221,18 +222,18 @@ Result<PgTableRow> AddLock(
   RETURN_NOT_OK(SetColumnValue("multiple_rows_locked", lock.multiple_rows_locked(), schema, &row));
 
   if (!blocking_txn_ids.empty())
-    RETURN_NOT_OK(SetColumnValue("blocked_by", blocking_txn_ids, schema, &row));
+    RETURN_NOT_OK(SetColumnArrayValue("blocked_by", blocking_txn_ids, schema, &row));
 
   return row;
 }
 
-Result<std::vector<std::string>> GetDecodedBlockerTransactionIds(
+Result<std::vector<TransactionId>> GetDecodedBlockerTransactionIds(
     const TabletLockInfoPB::WaiterInfoPB& waiter_info) {
-  std::vector<std::string> decoded_blocker_txn_ids;
+  std::vector<TransactionId> decoded_blocker_txn_ids;
   decoded_blocker_txn_ids.reserve(waiter_info.blocking_txn_ids().size());
   for (const auto& blocking_txn_id : waiter_info.blocking_txn_ids()) {
     decoded_blocker_txn_ids.push_back(
-        VERIFY_RESULT(FullyDecodeTransactionId(blocking_txn_id)).ToString());
+        VERIFY_RESULT(FullyDecodeTransactionId(blocking_txn_id)));
   }
   return decoded_blocker_txn_ids;
 }

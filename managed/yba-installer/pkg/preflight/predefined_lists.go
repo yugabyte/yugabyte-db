@@ -35,4 +35,5 @@ var ReplicatedMigrateChecks = []Check{
 	checks.Python,
 	checks.License,
 	checks.ValidateLocaleConfig,
+	checks.MigrateDiskCheck,
 }

@@ -1,7 +1,6 @@
 package helpers
 
 import (
-    "apiserver/cmd/server/logger"
     "crypto/rand"
     "encoding/json"
     "errors"
@@ -18,7 +17,7 @@ import (
     "time"
 )
 
-func Random128BitString() (string, error) {
+func (h *HelperContainer) Random128BitString() (string, error) {
     //Max random value, a 128-bits integer, i.e 2^128 - 1
     max := new(big.Int)
     max.Exp(big.NewInt(2), big.NewInt(128), nil).Sub(max, big.NewInt(1))
@@ -37,7 +36,7 @@ func Random128BitString() (string, error) {
 
 // Convert a version number string into a slice of integers. Will only get the major, minor, and
 // patch numbers
-func GetIntVersion(versionNumber string) []int64 {
+func (h *HelperContainer) GetIntVersion(versionNumber string) []int64 {
     versions := strings.Split(versionNumber, ".")
     intVersions := make([]int64, 3)
     for i, version := range versions {
@@ -56,9 +55,9 @@ func GetIntVersion(versionNumber string) []int64 {
 // - If versionA == versionB, return 0
 // - If versionA < versionB, return -1
 // - If versionA > versionB, return 1
-func CompareVersions(versionA string, versionB string) int64 {
-    intVersionA := GetIntVersion(versionA)
-    intVersionB := GetIntVersion(versionB)
+func (h *HelperContainer) CompareVersions(versionA string, versionB string) int64 {
+    intVersionA := h.GetIntVersion(versionA)
+    intVersionB := h.GetIntVersion(versionB)
     for i := 0; i < 3; i++ {
         if intVersionA[i] < intVersionB[i] {
             return -1
@@ -70,22 +69,26 @@ func CompareVersions(versionA string, versionB string) int64 {
 }
 
 // Gets the smallest version
-func GetSmallestVersion(versionInfoFutures []chan VersionInfoFuture) string {
+func (h *HelperContainer) GetSmallestVersion(
+    versionInfoFutures map[string]chan VersionInfoFuture,
+) string {
     smallestVersion := ""
-    for _, versionInfoFuture := range versionInfoFutures {
+    for host, versionInfoFuture := range versionInfoFutures {
             versionInfo := <-versionInfoFuture
             if versionInfo.Error == nil {
                     versionNumber := versionInfo.VersionInfo.VersionNumber
                     if smallestVersion == "" ||
-                            CompareVersions(smallestVersion, versionNumber) > 0 {
+                            h.CompareVersions(smallestVersion, versionNumber) > 0 {
                             smallestVersion = versionNumber
                     }
+            } else {
+                h.logger.Warnf("failed to get version from %s", host)
             }
     }
     return smallestVersion
 }
 
-func GetBytesFromString(sizeString string) (int64, error) {
+func (h *HelperContainer) GetBytesFromString(sizeString string) (int64, error) {
     // Possible units are BKMGTPE, for byte, kilobyte, megabyte, etc.
     if len(sizeString) < 1 {
         return 0, nil
@@ -119,7 +122,7 @@ func GetBytesFromString(sizeString string) (int64, error) {
     return byteVal, nil
 }
 
-func FindBinaryLocation(binaryName string) (string, error) {
+func (h *HelperContainer) FindBinaryLocation(binaryName string) (string, error) {
     YUGABYTE_DIR := filepath.Join("..", "..")
 
     dirCandidates := []string{
@@ -141,7 +144,7 @@ func FindBinaryLocation(binaryName string) (string, error) {
 
 // Removes all 127 addresses from a list of addresses, unless every address is a 127 address,
 // in which case it keeps one
-func RemoveLocalAddresses(nodeList []string) []string {
+func (h *HelperContainer) RemoveLocalAddresses(nodeList []string) []string {
     listToReturn := []string{}
     nonLocalAddressFound := false
     for _, address := range nodeList {
@@ -161,76 +164,104 @@ func RemoveLocalAddresses(nodeList []string) []string {
 
 // Attempt GET requests to every URL in the provided slice, one at a time. Returns the result
 // of the first successful request (status OK), or the most recent error if all requests failed.
-func AttemptGetRequests(
-    log logger.Logger,
-    urlList []string,
-    expectJson bool,
-) ([]byte, error) {
+func (h *HelperContainer) AttemptGetRequests(urlList []string, expectJson bool) ([]byte, error) {
     httpClient := &http.Client{
         Timeout: time.Second * 10,
     }
     var resp *http.Response
     var err error
     var body []byte
-    log.Debugf("getting requests from list of urls: %v", urlList)
+    h.logger.Debugf("getting requests from list of urls: %v", urlList)
     for _, url := range urlList {
         resp, err = httpClient.Get(url)
         if err != nil {
-            log.Debugf("attempt to get request to " + url + " failed with error: " + err.Error())
+            h.logger.Debugf("attempt to get request to %s failed with error: %s", url, err.Error())
             continue
         }
         if resp.StatusCode != http.StatusOK {
             resp.Body.Close()
-            log.Debugf("response from %s failed with status %s", url, resp.Status)
-            err = errors.New("most recent request failed with status " + resp.Status)
+            h.logger.Debugf("response from %s failed with status %s", url, resp.Status)
         } else {
             body, err = ioutil.ReadAll(resp.Body)
             resp.Body.Close()
             if err != nil {
-                log.Debugf("failed to read response from %s", url)
-                err = errors.New("failed to read response")
+                h.logger.Debugf("failed to read response from %s: %s", url, err.Error())
+                err = fmt.Errorf("failed to read response: %s", err.Error())
             } else if !expectJson || json.Valid([]byte(body)) {
-                log.Debugf("good response from %s", url)
+                h.logger.Debugf("good response from %s", url)
                 err = nil
                 break
             }
         }
     }
     if err != nil {
-        log.Debugf("all requests failed")
-        return nil, err
+        h.logger.Errorf("all requests to list of urls failed: %v", urlList)
+        return nil, errors.New("all requests to list of urls failed")
     }
-    return body, err
+    return body, nil
 }
 
 // The purpose of this function is to create a list of urls to each master, for use with the
 // AttemptGetRequest function. If the current node is a master, then the first entry of the list
 // will use the current node's master address (i.e. we will prefer querying the current node
 // first when calling AttemptGetRequest)
-func BuildMasterURLs(log logger.Logger, path string) ([]string, error) {
+func (h *HelperContainer) BuildMasterURLs(path string) ([]string, error) {
     urlList := []string{}
+    masterAddressesFuture := make(chan MasterAddressesFuture)
+    go h.GetMasterAddressesFuture(masterAddressesFuture)
+    masterAddressesResponse := <-masterAddressesFuture
+    if masterAddressesResponse.Error != nil {
+        h.logger.Errorf("failed to get master addresses")
+        return urlList, masterAddressesResponse.Error
+    }
+    for _, host := range masterAddressesResponse.HostList {
+        url, err := url.JoinPath(fmt.Sprintf("http://%s:%s", host, MasterUIPort), path)
+        if err != nil {
+            h.logger.Warnf("failed to construct url for %s:%s with path %s",
+                host, MasterUIPort, path)
+            continue
+        }
+        urlList = append(urlList, url)
+    }
+    return urlList, nil
+}
+
+type MasterAddressesFuture struct {
+    HostList []string
+    Error    error
+}
+
+func (h *HelperContainer) GetMasterAddressesFuture(future chan MasterAddressesFuture) {
     // Attempt to get a list of masters from both master and tserver, in case one of them is down
-    hostList := []string{}
+    masterAddresses := MasterAddressesFuture{
+        HostList: []string{},
+        Error:    nil,
+    }
     mastersFuture := make(chan MastersFuture)
-    go GetMastersFuture(HOST, mastersFuture)
+    go h.GetMastersFuture(HOST, mastersFuture)
     mastersListFuture := make(chan MastersListFuture)
-    go GetMastersFromTserverFuture(HOST, mastersListFuture)
+    go h.GetMastersFromTserverFuture(HOST, mastersListFuture)
     mastersListResponse := <-mastersListFuture
     if mastersListResponse.Error != nil {
-        log.Debugf("failed to get masters list from tserver, attempt to get from master")
+        h.logger.Debugf("failed to get masters list from tserver at %s: %s",
+            HOST, mastersListResponse.Error.Error())
         mastersResponse := <-mastersFuture
         if mastersResponse.Error != nil {
-            log.Debugf("failed to get masters from master")
-            return urlList, mastersResponse.Error
+            h.logger.Errorf("failed to get masters from master and tserver at %s: %s",
+                HOST, mastersResponse.Error.Error())
+            masterAddresses.Error =
+                fmt.Errorf("failed to get masters from master and tserver at %s: %s",
+                    HOST, mastersResponse.Error.Error())
+            future <- masterAddresses
         }
 
         for _, master := range mastersResponse.Masters {
             if len(master.Registration.PrivateRpcAddresses) > 0 {
                 host := master.Registration.PrivateRpcAddresses[0].Host
                 if host == HOST {
-                    hostList = append([]string{host}, hostList...)
+                    masterAddresses.HostList = append([]string{host}, masterAddresses.HostList...)
                 } else {
-                    hostList = append(hostList, host)
+                    masterAddresses.HostList = append(masterAddresses.HostList, host)
                 }
             }
         }
@@ -238,23 +269,15 @@ func BuildMasterURLs(log logger.Logger, path string) ([]string, error) {
         for _, master := range mastersListResponse.Masters {
             host, _, err := net.SplitHostPort(master.HostPort)
             if err != nil {
-                log.Debugf("failed to split host and port of %s", master.HostPort)
+                h.logger.Warnf("failed to split host and port of %s", master.HostPort)
                 continue
             }
             if host == HOST {
-                hostList = append([]string{host}, hostList...)
+                masterAddresses.HostList = append([]string{host}, masterAddresses.HostList...)
             } else {
-                hostList = append(hostList, host)
+                masterAddresses.HostList = append(masterAddresses.HostList, host)
             }
         }
     }
-    for _, host := range hostList {
-        url, err := url.JoinPath(fmt.Sprintf("http://%s:%s", host, MasterUIPort), path)
-        if err != nil {
-            log.Debugf("failed to construct url for %s:%s with path %s", host, MasterUIPort, path)
-            continue
-        }
-        urlList = append(urlList, url)
-    }
-    return urlList, nil
+    future <- masterAddresses
 }

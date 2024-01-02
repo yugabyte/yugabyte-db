@@ -560,7 +560,8 @@ Status CompactionJob::Install(const MutableCFOptions& mutable_cf_options) {
          << "total_output_size" << compact_->total_bytes
          << "num_input_records" << compact_->num_input_records
          << "num_output_records" << compact_->num_output_records
-         << "num_subcompactions" << compact_->sub_compact_states.size();
+         << "num_subcompactions" << compact_->sub_compact_states.size()
+         << "is_full_compaction" << compact_->compaction->is_full_compaction();
 
   if (measure_io_stats_ && compaction_job_stats_ != nullptr) {
     stream << "file_write_nanos" << compaction_job_stats_->file_write_nanos;
@@ -1213,8 +1214,9 @@ void CompactionJob::LogCompaction() {
       }
       stream.EndArray();
     }
-    stream << "score" << compaction->score() << "input_data_size"
-           << compaction->CalculateTotalInputSize();
+    stream << "score" << compaction->score()
+           << "input_data_size" << compaction->CalculateTotalInputSize()
+           << "is_full_compaction" << compaction->is_full_compaction();
   }
 }
 

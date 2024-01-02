@@ -778,10 +778,15 @@ drop table cchild;
 
 -- TODO(jason): port `create_view`, `matview`, and `tablesample` Postgres
 -- regress tests, then add the appropriate rows to the output.
-SELECT viewname, definition FROM pg_views WHERE schemaname <> 'information_schema' ORDER BY viewname;
+-- YB_TODO(jason): update the output for pg15
+SELECT viewname, definition FROM pg_views
+WHERE schemaname = 'pg_catalog'
+ORDER BY viewname;
 
+-- YB_TODO(jason): update the output for pg15
 SELECT tablename, rulename, definition FROM pg_rules
-	ORDER BY tablename, rulename;
+WHERE schemaname = 'pg_catalog'
+ORDER BY tablename, rulename;
 
 -- restore normal output mode
 \a\t

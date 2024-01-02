@@ -97,10 +97,13 @@ export const SelectTables = React.forwardRef<PageRef>((_, forwardRef) => {
         defaultValues={selectedTables.selectedTables}
         table={tablesInPreflight}
         tableHeader={[t('newRestoreModal.selectTables.table')]}
-        control={(control as unknown) as Control<FieldValues>}
         setValue={(table) => {
           setValue('selectedTables', table);
         }}
+        searchPlaceholder={t('newRestoreModal.selectTables.searchTableName')}
+        tableCountInfo={() => (
+          <>{t('newRestoreModal.selectTables.tablesCount', { count: tablesInPreflight.length })}</>
+        )}
       />
     </form>
   );

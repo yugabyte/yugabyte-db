@@ -16,6 +16,7 @@
 #include <boost/preprocessor/seq/for_each.hpp>
 #include <boost/program_options.hpp>
 
+#include "yb/util/flags.h"
 #include "yb/util/result.h"
 
 // Framework for creating command line tool with multiple subcommands.
@@ -101,6 +102,15 @@ void ShowCommands() {
   }
 }
 
+template <class Action>
+void ShowUsage() {
+  if (IsUsageMessageSet()) {
+    google::ShowUsageWithFlagsRestrict(google::ProgramInvocationName(), __FILE__);
+    std::cout << std::endl;
+  }
+  ShowCommands<Action>();
+}
+
 struct OptionsDescription {
   boost::program_options::positional_options_description positional;
   boost::program_options::options_description desc;
@@ -157,7 +167,7 @@ template <class Action>
 int ExecuteTool(int argc, char** argv) {
   std::string cmd = GetCommand(argc, argv);
   if (cmd.empty()) {
-    ShowCommands<Action>();
+    ShowUsage<Action>();
     return 0;
   }
 
@@ -191,6 +201,54 @@ int ExecuteTool(int argc, char** argv) {
   }
 
   return 0;
+}
+
+template <class Action>
+void ParseAndCutGFlagsFromCommandLine(int* argc, char*** argv) {
+  std::set<std::string> commands;
+  for (auto action : List(static_cast<Action*>(nullptr))) {
+    commands.insert(OptionName(action));
+  }
+
+  int tail_argc = 0;
+  for (int i = 0; i < *argc; ++i) {
+    if ((*argv)[i][0] != '-' && commands.contains((*argv)[i])) {
+      tail_argc = *argc - i;
+      break;
+    }
+  }
+
+  *argc -= tail_argc;
+  ParseCommandLineFlags(argc, argv, /* remove_flag= */ true);
+  *argc += tail_argc;
+}
+
+// ------------------------------------------------------------------------------------------------
+// Help command by default
+// ------------------------------------------------------------------------------------------------
+const std::string kCommonHelpDescription = "Show help on command";
+
+struct CommonHelpArguments {
+  std::string command;
+};
+
+std::unique_ptr<OptionsDescription> CommonHelpOptions() {
+  auto result = std::make_unique<OptionsDescriptionImpl<CommonHelpArguments>>(
+      kCommonHelpDescription);
+  result->positional.add("command", 1);
+  result->hidden.add_options()
+      ("command", boost::program_options::value(&result->args.command));
+  return result;
+}
+
+template <class Action>
+Status CommonHelpExecute(const CommonHelpArguments& args) {
+  if (args.command.empty()) {
+    ShowUsage<Action>();
+  } else {
+    ShowHelp(VERIFY_RESULT(ActionByName<Action>(args.command)));
+  }
+  return Status::OK();
 }
 
 } // namespace tools

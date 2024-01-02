@@ -4,8 +4,8 @@
 # Postgres Testsuites: Porting from PostgreSQL original tests.
 # This includes tests related to postgres roles.
 ####################################################################################################
-# `yb_pg_int8` is a dependency for `yb_pg_privileges`
-test: yb_pg_int8
+# Dependency for yb_pg_privileges
+test: yb_pg_test_setup
 
 test: yb_pg_rolenames
 test: yb_pg_roleattributes

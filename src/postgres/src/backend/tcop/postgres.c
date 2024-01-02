@@ -457,10 +457,19 @@ SocketBackend(StringInfo inBuf)
 			break;
 
 		case 'A': /* Auth Passthrough Request */
-			maxmsglen = PQ_LARGE_MESSAGE_LIMIT;
+			maxmsglen = PQ_SMALL_MESSAGE_LIMIT;
 			if (!YbIsClientYsqlConnMgr())
-				ereport(FATAL, (errcode(ERRCODE_PROTOCOL_VIOLATION),
-						errmsg("invalid frontend message type %d", qtype)));
+				ereport(FATAL,
+						(errcode(ERRCODE_PROTOCOL_VIOLATION),
+						 errmsg("invalid frontend message type %d", qtype)));
+			break;
+
+		case 's': /* SET SESSION PARAMETER */
+			maxmsglen = PQ_SMALL_MESSAGE_LIMIT;
+			if (!YbIsClientYsqlConnMgr())
+				ereport(FATAL,
+						(errcode(ERRCODE_PROTOCOL_VIOLATION),
+						 errmsg("invalid frontend message type %d", qtype)));
 			break;
 
 		default:
@@ -808,16 +817,6 @@ pg_analyze_and_rewrite_withcb(RawStmt *parsetree,
 
 	query = parse_analyze_withcb(parsetree, query_string, parserSetup, parserSetupArg,
 								 queryEnv);
-
-#ifdef YB_TODO
-	/* The IF block needs to be rewrite in this module. */
-	 if (pstate->p_target_relation &&
-		pstate->p_target_relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP
-		&& IsYugaByteEnabled())
-	{
-		SetTxnWithPGRel();
-	}
-#endif
 
 	if (log_parser_stats)
 		ShowUsage("PARSE ANALYSIS STATISTICS");
@@ -6240,8 +6239,6 @@ PostgresMain(const char *dbname, const char *username)
 			case 'A': /* Auth Passthrough Request */
 				if (YbIsClientYsqlConnMgr())
 				{
-					start_xact_command();
-
 					/* Store a copy of the old context */
 					char *db_name = MyProcPort->database_name;
 					char *user_name = MyProcPort->user_name;
@@ -6264,7 +6261,9 @@ PostgresMain(const char *dbname, const char *username)
 					MyProcPort->yb_is_auth_passthrough_req = true;
 
 					/* Start authentication */
+					start_xact_command();
 					ClientAuthentication(MyProcPort);
+					finish_xact_command();
 
 					/* Place back the old context */
 					MyProcPort->yb_is_auth_passthrough_req = false;
@@ -6274,14 +6273,37 @@ PostgresMain(const char *dbname, const char *username)
 					inet_pton(AF_INET, MyProcPort->remote_host,
 							  &(ip_address_1->sin_addr));
 
-					/* Send the Ready for Query */
-					ReadyForQuery(DestRemote);
+					send_ready_for_query = true;
 				}
 				else
 				{
-					ereport(FATAL, (errcode(ERRCODE_PROTOCOL_VIOLATION),
-									errmsg("invalid frontend message type %d",
-										   firstchar)));
+					ereport(FATAL,
+							(errcode(ERRCODE_PROTOCOL_VIOLATION),
+							 errmsg("invalid frontend message type %d",
+									firstchar)));
+				}
+				break;
+
+			case 's': /* SET SESSION PARAMETER */
+				if (YbIsClientYsqlConnMgr())
+				{
+					start_xact_command();
+					YbHandleSetSessionParam(pq_getmsgint(&input_message, 4));
+					int new_shmem_key = yb_logical_client_shmem_key;
+					finish_xact_command();
+
+					// finish_xact_command() resets the yb_logical_client_shmem_key value.
+					if (new_shmem_key > 0)
+						yb_logical_client_shmem_key = new_shmem_key;
+
+					send_ready_for_query = true;
+				}
+				else
+				{
+					ereport(FATAL,
+							(errcode(ERRCODE_PROTOCOL_VIOLATION),
+							 errmsg("invalid frontend message type %d",
+								firstchar)));
 				}
 				break;
 

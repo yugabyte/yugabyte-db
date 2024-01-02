@@ -132,19 +132,24 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
 
     for (const auto& doc_path : doc_paths) {
       key_prefix_lengths.clear();
-      RETURN_NOT_OK(dockv::SubDocKey::DecodePrefixLengths(
-          doc_path.as_slice(), &key_prefix_lengths));
+      auto doc_path_slice = doc_path.as_slice();
+      RETURN_NOT_OK(dockv::SubDocKey::DecodePrefixLengths(doc_path_slice, &key_prefix_lengths));
       // At least entire doc_path should be returned, so empty key_prefix_lengths is an error.
       if (key_prefix_lengths.empty()) {
         return STATUS_FORMAT(Corruption, "Unable to decode key prefixes from: $0",
-                             doc_path.as_slice().ToDebugHexString());
+                             doc_path_slice.ToDebugHexString());
       }
       // We will acquire strong lock on the full doc_path, so remove it from list of weak locks.
       key_prefix_lengths.pop_back();
       auto partial_key = doc_path;
-      // Acquire weak lock on empty key for transactional tables,
-      // unless specified key is already empty.
-      if (doc_path.size() > 0 && transactional_table) {
+      // Acquire weak lock on empty key for transactional tables, unless specified key is already
+      // empty.
+      // For doc paths having cotable id/colocation id, a weak lock on the colocated table would be
+      // acquired as part of acquiring weak locks on the prefixes. We should not acquire weak lock
+      // on the empty key since it would lead to a weak lock on the parent table of the host tablet.
+      auto has_cotable_id = doc_path_slice.starts_with(KeyEntryTypeAsChar::kTableId);
+      auto has_colocation_id = doc_path_slice.starts_with(KeyEntryTypeAsChar::kColocationId);
+      if (doc_path.size() > 0 && transactional_table && !(has_cotable_id || has_colocation_id)) {
         partial_key.Resize(0);
         RETURN_NOT_OK(ApplyIntent(
             partial_key, MakeWeak(intent_types), &result.lock_batch));
@@ -164,15 +169,14 @@ Result<DetermineKeysToLockResult> DetermineKeysToLock(
   }
 
   if (!read_pairs.empty()) {
-    const auto read_intent_types = dockv::GetIntentTypesForRead(isolation_level, row_mark_type);
     RETURN_NOT_OK(EnumerateIntents(
         read_pairs,
-        [&result, &read_intent_types](
-            dockv::AncestorDocKey ancestor_doc_key, dockv::FullDocKey, Slice, KeyBytes* key,
-            dockv::LastKey) {
+        [&result, intent_types = dockv:: GetIntentTypesForRead(isolation_level, row_mark_type)](
+            auto ancestor_doc_key, auto, auto, auto* key, auto, auto is_row_lock) {
+          auto actual_intents = GetIntentTypes(intent_types, is_row_lock);
           return ApplyIntent(
               RefCntPrefix(key->AsSlice()),
-              ancestor_doc_key ? MakeWeak(read_intent_types) : read_intent_types,
+              ancestor_doc_key ? MakeWeak(actual_intents) : actual_intents,
               &result.lock_batch);
         }, partial_range_key_intents));
   }
@@ -319,31 +323,6 @@ Status AssembleDocWriteBatch(const vector<unique_ptr<DocOperation>>& doc_write_o
   }
   doc_write_batch.MoveToWriteBatchPB(write_batch);
   return Status::OK();
-}
-
-IntraTxnWriteId ExternalTxnIntentsState::GetWriteIdAndIncrement(const TransactionId& txn_id) {
-  std::lock_guard lock(mutex_);
-  return map_[txn_id]++;
-}
-
-void ExternalTxnIntentsState::EraseEntries(
-    const ExternalTxnApplyState& apply_external_transactions) {
-  std::lock_guard lock(mutex_);
-  for (const auto& apply : apply_external_transactions) {
-    map_.erase(apply.first);
-  }
-}
-
-void ExternalTxnIntentsState::EraseEntries(const TransactionIdSet& transactions) {
-  std::lock_guard lock(mutex_);
-  for (const auto& transaction : transactions) {
-    map_.erase(transaction);
-  }
-}
-
-size_t ExternalTxnIntentsState::EntryCount() {
-  std::lock_guard lock(mutex_);
-  return map_.size();
 }
 
 Status EnumerateIntents(

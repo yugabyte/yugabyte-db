@@ -8,6 +8,12 @@
  */
 
 import React, { useEffect, useState } from 'react';
+import clsx from 'clsx';
+import { FieldValues } from 'react-hook-form';
+import { useMap } from 'react-use';
+import { useTranslation } from 'react-i18next';
+import { find, values } from 'lodash';
+import Select, { components } from 'react-select';
 import {
   Box,
   Checkbox,
@@ -19,26 +25,27 @@ import {
   Typography,
   makeStyles
 } from '@material-ui/core';
-import { Control, FieldValues } from 'react-hook-form';
-import { useMap } from 'react-use';
-import { useTranslation } from 'react-i18next';
-import { values } from 'lodash';
-import Select from 'react-select';
 import { YBCheckbox } from '../../../../../../redesign/components';
 import { YBSearchInput } from '../../../../../common/forms/fields/YBSearchInput';
+import Checked from '../../../../../../redesign/assets/checkbox/Checked.svg';
+import UnChecked from '../../../../../../redesign/assets/checkbox/UnChecked.svg';
+import Intermediate from '../../../../../../redesign/assets/checkbox/Intermediate.svg';
 
-import Checked from '../../icons/checkbox/Checked.svg';
-import UnChecked from '../../icons/checkbox/UnChecked.svg';
-import Intermediate from '../../icons/checkbox/Intermediate.svg';
-
-type YBTableProps<T, V extends FieldValues = FieldValues> = {
+type YBTableProps<T> = {
   table: T[];
   tableHeader: string[];
-  control: Control<V>;
   name: keyof FieldValues;
   sortFn?: (tables: T[]) => T[];
   setValue: (table: T[]) => void;
   defaultValues: T[];
+  searchPlaceholder: string;
+  renderBodyFn?: (row: T) => React.ReactChild;
+  searchFn?: (row: T, searchText: string) => boolean;
+  tableCountInfo?: (selectedRows: T[]) => React.ReactChild;
+  customComponents?: () => React.ReactChild;
+  overrideStyles?: {
+    actionsClassname?: string
+  }
 };
 
 type FilterOptions = 'ALL' | 'SELECTED';
@@ -56,20 +63,26 @@ const useStyles = makeStyles((theme) => ({
     }
   },
   viewSelection: {
-    width: '150px'
+    width: '150px',
+    height: '42px',
+    color: '#C8C8C8',
+    boxShadow: 'none'
   },
   tablesCount: {
     color: '#67666C',
     textAlign: 'right',
-    width: '100%'
+    width: '100%',
+    fontWeight: 400
   },
   table: {
     border: `1px solid ${theme.palette.ybacolors.ybBorderGray}`,
     borderRadius: theme.spacing(1),
     minHeight: '550px',
     '& .MuiTableCell-body, .MuiTableCell-head': {
-      padding: `${theme.spacing(1.5)}px ${theme.spacing(1.25)}px`
-    }
+      padding: `${theme.spacing(1.5)}px ${theme.spacing(1.25)}px`,
+      paddingLeft: theme.spacing(1.5)
+    },
+    clear: 'both'
   },
   tableHead: {
     height: '40px',
@@ -92,7 +105,7 @@ const useStyles = makeStyles((theme) => ({
 
 const getDefaultValues = <T,>(allValues: T[], selected: T[]) => {
   return allValues.reduce((prev, cur, ind) => {
-    if (selected.includes(cur)) {
+    if (cur && find(selected, cur)) {
       prev[ind] = cur;
     }
     return prev;
@@ -100,7 +113,7 @@ const getDefaultValues = <T,>(allValues: T[], selected: T[]) => {
 };
 
 export const YBTable = <T,>(props: YBTableProps<T>) => {
-  const { tableHeader, table, name, setValue, defaultValues } = props;
+  const { tableHeader, table, name, setValue, defaultValues, searchPlaceholder, renderBodyFn, searchFn, tableCountInfo, customComponents, overrideStyles } = props;
 
   const [selected, { set, setAll, get, remove }] = useMap<typeof table>(
     (getDefaultValues(table, defaultValues) as unknown) as T[]
@@ -176,6 +189,9 @@ export const YBTable = <T,>(props: YBTableProps<T>) => {
                 return null;
               }
             }
+            if (searchFn?.(row, searchText) === false) {
+              return null;
+            }
           }
 
           return (
@@ -196,7 +212,7 @@ export const YBTable = <T,>(props: YBTableProps<T>) => {
                   checkedIcon={<img src={Checked} alt="checked" />}
                 />
               </TableCell>
-              <TableCell className={classes.tableCell}>{row}</TableCell>
+              <TableCell className={classes.tableCell}>{renderBodyFn?.(row) ?? row}</TableCell>
             </TableRow>
           );
         })}
@@ -206,30 +222,42 @@ export const YBTable = <T,>(props: YBTableProps<T>) => {
 
   return (
     <>
-      <Box className={classes.actions}>
+      <Box className={clsx(classes.actions, overrideStyles?.actionsClassname)}>
         <div className={classes.ybSearchInput}>
           <YBSearchInput
             val={searchText}
             onValueChanged={(e: React.ChangeEvent<HTMLInputElement>) => {
               setSearchText(e.target.value);
             }}
-            placeHolder={t('newRestoreModal.selectTables.searchTableName')}
+            placeHolder={searchPlaceholder}
           />
         </div>
         <div>
           <Select
-            className={classes.viewSelection}
             onChange={(val) => setViewFilter(val as any)}
             value={viewFilter}
             options={tableFilterOptions}
+            components={{
+              // eslint-disable-next-line react/display-name
+              Control: ({ children, className, ...rest }) => (
+                <components.Control {...rest} className={clsx(classes.viewSelection, className)}>
+                  {children}
+                </components.Control>
+              )
+            }}
+
+            styles={{
+              control: styles => ({ ...styles, borderRadius: '8px', height: '42px' })
+            }}
           />
         </div>
         <div className={classes.tablesCount}>
           <Typography variant="body2">
-            {t('newRestoreModal.selectTables.tablesCount', { count: table.length })}
+            {tableCountInfo?.(values(selected))}
           </Typography>
         </div>
       </Box>
+      {customComponents?.()}
       <Box className={classes.table}>
         <Table>
           {getTableHeader()}

@@ -13,14 +13,6 @@
 package org.yb.pgsql;
 
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_SEQ_SCAN;
-import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_YB_SEQ_SCAN;
-import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_SCAN;
-import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_INDEX_ONLY_SCAN;
-import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_VALUES_SCAN;
-import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_NESTED_LOOP;
-import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_MODIFY_TABLE;
-import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_FUNCTION_SCAN;
-import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_RESULT;
 import static org.yb.AssertionWrappers.assertEquals;
 import static org.yb.AssertionWrappers.assertTrue;
 
@@ -31,7 +23,6 @@ import java.util.Map.Entry;
 import java.util.List;
 import java.util.ArrayList;
 import java.util.Collections;
-import java.lang.Character;
 import java.io.StringWriter;
 import java.io.PrintWriter;
 
@@ -43,14 +34,12 @@ import org.slf4j.LoggerFactory;
 import org.yb.util.json.Checker;
 import org.yb.util.json.Checkers;
 import org.yb.util.json.JsonUtil;
-import org.yb.util.json.ObjectChecker;
 import org.yb.pgsql.ExplainAnalyzeUtils.PlanCheckerBuilder;
 import org.yb.pgsql.ExplainAnalyzeUtils.TopLevelCheckerBuilder;
 import org.yb.minicluster.LogErrorListener;
 import org.yb.minicluster.MiniYBDaemon;
 import org.yb.util.BuildTypeUtil;
 
-import org.yb.util.json.ValueChecker;
 import org.yb.YBTestRunner;
 
 import com.google.gson.JsonElement;
@@ -166,7 +155,7 @@ public class TestPgAutoExplain extends BasePgSQLTest {
             TABLE_NAME, TABLE_NAME),
         makeTopLevelBuilder()
             .plan(makePlanBuilder()
-                .nodeType(NODE_YB_SEQ_SCAN)
+                .nodeType(NODE_SEQ_SCAN)
                 .relationName(TABLE_NAME)
                 .alias(TABLE_NAME)
                 .storageTableReadRequests(Checkers.greaterOrEqual(0))
@@ -187,7 +176,7 @@ public class TestPgAutoExplain extends BasePgSQLTest {
             TABLE_NAME, TABLE_NAME),
         makeTopLevelBuilder()
             .plan(makePlanBuilder()
-                .nodeType(NODE_YB_SEQ_SCAN)
+                .nodeType(NODE_SEQ_SCAN)
                 .relationName(TABLE_NAME)
                 .alias(TABLE_NAME)
                 .actualStartupTime(Checkers.greaterOrEqual(0.0))
@@ -211,7 +200,7 @@ public class TestPgAutoExplain extends BasePgSQLTest {
             TABLE_NAME, TABLE_NAME),
         makeTopLevelBuilder()
             .plan(makePlanBuilder()
-                .nodeType(NODE_YB_SEQ_SCAN)
+                .nodeType(NODE_SEQ_SCAN)
                 // Startup cost and total cost because auto_explain
                 .startupCost(Checkers.greaterOrEqual(0.0))
                 .totalCost(Checkers.greaterOrEqual(0.0))

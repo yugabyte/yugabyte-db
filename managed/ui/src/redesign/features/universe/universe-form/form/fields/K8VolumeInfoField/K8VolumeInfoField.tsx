@@ -19,6 +19,10 @@ import {
 const useStyles = makeStyles((theme) => ({
   volumeInfoTextField: {
     width: theme.spacing(15.5)
+  },
+  unitLabelField: {
+    marginLeft: theme.spacing(2),
+    alignSelf: 'center'
   }
 }));
 
@@ -27,13 +31,15 @@ interface K8VolumeInfoFieldProps {
   disableVolumeSize: boolean;
   disableNumVolumes: boolean;
   isEditMode: boolean;
+  maxVolumeCount: number;
 }
 
 export const K8VolumeInfoField = ({
   isDedicatedMasterField,
   disableVolumeSize,
   disableNumVolumes,
-  isEditMode
+  isEditMode,
+  maxVolumeCount
 }: K8VolumeInfoFieldProps): ReactElement => {
   const { control, setValue } = useFormContext<UniverseFormData>();
   const classes = useStyles();
@@ -53,9 +59,11 @@ export const K8VolumeInfoField = ({
   const convertToString = (str: string) => str?.toString() ?? '';
 
   //fetch run time configs
-  const { data: providerRuntimeConfigs, refetch: providerConfigsRefetch } = useQuery(
-    QUERY_KEY.fetchProviderRunTimeConfigs,
-    () => api.fetchRunTimeConfigs(true, provider?.uuid)
+  const {
+    data: providerRuntimeConfigs,
+    refetch: providerConfigsRefetch
+  } = useQuery(QUERY_KEY.fetchProviderRunTimeConfigs, () =>
+    api.fetchRunTimeConfigs(true, provider?.uuid)
   );
 
   useEffect(() => {
@@ -77,7 +85,8 @@ export const K8VolumeInfoField = ({
     setValue(UPDATE_FIELD, { ...fieldValue, volumeSize: Number(value) });
   };
   const onNumVolumesChanged = (numVolumes: any) => {
-    setValue(UPDATE_FIELD, { ...fieldValue, numVolumes: Number(numVolumes) });
+    const volumeCount = Number(numVolumes) > maxVolumeCount ? maxVolumeCount : Number(numVolumes);
+    setValue(UPDATE_FIELD, { ...fieldValue, numVolumes: volumeCount });
   };
 
   return (
@@ -135,6 +144,9 @@ export const K8VolumeInfoField = ({
                         inputMode="numeric"
                       />
                     </Box>
+                    <span className={classes.unitLabelField}>
+                      {t('universeForm.instanceConfig.k8VolumeSizeUnit')}
+                    </span>
                   </Box>
                 </Box>
               </Box>

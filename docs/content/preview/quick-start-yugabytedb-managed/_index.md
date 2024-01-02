@@ -38,7 +38,6 @@ The first time you log in, YugabyteDB Managed provides a welcome experience with
 - Load sample data and run queries
 - Explore a sample application
 
-
 {{< sections/2-boxes >}}
   {{< sections/bottom-image-box
     title="Docs"
@@ -54,7 +53,6 @@ The first time you log in, YugabyteDB Managed provides a welcome experience with
     buttonUrl="../faq/yugabytedb-managed-faq/"
   >}}
 {{< /sections/2-boxes >}}
-
 
 <!-- Following sections are duplicated in cloud-quickstart -->
 

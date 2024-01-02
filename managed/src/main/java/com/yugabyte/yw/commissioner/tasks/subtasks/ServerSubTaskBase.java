@@ -109,19 +109,13 @@ public abstract class ServerSubTaskBase extends AbstractTaskBase {
         taskParams().serverType == ServerType.TSERVER
             || taskParams().serverType == ServerType.YSQLSERVER;
     if (isTserverTask && !node.isTserver) {
-      throw new IllegalArgumentException(
-          "Task server type "
-              + taskParams().serverType
-              + " is for a node running tserver: "
-              + node.toString());
+      log.warn(
+          "Node {} is not yet updated to be a tserver but is being waited for", node.toString());
     }
 
     if (!isTserverTask && !node.isMaster) {
-      throw new IllegalArgumentException(
-          "Task server type "
-              + taskParams().serverType
-              + " is for a node running master: "
-              + node.toString());
+      log.warn(
+          "Node {} is not yet updated to be a master but is being waited for", node.toString());
     }
   }
 }

@@ -396,7 +396,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 				create_extension_opt_item alter_extension_opt_item
 
 %type <ival>	opt_lock lock_type cast_context
-%type <ival>	opt_concurrently
+%type <ival>	yb_opt_concurrently_index
 %type <str>		utility_option_name
 %type <defelt>	utility_option_elem
 %type <list>	utility_option_list
@@ -540,7 +540,7 @@ static Node *makeRecursiveViewSelect(char *relname, List *aliases, Node *query);
 %type <str>		unicode_normal_form
 
 %type <boolean> opt_instead
-%type <boolean> opt_unique opt_concurrently_matview opt_verbose opt_full
+%type <boolean> opt_unique opt_concurrently opt_concurrently_matview opt_verbose opt_full
 %type <boolean> opt_freeze opt_analyze opt_default opt_recheck
 %type <defelt>	opt_binary copy_delimiter
 
@@ -7364,7 +7364,7 @@ drop_type_name:
 			| EVENT TRIGGER							{ $$ = OBJECT_EVENT_TRIGGER; }
 			| EXTENSION								{ $$ = OBJECT_EXTENSION; }
 			| FOREIGN DATA_P WRAPPER				{ $$ = OBJECT_FDW; }
-			| opt_procedural LANGUAGE	{ parser_ybc_not_support(@1, "DROP LANGUAGE"); $$ = OBJECT_LANGUAGE; }
+			| opt_procedural LANGUAGE				{ $$ = OBJECT_LANGUAGE; }
 			| PUBLICATION	{ parser_ybc_not_support(@1, "DROP PUBLICATION"); $$ = OBJECT_PUBLICATION; }
 			| SCHEMA								{ $$ = OBJECT_SCHEMA; }
 			| SERVER								{ $$ = OBJECT_FOREIGN_SERVER; }
@@ -8476,7 +8476,7 @@ defacl_privilege_target:
  * unless we are willing to make them fully reserved words.
  *****************************************************************************/
 
-IndexStmt:	CREATE opt_unique INDEX opt_concurrently opt_index_name
+IndexStmt:	CREATE opt_unique INDEX yb_opt_concurrently_index opt_index_name
 			ON relation_expr access_method_clause '(' yb_index_params ')'
 			opt_include opt_unique_null_treatment opt_reloptions OptTableSpace OptSplit where_clause
 				{
@@ -8509,7 +8509,7 @@ IndexStmt:	CREATE opt_unique INDEX opt_concurrently opt_index_name
 					n->reset_default_tblspc = false;
 					$$ = (Node *) n;
 				}
-			| CREATE opt_unique INDEX opt_concurrently IF_P NOT EXISTS name
+			| CREATE opt_unique INDEX yb_opt_concurrently_index IF_P NOT EXISTS name
 			ON relation_expr access_method_clause '(' yb_index_params ')'
 			opt_include opt_unique_null_treatment opt_reloptions OptTableSpace OptSplit where_clause
 				{
@@ -8550,6 +8550,11 @@ opt_unique:
 		;
 
 opt_concurrently:
+			CONCURRENTLY							{ $$ = true; }
+			| /*EMPTY*/								{ $$ = false; }
+		;
+
+yb_opt_concurrently_index:
 			CONCURRENTLY
 				{
 					parser_ybc_not_support_in_templates(@1, "Concurrent index creation");
@@ -9798,8 +9803,11 @@ ReindexStmt:
 					n->name = NULL;
 					n->params = NIL;
 					if ($3)
+					{
+						parser_ybc_not_support(@1, "REINDEX CONCURRENTLY");
 						n->params = lappend(n->params,
 											makeDefElem("concurrently", NULL, @3));
+					}
 					/* Only support INDEX target. */
 					if (n->kind != REINDEX_OBJECT_INDEX)
 					{
@@ -9834,8 +9842,11 @@ ReindexStmt:
 					n->name = NULL;
 					n->params = $3;
 					if ($6)
+					{
+						parser_ybc_not_support(@1, "REINDEX CONCURRENTLY");
 						n->params = lappend(n->params,
 											makeDefElem("concurrently", NULL, @6));
+					}
 
 					/* Only support INDEX target. */
 					if (n->kind != REINDEX_OBJECT_INDEX)

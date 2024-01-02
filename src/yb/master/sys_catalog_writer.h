@@ -145,5 +145,15 @@ Status EnumerateSysCatalog(
     docdb::DocRowwiseIterator* doc_iter, const Schema& schema, int8_t entry_type,
     const EnumerationCallback& callback);
 
+using SysCatalogEntryCallback = std::function<
+    Status(int8_t entry_type, const Slice& id, const Slice& data)>;
+
+// Enumerate sys catalog calling provided callback for all entries in sys catalog.
+Status EnumerateAllSysCatalogEntries(
+    tablet::Tablet* tablet, const Schema& schema, const SysCatalogEntryCallback& callback);
+Status EnumerateAllSysCatalogEntries(
+    docdb::DocRowwiseIterator* doc_iter, const Schema& schema,
+    const SysCatalogEntryCallback& callback);
+
 } // namespace master
 } // namespace yb

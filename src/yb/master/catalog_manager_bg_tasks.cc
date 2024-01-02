@@ -84,7 +84,7 @@ DECLARE_bool(TEST_echo_service_enabled);
 namespace yb {
 namespace master {
 
-typedef std::unordered_map<TableId, std::list<scoped_refptr<CDCStreamInfo>>> TableStreamIdsMap;
+typedef std::unordered_map<TableId, std::list<CDCStreamInfoPtr>> TableStreamIdsMap;
 
 CatalogManagerBgTasks::CatalogManagerBgTasks(CatalogManager *catalog_manager)
     : closing_(false),

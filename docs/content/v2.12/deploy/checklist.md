@@ -134,7 +134,7 @@ For YugabyteDB to preserve data consistency, the clock drift and clock skew acro
 
 Set a safe value for the maximum clock skew flag (`--max_clock_skew_usec`) for YB-TServers and YB-Masters when starting the YugabyteDB servers. The recommended value is two times the expected maximum clock skew between any two nodes in your deployment.
 
-For example, if the maximum clock skew across nodes is expected to be no more than 250 microseconds, then set the parameter to 500 microseconds (`--max_clock_skew_usec=500000`).
+For example, if the maximum clock skew across nodes is expected to be no more than 250 milliseconds, then set the parameter to 500000 (`--max_clock_skew_usec=500000`).
 
 ### Clock drift
 

@@ -10,6 +10,5 @@ the bottom of docs/content/latest/contribute/core-database/run-unit-tests.md
 for this naming convention.
 
 Ported tests (those named yb_pg_foo) should be ordered the same way as
-serial_schedule.  Otherwise, tests may not have the right dependencies or
-expected state.  For example, in yb_arrays_schedule, yb_pg_int8 should come
-before yb_pg_point because serial_schedule has int8 before point.
+parallel_schedule.  Otherwise, tests may not have the right dependencies or
+expected state.

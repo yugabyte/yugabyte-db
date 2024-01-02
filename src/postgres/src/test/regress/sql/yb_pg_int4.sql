@@ -2,22 +2,10 @@
 -- INT4
 --
 
-CREATE TABLE INT4_TBL(f1 int4 PRIMARY KEY);
-
-INSERT INTO INT4_TBL(f1) VALUES ('   0  ');
-
-INSERT INTO INT4_TBL(f1) VALUES ('123456     ');
-
-INSERT INTO INT4_TBL(f1) VALUES ('    -123456');
+-- int4_tbl was already created and filled in test_setup.sql.
+-- Here we just try to insert bad values.
 
 INSERT INTO INT4_TBL(f1) VALUES ('34.5');
-
--- largest and smallest values
-INSERT INTO INT4_TBL(f1) VALUES ('2147483647');
-
-INSERT INTO INT4_TBL(f1) VALUES ('-2147483647');
-
--- bad input values -- should give errors
 INSERT INTO INT4_TBL(f1) VALUES ('1000000000000');
 INSERT INTO INT4_TBL(f1) VALUES ('asdf');
 INSERT INTO INT4_TBL(f1) VALUES ('     ');
@@ -113,10 +101,6 @@ SELECT int4 '2' * int2 '2' = int2 '16' / int4 '4' AS true;
 SELECT int2 '2' * int4 '2' = int4 '16' / int2 '4' AS true;
 
 SELECT int4 '1000' < int4 '999' AS false;
-
-SELECT 4! AS twenty_four;
-
-SELECT !!3 AS six;
 
 SELECT 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 + 1 AS ten;
 

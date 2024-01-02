@@ -1,6 +1,16 @@
 --
 -- FLOAT8
 --
+--
+-- Build a table for testing
+-- (This temporarily hides the table created in test_setup.sql)
+-- YB note: but we also want to test YB tables instead of temporary tables, so
+-- create a new table in a new namespace instead.
+--
+CREATE SCHEMA yb_tmp;
+SET search_path TO yb_tmp;
+-- TODO(jason): see if "PRIMARY KEY" could be removed, which is not present in
+-- the upstream test.
 CREATE TABLE FLOAT8_TBL(f1 float8 PRIMARY KEY);
 INSERT INTO FLOAT8_TBL(f1) VALUES ('    0.0   ');
 INSERT INTO FLOAT8_TBL(f1) VALUES ('1004.30  ');
@@ -434,17 +444,11 @@ INSERT INTO FLOAT8_TBL(f1) VALUES ('-10e-400');
 ERROR:  "-10e-400" is out of range for type double precision
 LINE 1: INSERT INTO FLOAT8_TBL(f1) VALUES ('-10e-400');
                                            ^
--- maintain external table consistency across platforms
--- delete all values and reinsert well-behaved ones
--- TODO (YugaByte): this was DELETE FROM FLOAT8_TBL in float8.sql.
--- We can do that when DELETE is supported.
 DROP TABLE FLOAT8_TBL;
-CREATE TABLE FLOAT8_TBL(f1 float8 PRIMARY KEY);
-INSERT INTO FLOAT8_TBL(f1) VALUES ('0.0');
-INSERT INTO FLOAT8_TBL(f1) VALUES ('-34.84');
-INSERT INTO FLOAT8_TBL(f1) VALUES ('-1004.30');
-INSERT INTO FLOAT8_TBL(f1) VALUES ('-1.2345678901234e+200');
-INSERT INTO FLOAT8_TBL(f1) VALUES ('-1.2345678901234e-200');
+-- YB note: reset the changes from above.
+DROP SCHEMA yb_tmp;
+RESET search_path;
+-- Check the float8 values exported for use by other tests
 SELECT '' AS five, * FROM FLOAT8_TBL ORDER BY f1;
  five |          f1
 ------+-----------------------

@@ -224,10 +224,10 @@ body {
 }
 
 .collapse .toggle {
-  background: url("/images/collapse.gif");
+  background: url("images/collapse.png");
 }
 .expand .toggle {
-  background: url("/images/expand.gif");
+  background: url("images/expand.png");
 }
 .toggle {
   height: 9px;

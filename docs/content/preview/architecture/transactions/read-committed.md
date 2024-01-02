@@ -352,161 +352,6 @@ Start by creating the table to be used in all of the examples, as follows:
 CREATE TABLE test (k int primary key, v int);
 ```
 
-<!--
-
-### Avoid deadlocks in Read Committed transactions
-
-When wait queues are not enabled, that is, `enable_wait_queues=false`, configure a statement timeout to avoid deadlocks. A different statement timeout can be set for each session using the `statement_timeout` YSQL parameter. Also, a single statement timeout can be applied globally to all sessions by setting the `statement_timeout` YSQL parameter in `ysql_pg_conf_csv` YB-TServer flag on cluster startup.
-
-```sql
-truncate table test;
-insert into test values (1, 5);
-insert into test values (2, 5);
-```
-
-<table class="no-alter-colors">
-  <thead>
-    <tr>
-    <th>
-    Client 1
-    </th>
-    <th>
-    Client 2
-    </th>
-    </tr>
-  </thead>
-  <tbody>
-  <tr>
-   <td>
-
-```sql
-begin transaction isolation level read committed;
-```
-
-   </td>
-   <td>
-   </td>
-  </tr>
-  <tr>
-   <td>
-   </td>
-   <td>
-
-```sql
-begin transaction isolation level read committed;
-```
-
-   </td>
-  </tr>
-  <tr>
-   <td>
-   </td>
-   <td>
-
-```sql
-set statement_timeout=2000;
-```
-
-   </td>
-  </tr>
-  <tr>
-   <td>
-
-```sql
-update test set v=5 where k=1;
-```
-
-```output
-UPDATE 1
-```
-
-   </td>
-   <td>
-   </td>
-  </tr>
-  <tr>
-   <td>
-   </td>
-   <td>
-
-```sql
-update test set v=5 where k=2;
-```
-
-```output
-UPDATE 1
-```
-
-   </td>
-  </tr>
-  <tr>
-   <td>
-
-```sql
-update test set v=5 where k=2;
-```
-
-```output
-(waits)
-```
-
-   </td>
-   <td>
-   </td>
-  </tr>
-  <tr>
-   <td>
-   </td>
-   <td>
-
-```sql
-update test set v=5 where k=1;
-```
-
-```output
-ERROR:  cancelling statement due to statement timeout
-```
-
-   </td>
-  </tr>
-  <tr>
-   <td>
-   </td>
-   <td>
-
-```sql
-rollback;
-```
-
-   </td>
-  </tr>
-  <tr>
-   <td>
-
-```output
-UPDATE 1
-```
-
-   </td>
-   <td>
-   </td>
-  </tr>
-  <tr>
-   <td>
-
-```sql
-commit;
-```
-
-   </td>
-   <td>
-   </td>
-  </tr>
-</tbody>
-</table>
-
--->
-
 ### SELECT behavior without explicit locking
 
 ```sql
@@ -1549,15 +1394,178 @@ commit;
 </tbody>
 </table>
 
+### Avoid deadlocks in read committed transactions
+
+When wait queues are not enabled, that is, YB-TServer GFlag `enable_wait_queues=false`, configure a statement timeout to avoid deadlocks. A different statement timeout can be set for each session using the `statement_timeout` YSQL parameter. Also, a single statement timeout can be applied globally to all sessions by setting the `statement_timeout` YSQL parameter in `ysql_pg_conf_csv` YB-TServer GFlag on cluster startup.
+
+When using wait queues, automatic deadlock detection and resolution can be enabled using YB-TServer GFlag `enable_deadlock_detection=true`. It is strongly recommended to use this setting when using wait queues.
+
+```sql
+truncate table test;
+insert into test values (1, 5);
+insert into test values (2, 5);
+```
+
+<table class="no-alter-colors">
+  <thead>
+    <tr>
+    <th>
+    Client 1
+    </th>
+    <th>
+    Client 2
+    </th>
+    </tr>
+  </thead>
+  <tbody>
+  <tr>
+   <td>
+
+```sql
+begin transaction isolation level read committed;
+```
+
+   </td>
+   <td>
+   </td>
+  </tr>
+  <tr>
+   <td>
+   </td>
+   <td>
+
+```sql
+begin transaction isolation level read committed;
+```
+
+   </td>
+  </tr>
+  <tr>
+   <td>
+   </td>
+   <td>
+
+```sql
+set statement_timeout=2000;
+```
+
+   </td>
+  </tr>
+  <tr>
+   <td>
+
+```sql
+update test set v=5 where k=1;
+```
+
+```output
+UPDATE 1
+```
+
+   </td>
+   <td>
+   </td>
+  </tr>
+  <tr>
+   <td>
+   </td>
+   <td>
+
+```sql
+update test set v=5 where k=2;
+```
+
+```output
+UPDATE 1
+```
+
+   </td>
+  </tr>
+  <tr>
+   <td>
+
+```sql
+update test set v=5 where k=2;
+```
+
+```output
+(waits)
+```
+
+   </td>
+   <td>
+   </td>
+  </tr>
+  <tr>
+   <td>
+   </td>
+   <td>
+
+```sql
+update test set v=5 where k=1;
+```
+
+```output
+ERROR:  cancelling statement due to statement timeout
+```
+
+   </td>
+  </tr>
+  <tr>
+   <td>
+   </td>
+   <td>
+
+```sql
+rollback;
+```
+
+   </td>
+  </tr>
+  <tr>
+   <td>
+
+```output
+UPDATE 1
+```
+
+   </td>
+   <td>
+   </td>
+  </tr>
+  <tr>
+   <td>
+
+```sql
+commit;
+```
+
+   </td>
+   <td>
+   </td>
+  </tr>
+</tbody>
+</table>
+
 ## Cross-feature interaction
 
 Read Committed interacts with the following feature:
 
-* Follower reads (integration in progress): When follower reads is enabled, the read point for each statement in a Read Committed transaction is selected as `Now()` - `yb_follower_read_staleness_ms` (if the transaction or statement is known to be explicitly or implicitly read-only).
+* [Follower reads](../../../develop/build-global-apps/follower-reads/): When follower reads is enabled and the transaction block is explicitly marked `READ ONLY`, the read point for each statement in a read committed transaction is selected as `Now()` - `yb_follower_read_staleness_ms`.
 
 ## Limitations
 
-Refer to [#13557](https://github.com/yugabyte/yugabyte-db/issues/13557) for limitations.
+* A `SET TRANSACTION ISOLATION LEVEL ...` statement immediately issued after `BEGIN;` or `BEGIN TRANSACTION ISOLATION LEVEL READ COMMITTED;` will fail if the YB-TServer GFlag `yb_enable_read_committed_isolation=true`, and the following error will be issued:
+
+    ```output
+    ERROR:  SET TRANSACTION ISOLATION LEVEL must not be called in a subtransaction
+    ```
+
+    For more details, see [#12494](https://github.com/yugabyte/yugabyte-db/issues/12494).
+
+* Read restart and serialization are not internally handled in read committed isolation if the query's response size exceeds the YB-TServer GFlag `ysql_output_buffer_size`, which has a default value of 256KB (see [#11572](https://github.com/yugabyte/yugabyte-db/issues/11572)).
+
+* Non-transactional side-effects can occur more than once when a `conflict` or `read restart` occurs in functions or procedures in read committed isolation. This is because in read committed isolation, the retry logic in the database will undo all work done as part of that statement and re-attempt the whole client-issued statement. (See [#12958](https://github.com/yugabyte/yugabyte-db/issues/12958))
 
 ## Considerations
 

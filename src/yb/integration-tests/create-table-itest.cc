@@ -53,8 +53,6 @@ DECLARE_double(leader_failure_max_missed_heartbeat_periods);
 
 namespace yb {
 
-using pgwrapper::GetInt32;
-
 class CreateTableITest : public CreateTableITestBase {
  public:
   Result<pgwrapper::PGConn> ConnectToDB(
@@ -401,11 +399,10 @@ TEST_F(CreateTableITest, TableColocationRemoteBootstrapTest) {
   ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0 WITH colocation = true", kNamespaceName));
   conn = ASSERT_RESULT(ConnectToDB(kNamespaceName));
   ASSERT_OK(conn.Execute("CREATE TABLE tbl (k int PRIMARY KEY, v int)"));
-  auto res = ASSERT_RESULT(conn.FetchFormat("SELECT oid FROM pg_database WHERE datname = '$0'",
-                                            kNamespaceName));
-  uint32 db_oid = static_cast<uint32>(ASSERT_RESULT(GetInt32(res.get(), 0, 0)));
-  res = ASSERT_RESULT(conn.Fetch("SELECT oid FROM pg_yb_tablegroup WHERE grpname = 'default'"));
-  uint32 tablegroup_oid = static_cast<uint32>(ASSERT_RESULT(GetInt32(res.get(), 0, 0)));
+  auto db_oid = ASSERT_RESULT(conn.FetchValue<pgwrapper::PGOid>(Format(
+      "SELECT oid FROM pg_database WHERE datname = '$0'", kNamespaceName)));
+  auto tablegroup_oid = ASSERT_RESULT(conn.FetchValue<pgwrapper::PGOid>(
+      "SELECT oid FROM pg_yb_tablegroup WHERE grpname = 'default'"));
   TablegroupId tablegroup_id = GetPgsqlTablegroupId(db_oid, tablegroup_oid);
   parent_table_id = GetColocationParentTableId(tablegroup_id);
 

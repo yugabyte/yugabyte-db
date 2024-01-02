@@ -2,6 +2,9 @@
 -- ARRAYS
 --
 
+-- directory paths are passed to us in environment variables
+\getenv abs_srcdir PG_ABS_SRCDIR
+
 CREATE TABLE arrtest (
 	a 			int2[],
 	b 			int4[][][],
@@ -11,6 +14,16 @@ CREATE TABLE arrtest (
 	f			char(5)[],
 	g			varchar(5)[]
 );
+
+CREATE TABLE array_op_test (
+	seqno		int4,
+	i			int4[],
+	t			text[]
+);
+
+\set filename :abs_srcdir '/data/array.data'
+COPY array_op_test FROM :'filename';
+ANALYZE array_op_test;
 
 --
 -- only the 'e' array is 0-based, the others are 1-based.
@@ -149,6 +162,14 @@ UPDATE arrtest_s SET a[:] = '{23, 24, 25}';  -- fail, too small
 INSERT INTO arrtest_s VALUES(3, NULL, NULL);
 UPDATE arrtest_s SET a[:] = '{11, 12, 13, 14, 15}';  -- fail, no good with null
 
+-- we want to work with a point_tbl that includes a null
+-- YB note: but we also want to test YB tables instead of temporary tables, so
+-- create a new table in a new namespace instead.
+CREATE SCHEMA yb_tmp;
+SET search_path TO yb_tmp;
+CREATE TABLE point_tbl AS SELECT * FROM public.point_tbl;
+INSERT INTO POINT_TBL(f1) VALUES (NULL);
+
 -- check with fixed-length-array type, such as point
 SELECT f1[0:1] FROM POINT_TBL;
 SELECT f1[0:] FROM POINT_TBL;
@@ -164,6 +185,11 @@ UPDATE point_tbl SET f1[0] = NULL WHERE f1::text = '(10,10)'::point::text RETURN
 UPDATE point_tbl SET f1[0] = -10, f1[1] = -10 WHERE f1::text = '(10,10)'::point::text RETURNING *;
 -- but not to expand the range
 UPDATE point_tbl SET f1[3] = 10 WHERE f1::text = '(-10,-10)'::point::text RETURNING *;
+
+-- YB note: reset the changes from above.
+DROP TABLE point_tbl;
+DROP SCHEMA yb_tmp;
+RESET search_path;
 
 --
 -- test array extension

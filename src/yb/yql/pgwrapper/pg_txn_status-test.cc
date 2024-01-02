@@ -307,7 +307,7 @@ TEST_F(PgCancelTxnTest, Simple) {
       Format("SELECT yb_cancel_transaction('$0')", s.txn_id.ToString()))));
   ASSERT_NOK(s.conn.CommitTransaction());
 
-  ASSERT_EQ(0, ASSERT_RESULT(cancel_session.FetchValue<int>("SELECT v FROM foo where k=5")));
+  ASSERT_EQ(0, ASSERT_RESULT(cancel_session.FetchValue<int32_t>("SELECT v FROM foo where k=5")));
 
   // Cancelling the same transaction again should return false
   ASSERT_FALSE(ASSERT_RESULT(cancel_session.FetchValue<bool>(
@@ -321,7 +321,7 @@ TEST_F(PgCancelTxnTest, CancelSelf) {
       Format("SELECT yb_cancel_transaction('$0')", s.txn_id.ToString()))));
   ASSERT_NOK(s.conn.CommitTransaction());
 
-  ASSERT_EQ(0, ASSERT_RESULT(s.conn.FetchValue<int>("SELECT v FROM foo where k=5")));
+  ASSERT_EQ(0, ASSERT_RESULT(s.conn.FetchValue<int32_t>("SELECT v FROM foo where k=5")));
 }
 
 TEST_F(PgCancelTxnTest, InvalidArgs) {

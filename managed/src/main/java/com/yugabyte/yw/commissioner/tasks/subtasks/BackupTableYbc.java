@@ -277,6 +277,7 @@ public class BackupTableYbc extends YbcTaskBase {
                     ybcBackupUtil.extractRegionLocationFromMetadata(
                         response.responseCloudStoreSpec.regionLocations, taskParams());
               }
+              tableParams.setTablespacesList(response.tablespaceInfos);
               BackupTableParams parentParams = b.getBackupInfo();
               parentParams
                   .backupDBStates

@@ -82,13 +82,14 @@ EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 
 SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
 
 -- Batched nested loop join
+ANALYZE p1;
+ANALYZE p2;
 SET enable_hashjoin = off;
 SET enable_seqscan = off;
 SET enable_material = off;
 SET yb_bnl_batch_size = 3;
 
 EXPLAIN (COSTS OFF) SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
--- YB_TODO: Explain has a missing line Index Cond: (a = ANY (ARRAY[t1.a, $1, $2])) under Index Scan
 SELECT * FROM p1 t1 JOIN p2 t2 ON t1.a = t2.a WHERE t1.a <= 100 AND t2.a <= 100;
 
 SET enable_mergejoin = on;
@@ -269,7 +270,51 @@ create temp table prtx2 (a integer, b integer, c integer);
 insert into prtx2 select 1 + i%10, i, i from generate_series(1,5000) i, generate_series(1,10) j;
 create index on prtx2 (c);
 
+-- testing yb_hash_code pushdown on a secondary index with a text hash column
+CREATE TABLE text_table (hr text, ti text, tj text, i int, j int, primary key (hr));
+INSERT INTO text_table SELECT i::TEXT, i::TEXT, i::TEXT, i, i FROM generate_series(1,10000) i;
+CREATE INDEX textidx ON text_table (tj);
+SELECT tj FROM text_table WHERE yb_hash_code(tj) <= 63;
+
+-- Row locking
+CREATE TABLE t(h INT, r INT, PRIMARY KEY(h, r));
+INSERT INTO t VALUES(1, 1), (1, 3);
+SELECT * FROM t WHERE h = 1 AND r in(1, 3) FOR KEY SHARE;
+
+-- Test for ItemPointerIsValid assertion failure
+CREATE TYPE rainbow AS ENUM ('red', 'orange', 'yellow', 'green', 'blue', 'purple');
+-- Aggregate pushdown
+SELECT COUNT(*) FROM pg_enum WHERE enumtypid = 'rainbow'::regtype;
+-- IndexOnlyScan
+SELECT enumlabel FROM pg_enum WHERE enumtypid = 'rainbow'::regtype;
+
 -- Cleanup
 DROP TABLE IF EXISTS address, address2, emp, emp2, emp_par1, emp_par1_1_100, emp_par2, emp_par3,
   fastpath, myemp, myemp2, myemp2_101_200, myemp2_1_100, p1, p2, pk_range_int_asc,
   single_row_decimal, t1, t2, test, test2, serial_test, tlateral1, tlateral2, mytest1, mytest2 CASCADE;
+
+-- insert into temp table in function body
+create temp table compos (f1 int, f2 text);
+create function fcompos1(v compos) returns void as $$
+insert into compos values (v.*);
+$$ language sql;
+select fcompos1(row(1,'one'));
+
+-- very basic REINDEX
+CREATE TABLE yb (i int PRIMARY KEY, j int);
+CREATE INDEX NONCONCURRENTLY ON yb (j);
+UPDATE pg_index SET indisvalid = false
+    WHERE indexrelid = 'yb_j_idx'::regclass;
+\c
+REINDEX INDEX yb_j_idx;
+UPDATE pg_index SET indisvalid = false
+    WHERE indexrelid = 'yb_j_idx'::regclass;
+\c
+\set VERBOSITY terse
+REINDEX(verbose) INDEX yb_j_idx;
+\set VERBOSITY default
+
+-- internal collation
+create table texttab (t text);
+insert into texttab values ('a');
+select count(*) from texttab group by t;

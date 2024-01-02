@@ -86,7 +86,7 @@ public class TaskGarbageCollector {
       log.info("Scheduling TaskGC every " + gcInterval);
       platformScheduler.schedule(
           getClass().getSimpleName(),
-          Duration.ZERO, // InitialDelay
+          Duration.ofMinutes(5), // InitialDelay
           gcInterval,
           this::scheduleRunner);
     }
@@ -108,17 +108,21 @@ public class TaskGarbageCollector {
   @VisibleForTesting
   void purgeStaleTasks(Customer c, List<CustomerTask> staleTasks) {
     NUM_TASK_GC_RUNS_COUNT.inc();
-    int numRowsGCdInThisRun = 0;
-    for (CustomerTask customerTask : staleTasks) {
-      int numRowsDeleted = customerTask.cascadeDeleteCompleted();
-      numRowsGCdInThisRun += numRowsDeleted;
-      if (numRowsDeleted > 0) {
-        PURGED_CUSTOMER_TASK_COUNT.labels(c.getUuid().toString()).inc();
-        PURGED_TASK_INFO_COUNT.labels(c.getUuid().toString()).inc(numRowsDeleted - 1);
-      } else {
-        NUM_TASK_GC_ERRORS_COUNT.inc();
-      }
-    }
+    int numRowsGCdInThisRun =
+        staleTasks.stream()
+            .filter(CustomerTask::isDeletable)
+            .map(
+                customerTask -> {
+                  int numRowsDeleted = customerTask.cascadeDeleteCompleted();
+                  if (numRowsDeleted > 0) {
+                    PURGED_CUSTOMER_TASK_COUNT.labels(c.getUuid().toString()).inc();
+                    PURGED_TASK_INFO_COUNT.labels(c.getUuid().toString()).inc(numRowsDeleted - 1);
+                  } else {
+                    NUM_TASK_GC_ERRORS_COUNT.inc();
+                  }
+                  return numRowsDeleted;
+                })
+            .reduce(0, Integer::sum);
     log.info("Garbage collected {} rows", numRowsGCdInThisRun);
   }
 

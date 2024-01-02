@@ -264,6 +264,7 @@ class DocDBRocksDBUtil : public SchemaPackingProvider {
 
   std::atomic<int64_t> monotonic_counter_{0};
   std::optional<DocWriteBatch> doc_write_batch_;
+  std::once_flag doc_reader_context_init_once_;
   std::shared_ptr<DocReadContext> doc_read_context_;
   // Dummy ScopedRWOperation. It doesn't prevent underlying RocksDB from being closed, that is
   // rather guaranteed by DocDBRocksDBUtil usage patterns.

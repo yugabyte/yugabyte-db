@@ -2,6 +2,15 @@
 -- VARCHAR
 --
 
+--
+-- Build a table for testing
+-- (This temporarily hides the table created in test_setup.sql)
+-- YB note: but we also want to test YB tables instead of temporary tables, so
+-- create a new table in a new namespace instead.
+--
+CREATE SCHEMA yb_tmp;
+SET search_path TO yb_tmp;
+
 -- YB note: add ordering column to match upstream PG output ordering.  Also
 -- adjust SELECTs below to not use * and instead use f1 in order to avoid
 -- outputting up the ordering column.
@@ -54,17 +63,18 @@ SELECT '' AS two, c.f1
 
 DROP TABLE VARCHAR_TBL;
 
+-- YB note: reset the changes from above.
+DROP SCHEMA yb_tmp;
+RESET search_path;
+
 --
 -- Now test longer arrays of char
 --
+-- This varchar_tbl was already created and filled in test_setup.sql.
+-- Here we just try to insert bad values.
+--
 
-CREATE TABLE VARCHAR_TBL(f1 varchar(4));
-
-INSERT INTO VARCHAR_TBL (f1) VALUES ('a');
-INSERT INTO VARCHAR_TBL (f1) VALUES ('ab');
-INSERT INTO VARCHAR_TBL (f1) VALUES ('abcd');
 INSERT INTO VARCHAR_TBL (f1) VALUES ('abcde');
-INSERT INTO VARCHAR_TBL (f1) VALUES ('abcd    ');
 
 -- YB note: add query ordering to match upstream PG output ordering.
 SELECT '' AS four, * FROM VARCHAR_TBL ORDER BY 1, 2;

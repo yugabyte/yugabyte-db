@@ -114,10 +114,9 @@ void RemoteBootstrapSessionTest::SetUpTabletPeer() {
   config.add_peers()->CopyFrom(config_peer);
   config.set_opid_index(consensus::kInvalidOpIdIndex);
 
-  std::unique_ptr<ConsensusMetadata> cmeta;
-  ASSERT_OK(ConsensusMetadata::Create(tablet()->metadata()->fs_manager(),
-                                     tablet_id, fs_manager()->uuid(),
-                                     config, consensus::kMinimumTerm, &cmeta));
+  std::unique_ptr<ConsensusMetadata> cmeta = ASSERT_RESULT(ConsensusMetadata::Create(
+      tablet()->metadata()->fs_manager(), tablet_id, fs_manager()->uuid(), config,
+      consensus::kMinimumTerm));
 
   MessengerBuilder mbuilder(CURRENT_TEST_NAME());
   messenger_ = ASSERT_RESULT(mbuilder.Build());

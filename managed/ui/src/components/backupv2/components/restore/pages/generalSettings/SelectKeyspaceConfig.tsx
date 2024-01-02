@@ -17,8 +17,8 @@ import { IGeneralSettings } from './GeneralSettings';
 import { YBLabel } from '../../../../../common/descriptors';
 import { YBCheckboxField } from '../../../../../../redesign/components';
 import { RestoreContextMethods, RestoreFormContext } from '../../RestoreContext';
-import Checked from '../../icons/checkbox/Checked.svg';
-import UnChecked from '../../icons/checkbox/UnChecked.svg';
+import Checked from '../../../../../../redesign/assets/checkbox/Checked.svg';
+import UnChecked from '../../../../../../redesign/assets/checkbox/UnChecked.svg';
 
 const useStyles = makeStyles((theme) => ({
   controls: {

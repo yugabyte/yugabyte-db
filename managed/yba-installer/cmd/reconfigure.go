@@ -27,7 +27,7 @@ var reconfigureCmd = &cobra.Command{
 		}
 	},
 	Run: func(cmd *cobra.Command, args []string) {
-		state, err := ybactlstate.LoadState()
+		state, err := ybactlstate.Initialize()
 		if err != nil {
 			log.Fatal("unable to load yba installer state: " + err.Error())
 		}

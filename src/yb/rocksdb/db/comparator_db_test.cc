@@ -211,7 +211,7 @@ class DoubleComparator : public Comparator {
 
   const char* Name() const override { return "DoubleComparator"; }
 
-  int Compare(const Slice& a, const Slice& b) const override {
+  int Compare(Slice a, Slice b) const override {
 #ifndef CYGWIN
     double da = std::stod(a.ToString());
     double db = std::stod(b.ToString());
@@ -239,7 +239,7 @@ class HashComparator : public Comparator {
 
   const char* Name() const override { return "HashComparator"; }
 
-  int Compare(const Slice& a, const Slice& b) const override {
+  int Compare(Slice a, Slice b) const override {
     uint32_t ha = Hash(a.data(), a.size(), 66);
     uint32_t hb = Hash(b.data(), b.size(), 66);
     if (ha == hb) {
@@ -262,7 +262,7 @@ class TwoStrComparator : public Comparator {
 
   const char* Name() const override { return "TwoStrComparator"; }
 
-  int Compare(const Slice& a, const Slice& b) const override {
+  int Compare(Slice a, Slice b) const override {
     assert(a.size() >= 2);
     assert(b.size() >= 2);
     size_t size_a1 = static_cast<size_t>(a[0]);

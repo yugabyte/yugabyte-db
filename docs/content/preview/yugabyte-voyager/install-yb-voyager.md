@@ -109,4 +109,4 @@ Install yb-voyager on a machine which satisfies the [Prerequisites](#prerequisit
 
 ## Next step
 
-- [Migration steps](../migrate-steps/)
+- [Migrate](../migrate/)

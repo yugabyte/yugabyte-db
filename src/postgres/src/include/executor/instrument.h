@@ -14,6 +14,7 @@
 #define INSTRUMENT_H
 
 #include "portability/instr_time.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 
 
 /*
@@ -79,6 +80,8 @@ typedef struct YbInstrumentation {
 	double		 tbl_writes;
 	double		 index_writes;
 	double		 catalog_writes;
+
+	double       storage_metrics[YB_ANALYZE_METRIC_COUNT];
 } YbInstrumentation;
 
 typedef struct Instrumentation

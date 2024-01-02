@@ -50,33 +50,35 @@
 #include "yb/gutil/ref_counted.h"
 #include "yb/gutil/stringprintf.h"
 
-#include "yb/rpc/connection.h"
 #include "yb/rpc/connection_context.h"
+#include "yb/rpc/connection.h"
+#include "yb/rpc/delayed_task.h"
 #include "yb/rpc/messenger.h"
+#include "yb/rpc/reactor_task.h"
 #include "yb/rpc/rpc_controller.h"
 #include "yb/rpc/rpc_introspection.pb.h"
+#include "yb/rpc/rpc_metrics.h"
 #include "yb/rpc/server_event.h"
-#include "yb/rpc/reactor_task.h"
-#include "yb/rpc/delayed_task.h"
 
 #include "yb/util/atomic.h"
 #include "yb/util/countdown_latch.h"
 #include "yb/util/errno.h"
+#include "yb/util/flags.h"
 #include "yb/util/format.h"
 #include "yb/util/logging.h"
 #include "yb/util/memory/memory.h"
 #include "yb/util/metric_entity.h"
+#include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/socket.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
-#include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
-#include "yb/util/thread.h"
+#include "yb/util/status.h"
 #include "yb/util/thread_restrictions.h"
+#include "yb/util/thread.h"
 #include "yb/util/trace.h"
-#include "yb/util/flags.h"
 #include "yb/util/unique_lock.h"
 
 using namespace std::literals;
@@ -89,6 +91,24 @@ DECLARE_int32(socket_receive_buffer_size);
 DEFINE_RUNTIME_bool(reactor_check_current_thread, true,
                     "Enforce the requirement that operations that require running on a reactor "
                     "thread are always running on the correct reactor thread.");
+
+DEFINE_RUNTIME_int32(stuck_outbound_call_default_timeout_sec, 120,
+    "Default timeout for reporting purposes for the Reactor-based stuck OutboundCall tracking and "
+    "expiration mechanism. That mechanism itself is controlled by the "
+    "reactor_based_outbound_call_expiration_delay_ms flag. Note that this flag does not force a "
+    "call to be timed out, it just specifies the interval after which the call is logged.");
+TAG_FLAG(stuck_outbound_call_default_timeout_sec, advanced);
+
+DEFINE_RUNTIME_int32(stuck_outbound_call_check_interval_sec, 30,
+    "Check and report each stuck outbound call at most once per this number of seconds.");
+TAG_FLAG(stuck_outbound_call_check_interval_sec, advanced);
+
+DEFINE_RUNTIME_int32(reactor_based_outbound_call_expiration_delay_ms, 1000,
+    "Expire OutboundCalls using Reactor-level logic with this delay after the timeout, as an "
+    "additional layer of protection against stuck outbound calls. This safety mechanism is "
+    "disabled if this flag is set to 0.");
+TAG_FLAG(reactor_based_outbound_call_expiration_delay_ms, advanced);
+
 namespace yb {
 namespace rpc {
 
@@ -209,6 +229,16 @@ class RunFunctionTask : public ReactorTask {
   CountDownLatch latch_{1};
 };
 
+bool ShouldTrackOutboundCalls() {
+  return FLAGS_reactor_based_outbound_call_expiration_delay_ms > 0;
+}
+
+CoarseTimePoint ExpirationEnforcementTime(CoarseTimePoint expires_at) {
+  return expires_at == CoarseTimePoint::max()
+      ? CoarseTimePoint::max()
+      : expires_at + 1ms * FLAGS_reactor_based_outbound_call_expiration_delay_ms;
+}
+
 } // anonymous namespace
 
 // ------------------------------------------------------------------------------------------------
@@ -228,6 +258,7 @@ Reactor::Reactor(Messenger* messenger,
           MakeFunctorReactorTask(std::bind(&Reactor::ProcessOutboundQueue, this),
                                  SOURCE_LOCATION())),
       num_connections_to_server_(bld.num_connections_to_server()),
+      completed_call_queue_(std::make_shared<CompletedCallQueue>()),
       cur_time_(CoarseMonoClock::Now()) {
   static std::once_flag libev_once;
   std::call_once(libev_once, DoInitLibEv);
@@ -297,7 +328,9 @@ void Reactor::StartShutdown() {
 
 void Reactor::ShutdownConnection(const ConnectionPtr& conn) {
   VLOG_WITH_PREFIX(1) << "shutting down " << conn->ToString();
-  conn->Shutdown(ServiceUnavailableError());
+  if (!conn->shutdown_completed()) {
+    conn->Shutdown(ServiceUnavailableError());
+  }
   if (!conn->context().Idle()) {
     VLOG_WITH_PREFIX(1) << "connection is not idle: " << conn->ToString();
     conn->context().ListenIdle([this, weak_conn = std::weak_ptr(conn)]() {
@@ -361,6 +394,8 @@ void Reactor::ShutdownInternal() {
     call->Transferred(aborted, /* conn= */ nullptr);
   }
   processing_outbound_queue_.clear();
+
+  completed_call_queue_->Shutdown();
 }
 
 Status Reactor::GetMetrics(ReactorMetrics *metrics) {
@@ -516,27 +551,26 @@ void Reactor::RegisterConnection(const ConnectionPtr& conn) {
 
 ConnectionPtr Reactor::AssignOutboundCall(const OutboundCallPtr& call) {
   ConnectionPtr conn;
-
-  // TODO: Move call deadline timeout computation into OutboundCall constructor.
-  const MonoDelta &timeout = call->controller()->timeout();
-  MonoTime deadline;
-  if (!timeout.Initialized()) {
-    LOG_WITH_PREFIX(WARNING) << "Client call " << call->remote_method().ToString()
-                 << " has no timeout set for connection id: "
-                 << call->conn_id().ToString();
-    deadline = MonoTime::Max();
-  } else {
-    deadline = MonoTime::Now();
-    deadline.AddDelta(timeout);
-  }
-
-  Status s = FindOrStartConnection(call->conn_id(), call->hostname(), deadline, &conn);
+  Status s = FindOrStartConnection(call->conn_id(), call->hostname(), &conn);
   if (PREDICT_FALSE(!s.ok())) {
     call->SetFailed(s);
     return ConnectionPtr();
   }
 
+  call->SetConnection(conn);
+  call->SetCompletedCallQueue(completed_call_queue_);
   conn->QueueOutboundCall(call);
+
+  if (ShouldTrackOutboundCalls()) {
+    auto expires_at = call->expires_at();
+    tracked_outbound_calls_.insert(TrackedOutboundCall {
+      .call_id = call->call_id(),
+      .call_weak = call,
+      .next_check_time = expires_at == CoarseTimePoint::max()
+          ? call->start_time() + FLAGS_stuck_outbound_call_default_timeout_sec * 1s
+          : expires_at + FLAGS_reactor_based_outbound_call_expiration_delay_ms * 1ms
+    });
+  }
   return conn;
 }
 
@@ -547,6 +581,8 @@ ConnectionPtr Reactor::AssignOutboundCall(const OutboundCallPtr& call) {
 //    tcp_conn_timeo_ seconds.
 //
 void Reactor::TimerHandler(ev::timer &watcher, int revents) {
+  CheckCurrentThread();
+
   if (EV_ERROR & revents) {
     LOG_WITH_PREFIX(WARNING) << "Reactor got an error in the timer handler.";
     return;
@@ -562,6 +598,8 @@ void Reactor::TimerHandler(ev::timer &watcher, int revents) {
   cur_time_.store(now, std::memory_order_release);
 
   ScanIdleConnections();
+
+  ScanForStuckOutboundCalls(now);
 }
 
 void Reactor::ScanIdleConnections() {
@@ -607,20 +645,78 @@ void Reactor::ScanIdleConnections() {
   VLOG_IF_WITH_PREFIX(1, timed_out > 0) << "timed out " << timed_out << " TCP connections.";
 }
 
+void Reactor::ScanForStuckOutboundCalls(CoarseTimePoint now) {
+  if (!ShouldTrackOutboundCalls()) {
+    return;
+  }
+
+  auto& index_by_call_id = tracked_outbound_calls_.get<CallIdTag>();
+  while (auto call_id_opt = completed_call_queue_->Pop()) {
+    index_by_call_id.erase(*call_id_opt);
+  }
+
+  auto& index_by_next_check_time = tracked_outbound_calls_.get<NextCheckTimeTag>();
+  while (!index_by_next_check_time.empty()) {
+    auto& entry = *index_by_next_check_time.begin();
+    // It is useful to check the next entry even if its scheduled next check time is later than
+    // now, to erase entries corresponding to completed calls as soon as possible. This alone,
+    // even without the completed call queue, mostly solves #19090.
+    auto call = entry.call_weak.lock();
+    if (!call || call->callback_invoked()) {
+      index_by_next_check_time.erase(index_by_next_check_time.begin());
+      continue;
+    }
+    if (entry.next_check_time > now) {
+      break;
+    }
+
+    // Normally, timeout should be enforced at the connection level. Here, we will catch failures
+    // to do that.
+    const bool forcing_timeout =
+        !call->callback_triggered() && now >= ExpirationEnforcementTime(call->expires_at());
+
+    auto call_str = call->DebugString();
+
+    auto conn = call->connection();
+
+    LOG_WITH_PREFIX(WARNING) << "Stuck OutboundCall: " << call_str
+                             << (forcing_timeout ? " (forcing a timeout)" : "");
+    IncrementCounter(messenger_.rpc_metrics()->outbound_calls_stuck);
+
+    if (forcing_timeout) {
+      // Only do this after we've logged the call, so that the log would capture the call state
+      // before the forced timeout.
+      if (conn) {
+        // This calls SetTimedOut so we don't need to do it directly.
+        conn->ForceCallExpiration(call);
+      } else {
+        LOG_WITH_PREFIX(WARNING) << "Connection is not set for a call that is being forcefully "
+                                 << "expired: " << call_str;
+        call->SetTimedOut();
+      }
+    }
+
+    index_by_next_check_time.modify(index_by_next_check_time.begin(), [now](auto& tracked_call) {
+      tracked_call.next_check_time = now + FLAGS_stuck_outbound_call_check_interval_sec * 1s;
+    });
+  }
+
+  if (tracked_outbound_calls_.size() >= 1000) {
+    YB_LOG_WITH_PREFIX_EVERY_N_SECS(WARNING, 1)
+        << "tracked_outbound_calls_ has a large number of entries: "
+        << tracked_outbound_calls_.size();
+  }
+}
+
 bool Reactor::IsCurrentThread() const {
   return thread_.get() == yb::Thread::current_thread();
 }
 
-ReactorThreadRoleGuard Reactor::CheckCurrentThread() const NO_THREAD_SAFETY_ANALYSIS {
+void Reactor::CheckCurrentThread() const {
   if (ShouldCheckCurrentThread()) {
     CHECK_EQ(thread_.get(), yb::Thread::current_thread())
         << "Operation is not running on the correct reactor thread";
   }
-  return ReactorThreadRoleGuard();
-
-  // NO_THREAD_SAFETY_ANALYSIS is needed to avoid the following error:
-  // expecting thread role 'kReactor' to be held at the end of function
-  // ... thread role acquired here (pointing at the CheckCurrentThread name).
 }
 
 void Reactor::RunThread() {
@@ -633,7 +729,6 @@ void Reactor::RunThread() {
 
 Status Reactor::FindOrStartConnection(const ConnectionId &conn_id,
                                       const std::string& hostname,
-                                      const MonoTime &deadline,
                                       ConnectionPtr* conn) {
   {
     auto conn_iter = client_conns_.find(conn_id);
@@ -806,7 +901,8 @@ void Reactor::ProcessOutboundQueue() {
   processing_connections_.erase(new_end, processing_connections_.end());
   for (auto& conn : processing_connections_) {
     if (conn) {
-      conn->OutboundQueued();
+      // If this fails, the connection will be destroyed.
+      auto ignored_status = conn->OutboundQueued();
     }
   }
   processing_connections_.clear();

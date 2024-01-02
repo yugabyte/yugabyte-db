@@ -41,6 +41,8 @@
 using std::string;
 
 DECLARE_bool(TEST_docdb_sort_weak_intents);
+DECLARE_bool(use_fast_next_for_iteration);
+DECLARE_int32(max_nexts_to_avoid_seek);
 
 namespace yb {
 namespace docdb {
@@ -174,9 +176,6 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
   void TestClusteredFilterSubsetCol2();
   void TestClusteredFilterMultiIn();
   void TestClusteredFilterEmptyIn();
-  void TestClusteredFilterDiscreteScan();
-  void TestClusteredFilterRangeScan();
-  void TestSimpleRangeScan();
   void SetupDocRowwiseIteratorData();
   void TestDocRowwiseIterator();
   void TestDocRowwiseIteratorDeletedDocument();
@@ -200,6 +199,7 @@ class DocRowwiseIteratorTest : public DocDBTestBase {
   // as deleted.
   void TestDeletedDocumentUsingLivenessColumnDelete();
   void TestPartialKeyColumnsProjection();
+  void TestMaxNextsToAvoidSeek();
 
   void ValidateIterator(
       YQLRowwiseIteratorIf *iter,
@@ -1922,6 +1922,106 @@ void DocRowwiseIteratorTest::TestPartialKeyColumnsProjection() {
   ASSERT_EQ(1, row.ColumnCount());
 }
 
+void DocRowwiseIteratorTest::TestMaxNextsToAvoidSeek() {
+  constexpr auto kNumNonKeyCols = 5;
+  const auto ht = HybridTime::FromMicros(1000);
+
+  ASSERT_OK(SetPrimitive(
+      DocPath(kEncodedDocKey1, KeyEntryValue::kLivenessColumn),
+      ValueRef(dockv::ValueEntryType::kNullLow),
+      ht));
+  for (int i = 1; i <= kNumNonKeyCols; ++i) {
+    ASSERT_OK(SetPrimitive(
+        DocPath(kEncodedDocKey1, KeyEntryValue::MakeColumnId(ColumnId(10 * i))),
+        QLValue::PrimitiveInt64(10000 * i),
+        ht));
+  }
+  ASSERT_OK(SetPrimitive(
+      DocPath(kEncodedDocKey2, KeyEntryValue::kLivenessColumn),
+      ValueRef(dockv::ValueEntryType::kNullLow),
+      ht));
+  ASSERT_DOCDB_DEBUG_DUMP_STR_EQ(R"#(
+SubDocKey(DocKey([], ["row1", 11111]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(10); HT{ physical: 1000 }]) -> 10000
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(20); HT{ physical: 1000 }]) -> 20000
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(30); HT{ physical: 1000 }]) -> 30000
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(40); HT{ physical: 1000 }]) -> 40000
+SubDocKey(DocKey([], ["row1", 11111]), [ColumnId(50); HT{ physical: 1000 }]) -> 50000
+SubDocKey(DocKey([], ["row2", 22222]), [SystemColumnId(0); HT{ physical: 1000 }]) -> null
+      )#");
+
+  // Test each combination of
+  // - use_fast_next_for_iteration: false, true.
+  // - max_nexts_to_avoid_seek: 0, 1, ..., kNumNonKeyCols - 1.
+  // - use_seek_forward: false, true.
+  for (bool use_fast_next : {false, true}) {
+    FLAGS_use_fast_next_for_iteration = use_fast_next;
+    for (FLAGS_max_nexts_to_avoid_seek = 0;
+         FLAGS_max_nexts_to_avoid_seek <= kNumNonKeyCols + 1;
+         ++FLAGS_max_nexts_to_avoid_seek) {
+      for (bool use_seek_forward : {false, true}) {
+        LOG(INFO) << "Testing fast_next=" << FLAGS_use_fast_next_for_iteration
+                  << ", max_nexts=" << FLAGS_max_nexts_to_avoid_seek
+                  << ", seek_forward=" << use_seek_forward;
+
+        uint64_t num_nexts;
+        uint64_t num_seeks;
+        {
+          IntentAwareIterator iter(
+              doc_db(), rocksdb::ReadOptions(),
+              ReadOperationData::TEST_FromReadTimeMicros(2000),
+              TransactionOperationContext());
+
+          LOG(INFO) << "Seek to first key";
+          iter.Seek(DocKey());
+          if (VLOG_IS_ON(1)) {
+            iter.DebugDump();
+          }
+          // Seek must be followed by fetch before next seek: there is a debug build sanity check.
+          ASSERT_OK(iter.Fetch());
+
+          // Remember stats.
+          num_nexts = regular_db_options_.statistics->getTickerCount(
+              rocksdb::Tickers::NUMBER_DB_NEXT);
+          num_seeks = regular_db_options_.statistics->getTickerCount(
+              rocksdb::Tickers::NUMBER_DB_SEEK);
+
+          LOG(INFO) << "Seek to second key";
+          if (use_seek_forward) {
+            iter.SeekForward(kEncodedDocKey2);
+          } else {
+            iter.Seek(kEncodedDocKey2);
+          }
+          if (VLOG_IS_ON(1)) {
+            iter.DebugDump();
+          }
+
+          // If fast nexts are enabled, next stats aren't updated until internal iter is destroyed,
+          // so do that now.  (We have to trust that the first seek did not incur any nexts.)
+        }
+
+        LOG(INFO) << "Check stats delta upon executing the second seek";
+        EXPECT_EQ(
+            FLAGS_max_nexts_to_avoid_seek,
+            (regular_db_options_.statistics->getTickerCount(rocksdb::Tickers::NUMBER_DB_NEXT)
+             - num_nexts));
+        // Expect 1 seek if max nexts are exhausted and target key was not reached; 0 otherwise.
+        if (FLAGS_max_nexts_to_avoid_seek == kNumNonKeyCols + 1) {
+          EXPECT_EQ(
+              0,
+              (regular_db_options_.statistics->getTickerCount(rocksdb::Tickers::NUMBER_DB_SEEK)
+               - num_seeks));
+        } else {
+          EXPECT_EQ(
+              1,
+              (regular_db_options_.statistics->getTickerCount(rocksdb::Tickers::NUMBER_DB_SEEK)
+               - num_seeks));
+        }
+      }
+    }
+  }
+}
+
 TEST_F(DocRowwiseIteratorTest, ClusteredFilterTestRange) {
   TestClusteredFilterRange();
 }
@@ -2032,6 +2132,10 @@ TEST_F(DocRowwiseIteratorTest, DeletedDocumentUsingLivenessColumnDeleteTest) {
 
 TEST_F(DocRowwiseIteratorTest, PartialKeyColumnsProjection) {
   TestPartialKeyColumnsProjection();
+}
+
+TEST_F(DocRowwiseIteratorTest, MaxNextsToAvoidSeek) {
+  TestMaxNextsToAvoidSeek();
 }
 
 }  // namespace docdb

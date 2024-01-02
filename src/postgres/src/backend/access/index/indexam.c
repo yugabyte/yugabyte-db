@@ -602,7 +602,12 @@ index_getnext_tid(IndexScanDesc scan, ScanDirection direction)
 
 		return NULL;
 	}
-	Assert(ItemPointerIsValid(&scan->xs_heaptid));
+	/*
+	 * YB should not set TID (neither t_self nor t_ybctid).  Update this code
+	 * after merging with master D31232.
+	 */
+	Assert(IsYBRelation(scan->indexRelation) ||
+		   ItemPointerIsValid(&scan->xs_heaptid));
 
 	pgstat_count_index_tuples(scan->indexRelation, 1);
 
@@ -697,15 +702,24 @@ index_getnext_slot(IndexScanDesc scan, ScanDirection direction, TupleTableSlot *
 			if (tid == NULL)
 				break;
 
-			Assert(ItemPointerEquals(tid, &scan->xs_heaptid));
+			/*
+			 * YB should not set TID (neither t_self nor t_ybctid).  Update
+			 * this code after merging with master D31232.
+			 */
+			Assert(IsYBRelation(scan->indexRelation) ||
+				   ItemPointerEquals(tid, &scan->xs_heaptid));
 		}
 
 		/*
 		 * Fetch the next (or only) visible heap tuple for this index entry.
 		 * If we don't find anything, loop around and grab the next TID from
 		 * the index.
+		 *
+		 * YB should not set TID (neither t_self nor t_ybctid).  Update this
+		 * code after merging with master D31232.
 		 */
-		Assert(ItemPointerIsValid(&scan->xs_heaptid));
+		Assert(IsYBRelation(scan->indexRelation) ||
+			   ItemPointerIsValid(&scan->xs_heaptid));
 		if (index_fetch_heap(scan, slot))
 			return true;
 	}

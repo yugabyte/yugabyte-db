@@ -12,6 +12,7 @@
 
 #include "yb/yql/pgwrapper/libpq_test_base.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 using std::string;
 
@@ -289,7 +290,7 @@ TEST_F(PgLibPqErrTest, UpdateWithoutCommit) {
 
         // Check column 'v' vs 'seed'.
         for (int i = 0; i != lines; ++i) {
-          int32_t v = ASSERT_RESULT(GetInt32(res->get(), i, 1));
+          auto v = ASSERT_RESULT(GetValue<int32_t>(res->get(), i, 1));
           ASSERT_EQ(v, seed);
         }
         break;
@@ -316,7 +317,7 @@ TEST_F(PgLibPqErrTest, UpdateWithoutCommit) {
 
     // Check column 'v' vs original value 'kSeed'.
     for (int i = 0; i != lines; ++i) {
-      int32_t v = ASSERT_RESULT(GetInt32(res.get(), i, 1));
+      auto v = ASSERT_RESULT(GetValue<int32_t>(res.get(), i, 1));
       ASSERT_EQ(v, kSeed);
     }
   }

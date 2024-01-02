@@ -39,7 +39,7 @@ You prepare the host as follows:
 
 - For a Docker-based installation, YugabyteDB Anywhere uses [Replicated scheduler](https://www.replicated.com/) for software distribution and container management. You need to ensure that the host can pull containers from the [Replicated Docker Registries](https://help.replicated.com/docs/native/getting-started/docker-registries/).
 
-  Replicated installs a compatible Docker version if its not pre-installed on the host. The current supported Docker version is 19.03.n.
+  Replicated installs a compatible Docker version if its not pre-installed on the host. The current supported Docker version is 20.10.n.
 
 - For a Kubernetes-based installation, you need to ensure that the host can pull container images from the [Quay.io](https://quay.io/) container registry.
 
@@ -51,7 +51,7 @@ Installing YugabyteDB Anywhere on Airgapped hosts, without access to any Interne
   `https://downloads.yugabyte.com`
   `https://download.docker.com`
 
-- Ensuring that Docker Engine version 19.03.n is available. If it is not installed, you need to follow the procedure described in [Installing Docker in airgapped](https://www.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/).
+- Ensuring that Docker Engine version 20.10.n is available. If it is not installed, you need to follow the procedure described in [Installing Docker in airgapped](https://www.replicated.com/docs/kb/supporting-your-customers/installing-docker-in-airgapped/).
 - Ensuring that the following ports are open on the YugabyteDB Anywhere host:
   - `8800` – HTTP access to the Replicated UI
   - `80` – HTTP access to the YugabyteDB Anywhere UI

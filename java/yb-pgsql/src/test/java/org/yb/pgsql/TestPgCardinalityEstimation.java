@@ -19,7 +19,6 @@ import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_LIMIT;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_MERGE_JOIN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_SEQ_SCAN;
 import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_SORT;
-import static org.yb.pgsql.ExplainAnalyzeUtils.NODE_YB_SEQ_SCAN;
 import org.yb.pgsql.ExplainAnalyzeUtils.PlanCheckerBuilder;
 import org.yb.pgsql.ExplainAnalyzeUtils.TopLevelCheckerBuilder;
 
@@ -167,7 +166,7 @@ public class TestPgCardinalityEstimation extends BasePgSQLTest {
                               .planRows(Checkers.greater(1))
                               .plans(
                                   makePlanBuilder()
-                                      .nodeType(NODE_YB_SEQ_SCAN)
+                                      .nodeType(NODE_SEQ_SCAN)
                                       .relationName(TABLE_NAME)
                                       .alias("t2")
                                       .planRows(Checkers.equal(TABLE_ROWS))
@@ -185,7 +184,7 @@ public class TestPgCardinalityEstimation extends BasePgSQLTest {
                                                   .nodeType(NODE_SORT)
                                                   .planRows(Checkers.greater(1))
                                                   .plans(makePlanBuilder()
-                                                      .nodeType(NODE_YB_SEQ_SCAN)
+                                                      .nodeType(NODE_SEQ_SCAN)
                                                       .relationName(TABLE_NAME)
                                                       .alias("t1")
                                                       .planRows(Checkers.greater(1))
@@ -199,7 +198,7 @@ public class TestPgCardinalityEstimation extends BasePgSQLTest {
                                                   .nodeType(NODE_SORT)
                                                   .planRows(Checkers.equal(TABLE_ROWS))
                                                   .plans(makePlanBuilder()
-                                                      .nodeType(NODE_YB_SEQ_SCAN)
+                                                      .nodeType(NODE_SEQ_SCAN)
                                                       .relationName(TABLE_NAME)
                                                       .alias("t3")
                                                       .planRows(Checkers.equal(TABLE_ROWS))

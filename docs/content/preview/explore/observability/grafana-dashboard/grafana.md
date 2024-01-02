@@ -5,13 +5,14 @@ linkTitle: Grafana dashboard
 description: Learn about setting up the community dashboards with Prometheus data source using Grafana.
 menu:
   preview:
-    identifier: observability-2-macos
+    identifier: observability-grafana
     parent: explore-observability
     weight: 240
 type: docs
 ---
 
 You can create dashboards for your local YugabyteDB clusters using [Grafana](https://grafana.com/grafana/), an open source platform to perform visualization and analytics which lets you add queries and explore metrics to customize your graphs.
+
 To create dashboards, you need to add Prometheus metrics as a data source in Grafana. The visualization it provides gives a better understanding of the health and performance of your YugabyteDB clusters.
 
 In this tutorial, you use Grafana to populate dashboards with the metrics you collect using the [Prometheus integration](../../prometheus-integration/macos/).

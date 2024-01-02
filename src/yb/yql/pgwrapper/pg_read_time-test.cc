@@ -31,7 +31,6 @@
 
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(enable_wait_queues);
-DECLARE_bool(enable_deadlock_detection);
 DECLARE_uint64(max_clock_skew_usec);
 DECLARE_int32(ysql_max_write_restart_attempts);
 DECLARE_string(ysql_pg_conf_csv);
@@ -48,7 +47,6 @@ class PgReadTimeTest : public PgMiniTestBase {
   void SetUp() override {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_deadlock_detection) = true;
 
     // TODO: Remove the below guc setting once it becomes the default.
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = "yb_lock_pk_single_rpc=true";

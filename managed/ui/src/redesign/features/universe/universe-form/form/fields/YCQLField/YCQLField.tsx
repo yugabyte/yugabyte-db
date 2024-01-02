@@ -103,7 +103,7 @@ export const YCQLField = ({ disabled, enforceAuth }: YCQLFieldProps): ReactEleme
             </Box>
           )}
 
-          {ycqlAuthEnabled && !disabled && (
+          {(ycqlAuthEnabled || enforceAuth) && !disabled && (
             <Box display="flex" mt={3}>
               <Grid container spacing={3}>
                 <Grid item sm={12} lg={10}>

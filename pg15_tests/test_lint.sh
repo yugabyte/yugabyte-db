@@ -6,9 +6,17 @@ cd pg15_tests
 # All tests should start with "test_".
 diff <(find . -name '*.sh' | grep -v '^./test_' | sort) - <<EOT
 ./common.sh
-./run_all_tests.sh
+./run_passing_cxx_tests.sh
+./run_passing_java_tests.sh
+./run_shell_tests.sh
 ./run_test_n_times.sh
 EOT
+
+# passing_foo.tsv should be sorted and have no duplicates.
+find . -name 'passing_*.tsv' \
+  | while read -r tsv; do
+  LC_ALL=C sort -cu "$tsv"
+done
 
 find . -name '*.sh' \
   | grep '^./test_' \
@@ -24,6 +32,6 @@ EOT
   # All tests besides this one should not contain "/ysqlsh", which suggests
   # running the ysqlsh executable.  Instead, they should use the ysqlsh helper
   # function defined in common.sh.
-  [ "$test_file" != ./"${BASH_SOURCE[0]##*/}" ] && \
+  [ "$test_file" == ./"${BASH_SOURCE[0]##*/}" ] || \
     ! grep "/ysqlsh" "$test_file"
 done

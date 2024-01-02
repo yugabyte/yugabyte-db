@@ -239,7 +239,7 @@ void FullCompactionManager::DoScheduleFullCompactions(
           << ": tablet not found.";
       continue;
     }
-    Status s = tablet->TriggerFullCompactionIfNeeded(
+    Status s = tablet->TriggerManualCompactionIfNeeded(
         rocksdb::CompactionReason::kScheduledFullCompaction);
     if (s.ok()) {
       // Remove tablet from compaction times on successful schedule.

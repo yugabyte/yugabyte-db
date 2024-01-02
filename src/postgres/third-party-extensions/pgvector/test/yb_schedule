@@ -1,0 +1,12 @@
+# third-party-extensions/pgvector/test/yb_schedule
+#
+####################################################################################################
+# pgvector Extension Testsuite
+# Setup test was added to create the vector extension
+#
+####################################################################################################
+test: yb_setup
+test: cast
+test: functions
+test: input
+test: yb_order_by

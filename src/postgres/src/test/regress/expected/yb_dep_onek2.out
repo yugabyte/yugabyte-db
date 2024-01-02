@@ -3,16 +3,18 @@
 --
 -- The queries are taken from the relevant dependency files.  Since it is
 -- faster to run this rather than each file itself (e.g. dependency chain
--- create_function_1, create_type, create_table, copy, create_index), prefer
--- using this.
+-- test_setup, create_index), prefer using this.
 --
 -- DEPENDENCY: this file must be run after onek has been populated (by
 -- yb_dep_onek).
 --
 --
--- create_misc
+-- test_setup
 --
 CREATE TABLE onek2 AS SELECT * FROM onek;
+VACUUM ANALYZE onek2;
+WARNING:  VACUUM will be ignored
+ERROR:  Transaction for catalog table write operation 'pg_statistic' not found
 --
 -- yb_pg_create_index
 -- (With modification to make them all nonconcurrent for performance.)
@@ -26,7 +28,3 @@ NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
 CREATE INDEX NONCONCURRENTLY onek2_stu1_prtl ON onek2 USING btree(stringu1 name_ops ASC)
 	where onek2.stringu1 >= 'J' and onek2.stringu1 < 'K';
 NOTICE:  index method "btree" was replaced with "lsm" in YugabyteDB
---
--- select
---
-ANALYZE onek2;

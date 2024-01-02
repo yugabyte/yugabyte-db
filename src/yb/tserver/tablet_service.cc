@@ -210,6 +210,7 @@ DEFINE_UNKNOWN_bool(enable_ysql, true,
             "server as a child process.");
 
 DECLARE_int32(ysql_transaction_abort_timeout_ms);
+DECLARE_bool(ysql_yb_disable_wait_for_backends_catalog_version);
 
 DEFINE_test_flag(bool, fail_alter_schema_after_abort_transactions, false,
                  "If true, setup an error status in AlterSchema and respond success to rpc call. "
@@ -519,16 +520,29 @@ void TabletServiceAdminImpl::GetSafeTime(
   HybridTime min_hybrid_time(HybridTime::kMin);
   if (req->has_min_hybrid_time_for_backfill()) {
     min_hybrid_time = HybridTime(req->min_hybrid_time_for_backfill());
-    // For Transactional tables, wait until there are no pending transactions that started
+
+    // For YSQL, it is not possible for transactions to exist that use the old permissions.  This is
+    // especially the case after commit a1729c352896e919f462c614770da443b9982c0a introduces
+    // ysql_yb_disable_wait_for_backends_catalog_version=false, which explicitly waits on all
+    // possible transactions.  Before that commit, the best-effort, unsafe
+    // ysql_yb_index_state_flags_update_delay=1000 setting was used to guarantee that.  Even though
+    // correctness guarantees are generally flawed when solely relying on
+    // ysql_yb_index_state_flags_update_delay=1000, make a best effort to reduce the scope of that
+    // flaw by aborting transactions in case ysql_yb_disable_wait_for_backends_catalog_version=true.
+    //
+    // For YCQL Transactional tables, wait until there are no pending transactions that started
     // prior to min_hybrid_time. These may not have updated the index correctly, if they
     // happen to commit after the backfill scan, it is possible that they may miss updating
     // the index because the some operations may have taken place prior to min_hybrid_time.
     //
-    // For Non-Txn tables, it is impossible to know at the tservers whether or not an "old
+    // For YCQL Non-Txn tables, it is impossible to know at the tservers whether or not an "old
     // transaction" is still active. To avoid having such old transactions, we assume a
     // bound on the length of such transactions (during the backfill process) and wait it
     // out.
-    if (!tablet.tablet->transaction_participant()) {
+    if (tablet.tablet->table_type() == TableType::PGSQL_TABLE_TYPE &&
+        !FLAGS_ysql_yb_disable_wait_for_backends_catalog_version) {
+      // No need to wait-for/abort transactions.
+    } else if (!tablet.tablet->transaction_participant()) {
       min_hybrid_time = min_hybrid_time.AddMilliseconds(
           FLAGS_index_backfill_upperbound_for_user_enforced_txn_duration_ms);
       VLOG(2) << "GetSafeTime called on a user enforced transaction tablet "
@@ -2385,8 +2399,12 @@ void ConsensusServiceImpl::LeaderStepDown(const LeaderStepDownRequestPB* req,
     return;
   }
   Status s = scope->StepDown(req, resp);
-  LOG(INFO) << "Leader stepdown request " << req->ShortDebugString() << " success. Resp code="
-            << TabletServerErrorPB::Code_Name(resp->error().code());
+  if (!resp->has_error()) {
+    LOG(INFO) << "Leader stepdown request " << req->ShortDebugString() << " failed. Resp code="
+              << TabletServerErrorPB::Code_Name(resp->error().code());
+  } else {
+    LOG(INFO) << "Leader stepdown request " << req->ShortDebugString() << " succeeded";
+  }
   scope.CheckStatus(s, resp);
 }
 

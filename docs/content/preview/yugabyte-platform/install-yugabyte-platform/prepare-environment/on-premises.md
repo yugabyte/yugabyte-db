@@ -60,7 +60,7 @@ type: docs
 
 To run a YugabyteDB on a private cloud, you need to prepare one computer to run YugabyteDB Anywhere. This computer is in turn used to install and manage the nodes onto which you will deploy YugabyteDB universes.
 
-For information on the requirements for the node running YugabyteDB Anywhere, refer to [Prerequisites](../../prerequisites/default/).
+For information on the requirements for the node running YugabyteDB Anywhere, refer to [YBA prerequisites](../../prerequisites/installer/).
 
 For information on preparing the nodes onto which you will deploy universes, refer to [Prepare nodes for on-premises deployment](../../prepare-on-prem-nodes/).
 

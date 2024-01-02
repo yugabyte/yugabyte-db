@@ -61,6 +61,8 @@ using std::vector;
 
 using namespace std::literals;
 
+DECLARE_bool(TEST_disable_thread_stack_collection_wait);
+
 namespace yb {
 
 class DebugUtilTest : public YBTest {
@@ -502,4 +504,65 @@ TEST_F(DebugUtilTest, LongOperationTracker) {
   }
 }
 
+TEST_F(DebugUtilTest, TestGetStackTraceWhileCreatingThreads) {
+  // This test makes sure we can collect stack traces while threads are being created.
+  // We create 10 threads that create threads in a loop. Then we create 100 threads that collect
+  // stack traces from the other 10 threads.
+  std::atomic<bool> stop = false;
+  TestThreadHolder thread_holder;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_disable_thread_stack_collection_wait) = true;
+
+  // Run this once so that all first time initialization routines are executed.
+  DumpThreadStack(Thread::CurrentThreadIdForStack());
+
+  std::set<ThreadIdForStack> thread_ids_to_dump;
+  auto dump_threads_fn = [&thread_ids_to_dump, &stop]() {
+    int64_t count = 0;
+    while (!stop.load(std::memory_order_acquire)) {
+      for (auto& tid : thread_ids_to_dump) {
+        DumpThreadStack(tid);
+        count++;
+      }
+    }
+    LOG(INFO) << "Dumped " << count << " threads";
+  };
+
+  auto create_threads_fn = [&stop]() {
+    int64_t count = 0, failed = 0;
+    while (!stop.load(std::memory_order_acquire)) {
+      scoped_refptr<Thread> thread;
+      auto s = Thread::Create(
+          "test", "test thread", []() {}, &thread);
+      if (!s.ok()) {
+        failed++;
+        continue;
+      }
+      thread->Join();
+      count++;
+    }
+    LOG(INFO) << "Successfully created " << count << " threads, Failed to create " << failed
+              << " threads";
+  };
+
+  std::vector<scoped_refptr<Thread>> thread_creator_threads;
+  for (int i = 0; i < 10; i++) {
+    scoped_refptr<Thread> t;
+    ASSERT_OK(Thread::Create("test", "test thread", create_threads_fn, &t));
+    thread_ids_to_dump.insert(t->tid_for_stack());
+    thread_creator_threads.push_back(std::move(t));
+  }
+
+  for (int i = 0; i < 100; i++) {
+    thread_holder.AddThreadFunctor(dump_threads_fn);
+  }
+
+  SleepFor(1min);
+
+  stop.store(true, std::memory_order_release);
+
+  for (auto& creator_thread : thread_creator_threads) {
+    creator_thread->Join();
+  }
+  thread_holder.Stop();
+}
 } // namespace yb

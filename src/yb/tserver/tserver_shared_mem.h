@@ -110,8 +110,8 @@ class SharedExchange {
   ~SharedExchange();
 
   std::byte* Obtain(size_t required_size);
-  Result<Slice> SendRequest(
-      boost::interprocess::message_queue* message_queue, CoarseTimePoint deadline);
+  Result<Slice> SendRequest(CoarseTimePoint deadline);
+  bool ReadyToSend() const;
   void Respond(size_t size);
   Result<size_t> Poll();
   void SignalStop();

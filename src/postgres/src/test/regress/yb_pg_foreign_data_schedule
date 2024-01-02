@@ -4,7 +4,4 @@
 # Postgres Testsuites: Porting from PostgreSQL original tests.
 # This includes tests related to postgres foreign data.
 ####################################################################################################
-# Dependency for `yb_pg_foreign_data`
-test: yb_pg_create_function_0
-
 test: yb_pg_foreign_data

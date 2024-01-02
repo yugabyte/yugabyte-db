@@ -8,6 +8,7 @@
 #include <kiwi.h>
 #include <machinarium.h>
 #include <odyssey.h>
+#include <time.h>
 
 void od_router_init(od_router_t *router, od_global_t *global)
 {
@@ -239,6 +240,13 @@ static inline int od_router_expire_server_tick_cb(od_server_t *server,
 		 */
 		if (*count > route->rule->storage->server_max_routing)
 			return 0;
+
+		/*
+		 * Dont expire the server connection if the min size is reached.
+		 */
+		if (od_server_pool_total(&route->server_pool) <=
+		    route->rule->min_pool_size)
+			return 0;
 	} // else remove server because we are forced to
 
 	/* remove server for server pool */
@@ -369,7 +377,8 @@ od_router_status_t od_router_route(od_router_t *router, od_client_t *client)
 			     .database_len = startup->database.value_len,
 			     .user_len = startup->user.value_len,
 			     .physical_rep = false,
-			     .logical_rep = false };
+			     .logical_rep = false,
+			     .yb_stats_index = -1};
 	if (rule->storage_db) {
 		id.database = rule->storage_db;
 		id.database_len = strlen(rule->storage_db) + 1;
@@ -550,6 +559,12 @@ od_router_status_t od_router_attach(od_router_t *router,
 	(void)router;
 	od_route_t *route = client_for_router->route;
 	assert(route != NULL);
+	od_instance_t *instance = router->global->instance;
+
+	struct timespec start_time, end_time;
+	long long time_taken_to_attach_server_ns;
+
+	clock_gettime(CLOCK_MONOTONIC, &start_time);
 
 	od_route_lock(route);
 
@@ -667,6 +682,16 @@ attach:
 	/* maybe restore read events subscription */
 	if (restart_read)
 		od_io_read_start(&external_client->io);
+
+    // Record the end time
+    clock_gettime(CLOCK_MONOTONIC, &end_time);
+
+    // Calculate the time taken in nanoseconds
+    time_taken_to_attach_server_ns =
+	    (end_time.tv_sec - start_time.tv_sec) * 1000000000LL +
+	    (end_time.tv_nsec - start_time.tv_nsec);
+    od_stat_t *stats = &route->stats;
+    od_atomic_u64_add(&stats->wait_time, time_taken_to_attach_server_ns);
 
 	return OD_ROUTER_OK;
 }

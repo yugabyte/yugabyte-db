@@ -110,10 +110,6 @@ INSERT INTO ybaggtest2 VALUES (1), (2), (3);
 \set ios '/*+IndexOnlyScan(ybaggtest2 ybaggtest2index)*/'
 \set query 'SELECT COUNT(*) FROM ybaggtest2'
 :runnois;
--- TODO(#16417): update the following three index only scan explains to have
--- "Partial Aggregate: true" because pushdown will be allowed once the index's
--- constant 1 column is not requested by the aggregate node to the index only
--- scan node when using CP_SMALL_TLIST.
 \set query 'SELECT COUNT(a) FROM ybaggtest2'
 :runnois;
 \set query 'SELECT COUNT(*), COUNT(a) FROM ybaggtest2'
@@ -294,6 +290,48 @@ INSERT INTO tmp SELECT g, -g FROM generate_series(1, 10) g;
 \set isquery ':query WHERE j < 0'
 -- TODO(#18619): change the following to :run;
 :runnois;
+
+--
+-- Prepared statements.
+--
+CREATE TABLE ptest(k int, i int, v int, primary key(k asc));
+CREATE INDEX NONCONCURRENTLY ptestindex on ptest(i asc);
+INSERT INTO ptest select i, i + 1, i + 2 from generate_series(1, 10) i;
+PREPARE iss as select sum(k) from ptest where k = ANY($1);
+PREPARE ioss as select sum(i) from ptest where i = ANY($1);
+\set prm 'ARRAY[1, 2]'
+\set issexec 'EXECUTE iss(:prm)'
+\set iossexec 'EXECUTE ioss(:prm)'
+\set exec ':explain :issexec; :explain :iossexec; :issexec; :iossexec;'
+:exec
+-- repeat multiple times to make sure the statements are not replanned and cached plan is used
+\set prm 'ARRAY[3, 4]'
+:exec
+\set prm 'ARRAY[5, 6]'
+:exec
+\set prm 'ARRAY[7, 8]'
+:exec
+\set prm 'ARRAY[9, 10]'
+:exec
+\set prm 'ARRAY[11, 12]'
+:exec
+DEALLOCATE iss;
+DEALLOCATE ioss;
+
+-- Internal parameters test
+CREATE TABLE nlptest (v1 int, v2 int);
+INSERT INTO nlptest SELECT i*2-1, i*2 FROM generate_series(1,6) i;
+/*+ IndexScan(t2) NestLoop(t1 t2) Leading((t1 t2)) */
+SELECT * FROM (SELECT v1, v2 FROM nlptest t1) AS vw1,
+    LATERAL(SELECT sum(k) FROM ptest t2 WHERE k = ANY(ARRAY[vw1.v1, vw1.v2])) AS vw2
+ORDER BY v1;
+/*+ IndexScan(t2) NestLoop(t1 t2) Leading((t1 t2)) */
+SELECT * FROM (SELECT v1, v2 FROM nlptest t1) AS vw1,
+    LATERAL(SELECT sum(i) FROM ptest t2 WHERE i = ANY(ARRAY[vw1.v1, vw1.v2])) AS vw2
+ORDER BY v1;
+
+DROP TABLE ptest;
+DROP TABLE nlptest;
 
 --
 -- Colocation.

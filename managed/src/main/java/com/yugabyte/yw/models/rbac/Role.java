@@ -1,12 +1,14 @@
+// Copyright (c) Yugabyte, Inc.
+
 package com.yugabyte.yw.models.rbac;
 
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_ONLY;
 import static io.swagger.annotations.ApiModelProperty.AccessMode.READ_WRITE;
-import static play.mvc.Http.Status.BAD_REQUEST;
+import static play.mvc.Http.Status.NOT_FOUND;
 
 import com.fasterxml.jackson.annotation.JsonFormat;
 import com.yugabyte.yw.common.PlatformServiceException;
-import com.yugabyte.yw.common.rbac.PermissionInfoIdentifier;
+import com.yugabyte.yw.common.rbac.Permission;
 import com.yugabyte.yw.models.helpers.PermissionDetails;
 import io.ebean.Finder;
 import io.ebean.Model;
@@ -69,6 +71,11 @@ public class Role extends Model {
   @WhenModified
   private Date updatedOn;
 
+  /**
+   * This shows whether the role is a built-in role or user created role. System roles are the
+   * SuperAdmin, Admin, BackupAdmin, ReadOnly, ConnectOnly. Custom roles are the user created roles
+   * with custom permissions.
+   */
   public enum RoleType {
     @EnumValue("System")
     System,
@@ -95,7 +102,7 @@ public class Role extends Model {
       String name,
       String description,
       RoleType roleType,
-      Set<PermissionInfoIdentifier> permissionList) {
+      Set<Permission> permissionList) {
     Role role =
         new Role(
             UUID.randomUUID(),
@@ -110,7 +117,7 @@ public class Role extends Model {
     return role;
   }
 
-  public void updateRole(String description, Set<PermissionInfoIdentifier> permissionList) {
+  public void updateRole(String description, Set<Permission> permissionList) {
     if (description != null) {
       this.description = description;
     }
@@ -133,7 +140,7 @@ public class Role extends Model {
     Role role = get(customerUUID, roleUUID);
     if (role == null) {
       throw new PlatformServiceException(
-          BAD_REQUEST,
+          NOT_FOUND,
           String.format("Invalid role UUID '%s' for customer '%s'.", roleUUID, customerUUID));
     }
     return role;
@@ -141,6 +148,16 @@ public class Role extends Model {
 
   public static Role get(UUID customerUUID, String name) {
     return find.query().where().eq("customer_uuid", customerUUID).eq("name", name).findOne();
+  }
+
+  public static Role getOrBadRequest(UUID customerUUID, String name) {
+    Role role = get(customerUUID, name);
+    if (role == null) {
+      throw new PlatformServiceException(
+          NOT_FOUND,
+          String.format("Invalid role name '%s' for customer '%s'.", name, customerUUID));
+    }
+    return role;
   }
 
   public static List<Role> getAll(UUID customerUUID) {

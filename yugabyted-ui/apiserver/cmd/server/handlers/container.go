@@ -14,6 +14,7 @@ type Container struct {
         Client  *gocql.ClusterConfig
         Session *gocql.Session
         ConnMap map[helpers.PgClientConnectionParams]*pgxpool.Pool
+        helper  helpers.HelperContainer
 }
 
 // NewContainer returns an empty or an initialized container for your handlers.
@@ -22,8 +23,9 @@ func NewContainer(
     gocqlClient  *gocql.ClusterConfig,
     gocqlSession *gocql.Session,
     pgxConnMap   map[helpers.PgClientConnectionParams]*pgxpool.Pool,
+    helper       helpers.HelperContainer,
     ) (Container, error) {
-        c := Container{logger, gocqlClient, gocqlSession, pgxConnMap}
+        c := Container{logger, gocqlClient, gocqlSession, pgxConnMap, helper}
         return c, nil
 }
 
@@ -31,7 +33,7 @@ func (c *Container) GetSession() (*gocql.Session, error) {
     if c.Session == nil {
         session, err := c.Client.CreateSession()
         if err != nil {
-            c.logger.Errorf("Error initializing the gocql session")
+            c.logger.Errorf("Error initializing the gocql session: %s", err.Error())
             return nil, err
         }
         c.Session = session
@@ -69,10 +71,10 @@ func (c *Container) GetConnectionFromMap(host string, database ...string) (*pgxp
     //     Port:     helpers.PORT,
     //     Database: dbName,
     // }
-    conn, err := helpers.CreatePgClient(c.logger, pgConnectionParams)
+    conn, err := c.helper.CreatePgClient(c.logger, pgConnectionParams)
     if err != nil {
-        c.logger.Errorf("Error initializing the pgx client for Host %s and Database %s.",
-                            host, dbName)
+        c.logger.Errorf("Error initializing the pgx client for Host %s and Database %s: %s",
+                            host, dbName, err.Error())
         return conn, err
     }
     c.ConnMap[pgConnectionParams] = conn

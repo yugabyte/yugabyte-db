@@ -7,20 +7,28 @@
  * http://github.com/YugaByte/yugabyte-db/blob/master/licenses/POLYFORM-FREE-TRIAL-LICENSE-1.0.0.txt
  */
 
-import { useState } from "react";
 import { Tab } from "react-bootstrap";
+import { useSearchParam } from "react-use";
 import ManageRoles from "./roles/components/ManageRoles";
 import { YBTabsPanel } from "../../../components/panels";
+import { ManageUsers } from "./users/components/ManageUsers";
 
 export const RBACContainer = () => {
-    const [activeTab, setActiveTable] = useState('role');
+    const activeTab = useSearchParam('tab') ?? 'users';
     return (
         <YBTabsPanel
             activeTab={activeTab}
             defaultTab={'role'}
-            id="rbac-tab-pabel"
+            id="rbac-tab-panel"
             className="config-tabs"
         >
+            <Tab
+                eventKey="users"
+                title="users"
+                unmountOnExit
+            >
+                <ManageUsers />
+            </Tab>
             <Tab
                 eventKey="role"
                 title={"Role"}

@@ -23,7 +23,7 @@ YugabyteDB Managed uses both encryption in transit and encryption at rest to pro
 
 All communication between YugabyteDB Managed architecture domains is encrypted in transit using TLS. Likewise, all communication between clients or applications and clusters is encrypted in transit. Every cluster has its own certificates, generated when the cluster is created and signed by the Yugabyte internal PKI. Root and intermediate certificates are not extractable from the hardware security appliances.
 
-Data at rest, including clusters and backups, is AES-256 encrypted using native cloud provider technologies - S3 and EBS volume encryption for AWS, and server-side and persistent disk encryption for GCP. Encryption keys are managed by the cloud provider and anchored by hardware security appliances. Customers can enable YugabyteDB [encryption at rest](../../cloud-secure-clusters/managed-ear/) and [column-level encryption](../../../secure/column-level-encryption/) as additional security controls.
+Data at rest, including clusters and backups, is AES-256 encrypted using native cloud provider technologies - S3 and EBS volume encryption for AWS, Azure disk encryption, and server-side and persistent disk encryption for GCP. Encryption keys are managed by the cloud provider and anchored by hardware security appliances. Customers can enable YugabyteDB [encryption at rest](../../cloud-secure-clusters/managed-ear/) and [column-level encryption](../../../secure/column-level-encryption/) as additional security controls.
 
 YugabyteDB Managed provides DDoS and application layer protection, and automatically blocks network protocol and volumetric DDoS attacks.
 

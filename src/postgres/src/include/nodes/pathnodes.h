@@ -1180,10 +1180,10 @@ typedef struct ParamPathInfo
 
 
 /*
- * Outside of isolation level SERIALIZABLE, indicates whether locking happens
- * during an index scan, avoiding a second RPC to lock. For locking in
- * SERIALIZABLE isolation level, range locks are always taken, and the scan
- * code sees the isolation level directly.
+ * Indicates whether locking can happen during an index scan in all isolation
+ * levels, avoiding two RPCs to lock (read, then lock). This is set in all
+ * isolation levels because plans can be executed at a different isolation level
+ * from that of planning.
  */
 typedef enum YbLockMechanism
 {

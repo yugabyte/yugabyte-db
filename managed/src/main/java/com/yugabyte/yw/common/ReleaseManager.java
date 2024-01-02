@@ -276,6 +276,10 @@ public class ReleaseManager {
 
     public String getFilePath(Region region) {
       Architecture arch = region.getArchitecture();
+      return getFilePath(arch);
+    }
+
+    public String getFilePath(Architecture arch) {
       // Must be old style region or release with no architecture (or packages).
       if (arch == null || packages == null || packages.isEmpty()) {
         return filePath;
@@ -298,6 +302,11 @@ public class ReleaseManager {
       if (arch == null || packages == null || packages.isEmpty()) {
         return true;
       }
+      List<Package> matched = matchPackages(arch);
+      return matched.size() > 0;
+    }
+
+    public Boolean matchesArchitecture(Architecture arch) {
       List<Package> matched = matchPackages(arch);
       return matched.size() > 0;
     }
@@ -536,6 +545,7 @@ public class ReleaseManager {
       String ybReleasesPath = appConfig.getString(YB_RELEASES_PATH);
       Path chartPath =
           Paths.get(ybReleasesPath, version, String.format("yugabyte-%s-helm.tar.gz", version));
+      log.debug("Chart Path is {}", chartPath);
       String checksum = null;
       // Helm chart can be downloaded only from one path.
       if (metadata.s3 != null && metadata.s3.paths.helmChart != null) {
@@ -558,6 +568,8 @@ public class ReleaseManager {
       } else {
         chartPath = null;
       }
+      log.info("Chart Path is {}", chartPath);
+
       // Verify checksum.
       if (chartPath != null && !StringUtils.isBlank(checksum)) {
         checksum = checksum.toLowerCase();
@@ -602,7 +614,9 @@ public class ReleaseManager {
     validateSoftwareVersionOnCurrentYbaVersion(version);
     log.info("Adding release version {} with metadata {}", version, metadata.toString());
     downloadYbHelmChart(version, metadata);
+    log.info("Metadata after helm chart download {}", metadata);
     currentReleases.put(version, metadata);
+
     configHelper.loadConfigToDB(ConfigHelper.ConfigType.SoftwareReleases, currentReleases);
   }
 

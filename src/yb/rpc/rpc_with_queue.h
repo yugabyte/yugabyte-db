@@ -95,7 +95,7 @@ class ConnectionContextWithQueue : public ConnectionContextBase,
   void ListenIdle(IdleListener listener) override { idle_listener_ = std::move(listener); }
 
   void CallProcessed(InboundCall* call) ON_REACTOR_THREAD override;
-  void FlushOutboundQueue(Connection* conn);
+  void FlushOutboundQueue(Connection* conn) ON_REACTOR_THREAD;
   void FlushOutboundQueueAborted(const Status& status);
 
   const size_t max_concurrent_calls_;

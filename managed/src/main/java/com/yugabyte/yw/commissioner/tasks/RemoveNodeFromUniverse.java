@@ -98,7 +98,9 @@ public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
         throw new RuntimeException(msg);
       }
 
-      currentNode.validateActionOnState(NodeActionType.REMOVE);
+      if (isFirstTry()) {
+        currentNode.validateActionOnState(NodeActionType.REMOVE);
+      }
 
       preTaskActions();
 

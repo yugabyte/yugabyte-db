@@ -453,7 +453,7 @@ typedef struct IndexScan
 	double		estimated_num_nexts;
 	double		estimated_num_seeks;
 	int         yb_distinct_prefixlen; /* distinct index scan prefix */
-	YbLockMechanism	yb_lock_mechanism;	/* locks taken as part of the scan */
+	YbLockMechanism	yb_lock_mechanism;	/* locks possible as part of the scan */
 } IndexScan;
 
 /* ----------------

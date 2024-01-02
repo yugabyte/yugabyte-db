@@ -268,12 +268,12 @@ Status HandleResponse(uint64_t session_id,
   }
 
   if (response.error_status().size() > 0) {
-    // We do not currently expect more than one status, when we do, we need to decide how to handle
-    // them. Possible options: aggregate multiple statuses into one, discard all but one, etc.
-    DCHECK_EQ(response.error_status().size(), 1) << "Too many error statuses in the response";
-    for (const auto& pb : response.error_status()) {
-      return StatusFromPB(pb);
-    }
+    // TODO(14814, 18387):  We do not currently expect more than one status, when we do, we need
+    // to decide how to handle them. Possible options: aggregate multiple statuses into one, discard
+    // all but one, etc. Historically, for the one set of status fields (like error_message), new
+    // error message was overriting the previous one, that's why let's return the last entry from
+    // error_status to mimic that past behavior, refer AsyncRpc::Finished for details.
+    return StatusFromPB(*response.error_status().rbegin());
   }
 
   // Older nodes may still use deprecated fields for status, so keep legacy handling
@@ -410,7 +410,8 @@ struct PerformData {
         if (PgsqlRequestStatus(status) == PgsqlResponsePB::PGSQL_STATUS_SCHEMA_VERSION_MISMATCH) {
           table_cache.Invalidate(op->table()->id());
         }
-        VLOG(2) << SessionLogPrefix(session_id) << "Failed op " << idx << ": " << status;
+        VLOG_WITH_FUNC(2) << SessionLogPrefix(session_id) << "status: " << status
+                          << ", failed op[" << idx << "]: " << AsString(op);
         return status.CloneAndAddErrorCode(OpIndex(idx));
       }
       // In case of write operation, increase mutation counter
@@ -928,7 +929,8 @@ template <class DataPtr>
 Status PgClientSession::DoPerform(const DataPtr& data, CoarseTimePoint deadline,
                                   rpc::RpcContext* context) {
   auto& options = *data->req.mutable_options();
-  if (!options.ddl_mode() && xcluster_context_ && xcluster_context_->is_xcluster_read_only_mode()) {
+  auto ddl_mode = options.ddl_mode() || options.yb_non_ddl_txn_for_sys_tables_allowed();
+  if (!ddl_mode && xcluster_context_ && xcluster_context_->is_xcluster_read_only_mode()) {
     for (const auto& op : data->req.ops()) {
       if (op.has_write() && !op.write().is_backfill()) {
         // Only DDLs and index backfill is allowed in xcluster read only mode.

@@ -62,14 +62,20 @@ sudo apt update
 sudo apt upgrade -y
 packages=(
   autoconf
+  bison
   build-essential
+  cmake
   curl
-  gettext
   git
+  libtool
   locales
   ninja-build
+  patchelf
   pkg-config
+  python3
+  python3-venv
   rsync
+  unzip
 )
 sudo apt install -y "${packages[@]}"
 sudo locale-gen en_US.UTF-8

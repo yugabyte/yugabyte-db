@@ -790,14 +790,16 @@ namespace cdc {
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& tablets,
       const int tablet_idx, int64 index, int64 term, std::string key, int32_t write_id,
       int64 snapshot_time, const TableId table_id, int64 safe_hybrid_time,
-      int32_t wal_segment_index) {
+      int32_t wal_segment_index, const bool populate_checkpoint) {
     change_req->set_stream_id(stream_id.ToString());
     change_req->set_tablet_id(tablets.Get(tablet_idx).tablet_id());
-    change_req->mutable_from_cdc_sdk_checkpoint()->set_index(index);
-    change_req->mutable_from_cdc_sdk_checkpoint()->set_term(term);
-    change_req->mutable_from_cdc_sdk_checkpoint()->set_key(key);
-    change_req->mutable_from_cdc_sdk_checkpoint()->set_write_id(write_id);
-    change_req->mutable_from_cdc_sdk_checkpoint()->set_snapshot_time(snapshot_time);
+    if (populate_checkpoint) {
+      change_req->mutable_from_cdc_sdk_checkpoint()->set_index(index);
+      change_req->mutable_from_cdc_sdk_checkpoint()->set_term(term);
+      change_req->mutable_from_cdc_sdk_checkpoint()->set_key(key);
+      change_req->mutable_from_cdc_sdk_checkpoint()->set_write_id(write_id);
+      change_req->mutable_from_cdc_sdk_checkpoint()->set_snapshot_time(snapshot_time);
+    }
     change_req->set_wal_segment_index(wal_segment_index);
     if (!table_id.empty()) {
       change_req->set_table_id(table_id);
@@ -1178,7 +1180,8 @@ namespace cdc {
         count[2]++;
       } break;
       case RowMessage::DELETE: {
-        ASSERT_EQ(record.row_message().old_tuple(0).datum_int32(), expected_records.key);
+        ASSERT_EQ(record.row_message().old_tuple(0).datum_int32(),
+          expected_before_image_records.key);
         if (validate_old_tuple) {
           if (validate_third_column) {
             ASSERT_EQ(record.row_message().old_tuple_size(), 3);
@@ -1268,14 +1271,15 @@ namespace cdc {
       const CDCSDKCheckpointPB* cp,
       int tablet_idx,
       int64 safe_hybrid_time,
-      int wal_segment_index) {
+      int wal_segment_index,
+      const bool populate_checkpoint) {
     GetChangesRequestPB change_req;
     GetChangesResponsePB change_resp;
 
     if (cp == nullptr) {
       PrepareChangeRequest(
           &change_req, stream_id, tablets, tablet_idx, 0, 0, "", 0, 0, "", safe_hybrid_time,
-          wal_segment_index);
+          wal_segment_index, populate_checkpoint);
     } else {
       PrepareChangeRequest(
           &change_req, stream_id, tablets, *cp, tablet_idx, "", safe_hybrid_time,
@@ -2744,7 +2748,7 @@ namespace cdc {
         301 /* start */, 401 /* end */, &test_cluster_,
         {kValue2ColumnName, kValue3ColumnName, kValue4ColumnName}));
 
-    test_cluster()->mini_master(0)->tablet_peer()->tablet()->TEST_ForceRocksDBCompact();
+    CHECK_OK(test_cluster()->mini_master(0)->tablet_peer()->tablet()->ForceManualRocksDBCompact());
 
     xrepl::StreamId stream_id = ASSERT_RESULT(CreateDBStream(IMPLICIT));
     auto resp = ASSERT_RESULT(SetCDCCheckpoint(stream_id, tablets));

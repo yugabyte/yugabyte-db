@@ -625,20 +625,39 @@ def filter_for_os(archive_candidates: List[MetadataItem], os_type: str) -> List[
 def get_compilers(
         metadata_items: List[MetadataItem],
         os_type: Optional[str],
-        architecture: Optional[str]) -> list:
+        architecture: Optional[str],
+        is_linuxbrew: Optional[bool],
+        lto: Optional[str],
+        allow_older_os: bool) -> list:
     if not os_type:
         os_type = local_sys_conf().short_os_name_and_version()
     if not architecture:
         architecture = local_sys_conf().architecture
+    preferred_os_type: Optional[str] = None
+    if (allow_older_os and
+            not is_linuxbrew and
+            os_type != PREFERRED_OS_TYPE and
+            not os_type.startswith('mac')):
+        preferred_os_type = PREFERRED_OS_TYPE
 
     candidates: List[MetadataItem] = [
         metadata_item
         for metadata_item in metadata_items
-        if metadata_item.architecture == architecture
+        if metadata_item.architecture == architecture and
+        matches_maybe_empty(metadata_item.lto_type, lto)
     ]
 
-    candidates = filter_for_os(candidates, os_type)
-    compilers = sorted(set([metadata_item.compiler_type for metadata_item in candidates]))
+    os_candidates = filter_for_os(candidates, os_type)
+    if preferred_os_type:
+        candidates_for_preferred_os_type = filter_for_os(candidates, preferred_os_type)
+        os_candidates.extend(candidates_for_preferred_os_type)
+    if is_linuxbrew is not None:
+        os_candidates = [
+            candidate for candidate in os_candidates
+            if candidate.is_linuxbrew == is_linuxbrew
+        ]
+
+    compilers = sorted(set([metadata_item.compiler_type for metadata_item in os_candidates]))
 
     return compilers
 
@@ -776,7 +795,10 @@ def main() -> None:
         compiler_list = get_compilers(
             metadata_items=metadata_items,
             os_type=args.os_type,
-            architecture=args.architecture)
+            architecture=args.architecture,
+            is_linuxbrew=args.is_linuxbrew,
+            lto=args.lto,
+            allow_older_os=args.allow_older_os)
         for compiler in compiler_list:
             print(compiler)
         return

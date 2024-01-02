@@ -36,9 +36,10 @@ import {
   fetchUniverseTablesFailure,
   resetTablesList
 } from '../../../actions/tables';
-import { getPrimaryCluster } from '../../../utils/UniverseUtils';
 import { isDefinedNotNull, isNonEmptyObject } from '../../../utils/ObjectUtils';
 import { toast } from 'react-toastify';
+import { compareYBSoftwareVersions, getPrimaryCluster } from '../../../utils/universeUtilsTyped';
+import { sortVersion } from '../../releases';
 
 const mapDispatchToProps = (dispatch) => {
   return {
@@ -186,20 +187,7 @@ const mapDispatchToProps = (dispatch) => {
 };
 
 function mapStateToProps(state) {
-  // Detect if software update is available for this universe
-  const isUpdateAvailable = (state) => {
-    const isFirstVersionOlder = (first, second) => {
-      for (let idx = 0; idx < first.length; idx++) {
-        const first_ = parseInt(first[idx], 10);
-        const second_ = parseInt(second[idx], 10);
-        if (first_ < second_) {
-          return true;
-        } else if (first_ > second_) {
-          return false;
-        }
-      }
-      return false;
-    };
+  const getAvailableSoftwareUpdateCount = (state) => {
     try {
       if (
         isDefinedNotNull(state.universe.currentUniverse.data) &&
@@ -208,31 +196,20 @@ function mapStateToProps(state) {
         const primaryCluster = getPrimaryCluster(
           state.universe.currentUniverse.data.universeDetails.clusters
         );
-        const currentversion =
-          primaryCluster && (primaryCluster.userIntent.ybSoftwareVersion || undefined);
-        if (currentversion && state.customer.softwareVersions.length) {
-          for (let idx = 0; idx < state.customer.softwareVersions.length; idx++) {
-            const current = currentversion.split('-');
-            const iterator = state.customer.softwareVersions[idx].split('-');
-
-            const currentVersion = current[0];
-            const iteratorVersion = iterator[0];
-            const currentBuild = current[1] ? parseInt(current[1].substr(1), 10) : '';
-            const iteratorBuild = iterator[1] ? parseInt(iterator[1].substr(1), 10) : '';
-
-            // Compare versions till current won't be founded or founded an older one and compare release codes separately because "b9" > "b13"
-            if (
-              isFirstVersionOlder(iteratorVersion.split('.'), currentVersion.split('.')) ||
-              (iteratorVersion === currentVersion && iteratorBuild <= currentBuild)
-            )
-              return idx;
-          }
+        const currentVersion = primaryCluster?.userIntent?.ybSoftwareVersion ?? null;
+        if (currentVersion) {
+          const supportedSoftwareVersions =
+            state.universe.supportedReleases?.data?.toSorted(sortVersion) ?? [];
+          const matchIndex = supportedSoftwareVersions.findIndex(
+            (version) => compareYBSoftwareVersions(currentVersion, version) >= 0
+          );
+          return matchIndex === -1 ? 0 : matchIndex;
         }
       }
-      return false;
+      return 0;
     } catch (err) {
       console.error('Versions comparison failed with: ' + err);
-      return false;
+      return 0;
     }
   };
 
@@ -243,7 +220,7 @@ function mapStateToProps(state) {
     universeTables: state.tables.universeTablesList,
     modal: state.modal,
     providers: state.cloud.providers,
-    updateAvailable: isUpdateAvailable(state),
+    updateAvailable: getAvailableSoftwareUpdateCount(state),
     featureFlags: state.featureFlags,
     accessKeys: state.cloud.accessKeys,
     graph: state.graph

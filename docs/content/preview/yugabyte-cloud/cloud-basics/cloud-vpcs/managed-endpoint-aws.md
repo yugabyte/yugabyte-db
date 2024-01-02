@@ -43,7 +43,7 @@ Make sure that default security group in your application VPC allows internal co
 
 Make sure that the **Enable DNS resolution** and **Enable DNS hostnames** DNS settings in your application VPC are enabled. To access these settings, in the AWS [VPC console](https://console.aws.amazon.com/vpc/), select the VPC, click **Actions**, and choose **Edit VPC Settings**.
 
-To use AWS PrivateLink to connect your cluster to a VPC in AWS that hosts your application, first create a private service endpoint (PSE) on your cluster, then create an endpoint in AWS.
+To use AWS PrivateLink to connect your cluster to a VPC in AWS that hosts your application, first create a private service endpoint (PSE) for each region of your cluster, then create corresponding interface VPC endpoints in AWS.
 
 ## Create a PSE in YugabyteDB Managed
 
@@ -65,11 +65,11 @@ To create a PSE, do the following:
 
     - `yugabytedb_cluster` - name of your cluster.
     - `cluster_region` - cluster region where you want to place the PSE. Must match one of the regions where your cluster is deployed (for example, `us-west-2`), as well as the region where your application is deployed.
-    - `amazon_resource_names` - comma-separated list of the ARNs of security principals that you want to grant access. For example, `arn:aws:iam::<aws account number>:root`.
+    - `amazon_resource_names` - comma-separated list of the ARNs of [AWS principals](https://docs.aws.amazon.com/vpc/latest/privatelink/configure-endpoint-service.html#add-remove-permissions) that you want to grant access. For example, `arn:aws:iam::<aws account number>:root`.
 
 1. Note the endpoint ID in the response.
 
-    You can also display the endpoint ID by entering the following command:
+    You can also display the PSE endpoint ID by entering the following command:
 
     ```sh
     ybm cluster network endpoint list --cluster-name <yugabytedb_cluster>
@@ -96,7 +96,7 @@ ybm cluster network endpoint delete \
     --endpoint-id <endpoint_id> \
 ```
 
-## Create a private endpoint in AWS
+## Create an interface VPC endpoint in AWS
 
 You can create the AWS endpoint using the AWS [VPC console](https://console.aws.amazon.com/vpc/) or from the command line using the [AWS CLI](https://docs.aws.amazon.com/cli/).
 
@@ -116,7 +116,7 @@ To create an interface endpoint to connect to your cluster PSE, do the following
 
 1. Under **Service settings**, in the **Service name** field, enter the service name of your cluster PSE and click **Verify service**.
 
-    ![AWS endpoint service](/images/yb-cloud/managed-endpoint-aws-1.png)
+    ![AWS Create endpoint](/images/yb-cloud/managed-endpoint-aws-1.png)
 
 1. In the **VPC** field, enter the ID of the VPC where you want to create the AWS endpoint.
 
@@ -126,7 +126,7 @@ To create an interface endpoint to connect to your cluster PSE, do the following
 
 1. Under **Security groups**, select the security groups to associate with the endpoint network interfaces.
 
-    ![AWS endpoint service](/images/yb-cloud/managed-endpoint-aws-2.png)
+    ![AWS Create endpoint](/images/yb-cloud/managed-endpoint-aws-2.png)
 
 1. Click **Create endpoint**.
 
@@ -134,15 +134,17 @@ To create an interface endpoint to connect to your cluster PSE, do the following
 
 1. Select the endpoint and on the endpoint details page, click **Actions** and choose **Modify private DNS name** so that the **Private DNS names enabled** setting is set to Yes.
 
-    ![AWS endpoint service](/images/yb-cloud/managed-endpoint-aws-dns.png)
+    ![AWS Create endpoint](/images/yb-cloud/managed-endpoint-aws-dns.png)
 
 The initial endpoint status is _Pending_. After the link is validated, the status is _Available_. The private DNS name may take a few minutes to propagate before you can connect.
+
+You can now connect to your cluster from your application in AWS using your cluster PSE host address (for example, `pse-us-west-2.65f14618-f86a-41c2-a8c6-7004edbb965a.aws.ybdb.io`).
 
 ### Use AWS CLI
 
 #### Set up DNS support
 
-Check if `enableDnsHostnames` and `enableDnsSupport` are set to true for the application VPC where you want to add the VPC interface endpoint:
+Check if `enableDnsHostnames` and `enableDnsSupport` are set to true for the application VPC where you want to add the interface VPC endpoint:
 
 ```sh
 aws ec2 describe-vpc-attribute --vpc-id <application_vpc_id> --attribute enableDnsSupport
@@ -165,7 +167,7 @@ aws ec2 modify-vpc-attribute \
 
 #### Create a security group for the endpoint
 
-Create a separate security group for the interface endpoint to simplify security management (by default, AWS creates the endpoint service in the default security group) and add a rule to allow traffic to the YBM PSE. Note that the rule may take a few minutes to propagate to the endpoint NICs in the security group.
+Create a separate security group for the interface endpoint to simplify security management (by default, AWS creates the endpoint in the default security group) and add a rule to allow traffic to the YBM PSE. Note that the rule may take a few minutes to propagate to the endpoint NICs in the security group.
 
 ```sh
 aws ec2 create-security-group \
@@ -201,7 +203,7 @@ Replace values as follows:
 - `endpoint_security_group_id` - the security group ID of the endpoint
 - `application_security_group_id` - the security group ID of the application VPC
 
-#### Create a VPC interface endpoint
+#### Create an interface VPC endpoint
 
 Obtain the [subnet](https://docs.aws.amazon.com/vpc/latest/userguide/modify-subnets.html) IDs of the application VPC, as follows:
 
@@ -211,9 +213,9 @@ aws ec2 describe-subnets \
     --query "Subnets[*].SubnetId" 
 ```
 
-This command returns the subnet IDs of the of the application VPC (`subnet_ids` in the following command). Note that the endpoint service can connect only from a subnet in the same availability zone as the PSE. If there isn't a subnet in the same zone, create one.
+This command returns the subnet IDs of the application VPC (`subnet_ids` in the following command). Note that the interface endpoint can connect only from a subnet in the same availability zone as the PSE. If there isn't a subnet in the same zone, create one.
 
-Create the VPC interface endpoint, as follows:
+Create the interface VPC endpoint, as follows:
 
 ```sh
 aws ec2 create-vpc-endpoint \
@@ -229,7 +231,7 @@ Replace values as follows:
 
 - `application_vpc_id` - ID of the AWS VPC. Find this value on the VPC dashboard in your AWS account.
 - `pse_service_name` - service name of your PSE, which you noted down when creating the PSE.
-- `subnet_ids` - the subnet IDs, separated by whitespace, that your AWS VPC uses. You can also find these values under **Subnets** in your AWS VPC console. The endpoint service can connect only from a subnet in the same availability zone as the PSE. If there isn't a subnet in the same zone, [create one](https://docs.aws.amazon.com/vpc/latest/userguide/create-subnets.html). Always verify the [Availability Zone ID](https://docs.aws.amazon.com/ram/latest/userguide/working-with-az-ids.html) as availability zone names can vary across different accounts.
+- `subnet_ids` - the subnet IDs, separated by whitespace, that your application VPC uses. You can also find these values under **Subnets** in your AWS VPC console. The endpoint service can connect only from a subnet in the same availability zone as the PSE. If there isn't a subnet in the same zone, [create one](https://docs.aws.amazon.com/vpc/latest/userguide/create-subnets.html). Always verify the [Availability Zone ID](https://docs.aws.amazon.com/ram/latest/userguide/working-with-az-ids.html) as availability zone names can vary across different accounts.
 - `endpoint_security_group_id` - the security group ID of the endpoint
 
 ## Next steps

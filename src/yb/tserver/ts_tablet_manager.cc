@@ -270,6 +270,7 @@ DEFINE_test_flag(bool, disable_flush_on_shutdown, false,
                  "Whether to disable flushing memtable on shutdown.");
 
 DECLARE_bool(enable_wait_queues);
+DECLARE_bool(disable_deadlock_detection);
 DECLARE_bool(lazily_flush_superblock);
 
 DECLARE_string(rocksdb_compact_flush_rate_limit_sharing_mode);
@@ -567,7 +568,7 @@ Status TSTabletManager::Init() {
                                                                       &server_->proxy_cache(),
                                                                       local_peer_pb_.cloud_info());
 
-  if (FLAGS_enable_wait_queues) {
+  if (FLAGS_enable_wait_queues && !PREDICT_FALSE(FLAGS_disable_deadlock_detection)) {
     waiting_txn_registry_ = std::make_unique<docdb::LocalWaitingTxnRegistry>(
         client_future(), scoped_refptr<server::Clock>(server_->clock()), fs_manager_->uuid(),
         waiting_txn_pool());
@@ -832,10 +833,10 @@ Result<TabletPeerPtr> TSTabletManager::CreateNewTablet(
 
   // We must persist the consensus metadata to disk before starting a new
   // tablet's TabletPeer and Consensus implementation.
-  std::unique_ptr<ConsensusMetadata> cmeta;
-  RETURN_NOT_OK_PREPEND(ConsensusMetadata::Create(fs_manager_, tablet_id, fs_manager_->uuid(),
-                                                  config, consensus::kMinimumTerm, &cmeta),
-                        "Unable to create new ConsensusMeta for tablet " + tablet_id);
+  std::unique_ptr<ConsensusMetadata> cmeta = VERIFY_RESULT_PREPEND(
+      ConsensusMetadata::Create(
+          fs_manager_, tablet_id, fs_manager_->uuid(), config, consensus::kMinimumTerm),
+      "Unable to create new ConsensusMeta for tablet " + tablet_id);
   TabletPeerPtr new_peer = VERIFY_RESULT(CreateAndRegisterTabletPeer(meta, NEW_PEER));
 
   // We can run this synchronously since there is nothing to bootstrap.
@@ -1051,10 +1052,9 @@ Status TSTabletManager::ApplyTabletSplit(
     }
   });
 
-  std::unique_ptr<ConsensusMetadata> cmeta;
-  RETURN_NOT_OK(ConsensusMetadata::Create(
+  std::unique_ptr<ConsensusMetadata> cmeta = VERIFY_RESULT(ConsensusMetadata::Create(
       fs_manager_, tablet_id, fs_manager_->uuid(), committed_raft_config.value(),
-      split_op_id.term, &cmeta));
+      split_op_id.term));
   if (request->has_split_parent_leader_uuid()) {
     cmeta->set_leader_uuid(request->split_parent_leader_uuid().ToBuffer());
     LOG_WITH_PREFIX(INFO) << "Using Raft config: " << committed_raft_config->ShortDebugString();
@@ -1587,8 +1587,9 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
 
   consensus::RetryableRequestsManager retryable_requests_manager(
       tablet_id, fs_manager_, meta->wal_dir(),
-      MemTracker::FindOrCreateTracker(Format("tablet-$0", cmeta->tablet_id()), parent_mem_tracker,
-                                      AddToParent::kTrue, CreateMetrics::kFalse), kLogPrefix);
+      MemTracker::FindOrCreateTracker(Format("tablet-$0", cmeta->tablet_id()),
+          /* metric_name */ "PerTablet", parent_mem_tracker, AddToParent::kTrue,
+              CreateMetrics::kFalse), kLogPrefix);
   s = retryable_requests_manager.Init(server_->Clock());
   if(!s.ok()) {
     LOG(ERROR) << kLogPrefix << "Tablet failed to init retryable requests: " << s;
@@ -1674,7 +1675,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
       .retryable_requests_manager = &retryable_requests_manager,
       .bootstrap_retryable_requests = bootstrap_retryable_requests,
       .consensus_meta = cmeta.get(),
-      .pre_log_rollover_callback = [peer_weak_ptr, &kLogPrefix]() {
+      .pre_log_rollover_callback = [peer_weak_ptr, kLogPrefix]() {
         auto peer = peer_weak_ptr.lock();
         if (peer) {
           Status s = peer->SubmitFlushRetryableRequestsTask();

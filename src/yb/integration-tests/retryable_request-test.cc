@@ -39,6 +39,7 @@
 
 using namespace std::literals;
 
+DECLARE_bool(enable_flush_retryable_requests);
 DECLARE_bool(enable_load_balancing);
 DECLARE_bool(TEST_asyncrpc_finished_set_timedout);
 DECLARE_bool(TEST_disable_flush_on_shutdown);
@@ -58,6 +59,7 @@ class RetryableRequestTest : public YBTableTestBase {
  protected:
   void BeforeStartCluster() override {
     FLAGS_enable_load_balancing = false;
+    FLAGS_enable_flush_retryable_requests = true;
   }
   bool use_external_mini_cluster() override { return false; }
 
@@ -92,6 +94,7 @@ class RetryableRequestTest : public YBTableTestBase {
 class SingleServerRetryableRequestTest : public RetryableRequestTest {
  protected:
   void BeforeStartCluster() override {
+    RetryableRequestTest::BeforeStartCluster();
     FLAGS_retryable_request_timeout_secs = 10;
   }
 
@@ -204,7 +207,8 @@ TEST_F_EX(
 
   ASSERT_OK(tablet_peer->log()->AllocateSegmentAndRollOver());
   ASSERT_OK(WaitFor([&] {
-    return tablet_peer->TEST_IsFlushingRetryableRequests();
+    return tablet_peer->TEST_RetryableRequestsFlusherState() ==
+        tablet::RetryableRequestsFlushState::kFlushing;
   }, 10s, "Start flushing retryable requests"));
 
   // If flusher is not shutdown correctly from Tablet::CompleteShutdown, will get error:
@@ -228,6 +232,7 @@ class MultiNodeRetryableRequestTest : public RetryableRequestTest {
   bool enable_ysql() override { return false; }
 
   void BeforeStartCluster() override {
+    RetryableRequestTest::BeforeStartCluster();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ht_lease_duration_ms) = 20 * 1000;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_leader_lease_duration_ms) = 20 * 1000;
   }

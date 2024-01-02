@@ -219,6 +219,13 @@ parse_analyze_withcb(RawStmt *parseTree, const char *sourceText,
 
 	query = transformTopLevelStmt(pstate, parseTree);
 
+	if (pstate->p_target_relation &&
+		pstate->p_target_relation->rd_rel->relpersistence == RELPERSISTENCE_TEMP
+		&& IsYugaByteEnabled())
+	{
+		SetTxnWithPGRel();
+	}
+
 	if (IsQueryIdEnabled())
 		jstate = JumbleQuery(query, sourceText);
 

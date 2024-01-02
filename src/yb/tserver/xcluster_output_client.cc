@@ -15,7 +15,7 @@
 #include <shared_mutex>
 
 #include "yb/cdc/cdc_types.h"
-#include "yb/cdc/cdc_rpc.h"
+#include "yb/cdc/xcluster_rpc.h"
 
 #include "yb/common/wire_protocol.h"
 
@@ -62,179 +62,6 @@ DECLARE_int32(cdc_read_rpc_timeout_ms);
 DEFINE_test_flag(bool, xcluster_consumer_fail_after_process_split_op, false,
     "Whether or not to fail after processing a replicated split_op on the consumer.");
 
-using namespace std::placeholders;
-
-namespace yb {
-namespace tserver {
-
-class XClusterOutputClient : public XClusterOutputClientIf {
- public:
-  XClusterOutputClient(
-      XClusterConsumer* xcluster_consumer, const cdc::ConsumerTabletInfo& consumer_tablet_info,
-      const cdc::ProducerTabletInfo& producer_tablet_info,
-      const std::shared_ptr<XClusterClient>& local_client, ThreadPool* thread_pool, rpc::Rpcs* rpcs,
-      std::function<void(const XClusterOutputClientResponse& response)> apply_changes_clbk,
-      bool use_local_tserver, rocksdb::RateLimiter* rate_limiter)
-      : xcluster_consumer_(xcluster_consumer),
-        consumer_tablet_info_(consumer_tablet_info),
-        producer_tablet_info_(producer_tablet_info),
-        local_client_(local_client),
-        thread_pool_(thread_pool),
-        rpcs_(rpcs),
-        write_handle_(rpcs->InvalidHandle()),
-        apply_changes_clbk_(std::move(apply_changes_clbk)),
-        use_local_tserver_(use_local_tserver),
-        all_tablets_result_(STATUS(Uninitialized, "Result has not been initialized.")),
-        rate_limiter_(rate_limiter) {}
-
-  ~XClusterOutputClient() {
-    VLOG_WITH_PREFIX_UNLOCKED(1) << "Destroying XClusterOutputClient";
-    DCHECK(shutdown_);
-  }
-
-  // Sets the last compatible consumer schema version
-  void SetLastCompatibleConsumerSchemaVersion(uint32_t schema_version) override;
-
-  void UpdateSchemaVersionMappings(
-      const cdc::XClusterSchemaVersionMap& schema_version_map,
-      const cdc::ColocatedSchemaVersionMap& colocated_schema_version_map) override;
-
-  // Async call for applying changes. Will invoke the apply_changes_clbk when the changes are
-  // applied, or when any error occurs.
-  void ApplyChanges(std::shared_ptr<cdc::GetChangesResponsePB> resp) override;
-
-  void Shutdown() override {
-    DCHECK(!shutdown_);
-    shutdown_ = true;
-
-    rpc::RpcCommandPtr rpc_to_abort;
-    {
-      std::lock_guard l(lock_);
-      if (write_handle_ != rpcs_->InvalidHandle()) {
-        rpc_to_abort = *write_handle_;
-      }
-    }
-    if (rpc_to_abort) {
-      rpc_to_abort->Abort();
-    }
-  }
-
- private:
-  // Utility function since we are inheriting shared_from_this().
-  std::shared_ptr<XClusterOutputClient> SharedFromThis() {
-    return std::dynamic_pointer_cast<XClusterOutputClient>(shared_from_this());
-  }
-
-  std::string LogPrefixUnlocked() const {
-    return Format(
-        "P [$0:$1] C [$2:$3]: ",
-        producer_tablet_info_.stream_id,
-        producer_tablet_info_.tablet_id,
-        consumer_tablet_info_.table_id,
-        consumer_tablet_info_.tablet_id);
-  }
-
-  void SetLastCompatibleConsumerSchemaVersionUnlocked(uint32_t schema_version) REQUIRES(lock_);
-
-  // Process all records in get_changes_resp_ starting from the start index. If we find a ddl
-  // record, then we process the current changes first, wait for those to complete, then process
-  // the ddl + other changes after.
-  Status ProcessChangesStartingFromIndex(int start);
-
-  Status ProcessRecordForTablet(
-      const cdc::CDCRecordPB& record, const Result<client::internal::RemoteTabletPtr>& tablet);
-
-  Status ProcessRecordForLocalTablet(const cdc::CDCRecordPB& record);
-
-  Status ProcessRecordForTabletRange(
-      const cdc::CDCRecordPB& record,
-      const Result<std::vector<client::internal::RemoteTabletPtr>>& tablets);
-
-  bool IsValidMetaOp(const cdc::CDCRecordPB& record);
-  Result<bool> ProcessMetaOp(const cdc::CDCRecordPB& record);
-  Result<bool> ProcessChangeMetadataOp(const cdc::CDCRecordPB& record);
-
-  // Gets the producer/consumer schema mapping for the record.
-  Result<cdc::XClusterSchemaVersionMap> GetSchemaVersionMap(
-      const cdc::CDCRecordPB& record) REQUIRES(lock_);
-
-  // Processes the Record and sends the CDCWrite for it.
-  Status ProcessRecord(const std::vector<std::string>& tablet_ids, const cdc::CDCRecordPB& record)
-      EXCLUDES(lock_);
-
-  Status SendUserTableWrites();
-
-  void SendNextCDCWriteToTablet(std::unique_ptr<WriteRequestPB> write_request);
-  void UpdateSchemaVersionMapping(tserver::GetCompatibleSchemaVersionRequestPB* req);
-
-  void WriteCDCRecordDone(const Status& status, const WriteResponsePB& response);
-  void DoWriteCDCRecordDone(const Status& status, const WriteResponsePB& response);
-
-  void SchemaVersionCheckDone(
-      const Status& status,
-      const GetCompatibleSchemaVersionRequestPB& req,
-      const GetCompatibleSchemaVersionResponsePB& response);
-
-  void DoSchemaVersionCheckDone(
-      const Status& status,
-      const GetCompatibleSchemaVersionRequestPB& req,
-      const GetCompatibleSchemaVersionResponsePB& response);
-
-  // Increment processed record count.
-  // Returns true if all records are processed, false if there are still some pending records.
-  bool IncProcessedRecordCount() REQUIRES(lock_);
-
-  XClusterOutputClientResponse PrepareResponse() REQUIRES(lock_);
-  void SendResponse(const XClusterOutputClientResponse& resp) EXCLUDES(lock_);
-
-  void HandleResponse() EXCLUDES(lock_);
-  void HandleError(const Status& s) EXCLUDES(lock_);
-
-  bool UseLocalTserver();
-
-  XClusterConsumer* xcluster_consumer_;
-  const cdc::ConsumerTabletInfo consumer_tablet_info_;
-  const cdc::ProducerTabletInfo producer_tablet_info_;
-  cdc::XClusterSchemaVersionMap schema_versions_ GUARDED_BY(lock_);
-  cdc::ColocatedSchemaVersionMap colocated_schema_version_map_ GUARDED_BY(lock_);
-  std::shared_ptr<XClusterClient> local_client_;
-  ThreadPool* thread_pool_;  // Use threadpool so that callbacks aren't run on reactor threads.
-  rpc::Rpcs* rpcs_;
-  rpc::Rpcs::Handle write_handle_ GUARDED_BY(lock_);
-  std::function<void(const XClusterOutputClientResponse& response)> apply_changes_clbk_;
-
-  bool use_local_tserver_;
-
-  std::shared_ptr<client::YBTable> table_;
-
-  // Used to protect error_status_, op_id_, done_processing_, write_handle_ and record counts.
-  mutable rw_spinlock lock_;
-  Status error_status_ GUARDED_BY(lock_);
-  OpIdPB op_id_ GUARDED_BY(lock_) = consensus::MinimumOpId();
-  bool done_processing_ GUARDED_BY(lock_) = false;
-  uint32_t wait_for_version_ GUARDED_BY(lock_) = 0;
-  std::atomic<bool> shutdown_ = false;
-
-  uint32_t processed_record_count_ GUARDED_BY(lock_) = 0;
-  uint32_t record_count_ GUARDED_BY(lock_) = 0;
-
-  SchemaVersion last_compatible_consumer_schema_version_ GUARDED_BY(lock_) = 0;
-  SchemaVersion producer_schema_version_ GUARDED_BY(lock_) = 0;
-  ColocationId colocation_id_  GUARDED_BY(lock_) = 0;
-
-  // This will cache the response to an ApplyChanges() request.
-  std::shared_ptr<cdc::GetChangesResponsePB> get_changes_resp_;
-
-  // Store the result of the lookup for all the tablets.
-  yb::Result<std::vector<scoped_refptr<yb::client::internal::RemoteTablet>>> all_tablets_result_;
-
-  yb::MonoDelta timeout_ms_;
-
-  std::unique_ptr<XClusterWriteInterface> write_strategy_ GUARDED_BY(lock_);
-
-  rocksdb::RateLimiter* rate_limiter_;
-};
-
 #define HANDLE_ERROR_AND_RETURN_IF_NOT_OK(status) \
   do { \
     auto&& _s = (status); \
@@ -244,26 +71,70 @@ class XClusterOutputClient : public XClusterOutputClientIf {
     } \
   } while (0)
 
-#define RETURN_WHEN_OFFLINE() \
-  if (shutdown_.load()) { \
-    VLOG_WITH_PREFIX_UNLOCKED(1) \
-        << "Aborting ApplyChanges since the output client is shutting down."; \
+#define RETURN_WHEN_OFFLINE \
+  if (IsOffline()) { \
+    VLOG_WITH_PREFIX(1) << "Aborting ApplyChanges since the output client is shutting down."; \
     return; \
-  }
+  } \
+  do { \
+  } while (false)
 
-void XClusterOutputClient::SetLastCompatibleConsumerSchemaVersionUnlocked(
-    SchemaVersion schema_version) {
+using namespace std::placeholders;
+
+namespace yb {
+namespace tserver {
+
+XClusterOutputClient::XClusterOutputClient(
+    XClusterConsumer* xcluster_consumer, const cdc::ConsumerTabletInfo& consumer_tablet_info,
+    const cdc::ProducerTabletInfo& producer_tablet_info,
+    const std::shared_ptr<XClusterClient>& local_client, ThreadPool* thread_pool, rpc::Rpcs* rpcs,
+    std::function<void(const XClusterOutputClientResponse& response)> apply_changes_clbk,
+    std::function<void(const std::string& reason, const Status& status)> mark_fail_clbk,
+    bool use_local_tserver, rocksdb::RateLimiter* rate_limiter)
+    : XClusterAsyncExecutor(thread_pool, local_client->messenger.get(), rpcs),
+      xcluster_consumer_(xcluster_consumer),
+      consumer_tablet_info_(consumer_tablet_info),
+      producer_tablet_info_(producer_tablet_info),
+      local_client_(local_client),
+      apply_changes_clbk_(std::move(apply_changes_clbk)),
+      mark_fail_clbk_(std::move(mark_fail_clbk)),
+      use_local_tserver_(use_local_tserver),
+      all_tablets_result_(STATUS(Uninitialized, "Result has not been initialized.")),
+      rate_limiter_(rate_limiter) {}
+
+XClusterOutputClient::~XClusterOutputClient() {
+  VLOG_WITH_PREFIX(1) << "Destroying XClusterOutputClient";
+  DCHECK(IsOffline());
+}
+
+void XClusterOutputClient::StartShutdown() {
+  DCHECK(!IsOffline());
+  shutdown_ = true;
+
+  XClusterAsyncExecutor::StartShutdown();
+}
+
+void XClusterOutputClient::CompleteShutdown() {
+  // Wait for tasks that started before shutdown to complete. We release mutex as new tasks acquire
+  // it before checking for shutdown.
+  { std::lock_guard l(lock_); }
+
+  XClusterAsyncExecutor::CompleteShutdown();
+}
+
+void XClusterOutputClient::MarkFailed(const std::string& reason, const Status& status) {
+  LOG_WITH_PREFIX(WARNING) << "xCluster Output client failed as " << reason;
+  mark_fail_clbk_(reason, status);
+}
+
+void XClusterOutputClient::SetLastCompatibleConsumerSchemaVersion(SchemaVersion schema_version) {
+  std::lock_guard lock(lock_);
   if (schema_version != cdc::kInvalidSchemaVersion &&
       schema_version > last_compatible_consumer_schema_version_) {
     LOG(INFO) << "Last compatible consumer schema version updated to  "
               << schema_version;
     last_compatible_consumer_schema_version_ = schema_version;
   }
-}
-
-void XClusterOutputClient::SetLastCompatibleConsumerSchemaVersion(SchemaVersion schema_version) {
-  std::lock_guard lock(lock_);
-  SetLastCompatibleConsumerSchemaVersionUnlocked(schema_version);
 }
 
 void XClusterOutputClient::UpdateSchemaVersionMappings(
@@ -417,9 +288,9 @@ Result<cdc::XClusterSchemaVersionMap> XClusterOutputClient::GetSchemaVersionMap(
 
   if (PREDICT_FALSE(VLOG_IS_ON(3))) {
     for (const auto& [producer_schema_version, consumer_schema_version] : *cached_schema_versions) {
-        VLOG_WITH_PREFIX_UNLOCKED(3) << Format(
-            "ColocationId:$0 Producer Schema Version:$1, Consumer Schema Version:$2",
-            colocationId, producer_schema_version, consumer_schema_version);
+      VLOG_WITH_PREFIX(3) << Format(
+          "ColocationId:$0 Producer Schema Version:$1, Consumer Schema Version:$2", colocationId,
+          producer_schema_version, consumer_schema_version);
     }
   }
 
@@ -430,6 +301,8 @@ Status XClusterOutputClient::ProcessRecord(
     const std::vector<std::string>& tablet_ids, const cdc::CDCRecordPB& record) {
   std::lock_guard l(lock_);
   for (const auto& tablet_id : tablet_ids) {
+    SCHECK(!IsOffline(), Aborted, LogPrefix(), "xCluster output client went offline");
+
     // Find the last_compatible_consumer_schema_version for each record as it may be different
     // for different records depending on the colocation id.
     cdc::XClusterSchemaVersionMap schema_versions_map;
@@ -485,8 +358,8 @@ bool XClusterOutputClient::IsValidMetaOp(const cdc::CDCRecordPB& record) {
 }
 
 Result<bool> XClusterOutputClient::ProcessChangeMetadataOp(const cdc::CDCRecordPB& record) {
-  YB_LOG_WITH_PREFIX_UNLOCKED_EVERY_N_SECS(INFO, 300) << " Processing Change Metadata Op :"
-                                                      << record.DebugString();
+  YB_LOG_WITH_PREFIX_EVERY_N_SECS(INFO, 300)
+      << " Processing Change Metadata Op :" << record.DebugString();
   if (record.change_metadata_request().has_remove_table_id() ||
       !record.change_metadata_request().add_multiple_tables().empty()) {
     // TODO (#16557): Support remove_table_id() for colocated tables / tablegroups.
@@ -588,21 +461,28 @@ void XClusterOutputClient::SendNextCDCWriteToTablet(std::unique_ptr<WriteRequest
       CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms);
 
   std::lock_guard l(lock_);
-  write_handle_ = rpcs_->Prepare();
-  if (write_handle_ != rpcs_->InvalidHandle()) {
-    // Send in nullptr for RemoteTablet since cdc rpc now gets the tablet_id from the write request.
-    *write_handle_ = cdc::CreateCDCWriteRpc(
-        deadline,
-        nullptr /* RemoteTablet */,
-        table_,
-        local_client_->client.get(),
-        write_request.get(),
-        std::bind(&XClusterOutputClient::WriteCDCRecordDone, SharedFromThis(), _1, _2),
-        UseLocalTserver());
-    (**write_handle_).SendRpc();
-  } else {
-    LOG(WARNING) << "Invalid handle for CDC write, tablet ID: " << write_request->tablet_id();
+  RETURN_WHEN_OFFLINE;
+
+  auto handle = rpcs_->Prepare();
+  if (handle == rpcs_->InvalidHandle()) {
+    DCHECK(IsOffline());
+    MarkFailed("we could not prepare rpc as it is shutting down");
+    return;
   }
+
+  // Send in nullptr for RemoteTablet since cdc rpc now gets the tablet_id from the write request.
+  *handle = rpc::xcluster::CreateXClusterWriteRpc(
+      deadline, nullptr /* RemoteTablet */, table_, local_client_->client.get(),
+      write_request.get(),
+      [weak_ptr = weak_from_this(), this, handle, rpcs = rpcs_](
+          const Status& status, WriteResponsePB&& resp) {
+        RpcCallback(
+            weak_ptr, handle, rpcs,
+            BIND_FUNCTION_AND_ARGS(
+                XClusterOutputClient::DoWriteCDCRecordDone, status, std::move(resp)));
+      },
+      UseLocalTserver());
+  SetHandleAndSendRpc(handle);
 }
 
 void XClusterOutputClient::UpdateSchemaVersionMapping(
@@ -611,52 +491,44 @@ void XClusterOutputClient::UpdateSchemaVersionMapping(
       CoarseMonoClock::Now() + MonoDelta::FromMilliseconds(FLAGS_cdc_read_rpc_timeout_ms);
 
   std::lock_guard l(lock_);
-  write_handle_ = rpcs_->Prepare();
-  if (write_handle_ != rpcs_->InvalidHandle()) {
-    // Send in nullptr for RemoteTablet since cdc rpc now gets the tablet_id from the write request.
-    *write_handle_ = cdc::CreateGetCompatibleSchemaVersionRpc(
-        deadline,
-        nullptr,
-        local_client_->client.get(),
-        req,
-        std::bind(&XClusterOutputClient::SchemaVersionCheckDone, SharedFromThis(), _1, _2, _3),
-        UseLocalTserver());
-    (**write_handle_).SendRpc();
-  } else {
-    LOG(WARNING) << "Invalid handle for GetCompatibleSchemaVersion,tablet ID: " << req->tablet_id();
-  }
-}
+  RETURN_WHEN_OFFLINE;
 
-void XClusterOutputClient::SchemaVersionCheckDone(
-    const Status& status,
-    const GetCompatibleSchemaVersionRequestPB& req,
-    const GetCompatibleSchemaVersionResponsePB& response) {
-  rpc::RpcCommandPtr retained;
-  {
-    std::lock_guard l(lock_);
-    retained = rpcs_->Unregister(&write_handle_);
+  auto handle = rpcs_->Prepare();
+  if (handle == rpcs_->InvalidHandle()) {
+    DCHECK(IsOffline());
+    MarkFailed("we could not prepare rpc as it is shutting down");
+    return;
   }
-  RETURN_WHEN_OFFLINE();
 
-  WARN_NOT_OK(thread_pool_->SubmitFunc(std::bind(
-      &XClusterOutputClient::DoSchemaVersionCheckDone,
-      SharedFromThis(),
-      status,
-      std::move(req),
-      std::move(response))),
-      "Could not submit DoSchemaVersionCheckDone to thread pool");
+  // Send in nullptr for RemoteTablet since cdc rpc now gets the tablet_id from the write
+  // request.
+  *handle = rpc::xcluster::CreateGetCompatibleSchemaVersionRpc(
+      deadline, nullptr, local_client_->client.get(), req,
+      [weak_ptr = weak_from_this(), this, handle, rpcs = rpcs_](
+          const Status& status, const GetCompatibleSchemaVersionRequestPB& req,
+          GetCompatibleSchemaVersionResponsePB&& resp) {
+        RpcCallback(
+            weak_ptr, handle, rpcs,
+            BIND_FUNCTION_AND_ARGS(
+                XClusterOutputClient::DoSchemaVersionCheckDone, status, std::move(req),
+                std::move(resp)));
+      },
+      UseLocalTserver());
+  SetHandleAndSendRpc(handle);
 }
 
 void XClusterOutputClient::DoSchemaVersionCheckDone(
     const Status& status,
     const GetCompatibleSchemaVersionRequestPB& req,
     const GetCompatibleSchemaVersionResponsePB& resp) {
-  RETURN_WHEN_OFFLINE();
+  RETURN_WHEN_OFFLINE;
 
   SchemaVersion producer_schema_version = cdc::kInvalidSchemaVersion;
   ColocationId colocation_id = 0;
   {
     std::lock_guard l(lock_);
+    RETURN_WHEN_OFFLINE;
+
     producer_schema_version = producer_schema_version_;
     colocation_id = colocation_id_;
   }
@@ -741,25 +613,9 @@ void XClusterOutputClient::DoSchemaVersionCheckDone(
   HandleResponse();
 }
 
-void XClusterOutputClient::WriteCDCRecordDone(
-    const Status& status, const WriteResponsePB& response) {
-  rpc::RpcCommandPtr retained;
-  {
-    std::lock_guard l(lock_);
-    retained = rpcs_->Unregister(&write_handle_);
-  }
-  RETURN_WHEN_OFFLINE();
-
-  WARN_NOT_OK(
-      thread_pool_->SubmitFunc(std::bind(
-          &XClusterOutputClient::DoWriteCDCRecordDone, SharedFromThis(), status,
-          std::move(response))),
-      "Could not submit DoWriteCDCRecordDone to thread pool");
-}
-
 void XClusterOutputClient::DoWriteCDCRecordDone(
     const Status& status, const WriteResponsePB& response) {
-  RETURN_WHEN_OFFLINE();
+  RETURN_WHEN_OFFLINE;
 
   if (!status.ok()) {
     HandleError(status);
@@ -838,7 +694,7 @@ XClusterOutputClientResponse XClusterOutputClient::PrepareResponse() {
 
 void XClusterOutputClient::SendResponse(const XClusterOutputClientResponse& resp) {
   // If we're shutting down, then don't try to call the callback as that object might be deleted.
-  RETURN_WHEN_OFFLINE();
+  RETURN_WHEN_OFFLINE;
   apply_changes_clbk_(resp);
 }
 
@@ -860,15 +716,17 @@ bool XClusterOutputClient::IncProcessedRecordCount() {
   return done_processing_;
 }
 
-std::shared_ptr<XClusterOutputClientIf> CreateXClusterOutputClient(
+std::shared_ptr<XClusterOutputClient> CreateXClusterOutputClient(
     XClusterConsumer* xcluster_consumer, const cdc::ConsumerTabletInfo& consumer_tablet_info,
     const cdc::ProducerTabletInfo& producer_tablet_info,
     const std::shared_ptr<XClusterClient>& local_client, ThreadPool* thread_pool, rpc::Rpcs* rpcs,
     std::function<void(const XClusterOutputClientResponse& response)> apply_changes_clbk,
+    std::function<void(const std::string& reason, const Status& status)> mark_fail_clbk,
     bool use_local_tserver, rocksdb::RateLimiter* rate_limiter) {
   return std::make_unique<XClusterOutputClient>(
       xcluster_consumer, consumer_tablet_info, producer_tablet_info, local_client, thread_pool,
-      rpcs, std::move(apply_changes_clbk), use_local_tserver, rate_limiter);
+      rpcs, std::move(apply_changes_clbk), std::move(mark_fail_clbk), use_local_tserver,
+      rate_limiter);
 }
 
 }  // namespace tserver

@@ -15,9 +15,9 @@
 #include <string>
 
 #include "yb/cdc/cdc_types.h"
-#include "yb/tserver/xcluster_output_client_interface.h"
+#include "yb/tserver/xcluster_async_executor.h"
+#include "yb/tserver/xcluster_output_client.h"
 #include "yb/common/hybrid_time.h"
-#include "yb/rpc/rpc.h"
 #include "yb/tserver/xcluster_consumer.h"
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/locks.h"
@@ -45,19 +45,21 @@ namespace tserver {
 
 class XClusterConsumer;
 
-class XClusterPoller : public std::enable_shared_from_this<XClusterPoller> {
+class XClusterPoller : public XClusterAsyncExecutor {
  public:
   XClusterPoller(
       const cdc::ProducerTabletInfo& producer_tablet_info,
       const cdc::ConsumerTabletInfo& consumer_tablet_info, ThreadPool* thread_pool, rpc::Rpcs* rpcs,
       const std::shared_ptr<XClusterClient>& local_client,
       const std::shared_ptr<XClusterClient>& producer_client, XClusterConsumer* xcluster_consumer,
-      bool use_local_tserver, SchemaVersion last_compatible_consumer_schema_version,
-      rocksdb::RateLimiter* rate_limiter, std::function<int64_t(const TabletId&)> get_leader_term);
+      SchemaVersion last_compatible_consumer_schema_version,
+      std::function<int64_t(const TabletId&)> get_leader_term);
   ~XClusterPoller();
 
-  void StartShutdown();
-  void CompleteShutdown();
+  void Init(bool use_local_tserver, rocksdb::RateLimiter* rate_limiter);
+
+  void StartShutdown() override;
+  void CompleteShutdown() override;
 
   bool IsFailed() const { return is_failed_.load(); }
 
@@ -74,27 +76,25 @@ class XClusterPoller : public std::enable_shared_from_this<XClusterPoller> {
       const cdc::ColocatedSchemaVersionMap& colocated_schema_version_map)
       EXCLUDES(schema_version_lock_);
 
-  std::string LogPrefix() const;
+  std::string LogPrefix() const override;
 
   HybridTime GetSafeTime() const EXCLUDES(safe_time_lock_);
 
   cdc::ConsumerTabletInfo GetConsumerTabletInfo() const;
 
-  bool TEST_Is_Sleeping() const { return ANNOTATE_UNPROTECTED_READ(TEST_is_sleeping_); }
+  bool IsStuck() const;
 
  private:
-  template <class F>
-  void SubmitFunc(F&& f);
-
-  bool CheckOffline();
+  bool IsOffline() override;
 
   void DoSetSchemaVersion(SchemaVersion cur_version, SchemaVersion current_consumer_schema_version)
       EXCLUDES(data_mutex_);
 
   void DoPoll() EXCLUDES(data_mutex_);
-  void GetChangesCallback(const Status& status, cdc::GetChangesResponsePB&& resp);
+
   void HandleGetChangesResponse(Status status, std::shared_ptr<cdc::GetChangesResponsePB> resp)
       EXCLUDES(data_mutex_);
+  void ScheduleApplyChanges(std::shared_ptr<cdc::GetChangesResponsePB> get_changes_response);
   void ApplyChanges(std::shared_ptr<cdc::GetChangesResponsePB> get_changes_response)
       EXCLUDES(data_mutex_);
   void ApplyChangesCallback(XClusterOutputClientResponse response);
@@ -102,6 +102,8 @@ class XClusterPoller : public std::enable_shared_from_this<XClusterPoller> {
   void UpdateSafeTime(int64 new_time) EXCLUDES(safe_time_lock_);
   void UpdateSchemaVersionsForApply() EXCLUDES(schema_version_lock_);
   bool IsLeaderTermValid() REQUIRES(data_mutex_);
+
+  void MarkFailed(const std::string& reason, const Status& status = Status::OK()) override;
 
   const cdc::ProducerTabletInfo producer_tablet_info_;
   const cdc::ConsumerTabletInfo consumer_tablet_info_;
@@ -119,6 +121,7 @@ class XClusterPoller : public std::enable_shared_from_this<XClusterPoller> {
   std::atomic<bool> shutdown_ = false;
   // In failed state we do not poll for changes and are awaiting shutdown.
   std::atomic<bool> is_failed_ = false;
+  std::mutex shutdown_mutex_;
   std::condition_variable shutdown_cv_;
 
   OpIdPB op_id_ GUARDED_BY(data_mutex_);
@@ -128,26 +131,21 @@ class XClusterPoller : public std::enable_shared_from_this<XClusterPoller> {
 
   Status status_ GUARDED_BY(data_mutex_);
 
-  std::shared_ptr<XClusterOutputClientIf> output_client_;
+  const std::shared_ptr<XClusterClient> local_client_;
+  std::shared_ptr<XClusterOutputClient> output_client_;
   std::shared_ptr<XClusterClient> producer_client_;
 
-  ThreadPool* thread_pool_;
-  rpc::Rpcs* rpcs_;
-  std::mutex poll_handle_mutex_;
-  rpc::Rpcs::Handle poll_handle_ GUARDED_BY(poll_handle_mutex_);
   XClusterConsumer* xcluster_consumer_ GUARDED_BY(data_mutex_);
 
   mutable rw_spinlock safe_time_lock_;
   HybridTime producer_safe_time_ GUARDED_BY(safe_time_lock_);
 
-  bool is_polling_ GUARDED_BY(data_mutex_) = true;
-  int poll_failures_ GUARDED_BY(data_mutex_){0};
-  int apply_failures_ GUARDED_BY(data_mutex_){0};
-  int idle_polls_ GUARDED_BY(data_mutex_){0};
+  std::atomic<bool> is_polling_ = true;
+  std::atomic<uint32> poll_failures_ = 0;
+  std::atomic<uint32> apply_failures_ = 0;
+  std::atomic<uint32> idle_polls_ = 0;
 
   int64_t leader_term_ GUARDED_BY(data_mutex_) = OpId::kUnknownTerm;
-
-  bool TEST_is_sleeping_ = false;
 };
 
 } // namespace tserver

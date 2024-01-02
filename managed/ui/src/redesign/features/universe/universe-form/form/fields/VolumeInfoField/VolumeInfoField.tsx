@@ -42,6 +42,7 @@ interface VolumeInfoFieldProps {
   disableVolumeSize: boolean;
   disableNumVolumes: boolean;
   isDedicatedMasterField?: boolean;
+  maxVolumeCount: number;
 }
 
 const useStyles = makeStyles((theme) => ({
@@ -54,6 +55,10 @@ const useStyles = makeStyles((theme) => ({
   storageTypeSelectField: {
     maxWidth: theme.spacing(35.25),
     minWidth: theme.spacing(30)
+  },
+  unitLabelField: {
+    marginLeft: theme.spacing(2),
+    alignSelf: 'center'
   }
 }));
 
@@ -65,7 +70,8 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   disableStorageType,
   disableVolumeSize,
   disableNumVolumes,
-  isDedicatedMasterField
+  isDedicatedMasterField,
+  maxVolumeCount
 }) => {
   const { control, setValue } = useFormContext<UniverseFormData>();
   const classes = useStyles();
@@ -115,7 +121,13 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
       );
 
       //retain old volume size if its edit mode or not ephemeral storage
-      if (fieldValue && deviceInfo && !isEphemeralAwsStorageInstance(instance) && isEditMode) {
+      if (
+        fieldValue &&
+        deviceInfo &&
+        !isEphemeralAwsStorageInstance(instance) &&
+        isEditMode &&
+        provider.code !== CloudType.onprem
+      ) {
         deviceInfo.volumeSize = fieldValue.volumeSize;
         deviceInfo.numVolumes = fieldValue.numVolumes;
       }
@@ -183,7 +195,8 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
   };
 
   const onNumVolumesChanged = (numVolumes: any) => {
-    setValue(UPDATE_FIELD, { ...fieldValue, numVolumes: Number(numVolumes) });
+    const volumeCount = Number(numVolumes) > maxVolumeCount ? maxVolumeCount : Number(numVolumes);
+    setValue(UPDATE_FIELD, { ...fieldValue, numVolumes: volumeCount });
   };
 
   //render
@@ -261,6 +274,11 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
                     inputMode="numeric"
                   />
                 </Box>
+                <span className={classes.unitLabelField}>
+                  {provider?.code === CloudType.kubernetes
+                    ? t('universeForm.instanceConfig.k8VolumeSizeUnit')
+                    : t('universeForm.instanceConfig.volumeSizeUnit')}
+                </span>
               </Box>
             </Box>
           </Box>
@@ -367,6 +385,9 @@ export const VolumeInfoField: FC<VolumeInfoFieldProps> = ({
                 inputMode="numeric"
               />
             </Box>
+            <span className={classes.unitLabelField}>
+              {t('universeForm.instanceConfig.throughputUnit')}
+            </span>
           </Box>
         </Grid>
       </Grid>

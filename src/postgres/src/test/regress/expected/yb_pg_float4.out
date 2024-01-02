@@ -9,19 +9,19 @@ INSERT INTO FLOAT4_TBL(f1) VALUES ('1.2345678901234e+20');
 INSERT INTO FLOAT4_TBL(f1) VALUES ('1.2345678901234e-20');
 -- test for over and under flow
 INSERT INTO FLOAT4_TBL(f1) VALUES ('10e70');
-ERROR:  value out of range: overflow
+ERROR:  "10e70" is out of range for type real
 LINE 1: INSERT INTO FLOAT4_TBL(f1) VALUES ('10e70');
                                            ^
 INSERT INTO FLOAT4_TBL(f1) VALUES ('-10e70');
-ERROR:  value out of range: overflow
+ERROR:  "-10e70" is out of range for type real
 LINE 1: INSERT INTO FLOAT4_TBL(f1) VALUES ('-10e70');
                                            ^
 INSERT INTO FLOAT4_TBL(f1) VALUES ('10e-70');
-ERROR:  value out of range: underflow
+ERROR:  "10e-70" is out of range for type real
 LINE 1: INSERT INTO FLOAT4_TBL(f1) VALUES ('10e-70');
                                            ^
 INSERT INTO FLOAT4_TBL(f1) VALUES ('-10e-70');
-ERROR:  value out of range: underflow
+ERROR:  "-10e-70" is out of range for type real
 LINE 1: INSERT INTO FLOAT4_TBL(f1) VALUES ('-10e-70');
                                            ^
 -- bad input

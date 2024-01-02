@@ -186,8 +186,8 @@ test_set_cmake_build_type_and_compiler_type   release    linux-gnu gcc        re
 test_set_cmake_build_type_and_compiler_type   release    linux-gnu gcc11      release    gcc11   0
 test_set_cmake_build_type_and_compiler_type   debug      linux-gnu auto       debug      clang16 0
 test_set_cmake_build_type_and_compiler_type   FaStDeBuG  linux-gnu auto       fastdebug  clang16 0
-test_set_cmake_build_type_and_compiler_type   release    linux-gnu auto       release    clang15 0
-test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu auto       fastdebug  clang15 0
+test_set_cmake_build_type_and_compiler_type   release    linux-gnu auto       release    clang16 0
+test_set_cmake_build_type_and_compiler_type   tsan       linux-gnu auto       fastdebug  clang16 0
 test_set_cmake_build_type_and_compiler_type   asan       linux-gnu auto       fastdebug  clang16 0
 
 # -------------------------------------------------------------------------------------------------

@@ -3,6 +3,10 @@
 #include "sighandler.h"
 #include "system.h"
 
+#include <sys/ipc.h>
+#include <sys/shm.h>
+#include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
+
 static inline od_retcode_t
 od_system_gracefully_killer_invoke(od_system_t *system)
 {
@@ -41,6 +45,42 @@ static inline void od_system_cleanup(od_system_t *system)
 	}
 }
 
+static inline void yb_stats_shmem_cleanup(od_instance_t *instance)
+{
+	char *stats_shm_key = getenv(YSQL_CONN_MGR_SHMEM_KEY_ENV_NAME);
+	if (stats_shm_key == NULL)
+		return;
+
+	// It is a good practice to detach the shared memory before deleting it, but not mandatory.
+	// So continue execution irrespective of the error while detaching.
+	if (instance->yb_stats != NULL && shmdt(instance->yb_stats) < 0) {
+		od_error(
+			&instance->logger, "stats shmem cleanup", NULL, NULL,
+			"Got error while detaching the stats in the shared memory, %s",
+			strerror(errno));
+	}
+
+	int shmid = shmget(atoi(stats_shm_key), 0, 0);
+	if (shmid == -1) {
+		od_error(
+			&instance->logger, "stats shmem cleanup", NULL, NULL,
+			"Unable to delete the shared memeory segment related with stats, %s",
+			strerror(errno));
+		return;
+	}
+
+	if (shmctl(shmid, IPC_RMID, 0) == -1) {
+		od_error(
+			&instance->logger, "stats shmem cleanup", NULL, NULL,
+			"Unable to delete the shared memeory segment related with stats, %s",
+			strerror(errno));
+		return;
+	}
+
+	od_log(&instance->logger, "stats shmem cleanup", NULL, NULL,
+	       "Deleted the shared memory segment with id %d", shmid);
+}
+
 od_attribute_noreturn() void od_system_shutdown(od_system_t *system,
 						od_instance_t *instance)
 {
@@ -49,6 +89,8 @@ od_attribute_noreturn() void od_system_shutdown(od_system_t *system,
 	worker_pool = system->global->worker_pool;
 	od_log(&instance->logger, "system", NULL, NULL,
 	       "SIGINT received, shutting down");
+
+	yb_stats_shmem_cleanup(instance);
 
 	// lock here
 	od_cron_stop(system->global->cron);

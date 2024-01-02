@@ -218,8 +218,6 @@ class PgApiImpl {
                            int64_t *last_val,
                            bool *is_called);
 
-  Status DeleteSequenceTuple(int64_t db_oid, int64_t seq_oid);
-
   void DeleteStatement(PgStatement *handle);
 
   // Search for type_entity.
@@ -403,11 +401,18 @@ class PgApiImpl {
 
   Status BackfillIndex(const PgObjectId& table_id);
 
+  Status NewDropSequence(const YBCPgOid database_oid,
+                         const YBCPgOid sequence_oid,
+                         PgStatement **handle);
+
+  Status ExecDropSequence(PgStatement *handle);
+
+  Status NewDropDBSequences(const YBCPgOid database_oid,
+                            PgStatement **handle);
+
   //------------------------------------------------------------------------------------------------
   // All DML statements
   Status DmlAppendTarget(PgStatement *handle, PgExpr *expr);
-
-  Result<bool> DmlHasSystemTargets(PgStatement *handle);
 
   Status DmlAppendQual(PgStatement *handle, PgExpr *expr, bool is_primary);
 
@@ -595,6 +600,7 @@ class PgApiImpl {
   Status RestartTransaction();
   Status ResetTransactionReadPoint();
   Status RestartReadPoint();
+  bool IsRestartReadPointRequested();
   Status CommitTransaction();
   Status AbortTransaction();
   Status SetTransactionIsolationLevel(int isolation);
