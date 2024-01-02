@@ -631,6 +631,10 @@ DEFINE_test_flag(bool, simulate_sys_catalog_data_loss, false,
     "On the heartbeat processing path, simulate a scenario where tablet metadata is missing due to "
     "a corruption. ");
 
+DEFINE_RUNTIME_uint32(maximum_tablet_leader_lease_expired_secs, 2 * 60,
+    "If the leader lease in master's view has expired for this amount of seconds, "
+    "treat the lease as expired for too long time.");
+
 #define RETURN_FALSE_IF(cond) \
   do { \
     if ((cond)) { \
@@ -13025,6 +13029,19 @@ Result<BlacklistSet> CatalogManager::BlacklistSetFromPB(bool leader_blacklist) c
   return ToBlacklistSet(GetBlacklist(l->pb, leader_blacklist));
 }
 
+namespace {
+
+// Return true if the received ht_lease_exp from the leader peer has been expired for too
+// long time when the ts metrics heartbeat reaches the master.
+bool IsHtLeaseExpiredForTooLong(MicrosTime now, MicrosTime ht_lease_exp) {
+  const auto now_usec = boost::posix_time::microseconds(now);
+  const auto ht_lease_exp_usec = boost::posix_time::microseconds(ht_lease_exp);
+  return (now_usec - ht_lease_exp_usec).total_seconds() >
+      GetAtomicFlag(&FLAGS_maximum_tablet_leader_lease_expired_secs);
+}
+
+} // namespace
+
 void CatalogManager::ProcessTabletMetadata(
     const std::string& ts_uuid,
     const TabletDriveStorageMetadataPB& storage_metadata,
@@ -13045,23 +13062,26 @@ void CatalogManager::ProcessTabletMetadata(
       consensus::LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
   bool leader_lease_info_initialized = false;
   if (leader_metrics.has_value()) {
-    auto leader = tablet->GetLeader();
+    auto existing_leader_lease_info = tablet->GetLeaderLeaseInfoIfLeader(ts_uuid);
     // If the peer is the current leader, update the counter to track heartbeats that
     // the tablet doesn't have a valid lease.
-    if (leader && (*leader)->permanent_uuid() == ts_uuid) {
+    if (existing_leader_lease_info) {
       const auto& leader_info = *leader_metrics;
       leader_lease_status = leader_info.leader_lease_status();
-      auto existing_leader_lease_info =
-          tablet->GetLeaderLeaseInfoIfLeader((*leader)->permanent_uuid());
-      // It's possible that the leader was step down after exiting GetLeader.
-      if (existing_leader_lease_info) {
-        leader_lease_info_initialized = true;
-        if (leader_info.leader_lease_status() == consensus::LeaderLeaseStatus::HAS_LEASE) {
-          ht_lease_exp = leader_info.ht_lease_expiration();
-        } else {
-          new_heartbeats_without_leader_lease =
-              existing_leader_lease_info->heartbeats_without_leader_lease + 1;
+      leader_lease_info_initialized = true;
+      if (leader_info.leader_lease_status() == consensus::LeaderLeaseStatus::HAS_LEASE) {
+        ht_lease_exp = leader_info.ht_lease_expiration();
+        // If the reported ht lease from the leader is expired for more than
+        // FLAGS_maximum_tablet_leader_lease_expired_secs, the leader shouldn't be treated
+        // as a valid leader.
+        if (ht_lease_exp > existing_leader_lease_info->ht_lease_expiration &&
+            !IsHtLeaseExpiredForTooLong(
+                master_->clock()->Now().GetPhysicalValueMicros(), ht_lease_exp)) {
+          tablet->UpdateLastTimeWithValidLeader();
         }
+      } else {
+        new_heartbeats_without_leader_lease =
+            existing_leader_lease_info->heartbeats_without_leader_lease + 1;
       }
     }
   }
