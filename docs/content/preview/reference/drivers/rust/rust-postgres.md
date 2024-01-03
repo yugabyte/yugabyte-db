@@ -309,3 +309,61 @@ pub(crate) fn num_of_connections() {
    }
 }
 ```
+
+In this case the first two nodes should have 15 connections each, and the third node should have zero connections.
+
+### Clean up
+
+After you're done experimenting, run the following command to destroy the local cluster:
+
+```sh
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-2.20.0.1/node1
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-2.20.0.1/node2
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-2.20.0.1/node3
+```
+
+## Configure SSL/TLS
+
+The YugabyteDB rust-postgres smart driver support for SSL is the same as for the upstream driver.
+
+The following table describes the connection parameters required to connect using SSL.
+
+| Parameter | Description | Default |
+| :-------- | :---------- | :------ |
+| sslmode | Controls usage of TLS. If set to:<br /> <ul><li> disable, TLS will not be used.</li><li> prefer, TLS will be used if available, but not used otherwise.</li><li> require, TLS will be forced to be used.</li></ul> | prefer |
+
+The following is an example connection URL for connecting to a YugabyteDB cluster with SSL encryption enabled:
+
+```sh
+"postgresql://127.0.0.1:5434/yugabyte?user=yugabyte&password=yugabyte&load_balance=true&sslmode=require"
+```
+
+If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/managed/), use the cluster credentials and download the [SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
+
+The following is an example application for connecting to a YugabyteDB cluster with SSL enabled:
+
+Add `yb-postgres-openssl = "0.5.0-yb-1"` and `openssl = "0.10.61"` dependencies in the `Cargo.toml` file before executing the application.
+
+```rust
+use openssl::ssl::{SslConnector, SslMethod};
+use yb_postgres_openssl::MakeTlsConnector;
+use yb_postgres::{Client};
+
+fn main()  {
+   let mut builder = SslConnector::builder(SslMethod::tls()).expect("unable to create sslconnector builder");
+   builder.set_ca_file("/path/to/root/certificate").expect("unable to load root certificate");
+   let connector: MakeTlsConnector = MakeTlsConnector::new(builder.build());
+
+   let mut connection = Client::connect( "host=? port=5433 dbname=yugabyte user=? password=? sslmode=require",
+       connector,
+       ).expect("failed to create tls ysql connection");
+
+   let result = connection.query_one("select 1", &[]).expect("failed to execute select 1 ysql");
+   let value: i32 = result.get(0);
+   println!("result of query_one call: {}", value);
+}
+```
+
+### Limitations
+
+Currently, PostgreSQL rust-postgres driver and YugabyteDB rust-postgres smart driver do not support verify-full and verify-ca ssl modes.
