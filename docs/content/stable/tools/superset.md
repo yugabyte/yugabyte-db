@@ -21,32 +21,35 @@ You can use Superset to quickly explore and visualize data stored in databases a
 
 Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB prerequisites](../#yugabytedb-prerequisites).
 
-You also need to load a relevant database in your YugabyteDB for exploration and visualization. For a local installation, you can load the Northwind sample database with the `./bin/yugabyted demo connect` command from your shell, or you can follow the [instructions](../../sample-data/northwind/).
+Load some data to explore and visualize. For a local installation, you can load the Northwind sample database using the `./bin/yugabyted demo connect` command from your shell, or follow the [instructions](../../sample-data/northwind/).
+
+Install the YugabyteDB psycopg2 smart driver as follows:
+
+1. Check if the PostgreSQL psycopg2 driver is installed:
+
+    ```sh
+    pip show psycopg2
+    ```
+
+1. If present, uninstall it as follows:
+
+    ```sh
+    pip uninstall psycopg2
+    ```
+
+1. Install the YugabyteDB psycopg2 smart driver:
+
+    ```sh
+    pip install psycopg2-yugabytedb
+    ```
 
 ## Install Superset
 
-You can install Superset from scratch using [Python (pip3)](https://superset.apache.org/docs/installation/installing-superset-from-scratch)(recommended) or using [Docker Compose](https://superset.apache.org/docs/installation/installing-superset-using-docker-compose).
+You can install Superset from scratch using [Python (pip3)](https://superset.apache.org/docs/installation/installing-superset-from-scratch) (recommended) or [Docker Compose](https://superset.apache.org/docs/installation/installing-superset-using-docker-compose).
 
-#### Use YugabyteDB psycopg2 Smart driver with Superset:
+[Launch Superset](https://superset.apache.org/docs/installation/installing-superset-from-scratch/#installing-and-initializing-superset) in your browser at `http://<hostname-or-IP-address>:8088`. If you've installed on your local computer, navigate to `localhost:8088` or `127.0.0.1:8088`. YugabyteDB v2.19 and later can also be used as a [Superset metastore](https://superset.apache.org/docs/installation/configuring-superset#using-a-production-metastore).
 
-1. Make sure Postgres psycopg2 driver is not installed in the enviornment:
-
-      a. Check if Postgres psycopg2 driver is present:
-   
-         pip show psycopg2
-   
-      b. If present, uninstall it:
-   
-         pip unintall psycopg2
-
-2. Install YugabyteDB Smart Driver:
-   
-          pip install psycopg2-yugabytedb
-
-
-[Launch Superset](https://superset.apache.org/docs/installation/installing-superset-from-scratch/#installing-and-initializing-superset) in your browser at `http://<hostname-or-IP-address>:8088`. If you've installed on your local computer, navigate to `localhost:8088` or `127.0.0.1:8088`. YugabyteDB version 2.19 and above can also be used as [Superset metastore](https://superset.apache.org/docs/installation/configuring-superset#using-a-production-metastore).
-
-## Connect Apache Superset to YugabyteDB
+## Connect Superset to YugabyteDB
 
 To connect Apache Superset to YugabyteDB:
 
