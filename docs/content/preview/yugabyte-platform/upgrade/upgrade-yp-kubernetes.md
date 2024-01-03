@@ -1,15 +1,34 @@
 ---
 title: Upgrade YugabyteDB Anywhere installation on Kubernetes
-headerTitle: Upgrade YugabyteDB Anywhere installation on Kubernetes
-linkTitle: Upgrade Kubernetes installation
+headerTitle: Upgrade YugabyteDB Anywhere
+linkTitle: Upgrade installation
 description: Upgrade YugabyteDB Anywhere installation on Kubernetes
 menu:
   preview_yugabyte-platform:
-    identifier: upgrade-yp-kubernetes
+    identifier: upgrade-yp-3-kubernetes
     parent: upgrade
     weight: 80
 type: docs
 ---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li>
+    <a href="../upgrade-yp-installer/" class="nav-link">
+      <i class="fa-solid fa-building"></i>YBA Installer</a>
+  </li>
+
+  <li>
+    <a href="../upgrade-yp-replicated/" class="nav-link">
+      <i class="fa-solid fa-cloud"></i>Replicated</a>
+  </li>
+
+  <li>
+    <a href="../upgrade-yp-kubernetes/" class="nav-link active">
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>Kubernetes</a>
+  </li>
+
+</ul>
 
 You can use [Helm](https://helm.sh/) to upgrade your YugabyteDB Anywhere installed on [Kubernetes](https://kubernetes.io/) to a newer version.
 

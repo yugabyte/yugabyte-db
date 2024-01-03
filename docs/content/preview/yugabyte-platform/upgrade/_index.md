@@ -13,30 +13,28 @@ menu:
 type: indexpage
 ---
 
-If you installed YugabyteDB Anywhere using YBA Installer, use YBA Installer to perform the upgrade. Refer to [Upgrade](../install-yugabyte-platform/install-software/installer/#upgrade).
-
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="upgrade-yp-replicated/">
+    <a class="section-link icon-offset" href="upgrade-yp-installer/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Upgrade using Replicated</div>
+        <div class="title">Upgrade YugabyteDB Anywhere</div>
       </div>
       <div class="body">
-        Use Replicated to upgrade YugabyteDB Anywhere
+        Upgrade your YugabyteDB Anywhere installation.
       </div>
     </a>
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="upgrade-yp-kubernetes/">
+    <a class="section-link icon-offset" href="upgrade-yp-xclster-ybadmin/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
-        <div class="title">Upgrade the Kubernetes installation</div>
+        <div class="title">Synchronize replication after upgrade</div>
       </div>
       <div class="body">
-        Upgrade YugabyteDB Anywhere installed on Kubernetes
+        Synchronize xCluster replication after an upgrade for universes set up using yb-admin.
       </div>
     </a>
   </div>

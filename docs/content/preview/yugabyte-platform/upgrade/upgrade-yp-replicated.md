@@ -1,15 +1,34 @@
 ---
 title: Upgrade YugabyteDB Anywhere using Replicated
-headerTitle: Upgrade YugabyteDB Anywhere using Replicated
-linkTitle: Upgrade using Replicated
+headerTitle: Upgrade YugabyteDB Anywhere
+linkTitle: Upgrade installation
 description: Use Replicated to upgrade YugabyteDB Anywhere
 menu:
   preview_yugabyte-platform:
-    identifier: upgrade-yp-replicated
+    identifier: upgrade-yp-2-replicated
     parent: upgrade
     weight: 80
 type: docs
 ---
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+
+  <li>
+    <a href="../upgrade-yp-installer/" class="nav-link">
+      <i class="fa-solid fa-building"></i>YBA Installer</a>
+  </li>
+
+  <li>
+    <a href="../upgrade-yp-replicated/" class="nav-link active">
+      <i class="fa-solid fa-cloud"></i>Replicated</a>
+  </li>
+
+  <li>
+    <a href="../upgrade-yp-kubernetes/" class="nav-link">
+      <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>Kubernetes</a>
+  </li>
+
+</ul>
 
 {{< note title="Replicated end of life" >}}
 
@@ -19,7 +38,9 @@ To perform the migration, you must first upgrade your installation to v2.20.1 or
 
 {{< /note >}}
 
-You can use [Replicated](https://www.replicated.com/) to upgrade your YugabyteDB Anywhere to a newer version.
+If your installation was installed via [Replicated](https://www.replicated.com/), use Replicated to upgrade your YugabyteDB Anywhere to a newer version.
+
+## Upgrade using Replicated
 
 To start the upgrade, log in to the Replicated Admin Console via <https://:8800> and then perform the following:
 
@@ -52,3 +73,31 @@ If you are performing an upgrade to YugabyteDB Anywhere version 2.14 or later, t
 If you have upgraded YugabyteDB Anywhere to version 2.12 or later and [xCluster replication](../../../explore/multi-region-deployments/asynchronous-replication-ysql/) for your universe was set up via `yb-admin` instead of the UI, follow the instructions provided in [Synchronize replication after upgrade](../upgrade-yp-xcluster-ybadmin/).
 
 If you are upgrading a YugabyteDB Anywhere installation with high availability enabled, follow the instructions provided in [Upgrade instances](../../administer-yugabyte-platform/high-availability/#upgrade-instances).
+
+## Upgrade airgapped installation
+
+You can upgrade your air-gapped installation of YugabyteDB Anywhere to a newer version as follows:
+
+1. Manually obtain and move the binary Replicated license file `<filename>.rli` to the `/home/{username}/`  directory.
+
+2. Manually obtain and move the YugabyteDB Anywhere air-gapped package to the `/opt/yugabyte/releases/<new_version_dir>` directory.
+
+   For example, if you are upgrading to the latest YugabyteDB Anywhere stable version, you would start by executing the following command to obtain the package:
+
+   ```sh
+   wget https://downloads.yugabyte.com/releases/{{<yb-version version="stable">}}/yugaware-{{<yb-version version="stable" format="build">}}-linux-x86_64.airgap
+   ```
+
+   Then you would create the `/opt/yugabyte/releases/yugaware-{{<yb-version version="stable" format="build">}}/` directory and move (or SCP) the `yugaware-{{<yb-version version="stable" format="build">}}-linux-x86_64.airgap` file into that directory.
+
+3. Log in to the Replicated Admin Console at <https://:8800/> and navigate to **Settings** to load the new license file, as per the following illustration:
+
+   ![Airgap Settings](/images/yp/airgap-settings.png)
+
+   Change the two directories to match the ones you used. For example, enter `/opt/yugabyte/releases/yugaware-{{<yb-version version="stable" format="build">}}/` in the **Update Path** field and `/home/{user}/` in the **License File** field.
+
+   Replicated detects updates based on the updated path information and applies them in the same way it does for connected YugabyteDB Anywhere installations.
+
+4. Proceed with the YugabyteDB Anywhere upgrade process by following instructions provided in [Upgrade using Replicated](#upgrade-using-replicated).
+
+5. Upgrade your YugabyteDB universe by following instructions provided in [Upgrade the YugabyteDB software](../../manage-deployments/upgrade-software/).
