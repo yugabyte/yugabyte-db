@@ -13,6 +13,7 @@ import com.google.common.collect.Iterables;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -768,7 +769,20 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @JsonIgnore
     public boolean isYSQLAuthEnabled() {
+      boolean authEnabled = false;
+      if (specificGFlags != null
+          && specificGFlags.getPerProcessFlags() != null
+          && specificGFlags.getPerProcessFlags().value.containsKey(ServerType.TSERVER)) {
+        authEnabled =
+            specificGFlags
+                .getPerProcessFlags()
+                .value
+                .get(ServerType.TSERVER)
+                .getOrDefault("ysql_enable_auth", "false")
+                .equals("true");
+      }
       return tserverGFlags.getOrDefault("ysql_enable_auth", "false").equals("true")
+          || authEnabled
           || enableYSQLAuth;
     }
   }
