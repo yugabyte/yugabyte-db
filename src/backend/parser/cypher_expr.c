@@ -977,10 +977,16 @@ static Node *transform_column_ref_for_indirection(cypher_parsestate *cpstate,
     pnsi = refnameNamespaceItem(pstate, NULL, relname, cr->location,
                                 &levels_up);
 
-    /* if we didn't find anything, return NULL */
+    /*
+     * If we didn't find anything, try looking for a previous variable
+     * reference. Otherwise, return NULL (colNameToVar will return NULL
+     * if nothing is found).
+     */
     if (!pnsi)
     {
-        return NULL;
+        Node *prev_var = colNameToVar(pstate, relname, false, cr->location);
+
+        return prev_var;
     }
 
     /* find the properties column of the NSI and return a var for it */
