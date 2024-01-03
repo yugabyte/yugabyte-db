@@ -76,17 +76,12 @@ export const PreFinalizeBanner: FC<PreFinalizeBannerProps> = ({ universeData }) 
           </YBButton>
         </Box>
       </Box>
-      {universeHasXcluster ? (
-        <PreFinalizeXClusterModal
-          open={openPreFinalModal}
-          universeUUID={universeUUID}
-          currentDBVersion={currentRelease ?? ''}
-          onClose={() => setPreFinalModal(false)}
-        />
-      ) : (
+      (
+      {openPreFinalModal && (
         <PreFinalizeModal
           open={openPreFinalModal}
           universeUUID={universeUUID}
+          currentDBVersion={currentRelease ?? ''}
           onClose={() => setPreFinalModal(false)}
         />
       )}

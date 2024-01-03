@@ -24,15 +24,19 @@ import WarningExclamation from '../../../assets/warning-triangle.svg';
 
 interface DBVersionWidgetProps {
   higherVersionCount: number;
+  isRollBackFeatureEnabled: boolean;
 }
 
-export const DBVersionWidget: FC<DBVersionWidgetProps> = ({ higherVersionCount }) => {
+export const DBVersionWidget: FC<DBVersionWidgetProps> = ({
+  higherVersionCount,
+  isRollBackFeatureEnabled
+}) => {
   const { t } = useTranslation();
   const classes = dbVersionWidgetStyles();
   const currentUniverse = useSelector((state: any) => state.universe.currentUniverse.data);
   const tasks = useSelector((state: any) => state.tasks);
   const [openUpgradeModal, setUpgradeModal] = useState(false);
-  const primaryCluster = getPrimaryCluster(currentUniverse.universeDetails.clusters);
+  const primaryCluster = getPrimaryCluster(currentUniverse?.universeDetails?.clusters);
   const dbVersionValue = primaryCluster?.userIntent?.ybSoftwareVersion;
   const minifiedCurrentVersion = dbVersionValue?.split('-')[0];
   const upgradeState = currentUniverse?.universeDetails?.softwareUpgradeState;
@@ -40,7 +44,7 @@ export const DBVersionWidget: FC<DBVersionWidgetProps> = ({ higherVersionCount }
   const isUniversePaused = currentUniverse?.universeDetails?.universePaused;
   const universeStatus = getUniverseStatus(currentUniverse);
   const universePendingTask = getUniversePendingTask(
-    currentUniverse.universeUUID,
+    currentUniverse?.universeUUID,
     tasks?.customerTaskList
   );
 
@@ -50,7 +54,8 @@ export const DBVersionWidget: FC<DBVersionWidgetProps> = ({ higherVersionCount }
     <Box display="flex" flexDirection={'row'} alignItems={'center'}>
       <Typography className={classes.versionText}>v{minifiedCurrentVersion}</Typography>
       &nbsp;
-      {higherVersionCount > 0 &&
+      {isRollBackFeatureEnabled &&
+        higherVersionCount > 0 &&
         upgradeState === SoftwareUpgradeState.READY &&
         !isUniversePaused &&
         _.isEmpty(universePendingTask) && (

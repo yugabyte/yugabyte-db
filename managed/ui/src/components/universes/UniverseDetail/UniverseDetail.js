@@ -60,6 +60,7 @@ import { DBUpgradeModal } from '../../../redesign/features/universe/universe-act
 import { DBRollbackModal } from '../../../redesign/features/universe/universe-actions/rollback-upgrade/DBRollbackModal';
 //icons
 import ClockRewind from '../../../redesign/assets/clock-rewind.svg';
+import ClockRewindDisabled from '../../../redesign/assets/clock-rewind-disabled.svg';
 
 import './UniverseDetail.scss';
 
@@ -701,7 +702,11 @@ class UniverseDetail extends Component {
                             )}
                           >
                             <YBLabelWithIcon>
-                              <img src={ClockRewind} height="16px" width="16px" />
+                              <img
+                                src={isUniverseStatusPending ? ClockRewindDisabled : ClockRewind}
+                                height="16px"
+                                width="16px"
+                              />
                               &nbsp; Roll Back Upgrade
                             </YBLabelWithIcon>
                           </YBMenuItem>
