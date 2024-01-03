@@ -333,9 +333,9 @@ public class TestAllDatatypes extends CDCBaseClass {
       assertRecordsOnly(expectedRecordsTimetz, timetzSub);
 
       ExpectedRecordYSQL<?>[] expectedRecordsNumeric = new ExpectedRecordYSQL[] {
-        new ExpectedRecordYSQL<>(1, 20.5, Op.INSERT),
-        new ExpectedRecordYSQL<>(2, 100.75, Op.INSERT),
-        new ExpectedRecordYSQL<>(3, 3.456, Op.INSERT)
+        new ExpectedRecordYSQL<>(1, "20.5", Op.INSERT),
+        new ExpectedRecordYSQL<>(2, "100.75", Op.INSERT),
+        new ExpectedRecordYSQL<>(3, "3.456", Op.INSERT)
       };
       assertRecordsOnly(expectedRecordsNumeric, numericSub);
 
