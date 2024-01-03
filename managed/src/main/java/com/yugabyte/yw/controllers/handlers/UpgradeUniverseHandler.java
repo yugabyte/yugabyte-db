@@ -214,9 +214,10 @@ public class UpgradeUniverseHandler {
 
   public UUID finalizeUpgrade(
       FinalizeUpgradeParams requestParams, Customer customer, Universe universe) {
-
     requestParams.verifyParams(universe, true);
-
+    // update prev software version to track version in the task details.
+    requestParams.ybPrevSoftwareVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
     return submitUpgradeTask(
         TaskType.FinalizeUpgrade,
         CustomerTask.TaskType.FinalizeUpgrade,
