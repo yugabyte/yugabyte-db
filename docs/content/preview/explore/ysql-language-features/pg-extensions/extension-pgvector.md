@@ -43,7 +43,7 @@ SELECT * FROM items ORDER BY embedding <-> '[3,1,2]' LIMIT 5;
 
 The extension also supports inner product (`<#>`) and cosine distance (`<=>`).
 
-Note: `<#>` returns the negative inner product since PostgreSQL only supports `ASC` order index scans on operators.
+Note: `<#>` returns the negative inner product because PostgreSQL only supports `ASC` order index scans on operators.
 
 ## Store vectors
 
@@ -114,7 +114,7 @@ Get the distance:
 SELECT embedding <-> '[3,1,2]' AS distance FROM items;
 ```
 
-For inner product, multiply by -1 (since `<#>` returns the negative inner product)
+For inner product, multiply by -1 (`<#>` returns the negative inner product)
 
 ```sql
 SELECT (embedding <#> '[3,1,2]') * -1 AS inner_product FROM items;
@@ -134,7 +134,19 @@ Average vectors:
 SELECT AVG(embedding) FROM items;
 ```
 
-Average groups of vectors:
+Create a table with a vector column and a category column:
+
+```sql
+CREATE TABLE items (id bigserial PRIMARY KEY, embedding vector(3), category_id int);
+```
+
+Insert multiple vectors belonging to the same category:
+
+```sql
+INSERT INTO items (embedding, category_id) VALUES ('[1,2,3]', 1), ('[4,5,6]', 2), ('[3,4,5]', 1), ('[2,3,4]', 2);
+```
+
+Average groups of vectors belonging to the same category:
 
 ```sql
 SELECT category_id, AVG(embedding) FROM items GROUP BY category_id;
