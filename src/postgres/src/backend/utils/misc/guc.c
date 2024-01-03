@@ -5574,7 +5574,7 @@ static struct config_enum ConfigureNamesEnum[] =
 		},
 		&XactIsoLevel,
 		XACT_READ_COMMITTED, isolation_level_options,
-		check_XactIsoLevel, NULL, NULL
+		check_XactIsoLevel, yb_assign_XactIsoLevel, NULL
 	},
 
 	{
