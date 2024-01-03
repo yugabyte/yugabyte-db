@@ -5,7 +5,6 @@ import { Box, Typography, Link } from '@material-ui/core';
 import { YBButton } from '../../../../../components';
 import { DBRollbackModal } from '../DBRollbackModal';
 import { PreFinalizeModal } from './PreFinalizeModal';
-import { PreFinalizeXClusterModal } from './PreFinalizeXclusterModal';
 import { getPrimaryCluster } from '../../../universe-form/utils/helpers';
 import { Universe } from '../../../universe-form/utils/dto';
 import { preFinalizeStateStyles } from '../utils/RollbackUpgradeStyles';
@@ -76,17 +75,11 @@ export const PreFinalizeBanner: FC<PreFinalizeBannerProps> = ({ universeData }) 
           </YBButton>
         </Box>
       </Box>
-      {universeHasXcluster ? (
-        <PreFinalizeXClusterModal
-          open={openPreFinalModal}
-          universeUUID={universeUUID}
-          currentDBVersion={currentRelease ?? ''}
-          onClose={() => setPreFinalModal(false)}
-        />
-      ) : (
+      {openPreFinalModal && (
         <PreFinalizeModal
           open={openPreFinalModal}
           universeUUID={universeUUID}
+          currentDBVersion={currentRelease ?? ''}
           onClose={() => setPreFinalModal(false)}
         />
       )}

@@ -16,7 +16,8 @@ export default class YBResourceCount extends PureComponent {
     unitPlural: PropTypes.string,
     separatorLine: PropTypes.bool,
     icon: PropTypes.string,
-    sizePrefix: PropTypes.string
+    sizePrefix: PropTypes.string,
+    sizeClassName: PropTypes.string
   };
   static defaultProps = {
     pluralizeKind: false,
@@ -42,7 +43,8 @@ export default class YBResourceCount extends PureComponent {
       pluralizeUnit,
       separatorLine,
       icon,
-      sizePrefix
+      sizePrefix,
+      sizeClassName
     } = this.props;
     const displayUnit =
       unit && pluralizeUnit
@@ -56,12 +58,12 @@ export default class YBResourceCount extends PureComponent {
           ? kind
           : this.props.kindPlural || this.pluralize(kind)
         : kind;
-    const classNames = (inline ? 'yb-resource-count-inline ' : null) + className;
+    const classNames = (inline ? 'yb-resource-count-inline ' : null) + ' ' + className;
 
     return (
       <div className={'yb-resource-count ' + classNames}>
         {label && <div className="yb-resource-count-label">{label}</div>}
-        <div className="yb-resource-count-size">
+        <div className={'yb-resource-count-size ' + sizeClassName}>
           {sizePrefix && <span className="yb-resource-count-size-prefix">{sizePrefix}</span>}
           {size}
           {kind && inline && <div className="yb-resource-count-kind">{displayKind}</div>}

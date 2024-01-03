@@ -17,7 +17,7 @@ interface RollbackBannerProps {
   universeData: Universe;
 }
 
-export const UpgradeFailedBanner: FC<RollbackBannerProps> = ({ universeData, taskDetail }) => {
+export const FailedBanner: FC<RollbackBannerProps> = ({ universeData, taskDetail }) => {
   const { t } = useTranslation();
   const classes = rollBackStyles();
   const [openRollbackModal, setRollBackModal] = useState(false);
@@ -46,7 +46,12 @@ export const UpgradeFailedBanner: FC<RollbackBannerProps> = ({ universeData, tas
         <img src={ErrorIcon} alt="--" width="22px" height="22px" />
         &nbsp;&nbsp;
         <Typography variant="body2">
-          {t('universeActions.dbRollbackUpgrade.rollback.bannerMsg')}
+          {ybSoftwareUpgradeState === SoftwareUpgradeState.UPGRADE_FAILED &&
+            t('universeActions.dbRollbackUpgrade.upgradeFailedMsg')}
+          {ybSoftwareUpgradeState === SoftwareUpgradeState.ROLLBACK_FAILED &&
+            t('universeActions.dbRollbackUpgrade.rollbackFailedMsg')}
+          {ybSoftwareUpgradeState === SoftwareUpgradeState.FINALIZE_FAILED &&
+            t('universeActions.dbRollbackUpgrade.upgradeFailedMsg')}
         </Typography>
       </Box>
       <Box display={'flex'} mt={2} flexDirection={'row'} width="100%" justifyContent={'flex-end'}>
@@ -56,7 +61,7 @@ export const UpgradeFailedBanner: FC<RollbackBannerProps> = ({ universeData, tas
           onClick={() => redirectToTaskLogs(taskDetail?.id, universeData?.universeUUID)}
           data-testid="UpgradeFailedBanner-TaskDteails"
         >
-          {t('universeActions.dbRollbackUpgrade.rollback.viewTask')}
+          {t('universeActions.dbRollbackUpgrade.viewTask')}
         </YBButton>
         &nbsp;&nbsp;
         {ybSoftwareUpgradeState === SoftwareUpgradeState.UPGRADE_FAILED && (
@@ -78,7 +83,7 @@ export const UpgradeFailedBanner: FC<RollbackBannerProps> = ({ universeData, tas
           data-testid="UpgradeFailedBanner-RetryTask"
           onClick={() => retryCurrentTask(taskDetail?.id, universeData?.universeUUID)}
         >
-          {t('universeActions.dbRollbackUpgrade.rollback.retryTask')}
+          {t('universeActions.dbRollbackUpgrade.retryTask')}
         </YBButton>
       </Box>
       <DBRollbackModal
