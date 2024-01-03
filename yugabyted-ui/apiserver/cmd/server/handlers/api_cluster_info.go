@@ -1692,11 +1692,12 @@ func (c *Container) GetClusterConnections(ctx echo.Context) error {
         }
         connectionsResponse.Data[nodeHost] = []models.ConnectionStatsItem{}
         for _, connectionPool := range connectionResponse.Pools {
-            if connectionPool.Pool != "control_connection" {
+            if connectionPool.DatabaseName != "control_connection" {
                 connectionsResponse.Data[nodeHost] = append(
                     connectionsResponse.Data[nodeHost],
                     models.ConnectionStatsItem{
-                        Pool: connectionPool.Pool,
+                        DatabaseName: connectionPool.DatabaseName,
+                        UserName: connectionPool.UserName,
                         ActiveLogicalConnections: connectionPool.ActiveLogicalConnections,
                         QueuedLogicalConnections: connectionPool.QueuedLogicalConnections,
                         IdleOrPendingLogicalConnections:
