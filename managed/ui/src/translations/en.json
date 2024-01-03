@@ -142,6 +142,11 @@
         "delayBwRollback": "Delay between rollbacks:",
         "proceedRollback": "Proceed with Rollback",
         "version": "version",
+        "rollbackFailedMsg": "The rollback of the Universe database upgrade has encountered an issue. To restore the Universe to its normal state, you can choose to either retry the rollback or get in touch our support team.",
+        "finalizeFailedMsg": "The finalization of the Universe database upgrade has encountered an issue. To restore the Universe to its normal state, you can choose to either retry the finalization or get in touch our support team.",
+        "upgradeFailedMsg": "The Universe database version upgrade has encountered an issue. To restore the Universe to its normal state, you have the option to either roll back the upgrade or retry the upgrade.",
+        "viewTask": "View Task Details",
+        "retryTask": "Retry Task",
         "preFinalize": {
           "finalizeUpgrade": "Finalize Upgrade",
           "rollback": "Roll back to the previous version",
@@ -157,15 +162,10 @@
           "modalSubmitLabel": "Proceed to finalize the upgrade"
         },
         "preFinalizeXcluster": {
-          "modalBody": "This universe is associated with one or more xCluster replications. To avoid disrupting replication, you should upgrade all linked universes to version {{version}} beforefinalizing this universe or any linked universe.",
+          "modalBody": "This universe is associated with one or more xCluster replications. To avoid disrupting replication, you should upgrade all linked universes to version {{version}} before finalizing this universe or any linked universe.",
           "modalTitle": "Upgrade Linked Universes",
           "modalSubmit": "Review Universe Replication",
           "modalProceed": "Proceed Anyway"
-        },
-        "rollback": {
-          "bannerMsg": "The Universe database version upgrade has encountered an issue. To restore the Universe to its normal state, you have the option to either roll back the upgrade or retry the upgrade.",
-          "viewTask": "View Task Details",
-          "retryTask": "Retry Task"
         },
         "widget": {
           "versionLabel": "Version",

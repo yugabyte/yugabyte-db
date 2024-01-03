@@ -32,7 +32,7 @@ import {
 import { FlexContainer, FlexGrow, FlexShrink } from '../../common/flexbox/YBFlexBox';
 import { DBVersionWidget } from '../../../redesign/features/universe/universe-overview/DBVersionWidget';
 import { PreFinalizeBanner } from '../../../redesign/features/universe/universe-actions/rollback-upgrade/components/PreFinalizeBanner';
-import { UpgradeFailedBanner } from '../../../redesign/features/universe/universe-actions/rollback-upgrade/components/UpgradeFailedBanner';
+import { FailedBanner } from '../../../redesign/features/universe/universe-actions/rollback-upgrade/components/FailedBanner';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { YBButton, YBModal } from '../../common/forms/fields';
 import { isEnabled, isDisabled } from '../../../utils/LayoutUtils';
@@ -594,11 +594,11 @@ export default class UniverseOverviewNew extends Component {
     const metricKey = isKubernetes ? 'container_volume_stats' : 'disk_usage';
     const secondaryMetric = isKubernetes
       ? [
-        {
-          metric: 'container_volume_max_usage',
-          name: 'size'
-        }
-      ]
+          {
+            metric: 'container_volume_max_usage',
+            name: 'size'
+          }
+        ]
       : null;
     const useK8CustomResourcesObject = this.props.runtimeConfigs?.data?.configEntries?.find(
       (c) => c.key === RuntimeConfigKey.USE_K8_CUSTOM_RESOURCES_FEATURE_FLAG
@@ -873,15 +873,18 @@ export default class UniverseOverviewNew extends Component {
             SoftwareUpgradeTaskType.SOFTWARE_UPGRADE
           ].includes(failedTask.type) && (
             <Row className="p-16">
-              <UpgradeFailedBanner universeData={universeInfo} taskDetail={failedTask} />
+              <FailedBanner universeData={universeInfo} taskDetail={failedTask} />
             </Row>
           )}
         <Row>
           {isEnabled(currentCustomer.data.features, 'universes.details.overview.costs') &&
             this.getCostWidget(universeInfo)}
-            <Col lg={4} md={6} sm={8} xs={12}>
-              <DBVersionWidget higherVersionCount={updateAvailable} />
-            </Col>
+          <Col lg={4} md={6} sm={8} xs={12}>
+            <DBVersionWidget
+              higherVersionCount={updateAvailable}
+              isRollBackFeatureEnabled={isRollBackFeatureEnabled}
+            />
+          </Col>
         </Row>
         <Row>
           {this.getPrimaryClusterWidget(universeInfo, isRollBackFeatureEnabled)}
