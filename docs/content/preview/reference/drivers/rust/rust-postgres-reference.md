@@ -17,19 +17,19 @@ YugabyteDB Rust smart driver is a rust driver for [YSQL](../../../../api/ysql/) 
 
 Rust smart drivers offers two different clients similar to rust-postgres:
 
-1. [yb-postgres](https://crates.io/crates/yb-postgres) : A native, synchronous YugabyteDB YSQL client based on [postgres](https://crates.io/crates/postgres).
-1. [yb-tokio-postgres](https://crates.io/crates/yb-tokio-postgres) : A native, asynchronous YugabyteDB YSQL client based on [tokio-postgres](https://crates.io/crates/tokio-postgres).
+- [yb-postgres](https://crates.io/crates/yb-postgres) : A native, synchronous YugabyteDB YSQL client based on [postgres](https://crates.io/crates/postgres).
+- [yb-tokio-postgres](https://crates.io/crates/yb-tokio-postgres) : A native, asynchronous YugabyteDB YSQL client based on [tokio-postgres](https://crates.io/crates/tokio-postgres).
 
 For more information on the YugabyteDB rust smart driver, see the following:
 
 - [YugabyteDB smart drivers for YSQL](../../../../drivers-orms/smart-drivers/)
-- [CRUD operations](../../../../drivers-orms/rust/yb-rust-postgres/)
+- [CRUD operations](../../../../drivers-orms/rust/yb-rust-postgres/#crud-operations)
 - [GitHub repository](https://github.com/yugabyte/rust-postgres)
 - [Smart Driver architecture](https://github.com/yugabyte/yugabyte-db/blob/master/architecture/design/smart-driver.md)
 
 ## Include the driver dependency
 
-You can use the YugabyteDB rust driver crates by adding the following statements in the `Cargo.toml` file of your rust application.
+You can use the YugabyteDB rust driver [crates](https://crates.io/) by adding the following statements in the `Cargo.toml` file of your rust application.
 
 ```toml
 # For yb-postgres
@@ -57,16 +57,16 @@ Learn how to perform common tasks required for Rust application development usin
 
 The following connection properties need to be added to enable load balancing:
 
-- `load_balance` - enable cluster-aware load balancing by setting this property to true; disabled by default.
-- `topology_keys` - provide comma-separated geo-location values to enable topology-aware load balancing. Geo-locations can be provided as `cloud.region.zone`. Specify all zones in a region as `cloud.region.*`. To designate fallback locations for when the primary location is unreachable, specify a priority in the form `:n`, where `n` is the order of precedence. For example, `cloud1.datacenter1.rack1:1,cloud1.datacenter1.rack2:2`.
+- `load_balance` - enable [cluster-aware load balancing](../../../../drivers-orms/smart-drivers/#cluster-aware-connection-load-balancing) by setting this property to true; disabled by default.
+- `topology_keys` - provide comma-separated geo-location values to enable [topology-aware load balancing](../../../../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing). Geo-locations can be provided as `cloud.region.zone`. Specify all zones in a region as `cloud.region.*`. To designate fallback locations for when the primary location is unreachable, specify a priority in the form `:n`, where `n` is the order of precedence. For example, `cloud1.datacenter1.rack1:1,cloud1.datacenter1.rack2:2`.
 
 By default, the driver refreshes the list of nodes every 300 seconds (5 minutes). You can change this value by including the `yb_servers_refresh_interval` parameter.
 
-Other connection properties offered with rust smart driver:
+Following are other connection properties offered with the rust smart driver:
 
-- `fallback-to-topology-keys-only` : Applicable only for TopologyAware Load Balancing. When set to true, the smart driver does not attempt to connect to servers outside of primary and fallback placements specified via property. The default behavior is to fallback to any available server in the entire cluster. Defaults to false.
+- `fallback-to-topology-keys-only` : Applicable only for topology-aware load balancing. When set to true, the smart driver does not attempt to connect to servers outside of primary and fallback placements specified via property. The default behavior is to fallback to any available server in the entire cluster. Defaults to false.
 
-- `failed-host-reconnect-delay-secs` : The driver marks a server as failed with a timestamp, when it cannot connect to it. Later, whenever it refreshes the server list via yb_servers(), if it sees the failed server in the response, it marks the server as UP only if failed-host-reconnect-delay-secs time has elapsed. Defaults to 5 seconds.
+- `failed-host-reconnect-delay-secs` : The driver marks a server as failed with a timestamp, when it cannot connect to it. Later, whenever it refreshes the server list via yb_servers(), if it sees the failed server in the response, it marks the server as "UP" only if failed-host-reconnect-delay-secs time has elapsed. Defaults to 5 seconds.
 
 ### Use the driver
 
@@ -79,9 +79,9 @@ let url: String = String::from( "postgresql://localhost:5434/yugabyte?user=yugab
 let conn = yb_postgres::Client::connect(&connection_url,NoTls,)?;
 ```
 
-You can specify [multiple hosts](../../../drivers-orms/rust/yb-rust-postgres/#use-multiple-addresses) in the connection string in case the primary address fails. After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
+You can specify [multiple hosts](../../../../drivers-orms/rust/yb-rust-postgres/#use-multiple-addresses) in the connection string in case the primary address fails. After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
 
-To specify topology keys, you set the `topology_keys` property to comma-separated values in the connection string or dictionary, as per the following examples:
+To specify topology keys, you set the `topology_keys` property to comma-separated values in the connection string or dictionary, as per the following example:
 
 ```sh
 let url: String = String::from( "postgresql://localhost:5434/yugabyte?user=yugabyte&password=yugabyte&load_balance=true&topology_keys=cloud1.datacenter1.rack2", );
@@ -90,11 +90,11 @@ let conn = yb_postgres::Client::connect(&connection_url,NoTls,)?;
 
 ## Try it out
 
-This tutorial shows how to use the async yb-tokio-postgres client with YugabyteDB. It starts by creating a three-node cluster with a [replication factor](../../../../architecture/docdb-replication/replication/#replication-factor) of 3. This tutorial uses the [yugabyted](../../configuration/yugabyted/) utility.
-
-For an example using the synchronous yb-postgres client, see [Connect an application](../../../drivers-orms/rust/yb-rust-postgres).
+This tutorial shows how to use the async yb-tokio-postgres client with YugabyteDB. It starts by creating a three-node cluster with a [replication factor](../../../../architecture/docdb-replication/replication/#replication-factor) of 3. This tutorial uses the [yugabyted](../../../configuration/yugabyted/) utility.
 
 Next, you use a rust application to demonstrate the driver's load balancing features.
+
+For an example to use the synchronous yb-postgres client, see [Connect an application](../../../../drivers-orms/rust/yb-rust-postgres).
 
 ### Create a local cluster
 
@@ -140,9 +140,9 @@ To check uniform load balancing, do the following:
     cargo new try-it-out
     ```
 
-    This creates the project "try-it-out" which consists of a `Cargo.toml` file (project metadata) and a src directory containing the main code file, `main.rs`.
+    This creates the project "try-it-out" which consists of a `Cargo.toml` file (project metadata) and a `src` directory containing the main code file, `main.rs`.
 
-1. Add `yb-tokio-postgres = "0.7.10-yb-1-beta"` dependency in the Cargo.toml file as follows:
+1. Add `yb-tokio-postgres = "0.7.10-yb-1-beta"` dependency in the `Cargo.toml` file as follows:
 
     ```toml
     [package]
@@ -156,7 +156,7 @@ To check uniform load balancing, do the following:
     yb-tokio-postgres = "0.7.10-yb-1-beta"
     ```
 
-1. Replace the existing code in `src/main.rs` with the following sample code:
+1. Replace the existing code in the file `src/main.rs` with the following code:
 
     ```rust
     use isahc::ReadResponseExt;
@@ -233,7 +233,7 @@ To check uniform load balancing, do the following:
     cargo run
     ```
 
-The application creates 30 connections and displays a key value pair map where the keys are the host and the values are the number of connections on them (The application gets the number of connections from http://<host>:13000/rpcz for each node. This URL presents a list of connections where each element of the list has some information about the connection). Each node should have 10 connections.
+The application creates 30 connections and displays a key value pair map where the keys are the host and the values are the number of connections on them (The application gets the number of connections from `http://<host>:13000/rpcz` for each node. This URL presents a list of connections where each element of the list has some information about the connection). Each node should have 10 connections.
 
 ### Check topology-aware load balancing
 
@@ -338,7 +338,7 @@ The following is an example connection URL for connecting to a YugabyteDB cluste
 "postgresql://127.0.0.1:5434/yugabyte?user=yugabyte&password=yugabyte&load_balance=true&sslmode=require"
 ```
 
-If you created a cluster on [YugabyteDB Managed](https://www.yugabyte.com/managed/), use the cluster credentials and download the [SSL Root certificate](../../../yugabyte-cloud/cloud-connect/connect-applications/).
+If you created a cluster on [YugabyteDB Managed](/preview/yugabyte-cloud/), use the cluster credentials and download the [SSL Root certificate](/preview/yugabyte-cloud/cloud-connect/connect-applications/).
 
 The following is an example application for connecting to a YugabyteDB cluster with SSL enabled:
 

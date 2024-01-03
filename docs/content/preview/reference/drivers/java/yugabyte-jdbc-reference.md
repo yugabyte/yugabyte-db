@@ -183,9 +183,33 @@ Create a universe with a 3-node RF-3 cluster with some fictitious geo-locations 
 
 ```sh
 $ cd <path-to-yugabytedb-installation>
-
-./bin/yb-ctl create --rf 3 --placement_info "aws.us-west.us-west-2a,aws.us-west.us-west-2a,aws.us-west.us-west-2b"
 ```
+
+To create a multi-zone cluster, do the following:
+
+1. Start the first node by running the yugabyted start command, passing in the `--cloud_location` and `--fault_tolerance` flags to set the node location details, as follows:
+
+    ```sh
+    ./bin/yugabyted start --advertise_address=127.0.0.1 \
+        --base_dir=$HOME/yugabyte-2.20.0.1/node1 \
+        --cloud_location=aws.us-east-1.us-east-1a
+    ```
+
+1. Start the second and the third node on two separate VMs using the `--join` flag, as follows:
+
+    ```sh
+    ./bin/yugabyted start --advertise_address=127.0.0.2 \
+        --join=127.0.0.1 \
+        --base_dir=$HOME/yugabyte-2.20.0.1/node2 \
+        --cloud_location=aws.us-east-1.us-east-1a
+    ```
+
+    ```sh
+    ./bin/yugabyted start --advertise_address=127.0.0.3 \
+        --join=127.0.0.1 \
+        --base_dir=$HOME/yugabyte-2.20.0.1/node3 \
+        --cloud_location=aws.us-east-1.us-east-1b
+    ```
 
 ### Check uniform load balancing using yb-sample-apps
 
@@ -229,7 +253,9 @@ To verify the behavior, wait for the app to create connections and then navigate
 When you're done experimenting, run the following command to destroy the local cluster:
 
 ```sh
-./bin/yb-ctl destroy
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-2.20.0.1/node1
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-2.20.0.1/node2
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-2.20.0.1/node3
 ```
 
 ## Other examples
