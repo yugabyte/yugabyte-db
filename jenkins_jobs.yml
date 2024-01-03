@@ -28,17 +28,6 @@ jobs:
     architecture: aarch64
     release_artifact: true
 
-  - os: alma8
-    compiler: clang16
-    build_type: debug
-    architecture: aarch64
-    release_artifact: false
-
-  - os: alma8
-    compiler: gcc11
-    build_type: fastdebug
-    release_artifact: false
-
   - os: mac12
     compiler: clang
     build_type: release
