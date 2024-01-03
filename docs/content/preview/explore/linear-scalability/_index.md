@@ -25,25 +25,27 @@ showRightNav: true
 type: indexpage
 ---
 
+With YugabyteDB, you can start small and add nodes as needed. Scale your data, connections, reads, and writes without disrupting ongoing applications. As your needs grow, YugabyteDB automatically shards data and scales in all directions (up, down, out, and in).
+
 ## Why you need to be able to scale seamlessly
 
 Depending on your business, you may find you need to scale for a variety of reasons:
 
-- Growing user base. Your application becomes popular, users love your app, and the user base is growing. Or you might need high throughput right from the get go, and need to add capacity quickly.
+- Growing user base. Your application becomes popular, users love your app, and the user base is expanding.
 - Seasonal traffic. Occasionally, you have to handle a lot more transactions per second than usual. Black Friday and Cyber Monday retail traffic, or streaming for special events like the Superbowl or World Cup, for example.
 - Growing datasets. For example, you have an IoT app or an audit database that keeps growing rapidly on a daily basis. These systems have to handle high volume of writes on a regular basis.
-- Change in business priorities. Scaling needs are often unpredictable. To take one example, retail priorities shifted radically when Covid entered the picture. With a database that can scale, you can pivot quickly when the business environment shifts.
-- New geographies. Your user base grows more geographically diverse, expanding to new regions, and you need to add to your presence globally by adding more data centers in different continents.
+- Changing business priorities. Scaling needs are often unpredictable. To take one example, retail priorities shifted radically when Covid entered the picture. With a database that can scale, you can pivot quickly when the business environment shifts.
+- New geographies. Your user base expands to new regions, and you need to add to your presence globally by adding more data centers in different continents.
 
 Given this fluctuating reality and the always-on expectations of users, being able to scale seamlessly is as important as being able to scale. Scaling needs to be:
 
 - Easy. Scaling should be operationally simple to do.
 - Elastic. You should be able to scale up and down as needed.
-- Transparent. Your applications shouldn't even know it's happening. Data is moved automatically, without any interruption in service.
+- Transparent. Your applications shouldn't even know it's happening.
 
 ## How scaling works
 
-In YugabyteDB, [data is split (sharded)](./sharding-rebalancing) into tablets, and these multiple tablets are placed on various nodes. When more [nodes are added](./node-addition), some tablets are automatically [rebalanced](./sharding-rebalancing#rebalancing) to the new nodes. Tablets can be split dynamically as needed to use the newly added resource, which leads to each node managing fewer tablets. The entire cluster can therefore handle more transactions and queries in parallel, thus increasing its capacity to handle larger workloads.
+In YugabyteDB, [data is split (sharded)](./sharding-rebalancing) into tablets, and these multiple tablets are placed on various nodes. When more [nodes are added](./node-addition), some tablets are automatically [rebalanced](./sharding-rebalancing#rebalancing) to the new nodes. Data is moved automatically, without any interruption in service. Tablets can be split dynamically as needed to use the newly added resource, which leads to each node managing fewer tablets. The entire cluster can therefore handle more transactions and queries in parallel, thus increasing its capacity to handle larger workloads.
 
 To learn more, see [Sharding and rebalancing](sharding-rebalancing/).
 
@@ -62,7 +64,7 @@ You can achieve this in two ways:
 
   Vertical scaling is the standard way to scale traditional databases, and involves upgrading the existing hardware or resources of each of the nodes in your cluster. Instead of adding more machines, you enhance the capabilities of a single machine by increasing its CPU, memory, storage, and so on.
 
-  Vertical scaling is often limited by the capacity of a single server and can get expensive as you move to more powerful hardware. Although you retain the same number of nodes, which could simplify your operations, eventually hardware resources reach their limits, and further scaling up might not be feasible.
+  Vertical scaling is often limited by the capacity of a single server and can get expensive as you move to more powerful hardware. Although you retain the same number of nodes, which could simplify your operations, eventually hardware resources reach their limits, and further scaling up might not be feasible. In addition, all the data has to be moved, which can take time.
 
 - Horizontal scaling (scale out)
 
