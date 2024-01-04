@@ -16,12 +16,14 @@ import java.io.IOException;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.WireProtocol;
+import org.yb.WireProtocol.PromotedFlagsPerProcessPB;
 import org.yb.client.YBClient;
 
 @Singleton
@@ -82,21 +84,26 @@ public class AutoFlagUtil {
       throws IOException {
     // Fetch promoted auto flags list from DB itself.
     WireProtocol.AutoFlagsConfigPB autoFlagsConfigPB = getAutoFlagConfigForUniverse(universe);
-    Set<String> autoFlags =
+
+    Optional<PromotedFlagsPerProcessPB> promotedFlagsPerProcessPB =
         autoFlagsConfigPB.getPromotedFlagsList().stream()
             .filter(
-                promotedFlagsPerProcessPB -> {
-                  return promotedFlagsPerProcessPB
+                flagsPerProcessPB -> {
+                  return flagsPerProcessPB
                       .getProcessName()
                       .equals(
                           UniverseTaskBase.ServerType.MASTER.equals(serverType)
                               ? "yb-master"
                               : "yb-tserver");
                 })
-            .findFirst()
-            .get()
-            .getFlagsList()
-            .stream()
+            .findFirst();
+
+    if (!promotedFlagsPerProcessPB.isPresent()) {
+      return new HashSet<>();
+    }
+
+    Set<String> autoFlags =
+        promotedFlagsPerProcessPB.get().getFlagsList().stream()
             .filter(flag -> !GFlagsValidation.TEST_AUTO_FLAGS.contains(flag))
             .collect(Collectors.toSet());
 
