@@ -1,8 +1,9 @@
 ---
 title: High availability of YugabyteDB Anywhere
 headerTitle: Enable high availability
-linkTitle: Enable high availability
 description: Make YugabyteDB Anywhere highly available
+headcontent: Configure standby instances of YugabyteDB Anywhere
+linkTitle: Enable high availability
 menu:
   stable_yugabyte-platform:
     identifier: platform-high-availability
@@ -139,7 +140,7 @@ Even though you can perform an upgrade of all YugabyteDB Anywhere instances simu
 The following is the detailed upgrade procedure:
 
 1. Stop the HA synchronization. This ensures that only backups of the original YugabyteDB Anywhere version are synchronized to the standby instance.
-1. Upgrade the active instance. Expect a momentary lapse in availability for the duration of the upgrade. If the upgrade is successful, proceed to step 3. If the upgrade fails, perform the following:
+1. [Upgrade the active instance](../../upgrade/). Expect a momentary lapse in availability for the duration of the upgrade. If the upgrade is successful, proceed to step 3. If the upgrade fails, perform the following:
 
     - Decommission the faulty active instance in the active-standby pair.
     - Promote the standby instance.
@@ -148,7 +149,7 @@ The following is the detailed upgrade procedure:
     - After the root cause of failure has been established, repeat the upgrade process starting from step 1. Depending on the cause of failure and its solution, this may involve a different YugabyteDB Anywhere version to which to upgrade.
 
 1. On the upgraded instance, perform post-upgrade validation tests that may include creating or editing a universe, backups, and so on.
-1. Upgrade the standby instance.
+1. [Upgrade the standby instance](../../upgrade/).
 1. Enable HA synchronization.
 1. Optionally, promote the standby instance with the latest backup synchronized from the YugabyteDB Anywhere version to which to upgrade.
 
@@ -170,7 +171,7 @@ To remove a standby instance from a HA cluster, you need to remove it from the a
 
 1. On the active instance's list, click **Delete Instance** for the standby instance to be removed.
 
-1. On the standby instance you wish to remove from the HA cluster, click **Delete Configuration** on the **Admin** tab.
+1. On the standby instance you wish to remove from the HA cluster, on the **Admin > High Availability** tab, click **Delete Configuration**.
 
 The standby instance is now a standalone instance again.
 

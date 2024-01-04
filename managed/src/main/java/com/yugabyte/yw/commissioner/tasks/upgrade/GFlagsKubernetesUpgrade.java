@@ -12,6 +12,7 @@ import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.gflags.GFlagsValidation;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
 import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
@@ -72,7 +73,11 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
           UserIntent userIntent = cluster.userIntent;
           Universe universe = getUniverse();
           kubernetesStatus.createYBUniverseEventStatus(
-              universe, taskParams().getKubernetesResourceDetails(), getName(), getUserTaskUUID());
+              universe,
+              taskParams().getKubernetesResourceDetails(),
+              getName(),
+              getUserTaskUUID(),
+              UniverseState.EDITING);
           // Verify the request params and fail if invalid only if its the first time we are
           // invoked.
           if (isFirstTry()) {
@@ -130,6 +135,7 @@ public class GFlagsKubernetesUpgrade extends KubernetesUpgradeTaskBase {
                 taskParams().getKubernetesResourceDetails(),
                 getName(),
                 getUserTaskUUID(),
+                (th != null) ? UniverseState.ERROR : UniverseState.READY,
                 th);
           }
         });

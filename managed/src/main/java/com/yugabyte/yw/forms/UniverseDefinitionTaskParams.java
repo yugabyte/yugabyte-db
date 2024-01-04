@@ -16,6 +16,7 @@ import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
+import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
@@ -47,7 +48,7 @@ import lombok.Getter;
 import lombok.Setter;
 import lombok.ToString;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.builder.HashCodeBuilder;
 import play.data.validation.Constraints;
@@ -460,7 +461,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
         // Ephemeral storage AWS instances should not have storage type
         if (deviceInfo.storageType != null) {
           throw new PlatformServiceException(
-              BAD_REQUEST, "AWS instance with ephemeral storage can't have" + " storageType set");
+              BAD_REQUEST, "AWS instance with ephemeral storage can't have storageType set");
         }
       } else {
         if (cloudType.isRequiresStorageType() && deviceInfo.storageType == null) {
@@ -1039,7 +1040,20 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
 
     @JsonIgnore
     public boolean isYSQLAuthEnabled() {
+      boolean authEnabled = false;
+      if (specificGFlags != null
+          && specificGFlags.getPerProcessFlags() != null
+          && specificGFlags.getPerProcessFlags().value.containsKey(ServerType.TSERVER)) {
+        authEnabled =
+            specificGFlags
+                .getPerProcessFlags()
+                .value
+                .get(ServerType.TSERVER)
+                .getOrDefault("ysql_enable_auth", "false")
+                .equals("true");
+      }
       return tserverGFlags.getOrDefault("ysql_enable_auth", "false").equals("true")
+          || authEnabled
           || enableYSQLAuth;
     }
   }

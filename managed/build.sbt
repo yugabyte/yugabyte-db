@@ -1,6 +1,7 @@
 import jline.console.ConsoleReader
 import play.sbt.PlayImport.PlayKeys.{playInteractionMode, playMonitoredFiles}
 import play.sbt.PlayInteractionMode
+import java.nio.charset.StandardCharsets
 import sbt.Tests._
 
 import scala.sys.process.Process
@@ -8,6 +9,7 @@ import scala.sys.process.Process
 historyPath := Some(file(System.getenv("HOME") + "/.sbt/.yugaware-history"))
 
 useCoursier := false
+
 
 // ------------------------------------------------------------------------------------------------
 // Constants
@@ -89,6 +91,7 @@ lazy val versionGenerate = taskKey[Int]("Add version_metadata.json file")
 
 lazy val buildVenv = taskKey[Int]("Build venv")
 lazy val generateCrdObjects = taskKey[Int]("Generating CRD classes..")
+lazy val generateOssConfig = taskKey[Int]("Generating OSS class.")
 lazy val buildUI = taskKey[Int]("Build UI")
 lazy val buildModules = taskKey[Int]("Build modules")
 lazy val buildDependentArtifacts = taskKey[Int]("Build dependent artifacts")
@@ -100,6 +103,8 @@ lazy val cleanUI = taskKey[Int]("Clean UI")
 lazy val cleanVenv = taskKey[Int]("Clean venv")
 lazy val cleanModules = taskKey[Int]("Clean modules")
 lazy val cleanCrd = taskKey[Int]("Clean CRD")
+lazy val cleanOperatorConfig = taskKey[Unit]("Clean OperatorConfig")
+
 
 
 lazy val compileJavaGenClient = taskKey[Int]("Compile generated Java code")
@@ -126,6 +131,8 @@ lazy val root = (project in file("."))
   })
 
 javacOptions ++= Seq("-source", "17", "-target", "17")
+
+
 Compile / managedClasspath += baseDirectory.value / "target/scala-2.13/"
 version := sys.process.Process("cat version.txt").lineStream_!.head
 Global / onChangedBuildSource := ReloadOnSourceChanges
@@ -142,8 +149,10 @@ libraryDependencies ++= Seq(
   "net.logstash.logback" % "logstash-logback-encoder" % "6.2",
   "ch.qos.logback" % "logback-classic" % "1.4.14",
   "org.codehaus.janino" % "janino" % "3.1.9",
-  "org.apache.commons" % "commons-compress" % "1.21",
-  "org.apache.commons" % "commons-csv" % "1.9.0",
+  "org.apache.commons" % "commons-lang3" % "3.14.0",
+  "org.apache.commons" % "commons-collections4" % "4.4",
+  "org.apache.commons" % "commons-compress" % "1.25.0",
+  "org.apache.commons" % "commons-csv" % "1.10.0",
   "org.apache.httpcomponents" % "httpcore" % "4.4.5",
   "org.apache.httpcomponents" % "httpclient" % "4.5.13",
   "org.flywaydb" %% "flyway-play" % "9.0.0",
@@ -181,12 +190,12 @@ libraryDependencies ++= Seq(
   "org.pac4j" % "pac4j-oauth" % "4.5.7" exclude("commons-io" , "commons-io"),
   "org.pac4j" % "pac4j-oidc" % "4.5.7" exclude("commons-io" , "commons-io"),
   "org.playframework" %% "play-json" % "3.0.1",
-  "commons-validator" % "commons-validator" % "1.7",
+  "commons-validator" % "commons-validator" % "1.8.0",
   "org.apache.velocity" % "velocity-engine-core" % "2.3",
   "com.fasterxml.woodstox" % "woodstox-core" % "6.4.0",
   "com.jayway.jsonpath" % "json-path" % "2.6.0",
-  "commons-io" % "commons-io" % "2.8.0",
-  "commons-codec" % "commons-codec" % "1.15",
+  "commons-io" % "commons-io" % "2.15.1",
+  "commons-codec" % "commons-codec" % "1.16.0",
   "com.google.apis" % "google-api-services-compute" % "v1-rev20220506-1.32.1",
   "com.google.apis" % "google-api-services-iam" % "v1-rev20211104-1.32.1",
   "com.google.cloud" % "google-cloud-compute" % "1.9.1",
@@ -319,9 +328,11 @@ externalResolvers := {
 (Compile / compile) := ((Compile / compile) dependsOn buildDependentArtifacts).value
 
 (Compile / compilePlatform) := {
-  (Compile / compile).value
+
+
   Def.sequential(
       generateCrdObjects,
+      generateOssConfig,
       buildVenv,
       releaseModulesLocally
     ).value
@@ -333,6 +344,7 @@ externalResolvers := {
 cleanPlatform := {
   clean.value
   (swagger / clean).value
+  cleanOperatorConfig.value
   cleanCrd.value
   cleanVenv.value
   cleanUI.value
@@ -378,8 +390,29 @@ releaseModulesLocally := {
 buildDependentArtifacts := {
   ybLog("Building dependencies...")
   generateCrdObjects.value
+  generateOssConfig.value
   val status = Process("mvn install -P buildDependenciesOnly", baseDirectory.value / "parent-module").!
   status
+}
+
+generateOssConfig := {
+  ybLog("Generating oss config class.")
+  val srcTemplatePath = (baseDirectory.value / "src/main/resources/templates/OperatorConfig.template").toPath
+  val generatedFilePath = (baseDirectory.value / "target/scala-2.13/com/yugabyte/operator/OperatorConfig.java").toPath
+  val directoryPath =  (baseDirectory.value / "target/scala-2.13/com/yugabyte/operator/").toPath
+
+  java.nio.file.Files.createDirectories(directoryPath)
+
+  val regex = "###OSSMODE###".r
+  val replacement = if (sys.props.getOrElse("communityOperator.enabled", false) == "true") "true" else "false"
+  val source = scala.io.Source.fromFile(srcTemplatePath.toFile)
+  try {
+    val content = regex.replaceAllIn(source.mkString, replacement)
+    java.nio.file.Files.write(generatedFilePath, content.getBytes(StandardCharsets.UTF_8))
+  } finally {
+    source.close()
+  }
+  0 // Assuming success
 }
 
 generateCrdObjects := {
@@ -431,6 +464,14 @@ cleanVenv := {
   status
 }
 
+cleanOperatorConfig := {
+  val filePath = baseDirectory.value / "target/scala-2.13/OperatorConfig.java"
+  val file = sbt.file(filePath.toString)
+  if (file.exists()) {
+    sbt.IO.delete(file)
+  }
+}
+
 cleanCrd := {
   ybLog("Cleaning CRD generated code...")
   val generatedSourcesDirectory = baseDirectory.value / "target/scala-2.13/"
@@ -477,6 +518,8 @@ Universal / packageBin := (Universal / packageBin).dependsOn(versionGenerate, bu
 
 Universal / javaOptions += "-J-XX:G1PeriodicGCInterval=120000"
 
+
+
 javaAgents += "io.kamon" % "kanela-agent" % "1.0.18"
 
 runPlatformTask := {
@@ -497,7 +540,7 @@ runPlatform := {
 
 libraryDependencies += "org.yb" % "yb-client" % "0.8.75-SNAPSHOT"
 libraryDependencies += "org.yb" % "ybc-client" % "2.0.0.0-b21"
-libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b32"
+libraryDependencies += "org.yb" % "yb-perf-advisor" % "1.0.0-b33"
 
 libraryDependencies ++= Seq(
   "io.netty" % "netty-tcnative-boringssl-static" % "2.0.54.Final",
@@ -534,6 +577,7 @@ dependencyOverrides ++= jacksonOverrides
 
 excludeDependencies += "org.eclipse.jetty" % "jetty-io"
 excludeDependencies += "org.eclipse.jetty" % "jetty-server"
+excludeDependencies += "commons-collections" % "commons-collections"
 
 Global / concurrentRestrictions := Seq(Tags.limitAll(16))
 

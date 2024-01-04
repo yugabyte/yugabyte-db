@@ -8,7 +8,7 @@ menu:
   v2.16_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: manage-deployments
-    weight: 644
+    weight: 640
 type: indexpage
 ---
 To see your deployed universes, navigate to **Dashboard** or **Universes**. To view a universe, select it in the list.

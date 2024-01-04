@@ -66,6 +66,7 @@ bool		log_lock_waits = false;
 int			RetryMaxBackoffMsecs;
 int			RetryMinBackoffMsecs;
 double		RetryBackoffMultiplier;
+int yb_max_query_layer_retries;
 
 /* Pointer to this process's PGPROC and PGXACT structs, if any */
 PGPROC	   *MyProc = NULL;
@@ -458,6 +459,7 @@ InitProcess(void)
 		   sizeof(MyProc->yb_ash_metadata.client_addr));
 	MyProc->yb_ash_metadata.client_port = 0;
 	MyProc->yb_ash_metadata.addr_family = AF_UNSPEC;
+	MyProc->yb_is_ash_metadata_set = false;
 
 	/*
 	 * Acquire ownership of the PGPROC's latch, so that we can use WaitLatch
@@ -602,6 +604,7 @@ InitAuxiliaryProcess(void)
 	MyProc->lwWaitMode = 0;
 	MyProc->waitLock = NULL;
 	MyProc->waitProcLock = NULL;
+	MyProc->yb_is_ash_metadata_set = false;
 #ifdef USE_ASSERT_CHECKING
 	{
 		int			i;

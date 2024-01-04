@@ -110,7 +110,13 @@ class LogIndex : public RefCountedThreadSafe<LogIndex> {
   // belonging to this segment.
   // In this case we return false to indicate that we don't need to load earlier segments further.
   // Otherwise we return true.
-  Result<bool> LoadFromSegment(ReadableLogSegment* segment);
+  Result<bool> LazyLoadOneSegment(ReadableLogSegment* segment);
+
+  // Loads log index from the given segment file, save index of the first op in this segment
+  // to first_op_index.
+  // Return false to indicate that the segment has already been loaded and LoadFromSegment just
+  // skipped it. Otherwise, return true.
+  Result<bool> LoadFromSegment(ReadableLogSegment* segment, int64_t* first_op_index);
 
   // Indicate that we no longer need to retain information about indexes lower than the
   // given index. Note that the implementation is conservative and _may_ choose to retain

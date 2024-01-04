@@ -121,7 +121,7 @@ If the issue you are experiencing is due to the incorrect setting for the storag
 Events:
   Type     Reason             Age                From                Message
   ----     ------             ----               ----                -------
-Warning  FailedScheduling   75s (x40 over 55m)    default-scheduler   0/55 nodes are available: 19 Insufficient cpu, 36 node(s) didn't match Pod's node affinity/selector
+Warning  FailedScheduling   75s (x40 over 55m)    default-scheduler   0/10 nodes are available: 3 node(s) had volume node affinity conflict, 7 node(s) didn't match Pod's node affinity/selector.
 ```
 
 You can obtain information related to storage classes, as follows:

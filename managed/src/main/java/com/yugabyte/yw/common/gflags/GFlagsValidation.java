@@ -136,7 +136,7 @@ public class GFlagsValidation {
       AllGFlags data = xmlMapper.readValue(flagStream, AllGFlags.class);
       if (mostUsedGFlags) {
         InputStream inputStream =
-            environment.resourceAsStream("gflags_metadata/" + "most_used_gflags.json");
+            environment.resourceAsStream("gflags_metadata/most_used_gflags.json");
         ObjectMapper mapper = new ObjectMapper();
         MostUsedGFlags freqUsedGFlags = mapper.readValue(inputStream, MostUsedGFlags.class);
         List<GFlagDetails> result = new ArrayList<>();

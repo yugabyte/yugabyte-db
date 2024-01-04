@@ -70,6 +70,7 @@ static const char *PSQL_SERVER_NEW_CONNECTION_TOTAL = "yb_ysqlserver_new_connect
 
 // YSQL Connection Manager-specific metric labels
 static const char *DATABASE = "database";
+static const char *USER = "user";
 
 namespace {
 
@@ -156,7 +157,8 @@ static void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats) {
   }
 
   for (uint32_t itr = 0; itr < num_pools; itr++) {
-    if (strcmp(shmp[itr].pool_name, "") == 0)
+    if (strcmp(shmp[itr].database_name, "") == 0
+      || strcmp(shmp[itr].user_name, "") == 0 )
       break;
     stats->push_back(shmp[itr]);
   }
@@ -180,7 +182,8 @@ void emitYsqlConnectionManagerMetrics(PrometheusWriter *pwriter) {
     ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_query_rate", stats.query_rate});
     ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_transaction_rate", stats.transaction_rate});
     ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_avg_wait_time_ns", stats.avg_wait_time_ns});
-    ysql_conn_mgr_prometheus_attr[DATABASE] = stats.pool_name;
+    ysql_conn_mgr_prometheus_attr[DATABASE] = stats.database_name;
+    ysql_conn_mgr_prometheus_attr[USER] = stats.user_name;
 
     // Publish collected metrics for the current pool.
     for (auto entry : ysql_conn_mgr_metrics) {
@@ -407,8 +410,11 @@ static void PgLogicalRpczHandler(const Webserver::WebRequest &req, Webserver::We
 
     // The type of pool. There are two types of pool in Ysql Connection Manager, "gloabl" and
     // "control".
-    writer.String("pool");
-    writer.String(stat.pool_name);
+    writer.String("database_name");
+    writer.String(stat.database_name);
+
+    writer.String("user_name");
+    writer.String(stat.user_name);
 
     // Number of logical connections that are attached to any physical connection. A logical
     // connection gets attached to a physical connection during lifetime of a transaction.

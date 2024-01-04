@@ -857,7 +857,8 @@ YBInitPostgresBackend(
 		callbacks.UnixEpochToPostgresEpoch = &YbUnixEpochToPostgresEpoch;
 		callbacks.ConstructArrayDatum = &YbConstructArrayDatum;
 		callbacks.CheckUserMap = &check_usermap;
-		YBCInitPgGate(type_table, count, callbacks, session_id, &MyProc->yb_ash_metadata);
+		YBCInitPgGate(type_table, count, callbacks, session_id, &MyProc->yb_ash_metadata,
+					  &MyProc->yb_is_ash_metadata_set);
 		YBCInstallTxnDdlHook();
 
 		/*
@@ -2044,7 +2045,28 @@ YBTxnDdlProcessUtility(
 	PG_TRY();
 	{
 		if (is_ddl)
+		{
+			if (YBIsDBCatalogVersionMode())
+				/*
+				 * In order to support concurrent non-global-impact DDLs
+				 * across different databases, call YbInitPinnedCacheIfNeeded
+				 * now which triggers a scan of pg_shdepend and pg_depend.
+				 * This ensure that the scan is done without using a read time
+				 * of the DDL transaction so that yb-master can retry read
+				 * restarts automatically. Otherwise, a read restart error is
+				 * returned to the PG backend the DDL statement will fail
+				 * because DDLs cannot be restarted.
+				 *
+				 * YB NOTE: this implies a performance hit for DDL statements
+				 * that do not need to call YbInitPinnedCacheIfNeeded.
+				 *
+				 * TODO(myang): we can optimize to only read pg_shdepend here
+				 * to reduce its performance penalty.
+				 */
+				YbInitPinnedCacheIfNeeded();
+
 			YBIncrementDdlNestingLevel(ddl_mode.value);
+		}
 
 		if (prev_ProcessUtility)
 			prev_ProcessUtility(pstmt, queryString,
@@ -3991,13 +4013,13 @@ bool YbIsColumnPartOfKey(Relation rel, const char *column_name)
 }
 
 /*
- * ```yb_committed_sticky_object_count``` is the count of the database objects
+ * ```ysql_conn_mgr_sticky_object_count``` is the count of the database objects
  * that requires the sticky connection
  * These objects are
  * 1. WITH HOLD CURSORS
  * 2. TEMP TABLE
  */
-int yb_committed_sticky_object_count = 0;
+int ysql_conn_mgr_sticky_object_count = 0;
 
 /*
  * ```YbIsStickyConnection(int *change)``` updates the number of objects that requires a sticky
@@ -4007,10 +4029,10 @@ int yb_committed_sticky_object_count = 0;
  */
 bool YbIsStickyConnection(int *change)
 {
-	yb_committed_sticky_object_count += *change;
+	ysql_conn_mgr_sticky_object_count += *change;
 	*change = 0; /* Since it is updated it will be set to 0 */
-	elog(DEBUG5, "Number of sticky objects: %d", yb_committed_sticky_object_count);
-	return (yb_committed_sticky_object_count > 0);
+	elog(DEBUG5, "Number of sticky objects: %d", ysql_conn_mgr_sticky_object_count);
+	return (ysql_conn_mgr_sticky_object_count > 0);
 }
 
 void**

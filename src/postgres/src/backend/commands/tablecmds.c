@@ -1094,6 +1094,25 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 		if (OidIsValid(defaultPartOid))
 		{
 			check_default_partition_contents(parent, defaultRel, bound);
+
+			if (IsYugaByteEnabled())
+			{
+				/*
+				* Increment the schema version of the default partition to
+				* ensure concurrent operations do not insert any data matching
+				* this new partition into the default partition.
+				*/
+				YBCPgStatement alter_cmd_handle = NULL;
+				HandleYBStatus(
+					YBCPgNewAlterTable(
+						YBCGetDatabaseOidByRelid(defaultPartOid),
+						YbGetStorageRelid(defaultRel),
+						&alter_cmd_handle));
+				HandleYBStatus(
+					YBCPgAlterTableIncrementSchemaVersion(alter_cmd_handle));
+				YBCExecAlterTable(alter_cmd_handle, defaultPartOid);
+			}
+
 			/* Keep the lock until commit. */
 			heap_close(defaultRel, NoLock);
 		}

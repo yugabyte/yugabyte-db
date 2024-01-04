@@ -188,6 +188,8 @@ export const getFormData = (universeData: UniverseDetails, clusterType: ClusterT
       enableEncryptionAtRest: !!encryptionAtRestConfig.encryptionAtRestEnabled,
       kmsConfig: encryptionAtRestConfig?.kmsConfigUUID ?? null,
       tserverK8SNodeResourceSpec: userIntent.tserverK8SNodeResourceSpec,
+      arch: universeData.arch,
+      imageBundleUUID: userIntent.imageBundleUUID,
       rootCA
     },
     advancedConfig: {
@@ -270,7 +272,8 @@ export const getUserIntent = (
     ybSoftwareVersion: advancedConfig.ybSoftwareVersion,
     enableIPV6: advancedConfig.enableIPV6,
     enableExposingService: advancedConfig.enableExposingService,
-    useSystemd: advancedConfig.useSystemd
+    useSystemd: advancedConfig.useSystemd,
+    imageBundleUUID: instanceConfig.imageBundleUUID!
   };
 
   if (enableRRGflags) {

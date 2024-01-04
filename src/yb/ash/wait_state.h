@@ -38,61 +38,82 @@ DECLARE_bool(TEST_export_wait_state_names);
 #define SCOPED_WAIT_STATUS(code) \
   yb::ash::ScopedWaitStatus _scoped_status(BOOST_PP_CAT(yb::ash::WaitStateCode::k, code))
 
-// Wait components refer to which process the specific wait-event is part of.
-// Generally, these are PG, TServer, YBClient/Perform layer, and PgGate.
-//
-// Within each component, we further group wait events into similar groups called
-// classes. Rpc related wait-events may be grouped together under "Rpc".
-// Consensus related wait-events may be grouped together under a group -- "consensus".
-// and so on.
-//
-// We use a 32-bit uint to represent a wait-event.
-//   <8-bit reserved> <4-bit Component> <4-bit Class> <16-bit Event>
-// - The hightest 8 bits are set to 0, and reserved for future use.
-// - The next 4 bits of the wait-event-code represents the component.
-// - The next 4 bits of the wait-event-code represents the wait-event class.
-// - Each wait-event class may have up to 2^16 wait-events.
-
-// YB ASH Wait Components (4 bits)
-#define YB_ASH_COMPONENT_PGGATE    0xFU
-#define YB_ASH_COMPONENT_TSERVER   0xEU
-#define YB_ASH_COMPONENT_YBC       0xDU
-#define YB_ASH_COMPONENT_PG        0xCU
-
-#define YB_ASH_COMPONENT_POSITION  20U
-#define YB_ASH_CLASS_POSITION      16U
-#define YB_ASH_WAIT_EVENT_MASK     ((1U << 24U) - 1U)
-
-#define YB_ASH_MAKE_CLASS(comp, c) \
-    YB_ASH_WAIT_EVENT_MASK &   \
-    (((comp) << YB_ASH_COMPONENT_POSITION) | ((c) << YB_ASH_CLASS_POSITION))
-
-// YB ASH Wait Classes (4 bits)
-#define YB_ASH_CLASS_PG                   YB_ASH_MAKE_CLASS(YB_ASH_COMPONENT_PG,  0xFU)
-
-#define YB_ASH_CLASS_RPC                  YB_ASH_MAKE_CLASS(YB_ASH_COMPONENT_TSERVER, 0xFU)
-#define YB_ASH_CLASS_FLUSH_AND_COMPACTION YB_ASH_MAKE_CLASS(YB_ASH_COMPONENT_TSERVER, 0xEU)
-#define YB_ASH_CLASS_CONSENSUS            YB_ASH_MAKE_CLASS(YB_ASH_COMPONENT_TSERVER, 0xDU)
-#define YB_ASH_CLASS_TABLET_WAIT          YB_ASH_MAKE_CLASS(YB_ASH_COMPONENT_TSERVER, 0xCU)
-#define YB_ASH_CLASS_ROCKSDB              YB_ASH_MAKE_CLASS(YB_ASH_COMPONENT_TSERVER, 0xBU)
-#define YB_ASH_CLASS_COMMON               YB_ASH_MAKE_CLASS(YB_ASH_COMPONENT_TSERVER, 0xAU)
-
-#define YB_ASH_CLASS_PG_CLIENT_SERVICE    YB_ASH_MAKE_CLASS(YB_ASH_COMPONENT_YBC, 0xFU)
-#define YB_ASH_CLASS_CQL_WAIT_STATE       YB_ASH_MAKE_CLASS(YB_ASH_COMPONENT_YBC, 0xEU)
-#define YB_ASH_CLASS_CLIENT               YB_ASH_MAKE_CLASS(YB_ASH_COMPONENT_YBC, 0xDU)
-
-
-
 namespace yb::ash {
 
+// Wait components refer to which process the specific wait event is part of.
+// Generally, these are PG, TServer and YBClient/Perform layer.
+//
+// Within each component, we further group wait events into similar groups called
+// classes. Rpc related wait events may be grouped together under "Rpc".
+// Consensus related wait events may be grouped together under a group -- "consensus".
+// and so on.
+//
+// If the bit representation of wait event code is changed, don't forget to change the
+// 'YBCGetWaitEvent*' functions.
+//
+// We use a 32-bit uint to represent a wait event. This is kept the same as PG to
+// simplify the extraction of component, class and event name from wait event code.
+//   <4-bit Component> <4-bit Class> <8-bit Reserved> <16-bit Event>
+// - The highest 4 bits of the wait event code represents the component.
+// - The next 4 bits of the wait event code represents the wait event class of
+//   a specific wait event component.
+// - The next 8 bits are set to 0, and reserved for future use.
+// - Each wait event class may have up to 2^16 wait events.
+//
+// Note that it's not possible to get the wait event class solely from the 'class'
+// bits because those bits are reused for each component. You need the first 8 bits
+// to get the wait event class. Similar thing applies for wait event.
+
+#define YB_ASH_CLASS_BITS          4U
+#define YB_ASH_CLASS_POSITION      24U
+
+#define YB_ASH_MAKE_CLASS(comp) \
+    (yb::to_underlying(BOOST_PP_CAT(yb::ash::Component::k, comp)) << \
+     YB_ASH_CLASS_BITS)
+
+#define YB_ASH_MAKE_EVENT(class) \
+    (static_cast<uint32_t>(yb::to_underlying(BOOST_PP_CAT(yb::ash::Class::k, class))) << \
+     YB_ASH_CLASS_POSITION)
+
+// YB ASH Wait Components (4 bits)
+// Don't reorder this enum
+YB_DEFINE_TYPED_ENUM(Component, uint8_t,
+    (kPostgres)
+    (kYbClient)
+    (kTServer));
+
+// YB ASH Wait Classes (8 bits)
+// Don't reorder this enum
+YB_DEFINE_TYPED_ENUM(Class, uint8_t,
+    // PG classes
+    ((kTServerWait, YB_ASH_MAKE_CLASS(Postgres)))
+
+    // YB Client classes
+    ((kPgClientService, YB_ASH_MAKE_CLASS(YbClient)))
+    (kCqlWaitState)
+    (kClient)
+
+    // Tserver classes
+    ((kRpc, YB_ASH_MAKE_CLASS(TServer)))
+    (kFlushAndCompaction)
+    (kConsensus)
+    (kTabletWait)
+    (kRocksDB)
+    (kCommon));
+
 YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
-    ((kUnused, 0))
-    ((kOnCpu_Active, YB_ASH_CLASS_COMMON))
+    // Don't change the value of kUnused
+    ((kUnused, 0xFFFFFFFFU))
+
+    // Common wait states
+    ((kOnCpu_Active, YB_ASH_MAKE_EVENT(Common)))
     (kOnCpu_Passive)
     (kRpc_Done)
     (kRpcs_WaitOnMutexInShutdown)
     (kRetryableRequests_SaveToDisk)
-    ((kMVCC_WaitForSafeTime, YB_ASH_CLASS_TABLET_WAIT))
+
+    // Wait states related to tablet wait
+    ((kMVCC_WaitForSafeTime, YB_ASH_MAKE_EVENT(TabletWait)))
     (kLockedBatchEntry_Lock)
     (kBackfillIndex_WaitForAFreeSlot)
     (kCreatingNewTablet)
@@ -105,7 +126,9 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kDumpRunningRpc_WaitOnReactor)
     (kConflictResolution_ResolveConficts)
     (kConflictResolution_WaitOnConflictingTxns)
-    ((kWAL_Open, YB_ASH_CLASS_CONSENSUS)) // waiting for WALEdits to be persisted.
+
+    // Wait states related to consensus
+    ((kWAL_Open, YB_ASH_MAKE_EVENT(Consensus))) // waiting for WALEdits to be persisted.
     (kWAL_Close)
     (kWAL_Write)
     (kWAL_AllocateNewSegment)
@@ -117,7 +140,9 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
     (kConsensusMeta_Flush)
     (kReplicaState_TakeUpdateLock)
     (kReplicaState_WaitForMajorityReplicatedHtLeaseExpiration)
-    ((kRocksDB_OnCpu_Active, YB_ASH_CLASS_ROCKSDB))
+
+    // Wait states related to RocksDB
+    ((kRocksDB_OnCpu_Active, YB_ASH_MAKE_EVENT(RocksDB)))
     (kRocksDB_ReadBlockFromFile)
     (kRocksDB_ReadIO));
 

@@ -31,6 +31,7 @@
       "selected": "Selected",
       "note": "Note :",
       "reload": "Reload",
+      "default": "Default",
       "seconds": "Seconds"
     },
     "task": {
@@ -122,7 +123,7 @@
       "dbRollbackUpgrade": {
         "modalTitle": "Upgrade Database",
         "upgradeAction": "Upgrade",
-        "chooseTarget": "1. Choose target Version",
+        "chooseTarget": "1. Choose target version",
         "currentVersion": "Current Version",
         "targetVersion": "Target Version",
         "additionalStep": "An additional step is required based on the selected version.",
@@ -141,6 +142,11 @@
         "delayBwRollback": "Delay between rollbacks:",
         "proceedRollback": "Proceed with Rollback",
         "version": "version",
+        "rollbackFailedMsg": "The rollback of the Universe database upgrade has encountered an issue. To restore the Universe to its normal state, you can choose to either retry the rollback or get in touch our support team.",
+        "finalizeFailedMsg": "The finalization of the Universe database upgrade has encountered an issue. To restore the Universe to its normal state, you can choose to either retry the finalization or get in touch our support team.",
+        "upgradeFailedMsg": "The Universe database version upgrade has encountered an issue. To restore the Universe to its normal state, you have the option to either roll back the upgrade or retry the upgrade.",
+        "viewTask": "View Task Details",
+        "retryTask": "Retry Task",
         "preFinalize": {
           "finalizeUpgrade": "Finalize Upgrade",
           "rollback": "Roll back to the previous version",
@@ -156,15 +162,10 @@
           "modalSubmitLabel": "Proceed to finalize the upgrade"
         },
         "preFinalizeXcluster": {
-          "modalBody": "This universe is associated with one or more xCluster replications. To avoid disrupting replication, you should upgrade all linked universes to version {{version}} beforefinalizing this universe or any linked universe.",
+          "modalBody": "This universe is associated with one or more xCluster replications. To avoid disrupting replication, you should upgrade all linked universes to version {{version}} before finalizing this universe or any linked universe.",
           "modalTitle": "Upgrade Linked Universes",
           "modalSubmit": "Review Universe Replication",
           "modalProceed": "Proceed Anyway"
-        },
-        "rollback": {
-          "bannerMsg": "The Universe database version upgrade has encountered an issue. To restore the Universe to its normal state, you have the option to either roll back the upgrade or retry the upgrade.",
-          "viewTask": "View Task Details",
-          "retryTask": "Retry Task"
         },
         "widget": {
           "versionLabel": "Version",
@@ -388,7 +389,12 @@
         "volumeInfo": "Volume Info",
         "volumeSizeUnit": "GB",
         "throughputUnit": "MB/s",
-        "k8VolumeSizeUnit": "Gib"
+        "k8VolumeSizeUnit": "Gib",
+        "cpuArch": "CPU Architecture",
+        "x86_64": "x86 (Intel)",
+        "aarch64": "AArch6 (ARM)",
+        "linuxVersion": "Linux Version",
+        "showRetired": "Show retired recommendations"
       },
       "securityConfig": {
         "title": "Security Configurations",
@@ -1445,6 +1451,67 @@
         "copyBackupLocation": "Copy backup location",
         "copied": "Copied",
         "restoreFailed": "Restore Failed"
+      }
+    },
+    "linuxVersion": {
+      "includeYugabyteVersions": "Include Linux versions that are chosen and managed by YugabyteDB Anywhere in the catalog",
+      "addLinuxVersion": "Add Linux Version",
+      "editLinuxVersion": "Edit Linux Version",
+      "linuxVersionCatalog": "Linux Version Catalog",
+      "linuxVersions": "Linux versions",
+      "infoContent": "You can use the Linux versions that you add to this catalog to deploy universes using this provider",
+      "emptyCard": {
+        "info": "Add Linux versions that you want to use to deploy universes using this provider"
+      },
+      "hideRetiredVersion": "Hide previous recommendations",
+      "showRetiredVersion": "Show previous recommendations",
+      "form": {
+        "linuxVersionName": "Give this Linux version an easy-to-recognize name",
+        "linuxVersionNamePlaceholder": "e.g. Amazon Linux 2 AMI (HVM) - Kernel 5.10, SSD Volume Type",
+        "cpuArch": "Choose CPU architecture",
+        "machineImageId": "Enter the machine image ID ",
+        "machineImageIdPlaceholder": "e.g. xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+        "amazonMachineImage": "Enter the Amazon Machine Image (AMI) ID for each region",
+        "machineImagePlaceholder": "e.g. ami-02d595c83c5e8504a",
+        "region": "Region",
+        "amiId": "AMI ID",
+        "portDetails": "Provide SSH user and SSH port details",
+        "sshUser": "SSH User",
+        "sshUserPlaceholder": "e.g. centos",
+        "sshPort": "SSH Port",
+        "sshPortPlaceholder": "e.g. 22",
+        "menuActions": {
+          "edit": "Edit",
+          "delete": "Delete",
+          "setDefault": "Set as default",
+          "alreadyIsDefault": "This version is already set as the default.",
+          "defaultVersion": "The default version for creating Universes.",
+          "recommendedVersion": "YugabyteDB Anywhere recommended"
+        },
+        "validationMsg": {
+          "nameRequired": "Name is required",
+          "globalYBImagenameRequired": "Machine Image ID is required",
+          "amiRequired": "Ami ID is Required"
+        }
+      },
+      "upgradeModal": {
+        "title": "Upgrade Linux version",
+        "currentVersion": "Current Version",
+        "targetVersion": "Target Version",
+        "retired": "Retired",
+        "retiredTooltip": "Current version is retired",
+        "infoContent": "<b>Note!</b><br/><br/>The process of upgrading the Universe OS is <b>time-consuming</b>, as it involves upgrading one node at a time through a rolling upgrade approach. Each individual node upgrade consists of detaching the current boot disk, attaching a new boot disk, and then rebooting the node. <br/><br/>Throughout this entire process, no other Universe operations can take place, but your application will remain intact. It is advisable to <b>upgrade during off-peak hours.</b>",
+        "submitLabel": "Upgrade",
+        "restartAfterInSecond": "Rolling Restart Delay Between Servers (secs)",
+        "successMsg": "Success. Click <0>here</0> for task details"
+      },
+      "deleteModal": {
+        "title": "Delete Linux Version",
+        "infoContent": "Are you sure you want to delete <b>{{image_name}}</b>?"
+      },
+      "regionAmiModal": {
+        "title": "Add AMI IDs for {{region_name}} ",
+        "regionAmiId": "Region AMI ID"
       }
     }
   }

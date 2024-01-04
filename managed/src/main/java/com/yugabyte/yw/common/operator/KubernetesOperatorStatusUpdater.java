@@ -30,6 +30,7 @@ import java.time.Instant;
 import java.time.format.DateTimeFormatter;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.directory.api.util.Strings;
@@ -77,13 +78,17 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
    */
   @Override
   public void createYBUniverseEventStatus(
-      Universe universe, KubernetesResourceDetails universeName, String taskName, UUID taskUUID) {
+      Universe universe,
+      KubernetesResourceDetails universeName,
+      String taskName,
+      UUID taskUUID,
+      UniverseState universeState) {
     if (universe.getUniverseDetails().isKubernetesOperatorControlled) {
       try {
         String eventStr =
             String.format(
                 "Starting task %s (%s) on universe %s", taskName, taskUUID, universe.getName());
-        this.updateUniverseStatus(universe, universeName, eventStr);
+        this.updateUniverseStatus(universe, universeName, eventStr, universeState);
       } catch (Exception e) {
         log.warn("Error in creating Kubernetes Operator Universe status", e);
       }
@@ -134,37 +139,34 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
       com.yugabyte.yw.models.Backup backup, String taskName, UUID taskUUID) {
     try {
       if (backup != null) {
-        String universeName = backup.getUniverseName();
-        Universe universe = Universe.getUniverseByName(universeName);
-        if (universe == null
-            || universe.getUniverseDetails() == null
-            || !universe.getUniverseDetails().isKubernetesOperatorControlled) {
-          log.trace("universe is not operator owned, skipping status update");
-          return;
-        }
-        log.info("Update Backup Status called for task {} ", taskUUID);
-        try (final KubernetesClient kubernetesClient =
-            new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
+        UUID universeUUID = backup.getUniverseUUID();
+        Optional<Universe> universeOpt = Universe.maybeGet(universeUUID);
+        if (universeOpt.isPresent()
+            && universeOpt.get().getUniverseDetails().isKubernetesOperatorControlled) {
+          log.info("Update Backup Status called for task {} ", taskUUID);
+          try (final KubernetesClient kubernetesClient =
+              new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
 
-          for (Backup backupCr :
-              kubernetesClient.resources(Backup.class).inNamespace(namespace).list().getItems()) {
-            if (backupCr.getStatus().getTaskUUID().equals(taskUUID.toString())) {
-              // Found our backup.
-              log.info("Found Backup {} task {} ", backupCr, taskUUID);
-              BackupStatus status = backupCr.getStatus();
+            for (Backup backupCr :
+                kubernetesClient.resources(Backup.class).inNamespace(namespace).list().getItems()) {
+              if (backupCr.getStatus().getTaskUUID().equals(taskUUID.toString())) {
+                // Found our backup.
+                log.info("Found Backup {} task {} ", backupCr, taskUUID);
+                BackupStatus status = backupCr.getStatus();
 
-              status.setMessage("Backup State: " + backup.getState().name());
-              status.setResourceUUID(backup.getBackupUUID().toString());
-              status.setTaskUUID(taskUUID.toString());
+                status.setMessage("Backup State: " + backup.getState().name());
+                status.setResourceUUID(backup.getBackupUUID().toString());
+                status.setTaskUUID(taskUUID.toString());
 
-              backupCr.setStatus(status);
-              kubernetesClient
-                  .resources(Backup.class)
-                  .inNamespace(namespace)
-                  .resource(backupCr)
-                  .replaceStatus();
-              log.info("Updated Status for Backup CR {}", backupCr);
-              break;
+                backupCr.setStatus(status);
+                kubernetesClient
+                    .resources(Backup.class)
+                    .inNamespace(namespace)
+                    .resource(backupCr)
+                    .replaceStatus();
+                log.info("Updated Status for Backup CR {}", backupCr);
+                break;
+              }
             }
           }
         }
@@ -182,6 +184,7 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
       KubernetesResourceDetails universeName,
       String taskName,
       UUID taskUUID,
+      UniverseState state,
       Throwable t) {
     if (universe.getUniverseDetails().isKubernetesOperatorControlled) {
       try {
@@ -191,7 +194,7 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
         String statusStr =
             String.format(
                 "Task %s (%s) on universe %s %s", taskName, taskUUID, universe.getName(), status);
-        updateUniverseStatus(universe, universeName, statusStr);
+        updateUniverseStatus(universe, universeName, statusStr, state);
       } catch (Exception e) {
         log.warn("Error in creating Kubernetes Operator Universe status", e);
       }
@@ -199,7 +202,7 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
   }
 
   private void updateUniverseStatus(
-      Universe u, KubernetesResourceDetails universeName, String status) {
+      Universe u, KubernetesResourceDetails universeName, String status, UniverseState state) {
     try (final KubernetesClient kubernetesClient =
         new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
       YBUniverse ybUniverse = getYBUniverse(kubernetesClient, universeName);
@@ -213,6 +216,8 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
       YBUniverseStatus ybUniverseStatus = new YBUniverseStatus();
       ybUniverseStatus.setCqlEndpoints(cqlEndpoints);
       ybUniverseStatus.setSqlEndpoints(sqlEndpoints);
+      ybUniverseStatus.setUniverseStatus(status);
+      ybUniverseStatus.setUniverseState(state.getUniverseStateString());
       log.info("Universe status is: {}", status);
       ybUniverse.setStatus(ybUniverseStatus);
       kubernetesClient

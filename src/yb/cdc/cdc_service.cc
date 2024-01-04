@@ -176,7 +176,7 @@ DEFINE_RUNTIME_int32(xcluster_get_changes_max_send_rate_mbps, 100,
 DEFINE_RUNTIME_bool(enable_xcluster_stat_collection, true,
     "When enabled, stats are collected from xcluster streams for reporting purposes.");
 
-DEFINE_RUNTIME_uint32(cdcsdk_tablet_not_of_interest_timeout_secs, 15*60,
+DEFINE_RUNTIME_uint32(cdcsdk_tablet_not_of_interest_timeout_secs, 4 * 60 * 60,
                       "Timeout after which it can be inferred that tablet is not of interest "
                       "for the stream");
 
@@ -2545,17 +2545,6 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
         continue;
       }
       latest_active_time = last_active_time_cdc_state_table;
-
-      // If the tablet_id, stream_id pair have OpId::Min() as checkpoint,
-      // but the LastReplicatedTime is not set, we know this was
-      // a child tablet (refer: UpdateCDCProducerOnTabletSplit).
-      // We will not update the checkpoint details.
-      // This check is to be done after CheckTabletNotOfInterest and CheckStreamActive because if
-      // stream is not of interest / expired for parent tablet, then it should be the same status
-      // for the child tablets as well.
-      if (checkpoint == OpId::Min() && last_replicated_time_str.empty()) {
-        continue;
-      }
     }
 
     // Ignoring those non-bootstarped CDCSDK stream

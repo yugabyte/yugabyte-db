@@ -1,7 +1,7 @@
 import { FC, ChangeEvent, useState } from 'react';
 import _ from 'lodash';
 import { toast } from 'react-toastify';
-import { useSelector } from 'react-redux';
+import { useDispatch, useSelector } from 'react-redux';
 import { useMutation } from 'react-query';
 import { useUpdateEffect } from 'react-use';
 import { useTranslation } from 'react-i18next';
@@ -22,6 +22,12 @@ import {
 } from '../../universe-form/utils/helpers';
 import { sortVersion } from '../../../../../components/releases';
 import { Universe } from '../../universe-form/utils/dto';
+import { fetchUniverseInfo, fetchUniverseInfoResponse } from '../../../../../actions/universe';
+import {
+  fetchCustomerTasks,
+  fetchCustomerTasksSuccess,
+  fetchCustomerTasksFailure
+} from '../../../../../actions/tasks';
 import { DBUpgradeFormFields, UPGRADE_TYPE, DBUpgradePayload } from './utils/types';
 import { TOAST_AUTO_DISMISS_INTERVAL } from '../../universe-form/utils/constants';
 import { dbUpgradeFormStyles } from './utils/RollbackUpgradeStyles';
@@ -52,10 +58,12 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
 
   const finalOptions: Record<string, any>[] = Object.keys(releases)
     .sort(sortVersion)
-    .map((e) => ({
+    .map((e: any) => ({
       version: e,
       info: releases[e],
-      series: `${e.split('.')[0]}.${e.split('.')[1]}`
+      series: `v${e.split('.')[0]}.${e.split('.')[1]} Series ${
+        e.split('.')[1] % 2 === 0 ? '(STS)' : '(Preview)'
+      }`
     }));
 
   const formMethods = useForm<DBUpgradeFormFields>({
@@ -67,6 +75,7 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
     mode: 'onChange',
     reValidateMode: 'onChange'
   });
+  const dispatch = useDispatch();
   const { control, watch, handleSubmit, setValue } = formMethods;
 
   //Upgrade Software
@@ -76,7 +85,20 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
     },
     {
       onSuccess: () => {
-        toast.success('Upgrade Database initiated', TOAST_OPTIONS);
+        toast.success('Database upgrade initiated', TOAST_OPTIONS);
+        dispatch(fetchCustomerTasks() as any).then((response: any) => {
+          if (!response.error) {
+            dispatch(fetchCustomerTasksSuccess(response.payload));
+          } else {
+            dispatch(fetchCustomerTasksFailure(response.payload));
+          }
+        });
+        //Universe upgrade state is not updating immediately
+        setTimeout(() => {
+          dispatch(fetchUniverseInfo(universeUUID) as any).then((response: any) => {
+            dispatch(fetchUniverseInfoResponse(response.payload));
+          });
+        }, 2000);
         transitToUniverse(universeUUID);
         onClose();
       },
@@ -147,25 +169,10 @@ export const DBUpgradeModal: FC<DBUpgradeModalProps> = ({ open, onClose, univers
               options={(finalOptions as unknown[]) as Record<string, any>[]}
               groupBy={(option: Record<string, string>) => option.series}
               getOptionLabel={(option: Record<string, string>): string => option.version}
+              getOptionDisabled={(option: Record<string, string>): boolean =>
+                option.version === currentRelease
+              }
               onChange={handleVersionChange}
-              renderGroup={(option: any) => [
-                <Box
-                  display={'flex'}
-                  p={1.5}
-                  flexDirection={'row'}
-                  alignItems={'center'}
-                  key={option.key}
-                  data-testid={`DBUpgradeModal-${option.key}`}
-                >
-                  <Typography variant="body1">v{option.group} Series</Typography>
-                  <Box className={classes.releaseTypebadge}>
-                    {option.group.split('.')[1] % 2 === 0
-                      ? 'STANDARD-TERM STABLE RELEASE'
-                      : 'PREVIEW RELEASE'}
-                  </Box>
-                </Box>,
-                option.children
-              ]}
               ybInputProps={{
                 error: !!fieldState.error,
                 helperText: fieldState.error?.message,

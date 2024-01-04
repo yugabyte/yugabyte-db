@@ -59,6 +59,7 @@
 #include "yb/util/scope_exit.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/tsan_util.h"
 #include "yb/util/unique_lock.h"
 
@@ -230,7 +231,7 @@ class TransactionParticipant::Impl
 
   void CompleteShutdown() EXCLUDES(mutex_, status_resolvers_mutex_) {
     LOG_IF_WITH_PREFIX(DFATAL, !Closing()) << __func__ << " w/o StartShutdown";
-
+    DEBUG_ONLY_TEST_SYNC_POINT("TransactionParticipant::Impl::CompleteShutdown");
     if (wait_queue_) {
       wait_queue_->CompleteShutdown();
     }
@@ -254,12 +255,11 @@ class TransactionParticipant::Impl
       std::lock_guard lock(status_resolvers_mutex_);
       status_resolvers.swap(status_resolvers_);
     }
-
-    rpcs_.Shutdown();
     loader_.CompleteShutdown();
     for (auto& resolver : status_resolvers) {
       resolver.Shutdown();
     }
+    rpcs_.Shutdown();
     shutdown_done_.store(true, std::memory_order_release);
   }
 

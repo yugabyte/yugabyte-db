@@ -1013,5 +1013,94 @@ TEST_F(CDCSDKConsistentStreamTest,
       MonoDelta::FromSeconds(30), "Did not see all expected records"));
 }
 
+TEST_F(CDCSDKYsqlTest, TestConsistentSnapshotWithCDCSDKConsistentStream) {
+  google::SetVLOGLevel("cdc*", 0);
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_cdc_consistent_snapshot_streams) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdc_max_stream_intent_records) = 40;
+  auto tablets = ASSERT_RESULT(SetUpCluster());
+  auto table = ASSERT_RESULT(GetTable(&test_cluster_, kNamespaceName, kTableName));
+  ASSERT_OK(WriteRows(1 /* start */, 201 /* end */, &test_cluster_));
+
+  xrepl::StreamId stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  // GetCheckpoint after snapshot bootstrap (done as part of stream creation itself).
+  auto cp_resp = ASSERT_RESULT(GetCDCSDKSnapshotCheckpoint(stream_id, tablets[0].tablet_id()));
+
+  int num_batches = 5;
+  int inserts_per_batch = 100;
+
+  std::thread t1([&]() -> void {
+      PerformSingleAndMultiShardInserts(num_batches, inserts_per_batch, 20, 201);
+  });
+  std::thread t2([&]() -> void {
+      PerformSingleAndMultiShardInserts(
+        num_batches, inserts_per_batch, 50, 201 + num_batches * inserts_per_batch);
+  });
+
+  t1.join();
+  t2.join();
+
+  // Count the number of snapshot READs.
+  uint32_t reads_snapshot = 0;
+  bool first_read = true;
+  GetChangesResponsePB change_resp;
+  GetChangesResponsePB change_resp_updated;
+  while (true) {
+    if (first_read) {
+      change_resp_updated = ASSERT_RESULT(UpdateCheckpoint(stream_id, tablets, cp_resp));
+      first_read = false;
+    } else {
+      change_resp_updated = ASSERT_RESULT(UpdateCheckpoint(stream_id, tablets, &change_resp));
+    }
+
+    uint32_t record_size = change_resp_updated.cdc_sdk_proto_records_size();
+    uint32_t read_count = 0;
+    for (uint32_t i = 0; i < record_size; ++i) {
+      const CDCSDKProtoRecordPB record = change_resp_updated.cdc_sdk_proto_records(i);
+      if (record.row_message().op() == RowMessage::READ) {
+        read_count++;
+      }
+    }
+
+    reads_snapshot += read_count;
+    change_resp = change_resp_updated;
+
+    // End of the snapshot records.
+    if (change_resp_updated.cdc_sdk_checkpoint().write_id() == 0 &&
+        change_resp_updated.cdc_sdk_checkpoint().snapshot_time() == 0) {
+      change_resp_updated = ASSERT_RESULT(UpdateSnapshotDone(stream_id, tablets));
+      break;
+    }
+  }
+  ASSERT_EQ(reads_snapshot, 200);
+
+  // The count array stores counts of DDL, INSERT, UPDATE, DELETE, READ, TRUNCATE, BEGIN, COMMIT in
+  // that order.
+  const int expected_count[] = {
+      0,
+      2 * num_batches * inserts_per_batch,
+      0,
+      0,
+      0,
+      0,
+      2 * num_batches + num_batches * inserts_per_batch,
+      2 * num_batches + num_batches * inserts_per_batch,
+  };
+  int count[] = {0, 0, 0, 0, 0, 0, 0, 0};
+
+  auto get_changes_resp =
+      GetAllPendingChangesFromCdc(stream_id, tablets, &change_resp_updated.cdc_sdk_checkpoint());
+  for (auto record : get_changes_resp.records) {
+    UpdateRecordCount(record, count);
+  }
+
+  CheckRecordsConsistency(get_changes_resp.records);
+  LOG(INFO) << "Got " << get_changes_resp.records.size() << " records.";
+  for (int i = 0; i < 8; i++) {
+    ASSERT_EQ(expected_count[i], count[i]);
+  }
+  ASSERT_EQ(2020, get_changes_resp.records.size());
+}
+
 }  // namespace cdc
 }  // namespace yb

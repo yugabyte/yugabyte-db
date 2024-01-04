@@ -49,6 +49,11 @@
   to = "/preview/explore/change-data-capture/"
   force = true
 
+[[redirects]]
+  from = "/preview/integrations/change-data-capture/*"
+  to = "/preview/explore/change-data-capture/"
+  force = true
+
 # CDC java console client is documented on its repo only now
 
 [[redirects]]
@@ -369,6 +374,10 @@
   to = "/preview/explore/linear-scalability/"
 
 [[redirects]]
+  from = "/preview/explore/follower-reads/linux/"
+  to = "/preview/explore/ysql-language-features/going-beyond-sql/follower-reads-ysql/"
+
+[[redirects]]
   from = "/preview/explore/multi-region-deployments/follower-reads-ycql/"
   to = "/preview/explore/ysql-language-features/going-beyond-sql/follower-reads-ycql/"
 
@@ -501,36 +510,16 @@
   to = "/preview/secure/enable-authentication/ysql_hba_conf-configuration/"
 
 [[redirects]]
+  from = "/preview/secure/authentication/ysql-authentication/"
+  to = "/preview/secure/enable-authentication/ysql_hba_conf-configuration/"
+
+[[redirects]]
   from = "/preview/secure/authentication/ldap-authentication/"
   to = "/preview/secure/authentication/ldap-authentication-ysql/"
 
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-overview/"
   to = "/preview/yugabyte-cloud/"
-
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/"
-  to = "/preview/develop/build-apps/"
-
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-csharp/"
-  to = "/preview/develop/build-apps/csharp/cloud-ysql-csharp/"
-
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-go/"
-  to = "/preview/develop/build-apps/go/cloud-ysql-go/"
-
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-node/"
-  to = "/preview/develop/build-apps/nodejs/cloud-ysql-node/"
-
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-python/"
-  to = "/preview/develop/build-apps/python/cloud-ysql-python/"
-
-[[redirects]]
-  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-ysql-yb-jdbc/"
-  to = "/preview/develop/build-apps/java/cloud-ysql-yb-jdbc/"
 
 [[redirects]]
   from = "/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/"
@@ -651,6 +640,20 @@
   to = "/v2.14/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises/"
   force = true
 
+[[redirects]]
+  from = "/v2.18/reference/configuration/operating-systems/"
+  to = "/v2.18/deploy/checklist/"
+  force = true
+[[redirects]]
+  from = "/v2.16/reference/configuration/operating-systems/"
+  to = "/v2.16/deploy/checklist/"
+  force = true
+[[redirects]]
+  from = "/v2.14/reference/configuration/operating-systems/"
+  to = "/v2.14/deploy/checklist/"
+  force = true
+
+
 # YBA High availability
 
 [[redirects]]
@@ -671,6 +674,14 @@
   force = true
 
 # Build an app was in quick-start, now in develop
+
+[[redirects]]
+  from = "/preview/quick-start/build-apps/*"
+  to = "/preview/develop/build-apps/"
+
+[[redirects]]
+  from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/"
+  to = "/preview/develop/build-apps/"
 
 [[redirects]]
   from = "/preview/yugabyte-cloud/cloud-quickstart/cloud-build-apps/cloud-add-ip/"
@@ -858,7 +869,7 @@
 
 [[redirects]]
   from = "/preview/develop/build-apps/python/ysql-aiopg/"
-  to = "/preview/integrations/aiopg/"
+  to = "/preview/drivers-orms/python/aiopg/"
   force = true
 
 # Manual import was in migrate, now in manage

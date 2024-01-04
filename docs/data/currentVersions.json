@@ -15,14 +15,15 @@
       "series": "v2.20",
       "alias": "stable",
       "display": "v2.20 (LTS)",
-      "version": "2.20.0.2",
-      "versionShort": "2.20.0",
-      "appVersion": "2.20.0.2-b1",
+      "version": "2.20.1.0",
+      "versionShort": "2.20.1",
+      "appVersion": "2.20.1.0-b97",
       "isStable": true,
       "isLTS": true,
       "initialRelease": "2023-11-13",
       "endOfMaintenance": "2025-11-13",
-      "endOfLife": "2026-05-13"
+      "endOfLife": "2026-05-13",
+      "PreviewBehindStable": true
     },
     {
       "series": "v2.18",

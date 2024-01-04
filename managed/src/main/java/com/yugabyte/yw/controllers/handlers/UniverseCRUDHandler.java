@@ -542,7 +542,9 @@ public class UniverseCRUDHandler {
           if (bundles.size() > 0) {
             ImageBundle bundle =
                 ImageBundleUtil.getDefaultBundleForUniverse(taskParams.arch, bundles);
-            c.userIntent.imageBundleUUID = bundle.getUuid();
+            if (bundle != null) {
+              c.userIntent.imageBundleUUID = bundle.getUuid();
+            }
           }
         }
       }

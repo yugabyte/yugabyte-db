@@ -26,7 +26,13 @@
           align-content: center;
         }
       }
-
+      .universeLinuxVersion {
+        display: flex;
+        gap: 8px;
+      }
+      .alertBadge {
+        width: 60px;
+      }
       .universeStatusCell {
         display: flex;
         align-items: flex-start;

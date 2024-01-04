@@ -372,8 +372,6 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_disable_index_backfill;
   const bool*     ysql_disable_server_file_access;
   const bool*     ysql_enable_reindex;
-  const int32_t*  ysql_max_read_restart_attempts;
-  const int32_t*  ysql_max_write_restart_attempts;
   const int32_t*  ysql_num_databases_reserved_in_db_catalog_version_mode;
   const int32_t*  ysql_output_buffer_size;
   const int32_t*  ysql_sequence_cache_minval;
@@ -545,11 +543,7 @@ typedef struct PgReplicationSlotDescriptor {
   bool active;
 } YBCReplicationSlotDescriptor;
 
-// Active Session History metadata struct.
-// yql_endpoint_tserver_uuid is not stored here as it's going to be the same for all the
-// PG backends of a given node. It's stored in the shared tserver object.
-// rpc_request_id is same as the last 8 bytes of root_request_id in PG, so it's not stored
-// here.
+// A struct to store ASH metadata in PG's procarray
 typedef struct AshMetadata {
   // A unique id corresponding to a YSQL query in bytes.
   unsigned char root_request_id[16];
@@ -562,19 +556,13 @@ typedef struct AshMetadata {
   // If addr_family is AF_INET (ipv4) or AF_INET6 (ipv6), client_addr stores
   // the ipv4/ipv6 address and client_port stores the port of the PG process
   // where the YSQL query originated. In case of AF_INET, the first 4 bytes
-  // of client_addr is used to store the ipv4 address as raw bytes.
-  // In case of AF_INET6, all the 16 bytes is used to store the ipv6 address
+  // of client_addr are used to store the ipv4 address as raw bytes.
+  // In case of AF_INET6, all the 16 bytes are used to store the ipv6 address
   // as raw bytes.
-  // If addr_family is AF_UNIX, client_addr and client_port do not store
-  // anything meaningful.
+  // If addr_family is AF_UNIX, client_addr and client_port are nulled out.
   unsigned char client_addr[16];
   uint16_t client_port;
   uint8_t addr_family;
-
-  // We don't set metadata for catalog requests yet, so this is used to decide
-  // whether we have set the metadata and should we send it with Perform RPCs.
-  // TODO: remove this once we start tracking catalog requests
-  bool is_set;
 } YBCAshMetadata;
 
 #ifdef __cplusplus

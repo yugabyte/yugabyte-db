@@ -74,7 +74,7 @@ Status XClusterManager::Load(
   return Status::OK();
 }
 
-void XClusterManager::SysCatalogLoaded(const SysCatalogLoadingState& state) {
+void XClusterManager::SysCatalogLoaded() {
   xcluster_safe_time_service_->ScheduleTaskIfNeeded();
 }
 

@@ -6,6 +6,7 @@ description: Install the YugabyteDB Anywhere software.
 headContent: Install YBA software using Replicated and Docker containers
 aliases:
   - /preview/yugabyte-platform/install-yugabyte-platform/install-software/airgapped/
+  - /preview/yugabyte-platform/install-yugabyte-platform/install-software/replicated/
 menu:
   preview_yugabyte-platform:
     parent: install-yugabyte-platform
@@ -44,6 +45,14 @@ Note: For higher availability, one or more additional YugabyteDB Anywhere instan
 
 You can install YugabyteDB Anywhere on a host machine using Replicated in both online and airgapped environments.
 
+{{< note title="Replicated end of life" >}}
+
+YugabyteDB Anywhere will end support for Replicated installation at the end of 2024. You can migrate existing Replicated YugabyteDB Anywhere installations using YBA Installer. See [Migrate from Replicated](../installer/#migrate-from-replicated).
+
+{{< /note >}}
+
+Installation starts with installing Replicated on a Linux host. Replicated installs the [docker-engine](https://docs.docker.com/engine/), the Docker container runtime, and then pulls its own container images from the [Replicated.com container registry](https://help.replicated.com/docs/native/getting-started/docker-registries/). YugabyteDB Anywhere then becomes a managed application of Replicated, which starts by pulling the YugabyteDB Anywhere (`yugaware`) container images from Quay.io for the very first time.
+
 ## Install Replicated
 
 {{< tabpane text=true >}}
@@ -66,7 +75,6 @@ After the Replicated installation completes, verify that it is running by execut
 
 ```sh
 sudo docker ps --format "{{.ID}}: {{.Image}}: {{.Command}}: {{.Ports}}"
-
 ```
 
 You should see an output similar to the following:
@@ -173,7 +181,7 @@ When prompted to choose the installation type, do one of the following:
 
 - **Online** - If you are performing an online installation, choose the **Online** installation type and click **Continue**. If you are offered a choice of software versions, select the one that meets your requirements.
 
-- **Airgapped** - If you are performing an airgapped installation, choose the **Airgapped** installation type, enter the absolute path to the YugabyteDB Anywhere airgapped install package that you obtained from Yugabyte Suppport, and click **Continue**.
+- **Airgapped** - If you are performing an airgapped installation, choose the **Airgapped** installation type, enter the absolute path to the YugabyteDB Anywhere airgapped install package that you obtained from Yugabyte Support, and click **Continue**.
 
 ## Secure Replicated
 

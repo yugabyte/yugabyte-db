@@ -1,8 +1,9 @@
 ---
 title: High availability of YugabyteDB Anywhere
 headerTitle: Enable high availability
-linkTitle: Enable high availability
 description: Make YugabyteDB Anywhere highly available
+headcontent: Configure standby instances of YugabyteDB Anywhere
+linkTitle: Enable high availability
 aliases:
   - /preview/yugabyte-platform/manage-deployments/platform-high-availability/
   - /preview/yugabyte-platform/manage-deployments/high-availability/
@@ -30,7 +31,7 @@ When you promote a standby instance to active, YugabyteDB Anywhere restores your
 Before configuring a HA cluster for your YugabyteDB Anywhere instances, ensure that you have the following:
 
 - [Multiple YugabyteDB Anywhere instances](../../install-yugabyte-platform/) to be used in the HA cluster.
-- YugabyteDB Anywhere VMs can connect to each other over the port where the YugabyteDB Anywhere UI is typically reachable (port 80 and 443, for example).
+- YugabyteDB Anywhere VMs can connect to each other over the port where the YugabyteDB Anywhere UI is typically reachable (port 80 or 443, for example).
 - All YugabyteDB Anywhere instances are running the same version of YugabyteDB Anywhere software. You should upgrade all YugabyteDB Anywhere instances in the HA cluster at approximately the same time.
 
 ## Configure active and standby instances
@@ -173,7 +174,7 @@ To remove a standby instance from a HA cluster, you need to remove it from the a
 
 1. On the active instance's list, click **Delete Instance** for the standby instance to be removed.
 
-1. On the standby instance you wish to remove from the HA cluster, click **Delete Configuration** on the **Admin** tab.
+1. On the standby instance you wish to remove from the HA cluster, on the **Admin > High Availability** tab, click **Delete Configuration**.
 
 The standby instance is now a standalone instance again.
 

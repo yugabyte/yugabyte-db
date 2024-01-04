@@ -36,6 +36,7 @@
 #include "yb/client/transaction_pool.h"
 
 #include "yb/dockv/partition.h"
+#include "yb/common/pgsql_error.h"
 #include "yb/common/pg_types.h"
 #include "yb/common/wire_protocol.h"
 
@@ -71,6 +72,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/thread.h"
+#include "yb/util/yb_pg_errcodes.h"
 
 using namespace std::literals;
 
@@ -1389,7 +1391,12 @@ class PgClientServiceImpl::Impl {
     DCHECK_NE(session_id, 0);
     SharedLock lock(mutex_);
     auto it = sessions_.find(session_id);
-    SCHECK(it != sessions_.end(), InvalidArgument, "Unknown session: $0", session_id);
+    if (PREDICT_FALSE(it == sessions_.end())) {
+      return STATUS(InvalidArgument,
+          Format("Connection terminated unexpectedly due to unknown session $0", session_id),
+          Slice(),
+          PgsqlError(YBPgErrorCode::YB_PG_CONNECTION_DOES_NOT_EXIST));
+    }
     return *it;
   }
 
