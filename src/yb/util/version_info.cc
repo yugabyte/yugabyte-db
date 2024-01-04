@@ -46,7 +46,7 @@
 #include "yb/util/status_log.h"
 #include "yb/util/flags.h"
 
-DEFINE_UNKNOWN_string(version_file_json_path, "",
+DEFINE_NON_RUNTIME_string(version_file_json_path, "",
               "Path to directory containing JSON file with version info.");
 
 using std::string;

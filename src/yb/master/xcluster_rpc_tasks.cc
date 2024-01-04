@@ -33,15 +33,13 @@
 #include "yb/util/path_util.h"
 #include "yb/util/result.h"
 
-DEFINE_UNKNOWN_int32(
-    list_snapshot_backoff_increment_ms, 1000,
+DEFINE_RUNTIME_int32(list_snapshot_backoff_increment_ms, 1000,
     "Number of milliseconds added to the delay between retries of fetching state of a snapshot. "
     "This delay is applied after the RPC reties have been exhausted.");
 TAG_FLAG(list_snapshot_backoff_increment_ms, stable);
 TAG_FLAG(list_snapshot_backoff_increment_ms, advanced);
 
-DEFINE_UNKNOWN_int32(
-    list_snapshot_max_backoff_sec, 10,
+DEFINE_RUNTIME_int32(list_snapshot_max_backoff_sec, 10,
     "Maximum number of seconds to delay between retries of fetching state of a snpashot. This "
     "delay is applied after the RPC reties have been exhausted.");
 TAG_FLAG(list_snapshot_max_backoff_sec, stable);

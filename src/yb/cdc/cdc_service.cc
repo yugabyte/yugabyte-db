@@ -96,26 +96,26 @@ using std::vector;
 
 constexpr uint32_t kUpdateIntervalMs = 15 * 1000;
 
-DEFINE_UNKNOWN_int32(cdc_read_rpc_timeout_ms, 30 * 1000,
+DEFINE_NON_RUNTIME_int32(cdc_read_rpc_timeout_ms, 30 * 1000,
     "Timeout used for CDC read rpc calls.  Reads normally occur cross-cluster.");
 TAG_FLAG(cdc_read_rpc_timeout_ms, advanced);
 
-DEFINE_UNKNOWN_int32(cdc_write_rpc_timeout_ms, 30 * 1000,
+DEFINE_NON_RUNTIME_int32(cdc_write_rpc_timeout_ms, 30 * 1000,
     "Timeout used for CDC write rpc calls.  Writes normally occur intra-cluster.");
 TAG_FLAG(cdc_write_rpc_timeout_ms, advanced);
 
 DEPRECATE_FLAG(int32, cdc_ybclient_reactor_threads, "09_2023");
 
-DEFINE_UNKNOWN_int32(cdc_state_checkpoint_update_interval_ms, kUpdateIntervalMs,
+DEFINE_RUNTIME_int32(cdc_state_checkpoint_update_interval_ms, kUpdateIntervalMs,
     "Rate at which CDC state's checkpoint is updated.");
 
-DEFINE_UNKNOWN_string(certs_for_cdc_dir, "",
+DEFINE_NON_RUNTIME_string(certs_for_cdc_dir, "",
     "The parent directory of where all certificates for xCluster producer universes will "
     "be stored, for when the producer and consumer clusters use different certificates. "
     "Place the certificates for each producer cluster in "
     "<certs_for_cdc_dir>/<producer_cluster_id>/*.");
 
-DEFINE_UNKNOWN_int32(update_min_cdc_indices_interval_secs, 60,
+DEFINE_RUNTIME_int32(update_min_cdc_indices_interval_secs, 60,
     "How often to read cdc_state table to get the minimum applied index for each tablet "
     "across all streams. This information is used to correctly keep log files that "
     "contain unapplied entries. This is also the rate at which a tablet's minimum "
@@ -134,15 +134,15 @@ DEFINE_RUNTIME_bool(enable_cdc_client_tablet_caching, false,
 DEFINE_RUNTIME_bool(enable_collect_cdc_metrics, true,
     "Enable collecting cdc and xcluster metrics.");
 
-DEFINE_UNKNOWN_double(cdc_read_safe_deadline_ratio, .10,
+DEFINE_RUNTIME_double(cdc_read_safe_deadline_ratio, .10,
     "When the heartbeat deadline has this percentage of time remaining, "
     "the master should halt tablet report processing so it can respond in time.");
 
-DEFINE_UNKNOWN_double(cdc_get_changes_free_rpc_ratio, .10,
+DEFINE_NON_RUNTIME_double(cdc_get_changes_free_rpc_ratio, .10,
     "When the TServer only has this percentage of RPCs remaining because the rest are "
     "GetChanges, reject additional requests to throttle/backoff and prevent deadlocks.");
 
-DEFINE_UNKNOWN_bool(enable_update_local_peer_min_index, true,
+DEFINE_RUNTIME_bool(enable_update_local_peer_min_index, true,
     "Enable each local peer to update its own log checkpoint instead of the leader "
     "updating all peers.");
 
@@ -151,11 +151,11 @@ DEPRECATE_FLAG(bool, parallelize_bootstrap_producer, "08_2023");
 DEFINE_test_flag(uint64, cdc_log_init_failure_timeout_seconds, 0,
     "Timeout in seconds for CDCServiceImpl::SetCDCCheckpoint to return log init failure");
 
-DEFINE_UNKNOWN_int32(wait_replication_drain_tserver_max_retry, 3,
+DEFINE_RUNTIME_int32(wait_replication_drain_tserver_max_retry, 3,
     "Maximum number of retry that a tserver will poll its tablets until the tablets"
     "are all caught-up in the replication, before responding to the caller.");
 
-DEFINE_UNKNOWN_int32(wait_replication_drain_tserver_retry_interval_ms, 100,
+DEFINE_RUNTIME_int32(wait_replication_drain_tserver_retry_interval_ms, 100,
     "Time in microseconds that a tserver will sleep between each iteration of polling "
     "its tablets until the tablets are all caught-up in the replication.");
 
