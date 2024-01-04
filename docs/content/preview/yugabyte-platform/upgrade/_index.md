@@ -28,7 +28,7 @@ type: indexpage
   </div>
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
-    <a class="section-link icon-offset" href="upgrade-yp-xclster-ybadmin/">
+    <a class="section-link icon-offset" href="upgrade-yp-xcluster-ybadmin/">
       <div class="head">
         <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
         <div class="title">Synchronize replication after upgrade</div>
