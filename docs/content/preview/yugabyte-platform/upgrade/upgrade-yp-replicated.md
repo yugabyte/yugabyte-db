@@ -50,9 +50,9 @@ To start the upgrade, log in to the Replicated Admin Console via <https://:8800>
 
     ![Release History](/images/yb-platform/upgrade-replicated1.png)
 
-1. Find the required release version and click the corresponding **Install**.
+1. Find the required release version; if the required version is not in the list, click **Check for updates** to refresh the list of releases available in the channel to which you are subscribed.
 
-If the required version is not in the list, click **Check for updates** to refresh the list of releases available in the channel to which you are subscribed.
+1. Click the corresponding **Install**.
 
 If the required release version is in a different channel (for example, you want to upgrade from 2.4.*n* release family to 2.6.*n*), start by updating the channel, as follows:
 
