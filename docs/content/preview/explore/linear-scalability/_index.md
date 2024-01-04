@@ -47,7 +47,7 @@ Given this fluctuating reality and the always-on expectations of users, being ab
 
 In YugabyteDB, [data is split (sharded)](./sharding-rebalancing) into tablets, and these multiple tablets are placed on various nodes. When more [nodes are added](./node-addition), some tablets are automatically [rebalanced](./sharding-rebalancing#rebalancing) to the new nodes. Data is moved automatically, without any interruption in service. Tablets can be split dynamically as needed to use the newly added resource, which leads to each node managing fewer tablets. The entire cluster can therefore handle more transactions and queries in parallel, thus increasing its capacity to handle larger workloads.
 
-To learn more, see [Sharding and rebalancing](sharding-rebalancing/).
+To learn more, see [Sharding and rebalancing](sharding-rebalancing/) and [Adding nodes](node-addition/).
 
 ## How to scale
 
@@ -94,9 +94,9 @@ Depending on your application needs and budget constraints, you can use a combin
 
 ## When to scale
 
-To know when to scale, monitor metrics provided for CPU, memory, and disk space, and set up alerts on these metrics to give you ample time to plan and react.
+To know when to scale, monitor metrics provided for CPU, memory, and disk space. Set up alerts on these metrics to give you ample time to plan and react.
 
-For best results, keep steady state resource usage under 60%, and take strong action at 75%, in particular for disk space. If CPU or memory is high, the system will slow, but if your disk usage approaches limits, it will also increase usage in followers, and moving and recovering data takes time.
+For best results, keep steady state resource usage under 60%, and take strong action at 75%, in particular for disk space. If CPU or memory is high, the system will slow. However, if disk usage approaches limits, usage on followers also increases, and moving and recovering data takes time.
 
 [YugabyteDB Anywhere](../../yugabyte-platform/alerts-monitoring/) and [YugabyteDB Managed](../../yugabyte-cloud/cloud-monitor/) both include metrics dashboards and configurable alerts to keep you notified of changes.
 
