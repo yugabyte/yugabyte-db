@@ -72,7 +72,6 @@ After the Replicated installation completes, verify that it is running by execut
 
 ```sh
 sudo docker ps --format "{{.ID}}: {{.Image}}: {{.Command}}: {{.Ports}}"
-
 ```
 
 You should see an output similar to the following:
