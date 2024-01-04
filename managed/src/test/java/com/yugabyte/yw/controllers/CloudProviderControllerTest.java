@@ -203,8 +203,6 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     p2.save();
     Result result = listProviders();
     JsonNode json = Json.parse(contentAsString(result));
-    System.out.println("Testing JSON");
-    System.out.println(json);
 
     assertOk(result);
     assertAuditEntry(0, customer.getUuid());
@@ -218,7 +216,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
             assertValue(config, "AWS_ACCESS_KEY_ID", "SE**********TA");
             assertValue(config, "AWS_SECRET_ACCESS_KEY", "SE**********TA");
           } else {
-            assertValue(config, "GCE_PROJECT", "BAR");
+            assertValue(config, "GCE_HOST_PROJECT", "BAR");
           }
         });
   }

@@ -550,8 +550,9 @@ public interface CloudInfoInterface {
 
         if (config.has("host_project_id")) {
           gcpCloudInfo.set("host_project_id", config.get("host_project_id"));
-        } else if (configFileContent != null && !configFileContent.isNull()) {
-          gcpCloudInfo.set("host_project_id", ((ObjectNode) configFileContent).get("project_id"));
+        }
+        if (configFileContent != null && !configFileContent.isNull()) {
+          gcpCloudInfo.set("project_id", ((ObjectNode) configFileContent).get("project_id"));
         }
         if (!shouldUseHostCredentials && configFileContent != null) {
           gcpCloudInfo.set("config_file_contents", configFileContent);
