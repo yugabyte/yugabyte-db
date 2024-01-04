@@ -556,6 +556,9 @@ typedef struct AshMetadata {
   // root_request_id but with the same query_id.
   uint64_t query_id;
 
+  // PgClient session id.
+  uint64_t session_id;
+
   // If addr_family is AF_INET (ipv4) or AF_INET6 (ipv6), client_addr stores
   // the ipv4/ipv6 address and client_port stores the port of the PG process
   // where the YSQL query originated. In case of AF_INET, the first 4 bytes

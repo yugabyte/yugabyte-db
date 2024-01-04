@@ -159,6 +159,14 @@ YbAshInstallHooks(void)
 	ProcessUtility_hook = yb_ash_ProcessUtility;
 }
 
+void
+YbAshSetSessionId(uint64 session_id)
+{
+	LWLockAcquire(&MyProc->yb_ash_metadata_lock, LW_EXCLUSIVE);
+	MyProc->yb_ash_metadata.session_id = session_id;
+	LWLockRelease(&MyProc->yb_ash_metadata_lock);
+}
+
 static int
 yb_ash_cb_max_entries(void)
 {
