@@ -1045,7 +1045,7 @@ void MasterPathHandlers::HandleCatalogManager(
     table_row[kMessage] = EscapeForHtmlToString(table_locked->pb.state_msg());
 
     if (table->GetTableType() == PGSQL_TABLE_TYPE && table_cat != kParentTable) {
-      const auto result = GetPgsqlTableOid(table_uuid);
+      const auto result = table->GetPgTableOid();
       if (result.ok()) {
         table_row[kYsqlOid] = std::to_string(*result);
       } else {
@@ -1254,7 +1254,7 @@ void MasterPathHandlers::HandleCatalogManagerJSON(
     table_row.message = table_locked->pb.state_msg();
 
     if (table->GetTableType() == PGSQL_TABLE_TYPE && table_cat != kParentTable) {
-      const auto result = GetPgsqlTableOid(table_uuid);
+      const auto result = table->GetPgTableOid();
       if (result.ok()) {
         table_row.ysql_oid = std::to_string(*result);
       } else {

@@ -53,6 +53,9 @@ message TableInfoPB {
   optional string namespace_id = 13;
   optional string table_name = 2;
   optional TableType table_type = 3 [ default = DEFAULT_TABLE_TYPE ];
+  // In case the table was rewritten, explicitly store the TableId containing the PG table OID
+  // (as the table's TableId no longer matches).
+  optional string pg_table_id = 14;
 
   // Table schema and version.
   optional SchemaPB schema = 4;

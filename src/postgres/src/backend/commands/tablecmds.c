@@ -1012,9 +1012,10 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 	if (IsYugaByteEnabled())
 	{
 		CheckIsYBSupportedRelationByKind(relkind);
-		YBCCreateTable(stmt, relkind, descriptor, relationId, namespaceId,
-					   tablegroupId, colocation_id, tablespaceId,
-					   InvalidOid /* matviewPgTableId */);
+		YBCCreateTable(stmt, relname, relkind, descriptor, relationId,
+					   namespaceId, tablegroupId, colocation_id, tablespaceId,
+					   InvalidOid /* pgTableId */,
+					   InvalidOid /* oldRelfileNodeId */);
 	}
 
 	/*
@@ -1106,7 +1107,7 @@ DefineRelation(CreateStmt *stmt, char relkind, Oid ownerId,
 				HandleYBStatus(
 					YBCPgNewAlterTable(
 						YBCGetDatabaseOidByRelid(defaultPartOid),
-						YbGetStorageRelid(defaultRel),
+						YbGetRelfileNodeId(defaultRel),
 						&alter_cmd_handle));
 				HandleYBStatus(
 					YBCPgAlterTableIncrementSchemaVersion(alter_cmd_handle));
@@ -4352,6 +4353,7 @@ ATRewriteCatalogs(List **wqueue,
 	ListCell *lc = NULL;
 	for (pass = 0; pass < AT_NUM_PASSES; pass++)
 	{
+		Oid relfilenode_id;
 		/*
 		 * Execute the YB alter table (if needed).
 		 *
@@ -4404,6 +4406,7 @@ ATRewriteCatalogs(List **wqueue,
 					(pass == AT_PASS_ALTER_TYPE || pass == AT_PASS_ADD_INDEX))
 				{
 					main_relid = RelationGetRelid(rel);
+					relfilenode_id = YbGetRelfileNodeId(rel);
 					yb_table_cloned = true;
 				}
 			}
@@ -4433,7 +4436,8 @@ ATRewriteCatalogs(List **wqueue,
 			{
 				YBCPgStatement handle = (YBCPgStatement) lfirst(lc);
 				YBCPgAlterTableSetTableId(
-					handle, YBCGetDatabaseOidByRelid(main_relid), main_relid);
+					handle, YBCGetDatabaseOidByRelid(main_relid),
+					relfilenode_id);
 			}
 			yb_table_cloned = false;
 		}
@@ -17138,7 +17142,7 @@ YbATValidateChangePrimaryKey(Relation rel, IndexStmt *stmt)
 
 	bool is_object_part_of_xrepl;
 	HandleYBStatus(YBCIsObjectPartOfXRepl(MyDatabaseId,
-										  RelationGetRelid(rel),
+										  YbGetRelfileNodeId(rel),
 										  &is_object_part_of_xrepl));
 	if (is_object_part_of_xrepl)
 		ereport(ERROR,
@@ -18612,94 +18616,6 @@ YbATCloneRelationSetPrimaryKey(Relation old_rel, IndexStmt *stmt,
 }
 
 /*
- * Copies the primary key of a relation to a create stmt intended to clone that
- * relation.
- */
-static void
-YbATCopyPrimaryKeyToCreateStmt(Relation rel, Relation pg_constraint,
-							   CreateStmt *create_stmt)
-{
-	ScanKeyData key;
-	SysScanDesc scan;
-	HeapTuple	tuple;
-
-	ScanKeyInit(&key, Anum_pg_constraint_conrelid, BTEqualStrategyNumber,
-				F_OIDEQ, ObjectIdGetDatum(RelationGetRelid(rel)));
-	scan = systable_beginscan(pg_constraint, ConstraintRelidTypidNameIndexId,
-							  true /* indexOK */, NULL /* snapshot */,
-							  1 /* nkeys */, &key);
-
-	bool pk_copied = false;
-	while (!pk_copied && HeapTupleIsValid(tuple = systable_getnext(scan)))
-	{
-		Form_pg_constraint con_form = (Form_pg_constraint) GETSTRUCT(tuple);
-
-		/*
-		 * Sanity check, should never happen as we've already checked for
-		 * inheritance.
-		 */
-		if (con_form->coninhcount > 0)
-			elog(ERROR, "constraint '%s' is inherited!",
-				 NameStr(con_form->conname));
-
-		switch (con_form->contype)
-		{
-			case CONSTRAINT_PRIMARY:
-			{
-				/*
-				 * We don't actually need to map attributes here since there
-				 * isn't a new relation yet, but we still need a map to generate
-				 * an index stmt.
-				 */
-				AttrNumber *att_map = convert_tuples_by_name_map(
-					RelationGetDescr(rel), RelationGetDescr(rel),
-					gettext_noop("could not convert row type"),
-					false /* yb_ignore_type_mismatch */);
-
-				Relation idx_rel =
-					index_open(con_form->conindid, AccessShareLock);
-				IndexStmt *index_stmt = generateClonedIndexStmt(
-					NULL, RelationGetRelid(rel), idx_rel, att_map,
-					RelationGetDescr(rel)->natts, NULL);
-
-				Constraint *pk_constr = makeNode(Constraint);
-				pk_constr->contype = CONSTR_PRIMARY;
-				pk_constr->conname = index_stmt->idxname;
-				pk_constr->options = index_stmt->options;
-				pk_constr->indexspace = index_stmt->tableSpace;
-
-				ListCell *cell;
-				foreach(cell, index_stmt->indexParams)
-				{
-					IndexElem *ielem = lfirst(cell);
-					pk_constr->keys =
-						lappend(pk_constr->keys, makeString(ielem->name));
-					pk_constr->yb_index_params =
-						lappend(pk_constr->yb_index_params, ielem);
-				}
-				create_stmt->constraints =
-					lappend(create_stmt->constraints, pk_constr);
-
-				index_close(idx_rel, AccessShareLock);
-				pk_copied = true;
-				break;
-			}
-			case CONSTRAINT_CHECK:
-			case CONSTRAINT_FOREIGN:
-			case CONSTRAINT_UNIQUE:
-			case CONSTRAINT_TRIGGER:
-			case CONSTRAINT_EXCLUSION:
-				break;
-			default:
-				elog(ERROR, "invalid constraint type \"%c\"",
-					 con_form->contype);
-				break;
-		}
-	}
-	systable_endscan(scan);
-}
-
-/*
  * Update a particular column type in a create stmt. Specifically, update the
  * collation id and type name for the column with the specified name. This
  * function should be used when there is an existing relation which the create
@@ -18745,7 +18661,7 @@ YbATValidateAlterColumnType(Relation rel)
 
 	bool is_object_part_of_xrepl;
 	HandleYBStatus(YBCIsObjectPartOfXRepl(MyDatabaseId,
-										  RelationGetRelid(rel),
+										  YbGetRelfileNodeId(rel),
 										  &is_object_part_of_xrepl));
 	if (is_object_part_of_xrepl)
 		ereport(ERROR,

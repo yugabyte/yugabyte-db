@@ -335,7 +335,7 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 
 	node->fdw_state = (void *) ybc_state;
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
-								  YbGetStorageRelid(relation),
+								  YbGetRelfileNodeId(relation),
 								  NULL /* prepare_params */,
 								  YBCIsRegionLocal(relation),
 								  &ybc_state->handle));

@@ -552,7 +552,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // True if all the column schemas have pg_type_oid set.
   bool has_pg_type_oid() const;
 
-  std::string matview_pg_table_id() const;
+  TableId pg_table_id() const;
   // True if the table is a materialized view.
   bool is_matview() const;
 
@@ -577,6 +577,17 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // cached in memory separately from the underlying proto with the expectation it will never
   // change.
   bool colocated() const { return colocated_; }
+
+  // Helper for returning the relfilenode OID of the table. Relfilenode OID diverges from PG table
+  // OID after a table rewrite.
+  // Note: For system tables, this simply returns the PG table OID. Table rewrite is not permitted
+  // on system tables.
+  Result<uint32_t> GetPgRelfilenodeOid() const;
+
+  // Helper for returning the PG OID of the table. In case the table was rewritten,
+  // we cannot directly infer the PG OID from the table ID. Instead, we need to use the
+  // stored pg_table_id field.
+  Result<uint32_t> GetPgTableOid() const;
 
   // Return the table type of the table.
   TableType GetTableType() const;

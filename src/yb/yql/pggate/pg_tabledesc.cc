@@ -35,9 +35,10 @@ namespace yb {
 namespace pggate {
 
 PgTableDesc::PgTableDesc(
-    const PgObjectId& id, const master::GetTableSchemaResponsePB& resp,
+    const PgObjectId& relfilenode_id, const master::GetTableSchemaResponsePB& resp,
     client::VersionedTablePartitionList partition_list)
-    : id_(id), resp_(resp),  table_partition_list_(std::move(partition_list)),
+    : relfilenode_id_(relfilenode_id), resp_(resp),
+      table_partition_list_(std::move(partition_list)),
       latest_known_table_partition_list_version_(table_partition_list_.version) {
   table_name_.GetFromTableIdentifierPB(resp.identifier());
 }
@@ -50,6 +51,9 @@ Status PgTableDesc::Init() {
   }
   if (resp_.has_tablegroup_id()) {
     tablegroup_oid_ = VERIFY_RESULT(GetPgsqlTablegroupOid(resp_.tablegroup_id()));
+  }
+  if (resp_.has_pg_table_id() && !resp_.pg_table_id().empty()) {
+    pg_table_id_ =  VERIFY_RESULT(GetPgsqlTableOid(resp_.pg_table_id()));
   }
   return dockv::PartitionSchema::FromPB(resp_.partition_schema(), schema_, &partition_schema_);
 }
@@ -127,7 +131,7 @@ Status PgTableDesc::EnsurePartitionListIsUpToDate(PgClient* client) {
   }
   DCHECK(table_partition_list_.version < latest_known_table_partition_list_version_);
 
-  auto partition_list = VERIFY_RESULT(client->GetTablePartitionList(id()));
+  auto partition_list = VERIFY_RESULT(client->GetTablePartitionList(relfilenode_id()));
   VLOG(1) << Format(
       "Received partition list for table \"$0\", "
       "new version: $1, old version: $2, latest known version: $3.",

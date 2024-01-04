@@ -1419,19 +1419,20 @@ void PgLibPqMatviewFailure::RefreshMatviewRollback() {
   ASSERT_OK(conn.ExecuteFormat("CREATE MATERIALIZED VIEW mv AS SELECT * FROM t"));
   // Wait for DDL verification to complete for the above statement.
   ASSERT_OK(WaitForDdlVerification(client.get(), kDatabase, "mv"));
-  auto matview_oid = ASSERT_RESULT(conn.FetchRow<PGOid>(
-      "SELECT oid FROM pg_class WHERE relname = 'mv'"));
-  auto pg_temp_table_name = "pg_temp_" + std::to_string(matview_oid);
   // The following statement fails because we set 'yb_test_fail_matview_refresh_after_creation'.
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "true"));
   ASSERT_NOK(conn.Execute("REFRESH MATERIALIZED VIEW mv"));
 
   // Wait for DocDB Table (materialized view) creation, even though it will fail in PG layer.
-  VerifyTableExists(client.get(), kDatabase, pg_temp_table_name, 20);
+  auto tables = ASSERT_RESULT(client->ListTables("mv"));
+  ASSERT_EQ(tables.size(), 2);
 
-  // This temp table is later cleaned up once the transaction failure is detected.
+  // This new table is later cleaned up once the transaction failure is detected.
   ASSERT_OK(cluster_->SetFlagOnMasters("TEST_pause_ddl_rollback", "false"));
-  VerifyTableNotExists(client.get(), kDatabase, pg_temp_table_name, 20);
+  ASSERT_OK(LoggedWaitFor([&client]() -> Result<bool> {
+    auto tables = VERIFY_RESULT(client->ListTables("mv"));
+    return tables.size() == 1;
+  }, MonoDelta::FromSeconds(20), Format("Verify Table 'mv' is cleaned up")));
 }
 
 // Test that an orphaned table left after a failed refresh on a materialized view is cleaned up

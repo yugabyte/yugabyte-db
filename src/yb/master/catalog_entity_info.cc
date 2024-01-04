@@ -481,8 +481,8 @@ bool TableInfo::has_pg_type_oid() const {
   return true;
 }
 
-TableId TableInfo::matview_pg_table_id() const {
-  return LockForRead()->pb.matview_pg_table_id();
+TableId TableInfo::pg_table_id() const {
+  return LockForRead()->pb.pg_table_id();
 }
 
 bool TableInfo::is_matview() const {
@@ -503,6 +503,16 @@ bool TableInfo::is_unique_index() const {
   auto l = LockForRead();
   return l->pb.has_index_info() ? l->pb.index_info().is_unique()
                                 : l->pb.is_unique_index();
+}
+
+Result<uint32_t> TableInfo::GetPgRelfilenodeOid() const {
+  return GetPgsqlTableOid(id());
+}
+
+Result<uint32_t> TableInfo::GetPgTableOid() const {
+  const auto pg_table_id = LockForRead()->pb.pg_table_id();
+  return pg_table_id.empty() ? GetPgsqlTableOid(id()) :
+                               GetPgsqlTableOid(pg_table_id);
 }
 
 TableType TableInfo::GetTableType() const {

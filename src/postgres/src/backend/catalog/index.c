@@ -1023,7 +1023,9 @@ index_create(Relation heapRelation,
 					   is_colocated,
 					   tablegroupId,
 					   colocationId,
-					   tableSpaceId);
+					   tableSpaceId,
+					   InvalidOid /* pgTableId */,
+					   InvalidOid /* oldRelfileNodeId */);
 	}
 
 	/*
@@ -4412,7 +4414,7 @@ reindex_relation(Oid relid, int flags, int options)
 				 * pointing to the old table, which will be dropped.
 				 */
 
-				Relation new_rel = heap_open(YbGetStorageRelid(rel), AccessExclusiveLock);
+				Relation new_rel = heap_open(YbGetRelfileNodeId(rel), AccessExclusiveLock);
 				AttrNumber *new_to_old_attmap = convert_tuples_by_name_map(
 					RelationGetDescr(new_rel), RelationGetDescr(rel),
 					gettext_noop("could not convert row type"),

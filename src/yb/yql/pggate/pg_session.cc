@@ -260,8 +260,8 @@ class PgSession::RunHelper {
     // can never occur).
 
     VLOG(2) << "Apply " << (op->is_read() ? "read" : "write") << " op, table name: "
-            << table.table_name().table_name() << ", table id: " << table.id()
-            << ", force_non_bufferable: " << force_non_bufferable;
+            << table.table_name().table_name() << ", table relfilenode id: "
+            << table.relfilenode_id() << ", force_non_bufferable: " << force_non_bufferable;
     auto& buffer = pg_session_.buffer_;
 
     // Try buffering this operation if it is a write operation, buffering is enabled and no
@@ -309,7 +309,7 @@ class PgSession::RunHelper {
 
     const auto row_mark_type = GetRowMarkType(*op);
 
-    operations_.Add(std::move(op), table.id());
+    operations_.Add(std::move(op), table.relfilenode_id());
 
     if (!IsTransactional()) {
       return Status::OK();

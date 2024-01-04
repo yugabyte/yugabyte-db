@@ -3773,6 +3773,17 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
     return CreateYsqlSysTable(orig_req, resp, epoch);
   }
 
+  if (!orig_req->old_rewrite_table_id().empty()) {
+    auto table_info = GetTableInfo(orig_req->old_rewrite_table_id());
+    SharedLock lock(mutex_);
+    if (IsXClusterEnabledUnlocked(*table_info) || IsTablePartOfCDCSDK(*table_info)) {
+      return STATUS(
+          NotSupported,
+          "cannot rewrite a table that is a part of CDC or XCluster replication."
+          " See https://github.com/yugabyte/yugabyte-db/issues/16625.");
+    }
+  }
+
   // Copy the request, so we can fill in some defaults.
   CreateTableRequestPB req = *orig_req;
 
@@ -4181,9 +4192,6 @@ Status CatalogManager::CreateTable(const CreateTableRequestPB* orig_req,
       }
     }
 
-    if (req.has_matview_pg_table_id()) {
-      matview_pg_table_ids_map_[req.table_id()] = req.matview_pg_table_id();
-    }
   }
 
   // For create transaction table requests with tablespace id, save the tablespace id.
@@ -4400,16 +4408,14 @@ Status CatalogManager::VerifyTablePgLayer(
     const PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table->id()));
     const auto pg_class_table_id = GetPgsqlTableId(database_oid, kPgClassTableOid);
 
-    PgOid table_oid = VERIFY_RESULT(GetPgsqlTableOid(table->id()));
-    boost::optional<PgOid> relfilenode_oid = boost::none;
-
-    if (!table->matview_pg_table_id().empty()) {
-      relfilenode_oid = table_oid;
-      table_oid = VERIFY_RESULT(GetPgsqlTableOid(table->matview_pg_table_id()));
-    }
+    PgOid pg_table_oid = VERIFY_RESULT(table->GetPgTableOid());
+    PgOid relfilenode_oid = VERIFY_RESULT(table->GetPgRelfilenodeOid());
 
     entry_exists = VERIFY_RESULT(
-        ysql_transaction_->PgEntryExists(pg_class_table_id, table_oid, relfilenode_oid));
+        ysql_transaction_->PgEntryExists(pg_class_table_id, pg_table_oid,
+        // If relfilenode_oid is the same as pg table oid, this is isn't a rewritten table and
+        // we don't need to perform additional checks on the relfilenode column.
+        relfilenode_oid == pg_table_oid ? boost::none : boost::make_optional(relfilenode_oid)));
   } else {
     // The table we have is a dummy parent table, hence not present in YSQL.
     // We need to check a tablegroup instead.
@@ -5411,9 +5417,10 @@ scoped_refptr<TableInfo> CatalogManager::CreateTableInfo(const CreateTableReques
 
   if (req.is_matview()) {
     metadata->set_is_matview(true);
-    if (req.has_matview_pg_table_id()) {
-      metadata->set_matview_pg_table_id(req.matview_pg_table_id());
-    }
+  }
+
+  if (req.has_pg_table_id()) {
+    metadata->set_pg_table_id(req.pg_table_id());
   }
 
   if (colocated) {
@@ -5616,33 +5623,30 @@ Result<string> CatalogManager::GetPgSchemaName(const TableInfoPtr& table_info) {
       Format("Expected YSQL table, got: $0", table_info->GetTableType()));
 
   const uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(table_info->namespace_id()));
-  uint32_t table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_info->id()));
+  uint32_t relfilenode_oid = VERIFY_RESULT(table_info->GetPgRelfilenodeOid());
+  uint32_t pg_table_oid = VERIFY_RESULT(table_info->GetPgTableOid());
 
-  if (!table_info->matview_pg_table_id().empty()) {
-    // Confirm that the relfilenode oid of pg_class entry with OID matview_pg_table_id
-    // is table_oid.
-    uint32_t matview_pg_table_oid = VERIFY_RESULT(
-        GetPgsqlTableOid(table_info->matview_pg_table_id()));
-    uint32_t relfilenode_id = VERIFY_RESULT(
+  // If this is a rewritten table, confirm that the relfilenode oid of pg_class entry with
+  // OID pg_table_oid is table_oid.
+  if (pg_table_oid != relfilenode_oid) {
+    uint32_t pg_class_relfilenode_oid = VERIFY_RESULT(
         sys_catalog_->ReadPgClassColumnWithOidValue(
             database_oid,
-            matview_pg_table_oid,
+            pg_table_oid,
             "relfilenode"));
-    if (relfilenode_id != table_oid) {
-      // This must be an orphaned matview from a failed REFRESH.
+    if (pg_class_relfilenode_oid != relfilenode_oid) {
+      // This must be an orphaned table from a failed rewrite.
       return STATUS(NotFound, kRelnamespaceNotFoundErrorStr +
-          std::to_string(table_oid));
+          std::to_string(pg_table_oid));
     }
-    // Set table_oid to matview_pg_table_oid to read correct pg_class entry for matviews.
-    table_oid = matview_pg_table_oid;
   }
 
   const uint32_t relnamespace_oid = VERIFY_RESULT(
-      sys_catalog_->ReadPgClassColumnWithOidValue(database_oid, table_oid, "relnamespace"));
+      sys_catalog_->ReadPgClassColumnWithOidValue(database_oid, pg_table_oid, "relnamespace"));
 
   if (relnamespace_oid == kPgInvalidOid) {
     return STATUS(NotFound, kRelnamespaceNotFoundErrorStr +
-        std::to_string(table_oid));
+        std::to_string(pg_table_oid));
   }
 
   return sys_catalog_->ReadPgNamespaceNspname(database_oid, relnamespace_oid);
@@ -5655,13 +5659,8 @@ Result<std::unordered_map<string, uint32_t>> CatalogManager::GetPgAttNameTypidMa
       table_info->GetTableType(), PGSQL_TABLE_TYPE, InternalError,
       Format("Expected YSQL table, got: $0", table_info->GetTableType()));
   const uint32_t database_oid = VERIFY_RESULT(GetPgsqlDatabaseOid(table_info->namespace_id()));
-  uint32_t table_oid = VERIFY_RESULT(GetPgsqlTableOid(table_info->id()));
-  {
-    if (matview_pg_table_ids_map_.find(table_info->id()) != matview_pg_table_ids_map_.end()) {
-      table_oid = VERIFY_RESULT(GetPgsqlTableOid(matview_pg_table_ids_map_[table_info->id()]));
-    }
-  }
-  return sys_catalog_->ReadPgAttNameTypidMap(database_oid, table_oid);
+  uint32_t pg_table_oid = VERIFY_RESULT(table_info->GetPgTableOid());
+  return sys_catalog_->ReadPgAttNameTypidMap(database_oid, pg_table_oid);
 }
 
 Result<std::unordered_map<uint32_t, PgTypeInfo>> CatalogManager::GetPgTypeInfo(
@@ -6400,9 +6399,6 @@ Status CatalogManager::DeleteTableInternal(
           if (table_names_map_.erase(key) != 1) {
             LOG(WARNING) << "Could not remove table from map: " << key.first << "." << key.second;
           }
-
-          // Remove matviews from matview to pg table id map
-          matview_pg_table_ids_map_.erase(table.info->id());
 
           // Keep track of deleted ycql tables.
           if (IsYcqlTable(*table.info)) {
@@ -7505,6 +7501,10 @@ Status CatalogManager::GetTableSchemaInternal(const GetTableSchemaRequestPB* req
     if (tablegroup) {
       resp->set_tablegroup_id(tablegroup->id());
     }
+  }
+
+  if (!table->pg_table_id().empty()) {
+    resp->set_pg_table_id(table->pg_table_id());
   }
 
   if (l->has_ysql_ddl_txn_verifier_state()) {

@@ -224,7 +224,7 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
                               const char *schema_name,
                               const char *table_name,
                               YBCPgOid database_oid,
-                              YBCPgOid table_oid,
+                              YBCPgOid table_relfilenode_oid,
                               bool is_shared_table,
                               bool if_not_exist,
                               bool add_primary_key,
@@ -233,7 +233,8 @@ YBCStatus YBCPgNewCreateTable(const char *database_name,
                               YBCPgOid colocation_id,
                               YBCPgOid tablespace_oid,
                               bool is_matview,
-                              YBCPgOid matview_pg_table_oid,
+                              YBCPgOid pg_table_oid,
+                              YBCPgOid old_relfilenode_oid,
                               YBCPgStatement *handle);
 
 YBCStatus YBCPgCreateTableAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
@@ -247,7 +248,7 @@ YBCStatus YBCPgAddSplitBoundary(YBCPgStatement handle, YBCPgExpr *exprs, int exp
 YBCStatus YBCPgExecCreateTable(YBCPgStatement handle);
 
 YBCStatus YBCPgNewAlterTable(YBCPgOid database_oid,
-                             YBCPgOid table_oid,
+                             YBCPgOid table_relfilenode_oid,
                              YBCPgStatement *handle);
 
 YBCStatus YBCPgAlterTableAddColumn(YBCPgStatement handle, const char *name, int order,
@@ -265,23 +266,23 @@ YBCStatus YBCPgAlterTableRenameTable(YBCPgStatement handle, const char *db_name,
 YBCStatus YBCPgAlterTableIncrementSchemaVersion(YBCPgStatement handle);
 
 YBCStatus YBCPgAlterTableSetTableId(
-    YBCPgStatement handle, const YBCPgOid database_oid, const YBCPgOid table_oid);
+    YBCPgStatement handle, const YBCPgOid database_oid, const YBCPgOid table_relfilenode_oid);
 
 YBCStatus YBCPgExecAlterTable(YBCPgStatement handle);
 
 YBCStatus YBCPgNewDropTable(YBCPgOid database_oid,
-                            YBCPgOid table_oid,
+                            YBCPgOid table_relfilenode_oid,
                             bool if_exist,
                             YBCPgStatement *handle);
 
 YBCStatus YBCPgNewTruncateTable(YBCPgOid database_oid,
-                                YBCPgOid table_oid,
+                                YBCPgOid table_relfilenode_oid,
                                 YBCPgStatement *handle);
 
 YBCStatus YBCPgExecTruncateTable(YBCPgStatement handle);
 
 YBCStatus YBCPgGetTableDesc(YBCPgOid database_oid,
-                            YBCPgOid table_oid,
+                            YBCPgOid table_relfilenode_oid,
                             YBCPgTableDesc *handle);
 
 YBCStatus YBCPgGetColumnInfo(YBCPgTableDesc table_desc,
@@ -303,10 +304,10 @@ YBCStatus YBCPgSetDBCatalogCacheVersion(YBCPgStatement handle,
                                         uint64_t version);
 
 YBCStatus YBCPgTableExists(const YBCPgOid database_oid,
-                           const YBCPgOid table_oid,
+                           const YBCPgOid table_relfilenode_oid,
                            bool *exists);
 
-YBCStatus YBCPgGetTableDiskSize(YBCPgOid table_oid,
+YBCStatus YBCPgGetTableDiskSize(YBCPgOid table_relfilenode_oid,
                                 YBCPgOid database_oid,
                                 int64_t *size,
                                 int32_t *num_missing_tablets);
@@ -325,8 +326,8 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
                               const char *schema_name,
                               const char *index_name,
                               YBCPgOid database_oid,
-                              YBCPgOid index_oid,
-                              YBCPgOid table_oid,
+                              YBCPgOid index_relfilenode_oid,
+                              YBCPgOid table_relfilenode_oid,
                               bool is_shared_index,
                               bool is_unique_index,
                               const bool skip_index_backfill,
@@ -335,6 +336,8 @@ YBCStatus YBCPgNewCreateIndex(const char *database_name,
                               YBCPgOid tablegroup_oid,
                               YBCPgOid colocation_id,
                               YBCPgOid tablespace_oid,
+                              YBCPgOid pg_table_oid,
+                              YBCPgOid old_relfilenode_oid,
                               YBCPgStatement *handle);
 
 YBCStatus YBCPgCreateIndexAddColumn(YBCPgStatement handle, const char *attr_name, int attr_num,
@@ -346,7 +349,7 @@ YBCStatus YBCPgCreateIndexSetNumTablets(YBCPgStatement handle, int32_t num_table
 YBCStatus YBCPgExecCreateIndex(YBCPgStatement handle);
 
 YBCStatus YBCPgNewDropIndex(YBCPgOid database_oid,
-                            YBCPgOid index_oid,
+                            YBCPgOid index_relfilenode_oid,
                             bool if_exist,
                             YBCPgStatement *handle);
 
@@ -363,7 +366,7 @@ YBCStatus YBCPgWaitForBackendsCatalogVersion(
 
 YBCStatus YBCPgBackfillIndex(
     const YBCPgOid database_oid,
-    const YBCPgOid index_oid);
+    const YBCPgOid index_relfilenode_oid);
 
 //--------------------------------------------------------------------------------------------------
 // DML statements (select, insert, update, delete, truncate)
@@ -483,7 +486,7 @@ void YBCPgResetOperationsBuffering();
 YBCStatus YBCPgFlushBufferedOperations();
 
 YBCStatus YBCPgNewSample(const YBCPgOid database_oid,
-                         const YBCPgOid table_oid,
+                         const YBCPgOid table_relfilenode_oid,
                          int targrows,
                          bool is_region_local,
                          YBCPgStatement *handle);
@@ -498,7 +501,7 @@ YBCStatus YBCPgGetEstimatedRowCount(YBCPgStatement handle, double *liverows, dou
 
 // INSERT ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewInsert(YBCPgOid database_oid,
-                         YBCPgOid table_oid,
+                         YBCPgOid table_relfilenode_oid,
                          bool is_region_local,
                          YBCPgStatement *handle,
                          YBCPgTransactionSetting transaction_setting);
@@ -513,7 +516,7 @@ YBCStatus YBCPgInsertStmtSetIsBackfill(YBCPgStatement handle, const bool is_back
 
 // UPDATE ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewUpdate(YBCPgOid database_oid,
-                         YBCPgOid table_oid,
+                         YBCPgOid table_relfilenode_oid,
                          bool is_region_local,
                          YBCPgStatement *handle,
                          YBCPgTransactionSetting transaction_setting);
@@ -522,7 +525,7 @@ YBCStatus YBCPgExecUpdate(YBCPgStatement handle);
 
 // DELETE ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewDelete(YBCPgOid database_oid,
-                         YBCPgOid table_oid,
+                         YBCPgOid table_relfilenode_oid,
                          bool is_region_local,
                          YBCPgStatement *handle,
                          YBCPgTransactionSetting transaction_setting);
@@ -533,7 +536,7 @@ YBCStatus YBCPgDeleteStmtSetIsPersistNeeded(YBCPgStatement handle, const bool is
 
 // Colocated TRUNCATE ------------------------------------------------------------------------------
 YBCStatus YBCPgNewTruncateColocated(YBCPgOid database_oid,
-                                    YBCPgOid table_oid,
+                                    YBCPgOid table_relfilenode_oid,
                                     bool is_region_local,
                                     YBCPgStatement *handle,
                                     YBCPgTransactionSetting transaction_setting);
@@ -542,7 +545,7 @@ YBCStatus YBCPgExecTruncateColocated(YBCPgStatement handle);
 
 // SELECT ------------------------------------------------------------------------------------------
 YBCStatus YBCPgNewSelect(YBCPgOid database_oid,
-                         YBCPgOid table_oid,
+                         YBCPgOid table_relfilenode_oid,
                          const YBCPgPrepareParameters *prepare_params,
                          bool is_region_local,
                          YBCPgStatement *handle);
@@ -655,8 +658,8 @@ YBCStatus YBCAppendDatumToKey(uint64_t data,  const YBCPgTypeEntity
 uint16_t YBCCompoundHash(const char *key, size_t length);
 
 // Referential Integrity Check Caching.
-void YBCPgDeleteFromForeignKeyReferenceCache(YBCPgOid table_oid, uint64_t ybctid);
-void YBCPgAddIntoForeignKeyReferenceCache(YBCPgOid table_oid, uint64_t ybctid);
+void YBCPgDeleteFromForeignKeyReferenceCache(YBCPgOid table_relfilenode_oid, uint64_t ybctid);
+void YBCPgAddIntoForeignKeyReferenceCache(YBCPgOid table_relfilenode_oid, uint64_t ybctid);
 YBCStatus YBCPgForeignKeyReferenceCacheDelete(const YBCPgYBTupleIdDescriptor* descr);
 YBCStatus YBCForeignKeyReferenceExists(const YBCPgYBTupleIdDescriptor* descr, bool* res);
 YBCStatus YBCAddForeignKeyReferenceIntent(const YBCPgYBTupleIdDescriptor* descr,
@@ -701,7 +704,7 @@ YBCStatus YBCNewGetLockStatusDataSRF(YBCPgFunction *handle);
 
 YBCStatus YBCGetTabletServerHosts(YBCServerDescriptor **tablet_servers, size_t* numservers);
 
-YBCStatus YBCGetIndexBackfillProgress(YBCPgOid* index_oids, YBCPgOid* database_oids,
+YBCStatus YBCGetIndexBackfillProgress(YBCPgOid* index_relfilenode_oids, YBCPgOid* database_oids,
                                       uint64_t** backfill_statuses,
                                       int num_indexes);
 
@@ -729,7 +732,7 @@ uint64_t YBCPgGetReadTimeSerialNo();
 
 void YBCPgForceReadTimeSerialNo(uint64_t read_time_serial_no);
 
-YBCStatus YBCIsObjectPartOfXRepl(YBCPgOid database_oid, YBCPgOid table_oid,
+YBCStatus YBCIsObjectPartOfXRepl(YBCPgOid database_oid, YBCPgOid table_relfilenode_oid,
                                  bool* is_object_part_of_xrepl);
 
 YBCStatus YBCPgCancelTransaction(const unsigned char* transaction_id);
@@ -744,7 +747,7 @@ YBCStatus YBCPgCancelTransaction(const unsigned char* transaction_id);
 // Iff we've reached the end of the table (or upper bound) then empty key is returned as the last
 // key.
 YBCStatus YBCGetTableKeyRanges(
-    YBCPgOid database_oid, YBCPgOid table_oid, const char* lower_bound_key,
+    YBCPgOid database_oid, YBCPgOid table_relfilenode_oid, const char* lower_bound_key,
     size_t lower_bound_key_size, const char* upper_bound_key, size_t upper_bound_key_size,
     uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length,
     uint64_t* current_tserver_ht,
