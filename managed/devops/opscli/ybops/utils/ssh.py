@@ -21,13 +21,15 @@ import subprocess
 import time
 import tempfile
 
-from Crypto.PublicKey import RSA
+from cryptography.hazmat.primitives.asymmetric import rsa
+from cryptography.hazmat.primitives import serialization
 
 from scp import SCPClient
 from ybops.common.exceptions import YBOpsRuntimeError, YBOpsRecoverableError
 
 SSH2 = 'ssh2'
 SSH = 'ssh'
+SSHPUB = 'sshpub'
 SSH_RETRY_LIMIT = 60
 SSH_RETRY_LIMIT_PRECHECK = 4
 DEFAULT_SSH_PORT = 22
@@ -88,8 +90,14 @@ def parse_private_key(key):
 
     with open(key) as f:
         key_data = f.read()
+        # key maybe SSH encoded public key
         try:
-            RSA.importKey(key_data)
+            key = serialization.load_ssh_public_key(data=key_data.encode())
+            return SSHPUB
+        except Exception:
+            pass
+        try:
+            serialization.load_pem_private_key(data=key_data.encode(), password=None)
             return SSH
         except ValueError:
             '''
@@ -207,10 +215,17 @@ def format_rsa_key(key, public_key=False):
     Returns:
         key (str): Encoded key in OpenSSH or PEM format based on the flag (public key or not).
     """
-    if isinstance(key, RSA.RsaKey):
+    if isinstance(key, rsa.RSAPrivateKey):
         if public_key:
-            return key.publickey().exportKey("OpenSSH").decode('utf-8')
-        return key.exportKey("PEM").decode('utf-8')
+            return key.public_key() \
+                      .public_bytes(encoding=serialization.Encoding.OpenSSH,
+                                    format=serialization.PublicFormat.OpenSSH).decode('utf-8')
+        return key.private_bytes(encoding=serialization.Encoding.PEM,
+                                 format=serialization.PrivateFormat.TraditionalOpenSSL,
+                                 encryption_algorithm=serialization.NoEncryption()).decode('utf-8')
+    elif isinstance(key, rsa.RSAPublicKey):
+        return key.public_bytes(encoding=serialization.Encoding.OpenSSH,
+                                format=serialization.PublicFormat.OpenSSH).decode('utf-8')
     else:
         if public_key:
             run_command(['ssh-keygen-g3', '-D', key])
@@ -231,7 +246,6 @@ def validated_key_file(key_file):
     is incorrect or not found.
     Args:
         key_file (str): Key file name
-        public_key (bool): Denote if the key file is public key or not.
     Returns:
         key (RSA Key): RSA key data
     """
@@ -243,7 +257,10 @@ def validated_key_file(key_file):
     ssh_type = parse_private_key(key_file)
     if ssh_type == SSH:
         with open(key_file) as f:
-            return RSA.importKey(f.read())
+            return serialization.load_pem_private_key(data=f.read().encode(), password=None)
+    elif ssh_type == SSHPUB:
+        with open(key_file) as f:
+            return serialization.load_ssh_public_key(data=f.read().encode())
     else:
         return key_file
 
@@ -258,7 +275,7 @@ def generate_rsa_keypair(key_name, destination='/tmp'):
     Returns:
         keys (tuple): Private and Public key files.
     """
-    new_key = RSA.generate(RSA_KEY_LENGTH)
+    new_key = rsa.generate_private_key(public_exponent=65537, key_size=RSA_KEY_LENGTH)
     if not os.path.exists(destination):
         raise YBOpsRuntimeError("Destination folder {} not accessible".format(destination))
 
