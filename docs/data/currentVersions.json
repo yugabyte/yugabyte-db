@@ -22,7 +22,8 @@
       "isLTS": true,
       "initialRelease": "2023-11-13",
       "endOfMaintenance": "2025-11-13",
-      "endOfLife": "2026-05-13"
+      "endOfLife": "2026-05-13",
+      "PreviewBehindStable": true
     },
     {
       "series": "v2.18",
