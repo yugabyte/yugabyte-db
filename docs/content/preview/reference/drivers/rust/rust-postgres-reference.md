@@ -342,7 +342,7 @@ If you created a cluster on [YugabyteDB Managed](/preview/yugabyte-cloud/), use 
 
 The following is an example application for connecting to a YugabyteDB cluster with SSL enabled:
 
-Add `yb-postgres-openssl = "0.5.0-yb-1"` and `openssl = "0.10.61"` dependencies in the `Cargo.toml` file before executing the application.
+Add `yb-postgres-openssl = "0.5.0-yb-1"`, `yb-postgres = "0.19.7-yb-1-beta"`, and `openssl = "0.10.61"` dependencies in the `Cargo.toml` file before executing the application.
 
 ```rust
 use openssl::ssl::{SslConnector, SslMethod};
