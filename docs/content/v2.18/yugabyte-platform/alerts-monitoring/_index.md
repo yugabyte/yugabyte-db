@@ -9,7 +9,7 @@ menu:
   v2.18_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: alerts-monitoring
-weight: 647
+weight: 670
 type: indexpage
 ---
 

@@ -9,7 +9,7 @@ menu:
   v2.18_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: install-yugabyte-platform
-weight: 641
+weight: 610
 type: indexpage
 ---
 
