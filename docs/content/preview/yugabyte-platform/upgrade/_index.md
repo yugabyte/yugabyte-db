@@ -30,7 +30,7 @@ If you have upgraded YBA to version 2.12 or later and [xCluster replication](../
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="upgrade-yp-installer/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/quick_start/install.png" aria-hidden="true" />
         <div class="title">Upgrade YugabyteDB Anywhere</div>
       </div>
       <div class="body">
@@ -42,7 +42,7 @@ If you have upgraded YBA to version 2.12 or later and [xCluster replication](../
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="upgrade-yp-xcluster-ybadmin/">
       <div class="head">
-        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <img class="icon" src="/images/section_icons/manage/pitr.png" aria-hidden="true" />
         <div class="title">Synchronize replication after upgrade</div>
       </div>
       <div class="body">

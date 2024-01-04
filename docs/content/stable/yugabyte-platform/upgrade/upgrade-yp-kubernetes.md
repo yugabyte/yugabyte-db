@@ -1,11 +1,11 @@
 ---
 title: Upgrade YugabyteDB Anywhere installation on Kubernetes
 headerTitle: Upgrade YugabyteDB Anywhere installation on Kubernetes
-linkTitle: Upgrade Kubernetes installation
+linkTitle: Upgrade installation
 description: Upgrade YugabyteDB Anywhere installation on Kubernetes
 menu:
   stable_yugabyte-platform:
-    identifier: upgrade-yp-kubernetes
+    identifier: upgrade-yp-3-kubernetes
     parent: upgrade
     weight: 80
 type: docs

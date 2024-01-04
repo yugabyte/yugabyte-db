@@ -1,11 +1,11 @@
 ---
 title: Upgrade YugabyteDB Anywhere using Replicated
 headerTitle: Upgrade YugabyteDB Anywhere using Replicated
-linkTitle: Upgrade using Replicated
+linkTitle: Upgrade installation
 description: Use Replicated to upgrade YugabyteDB Anywhere
 menu:
   stable_yugabyte-platform:
-    identifier: upgrade-yp-replicated
+    identifier: upgrade-yp-2-replicated
     parent: upgrade
     weight: 80
 type: docs
