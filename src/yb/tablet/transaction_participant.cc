@@ -227,11 +227,11 @@ class TransactionParticipant::Impl
       mem_tracker_->UnregisterFromParent();
     }
 
-    rpcs_.Shutdown();
     loader_.Shutdown();
     for (auto& resolver : status_resolvers) {
       resolver.Shutdown();
     }
+    rpcs_.Shutdown();
     shutdown_done_.store(true, std::memory_order_release);
   }
 
