@@ -178,7 +178,7 @@ You can manually provision each node using the preprovisioning Python script, as
 
 1. Repeat step 3 for every node that will participate in the universe.
 
-This completes the on-premises cloud provider configuration. You can proceed to [Configure the backup target](../../backup-target/) or [deploy universes](../../../create-deployments/).
+This completes the on-premises cloud provider configuration.
 
 #### Setting up database nodes manually
 
@@ -507,7 +507,7 @@ If YugabyteDB Anywhere will be using **cron jobs**, make sure the yugabyte user 
 YugabyteDB Anywhere **systemd services** to perform the monitoring operations mentioned above, then make sure ...
 -->
 
-You have finished configuring your on-premises cloud provider. Proceed to [Configure the backup target](../../backup-target/) or [deploy universes](../../../create-deployments/).
+You have finished configuring your on-premises cloud provider.
 
 ##### Install systemd-related database service unit files
 

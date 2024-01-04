@@ -9,7 +9,7 @@ menu:
   v2.16_yugabyte-platform:
     parent: yugabytedb-anywhere
     identifier: administer-yugabyte-platform
-    weight: 649
+    weight: 680
 type: indexpage
 ---
 

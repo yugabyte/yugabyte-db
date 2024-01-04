@@ -18,6 +18,26 @@ Before you can back up universes, you need to configure a storage location for y
 
 Depending on your environment, you can save your YugabyteDB universe data to a variety of storage solutions.
 
+## Local storage
+
+If your YugabyteDB universe has one node, you can create a local directory on a T-Server to which to back up, as follows:
+
+1. Navigate to **Universes**, select your universe, and then select **Nodes**.
+
+2. Click **Connect**.
+
+3. Take note of the services and endpoints information displayed in the **Connect** dialog, as shown in the following illustration:
+
+    ![Connect dialog](/images/yp/cloud-provider-local-backup1.png)
+
+4. While connected using `ssh`, create a directory `/backup` and then change the owner to `yugabyte`, as follows:
+
+    ```sh
+    sudo mkdir /backup; sudo chown yugabyte /backup
+    ```
+
+If there is more than one node, you should consider using a network file system mounted on each server.
+
 ## Amazon S3
 
 You can configure Amazon S3 as your backup target, as follows:
