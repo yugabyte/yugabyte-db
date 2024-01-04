@@ -14,7 +14,7 @@ showRightNav: true
 type: indexpage
 ---
 
-PostgreSQL extensions provide a way to extend the functionality of a database by bundling SQL objects into a package and using them as a unit. YugabyteDB suppoprts a variety of PostgreSQL extensions.
+PostgreSQL extensions provide a way to extend the functionality of a database by bundling SQL objects into a package and using them as a unit. YugabyteDB supports a variety of PostgreSQL extensions.
 
 Supported extensions are either pre-bundled with YugabyteDB, or require installation:
 
