@@ -50,11 +50,12 @@ var reconfigureCmd = &cobra.Command{
 			common.SetYamlValue(common.InputFile(), "server_cert_path", serverCertPath)
 			common.SetYamlValue(common.InputFile(), "server_key_path", serverKeyPath)
 			common.InitViper()
-			if err := createPemFormatKeyAndCert(); err != nil {
-				log.Fatal("failed to create server.pem: " + err.Error())
-			}
 			state.Config.Hostname = viper.GetString("host")
 			state.Config.SelfSignedCert = true // Ensure we track self signed certs after reconfig
+		}
+
+		if err := createPemFormatKeyAndCert(); err != nil {
+			log.Fatal("failed to create server.pem: " + err.Error())
 		}
 
 		for _, name := range serviceOrder {
