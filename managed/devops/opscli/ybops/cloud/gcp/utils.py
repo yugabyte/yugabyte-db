@@ -130,7 +130,7 @@ class GcpMetadata():
         return GcpMetadata._query_endpoint("project/project-id")
 
     @staticmethod
-    def host_project():
+    def shared_vpc_project():
         network_data = GcpMetadata._query_endpoint("instance/network-interfaces/0/network")
         try:
             # Network data is of format projects/PROJECT_NUMBER/networks/NETWORK_NAME
@@ -569,19 +569,19 @@ class GoogleCloudAdmin():
         if per_region_meta is None:
             per_region_meta = {}
         return NetworkManager(
-            self.project, self.compute, self.metadata, dest_vpc_id,
+            self.get_shared_vpc_project(), self.compute, self.metadata, dest_vpc_id,
             host_vpc_id, per_region_meta, create_new_vpc)
 
     @staticmethod
     def get_current_host_info():
         network = GcpMetadata.network()
-        host_project = GcpMetadata.host_project()
+        shared_vpc_project = GcpMetadata.shared_vpc_project()
         project = GcpMetadata.project()
         if network is None or project is None:
             raise YBOpsRuntimeError("Unable to auto-discover GCP provider information")
         return {
             "network": network.split("/")[-1],
-            "host_project": host_project,
+            "shared_vpc_project": shared_vpc_project,
             "project": project
         }
 
@@ -756,8 +756,8 @@ class GoogleCloudAdmin():
         return {}
 
     def get_subnetwork_by_name(self, region, name):
-        host_project = self.get_host_project()
-        return self.compute.subnetworks().get(project=host_project,
+        shared_vpc_project = self.get_shared_vpc_project()
+        return self.compute.subnetworks().get(project=shared_vpc_project,
                                               region=region, subnetwork=name).execute()
 
     def get_regions(self):
@@ -784,8 +784,8 @@ class GoogleCloudAdmin():
                                                                zone=zone).execute()
         return instance_type_items["items"]
 
-    def get_host_project(self):
-        return os.environ.get("GCE_HOST_PROJECT", self.project)
+    def get_shared_vpc_project(self):
+        return os.environ.get("GCE_SHARED_VPC_PROJECT", self.project)
 
     def get_pricing_map(self, ):
         # Requests encounters an SSL bug when run on portal, so verify is set to false
@@ -898,7 +898,7 @@ class GoogleCloudAdmin():
                         auto_delete_boot_disk=True, tags=None, cloud_subnet_secondary=None,
                         gcp_instance_template=None):
         # Name of the project that target VPC network belongs to.
-        host_project = self.get_host_project()
+        shared_vpc_project = self.get_shared_vpc_project()
 
         boot_disk_json = {
             "autoDelete": auto_delete_boot_disk,
@@ -965,7 +965,7 @@ class GoogleCloudAdmin():
             "networkInterfaces": [{
                 "accessConfigs": access_configs,
                 "subnetwork": "projects/{}/regions/{}/subnetworks/{}".format(
-                    host_project, region, cloud_subnet)
+                    shared_vpc_project, region, cloud_subnet)
             }],
             "tags": {
                 "items": get_firewall_tags()
@@ -981,7 +981,7 @@ class GoogleCloudAdmin():
             body["networkInterfaces"].append({
                 "accessConfigs": [{"natIP": None}],
                 "subnetwork": "projects/{}/regions/{}/subnetworks/{}".format(
-                    host_project, region, cloud_subnet_secondary)
+                    shared_vpc_project, region, cloud_subnet_secondary)
             })
 
         if boot_script:

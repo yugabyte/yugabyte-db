@@ -27,13 +27,22 @@ import lombok.Data;
 @JsonIgnoreProperties(ignoreUnknown = true)
 public class GCPCloudInfo implements CloudInfoInterface {
 
+  private static final String sharedVPCProjectKey = "GCE_SHARED_VPC_PROJECT";
+
   private static final Map<String, String> configKeyMap =
       ImmutableMap.of(
-          "gceProject", "project_id",
-          "gceApplicationCredentialsPath", "GOOGLE_APPLICATION_CREDENTIALS",
-          "destVpcId", "network",
-          "ybFirewallTags", CloudProviderHelper.YB_FIREWALL_TAGS,
-          "useHostVPC", "use_host_vpc");
+          "gceProject",
+          "project_id",
+          sharedVPCProjectKey,
+          "GCE_HOST_PROJECT",
+          "gceApplicationCredentialsPath",
+          "GOOGLE_APPLICATION_CREDENTIALS",
+          "destVpcId",
+          "network",
+          "ybFirewallTags",
+          CloudProviderHelper.YB_FIREWALL_TAGS,
+          "useHostVPC",
+          "use_host_vpc");
 
   private static final List<String> toRemoveKeyFromConfig =
       ImmutableList.of("gceApplicationCredentials", "useHostCredentials");
@@ -55,10 +64,15 @@ public class GCPCloudInfo implements CloudInfoInterface {
   private static final List<String> toMaskFieldsInCreds =
       ImmutableList.of("private_key", "private_key_id");
 
-  @JsonAlias({"host_project_id", "project_id", GCPCloudImpl.GCE_PROJECT_PROPERTY})
+  @JsonAlias({"project_id", GCPCloudImpl.GCE_PROJECT_PROPERTY})
   @ApiModelProperty
   @EditableInUseProvider(name = "GCP Project", allowed = false)
   private String gceProject;
+
+  @JsonAlias({"host_project_id", "GCE_HOST_PROJECT"})
+  @ApiModelProperty
+  @EditableInUseProvider(name = "Shared VPC Project", allowed = false)
+  private String sharedVPCProject;
 
   @JsonAlias({"config_file_path", GCPCloudImpl.GOOGLE_APPLICATION_CREDENTIALS_PROPERTY})
   @ApiModelProperty(accessMode = AccessMode.READ_ONLY)
@@ -111,6 +125,9 @@ public class GCPCloudInfo implements CloudInfoInterface {
     }
     if (destVpcId != null) {
       envVars.put("destVpcId", destVpcId);
+    }
+    if (sharedVPCProject != null) {
+      envVars.put(sharedVPCProjectKey, sharedVPCProject);
     }
 
     return envVars;

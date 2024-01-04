@@ -4451,6 +4451,9 @@
           "readOnly" : true,
           "type" : "string"
         },
+        "sharedVPCProject" : {
+          "type" : "string"
+        },
         "useHostCredentials" : {
           "type" : "boolean"
         },
