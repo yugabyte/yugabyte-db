@@ -1,6 +1,6 @@
 ---
 title: Upgrade YugabyteDB Anywhere using Replicated
-headerTitle: Upgrade YugabyteDB Anywhere using Replicated
+headerTitle: Upgrade YugabyteDB Anywhere
 linkTitle: Upgrade installation
 description: Use Replicated to upgrade YugabyteDB Anywhere
 menu:

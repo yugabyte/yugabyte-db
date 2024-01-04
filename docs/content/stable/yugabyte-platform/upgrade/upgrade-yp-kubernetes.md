@@ -1,6 +1,6 @@
 ---
 title: Upgrade YugabyteDB Anywhere installation on Kubernetes
-headerTitle: Upgrade YugabyteDB Anywhere installation on Kubernetes
+headerTitle: Upgrade YugabyteDB Anywhere
 linkTitle: Upgrade installation
 description: Upgrade YugabyteDB Anywhere installation on Kubernetes
 menu:
