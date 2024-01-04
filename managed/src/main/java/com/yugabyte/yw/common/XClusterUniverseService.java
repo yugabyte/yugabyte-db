@@ -216,10 +216,7 @@ public class XClusterUniverseService {
     // Compare auto flags json for each universe.
     for (Universe univ : universeSet) {
       // Once rollback support is enabled, auto flags will be promoted through finalize api.
-      if (!confGetter.getConfForScope(univ, UniverseConfKeys.promoteAutoFlag)
-          || CommonUtils.isReleaseEqualOrAfter(
-              Util.YBDB_ROLLBACK_DB_VERSION,
-              univ.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion)) {
+      if (!confGetter.getConfForScope(univ, UniverseConfKeys.promoteAutoFlag)) {
         return false;
       }
       if (univ.getUniverseUUID().equals(univUpgradeInProgress.getUniverseUUID())) {
