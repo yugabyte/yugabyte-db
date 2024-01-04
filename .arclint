@@ -60,6 +60,7 @@
         "(^managed/.*/go[.]sum)",
         "(^managed/yba-cli/GNUmakefile)",
         "(^managed/ui/)",
+        "(^troubleshoot/troubleshooting-framework-ui/)",
         "(^yugabyted-ui/.*/go[.]mod)",
         "(^yugabyted-ui/.*/go[.]sum)",
         "(^yugabyted-ui/ui/src/api/)",
