@@ -23,33 +23,35 @@ Your YugabyteDB cluster should be up and running. Refer to [YugabyteDB prerequis
 
 Load some data to explore and visualize. For a local installation, you can load the Northwind sample database using the `./bin/yugabyted demo connect` command from your shell, or follow the [instructions](../../sample-data/northwind/).
 
-Install the YugabyteDB psycopg2 smart driver as follows:
-
-1. Check if the PostgreSQL psycopg2 driver is installed:
-
-    ```sh
-    pip show psycopg2
-    ```
-
-1. If present, uninstall it as follows:
-
-    ```sh
-    pip uninstall psycopg2
-    ```
-
-1. Install the YugabyteDB psycopg2 smart driver:
-
-    ```sh
-    pip install psycopg2-yugabytedb
-    ```
-
-## Install Superset
+### Install Superset
 
 You can install Superset from scratch using [Python (pip3)](https://superset.apache.org/docs/installation/installing-superset-from-scratch) (recommended) or [Docker Compose](https://superset.apache.org/docs/installation/installing-superset-using-docker-compose).
 
-[Launch Superset](https://superset.apache.org/docs/installation/installing-superset-from-scratch/#installing-and-initializing-superset) in your browser at `http://<hostname-or-IP-address>:8088`. If you've installed on your local computer, navigate to `localhost:8088` or `127.0.0.1:8088`. YugabyteDB v2.19 and later can also be used as a [Superset metastore](https://superset.apache.org/docs/installation/configuring-superset#using-a-production-metastore).
+### Install the driver
+
+After installing Superset, install the YugabyteDB psycopg2 smart driver. If the PostgreSQL psycopg2 driver is installed, you must remove it first.
+
+To check if the PostgreSQL psycopg2 driver is installed, enter the followin command:
+
+```sh
+pip show psycopg2
+```
+
+If present, uninstall the driver as follows:
+
+```sh
+pip uninstall psycopg2
+```
+
+To install the YugabyteDB psycopg2 smart driver, enter the following:
+
+```sh
+pip install psycopg2-yugabytedb
+```
 
 ## Connect Superset to YugabyteDB
+
+[Launch Superset](https://superset.apache.org/docs/installation/installing-superset-from-scratch/#installing-and-initializing-superset) in your browser at `http://<hostname-or-IP-address>:8088`. If you've installed on your local computer, navigate to `localhost:8088` or `127.0.0.1:8088`. YugabyteDB v2.19 and later can also be used as a [Superset metastore](https://superset.apache.org/docs/installation/configuring-superset#using-a-production-metastore).
 
 To connect Apache Superset to YugabyteDB:
 
