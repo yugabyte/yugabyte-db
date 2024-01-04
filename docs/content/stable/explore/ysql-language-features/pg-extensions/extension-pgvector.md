@@ -13,7 +13,7 @@ type: docs
 
 The [pgvector](https://github.com/pgvector/pgvector) PostgreSQL extension allows you to store and query vectors, for use in performing similarity searches.
 
-Note: YugabyteDB support for pgvector does not currently include [indexing](https://github.com/pgvector/pgvector#indexing).
+Note that YugabyteDB support for pgvector does not currently include [indexing](https://github.com/pgvector/pgvector#indexing).
 
 To enable the extension:
 
@@ -104,7 +104,7 @@ Get rows within a certain distance:
 SELECT * FROM items WHERE embedding <-> '[3,1,2]' < 5;
 ```
 
-Note: Combine with `ORDER BY` and `LIMIT` to use an index.
+<!--Note: Combine with `ORDER BY` and `LIMIT` to use an index.-->
 
 ### Distances
 
