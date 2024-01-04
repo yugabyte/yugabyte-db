@@ -13,6 +13,16 @@ menu:
 type: indexpage
 ---
 
+You can upgrade YugabyteDB Anywhere (YBA) using the following methods:
+
+| Method | Using | Use If |
+| :--- | :--- | :--- |
+| YBA&nbsp;Installer | yba-ctl CLI | Your installation already uses YBA Installer. |
+| Replicated | Replicated Admin Console | Your installation already uses Replicated.<br>Before you can migrate from a Replicated installation, upgrade to v2.20.0 or later. |
+| Kubernetes | Helm chart | You're deploying in Kubernetes. |
+
+If you have upgraded YugabyteDB Anywhere to version 2.12 or later and [xCluster replication](../../explore/multi-region-deployments/asynchronous-replication-ysql/) for your universe was set up via yb-admin instead of the UI, follow the instructions provided in [Synchronize replication after upgrade](upgrade-yp-xcluster-ybadmin/).
+
 <div class="row">
 
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
