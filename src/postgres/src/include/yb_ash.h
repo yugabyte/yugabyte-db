@@ -41,6 +41,7 @@ extern void YbAshRegister(void);
 extern void YbAshMain(Datum main_arg);
 
 extern void YbAshInstallHooks(void);
+extern void YbAshSetSessionId(uint64 session_id);
 
 extern bool YbAshStoreSample(PGPROC *proc, int num_procs,
 							 TimestampTz sample_time,
