@@ -80,9 +80,11 @@
 #include "lib/stringinfo.h"
 #include "libpq/hba.h"
 #include "optimizer/cost.h"
+#include "parser/parse_utilcmd.h"
 #include "tcop/utility.h"
 #include "utils/builtins.h"
 #include "utils/datum.h"
+#include "utils/fmgroids.h"
 #include "utils/lsyscache.h"
 #include "utils/pg_locale.h"
 #include "utils/rel.h"
@@ -322,7 +324,8 @@ static Bitmapset *GetTablePrimaryKeyBms(Relation rel,
 	YBCPgTableDesc ybc_tabledesc = NULL;
 
 	/* Get the primary key columns 'pkey' from YugaByte. */
-	HandleYBStatus(YBCPgGetTableDesc(dboid, YbGetStorageRelid(rel), &ybc_tabledesc));
+	HandleYBStatus(YBCPgGetTableDesc(dboid, YbGetRelfileNodeId(rel),
+		&ybc_tabledesc));
 	for (AttrNumber attnum = minattr; attnum <= natts; attnum++)
 	{
 		if ((!includeYBSystemColumns && !IsRealYBColumn(rel, attnum)) ||
@@ -2140,13 +2143,14 @@ int32_t YBFollowerReadStalenessMs() {
 	return yb_follower_read_staleness_ms;
 }
 
-YBCPgYBTupleIdDescriptor* YBCCreateYBTupleIdDescriptor(Oid db_oid, Oid table_oid, int nattrs) {
+YBCPgYBTupleIdDescriptor* YBCCreateYBTupleIdDescriptor(Oid db_oid, Oid table_relfilenode_oid,
+	int nattrs) {
 	void* mem = palloc(sizeof(YBCPgYBTupleIdDescriptor) + nattrs * sizeof(YBCPgAttrValueDescriptor));
 	YBCPgYBTupleIdDescriptor* result = mem;
 	result->nattrs = nattrs;
 	result->attrs = mem + sizeof(YBCPgYBTupleIdDescriptor);
 	result->database_oid = db_oid;
-	result->table_oid = table_oid;
+	result->table_relfilenode_oid = table_relfilenode_oid;
 	return result;
 }
 
@@ -2327,10 +2331,10 @@ YbGetTablePropertiesCommon(Relation rel)
 	}
 
 	Oid dbid          = YBCGetDatabaseOid(rel);
-	Oid storage_relid = YbGetStorageRelid(rel);
+	Oid relfileNodeId = YbGetRelfileNodeId(rel);
 
 	YBCPgTableDesc desc = NULL;
-	YBCStatus status = YBCPgGetTableDesc(dbid, storage_relid, &desc);
+	YBCStatus status = YBCPgGetTableDesc(dbid, relfileNodeId, &desc);
 	if (status)
 		return status;
 
@@ -2460,13 +2464,13 @@ yb_table_properties(PG_FUNCTION_ARGS)
 
 	Relation	rel = relation_open(relid, AccessShareLock);
 	Oid dbid		= YBCGetDatabaseOid(rel);
-	Oid storage_relid = YbGetStorageRelid(rel);
+	Oid relfileNodeId = YbGetRelfileNodeId(rel);
 
 	YBCPgTableDesc yb_tabledesc = NULL;
 	YbTablePropertiesData yb_table_properties;
 	bool not_found = false;
 	HandleYBStatusIgnoreNotFound(
-		YBCPgGetTableDesc(dbid, storage_relid, &yb_tabledesc), &not_found);
+		YBCPgGetTableDesc(dbid, relfileNodeId, &yb_tabledesc), &not_found);
 	if (!not_found)
 		HandleYBStatusIgnoreNotFound(
 			YBCPgGetTableProperties(yb_tabledesc, &yb_table_properties),
@@ -2910,15 +2914,25 @@ yb_get_range_split_clause(PG_FUNCTION_ARGS)
 	YbTablePropertiesData yb_table_properties;
 	StringInfoData str;
 	char	   *range_split_clause = NULL;
+	Relation	relation = RelationIdGetRelation(relid);
+	Oid			relfileNodeId;
 
-	HandleYBStatus(YBCPgTableExists(MyDatabaseId, relid, &exists_in_yb));
+	if (relation)
+	{
+		relfileNodeId = YbGetRelfileNodeId(relation);
+		RelationClose(relation);
+		HandleYBStatus(YBCPgTableExists(MyDatabaseId, relfileNodeId,
+			&exists_in_yb));
+	}
+
 	if (!exists_in_yb)
 	{
 		elog(NOTICE, "relation with oid %u is not backed by YB", relid);
 		PG_RETURN_NULL();
 	}
 
-	HandleYBStatus(YBCPgGetTableDesc(MyDatabaseId, relid, &yb_tabledesc));
+	HandleYBStatus(YBCPgGetTableDesc(MyDatabaseId, relfileNodeId,
+		&yb_tabledesc));
 	HandleYBStatus(YBCPgGetTableProperties(yb_tabledesc, &yb_table_properties));
 
 	if (yb_table_properties.num_hash_key_columns > 0)
@@ -3462,12 +3476,18 @@ void YBSetParentDeathSignal()
 #endif
 }
 
-Oid YbGetStorageRelid(Relation relation) {
-	if (relation->rd_rel->relkind == RELKIND_MATVIEW &&
-		relation->rd_rel->relfilenode != InvalidOid) {
+Oid YbGetRelfileNodeId(Relation relation) {
+	if (relation->rd_rel->relfilenode != InvalidOid) {
 		return relation->rd_rel->relfilenode;
 	}
 	return RelationGetRelid(relation);
+}
+
+Oid YbGetRelfileNodeIdFromRelId(Oid relationId) {
+	Relation rel = RelationIdGetRelation(relationId);
+	Oid relfileNodeId = YbGetRelfileNodeId(rel);
+	RelationClose(rel);
+	return relfileNodeId;
 }
 
 bool IsYbDbAdminUser(Oid member) {
@@ -3984,7 +4004,7 @@ YbGetSplitOptions(Relation rel)
 	{
 		YBCPgTableDesc yb_desc = NULL;
 		HandleYBStatus(YBCPgGetTableDesc(MyDatabaseId,
-						RelationGetRelid(rel), &yb_desc));
+						YbGetRelfileNodeId(rel), &yb_desc));
 		getRangeSplitPointsList(RelationGetRelid(rel), yb_desc,
 								rel->yb_table_properties,
 								&split_options->split_points);
@@ -4108,4 +4128,83 @@ YbReadWholeFile(const char *filename, int* length, int elevel)
 
 	buf[*length] = '\0';
 	return buf;
+}
+
+/*
+ * Copies the primary key of a relation to a create stmt intended to clone that
+ * relation.
+ */
+void
+YbATCopyPrimaryKeyToCreateStmt(Relation rel, Relation pg_constraint,
+							   CreateStmt *create_stmt)
+{
+	ScanKeyData key;
+	SysScanDesc scan;
+	HeapTuple	tuple;
+
+	ScanKeyInit(&key, Anum_pg_constraint_conrelid, BTEqualStrategyNumber,
+				F_OIDEQ, ObjectIdGetDatum(RelationGetRelid(rel)));
+	scan = systable_beginscan(pg_constraint, ConstraintRelidTypidNameIndexId,
+							  true /* indexOK */, NULL /* snapshot */,
+							  1 /* nkeys */, &key);
+
+	bool pk_copied = false;
+	while (!pk_copied && HeapTupleIsValid(tuple = systable_getnext(scan)))
+	{
+		Form_pg_constraint con_form = (Form_pg_constraint) GETSTRUCT(tuple);
+		switch (con_form->contype)
+		{
+			case CONSTRAINT_PRIMARY:
+			{
+				/*
+				 * We don't actually need to map attributes here since there
+				 * isn't a new relation yet, but we still need a map to
+				 * generate an index stmt.
+				 */
+				AttrNumber *att_map = convert_tuples_by_name_map(
+					RelationGetDescr(rel), RelationGetDescr(rel),
+					gettext_noop("could not convert row type"),
+					false /* yb_ignore_type_mismatch */);
+
+				Relation idx_rel =
+					index_open(con_form->conindid, AccessShareLock);
+				IndexStmt *index_stmt = generateClonedIndexStmt(
+					NULL, RelationGetRelid(rel), idx_rel, att_map,
+					RelationGetDescr(rel)->natts, NULL);
+
+				Constraint *pk_constr = makeNode(Constraint);
+				pk_constr->contype = CONSTR_PRIMARY;
+				pk_constr->conname = index_stmt->idxname;
+				pk_constr->options = index_stmt->options;
+				pk_constr->indexspace = index_stmt->tableSpace;
+
+				ListCell *cell;
+				foreach(cell, index_stmt->indexParams)
+				{
+					IndexElem *ielem = lfirst(cell);
+					pk_constr->keys =
+						lappend(pk_constr->keys, makeString(ielem->name));
+					pk_constr->yb_index_params =
+						lappend(pk_constr->yb_index_params, ielem);
+				}
+				create_stmt->constraints =
+					lappend(create_stmt->constraints, pk_constr);
+
+				index_close(idx_rel, AccessShareLock);
+				pk_copied = true;
+				break;
+			}
+			case CONSTRAINT_CHECK:
+			case CONSTRAINT_FOREIGN:
+			case CONSTRAINT_UNIQUE:
+			case CONSTRAINT_TRIGGER:
+			case CONSTRAINT_EXCLUSION:
+				break;
+			default:
+				elog(ERROR, "invalid constraint type \"%c\"",
+					 con_form->contype);
+				break;
+		}
+	}
+	systable_endscan(scan);
 }

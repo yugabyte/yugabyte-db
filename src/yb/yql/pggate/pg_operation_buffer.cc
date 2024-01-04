@@ -256,7 +256,7 @@ class PgOperationBuffer::Impl {
     // see the results of first operation on DocDB side.
     // Multiple operations on same row must be performed in context of different RPC.
     // Flush is required in this case.
-    RowIdentifier row_id(table.id(), table.schema(), op->write_request());
+    RowIdentifier row_id(table.relfilenode_id(), table.schema(), op->write_request());
     if (PREDICT_FALSE(!keys_.insert(row_id).second)) {
       RETURN_NOT_OK(Flush());
       keys_.insert(row_id);
@@ -273,7 +273,7 @@ class PgOperationBuffer::Impl {
     if (target.empty()) {
       target.Reserve(buffering_settings_.max_batch_size);
     }
-    target.Add(std::move(op), table.id());
+    target.Add(std::move(op), table.relfilenode_id());
     return keys_.size() >= buffering_settings_.max_batch_size
       ? SendBuffer()
       : Status::OK();
@@ -388,7 +388,7 @@ class PgOperationBuffer::Impl {
     return op.is_read()
         ? IsSameTableUsedByBufferedOperations(down_cast<const PgsqlReadOp&>(op).read_request())
         : keys_.find(RowIdentifier(
-              table.id(), table.schema(),
+              table.relfilenode_id(), table.schema(),
               down_cast<const PgsqlWriteOp&>(op).write_request())) != keys_.end();
   }
 

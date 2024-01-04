@@ -1407,6 +1407,8 @@ Status CreateTableInfoFromTableSchemaResp(const GetTableSchemaResponsePB& resp, 
   SCHECK_GT(info->table_id.size(), 0U, IllegalState, "Running against a too-old master");
   info->colocated = resp.colocated();
 
+  info->pg_table_id = resp.pg_table_id();
+
   return Status::OK();
 }
 

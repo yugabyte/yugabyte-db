@@ -728,6 +728,7 @@ AsyncCreateReplica::AsyncCreateReplica(Master *master,
   req_.mutable_partition()->CopyFrom(tablet_pb.partition());
   req_.set_namespace_id(table_lock->pb.namespace_id());
   req_.set_namespace_name(table_lock->pb.namespace_name());
+  req_.set_pg_table_id(table_lock->pb.pg_table_id());
   req_.set_table_name(table_lock->pb.name());
   req_.mutable_schema()->CopyFrom(table_lock->pb.schema());
   req_.mutable_partition_schema()->CopyFrom(table_lock->pb.partition_schema());

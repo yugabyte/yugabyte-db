@@ -39,13 +39,17 @@ class PgClient;
 // This class can be used to describe any reference of a column.
 class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
  public:
-  PgTableDesc(const PgObjectId& id, const master::GetTableSchemaResponsePB& resp,
+  PgTableDesc(const PgObjectId& relfilenode_id, const master::GetTableSchemaResponsePB& resp,
               client::VersionedTablePartitionList partition_list);
 
   Status Init();
 
-  const PgObjectId& id() const {
-    return id_;
+  const PgObjectId& relfilenode_id() const {
+    return relfilenode_id_;
+  }
+
+  PgOid pg_table_id() const {
+    return pg_table_id_ != kInvalidOid ? pg_table_id_ : relfilenode_id_.object_oid;
   }
 
   const client::YBTableName& table_name() const;
@@ -106,7 +110,8 @@ class PgTableDesc : public RefCountedThreadSafe<PgTableDesc> {
   bool IsIndex() const;
 
  private:
-  PgObjectId id_;
+  PgObjectId relfilenode_id_;
+  YBCPgOid pg_table_id_{kInvalidOid};
   master::GetTableSchemaResponsePB resp_;
   client::VersionedTablePartitionList table_partition_list_;
   client::PartitionListVersion latest_known_table_partition_list_version_;

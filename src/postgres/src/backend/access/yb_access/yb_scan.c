@@ -143,7 +143,8 @@ static void ybcLoadTableInfo(Relation relation, YbScanPlan scan_plan)
 	Oid            dboid          = YBCGetDatabaseOid(relation);
 	YBCPgTableDesc ybc_table_desc = NULL;
 
-	HandleYBStatus(YBCPgGetTableDesc(dboid, YbGetStorageRelid(relation), &ybc_table_desc));
+	HandleYBStatus(YBCPgGetTableDesc(dboid, YbGetRelfileNodeId(relation),
+		&ybc_table_desc));
 
 	for (AttrNumber attnum = 1; attnum <= relation->rd_att->natts; attnum++)
 	{
@@ -383,7 +384,8 @@ static void ybcUpdateFKCache(YbScanDesc ybScan, Datum ybctid)
 	case ROW_MARK_NOKEYEXCLUSIVE:
 	case ROW_MARK_SHARE:
 	case ROW_MARK_KEYSHARE:
-		YBCPgAddIntoForeignKeyReferenceCache(RelationGetRelid(ybScan->relation), ybctid);
+		YBCPgAddIntoForeignKeyReferenceCache(
+			YbGetRelfileNodeId(ybScan->relation), ybctid);
 		break;
 	case ROW_MARK_REFERENCE:
 	case ROW_MARK_COPY:
@@ -703,7 +705,8 @@ ybcSetupScanPlan(bool xs_want_itup, YbScanDesc ybScan, YbScanPlan scan_plan)
 
 	if (index)
 	{
-		ybScan->prepare_params.index_oid = RelationGetRelid(index);
+		ybScan->prepare_params.index_relfilenode_oid =
+			YbGetRelfileNodeId(index);
 		ybScan->prepare_params.index_only_scan = xs_want_itup;
 		ybScan->prepare_params.use_secondary_index = !index->rd_index->indisprimary;
 	}
@@ -2518,7 +2521,7 @@ ybcBeginScan(Relation relation,
 
 	/* Create handle */
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
-								  YbGetStorageRelid(relation),
+								  YbGetRelfileNodeId(relation),
 								  &ybScan->prepare_params,
 								  YBCIsRegionLocal(relation),
 								  &ybScan->handle));
@@ -3247,7 +3250,7 @@ HeapTuple YBCFetchTuple(Relation relation, Datum ybctid)
 	TupleDesc      tupdesc = RelationGetDescr(relation);
 
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
-								  YbGetStorageRelid(relation),
+								  YbGetRelfileNodeId(relation),
 								  NULL /* prepare_params */,
 								  YBCIsRegionLocal(relation),
 								  &ybc_stmt));
@@ -3323,7 +3326,7 @@ YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode, LockWaitPolicy p
 
 	YBCPgStatement ybc_stmt;
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
-								  RelationGetRelid(relation),
+								  YbGetRelfileNodeId(relation),
 								  NULL /* prepare_params */,
 								  YBCIsRegionLocal(relation),
 								  &ybc_stmt));
@@ -3366,7 +3369,8 @@ YBCLockTuple(Relation relation, Datum ybctid, RowMarkType mode, LockWaitPolicy p
 						nulls,
 						&syscols,
 						&has_data));
-		YBCPgAddIntoForeignKeyReferenceCache(RelationGetRelid(relation), ybctid);
+		YBCPgAddIntoForeignKeyReferenceCache(
+			YbGetRelfileNodeId(relation), ybctid);
 	}
 	PG_CATCH();
 	{
@@ -3405,7 +3409,6 @@ ybBeginSample(Relation rel, int targrows)
 {
 	ReservoirStateData rstate;
 	Oid dboid = YBCGetDatabaseOid(rel);
-	Oid relid = RelationGetRelid(rel);
 	TupleDesc tupdesc = RelationGetDescr(rel);
 	YbSample ybSample = (YbSample) palloc0(sizeof(YbSampleData));
 	ybSample->relation = rel;
@@ -3418,7 +3421,7 @@ ybBeginSample(Relation rel, int targrows)
 	 * Create new sampler command
 	 */
 	HandleYBStatus(YBCPgNewSample(dboid,
-								  relid,
+								  YbGetRelfileNodeId(rel),
 								  targrows,
 								  YBCIsRegionLocal(rel),
 								  &ybSample->handle));
@@ -3667,7 +3670,7 @@ yb_init_partition_key_data(void *data)
 	SpinLockInit(&ppk->mutex);
 	ConditionVariableInit(&ppk->cv_empty);
 	ppk->database_oid = InvalidOid;
-	ppk->table_oid = InvalidOid;
+	ppk->table_relfilenode_oid = InvalidOid;
 	ppk->read_time_serial_no = 0;
 	ppk->used_ht_for_read = 0;
 	ppk->fetch_status = FETCH_STATUS_IDLE;
@@ -3951,7 +3954,7 @@ yb_fetch_partition_keys(YBParallelPartitionKeys ppk)
 	 * ppk->key_data_capacity under that lock.
 	 */
 	HandleYBStatus(YBCGetTableKeyRanges(
-		ppk->database_oid, ppk->table_oid,
+		ppk->database_oid, ppk->table_relfilenode_oid,
 		lower_bound_key, lower_bound_key_size,
 		NULL /* upper_bound_key */, 0 /* upper_bound_key_size */,
 		max_num_ranges, 1024 * 1024 /* range_size_bytes */, ppk->is_forward,
@@ -4022,13 +4025,13 @@ ybParallelPrepare(YBParallelPartitionKeys ppk, Relation relation,
 	 * worker. However, it is still guaranteed that background workers do not
 	 * start until main worker DSM initialization is completed.
 	 * Hence we always call ybParallelPrepare and use table_oid as indicator:
-	 * if table_oid is valid, it is a background worker and no initialization is
-	 * needed.
-	 * The table_oid is never changed once initialized, so spinlock is not
-	 * required to check it. The rest of the code still has the
-	 * YBParallelPartitionKeys structure exclusively.
+	 * if table_relfilenode_oid is valid, it is a background worker and no
+	 * initialization is needed.
+	 * The table_relfilenode_oid is never changed once initialized,
+	 * so spinlock is not required to check it. The rest of the code still
+	 * has the YBParallelPartitionKeys structure exclusively.
 	 */
-	if (ppk->table_oid == InvalidOid)
+	if (ppk->table_relfilenode_oid == InvalidOid)
 	{
 		/* We expect frershly initialized parallel state */
 		Assert(ppk->fetch_status == FETCH_STATUS_IDLE);
@@ -4036,7 +4039,7 @@ ybParallelPrepare(YBParallelPartitionKeys ppk, Relation relation,
 		Assert(ppk->high_offset == 0);
 		Assert(ppk->key_count == 0);
 		ppk->database_oid = YBCGetDatabaseOid(relation);
-		ppk->table_oid = YbGetStorageRelid(relation);
+		ppk->table_relfilenode_oid = YbGetRelfileNodeId(relation);
 		ppk->is_forward = is_forward;
 		ppk->read_time_serial_no = YBCPgGetReadTimeSerialNo();
 		ppk->used_ht_for_read = *exec_params->stmt_in_txn_limit_ht_for_reads;
@@ -4063,7 +4066,7 @@ ybParallelPrepare(YBParallelPartitionKeys ppk, Relation relation,
 	/* Fetch the first set of keys */
 	ppk->fetch_status = FETCH_STATUS_WORKING;
 	HandleYBStatus(YBCGetTableKeyRanges(
-		ppk->database_oid, ppk->table_oid,
+		ppk->database_oid, ppk->table_relfilenode_oid,
 		NULL /* lower_bound_key */, 0 /* lower_bound_key_size */,
 		NULL /* upper_bound_key */, 0 /* upper_bound_key_size */,
 		YB_PARTITION_KEYS_DEFAULT_FETCH_SIZE,

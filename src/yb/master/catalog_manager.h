@@ -2325,9 +2325,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   std::unique_ptr<YsqlTablegroupManager> tablegroup_manager_
       GUARDED_BY(mutex_);
 
-  std::unordered_map<TableId, TableId> matview_pg_table_ids_map_
-      GUARDED_BY(mutex_);
-
   boost::optional<std::future<Status>> initdb_future_;
   boost::optional<InitialSysCatalogSnapshotWriter> initial_snapshot_writer_;
 

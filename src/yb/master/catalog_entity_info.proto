@@ -169,8 +169,11 @@ message SysTablesEntryPB {
   optional bytes parent_table_id = 40;
 
   // For materialized views:
-  optional bytes matview_pg_table_id = 36; // The PG OID of a materialized view
   optional bool is_matview = 37 [ default = false ]; // True if the table is a materialized view.
+
+  // In case the table was rewritten, explicitly store the TableId containing the PG table OID
+  // (as the table's TableId no longer matches).
+  optional bytes pg_table_id = 36;
 
   optional uint32 fully_applied_schema_version = 23;
   repeated IndexInfoPB fully_applied_indexes = 26;

@@ -105,11 +105,12 @@ Result<bool> YsqlTransactionDdl::PgEntryExists(const TableId& pg_table_id,
   return result;
 }
 
+// Note: "relfilenode_oid" is only used for rewritten tables. For rewritten tables, we need to
+// check both the oid and the relfilenode columns in pg_class.
 Status YsqlTransactionDdl::PgEntryExistsWithReadTime(
     const TableId& pg_table_id,
     PgOid entry_oid,
-    boost::optional<PgOid>
-        relfilenode_oid,
+    boost::optional<PgOid> relfilenode_oid,
     const ReadHybridTime& read_time,
     bool* result,
     HybridTime* read_restart_ht) {
@@ -120,8 +121,8 @@ Status YsqlTransactionDdl::PgEntryExistsWithReadTime(
 
   dockv::ReaderProjection projection;
 
-  bool is_matview = relfilenode_oid.has_value();
-  if (is_matview) {
+  bool is_rewritten_table = relfilenode_oid.has_value();
+  if (is_rewritten_table) {
     relfilenode_col = VERIFY_RESULT(read_data.ColumnByName("relfilenode"));
     projection.Init(read_data.schema(), {oid_col, relfilenode_col});
   } else {
@@ -142,7 +143,7 @@ Status YsqlTransactionDdl::PgEntryExistsWithReadTime(
 
   // The entry exists. Expect only one row.
   SCHECK(!VERIFY_RESULT(iter->FetchNext(nullptr)), Corruption, "Too many rows found");
-  if (is_matview) {
+  if (is_rewritten_table) {
     const auto& relfilenode = row.GetValue(relfilenode_col);
     if (relfilenode->uint32_value() != *relfilenode_oid) {
       *read_restart_ht = VERIFY_RESULT(iter->RestartReadHt());
@@ -303,6 +304,8 @@ Status YsqlTransactionDdl::PgSchemaCheckerWithReadTime(
     HybridTime* read_restart_ht) {
   PgOid oid = kPgInvalidOid;
   string pg_catalog_table_id, name_col;
+  bool is_rewritten_table = false;
+
   if (table->IsColocationParentTable()) {
     // The table we have is a dummy parent table, hence not present in YSQL.
     // We need to check a tablegroup instead.
@@ -315,7 +318,7 @@ Status YsqlTransactionDdl::PgSchemaCheckerWithReadTime(
   } else {
     const PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table->id()));
     pg_catalog_table_id = GetPgsqlTableId(database_oid, kPgClassTableOid);
-    oid = VERIFY_RESULT(GetPgsqlTableOid(table->id()));
+    oid = VERIFY_RESULT(table->GetPgTableOid());
     name_col = kTableNameColName;
   }
 
@@ -324,13 +327,16 @@ Status YsqlTransactionDdl::PgSchemaCheckerWithReadTime(
   auto relname_col_id = VERIFY_RESULT(read_data.ColumnByName(name_col)).rep();
   dockv::ReaderProjection projection;
 
-  PgOid relfilenode_oid = kPgInvalidOid;
+  PgOid relfilenode_oid = VERIFY_RESULT(table->GetPgRelfilenodeOid());
   ColumnIdRep relfilenode_col = kInvalidColumnId.rep();
-  if (table->matview_pg_table_id().empty()) {
+
+  // If relfilenode_oid is the same as the oid, then this isn't a rewritten table, and we don't
+  // require any additional checks on the relfilenode column. If relfilenode_oid is NOT the same
+  // as the oid, then this is a rewritten table, and we must also verify the relfilenode column.
+  if (relfilenode_oid == oid) {
     projection.Init(read_data.schema(), {oid_col_id, relname_col_id});
   } else {
-    relfilenode_oid = oid;
-    oid = VERIFY_RESULT(GetPgsqlTableOid(table->matview_pg_table_id()));
+    is_rewritten_table = true;
     relfilenode_col = VERIFY_RESULT(read_data.ColumnByName("relfilenode")).rep();
     projection.Init(read_data.schema(), {oid_col_id, relname_col_id, relfilenode_col});
   }
@@ -351,11 +357,11 @@ Status YsqlTransactionDdl::PgSchemaCheckerWithReadTime(
   bool table_found = false;
 
   if (VERIFY_RESULT(iter->FetchNext(&row))) {
-    // One row found in pg_class matching the oid. If this is not a matview, then we have found this
-    // table in pg catalog. But if this table is a matview, we should also check whether the
-    // relfilenode exists.
+    // One row found in pg_class matching the oid. If this is not a rewritten table,
+    // then we have found this table in pg catalog. But if this table is a rewritten table,
+    // we should also check whether the relfilenode matches.
     table_found = true;
-    if (relfilenode_oid != kPgInvalidOid) {
+    if (is_rewritten_table) {
       const auto& relfilenode = row.GetValue(relfilenode_col);
       if (relfilenode->uint32_value() != relfilenode_oid) {
         table_found = false;

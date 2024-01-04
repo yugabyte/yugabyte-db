@@ -113,7 +113,8 @@ typedef struct YBParallelPartitionKeysData
 	slock_t		mutex;			/* to synchronize access from the workers */
 	ConditionVariable cv_empty;	/* to wait until buffer has more entries */
 	Oid			database_oid;	/* database of the target relation */
-	Oid			table_oid;		/* oid of the target relation */
+	Oid			table_relfilenode_oid; /* relfilenode_oid of the target 
+										  relation */
 	bool		is_forward;		/* scan direction */
 	uint64_t	read_time_serial_no;	/* to replicate to background workers */
 	uint64_t	used_ht_for_read;	/* to replicate to background workers */

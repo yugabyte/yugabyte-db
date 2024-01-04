@@ -674,7 +674,8 @@ int32_t YBFollowerReadStalenessMs();
  * Allocates YBCPgYBTupleIdDescriptor with nattrs arguments by using palloc.
  * Resulted object can be released with pfree.
  */
-YBCPgYBTupleIdDescriptor* YBCCreateYBTupleIdDescriptor(Oid db_oid, Oid table_oid, int nattrs);
+YBCPgYBTupleIdDescriptor* YBCCreateYBTupleIdDescriptor(Oid db_oid, Oid table_relfilenode_oid,
+	int nattrs);
 void YBCFillUniqueIndexNullAttribute(YBCPgYBTupleIdDescriptor* descr);
 
 /*
@@ -784,12 +785,16 @@ extern const int yb_funcs_unsafe_for_pushdown_count;
 void YBSetParentDeathSignal();
 
 /**
- * Return the relid to be used for the relation's storage in docDB.
- * Ex: If we have swapped relation A with relation B, relation A's
- * filenode has been set to relation B's OID.
+ * Given a relation, return it's relfilenode OID. In YB, the relfilenode OID
+ * maps to the relation's DocDB table ID. Note: if the table has not
+ * previously been rewritten, this function returns the OID of the table.
  */
-Oid YbGetStorageRelid(Relation relation);
+Oid YbGetRelfileNodeId(Relation relation);
 
+/**
+ * Given a relation ID, return the relation's relfilenode OID.
+ */
+Oid YbGetRelfileNodeIdFromRelId(Oid relationId);
 /*
  * Check whether the user ID is of a user who has the yb_db_admin role.
  */
@@ -1027,5 +1032,9 @@ extern char* YbReadWholeFile(const char *filename, int* length, int elevel);
  * statement if it increments the catalog version.
  */
 extern void YBCheckDdlForDBCatalogVersionMode(YbDdlMode mode);
+
+extern void YbATCopyPrimaryKeyToCreateStmt(Relation rel,
+										   Relation pg_constraint,
+										   CreateStmt *create_stmt);
 
 #endif /* PG_YB_UTILS_H */

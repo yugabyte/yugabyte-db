@@ -234,14 +234,17 @@ typedef struct PgSysColumns {
 //
 // Index-related parameters are used to describe different types of scan.
 //   - Sequential scan: Index parameter is not used.
-//     { index_oid, index_only_scan, use_secondary_index } = { kInvalidOid, false, false }
+//     { index_relfilenode_oid, index_only_scan, use_secondary_index }
+//        = { kInvalidRelfileNodeOid, false, false }
 //   - IndexScan:
-//     { index_oid, index_only_scan, use_secondary_index } = { IndexOid, false, true }
+//     { index_relfilenode_oid, index_only_scan, use_secondary_index }
+//        = { IndexRelfileNodeOid, false, true }
 //   - IndexOnlyScan:
-//     { index_oid, index_only_scan, use_secondary_index } = { IndexOid, true, true }
+//     { index_relfilenode_oid, index_only_scan, use_secondary_index }
+//        = { IndexRelfileNodeOid, true, true }
 //   - PrimaryIndexScan: This is a special case as YugaByte doesn't have a separated
 //     primary-index database object from table object.
-//       index_oid = TableOid
+//       index_relfilenode_oid = TableRelfileNodeOid
 //       index_only_scan = true if ROWID is wanted. Otherwise, regular rowset is wanted.
 //       use_secondary_index = false
 //
@@ -250,7 +253,7 @@ typedef struct PgSysColumns {
 //   - Note that the system catalogs are specifically for Postgres API and not Yugabyte
 //     system-tables.
 typedef struct PgPrepareParameters {
-  YBCPgOid index_oid;
+  YBCPgOid index_relfilenode_oid;
   bool index_only_scan;
   bool use_secondary_index;
   bool querying_colocated_table;
@@ -401,7 +404,7 @@ typedef struct YbTablePropertiesData* YbTableProperties;
 
 typedef struct PgYBTupleIdDescriptor {
   YBCPgOid database_oid;
-  YBCPgOid table_oid;
+  YBCPgOid table_relfilenode_oid;
   size_t nattrs;
   YBCPgAttrValueDescriptor *attrs;
 } YBCPgYBTupleIdDescriptor;

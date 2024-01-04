@@ -2250,7 +2250,7 @@ Status Tablet::AddTableInMemory(const TableInfoPB& table_info, const OpId& op_id
   metadata_->AddTable(
       table_info.table_id(), table_info.namespace_name(), table_info.table_name(),
       table_info.table_type(), schema, qlexpr::IndexMap(), partition_schema, boost::none,
-      table_info.schema_version(), op_id);
+      table_info.schema_version(), op_id, table_info.pg_table_id());
 
   return Status::OK();
 }

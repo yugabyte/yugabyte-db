@@ -928,16 +928,11 @@ TEST_F_EX(YBBackupTest,
                                   "SELECT 1"));
   ASSERT_NO_FATALS(InsertOneRow(Format("INSERT INTO $0 (t) VALUES (1)", base_table)));
   ASSERT_NO_FATALS(RunPsqlCommand(Format("REFRESH MATERIALIZED VIEW $0", materialized_view), ""));
-  const auto matview_table_id = ASSERT_RESULT(GetTableId(materialized_view, "pre-backup"));
-  const auto matview_table_pg_oid = ASSERT_RESULT(GetPgsqlTableOid(TableId(matview_table_id)));
-  // Naming convention in PG for the relation created as part of the REFRESH is
-  // "pg_temp_<OID of matview>".
-  const auto orphaned_mv = "pg_temp_" + std::to_string(matview_table_pg_oid);
   // Verify that the table created as a part of REFRESH still exists.
-  ASSERT_TRUE(ASSERT_RESULT(client_->TableExists(
-      client::YBTableName(YQL_DATABASE_PGSQL, kDatabaseName, orphaned_mv))));
+  auto tables = ASSERT_RESULT(client_->ListTables(materialized_view));
+  ASSERT_EQ(tables.size(), 2);
 
-  // Take a backup, ensure that this passes despite the state of the orphaned_mv.
+  // Take a backup, ensure that this passes despite the state of the orphaned mv.
   const string backup_dir = GetTempDir("backup");
   ASSERT_OK(RunBackupCommand(
       {"--backup_location", backup_dir, "--keyspace", "ysql." + kDatabaseName, "create"}));
@@ -958,8 +953,10 @@ TEST_F_EX(YBBackupTest,
       )#"
   ));
 
-  ASSERT_FALSE(ASSERT_RESULT(client_->TableExists(client::YBTableName(YQL_DATABASE_PGSQL,
-      kNewDatabaseName, orphaned_mv))));
+  // Verify that now there's 3 tables with the name of the materialized view.
+  // (2 in the original database, and 1 in the restored database)
+  tables = ASSERT_RESULT(client_->ListTables(materialized_view));
+  ASSERT_EQ(tables.size(), 3);
 }
 
 class YBBackupPartitioningVersionTest : public YBBackupTest {

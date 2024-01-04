@@ -339,7 +339,7 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
       consensus::MakeTabletLogPrefix(kSysCatalogTabletId, fs_manager->uuid()),
       tablet::Primary::kTrue, kSysCatalogTableId, "", table_name(), TableType::YQL_TABLE_TYPE,
       schema, qlexpr::IndexMap(), boost::none /* index_info */, 0 /* schema_version */,
-      partition_schema);
+      partition_schema, "" /* pg_table_id */);
   string data_root_dir = fs_manager->GetDataRootDirs()[0];
   fs_manager->SetTabletPathByDataPath(kSysCatalogTabletId, data_root_dir);
   auto metadata = VERIFY_RESULT(tablet::RaftGroupMetadata::CreateNew(tablet::RaftGroupMetadataData {

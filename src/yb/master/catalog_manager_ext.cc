@@ -1645,8 +1645,8 @@ Status CatalogManager::RecreateTable(const NamespaceId& new_namespace_id,
 
   req.set_is_matview(meta.is_matview());
 
-  if (meta.has_matview_pg_table_id()) {
-    req.set_matview_pg_table_id(meta.matview_pg_table_id());
+  if (meta.has_pg_table_id()) {
+    req.set_pg_table_id(meta.pg_table_id());
   }
 
   RETURN_NOT_OK(CreateTable(&req, &resp, /* RpcContext */nullptr, epoch));
