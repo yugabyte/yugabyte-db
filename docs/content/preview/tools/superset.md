@@ -31,7 +31,7 @@ You can install Superset from scratch using [Python (pip3)](https://superset.apa
 
 After installing Superset, install the YugabyteDB psycopg2 smart driver. If the PostgreSQL psycopg2 driver is installed, you must remove it first.
 
-To check if the PostgreSQL psycopg2 driver is installed, enter the followin command:
+To check if the PostgreSQL psycopg2 driver is installed, enter the following command:
 
 ```sh
 pip show psycopg2
