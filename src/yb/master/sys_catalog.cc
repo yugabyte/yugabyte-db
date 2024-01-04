@@ -59,6 +59,7 @@
 #include "yb/consensus/log_anchor_registry.h"
 #include "yb/consensus/opid_util.h"
 #include "yb/consensus/quorum_util.h"
+#include "yb/consensus/retryable_requests.h"
 #include "yb/consensus/state_change_context.h"
 
 #include "yb/docdb/doc_rowwise_iterator.h"
@@ -567,6 +568,8 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
   tablet::TabletPtr tablet;
   scoped_refptr<Log> log;
   consensus::ConsensusBootstrapInfo consensus_info;
+  consensus::RetryableRequests retryable_requests(LogPrefix());
+  retryable_requests.SetServerClock(master_->clock());
   RETURN_NOT_OK(tablet_peer()->SetBootstrapping());
   tablet::TabletOptions tablet_options;
 
@@ -622,7 +625,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       .append_pool = append_pool(),
       .allocation_pool = allocation_pool_.get(),
       .log_sync_pool = log_sync_pool(),
-      .retryable_requests = nullptr,
+      .retryable_requests = &retryable_requests,
   };
   RETURN_NOT_OK(BootstrapTablet(data, &tablet, &log, &consensus_info));
 
@@ -640,7 +643,7 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
           tablet->GetTabletMetricsEntity(),
           raft_pool(),
           tablet_prepare_pool(),
-          nullptr /* retryable_requests */,
+          &retryable_requests,
           nullptr /* consensus_meta */,
           multi_raft_manager_.get()),
       "Failed to Init() TabletPeer");
