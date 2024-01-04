@@ -76,11 +76,11 @@ If you are upgrading a YugabyteDB Anywhere installation with high availability e
 
 ## Upgrade airgapped installation
 
-You can upgrade your air-gapped installation of YugabyteDB Anywhere to a newer version as follows:
+You can upgrade your airgapped installation of YugabyteDB Anywhere to a newer version as follows:
 
 1. Manually obtain and move the binary Replicated license file `<filename>.rli` to the `/home/{username}/`  directory.
 
-2. Manually obtain and move the YugabyteDB Anywhere air-gapped package to the `/opt/yugabyte/releases/<new_version_dir>` directory.
+1. Manually obtain and move the YugabyteDB Anywhere airgapped package to the `/opt/yugabyte/releases/<new_version_dir>` directory.
 
    For example, if you are upgrading to the latest YugabyteDB Anywhere stable version, you would start by executing the following command to obtain the package:
 
@@ -90,7 +90,7 @@ You can upgrade your air-gapped installation of YugabyteDB Anywhere to a newer v
 
    Then you would create the `/opt/yugabyte/releases/yugaware-{{<yb-version version="stable" format="build">}}/` directory and move (or SCP) the `yugaware-{{<yb-version version="stable" format="build">}}-linux-x86_64.airgap` file into that directory.
 
-3. Log in to the Replicated Admin Console at <https://:8800/> and navigate to **Settings** to load the new license file, as per the following illustration:
+1. Log in to the Replicated Admin Console at <https://:8800/> and navigate to **Settings** to load the new license file, as per the following illustration:
 
    ![Airgap Settings](/images/yp/airgap-settings.png)
 
@@ -98,6 +98,6 @@ You can upgrade your air-gapped installation of YugabyteDB Anywhere to a newer v
 
    Replicated detects updates based on the updated path information and applies them in the same way it does for connected YugabyteDB Anywhere installations.
 
-4. Proceed with the YugabyteDB Anywhere upgrade process by following instructions provided in [Upgrade using Replicated](#upgrade-using-replicated).
+1. Proceed with the YugabyteDB Anywhere upgrade process by following instructions provided in [Upgrade using Replicated](#upgrade-using-replicated).
 
-5. Upgrade your YugabyteDB universe by following instructions provided in [Upgrade the YugabyteDB software](../../manage-deployments/upgrade-software/).
+1. Upgrade your YugabyteDB universe by following instructions provided in [Upgrade the YugabyteDB software](../../manage-deployments/upgrade-software/).

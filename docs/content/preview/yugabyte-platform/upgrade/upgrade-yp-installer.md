@@ -52,4 +52,4 @@ The upgrade takes a few minutes to complete. When finished, use the status comma
 $ sudo yba-ctl status
 ```
 
-For information about using YBA Installer, refer to [Install YugabyteDB Anywhere](../../install-yugabyte-platform/install-software/installer/)
+For information about using YBA Installer, refer to [Install YugabyteDB Anywhere](../../install-yugabyte-platform/install-software/installer/).
