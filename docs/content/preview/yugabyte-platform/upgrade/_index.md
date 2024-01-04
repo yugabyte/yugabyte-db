@@ -3,7 +3,7 @@ title: Upgrade YugabyteDB Anywhere
 headerTitle: Upgrade YugabyteDB Anywhere
 linkTitle: Upgrade
 description: Upgrade YugabyteDB Anywhere.
-image: /images/section_icons/manage/enterprise.png
+image: /images/section_icons/quick_start/install.png
 aliases:
 menu:
   preview_yugabyte-platform:
@@ -17,11 +17,13 @@ You can upgrade YugabyteDB Anywhere (YBA) using the following methods:
 
 | Method | Using | Use If |
 | :--- | :--- | :--- |
-| YBA&nbsp;Installer | yba-ctl CLI | Your installation already uses YBA Installer. |
-| Replicated | Replicated Admin Console | Your installation already uses Replicated.<br>Before you can migrate from a Replicated installation, upgrade to v2.20.0 or later. |
-| Kubernetes | Helm chart | You're deploying in Kubernetes. |
+| [YBA&nbsp;Installer](./upgrade-yp-installer/) | yba-ctl CLI | Your installation already uses YBA Installer. |
+| [Replicated](./upgrade-yp-replicated/) | Replicated Admin Console | Your installation already uses Replicated.<br>Before you can migrate from a Replicated installation, upgrade to v2.20.0 or later using Replicated. |
+| [Kubernetes](./upgrade-yp-kubernetes/) | Helm chart | You're deploying in Kubernetes. |
 
-If you have upgraded YugabyteDB Anywhere to version 2.12 or later and [xCluster replication](../../explore/multi-region-deployments/asynchronous-replication-ysql/) for your universe was set up via yb-admin instead of the UI, follow the instructions provided in [Synchronize replication after upgrade](upgrade-yp-xcluster-ybadmin/).
+If you are upgrading a YBA installation with high availability enabled, follow the instructions provided in [Upgrade instances](../administer-yugabyte-platform/high-availability/#upgrade-instances).
+
+If you have upgraded YBA to version 2.12 or later and [xCluster replication](../../explore/multi-region-deployments/asynchronous-replication-ysql/) for your universe was set up via yb-admin instead of the UI, follow the instructions provided in [Synchronize replication after upgrade](upgrade-yp-xcluster-ybadmin/).
 
 <div class="row">
 
