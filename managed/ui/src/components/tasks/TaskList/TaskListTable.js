@@ -63,9 +63,9 @@ export default class TaskListTable extends Component {
       } else if (row.type === 'UpgradeSoftware' && row.details !== null) {
         return (
           <span>
-            <code>{row.details.versionNumbers.ybPrevSoftwareVersion}</code>
+            <code>{row?.details?.versionNumbers?.ybPrevSoftwareVersion}</code>
             {' => '}
-            <code>{row.details.versionNumbers.ybSoftwareVersion}</code>
+            <code>{row?.details?.versionNumbers?.ybSoftwareVersion}</code>
           </span>
         );
       } else if (row.status === 'Running' && row.abortable) {
