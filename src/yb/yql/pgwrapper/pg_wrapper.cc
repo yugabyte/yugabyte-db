@@ -27,6 +27,8 @@
 
 #include "yb/tserver/tablet_server_interface.h"
 
+#include "yb/rpc/secure_stream.h"
+
 #include "yb/util/debug/sanitizer_scopes.h"
 #include "yb/util/env_util.h"
 #include "yb/util/errno.h"
@@ -682,6 +684,8 @@ Status PgWrapper::Start() {
 
   proc_->SetEnv("YB_ALLOW_CLIENT_SET_TSERVER_KEY_AUTH",
       FLAGS_enable_ysql_conn_mgr ? "1" : "0");
+
+  rpc::SetOpenSSLEnv(&*proc_);
 
   RETURN_NOT_OK(proc_->Start());
   if (!FLAGS_postmaster_cgroup.empty()) {
