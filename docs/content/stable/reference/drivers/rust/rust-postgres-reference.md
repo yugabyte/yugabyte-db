@@ -1,9 +1,9 @@
 ---
-title: Rust postgres Driver
+title: YugabyteDB Rust Smart Driver
 headerTitle: Rust Drivers
 linkTitle: Rust Drivers
 description: Rust postgres Smart Driver for YSQL
-headcontent: Rust postgres Driver for YSQL
+headcontent: Rust Smart Driver for YSQL
 menu:
   stable:
     name: Rust Drivers
@@ -13,14 +13,14 @@ menu:
 type: docs
 ---
 
-YugabyteDB Rust smart driver is a rust driver for [YSQL](../../../../api/ysql/) based on [rust-postgres](https://github.com/sfackler/rust-postgres), with additional connection load balancing features.
+YugabyteDB Rust smart driver is a Rust driver for [YSQL](../../../../api/ysql/) based on [rust-postgres](https://github.com/sfackler/rust-postgres), with additional connection load balancing features.
 
 Rust smart drivers offers two different clients similar to rust-postgres:
 
-- [yb-postgres](https://crates.io/crates/yb-postgres) : A native, synchronous YugabyteDB YSQL client based on [postgres](https://crates.io/crates/postgres).
-- [yb-tokio-postgres](https://crates.io/crates/yb-tokio-postgres) : A native, asynchronous YugabyteDB YSQL client based on [tokio-postgres](https://crates.io/crates/tokio-postgres).
+- [yb-postgres](https://crates.io/crates/yb-postgres) - native, synchronous YugabyteDB YSQL client based on [postgres](https://crates.io/crates/postgres).
+- [yb-tokio-postgres](https://crates.io/crates/yb-tokio-postgres) - native, asynchronous YugabyteDB YSQL client based on [tokio-postgres](https://crates.io/crates/tokio-postgres).
 
-For more information on the YugabyteDB rust smart driver, see the following:
+For more information on the YugabyteDB Rust smart driver, see the following:
 
 - [YugabyteDB smart drivers for YSQL](../../../../drivers-orms/smart-drivers/)
 - [CRUD operations](../../../../drivers-orms/rust/yb-rust-postgres/#crud-operations)
@@ -29,7 +29,7 @@ For more information on the YugabyteDB rust smart driver, see the following:
 
 ## Include the driver dependency
 
-You can use the YugabyteDB rust driver [crates](https://crates.io/) by adding the following statements in the `Cargo.toml` file of your rust application.
+You can use the YugabyteDB Rust driver [crates](https://crates.io/) by adding the following statements in the `Cargo.toml` file of your Rust application.
 
 ```toml
 # For yb-postgres
@@ -51,7 +51,7 @@ $ cargo add yb-tokio-postgres
 
 ## Fundamentals
 
-Learn how to perform common tasks required for Rust application development using the YugabyteDB rust smart driver.
+Learn how to perform common tasks required for Rust application development using the YugabyteDB Rust smart driver.
 
 ### Load balancing connection properties
 
@@ -62,11 +62,11 @@ The following connection properties need to be added to enable load balancing:
 
 By default, the driver refreshes the list of nodes every 300 seconds (5 minutes). You can change this value by including the `yb_servers_refresh_interval` parameter.
 
-Following are other connection properties offered with the rust smart driver:
+Following are other connection properties offered with the Rust smart driver:
 
-- `fallback-to-topology-keys-only` : Applicable only for topology-aware load balancing. When set to true, the smart driver does not attempt to connect to servers outside of primary and fallback placements specified via property. The default behavior is to fallback to any available server in the entire cluster. Defaults to false.
+- `fallback_to_topology_keys_only` - when set to true, the smart driver does not attempt to connect to servers outside of primary and fallback placements specified by the `topology_keys` property. By default, the driver falls back to any available server in the cluster. Default is false.
 
-- `failed-host-reconnect-delay-secs` : The driver marks a server as failed with a timestamp, when it cannot connect to it. Later, whenever it refreshes the server list via yb_servers(), if it sees the failed server in the response, it marks the server as "UP" only if failed-host-reconnect-delay-secs time has elapsed. Defaults to 5 seconds.
+- `failed_host_reconnect_delay_secs` - when the driver is unable to connect to a server, it marks the server using a timestamp. When refreshing the server list via `yb_servers()`, if the failed server appears in the response, the driver will only mark the server as "up" if `failed_host_reconnect_delay_secs` time has elapsed since the server was marked as down. Default is 5 seconds.
 
 ### Use the driver
 
@@ -79,7 +79,7 @@ let url: String = String::from( "postgresql://localhost:5434/yugabyte?user=yugab
 let conn = yb_postgres::Client::connect(&connection_url,NoTls,)?;
 ```
 
-You can specify [multiple hosts](../../../../drivers-orms/rust/yb-rust-postgres/#use-multiple-addresses) in the connection string in case the primary address fails. After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across these servers.
+You can specify [multiple hosts](../../../../drivers-orms/rust/yb-rust-postgres/#use-multiple-addresses) in the connection string to use as fallbacks in case the primary address fails during the initial connection attempt. After the driver establishes the initial connection, it fetches the list of available servers from the cluster, and load-balances subsequent connection requests across those servers.
 
 To specify topology keys, you set the `topology_keys` property to comma-separated values in the connection string or dictionary, as per the following example:
 
@@ -90,15 +90,15 @@ let conn = yb_postgres::Client::connect(&connection_url,NoTls,)?;
 
 ## Try it out
 
-This tutorial shows how to use the async yb-tokio-postgres client with YugabyteDB. It starts by creating a three-node cluster with a [replication factor](../../../../architecture/docdb-replication/replication/#replication-factor) of 3. This tutorial uses the [yugabyted](../../../configuration/yugabyted/) utility.
+This tutorial shows how to use the asynchronous yb-tokio-postgres client with YugabyteDB. It starts by creating a three-node cluster with a [replication factor](../../../../architecture/docdb-replication/replication/#replication-factor) of 3. This tutorial uses the [yugabyted](../../../configuration/yugabyted/) utility.
 
-Next, you use a rust application to demonstrate the driver's load balancing features.
+Next, you use a Rust application to demonstrate the driver's load balancing features.
 
-For an example to use the synchronous yb-postgres client, see [Connect an application](../../../../drivers-orms/rust/yb-rust-postgres).
+For an example using the synchronous yb-postgres client, see [Connect an application](../../../../drivers-orms/rust/yb-rust-postgres).
 
 ### Create a local cluster
 
-Create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned. The placement values used are just tokens and have nothing to do with actual AWS cloud regions and zones.
+Create a universe with a 3-node RF-3 cluster with some fictitious geo-locations assigned. Place two nodes in one location, and the third in a separate location. The placement values used are just tokens and have nothing to do with actual AWS cloud regions and zones.
 
 ```sh
 cd <path-to-yugabytedb-installation>
@@ -110,8 +110,9 @@ To create a multi-zone cluster, do the following:
 
     ```sh
     ./bin/yugabyted start --advertise_address=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-2.20.0.1/node1 \
-        --cloud_location=aws.us-east-1.us-east-1a
+        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node1 \
+        --cloud_location=aws.us-east-1.us-east-1a \
+        --fault_tolerance=zone
     ```
 
 1. Start the second and the third node on two separate VMs using the `--join` flag, as follows:
@@ -119,22 +120,24 @@ To create a multi-zone cluster, do the following:
     ```sh
     ./bin/yugabyted start --advertise_address=127.0.0.2 \
         --join=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-2.20.0.1/node2 \
-        --cloud_location=aws.us-east-1.us-east-1a
+        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node2 \
+        --cloud_location=aws.us-east-1.us-east-1a \
+        --fault_tolerance=zone
     ```
 
     ```sh
     ./bin/yugabyted start --advertise_address=127.0.0.3 \
         --join=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-2.20.0.1/node3 \
-        --cloud_location=aws.us-east-1.us-east-1b
+        --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node3 \
+        --cloud_location=aws.us-east-1.us-east-1b \
+        --fault_tolerance=zone
     ```
 
 ### Check uniform load balancing
 
 To check uniform load balancing, do the following:
 
-1. Create a rust project using the following command:
+1. Create a Rust project using the following command:
 
     ```sh
     cargo new try-it-out
@@ -233,7 +236,7 @@ To check uniform load balancing, do the following:
     cargo run
     ```
 
-The application creates 30 connections and displays a key value pair map where the keys are the host and the values are the number of connections on them (The application gets the number of connections from `http://<host>:13000/rpcz` for each node. This URL presents a list of connections where each element of the list has some information about the connection). Each node should have 10 connections.
+The application creates 30 connections and displays a key value pair map where the keys are the host, and the values are the number of connections on them. (The application gets the number of connections from `http://<host>:13000/rpcz` for each node. This URL presents a list of connections where each element of the list has some information about the connection.) Each node should have 10 connections.
 
 ### Check topology-aware load balancing
 
@@ -317,20 +320,28 @@ In this case the first two nodes should have 15 connections each, and the third 
 After you're done experimenting, run the following command to destroy the local cluster:
 
 ```sh
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-2.20.0.1/node1
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-2.20.0.1/node2
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-2.20.0.1/node3
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node1
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node2
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="stable" >}}/node3
 ```
 
 ## Configure SSL/TLS
 
-The YugabyteDB rust-postgres smart driver support for SSL is the same as for the upstream driver.
+The YugabyteDB Rust smart driver support for SSL is the same as for the upstream driver.
 
-The following table describes the connection parameters required to connect using SSL.
+The following table describes the additional parameters the YugabyteDB Rust smart driver requires as part of the connection string when using SSL.
 
-| Parameter | Description | Default |
-| :-------- | :---------- | :------ |
-| sslmode | Controls usage of TLS. If set to:<br /> <ul><li> disable, TLS will not be used.</li><li> prefer, TLS will be used if available, but not used otherwise.</li><li> require, TLS will be forced to be used.</li></ul> | prefer |
+| rust-postgres parameter | Description | default |
+| :---------------------- | :---------- | :------ |
+| sslmode | SSL Mode | prefer |
+
+rust-postgres supports SSL modes in different ways depending on the driver version, as shown in the following table.
+
+| SSL Mode | Description |
+| :-------- | :---------- |
+| disable | If set, TLS is not used. |
+| prefer (default) | TLS is if available, but not otherwise. |
+| require | If set, TLS is forced to be used. |
 
 The following is an example connection URL for connecting to a YugabyteDB cluster with SSL encryption enabled:
 
@@ -338,7 +349,7 @@ The following is an example connection URL for connecting to a YugabyteDB cluste
 "postgresql://127.0.0.1:5434/yugabyte?user=yugabyte&password=yugabyte&load_balance=true&sslmode=require"
 ```
 
-If you created a cluster on [YugabyteDB Managed](/preview/yugabyte-cloud/), use the cluster credentials and download the [SSL Root certificate](/preview/yugabyte-cloud/cloud-connect/connect-applications/).
+If you created a cluster on [YugabyteDB Managed](/preview/yugabyte-cloud/), use the cluster credentials and download the [SSL Root certificate](/preview/yugabyte-cloud/cloud-secure-clusters/cloud-authentication/#download-your-cluster-certificate).
 
 The following is an example application for connecting to a YugabyteDB cluster with SSL enabled:
 
@@ -366,4 +377,4 @@ fn main()  {
 
 ### Limitations
 
-Currently, PostgreSQL rust-postgres driver and YugabyteDB rust-postgres smart driver do not support verify-full and verify-ca ssl modes.
+Currently, the rust-postgres driver and YugabyteDB Rust smart driver do not support verify-full or verify-ca SSL modes.

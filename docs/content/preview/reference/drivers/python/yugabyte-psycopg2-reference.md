@@ -137,8 +137,9 @@ To create a multi-zone cluster, do the following:
 
     ```sh
     ./bin/yugabyted start --advertise_address=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-2.20.0.1/node1 \
-        --cloud_location=aws.us-east-1.us-east-1a
+        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1 \
+        --cloud_location=aws.us-east-1.us-east-1a \
+        --fault_tolerance=zone
     ```
 
 1. Start the second and the third node on two separate VMs using the `--join` flag, as follows:
@@ -146,15 +147,17 @@ To create a multi-zone cluster, do the following:
     ```sh
     ./bin/yugabyted start --advertise_address=127.0.0.2 \
         --join=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-2.20.0.1/node2 \
-        --cloud_location=aws.us-east-1.us-east-1a
+        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node2 \
+        --cloud_location=aws.us-east-1.us-east-1a \
+        --fault_tolerance=zone
     ```
 
     ```sh
     ./bin/yugabyted start --advertise_address=127.0.0.3 \
         --join=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-2.20.0.1/node3 \
-        --cloud_location=aws.us-east-1.us-east-1b
+        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3 \
+        --cloud_location=aws.us-east-1.us-east-1b \
+        --fault_tolerance=zone
     ```
 
 ### Check uniform load balancing
@@ -185,13 +188,13 @@ This displays a key value pair map where the keys are the host and the values ar
 
 ### Check topology-aware load balancing using yb-sample-apps
 
-Run the following script in your new Python terminal with the `topology_keys` property set to `aws.us-west.us-west-2a`; only two nodes are used in this case.
+Run the following script in your new Python terminal with the `topology_keys` property set to `aws.us-east-1.us-east-1a`; only two nodes are used in this case.
 
 ```python
 import psycopg2
 conns = []
 for i in range(30):
-    conn = psycopg2.connect(user = 'username', password='xxx', host = 'hostname', port = '5433', dbname = 'database_name', load_balance='True', topology_keys='aws.us-west.us-west-2a')
+    conn = psycopg2.connect(user = 'username', password='xxx', host = 'hostname', port = '5433', dbname = 'database_name', load_balance='True', topology_keys='aws.us-east-1.us-east-1a')
     conns.append(conn)
 ```
 
@@ -202,9 +205,9 @@ To verify the behavior, wait for the app to create connections and then navigate
 When you're done experimenting, run the following command to destroy the local cluster:
 
 ```sh
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-2.20.0.1/node1
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-2.20.0.1/node2
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-2.20.0.1/node3
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node2
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3
 ```
 
 ## Limitations

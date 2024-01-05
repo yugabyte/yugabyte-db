@@ -191,8 +191,9 @@ To create a multi-zone cluster, do the following:
 
     ```sh
     ./bin/yugabyted start --advertise_address=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-2.20.0.1/node1 \
-        --cloud_location=aws.us-east-1.us-east-1a
+        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1 \
+        --cloud_location=aws.us-east-1.us-east-1a \
+        --fault_tolerance=zone
     ```
 
 1. Start the second and the third node on two separate VMs using the `--join` flag, as follows:
@@ -200,15 +201,17 @@ To create a multi-zone cluster, do the following:
     ```sh
     ./bin/yugabyted start --advertise_address=127.0.0.2 \
         --join=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-2.20.0.1/node2 \
-        --cloud_location=aws.us-east-1.us-east-1a
+        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node2 \
+        --cloud_location=aws.us-east-1.us-east-1a \
+        --fault_tolerance=zone
     ```
 
     ```sh
     ./bin/yugabyted start --advertise_address=127.0.0.3 \
         --join=127.0.0.1 \
-        --base_dir=$HOME/yugabyte-2.20.0.1/node3 \
-        --cloud_location=aws.us-east-1.us-east-1b
+        --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3 \
+        --cloud_location=aws.us-east-1.us-east-1b \
+        --fault_tolerance=zone
     ```
 
 ### Check uniform load balancing using yb-sample-apps
@@ -236,14 +239,14 @@ This URL presents a list of connections where each element of the list has some 
 
 ### Check topology-aware load balancing using yb-sample-apps
 
-For topology-aware load balancing, run the SqlInserts workload application with the `topology-keys1` property set to `aws.us-west.us-west-2a`; only two nodes are used in this case.
+For topology-aware load balancing, run the SqlInserts workload application with the `topology-keys1` property set to `aws.us-east-1.us-east-1a`; only two nodes are used in this case.
 
 ```sh
 java -jar yb-sample-apps.jar \
       --workload SqlInserts \
       --nodes 127.0.0.1:5433,127.0.0.2:5433,127.0.0.3:5433 \
       --num_threads_read 15 --num_threads_write 15 \
-      --topology_keys aws.us-west.us-west-2a
+      --topology_keys aws.us-east-1.us-east-1a
 ```
 
 To verify the behavior, wait for the app to create connections and then navigate to `http://<host>:13000/rpcz`. The first two nodes should have 15 connections each, and the third node should have zero connections.
@@ -253,9 +256,9 @@ To verify the behavior, wait for the app to create connections and then navigate
 When you're done experimenting, run the following command to destroy the local cluster:
 
 ```sh
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-2.20.0.1/node1
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-2.20.0.1/node2
-./bin/yugabyted destroy --base_dir=$HOME/yugabyte-2.20.0.1/node3
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node1
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node2
+./bin/yugabyted destroy --base_dir=$HOME/yugabyte-{{< yb-version version="preview" >}}/node3
 ```
 
 ## Other examples
