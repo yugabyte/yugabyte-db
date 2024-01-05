@@ -335,13 +335,15 @@ The following table describes the additional parameters the YugabyteDB Rust smar
 | :---------------------- | :---------- | :------ |
 | sslmode | SSL Mode | prefer |
 
-rust-postgres supports SSL modes in different ways depending on the driver version, as shown in the following table.
+The rust-postgres driver supports the following SSL modes.
 
 | SSL Mode | Description |
 | :-------- | :---------- |
 | disable | If set, TLS is not used. |
 | prefer (default) | TLS is if available, but not otherwise. |
 | require | If set, TLS is forced to be used. |
+
+Currently, the rust-postgres driver and YugabyteDB Rust smart driver do not support verify-full or verify-ca SSL modes.
 
 The following is an example connection URL for connecting to a YugabyteDB cluster with SSL encryption enabled:
 
@@ -374,7 +376,3 @@ fn main()  {
    println!("result of query_one call: {}", value);
 }
 ```
-
-### Limitations
-
-Currently, the rust-postgres driver and YugabyteDB Rust smart driver do not support verify-full or verify-ca SSL modes.
