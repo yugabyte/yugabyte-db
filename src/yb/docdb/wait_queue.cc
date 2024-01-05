@@ -1028,12 +1028,18 @@ class WaitQueue::Impl {
     TRACE_FUNC();
     SET_WAIT_STATUS(ConflictResolution_WaitOnConflictingTxns);
     auto scoped_reporter = waiting_txn_registry_->Create();
-    if (!waiter_txn_id.IsNil()) {
+    if (waiter_txn_id.IsNil()) {
       // If waiter_txn_id is Nil, then we're processing a single-shard transaction. We do not have
       // to report single shard transactions to transaction coordinators because they can't
       // possibly be involved in a deadlock. This is true because no transactions can wait on
       // single shard transactions, so they only have out edges in the wait-for graph and cannot
       // be a part of a cycle.
+      //
+      // We still register the single shard waiters with the local waiting transaction registry
+      // for the purpose of observability in pg_locks.
+      RETURN_NOT_OK(scoped_reporter->RegisterSingleShardWaiter(
+          txn_status_manager_->tablet_id(), request_start_us));
+    } else {
       DCHECK(!status_tablet_id.empty());
       // TODO(wait-queues): Instead of moving blockers to local_waiting_txn_registry, we could store
       // the blockers in the waiter_data record itself. That way, we could avoid re-running conflict
@@ -1364,6 +1370,7 @@ class WaitQueue::Impl {
   }
 
   Status GetLockStatus(const std::map<TransactionId, SubtxnSet>& transactions,
+                       uint64_t max_single_shard_waiter_start_time_us,
                        const TableInfoProvider& table_info_provider,
                        TransactionLockInfoManager* lock_info_manager) const {
     std::vector<WaiterLockStatusInfo> waiter_lock_entries;
@@ -1371,9 +1378,9 @@ class WaitQueue::Impl {
       SharedLock l(mutex_);
       // If the wait-queue is being shutdown, waiter_status_ would  be empty. No need to
       // explicitly check 'shutting_down_' and return.
-
-      if (transactions.empty()) {
-        // When transactions is empty, return awaiting locks info of all waiters.
+      if (transactions.empty() && max_single_shard_waiter_start_time_us == 0) {
+        // When transactions is empty and the max start time of single shard waiters isn't set,
+        // return awaiting locks info of all waiters.
         for (const auto& [_, waiter_data] : waiter_status_) {
           waiter_lock_entries.push_back(waiter_data->GetWaiterLockStatusInfo());
         }
@@ -1385,6 +1392,11 @@ class WaitQueue::Impl {
           const auto& it = waiter_status_.find(txn_id);
           if (it != waiter_status_.end()) {
             waiter_lock_entries.push_back(it->second->GetWaiterLockStatusInfo());
+          }
+        }
+        for (const auto& waiter_data : single_shard_waiters_) {
+          if (waiter_data->request_start_us <= max_single_shard_waiter_start_time_us) {
+            waiter_lock_entries.push_back(waiter_data->GetWaiterLockStatusInfo());
           }
         }
       }
@@ -1426,8 +1438,8 @@ class WaitQueue::Impl {
           .types = lock_batch_entry.intent_types,
           .doc_ht = Slice(),
         };
-        // TODO(pglocks): Populate 'subtransaction_id' & 'is_explicit' info of waiter txn(s) in
-        // the LockInfoPB response. Currently we don't track either for waiter txn(s).
+        // TODO(pglocks): Populate 'is_explicit' info of waiter txn(s) in the LockInfoPB response.
+        // Currently we don't track it for waiter txn(s).
         auto* lock = waiter_info->add_locks();
         RETURN_NOT_OK(docdb::PopulateLockInfoFromParsedIntent(
             parsed_intent, DecodedIntentValue{}, table_info_provider, lock,
@@ -1758,9 +1770,11 @@ void WaitQueue::SignalPromoted(const TransactionId& id, TransactionStatusResult&
 }
 
 Status WaitQueue::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transactions,
+                                uint64_t max_single_shard_waiter_start_time_us,
                                 const TableInfoProvider& table_info_provider,
                                 TransactionLockInfoManager* lock_info_manager) const {
-  return impl_->GetLockStatus(transactions, table_info_provider, lock_info_manager);
+  return impl_->GetLockStatus(
+      transactions, max_single_shard_waiter_start_time_us, table_info_provider, lock_info_manager);
 }
 
 }  // namespace docdb
