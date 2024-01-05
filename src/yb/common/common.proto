@@ -638,7 +638,7 @@ message AshMetadataPB {
   // TServer to the destination TServer.
   optional int64 rpc_request_id = 4;
   // Query id as seen on pg_stat_statements to identify identical normalized queries.
-  optional int64 query_id = 5;
+  optional uint64 query_id = 5;
 }
 
 // Some optional/additional fields that is collected in addition to the wait
@@ -655,7 +655,7 @@ message WaitStateInfoPB {
   // The metadata is rarely modified.
   optional AshMetadataPB metadata = 1;
   // Represents the state of the curreent rpc/request when it was polled.
-  optional uint64 wait_status_code = 2;
+  optional uint32 wait_status_code = 2;
   // Some additional information that may be persisted as
   // pg_active_universe_history.wait_event_aux
   optional AshAuxDataPB aux_info = 3;
