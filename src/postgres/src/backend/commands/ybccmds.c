@@ -1071,6 +1071,28 @@ YBCCreateIndex(const char *indexName,
 	HandleYBStatus(YBCPgExecCreateIndex(handle));
 }
 
+static Node *
+ybFetchDefaultConstraintExpr(const ColumnDef *column, Relation rel)
+{
+	Node *result = NULL;
+	ListCell *clist;
+	foreach (clist, column->constraints)
+	{
+		Constraint *constraint = lfirst_node(Constraint, clist);
+		if (constraint->contype == CONSTR_DEFAULT)
+		{
+			if (result)
+				ereport(ERROR, (errcode(ERRCODE_SYNTAX_ERROR),
+								errmsg("multiple default values specified for column \"%s\"  of table \"%s\"",
+									   column->colname,
+									   RelationGetRelationName(rel))));
+			result = constraint->raw_expr;
+			Assert(constraint->cooked_expr == NULL);
+		}
+	}
+	return result;
+}
+
 static List*
 YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 						int* col, bool* needsYBAlter,
@@ -1134,7 +1156,8 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 				(YBCPgStatement) lfirst(list_head(handles));
 
 			YBCPgExpr res = NULL;
-			if (colDef->raw_default && yb_enable_add_column_missing_default)
+			Node *default_expr = ybFetchDefaultConstraintExpr(colDef, rel);
+			if (default_expr && yb_enable_add_column_missing_default)
 			{
 				ParseState *pstate = make_parsestate(NULL);
 				pstate->p_sourcetext = NULL;
@@ -1145,9 +1168,8 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 																		   false,
 																		   true);
 				addNSItemToQuery(pstate, nsitem, true, true, true);
-				Expr *expr = (Expr *) cookDefault(pstate, colDef->raw_default,
-												  typeOid, typmod,
-												  colDef->colname,
+				Expr *expr = (Expr *) cookDefault(pstate, default_expr, typeOid,
+												  typmod, colDef->colname,
 												  colDef->generated);
 				expr = expression_planner(expr);
 				EState *estate = CreateExecutorState();

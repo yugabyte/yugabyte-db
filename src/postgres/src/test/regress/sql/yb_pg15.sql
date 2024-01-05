@@ -318,3 +318,10 @@ REINDEX(verbose) INDEX yb_j_idx;
 create table texttab (t text);
 insert into texttab values ('a');
 select count(*) from texttab group by t;
+
+-- ALTER TABLE ADD COLUMN DEFAULT with pre-existing rows
+CREATE TABLE mytable (pk INT NOT NULL PRIMARY KEY);
+INSERT INTO mytable SELECT * FROM generate_series(1, 10) a;
+ALTER TABLE mytable ADD COLUMN c_bigint BIGINT NOT NULL DEFAULT -1;
+SELECT c_bigint FROM mytable WHERE c_bigint = -1 LIMIT 1;
+DROP TABLE mytable;

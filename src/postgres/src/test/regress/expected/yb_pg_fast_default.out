@@ -275,7 +275,7 @@ SELECT comp();
 (1 row)
 
 DROP TABLE T;
--- Simple querie
+-- Simple queries
 CREATE TABLE T (pk INT NOT NULL PRIMARY KEY);
 SELECT set('t');
  set 
@@ -284,6 +284,8 @@ SELECT set('t');
 (1 row)
 
 INSERT INTO T SELECT * FROM generate_series(1, 10) a;
+ALTER TABLE T ADD COLUMN c_bigint BIGINT NOT NULL DEFAULT -1 DEFAULT -2; -- fail due to multiple default values
+ERROR:  multiple default values specified for column "c_bigint"  of table "t"
 ALTER TABLE T ADD COLUMN c_bigint BIGINT NOT NULL DEFAULT -1;
 INSERT INTO T SELECT b, b - 10 FROM generate_series(11, 20) a(b);
 ALTER TABLE T ADD COLUMN c_text TEXT DEFAULT 'hello';

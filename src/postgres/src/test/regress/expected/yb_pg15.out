@@ -754,3 +754,15 @@ select count(*) from texttab group by t;
 -------
      1
 (1 row)
+
+-- ALTER TABLE ADD COLUMN DEFAULT with pre-existing rows
+CREATE TABLE mytable (pk INT NOT NULL PRIMARY KEY);
+INSERT INTO mytable SELECT * FROM generate_series(1, 10) a;
+ALTER TABLE mytable ADD COLUMN c_bigint BIGINT NOT NULL DEFAULT -1;
+SELECT c_bigint FROM mytable WHERE c_bigint = -1 LIMIT 1;
+ c_bigint 
+----------
+       -1
+(1 row)
+
+DROP TABLE mytable;
