@@ -32,7 +32,7 @@ This feature is desirable in a number of scenarios, some of which are described 
 Applications that have a smaller dataset may fall into the following pattern:
 
 - They require large number of tables, indexes and other relations created in a single database.
-- The size of the entire dataset is small. Typically, this entire database is less than 500 GB in size.
+- The size of the entire dataset is small. Typically, this entire database is less than 50 GB in size.
 - Need high availability and/or geographic data distribution.
 - Scaling the dataset or the number of IOPS is not an immediate concern.
 
