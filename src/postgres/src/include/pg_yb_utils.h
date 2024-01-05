@@ -587,6 +587,12 @@ extern char *yb_test_block_index_phase;
 extern char *yb_test_fail_index_state_change;
 
 /*
+ * If set to true, any DDLs that rewrite tables/indexes will fail after
+ * the new table is created.
+ */
+extern bool yb_test_fail_table_rewrite_after_creation;
+
+/*
  * Denotes whether DDL operations touching DocDB system catalog will be rolled
  * back upon failure.
 */
@@ -1036,5 +1042,8 @@ extern void YBCheckDdlForDBCatalogVersionMode(YbDdlMode mode);
 extern void YbATCopyPrimaryKeyToCreateStmt(Relation rel,
 										   Relation pg_constraint,
 										   CreateStmt *create_stmt);
+
+extern void YbIndexSetNewRelfileNode(Relation indexRel, Oid relfileNodeId,
+									 bool yb_copy_split_options);
 
 #endif /* PG_YB_UTILS_H */

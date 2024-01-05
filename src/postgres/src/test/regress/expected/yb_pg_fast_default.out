@@ -57,8 +57,10 @@ ALTER TABLE has_volatile ADD col1 int;
 ALTER TABLE has_volatile ADD col2 int DEFAULT 1;
 ALTER TABLE has_volatile ADD col3 timestamptz DEFAULT current_timestamp;
 ALTER TABLE has_volatile ADD col4 int DEFAULT (random() * 10000)::int;
-ERROR:  Rewriting of YB table is not yet implemented
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/13278. React with thumbs up to raise its priority
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+NOTICE:  rewriting table has_volatile for reason 2
 -- Test a large sample of different datatypes
 CREATE TABLE T(pk INT NOT NULL PRIMARY KEY, c_int INT DEFAULT 1);
 SELECT set('t');
@@ -266,12 +268,14 @@ SELECT comp();
 
 -- clock_timestamp() is volatile
 ALTER TABLE T ADD COLUMN c2 TIMESTAMP DEFAULT clock_timestamp();
-ERROR:  Rewriting of YB table is not yet implemented
-HINT:  See https://github.com/yugabyte/yugabyte-db/issues/13278. React with thumbs up to raise its priority
+NOTICE:  table rewrite may lead to inconsistencies
+DETAIL:  Concurrent DMLs may not be reflected in the new table.
+HINT:  See https://github.com/yugabyte/yugabyte-db/issues/19860. Set 'ysql_suppress_unsafe_alter_notice' yb-tserver gflag to true to suppress this notice.
+NOTICE:  rewriting table t for reason 2
 SELECT comp();
    comp    
 -----------
- Unchanged
+ Rewritten
 (1 row)
 
 DROP TABLE T;

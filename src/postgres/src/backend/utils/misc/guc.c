@@ -2181,6 +2181,19 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
+		{"yb_test_fail_table_rewrite_after_creation", PGC_USERSET,
+			DEVELOPER_OPTIONS,
+			gettext_noop("When set, DDLs that rewrite tables/indexes will"
+						 " fail after the new table is created."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_fail_table_rewrite_after_creation,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
 		{"force_global_transaction", PGC_USERSET, UNGROUPED,
 			gettext_noop("Forces use of global transaction table."),
 			NULL
@@ -2402,6 +2415,16 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_explain_hide_non_deterministic_fields,
 		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_alter_table_rewrite", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Enable ALTER TABLE rewrite operations"),
+			NULL
+		},
+		&yb_enable_alter_table_rewrite,
+		true,
 		NULL, NULL, NULL
 	},
 

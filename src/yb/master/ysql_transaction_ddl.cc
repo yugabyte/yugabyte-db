@@ -304,7 +304,6 @@ Status YsqlTransactionDdl::PgSchemaCheckerWithReadTime(
     HybridTime* read_restart_ht) {
   PgOid oid = kPgInvalidOid;
   string pg_catalog_table_id, name_col;
-  bool is_rewritten_table = false;
 
   if (table->IsColocationParentTable()) {
     // The table we have is a dummy parent table, hence not present in YSQL.
@@ -327,18 +326,16 @@ Status YsqlTransactionDdl::PgSchemaCheckerWithReadTime(
   auto relname_col_id = VERIFY_RESULT(read_data.ColumnByName(name_col)).rep();
   dockv::ReaderProjection projection;
 
-  PgOid relfilenode_oid = VERIFY_RESULT(table->GetPgRelfilenodeOid());
-  ColumnIdRep relfilenode_col = kInvalidColumnId.rep();
+  ColumnIdRep relfilenode_col_id = kInvalidColumnId.rep();
 
-  // If relfilenode_oid is the same as the oid, then this isn't a rewritten table, and we don't
-  // require any additional checks on the relfilenode column. If relfilenode_oid is NOT the same
-  // as the oid, then this is a rewritten table, and we must also verify the relfilenode column.
-  if (relfilenode_oid == oid) {
-    projection.Init(read_data.schema(), {oid_col_id, relname_col_id});
+  // If this isn't a system table, we need to check if the relfilenode in pg_class matches the
+  // DocDB table ID (as the table may have been rewritten).
+  bool check_relfilenode = !table->is_system();
+  if (check_relfilenode) {
+    relfilenode_col_id = VERIFY_RESULT(read_data.ColumnByName("relfilenode")).rep();
+    projection.Init(read_data.schema(), {oid_col_id, relname_col_id, relfilenode_col_id});
   } else {
-    is_rewritten_table = true;
-    relfilenode_col = VERIFY_RESULT(read_data.ColumnByName("relfilenode")).rep();
-    projection.Init(read_data.schema(), {oid_col_id, relname_col_id, relfilenode_col});
+    projection.Init(read_data.schema(), {oid_col_id, relname_col_id});
   }
 
   RequestScope request_scope;
@@ -357,13 +354,12 @@ Status YsqlTransactionDdl::PgSchemaCheckerWithReadTime(
   bool table_found = false;
 
   if (VERIFY_RESULT(iter->FetchNext(&row))) {
-    // One row found in pg_class matching the oid. If this is not a rewritten table,
-    // then we have found this table in pg catalog. But if this table is a rewritten table,
-    // we should also check whether the relfilenode matches.
+    // One row found in pg_class matching the oid. Perform the check on the relfilenode column, if
+    // required (as in the case of table rewrite).
     table_found = true;
-    if (is_rewritten_table) {
-      const auto& relfilenode = row.GetValue(relfilenode_col);
-      if (relfilenode->uint32_value() != relfilenode_oid) {
+    if (check_relfilenode) {
+      const auto& relfilenode_col = row.GetValue(relfilenode_col_id);
+      if (relfilenode_col->uint32_value() != VERIFY_RESULT(table->GetPgRelfilenodeOid())) {
         table_found = false;
       }
     }
@@ -523,7 +519,7 @@ Status YsqlTransactionDdl::ReadPgAttributeWithReadTime(
   // Build schema using values read from pg_attribute.
 
   const PgOid database_oid = VERIFY_RESULT(GetPgsqlDatabaseOidByTableId(table->id()));
-  const PgOid table_oid = VERIFY_RESULT(GetPgsqlTableOid(table->id()));
+  const PgOid table_oid = VERIFY_RESULT(table->GetPgTableOid());
   auto read_data =
       VERIFY_RESULT(sys_catalog_->TableReadData(database_oid, kPgAttributeTableOid, read_time));
   const auto attrelid_col_id = VERIFY_RESULT(read_data.ColumnByName("attrelid")).rep();
@@ -533,10 +529,10 @@ Status YsqlTransactionDdl::ReadPgAttributeWithReadTime(
 
   dockv::ReaderProjection projection(
       read_data.schema(), { attrelid_col_id, attnum_col_id, attname_col_id, atttypid_col_id });
-  PgOid oid = VERIFY_RESULT(GetPgsqlTableOid(table->id()));
   RequestScope request_scope;
   auto iter =
-      VERIFY_RESULT(GetPgCatalogTableScanIterator(read_data, oid, projection, &request_scope));
+      VERIFY_RESULT(GetPgCatalogTableScanIterator(
+          read_data, table_oid, projection, &request_scope));
 
   qlexpr::QLTableRow row;
   while (VERIFY_RESULT(iter->FetchNext(&row))) {

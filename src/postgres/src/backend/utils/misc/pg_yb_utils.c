@@ -43,6 +43,7 @@
 #include "access/xact.h"
 #include "executor/ybcExpr.h"
 #include "catalog/catalog.h"
+#include "catalog/index.h"
 #include "catalog/indexing.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_amop.h"
@@ -76,6 +77,7 @@
 #include "commands/dbcommands.h"
 #include "commands/defrem.h"
 #include "commands/variable.h"
+#include "commands/ybccmds.h"
 #include "common/pg_yb_common.h"
 #include "lib/stringinfo.h"
 #include "libpq/hba.h"
@@ -1329,6 +1331,8 @@ bool yb_test_fail_next_inc_catalog_version = false;
 char *yb_test_block_index_phase = "";
 
 char *yb_test_fail_index_state_change = "";
+
+bool yb_test_fail_table_rewrite_after_creation = false;
 
 bool ddl_rollback_enabled = false;
 
@@ -3983,6 +3987,9 @@ void YbSetIsBatchedExecution(bool value)
 OptSplit *
 YbGetSplitOptions(Relation rel)
 {
+	if (rel->yb_table_properties->is_colocated)
+		return NULL;
+
 	OptSplit *split_options = makeNode(OptSplit);
 	/*
 	 * The split type is NUM_TABLETS when the relation has hash key columns
@@ -4207,4 +4214,57 @@ YbATCopyPrimaryKeyToCreateStmt(Relation rel, Relation pg_constraint,
 		}
 	}
 	systable_endscan(scan);
+}
+
+/*
+ * In YB, a "relfilenode" corresponds to a DocDB table.
+ * This function creates a new DocDB table for the given index,
+ * with UUID corresponding to the given relfileNodeId. It is used when a
+ * user index is re-indexed.
+ */
+void
+YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
+						 bool yb_copy_split_options)
+{
+	bool		isNull;
+	HeapTuple	tuple;
+	Datum		reloptions = (Datum) 0;
+	Relation	indexedRel;
+	IndexInfo	*indexInfo;
+
+	tuple = SearchSysCache1(RELOID, ObjectIdGetDatum(
+		RelationGetRelid(indexRel)));
+	if (!HeapTupleIsValid(tuple))
+		elog(ERROR, "cache lookup failed for index %u",
+				RelationGetRelid(indexRel));
+
+	reloptions = SysCacheGetAttr(RELOID, tuple,
+		Anum_pg_class_reloptions, &isNull);
+	ReleaseSysCache(tuple);
+	reloptions = ybExcludeNonPersistentReloptions(reloptions);
+	indexedRel = heap_open(
+		IndexGetRelation(RelationGetRelid(indexRel), false), ShareLock);
+	indexInfo = BuildIndexInfo(indexRel);
+
+	YbGetTableProperties(indexRel);
+	YBCCreateIndex(RelationGetRelationName(indexRel),
+				   indexInfo,
+				   RelationGetDescr(indexRel),
+				   indexRel->rd_indoption,
+				   reloptions,
+				   newRelfileNodeId,
+				   indexedRel,
+				   yb_copy_split_options ? YbGetSplitOptions(indexRel) : NULL,
+				   false,
+				   indexRel->yb_table_properties->is_colocated,
+				   indexRel->yb_table_properties->tablegroup_oid,
+				   InvalidOid /* colocation ID */,
+				   indexRel->rd_rel->reltablespace,
+				   RelationGetRelid(indexRel),
+				   YbGetRelfileNodeId(indexRel));
+
+	heap_close(indexedRel, ShareLock);
+
+	if (yb_test_fail_table_rewrite_after_creation)
+		elog(ERROR, "Injecting error.");
 }
