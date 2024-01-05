@@ -1250,6 +1250,17 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
         self.parser.add_argument("--remote_gflag_files_path",
                                  required=False,
                                  help="Path to remote directory with the gFlags file.")
+        self.parser.add_argument("--acceptable_clock_skew_wait_enabled",
+                                 action="store_true",
+                                 help="Whether ensure the clock skew is below the threshold.")
+        self.parser.add_argument("--acceptable_clock_skew_sec",
+                                 required=False,
+                                 help="Maximum acceptable clock skew in seconds before starting "
+                                      "the yb processes.")
+        self.parser.add_argument("--acceptable_clock_skew_max_tries",
+                                 required=False,
+                                 help="The maximum number of checking the clock skew before "
+                                      "failing.")
 
     def get_ssh_user(self):
         # Force the yugabyte user for configuring instances. The configure step performs YB specific
@@ -1327,6 +1338,17 @@ class ConfigureInstancesMethod(AbstractInstancesMethod):
 
         if args.root_cert_path is not None:
             self.extra_vars["root_cert_path"] = args.root_cert_path.strip()
+
+        if args.acceptable_clock_skew_wait_enabled is not None:
+            self.extra_vars["acceptable_clock_skew_wait_enabled"] = (
+                args.acceptable_clock_skew_wait_enabled)
+
+        if args.acceptable_clock_skew_sec is not None:
+            self.extra_vars["acceptable_clock_skew_sec"] = args.acceptable_clock_skew_sec
+
+        if args.acceptable_clock_skew_max_tries is not None:
+            self.extra_vars["acceptable_clock_skew_max_tries"] = (
+                args.acceptable_clock_skew_max_tries)
 
         if args.cert_rotate_action is not None:
             if args.cert_rotate_action not in self.CERT_ROTATE_ACTIONS:
