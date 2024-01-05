@@ -927,6 +927,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + "are watched. Requires restart to take effect",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Boolean> acceptableClockSkewWaitEnabled =
+      new ConfKeyInfo<>(
+          "yb.wait_for_clock_sync.inline_enabled",
+          ScopeType.GLOBAL,
+          "Whether to wait for clock skew decrease",
+          "Whether to wait for the clock skew to go below the threshold before starting the "
+              + "master and tserver processes",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> waitForClockSyncMaxAcceptableClockSkew =
       new ConfKeyInfo<>(
           "yb.wait_for_clock_sync.max_acceptable_clock_skew",
