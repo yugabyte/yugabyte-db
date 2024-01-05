@@ -1367,6 +1367,18 @@ heap_getnext(TableScanDesc sscan, ScanDirection direction)
 bool
 heap_getnextslot(TableScanDesc sscan, ScanDirection direction, TupleTableSlot *slot)
 {
+	if (IsYBRelation(sscan->rs_rd))
+	{
+		HeapTuple tuple = ybc_heap_getnext(sscan);
+		if (!tuple)
+		{
+			ExecClearTuple(slot);
+			return false;
+		}
+		ExecStoreHeapTuple(tuple, slot, false /* shouldFree */);
+		return true;
+	}
+
 	HeapScanDesc scan = (HeapScanDesc) sscan;
 
 	/* Note: no locking manipulations needed */
