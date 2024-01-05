@@ -7205,6 +7205,11 @@ TEST_F(CDCSDKYsqlTest, TestAlterOperationTableRewrite) {
   ASSERT_NOK(res);
   ASSERT_STR_CONTAINS(res.ToString(),
       "cannot change a column type of a table that is a part of CDC or XCluster replication.");
+  res = conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN c2 SERIAL", kTableName);
+  ASSERT_NOK(res);
+  ASSERT_STR_CONTAINS(
+      res.ToString(),
+      "cannot rewrite a table that is a part of CDC or XCluster replication");
 }
 
 TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestUnrelatedTableDropUponTserverRestart)) {

@@ -2653,7 +2653,9 @@ ReindexIndex(RangeVar *indexRelation, int options)
 	persistence = irel->rd_rel->relpersistence;
 	index_close(irel, NoLock);
 
-	reindex_index(indOid, false, persistence, options);
+	reindex_index(indOid, false, persistence, options,
+				  false /* is_yb_table_rewrite */,
+				  true /* yb_copy_split_options */);
 }
 
 /*
@@ -2732,7 +2734,9 @@ ReindexTable(RangeVar *relation, int options)
 	if (!reindex_relation(heapOid,
 						  REINDEX_REL_PROCESS_TOAST |
 						  REINDEX_REL_CHECK_CONSTRAINTS,
-						  options))
+						  options,
+						  false /* is_yb_table_rewrite */,
+						  true /* yb_copy_split_options */))
 		ereport(NOTICE,
 				(errmsg("table \"%s\" has no indexes",
 						relation->relname)));
@@ -2903,7 +2907,9 @@ ReindexMultipleTables(const char *objectName, ReindexObjectType objectKind,
 		if (reindex_relation(relid,
 							 REINDEX_REL_PROCESS_TOAST |
 							 REINDEX_REL_CHECK_CONSTRAINTS,
-							 options))
+							 options,
+							 false /* is_yb_table_rewrite */,
+							 true /* yb_copy_split_options */))
 
 			if (options & REINDEXOPT_VERBOSE)
 				ereport(INFO,

@@ -72,6 +72,7 @@
 
 /* Yugabyte includes */
 #include "catalog/pg_yb_tablegroup.h"
+#include "optimizer/clauses.h"
 
 /* Utility function to calculate column sorting options */
 static void
@@ -355,6 +356,13 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 	for (int i = 0; i < desc->natts; ++i)
 	{
 		Form_pg_attribute att = TupleDescAttr(desc, i);
+		/*
+		 * We may be creating this table as part of table rewrite. Therefore,
+		 * the table metadata may include the metadata of previously dropped
+		 * attributes, which we should ignore.
+		 */
+		if (att->attisdropped)
+			continue;
 		bool is_key = false;
 		if (primary_key)
 			foreach(cell, primary_key->yb_index_params)
@@ -1068,7 +1076,13 @@ YBCCreateIndex(const char *indexName,
 								YBPgTypeOidToStr(att->atttypid))));
 		}
 
-		const int16 options        = coloptions[i];
+		/*
+		 * Non-key columns' options are always 0, and aren't explicitly stored
+		 * in pg_index.indoptions. As they aren't stored, we may not have
+		 * them in coloptions if the caller chose not to include them,
+		 * so avoid checking coloptions if the column is a key column.
+		 */
+		const int16 options        = is_key ? coloptions[i] : 0;
 		const bool  is_hash        = options & INDOPTION_HASH;
 		const bool  is_desc        = options & INDOPTION_DESC;
 		const bool  is_nulls_first = options & INDOPTION_NULLS_FIRST;
@@ -1155,7 +1169,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 			YBCPgStatement add_col_handle =
 				(YBCPgStatement) lfirst(list_head(handles));
 
-			YBCPgExpr res = NULL;
+			YBCPgExpr missing_value = NULL;
 			if (colDef->raw_default && yb_enable_add_column_missing_default)
 			{
 				ParseState *pstate = make_parsestate(NULL);
@@ -1169,22 +1183,31 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 				Expr *expr = (Expr *) cookDefault(pstate, colDef->raw_default,
 												  typeOid, typmod,
 												  colDef->colname);
-				expr = expression_planner(expr);
-				EState *estate = CreateExecutorState();
-				ExprState *exprState = ExecPrepareExpr(expr, estate);
-				ExprContext *econtext = GetPerTupleExprContext(estate);
-				bool missingIsNull;
-				Datum missingval = ExecEvalExpr(exprState, econtext,
-												&missingIsNull);
-				res = YBCNewConstant(add_col_handle, typeOid, colDef->collOid,
-									 missingval, missingIsNull);
-				FreeExecutorState(estate);
+				/*
+				 * Compute the missing default value if the default expression
+				 * is non-volatile.
+				 */
+				if (!contain_volatile_functions((Node *) expr))
+				{
+					expr = expression_planner(expr);
+					EState *estate = CreateExecutorState();
+					ExprState *exprState = ExecPrepareExpr(expr, estate);
+					ExprContext *econtext = GetPerTupleExprContext(estate);
+					bool missingIsNull;
+					Datum missingValDatum = ExecEvalExpr(exprState, econtext,
+														 &missingIsNull);
+					missing_value = YBCNewConstant(add_col_handle, typeOid,
+												   colDef->collOid,
+												   missingValDatum,
+												   missingIsNull);
+					FreeExecutorState(estate);
+				}
 			}
 			HandleYBStatus(YBCPgAlterTableAddColumn(add_col_handle,
 													colDef->colname,
 													order,
 													col_type,
-													res));
+													missing_value));
 			++(*col);
 			*needsYBAlter = true;
 

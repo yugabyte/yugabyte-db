@@ -302,7 +302,8 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	 * will be gone).
 	 */
 	OIDNewHeap = make_new_heap(matviewOid, tableSpace, relpersistence,
-							   ExclusiveLock);
+							   ExclusiveLock,
+							   false /* yb_copy_split_options */);
 	LockRelationOid(OIDNewHeap, AccessExclusiveLock);
 	dest = CreateTransientRelDestReceiver(OIDNewHeap);
 
@@ -331,11 +332,6 @@ ExecRefreshMatView(RefreshMatViewStmt *stmt, const char *queryString,
 	else
 	{
 		refresh_by_heap_swap(matviewOid, OIDNewHeap, relpersistence);
-		
-		if (YBIsRefreshMatviewFailureInjected())
-		{
-			elog(ERROR, "Injecting error.");
-		}
 
 		/*
 		 * Inform stats collector about our activity: basically, we truncated
@@ -956,7 +952,8 @@ static void
 refresh_by_heap_swap(Oid matviewOid, Oid OIDNewHeap, char relpersistence)
 {
 	finish_heap_swap(matviewOid, OIDNewHeap, false, false, true, true,
-					 RecentXmin, ReadNextMultiXactId(), relpersistence);
+					 RecentXmin, ReadNextMultiXactId(), relpersistence,
+					 false /* yb_copy_split_options */);
 }
 
 /*

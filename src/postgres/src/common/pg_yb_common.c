@@ -200,19 +200,6 @@ int YBGetYsqlOutputBufferSize() {
 }
 
 bool
-YBIsRefreshMatviewFailureInjected()
-{
-	static int cached_value = -1;
-	if (cached_value == -1)
-	{
-		cached_value = YBCIsEnvVarTrueWithDefault(
-			"FLAGS_TEST_yb_test_fail_matview_refresh_after_creation",
-			false /* default_value */);
-	}
-	return cached_value;
-}
-
-bool
 YBIsCollationEnabled()
 {
 #ifdef USE_ICU

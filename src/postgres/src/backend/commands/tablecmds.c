@@ -1879,7 +1879,8 @@ ExecuteTruncateGuts(List *explicit_rels, List *relids, List *relids_logged,
 			 * deletion at commit.
 			 */
 			RelationSetNewRelfilenode(rel, rel->rd_rel->relpersistence,
-									  RecentXmin, minmulti);
+									  RecentXmin, minmulti,
+									  false /* yb_copy_split_options */);
 			if (rel->rd_rel->relpersistence == RELPERSISTENCE_UNLOGGED)
 				heap_create_init_fork(rel);
 
@@ -1896,7 +1897,8 @@ ExecuteTruncateGuts(List *explicit_rels, List *relids, List *relids_logged,
 
 				RelationSetNewRelfilenode(toastrel,
 										  toastrel->rd_rel->relpersistence,
-										  RecentXmin, minmulti);
+										  RecentXmin, minmulti,
+										  false /* yb_copy_split_options */);
 				if (toastrel->rd_rel->relpersistence == RELPERSISTENCE_UNLOGGED)
 					heap_create_init_fork(toastrel);
 				heap_close(toastrel, NoLock);
@@ -1905,7 +1907,9 @@ ExecuteTruncateGuts(List *explicit_rels, List *relids, List *relids_logged,
 			/*
 			 * Reconstruct the indexes to match, and we're done.
 			 */
-			reindex_relation(heap_relid, REINDEX_REL_PROCESS_TOAST, 0);
+			reindex_relation(heap_relid, REINDEX_REL_PROCESS_TOAST, 0,
+							 false /* is_yb_table_rewrite */,
+							 false /* yb_copy_split_options */);
 		}
 
 		pgstat_count_truncate(rel);
@@ -4868,12 +4872,23 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode)
 						 errmsg("cannot rewrite table \"%s\" used as a catalog table",
 								RelationGetRelationName(OldHeap))));
 
-			if (IsYBBackedRelation(OldHeap))
+			if (IsYBBackedRelation(OldHeap) && !yb_enable_alter_table_rewrite)
 				ereport(ERROR,
 						(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						 errmsg("Rewriting of YB table is not yet implemented"),
 						 errhint("See https://github.com/yugabyte/yugabyte-db/issues/13278. "
 						         "React with thumbs up to raise its priority")));
+
+			if (IsYBRelation(OldHeap) && !YBSuppressUnsafeAlterNotice())
+				ereport(NOTICE,
+						(errmsg("table rewrite may lead to inconsistencies"),
+						 errdetail("Concurrent DMLs may not be reflected in"
+								   " the new table."),
+						 errhint("See https://github.com/yugabyte/yugabyte-db/"
+								 "issues/19860. "
+								 "Set 'ysql_suppress_unsafe_alter_notice'"
+								 " yb-tserver gflag to true to suppress this"
+								 " notice.")));
 
 			/*
 			 * Don't allow rewrite on temp tables of other backends ... their
@@ -4933,7 +4948,8 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode)
 			 * unlogged anyway.
 			 */
 			OIDNewHeap = make_new_heap(tab->relid, NewTableSpace, persistence,
-									   lockmode);
+									   lockmode,
+									   true /* yb_copy_split_options */);
 
 			/*
 			 * Copy the heap data into the new table with the desired
@@ -4955,7 +4971,8 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode)
 							 !OidIsValid(tab->newTableSpace),
 							 RecentXmin,
 							 ReadNextMultiXactId(),
-							 persistence);
+							 persistence,
+							 true /* yb_copy_split_options */);
 		}
 		else
 		{
@@ -5337,7 +5354,15 @@ ATRewriteTable(AlteredTableInfo *tab, Oid OIDNewHeap, LOCKMODE lockmode)
 
 			/* Write the tuple out to the new relation */
 			if (newrel)
-				heap_insert(newrel, tuple, mycid, hi_options, bistate);
+			{
+				if (IsYBRelation(newrel))
+					YBCExecuteInsert(newrel,
+									 RelationGetDescr(newrel),
+									 tuple,
+									 ONCONFLICT_NONE);
+				else
+					heap_insert(newrel, tuple, mycid, hi_options, bistate);
+			}
 
 			ResetExprContext(econtext);
 
@@ -7514,7 +7539,7 @@ ATExecAddIndex(AlteredTableInfo *tab, Relation *mutable_rel,
 						  false,	/* check_not_in_use - we did it already */
 						  skip_build,
 						  quiet);
-	if (IsYBRelation(*mutable_rel) && stmt->primary)
+	if (IsYBRelation(*mutable_rel) && stmt->primary && !skip_build)
 	{
 		/* Table will be re-created, along with the dummy PK index. */
 		*mutable_rel =

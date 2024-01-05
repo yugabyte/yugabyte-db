@@ -143,9 +143,6 @@ DEFINE_NON_RUNTIME_bool(
 DEFINE_test_flag(bool, yb_lwlock_crash_after_acquire_pg_stat_statements_reset, false,
              "Issue sigkill for crash test after acquiring a LWLock in pg_stat_statements reset.");
 
-DEFINE_test_flag(bool, yb_test_fail_matview_refresh_after_creation, false,
-                 "Fail a refresh on a matview after the creation of a new relation.");
-
 DEFINE_UNKNOWN_int32(ysql_num_databases_reserved_in_db_catalog_version_mode, 10,
              "In per database catalog version mode, if the number of existing databases "
              "are within this number to the maximum number of databases allowed, then "

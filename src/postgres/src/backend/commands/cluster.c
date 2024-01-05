@@ -614,7 +614,8 @@ rebuild_relation(Relation OldHeap, Oid indexOid, bool verbose)
 	/* Create the transient table that will receive the re-ordered data */
 	OIDNewHeap = make_new_heap(tableOid, tableSpace,
 							   relpersistence,
-							   AccessExclusiveLock);
+							   AccessExclusiveLock,
+							   true /* yb_copy_split_options */);
 
 	/* Copy the heap data into the new table in the desired order */
 	copy_heap_data(OIDNewHeap, tableOid, indexOid, verbose,
@@ -627,7 +628,8 @@ rebuild_relation(Relation OldHeap, Oid indexOid, bool verbose)
 	finish_heap_swap(tableOid, OIDNewHeap, is_system_catalog,
 					 swap_toast_by_content, false, true,
 					 frozenXid, cutoffMulti,
-					 relpersistence);
+					 relpersistence,
+					 true /* yb_copy_split_options */);
 }
 
 
@@ -644,7 +646,7 @@ rebuild_relation(Relation OldHeap, Oid indexOid, bool verbose)
  */
 Oid
 make_new_heap(Oid OIDOldHeap, Oid NewTableSpace, char relpersistence,
-			  LOCKMODE lockmode)
+			  LOCKMODE lockmode, bool yb_copy_split_options)
 {
 	TupleDesc	OldHeapDesc;
 	char		NewHeapName[NAMEDATALEN];
@@ -730,12 +732,20 @@ make_new_heap(Oid OIDOldHeap, Oid NewTableSpace, char relpersistence,
 										   RowExclusiveLock);
 		YbATCopyPrimaryKeyToCreateStmt(OldHeap, pg_constraint, dummyStmt);
 		heap_close(pg_constraint, RowExclusiveLock);
+		if (yb_copy_split_options)
+		{
+			YbGetTableProperties(OldHeap);
+			dummyStmt->split_options = YbGetSplitOptions(OldHeap);
+		}
 		YBCCreateTable(dummyStmt, RelationGetRelationName(OldHeap),
 					   OldHeap->rd_rel->relkind, OldHeapDesc, OIDNewHeap,
 					   namespaceid,
 					   YbGetTableProperties(OldHeap)->tablegroup_oid,
 					   InvalidOid, NewTableSpace, OIDOldHeap,
 					   OldHeap->rd_rel->relfilenode);
+
+		if (yb_test_fail_table_rewrite_after_creation)
+			elog(ERROR, "Injecting error.");
 	}
 
 	ReleaseSysCache(tuple);
@@ -1574,7 +1584,8 @@ finish_heap_swap(Oid OIDOldHeap, Oid OIDNewHeap,
 				 bool is_internal,
 				 TransactionId frozenXid,
 				 MultiXactId cutoffMulti,
-				 char newrelpersistence)
+				 char newrelpersistence,
+				 bool yb_copy_split_options)
 {
 	ObjectAddress object;
 	Oid			mapped_tables[4];
@@ -1628,7 +1639,9 @@ finish_heap_swap(Oid OIDOldHeap, Oid OIDNewHeap,
 	else if (newrelpersistence == RELPERSISTENCE_PERMANENT)
 		reindex_flags |= REINDEX_REL_FORCE_INDEXES_PERMANENT;
 
-	reindex_relation(OIDOldHeap, reindex_flags, 0);
+	reindex_relation(OIDOldHeap, reindex_flags, 0,
+					 true /* is_yb_table_rewrite */,
+					 yb_copy_split_options);
 
 	/*
 	 * If the relation being rebuild is pg_class, swap_relation_files()

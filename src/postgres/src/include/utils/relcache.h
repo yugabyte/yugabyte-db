@@ -117,7 +117,8 @@ extern Relation RelationBuildLocalRelation(const char *relname,
  * Routine to manage assignment of new relfilenode to a relation
  */
 extern void RelationSetNewRelfilenode(Relation relation, char persistence,
-						  TransactionId freezeXid, MultiXactId minmulti);
+						  TransactionId freezeXid, MultiXactId minmulti,
+						  bool yb_copy_split_options);
 
 /*
  * Routines for flushing/rebuilding relcache entries in various scenarios

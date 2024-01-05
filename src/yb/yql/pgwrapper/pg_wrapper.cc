@@ -205,6 +205,9 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_add_column_missing_default, kExterna
                             "Enable using the default value for existing rows after an ADD COLUMN"
                             " ... DEFAULT operation");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_alter_table_rewrite, kLocalPersisted, false, true,
+                            "Enable ALTER TABLE rewrite operations");
+
 DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_base_scans_cost_model, false,
     "Enable cost model enhancements");
 

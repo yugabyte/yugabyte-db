@@ -1259,9 +1259,10 @@ Status SysCatalogTable::ReadPgClassInfo(
   const auto relname_col_id = VERIFY_RESULT(schema.ColumnIdByName("relname")).rep();
   const auto tablespace_col_id = VERIFY_RESULT(schema.ColumnIdByName("reltablespace")).rep();
   const auto relkind_col_id = VERIFY_RESULT(schema.ColumnIdByName("relkind")).rep();
+  const auto relfilenode_col_id = VERIFY_RESULT(schema.ColumnIdByName("relfilenode")).rep();
 
   std::vector<ColumnIdRep> col_ids = {
-      oid_col_id, relname_col_id, tablespace_col_id, relkind_col_id};
+      oid_col_id, relname_col_id, tablespace_col_id, relkind_col_id, relfilenode_col_id};
 
   ColumnIdRep reloptions_col_id = -1;
   if (is_colocated_database) {
@@ -1369,8 +1370,24 @@ Status SysCatalogTable::ReadPgClassInfo(
     if (tablespace_oid != kInvalidOid) {
       tablespace_id = GetPgsqlTablespaceId(tablespace_oid);
     }
-    const auto& ret = table_to_tablespace_map->emplace(
-        GetPgsqlTableId(database_oid, oid), tablespace_id);
+
+    // Process the relfilenode of this table/index.
+    const auto& relfilenode_col = row.GetValue(relfilenode_col_id);
+    if (!relfilenode_col) {
+      return STATUS(Corruption, "Could not read oid column from pg_class");
+    }
+    const uint32_t relfilenode_oid = relfilenode_col->uint32_value();
+
+    TableId table_id;
+    // If the relfilenode oid is not valid, use the pg table OID to construct
+    // the table id. Otherwise, this may be a rewritten table, so use the
+    // relfilenode to construct the table id.
+    if (relfilenode_oid == kInvalidOid) {
+      table_id = GetPgsqlTableId(database_oid, oid);
+    } else {
+      table_id = GetPgsqlTableId(database_oid, relfilenode_oid);
+    }
+    const auto& ret = table_to_tablespace_map->emplace(table_id, tablespace_id);
     // The map should not have a duplicate entry with the same oid.
     DCHECK(ret.second);
   }

@@ -362,7 +362,8 @@ ResetSequence(Oid seq_relid)
 		 * Same with relminmxid, since a sequence will never contain multixacts.
 		 */
 		RelationSetNewRelfilenode(seq_rel, seq_rel->rd_rel->relpersistence,
-								InvalidTransactionId, InvalidMultiXactId);
+								InvalidTransactionId, InvalidMultiXactId,
+								true /* yb_copy_split_options */);
 
 		/*
 		 * Insert the modified tuple into the new storage file.
@@ -581,7 +582,8 @@ AlterSequence(ParseState *pstate, AlterSeqStmt *stmt)
 		 * relminmxid, since a sequence will never contain multixacts.
 		 */
 		RelationSetNewRelfilenode(seqrel, seqrel->rd_rel->relpersistence,
-								  InvalidTransactionId, InvalidMultiXactId);
+								  InvalidTransactionId, InvalidMultiXactId,
+								  true /* yb_copy_split_options */);
 
 		/*
 		 * Insert the modified tuple into the new storage file.
