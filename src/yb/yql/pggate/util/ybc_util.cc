@@ -192,6 +192,17 @@ bool YBCStatusIsNotFound(YBCStatus s) {
   return StatusWrapper(s)->IsNotFound();
 }
 
+// Checks if the status corresponds to an "Unknown Session" error
+bool YBCStatusIsUnknownSession(YBCStatus s) {
+  // The semantics of the "Unknown session" error is overloaded. It is used to indicate both:
+  // 1. Session with an invalid ID
+  // 2. An expired session
+  // We would like to terminate the connection only in case of an expired session.
+  // However, since we are unable to distinguish between the two, we handle both cases identically.
+  return StatusWrapper(s)->IsInvalidArgument() &&
+         FetchErrorCode(s) == YBPgErrorCode::YB_PG_CONNECTION_DOES_NOT_EXIST;
+}
+
 bool YBCStatusIsDuplicateKey(YBCStatus s) {
   return StatusWrapper(s)->IsAlreadyPresent();
 }
@@ -202,6 +213,14 @@ bool YBCStatusIsSnapshotTooOld(YBCStatus s) {
 
 bool YBCStatusIsTryAgain(YBCStatus s) {
   return StatusWrapper(s)->IsTryAgain();
+}
+
+bool YBCStatusIsAlreadyPresent(YBCStatus s) {
+  return StatusWrapper(s)->IsAlreadyPresent();
+}
+
+bool YBCStatusIsFatalError(YBCStatus s) {
+  return YBCStatusIsUnknownSession(s);
 }
 
 uint32_t YBCStatusPgsqlError(YBCStatus s) {
