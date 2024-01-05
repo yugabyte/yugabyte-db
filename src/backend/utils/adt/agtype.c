@@ -3932,7 +3932,8 @@ Datum agtype_access_slice(PG_FUNCTION_ARGS)
     agtype_value *lidx_value = NULL;
     agtype_value *uidx_value = NULL;
     agtype_in_state result;
-    agtype *array = NULL;
+    agtype *agt_array = NULL;
+    agtype_value *agtv_array = NULL;
     int64 upper_index = 0;
     int64 lower_index = 0;
     uint32 array_size = 0;
@@ -3952,15 +3953,26 @@ Datum agtype_access_slice(PG_FUNCTION_ARGS)
     }
 
     /* get the array parameter and verify that it is a list */
-    array = AG_GET_ARG_AGTYPE_P(0);
-    if (!AGT_ROOT_IS_ARRAY(array) || AGT_ROOT_IS_SCALAR(array))
+    agt_array = AG_GET_ARG_AGTYPE_P(0);
+
+    if ((!AGT_ROOT_IS_ARRAY(agt_array) && !AGT_ROOT_IS_VPC(agt_array)) || AGT_ROOT_IS_SCALAR(agt_array))
     {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("slice must access a list")));
     }
 
-    /* get its size */
-    array_size = AGT_ROOT_COUNT(array);
+    /* If we have a vpc, decode it and get AGTV_ARRAY agtype_value */
+    if (AGT_ROOT_IS_VPC(agt_array))
+    {
+        agtv_array = agtv_materialize_vle_edges(agt_array);
+
+        /* get the size of array */
+        array_size = agtv_array->val.array.num_elems;
+    }
+    else
+    {
+        array_size = AGT_ROOT_COUNT(agt_array);
+    }
 
     /* if we don't have a lower bound, make it 0 */
     if (PG_ARGISNULL(1))
@@ -4053,11 +4065,23 @@ Datum agtype_access_slice(PG_FUNCTION_ARGS)
     result.res = push_agtype_value(&result.parse_state, WAGT_BEGIN_ARRAY,
                                    NULL);
 
-    /* get array elements */
-    for (i = lower_index; i < upper_index; i++)
+    /* if we have agtype_value, we need to iterate through the array */
+    if (agtv_array)
     {
-        result.res = push_agtype_value(&result.parse_state, WAGT_ELEM,
-            get_ith_agtype_value_from_container(&array->root, i));
+        for (i = lower_index; i < upper_index; i++)
+        {
+            result.res = push_agtype_value(&result.parse_state, WAGT_ELEM,
+                                           &agtv_array->val.array.elems[i]);
+        }
+    }
+    else
+    {
+        /* get array elements from agtype_container */
+        for (i = lower_index; i < upper_index; i++)
+        {
+            result.res = push_agtype_value(&result.parse_state, WAGT_ELEM,
+                get_ith_agtype_value_from_container(&agt_array->root, i));
+        }
     }
 
     result.res = push_agtype_value(&result.parse_state, WAGT_END_ARRAY, NULL);
@@ -4071,78 +4095,145 @@ PG_FUNCTION_INFO_V1(agtype_in_operator);
  */
 Datum agtype_in_operator(PG_FUNCTION_ARGS)
 {
-    agtype *agt_array, *agt_item;
+    agtype *agt_arg, *agt_item;
     agtype_iterator *it_array, *it_item;
-    agtype_value agtv_item, agtv_elem;
+    agtype_value *agtv_arg, agtv_item, agtv_elem;
     uint32 array_size = 0;
     bool result = false;
     uint32 i = 0;
 
     /* return null if the array is null */
     if (PG_ARGISNULL(0))
+    {
         PG_RETURN_NULL();
+    }
 
     /* get the array parameter and verify that it is a list */
-    agt_array = AG_GET_ARG_AGTYPE_P(0);
-    if (!AGT_ROOT_IS_ARRAY(agt_array))
-        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                        errmsg("object of IN must be a list")));
+    agt_arg = AG_GET_ARG_AGTYPE_P(0);
 
-    /* init array iterator */
-    it_array = agtype_iterator_init(&agt_array->root);
-    /* open array container */
-    agtype_iterator_next(&it_array, &agtv_elem, false);
-    /* check for an array scalar value */
-    if (agtv_elem.type == AGTV_ARRAY && agtv_elem.val.array.raw_scalar)
+    if ((!AGT_ROOT_IS_ARRAY(agt_arg) && !AGT_ROOT_IS_VPC(agt_arg)) || AGT_ROOT_IS_SCALAR(agt_arg))
     {
-        agtype_iterator_next(&it_array, &agtv_elem, false);
-        /* check for AGTYPE NULL */
-        if (agtv_elem.type == AGTV_NULL)
-            PG_RETURN_NULL();
-        /* if it is a scalar, but not AGTV_NULL, error out */
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("object of IN must be a list")));
     }
-
-    array_size = AGT_ROOT_COUNT(agt_array);
-
-    /* return null if the item to find is null */
-    if (PG_ARGISNULL(1))
-        PG_RETURN_NULL();
-    /* get the item to search for */
-    agt_item = AG_GET_ARG_AGTYPE_P(1);
-
-    /* init item iterator */
-    it_item = agtype_iterator_init(&agt_item->root);
-
-    /* get value of item */
-    agtype_iterator_next(&it_item, &agtv_item, false);
-    if (agtv_item.type == AGTV_ARRAY && agtv_item.val.array.raw_scalar)
+    /* If we have vpc as arg, get the agtype_value AGTV_ARRAY of edges */
+    if (AGT_ROOT_IS_VPC(agt_arg))
     {
-        agtype_iterator_next(&it_item, &agtv_item, false);
-        /* check for AGTYPE NULL */
-        if (agtv_item.type == AGTV_NULL)
-            PG_RETURN_NULL();
-    }
+        agtv_arg = agtv_materialize_vle_edges(agt_arg);
+        array_size = agtv_arg->val.array.num_elems;
 
-    /* iterate through the array, but stop if we find it */
-    for (i = 0; i < array_size && !result; i++)
-    {
-        /* get next element */
-        agtype_iterator_next(&it_array, &agtv_elem, true);
-        /* if both are containers, compare containers */
-        if (!IS_A_AGTYPE_SCALAR(&agtv_item) && !IS_A_AGTYPE_SCALAR(&agtv_elem))
+        /* return null if the item to find is null */
+        if (PG_ARGISNULL(1))
         {
-            result = (compare_agtype_containers_orderability(
-                          &agt_item->root, agtv_elem.val.binary.data) == 0);
+            PG_RETURN_NULL();
         }
-        /* if both are scalars and of the same type, compare scalars */
-        else if (IS_A_AGTYPE_SCALAR(&agtv_item) &&
-                 IS_A_AGTYPE_SCALAR(&agtv_elem) &&
-                 agtv_item.type == agtv_elem.type)
-            result = (compare_agtype_scalar_values(&agtv_item, &agtv_elem) ==
-                      0);
+        /* get the item to search for */
+        agt_item = AG_GET_ARG_AGTYPE_P(1);
+
+        /* init item iterator */
+        it_item = agtype_iterator_init(&agt_item->root);
+
+        /* get value of item */
+        agtype_iterator_next(&it_item, &agtv_item, false);
+        if (agtv_item.type == AGTV_ARRAY && agtv_item.val.array.raw_scalar)
+        {
+            agtype_iterator_next(&it_item, &agtv_item, false);
+            /* check for AGTYPE NULL */
+            if (agtv_item.type == AGTV_NULL)
+            {
+                PG_RETURN_NULL();
+            }
+        }
+
+        /* iterate through the array, but stop if we find it */
+        for (i = 0; i < array_size && !result; i++)
+        {
+            agtv_elem = agtv_arg->val.array.elems[i];
+
+            /* if both are containers, compare containers */
+            if (!IS_A_AGTYPE_SCALAR(&agtv_item) && !IS_A_AGTYPE_SCALAR(&agtv_elem))
+            {
+                result = (compare_agtype_containers_orderability(
+                            &agt_item->root, agtv_elem.val.binary.data) == 0);
+            }
+            /* if both are scalars and of the same type, compare scalars */
+            else if (IS_A_AGTYPE_SCALAR(&agtv_item) &&
+                    IS_A_AGTYPE_SCALAR(&agtv_elem) &&
+                    agtv_item.type == agtv_elem.type)
+            {
+                result = (compare_agtype_scalar_values(&agtv_item, &agtv_elem) ==
+                        0);
+            }
+        }
     }
+    /* Else we need to iterate agtype_container */
+    else
+    {
+        /* init array iterator */
+        it_array = agtype_iterator_init(&agt_arg->root);
+        /* open array container */
+        agtype_iterator_next(&it_array, &agtv_elem, false);
+        /* check for an array scalar value */
+        if (agtv_elem.type == AGTV_ARRAY && agtv_elem.val.array.raw_scalar)
+        {
+            agtype_iterator_next(&it_array, &agtv_elem, false);
+            /* check for AGTYPE NULL */
+            if (agtv_elem.type == AGTV_NULL)
+            {
+                PG_RETURN_NULL();
+            }
+            /* if it is a scalar, but not AGTV_NULL, error out */
+            ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                            errmsg("object of IN must be a list")));
+        }
+
+        array_size = AGT_ROOT_COUNT(agt_arg);
+
+        /* return null if the item to find is null */
+        if (PG_ARGISNULL(1))
+        {
+            PG_RETURN_NULL();
+        }
+        /* get the item to search for */
+        agt_item = AG_GET_ARG_AGTYPE_P(1);
+
+        /* init item iterator */
+        it_item = agtype_iterator_init(&agt_item->root);
+
+        /* get value of item */
+        agtype_iterator_next(&it_item, &agtv_item, false);
+        if (agtv_item.type == AGTV_ARRAY && agtv_item.val.array.raw_scalar)
+        {
+            agtype_iterator_next(&it_item, &agtv_item, false);
+            /* check for AGTYPE NULL */
+            if (agtv_item.type == AGTV_NULL)
+            {
+                PG_RETURN_NULL();
+            }
+        }
+
+        /* iterate through the array, but stop if we find it */
+        for (i = 0; i < array_size && !result; i++)
+        {
+            /* get next element */
+            agtype_iterator_next(&it_array, &agtv_elem, true);
+            /* if both are containers, compare containers */
+            if (!IS_A_AGTYPE_SCALAR(&agtv_item) && !IS_A_AGTYPE_SCALAR(&agtv_elem))
+            {
+                result = (compare_agtype_containers_orderability(
+                            &agt_item->root, agtv_elem.val.binary.data) == 0);
+            }
+            /* if both are scalars and of the same type, compare scalars */
+            else if (IS_A_AGTYPE_SCALAR(&agtv_item) &&
+                    IS_A_AGTYPE_SCALAR(&agtv_elem) &&
+                    agtv_item.type == agtv_elem.type)
+            {
+                result = (compare_agtype_scalar_values(&agtv_item, &agtv_elem) ==
+                        0);
+            }
+        }        
+    }
+
     return boolean_to_agtype(result);
 }
 
@@ -5270,31 +5361,58 @@ PG_FUNCTION_INFO_V1(age_head);
 Datum age_head(PG_FUNCTION_ARGS)
 {
     agtype *agt_arg = NULL;
+    agtype_value *agtv_arg = NULL;
     agtype_value *agtv_result = NULL;
-    int count;
 
     /* check for null */
     if (PG_ARGISNULL(0))
+    {
         PG_RETURN_NULL();
+    }
 
     agt_arg = AG_GET_ARG_AGTYPE_P(0);
+ 
     /* check for an array */
-    if (!AGT_ROOT_IS_ARRAY(agt_arg) || AGT_ROOT_IS_SCALAR(agt_arg))
+    if ((!AGT_ROOT_IS_ARRAY(agt_arg) && !AGT_ROOT_IS_VPC(agt_arg)) || AGT_ROOT_IS_SCALAR(agt_arg))
+    {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("head() argument must resolve to a list or null")));
+    }
 
-    count = AGT_ROOT_COUNT(agt_arg);
+    /*
+     * If we have a vpc, materialize the edges to get AGTV_ARRAY
+     * agtype_value, process it and return the result.
+     */
+    if (AGT_ROOT_IS_VPC(agt_arg))
+    {
+        agtv_arg = agtv_materialize_vle_edges(agt_arg);
 
-    /* if we have an empty list, return a null */
-    if (count == 0)
-        PG_RETURN_NULL();
+        /* if we have an empty list, return a null */
+        if (agtv_arg->val.array.num_elems == 0)
+        {
+            PG_RETURN_NULL();
+        }
 
-    /* get the first element of the array */
-    agtv_result = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+        /* get the first element of the array */
+        agtv_result = &agtv_arg->val.array.elems[0];
+    }
+    else
+    {
+        /* if we have an empty list, return a null */
+        if (AGT_ROOT_COUNT(agt_arg) == 0)
+        {
+            PG_RETURN_NULL();
+        }
+
+        /* get the first element of the array */
+        agtv_result = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+    }
 
     /* if it is AGTV_NULL, return null */
     if (agtv_result->type == AGTV_NULL)
+    {
         PG_RETURN_NULL();
+    }
 
     PG_RETURN_POINTER(agtype_value_to_agtype(agtv_result));
 }
@@ -5304,31 +5422,63 @@ PG_FUNCTION_INFO_V1(age_last);
 Datum age_last(PG_FUNCTION_ARGS)
 {
     agtype *agt_arg = NULL;
+    agtype_value *agtv_arg = NULL;
     agtype_value *agtv_result = NULL;
-    int count;
+    int size;
 
     /* check for null */
     if (PG_ARGISNULL(0))
+    {
         PG_RETURN_NULL();
+    }
 
     agt_arg = AG_GET_ARG_AGTYPE_P(0);
+
     /* check for an array */
-    if (!AGT_ROOT_IS_ARRAY(agt_arg) || AGT_ROOT_IS_SCALAR(agt_arg))
+    if ((!AGT_ROOT_IS_ARRAY(agt_arg) && !AGT_ROOT_IS_VPC(agt_arg)) || AGT_ROOT_IS_SCALAR(agt_arg))
+    {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("last() argument must resolve to a list or null")));
+    }
 
-    count = AGT_ROOT_COUNT(agt_arg);
+    /*
+     * If we have a vpc, materialize the edges to get AGTV_ARRAY
+     * agtype_value, process it and return the result.
+     */
+    if (AGT_ROOT_IS_VPC(agt_arg))
+    {
+        agtv_arg = agtv_materialize_vle_edges(agt_arg);
 
-    /* if we have an empty list, return null */
-    if (count == 0)
-        PG_RETURN_NULL();
+        size = agtv_arg->val.array.num_elems;
 
-    /* get the last element of the array */
-    agtv_result = get_ith_agtype_value_from_container(&agt_arg->root, count -1);
+        /* if we have an empty list, return a null */
+        if (size == 0)
+        {
+            PG_RETURN_NULL();
+        }
+
+        /* get the first element of the array */
+        agtv_result = &agtv_arg->val.array.elems[size-1];
+    }
+    else
+    {
+        size = AGT_ROOT_COUNT(agt_arg);
+
+        /* if we have an empty list, return a null */
+        if (size == 0)
+        {
+            PG_RETURN_NULL();
+        }
+
+        /* get the first element of the array */
+        agtv_result = get_ith_agtype_value_from_container(&agt_arg->root, size-1);
+    }
 
     /* if it is AGTV_NULL, return null */
     if (agtv_result->type == AGTV_NULL)
+    {
         PG_RETURN_NULL();
+    }
 
     PG_RETURN_POINTER(agtype_value_to_agtype(agtv_result));
 }
@@ -6277,12 +6427,16 @@ Datum age_size(PG_FUNCTION_ARGS)
 
     /* check number of args */
     if (nargs > 1)
+    {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("size() only supports one argument")));
+    }
 
     /* check for null */
     if (nargs < 0 || nulls[0])
+    {
         PG_RETURN_NULL();
+    }
 
     /*
      * size() supports cstring, text, or the agtype string or list input
@@ -6303,31 +6457,45 @@ Datum age_size(PG_FUNCTION_ARGS)
     else if (type == AGTYPEOID)
     {
         agtype *agt_arg;
+        agtype_value *agtv_value;
 
         /* get the agtype argument */
         agt_arg = DATUM_GET_AGTYPE_P(arg);
 
         if (AGT_ROOT_IS_SCALAR(agt_arg))
         {
-            agtype_value *agtv_value;
-
             agtv_value = get_ith_agtype_value_from_container(&agt_arg->root, 0);
 
             if (agtv_value->type == AGTV_STRING)
+            {
                 result = agtv_value->val.string.len;
+            }
             else
+            {
                 ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                                         errmsg("size() unsupported argument")));
+            }
+        }
+        else if (AGT_ROOT_IS_VPC(agt_arg))
+        {
+            agtv_value = agtv_materialize_vle_edges(agt_arg);
+            result = agtv_value->val.array.num_elems;
         }
         else if (AGT_ROOT_IS_ARRAY(agt_arg))
+        {
             result = AGT_ROOT_COUNT(agt_arg);
+        }
         else
+        {
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                             errmsg("size() unsupported argument")));
+        }
     }
     else
+    {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("size() unsupported argument")));
+    }
 
     /* build the result */
     agtv_result.type = AGTV_INTEGER;
@@ -6451,14 +6619,13 @@ Datum age_isempty(PG_FUNCTION_ARGS)
     else if (type == AGTYPEOID)
     {
         agtype *agt_arg;
+        agtype_value *agtv_value;
 
         /* get the agtype argument */
         agt_arg = DATUM_GET_AGTYPE_P(arg);
 
         if (AGT_ROOT_IS_SCALAR(agt_arg))
         {
-            agtype_value *agtv_value;
-
             agtv_value = get_ith_agtype_value_from_container(&agt_arg->root, 0);
 
             if (agtv_value->type == AGTV_STRING)
@@ -6470,6 +6637,11 @@ Datum age_isempty(PG_FUNCTION_ARGS)
                 ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                                         errmsg("isEmpty() unsupported argument, expected a List, Map, or String")));
             }
+        }
+        else if (AGT_ROOT_IS_VPC(agt_arg))
+        {
+            agtv_value = agtv_materialize_vle_edges(agt_arg);
+            result = agtv_value->val.array.num_elems;
         }
         else if (AGT_ROOT_IS_ARRAY(agt_arg))
         {
@@ -6860,12 +7032,16 @@ Datum age_reverse(PG_FUNCTION_ARGS)
 
     /* check number of args */
     if (nargs > 1)
+    {
         ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                         errmsg("reverse() only supports one argument")));
+    }
 
     /* check for null */
     if (nargs < 0 || nulls[0])
+    {
         PG_RETURN_NULL();
+    }
 
     /* reverse() supports text, cstring, or the agtype string input */
     arg = args[0];
@@ -6874,18 +7050,25 @@ Datum age_reverse(PG_FUNCTION_ARGS)
     if (type != AGTYPEOID)
     {
         if (type == CSTRINGOID)
+        {
             text_string = cstring_to_text(DatumGetCString(arg));
+        }
         else if (type == TEXTOID)
+        {
             text_string = DatumGetTextPP(arg);
+        }
         else
+        {
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
                             errmsg("reverse() unsupported argument type %d",
                                    type)));
+        }
     }
     else
     {
         agtype *agt_arg = NULL;
         agtype_value *agtv_value = NULL;
+        agtype_in_state result;
         agtype_parse_state *parse_state = NULL;
         agtype_value elem = {0};
         agtype_iterator *it = NULL;
@@ -6897,7 +7080,28 @@ Datum age_reverse(PG_FUNCTION_ARGS)
         /* get the agtype argument */
         agt_arg = DATUM_GET_AGTYPE_P(arg);
 
-        if (!AGT_ROOT_IS_SCALAR(agt_arg))
+        if (AGT_ROOT_IS_SCALAR(agt_arg))
+        {
+            agtv_value = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+
+            /* check for agtype null */
+            if (agtv_value->type == AGTV_NULL)
+            {
+                PG_RETURN_NULL();
+            }
+            if (agtv_value->type == AGTV_STRING)
+            {
+                text_string = cstring_to_text_with_len(agtv_value->val.string.val,
+                                                    agtv_value->val.string.len);
+            }
+            else
+            {
+                ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+                                errmsg("reverse() unsupported argument agtype %d",
+                                    agtv_value->type)));
+            }
+        }
+        else if (AGT_ROOT_IS_ARRAY(agt_arg))
         {
             agtv_value = push_agtype_value(&parse_state, WAGT_BEGIN_ARRAY, NULL);
 
@@ -6928,19 +7132,32 @@ Datum age_reverse(PG_FUNCTION_ARGS)
             PG_RETURN_POINTER(agtype_value_to_agtype(agtv_value));
 
         }
+        else if (AGT_ROOT_IS_VPC(agt_arg))
+        {
+            elems = agtv_materialize_vle_edges(agt_arg);
+            num_elems = elems->val.array.num_elems;
 
-        agtv_value = get_ith_agtype_value_from_container(&agt_arg->root, 0);
+            /* build our result array */
+            memset(&result, 0, sizeof(agtype_in_state));
 
-        /* check for agtype null */
-        if (agtv_value->type == AGTV_NULL)
-            PG_RETURN_NULL();
-        if (agtv_value->type == AGTV_STRING)
-            text_string = cstring_to_text_with_len(agtv_value->val.string.val,
-                                                   agtv_value->val.string.len);
+            result.res = push_agtype_value(&result.parse_state,
+                                            WAGT_BEGIN_ARRAY, NULL);
+
+            for (i = num_elems-1; i >= 0; i--)
+            {
+                result.res = push_agtype_value(&result.parse_state, WAGT_ELEM,
+                                               &elems->val.array.elems[i]);
+            }
+
+            result.res = push_agtype_value(&result.parse_state, WAGT_END_ARRAY, NULL);
+
+            PG_RETURN_POINTER(agtype_value_to_agtype(result.res));
+        }
         else
+        {
             ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                            errmsg("reverse() unsupported argument agtype %d",
-                                   agtv_value->type)));
+                            errmsg("reverse() unsupported argument agtype")));
+        }
     }
 
     /*
@@ -6956,7 +7173,9 @@ Datum age_reverse(PG_FUNCTION_ARGS)
 
     /* if we have an empty string, return null */
     if (string_len == 0)
+    {
         PG_RETURN_NULL();
+    }
 
     /* build the result */
     agtv_result.type = AGTV_STRING;

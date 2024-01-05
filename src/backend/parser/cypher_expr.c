@@ -516,20 +516,29 @@ static Node *transform_AEXPR_IN(cypher_parsestate *cpstate, A_Expr *a)
     bool useOr;
     ListCell *l;
 
-    /* Check for null arguments in the list to return NULL*/
     if (!is_ag_node(a->rexpr, cypher_list))
     {
-        if (nodeTag(a->rexpr) == T_A_Const)
-        {
-            A_Const *r_a_const = (A_Const*)a->rexpr;
-            if (r_a_const->isnull == true)
-            {
-                return (Node *)makeConst(AGTYPEOID, -1, InvalidOid, -1, (Datum)NULL, true, false);
-            }
-        }
+        /*
+         * We need to build a function call here if the rexpr is already
+         * tranformed. It can be already tranformed cypher_list as columnref.
+         */ 
+        Oid func_in_oid;
+        FuncExpr *func_in_expr;
+        List *args = NIL;
 
-        ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-                        errmsg("object of IN must be a list")));
+        args = lappend(args, transform_cypher_expr_recurse(cpstate, a->rexpr));
+        args = lappend(args, transform_cypher_expr_recurse(cpstate, a->lexpr));
+
+        /* get the agtype_in_operator function */
+        func_in_oid = get_ag_func_oid("agtype_in_operator", 2, AGTYPEOID,
+                                    AGTYPEOID);
+
+        func_in_expr = makeFuncExpr(func_in_oid, AGTYPEOID, args, InvalidOid,
+                                    InvalidOid, COERCE_EXPLICIT_CALL);
+
+        func_in_expr->location = exprLocation(a->lexpr);
+
+        return (Node *)func_in_expr;
     }
 
     Assert(is_ag_node(a->rexpr, cypher_list));

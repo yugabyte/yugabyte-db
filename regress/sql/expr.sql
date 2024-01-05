@@ -1221,6 +1221,14 @@ $$) AS (size agtype);
 SELECT * FROM cypher('expr', $$
     RETURN size()
 $$) AS (size agtype);
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    WHERE size(vle_array[0]) = 0
+    RETURN vle_array
+$$) AS (vle_array agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN size({id: 0, status:'it_will_fail'})
+$$) AS (size agtype);
 -- head() of an array
 SELECT * FROM cypher('expr', $$
     RETURN head([1, 2, 3, 4, 5])
@@ -1235,12 +1243,22 @@ $$) AS (head agtype);
 SELECT * FROM cypher('expr', $$
     RETURN head(null)
 $$) AS (head agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN head([null, null])
+$$) AS (head agtype);
 -- should fail
 SELECT * FROM cypher('expr', $$
     RETURN head(1234567890)
 $$) AS (head agtype);
 SELECT * FROM cypher('expr', $$
     RETURN head()
+$$) AS (head agtype);
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    RETURN head(vle_array[0])
+$$) AS (head agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN head({id: 0, status:'it_will_fail'})
 $$) AS (head agtype);
 -- last()
 SELECT * FROM cypher('expr', $$
@@ -1256,12 +1274,22 @@ $$) AS (last agtype);
 SELECT * FROM cypher('expr', $$
     RETURN last(null)
 $$) AS (last agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN last([null, null])
+$$) AS (last agtype);
 -- should fail
 SELECT * FROM cypher('expr', $$
     RETURN last(1234567890)
 $$) AS (last agtype);
 SELECT * FROM cypher('expr', $$
     RETURN last()
+$$) AS (last agtype);
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    RETURN last(vle_array[0])
+$$) AS (last agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN last({id: 0, status:'it_will_fail'})
 $$) AS (last agtype);
 -- properties()
 SELECT * FROM cypher('expr', $$
@@ -1644,6 +1672,13 @@ SELECT * FROM cypher('expr', $$
     RETURN reverse()
 $$) AS (results agtype);
 SELECT * FROM age_reverse();
+SELECT * FROM cypher('expr', $$
+    MATCH (v)
+    RETURN reverse(v)
+$$) AS (results agtype);
+SELECT * FROM cypher('expr', $$
+    RETURN reverse({})
+$$) AS (results agtype);
 
 --
 -- toUpper() and toLower()
@@ -3184,7 +3219,130 @@ SELECT * FROM cypher('graph_395', $$ MATCH (p:Project)-[:Has]->(t:Task)-[:Assign
                                      WITH p, collect(task) AS tasks
                                      WITH {pn: p.name, tasks:tasks} AS project
                                      RETURN project $$) AS (p agtype);
+--
+-- issue 1044 - array functions not recognizing vpc
+--
 
+-- size
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    WHERE size(vle_array) > 0
+    RETURN vle_array
+$$) AS (vle_array agtype);
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    WHERE size(vle_array) > 1
+    RETURN vle_array
+$$) AS (vle_array agtype);
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    WHERE size(vle_array) > 2
+    RETURN vle_array
+$$) AS (vle_array agtype);
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    WHERE size(vle_array) = size(vle_array)
+    RETURN vle_array
+$$) AS (vle_array agtype);
+
+-- head
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    RETURN head(vle_array)
+$$) AS (head agtype);
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    WHERE head(vle_array) = vle_array[0]
+    RETURN vle_array
+$$) AS (head agtype);
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    WHERE head(vle_array) = vle_array[size(vle_array) - size(vle_array)]
+    RETURN vle_array
+$$) AS (head agtype);
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    WHERE head(vle_array) = head([vle_array[0]])
+    RETURN vle_array LIMIT 1
+$$) AS (head agtype);
+
+-- last
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    RETURN last(vle_array)
+$$) AS (head agtype);
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    WHERE last(vle_array) = vle_array[0]
+    RETURN vle_array
+$$) AS (head agtype);
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    WHERE last(vle_array) = vle_array[size(vle_array)-1]
+    RETURN vle_array
+$$) AS (head agtype);
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    WHERE last(vle_array) = head([vle_array[size(vle_array)-1]])
+    RETURN vle_array LIMIT 1
+$$) AS (head agtype);
+
+-- isEmpty
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    WHERE isEmpty(vle_array)
+    RETURN vle_array
+$$) AS (head agtype);
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    WHERE isEmpty(vle_array) = false
+    RETURN vle_array
+$$) AS (head agtype);
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    WHERE isEmpty(vle_array[0..0])
+    RETURN vle_array
+$$) AS (head agtype);
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    WHERE isEmpty([vle_array[3]]) = false
+    RETURN vle_array
+$$) AS (head agtype);
+
+-- reverse
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    RETURN reverse(vle_array)
+$$) as (u agtype);
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    WHERE reverse(vle_array)[0] = last(vle_array)
+    RETURN reverse(vle_array)
+$$) as (u agtype);
+
+-- IN operator
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]->()
+    WHERE vle_array[0] IN vle_array
+    RETURN vle_array
+$$) AS (a agtype);
+
+-- access slice
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]->()
+    WHERE vle_array[0..1] = [vle_array[0]]
+    RETURN vle_array
+$$) AS (a agtype);
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]->()
+    WHERE vle_array[1..2] = [last(vle_array)]
+    RETURN vle_array
+$$) AS (a agtype);
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]->()
+    WHERE vle_array[0..1] = [vle_array[0], vle_array[1]]
+    RETURN vle_array
+$$) AS (a agtype);
 ---
 --- Fix: Segmentation fault when using specific names for tables #1124
 ---

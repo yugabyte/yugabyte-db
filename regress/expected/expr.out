@@ -323,13 +323,9 @@ $$RETURN 1 IN [[null]]$$) AS r(c boolean);
 SELECT * FROM cypher('expr',
 $$RETURN null IN 'str' $$) AS r(c boolean);
 ERROR:  object of IN must be a list
-LINE 2: $$RETURN null IN 'str' $$) AS r(c boolean);
-         ^
 SELECT * FROM cypher('expr',
 $$RETURN 'str' IN 'str' $$) AS r(c boolean);
 ERROR:  object of IN must be a list
-LINE 2: $$RETURN 'str' IN 'str' $$) AS r(c boolean);
-         ^
 -- list access
 SELECT * FROM cypher('expr',
 $$RETURN [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10][0]$$) AS r(c agtype);
@@ -2801,6 +2797,16 @@ ERROR:  function ag_catalog.age_size() does not exist
 LINE 2:     RETURN size()
                    ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    WHERE size(vle_array[0]) = 0
+    RETURN vle_array
+$$) AS (vle_array agtype);
+ERROR:  size() unsupported argument
+SELECT * FROM cypher('expr', $$
+    RETURN size({id: 0, status:'it_will_fail'})
+$$) AS (size agtype);
+ERROR:  size() unsupported argument
 -- head() of an array
 SELECT * FROM cypher('expr', $$
     RETURN head([1, 2, 3, 4, 5])
@@ -2835,6 +2841,14 @@ $$) AS (head agtype);
  
 (1 row)
 
+SELECT * FROM cypher('expr', $$
+    RETURN head([null, null])
+$$) AS (head agtype);
+ head 
+------
+ 
+(1 row)
+
 -- should fail
 SELECT * FROM cypher('expr', $$
     RETURN head(1234567890)
@@ -2847,6 +2861,15 @@ ERROR:  function ag_catalog.age_head() does not exist
 LINE 2:     RETURN head()
                    ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    RETURN head(vle_array[0])
+$$) AS (head agtype);
+ERROR:  head() argument must resolve to a list or null
+SELECT * FROM cypher('expr', $$
+    RETURN head({id: 0, status:'it_will_fail'})
+$$) AS (head agtype);
+ERROR:  head() argument must resolve to a list or null
 -- last()
 SELECT * FROM cypher('expr', $$
     RETURN last([1, 2, 3, 4, 5])
@@ -2881,6 +2904,14 @@ $$) AS (last agtype);
  
 (1 row)
 
+SELECT * FROM cypher('expr', $$
+    RETURN last([null, null])
+$$) AS (last agtype);
+ last 
+------
+ 
+(1 row)
+
 -- should fail
 SELECT * FROM cypher('expr', $$
     RETURN last(1234567890)
@@ -2893,6 +2924,15 @@ ERROR:  function ag_catalog.age_last() does not exist
 LINE 2:     RETURN last()
                    ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    RETURN last(vle_array[0])
+$$) AS (last agtype);
+ERROR:  last() argument must resolve to a list or null
+SELECT * FROM cypher('expr', $$
+    RETURN last({id: 0, status:'it_will_fail'})
+$$) AS (last agtype);
+ERROR:  last() argument must resolve to a list or null
 -- properties()
 SELECT * FROM cypher('expr', $$
     MATCH (v) RETURN properties(v)
@@ -3821,6 +3861,15 @@ ERROR:  function age_reverse() does not exist
 LINE 1: SELECT * FROM age_reverse();
                       ^
 HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT * FROM cypher('expr', $$
+    MATCH (v)
+    RETURN reverse(v)
+$$) AS (results agtype);
+ERROR:  reverse() unsupported argument agtype 6
+SELECT * FROM cypher('expr', $$
+    RETURN reverse({})
+$$) AS (results agtype);
+ERROR:  reverse() unsupported argument agtype
 --
 -- toUpper() and toLower()
 --
@@ -7735,6 +7784,298 @@ SELECT * FROM cypher('graph_395', $$ MATCH (p:Project)-[:Has]->(t:Task)-[:Assign
  {"pn": "Project A", "tasks": [{"tn": "Task A", "users": [{"id": 1407374883553281, "label": "Person", "properties": {"age": 55, "name": "John"}}::vertex]}, {"tn": "Task B", "users": [{"id": 1407374883553282, "label": "Person", "properties": {"age": 43, "name": "Bob"}}::vertex]}]}
  {"pn": "Project B", "tasks": [{"tn": "Task C", "users": [{"id": 1407374883553282, "label": "Person", "properties": {"age": 43, "name": "Bob"}}::vertex]}]}
 (2 rows)
+
+--
+-- issue 1044 - array functions not recognizing vpc
+--
+-- size
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    WHERE size(vle_array) > 0
+    RETURN vle_array
+$$) AS (vle_array agtype);
+                                                                                                                       vle_array                                                                                                                        
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge, {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge, {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+(6 rows)
+
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    WHERE size(vle_array) > 1
+    RETURN vle_array
+$$) AS (vle_array agtype);
+                                                                                                                       vle_array                                                                                                                        
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge, {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge, {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+(2 rows)
+
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    WHERE size(vle_array) > 2
+    RETURN vle_array
+$$) AS (vle_array agtype);
+ vle_array 
+-----------
+(0 rows)
+
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    WHERE size(vle_array) = size(vle_array)
+    RETURN vle_array
+$$) AS (vle_array agtype);
+                                                                                                                       vle_array                                                                                                                        
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge, {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge, {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+(6 rows)
+
+-- head
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    RETURN head(vle_array)
+$$) AS (head agtype);
+                                                           head                                                            
+---------------------------------------------------------------------------------------------------------------------------
+ {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
+ {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
+ {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
+ {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
+ {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
+ {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
+(6 rows)
+
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    WHERE head(vle_array) = vle_array[0]
+    RETURN vle_array
+$$) AS (head agtype);
+                                                                                                                          head                                                                                                                          
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge, {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge, {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+(6 rows)
+
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    WHERE head(vle_array) = vle_array[size(vle_array) - size(vle_array)]
+    RETURN vle_array
+$$) AS (head agtype);
+                                                                                                                          head                                                                                                                          
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge, {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge, {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+(6 rows)
+
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    WHERE head(vle_array) = head([vle_array[0]])
+    RETURN vle_array LIMIT 1
+$$) AS (head agtype);
+                                                            head                                                             
+-----------------------------------------------------------------------------------------------------------------------------
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+(1 row)
+
+-- last
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    RETURN last(vle_array)
+$$) AS (head agtype);
+                                                           head                                                            
+---------------------------------------------------------------------------------------------------------------------------
+ {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
+ {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
+ {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
+ {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
+ {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge
+ {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge
+(6 rows)
+
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    WHERE last(vle_array) = vle_array[0]
+    RETURN vle_array
+$$) AS (head agtype);
+                                                            head                                                             
+-----------------------------------------------------------------------------------------------------------------------------
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+(4 rows)
+
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    WHERE last(vle_array) = vle_array[size(vle_array)-1]
+    RETURN vle_array
+$$) AS (head agtype);
+                                                                                                                          head                                                                                                                          
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge, {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge, {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+(6 rows)
+
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    WHERE last(vle_array) = head([vle_array[size(vle_array)-1]])
+    RETURN vle_array LIMIT 1
+$$) AS (head agtype);
+                                                            head                                                             
+-----------------------------------------------------------------------------------------------------------------------------
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+(1 row)
+
+-- isEmpty
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    WHERE isEmpty(vle_array)
+    RETURN vle_array
+$$) AS (head agtype);
+ head 
+------
+(0 rows)
+
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    WHERE isEmpty(vle_array) = false
+    RETURN vle_array
+$$) AS (head agtype);
+                                                                                                                          head                                                                                                                          
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge, {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge, {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+(6 rows)
+
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    WHERE isEmpty(vle_array[0..0])
+    RETURN vle_array
+$$) AS (head agtype);
+                                                                                                                          head                                                                                                                          
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge, {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge, {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+(6 rows)
+
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    WHERE isEmpty([vle_array[3]]) = false
+    RETURN vle_array
+$$) AS (head agtype);
+                                                                                                                          head                                                                                                                          
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge, {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge, {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+(6 rows)
+
+-- reverse
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    RETURN reverse(vle_array)
+$$) as (u agtype);
+                                                                                                                           u                                                                                                                            
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge, {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge, {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+(6 rows)
+
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]-()
+    WHERE reverse(vle_array)[0] = last(vle_array)
+    RETURN reverse(vle_array)
+$$) as (u agtype);
+                                                                                                                           u                                                                                                                            
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge, {"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge, {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+(6 rows)
+
+-- IN operator
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]->()
+    WHERE vle_array[0] IN vle_array
+    RETURN vle_array
+$$) AS (a agtype);
+                                                                                                                           a                                                                                                                            
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge, {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+(3 rows)
+
+-- access slice
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]->()
+    WHERE vle_array[0..1] = [vle_array[0]]
+    RETURN vle_array
+$$) AS (a agtype);
+                                                                                                                           a                                                                                                                            
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge]
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge, {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+ [{"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+(3 rows)
+
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]->()
+    WHERE vle_array[1..2] = [last(vle_array)]
+    RETURN vle_array
+$$) AS (a agtype);
+                                                                                                                           a                                                                                                                            
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ [{"id": 1407374883553282, "label": "e1", "end_id": 1125899906842626, "start_id": 1125899906842625, "properties": {}}::edge, {"id": 1407374883553281, "label": "e1", "end_id": 1125899906842627, "start_id": 1125899906842626, "properties": {}}::edge]
+(1 row)
+
+SELECT * FROM cypher('expr', $$
+    MATCH ()-[vle_array *]->()
+    WHERE vle_array[0..1] = [vle_array[0], vle_array[1]]
+    RETURN vle_array
+$$) AS (a agtype);
+ a 
+---
+(0 rows)
 
 ---
 --- Fix: Segmentation fault when using specific names for tables #1124

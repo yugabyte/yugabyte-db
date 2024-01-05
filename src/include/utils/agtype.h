@@ -294,6 +294,8 @@ typedef struct
     ((*(uint32 *)VARDATA(agtp_) & AGT_FBINARY) != 0)
 #define AGT_ROOT_BINARY_FLAGS(agtp_) \
     (*(uint32 *)VARDATA(agtp_) & AGT_FBINARY_MASK)
+#define AGT_ROOT_IS_VPC(agtp_) \
+    (AGT_ROOT_IS_BINARY(agtp_) && (AGT_ROOT_BINARY_FLAGS(agtp_) == AGT_FBINARY_TYPE_VLE_PATH))
 
 /* values for the AGTYPE header field to denote the stored data type */
 #define AGT_HEADER_INTEGER 0x00000000
