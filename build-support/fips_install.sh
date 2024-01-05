@@ -14,6 +14,7 @@
 
 set -euo pipefail
 
-release_root="${BASH_SOURCE%/*}/.."
+export YB_BIN_DIR="$YB_THIRDPARTY_DIR/installed/common/bin"
+export YB_OSSL_PROVIDER_DIR="$YB_THIRDPARTY_DIR/installed/common/lib/ossl-modules"
 
-"$release_root"/bin/fips_install.sh "$release_root/openssl-config/"
+"$YB_SRC_ROOT/scripts/installation/bin/fips_install.sh" "$@"

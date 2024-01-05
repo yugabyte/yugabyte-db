@@ -40,6 +40,13 @@ add_custom_command(
 
 add_custom_target(generate_test_certs DEPENDS ${CMAKE_BINARY_DIR}/test_certs)
 
+add_custom_command(
+  OUTPUT ${CMAKE_BINARY_DIR}/openssl-config/openssl-fips.cnf
+  WORKING_DIRECTORY ${YB_BUILD_ROOT}
+  COMMAND ${BUILD_SUPPORT_DIR}/fips_install.sh ${CMAKE_BINARY_DIR}/openssl-config)
+
+add_custom_target(fips_install DEPENDS ${CMAKE_BINARY_DIR}/openssl-config/openssl-fips.cnf)
+
 ADD_YB_TEST_LIBRARY(
     cdc_test_util
     SRCS cdc_test_util.cc
@@ -99,7 +106,8 @@ add_dependencies(integration-tests
   yb-admin
   gen_auto_flags_json
   yb-ts-cli
-  generate_test_certs)
+  generate_test_certs
+  fips_install)
 
 ADD_YB_TEST_LIBRARY(
     cql_test_util
