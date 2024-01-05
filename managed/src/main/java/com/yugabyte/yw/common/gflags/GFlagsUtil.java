@@ -1038,6 +1038,11 @@ public class GFlagsUtil {
       UniverseTaskBase.ServerType serverType,
       UniverseDefinitionTaskParams.Cluster cluster,
       Collection<UniverseDefinitionTaskParams.Cluster> allClusters) {
+    // We need to always verify that we return a copy from here and not the original map.
+    // in case of classic gflags we are making a copy here in this function.
+    // in case of specific gflags we are making a copy in the in the getGFlags function that we
+    // call.
+
     UserIntent userIntent = cluster.userIntent;
     UniverseDefinitionTaskParams.Cluster primary =
         allClusters.stream()
@@ -1056,9 +1061,14 @@ public class GFlagsUtil {
       if (cluster.clusterType == UniverseDefinitionTaskParams.ClusterType.ASYNC) {
         return getGFlagsForAZ(azUuid, serverType, primary, allClusters);
       }
-      return serverType == UniverseTaskBase.ServerType.MASTER
-          ? userIntent.masterGFlags
-          : userIntent.tserverGFlags;
+      Map<String, String> retFlags =
+          (serverType == UniverseTaskBase.ServerType.MASTER)
+              ? userIntent.masterGFlags
+              : userIntent.tserverGFlags;
+      if (retFlags == null) {
+        retFlags = new HashMap<>();
+      }
+      return new HashMap<>(retFlags);
     }
   }
 
