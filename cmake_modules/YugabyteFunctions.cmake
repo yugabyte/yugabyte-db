@@ -757,8 +757,10 @@ function(parse_build_root_basename)
   endif()
   get_filename_component(YB_BUILD_ROOT_BASENAME "${CMAKE_CURRENT_BINARY_DIR}" NAME)
 
-  EXEC_PROGRAM("${BUILD_SUPPORT_DIR}/show_build_root_name_regex.sh"
+  execute_process(COMMAND "${BUILD_SUPPORT_DIR}/show_build_root_name_regex.sh"
                OUTPUT_VARIABLE BUILD_ROOT_BASENAME_RE)
+  # Remove trailing new line from BUILD_ROOT_BASENAME_RE.
+  string(REGEX REPLACE "\n$" "" BUILD_ROOT_BASENAME_RE "${BUILD_ROOT_BASENAME_RE}")
   string(REGEX MATCH "${BUILD_ROOT_BASENAME_RE}" RE_MATCH_RESULT "${YB_BUILD_ROOT_BASENAME}")
   if("$ENV{YB_DEBUG_BUILD_ROOT_BASENAME_PARSING}" STREQUAL "1")
     message("Parsing build root basename: ${YB_BUILD_ROOT_BASENAME}")
