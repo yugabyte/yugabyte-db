@@ -1,4 +1,4 @@
-import React, { FC } from 'react';
+import { FC } from 'react';
 import { Tab } from 'react-bootstrap';
 import { useTranslation } from 'react-i18next';
 import { NodeAgentHeader } from './NodeAgentHeader';
