@@ -438,6 +438,74 @@ p3.a = p1.a + p2.a;
 drop table p1;
 drop table p2;
 drop table p3;
+
+-- Test the scenarios where parameterized column values from the outer most
+-- loop (x1) are used at difference nesting levels (x2 and x3).
+CREATE TABLE x1 (a int PRIMARY KEY, b int);
+CREATE INDEX i_x1_b ON x1 (b);
+INSERT INTO x1 VALUES (1, 0), (2, 1), (3, 0), (4, 1), (5, 2), (6, 3);
+
+CREATE TABLE x2 (a int PRIMARY KEY, b int);
+CREATE INDEX i_x2_b ON x2 (b);
+INSERT INTO x2 VALUES (1, 0), (2, 1), (3, 0), (4, 1);
+
+CREATE TABLE x3 (a int PRIMARY KEY, b int);
+CREATE INDEX i_x3_b ON x3 (b);
+INSERT INTO x3 VALUES (1, 0), (2, 1), (5, 2), (6, 3);
+
+ANALYZE x1;
+ANALYZE x2;
+ANALYZE x3;
+
+-- Before 8ac82f4247 (2.21.0.0-b227), the planner was producing incorrect plans
+-- for the following queries, but the results happened to be correct with smaller
+-- batch size e.g. 2, 3, etc.
+SET yb_bnl_batch_size = 10;
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM x1 LEFT JOIN LATERAL (
+  SELECT * FROM x2 LEFT JOIN LATERAL (
+    SELECT x3.b FROM x3 WHERE x3.a = x1.a AND x3.b = x2.b LIMIT ALL
+  ) AS v1 ON true
+  WHERE x2.a = x1.a
+) v2 ON true
+ORDER BY 1, 2, 3, 4, 5;
+
+SELECT * FROM x1 LEFT JOIN LATERAL (
+  SELECT * FROM x2 LEFT JOIN LATERAL (
+    SELECT x3.b FROM x3 WHERE x3.a = x1.a AND x3.b = x2.b LIMIT ALL
+  ) AS v1 ON true
+  WHERE x2.a = x1.a
+) v2 ON true
+ORDER BY 1, 2, 3, 4, 5;
+
+
+EXPLAIN (COSTS OFF)
+SELECT * FROM x1 LEFT JOIN LATERAL (
+  SELECT * FROM x2 LEFT JOIN x1 AS x4 ON x2.a = x4.a
+    LEFT JOIN LATERAL (
+      SELECT x3.b FROM x3 WHERE x3.b = x1.b LIMIT ALL
+    ) AS v1 ON true
+  WHERE x2.a = x1.a
+) v2 ON true
+ORDER BY 1, 2, 3, 4, 5, 6, 7;
+
+SELECT * FROM x1 LEFT JOIN LATERAL (
+  SELECT * FROM x2 LEFT JOIN x1 AS x4 ON x2.a = x4.a
+    LEFT JOIN LATERAL (
+      SELECT x3.b FROM x3 WHERE x3.b = x1.b LIMIT ALL
+    ) AS v1 ON true
+  WHERE x2.a = x1.a
+) v2 ON true
+ORDER BY 1, 2, 3, 4, 5, 6, 7;
+
+
+DROP TABLE x1;
+DROP TABLE x2;
+DROP TABLE x3;
+
+SET yb_bnl_batch_size = 3;
+
 --
 --
 -- Inner joins (equi-joins)
