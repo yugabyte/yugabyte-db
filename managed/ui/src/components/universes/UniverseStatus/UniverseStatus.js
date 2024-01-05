@@ -119,11 +119,11 @@ export default class UniverseStatus extends Component {
                   btnText={'View Details'}
                   btnClass="btn btn-default view-task-details-btn"
                   onClick={() =>
-                    this.redirectToTaskLogs(failedTask?.id, currentUniverse.universeUUID)
+                    this.redirectToTaskLogs(failedTask?.id, currentUniverse?.universeUUID)
                   }
                 />
               )}
-              {failedTask.retryable && shouldDisplayTaskButton && (
+              {failedTask?.retryable && shouldDisplayTaskButton && (
                 <RbacValidator
                   accessRequiredOn={{
                     onResource: currentUniverse.universeUUID,
@@ -135,7 +135,7 @@ export default class UniverseStatus extends Component {
                     btnText={'Retry Task'}
                     btnClass="btn btn-default view-task-details-btn"
                     onClick={() =>
-                      this.retryTaskClicked(failedTask.id, currentUniverse.universeUUID)
+                      this.retryTaskClicked(failedTask?.id, currentUniverse?.universeUUID)
                     }
                   />
                 </RbacValidator>
@@ -195,11 +195,11 @@ export default class UniverseStatus extends Component {
                   ![
                     SoftwareUpgradeTaskType.ROLLBACK_UPGRADE,
                     SoftwareUpgradeTaskType.SOFTWARE_UPGRADE
-                  ].includes(failedTask.type) || !isRollBackFeatEnabled
+                  ].includes(failedTask?.type) || !isRollBackFeatEnabled
                     ? 'status-error__reason'
                     : 'status-error__noHideText'
                 }
-              >{`${failedTask.type} ${failedTask.target} failed`}</span>
+              >{`${failedTask?.type} ${failedTask?.target} failed`}</span>
             ) : (
               <span>{universeStatus.state.text}</span>
             ))}
@@ -209,7 +209,7 @@ export default class UniverseStatus extends Component {
             (![
               SoftwareUpgradeTaskType.ROLLBACK_UPGRADE,
               SoftwareUpgradeTaskType.SOFTWARE_UPGRADE
-            ].includes(failedTask.type) ||
+            ].includes(failedTask?.type) ||
               !isRollBackFeatEnabled) && (
               <YBButton
                 btnText={'View Details'}
@@ -222,11 +222,11 @@ export default class UniverseStatus extends Component {
           {shouldDisplayTaskButton &&
             !universePendingTask &&
             failedTask !== undefined &&
-            failedTask.retryable &&
+            failedTask?.retryable &&
             (![
               SoftwareUpgradeTaskType.ROLLBACK_UPGRADE,
               SoftwareUpgradeTaskType.SOFTWARE_UPGRADE
-            ].includes(failedTask.type) ||
+            ].includes(failedTask?.type) ||
               !isRollBackFeatEnabled) && (
               <RbacValidator
                 accessRequiredOn={{
@@ -238,7 +238,9 @@ export default class UniverseStatus extends Component {
                 <YBButton
                   btnText={'Retry Task'}
                   btnClass="btn btn-default view-task-details-btn"
-                  onClick={() => this.retryTaskClicked(failedTask.id, currentUniverse.universeUUID)}
+                  onClick={() =>
+                    this.retryTaskClicked(failedTask?.id, currentUniverse?.universeUUID)
+                  }
                 />
               </RbacValidator>
             )}

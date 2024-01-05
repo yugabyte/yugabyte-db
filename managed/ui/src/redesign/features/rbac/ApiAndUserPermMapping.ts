@@ -820,6 +820,10 @@ export const ApiPermissionMap = {
         requestType: ApiRequestType.POST,
         endpoint: '/universes/$uniUUID<[^/]+>/upgrade/software'
     },
+    UPGRADE_NEW_UNIVERSE_SOFTWARE: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/universes/$uniUUID<[^/]+>/upgrade/db_version'
+    },
     UPGRADE_UNIVERSE_SYSTEMD: {
         requestType: ApiRequestType.POST,
         endpoint: '/universes/$uniUUID<[^/]+>/upgrade/systemd'

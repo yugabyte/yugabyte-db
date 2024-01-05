@@ -18,6 +18,11 @@ import { createErrorMessage, transitToUniverse } from '../../universe-form/utils
 import { Universe } from '../../universe-form/utils/dto';
 import { TOAST_AUTO_DISMISS_INTERVAL } from '../../universe-form/utils/constants';
 import { DBRollbackFormFields, UPGRADE_TYPE, DBRollbackPayload } from './utils/types';
+//Rbac
+import { RBAC_ERR_MSG_NO_PERM } from '../../../rbac/common/validator/ValidatorUtils';
+import { hasNecessaryPerm } from '../../../rbac/common/RbacApiPermValidator';
+import { ApiPermissionMap } from '../../../rbac/ApiAndUserPermMapping';
+//imported styles
 import { dbUpgradeFormStyles } from './utils/RollbackUpgradeStyles';
 //icons
 import { ReactComponent as ClockRewindIcon } from '../../../../assets/clock-rewind.svg';
@@ -89,6 +94,11 @@ export const DBRollbackModal: FC<DBRollbackModalProps> = ({ open, onClose, unive
     }
   });
 
+  const canRollbackUpgrade = hasNecessaryPerm({
+    onResource: universeUUID,
+    ...ApiPermissionMap.UPGRADE_UNIVERSE_ROLLBACK
+  });
+
   return (
     <YBModal
       open={open}
@@ -104,6 +114,12 @@ export const DBRollbackModal: FC<DBRollbackModalProps> = ({ open, onClose, unive
       submitTestId="RollBackUpgrade-Submit"
       cancelTestId="RollBackUpgrade-Back"
       titleIcon={<ClockRewindIcon />}
+      buttonProps={{
+        primary: {
+          disabled: !canRollbackUpgrade
+        }
+      }}
+      submitButtonTooltip={!canRollbackUpgrade ? RBAC_ERR_MSG_NO_PERM : ''}
     >
       <FormProvider {...formMethods}>
         <Box
