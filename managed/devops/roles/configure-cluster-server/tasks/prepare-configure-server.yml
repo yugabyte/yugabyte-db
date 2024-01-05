@@ -30,6 +30,15 @@
     owner: "{{ user_name }}"
     mode: 0755
 
+- name: Configure | Add clock sync script
+  vars:
+    mount_paths: "{{ _mount_points | join(' ') }}"
+  template:
+    src: clock-sync.sh.j2
+    dest: "{{ yb_bin_dir }}/clock-sync.sh"
+    owner: "{{ user_name }}"
+    mode: 0755
+
 - name: Setup | Create directory to land core dumps
   file:
     path: "{{ mount_cores_dir }}"
