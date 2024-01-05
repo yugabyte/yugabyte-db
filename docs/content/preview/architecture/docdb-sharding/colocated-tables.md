@@ -34,7 +34,7 @@ The decision to use colocating clusters should be based on the specific requirem
 
 Applications with smaller sized datasets may have the following pattern and requirements:
 
-- The size of the entire dataset is small. Typically, this entire database is less than 500 GB in size.
+- The size of the entire dataset is small. Typically, this entire database is less than 50 GB in size.
 - They require a large number of tables, indexes and other relations created in a single database.
 - Need high availability and/or geographic data distribution.
 - Scaling the dataset or the number of IOPS is not an immediate concern.
