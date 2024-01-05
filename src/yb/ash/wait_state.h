@@ -149,7 +149,7 @@ YB_DEFINE_TYPED_ENUM(WaitStateCode, uint32_t,
 struct AshMetadata {
   Uuid root_request_id = Uuid::Nil();
   Uuid yql_endpoint_tserver_uuid = Uuid::Nil();
-  int64_t query_id = 0;
+  uint64_t query_id = 0;
   int64_t rpc_request_id = 0;
   HostPort client_host_port{};
 
@@ -268,8 +268,8 @@ class WaitStateInfo {
 
   void set_root_request_id(const Uuid& id) EXCLUDES(mutex_);
   void set_yql_endpoint_tserver_uuid(const Uuid& yql_endpoint_tserver_uuid) EXCLUDES(mutex_);
-  int64_t query_id() EXCLUDES(mutex_);
-  void set_query_id(int64_t query_id) EXCLUDES(mutex_);
+  uint64_t query_id() EXCLUDES(mutex_);
+  void set_query_id(uint64_t query_id) EXCLUDES(mutex_);
   void set_rpc_request_id(int64_t id) EXCLUDES(mutex_);
   void set_client_host_port(const HostPort& host_port) EXCLUDES(mutex_);
 

@@ -34,7 +34,7 @@ AshMetadata GenerateRandomMetadata() {
   return AshMetadata{
       .root_request_id{Uuid::Generate()},
       .yql_endpoint_tserver_uuid{Uuid::Generate()},
-      .query_id = RandomUniformInt<int64_t>(),
+      .query_id = RandomUniformInt<uint64_t>(),
       .rpc_request_id = RandomUniformInt<int64_t>(),
       .client_host_port = RandomHostPort()};
 }
@@ -60,7 +60,7 @@ TEST(WaitStateTest, TestUpdate) {
   AshMetadataPB pb1;
   auto pb1_root_request_id = Uuid::Generate();
   pb1_root_request_id.ToBytes(pb1.mutable_root_request_id());
-  pb1.set_query_id(RandomUniformInt<int64_t>());
+  pb1.set_query_id(RandomUniformInt<uint64_t>());
   HostPortToPB(RandomHostPort(), pb1.mutable_client_host_port());
   meta1.UpdateFrom(AshMetadata::FromPB(pb1));
   ASSERT_EQ(meta1.root_request_id, pb1_root_request_id);

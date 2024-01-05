@@ -87,12 +87,12 @@ void WaitStateInfo::set_root_request_id(const Uuid &root_request_id) {
   metadata_.root_request_id = root_request_id;
 }
 
-void WaitStateInfo::set_query_id(int64_t query_id) {
+void WaitStateInfo::set_query_id(uint64_t query_id) {
   std::lock_guard lock(mutex_);
   metadata_.query_id = query_id;
 }
 
-int64_t WaitStateInfo::query_id() {
+uint64_t WaitStateInfo::query_id() {
   std::lock_guard lock(mutex_);
   return metadata_.query_id;
 }
