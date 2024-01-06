@@ -24,6 +24,7 @@ import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
+import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -502,6 +503,9 @@ public class CustomerTaskManager {
         break;
       case CloudProviderDelete:
         taskParams = Json.fromJson(oldTaskParams, CloudProviderDelete.Params.class);
+        break;
+      case RestartUniverseKubernetesUpgrade:
+        taskParams = Json.fromJson(oldTaskParams, RestartTaskParams.class);
         break;
       default:
         String errMsg =
