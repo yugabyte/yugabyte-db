@@ -29,12 +29,12 @@
 #include "yb/cdc/xcluster_types.h"
 #include "yb/client/client_fwd.h"
 #include "yb/common/common_types.pb.h"
-#include "yb/tablet/tablet_types.pb.h"
 
 #include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/xcluster_consumer_replication_error.h"
 #include "yb/tserver/xcluster_poller_stats.h"
 
+#include "yb/gutil/ref_counted.h"
 #include "yb/util/flags/flags_callback.h"
 #include "yb/util/locks.h"
 #include "yb/util/monotime.h"
@@ -62,12 +62,9 @@ class TSHeartbeatRequestPB;
 }  // namespace master
 
 namespace tserver {
+class AutoFlagsVersionHandler;
 class XClusterPoller;
 class TabletServer;
-
-namespace xcluster {
-class AutoFlagsVersionHandler;
-}  // namespace xcluster
 
 struct XClusterClient {
   std::unique_ptr<rpc::Messenger> messenger;
@@ -125,7 +122,7 @@ class XClusterConsumer : public XClusterConsumerIf {
   void StoreReplicationError(const XClusterPollerId& poller_id, ReplicationErrorPb error);
 
   Status ReportNewAutoFlagConfigVersion(
-      const cdc::ReplicationGroupId& replication_group_id, uint32_t new_version) const;
+      const xcluster::ReplicationGroupId& replication_group_id, uint32_t new_version) const;
 
  private:
   // Runs a thread that periodically polls for any new threads.
@@ -134,7 +131,7 @@ class XClusterConsumer : public XClusterConsumerIf {
   // Loops through all the entries in the registry and creates a producer -> consumer tablet
   // mapping.
   void UpdateReplicationGroupInMemState(
-      const cdc::ReplicationGroupId& replication_group_id,
+      const xcluster::ReplicationGroupId& replication_group_id,
       const yb::cdc::ProducerEntryPB& producer_entry_pb) REQUIRES(master_data_mutex_);
 
   // Loops through all entries in registry from master to check if all producer tablets are being
@@ -145,14 +142,14 @@ class XClusterConsumer : public XClusterConsumerIf {
   void TriggerDeletionOfOldPollers() EXCLUDES (master_data_mutex_);
 
   bool ShouldContinuePolling(
-      const cdc::ProducerTabletInfo producer_tablet_info, const XClusterPoller& poller,
+      const xcluster::ProducerTabletInfo producer_tablet_info, const XClusterPoller& poller,
       std::string& reason) REQUIRES_SHARED(master_data_mutex_);
 
   void UpdatePollerSchemaVersionMaps(
       std::shared_ptr<XClusterPoller> xcluster_poller, const xrepl::StreamId& stream_id) const
       REQUIRES_SHARED(master_data_mutex_);
 
-  void RemoveFromPollersMap(const cdc::ProducerTabletInfo producer_tablet_info);
+  void RemoveFromPollersMap(const xcluster::ProducerTabletInfo producer_tablet_info);
 
   void SetRateLimiterSpeed();
 
@@ -170,23 +167,17 @@ class XClusterConsumer : public XClusterConsumerIf {
   std::function<int64_t(const TabletId&)> get_leader_term_func_;
 
   class TabletTag;
-  using ProducerConsumerTabletMap = boost::multi_index_container <
-    cdc::XClusterTabletInfo,
-    boost::multi_index::indexed_by <
-      boost::multi_index::hashed_unique <
-          boost::multi_index::member <
-              cdc::XClusterTabletInfo, cdc::ProducerTabletInfo,
-              &cdc::XClusterTabletInfo::producer_tablet_info>
-      >,
-      boost::multi_index::hashed_non_unique <
-          boost::multi_index::tag <TabletTag>,
-          boost::multi_index::const_mem_fun <
-              cdc::XClusterTabletInfo, const TabletId&,
-              &cdc::XClusterTabletInfo::producer_tablet_id
-          >
-      >
-    >
-  >;
+  using ProducerConsumerTabletMap = boost::multi_index_container<
+      xcluster::XClusterTabletInfo,
+      boost::multi_index::indexed_by<
+          boost::multi_index::hashed_unique<boost::multi_index::member<
+              xcluster::XClusterTabletInfo, xcluster::ProducerTabletInfo,
+              &xcluster::XClusterTabletInfo::producer_tablet_info>>,
+          boost::multi_index::hashed_non_unique<
+              boost::multi_index::tag<TabletTag>,
+              boost::multi_index::const_mem_fun<
+                  xcluster::XClusterTabletInfo, const TabletId&,
+                  &xcluster::XClusterTabletInfo::producer_tablet_id>>>>;
 
   ProducerConsumerTabletMap producer_consumer_tablet_map_from_master_
       GUARDED_BY(master_data_mutex_);
@@ -212,7 +203,8 @@ class XClusterConsumer : public XClusterConsumerIf {
   scoped_refptr<Thread> run_trigger_poll_thread_;
 
   std::unordered_map<
-      cdc::ProducerTabletInfo, std::shared_ptr<XClusterPoller>, cdc::ProducerTabletInfo::Hash>
+      xcluster::ProducerTabletInfo, std::shared_ptr<XClusterPoller>,
+      xcluster::ProducerTabletInfo::Hash>
       pollers_map_ GUARDED_BY(pollers_map_mutex_);
 
   std::unique_ptr<ThreadPool> thread_pool_;
@@ -222,11 +214,12 @@ class XClusterConsumer : public XClusterConsumerIf {
   std::shared_ptr<XClusterClient> local_client_;
 
   // map: {replication_group_id : ...}.
-  std::unordered_map<cdc::ReplicationGroupId, std::shared_ptr<XClusterClient>> remote_clients_
+  std::unordered_map<xcluster::ReplicationGroupId, std::shared_ptr<XClusterClient>> remote_clients_
       GUARDED_BY(pollers_map_mutex_);
-  std::unordered_map<cdc::ReplicationGroupId, std::string> uuid_master_addrs_
+  std::unordered_map<xcluster::ReplicationGroupId, std::string> uuid_master_addrs_
       GUARDED_BY(master_data_mutex_);
-  std::unordered_set<cdc::ReplicationGroupId> changed_master_addrs_ GUARDED_BY(master_data_mutex_);
+  std::unordered_set<xcluster::ReplicationGroupId> changed_master_addrs_
+      GUARDED_BY(master_data_mutex_);
 
   std::atomic<int32_t> cluster_config_version_ GUARDED_BY(master_data_mutex_) = {-1};
   std::atomic<cdc::XClusterRole> consumer_role_ = cdc::XClusterRole::ACTIVE;
@@ -248,7 +241,7 @@ class XClusterConsumer : public XClusterConsumerIf {
   std::unique_ptr<rocksdb::RateLimiter> rate_limiter_;
   FlagCallbackRegistration rate_limiter_callback_;
 
-  std::unique_ptr<xcluster::AutoFlagsVersionHandler> auto_flags_version_handler_;
+  std::unique_ptr<AutoFlagsVersionHandler> auto_flags_version_handler_;
 };
 
 } // namespace tserver

@@ -12,6 +12,7 @@
 // under the License.
 
 #include "yb/common/redis_constants_common.h"
+#include "yb/common/redis_protocol.pb.h"
 
 #include "yb/client/session.h"
 #include "yb/client/table.h"
@@ -23,7 +24,7 @@
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_client.pb.h"
 #include "yb/master/master_admin.proxy.h"
-
+#include "yb/tserver/tserver_service.pb.h"
 #include "yb/tools/yb-backup/yb-backup-test_base.h"
 
 #include "yb/util/backoff_waiter.h"

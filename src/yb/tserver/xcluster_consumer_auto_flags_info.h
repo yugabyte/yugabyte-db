@@ -16,7 +16,7 @@
 #include <atomic>
 #include <shared_mutex>
 
-#include "yb/cdc/cdc_types.h"
+#include "yb/cdc/xcluster_types.h"
 #include "yb/gutil/integral_types.h"
 #include "yb/gutil/thread_annotations.h"
 
@@ -26,7 +26,7 @@ namespace client {
 class YBClient;
 }  // namespace client
 
-namespace tserver::xcluster {
+namespace tserver {
 
 // Helper class to get the compatible target AutoFlags config version.
 class AutoFlagsCompatibleVersion {
@@ -58,29 +58,29 @@ class AutoFlagsVersionHandler {
   virtual ~AutoFlagsVersionHandler() = default;
 
   void InsertOrUpdate(
-      const cdc::ReplicationGroupId& replication_group_id, uint32 compatible_version,
+      const xcluster::ReplicationGroupId& replication_group_id, uint32 compatible_version,
       uint32 max_reported_version) EXCLUDES(mutex_);
 
-  void Delete(const cdc::ReplicationGroupId& replication_group_id) EXCLUDES(mutex_);
+  void Delete(const xcluster::ReplicationGroupId& replication_group_id) EXCLUDES(mutex_);
 
   std::shared_ptr<AutoFlagVersionInfo> GetAutoFlagsCompatibleVersion(
-      const cdc::ReplicationGroupId& replication_group_id) const EXCLUDES(mutex_);
+      const xcluster::ReplicationGroupId& replication_group_id) const EXCLUDES(mutex_);
 
   Status ReportNewAutoFlagConfigVersion(
-      const cdc::ReplicationGroupId& replication_group_id, uint32_t new_version) const
+      const xcluster::ReplicationGroupId& replication_group_id, uint32_t new_version) const
       EXCLUDES(mutex_);
 
  protected:
   virtual Status XClusterReportNewAutoFlagConfigVersion(
-      const cdc::ReplicationGroupId& replication_group_id, uint32 new_version) const;
+      const xcluster::ReplicationGroupId& replication_group_id, uint32 new_version) const;
 
  private:
   std::shared_ptr<client::YBClient> client_;
 
   mutable std::shared_mutex mutex_;
-  std::unordered_map<cdc::ReplicationGroupId, std::shared_ptr<AutoFlagVersionInfo>>
+  std::unordered_map<xcluster::ReplicationGroupId, std::shared_ptr<AutoFlagVersionInfo>>
       version_info_map_ GUARDED_BY(mutex_);
 };
 
-}  // namespace tserver::xcluster
+}  // namespace tserver
 }  // namespace yb

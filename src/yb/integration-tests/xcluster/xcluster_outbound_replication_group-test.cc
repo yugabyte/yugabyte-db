@@ -25,7 +25,7 @@ namespace master {
 const auto kDeadline = MonoDelta::FromSeconds(30);
 const NamespaceName kNamespaceName = "db1";
 const PgSchemaName kPgSchemaName = "public";
-const cdc::ReplicationGroupId kReplicationGroupId("rg1");
+const xcluster::ReplicationGroupId kReplicationGroupId("rg1");
 const TableName kTableName1 = "table1", kTableName2 = "table2";
 
 class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
@@ -105,7 +105,7 @@ class XClusterOutboundReplicationGroupTest : public XClusterYsqlTestBase {
   }
 
   Result<master::GetXClusterStreamsResponsePB> GetXClusterStreams(
-      const cdc::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
+      const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
       std::vector<TableName> table_names = {}, std::vector<PgSchemaName> pg_schema_names = {}) {
     std::promise<Result<master::GetXClusterStreamsResponsePB>> promise;
     RETURN_NOT_OK(client_->GetXClusterStreams(

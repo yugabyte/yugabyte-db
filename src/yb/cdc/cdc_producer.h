@@ -41,12 +41,6 @@ class MemTracker;
 
 namespace cdc {
 
-using EnumOidLabelMap = std::unordered_map<uint32_t, std::string>;
-using EnumLabelCache = std::unordered_map<NamespaceName, EnumOidLabelMap>;
-
-using CompositeAttsMap = std::unordered_map<uint32_t, std::vector<master::PgAttributePB>>;
-using CompositeTypeCache = std::unordered_map<NamespaceName, CompositeAttsMap>;
-
 struct SchemaDetails {
   SchemaVersion schema_version;
   std::shared_ptr<Schema> schema;

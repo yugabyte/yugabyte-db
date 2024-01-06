@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include "yb/cdc/cdc_fwd.h"
+#include "yb/cdc/xrepl_types.h"
 
 #include "yb/common/common_fwd.h"
 

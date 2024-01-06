@@ -2117,7 +2117,7 @@ class GetXClusterStreamsRpc
       : ClientMasterRpc(client, deadline), user_cb_(std::move(user_cb)) {}
 
   Status Init(
-      const cdc::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
+      const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
       const std::vector<TableName>& table_names, const std::vector<PgSchemaName>& pg_schema_names) {
     SCHECK_EQ(
         table_names.size(), pg_schema_names.size(), InvalidArgument,
@@ -2184,7 +2184,7 @@ class IsXClusterBootstrapRequiredRpc : public ClientMasterRpc<
       : ClientMasterRpc(client, deadline), user_cb_(std::move(user_cb)) {}
 
   Status Init(
-      const cdc::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id) {
+      const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id) {
     req_.set_replication_group_id(replication_group_id.ToString());
     req_.set_namespace_id(namespace_id);
     return Status::OK();
@@ -2873,9 +2873,10 @@ Result<bool> YBClient::Data::CheckIfPitrActive(CoarseTimePoint deadline) {
 }
 
 Status YBClient::Data::GetXClusterStreams(
-    YBClient* client, CoarseTimePoint deadline, const cdc::ReplicationGroupId& replication_group_id,
-    const NamespaceId& namespace_id, const std::vector<TableName>& table_names,
-    const std::vector<PgSchemaName>& pg_schema_names, GetXClusterStreamsCallback user_cb) {
+    YBClient* client, CoarseTimePoint deadline,
+    const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
+    const std::vector<TableName>& table_names, const std::vector<PgSchemaName>& pg_schema_names,
+    GetXClusterStreamsCallback user_cb) {
   auto rpc =
       std::make_shared<internal::GetXClusterStreamsRpc>(client, std::move(user_cb), deadline);
   RETURN_NOT_OK(rpc->Init(replication_group_id, namespace_id, table_names, pg_schema_names));
@@ -2885,8 +2886,9 @@ Status YBClient::Data::GetXClusterStreams(
 }
 
 Status YBClient::Data::IsXClusterBootstrapRequired(
-    YBClient* client, CoarseTimePoint deadline, const cdc::ReplicationGroupId& replication_group_id,
-    const NamespaceId& namespace_id, IsXClusterBootstrapRequiredCallback user_cb) {
+    YBClient* client, CoarseTimePoint deadline,
+    const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
+    IsXClusterBootstrapRequiredCallback user_cb) {
   auto rpc = std::make_shared<internal::IsXClusterBootstrapRequiredRpc>(
       client, std::move(user_cb), deadline);
   RETURN_NOT_OK(rpc->Init(replication_group_id, namespace_id));

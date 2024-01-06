@@ -186,7 +186,7 @@ TEST_F(XClusterUpgradeTest, SetupWithLowerTargetUniverse) {
 
   const auto kAutoFlagsMismatchError = "AutoFlags between the universes are not compatible";
 
-  cdc::ReplicationGroupId replication_group_id1("rg1"), replication_group_id2("rg2"),
+  xcluster::ReplicationGroupId replication_group_id1("rg1"), replication_group_id2("rg2"),
       replication_group_id3("rg3");
   auto s = SetupUniverseReplication(replication_group_id1, producer_tables_);
   ASSERT_NOK(s);

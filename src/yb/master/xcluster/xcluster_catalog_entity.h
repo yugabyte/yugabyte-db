@@ -79,14 +79,15 @@ struct PersistentXClusterOutboundReplicationGroupInfo
 class XClusterOutboundReplicationGroupInfo
     : public MetadataCowWrapper<PersistentXClusterOutboundReplicationGroupInfo> {
  public:
-  explicit XClusterOutboundReplicationGroupInfo(const cdc::ReplicationGroupId& replication_group_id)
+  explicit XClusterOutboundReplicationGroupInfo(
+      const xcluster::ReplicationGroupId& replication_group_id)
       : replication_group_id_(replication_group_id) {}
 
   const std::string& id() const override { return replication_group_id_.ToString(); }
-  const cdc::ReplicationGroupId& ReplicationGroupId() const { return replication_group_id_; }
+  const xcluster::ReplicationGroupId& ReplicationGroupId() const { return replication_group_id_; }
 
  private:
-  const cdc::ReplicationGroupId replication_group_id_;
+  const xcluster::ReplicationGroupId replication_group_id_;
 };
 
 DECLARE_MULTI_INSTANCE_LOADER_CLASS(
