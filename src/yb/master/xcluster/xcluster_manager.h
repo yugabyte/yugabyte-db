@@ -135,15 +135,15 @@ class XClusterManager : public XClusterManagerIf {
       EXCLUDES(outbound_replication_group_map_mutex_);
 
   XClusterOutboundReplicationGroup InitOutboundReplicationGroup(
-      const cdc::ReplicationGroupId& replication_group_id,
+      const xcluster::ReplicationGroupId& replication_group_id,
       const SysXClusterOutboundReplicationGroupEntryPB& metadata);
 
   Result<XClusterOutboundReplicationGroup*> GetOutboundReplicationGroup(
-      const cdc::ReplicationGroupId& replication_group_id)
+      const xcluster::ReplicationGroupId& replication_group_id)
       REQUIRES(outbound_replication_group_map_mutex_);
 
   Result<const XClusterOutboundReplicationGroup*> GetOutboundReplicationGroup(
-      const cdc::ReplicationGroupId& replication_group_id) const
+      const xcluster::ReplicationGroupId& replication_group_id) const
       REQUIRES_SHARED(outbound_replication_group_map_mutex_);
 
   Master* const master_;
@@ -161,7 +161,7 @@ class XClusterManager : public XClusterManagerIf {
   XClusterSafeTimeInfo xcluster_safe_time_info_;
 
   mutable std::shared_mutex outbound_replication_group_map_mutex_;
-  std::map<cdc::ReplicationGroupId, XClusterOutboundReplicationGroup>
+  std::map<xcluster::ReplicationGroupId, XClusterOutboundReplicationGroup>
       outbound_replication_group_map_ GUARDED_BY(outbound_replication_group_map_mutex_);
 };
 

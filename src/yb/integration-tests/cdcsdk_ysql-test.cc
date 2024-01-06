@@ -3564,8 +3564,8 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKActiveTimeCacheInSyncWi
                                                        ->TEST_service_pool("yb.cdc.CDCService")
                                                        ->TEST_get_service()
                                                        .get());
-  auto tablet_info = ASSERT_RESULT(
-      cdc_service->TEST_GetTabletInfoFromCache({{}, stream_id, tablets[0].tablet_id()}));
+  auto tablet_info =
+      ASSERT_RESULT(cdc_service->TEST_GetTabletInfoFromCache({stream_id, tablets[0].tablet_id()}));
   auto first_last_active_time = tablet_info.last_active_time;
   auto last_active_time_from_table = ASSERT_RESULT(
       GetLastActiveTimeFromCdcStateTable(stream_id, tablets[0].tablet_id(), test_client()));
@@ -3594,7 +3594,7 @@ TEST_F(CDCSDKYsqlTest, YB_DISABLE_TEST_IN_TSAN(TestCDCSDKActiveTimeCacheInSyncWi
                                                   ->TEST_get_service()
                                                   .get());
   tablet_info = ASSERT_RESULT(
-      cdc_service->TEST_GetTabletInfoFromCache({{}, stream_id, tablets[0].tablet_id()}));
+      cdc_service->TEST_GetTabletInfoFromCache({stream_id, tablets[0].tablet_id()}));
   auto second_last_active_time = tablet_info.last_active_time;
 
   last_active_time_from_table = ASSERT_RESULT(

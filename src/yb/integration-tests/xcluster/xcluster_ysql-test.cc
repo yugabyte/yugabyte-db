@@ -1748,8 +1748,8 @@ TEST_F(XClusterYsqlTest, IsBootstrapRequiredNotFlushed) {
   ASSERT_TRUE(ASSERT_RESULT(producer_client()->IsBootstrapRequired({producer_table_->id()})));
 
   // 4. Setup replication with data should fail.
-  ASSERT_NOK(
-      SetupUniverseReplication(cdc::ReplicationGroupId("replication-group-2"), producer_tables_));
+  ASSERT_NOK(SetupUniverseReplication(
+      xcluster::ReplicationGroupId("replication-group-2"), producer_tables_));
 }
 
 // Checks that with missing logs, replication will require bootstrapping

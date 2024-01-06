@@ -15,7 +15,7 @@
 
 #include <string>
 
-#include "yb/cdc/cdc_types.h"
+#include "yb/cdc/xcluster_types.h"
 #include "yb/client/client_fwd.h"
 #include "yb/common/hybrid_time.h"
 #include "yb/gutil/thread_annotations.h"
@@ -77,7 +77,7 @@ class AddTableToXClusterTask : public server::RunnableMonitoredTask {
   rpc::ScheduledTaskId reactor_task_id_ GUARDED_BY(schedule_task_mutex_) = rpc::kInvalidTaskId;
   HybridTime bootstrap_time_ = HybridTime::kInvalid;
   HybridTime initial_xcluster_safe_time_ = HybridTime::kInvalid;
-  cdc::ReplicationGroupId replication_group_id_;
+  xcluster::ReplicationGroupId replication_group_id_;
   LeaderEpoch epoch_;
 };
 }  // namespace yb::master

@@ -105,10 +105,10 @@ namespace yb {
 namespace tserver {
 
 XClusterPoller::XClusterPoller(
-    const cdc::ProducerTabletInfo& producer_tablet_info,
-    const cdc::ConsumerTabletInfo& consumer_tablet_info,
-    std::shared_ptr<const xcluster::AutoFlagsCompatibleVersion> auto_flags_version,
-    ThreadPool* thread_pool, rpc::Rpcs* rpcs, const std::shared_ptr<XClusterClient>& local_client,
+    const xcluster::ProducerTabletInfo& producer_tablet_info,
+    const xcluster::ConsumerTabletInfo& consumer_tablet_info,
+    std::shared_ptr<const AutoFlagsCompatibleVersion> auto_flags_version, ThreadPool* thread_pool,
+    rpc::Rpcs* rpcs, const std::shared_ptr<XClusterClient>& local_client,
     const std::shared_ptr<XClusterClient>& producer_client, XClusterConsumer* xcluster_consumer,
     SchemaVersion last_compatible_consumer_schema_version, int64_t leader_term,
     std::function<int64_t(const TabletId&)> get_leader_term)

@@ -1020,7 +1020,7 @@ TEST_F(CDCServiceTestMultipleServersOneTablet, TestUpdateLagMetrics) {
 
   stream_id_ = ASSERT_RESULT(CreateCDCStream(cdc_proxy_, table_.table()->id()));
   std::string tablet_id = GetTablet();
-  ProducerTabletInfo tablet_info = {{} /* empty universeid for producers */, stream_id_, tablet_id};
+  TabletStreamInfo tablet_info = {stream_id_, tablet_id};
   const auto& tservers = cluster_->mini_tablet_servers();
 
   // Test with t0 as the leader, by blacklisting other tservers.

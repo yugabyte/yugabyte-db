@@ -63,7 +63,7 @@ class TestUniverseReplicationLoader : public Visitor<PersistentUniverseReplicati
       const SysUniverseReplicationEntryPB& metadata) override {
     // Setup the universe replication info.
     UniverseReplicationInfo* const universe =
-        new UniverseReplicationInfo(cdc::ReplicationGroupId(replication_group_id));
+        new UniverseReplicationInfo(xcluster::ReplicationGroupId(replication_group_id));
     auto l = universe->LockForWrite();
     l.mutable_data()->pb.CopyFrom(metadata);
     l.Commit();
@@ -116,7 +116,7 @@ TEST_F(SysCatalogTest, TestSysCatalogUniverseReplicationOperations) {
 
   // 1. CHECK ADD_UNIVERSE_REPLICATION.
   auto universe = make_scoped_refptr<UniverseReplicationInfo>(
-      cdc::ReplicationGroupId("deadbeafdeadbeafdeadbeafdeadbeaf"));
+      xcluster::ReplicationGroupId("deadbeafdeadbeafdeadbeafdeadbeaf"));
   {
     auto l = universe->LockForWrite();
     l.mutable_data()->pb.add_tables("producer_table_id");

@@ -85,7 +85,7 @@ Status XClusterManager::RunLoaders() {
 Status XClusterManager::InsertOutboundReplicationGroup(
     const std::string& replication_group_id,
     const SysXClusterOutboundReplicationGroupEntryPB& metadata) {
-  cdc::ReplicationGroupId rg_id(replication_group_id);
+  xcluster::ReplicationGroupId rg_id(replication_group_id);
   std::lock_guard l(outbound_replication_group_map_mutex_);
 
   SCHECK(
@@ -101,7 +101,7 @@ Status XClusterManager::InsertOutboundReplicationGroup(
 }
 
 XClusterOutboundReplicationGroup XClusterManager::InitOutboundReplicationGroup(
-    const cdc::ReplicationGroupId& replication_group_id,
+    const xcluster::ReplicationGroupId& replication_group_id,
     const SysXClusterOutboundReplicationGroupEntryPB& metadata) {
   return XClusterOutboundReplicationGroup(
       replication_group_id, metadata, sys_catalog_,
@@ -122,13 +122,13 @@ XClusterOutboundReplicationGroup XClusterManager::InitOutboundReplicationGroup(
 }
 
 Result<XClusterOutboundReplicationGroup*> XClusterManager::GetOutboundReplicationGroup(
-    const cdc::ReplicationGroupId& replication_group_id) {
+    const xcluster::ReplicationGroupId& replication_group_id) {
   return const_cast<XClusterOutboundReplicationGroup*>(VERIFY_RESULT(
       const_cast<const XClusterManager*>(this)->GetOutboundReplicationGroup(replication_group_id)));
 }
 
 Result<const XClusterOutboundReplicationGroup*> XClusterManager::GetOutboundReplicationGroup(
-    const cdc::ReplicationGroupId& replication_group_id) const {
+    const xcluster::ReplicationGroupId& replication_group_id) const {
   auto outbound_replication_group =
       FindOrNull(outbound_replication_group_map_, replication_group_id);
   SCHECK(
@@ -322,7 +322,7 @@ Status XClusterManager::XClusterCreateOutboundReplicationGroup(
       "Replication group id cannot be empty");
   SCHECK(req->namespace_names_size() > 0, InvalidArgument, "Namespace names must be specified");
 
-  auto replication_group_id = cdc::ReplicationGroupId(req->replication_group_id());
+  auto replication_group_id = xcluster::ReplicationGroupId(req->replication_group_id());
 
   std::lock_guard l(outbound_replication_group_map_mutex_);
   SCHECK(
@@ -358,7 +358,7 @@ Status XClusterManager::XClusterAddNamespaceToOutboundReplicationGroup(
   LOG_FUNC_AND_RPC;
   SCHECK(req->has_namespace_name(), InvalidArgument, "Namespace name must be specified");
 
-  auto replication_group_id = cdc::ReplicationGroupId(req->replication_group_id());
+  auto replication_group_id = xcluster::ReplicationGroupId(req->replication_group_id());
   std::lock_guard l(outbound_replication_group_map_mutex_);
   auto outbound_replication_group =
       VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
@@ -377,7 +377,7 @@ Status XClusterManager::XClusterRemoveNamespaceFromOutboundReplicationGroup(
   LOG_FUNC_AND_RPC;
   SCHECK(req->has_namespace_id(), InvalidArgument, "Namespace id must be specified");
 
-  auto replication_group_id = cdc::ReplicationGroupId(req->replication_group_id());
+  auto replication_group_id = xcluster::ReplicationGroupId(req->replication_group_id());
 
   std::lock_guard l(outbound_replication_group_map_mutex_);
   auto outbound_replication_group =
@@ -392,7 +392,7 @@ Status XClusterManager::XClusterDeleteOutboundReplicationGroup(
     const LeaderEpoch& epoch) {
   LOG_FUNC_AND_RPC;
 
-  auto replication_group_id = cdc::ReplicationGroupId(req->replication_group_id());
+  auto replication_group_id = xcluster::ReplicationGroupId(req->replication_group_id());
 
   std::lock_guard l(outbound_replication_group_map_mutex_);
   auto outbound_replication_group =
@@ -411,7 +411,7 @@ Status XClusterManager::IsXClusterBootstrapRequired(
     rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
   SCHECK(req->has_namespace_id(), InvalidArgument, "Namespace id must be specified");
 
-  auto replication_group_id = cdc::ReplicationGroupId(req->replication_group_id());
+  auto replication_group_id = xcluster::ReplicationGroupId(req->replication_group_id());
 
   SharedLock l(outbound_replication_group_map_mutex_);
   auto outbound_replication_group = VERIFY_RESULT(
@@ -434,7 +434,7 @@ Status XClusterManager::GetXClusterStreams(
     const GetXClusterStreamsRequestPB* req, GetXClusterStreamsResponsePB* resp,
     rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
   SCHECK(req->has_namespace_id(), InvalidArgument, "Namespace id must be specified");
-  auto replication_group_id = cdc::ReplicationGroupId(req->replication_group_id());
+  auto replication_group_id = xcluster::ReplicationGroupId(req->replication_group_id());
 
   SharedLock l(outbound_replication_group_map_mutex_);
   auto outbound_replication_group = VERIFY_RESULT(

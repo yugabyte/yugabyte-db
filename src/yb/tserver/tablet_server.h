@@ -45,7 +45,7 @@
 #include "yb/common/common_util.h"
 #include "yb/common/pg_catversions.h"
 #include "yb/consensus/metadata.pb.h"
-#include "yb/cdc/cdc_fwd.h"
+#include "yb/cdc/xrepl_types.h"
 #include "yb/cdc/cdc_consumer.fwd.h"
 #include "yb/client/client_fwd.h"
 #include "yb/rpc/rpc_fwd.h"
@@ -79,6 +79,12 @@ namespace yb {
 class Env;
 class MaintenanceManager;
 class AutoFlagsManager;
+
+namespace cdc {
+
+class CDCServiceImpl;
+
+}
 
 namespace tserver {
 

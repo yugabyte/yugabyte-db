@@ -45,6 +45,7 @@
 #include <gtest/gtest.h>
 
 #include "yb/cdc/cdc_service.h"
+#include "yb/cdc/xcluster_util.h"
 #include "yb/client/client.h"
 #include "yb/client/table.h"
 #include "yb/client/table_creator.h"
@@ -4212,7 +4213,8 @@ Status ClusterAdminClient::AlterUniverseReplication(
         // If we are adding tables, then wait for the altered producer to be deleted (this happens
         // once it is merged with the original).
         RETURN_NOT_OK(WaitForSetupUniverseReplicationToFinish(
-            cdc::GetAlterReplicationGroupId(replication_group_id).ToString()));
+            xcluster::GetAlterReplicationGroupId(xcluster::ReplicationGroupId(replication_group_id))
+                .ToString()));
   }
 
   cout << "Replication altered successfully" << endl;

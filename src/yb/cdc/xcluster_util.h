@@ -1,4 +1,4 @@
-// Copyright (c) YugaByte, Inc.
+// Copyright (c) YugabyteDB, Inc.
 //
 // Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except
 // in compliance with the License.  You may obtain a copy of the License at
@@ -13,16 +13,14 @@
 
 #pragma once
 
-#include "yb/util/strongly_typed_uuid.h"
+#include "yb/cdc/xcluster_types.h"
 
-namespace yb {
-namespace xrepl {
-YB_STRONGLY_TYPED_UUID_DECL(StreamId);
-}
-namespace cdc {
+namespace yb::xcluster {
 
-class CDCServiceContext;
-class CDCServiceImpl;
+ReplicationGroupId GetAlterReplicationGroupId(const ReplicationGroupId& replication_group_id);
 
-} // namespace cdc
-} // namespace yb
+bool IsAlterReplicationGroupId(const ReplicationGroupId& replication_group_id);
+
+ReplicationGroupId GetOriginalReplicationGroupId(const ReplicationGroupId& replication_group_id);
+
+}  // namespace yb::xcluster

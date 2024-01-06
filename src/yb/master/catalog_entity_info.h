@@ -32,14 +32,13 @@
 
 #pragma once
 
-#include <shared_mutex>
 #include <mutex>
 #include <vector>
 
 #include <boost/bimap.hpp>
 
 #include "yb/cdc/cdc_types.h"
-#include "yb/common/entity_ids.h"
+#include "yb/cdc/xcluster_types.h"
 #include "yb/master/catalog_entity_base.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_backup.pb.h"
@@ -60,7 +59,6 @@
 #include "yb/tablet/metadata.pb.h"
 
 #include "yb/util/cow_object.h"
-#include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/shared_lock.h"
@@ -1186,12 +1184,12 @@ class UniverseReplicationInfoBase {
       google::protobuf::RepeatedPtrField<HostPortPB> producer_masters);
 
  protected:
-  explicit UniverseReplicationInfoBase(cdc::ReplicationGroupId replication_group_id)
+  explicit UniverseReplicationInfoBase(xcluster::ReplicationGroupId replication_group_id)
       : replication_group_id_(std::move(replication_group_id)) {}
 
   virtual ~UniverseReplicationInfoBase() = default;
 
-  const cdc::ReplicationGroupId replication_group_id_;
+  const xcluster::ReplicationGroupId replication_group_id_;
 
   std::shared_ptr<XClusterRpcTasks> xcluster_rpc_tasks_;
   std::string master_addrs_;
@@ -1219,11 +1217,11 @@ class UniverseReplicationInfo : public UniverseReplicationInfoBase,
                                 public RefCountedThreadSafe<UniverseReplicationInfo>,
                                 public MetadataCowWrapper<PersistentUniverseReplicationInfo> {
  public:
-  explicit UniverseReplicationInfo(cdc::ReplicationGroupId replication_group_id)
+  explicit UniverseReplicationInfo(xcluster::ReplicationGroupId replication_group_id)
       : UniverseReplicationInfoBase(std::move(replication_group_id)) {}
 
   const std::string& id() const override { return replication_group_id_.ToString(); }
-  const cdc::ReplicationGroupId& ReplicationGroupId() const { return replication_group_id_; }
+  const xcluster::ReplicationGroupId& ReplicationGroupId() const { return replication_group_id_; }
 
   std::string ToString() const override;
 
@@ -1309,13 +1307,13 @@ class UniverseReplicationBootstrapInfo
       public RefCountedThreadSafe<UniverseReplicationBootstrapInfo>,
       public MetadataCowWrapper<PersistentUniverseReplicationBootstrapInfo> {
  public:
-  explicit UniverseReplicationBootstrapInfo(cdc::ReplicationGroupId replication_group_id)
+  explicit UniverseReplicationBootstrapInfo(xcluster::ReplicationGroupId replication_group_id)
       : UniverseReplicationInfoBase(std::move(replication_group_id)) {}
   UniverseReplicationBootstrapInfo(const UniverseReplicationBootstrapInfo&) = delete;
   UniverseReplicationBootstrapInfo& operator=(const UniverseReplicationBootstrapInfo&) = delete;
 
   const std::string& id() const override { return replication_group_id_.ToString(); }
-  const cdc::ReplicationGroupId& ReplicationGroupId() const { return replication_group_id_; }
+  const xcluster::ReplicationGroupId& ReplicationGroupId() const { return replication_group_id_; }
 
   std::string ToString() const override;
 

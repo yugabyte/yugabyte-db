@@ -88,9 +88,15 @@ ADD_YB_LIBRARY(xcluster_producer_proto
   DEPS ${XCLUSTER_PRODUCER_YRPC_LIBS}
   NONLINK_DEPS ${XCLUSTER_PRODUCER_YRPC_TGTS})
 
+set(CDC_UTIL_SRCS
+  cdc_util.cc
+  xcluster_types.cc
+  xcluster_util.cc
+)
+
 ADD_YB_LIBRARY(
     cdc_util
-    SRCS cdc_util.cc
+    SRCS ${CDC_UTIL_SRCS}
     DEPS yb_client ql_util)
 
 #########################################

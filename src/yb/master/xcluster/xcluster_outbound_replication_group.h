@@ -21,7 +21,7 @@ namespace master {
 class XClusterOutboundReplicationGroup {
  public:
   explicit XClusterOutboundReplicationGroup(
-      const cdc::ReplicationGroupId& replication_group_id,
+      const xcluster::ReplicationGroupId& replication_group_id,
       const SysXClusterOutboundReplicationGroupEntryPB& outbound_replication_group_pb,
       SysCatalogTable* sys_catalog,
       std::function<Result<std::vector<scoped_refptr<TableInfo>>>(const NamespaceId&)>
@@ -32,7 +32,7 @@ class XClusterOutboundReplicationGroup {
           const DeleteCDCStreamRequestPB&, const LeaderEpoch& epoch)>
           delete_cdc_stream_func);
 
-  const cdc::ReplicationGroupId& Id() const { return outbound_rg_info_->ReplicationGroupId(); }
+  const xcluster::ReplicationGroupId& Id() const { return outbound_rg_info_->ReplicationGroupId(); }
 
   std::string ToString() const { return Format("xClusterOutboundReplicationGroup $0", Id()); }
   std::string LogPrefix() const { return ToString(); }
