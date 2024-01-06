@@ -309,6 +309,10 @@ YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, UpdateConsumerOnProducerMetadata);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, GetXClusterSafeTime);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, BootstrapProducer);
 YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterReportNewAutoFlagConfigVersion);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterCreateOutboundReplicationGroup);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterDeleteOutboundReplicationGroup);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterAddNamespaceToOutboundReplicationGroup);
+YB_CLIENT_SPECIALIZE_SIMPLE_EX(Replication, XClusterRemoveNamespaceFromOutboundReplicationGroup);
 
 YBClient::Data::Data()
     : leader_master_rpc_(rpcs_.InvalidHandle()),
@@ -1727,7 +1731,7 @@ class CreateSnapshotRpc
   }
 
   string ToString() const override {
-    return Format("CreateSnapshotRpc(num_attempts: $1)", num_attempts());
+    return Format("CreateSnapshotRpc(num_attempts: $0)", num_attempts());
   }
 
   virtual ~CreateSnapshotRpc() {}
@@ -2101,6 +2105,128 @@ class GetTableLocationsRpc
   }
 
   GetTableLocationsCallback user_cb_;
+};
+
+// A simple RPC that keeps retrying if resp has not_ready set.
+class GetXClusterStreamsRpc
+    : public ClientMasterRpc<
+          master::GetXClusterStreamsRequestPB, master::GetXClusterStreamsResponsePB> {
+ public:
+  GetXClusterStreamsRpc(
+      YBClient* client, GetXClusterStreamsCallback user_cb, CoarseTimePoint deadline)
+      : ClientMasterRpc(client, deadline), user_cb_(std::move(user_cb)) {}
+
+  Status Init(
+      const cdc::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id,
+      const std::vector<TableName>& table_names, const std::vector<PgSchemaName>& pg_schema_names) {
+    SCHECK_EQ(
+        table_names.size(), pg_schema_names.size(), InvalidArgument,
+        "Table names and pg schema names must be of the same size");
+
+    req_.set_replication_group_id(replication_group_id.ToString());
+    req_.set_namespace_id(namespace_id);
+
+    for (size_t i = 0; i < table_names.size(); i++) {
+      auto* table_info = req_.add_table_infos();
+      table_info->set_table_name(table_names[i]);
+      table_info->set_pg_schema_name(pg_schema_names[i]);
+    }
+
+    return Status::OK();
+  }
+
+  string ToString() const override {
+    return Format(
+        "GetXClusterStreamsRpc(replication_group_id: $0, num_attempts: $1)",
+        req_.replication_group_id(), num_attempts());
+  }
+
+  virtual ~GetXClusterStreamsRpc() {}
+
+ private:
+  void CallRemoteMethod() override {
+    master_replication_proxy()->GetXClusterStreamsAsync(
+        req_, &resp_, mutable_retrier()->mutable_controller(),
+        std::bind(&GetXClusterStreamsRpc::Finished, this, Status::OK()));
+  }
+
+  void ProcessResponse(const Status& status) override {
+    auto status_copy = status;
+    if (status_copy.ok() && resp_.has_error()) {
+      status_copy = StatusFromPB(resp_.error().status());
+    }
+
+    if (!status_copy.ok()) {
+      LOG(WARNING) << ToString() << " failed: " << status_copy;
+      user_cb_(std::move(status_copy));
+      return;
+    }
+
+    if (resp_.not_ready()) {
+      VLOG(2) << ToString() << ": xClusterOutboundReplicationGroup is not ready yet, retrying.";
+      ScheduleRetry(STATUS(TryAgain, "xClusterOutboundReplicationGroup is not ready yet"));
+      return;
+    }
+
+    user_cb_(std::move(resp_));
+  }
+
+  GetXClusterStreamsCallback user_cb_;
+};
+
+// A simple RPC that keeps retrying if resp has not_ready set.
+class IsXClusterBootstrapRequiredRpc : public ClientMasterRpc<
+                                           master::IsXClusterBootstrapRequiredRequestPB,
+                                           master::IsXClusterBootstrapRequiredResponsePB> {
+ public:
+  IsXClusterBootstrapRequiredRpc(
+      YBClient* client, IsXClusterBootstrapRequiredCallback user_cb, CoarseTimePoint deadline)
+      : ClientMasterRpc(client, deadline), user_cb_(std::move(user_cb)) {}
+
+  Status Init(
+      const cdc::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id) {
+    req_.set_replication_group_id(replication_group_id.ToString());
+    req_.set_namespace_id(namespace_id);
+    return Status::OK();
+  }
+
+  string ToString() const override {
+    return Format(
+        "IsXClusterBootstrapRequired(replication_group_id: $0, num_attempts: $1)",
+        req_.replication_group_id(), num_attempts());
+  }
+
+  virtual ~IsXClusterBootstrapRequiredRpc() {}
+
+ private:
+  void CallRemoteMethod() override {
+    master_replication_proxy()->IsXClusterBootstrapRequiredAsync(
+        req_, &resp_, mutable_retrier()->mutable_controller(),
+        std::bind(&IsXClusterBootstrapRequiredRpc::Finished, this, Status::OK()));
+  }
+
+  void ProcessResponse(const Status& status) override {
+    auto status_copy = status;
+    if (status_copy.ok() && resp_.has_error()) {
+      status_copy = StatusFromPB(resp_.error().status());
+    }
+
+    if (!status_copy.ok()) {
+      LOG(WARNING) << ToString() << " failed: " << status_copy;
+      user_cb_(std::move(status_copy));
+      return;
+    }
+
+    if (resp_.not_ready()) {
+      VLOG(2) << ToString() << ": xClusterOutboundReplicationGroup is not ready yet, retrying.";
+      ScheduleRetry(STATUS(TryAgain, "xClusterOutboundReplicationGroup is not ready yet"));
+      return;
+    }
+
+    user_cb_(resp_.initial_bootstrap_required());
+  }
+
+  IsXClusterBootstrapRequiredCallback user_cb_;
 };
 
 } // namespace internal
@@ -2744,6 +2870,29 @@ Result<bool> YBClient::Data::CheckIfPitrActive(CoarseTimePoint deadline) {
   }
 
   return resp.is_pitr_active();
+}
+
+Status YBClient::Data::GetXClusterStreams(
+    YBClient* client, CoarseTimePoint deadline, const cdc::ReplicationGroupId& replication_group_id,
+    const NamespaceId& namespace_id, const std::vector<TableName>& table_names,
+    const std::vector<PgSchemaName>& pg_schema_names, GetXClusterStreamsCallback user_cb) {
+  auto rpc =
+      std::make_shared<internal::GetXClusterStreamsRpc>(client, std::move(user_cb), deadline);
+  RETURN_NOT_OK(rpc->Init(replication_group_id, namespace_id, table_names, pg_schema_names));
+  rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
+
+  return Status::OK();
+}
+
+Status YBClient::Data::IsXClusterBootstrapRequired(
+    YBClient* client, CoarseTimePoint deadline, const cdc::ReplicationGroupId& replication_group_id,
+    const NamespaceId& namespace_id, IsXClusterBootstrapRequiredCallback user_cb) {
+  auto rpc = std::make_shared<internal::IsXClusterBootstrapRequiredRpc>(
+      client, std::move(user_cb), deadline);
+  RETURN_NOT_OK(rpc->Init(replication_group_id, namespace_id));
+  rpcs_.RegisterAndStart(rpc, rpc->RpcHandle());
+
+  return Status::OK();
 }
 
 HostPort YBClient::Data::leader_master_hostport() const {

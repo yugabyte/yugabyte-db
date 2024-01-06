@@ -156,6 +156,9 @@ using GetTableLocationsCallback =
 using OpenTableAsyncCallback = std::function<void(const Result<YBTablePtr>&)>;
 using CreateSnapshotCallback = std::function<void(Result<TxnSnapshotId>)>;
 using MasterAddressSource = std::function<std::vector<std::string>()>;
+using GetXClusterStreamsCallback =
+    std::function<void(Result<master::GetXClusterStreamsResponsePB>)>;
+using IsXClusterBootstrapRequiredCallback = std::function<void(Result<bool>)>;
 
 struct TransactionStatusTablets {
   std::vector<TabletId> global_tablets;
@@ -671,6 +674,28 @@ class YBClient {
       const std::vector<PgSchemaName>& pg_schema_names,
       const std::vector<TableName>& table_names,
       BootstrapProducerCallback callback);
+
+  Result<std::vector<NamespaceId>> XClusterCreateOutboundReplicationGroup(
+      const cdc::ReplicationGroupId& replication_group_id,
+      const std::vector<NamespaceName>& namespace_names);
+
+  Status GetXClusterStreams(
+      CoarseTimePoint deadline, const cdc::ReplicationGroupId& replication_group_id,
+      const NamespaceId& namespace_id, const std::vector<TableName>& table_names,
+      const std::vector<PgSchemaName>& pg_schema_names, GetXClusterStreamsCallback callback);
+
+  Status IsXClusterBootstrapRequired(
+      CoarseTimePoint deadline, const cdc::ReplicationGroupId& replication_group_id,
+      const NamespaceId& namespace_id, IsXClusterBootstrapRequiredCallback callback);
+
+  Status XClusterDeleteOutboundReplicationGroup(
+      const cdc::ReplicationGroupId& replication_group_id);
+
+  Result<NamespaceId> XClusterAddNamespaceToOutboundReplicationGroup(
+      const cdc::ReplicationGroupId& replication_group_id, const NamespaceName& namespace_name);
+
+  Status XClusterRemoveNamespaceFromOutboundReplicationGroup(
+      const cdc::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id);
 
   // Update consumer pollers after a producer side tablet split.
   Status UpdateConsumerOnProducerSplit(

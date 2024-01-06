@@ -22,6 +22,7 @@
 
 #include "yb/master/xcluster/xcluster_catalog_entity.h"
 #include "yb/master/xcluster/xcluster_manager_if.h"
+#include "yb/master/xcluster/xcluster_outbound_replication_group.h"
 
 namespace yb {
 
@@ -49,6 +50,8 @@ class XClusterManager : public XClusterManagerIf {
   Status Init();
 
   void Shutdown();
+
+  void Clear();
 
   Status RunLoaders();
 
@@ -93,9 +96,55 @@ class XClusterManager : public XClusterManagerIf {
     return xcluster_safe_time_service_.get();
   }
 
+  // OutboundReplicationGroup RPCs.
+  Status XClusterCreateOutboundReplicationGroup(
+      const XClusterCreateOutboundReplicationGroupRequestPB* req,
+      XClusterCreateOutboundReplicationGroupResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+  Status XClusterAddNamespaceToOutboundReplicationGroup(
+      const XClusterAddNamespaceToOutboundReplicationGroupRequestPB* req,
+      XClusterAddNamespaceToOutboundReplicationGroupResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+  Status XClusterRemoveNamespaceFromOutboundReplicationGroup(
+      const XClusterRemoveNamespaceFromOutboundReplicationGroupRequestPB* req,
+      XClusterRemoveNamespaceFromOutboundReplicationGroupResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+  Status XClusterDeleteOutboundReplicationGroup(
+      const XClusterDeleteOutboundReplicationGroupRequestPB* req,
+      XClusterDeleteOutboundReplicationGroupResponsePB* resp, rpc::RpcContext* rpc,
+      const LeaderEpoch& epoch);
+  Status IsXClusterBootstrapRequired(
+      const IsXClusterBootstrapRequiredRequestPB* req, IsXClusterBootstrapRequiredResponsePB* resp,
+      rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+  Status GetXClusterStreams(
+      const GetXClusterStreamsRequestPB* req, GetXClusterStreamsResponsePB* resp,
+      rpc::RpcContext* rpc, const LeaderEpoch& epoch);
+
  private:
   template <template <class> class Loader, typename CatalogEntityWrapper>
-  Status Load(const std::string& title, CatalogEntityWrapper& catalog_entity_wrapper);
+  Status Load(const std::string& key, CatalogEntityWrapper& catalog_entity_wrapper);
+
+  template <typename Loader, typename CatalogEntityPB>
+  Status Load(
+      const std::string& key, std::function<Status(const std::string&, const CatalogEntityPB&)>
+                                  catalog_entity_inserter_func);
+
+  Status InsertOutboundReplicationGroup(
+      const std::string& replication_group_id,
+      const SysXClusterOutboundReplicationGroupEntryPB& metadata)
+      EXCLUDES(outbound_replication_group_map_mutex_);
+
+  XClusterOutboundReplicationGroup InitOutboundReplicationGroup(
+      const cdc::ReplicationGroupId& replication_group_id,
+      const SysXClusterOutboundReplicationGroupEntryPB& metadata);
+
+  Result<XClusterOutboundReplicationGroup*> GetOutboundReplicationGroup(
+      const cdc::ReplicationGroupId& replication_group_id)
+      REQUIRES(outbound_replication_group_map_mutex_);
+
+  Result<const XClusterOutboundReplicationGroup*> GetOutboundReplicationGroup(
+      const cdc::ReplicationGroupId& replication_group_id) const
+      REQUIRES_SHARED(outbound_replication_group_map_mutex_);
 
   Master* const master_;
   CatalogManager* const catalog_manager_;
@@ -110,6 +159,10 @@ class XClusterManager : public XClusterManagerIf {
   // The Catalog Entity is stored outside of XClusterSafeTimeService, since we may want to move the
   // service out of master at a later time.
   XClusterSafeTimeInfo xcluster_safe_time_info_;
+
+  mutable std::shared_mutex outbound_replication_group_map_mutex_;
+  std::map<cdc::ReplicationGroupId, XClusterOutboundReplicationGroup>
+      outbound_replication_group_map_ GUARDED_BY(outbound_replication_group_map_mutex_);
 };
 
 }  // namespace master

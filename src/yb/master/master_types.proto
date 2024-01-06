@@ -46,6 +46,7 @@ enum SysRowEntryType {
   XCLUSTER_SAFE_TIME = 15;
   XCLUSTER_CONFIG = 16;
   UNIVERSE_REPLICATION_BOOTSTRAP = 17;
+  XCLUSTER_OUTBOUND_REPLICATION_GROUP = 18;
 }
 
 // Master specific errors use this protobuf.
@@ -219,4 +220,3 @@ message TServerMetricsPB {
   repeated PathMetrics path_metrics = 8;
   optional bool disable_tablet_split_if_default_ttl = 9;
 }
-

@@ -506,6 +506,80 @@ message YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB {
   optional MasterErrorPB error = 1;
 }
 
+message XClusterCreateOutboundReplicationGroupRequestPB {
+  required string replication_group_id = 1;
+  repeated string namespace_names = 2;
+}
+
+message XClusterCreateOutboundReplicationGroupResponsePB {
+  optional MasterErrorPB error = 1;
+  repeated bytes namespace_ids = 2; // One per namespace.
+}
+
+message XClusterAddNamespaceToOutboundReplicationGroupRequestPB {
+  required string replication_group_id = 1;
+  optional string namespace_name = 2;
+}
+
+message XClusterAddNamespaceToOutboundReplicationGroupResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bytes namespace_id = 2;
+}
+
+message XClusterRemoveNamespaceFromOutboundReplicationGroupRequestPB {
+  required string replication_group_id = 1;
+  optional bytes namespace_id = 2;
+}
+
+message XClusterRemoveNamespaceFromOutboundReplicationGroupResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message XClusterDeleteOutboundReplicationGroupRequestPB {
+  required string replication_group_id = 1;
+}
+
+message XClusterDeleteOutboundReplicationGroupResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message IsXClusterBootstrapRequiredRequestPB {
+  required bytes replication_group_id = 1;
+  optional bytes namespace_id = 2;
+}
+
+message IsXClusterBootstrapRequiredResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bool not_ready = 2;
+  optional bool initial_bootstrap_required = 3;
+}
+
+message GetXClusterStreamsRequestPB {
+  required bytes replication_group_id = 1;
+  optional bytes namespace_id = 2;
+
+  message TableInfo {
+    required string table_name = 1;
+    required string pg_schema_name = 2;
+  }
+  repeated TableInfo table_infos = 3; // If empty, return all tables.
+}
+
+message GetXClusterStreamsResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bool not_ready = 2; // [default = false]
+  optional bool initial_bootstrap_required = 3; // [default = false]
+
+  message TableInfo {
+    required bytes table_id = 1;
+    required bytes xrepl_stream_id = 2;
+    required string table_name = 3;
+    required string pg_schema_name = 4;
+  }
+
+  repeated TableInfo table_infos = 4;
+}
+
 service MasterReplication {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -576,4 +650,22 @@ service MasterReplication {
   rpc YsqlBackfillReplicationSlotNameToCDCSDKStream(
       YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB)
       returns (YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB);
+
+  // xClusterOutboundReplicationGroup RPCs.
+  rpc XClusterCreateOutboundReplicationGroup(
+      XClusterCreateOutboundReplicationGroupRequestPB)
+      returns (XClusterCreateOutboundReplicationGroupResponsePB);
+  rpc XClusterAddNamespaceToOutboundReplicationGroup(
+      XClusterAddNamespaceToOutboundReplicationGroupRequestPB)
+      returns (XClusterAddNamespaceToOutboundReplicationGroupResponsePB);
+  rpc XClusterRemoveNamespaceFromOutboundReplicationGroup(
+      XClusterRemoveNamespaceFromOutboundReplicationGroupRequestPB)
+      returns (XClusterRemoveNamespaceFromOutboundReplicationGroupResponsePB);
+  rpc XClusterDeleteOutboundReplicationGroup(
+      XClusterDeleteOutboundReplicationGroupRequestPB)
+      returns (XClusterDeleteOutboundReplicationGroupResponsePB);
+  rpc IsXClusterBootstrapRequired(IsXClusterBootstrapRequiredRequestPB)
+      returns (IsXClusterBootstrapRequiredResponsePB);
+  rpc GetXClusterStreams(GetXClusterStreamsRequestPB)
+      returns (GetXClusterStreamsResponsePB);
 }

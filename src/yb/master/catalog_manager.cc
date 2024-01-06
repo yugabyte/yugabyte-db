@@ -5334,6 +5334,7 @@ std::string CatalogManager::GenerateIdUnlocked(
       case SysRowEntryType::XCLUSTER_SAFE_TIME: FALLTHROUGH_INTENDED;
       case SysRowEntryType::XCLUSTER_CONFIG: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNIVERSE_REPLICATION_BOOTSTRAP: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::XCLUSTER_OUTBOUND_REPLICATION_GROUP: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         LOG(DFATAL) << "Invalid id type: " << *entity_type;
         return id;
@@ -7772,6 +7773,22 @@ scoped_refptr<TableInfo> CatalogManager::GetTableInfoFromNamespaceNameAndTableNa
   return nullptr;
 }
 
+Result<std::vector<scoped_refptr<TableInfo>>> CatalogManager::GetTableInfosForNamespace(
+    const NamespaceId& namespace_id) {
+  std::vector<scoped_refptr<TableInfo>> table_infos;
+  SharedLock lock(mutex_);
+  for (const auto& table : tables_->GetAllTables()) {
+    auto l = table->LockForRead();
+    auto& table_pb = l->pb;
+
+    if (!l->started_deleting() && table_pb.namespace_id() == namespace_id) {
+      table_infos.push_back(table);
+    }
+  }
+
+  return table_infos;
+}
+
 scoped_refptr<TableInfo> CatalogManager::GetTableInfoUnlocked(const TableId& table_id) {
   return tables_->FindTableOrNull(table_id);
 }
@@ -7831,6 +7848,14 @@ std::vector<std::shared_ptr<MonitoredTask>> CatalogManager::GetRecentTasks() {
 
 std::vector<std::shared_ptr<MonitoredTask>> CatalogManager::GetRecentJobs() {
   return jobs_tracker_->GetTasks();
+}
+
+Result<NamespaceId> CatalogManager::GetNamespaceId(
+    YQLDatabase db_type, const NamespaceName& namespace_name) {
+  SharedLock lock(mutex_);
+  const auto ns = FindPtrOrNull(namespace_names_mapper_[db_type], namespace_name);
+  SCHECK(ns, NotFound, Format("Namespace $0 of type $1 not found", namespace_name, db_type));
+  return ns->id();
 }
 
 NamespaceName CatalogManager::GetNamespaceNameUnlocked(const NamespaceId& id) const  {

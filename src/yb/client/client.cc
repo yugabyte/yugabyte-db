@@ -1745,6 +1745,96 @@ Status YBClient::BootstrapProducer(
       this, db_type, namespace_name, pg_schema_names, table_names, deadline, std::move(callback));
 }
 
+Result<std::vector<NamespaceId>> YBClient::XClusterCreateOutboundReplicationGroup(
+    const cdc::ReplicationGroupId& replication_group_id,
+    const std::vector<NamespaceName>& namespace_names) {
+  SCHECK(!namespace_names.empty(), InvalidArgument, "At least one namespace name is required");
+
+  master::XClusterCreateOutboundReplicationGroupRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+  for (const auto& ns : namespace_names) {
+    req.add_namespace_names(ns);
+  }
+
+  master::XClusterCreateOutboundReplicationGroupResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, XClusterCreateOutboundReplicationGroup);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  std::vector<NamespaceId> namespace_ids;
+  for (const auto& namespace_id : resp.namespace_ids()) {
+    namespace_ids.push_back(namespace_id);
+  }
+
+  return namespace_ids;
+}
+
+Status YBClient::GetXClusterStreams(
+    CoarseTimePoint deadline, const cdc::ReplicationGroupId& replication_group_id,
+    const NamespaceId& namespace_id, const std::vector<TableName>& table_names,
+    const std::vector<PgSchemaName>& pg_schema_names, GetXClusterStreamsCallback callback) {
+  return data_->GetXClusterStreams(
+      this, deadline, replication_group_id, namespace_id, table_names, pg_schema_names,
+      std::move(callback));
+}
+
+Status YBClient::IsXClusterBootstrapRequired(
+    CoarseTimePoint deadline, const cdc::ReplicationGroupId& replication_group_id,
+    const NamespaceId& namespace_id, IsXClusterBootstrapRequiredCallback callback) {
+  return data_->IsXClusterBootstrapRequired(
+      this, deadline, replication_group_id, namespace_id, std::move(callback));
+}
+
+Status YBClient::XClusterDeleteOutboundReplicationGroup(
+    const cdc::ReplicationGroupId& replication_group_id) {
+  master::XClusterDeleteOutboundReplicationGroupRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+
+  master::XClusterDeleteOutboundReplicationGroupResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, XClusterDeleteOutboundReplicationGroup);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
+Result<NamespaceId> YBClient::XClusterAddNamespaceToOutboundReplicationGroup(
+    const cdc::ReplicationGroupId& replication_group_id, const NamespaceName& namespace_name) {
+  master::XClusterAddNamespaceToOutboundReplicationGroupRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+  req.set_namespace_name(namespace_name);
+
+  master::XClusterAddNamespaceToOutboundReplicationGroupResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC_EX(
+      Replication, req, resp, XClusterAddNamespaceToOutboundReplicationGroup);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  return resp.namespace_id();
+}
+
+Status YBClient::XClusterRemoveNamespaceFromOutboundReplicationGroup(
+    const cdc::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id) {
+  master::XClusterRemoveNamespaceFromOutboundReplicationGroupRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+  req.set_namespace_id(namespace_id);
+
+  master::XClusterRemoveNamespaceFromOutboundReplicationGroupResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC_EX(
+      Replication, req, resp, XClusterRemoveNamespaceFromOutboundReplicationGroup);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  return Status::OK();
+}
+
 Status YBClient::UpdateConsumerOnProducerSplit(
     const cdc::ReplicationGroupId& replication_group_id,
     const xrepl::StreamId& stream_id,
