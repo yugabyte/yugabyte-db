@@ -15,46 +15,69 @@
 # specific language governing permissions and limitations
 # under the License.
 
-Release Notes for Apache AGE release 1.4.0 for PG 15
+Release Notes for Apache AGE release 1.5.0 for PostgreSQL version 15
 
-Apache AGE 1.4.0 - Release Notes
+Apache AGE 1.5.0 - Release Notes
 
-NOTE: This is an initial release of PG15. There are no upgrade
-      scripts to this release.
+NOTE: Due to the complexity and the amount of additions, there are no
+      upgrade scripts to this release.
 
 NOTE: Some of these reference the master branch PR that was
       either applied to lower versions via a separate PR or
       merged into a newly created branch.
 
-Added license in Python driver README.md (#956)
-Added the toStringList() function (#1128)
-Added toBooleanList() (#1165)
-Added toFloatList() function (#1016)
-Added toIntegerList() function (#1025)
-Added regression tests for MATCH clause using labels only (#1019)
-Added REGTYPEOID to toString function (#1036)
-Added Dockerfile.dev & move docker-related files to "docker/" (#943)
-Fixed complex MERGE causes crash (#897) (#961)
-Fixed docker build files (#1104)
-Fixed case sensitivity on label usage of reserved keyword (#1040)
-Fixed issue 1000: Indexes created on WHERE (#1133)
-Fixed issue 1002: Invalid reuse of variables in MATCH clause (#1003)
-Fixed issue 1033: access operator on vle edge lists (#1037)
-Fixed issue 1043: ERROR:  container must be an array or object (#1046)
-Fixed issue 1124: Segmentation fault when using specific tables (#1125)
-Fixed issue 395: ERROR: container is not an agtype array (#1039)
-Fixed issue 870: regarding orderability and added regression tests (#994)
-Fixed issue 876: column reference "_age_default_alias_0" is ambiguous (#931)
-Fixed issue 975: Invalid reuse of variables in CREATE clause (#977)
-Fixed issue 989: Impossible to create array with > 100 items (#1001)
-Fixed memory leak issues with age_load (#1142)
-Fixed memory leaks in MERGE (merge_edge & merge_vertex) (#958)
-Fixed MERGE crashes due to incorrect label type (#957)
-Fixed MERGE variable reuse (#997)
-Fixed misspellings in many AGE files (#985)
-Fixed warning messages in DockerHub builds. (#1075)
-Modified test_agtypes to view useful testing message (#992)
-Optimised Antlr4ResultHandler initialization (#1169)
-Updated CIs to pull correct image based on branch (#1105)
-Updated files, format, and version information (#1063)
-Updated README.
+Add additional index support and performance enhancements (#1232)
+Add an additional way to find a previous variable ref (#1450)
+Add auto apply labeler workflow for PRs (#1161)
+Add checks for array functions to recognize and decode VPC (#1064)
+Add concat || operator to agtype (#1198)
+Add exist(?, ?|, ?&) operators for agtype (#1218)
+Add missing dependency in cypher_expr.c (#1256)
+Add path extraction(#>, #>>)operators to agtype (#1224)
+Add support for chained expressions in CASE (#1431)
+Clean up agtype_to_int8, agtype_to_int4, & agtype_to_int2 (#1354)
+Clean up #included files in parser directory (#1465)
+Converted SQL main file into multiple files. (#1401)
+docs: Add to Docker setup (#1204)
+Extend access(->, ->>), addition and subtraction operators (#1258)
+Extend agtype containment operators (@>, <@) (#1285)
+Extend EXPLAIN and add config param to switch transformation of property filter (#1262)
+Fix ambiguous conditions (#1373)
+Fix Docker file to reflect PostgreSQL version 15 (#1449)
+Fix DockerHub warning messages for latest (#1380)
+Fix issue #1045 - error using path var in WHERE (#1295)
+Fix Issue #1159 - Server terminates for SET plus-equal (#1160)
+Fix issue #1219 - MERGE not seeing previous clause var (#1441)
+Fix issue #1302 - crash on NULL input to UNWIND (#1304)
+Fix issue #1303 - Server crashes on executing SELECT * FROM agtype(null); (#1317)
+Fix Issue #1305 - drop_label NULL cases (#1306)
+Fix Issue #1329 - agtype_to_int4 crash (#1339)
+Fix issue #1347 - unknow type of agtype container 0 (#1349)
+Fix issue #1389 - Server crash on using null operand for access operators (#1390)
+Fix issue #1393 - previous clause variables not seen with EXISTS (#1426)
+Fix issue #1398 - SET followed by DELETE does not delete (#1412)
+Fix issue #1399 - EXISTS doesn't handle non-existent labels (#1400)
+Fix Issue #945 - incorrect count(*) return values (#1288)
+Fix typo in agtype_raw.h header guard (#1368)
+Implement chained expression order of operations (#1402)
+Implemented age_tail function (#1283)
+Implemented the toBooleanList() function (#1014)
+Implement EXISTS subquery for CASE (#1345)
+Master to PostgreSQL version 16 (#1451)
+Minor fix in `agtype_volatile_wrapper` function (#1172)
+Modify COUNT() to output agtype (#1311)
+Optimize performance of detach delete (#1271)
+Optimize vertex and edge builder functions (#1252)
+py_driver : optimised Antlr4ResultHandler to improve time (#1107)
+Refactor Regression Tests for CASE statement (#1268)
+Refactor the IN operator to use '= ANY()' syntax (#1236)
+Removed unnecessary assignment (#1185)
+Remove redundant job from CIs (#1473)
+Remove unnecessary #include in src/backend/utils
+Updated age.control.
+Updated files, format, and version information.
+Updated Makefile.
+Updated RELEASE.
+Update Discord channel in README.md (#1253)
+Update README.md file for PostgreSQL version 16 support (#1463)
+Update the Python Driver (#1246)

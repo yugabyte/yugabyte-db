@@ -16,8 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
- 
- --
+
+--
 -- agtype type and its support functions
 --
 

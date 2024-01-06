@@ -15,7 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 
-default_version = '1.4.0'
+default_version = '1.5.0'
 comment = 'AGE database extension'
 module_pathname = '$libdir/age'
 

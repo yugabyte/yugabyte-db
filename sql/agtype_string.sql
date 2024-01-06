@@ -16,8 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
- 
- --
+
+--
 -- agtype - string matching (`STARTS WITH`, `ENDS WITH`, `CONTAINS`, & =~)
 --
 

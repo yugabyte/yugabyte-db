@@ -16,8 +16,8 @@
  * specific language governing permissions and limitations
  * under the License.
  */
- 
- --
+
+--
 -- Contains operators @> <@
 --
 CREATE FUNCTION ag_catalog.agtype_contains(agtype, agtype)
