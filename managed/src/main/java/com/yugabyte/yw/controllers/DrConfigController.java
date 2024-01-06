@@ -959,7 +959,7 @@ public class DrConfigController extends AuthenticatedController {
     DrConfigSafetimeResp safetimeResp = new DrConfigSafetimeResp();
     namespaceSafeTimeList.forEach(
         namespaceSafeTimePB -> {
-          long estimatedDataLossMs = getEstimatedDataLossMs(targetUniverse, namespaceSafeTimePB);
+          double estimatedDataLossMs = getEstimatedDataLossMs(targetUniverse, namespaceSafeTimePB);
           safetimeResp.safetimes.add(
               new NamespaceSafetime(namespaceSafeTimePB, estimatedDataLossMs));
         });
@@ -1164,10 +1164,10 @@ public class DrConfigController extends AuthenticatedController {
     }
   }
 
-  private long getEstimatedDataLossMs(
+  private double getEstimatedDataLossMs(
       Universe targetUniverse, NamespaceSafeTimePB namespaceSafeTimePB) {
     // -1 means could not find it from Prometheus.
-    long estimatedDataLossMs = -1;
+    double estimatedDataLossMs = -1;
     try {
       long safetimeEpochSeconds =
           Duration.ofNanos(
@@ -1178,7 +1178,7 @@ public class DrConfigController extends AuthenticatedController {
       String promQuery =
           String.format(
               "%s{export_type=\"master_export\",universe_uuid=\"%s\","
-                  + "node_address=\"%s\",namespace_id=\"%s\"}@%s",
+                  + "node_address=\"%s\",namespace_id=\"%s\"}@%s / 1000",
               XClusterConfigTaskBase.TXN_XCLUSTER_SAFETIME_LAG_NAME,
               targetUniverse.getUniverseUUID().toString(),
               targetUniverse.getMasterLeaderHostText(),
@@ -1204,8 +1204,8 @@ public class DrConfigController extends AuthenticatedController {
       estimatedDataLossMs =
           metricEntry.values.stream()
               .min(Comparator.comparing(ImmutablePair::getLeft))
-              .map(valueEntry -> valueEntry.getRight().longValue())
-              .orElse(-1L);
+              .map(valueEntry -> valueEntry.getRight())
+              .orElse(-1d);
       if (estimatedDataLossMs == -1) {
         log.error(
             "Could not get the estimatedDataLoss: could not identify the value with"
