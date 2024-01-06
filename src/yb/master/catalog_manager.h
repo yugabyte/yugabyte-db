@@ -715,6 +715,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       YQLDatabase db_type, const NamespaceName& namespace_name,
       const TableName& table_name, const PgSchemaName pg_schema_name = {}) override;
 
+  Result<std::vector<scoped_refptr<TableInfo>>> GetTableInfosForNamespace(
+      const NamespaceId& namespace_id);
+
   // Return TableInfos according to specified mode.
   virtual std::vector<TableInfoPtr> GetTables(
       GetTablesMode mode, PrimaryTablesOnly = PrimaryTablesOnly::kFalse) override;
@@ -733,6 +736,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   // Return the recent user-initiated jobs.
   std::vector<std::shared_ptr<server::MonitoredTask>> GetRecentJobs() override;
+
+  Result<NamespaceId> GetNamespaceId(YQLDatabase db_type, const NamespaceName& namespace_name);
 
   NamespaceName GetNamespaceNameUnlocked(const NamespaceId& id) const REQUIRES_SHARED(mutex_);
   NamespaceName GetNamespaceName(const NamespaceId& id) const override;

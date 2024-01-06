@@ -16,7 +16,6 @@
 #include <string>
 
 #include "yb/common/hybrid_time.h"
-#include "yb/consensus/consensus_util.h"
 
 #include "yb/master/master.h"
 #include "yb/master/master_cluster.pb.h"
@@ -24,10 +23,16 @@
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 
 #include "yb/rpc/rpc_context.h"
-#include "yb/tablet/tablet_peer.h"
 
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
+
+DEFINE_test_flag(bool, enable_xcluster_api_v2, false, "Allow the usage of new xCluster APIs");
+
+using namespace std::placeholders;
+
+#define LOG_FUNC_AND_RPC \
+  LOG_WITH_FUNC(INFO) << req->ShortDebugString() << ", from: " << RequestorString(rpc)
 
 namespace yb::master {
 
@@ -54,23 +59,101 @@ Status XClusterManager::Init() {
   return Status::OK();
 }
 
-Status XClusterManager::RunLoaders() {
+void XClusterManager::Clear() {
   xcluster_config_->ClearState();
   xcluster_safe_time_info_.Clear();
+  {
+    std::lock_guard l(outbound_replication_group_map_mutex_);
+    outbound_replication_group_map_.clear();
+  }
+}
 
-  RETURN_NOT_OK(Load<XClusterConfigLoader>("XCluster safe time", *xcluster_config_));
-  RETURN_NOT_OK(Load<XClusterSafeTimeLoader>("xcluster configuration", xcluster_safe_time_info_));
+Status XClusterManager::RunLoaders() {
+  Clear();
+
+  RETURN_NOT_OK(Load<XClusterConfigLoader>("xcluster configuration", *xcluster_config_));
+  RETURN_NOT_OK(Load<XClusterSafeTimeLoader>("XCluster safe time", xcluster_safe_time_info_));
+
+  RETURN_NOT_OK(Load<XClusterOutboundReplicationGroupLoader>(
+      "XCluster outbound replication groups",
+      std::function<Status(const std::string&, const SysXClusterOutboundReplicationGroupEntryPB&)>(
+          std::bind(&XClusterManager::InsertOutboundReplicationGroup, this, _1, _2))));
 
   return Status::OK();
 }
 
+Status XClusterManager::InsertOutboundReplicationGroup(
+    const std::string& replication_group_id,
+    const SysXClusterOutboundReplicationGroupEntryPB& metadata) {
+  cdc::ReplicationGroupId rg_id(replication_group_id);
+  std::lock_guard l(outbound_replication_group_map_mutex_);
+
+  SCHECK(
+      !outbound_replication_group_map_.contains(rg_id), IllegalState,
+      "Duplicate xClusterOutboundReplicationGroup: $0", replication_group_id);
+
+  auto outbound_replication_group = InitOutboundReplicationGroup(rg_id, metadata);
+
+  outbound_replication_group_map_.emplace(
+      replication_group_id, std::move(outbound_replication_group));
+
+  return Status::OK();
+}
+
+XClusterOutboundReplicationGroup XClusterManager::InitOutboundReplicationGroup(
+    const cdc::ReplicationGroupId& replication_group_id,
+    const SysXClusterOutboundReplicationGroupEntryPB& metadata) {
+  return XClusterOutboundReplicationGroup(
+      replication_group_id, metadata, sys_catalog_,
+      [catalog_manager = catalog_manager_](const NamespaceId& namespace_id) {
+        return catalog_manager->GetTableInfosForNamespace(namespace_id);
+      },
+      [catalog_manager = catalog_manager_](
+          YQLDatabase db_type, const NamespaceName& namespace_name) {
+        return catalog_manager->GetNamespaceId(db_type, namespace_name);
+      },
+      [catalog_manager = catalog_manager_](
+          const DeleteCDCStreamRequestPB& req,
+          const LeaderEpoch& epoch) -> Result<DeleteCDCStreamResponsePB> {
+        DeleteCDCStreamResponsePB resp;
+        RETURN_NOT_OK(catalog_manager->DeleteCDCStream(&req, &resp, nullptr));
+        return resp;
+      });
+}
+
+Result<XClusterOutboundReplicationGroup*> XClusterManager::GetOutboundReplicationGroup(
+    const cdc::ReplicationGroupId& replication_group_id) {
+  return const_cast<XClusterOutboundReplicationGroup*>(VERIFY_RESULT(
+      const_cast<const XClusterManager*>(this)->GetOutboundReplicationGroup(replication_group_id)));
+}
+
+Result<const XClusterOutboundReplicationGroup*> XClusterManager::GetOutboundReplicationGroup(
+    const cdc::ReplicationGroupId& replication_group_id) const {
+  auto outbound_replication_group =
+      FindOrNull(outbound_replication_group_map_, replication_group_id);
+  SCHECK(
+      outbound_replication_group, NotFound,
+      Format("xClusterOutboundReplicationGroup $0 not found", replication_group_id));
+  return outbound_replication_group;
+}
+
 template <template <class> class Loader, typename CatalogEntityWrapper>
-Status XClusterManager::Load(
-    const std::string& title, CatalogEntityWrapper& catalog_entity_wrapper) {
+Status XClusterManager::Load(const std::string& key, CatalogEntityWrapper& catalog_entity_wrapper) {
   Loader<CatalogEntityWrapper> loader(catalog_entity_wrapper);
-  LOG_WITH_FUNC(INFO) << __func__ << ": Loading " << title << " into memory.";
+  LOG_WITH_FUNC(INFO) << __func__ << ": Loading " << key << " into memory.";
   RETURN_NOT_OK_PREPEND(
-      sys_catalog_->Visit(&loader), "Failed while visiting " + title + " in sys catalog");
+      sys_catalog_->Visit(&loader), "Failed while visiting " + key + " in sys catalog");
+  return Status::OK();
+}
+
+template <typename Loader, typename CatalogEntityPB>
+Status XClusterManager::Load(
+    const std::string& key, std::function<Status(const std::string&, const CatalogEntityPB&)>
+                                catalog_entity_inserter_func) {
+  Loader loader(catalog_entity_inserter_func);
+  LOG_WITH_FUNC(INFO) << __func__ << ": Loading " << key << " into memory.";
+  RETURN_NOT_OK_PREPEND(
+      sys_catalog_->Visit(&loader), "Failed while visiting " + key + " in sys catalog");
   return Status::OK();
 }
 
@@ -189,8 +272,8 @@ Status XClusterManager::FillHeartbeatResponse(
   return xcluster_config_->FillHeartbeatResponse(req, resp);
 }
 
-Status XClusterManager::RemoveStreamFromXClusterProducerConfig(const LeaderEpoch& epoch,
-    const std::vector<CDCStreamInfo*>& streams) {
+Status XClusterManager::RemoveStreamFromXClusterProducerConfig(
+    const LeaderEpoch& epoch, const std::vector<CDCStreamInfo*>& streams) {
   return xcluster_config_->RemoveStreams(epoch, streams);
 }
 
@@ -198,7 +281,7 @@ Status XClusterManager::PauseResumeXClusterProducerStreams(
     const PauseResumeXClusterProducerStreamsRequestPB* req,
     PauseResumeXClusterProducerStreamsResponsePB* resp, rpc::RpcContext* rpc,
     const LeaderEpoch& epoch) {
-  LOG(INFO) << "Servicing PauseXCluster request from " << RequestorString(rpc) << ".";
+  LOG_FUNC_AND_RPC;
   SCHECK(req->has_is_paused(), InvalidArgument, "is_paused must be set in the request");
   bool paused = req->is_paused();
   std::string action = paused ? "Pausing" : "Resuming";
@@ -224,6 +307,162 @@ Status XClusterManager::PauseResumeXClusterProducerStreams(
   }
 
   return xcluster_config_->PauseResumeXClusterProducerStreams(epoch, streams_to_change, paused);
+}
+
+Status XClusterManager::XClusterCreateOutboundReplicationGroup(
+    const XClusterCreateOutboundReplicationGroupRequestPB* req,
+    XClusterCreateOutboundReplicationGroupResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  SCHECK(FLAGS_TEST_enable_xcluster_api_v2, IllegalState, "xCluster API v2 is not enabled.");
+
+  LOG_FUNC_AND_RPC;
+
+  SCHECK(
+      !req->replication_group_id().empty(), InvalidArgument,
+      "Replication group id cannot be empty");
+  SCHECK(req->namespace_names_size() > 0, InvalidArgument, "Namespace names must be specified");
+
+  auto replication_group_id = cdc::ReplicationGroupId(req->replication_group_id());
+
+  std::lock_guard l(outbound_replication_group_map_mutex_);
+  SCHECK(
+      !outbound_replication_group_map_.contains(replication_group_id), IllegalState,
+      "xClusterOutboundReplicationGroup $0 already exists", replication_group_id);
+
+  std::vector<NamespaceName> namespace_names;
+  for (const auto& namespace_name : req->namespace_names()) {
+    namespace_names.emplace_back(namespace_name);
+  }
+
+  SysXClusterOutboundReplicationGroupEntryPB metadata;  // Empty metadata.
+  auto outbound_replication_group = InitOutboundReplicationGroup(replication_group_id, metadata);
+
+  // This will persist the group to SysCatalog.
+  auto namespace_ids = VERIFY_RESULT(
+      outbound_replication_group.AddNamespaces(epoch, namespace_names, rpc->GetClientDeadline()));
+
+  outbound_replication_group_map_.emplace(
+      replication_group_id, std::move(outbound_replication_group));
+
+  for (const auto& namespace_id : namespace_ids) {
+    *resp->add_namespace_ids() = namespace_id;
+  }
+
+  return Status::OK();
+}
+
+Status XClusterManager::XClusterAddNamespaceToOutboundReplicationGroup(
+    const XClusterAddNamespaceToOutboundReplicationGroupRequestPB* req,
+    XClusterAddNamespaceToOutboundReplicationGroupResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+  SCHECK(req->has_namespace_name(), InvalidArgument, "Namespace name must be specified");
+
+  auto replication_group_id = cdc::ReplicationGroupId(req->replication_group_id());
+  std::lock_guard l(outbound_replication_group_map_mutex_);
+  auto outbound_replication_group =
+      VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
+
+  auto namespace_id = VERIFY_RESULT(outbound_replication_group->AddNamespace(
+      epoch, req->namespace_name(), rpc->GetClientDeadline()));
+
+  resp->set_namespace_id(namespace_id);
+  return Status::OK();
+}
+
+Status XClusterManager::XClusterRemoveNamespaceFromOutboundReplicationGroup(
+    const XClusterRemoveNamespaceFromOutboundReplicationGroupRequestPB* req,
+    XClusterRemoveNamespaceFromOutboundReplicationGroupResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+  SCHECK(req->has_namespace_id(), InvalidArgument, "Namespace id must be specified");
+
+  auto replication_group_id = cdc::ReplicationGroupId(req->replication_group_id());
+
+  std::lock_guard l(outbound_replication_group_map_mutex_);
+  auto outbound_replication_group =
+      VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
+
+  return outbound_replication_group->RemoveNamespace(epoch, req->namespace_id());
+}
+
+Status XClusterManager::XClusterDeleteOutboundReplicationGroup(
+    const XClusterDeleteOutboundReplicationGroupRequestPB* req,
+    XClusterDeleteOutboundReplicationGroupResponsePB* resp, rpc::RpcContext* rpc,
+    const LeaderEpoch& epoch) {
+  LOG_FUNC_AND_RPC;
+
+  auto replication_group_id = cdc::ReplicationGroupId(req->replication_group_id());
+
+  std::lock_guard l(outbound_replication_group_map_mutex_);
+  auto outbound_replication_group =
+      VERIFY_RESULT(GetOutboundReplicationGroup(replication_group_id));
+
+  // This will remove the group from SysCatalog.
+  RETURN_NOT_OK(outbound_replication_group->Delete(epoch));
+
+  outbound_replication_group_map_.erase(replication_group_id);
+
+  return Status::OK();
+}
+
+Status XClusterManager::IsXClusterBootstrapRequired(
+    const IsXClusterBootstrapRequiredRequestPB* req, IsXClusterBootstrapRequiredResponsePB* resp,
+    rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  SCHECK(req->has_namespace_id(), InvalidArgument, "Namespace id must be specified");
+
+  auto replication_group_id = cdc::ReplicationGroupId(req->replication_group_id());
+
+  SharedLock l(outbound_replication_group_map_mutex_);
+  auto outbound_replication_group = VERIFY_RESULT(
+      const_cast<const XClusterManager*>(this)->GetOutboundReplicationGroup(replication_group_id));
+
+  auto bootstrap_required =
+      VERIFY_RESULT(outbound_replication_group->IsBootstrapRequired(req->namespace_id()));
+
+  if (!bootstrap_required.has_value()) {
+    resp->set_not_ready(true);
+    return Status::OK();
+  }
+
+  resp->set_initial_bootstrap_required(bootstrap_required.value());
+
+  return Status::OK();
+}
+
+Status XClusterManager::GetXClusterStreams(
+    const GetXClusterStreamsRequestPB* req, GetXClusterStreamsResponsePB* resp,
+    rpc::RpcContext* rpc, const LeaderEpoch& epoch) {
+  SCHECK(req->has_namespace_id(), InvalidArgument, "Namespace id must be specified");
+  auto replication_group_id = cdc::ReplicationGroupId(req->replication_group_id());
+
+  SharedLock l(outbound_replication_group_map_mutex_);
+  auto outbound_replication_group = VERIFY_RESULT(
+      const_cast<const XClusterManager*>(this)->GetOutboundReplicationGroup(replication_group_id));
+
+  std::vector<std::pair<TableName, PgSchemaName>> table_names;
+  for (const auto& table_name : req->table_infos()) {
+    table_names.emplace_back(table_name.table_name(), table_name.pg_schema_name());
+  }
+
+  auto ns_info = VERIFY_RESULT(
+      outbound_replication_group->GetNamespaceCheckpointInfo(req->namespace_id(), table_names));
+
+  if (!ns_info.has_value()) {
+    resp->set_not_ready(true);
+    return Status::OK();
+  }
+
+  resp->set_initial_bootstrap_required(ns_info->initial_bootstrap_required);
+  for (const auto& ns_table_info : ns_info->table_infos) {
+    auto* table_info = resp->add_table_infos();
+    table_info->set_table_id(ns_table_info.table_id);
+    table_info->set_xrepl_stream_id(ns_table_info.stream_id.ToString());
+    table_info->set_table_name(ns_table_info.table_name);
+    table_info->set_pg_schema_name(ns_table_info.pg_schema_name);
+  }
+
+  return Status::OK();
 }
 
 }  // namespace yb::master

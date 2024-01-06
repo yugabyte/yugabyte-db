@@ -753,3 +753,25 @@ message SysUniverseReplicationBootstrapEntryPB {
   optional int64 leader_term = 11;
   optional int32 pitr_count = 12;
 }
+
+message SysXClusterOutboundReplicationGroupEntryPB {
+  message NamespaceInfoPB {
+    enum State {
+      CHECKPOINTING = 0;
+      READY = 1;
+    }
+    required State state = 1;
+
+    message TableInfoPB {
+      optional bytes stream_id = 1;
+      optional bool is_checkpointing = 2; // [default = false]
+    }
+    // Table id -> TableInfoPB
+    map<string, TableInfoPB> table_infos = 2;
+
+    optional bool initial_bootstrap_required = 3; // [default = false]
+  }
+
+  // Namespace Id -> NamespaceInfoPB
+  map<string, NamespaceInfoPB> namespace_infos = 1;
+}

@@ -951,6 +951,7 @@ Status CatalogManager::ImportSnapshotPreprocess(
       case SysRowEntryType::XCLUSTER_SAFE_TIME: FALLTHROUGH_INTENDED;
       case SysRowEntryType::XCLUSTER_CONFIG: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNIVERSE_REPLICATION_BOOTSTRAP: FALLTHROUGH_INTENDED;
+      case SysRowEntryType::XCLUSTER_OUTBOUND_REPLICATION_GROUP: FALLTHROUGH_INTENDED;
       case SysRowEntryType::UNKNOWN:
         FATAL_INVALID_ENUM_VALUE(SysRowEntryType, entry.type());
     }
