@@ -129,8 +129,8 @@ public class CloudProviderApiController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Refresh pricing",
-      notes = "Refresh provider pricing info",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Refresh provider pricing info",
       response = YBPSuccess.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -283,7 +283,8 @@ public class CloudProviderApiController extends AuthenticatedController {
 
   @ApiOperation(
       nickname = "accessKeyRotation",
-      value = "WARNING: This is a preview API that could change. Rotate access key for a provider",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Rotate access key for a provider",
       response = YBPTask.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -330,9 +331,8 @@ public class CloudProviderApiController extends AuthenticatedController {
 
   @ApiOperation(
       nickname = "scheduledAccessKeyRotation",
-      value =
-          "WARNING: This is a preview API that could change. Rotate access key for a provider -"
-              + " Scheduled",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Rotate access key for a provider - Scheduled",
       response = Schedule.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -379,9 +379,8 @@ public class CloudProviderApiController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change. List all schedules for a provider's"
-              + " access key rotation",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "List all schedules for a provider's" + " access key rotation",
       response = Schedule.class,
       responseContainer = "List",
       nickname = "listSchedules")
@@ -404,8 +403,8 @@ public class CloudProviderApiController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change. Edit a access key rotation schedule",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Edit a access key rotation schedule",
       response = Schedule.class,
       nickname = "editAccessKeyRotationSchedule")
   @ApiImplicitParams({

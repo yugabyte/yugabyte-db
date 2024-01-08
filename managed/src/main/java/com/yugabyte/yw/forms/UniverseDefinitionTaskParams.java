@@ -711,8 +711,19 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     // Info of all the gflags that the user would like to save to the universe. These will be
     // used during edit universe, for example, to set the flags on new nodes to match
     // existing nodes' settings.
-    @ApiModelProperty public Map<String, String> masterGFlags = new HashMap<>();
-    @ApiModelProperty public Map<String, String> tserverGFlags = new HashMap<>();
+    @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.18.6.0")
+    @Deprecated
+    @ApiModelProperty(
+        "User-defined gflags for master. <b style=\"color:#ff0000\">Deprecated since YBA version"
+            + " 2.18.6.0.</b> Use specificGFlags")
+    public Map<String, String> masterGFlags = new HashMap<>();
+
+    @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.18.6.0")
+    @Deprecated
+    @ApiModelProperty(
+        "User-defined gflags for tserver. <b style=\"color:#ff0000\">Deprecated since YBA version"
+            + " 2.18.6.0.</b> Use specificGFlags")
+    public Map<String, String> tserverGFlags = new HashMap<>();
 
     // Flags for YB-Controller.
     @ApiModelProperty public Map<String, String> ybcFlags = new HashMap<>();

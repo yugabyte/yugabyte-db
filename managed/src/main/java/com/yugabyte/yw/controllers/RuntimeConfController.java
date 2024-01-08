@@ -97,10 +97,10 @@ public class RuntimeConfController extends AuthenticatedController {
 
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.1.0")
   @ApiOperation(
-      value = "YbaApi Internal. List feature flags",
+      notes = "YbaApi Internal.",
       response = ConfigEntry.class,
       responseContainer = "List",
-      notes = "List all the feature flag runtime config keys and their values.")
+      value = "List all the feature flag runtime config keys and their values.")
   @AuthzPath
   public Result listFeatureFlags() {
     return PlatformResults.withData(runtimeConfService.getFeatureFlagEntries());

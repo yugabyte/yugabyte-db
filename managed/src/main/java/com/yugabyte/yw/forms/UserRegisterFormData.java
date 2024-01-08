@@ -39,7 +39,9 @@ public class UserRegisterFormData {
   private Map features;
 
   @ApiModelProperty(
-      value = "Deprecated since YBA version 2.19.3.0. Use field roleResourceDefinitions instead.",
+      value =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.19.3.0.</b> Use field"
+              + " roleResourceDefinitions instead.",
       example = "Admin")
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.19.3.0")
   private Role role;

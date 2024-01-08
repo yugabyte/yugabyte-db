@@ -13650,12 +13650,6 @@
         "masterDeviceInfo" : {
           "$ref" : "#/definitions/DeviceInfo"
         },
-        "masterGFlags" : {
-          "additionalProperties" : {
-            "type" : "string"
-          },
-          "type" : "object"
-        },
         "masterInstanceType" : {
           "type" : "string"
         },
@@ -13694,12 +13688,6 @@
         "spotPrice" : {
           "format" : "double",
           "type" : "number"
-        },
-        "tserverGFlags" : {
-          "additionalProperties" : {
-            "type" : "string"
-          },
-          "type" : "object"
         },
         "tserverK8SNodeResourceSpec" : {
           "$ref" : "#/definitions/K8SNodeResourceSpec"
@@ -15042,7 +15030,7 @@
     },
     "/api/v1/customers/{cUUID}/admin_notifications" : {
       "get" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "getAdminNotifications",
         "parameters" : [ {
           "format" : "uuid",
@@ -15059,13 +15047,13 @@
             }
           }
         },
-        "summary" : "WARNING: This is a preview API that could change. Returns the current list of notifications for admin",
+        "summary" : "Current list of notifications for admin",
         "tags" : [ "Session management" ]
       }
     },
     "/api/v1/customers/{cUUID}/alert_channel_templates" : {
       "get" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "listAlertChannelTemplates",
         "parameters" : [ {
           "format" : "uuid",
@@ -15088,13 +15076,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. List all alert channel templates",
+        "summary" : "List all alert channel templates",
         "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alert_channel_templates/{acType}" : {
       "delete" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "deleteAlertChannelTemplates",
         "parameters" : [ {
           "format" : "uuid",
@@ -15123,11 +15111,11 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Delete alert channel templates",
+        "summary" : "Delete alert channel templates",
         "tags" : [ "Alerts" ]
       },
       "get" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "getAlertChannelTemplates",
         "parameters" : [ {
           "format" : "uuid",
@@ -15152,11 +15140,11 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Get alert channel templates",
+        "summary" : "Get alert channel templates",
         "tags" : [ "Alerts" ]
       },
       "post" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "setAlertChannelTemplates",
         "parameters" : [ {
           "format" : "uuid",
@@ -15192,13 +15180,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Set alert channel templates",
+        "summary" : "Set alert channel templates",
         "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alert_channels" : {
       "get" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "listAlertChannels",
         "parameters" : [ {
           "format" : "uuid",
@@ -15221,11 +15209,11 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. List all alert channels",
+        "summary" : "List all alert channels",
         "tags" : [ "Alerts" ]
       },
       "post" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "createAlertChannel",
         "parameters" : [ {
           "format" : "uuid",
@@ -15256,13 +15244,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Create an alert channel",
+        "summary" : "Create an alert channel",
         "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alert_channels/{acUUID}" : {
       "delete" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "deleteAlertChannel",
         "parameters" : [ {
           "format" : "uuid",
@@ -15292,11 +15280,11 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Delete an alert channel",
+        "summary" : "Delete an alert channel",
         "tags" : [ "Alerts" ]
       },
       "get" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "getAlertChannel",
         "parameters" : [ {
           "format" : "uuid",
@@ -15322,11 +15310,11 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Get an alert channel",
+        "summary" : "Get an alert channel",
         "tags" : [ "Alerts" ]
       },
       "put" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "updateAlertChannel",
         "parameters" : [ {
           "format" : "uuid",
@@ -15363,13 +15351,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Update an alert channel",
+        "summary" : "Update an alert channel",
         "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alert_configurations" : {
       "post" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "createAlertConfiguration",
         "parameters" : [ {
           "format" : "uuid",
@@ -15400,13 +15388,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Create an alert configuration",
+        "summary" : "Create an alert configuration",
         "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alert_configurations/list" : {
       "post" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "listAlertConfigurations",
         "parameters" : [ {
           "format" : "uuid",
@@ -15440,13 +15428,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Get filtered list of alert configurations",
+        "summary" : "Get filtered list of alert configurations",
         "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alert_configurations/page" : {
       "post" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "pageAlertConfigurations",
         "parameters" : [ {
           "format" : "uuid",
@@ -15477,13 +15465,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. List all alert configurations (paginated)",
+        "summary" : "List all alert configurations (paginated)",
         "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alert_configurations/{configurationUUID}" : {
       "delete" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "deleteAlertConfiguration",
         "parameters" : [ {
           "format" : "uuid",
@@ -15513,11 +15501,11 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Delete an alert configuration",
+        "summary" : "Delete an alert configuration",
         "tags" : [ "Alerts" ]
       },
       "get" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "getAlertConfiguration",
         "parameters" : [ {
           "format" : "uuid",
@@ -15543,11 +15531,11 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Get an alert configuration",
+        "summary" : "Get an alert configuration",
         "tags" : [ "Alerts" ]
       },
       "put" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "updateAlertConfiguration",
         "parameters" : [ {
           "format" : "uuid",
@@ -15584,13 +15572,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Update an alert configuration",
+        "summary" : "Update an alert configuration",
         "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alert_configurations/{configurationUUID}/test_alert" : {
       "post" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "sendTestAlert",
         "parameters" : [ {
           "format" : "uuid",
@@ -15616,13 +15604,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Send test alert for alert configuration",
+        "summary" : "Send test alert for alert configuration",
         "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alert_destinations" : {
       "get" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "listAlertDestinations",
         "parameters" : [ {
           "format" : "uuid",
@@ -15645,11 +15633,11 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. List alert destinations",
+        "summary" : "List alert destinations",
         "tags" : [ "Alerts" ]
       },
       "post" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "createAlertDestination",
         "parameters" : [ {
           "format" : "uuid",
@@ -15680,13 +15668,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Create an alert destination",
+        "summary" : "Create an alert destination",
         "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alert_destinations/{adUUID}" : {
       "delete" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "deleteAlertDestination",
         "parameters" : [ {
           "format" : "uuid",
@@ -15716,11 +15704,11 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Delete an alert destination",
+        "summary" : "Delete an alert destination",
         "tags" : [ "Alerts" ]
       },
       "get" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "getAlertDestination",
         "parameters" : [ {
           "format" : "uuid",
@@ -15746,11 +15734,11 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Get an alert destination",
+        "summary" : "Get an alert destination",
         "tags" : [ "Alerts" ]
       },
       "put" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "updateAlertDestination",
         "parameters" : [ {
           "format" : "uuid",
@@ -15787,13 +15775,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Update an alert destination",
+        "summary" : "Update an alert destination",
         "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alert_notification_preview" : {
       "post" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "alertNotificationPreview",
         "parameters" : [ {
           "format" : "uuid",
@@ -15824,13 +15812,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Prepare alert notification preview",
+        "summary" : "Prepare alert notification preview",
         "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alert_template_variables" : {
       "get" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "listAlertTemplateVariables",
         "parameters" : [ {
           "format" : "uuid",
@@ -15850,11 +15838,11 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. List alert template variables",
+        "summary" : "List alert template variables",
         "tags" : [ "Alerts" ]
       },
       "put" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "editAlertTemplateVariables",
         "parameters" : [ {
           "format" : "uuid",
@@ -15888,13 +15876,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Create or update alert template variables",
+        "summary" : "Create or update alert template variables",
         "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alert_template_variables/{variableUUID}" : {
       "delete" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "deleteAlertTemplateVariables",
         "parameters" : [ {
           "format" : "uuid",
@@ -15924,13 +15912,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Delete an alert template variables",
+        "summary" : "Delete an alert template variables",
         "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alert_templates" : {
       "post" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "listAlertTemplates",
         "parameters" : [ {
           "format" : "uuid",
@@ -15964,13 +15952,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Get filtered list of alert configuration templates",
+        "summary" : "Get filtered list of alert configuration templates",
         "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alerts" : {
       "get" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "listOfAlerts",
         "parameters" : [ {
           "format" : "uuid",
@@ -15993,13 +15981,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. List all alerts",
+        "summary" : "List all alerts",
         "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alerts/count" : {
       "post" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "countAlerts",
         "parameters" : [ {
           "format" : "uuid",
@@ -16031,13 +16019,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Count alerts",
+        "summary" : "Count alerts",
         "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alerts/page" : {
       "post" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "pageAlerts",
         "parameters" : [ {
           "format" : "uuid",
@@ -16068,13 +16056,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. List alerts (paginated)",
+        "summary" : "List alerts (paginated)",
         "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alerts/{alertUUID}" : {
       "get" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "get",
         "parameters" : [ {
           "format" : "uuid",
@@ -16100,13 +16088,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Get details of an alert",
+        "summary" : "Get details of an alert",
         "tags" : [ "Alerts" ]
       }
     },
     "/api/v1/customers/{cUUID}/alerts/{alertUUID}/acknowledge" : {
       "post" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "acknowledge",
         "parameters" : [ {
           "format" : "uuid",
@@ -16136,7 +16124,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Acknowledge an alert",
+        "summary" : "Acknowledge an alert",
         "tags" : [ "Alerts" ]
       }
     },
@@ -16896,7 +16884,7 @@
     },
     "/api/v1/customers/{cUUID}/customCAStore" : {
       "post" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "addCA",
         "parameters" : [ {
           "format" : "uuid",
@@ -16929,13 +16917,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Add a named custom CA certificate",
+        "summary" : "Add a named custom CA certificate",
         "tags" : [ "Custom CA Certificates" ]
       }
     },
     "/api/v1/customers/{cUUID}/customCAStore/{certUUID}" : {
       "post" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "updateCA",
         "parameters" : [ {
           "format" : "uuid",
@@ -16974,13 +16962,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Update a named custom CA certificate",
+        "summary" : "Update a named custom CA certificate",
         "tags" : [ "Custom CA Certificates" ]
       }
     },
     "/api/v1/customers/{cUUID}/customCAStoreCertificates" : {
       "get" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "listAllCustomCaCertificates",
         "parameters" : [ {
           "format" : "uuid",
@@ -17003,13 +16991,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. List all custom CA certificates of a customer",
+        "summary" : "List all custom CA certificates of a customer",
         "tags" : [ "Custom CA Certificates" ]
       }
     },
     "/api/v1/customers/{cUUID}/customCAStoreCertificates/{certUUID}" : {
       "delete" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "Delete custom CA certificate",
         "parameters" : [ {
           "format" : "uuid",
@@ -17039,11 +17027,11 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Delete a named custom CA certificate",
+        "summary" : "Delete a named custom CA certificate",
         "tags" : [ "Custom CA Certificates" ]
       },
       "get" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "getAllCustomCaCertificates",
         "parameters" : [ {
           "format" : "uuid",
@@ -17073,7 +17061,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Download a custom CA certificates of a customer",
+        "summary" : "Download a custom CA certificates of a customer",
         "tags" : [ "Custom CA Certificates" ]
       }
     },
@@ -17654,7 +17642,7 @@
     },
     "/api/v1/customers/{cUUID}/kms_configs/{configUUID}/refresh" : {
       "put" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "refreshKMSConfig",
         "parameters" : [ {
           "format" : "uuid",
@@ -17690,7 +17678,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Refresh KMS Config",
+        "summary" : "Refresh KMS Config",
         "tags" : [ "Encryption at rest" ]
       }
     },
@@ -17864,7 +17852,7 @@
     },
     "/api/v1/customers/{cUUID}/maintenance_windows" : {
       "post" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "create",
         "parameters" : [ {
           "format" : "uuid",
@@ -17895,13 +17883,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Create maintenance window",
+        "summary" : "Create maintenance window",
         "tags" : [ "Maintenance windows" ]
       }
     },
     "/api/v1/customers/{cUUID}/maintenance_windows/list" : {
       "post" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "listOfMaintenanceWindows",
         "parameters" : [ {
           "format" : "uuid",
@@ -17928,13 +17916,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. List maintenance windows",
+        "summary" : "List maintenance windows",
         "tags" : [ "Maintenance windows" ]
       }
     },
     "/api/v1/customers/{cUUID}/maintenance_windows/page" : {
       "post" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "page",
         "parameters" : [ {
           "format" : "uuid",
@@ -17965,13 +17953,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. List maintenance windows (paginated)",
+        "summary" : "List maintenance windows (paginated)",
         "tags" : [ "Maintenance windows" ]
       }
     },
     "/api/v1/customers/{cUUID}/maintenance_windows/{windowUUID}" : {
       "delete" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "delete",
         "parameters" : [ {
           "format" : "uuid",
@@ -18001,11 +17989,11 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Delete maintenance window",
+        "summary" : "Delete maintenance window",
         "tags" : [ "Maintenance windows" ]
       },
       "get" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "get",
         "parameters" : [ {
           "format" : "uuid",
@@ -18031,11 +18019,11 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Get details of a maintenance window",
+        "summary" : "Get details of a maintenance window",
         "tags" : [ "Maintenance windows" ]
       },
       "put" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "update",
         "parameters" : [ {
           "format" : "uuid",
@@ -18072,7 +18060,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Update maintenance window",
+        "summary" : "Update maintenance window",
         "tags" : [ "Maintenance windows" ]
       }
     },
@@ -18213,7 +18201,7 @@
     },
     "/api/v1/customers/{cUUID}/performance_recommendation_state_change/page" : {
       "post" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "pageAuditInfo",
         "parameters" : [ {
           "format" : "uuid",
@@ -18244,13 +18232,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. List performance recommendations state change audit events (paginated)",
+        "summary" : "List performance recommendations state change audit events (paginated)",
         "tags" : [ "Performance Advisor" ]
       }
     },
     "/api/v1/customers/{cUUID}/performance_recommendations" : {
       "delete" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "delete",
         "parameters" : [ {
           "format" : "uuid",
@@ -18281,13 +18269,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Delete performance recommendations",
+        "summary" : "Delete performance recommendations",
         "tags" : [ "Performance Advisor" ]
       }
     },
     "/api/v1/customers/{cUUID}/performance_recommendations/page" : {
       "post" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "page",
         "parameters" : [ {
           "format" : "uuid",
@@ -18318,13 +18306,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. List performance recommendations (paginated)",
+        "summary" : "List performance recommendations (paginated)",
         "tags" : [ "Performance Advisor" ]
       }
     },
     "/api/v1/customers/{cUUID}/performance_recommendations/{rUUID}" : {
       "get" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "get",
         "parameters" : [ {
           "format" : "uuid",
@@ -18350,7 +18338,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Get performance recommendation details",
+        "summary" : "Get performance recommendation details",
         "tags" : [ "Performance Advisor" ]
       }
     },
@@ -18547,7 +18535,7 @@
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/access_key_rotation" : {
       "post" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "accessKeyRotation",
         "parameters" : [ {
           "format" : "uuid",
@@ -18577,13 +18565,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Rotate access key for a provider",
+        "summary" : "Rotate access key for a provider",
         "tags" : [ "Cloud providers" ]
       }
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/access_key_rotation/schedule" : {
       "get" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "listSchedules",
         "parameters" : [ {
           "format" : "uuid",
@@ -18612,11 +18600,11 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. List all schedules for a provider's access key rotation",
+        "summary" : "List all schedules for a provider's access key rotation",
         "tags" : [ "Cloud providers" ]
       },
       "post" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "scheduledAccessKeyRotation",
         "parameters" : [ {
           "format" : "uuid",
@@ -18646,13 +18634,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Rotate access key for a provider - Scheduled",
+        "summary" : "Rotate access key for a provider - Scheduled",
         "tags" : [ "Cloud providers" ]
       }
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/access_key_rotation/schedule/{sUUID}" : {
       "put" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "editAccessKeyRotationSchedule",
         "parameters" : [ {
           "format" : "uuid",
@@ -18695,7 +18683,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Edit a access key rotation schedule",
+        "summary" : "Edit a access key rotation schedule",
         "tags" : [ "Cloud providers" ]
       }
     },
@@ -18810,7 +18798,7 @@
         "tags" : [ "Access Keys" ]
       },
       "put" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "editAccesskey",
         "parameters" : [ {
           "format" : "uuid",
@@ -18853,7 +18841,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Modify the existing access Key",
+        "summary" : "Modify the existing access Key",
         "tags" : [ "Access Keys" ]
       }
     },
@@ -18915,7 +18903,7 @@
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/image_bundle" : {
       "get" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "getListOfImageBundles",
         "parameters" : [ {
           "format" : "uuid",
@@ -18950,11 +18938,11 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. List image bundles",
+        "summary" : "List image bundles",
         "tags" : [ "preview" ]
       },
       "post" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "createImageBundle",
         "parameters" : [ {
           "format" : "uuid",
@@ -18992,13 +18980,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Create a image bundle",
+        "summary" : "Create a image bundle",
         "tags" : [ "preview" ]
       }
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/image_bundle/{iBUUID}" : {
       "delete" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "delete",
         "parameters" : [ {
           "format" : "uuid",
@@ -19034,11 +19022,11 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Delete a image bundle",
+        "summary" : "Delete a image bundle",
         "tags" : [ "preview" ]
       },
       "get" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "getImageBundle",
         "parameters" : [ {
           "format" : "uuid",
@@ -19070,11 +19058,11 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Get a image bundle",
+        "summary" : "Get a image bundle",
         "tags" : [ "preview" ]
       },
       "put" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "editImageBundle",
         "parameters" : [ {
           "format" : "uuid",
@@ -19118,7 +19106,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Update a image bundle",
+        "summary" : "Update a image bundle",
         "tags" : [ "preview" ]
       }
     },
@@ -19422,7 +19410,7 @@
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/provider_regions" : {
       "post" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "createProviderRegion",
         "parameters" : [ {
           "format" : "uuid",
@@ -19460,13 +19448,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Create a new region",
+        "summary" : "Create a new region",
         "tags" : [ "Region management" ]
       }
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/provider_regions/{rUUID}" : {
       "put" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "editProviderRegion",
         "parameters" : [ {
           "format" : "uuid",
@@ -19510,13 +19498,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Modify a region",
+        "summary" : "Modify a region",
         "tags" : [ "Region management" ]
       }
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/provider_regions/{rUUID}/region_zones" : {
       "post" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "createZone",
         "parameters" : [ {
           "format" : "uuid",
@@ -19563,13 +19551,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Create an availability zone",
+        "summary" : "Create an availability zone",
         "tags" : [ "Availability Zones" ]
       }
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/provider_regions/{rUUID}/region_zones/{azUUID}" : {
       "put" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "editZone",
         "parameters" : [ {
           "format" : "uuid",
@@ -19619,13 +19607,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Modify an availability zone",
+        "summary" : "Modify an availability zone",
         "tags" : [ "Availability Zones" ]
       }
     },
     "/api/v1/customers/{cUUID}/providers/{pUUID}/refresh_pricing" : {
       "put" : {
-        "description" : "Refresh provider pricing info",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "refreshPricing",
         "parameters" : [ {
           "format" : "uuid",
@@ -19655,7 +19643,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Refresh pricing",
+        "summary" : "Refresh provider pricing info",
         "tags" : [ "Cloud providers" ]
       }
     },
@@ -20769,7 +20757,7 @@
     },
     "/api/v1/customers/{cUUID}/universes" : {
       "get" : {
-        "description" : "",
+        "description" : "Available since YBA version 2.2.0.0.",
         "operationId" : "listUniverses",
         "parameters" : [ {
           "format" : "uuid",
@@ -20798,7 +20786,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Available since YBA version 2.2.0.0. List universes",
+        "summary" : "List universes",
         "tags" : [ "Universe management" ]
       }
     },
@@ -20841,7 +20829,7 @@
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}" : {
       "delete" : {
-        "description" : "",
+        "description" : "Available since YBA version 2.2.0.0.",
         "operationId" : "deleteUniverse",
         "parameters" : [ {
           "format" : "uuid",
@@ -20889,11 +20877,11 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Available since YBA version 2.2.0.0. Delete a universe",
+        "summary" : "Delete a universe",
         "tags" : [ "Universe management" ]
       },
       "get" : {
-        "description" : "",
+        "description" : "Available since YBA version 2.2.0.0.",
         "operationId" : "getUniverse",
         "parameters" : [ {
           "format" : "uuid",
@@ -20919,7 +20907,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Available since YBA version 2.2.0.0. Get a universe",
+        "summary" : "Get a universe",
         "tags" : [ "Universe management" ]
       }
     },
@@ -21147,7 +21135,7 @@
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/config_alerts" : {
       "post" : {
-        "description" : "",
+        "description" : "Available since YBA version 2.2.0.0.",
         "operationId" : "configureUniverseAlerts",
         "parameters" : [ {
           "format" : "uuid",
@@ -21177,13 +21165,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Available since YBA version 2.2.0.0. Configure alerts for a universe",
+        "summary" : "Configure alerts for a universe",
         "tags" : [ "Universe management" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/health_check" : {
       "get" : {
-        "description" : "Checks the health of all tablet servers and masters in the universe, as well as certain conditions on the machines themselves, including disk utilization, presence of FATAL or core files, and more.",
+        "description" : "Available since YBA version 2.2.0.0. Checks the health of all tablet servers and masters in the universe, as well as certain conditions on the machines themselves, including disk utilization, presence of FATAL or core files, and more.",
         "operationId" : "healthCheckUniverse",
         "parameters" : [ {
           "format" : "uuid",
@@ -21212,7 +21200,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Available since YBA version 2.2.0.0. Return results for the last health check",
+        "summary" : "Return results for the last health check",
         "tags" : [ "Universe information" ]
       }
     },
@@ -21272,7 +21260,7 @@
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/last_run" : {
       "get" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "getLatestRun",
         "parameters" : [ {
           "format" : "uuid",
@@ -21298,13 +21286,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Get last performance advisor run details",
+        "summary" : "Get last performance advisor run details",
         "tags" : [ "Performance Advisor" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/leader" : {
       "get" : {
-        "description" : "",
+        "description" : "Available since YBA version 2.2.0.0.",
         "operationId" : "getMasterLeaderIP",
         "parameters" : [ {
           "format" : "uuid",
@@ -21330,13 +21318,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Available since YBA version 2.2.0.0. Get IP address of a universe's master leader",
+        "summary" : "Get IP address of a universe's master leader",
         "tags" : [ "Universe information" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/live_queries" : {
       "get" : {
-        "description" : "",
+        "description" : "Available since YBA version 2.4.0.0.",
         "operationId" : "getLiveQueries",
         "parameters" : [ {
           "format" : "uuid",
@@ -21362,13 +21350,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Available since YBA version 2.4.0.0. Get live queries for a universe",
+        "summary" : "Get live queries for a universe",
         "tags" : [ "Universe information" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/masters" : {
       "get" : {
-        "description" : "",
+        "description" : "Available since YBA version 2.2.0.0.",
         "operationId" : "getMasterAddresses",
         "parameters" : [ {
           "format" : "uuid",
@@ -21394,13 +21382,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Available since YBA version 2.2.0.0. List a master node's addresses",
+        "summary" : "List a master node's addresses",
         "tags" : [ "Universe node metadata (metamaster)" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/need_bootstrap" : {
       "post" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "needBootstrapTable",
         "parameters" : [ {
           "format" : "uuid",
@@ -21447,7 +21435,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Whether tables need bootstrap before setting up cross cluster replication",
+        "summary" : "Whether tables need bootstrap before setting up cross cluster replication",
         "tags" : [ "Asynchronous Replication" ]
       }
     },
@@ -21496,7 +21484,7 @@
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/pause" : {
       "post" : {
-        "description" : "",
+        "description" : "Available since YBA version 2.6.0.0.",
         "operationId" : "pauseUniverse",
         "parameters" : [ {
           "format" : "uuid",
@@ -21526,13 +21514,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Available since YBA version 2.6.0.0. Pause a universe",
+        "summary" : "Pause a universe",
         "tags" : [ "Universe management" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/perf_advisor_settings" : {
       "get" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "getSettings",
         "parameters" : [ {
           "format" : "uuid",
@@ -21562,11 +21550,11 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Get universe performance advisor settings",
+        "summary" : "Get universe performance advisor settings",
         "tags" : [ "Performance Advisor" ]
       },
       "post" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "updateSettings",
         "parameters" : [ {
           "format" : "uuid",
@@ -21603,7 +21591,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Update universe performance advisor settings",
+        "summary" : "Update universe performance advisor settings",
         "tags" : [ "Performance Advisor" ]
       }
     },
@@ -21730,7 +21718,7 @@
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/query_distribution_suggestions" : {
       "get" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "getQueryDistributionSuggestions",
         "parameters" : [ {
           "format" : "uuid",
@@ -21756,13 +21744,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Get query distribution improvement suggestion for a universe",
+        "summary" : "Get query distribution improvement suggestion for a universe",
         "tags" : [ "Universe performance suggestions" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/range_hash" : {
       "get" : {
-        "description" : "Returns list of hash indexes on timestamp columns.",
+        "description" : "WARNING: This is a preview API that could change. Returns list of hash indexes on timestamp columns.",
         "operationId" : "getRangeHash",
         "parameters" : [ {
           "format" : "uuid",
@@ -21788,13 +21776,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Return list of hash indexes",
+        "summary" : "Return list of hash indexes",
         "tags" : [ "Universe performance suggestions" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/redisservers" : {
       "get" : {
-        "description" : "",
+        "description" : "Available since YBA version 2.2.0.0.",
         "operationId" : "getRedisServerAddresses",
         "parameters" : [ {
           "format" : "uuid",
@@ -21820,13 +21808,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Available since YBA version 2.2.0.0. List a REDIS server's addresses",
+        "summary" : "List a REDIS server's addresses",
         "tags" : [ "Universe node metadata (metamaster)" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/resume" : {
       "post" : {
-        "description" : "",
+        "description" : "Available since YBA version 2.6.0.0.",
         "operationId" : "resumeUniverse",
         "parameters" : [ {
           "format" : "uuid",
@@ -21856,13 +21844,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Available since YBA version 2.6.0.0. Resume a paused universe",
+        "summary" : "Resume a paused universe",
         "tags" : [ "Universe management" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/set_key" : {
       "post" : {
-        "description" : "",
+        "description" : "Available since YBA version 2.2.0.0.",
         "operationId" : "setUniverseKey",
         "parameters" : [ {
           "format" : "uuid",
@@ -21892,13 +21880,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Available since YBA version 2.2.0.0. Set a universe's key",
+        "summary" : "Set a universe's key",
         "tags" : [ "Universe management" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/slow_queries" : {
       "delete" : {
-        "description" : "",
+        "description" : "Available since YBA version 2.6.0.0.",
         "operationId" : "resetSlowQueries",
         "parameters" : [ {
           "format" : "uuid",
@@ -21928,11 +21916,11 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Available since YBA version 2.6.0.0. Reset slow queries for a universe",
+        "summary" : "Reset slow queries for a universe",
         "tags" : [ "Universe information" ]
       },
       "get" : {
-        "description" : "",
+        "description" : "Available since YBA version 2.6.0.0.",
         "operationId" : "getSlowQueries",
         "parameters" : [ {
           "format" : "uuid",
@@ -21958,13 +21946,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Available since YBA version 2.6.0.0. Get slow queries for a universe",
+        "summary" : "Get slow queries for a universe",
         "tags" : [ "Universe information" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/start_manually" : {
       "post" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "runPerfAdvisor",
         "parameters" : [ {
           "format" : "uuid",
@@ -21994,13 +21982,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Start performance advisor run for universe",
+        "summary" : "Start performance advisor run for universe",
         "tags" : [ "Performance Advisor" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/status" : {
       "get" : {
-        "description" : "This will return a Map of node name to its status in json format",
+        "description" : "Available since YBA version 2.2.0.0. This will return a Map of node name to its status in json format.",
         "operationId" : "universeStatus",
         "parameters" : [ {
           "format" : "uuid",
@@ -22029,7 +22017,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Available since YBA version 2.2.0.0. Get a universe's status",
+        "summary" : "Get a universe's status",
         "tags" : [ "Universe information" ]
       }
     },
@@ -22229,7 +22217,7 @@
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/universe_resources" : {
       "get" : {
-        "description" : "Expects UniverseDefinitionTaskParams in request body and calculates the resource estimate for NodeDetailsSet in that.",
+        "description" : "Available since YBA version 2.20.0.0. Expects UniverseDefinitionTaskParams in request body and calculates the resource estimate for NodeDetailsSet in that.",
         "operationId" : "getUniverseResources",
         "parameters" : [ {
           "format" : "uuid",
@@ -22255,13 +22243,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Available since YBA version 2.20.0.0. Get a resource usage estimate for a universe",
+        "summary" : "Get a resource usage estimate for a universe",
         "tags" : [ "Universe information" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/unused_indexes" : {
       "get" : {
-        "description" : "Returns list of unused indexes, along with their database and table.",
+        "description" : "WARNING: This is a preview API that could change. Returns list of unused indexes, along with their database and table.",
         "operationId" : "getUnusedIndexes",
         "parameters" : [ {
           "format" : "uuid",
@@ -22287,13 +22275,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Return list of each unused index across the universe",
+        "summary" : "Return list of each unused index across the universe",
         "tags" : [ "Universe performance suggestions" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/update_backup_state" : {
       "put" : {
-        "description" : "",
+        "description" : "Available since YBA version 2.2.0.0.",
         "operationId" : "setUniverseBackupFlag",
         "parameters" : [ {
           "format" : "uuid",
@@ -22328,13 +22316,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Available since YBA version 2.2.0.0. Set a universe's backup flag",
+        "summary" : "Set a universe's backup flag",
         "tags" : [ "Universe management", "Backups" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/update_lb_config" : {
       "put" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "updateLoadBalancerConfig",
         "parameters" : [ {
           "format" : "uuid",
@@ -22364,7 +22352,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Update load balancer config",
+        "summary" : "Update load balancer config",
         "tags" : [ "Universe management" ]
       }
     },
@@ -22414,7 +22402,7 @@
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/upgrade/db_version" : {
       "post" : {
-        "description" : "Queues a task to perform DB version upgrade and rolling restart in a universe.",
+        "description" : "WARNING: This is a preview API that could change. This is a two step DB software version upgrade, Upgrade DB version and then finalize software which would be same as of upgrade software but additionally support rollback before upgrade finalize. ",
         "operationId" : "upgradeDBVersion",
         "parameters" : [ {
           "format" : "uuid",
@@ -22452,13 +22440,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. This is a two step DB software version upgrade, Upgrade DB version and then finalize software which would be same as of upgrade software but additionally support rollback before upgrade finalize. ",
+        "summary" : "Upgrade DB version",
         "tags" : [ "Universe Upgrades Management" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/upgrade/finalize" : {
       "post" : {
-        "description" : "Queues a task to finalize upgrade in a universe.",
+        "description" : "WARNING: This is a preview API that could change. Queues a task to finalize upgrade in a universe.",
         "operationId" : "finalizeUpgrade",
         "parameters" : [ {
           "format" : "uuid",
@@ -22496,13 +22484,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Finalize Upgrade.",
+        "summary" : "Finalize Upgrade",
         "tags" : [ "Universe Upgrades Management" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/upgrade/finalize/info" : {
       "get" : {
-        "description" : "Provides pre-finalize software upgrade info",
+        "description" : "WARNING: This is a preview API that could change. Provides pre-finalize software upgrade info.",
         "operationId" : "preFinalizeSoftwareUpgradeInfo",
         "parameters" : [ {
           "format" : "uuid",
@@ -22528,7 +22516,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Finalize Software Upgrade info",
+        "summary" : "Finalize Software Upgrade info",
         "tags" : [ "Universe Upgrades Management" ]
       }
     },
@@ -22754,7 +22742,7 @@
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/upgrade/rollback" : {
       "post" : {
-        "description" : "Queues a task to rollback upgrade in a universe.",
+        "description" : "WARNING: This is a preview API that could change. Queues a task to rollback upgrade in a universe.",
         "operationId" : "rollbackUpgrade",
         "parameters" : [ {
           "format" : "uuid",
@@ -22792,7 +22780,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Rollback Upgrade",
+        "summary" : "Rollback Upgrade",
         "tags" : [ "Universe Upgrades Management" ]
       }
     },
@@ -22842,7 +22830,7 @@
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/upgrade/software/precheck" : {
       "post" : {
-        "description" : "Performs pre-checks and provides pre-upgrade info",
+        "description" : "WARNING: This is a preview API that could change. Performs pre-checks and provides pre-upgrade info.",
         "operationId" : "softwareUpgradePreCheck",
         "parameters" : [ {
           "format" : "uuid",
@@ -22880,7 +22868,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Software Upgrade universe pre-check",
+        "summary" : "Software Upgrade universe pre-check",
         "tags" : [ "Universe Upgrades Management" ]
       }
     },
@@ -23136,7 +23124,7 @@
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/yqlservers" : {
       "get" : {
-        "description" : "",
+        "description" : "Available since YBA version 2.2.0.0.",
         "operationId" : "getYQLServerAddresses",
         "parameters" : [ {
           "format" : "uuid",
@@ -23162,13 +23150,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Available since YBA version 2.2.0.0. List a YQL server's addresses",
+        "summary" : "List a YQL server's addresses",
         "tags" : [ "Universe node metadata (metamaster)" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{uniUUID}/ysqlservers" : {
       "get" : {
-        "description" : "",
+        "description" : "Available since YBA version 2.2.0.0.",
         "operationId" : "getYSQLServerAddresses",
         "parameters" : [ {
           "format" : "uuid",
@@ -23194,13 +23182,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Available since YBA version 2.2.0.0. List a YSQL server's addresses",
+        "summary" : "List a YSQL server's addresses",
         "tags" : [ "Universe node metadata (metamaster)" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{univUUID}/configure/ycql" : {
       "post" : {
-        "description" : "Queues a task to configure ycql in a universe.",
+        "description" : "WARNING: This is a preview API that could change. Queues a task to configure ycql in a universe.",
         "operationId" : "configureYCQL",
         "parameters" : [ {
           "format" : "uuid",
@@ -23238,13 +23226,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Configure YCQL",
+        "summary" : "Configure YCQL",
         "tags" : [ "Universe database management" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{univUUID}/configure/ysql" : {
       "post" : {
-        "description" : "Queues a task to configure ysql in a universe.",
+        "description" : "WARNING: This is a preview API that could change. Queues a task to configure ysql in a universe.",
         "operationId" : "configureYSQL",
         "parameters" : [ {
           "format" : "uuid",
@@ -23282,13 +23270,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Configure YSQL",
+        "summary" : "Configure YSQL",
         "tags" : [ "Universe database management" ]
       }
     },
     "/api/v1/customers/{cUUID}/universes/{univUUID}/ldap_roles_sync" : {
       "post" : {
-        "description" : "UNSTABLE - This API will undergo changes in future.",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "syncLdapUniverse",
         "parameters" : [ {
           "format" : "uuid",
@@ -23326,7 +23314,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Perform an LDAP users sync on the universe",
+        "summary" : "Perform an LDAP users sync on the universe",
         "tags" : [ "LDAP Role management" ]
       }
     },
@@ -23785,7 +23773,7 @@
     },
     "/api/v1/customers/{cUUID}/xcluster_configs" : {
       "post" : {
-        "description" : "",
+        "description" : "Available since YBA version 2.16.0.0.",
         "operationId" : "createXClusterConfig",
         "parameters" : [ {
           "format" : "uuid",
@@ -23817,13 +23805,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Available since YBA version 2.16.0.0. Create xcluster config",
+        "summary" : "Create xcluster config",
         "tags" : [ "Asynchronous Replication" ]
       }
     },
     "/api/v1/customers/{cUUID}/xcluster_configs/sync" : {
       "post" : {
-        "description" : "",
+        "description" : "Available since YBA version 2.16.0.0.",
         "operationId" : "syncXClusterConfig",
         "parameters" : [ {
           "format" : "uuid",
@@ -23854,13 +23842,13 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Available since YBA version 2.16.0.0. Sync xcluster config",
+        "summary" : "Sync xcluster config",
         "tags" : [ "Asynchronous Replication" ]
       }
     },
     "/api/v1/customers/{cUUID}/xcluster_configs/{xccUUID}" : {
       "delete" : {
-        "description" : "",
+        "description" : "Available since YBA version 2.16.0.0.",
         "operationId" : "deleteXClusterConfig",
         "parameters" : [ {
           "format" : "uuid",
@@ -23896,11 +23884,11 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Available since YBA version 2.16.0.0. Delete xcluster config",
+        "summary" : "Delete xcluster config",
         "tags" : [ "Asynchronous Replication" ]
       },
       "get" : {
-        "description" : "",
+        "description" : "Available since YBA version 2.16.0.0.",
         "operationId" : "getXClusterConfig",
         "parameters" : [ {
           "format" : "uuid",
@@ -23926,11 +23914,11 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Available since YBA version 2.16.0.0. Get xcluster config",
+        "summary" : "Get xcluster config",
         "tags" : [ "Asynchronous Replication" ]
       },
       "post" : {
-        "description" : "",
+        "description" : "Available since YBA version 2.16.0.0.",
         "operationId" : "restartXClusterConfig",
         "parameters" : [ {
           "format" : "uuid",
@@ -23974,11 +23962,11 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Available since YBA version 2.16.0.0. Restart xcluster config",
+        "summary" : "Restart xcluster config",
         "tags" : [ "Asynchronous Replication" ]
       },
       "put" : {
-        "description" : "",
+        "description" : "Available since YBA version 2.16.0.0.",
         "operationId" : "editXClusterConfig",
         "parameters" : [ {
           "format" : "uuid",
@@ -24016,7 +24004,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Available since YBA version 2.16.0.0. Edit xcluster config",
+        "summary" : "Edit xcluster config",
         "tags" : [ "Asynchronous Replication" ]
       }
     },
@@ -24143,7 +24131,7 @@
     },
     "/api/v1/grafana_dashboard" : {
       "get" : {
-        "description" : "",
+        "description" : "WARNING: This is a preview API that could change.",
         "operationId" : "GrafanaDashboard",
         "parameters" : [ ],
         "responses" : {
@@ -24157,7 +24145,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "WARNING: This is a preview API that could change. Get Grafana Dashboard",
+        "summary" : "Get Grafana Dashboard",
         "tags" : [ "Grafana Dashboard" ]
       }
     },
@@ -24376,7 +24364,7 @@
     },
     "/api/v1/prometheus_metrics" : {
       "get" : {
-        "description" : "",
+        "description" : "Available since YBA version 2.8.0.0.",
         "operationId" : "MetricsDetail",
         "parameters" : [ ],
         "responses" : {
@@ -24390,7 +24378,7 @@
         "security" : [ {
           "apiKeyAuth" : [ ]
         } ],
-        "summary" : "Available since YBA version 2.8.0.0. Get Prometheus metrics",
+        "summary" : "Get Prometheus metrics",
         "tags" : [ "Metrics" ]
       }
     },

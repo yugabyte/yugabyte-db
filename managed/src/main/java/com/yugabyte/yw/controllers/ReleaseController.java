@@ -148,8 +148,9 @@ public class ReleaseController extends AuthenticatedController {
 
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
   @ApiOperation(
-      value =
-          "Deprecated since YBA version 2.20.0.0, "
+      value = "List releases by provider - deprecated",
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.20.0.0.</b></p>"
               + "Use /api/v1/customers/{cUUID}/releases/:arch instead",
       response = Object.class,
       responseContainer = "Map",

@@ -121,7 +121,8 @@ public class XClusterConfigController extends AuthenticatedController {
    */
   @ApiOperation(
       nickname = "createXClusterConfig",
-      value = "Available since YBA version 2.16.0.0. Create xcluster config",
+      notes = "Available since YBA version 2.16.0.0.",
+      value = "Create xcluster config",
       response = YBPTask.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -264,7 +265,8 @@ public class XClusterConfigController extends AuthenticatedController {
    */
   @ApiOperation(
       nickname = "getXClusterConfig",
-      value = "Available since YBA version 2.16.0.0. Get xcluster config",
+      notes = "Available since YBA version 2.16.0.0.",
+      value = "Get xcluster config",
       response = XClusterConfigGetResp.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -345,7 +347,8 @@ public class XClusterConfigController extends AuthenticatedController {
    */
   @ApiOperation(
       nickname = "editXClusterConfig",
-      value = "Available since YBA version 2.16.0.0. Edit xcluster config",
+      notes = "Available since YBA version 2.16.0.0.",
+      value = "Edit xcluster config",
       response = YBPTask.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -652,7 +655,8 @@ public class XClusterConfigController extends AuthenticatedController {
    */
   @ApiOperation(
       nickname = "restartXClusterConfig",
-      value = "Available since YBA version 2.16.0.0. Restart xcluster config",
+      notes = "Available since YBA version 2.16.0.0.",
+      value = "Restart xcluster config",
       response = YBPTask.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -828,7 +832,8 @@ public class XClusterConfigController extends AuthenticatedController {
    */
   @ApiOperation(
       nickname = "deleteXClusterConfig",
-      value = "Available since YBA version 2.16.0.0. Delete xcluster config",
+      notes = "Available since YBA version 2.16.0.0.",
+      value = "Delete xcluster config",
       response = YBPTask.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -923,7 +928,8 @@ public class XClusterConfigController extends AuthenticatedController {
    */
   @ApiOperation(
       nickname = "syncXClusterConfig",
-      value = "Available since YBA version 2.16.0.0. Sync xcluster config",
+      notes = "Available since YBA version 2.16.0.0.",
+      value = "Sync xcluster config",
       response = YBPTask.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -985,9 +991,8 @@ public class XClusterConfigController extends AuthenticatedController {
    */
   @ApiOperation(
       nickname = "needBootstrapTable",
-      value =
-          "WARNING: This is a preview API that could change. "
-              + "Whether tables need bootstrap before setting up cross cluster replication",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Whether tables need bootstrap before setting up cross cluster replication",
       response = Map.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -1128,8 +1133,9 @@ public class XClusterConfigController extends AuthenticatedController {
    */
   @ApiOperation(
       nickname = "NeedBootstrapXClusterConfig",
+      notes = "YbaApi Internal.",
       value =
-          "YbaApi Internal. Whether tables in an xCluster replication config have fallen far behind"
+          "Whether tables in an xCluster replication config have fallen far behind"
               + " and need bootstrap",
       response = Map.class)
   @ApiImplicitParams(

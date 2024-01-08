@@ -37,7 +37,8 @@ public class TelemetryProviderController extends AuthenticatedController {
   @Inject private TelemetryProviderService telemetryProviderService;
 
   @ApiOperation(
-      value = "YbaApi Internal. Get Telemetry Provider",
+      notes = "YbaApi Internal.",
+      value = "Get Telemetry Provider",
       response = TelemetryProvider.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -54,7 +55,8 @@ public class TelemetryProviderController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "YbaApi Internal. List All Telemetry Providers",
+      notes = "YbaApi Internal.",
+      value = "List All Telemetry Providers",
       response = TelemetryProvider.class,
       responseContainer = "List",
       nickname = "listAllTelemetryProviders")
@@ -72,7 +74,8 @@ public class TelemetryProviderController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "YbaApi Internal. Create Telemetry Provider",
+      notes = "YbaApi Internal.",
+      value = "Create Telemetry Provider",
       response = TelemetryProvider.class,
       nickname = "createTelemetry")
   @ApiImplicitParams(
@@ -104,14 +107,17 @@ public class TelemetryProviderController extends AuthenticatedController {
     return PlatformResults.withData(provider);
   }
 
-  @ApiOperation(value = "YbaApi Internal. Delete a telemetry provider", response = YBPSuccess.class)
+  @ApiOperation(
+      notes = "YbaApi Internal.",
+      value = "Delete a telemetry provider",
+      response = YBPSuccess.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
-  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
   public Result deleteTelemetryProvider(
       UUID customerUUID, UUID providerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);

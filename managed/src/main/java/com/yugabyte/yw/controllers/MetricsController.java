@@ -62,7 +62,8 @@ public class MetricsController extends Controller {
   private Date lastKamonErrorPrinted = null;
 
   @ApiOperation(
-      value = "Available since YBA version 2.8.0.0. Get Prometheus metrics",
+      notes = "Available since YBA version 2.8.0.0.",
+      value = "Get Prometheus metrics",
       response = String.class,
       nickname = "MetricsDetail")
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.8.0.0")

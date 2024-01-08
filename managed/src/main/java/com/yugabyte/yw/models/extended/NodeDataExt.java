@@ -19,7 +19,10 @@ public class NodeDataExt {
   @JsonUnwrapped private NodeData nodeData;
 
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
-  @ApiModelProperty(value = "Deprecated since YBA version 2.17.2.0. Use timestampIso instead")
+  @ApiModelProperty(
+      value =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.17.2.0.</b> Use timestampIso"
+              + " instead")
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.17.2.0")
   private Date timestamp;
 }

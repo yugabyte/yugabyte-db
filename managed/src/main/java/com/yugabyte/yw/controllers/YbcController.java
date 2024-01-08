@@ -39,7 +39,8 @@ public class YbcController extends AuthenticatedController {
    */
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.16.0.0")
   @ApiOperation(
-      value = "YbaApi Internal. Disable YBC on the universe nodes",
+      notes = "YbaApi Internal.",
+      value = "Disable YBC on the universe nodes",
       nickname = "disableYbc",
       response = YBPTask.class)
   @AuthzPath({
@@ -69,7 +70,8 @@ public class YbcController extends AuthenticatedController {
    */
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.16.0.0")
   @ApiOperation(
-      value = "YbaApi Internal. Upgrade YBC on the universe nodes",
+      notes = "YbaApi Internal.",
+      value = "Upgrade YBC on the universe nodes",
       nickname = "upgradeYbc",
       response = YBPTask.class)
   @AuthzPath({
@@ -100,7 +102,8 @@ public class YbcController extends AuthenticatedController {
    */
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.16.0.0")
   @ApiOperation(
-      value = "YbaApi Internal. Install YBC on the universe nodes",
+      notes = "YbaApi Internal.",
+      value = "Install YBC on the universe nodes",
       nickname = "installYbc",
       response = YBPTask.class)
   @AuthzPath({

@@ -72,7 +72,8 @@ public class MetaMasterController extends Controller {
   }
 
   @ApiOperation(
-      value = "Available since YBA version 2.2.0.0. List a master node's addresses",
+      notes = "Available since YBA version 2.2.0.0.",
+      value = "List a master node's addresses",
       response = String.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.2.0.0")
   @AuthzPath({
@@ -86,7 +87,8 @@ public class MetaMasterController extends Controller {
   }
 
   @ApiOperation(
-      value = "Available since YBA version 2.2.0.0. List a YQL server's addresses",
+      notes = "Available since YBA version 2.2.0.0.",
+      value = "List a YQL server's addresses",
       response = String.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.2.0.0")
   @AuthzPath({
@@ -100,7 +102,8 @@ public class MetaMasterController extends Controller {
   }
 
   @ApiOperation(
-      value = "Available since YBA version 2.2.0.0. List a YSQL server's addresses",
+      notes = "Available since YBA version 2.2.0.0.",
+      value = "List a YSQL server's addresses",
       response = String.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.2.0.0")
   @AuthzPath({
@@ -114,7 +117,8 @@ public class MetaMasterController extends Controller {
   }
 
   @ApiOperation(
-      value = "Available since YBA version 2.2.0.0. List a REDIS server's addresses",
+      notes = "Available since YBA version 2.2.0.0.",
+      value = "List a REDIS server's addresses",
       response = String.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.PUBLIC, sinceYBAVersion = "2.2.0.0")
   @AuthzPath({

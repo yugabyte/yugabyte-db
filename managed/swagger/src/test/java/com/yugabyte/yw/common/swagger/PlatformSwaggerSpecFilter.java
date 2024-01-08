@@ -31,12 +31,14 @@ public class PlatformSwaggerSpecFilter extends AbstractSpecFilter {
       Map<String, List<String>> params,
       Map<String, String> cookies,
       Map<String, List<String>> headers) {
-    if (operation.getSummary() != null && operation.getSummary().contains(INTERNAL_MARKER)) {
+    if (operation.getDescription() != null
+        && operation.getDescription().contains(INTERNAL_MARKER)) {
       LOG.info("Skipping swagger generation for internal method '{}'", operation.getOperationId());
       return false;
     }
     if (isStrictMode) {
-      if (operation.getSummary() != null && operation.getSummary().contains(DEPRECATED_MARKER)) {
+      if (operation.getDescription() != null
+          && operation.getDescription().contains(DEPRECATED_MARKER)) {
         LOG.info("Skipping deprecated method in strict mode '{}'", operation.getOperationId());
         return false;
       }
