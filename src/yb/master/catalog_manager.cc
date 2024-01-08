@@ -117,7 +117,6 @@
 
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
-#include "yb/master/auto_flags_orchestrator.h"
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/backfill_index.h"
 #include "yb/master/catalog_entity_info.h"
@@ -13450,84 +13449,6 @@ Status CatalogManager::SubmitToSysCatalog(std::unique_ptr<tablet::Operation> ope
   auto tablet = VERIFY_RESULT(tablet_peer()->shared_tablet_safe());
   operation->SetTablet(tablet);
   tablet_peer()->Submit(std::move(operation), tablet_peer()->LeaderTerm());
-  return Status::OK();
-}
-
-Status CatalogManager::PromoteAutoFlags(
-    const PromoteAutoFlagsRequestPB* req, PromoteAutoFlagsResponsePB* resp) {
-  const auto max_class = VERIFY_RESULT_PREPEND(
-      ParseEnumInsensitive<AutoFlagClass>(req->max_flag_class()),
-      "Invalid value provided for flag class");
-
-  // It is expected PromoteAutoFlags RPC is triggered only for upgrades, hence it is required
-  // to avoid promotion of flags with AutoFlagClass::kNewInstallsOnly class.
-  SCHECK_LT(
-      max_class, AutoFlagClass::kNewInstallsOnly, InvalidArgument,
-      Format(
-          "max_class cannot be set to $0.",
-          ToString(AutoFlagClass::kNewInstallsOnly)));
-
-  auto [new_config_version, outcome] = VERIFY_RESULT(master::PromoteAutoFlags(
-      max_class, PromoteNonRuntimeAutoFlags(req->promote_non_runtime_flags()), req->force(),
-      *master_->auto_flags_manager(), this));
-
-  resp->set_new_config_version(new_config_version);
-  resp->set_flags_promoted(outcome != PromoteAutoFlagsOutcome::kNoFlagsPromoted);
-  resp->set_non_runtime_flags_promoted(
-      outcome == PromoteAutoFlagsOutcome::kNonRuntimeFlagsPromoted);
-  return Status::OK();
-}
-
-Status CatalogManager::RollbackAutoFlags(
-    const RollbackAutoFlagsRequestPB* req, RollbackAutoFlagsResponsePB* resp) {
-  auto [new_config_version, outcome] = VERIFY_RESULT(
-      master::RollbackAutoFlags(req->rollback_version(), *master_->auto_flags_manager(), this));
-
-  resp->set_new_config_version(new_config_version);
-  resp->set_flags_rolledback(outcome);
-  return Status::OK();
-}
-
-Status CatalogManager::PromoteSingleAutoFlag(
-    const PromoteSingleAutoFlagRequestPB* req, PromoteSingleAutoFlagResponsePB* resp) {
-  auto [new_config_version, outcome] = VERIFY_RESULT(master::PromoteSingleAutoFlag(
-      req->process_name(), req->auto_flag_name(), *master_->auto_flags_manager(), this));
-
-  resp->set_new_config_version(new_config_version);
-  resp->set_flag_promoted(outcome != PromoteAutoFlagsOutcome::kNoFlagsPromoted);
-  resp->set_non_runtime_flag_promoted(outcome == PromoteAutoFlagsOutcome::kNonRuntimeFlagsPromoted);
-  return Status::OK();
-}
-
-Status CatalogManager::DemoteSingleAutoFlag(
-    const DemoteSingleAutoFlagRequestPB* req, DemoteSingleAutoFlagResponsePB* resp) {
-  auto [new_config_version, outcome] = VERIFY_RESULT(master::DemoteSingleAutoFlag(
-      req->process_name(), req->auto_flag_name(), *master_->auto_flags_manager(), this));
-
-  resp->set_new_config_version(new_config_version);
-  resp->set_flag_demoted(outcome);
-  return Status::OK();
-}
-
-Status CatalogManager::ValidateAutoFlagsConfig(
-    const ValidateAutoFlagsConfigRequestPB* req, ValidateAutoFlagsConfigResponsePB* resp) {
-  VLOG_WITH_FUNC(1) << req->ShortDebugString();
-
-  auto min_class = AutoFlagClass::kLocalVolatile;
-  if (req->has_min_flag_class()) {
-    min_class = VERIFY_RESULT_PREPEND(
-        yb::UnderlyingToEnumSlow<yb::AutoFlagClass>(req->min_flag_class()),
-        "Invalid value provided for flag class");
-  }
-
-  auto local_auto_flag_config = master_->GetAutoFlagsConfig();
-  auto valid =
-      VERIFY_RESULT(AreAutoFlagsCompatible(local_auto_flag_config, req->config(), min_class));
-  VLOG_WITH_FUNC(1) << valid;
-
-  resp->set_valid(valid);
-  resp->set_config_version(local_auto_flag_config.config_version());
-
   return Status::OK();
 }
 

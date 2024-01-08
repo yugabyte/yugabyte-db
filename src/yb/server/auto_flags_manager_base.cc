@@ -11,7 +11,7 @@
 // under the License.
 //
 
-#include "yb/client/auto_flags_manager.h"
+#include "yb/server/auto_flags_manager_base.h"
 #include "yb/client/client.h"
 
 #include "yb/fs/fs_manager.h"
@@ -29,7 +29,6 @@
 #include "yb/util/net/net_util.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
-#include "yb/util/scope_exit.h"
 #include "yb/util/source_location.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/version_info.h"
@@ -71,7 +70,6 @@ TAG_FLAG(auto_flags_apply_delay_ms, advanced);
 
 DECLARE_bool(TEST_running_test);
 DECLARE_int32(yb_client_admin_operation_timeout_sec);
-DECLARE_uint64(max_clock_skew_usec);
 
 namespace yb {
 
@@ -94,24 +92,21 @@ std::unordered_set<std::string> GetPerProcessFlags(
 
 }  // namespace
 
-AutoFlagsManager::AutoFlagsManager(
+AutoFlagsManagerBase::AutoFlagsManagerBase(
     const std::string& process_name, const scoped_refptr<ClockBase>& clock, FsManager* fs_manager)
-    : process_name_(process_name),
-      clock_(clock),
-      fs_manager_(fs_manager),
-      update_lock_(mutex_, std::defer_lock) {
+    : fs_manager_(fs_manager), clock_(clock), process_name_(process_name) {
   // google::ProgramInvocationShortName() cannot be used for process_name as it will return the test
   // name in MiniCluster tests.
   current_config_.set_config_version(kInvalidAutoFlagsConfigVersion);
 }
 
-AutoFlagsManager::~AutoFlagsManager() {
+AutoFlagsManagerBase::~AutoFlagsManagerBase() {
   if (messenger_) {
     messenger_->Shutdown();
   }
 }
 
-Status AutoFlagsManager::Init(const std::string& local_hosts) {
+Status AutoFlagsManagerBase::Init(const std::string& local_hosts) {
   rpc::MessengerBuilder messenger_builder("auto_flags_client");
   secure_context_ = VERIFY_RESULT(
       server::SetupInternalSecureContext(local_hosts, *fs_manager_, &messenger_builder));
@@ -127,7 +122,7 @@ Status AutoFlagsManager::Init(const std::string& local_hosts) {
   return Status::OK();
 }
 
-Result<bool> AutoFlagsManager::LoadFromFile() {
+Result<bool> AutoFlagsManagerBase::LoadFromFile() {
   if (FLAGS_disable_auto_flags_management) {
     LOG(WARNING) << "AutoFlags management is disabled.";
     return true;
@@ -153,7 +148,7 @@ Result<bool> AutoFlagsManager::LoadFromFile() {
   return true;
 }
 
-Result<std::optional<AutoFlagsConfigPB>> AutoFlagsManager::GetAutoFlagConfigFromMaster(
+Result<std::optional<AutoFlagsConfigPB>> AutoFlagsManagerBase::GetAutoFlagConfigFromMasterLeader(
     const std::string& master_addresses) {
   auto client = VERIFY_RESULT(yb::client::YBClientBuilder()
                                   .add_master_server_addr(master_addresses)
@@ -164,7 +159,7 @@ Result<std::optional<AutoFlagsConfigPB>> AutoFlagsManager::GetAutoFlagConfigFrom
   return client->GetAutoFlagConfig();
 }
 
-Status AutoFlagsManager::LoadFromMaster(
+Status AutoFlagsManagerBase::LoadFromMasterLeader(
     const std::string& local_hosts, const server::MasterAddresses& master_addresses) {
   if (FLAGS_disable_auto_flags_management) {
     LOG(WARNING) << "AutoFlags management is disabled.";
@@ -200,7 +195,7 @@ Status AutoFlagsManager::LoadFromMaster(
   uint32_t attempts = 1;
   auto start_time = clock_->Now();
   while (true) {
-    auto res = GetAutoFlagConfigFromMaster(master_addresses_str);
+    auto res = GetAutoFlagConfigFromMasterLeader(master_addresses_str);
     if (res.ok()) {
       if (res->has_value()) {
         new_config = std::move(res->value());
@@ -232,12 +227,7 @@ Status AutoFlagsManager::LoadFromMaster(
       std::move(new_config), ApplyNonRuntimeAutoFlags::kTrue, /* apply_sync */ true);
 }
 
-Status AutoFlagsManager::LoadNewConfig(const AutoFlagsConfigPB new_config) {
-  std::lock_guard l(mutex_);
-  return LoadFromConfigUnlocked(new_config, ApplyNonRuntimeAutoFlags::kTrue);
-}
-
-Result<MonoDelta> AutoFlagsManager::GetTimeLeftToApplyConfig() const {
+Result<MonoDelta> AutoFlagsManagerBase::GetTimeLeftToApplyConfig() const {
   static const MonoDelta uninitialized_delta;
 
   if (!current_config_.has_config_apply_time()) {
@@ -254,7 +244,7 @@ Result<MonoDelta> AutoFlagsManager::GetTimeLeftToApplyConfig() const {
   return uninitialized_delta;
 }
 
-Status AutoFlagsManager::LoadFromConfigUnlocked(
+Status AutoFlagsManagerBase::LoadFromConfigUnlocked(
     const AutoFlagsConfigPB new_config, ApplyNonRuntimeAutoFlags apply_non_runtime,
     bool apply_sync) {
   if (!VERIFY_RESULT(ValidateAndSetConfig(std::move(new_config)))) {
@@ -270,7 +260,7 @@ Status AutoFlagsManager::LoadFromConfigUnlocked(
       LOG(INFO) << "New AutoFlags config will be applied in " << delay;
       RETURN_NOT_OK(messenger_->ScheduleOnReactor(
           std::bind(
-              &AutoFlagsManager::AsyncApplyConfig, this, current_config_.config_version(),
+              &AutoFlagsManagerBase::AsyncApplyConfig, this, current_config_.config_version(),
               apply_non_runtime),
           delay, SOURCE_LOCATION()));
       return Status::OK();
@@ -280,39 +270,21 @@ Status AutoFlagsManager::LoadFromConfigUnlocked(
   return ApplyConfig(apply_non_runtime);
 }
 
-uint32_t AutoFlagsManager::GetConfigVersion() const {
+uint32_t AutoFlagsManagerBase::GetConfigVersion() const {
   SharedLock lock(mutex_);
   return current_config_.config_version();
 }
 
-Result<uint32_t> AutoFlagsManager::ValidateAndGetConfigVersion() const {
-  const auto last_config_sync_time = last_config_sync_time_.load(std::memory_order_acquire);
-  SCHECK(last_config_sync_time, IllegalState, "AutoFlags config is stale. No config sync time set");
-  const auto apply_delay = GetApplyDelay();
-  const auto max_allowed_time =
-      last_config_sync_time.AddDelta(apply_delay)
-          .AddDelta(MonoDelta::FromMicroseconds(-1 * FLAGS_max_clock_skew_usec));
-
-  const auto now = clock_->Now();
-  SCHECK_LT(
-      now, max_allowed_time, IllegalState,
-      Format(
-          "AutoFlags config is stale. Last sync time: $0, Max allowed staleness: $1",
-          last_config_sync_time, apply_delay));
-
-  return GetConfigVersion();
-}
-
-AutoFlagsConfigPB AutoFlagsManager::GetConfig() const {
+AutoFlagsConfigPB AutoFlagsManagerBase::GetConfig() const {
   SharedLock lock(mutex_);
   return current_config_;
 }
 
-MonoDelta AutoFlagsManager::GetApplyDelay() const {
+MonoDelta AutoFlagsManagerBase::GetApplyDelay() const {
   return MonoDelta::FromMilliseconds(FLAGS_auto_flags_apply_delay_ms);
 }
 
-Result<bool> AutoFlagsManager::ValidateAndSetConfig(const AutoFlagsConfigPB&& new_config) {
+Result<bool> AutoFlagsManagerBase::ValidateAndSetConfig(const AutoFlagsConfigPB&& new_config) {
   // First new config can be empty, and should still be written to disk.
   // Else no-op if it is the same or lower version.
   const auto& current_version = current_config_.config_version();
@@ -341,7 +313,7 @@ Result<bool> AutoFlagsManager::ValidateAndSetConfig(const AutoFlagsConfigPB&& ne
   return true;
 }
 
-Status AutoFlagsManager::WriteConfigToDisk() {
+Status AutoFlagsManagerBase::WriteConfigToDisk() {
   LOG(INFO) << "Storing new AutoFlags config: " << current_config_.ShortDebugString();
   RETURN_NOT_OK_PREPEND(
       fs_manager_->WriteAutoFlagsConfig(&current_config_), "Failed to store AutoFlag config");
@@ -349,7 +321,7 @@ Status AutoFlagsManager::WriteConfigToDisk() {
   return Status::OK();
 }
 
-void AutoFlagsManager::AsyncApplyConfig(
+void AutoFlagsManagerBase::AsyncApplyConfig(
     uint32 apply_version, ApplyNonRuntimeAutoFlags apply_non_runtime) {
   SharedLock lock(mutex_);
   if (current_config_.config_version() != apply_version) {
@@ -363,7 +335,7 @@ void AutoFlagsManager::AsyncApplyConfig(
 
 // This is a blocking function that can block process startup. We relax ThreadRestrictions since it
 // gets invoked from a reactor thread.
-Status AutoFlagsManager::ApplyConfig(ApplyNonRuntimeAutoFlags apply_non_runtime) const {
+Status AutoFlagsManagerBase::ApplyConfig(ApplyNonRuntimeAutoFlags apply_non_runtime) const {
   const auto delay = VERIFY_RESULT(GetTimeLeftToApplyConfig());
   if (delay) {
     LOG(INFO) << "Sleeping for " << delay << "us before applying AutoFlags.";
@@ -420,7 +392,8 @@ Status AutoFlagsManager::ApplyConfig(ApplyNonRuntimeAutoFlags apply_non_runtime)
   return Status::OK();
 }
 
-Result<std::unordered_set<std::string>> AutoFlagsManager::GetAvailableAutoFlagsForServer() const {
+Result<std::unordered_set<std::string>> AutoFlagsManagerBase::GetAvailableAutoFlagsForServer()
+    const {
   auto all_auto_flags = VERIFY_RESULT(AutoFlagsUtil::GetAvailableAutoFlags());
   std::unordered_set<std::string> process_auto_flags;
   for (const auto& flag : all_auto_flags[process_name_]) {
@@ -429,72 +402,4 @@ Result<std::unordered_set<std::string>> AutoFlagsManager::GetAvailableAutoFlagsF
   return process_auto_flags;
 }
 
-// No thread safety analysis, as it cannot detect that the mutex is locked by UniqueLock.
-Status AutoFlagsManager::StoreUpdatedConfig(
-    AutoFlagsConfigPB& new_config,
-    std::function<Status(const AutoFlagsConfigPB&)> persist_config_func) NO_THREAD_SAFETY_ANALYSIS {
-  // The config has to get quorum committed in the sys_catalog before it can be stored in
-  // current_config_ even on the master leader. So, there will be delay between when the
-  // config_apply_time is computed and it being stored.
-  // During this window we should not respond to heartbeats since it will renew the leases in the
-  // tserver for auto_flags_apply_delay_ms, which can cause it to be higher than the
-  // config_apply_time we picked. We hold onto the mutex_ so that we do not respond to heartbeats.
-  //
-  // Raft and master leader election will guarantee that this is safe from crashes:
-  // If we crash between writing the WAL op and the it getting applied, then the new leader will
-  // apply it before responding to heartbeats. This is because new leader will have to commit the
-  // NO_OP record and apply all pending operations before it is marked ready. If the op was never
-  // replicated to the new leader then the operation will be lost, and the user will have to try
-  // again.
-  RSTATUS_DCHECK(
-      !update_lock_.owns_lock(), IllegalState, "AutoFlags config update already in progress");
-  update_lock_.lock();
-  auto se = ScopeExit([this]() NO_THREAD_SAFETY_ANALYSIS { update_lock_.unlock(); });
-
-  // This is an update of an existing config. The initial config must be applied immediately.
-  DCHECK_GE(new_config.config_version(), kMinAutoFlagsConfigVersion);
-  // Every config change must update the version by 1.
-  RSTATUS_DCHECK_EQ(
-      new_config.config_version(), current_config_.config_version() + 1, IllegalState,
-      "Attempting to store a stale config");
-
-  const auto now = clock_->Now();
-  const auto config_apply_ht = now.AddDelta(GetApplyDelay());
-  new_config.set_config_apply_time(config_apply_ht.ToUint64());
-
-  return persist_config_func(new_config);
-}
-
-// No thread safety analysis, as it cannot detect that the mutex is locked by UniqueLock.
-Status AutoFlagsManager::ProcessAutoFlagsConfigOperation(const AutoFlagsConfigPB new_config)
-    NO_THREAD_SAFETY_ANALYSIS {
-  bool unlock_needed = false;
-  auto se = ScopeExit([&update_lock = update_lock_, &unlock_needed]() NO_THREAD_SAFETY_ANALYSIS {
-    if (unlock_needed) {
-      update_lock.unlock();
-    }
-  });
-
-  // This function will be invoked when the ChangeAutoFlagsConfigOperation is applied. The
-  // StoreUpdatedConfig may be holding the lock already and waiting for us to complete in which case
-  // we do not have to reacquire the lock. If we crashed during StoreUpdatedConfig, then the
-  // operation can get applied at tablet bootstrap or a later time, and in both cases we need to get
-  // the lock.
-  if (!update_lock_.owns_lock()) {
-    update_lock_.lock();
-    unlock_needed = true;
-  }
-
-  return LoadFromConfigUnlocked(std::move(new_config), ApplyNonRuntimeAutoFlags::kFalse);
-}
-
-void AutoFlagsManager::HandleMasterHeartbeatResponse(
-    HybridTime heartbeat_sent_time, std::optional<AutoFlagsConfigPB> new_config) {
-  if (new_config) {
-    std::lock_guard l(mutex_);
-    // We cannot fail to load a new config that was provided by the master.
-    CHECK_OK(LoadFromConfigUnlocked(std::move(*new_config), ApplyNonRuntimeAutoFlags::kFalse));
-  }
-  last_config_sync_time_.store(heartbeat_sent_time, std::memory_order_release);
-}
 }  // namespace yb

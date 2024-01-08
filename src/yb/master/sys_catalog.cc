@@ -73,6 +73,7 @@
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/split.h"
 
+#include "yb/master/master_auto_flags_manager.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_manager.h"
@@ -614,10 +615,10 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       .snapshot_coordinator = &master_->catalog_manager()->snapshot_coordinator(),
       .tablet_splitter = nullptr,
       .allowed_history_cutoff_provider = std::bind(
-          &CatalogManager::AllowedHistoryCutoffProvider,
-          master_->catalog_manager_impl(), std::placeholders::_1),
+          &CatalogManager::AllowedHistoryCutoffProvider, master_->catalog_manager_impl(),
+          std::placeholders::_1),
       .transaction_manager_provider = nullptr,
-      .auto_flags_manager = master_->auto_flags_manager(),
+      .auto_flags_manager = master_->GetAutoFlagsManagerImpl(),
       // We won't be doing full compactions on the catalog tablet.
       .full_compaction_pool = nullptr,
       .admin_triggered_compaction_pool = nullptr,

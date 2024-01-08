@@ -72,7 +72,6 @@ set(MASTER_SRCS
   async_rpc_tasks.cc
   async_snapshot_tasks.cc
   async_snapshot_transfer_task.cc
-  auto_flags_orchestrator.cc
   master_call_home.cc
   backfill_index.cc
   catalog_manager.cc
@@ -91,6 +90,7 @@ set(MASTER_SRCS
   flush_manager.cc
   master.cc
   master_admin_service.cc
+  master_auto_flags_manager.cc
   tablet_health_manager.cc
   master_backup_service.cc
   master_client_service.cc
@@ -180,6 +180,7 @@ set(MASTER_DEPS
   yb_pggate_flags
   yb_pggate
   cdc_util
+  auto_flags_manager_common
 )
 
 ADD_YB_LIBRARY(master

@@ -239,6 +239,7 @@ set(TSERVER_SRCS
   tablet_validator.cc
   ts_tablet_manager.cc
   tserver-path-handlers.cc
+  tserver_auto_flags_manager.cc
   tserver_metrics_heartbeat_data_provider.cc
   server_main_util.cc
   stateful_services/pg_auto_analyze_service.cc
@@ -278,7 +279,9 @@ set(TSERVER_DEPS
   ysql_upgrade
   cdc
   cdc_consumer_proto
-  xcluster_producer_proto)
+  xcluster_producer_proto
+  auto_flags_manager_common
+)
 
 ADD_YB_LIBRARY(tserver
   SRCS ${TSERVER_SRCS}

@@ -36,7 +36,6 @@ set(YB_PCH_DEP_LIBS opid_proto)
 set(CLIENT_SRCS
   async_initializer.cc
   async_rpc.cc
-  auto_flags_manager.cc
   batcher.cc
   client.cc
   client_builder-internal.cc
