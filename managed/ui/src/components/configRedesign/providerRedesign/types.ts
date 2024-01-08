@@ -285,6 +285,7 @@ interface GCPCloudInfoBase {
 
   ybFirewallTags?: string;
   gceProject?: string;
+  sharedVPCProject?: string;
   destVpcId?: string;
 }
 interface GCPCloudInfoMutation extends GCPCloudInfoBase {
