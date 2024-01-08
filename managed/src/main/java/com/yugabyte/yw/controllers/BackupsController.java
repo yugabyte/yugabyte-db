@@ -113,9 +113,10 @@ public class BackupsController extends AuthenticatedController {
   @Deprecated
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
   @ApiOperation(
-      value =
-          "Deprecated since YBA version 2.20.0.0."
-              + " Use 'List Backups (paginated) V2' instead. List a customer's backups",
+      value = "List a customer's backups - deprecated",
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.20.0.0.</b></p>"
+              + "Use 'List Backups (paginated) V2' instead.",
       response = Backup.class,
       responseContainer = "List",
       nickname = "ListOfBackups")
@@ -342,9 +343,10 @@ public class BackupsController extends AuthenticatedController {
   @Deprecated
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
   @ApiOperation(
-      value =
-          "Deprecated since YBA version 2.20.0.0."
-              + " Use 'Create Backup Schedule Async' instead. Create Backup Schedule",
+      value = "Create Backup Schedule - deprecated",
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.20.0.0.</b></p>"
+              + "Use 'Create Backup Schedule Async' instead.",
       response = Schedule.class,
       nickname = "createBackupSchedule")
   @ApiImplicitParams(
@@ -519,9 +521,10 @@ public class BackupsController extends AuthenticatedController {
   @Deprecated
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
   @ApiOperation(
-      value =
-          "Deprecated since YBA version 2.20.0.0."
-              + " Use 'Restore from a backup V2' instead. Restore from a backup",
+      value = "Restore from a backup - deprecated",
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.20.0.0.</b></p>"
+              + "Use 'Restore from a backup V2' instead.",
       response = YBPTask.class,
       responseContainer = "Restore")
   @ApiImplicitParams(
@@ -646,9 +649,10 @@ public class BackupsController extends AuthenticatedController {
   @Deprecated
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
   @ApiOperation(
-      value =
-          "Deprecated since YBA version 2.20.0.0."
-              + " Use 'Delete backups V2' instead. Delete backups",
+      value = "Delete Backups - deprecated",
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.20.0.0.</b></p>"
+              + "Use 'Delete backups V2' instead.",
       response = YBPTasks.class,
       nickname = "deleteBackups")
   @AuthzPath({
