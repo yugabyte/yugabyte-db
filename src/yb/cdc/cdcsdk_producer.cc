@@ -2424,6 +2424,10 @@ Status GetChangesForCDCSDK(
           } else {
             commit_time_threshold = *consistent_snapshot_time;
           }
+        } else {
+          if (safe_hybrid_time_req >= 0) {
+            commit_time_threshold = (uint64_t)safe_hybrid_time_req;
+          }
         }
         VLOG(3) << "Commit time Threshold = " << commit_time_threshold;
         VLOG(3) << "Txn commit time       = " << GetTransactionCommitTime(msg);
