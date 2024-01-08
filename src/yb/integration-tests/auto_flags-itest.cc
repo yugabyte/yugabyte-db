@@ -22,6 +22,7 @@
 #include "yb/integration-tests/yb_mini_cluster_test_base.h"
 
 #include "yb/master/catalog_manager.h"
+#include "yb/master/master_auto_flags_manager.h"
 #include "yb/master/mini_master.h"
 #include "yb/master/master.h"
 
@@ -32,8 +33,6 @@
 #include "yb/tserver/heartbeater.h"
 #include "yb/tserver/mini_tablet_server.h"
 #include "yb/tserver/tablet_server.h"
-
-#include "yb/client/auto_flags_manager.h"
 
 #include "yb/util/flags.h"
 #include "yb/util/backoff_waiter.h"
@@ -330,7 +329,7 @@ class AutoFlagsMiniClusterTest : public MiniClusterTestWithClient<MiniCluster> {
     req.set_force(force);
 
     master::PromoteAutoFlagsResponsePB resp;
-    RETURN_NOT_OK(leader_master->catalog_manager_impl()->PromoteAutoFlags(&req, &resp));
+    RETURN_NOT_OK(leader_master->GetAutoFlagsManagerImpl()->PromoteAutoFlags(&req, &resp));
 
     if (resp.has_error()) {
       return StatusFromPB(resp.error().status());
@@ -362,7 +361,7 @@ class AutoFlagsMiniClusterTest : public MiniClusterTestWithClient<MiniCluster> {
 
     master::RollbackAutoFlagsResponsePB rollback_resp;
     auto s =
-        leader_master->catalog_manager_impl()->RollbackAutoFlags(&rollback_req, &rollback_resp);
+        leader_master->GetAutoFlagsManagerImpl()->RollbackAutoFlags(&rollback_req, &rollback_resp);
     auto config = leader_master->GetAutoFlagsConfig();
     if (!expect_success) {
       CHECK(!s.ok());
@@ -387,7 +386,7 @@ class AutoFlagsMiniClusterTest : public MiniClusterTestWithClient<MiniCluster> {
     req.set_process_name(process_name);
     req.set_auto_flag_name(flag_name);
     master::DemoteSingleAutoFlagResponsePB resp;
-    auto s = leader_master->catalog_manager_impl()->DemoteSingleAutoFlag(&req, &resp);
+    auto s = leader_master->GetAutoFlagsManagerImpl()->DemoteSingleAutoFlag(&req, &resp);
     auto config = leader_master->GetAutoFlagsConfig();
 
     if (!expect_success) {
@@ -467,7 +466,7 @@ TEST_F(AutoFlagsMiniClusterTest, Promote) {
       /* promote_auto_flags */
       [&](const auto& req) -> Result<master::PromoteAutoFlagsResponsePB> {
         master::PromoteAutoFlagsResponsePB resp;
-        RETURN_NOT_OK(leader_master->catalog_manager_impl()->PromoteAutoFlags(&req, &resp));
+        RETURN_NOT_OK(leader_master->GetAutoFlagsManagerImpl()->PromoteAutoFlags(&req, &resp));
         return resp;
       },
       /* validate_config_on_all_nodes */
@@ -586,12 +585,15 @@ TEST_F(AutoFlagsMiniClusterTest, DemoteFlagBeforeBackfillFlagInfos) {
   ASSERT_EQ(config.promoted_flags(1).flag_infos_size(), 0);
 }
 
+// This test is in master namespace so that it can access private methods of
+// yb::master::MasterAutoFlagsManager.
+namespace master {
 TEST_F(AutoFlagsMiniClusterTest, CheckMissingFlag) {
   ASSERT_OK(RunSetUp());
   ASSERT_OK(ValidateConfig());
 
   auto leader_master = ASSERT_RESULT(cluster_->GetLeaderMiniMaster());
-  auto auto_flags_manager = leader_master->master()->auto_flags_manager();
+  auto auto_flags_manager = leader_master->master()->GetAutoFlagsManagerImpl();
 
   auto config = auto_flags_manager->GetConfig();
   for (auto& promoted_flags : *config.mutable_promoted_flags()) {
@@ -604,6 +606,7 @@ TEST_F(AutoFlagsMiniClusterTest, CheckMissingFlag) {
   ASSERT_TRUE(s.ToString().find("missing_flag") != std::string::npos) << s;
   ASSERT_TRUE(s.ToString().find(VersionInfo::GetShortVersionString()) != std::string::npos) << s;
 }
+}  // namespace master
 
 // Make sure AutoFlags are not applied before auto_flags_apply_delay_ms
 TEST_F(AutoFlagsMiniClusterTest, HeartbeatDelay) {

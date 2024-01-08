@@ -36,7 +36,7 @@
 
 #include <boost/container/static_vector.hpp>
 
-#include "yb/client/auto_flags_manager.h"
+#include "yb/server/auto_flags_manager_base.h"
 #include "yb/client/client.h"
 #include "yb/client/error.h"
 #include "yb/client/meta_data_cache.h"

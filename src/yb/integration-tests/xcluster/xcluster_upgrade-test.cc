@@ -16,6 +16,7 @@
 #include "yb/integration-tests/xcluster/xcluster_ycql_test_base.h"
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
+#include "yb/master/master_auto_flags_manager.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/mini_master.h"
 #include "yb/util/flags/auto_flags_util.h"
@@ -74,7 +75,7 @@ class XClusterUpgradeTest : public XClusterYcqlTestBase {
     auto leader_master = VERIFY_RESULT(cluster.GetLeaderMiniMaster())->master();
 
     master::PromoteAutoFlagsResponsePB resp;
-    RETURN_NOT_OK(leader_master->catalog_manager_impl()->PromoteAutoFlags(&req, &resp));
+    RETURN_NOT_OK(leader_master->GetAutoFlagsManagerImpl()->PromoteAutoFlags(&req, &resp));
     if (resp.has_error()) {
       return StatusFromPB(resp.error().status());
     }
@@ -87,7 +88,7 @@ class XClusterUpgradeTest : public XClusterYcqlTestBase {
     auto leader_master = VERIFY_RESULT(cluster.GetLeaderMiniMaster())->master();
 
     master::RollbackAutoFlagsResponsePB resp;
-    RETURN_NOT_OK(leader_master->catalog_manager_impl()->RollbackAutoFlags(&req, &resp));
+    RETURN_NOT_OK(leader_master->GetAutoFlagsManagerImpl()->RollbackAutoFlags(&req, &resp));
     if (resp.has_error()) {
       return StatusFromPB(resp.error().status());
     }
@@ -102,7 +103,7 @@ class XClusterUpgradeTest : public XClusterYcqlTestBase {
 
     master::DemoteSingleAutoFlagResponsePB resp;
     auto leader_master = VERIFY_RESULT(cluster.GetLeaderMiniMaster())->master();
-    RETURN_NOT_OK(leader_master->catalog_manager_impl()->DemoteSingleAutoFlag(&req, &resp));
+    RETURN_NOT_OK(leader_master->GetAutoFlagsManagerImpl()->DemoteSingleAutoFlag(&req, &resp));
     if (resp.has_error()) {
       return StatusFromPB(resp.error().status());
     }

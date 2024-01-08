@@ -1235,7 +1235,7 @@ class Tablet : public AbstractTablet,
 
   docdb::YQLRowwiseIteratorIf* cdc_iterator_ = nullptr;
 
-  AutoFlagsManager* auto_flags_manager_ = nullptr;
+  AutoFlagsManagerBase* auto_flags_manager_ = nullptr;
 
   mutable std::mutex control_path_mutex_;
   std::unordered_map<std::string, std::shared_ptr<void>> additional_metadata_
