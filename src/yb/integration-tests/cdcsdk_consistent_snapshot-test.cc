@@ -26,8 +26,7 @@ class CDCSDKConsistentSnapshotTest : public CDCSDKYsqlTest {
 
     // Disable pg replication command support to ensure that consistent snapshot feature
     // works independently.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_ysql_yb_enable_replication_commands) = false;
-
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = false;
   }
 
 };

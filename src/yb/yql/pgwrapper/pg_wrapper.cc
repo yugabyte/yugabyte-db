@@ -222,7 +222,7 @@ DEFINE_NON_RUNTIME_bool(enable_ysql_conn_mgr_stats, true,
   "displayed at the endpoint '<ip_address_of_cluster>:13000/connections'");
 
 // TODO(#19211): Convert this to an auto-flag.
-DEFINE_test_flag(bool, ysql_yb_enable_replication_commands, false,
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_replication_commands, false,
     "Enable logical replication commands for Publication and Replication Slots");
 
 DEFINE_RUNTIME_PG_PREVIEW_FLAG(int32, yb_parallel_range_rows, 0,
