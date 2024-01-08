@@ -94,6 +94,7 @@ export interface GCPProviderEditFormFieldValues {
   providerName: string;
   imageBundles: ImageBundle[];
   regions: CloudVendorRegionField[];
+  sharedVPCProject: string;
   sshKeypairManagement: KeyPairManagement;
   sshKeypairName: string;
   sshPort: number | null;
@@ -348,6 +349,16 @@ export const GCPProviderEditForm = ({
                   fullWidth
                 />
               </FormField>
+              {!!providerConfig.details.cloudInfo.gcp?.sharedVPCProject && (
+                <FormField>
+                  <FieldLabel>Current Shared VPC Project</FieldLabel>
+                  <YBInput
+                    value={providerConfig.details.cloudInfo.gcp.sharedVPCProject}
+                    disabled={true}
+                    fullWidth
+                  />
+                </FormField>
+              )}
               <FormField>
                 <FieldLabel>Change Cloud Credentials</FieldLabel>
                 <YBToggleField
@@ -397,13 +408,18 @@ export const GCPProviderEditForm = ({
                     </FormField>
                   )}
                   <FormField>
-                    <FieldLabel>GCE Project Name (Optional Override)</FieldLabel>
+                    <FieldLabel
+                      infoTitle="Shared VPC Project"
+                      infoContent="If you want to use Shared VPC to connect resources from multiple projects to a common VPC, you can specify the project for the same here."
+                    >
+                      Shared VPC Project (Optional)
+                    </FieldLabel>
                     <YBInputField
                       control={formMethods.control}
-                      name="gceProject"
+                      name="sharedVPCProject"
                       disabled={getIsFieldDisabled(
                         ProviderCode.GCP,
-                        'gceProject',
+                        'sharedVPCProject',
                         isFormDisabled,
                         isProviderInUse
                       )}
@@ -812,7 +828,7 @@ const constructProviderPayload = async (
       : formValues.providerCredentialType === ProviderCredentialType.SPECIFIED_SERVICE_ACCOUNT
       ? {
           gceApplicationCredentials: googleServiceAccount,
-          gceProject: formValues.gceProject ?? googleServiceAccount?.project_id ?? '',
+          gceProject: googleServiceAccount?.project_id ?? '',
           useHostCredentials: false
         }
       : assertUnreachableCase(formValues.providerCredentialType);
@@ -844,12 +860,20 @@ const constructProviderPayload = async (
         [ProviderCode.GCP]: {
           ...vpcConfig,
           ...(formValues.editCloudCredentials
-            ? { ...gcpCredentials }
+            ? {
+                ...gcpCredentials,
+                ...(formValues.sharedVPCProject && {
+                  sharedVPCProject: formValues.sharedVPCProject
+                })
+              }
             : {
                 useHostCredentials: cloudInfo.gcp.useHostCredentials,
                 gceProject: cloudInfo.gcp.gceProject,
                 gceApplicationCredentials: cloudInfo.gcp.gceApplicationCredentials,
-                gceApplicationCredentialsPath: cloudInfo.gcp.gceApplicationCredentialsPath
+                gceApplicationCredentialsPath: cloudInfo.gcp.gceApplicationCredentialsPath,
+                ...(cloudInfo.gcp.sharedVPCProject && {
+                  sharedVPCProject: cloudInfo.gcp.sharedVPCProject
+                })
               }),
           ...(formValues.ybFirewallTags && { ybFirewallTags: formValues.ybFirewallTags })
         }
