@@ -103,7 +103,8 @@ public class AlertController extends AuthenticatedController {
   @Inject private AlertTemplateVariableService alertTemplateVariableService;
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Get details of an alert",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Get details of an alert",
       response = Alert.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -121,7 +122,8 @@ public class AlertController extends AuthenticatedController {
 
   /** Lists alerts for given customer. */
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. List all alerts",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "List all alerts",
       response = Alert.class,
       responseContainer = "List",
       nickname = "listOfAlerts")
@@ -142,7 +144,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Deprecated since YBA version 2.8.0.0. List active alerts",
+      notes = "<b style=\"color:#ff0000\">Deprecated since YBA version 2.8.0.0.</b></p>",
+      value = "List active alerts - deprecated",
       response = Alert.class,
       responseContainer = "List")
   @AuthzPath({
@@ -163,7 +166,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Count alerts",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Count alerts",
       response = Integer.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -191,7 +195,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. List alerts (paginated)",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "List alerts (paginated)",
       response = AlertPagedResponse.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -223,7 +228,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Acknowledge an alert",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Acknowledge an alert",
       response = Alert.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -246,7 +252,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Deprecated since YBA version 2.8.0.0. Acknowledge all alerts",
+      notes = "<b style=\"color:#ff0000\">Deprecated since YBA version 2.8.0.0.</b></p>",
+      value = "Acknowledge all alerts - deprecated",
       response = Alert.class,
       responseContainer = "List")
   @ApiImplicitParams(
@@ -282,7 +289,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Get an alert configuration",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Get an alert configuration",
       response = AlertConfiguration.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -301,9 +309,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change. "
-              + "Get filtered list of alert configuration templates",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Get filtered list of alert configuration templates",
       response = AlertConfigurationTemplate.class,
       responseContainer = "List")
   @ApiImplicitParams(
@@ -338,9 +345,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change. "
-              + "List all alert configurations (paginated)",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "List all alert configurations (paginated)",
       response = AlertConfigurationPagedResponse.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -372,9 +378,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change. "
-              + "Get filtered list of alert configurations",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Get filtered list of alert configurations",
       response = AlertConfiguration.class,
       responseContainer = "List")
   @ApiImplicitParams(
@@ -404,7 +409,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Create an alert configuration",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Create an alert configuration",
       response = AlertConfiguration.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -440,7 +446,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Update an alert configuration",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Update an alert configuration",
       response = AlertConfiguration.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -481,7 +488,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Delete an alert configuration",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Delete an alert configuration",
       response = YBPSuccess.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -505,9 +513,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change. "
-              + "Send test alert for alert configuration",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Send test alert for alert configuration",
       response = YBPSuccess.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -530,7 +537,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Create an alert channel",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Create an alert channel",
       response = AlertChannel.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -561,7 +569,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Get an alert channel",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Get an alert channel",
       response = AlertChannel.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -578,7 +587,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Update an alert channel",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Update an alert channel",
       response = AlertChannel.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -611,7 +621,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Delete an alert channel",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Delete an alert channel",
       response = YBPSuccess.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -635,7 +646,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. List all alert channels",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "List all alert channels",
       response = AlertChannel.class,
       responseContainer = "List")
   @AuthzPath({
@@ -654,7 +666,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Get alert channel templates",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Get alert channel templates",
       response = AlertChannelTemplatesExt.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -671,7 +684,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Set alert channel templates",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Set alert channel templates",
       response = AlertChannelTemplates.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -701,7 +715,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Delete alert channel templates",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Delete alert channel templates",
       response = YBPSuccess.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -722,7 +737,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. List all alert channel templates",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "List all alert channel templates",
       response = AlertChannelTemplatesExt.class,
       responseContainer = "List")
   @AuthzPath({
@@ -738,7 +754,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Create an alert destination",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Create an alert destination",
       response = AlertDestination.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -774,7 +791,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Get an alert destination",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Get an alert destination",
       response = AlertDestination.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -790,7 +808,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Update an alert destination",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Update an alert destination",
       response = AlertDestination.class)
   @ApiImplicitParams(
       @ApiImplicitParam(
@@ -827,7 +846,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Delete an alert destination",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Delete an alert destination",
       response = YBPSuccess.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -850,7 +870,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. List alert destinations",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "List alert destinations",
       response = AlertDefinition.class,
       responseContainer = "List")
   @AuthzPath({
@@ -866,7 +887,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Deprecated since YBA version 2.20.0.0. Get alert template settings",
+      notes = "<b style=\"color:#ff0000\">Deprecated since YBA version 2.20.0.0.</b></p>",
+      value = "Get alert template settings - deprecated",
       response = AlertTemplateSettings.class,
       responseContainer = "List")
   @AuthzPath({
@@ -888,9 +910,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value =
-          "Deprecated since YBA version 2.20.0.0. "
-              + "Create or update alert template settings list",
+      notes = "<b style=\"color:#ff0000\">Deprecated since YBA version 2.20.0.0.</b></p>",
+      value = "Create or update alert template settings list - deprecated",
       response = AlertTemplateSettings.class,
       responseContainer = "List")
   @ApiImplicitParams(
@@ -925,7 +946,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Deprecated since YBA version 2.20.0.0. Delete an alert template settings",
+      notes = "<b style=\"color:#ff0000\">Deprecated since YBA version 2.20.0.0.</b></p>",
+      value = "Delete an alert template settings - deprecated",
       response = YBPSuccess.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -950,7 +972,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. List alert template variables",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "List alert template variables",
       response = AlertTemplateVariablesList.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -972,9 +995,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change. "
-              + "Create or update alert template variables",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Create or update alert template variables",
       response = AlertTemplateVariable.class,
       responseContainer = "List")
   @ApiImplicitParams(
@@ -1008,9 +1030,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change. "
-              + "Delete an alert template variables",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Delete an alert template variables",
       response = YBPSuccess.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -1034,9 +1055,8 @@ public class AlertController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change. "
-              + "Prepare alert notification preview",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Prepare alert notification preview",
       response = AlertTemplateVariablesList.class)
   @ApiImplicitParams(
       @ApiImplicitParam(

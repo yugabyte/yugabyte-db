@@ -93,7 +93,7 @@ public class Region extends Model {
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.17.2.0")
   @ApiModelProperty(
       value =
-          "Deprecated since YBA version 2.17.2.0, "
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.17.2.0.</b> "
               + "Moved to details.cloudInfo aws/gcp/azure ybImage property",
       example = "TODO",
       accessMode = READ_WRITE)
@@ -166,7 +166,7 @@ public class Region extends Model {
   @ApiModelProperty(
       required = false,
       value =
-          "Deprecated since YBA version 2.17.2.0, "
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.17.2.0.</b> "
               + "Moved to regionDetails.cloudInfo aws/azure securityGroupId property")
   public String getSecurityGroupId() {
     Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(this);
@@ -193,7 +193,7 @@ public class Region extends Model {
   @ApiModelProperty(
       required = false,
       value =
-          "Deprecated since YBA version 2.17.2.0, "
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.17.2.0.</b> "
               + "Moved to regionDetails.cloudInfo aws/azure vnet property")
   public String getVnetName() {
     Map<String, String> envVars = CloudInfoInterface.fetchEnvVars(this);

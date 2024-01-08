@@ -66,7 +66,8 @@ public class TabletServerController extends AuthenticatedController {
    * @return Result tablet server information
    */
   @ApiOperation(
-      value = "YbaApi Internal. List all tablet servers information",
+      notes = "YbaApi Internal.",
+      value = "List all tablet servers information",
       nickname = "listTabletServers",
       response = Object.class,
       responseContainer = "Map")

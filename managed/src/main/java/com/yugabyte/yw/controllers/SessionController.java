@@ -849,9 +849,8 @@ public class SessionController extends AbstractPlatformController {
   }
 
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change."
-              + " Returns the current list of notifications for admin",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Current list of notifications for admin",
       response = AdminNotifications.class)
   @With(TokenAuthenticator.class)
   @AuthzPath({

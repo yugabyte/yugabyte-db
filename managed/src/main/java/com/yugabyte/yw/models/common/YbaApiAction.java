@@ -79,7 +79,7 @@ public class YbaApiAction extends Action<YbaApi> {
     if (annotatedElement.getClass().equals(Method.class)) {
       ApiOperation op = annotatedElement.getAnnotation(ApiOperation.class);
       if (op != null) {
-        return op.value();
+        return op.notes();
       }
     } else if (annotatedElement.getClass().equals(Parameter.class)) {
       ApiParam p = annotatedElement.getAnnotation(ApiParam.class);
