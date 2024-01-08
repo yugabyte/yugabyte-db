@@ -4,6 +4,7 @@ headerTitle: Manage YugabyteDB Anywhere users
 linkTitle: Manage users
 description: Use role-based access control (RBAC) in YugabyteDB Anywhere to manage users and roles.
 headcontent: Invite team members to your account and manage their access
+earlyAccess: /preview/releases/versioning/#feature-availability
 menu:
   stable_yugabyte-platform:
     parent: administer-yugabyte-platform
@@ -13,6 +14,24 @@ type: docs
 ---
 
 YugabyteDB Anywhere uses a role-based access control (RBAC) model to manage access to your YugabyteDB Anywhere instance (whether via the UI or the REST API). Using roles, you can enforce the [principle of least privilege](https://en.wikipedia.org/wiki/Principle_of_least_privilege) (PoLP) by ensuring that users have the precise permissions needed to fulfill their roles while mitigating the risk of unauthorized access or accidental breaches. A role defines a set of permissions that determine what features can be accessed by account users who have been assigned that role.
+
+{{< note title="Early Access">}}
+
+RBAC with the ability to limit users to manage only a subset of universes is [Early Access](/preview/releases/versioning/#feature-availability).
+
+By default, RBAC is not enabled. To enable the feature, use following API command:
+
+```sh
+curl --request PUT \
+  --url http://{yba_host:port}/api/v1/customers/{customerUUID}/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.rbac.use_new_authz \
+  --header 'Content-Type: text/plain' \
+  --header 'X-AUTH-YW-API-TOKEN: {api_token}' \
+  --data 'true'
+```
+
+Note that if you enable RBAC, you can't turn it off. You should test the feature thoroughly in a development or staging environment before enabling it in your production environment.
+
+{{</note >}}
 
 ## Users
 
