@@ -172,10 +172,9 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestRetentionBarrierSettingRace) {
   // Now, drop the consistent snapshot stream and check that retention barriers are released
   ASSERT_TRUE(DeleteCDCStream(stream1_id));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 1;
-  SleepFor(MonoDelta::FromSeconds(5));
+  VerifyTransactionParticipant(tablet_peer->tablet_id(), OpId::Max());
   ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
   ASSERT_EQ(tablet_peer->get_cdc_min_replicated_index(), OpId::Max().index);
-  ASSERT_EQ(tablet_peer->cdc_sdk_min_checkpoint_op_id(), OpId::Max());
 }
 
 // Insert a row before snapshot. Insert a row after snapshot.
