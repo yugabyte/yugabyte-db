@@ -71,6 +71,7 @@ interface GCPProviderCreateFormFieldValues {
   providerCredentialType: ProviderCredentialType;
   providerName: string;
   regions: CloudVendorRegionField[];
+  sharedVPCProject: string;
   sshKeypairManagement: KeyPairManagement;
   sshKeypairName: string;
   sshPort: number;
@@ -221,7 +222,7 @@ export const GCPProviderCreateForm = ({
         : formValues.providerCredentialType === ProviderCredentialType.SPECIFIED_SERVICE_ACCOUNT
         ? {
             gceApplicationCredentials: googleServiceAccount,
-            gceProject: formValues.gceProject ?? googleServiceAccount?.project_id ?? '',
+            gceProject: googleServiceAccount?.project_id ?? '',
             useHostCredentials: false
           }
         : assertUnreachableCase(formValues.providerCredentialType);
@@ -241,6 +242,7 @@ export const GCPProviderCreateForm = ({
           [ProviderCode.GCP]: {
             ...vpcConfig,
             ...gcpCredentials,
+            ...(formValues.sharedVPCProject && { sharedVPCProject: formValues.sharedVPCProject }),
             ...(formValues.ybFirewallTags && { ybFirewallTags: formValues.ybFirewallTags })
           }
         },
@@ -383,10 +385,15 @@ export const GCPProviderCreateForm = ({
                 </FormField>
               )}
               <FormField>
-                <FieldLabel>GCE Project Name (Optional Override)</FieldLabel>
+                <FieldLabel
+                  infoTitle="Shared VPC Project"
+                  infoContent="If you want to use Shared VPC to connect resources from multiple projects to a common VPC, you can specify the project for the same here."
+                >
+                  Shared VPC Project (Optional)
+                </FieldLabel>
                 <YBInputField
                   control={formMethods.control}
-                  name="gceProject"
+                  name="sharedVPCProject"
                   disabled={isFormDisabled}
                   fullWidth
                 />
