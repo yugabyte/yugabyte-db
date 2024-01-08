@@ -269,11 +269,14 @@ static const struct config_enum_entry track_options[] =
 	{NULL, 0, false}
 };
 
+#define YB_DEFAULT_QTEXT_LIMIT_KB (512 * 1024)
+
 static int	pgss_max;			/* max # statements to track */
 static int	pgss_track;			/* tracking level */
 static bool pgss_track_utility; /* whether to track utility commands */
 static bool pgss_save;			/* whether to save stats across shutdown */
 
+static int yb_qtext_size_limit = YB_DEFAULT_QTEXT_LIMIT_KB;
 
 #define pgss_enabled() \
 	(pgss_track == PGSS_TRACK_ALL || \
@@ -410,6 +413,19 @@ _PG_init(void)
 							 NULL,
 							 NULL,
 							 NULL);
+
+	DefineCustomIntVariable("pg_stat_statements.yb_qtext_size_limit",
+							"Sets the max size of the pg_stat_statements query text file.",
+							NULL,
+							&yb_qtext_size_limit,
+							YB_DEFAULT_QTEXT_LIMIT_KB,
+							-1,
+							MAX_KILOBYTES,
+							PGC_SUSET,
+							GUC_UNIT_KB,
+							NULL,
+							NULL,
+							NULL);
 
 	EmitWarningsOnPlaceholders("pg_stat_statements");
 
@@ -1995,17 +2011,19 @@ qtext_load_file(Size *buffer_size)
 	}
 
 	/* Allocate buffer; beware that off_t might be wider than size_t */
-	if (stat.st_size <= MaxAllocHugeSize)
-		buf = (char *) malloc(stat.st_size);
-	else
+	if ((yb_qtext_size_limit >= 0 && stat.st_size > yb_qtext_size_limit * 1024) ||
+	     !AllocHugeSizeIsValid(stat.st_size))
 		buf = NULL;
+	else
+		buf = (char *) malloc(stat.st_size);
+
 	if (buf == NULL)
 	{
 		ereport(LOG,
 				(errcode(ERRCODE_OUT_OF_MEMORY),
 				 errmsg("out of memory"),
-				 errdetail("Could not allocate enough memory to read pg_stat_statement file \"%s\".",
-						   PGSS_TEXT_FILE)));
+				 errdetail("Could not allocate %lld bytes needed to read pg_stat_statement file \"%s\".",
+						   (long long) stat.st_size, PGSS_TEXT_FILE)));
 		CloseTransientFile(fd);
 		return NULL;
 	}
