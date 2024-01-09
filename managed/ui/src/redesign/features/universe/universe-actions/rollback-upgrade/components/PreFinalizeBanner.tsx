@@ -24,9 +24,6 @@ export const PreFinalizeBanner: FC<PreFinalizeBannerProps> = ({ universeData }) 
   const [openRollBackModal, setRollBackModal] = useState(false);
   const primaryCluster = _.cloneDeep(getPrimaryCluster(universeDetails));
   const currentRelease = primaryCluster?.userIntent.ybSoftwareVersion;
-  const universeHasXcluster =
-    universeDetails?.xclusterInfo?.sourceXClusterConfigs?.length > 0 ||
-    universeDetails?.xclusterInfo?.targetXClusterConfigs?.length > 0;
   const classes = preFinalizeStateStyles();
 
   return (

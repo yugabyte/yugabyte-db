@@ -145,6 +145,7 @@
         "rollbackFailedMsg": "The rollback of the Universe database upgrade has encountered an issue. To restore the Universe to its normal state, you can choose to either retry the rollback or get in touch our support team.",
         "finalizeFailedMsg": "The finalization of the Universe database upgrade has encountered an issue. To restore the Universe to its normal state, you can choose to either retry the finalization or get in touch our support team.",
         "upgradeFailedMsg": "The Universe database version upgrade has encountered an issue. To restore the Universe to its normal state, you have the option to either roll back the upgrade or retry the upgrade.",
+        "upgradeFialedNonRollback": "The Universe database version upgrade has encountered an issue. To restore the Universe to its normal state,you can choose to either retry the upgrade or get in touch our support team.",
         "viewTask": "View Task Details",
         "retryTask": "Retry Task",
         "preFinalize": {

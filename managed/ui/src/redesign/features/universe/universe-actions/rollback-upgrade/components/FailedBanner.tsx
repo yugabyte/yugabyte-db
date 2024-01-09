@@ -1,4 +1,5 @@
 import { FC, useState } from 'react';
+import { gte } from 'lodash';
 import { useTranslation } from 'react-i18next';
 import { browserHistory } from 'react-router';
 import { Box, Typography } from '@material-ui/core';
@@ -17,11 +18,13 @@ interface RollbackBannerProps {
   universeData: Universe;
 }
 
+const MINIMUM_ROLLBACK_VERSION = '2.20.2';
 export const FailedBanner: FC<RollbackBannerProps> = ({ universeData, taskDetail }) => {
   const { t } = useTranslation();
   const classes = rollBackStyles();
   const [openRollbackModal, setRollBackModal] = useState(false);
   const ybSoftwareUpgradeState = universeData?.universeDetails?.softwareUpgradeState;
+  const prevVersion = taskDetail?.details?.versionNumbers?.ybPrevSoftwareVersion;
 
   const redirectToTaskLogs = (taskUUID: string, universeUUID: string) => {
     taskUUID
@@ -47,7 +50,9 @@ export const FailedBanner: FC<RollbackBannerProps> = ({ universeData, taskDetail
         &nbsp;&nbsp;
         <Typography variant="body2">
           {ybSoftwareUpgradeState === SoftwareUpgradeState.UPGRADE_FAILED &&
-            t('universeActions.dbRollbackUpgrade.upgradeFailedMsg')}
+            (gte(prevVersion, MINIMUM_ROLLBACK_VERSION)
+              ? t('universeActions.dbRollbackUpgrade.upgradeFailedMsg')
+              : t('universeActions.dbRollbackUpgrade.upgradeFialedNonRollback'))}
           {ybSoftwareUpgradeState === SoftwareUpgradeState.ROLLBACK_FAILED &&
             t('universeActions.dbRollbackUpgrade.rollbackFailedMsg')}
           {ybSoftwareUpgradeState === SoftwareUpgradeState.FINALIZE_FAILED &&
@@ -55,28 +60,33 @@ export const FailedBanner: FC<RollbackBannerProps> = ({ universeData, taskDetail
         </Typography>
       </Box>
       <Box display={'flex'} mt={2} flexDirection={'row'} width="100%" justifyContent={'flex-end'}>
-        <YBButton
-          variant="secondary"
-          size="large"
-          onClick={() => redirectToTaskLogs(taskDetail?.id, universeData?.universeUUID)}
-          data-testid="UpgradeFailedBanner-TaskDteails"
-        >
-          {t('universeActions.dbRollbackUpgrade.viewTask')}
-        </YBButton>
-        &nbsp;&nbsp;
-        {ybSoftwareUpgradeState === SoftwareUpgradeState.UPGRADE_FAILED && (
+        {
           <>
             <YBButton
               variant="secondary"
               size="large"
-              onClick={() => setRollBackModal(true)}
-              data-testid="UpgradeFailedBanner-RollbackButton"
+              onClick={() => redirectToTaskLogs(taskDetail?.id, universeData?.universeUUID)}
+              data-testid="UpgradeFailedBanner-TaskDteails"
             >
-              {t('universeActions.dbRollbackUpgrade.rollbackUpgradeTite')}
+              {t('universeActions.dbRollbackUpgrade.viewTask')}
             </YBButton>
             &nbsp;&nbsp;
           </>
-        )}
+        }
+        {ybSoftwareUpgradeState === SoftwareUpgradeState.UPGRADE_FAILED &&
+          gte(prevVersion, MINIMUM_ROLLBACK_VERSION) && (
+            <>
+              <YBButton
+                variant="secondary"
+                size="large"
+                onClick={() => setRollBackModal(true)}
+                data-testid="UpgradeFailedBanner-RollbackButton"
+              >
+                {t('universeActions.dbRollbackUpgrade.rollbackUpgradeTite')}
+              </YBButton>
+              &nbsp;&nbsp;
+            </>
+          )}
         <YBButton
           variant="primary"
           size="large"
