@@ -56,6 +56,7 @@
 | "Disable XX Hash Checksum" | "yb.backup.disable_xxhash_checksum" | "GLOBAL" | "Flag for disabling xxhsum based checksums for computing the backup" | "Boolean" |
 | "Enable K8s Support Bundle" | "yb.support_bundle.k8s_enabled" | "GLOBAL" | "This config lets you enable support bundle creation on k8s universes." | "Boolean" |
 | "Enable On Prem Support Bundle" | "yb.support_bundle.onprem_enabled" | "GLOBAL" | "This config lets you enable support bundle creation for onprem universes." | "Boolean" |
+| "Allow collection of cores in Support Bundle" | "yb.support_bundle.allow_cores_collection" | "GLOBAL" | "This global config allows you to disable collection of cores in support bundle, even if it is passed as a component while creating." | "Boolean" |
 | "Snapshot creation max attempts" | "yb.snapshot_creation.max_attempts" | "GLOBAL" | "Max attempts while waiting for AWS Snapshot Creation" | "Integer" |
 | "Snapshot creation delay" | "yb.snapshot_creation.delay" | "GLOBAL" | "Delay per attempt while waiting for AWS Snapshot Creation" | "Integer" |
 | "Runtime Config UI" | "yb.runtime_conf_ui.enable_for_all" | "GLOBAL" | "Allows users to view the runtime configuration properties via UI" | "Boolean" |
