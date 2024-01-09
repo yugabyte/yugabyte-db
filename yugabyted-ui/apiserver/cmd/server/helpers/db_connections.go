@@ -21,7 +21,7 @@ type PgClientConnectionParams struct {
 func (h *HelperContainer) CreateGoCqlClient(log logger.Logger) *gocql.ClusterConfig {
 
     // Initialize gocql client
-    cluster := gocql.NewCluster(HOST)
+    cluster := gocql.NewCluster(fmt.Sprintf("%s:%d", HOST, YcqlPort))
 
     if Secure {
             cluster.Authenticator = gocql.PasswordAuthenticator{
