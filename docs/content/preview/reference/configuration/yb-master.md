@@ -159,6 +159,14 @@ Location of .htpasswd file containing usernames and hashed passwords, for authen
 
 Default: `""`
 
+##### --defer_index_backfill
+
+If enabled, will avoid launching any new index-backfills on the cluster for all new YCQL. 
+You will need to run [`yb-admin backfill_indexes_for_table`](../../../admin/yb-admin/#backfill-indexes-for-table) manually for indexes to be functional.
+See [`CREATE DEFERRED INDEX`](../../../api/ycql/ddl_create_index/#deferred-index) for reference.
+
+Default: `false`
+
 ## YSQL flags
 
 ##### --enable_ysql
