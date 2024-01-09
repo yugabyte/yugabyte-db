@@ -9,6 +9,7 @@ import {
   HostInfo,
   Provider as Provider_Deprecated,
   SuggestedKubernetesConfig,
+  UniverseNamespace,
   YBPSuccess
 } from './dtos';
 import { ROOT_URL } from '../../config';
@@ -33,6 +34,7 @@ import {
   KubernetesProvider,
   ProviderCode
 } from '../../components/configRedesign/providerRedesign/constants';
+import { DrConfig } from '../../components/xcluster/disasterRecovery/types';
 
 /**
  * @deprecated Use query key factories for more flexable key organization
@@ -67,7 +69,7 @@ export enum QUERY_KEY {
 
 export const providerQueryKey = {
   ALL: ['provider'],
-  detail: (providerUUID: string) => [...providerQueryKey.ALL, providerUUID]
+  detail: (providerUuid: string) => [...providerQueryKey.ALL, providerUuid]
 };
 
 export const hostInfoQueryKey = {
@@ -84,23 +86,28 @@ export const regionMetadataQueryKey = {
 
 export const universeQueryKey = {
   ALL: ['universe'],
-  detail: (universeUUID: string | undefined) => [...universeQueryKey.ALL, universeUUID],
-  tables: (universeUUID: string | undefined, filters: UniverseTableFilters) => [
-    ...universeQueryKey.detail(universeUUID),
+  detail: (universeUuid: string | undefined) => [...universeQueryKey.ALL, universeUuid],
+  tables: (universeUuid: string | undefined, filters: UniverseTableFilters) => [
+    ...universeQueryKey.detail(universeUuid),
     'tables',
     { filters }
+  ],
+  namespaces: (universeUuid: string | undefined) => [
+    ...universeQueryKey.detail(universeUuid),
+    ,
+    'namespaces'
   ]
 };
 
 export const runtimeConfigQueryKey = {
   ALL: ['runtimeConfig'],
   globalScope: () => [...runtimeConfigQueryKey.ALL, 'global'],
-  customerScope: (customerUUID: string) => [...runtimeConfigQueryKey.ALL, 'customer', customerUUID]
+  customerScope: (customerUuid: string) => [...runtimeConfigQueryKey.ALL, 'customer', customerUuid]
 };
 
 export const instanceTypeQueryKey = {
   ALL: ['instanceType'],
-  provider: (providerUUID: string) => [...instanceTypeQueryKey.ALL, 'provider', providerUUID]
+  provider: (providerUuid: string) => [...instanceTypeQueryKey.ALL, 'provider', providerUuid]
 };
 
 export const suggestedKubernetesConfigQueryKey = {
@@ -109,13 +116,50 @@ export const suggestedKubernetesConfigQueryKey = {
 
 export const xClusterQueryKey = {
   ALL: ['xCluster'],
-  detail: (xClusterConfigUUID: string) => [...xClusterQueryKey.ALL, xClusterConfigUUID]
+  detail: (xClusterConfigUuid: string) => [...xClusterQueryKey.ALL, xClusterConfigUuid]
 };
+
+export const drConfigQueryKey = {
+  ALL: ['drConfig'],
+  detail: (drConfigUuid: string | undefined) => [...drConfigQueryKey.ALL, drConfigUuid]
+};
+
+// --------------------------------------------------------------------------------------
+// API Constants
+// --------------------------------------------------------------------------------------
 
 export const ApiTimeout = {
   FETCH_TABLE_INFO: 20_000,
   FETCH_XCLUSTER_CONFIG: 120_000
 } as const;
+
+// --------------------------------------------------------------------------------------
+// API Request Types
+// --------------------------------------------------------------------------------------
+
+export interface CreateDrConfigRequest {
+  name: string;
+  sourceUniverseUUID: string;
+  targetUniverseUUID: string;
+  dbs: string[]; // Selected Databases
+  bootstrapBackupParams: {
+    storageConfigUUID: string;
+    parallelism?: number;
+  };
+  pitrParams: {
+    retentionPeriodSec: number;
+  };
+
+  dryRun?: boolean; // Run the pre-checks without actually running the subtasks
+}
+
+export interface EditDrConfigRequest {
+  newTargetUniverseUuid?: string;
+  bootstrapBackupParams?: {
+    storageConfigUUID: string;
+    parallelism?: number;
+  };
+}
 
 class ApiService {
   private cancellers: Record<string, Canceler> = {};
@@ -162,7 +206,15 @@ class ApiService {
       const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeUUID}`;
       return axios.get<Universe>(requestUrl).then((resp) => resp.data);
     }
-    return Promise.reject('Failed to fetch universe: No universe UUID provided.');
+    return Promise.reject('Failed to fetch universe. No universe UUID provided.');
+  };
+
+  fetchUniverseNamespaces = (universeUuid: string | undefined): Promise<UniverseNamespace[]> => {
+    if (universeUuid) {
+      const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/universes/${universeUuid}/namespaces`;
+      return axios.get<UniverseNamespace[]>(requestUrl).then((resp) => resp.data);
+    }
+    return Promise.reject('Failed to fetch namespaces. No universe UUID provided.');
   };
 
   createProvider = (
@@ -170,9 +222,9 @@ class ApiService {
     shouldValidate = true,
     ignoreValidationErrors = false
   ) => {
-    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/providers`;
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/providers`;
     return axios
-      .post<YBPTask>(requestURL, providerConfigMutation, {
+      .post<YBPTask>(requestUrl, providerConfigMutation, {
         params: {
           validate: shouldValidate,
           ...(shouldValidate && { ignoreValidationErrors: ignoreValidationErrors })
@@ -187,9 +239,9 @@ class ApiService {
     shouldValidate = true,
     ignoreValidationErrors = false
   ) => {
-    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerUUID}/edit`;
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerUUID}/edit`;
     return axios
-      .put<YBPTask>(requestURL, providerConfigMutation, {
+      .put<YBPTask>(requestUrl, providerConfigMutation, {
         params: {
           validate: shouldValidate,
           ...(shouldValidate && { ignoreValidationErrors: ignoreValidationErrors })
@@ -205,10 +257,10 @@ class ApiService {
 
   deleteProvider = (providerUUID: string) => {
     if (providerUUID) {
-      const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerUUID}`;
-      return axios.delete<YBPTask>(requestURL).then((response) => response.data);
+      const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerUUID}`;
+      return axios.delete<YBPTask>(requestUrl).then((response) => response.data);
     }
-    return Promise.reject('Failed to delete provider: No provider UUID provided.');
+    return Promise.reject('Failed to delete provider. No provider UUID provided.');
   };
 
   /**
@@ -224,12 +276,12 @@ class ApiService {
       const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerUUID}`;
       return axios.get<YBProvider>(requestUrl).then((resp) => resp.data);
     }
-    return Promise.reject('Failed to fetch provider: No provider UUID provided.');
+    return Promise.reject('Failed to fetch provider. No provider UUID provided.');
   };
 
   fetchSuggestedKubernetesConfig = () => {
-    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/suggested_kubernetes_config`;
-    return axios.get<SuggestedKubernetesConfig>(requestURL).then((response) => response.data);
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/suggested_kubernetes_config`;
+    return axios.get<SuggestedKubernetesConfig>(requestUrl).then((response) => response.data);
   };
 
   fetchProviderRegions = (providerId?: string): Promise<Region[]> => {
@@ -237,7 +289,7 @@ class ApiService {
       const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerId}/regions`;
       return axios.get<Region[]>(requestUrl).then((resp) => resp.data);
     } else {
-      return Promise.reject('Failed to fetch provider regions: No provider UUID provided.');
+      return Promise.reject('Failed to fetch provider regions. No provider UUID provided.');
     }
   };
 
@@ -245,37 +297,68 @@ class ApiService {
     providerCode: ProviderCode,
     kubernetesProvider?: KubernetesProvider
   ): Promise<RegionMetadataResponse> => {
-    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/region_metadata/${providerCode}`;
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/region_metadata/${providerCode}`;
     return axios
-      .get<RegionMetadataResponse>(requestURL, {
+      .get<RegionMetadataResponse>(requestUrl, {
         params: { subType: kubernetesProvider }
       })
       .then((response) => response.data);
   };
 
   createInstanceType = (providerUUID: string, instanceType: InstanceTypeMutation) => {
-    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerUUID}/instance_types`;
-    return axios.post<InstanceType>(requestURL, instanceType).then((response) => response.data);
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerUUID}/instance_types`;
+    return axios.post<InstanceType>(requestUrl, instanceType).then((response) => response.data);
   };
 
-  fetchInstanceTypes = (providerUUID?: string): Promise<InstanceType[]> => {
+  fetchInstanceTypes = (providerUUID: string | undefined): Promise<InstanceType[]> => {
     if (providerUUID) {
-      const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerUUID}/instance_types`;
-      return axios.get<InstanceType[]>(requestURL).then((response) => response.data);
+      const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerUUID}/instance_types`;
+      return axios.get<InstanceType[]>(requestUrl).then((response) => response.data);
     } else {
-      return Promise.reject('Failed to fetch provider regions: No provider UUID provided');
+      return Promise.reject('Failed to fetch instance types. No provider UUID provided.');
     }
   };
 
   deleteInstanceType = (providerUUID: string, instanceTypeCode: string) => {
     if (providerUUID && instanceTypeCode) {
-      const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerUUID}/instance_types/${instanceTypeCode}`;
-      return axios.delete<YBPSuccess>(requestURL).then((response) => response.data);
+      const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerUUID}/instance_types/${instanceTypeCode}`;
+      return axios.delete<YBPSuccess>(requestUrl).then((response) => response.data);
     } else {
       const errorMessage = providerUUID
-        ? 'No instance type code provided'
-        : 'No provider UUID provided';
-      return Promise.reject(`Failed to fetch provider regions: ${errorMessage}`);
+        ? 'No instance type code provided.'
+        : 'No provider UUID provided.';
+      return Promise.reject(`Failed to delete instance type. ${errorMessage}`);
+    }
+  };
+
+  createDrConfig = (createDRConfigRequest: CreateDrConfigRequest): Promise<YBPTask> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs`;
+    return axios.post(requestUrl, createDRConfigRequest).then((response) => response.data);
+  };
+
+  editDrConfig = (
+    drConfigUuid: string,
+    editDRConfigRequest: EditDrConfigRequest
+  ): Promise<YBPTask> => {
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}`;
+    return axios.put(requestUrl, editDRConfigRequest).then((response) => response.data);
+  };
+
+  fetchDrConfig = (drConfigUuid: string | undefined): Promise<DrConfig> => {
+    if (drConfigUuid) {
+      const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}`;
+      return axios.get<DrConfig>(requestUrl).then((response) => response.data);
+    } else {
+      return Promise.reject('Failed to fetch DR config. No DR config UUID provided.');
+    }
+  };
+
+  deleteDrConfig = (drConfigUuid: string | undefined): Promise<YBPTask> => {
+    if (drConfigUuid) {
+      const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/dr_configs/${drConfigUuid}`;
+      return axios.delete<YBPTask>(requestUrl).then((response) => response.data);
+    } else {
+      return Promise.reject('Failed to delete DR config. No DR config UUID provided.');
     }
   };
 
@@ -309,7 +392,7 @@ class ApiService {
       const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerId}/releases`;
       return axios.get<string[]>(requestUrl).then((resp) => resp.data);
     } else {
-      return Promise.reject('Querying access keys failed: no provider ID provided');
+      return Promise.reject('Querying access keys failed. No provider ID provided');
     }
   };
 
@@ -318,7 +401,7 @@ class ApiService {
       const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/providers/${providerId}/access_keys`;
       return axios.get<AccessKey[]>(requestUrl).then((resp) => resp.data);
     } else {
-      return Promise.reject('Querying access keys failed: no provider ID provided');
+      return Promise.reject('Querying access keys failed. No provider ID provided');
     }
   };
 
@@ -384,7 +467,7 @@ class ApiService {
       const requestUrl = `${ROOT_URL}/settings/ha/config/${configId}/replication_schedule`;
       return axios.get<HAReplicationSchedule>(requestUrl).then((resp) => resp.data);
     } else {
-      return Promise.reject('Querying HA replication schedule failed: no config ID provided');
+      return Promise.reject('Querying HA replication schedule failed. No config ID provided');
     }
   };
 
@@ -398,7 +481,7 @@ class ApiService {
       return axios.put<HAReplicationSchedule>(requestUrl, payload).then((resp) => resp.data);
     } else {
       return Promise.reject(
-        'Start HA backup schedule failed: no config ID or replication frequency provided'
+        'Start HA backup schedule failed. No config ID or replication frequency provided'
       );
     }
   };
@@ -444,31 +527,31 @@ class ApiService {
       needTotalCount: true
     };
 
-    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/alerts/page`;
-    return axios.post(requestURL, payload).then((res) => res.data);
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/alerts/page`;
+    return axios.post(requestUrl, payload).then((res) => res.data);
   };
 
   getAlertCount = (filter: {}): Promise<any> => {
     const payload = {
       ...filter
     };
-    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/alerts/count`;
-    return axios.post(requestURL, payload).then((res) => res.data);
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/alerts/count`;
+    return axios.post(requestUrl, payload).then((res) => res.data);
   };
 
   getAlert = (alertUUID: string) => {
-    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/alerts/${alertUUID}`;
-    return axios.get(requestURL).then((res) => res.data);
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/alerts/${alertUUID}`;
+    return axios.get(requestUrl).then((res) => res.data);
   };
 
   acknowledgeAlert = (uuid: string) => {
-    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/alerts/acknowledge`;
-    return axios.post(requestURL, { uuids: [uuid] }).then((res) => res.data);
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/alerts/acknowledge`;
+    return axios.post(requestUrl, { uuids: [uuid] }).then((res) => res.data);
   };
 
   importReleases = (payload: any) => {
-    const requestURL = `${ROOT_URL}/customers/${this.getCustomerId()}/releases`;
-    return axios.post(requestURL, payload).then((res) => res.data);
+    const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/releases`;
+    return axios.post(requestUrl, payload).then((res) => res.data);
   };
 }
 

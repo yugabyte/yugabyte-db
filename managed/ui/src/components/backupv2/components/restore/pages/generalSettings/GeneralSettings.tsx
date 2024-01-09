@@ -122,9 +122,6 @@ export const GeneralSettings = React.forwardRef<PageRef>((_, forwardRef) => {
     methods.setValue('forceKeyspaceRename', false);
     methods.setValue('renameKeyspace', false);
 
-    setDisableSubmit(true);
-    setisSubmitting(true);
-    setSubmitLabel(t('newRestoreModal.generalSettings.verifying'));
   }, [targetUniverseUUID]);
 
   // send the preflight api request , when the user choses the universe
@@ -181,6 +178,15 @@ export const GeneralSettings = React.forwardRef<PageRef>((_, forwardRef) => {
     savePreflightResponse(undefined);
     methods.setValue('useTablespaces', false);
   }, [setDisableSubmit, targetUniverseUUID]);
+
+
+  useEffect(() => {
+    if (isFetching) {
+      setDisableSubmit(true);
+      setisSubmitting(true);
+      setSubmitLabel(t('newRestoreModal.generalSettings.verifying'));
+    }
+  }, [isFetching]);
 
   const renameKeyspace = watch('renameKeyspace');
   const tableSelectionType = watch('tableSelectionType');

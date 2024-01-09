@@ -88,7 +88,10 @@ public class CustomerTask extends Model {
     UniverseKey(true),
 
     @EnumValue("Master Key")
-    MasterKey(true);
+    MasterKey(true),
+
+    @EnumValue("Node Agent")
+    NodeAgent(false);
 
     private final boolean universeTarget;
 
@@ -147,6 +150,9 @@ public class CustomerTask extends Model {
     @EnumValue("Synchronize")
     Sync,
 
+    @EnumValue("LdapSync")
+    LdapSync,
+
     @EnumValue("RestartUniverse")
     RestartUniverse,
 
@@ -155,6 +161,12 @@ public class CustomerTask extends Model {
 
     @EnumValue("SoftwareUpgradeYB")
     SoftwareUpgradeYB,
+
+    @EnumValue("FinalizeUpgrade")
+    FinalizeUpgrade,
+
+    @EnumValue("RollbackUpgrade")
+    RollbackUpgrade,
 
     @EnumValue("GFlagsUpgrade")
     GFlagsUpgrade,
@@ -249,22 +261,30 @@ public class CustomerTask extends Model {
     @EnumValue("ExternalScript")
     ExternalScript,
 
-    /** @deprecated TargetType name must not be part of TaskType. Use {@link #Create} instead. */
+    /**
+     * @deprecated TargetType name must not be part of TaskType. Use {@link #Create} instead.
+     */
     @Deprecated
     @EnumValue("CreateXClusterConfig")
     CreateXClusterConfig,
 
-    /** @deprecated TargetType name must not be part of TaskType. Use {@link #Edit} instead. */
+    /**
+     * @deprecated TargetType name must not be part of TaskType. Use {@link #Edit} instead.
+     */
     @Deprecated
     @EnumValue("EditXClusterConfig")
     EditXClusterConfig,
 
-    /** @deprecated TargetType name must not be part of TaskType. Use {@link #Delete} instead. */
+    /**
+     * @deprecated TargetType name must not be part of TaskType. Use {@link #Delete} instead.
+     */
     @Deprecated
     @EnumValue("DeleteXClusterConfig")
     DeleteXClusterConfig,
 
-    /** @deprecated TargetType name must not be part of TaskType. Use {@link #Sync} instead. */
+    /**
+     * @deprecated TargetType name must not be part of TaskType. Use {@link #Sync} instead.
+     */
     @Deprecated
     @EnumValue("SyncXClusterConfig")
     SyncXClusterConfig,
@@ -286,6 +306,9 @@ public class CustomerTask extends Model {
 
     @EnumValue("ThirdpartySoftwareUpgrade")
     ThirdpartySoftwareUpgrade,
+
+    @EnumValue("ModifyAuditLoggingConfig")
+    ModifyAuditLoggingConfig,
 
     @EnumValue("RotateAccessKey")
     RotateAccessKey,
@@ -318,7 +341,10 @@ public class CustomerTask extends Model {
     CreateImageBundle,
 
     @EnumValue("ReprovisionNode")
-    ReprovisionNode;
+    ReprovisionNode,
+
+    @EnumValue("Install")
+    Install;
 
     public String toString(boolean completed) {
       switch (this) {
@@ -351,12 +377,18 @@ public class CustomerTask extends Model {
           return completed ? "Edited " : "Editing ";
         case Sync:
           return completed ? "Synchronized " : "Synchronizing ";
+        case LdapSync:
+          return completed ? "LDAP Sync Completed on " : "LDAP Sync in Progress on ";
         case RestartUniverse:
           return completed ? "Restarted " : "Restarting ";
         case SoftwareUpgrade:
           return completed ? "Upgraded Software " : "Upgrading Software ";
         case SoftwareUpgradeYB:
           return completed ? "Upgraded Software " : "Upgrading Software ";
+        case FinalizeUpgrade:
+          return completed ? "Finalized Upgrade" : "Finalizing Upgrade";
+        case RollbackUpgrade:
+          return completed ? "Rolled back upgrade" : "Rolling backup upgrade";
         case SystemdUpgrade:
           return completed ? "Upgraded to Systemd " : "Upgrading to Systemd ";
         case GFlagsUpgrade:
@@ -432,6 +464,10 @@ public class CustomerTask extends Model {
           return completed
               ? "Upgraded third-party software for "
               : "Upgrading third-party software for ";
+        case ModifyAuditLoggingConfig:
+          return completed
+              ? "Modified audit logging config for "
+              : "Modifying audit logging config for ";
         case CreateTableSpaces:
           return completed ? "Created tablespaces in " : "Creating tablespaces in ";
         case RotateAccessKey:
@@ -459,6 +495,8 @@ public class CustomerTask extends Model {
           return completed ? "Created" : "Creating";
         case ReprovisionNode:
           return completed ? "Reprovisioned" : "Reprovisioning";
+        case Install:
+          return completed ? "Installed" : "Installing";
         default:
           return null;
       }

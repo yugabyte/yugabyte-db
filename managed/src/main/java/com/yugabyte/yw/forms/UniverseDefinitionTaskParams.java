@@ -21,11 +21,16 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.XClusterConfig;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.*;
+import com.yugabyte.yw.models.helpers.audit.*;
+import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import io.swagger.annotations.ApiModelProperty.AccessMode;
 import java.io.File;
@@ -176,6 +181,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   // Override the default DB present in pre-built Ami
   @ApiModelProperty(hidden = true)
   public boolean overridePrebuiltAmiDBVersion = false;
+
   // if we want to use a different SSH_USER instead of  what is defined in the accessKey
   // Use imagebundle to overwrite the sshPort
   @Nullable @ApiModelProperty @Deprecated public String sshUserOverride;
@@ -233,6 +239,13 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   }
 
   @ApiModelProperty public Set<UpdateOptions> updateOptions = new HashSet<>();
+
+  @ApiModelProperty(hidden = true)
+  @Getter
+  @Setter
+  private KubernetesResourceDetails kubernetesResourceDetails;
+
+  @ApiModelProperty public boolean otelCollectorEnabled = false;
 
   /** A wrapper for all the clusters that will make up the universe. */
   @JsonInclude(value = JsonInclude.Include.NON_NULL)
@@ -462,6 +475,7 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
   }
 
   // TODO: We can migrate masterDeviceInfo, masterInstanceType here
+  @ApiModel(description = "YbaApi Internal: Used by YBM")
   @Data
   public static class OverridenDetails {
     @ApiModelProperty private String instanceType;
@@ -495,12 +509,14 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     }
   }
 
+  @ApiModel(description = "YbaApi Internal: Used by YBM")
   @Data
   public static class AZOverrides extends OverridenDetails
       implements PerProcessOverrides<OverridenDetails> {
     @ApiModelProperty private Map<UniverseTaskBase.ServerType, OverridenDetails> perProcess;
   }
 
+  @ApiModel(description = "YbaApi Internal: Used by YBM")
   @Data
   public static class UserIntentOverrides implements PerProcessOverrides<OverridenDetails> {
     @ApiModelProperty private Map<UniverseTaskBase.ServerType, OverridenDetails> perProcess;
@@ -675,12 +691,24 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
     @ApiModelProperty public SpecificGFlags specificGFlags;
 
     // Overrides for some of user intent values per AZ or/and process type.
-    @Getter @Setter @ApiModelProperty private UserIntentOverrides userIntentOverrides;
+    @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.19.3.0")
+    @Getter
+    @Setter
+    @ApiModelProperty("YbaApi Internal: Used by YBM")
+    private UserIntentOverrides userIntentOverrides;
 
     // Amount of memory to limit the postgres process to via the ysql cgroup (in megabytes)
     // 0 will not set any cgroup limits.
     // For read replica null or -1 value means use that of from primary cluster.
     @Getter @Setter @ApiModelProperty private Integer cgroupSize;
+
+    // Audit Logging Config
+    @ApiModelProperty public AuditLogConfig auditLogConfig;
+
+    // for gflags
+    public AuditLogConfig getAuditLogConfig() {
+      return auditLogConfig;
+    }
 
     @Override
     public String toString() {
@@ -732,7 +760,9 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       newUserIntent.provider = provider;
       newUserIntent.providerType = providerType;
       newUserIntent.replicationFactor = replicationFactor;
-      newUserIntent.regionList = new ArrayList<>(regionList);
+      if (regionList != null) {
+        newUserIntent.regionList = new ArrayList<>(regionList);
+      }
       newUserIntent.preferredRegion = preferredRegion;
       newUserIntent.instanceType = instanceType;
       newUserIntent.numNodes = numNodes;
@@ -1206,6 +1236,17 @@ public class UniverseDefinitionTaskParams extends UniverseTaskParams {
       }
       return taskParams;
     }
+  }
+
+  @ApiModelProperty("Previous software version related data")
+  public PrevYBSoftwareConfig prevYBSoftwareConfig;
+
+  @Data
+  public static class PrevYBSoftwareConfig {
+
+    @ApiModelProperty private String softwareVersion;
+
+    @ApiModelProperty private int autoFlagConfigVersion;
   }
 
   // XCluster: All the xCluster related code resides in this section.

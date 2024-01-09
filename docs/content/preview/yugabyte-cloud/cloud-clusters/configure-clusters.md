@@ -20,13 +20,13 @@ You can scale the following cluster properties:
 - Number of vCPUs per node (vertical).
 - Disk size per node.
 
-Cluster edit operations are performed using the **Edit Infrastructure** option on the cluster **Settings** tab.
+Cluster edit operations are performed using the **Edit Infrastructure** option under **Regions** on the cluster **Settings > Infrastructure** tab.
 
 {{< youtube id="Dhb-R-tlFKM" title="Perform a live infrastructure upgrade in YugabyteDB Managed" >}}
 
 For clusters with Region, Availability Zone, or Node Level fault tolerance, the scaling operation is performed without any downtime, with a rolling restart of the underlying nodes.
 
-The **Regions** section on the cluster **Settings** tab summarizes the cluster configuration, including the number of nodes, vCPUs, memory, and disk per node, and VPC for each region.
+The **Regions** section on the cluster **Settings > Infrastructure** tab summarizes the cluster configuration, including the number of nodes, vCPUs, memory, and disk per node, and VPC for each region.
 
 ## Recommendations
 
@@ -59,7 +59,7 @@ For Availability Zone Level fault tolerant clusters, you must scale nodes in inc
 To scale a single-region cluster:
 
 1. On the **Clusters** page, select your cluster.
-1. On the **Settings** tab or under **Actions**, choose **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
+1. Go to **Settings > Infrastructure** or click **Actions**, and choose **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
 
     ![Cluster Edit Infrastructure](/images/yb-cloud/cloud-clusters-settings-edit.png)
 
@@ -82,7 +82,7 @@ To add or remove read replicas, refer to [Read replicas](../managed-read-replica
 To scale nodes in a replicate-across-regions cluster:
 
 1. On the **Clusters** page, select your cluster.
-1. On the **Settings** tab or under **Actions**, choose **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
+1. Go to **Settings > Infrastructure** or click **Actions**, and choose **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
 
     ![Cluster Edit Infrastructure](/images/yb-cloud/cloud-clusters-settings-edit-sync.png)
 
@@ -115,7 +115,7 @@ For Availability Zone Level fault tolerant clusters, you must scale nodes in eac
 To scale a partition-by-region cluster:
 
 1. On the **Clusters** page, select your cluster.
-1. On the **Settings** tab or under **Actions**, choose **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
+1. Go to **Settings > Infrastructure** or click **Actions**, and choose **Edit Infrastructure** to display the **Edit Infrastructure** dialog.
 
     ![Cluster Edit Infrastructure](/images/yb-cloud/cloud-clusters-settings-edit-geo.png)
 

@@ -88,8 +88,11 @@ public class GetChangesRequest extends YRpc<GetChangesResponse> {
       CdcService.CDCSDKCheckpointPB.Builder checkpointBuilder =
               CdcService.CDCSDKCheckpointPB.newBuilder();
       checkpointBuilder.setIndex(this.index).setTerm(this.term)
-        .setKey(ByteString.copyFrom(this.key)).setWriteId(this.write_id)
+        .setWriteId(this.write_id)
         .setSnapshotTime(this.time);
+      if (key != null) {
+        checkpointBuilder.setKey(ByteString.copyFrom(this.key));
+      }
       builder.setFromCdcSdkCheckpoint(checkpointBuilder.build());
     }
 
@@ -98,8 +101,10 @@ public class GetChangesRequest extends YRpc<GetChangesResponse> {
               CdcService.CDCSDKCheckpointPB.newBuilder();
       checkpointBuilder.setIndex(explicitCheckpoint.getIndex())
         .setTerm(explicitCheckpoint.getTerm())
-        .setKey(ByteString.copyFrom(explicitCheckpoint.getKey()))
         .setWriteId(explicitCheckpoint.getWriteId()).setSnapshotTime(explicitCheckpoint.getTime());
+      if (explicitCheckpoint.getKey() != null) {
+        checkpointBuilder.setKey(ByteString.copyFrom(explicitCheckpoint.getKey()));
+      }
       builder.setExplicitCdcSdkCheckpoint(checkpointBuilder.build());
     }
 

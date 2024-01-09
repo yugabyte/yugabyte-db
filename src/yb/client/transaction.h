@@ -172,6 +172,8 @@ class YBTransaction : public std::enable_shared_from_this<YBTransaction> {
 
   void SetActiveSubTransaction(SubTransactionId id);
 
+  Status SetPgTxnStart(int64_t pg_txn_start_us);
+
   Status RollbackToSubTransaction(SubTransactionId id, CoarseTimePoint deadline);
 
   bool HasSubTransaction(SubTransactionId id);

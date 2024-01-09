@@ -407,61 +407,6 @@ struct ReplayDecision {
   }
 };
 
-ReplayDecision ShouldReplayOperation(
-    consensus::OperationType op_type,
-    const int64_t index,
-    const int64_t regular_flushed_index,
-    const int64_t intents_flushed_index,
-    const int64_t metadata_flushed_index,
-    TransactionStatus txn_status,
-    bool write_op_has_transaction) {
-  if (op_type == consensus::UPDATE_TRANSACTION_OP) {
-    if (txn_status == TransactionStatus::APPLYING && index <= regular_flushed_index) {
-      // TODO: Replaying even transactions that are flushed to both regular and intents RocksDB is a
-      // temporary change. The long term change is to track write and apply operations separately
-      // instead of a tracking a single "intents_flushed_index".
-      VLOG_WITH_FUNC(3) << "index: " << index << " "
-                        << "regular_flushed_index: " << regular_flushed_index
-                        << " intents_flushed_index: " << intents_flushed_index;
-      return {true, AlreadyAppliedToRegularDB::kTrue};
-    }
-    // For other types of transaction updates, we ignore them if they have been flushed to the
-    // regular RocksDB.
-    VLOG_WITH_FUNC(3) << "index: " << index << " > "
-                      << "regular_flushed_index: " << regular_flushed_index;
-    return {index > regular_flushed_index};
-  }
-
-  if (metadata_flushed_index >= 0 && op_type == consensus::CHANGE_METADATA_OP) {
-    VLOG_WITH_FUNC(3) << "CHANGE_METADATA_OP - index: " << index
-                      << " metadata_flushed_index: " << metadata_flushed_index;
-    return {index > metadata_flushed_index};
-  }
-  // For upgrade scenarios where metadata_flushed_index < 0, follow the pre-existing logic.
-
-  // In most cases we assume that intents_flushed_index <= regular_flushed_index but here we are
-  // trying to be resilient to violations of that assumption.
-  if (index <= std::min(regular_flushed_index, intents_flushed_index)) {
-    // Never replay anyting that is flushed to both regular and intents RocksDBs in a transactional
-    // table.
-    VLOG_WITH_FUNC(3) << "index: " << index << " "
-                      << "regular_flushed_index: " << regular_flushed_index
-                      << " intents_flushed_index: " << intents_flushed_index;
-    return {false};
-  }
-
-  if (op_type == consensus::WRITE_OP && write_op_has_transaction) {
-    // Write intents that have not been flushed into the intents DB.
-    VLOG_WITH_FUNC(3) << "index: " << index << " > "
-                      << "intents_flushed_index: " << intents_flushed_index;
-    return {index > intents_flushed_index};
-  }
-
-  VLOG_WITH_FUNC(3) << "index: " << index << " > "
-                    << "regular_flushed_index: " << regular_flushed_index;
-  return {index > regular_flushed_index};
-}
-
 bool WriteOpHasTransaction(const consensus::LWReplicateMsg& replicate) {
   if (!replicate.has_write()) {
     return false;
@@ -652,8 +597,15 @@ class TabletBootstrap {
   // Sets result to true if there was any data on disk for this tablet.
   Result<bool> OpenTablet() {
     CleanupSnapshots();
-
-    auto tablet = std::make_shared<Tablet>(data_.tablet_init_data);
+    // Use operator new instead of make_shared for creating the shared_ptr. That way, we would have
+    // the shared_ptr's control block hold a raw pointer to the Tablet object as opposed to the
+    // object itself being allocated on the control block.
+    //
+    // Since we create weak_ptr from this shared_ptr and store it in other classes like WriteQuery,
+    // any leaked weak_ptr wouldn't prevent the underlying object's memory deallocation after the
+    // reference count drops to 0. With make_shared, there's a risk of a leaked weak_ptr holding up
+    // the object's memory even after all shared_ptrs go out of scope.
+    std::shared_ptr<Tablet> tablet(new Tablet(data_.tablet_init_data));
     // Doing nothing for now except opening a tablet locally.
     LOG_TIMING_PREFIX(INFO, LogPrefix(), "opening tablet") {
       RETURN_NOT_OK(tablet->Open());
@@ -1106,6 +1058,64 @@ class TabletBootstrap {
     if (test_hooks_) {
       test_hooks_->RetryableRequest(OpId::FromPB(replicate.id()));
     }
+  }
+
+  ReplayDecision ShouldReplayOperation(
+      consensus::OperationType op_type,
+      const int64_t index,
+      const int64_t regular_flushed_index,
+      const int64_t intents_flushed_index,
+      const int64_t metadata_flushed_index,
+      TransactionStatus txn_status,
+      bool write_op_has_transaction) {
+    if (op_type == consensus::UPDATE_TRANSACTION_OP) {
+      if (txn_status == TransactionStatus::APPLYING && index <= regular_flushed_index) {
+        // This was added as part of D17730 / #12730 to ensure we don't clean up transactions
+        // before they are replicated to the CDC destination.
+        //
+        // TODO: Replaying even transactions that are flushed to both regular and intents RocksDB is
+        // a temporary change. The long term change is to track write and apply operations
+        // separately instead of a tracking a single "intents_flushed_index".
+        VLOG_WITH_PREFIX_AND_FUNC(3) << "index: " << index << " "
+                                     << "regular_flushed_index: " << regular_flushed_index
+                                     << " intents_flushed_index: " << intents_flushed_index;
+        return {true, AlreadyAppliedToRegularDB::kTrue};
+      }
+      // For other types of transaction updates, we ignore them if they have been flushed to the
+      // regular RocksDB.
+      VLOG_WITH_PREFIX_AND_FUNC(3) << "index: " << index << " > "
+                                   << "regular_flushed_index: " << regular_flushed_index;
+      return {index > regular_flushed_index};
+    }
+
+    if (metadata_flushed_index >= 0 && op_type == consensus::CHANGE_METADATA_OP) {
+      VLOG_WITH_PREFIX_AND_FUNC(3) << "CHANGE_METADATA_OP - index: " << index
+                                   << " metadata_flushed_index: " << metadata_flushed_index;
+      return {index > metadata_flushed_index};
+    }
+    // For upgrade scenarios where metadata_flushed_index < 0, follow the pre-existing logic.
+
+    // In most cases we assume that intents_flushed_index <= regular_flushed_index but here we are
+    // trying to be resilient to violations of that assumption.
+    if (index <= std::min(regular_flushed_index, intents_flushed_index)) {
+      // Never replay anything that is flushed to both regular and intents RocksDBs in a
+      // transactional table.
+      VLOG_WITH_PREFIX_AND_FUNC(3) << "index: " << index << " "
+                                   << "regular_flushed_index: " << regular_flushed_index
+                                   << " intents_flushed_index: " << intents_flushed_index;
+      return {false};
+    }
+
+    if (op_type == consensus::WRITE_OP && write_op_has_transaction) {
+      // Write intents that have not been flushed into the intents DB.
+      VLOG_WITH_PREFIX_AND_FUNC(3) << "index: " << index << " > "
+                                   << "intents_flushed_index: " << intents_flushed_index;
+      return {index > intents_flushed_index};
+    }
+
+    VLOG_WITH_PREFIX_AND_FUNC(3) << "index: " << index << " > "
+                                 << "regular_flushed_index: " << regular_flushed_index;
+    return {index > regular_flushed_index};
   }
 
   // Performs various checks based on the OpId, and decides whether to replay the given operation.
@@ -1676,6 +1686,7 @@ class TabletBootstrap {
 
     ChangeMetadataOperation operation(tablet_, log_.get(), request);
     operation.set_op_id(op_id);
+    RETURN_NOT_OK(operation.Prepare(tablet::IsLeaderSide::kFalse));
 
     Status s;
     RETURN_NOT_OK(operation.Apply(OpId::kUnknownTerm, &s));

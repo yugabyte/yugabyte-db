@@ -319,6 +319,7 @@ public class TaskExecutor {
    */
   public RunnableTask createRunnableTask(ITask task) {
     checkNotNull(task, "Task must be set");
+    task.validateParams();
     TaskInfo taskInfo = createTaskInfo(task);
     taskInfo.setPosition(-1);
     taskInfo.save();
@@ -503,7 +504,7 @@ public class TaskExecutor {
    */
   @FunctionalInterface
   public interface TaskExecutionListener {
-    default void beforeTask(TaskInfo taskInfo) {};
+    default void beforeTask(TaskInfo taskInfo) {}
 
     void afterTask(TaskInfo taskInfo, Throwable t);
   }

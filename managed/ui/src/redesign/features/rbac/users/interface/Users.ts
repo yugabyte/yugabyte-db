@@ -8,6 +8,7 @@
  */
 
 import { UniverseResource } from '../../policy/IPolicy';
+import { Role } from '../../roles';
 
 export interface RbacUser {
   uuid: string;
@@ -19,7 +20,8 @@ export interface RbacUser {
 
 export interface RbacUserWithResources extends Partial<RbacUser> {
   roleResourceDefinitions?: {
-    roleUUID: string;
+    roleType?: Role['roleType'];
+    role: Role | null;
     resourceGroup: {
       resourceDefinitionSet: UniverseResource[];
     };

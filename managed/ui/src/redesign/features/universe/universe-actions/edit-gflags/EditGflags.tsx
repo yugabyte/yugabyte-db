@@ -1,4 +1,4 @@
-import { FC, useState } from 'react';
+import { FC, useState, useRef } from 'react';
 import _ from 'lodash';
 import clsx from 'clsx';
 import { useTranslation } from 'react-i18next';
@@ -7,6 +7,7 @@ import { useForm, FormProvider } from 'react-hook-form';
 import { toast } from 'react-toastify';
 import { Box, Typography, makeStyles } from '@material-ui/core';
 import { InheritRRDialog } from './InheritRRDialog';
+import { ModifiedFlagsDialog } from './ModifiedFlagsDialog';
 import { YBModal, YBToggle, YBRadioGroupField, YBInputField } from '../../../../components';
 import { api } from '../../../../features/universe/universe-form/utils/api';
 import { Universe } from '../../universe-form/utils/dto';
@@ -26,6 +27,8 @@ import {
 } from './GflagHelper';
 import { GFlagsField } from '../../universe-form/form/fields';
 import { useFormMainStyles } from '../../universe-form/universeMainStyle';
+import { RBAC_ERR_MSG_NO_PERM, hasNecessaryPerm } from '../../../rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../../rbac/UserPermPathMapping';
 
 interface EditGflagsModalProps {
   open: boolean;
@@ -82,12 +85,14 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({ open, onClose, unive
   const { nodePrefix } = universeDetails;
   const [isPrimary, setIsPrimary] = useState(true);
   const [openInheritRRModal, setOpenInheritRRModal] = useState(false);
+  const [openWarningModal, setWarningModal] = useState(false);
   const classes = useStyles();
   const globalClasses = useFormMainStyles();
   const primaryCluster = _.cloneDeep(getPrimaryCluster(universeDetails));
   const asyncCluster = _.cloneDeep(getAsyncCluster(universeDetails));
   const currentVersion = getCurrentVersion(universeDetails) || '';
   const { gFlags, asyncGflags, inheritFlagsFromPrimary } = transformToEditFlagsForm(universeData);
+  const initialGflagSet = useRef({ gFlags, asyncGflags, inheritFlagsFromPrimary });
 
   const formMethods = useForm<EditGflagsFormValues>({
     defaultValues: {
@@ -113,59 +118,67 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({ open, onClose, unive
   };
 
   const handleFormSubmit = handleSubmit(async (values) => {
-    const { gFlags, asyncGflags, inheritFlagsFromPrimary } = values;
-    const payload: EditGflagPayload = {
-      nodePrefix,
-      universeUUID,
-      sleepAfterMasterRestartMillis: values.timeDelay * 1000,
-      sleepAfterTServerRestartMillis: values.timeDelay * 1000,
-      taskType: 'GFlags',
-      upgradeOption: values?.upgradeOption,
-      ybSoftwareVersion: currentVersion,
-      clusters: []
-    };
+    const newUniverseData = await api.fetchUniverse(universeUUID);
+    const newGflagSet = transformToEditFlagsForm(newUniverseData);
 
-    if (primaryCluster && !_.isEmpty(primaryCluster)) {
-      const { masterGFlags, tserverGFlags } = transformFlagArrayToObject(gFlags);
-      primaryCluster.userIntent.specificGFlags = {
-        inheritFromPrimary: false,
-        perProcessFlags: {
-          value: {
-            MASTER: masterGFlags,
-            TSERVER: tserverGFlags
-          }
-        }
+    if (_.isEqual(initialGflagSet.current, newGflagSet) || openWarningModal) {
+      setWarningModal(false);
+      const { gFlags, asyncGflags, inheritFlagsFromPrimary } = values;
+      const payload: EditGflagPayload = {
+        nodePrefix,
+        universeUUID,
+        sleepAfterMasterRestartMillis: values.timeDelay * 1000,
+        sleepAfterTServerRestartMillis: values.timeDelay * 1000,
+        taskType: 'GFlags',
+        upgradeOption: values?.upgradeOption,
+        ybSoftwareVersion: currentVersion,
+        clusters: []
       };
-      delete primaryCluster.userIntent.masterGFlags;
-      delete primaryCluster.userIntent.tserverGFlags;
-      payload.clusters = [primaryCluster];
-    }
-    if (asyncCluster && !_.isEmpty(asyncCluster)) {
-      if (inheritFlagsFromPrimary) {
-        asyncCluster.userIntent.specificGFlags = {
-          inheritFromPrimary: true,
-          perProcessFlags: {}
-        };
-      } else {
-        const { tserverGFlags } = transformFlagArrayToObject(asyncGflags);
-        asyncCluster.userIntent.specificGFlags = {
+
+      if (primaryCluster && !_.isEmpty(primaryCluster)) {
+        const { masterGFlags, tserverGFlags } = transformFlagArrayToObject(gFlags);
+        primaryCluster.userIntent.specificGFlags = {
           inheritFromPrimary: false,
           perProcessFlags: {
             value: {
+              MASTER: masterGFlags,
               TSERVER: tserverGFlags
             }
           }
         };
+        delete primaryCluster.userIntent.masterGFlags;
+        delete primaryCluster.userIntent.tserverGFlags;
+        payload.clusters = [primaryCluster];
       }
-      delete asyncCluster.userIntent.masterGFlags;
-      delete asyncCluster.userIntent.tserverGFlags;
-      payload.clusters.push(asyncCluster);
-    }
-    try {
-      await api.upgradeGflags(payload, universeUUID);
-      onClose();
-    } catch (error) {
-      toast.error(createErrorMessage(error), { autoClose: TOAST_AUTO_DISMISS_INTERVAL });
+      if (asyncCluster && !_.isEmpty(asyncCluster)) {
+        if (inheritFlagsFromPrimary) {
+          asyncCluster.userIntent.specificGFlags = {
+            inheritFromPrimary: true,
+            perProcessFlags: {}
+          };
+        } else {
+          const { tserverGFlags } = transformFlagArrayToObject(asyncGflags);
+          asyncCluster.userIntent.specificGFlags = {
+            inheritFromPrimary: false,
+            perProcessFlags: {
+              value: {
+                TSERVER: tserverGFlags
+              }
+            }
+          };
+        }
+        delete asyncCluster.userIntent.masterGFlags;
+        delete asyncCluster.userIntent.tserverGFlags;
+        payload.clusters.push(asyncCluster);
+      }
+      try {
+        await api.upgradeGflags(payload, universeUUID);
+        onClose();
+      } catch (error) {
+        toast.error(createErrorMessage(error), { autoClose: TOAST_AUTO_DISMISS_INTERVAL });
+      }
+    } else {
+      setWarningModal(true);
     }
   });
 
@@ -220,6 +233,11 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({ open, onClose, unive
     }
   ];
 
+  const canEditGFlags = hasNecessaryPerm({
+    onResource: universeUUID,
+    ...UserPermissionMap.editUniverse
+  });
+
   return (
     <YBModal
       open={open}
@@ -234,6 +252,12 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({ open, onClose, unive
       onSubmit={handleFormSubmit}
       submitTestId="EditGflags-Submit"
       cancelTestId="EditGflags-Close"
+      buttonProps={{
+        primary: {
+          disabled: !canEditGFlags
+        }
+      }}
+      submitButtonTooltip={!canEditGFlags ? RBAC_ERR_MSG_NO_PERM : ''}
     >
       <FormProvider {...formMethods}>
         <Box
@@ -249,7 +273,7 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({ open, onClose, unive
               <Box flex={1} display="flex" flexDirection={'row'} alignItems={'center'}>
                 <YBToggle
                   onChange={handleInheritFlagsToggle}
-                  disabled={false}
+                  disabled={!canEditGFlags}
                   inputProps={{
                     'data-testid': 'ToggleInheritFlags'
                   }}
@@ -301,7 +325,7 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({ open, onClose, unive
                 editMode={true}
                 fieldPath={'gFlags'}
                 isReadReplica={false}
-                isReadOnly={false}
+                isReadOnly={!canEditGFlags}
                 tableMaxHeight={!asyncCluster ? '420px' : inheritFromPrimary ? '362px' : '296px'}
               />
             )}
@@ -312,7 +336,7 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({ open, onClose, unive
                 editMode={true}
                 fieldPath={'asyncGflags'}
                 isReadReplica={true}
-                isReadOnly={false}
+                isReadOnly={!canEditGFlags}
                 tableMaxHeight={!asyncCluster ? '412px' : inheritFromPrimary ? '354px' : '288px'}
               />
             )}
@@ -340,6 +364,14 @@ export const EditGflagsModal: FC<EditGflagsModalProps> = ({ open, onClose, unive
             setOpenInheritRRModal(false);
           }}
           open={openInheritRRModal}
+        />
+        <ModifiedFlagsDialog
+          onSubmit={() => {
+            setWarningModal(false);
+            window.location.reload();
+          }}
+          onCancel={handleFormSubmit}
+          open={openWarningModal}
         />
       </FormProvider>
     </YBModal>

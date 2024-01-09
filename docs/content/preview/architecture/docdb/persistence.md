@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-Once data is replicated using Raft across a majority of the YugabyteDB tablet-peers, it is applied to each tablet peer’s local DocDB document storage layer.
+Once data is replicated using Raft across a majority of the YugabyteDB tablet-peers, it is applied to each tablet peer's local DocDB document storage layer.
 
 ## Storage model
 
@@ -34,7 +34,7 @@ The values in a DocDB document data model can be of the following types:
 * Primitive types, such as int32, int64, double, text, timestamp, and so on.
 * Non-primitive types (sorted maps), where objects map scalar keys to values that could be either scalar or sorted maps.
 
-This model allows multiple levels of nesting and corresponds to a JSON-like format. Other data structures such as lists, sorted sets, and so on are implemented using DocDB’s object type with special key encodings. In DocDB, [hybrid timestamps](../../transactions/distributed-txns/) of each update are recorded carefully, making it possible to recover the state of any document at some point in the past. Overwritten or deleted versions of data are garbage-collected as soon as there are no transactions reading at a snapshot at which the old value would be visible.
+This model allows multiple levels of nesting and corresponds to a JSON-like format. Other data structures such as lists, sorted sets, and so on are implemented using DocDB's object type with special key encodings. In DocDB, [hybrid timestamps](../../transactions/distributed-txns/) of each update are recorded carefully, making it possible to recover the state of any document at some point in the past. Overwritten or deleted versions of data are garbage-collected as soon as there are no transactions reading at a snapshot at which the old value would be visible.
 
 #### Encoding documents
 
@@ -88,7 +88,9 @@ The non-primary key columns correspond to sub-documents in the document. The sub
 
 A binary-comparable encoding is used for translating the value for each YCQL type to strings that are added to the key-value store.
 
-## Packed row format (Beta)
+## Packed row format
+
+Packed row format support is currently in [Early Access](/preview/releases/versioning/#feature-availability).
 
 A row corresponding to the user table is stored as multiple key value pairs in the DocDB. For example, a row with one primary key `K` and `n` non-key columns , that is, `K (primary key)  |  C1 (column)  | C2  | ………  | Cn`, would be stored as `n` key value pairs - `<K, C1> <K, C2> .... <K, Cn>`.
 
@@ -101,7 +103,7 @@ While UDTs (user-defined types) can be used to achieve the packed row format at 
 * Faster multi-column reads, as the reads need to fetch fewer key value pairs.
 * UDTs require application rewrite, and therefore not necessarily an option for all use cases, like latency sensitive update workloads.
 
-The packed row format can be enabled using the [Packed row flags](../../../reference/configuration/yb-tserver/#packed-row-flags-beta).
+The packed row format can be enabled using the [Packed row flags](../../../reference/configuration/yb-tserver/#packed-row-flags).
 
 ### Design
 
@@ -135,7 +137,7 @@ The packed row feature works for the YSQL API using the YSQL-specific GFlags wit
 
 ## Data expiration in YCQL
 
-In YCQL, there are two types of TTL: the table TTL, and column-level TTL. Column TTLs are stored with the value using the same encoding as Redis. The table's TTL is not stored in DocDB (instead, it is stored in the master's syscatalog as part of the table's schema). If no TTL is present at the column's value, the table TTL acts as the default value.
+In YCQL, there are two types of TTL: the table TTL, and column-level TTL. Column TTLs are stored with the value using the same encoding as Redis. The table's TTL is not stored in DocDB (instead, it is stored in the master's system catalog as part of the table's schema). If no TTL is present at the column's value, the table TTL acts as the default value.
 
 Furthermore, YCQL has a distinction between rows created using Insert vs Update. YugabyteDB keeps track of this difference (and row-level TTLs) using a "liveness column", a special system column invisible to the user. It is added for inserts, but not updates, which ensures the row is present even if all non-primary key columns are deleted only in the case of inserts.
 
@@ -237,7 +239,7 @@ operation only involves adding a delete marker at the correct level, and does no
 (hash1, 'user1', 20), msg_props_column_id, 'from', T3 -> 'c@d.com'
 (hash1, 'user1', 20), msg_props_column_id, 'subject', T3 -> 'bar'</code>
 </pre>
-The key-value pairs that are displayed in strike-through font are logically deleted. The preceding DocDB layout is not the physical layout per se, as the writes happen in a log-structured manner.
+The key-value pairs that are displayed in strike-through font are logically deleted. The preceding DocDB layout is not the physical layout, as the writes happen in a log-structured manner.
 
 When compactions occur, the space for the key-value pairs corresponding to the deleted columns is reclaimed, as per the following:
 

@@ -10,53 +10,19 @@
 
 package com.yugabyte.yw.common.swagger;
 
-import static junit.framework.TestCase.fail;
 import static junit.framework.TestCase.assertEquals;
 import static junit.framework.TestCase.assertFalse;
 import static junit.framework.TestCase.assertTrue;
-import static play.inject.Bindings.bind;
-import static play.test.Helpers.contentAsString;
-import static play.test.Helpers.route;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.MapperFeature;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.SerializationFeature;
-import com.fasterxml.jackson.databind.node.ArrayNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
-import com.google.common.collect.Lists;
-import com.yugabyte.yw.common.FakeDBApplication;
-import com.yugabyte.yw.common.swagger.PlatformModelConverter;
 import com.yugabyte.yw.common.swagger.YBADeprecationProcessor.ExcludeKind;
 import com.yugabyte.yw.models.common.YBADeprecated;
-
+import java.lang.annotation.Annotation;
+import java.text.SimpleDateFormat;
+import java.util.Calendar;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
-
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileWriter;
-import java.io.IOException;
-import java.io.InputStream;
-import java.lang.annotation.Annotation;
-import java.nio.charset.StandardCharsets;
-import java.text.SimpleDateFormat;
-import java.util.Arrays;
-import java.util.Calendar;
-import java.util.Comparator;
-import java.util.Date;
-import java.util.List;
-import org.apache.commons.io.IOUtils;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-
-import play.api.routing.Router;
-import play.inject.guice.GuiceApplicationBuilder;
-import play.libs.Json;
-import play.modules.swagger.SwaggerModule;
-import play.mvc.Result;
-import play.test.Helpers;
 
 @RunWith(JUnitParamsRunner.class)
 public class YBADeprecationProcessorTest {

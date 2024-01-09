@@ -63,6 +63,9 @@ RunningTransaction::RunningTransaction(TransactionMetadata metadata,
 }
 
 RunningTransaction::~RunningTransaction() {
+  LOG_IF(WARNING, !status_waiters_.empty()) << "RunningTransaction with active status_waiters_ "
+                                            << "being destroyed. This could lead to stuck "
+                                            << "WriteQuery object(s).";
   if (WasAborted()) {
     context_.NotifyAbortedTransactionDecrement(id());
   }
@@ -193,10 +196,13 @@ void RunningTransaction::Abort(client::YBClient* client,
 }
 
 std::string RunningTransaction::ToString() const {
-  return Format("{ metadata: $0 last_batch_data: $1 replicated_batches: $2 local_commit_time: $3 "
-                    "last_known_status: $4 last_known_status_hybrid_time: $5 }",
-                metadata_, last_batch_data_, replicated_batches_, local_commit_time_,
-                TransactionStatus_Name(last_known_status_), last_known_status_hybrid_time_);
+  return Format(
+      "{ metadata: $0 last_batch_data: $1 replicated_batches: $2 local_commit_time: $3 "
+      "last_known_status: $4 last_known_status_hybrid_time: $5 status_waiters_size: $6 "
+      "outstanding_status_requests: $7}",
+      metadata_, last_batch_data_, replicated_batches_, local_commit_time_,
+      TransactionStatus_Name(last_known_status_), last_known_status_hybrid_time_,
+      status_waiters_.size(), outstanding_status_requests_.load(std::memory_order_relaxed));
 }
 
 void RunningTransaction::ScheduleRemoveIntents(
@@ -237,6 +243,7 @@ void RunningTransaction::SendStatusRequest(
     LOG(WARNING) << "Shutting down. Cannot get GetTransactionStatus: " << metadata_;
     return;
   }
+  outstanding_status_requests_.fetch_add(1, std::memory_order_relaxed);
   tserver::GetTransactionStatusRequestPB req;
   req.set_tablet_id(metadata_.status_tablet);
   req.add_transaction_id()->assign(
@@ -313,6 +320,7 @@ void RunningTransaction::DoStatusReceived(const Status& status,
   VLOG_WITH_PREFIX(4) << __func__ << "(" << status << ", " << response.ShortDebugString() << ", "
                       << serial_no << ")";
 
+  outstanding_status_requests_.fetch_sub(1, std::memory_order_relaxed);
   if (response.has_propagated_hybrid_time()) {
     context_.participant_context_.UpdateClock(HybridTime(response.propagated_hybrid_time()));
   }
@@ -377,7 +385,8 @@ void RunningTransaction::DoStatusReceived(const Status& status,
         expected_deadlock_status);
     if (did_abort_txn) {
       context_.NotifyAbortedTransactionIncrement(id());
-      context_.EnqueueRemoveUnlocked(id(), RemoveReason::kStatusReceived, &min_running_notifier);
+      context_.EnqueueRemoveUnlocked(
+          id(), RemoveReason::kStatusReceived, &min_running_notifier, expected_deadlock_status);
     }
 
     time_of_status = last_known_status_hybrid_time_;
@@ -498,7 +507,9 @@ void RunningTransaction::AbortReceived(const Status& status,
           result->status, result->status_time, coordinator_safe_time, result->aborted_subtxn_set,
           result->expected_deadlock_status)) {
         context_.NotifyAbortedTransactionIncrement(id());
-        context_.EnqueueRemoveUnlocked(id(), RemoveReason::kAbortReceived, &min_running_notifier);
+        context_.EnqueueRemoveUnlocked(
+            id(), RemoveReason::kAbortReceived, &min_running_notifier,
+            result->expected_deadlock_status);
       }
     }
   }
@@ -525,8 +536,8 @@ void RunningTransaction::SetApplyData(const docdb::ApplyTransactionState& apply_
   apply_state_ = apply_state;
   bool active = apply_state_.active();
   if (active) {
-    // We are trying to assign set processing apply before starting actual process, and unset
-    // after we complete processing.
+    // We are trying to set processing_apply before starting the actual process of applying, and
+    // unset it after we complete processing.
     processing_apply_.store(true, std::memory_order_release);
   }
 
@@ -557,7 +568,8 @@ void RunningTransaction::SetApplyData(const docdb::ApplyTransactionState& apply_
 
     MinRunningNotifier min_running_notifier(&context_.applier_);
     std::lock_guard lock(context_.mutex_);
-    context_.RemoveUnlocked(id(), RemoveReason::kLargeApplied, &min_running_notifier);
+    context_.RemoveUnlocked(
+        id(), RemoveReason::kLargeApplied, &min_running_notifier);
   }
 }
 

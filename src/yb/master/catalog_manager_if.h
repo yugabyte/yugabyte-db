@@ -123,8 +123,6 @@ class CatalogManagerIf {
   virtual Status GetClusterConfig(GetMasterClusterConfigResponsePB* resp) = 0;
   virtual Status GetClusterConfig(SysClusterConfigEntryPB* config) = 0;
 
-  virtual Status GetXClusterConfig(GetMasterXClusterConfigResponsePB* resp) = 0;
-  virtual Status GetXClusterConfig(SysXClusterConfigEntryPB* config) = 0;
 
   virtual Status SetClusterConfig(
     const ChangeMasterClusterConfigRequestPB* req, ChangeMasterClusterConfigResponsePB* resp) = 0;
@@ -280,7 +278,7 @@ class CatalogManagerIf {
 
   virtual TabletSplitManager* tablet_split_manager() = 0;
 
-  virtual XClusterSafeTimeService* TEST_xcluster_safe_time_service() = 0;
+  virtual XClusterManager* GetXClusterManager() = 0;
 
   virtual std::shared_ptr<tablet::TabletPeer> tablet_peer() const = 0;
 

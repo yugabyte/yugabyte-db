@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import clsx from 'clsx';
 import { YBLoading } from '../../common/indicators';
 import { getPromiseState } from '../../../utils/PromiseUtils';
+import { isRbacEnabled } from '../../../redesign/features/rbac/common/RbacUtils';
 import { LDAPAuth } from './LDAPAuth';
 import { OIDCAuth } from './OIDCAuth';
 
@@ -37,7 +38,7 @@ export const UserAuth = (props) => {
   const Component = currentTab.Component;
 
   useEffect(() => {
-    if (!isAdmin) window.location.href = '/';
+    if (!isAdmin && !isRbacEnabled()) window.location.href = '/';
     else fetchRunTimeConfigs();
   }, [fetchRunTimeConfigs, isAdmin]);
 

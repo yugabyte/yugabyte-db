@@ -329,7 +329,8 @@ Status GetChangesForXCluster(
   //     computed last_apply_safe_time and apply_safe_time_checkpoint_op_id
   if (transactional && !stream_tablet_metadata->last_apply_safe_time_.is_valid()) {
     // See if its time to update the apply safe time.
-    if (!stream_tablet_metadata->last_apply_safe_time_update_time_ ||
+    if (txn_participant->GetNumRunningTransactions() == 0 ||
+        !stream_tablet_metadata->last_apply_safe_time_update_time_ ||
         stream_tablet_metadata->last_apply_safe_time_update_time_ +
                 (FLAGS_xcluster_consistent_wal_safe_time_frequency_ms * 1ms) <
             now) {

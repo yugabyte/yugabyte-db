@@ -13,7 +13,8 @@ import {
   UniverseConfigure,
   RunTimeConfig,
   HelmOverridesError,
-  UniverseResource
+  UniverseResource,
+  YBSoftwareMetadata,
 } from './dto';
 import { EditGflagPayload } from '../../universe-actions/edit-gflags/GflagHelper';
 
@@ -149,9 +150,14 @@ class ApiService {
     }
   };
 
-  getDBVersions = (): Promise<string[]> => {
+  getDBVersions = (includeMetadata: boolean = false): Promise<string[] | Record<string,YBSoftwareMetadata>> => {
     const requestUrl = `${ROOT_URL}/customers/${this.getCustomerId()}/releases`;
-    return axios.get<string[]>(requestUrl).then((resp) => resp.data);
+    
+    return axios.get<string[] | Record<string,YBSoftwareMetadata>>(requestUrl, {
+        params: {
+          includeMetadata
+        }
+      }).then((resp) => resp.data);
   };
 
   getDBVersionsByProvider = (providerId?: string): Promise<string[]> => {

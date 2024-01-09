@@ -190,6 +190,20 @@ relationHasPrimaryKey(Relation rel)
 }
 
 /*
+ * YBRelationHasPrimaryKey
+ *		See whether an existing relation has a primary key.
+ *
+ * Caller must have suitable lock on the relation.
+ *
+ * Note: It is just a wrapper over the relationHasPrimaryKey function above.
+ */
+bool
+YBRelationHasPrimaryKey(Relation rel)
+{
+	return relationHasPrimaryKey(rel);
+}
+
+/*
  * index_check_primary_key
  *		Apply special checks needed before creating a PRIMARY KEY index
  *

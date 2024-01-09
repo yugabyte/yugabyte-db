@@ -33,7 +33,11 @@ export interface EditGflagPayload {
 
 export const transformToEditFlagsForm = (universeData: Universe) => {
   const { universeDetails } = universeData;
-  const editGflagsFormData: Partial<EditGflagsFormValues> = {};
+  const editGflagsFormData: Partial<EditGflagsFormValues> = {
+    gFlags: [],
+    asyncGflags: [],
+    inheritFlagsFromPrimary: true
+  };
   const primaryCluster = getPrimaryCluster(universeDetails);
   const asyncCluster = getAsyncCluster(universeDetails);
   if (primaryCluster) {

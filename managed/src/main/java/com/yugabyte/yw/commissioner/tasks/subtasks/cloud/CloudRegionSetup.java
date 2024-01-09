@@ -32,6 +32,7 @@ public class CloudRegionSetup extends CloudTaskBase {
     public String regionCode;
     public CloudBootstrap.Params.PerRegionMetadata metadata;
     public String destVpcId;
+    public boolean isFirstTry = true;
   }
 
   @Override
@@ -42,6 +43,10 @@ public class CloudRegionSetup extends CloudTaskBase {
   @Override
   public void run() {
     cloudRegionHelper.createRegion(
-        getProvider(), taskParams().regionCode, taskParams().destVpcId, taskParams().metadata);
+        getProvider(),
+        taskParams().regionCode,
+        taskParams().destVpcId,
+        taskParams().metadata,
+        taskParams().isFirstTry);
   }
 }

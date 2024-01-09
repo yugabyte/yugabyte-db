@@ -76,6 +76,9 @@ public class ImageBundle extends Model {
   @DbJson
   private Metadata metadata = new Metadata();
 
+  @ApiModelProperty(value = "Is the ImageBundle Active")
+  private Boolean active = true;
+
   public static final Finder<UUID, ImageBundle> find =
       new Finder<UUID, ImageBundle>(ImageBundle.class) {};
 
@@ -138,7 +141,7 @@ public class ImageBundle extends Model {
   public static List<ImageBundle> getBundlesForArchType(UUID providerUUID, String arch) {
     if (arch.isEmpty()) {
       // List all the bundles for the provider (non-AWS provider case).
-      return find.query().where().eq("provider_uuid", providerUUID).findList();
+      return find.query().where().eq("provider_uuid", providerUUID).eq("active", true).findList();
     }
     // At a given time, two defaults can exist in image bundle one for `x86` & other for `arm`.
     List<ImageBundle> bundles;
@@ -148,10 +151,12 @@ public class ImageBundle extends Model {
               .where()
               .eq("provider_uuid", providerUUID)
               .eq("details::json->>'arch'", arch)
+              .eq("active", true)
               .findList();
     } catch (Exception e) {
       // In case exception is thrown we will fallback to manual filtering, specifically for UTs
-      bundles = find.query().where().eq("provider_uuid", providerUUID).findList();
+      bundles =
+          find.query().where().eq("provider_uuid", providerUUID).eq("active", true).findList();
       bundles.removeIf(
           bundle -> {
             if (bundle.getDetails() != null

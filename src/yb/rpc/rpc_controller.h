@@ -149,6 +149,8 @@ class RpcController {
   // Assign sidecar with specified index to out.
   Result<RefCntSlice> ExtractSidecar(size_t idx) const;
 
+  size_t GetSidecarsCount() const;
+
   // Transfer all sidecars to specified context.
   size_t TransferSidecars(Sidecars* dest);
 

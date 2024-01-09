@@ -95,6 +95,9 @@ public class ChangeMasterConfig extends UniverseTaskBase {
 
     // Get the node details and perform the change config operation.
     NodeDetails node = universe.getNode(taskParams().nodeName);
+    if (node == null) {
+      throw new RuntimeException("Cannot find node " + taskParams().nodeName);
+    }
     boolean isAddMasterOp = (taskParams().opType == OpType.AddMaster);
     // If the cluster has a secondary IP, we want to ensure that we use the correct addresses.
     // The ipToUse is the address that we need to add to the config.

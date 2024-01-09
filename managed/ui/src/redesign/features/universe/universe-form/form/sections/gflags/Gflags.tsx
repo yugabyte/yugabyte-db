@@ -25,7 +25,8 @@ const useStyles = makeStyles((theme) => ({
     height: '68px',
     border: '1px solid #E5E5E9',
     borderRadius: theme.spacing(1),
-    padding: theme.spacing(2)
+    padding: theme.spacing(2),
+    marginTop: theme.spacing(1)
   },
   defaultBox: {
     height: '20px',

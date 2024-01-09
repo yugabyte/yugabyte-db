@@ -389,7 +389,7 @@ export const mainTheme = createTheme({
         }
       },
       input: {
-        padding: 8,
+        padding: 6,
         fontWeight: 400,
         fontSize: 13,
         '&::placeholder': {

@@ -75,7 +75,7 @@ class PosixLogger : public Logger {
     fclose(file_);
   }
   virtual void Flush() override {
-    TEST_SYNC_POINT_CALLBACK("PosixLogger::Flush:BeginCallback", nullptr);
+    DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("PosixLogger::Flush:BeginCallback", nullptr);
     {
       bool expected_flush_pending = true;
       // TODO: use a weaker memory order?

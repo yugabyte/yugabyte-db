@@ -6,6 +6,7 @@ org.yb.pgsql.TestPgAlterTableColumnType#testSplitOptions
 org.yb.pgsql.TestPgBatchExecution
 org.yb.pgsql.TestPgCacheConsistency#testCatalogVersionLogging
 org.yb.pgsql.TestPgExplainAnalyzeMetrics
+org.yb.pgsql.TestPgPrefetchControl#testBnlWithSizeLimit
 org.yb.pgsql.TestPgPrefetchControl#testLimitPerformance
 org.yb.pgsql.TestPgPrefetchControl#testSimplePrefetch
 org.yb.pgsql.TestPgPrefetchControl#testSizeBasedFetch

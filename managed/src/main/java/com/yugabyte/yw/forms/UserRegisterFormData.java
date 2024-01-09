@@ -7,7 +7,8 @@ import static com.yugabyte.yw.models.Users.Role;
 import com.fasterxml.jackson.annotation.JsonProperty;
 import com.yugabyte.yw.common.rbac.RoleResourceDefinition;
 import com.yugabyte.yw.models.Users.Role;
-import com.yugabyte.yw.models.common.YBADeprecated;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
 import java.util.List;
@@ -38,9 +39,9 @@ public class UserRegisterFormData {
   private Map features;
 
   @ApiModelProperty(
-      value = "User role. Deprecated. Use field roleResourceDefinitions instead.",
+      value = "Deprecated since YBA version 2.19.3.0. Use field roleResourceDefinitions instead.",
       example = "Admin")
-  @YBADeprecated(sinceDate = "2023-09-07", sinceYBAVersion = "2.19.3")
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.19.3.0")
   private Role role;
 
   @ApiModelProperty(value = "List of roles and resource groups defined for user.")

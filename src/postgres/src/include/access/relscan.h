@@ -22,9 +22,10 @@
 #include "utils/relcache.h"
 
 /* Yugabyte includes */
-#include "yb/yql/pggate/ybc_pggate.h"
-#include "pg_yb_utils.h"
+#include "access/yb_sys_scan_base.h"
 #include "executor/ybcExpr.h"
+#include "pg_yb_utils.h"
+#include "yb/yql/pggate/ybc_pggate.h"
 
 typedef struct YbScanDescData *YbScanDesc;
 
@@ -232,7 +233,7 @@ typedef struct SysScanDescData
 	struct IndexScanDescData *iscan;	/* only valid in index-scan case */
 	struct SnapshotData *snapshot;	/* snapshot to unregister at end of scan */
 	struct TupleTableSlot *slot;
-	YbScanDesc	ybscan;			/* only valid in yb-scan case */
+	YbSysScanBase	ybscan;			/* only valid in yb-scan case */
 }			SysScanDescData;
 
 #endif							/* RELSCAN_H */

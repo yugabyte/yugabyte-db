@@ -1883,9 +1883,9 @@ Status PgApiImpl::NewTupleExpr(
 }
 
 // Transaction Control -----------------------------------------------------------------------------
-Status PgApiImpl::BeginTransaction() {
+Status PgApiImpl::BeginTransaction(int64_t start_time) {
   pg_session_->InvalidateForeignKeyReferenceCache();
-  return pg_txn_manager_->BeginTransaction();
+  return pg_txn_manager_->BeginTransaction(start_time);
 }
 
 Status PgApiImpl::RecreateTransaction() {
@@ -2114,6 +2114,14 @@ Result<bool> PgApiImpl::CheckIfPitrActive() {
 
 Result<bool> PgApiImpl::IsObjectPartOfXRepl(const PgObjectId& table_id) {
   return pg_session_->IsObjectPartOfXRepl(table_id);
+}
+
+Result<boost::container::small_vector<RefCntSlice, 2>> PgApiImpl::GetTableKeyRanges(
+    const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
+    uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length) {
+  return pg_session_->GetTableKeyRanges(
+      table_id, lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes, is_forward,
+      max_key_length);
 }
 
 } // namespace pggate

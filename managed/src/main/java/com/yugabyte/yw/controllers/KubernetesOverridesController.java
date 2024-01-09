@@ -11,6 +11,8 @@ import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.helm.HelmUtils;
+import com.yugabyte.yw.common.operator.annotations.BlockOperatorResource;
+import com.yugabyte.yw.common.operator.annotations.OperatorResourceTypes;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.KubernetesOverridesResponse;
@@ -73,6 +75,7 @@ public class KubernetesOverridesController extends AuthenticatedController {
         resourceLocation =
             @Resource(path = Util.UNIVERSE_UUID, sourceType = SourceType.REQUEST_BODY))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result validateKubernetesOverrides(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     UniverseConfigureTaskParams taskParams =

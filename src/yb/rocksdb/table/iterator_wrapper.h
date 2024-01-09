@@ -25,6 +25,8 @@
 
 #include <set>
 
+#include "yb/rocksdb/rocksdb_fwd.h"
+
 #include "yb/rocksdb/table/internal_iterator.h"
 
 namespace rocksdb {
@@ -33,13 +35,14 @@ namespace rocksdb {
 // caches the valid() and key() results for an underlying iterator.
 // This can help avoid virtual function calls and also gives better
 // cache locality.
-class IteratorWrapper {
+template<bool kSkipLastEntry>
+class IteratorWrapperBase {
  public:
-  IteratorWrapper() : entry_(&KeyValueEntry::Invalid()) {}
-  explicit IteratorWrapper(InternalIterator* _iter) {
+  IteratorWrapperBase() : entry_(&KeyValueEntry::Invalid()) {}
+  explicit IteratorWrapperBase(InternalIterator* _iter) {
     Set(_iter);
   }
-  ~IteratorWrapper() {}
+  ~IteratorWrapperBase() {}
   InternalIterator* iter() const { return iter_; }
 
   // Takes the ownership of "_iter" and will delete it when destroyed.
@@ -133,15 +136,43 @@ class IteratorWrapper {
 
   // Methods below require iter() != nullptr
   Status status() const     { assert(iter_); return iter_->status(); }
-  const KeyValueEntry& Next()               { assert(iter_); return Update(iter_->Next()); }
-  const KeyValueEntry& Prev()               { assert(iter_); return Update(iter_->Prev()); }
-  const KeyValueEntry& Seek(const Slice& k) { assert(iter_); return Update(iter_->Seek(k)); }
-  const KeyValueEntry& SeekToFirst()        { assert(iter_); return Update(iter_->SeekToFirst()); }
-  const KeyValueEntry& SeekToLast()         { assert(iter_); return Update(iter_->SeekToLast()); }
+
+  const KeyValueEntry& Next() {
+    DCHECK(iter_);
+    return Update(SkipLastIfNecessary(iter_->Next()));
+  }
+
+  const KeyValueEntry& Prev() {
+    DCHECK(iter_);
+    return Update(iter_->Prev());
+  }
+
+  const KeyValueEntry& Seek(const Slice& k) {
+    DCHECK(iter_);
+    return Update(SkipLastIfNecessary(iter_->Seek(k)));
+  }
+
+  const KeyValueEntry& SeekToFirst() {
+    DCHECK(iter_);
+    return Update(SkipLastIfNecessary(iter_->SeekToFirst()));
+  }
+
+  const KeyValueEntry& SeekToLast() {
+    DCHECK(iter_);
+    const auto& last_entry = iter_->SeekToLast();
+    if (!kSkipLastEntry || !last_entry.Valid()) {
+      return Update(last_entry);
+    }
+    return Update(iter_->Prev());
+  }
 
   ScanForwardResult ScanForward(
       const Comparator* user_key_comparator, const Slice& upperbound,
       KeyFilterCallback* key_filter_callback, ScanCallback* scan_callback) {
+    if (kSkipLastEntry) {
+      LOG(FATAL)
+          << "IteratorWrapperBase</* kSkipLastEntry = */ true>::ScanForward is not supported";
+    }
     LOG_IF(DFATAL, !iter_) << "Iterator is invalid";
     auto result =
         iter_->ScanForward(user_key_comparator, upperbound, key_filter_callback, scan_callback);
@@ -150,6 +181,14 @@ class IteratorWrapper {
   }
 
  private:
+  inline const KeyValueEntry& SkipLastIfNecessary(const KeyValueEntry& entry) {
+    if (!kSkipLastEntry || !entry.Valid()) {
+      return entry;
+    }
+    const auto& next_entry = iter_->Next();
+    return next_entry.Valid() ? iter_->Prev() : next_entry;
+  }
+
   const KeyValueEntry& Update(const KeyValueEntry& entry) {
     entry_ = &entry;
     return entry;

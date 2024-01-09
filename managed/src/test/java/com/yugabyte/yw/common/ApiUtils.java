@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.tasks.UniverseTaskBase;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ClusterType;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.InstanceType;
@@ -502,6 +503,8 @@ public class ApiUtils {
     ui.numNodes = numNodes;
     ui.instanceType = i.getInstanceTypeCode();
     ui.deviceInfo = getDummyDeviceInfo(1, 100);
+    ui.tserverK8SNodeResourceSpec = new K8SNodeResourceSpec();
+    ui.masterK8SNodeResourceSpec = new K8SNodeResourceSpec();
     return ui;
   }
 

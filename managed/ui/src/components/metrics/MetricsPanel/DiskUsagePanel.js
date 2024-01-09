@@ -11,7 +11,13 @@ export default class DiskUsagePanel extends Component {
   static propTypes = {};
 
   render() {
-    const { metric, masterMetric, isDedicatedNodes } = this.props;
+    const {
+      metric,
+      masterMetric,
+      isDedicatedNodes,
+      isKubernetes,
+      useK8CustomResources
+    } = this.props;
     const space = {
       free: undefined,
       used: undefined,
@@ -88,6 +94,9 @@ export default class DiskUsagePanel extends Component {
             <div
               className={`centered text-light text-lightgray empty-state ${customClassName}-mode-empty`}
             >
+              {isKubernetes && useK8CustomResources && (
+                <span className="node-type-label disk">{NodeType.TServer}</span>
+              )}
               No Data
             </div>
             <Graph value={0} />
@@ -108,9 +117,10 @@ export default class DiskUsagePanel extends Component {
               {space.used && (
                 <>
                   <span className={`gray-text metric-left-subtitle ${customClassName}-mode-space`}>
-                    {isDedicatedNodes && (
-                      <span className={'metric-left-subtitle__label'}>{NodeType.TServer}</span>
-                    )}
+                    {(isKubernetes && useK8CustomResources) ||
+                      (isDedicatedNodes && (
+                        <span className={'metric-left-subtitle__label'}>{NodeType.TServer}</span>
+                      ))}
                     {(value * 100).toFixed(1)}%
                   </span>
                 </>

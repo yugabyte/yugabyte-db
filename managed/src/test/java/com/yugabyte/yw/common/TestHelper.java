@@ -172,4 +172,13 @@ public class TestHelper {
     universe.setUniverseDetails(details);
     universe.save();
   }
+
+  public static void updateUniverseSystemdDetails(Universe universe) {
+    UniverseDefinitionTaskParams details = universe.getUniverseDetails();
+    UniverseDefinitionTaskParams.UserIntent userIntent = details.getPrimaryCluster().userIntent;
+    userIntent.useSystemd = true;
+    details.upsertPrimaryCluster(userIntent, null);
+    universe.setUniverseDetails(details);
+    universe.save();
+  }
 }

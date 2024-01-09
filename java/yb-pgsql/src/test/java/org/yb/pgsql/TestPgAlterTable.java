@@ -510,7 +510,7 @@ public class TestPgAlterTable extends BasePgSQLTest {
         "SELECT a.attname, t.typname FROM pg_attribute a" +
             " JOIN pg_class r ON r.oid=a.attrelid" +
             " JOIN pg_type t ON t.oid=a.atttypid" +
-            " WHERE a.attnum > 0 AND r.relname='%s'",
+            " WHERE a.attnum > 0 AND r.relname='%s' ORDER BY a.attname",
         table
     );
   }

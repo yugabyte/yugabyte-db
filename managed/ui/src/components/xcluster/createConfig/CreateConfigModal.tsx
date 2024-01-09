@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from 'react-query';
 import { toast } from 'react-toastify';
 import { FormikActions, FormikErrors, FormikProps } from 'formik';
@@ -14,7 +14,7 @@ import { ParallelThreads } from '../../backupv2/common/BackupUtils';
 import { YBModalForm } from '../../common/forms';
 import { YBErrorIndicator, YBLoading } from '../../common/indicators';
 import {
-  adaptTableUUID,
+  formatUuidForXCluster,
   getTablesForBootstrapping,
   parseFloatIfDefined
 } from '../ReplicationUtils';
@@ -30,7 +30,7 @@ import {
   XClusterConfigAction,
   XClusterConfigType
 } from '../constants';
-import { TableSelect } from '../common/tableSelect/TableSelect';
+import { TableSelect } from '../sharedComponents/tableSelect/TableSelect';
 
 import { TableType, Universe, YBTable } from '../../../redesign/helpers/dtos';
 import { XClusterTableType } from '../XClusterTypes';
@@ -130,7 +130,7 @@ export const CreateConfigModal = ({
           sourceUniverseUUID,
           values.configName,
           values.isTransactionalConfig ? XClusterConfigType.TXN : XClusterConfigType.BASIC,
-          values.tableUUIDs.map(adaptTableUUID),
+          values.tableUUIDs.map(formatUuidForXCluster),
           bootstrapParams
         );
       }
@@ -139,7 +139,7 @@ export const CreateConfigModal = ({
         sourceUniverseUUID,
         values.configName,
         values.isTransactionalConfig ? XClusterConfigType.TXN : XClusterConfigType.BASIC,
-        values.tableUUIDs.map(adaptTableUUID)
+        values.tableUUIDs.map(formatUuidForXCluster)
       );
     },
     {
@@ -407,27 +407,26 @@ export const CreateConfigModal = ({
                 <TableSelect
                   {...{
                     configAction: XClusterConfigAction.CREATE,
-                    sourceUniverseUUID: sourceUniverseUUID,
-                    targetUniverseUUID: values.targetUniverse.value.universeUUID,
-                    currentStep,
-                    setCurrentStep,
-                    selectedTableUUIDs: values.tableUUIDs,
-                    setSelectedTableUUIDs: (tableUUIDs: string[]) =>
-                      setSelectedTableUUIDs(tableUUIDs, formik.current),
-                    tableType: tableType,
                     handleTransactionalConfigCheckboxClick: () => {
                       handleTransactionalConfigCheckboxClick(
                         values.isTransactionalConfig,
                         formik.current
                       );
                     },
+                    isDrConfig: false,
                     isFixedTableType: false,
                     isTransactionalConfig: values.isTransactionalConfig,
-                    setTableType,
                     selectedKeyspaces,
-                    setSelectedKeyspaces,
+                    selectedTableUUIDs: values.tableUUIDs,
                     selectionError: errors.tableUUIDs,
-                    selectionWarning: formWarnings?.tableUUIDs
+                    selectionWarning: formWarnings?.tableUUIDs,
+                    setSelectedKeyspaces,
+                    setSelectedTableUUIDs: (tableUUIDs: string[]) =>
+                      setSelectedTableUUIDs(tableUUIDs, formik.current),
+                    setTableType,
+                    sourceUniverseUUID: sourceUniverseUUID,
+                    tableType: tableType,
+                    targetUniverseUUID: values.targetUniverse.value.universeUUID
                   }}
                 />
               </>
@@ -502,7 +501,7 @@ const validateForm = async (
         let bootstrapTableUUIDs: string[] | null = null;
         try {
           bootstrapTableUUIDs = await getTablesForBootstrapping(
-            values.tableUUIDs.map(adaptTableUUID),
+            values.tableUUIDs.map(formatUuidForXCluster),
             sourceUniverse.universeUUID,
             values.targetUniverse.value.universeUUID,
             sourceUniverseTables,

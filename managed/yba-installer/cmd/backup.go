@@ -108,13 +108,15 @@ func RestoreBackupScript(inputPath string, destination string, skipRestart bool,
 	}
 
 	args := []string{"restore", "--input", inputPath,
-		"--destination", destination, "--data_dir", destination, "--disable_version_check",
-		"--yba_installer", "--yba_user", userName, "--ybai_data_dir", plat.DataDir}
+		"--destination", destination, "--data_dir", destination, "--yba_installer",
+		"--yba_user", userName, "--ybai_data_dir", plat.DataDir}
 	if skipRestart {
 		args = append(args, "--skip_restart")
 	}
 	if migration {
 		args = append(args, "--migration")
+		// Disable version checking in case of version upgrades during migration.
+		args = append(args, "--disable_version_check")
 	}
 	if useSystemPostgres {
 		args = append(args, "--use_system_pg")

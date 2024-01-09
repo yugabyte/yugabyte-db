@@ -90,6 +90,7 @@
 #include "catalog/pg_yb_role_profile.h"
 #include "catalog/pg_yb_tablegroup.h"
 #include "catalog/yb_catalog_version.h"
+#include "utils/yb_inheritscache.h"
 
 static HeapTuple GetDatabaseTuple(const char *dbname);
 static HeapTuple GetDatabaseTupleByOid(Oid dboid);
@@ -812,6 +813,9 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	InitCatalogCache();
 	InitPlanCache();
 
+	if (YBIsEnabledInPostgresEnvVar())
+		YbInitPgInheritsCache();
+
 	/* Initialize portal manager */
 	EnablePortalManager();
 
@@ -830,12 +834,14 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 										YbRoleProfileRelationId,
 										&YbLoginProfileCatalogsExist));
 
-		const YBCPgLastKnownCatalogVersionInfo catalog_version =
-			YbGetCatalogCacheVersionForTablePrefetching();
-
+		/* TODO (dmitry): Next call of the YBIsDBCatalogVersionMode function is
+		 * kind of a hack and must be removed. This function is called before
+		 * starting prefetching because for now switching into DB catalog
+		 * version mode is impossible in case prefething is started.
+		 */
+		YBIsDBCatalogVersionMode();
 		YBCPgResetCatalogReadTime();
-		YBCStartSysTablePrefetching(
-			catalog_version, YB_YQL_PREFETCHER_NO_CACHE);
+		YBCStartSysTablePrefetchingNoCache();
 		YbRegisterSysTableForPrefetching(AuthIdRelationId);   // pg_authid
 		YbRegisterSysTableForPrefetching(DatabaseRelationId); // pg_database
 
@@ -1215,7 +1221,7 @@ InitPostgresImpl(const char *in_dbname, Oid dboid,
 	 * least the minimum set of "nailed-in" cache entries.
 	 */
 	// See if tablegroup catalog exists - needs to happen before cache fully initialized.
-	if (IsYugaByteEnabled())
+	if (IsYugaByteEnabled() && !bootstrap)
 		HandleYBStatus(YBCPgTableExists(
 			MyDatabaseId, YbTablegroupRelationId, &YbTablegroupCatalogExists));
 

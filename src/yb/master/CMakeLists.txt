@@ -118,6 +118,7 @@ set(MASTER_SRCS
   sys_catalog_writer.cc
   system_tablet.cc
   table_index.cc
+  tablet_limits.cc
   tablet_split_manager.cc
   tasks_tracker.cc
   ts_descriptor.cc
@@ -125,8 +126,10 @@ set(MASTER_SRCS
   universe_key_registry_service.cc
   util/yql_vtable_helpers.cc
   xcluster/add_table_to_xcluster_task.cc
+  xcluster/xcluster_config.cc
   xcluster/xcluster_consumer_metrics.cc
   xcluster/xcluster_safe_time_service.cc
+  xcluster/xcluster_manager.cc
   xrepl_catalog_manager.cc
   yql_aggregates_vtable.cc
   yql_auth_resource_role_permissions_index.cc
@@ -232,6 +235,7 @@ ADD_YB_TEST(restore_sys_catalog_state_test)
 ADD_YB_TEST(cluster_balance_preferred_leader-test)
 ADD_YB_TEST(master_xrepl-test)
 ADD_YB_TEST(sys_catalog_xrepl-test)
+ADD_YB_TEST(tablet_limits_test)
 
 # Actual master executable. In LTO mode, can also act as the tablet server if executed through a
 # symlink named as the tablet server executable.

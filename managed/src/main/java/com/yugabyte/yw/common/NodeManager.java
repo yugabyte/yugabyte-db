@@ -48,6 +48,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.ResumeServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RunHooks;
 import com.yugabyte.yw.commissioner.tasks.subtasks.TransferXClusterCerts;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateMountedDisks;
+import com.yugabyte.yw.common.audit.otel.OtelCollectorConfigGenerator;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.certmgmt.EncryptionInTransitUtil;
@@ -81,6 +82,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import com.yugabyte.yw.models.helpers.audit.AuditLogConfig;
 import com.yugabyte.yw.models.helpers.provider.region.AzureRegionCloudInfo;
 import com.yugabyte.yw.models.helpers.provider.region.GCPRegionCloudInfo;
 import java.io.File;
@@ -153,6 +155,10 @@ public class NodeManager extends DevopsBase {
   @Inject NodeAgentClient nodeAgentClient;
 
   @Inject NodeAgentPoller nodeAgentPoller;
+
+  @Inject OtelCollectorConfigGenerator otelCollectorConfigGenerator;
+
+  @Inject LocalNodeManager localNodeManager;
 
   @Override
   protected String getCommandType() {
@@ -539,7 +545,6 @@ public class NodeManager extends DevopsBase {
     if (isRootCARequired) {
       subcommandStrings.add("--certs_node_dir");
       subcommandStrings.add(CertificateHelper.getCertsNodeDir(ybHomeDir));
-
       CertificateInfo rootCert = CertificateInfo.get(taskParam.rootCA);
       if (rootCert == null) {
         throw new RuntimeException("No valid rootCA found for " + taskParam.getUniverseUUID());
@@ -857,7 +862,7 @@ public class NodeManager extends DevopsBase {
                 ybcPackage, YBC_PACKAGE_REGEX));
       }
       ybcDir = "ybc" + matcher.group(1);
-      ybcFlags = GFlagsUtil.getYbcFlags(taskParam, config);
+      ybcFlags = GFlagsUtil.getYbcFlags(universe, taskParam, confGetter, config);
       boolean enableVerbose =
           confGetter.getConfForScope(universe, UniverseConfKeys.ybcEnableVervbose);
       if (enableVerbose) {
@@ -1514,7 +1519,11 @@ public class NodeManager extends DevopsBase {
       List<String> commandArgs) {
     if (Provider.InstanceTagsEnabledProviders.contains(userIntent.providerType)) {
       addInstanceTags(
-          universe, userIntent.instanceTags, userIntent.providerType, nodeTaskParam, commandArgs);
+          universe,
+          nodeTaskParam.tags != null ? nodeTaskParam.tags : userIntent.instanceTags,
+          userIntent.providerType,
+          nodeTaskParam,
+          commandArgs);
     }
   }
 
@@ -1826,6 +1835,7 @@ public class NodeManager extends DevopsBase {
             // aws uses instance_type to determine device names for mounting
             addInstanceTypeArgs(commandArgs, provider.getUuid(), taskParam.instanceType, true);
           }
+          addOtelColArgs(commandArgs, taskParam, userIntent, provider);
 
           String imageBundleDefaultImage = "";
           UUID imageBundleUUID = getImageBundleUUID(arch, userIntent, nodeTaskParam);
@@ -2331,6 +2341,9 @@ public class NodeManager extends DevopsBase {
     }
     addNodeAgentCommandArgs(universe, nodeTaskParam, commandArgs, redactedVals);
     addCustomTmpDirectoryCommandArgs(universe, nodeTaskParam, commandArgs);
+    if (userIntent.providerType == CloudType.local) {
+      return localNodeManager.nodeCommand(type, nodeTaskParam, commandArgs);
+    }
     commandArgs.add(nodeTaskParam.nodeName);
     try {
       Map<String, String> envVars =
@@ -2653,5 +2666,31 @@ public class NodeManager extends DevopsBase {
     }
 
     return imageBundleUUID;
+  }
+
+  private void addOtelColArgs(
+      List<String> commandArgs,
+      AnsibleSetupServer.Params taskParams,
+      UserIntent intent,
+      Provider provider) {
+    if (taskParams.otelCollectorEnabled) {
+      commandArgs.add("--install_otel_collector");
+      AuditLogConfig config = intent.auditLogConfig;
+      if (config == null) {
+        return;
+      }
+      if ((config.getYsqlAuditConfig() == null || !config.getYsqlAuditConfig().isEnabled())
+          && (config.getYcqlAuditConfig() == null || !config.getYcqlAuditConfig().isEnabled())) {
+        return;
+      }
+      if (CollectionUtils.isNotEmpty(config.getUniverseLogsExporterConfig())) {
+        commandArgs.add("--otel_col_config_file");
+        commandArgs.add(
+            otelCollectorConfigGenerator
+                .generateConfigFile(taskParams, provider, config)
+                .toAbsolutePath()
+                .toString());
+      }
+    }
   }
 }

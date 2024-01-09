@@ -133,6 +133,7 @@ public class Scheduler {
               }
             });
   }
+
   /** Iterates through all the schedule entries and runs the tasks that are due to be scheduled. */
   @VisibleForTesting
   void scheduleRunner() {
@@ -175,19 +176,34 @@ public class Scheduler {
             alreadyRunning = true;
           }
 
+          boolean isExpectedScheduleTaskTimeExpired = false;
+          if (expectedScheduleTaskTime != null) {
+            isExpectedScheduleTaskTimeExpired = Util.isTimeExpired(expectedScheduleTaskTime);
+          }
+          boolean isExpectedIncrementScheduleTaskTime = false;
+          if (expectedIncrementScheduleTaskTime != null) {
+            isExpectedIncrementScheduleTaskTime =
+                Util.isTimeExpired(expectedIncrementScheduleTaskTime);
+          }
+
           // Update next scheduled task time if it is expired or null.
-          if (expectedScheduleTaskTime == null || Util.isTimeExpired(expectedScheduleTaskTime)) {
+          if (expectedScheduleTaskTime == null || isExpectedScheduleTaskTimeExpired) {
             Date nextScheduleTaskTime =
                 Schedule.nextExpectedTaskTime(expectedScheduleTaskTime, schedule);
             expectedScheduleTaskTime =
                 expectedScheduleTaskTime == null ? nextScheduleTaskTime : expectedScheduleTaskTime;
             schedule.updateNextScheduleTaskTime(nextScheduleTaskTime);
+            log.debug(
+                "Updating expired next schedule task time for {} to {} for schedule {}",
+                expectedScheduleTaskTime,
+                nextScheduleTaskTime,
+                schedule.getScheduleUUID());
           }
 
           // Update next increment scheduled task time if it is expired or null.
           if (isIncrementalBackupSchedule
               && (expectedIncrementScheduleTaskTime == null
-                  || Util.isTimeExpired(expectedIncrementScheduleTaskTime))) {
+                  || isExpectedIncrementScheduleTaskTime)) {
             Date nextIncrementScheduleTaskTime =
                 ScheduleUtil.nextExpectedIncrementTaskTime(schedule);
             expectedIncrementScheduleTaskTime =
@@ -195,9 +211,23 @@ public class Scheduler {
                     ? nextIncrementScheduleTaskTime
                     : expectedIncrementScheduleTaskTime;
             schedule.updateNextIncrementScheduleTaskTime(nextIncrementScheduleTaskTime);
+            log.debug(
+                "Updating expired next incremental schedule task time for {} to {} for schedule {}",
+                expectedIncrementScheduleTaskTime,
+                nextIncrementScheduleTaskTime,
+                schedule.getScheduleUUID());
           }
 
-          boolean shouldRunTask = Util.isTimeExpired(expectedScheduleTaskTime) || backlogStatus;
+          if (backlogStatus || incrementBacklogStatus) {
+            log.debug(
+                "Scheduling a backup for schedule {} due to backlog status: {}, incremental backlog"
+                    + " status",
+                schedule.getScheduleUUID(),
+                backlogStatus,
+                incrementBacklogStatus);
+          }
+
+          boolean shouldRunTask = isExpectedScheduleTaskTimeExpired || backlogStatus;
           UUID baseBackupUUID = null;
           if (isIncrementalBackupSchedule) {
             baseBackupUUID = fetchBaseBackupUUIDfromLatestSuccessfulBackup(schedule);
@@ -213,9 +243,11 @@ public class Scheduler {
               // full backups take priority but make sure to take an incremental backup
               // either when it's scheduled or to catch up on any backlog.
               baseBackupUUID = null;
-            } else if (Util.isTimeExpired(expectedIncrementScheduleTaskTime)
-                || incrementBacklogStatus) {
+              log.debug("Scheduling a full backup for schedule {}", schedule.getScheduleUUID());
+            } else if (isExpectedIncrementScheduleTaskTime || incrementBacklogStatus) {
               shouldRunTask = true;
+              log.debug(
+                  "Scheduling a incremental backup for schedule {}", schedule.getScheduleUUID());
             }
           }
 

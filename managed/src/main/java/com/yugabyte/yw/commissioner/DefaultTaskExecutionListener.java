@@ -36,4 +36,4 @@ public class DefaultTaskExecutionListener implements TaskExecutionListener {
     log.info("Task {} is completed", taskInfo);
     providerEditRestrictionManager.onTaskFinished(taskInfo.getTaskUUID());
   }
-};
+}

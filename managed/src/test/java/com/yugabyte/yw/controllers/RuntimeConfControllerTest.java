@@ -446,12 +446,12 @@ public class RuntimeConfControllerTest extends FakeDBApplication {
     RuntimeConfigFactory runtimeConfigFactory =
         app.injector().instanceOf(RuntimeConfigFactory.class);
     assertFalse(runtimeConfigFactory.forUniverse(defaultUniverse).getBoolean(key));
-    setCloudEnabled(defaultUniverse.getUniverseUUID());
+    setCloudEnabled();
     assertTrue(runtimeConfigFactory.forUniverse(defaultUniverse).getBoolean(key));
   }
 
-  private void setCloudEnabled(UUID scopeUUID) {
-    setKey("yb.cloud.enabled", "true", scopeUUID);
+  private void setCloudEnabled() {
+    setKey("yb.cloud.enabled", "true", defaultCustomer.getUuid());
   }
 
   @Test

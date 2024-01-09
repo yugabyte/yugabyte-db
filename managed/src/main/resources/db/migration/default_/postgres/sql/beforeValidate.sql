@@ -65,6 +65,9 @@ $$
        -- Rerun migration 281 with right values
        DELETE FROM SCHEMA_VERSION WHERE VERSION = '281' AND checksum = -875441828;
 
+       -- Rerun migration 296
+       DELETE FROM SCHEMA_VERSION where version = '296' AND checksum = -1228390187;
+
        -- Fix next migration here
     END IF;
   END;

@@ -22,6 +22,7 @@ import com.yugabyte.yw.common.kms.EncryptionAtRestManager;
 import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.services.YbcClientService;
+import com.yugabyte.yw.controllers.handlers.LdapUniverseSyncHandler;
 import com.yugabyte.yw.metrics.MetricQueryHelper;
 import com.yugabyte.yw.models.helpers.JsonFieldsValidator;
 import com.yugabyte.yw.scheduler.Scheduler;
@@ -67,6 +68,7 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
   public GFlagsValidation mockGFlagsValidation = mock(GFlagsValidation.class);
   public NodeManager mockNodeManager = mock(NodeManager.class);
   public BackupHelper mockBackupHelper = mock(BackupHelper.class);
+  public LdapUniverseSyncHandler mockLdapUniverseSyncHandler = mock(LdapUniverseSyncHandler.class);
   public StorageUtilFactory mockStorageUtilFactory = mock(StorageUtilFactory.class);
   public CloudUtilFactory mockCloudUtilFactory = mock(CloudUtilFactory.class);
   public AWSUtil mockAWSUtil = mock(AWSUtil.class);
@@ -112,6 +114,8 @@ public class FakeDBApplication extends PlatformGuiceApplicationBaseTest {
                 .overrides(bind(CallHome.class).toInstance(mockCallHome))
                 .overrides(bind(Executors.class).toInstance(mockExecutors))
                 .overrides(bind(BackupHelper.class).toInstance(mockBackupHelper))
+                .overrides(
+                    bind(LdapUniverseSyncHandler.class).toInstance(mockLdapUniverseSyncHandler))
                 .overrides(bind(EncryptionAtRestManager.class).toInstance(mockEARManager))
                 .overrides(bind(SetUniverseKey.class).toInstance(mockSetUniverseKey))
                 .overrides(bind(ShellKubernetesManager.class).toInstance(mockKubernetesManager))

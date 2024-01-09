@@ -84,6 +84,7 @@ TEST_F(TServerPathHandlersItest, TestMasterPathHandlers) {
   ASSERT_OK(FetchURL("/status"));
   ASSERT_OK(FetchURL("/memz"));
   ASSERT_OK(FetchURL("/mem-trackers"));
+  ASSERT_OK(FetchURL("/api/v1/mem-trackers"));
   ASSERT_OK(FetchURL("/api/v1/varz"));
   ASSERT_OK(FetchURL("/api/v1/version-info"));
 

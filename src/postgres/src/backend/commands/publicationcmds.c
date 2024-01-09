@@ -53,6 +53,9 @@
 #include "utils/syscache.h"
 #include "utils/varlena.h"
 
+/* YB includes. */
+#include "catalog/index.h"
+#include "pg_yb_utils.h"
 
 /*
  * Information used to validate the columns in the row filter expression. See
@@ -733,6 +736,13 @@ CheckPubRelationColumnList(char *pubname, List *tables,
 ObjectAddress
 CreatePublication(ParseState *pstate, CreatePublicationStmt *stmt)
 {
+	if (IsYugaByteEnabled() && !yb_enable_replication_commands)
+		ereport(ERROR,
+				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+				 errmsg("CreatePublication is unavailable"),
+				 errdetail("yb_enable_replication_commands is false or a "
+				 		   "system upgrade is in progress")));
+
 	Relation	rel;
 	ObjectAddress myself;
 	Oid			puboid;
@@ -783,6 +793,15 @@ CreatePublication(ParseState *pstate, CreatePublicationStmt *stmt)
 							  &publish_given, &pubactions,
 							  &publish_via_partition_root_given,
 							  &publish_via_partition_root);
+
+	if (IsYugaByteEnabled() && !(pubactions.pubinsert && pubactions.pubupdate &&
+								 pubactions.pubdelete &&
+								 pubactions.pubtruncate))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("Publishing only a subset of DML commands is not yet supported"),
+				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/"
+						 "19250. React with thumbs up to raise its priority")));
 
 	puboid = GetNewOidWithIndex(rel, PublicationObjectIndexId,
 								Anum_pg_publication_oid);
@@ -976,6 +995,15 @@ AlterPublicationOptions(ParseState *pstate, AlterPublicationStmt *stmt,
 							   relname, "publish_via_partition_root")));
 		}
 	}
+
+	if (IsYugaByteEnabled() && !(pubactions.pubinsert && pubactions.pubupdate &&
+								 pubactions.pubdelete &&
+								 pubactions.pubtruncate))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("Publishing only a subset of DML commands is not yet supported"),
+				 errhint("See https://github.com/yugabyte/yugabyte-db/issues/"
+						 "19250. React with thumbs up to raise its priority")));
 
 	/* Everything ok, form a new tuple. */
 	memset(values, 0, sizeof(values));
@@ -1376,6 +1404,12 @@ CheckAlterPublication(AlterPublicationStmt *stmt, HeapTuple tup,
 void
 AlterPublication(ParseState *pstate, AlterPublicationStmt *stmt)
 {
+	if (IsYugaByteEnabled() && !yb_enable_replication_commands)
+		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("AlterPublication is unavailable"),
+						errdetail("yb_enable_replication_commands is false or a"
+								  " system upgrade is in progress")));
+
 	Relation	rel;
 	HeapTuple	tup;
 	Form_pg_publication pubform;
@@ -1446,6 +1480,12 @@ AlterPublication(ParseState *pstate, AlterPublicationStmt *stmt)
 void
 RemovePublicationRelById(Oid proid)
 {
+	if (IsYugaByteEnabled() && !yb_enable_replication_commands)
+		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("RemovePublicationRelById is unavailable"),
+						errdetail("yb_enable_replication_commands is false or a"
+								  " system upgrade is in progress")));
+
 	Relation	rel;
 	HeapTuple	tup;
 	Form_pg_publication_rel pubrel;
@@ -1487,6 +1527,12 @@ RemovePublicationRelById(Oid proid)
 void
 RemovePublicationById(Oid pubid)
 {
+	if (IsYugaByteEnabled() && !yb_enable_replication_commands)
+		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("RemovePublicationById is unavailable"),
+						errdetail("yb_enable_replication_commands is false or a"
+								  " system upgrade is in progress")));
+
 	Relation	rel;
 	HeapTuple	tup;
 	Form_pg_publication pubform;
@@ -1951,6 +1997,12 @@ AlterPublicationOwner_internal(Relation rel, HeapTuple tup, Oid newOwnerId)
 ObjectAddress
 AlterPublicationOwner(const char *name, Oid newOwnerId)
 {
+	if (IsYugaByteEnabled() && !yb_enable_replication_commands)
+		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("AlterPublicationOwner is unavailable"),
+						errdetail("yb_enable_replication_commands is false or a"
+								  " system upgrade is in progress")));
+
 	Oid			subid;
 	HeapTuple	tup;
 	Relation	rel;
@@ -1986,6 +2038,12 @@ AlterPublicationOwner(const char *name, Oid newOwnerId)
 void
 AlterPublicationOwner_oid(Oid subid, Oid newOwnerId)
 {
+	if (IsYugaByteEnabled() && !yb_enable_replication_commands)
+		ereport(ERROR, (errcode(ERRCODE_INVALID_PARAMETER_VALUE),
+						errmsg("AlterPublicationOwner_oid is unavailable"),
+						errdetail("yb_enable_replication_commands is false or a"
+								  " system upgrade is in progress")));
+
 	HeapTuple	tup;
 	Relation	rel;
 

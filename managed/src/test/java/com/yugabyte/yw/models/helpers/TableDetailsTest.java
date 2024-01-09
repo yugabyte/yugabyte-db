@@ -114,8 +114,8 @@ public class TableDetailsTest {
   @Test
   public void testCQLCreateTableString_OnePKey_WithCKey_withTTL_ASC() {
     String createTable =
-        "CREATE TABLE dummy_table (k0 int, k1 int, v varchar, "
-            + "primary key (k0, k1)) WITH default_time_to_live = 1000 AND CLUSTERING ORDER BY (k1 ASC);";
+        "CREATE TABLE dummy_table (k0 int, k1 int, v varchar, primary key (k0, k1)) WITH"
+            + " default_time_to_live = 1000 AND CLUSTERING ORDER BY (k1 ASC);";
     TableDetails tableDetails = ApiUtils.getDummyTableDetails(oneKey, oneKey, withTtl, asc);
     assertEquals(createTable, tableDetails.getCQLCreateTableString());
   }
@@ -123,8 +123,8 @@ public class TableDetailsTest {
   @Test
   public void testCQLCreateTableString_OnePKey_WithCKey_withTTL_DESC() {
     String createTable =
-        "CREATE TABLE dummy_table (k0 int, k1 int, v varchar, "
-            + "primary key (k0, k1)) WITH default_time_to_live = 1000 AND CLUSTERING ORDER BY (k1 DESC);";
+        "CREATE TABLE dummy_table (k0 int, k1 int, v varchar, primary key (k0, k1)) WITH"
+            + " default_time_to_live = 1000 AND CLUSTERING ORDER BY (k1 DESC);";
     TableDetails tableDetails = ApiUtils.getDummyTableDetails(oneKey, oneKey, withTtl, desc);
     assertEquals(createTable, tableDetails.getCQLCreateTableString());
   }

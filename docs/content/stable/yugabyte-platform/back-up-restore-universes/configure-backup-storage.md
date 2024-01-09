@@ -12,6 +12,8 @@ menu:
 type: docs
 ---
 
+Before you can back up universes, you need to configure a storage location for your backups.
+
 Depending on your environment, you can save your YugabyteDB universe data to a variety of storage solutions.
 
 ## Amazon S3

@@ -6,7 +6,7 @@ aliases:
 menu:
   preview_integrations:
     identifier: kairosdb
-    parent: integrations
+    parent: integrations-other
     weight: 571
 type: docs
 ---

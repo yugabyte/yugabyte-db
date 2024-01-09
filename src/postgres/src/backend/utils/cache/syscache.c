@@ -502,17 +502,6 @@ static const struct cachedesc cacheinfo[] = {
 		},
 		64
 	},
-	{InheritsRelationId,    /* INHERITSRELID */
-		InheritsParentIndexId,
-		2,
-		{
-			Anum_pg_inherits_inhparent,
-			Anum_pg_inherits_inhrelid,
-			0,
-			0
-		},
-		32
-	},
 	{LanguageRelationId,		/* LANGNAME */
 		LanguageNameIndexId,
 		1,

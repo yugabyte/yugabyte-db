@@ -385,6 +385,7 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_minimal_catalog_caches_preload;
   const bool*     ysql_enable_create_database_oid_collision_retry;
   const char*     ysql_catalog_preload_additional_table_list;
+  const bool*     ysql_use_relcache_file;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {
@@ -439,6 +440,11 @@ typedef struct PgExecReadWriteStats {
   uint64_t read_wait;
 } YBCPgExecReadWriteStats;
 
+typedef struct PgExecEventMetric {
+  int64_t sum;
+  int64_t count;
+} YBCPgExecEventMetric;
+
 typedef struct PgExecStats {
   YBCPgExecReadWriteStats tables;
   YBCPgExecReadWriteStats indices;
@@ -447,7 +453,10 @@ typedef struct PgExecStats {
   uint64_t num_flushes;
   uint64_t flush_wait;
 
-  uint64_t storage_metrics[YB_PGGATE_IDENTIFIER(YB_ANALYZE_METRIC_COUNT)];
+  uint64_t storage_gauge_metrics[YB_PGGATE_IDENTIFIER(YB_STORAGE_GAUGE_COUNT)];
+  int64_t storage_counter_metrics[YB_PGGATE_IDENTIFIER(YB_STORAGE_COUNTER_COUNT)];
+  YBCPgExecEventMetric
+      storage_event_metrics[YB_PGGATE_IDENTIFIER(YB_STORAGE_EVENT_COUNT)];
 } YBCPgExecStats;
 
 // Make sure this is in sync with PgsqlMetricsCaptureType in pgsql_protocol.proto.
@@ -505,8 +514,7 @@ static const int32_t kYBCMaxNumDbCatalogVersions = 10000;
 typedef enum PgSysTablePrefetcherCacheMode {
   YB_YQL_PREFETCHER_TRUST_CACHE,
   YB_YQL_PREFETCHER_RENEW_CACHE_SOFT,
-  YB_YQL_PREFETCHER_RENEW_CACHE_HARD,
-  YB_YQL_PREFETCHER_NO_CACHE
+  YB_YQL_PREFETCHER_RENEW_CACHE_HARD
 } YBCPgSysTablePrefetcherCacheMode;
 
 typedef struct PgLastKnownCatalogVersionInfo {

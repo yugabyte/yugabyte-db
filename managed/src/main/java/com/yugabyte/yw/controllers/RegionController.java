@@ -16,6 +16,8 @@ import com.yugabyte.yw.forms.RegionFormData;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
@@ -48,6 +50,7 @@ public class RegionController extends AuthenticatedController {
   @Inject RegionHandler regionHandler;
 
   public static final Logger LOG = LoggerFactory.getLogger(RegionController.class);
+
   // This constant defines the minimum # of PlacementAZ we need to tag a region as Multi-PlacementAZ
   // complaint
 
@@ -108,9 +111,10 @@ public class RegionController extends AuthenticatedController {
    *
    * @return JSON response of newly created region
    */
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.18.2.0")
   @ApiOperation(
       value =
-          "Deprecated: sinceDate=2023-08-07, sinceYBAVersion=2.18.2.0, "
+          "Deprecated since YBA version 2.18.2.0, "
               + "Use /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions instead",
       response = Region.class,
       nickname = "createRegion")
@@ -182,9 +186,10 @@ public class RegionController extends AuthenticatedController {
    * @param regionUUID Region UUID
    * @return JSON response on whether or not the operation was successful.
    */
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.18.2.0")
   @ApiOperation(
       value =
-          "Deprecated: sinceDate=2023-08-07, sinceYBAVersion=2.18.2.0, "
+          "Deprecated since YBA version 2.18.2.0, "
               + "Use /api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions instead",
       response = Object.class,
       nickname = "editRegion")

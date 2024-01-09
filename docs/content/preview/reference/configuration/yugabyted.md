@@ -23,6 +23,12 @@ For examples of using yugabyted to deploy single- and multi-node clusters, see [
 Note that yugabyted is not recommended for production deployments. For production deployments with fully-distributed multi-node clusters, use [`yb-tserver`](../yb-tserver/) and [`yb-master`](../yb-master/) directly. Refer to [Deploy YugabyteDB](../../../deploy).
 {{</note>}}
 
+{{% note title="Running on macOS" %}}
+
+Running YugabyteDB on macOS requires additional settings. For more information, refer to [Running on macOS](#running-on-macos).
+
+{{% /note %}}
+
 ## Syntax
 
 ```sh
@@ -670,6 +676,8 @@ The following are combinations of environment variables and their uses:
 To deploy any type of secure cluster (that is, using the `--secure` flag) or use encryption at rest, OpenSSL must be installed on your machine.
 
 ### Running on macOS
+
+#### Port conflicts
 
 macOS Monterey enables AirPlay receiving by default, which listens on port 7000. This conflicts with YugabyteDB and causes `yugabyted start` to fail. Use the [--master_webserver_port flag](#advanced-flags) when you start the cluster to change the default port number, as follows:
 

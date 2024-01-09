@@ -739,9 +739,7 @@ public class YbcManager {
       nodeIPs = nodeIPListOverride;
     } else {
       nodeIPs.addAll(
-          universe
-              .getLiveTServersInPrimaryCluster()
-              .parallelStream()
+          universe.getRunningTserversInPrimaryCluster().parallelStream()
               .map(nD -> nD.cloudInfo.private_ip)
               .collect(Collectors.toList()));
     }
@@ -783,7 +781,7 @@ public class YbcManager {
 
     // Give second preference to same AZ nodes.
     Set<String> sameAZNodes =
-        universe.getLiveTServersInPrimaryCluster().stream()
+        universe.getRunningTserversInPrimaryCluster().stream()
             .filter(
                 nD ->
                     !nD.cloudInfo.private_ip.equals(masterLeaderIP)
@@ -795,7 +793,7 @@ public class YbcManager {
 
     // Give third preference to same region nodes.
     List<String> regionSortedList =
-        universe.getLiveTServersInPrimaryCluster().stream()
+        universe.getRunningTserversInPrimaryCluster().stream()
             .filter(
                 nD ->
                     !nD.cloudInfo.private_ip.equals(masterLeaderIP)
@@ -860,7 +858,13 @@ public class YbcManager {
                           provider.getUuid(), nodeDetails.cloudInfo.instance_type)
                       .getNumCores());
     } else {
-      hardwareConcurrency = (int) Math.ceil(userIntent.tserverK8SNodeResourceSpec.cpuCoreCount);
+      if (userIntent.tserverK8SNodeResourceSpec != null) {
+        hardwareConcurrency = (int) Math.ceil(userIntent.tserverK8SNodeResourceSpec.cpuCoreCount);
+      } else {
+        hardwareConcurrency = 2;
+        LOG.warn(
+            "Could not determine hardware concurrency based on resource spec, assuming default");
+      }
     }
     Map<String, String> ybcGflags =
         GFlagsUtil.getYbcFlagsForK8s(

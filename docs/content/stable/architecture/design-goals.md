@@ -48,7 +48,7 @@ YugabyteDB supports multi-row transactions with three isolation levels: Serializ
 
 `READ COMMITTED` is the default isolation level in PostgreSQL and YSQL. If `yb_enable_read_committed_isolation=true`, `READ COMMITTED` is mapped to Read Committed of YugabyteDB's transactional layer (that is, a statement sees all rows that are committed before it begins). However, by default `yb_enable_read_committed_isolation=false` and in this case Read Committed of YugabyteDB's transactional layer maps to Snapshot isolation, thus making Snapshot isolation default in YSQL.
 
-Note that Read Committed support in YugabyteDB is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+Note that Read Committed support in YugabyteDB is currently in [Tech Preview](/preview/releases/versioning/#feature-availability).
 
 Refer to the [table of isolation levels](/preview/explore/transactions/isolation-levels/) to learn how YSQL isolation levels map to the levels defined by PostgreSQL.
 

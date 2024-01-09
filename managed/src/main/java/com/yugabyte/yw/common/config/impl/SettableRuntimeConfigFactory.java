@@ -79,7 +79,9 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
     this.appConfig = appConfig;
   }
 
-  /** @return A RuntimeConfig instance for a given scope */
+  /**
+   * @return A RuntimeConfig instance for a given scope
+   */
   @Override
   public RuntimeConfig<Customer> forCustomer(Customer customer) {
     RuntimeConfig<Customer> config =
@@ -91,7 +93,9 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
     return config;
   }
 
-  /** @return A RuntimeConfig instance for a given scope */
+  /**
+   * @return A RuntimeConfig instance for a given scope
+   */
   @Override
   public RuntimeConfig<Universe> forUniverse(Universe universe) {
     Customer customer = Customer.get(universe.getCustomerId());
@@ -106,7 +110,9 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
     return config;
   }
 
-  /** @return A RuntimeConfig instance for a given scope */
+  /**
+   * @return A RuntimeConfig instance for a given scope
+   */
   @Override
   public RuntimeConfig<Provider> forProvider(Provider provider) {
     Customer customer = Customer.get(provider.getCustomerUUID());
@@ -121,7 +127,9 @@ public class SettableRuntimeConfigFactory implements RuntimeConfigFactory {
     return config;
   }
 
-  /** @return A RuntimeConfig instance for a GLOBAL_SCOPE */
+  /**
+   * @return A RuntimeConfig instance for a GLOBAL_SCOPE
+   */
   @Override
   public RuntimeConfig<Model> globalRuntimeConf() {
     return new RuntimeConfig<>(globalConfig());

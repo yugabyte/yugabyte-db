@@ -144,12 +144,7 @@ public class CustomerController extends AuthenticatedController {
       value = "Get a customer's details",
       response = CustomerDetailsData.class,
       nickname = "CustomerDetail")
-  @AuthzPath({
-    @RequiredPermissionOnResource(
-        requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
-  })
+  @AuthzPath
   public Result index(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
 

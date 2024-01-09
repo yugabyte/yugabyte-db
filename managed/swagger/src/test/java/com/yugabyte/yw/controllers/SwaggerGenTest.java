@@ -111,13 +111,14 @@ public class SwaggerGenTest extends FakeDBApplication {
   }
 
   @Test
-  public void genMd() throws IOException{
-    String expectedFlags= expectedFlags();
-    String currentFlags=currentFlags();
-    if(!expectedFlags.equals(currentFlags)){
-      fail("==============================================================================\n"+
-      "Flags defination changed.Run $sbt swaggenGen\n"+
-      "\n==========================================================================\n");
+  public void genMd() throws IOException {
+    String expectedFlags = expectedFlags();
+    String currentFlags = currentFlags();
+    if (!expectedFlags.equals(currentFlags)) {
+      fail(
+          "==============================================================================\n"
+              + "Flags defination changed.Run $sbt swaggenGen\n"
+              + "\n==========================================================================\n");
     }
   }
 
@@ -131,22 +132,26 @@ public class SwaggerGenTest extends FakeDBApplication {
     JsonNode defs = root.get("definitions");
     Map<String, String> result = checkDate("", defs);
     if (!result.isEmpty()) {
-      String resultFormatted = dumpFields(result) +
-          "\n\n=========================================================\n" +
-          "Any date-time type of field in the API should be set in RFC3339 format for the\n" +
-          "go-client to be able to deserialize it. So the annotations for such a type should\n" +
-          "look like this.\n" +
-          "\n" +
-          "@Column(nullable = false)\n" +
-          "@ApiModelProperty(\n" +
-          "    value = \"Creation date of key\",\n" +
-          "    required = false,\n" +
-          "    example = \"2022-12-12T13:07:18Z\",\n" +
-          "    accessMode = AccessMode.READ_ONLY)\n" +
-          "@JsonFormat(shape = JsonFormat.Shape.STRING, pattern = \"yyyy-MM-dd'T'HH:mm:ss'Z'\")\n" +
-          "@Getter\n" +
-          "public Date creationDate;\n" +
-          "=========================================================\n\n";
+      String resultFormatted =
+          dumpFields(result)
+              + "\n\n"
+              + "=========================================================\n"
+              + "Any date-time type of field in the API should be set in RFC3339 format for the\n"
+              + "go-client to be able to deserialize it. So the annotations for such a type"
+              + " should\n"
+              + "look like this.\n"
+              + "\n"
+              + "@Column(nullable = false)\n"
+              + "@ApiModelProperty(\n"
+              + "    value = \"Creation date of key\",\n"
+              + "    required = false,\n"
+              + "    example = \"2022-12-12T13:07:18Z\",\n"
+              + "    accessMode = AccessMode.READ_ONLY)\n"
+              + "@JsonFormat(shape = JsonFormat.Shape.STRING, pattern ="
+              + " \"yyyy-MM-dd'T'HH:mm:ss'Z'\")\n"
+              + "@Getter\n"
+              + "public Date creationDate;\n"
+              + "=========================================================\n\n";
       fail("Error in date-time formats for the fields\n" + resultFormatted);
     }
   }
@@ -217,8 +222,9 @@ public class SwaggerGenTest extends FakeDBApplication {
       // skip check if the field is deprecated
       return "";
     }
-    if (node.has("format") && node.get("format").isTextual() &&
-        node.get("format").textValue().equals("date-time")) {
+    if (node.has("format")
+        && node.get("format").isTextual()
+        && node.get("format").textValue().equals("date-time")) {
       // if node has "format: date-time", then it should also have "example"
       if (!node.has("example")) {
         String err = name + " is a date-time field but does not have example";
@@ -231,8 +237,11 @@ public class SwaggerGenTest extends FakeDBApplication {
           new SimpleDateFormat("yyyy-MM-dd'T'HH:mm:ss'Z'", Locale.US).parse(valueInAPIExample);
         } catch (ParseException e) {
           LOG.warn(e.getMessage());
-          String err = name + " has an example " + valueInAPIExample +
-              ". It has be to RFC3339 parsable in the form 2022-12-12T13:07:18Z";
+          String err =
+              name
+                  + " has an example "
+                  + valueInAPIExample
+                  + ". It has be to RFC3339 parsable in the form 2022-12-12T13:07:18Z";
           return err;
         }
       }
@@ -270,35 +279,34 @@ public class SwaggerGenTest extends FakeDBApplication {
     return sort(contentAsString(result, mat));
   }
 
-  private String expectedFlags(){
-    Customer defaultCustomer=ModelFactory.testCustomer();
+  private String expectedFlags() {
+    Customer defaultCustomer = ModelFactory.testCustomer();
     Users user = ModelFactory.testUser(defaultCustomer, Users.Role.SuperAdmin);
     String authToken = user.createAuthToken();
     Result result =
-              doRequestWithAuthToken("GET", "/api/runtime_config/mutable_key_info", authToken);
-    String res="# <u>List of supported Runtime Configuration Flags</u>\n";
+        doRequestWithAuthToken("GET", "/api/runtime_config/mutable_key_info", authToken);
+    String res = "# <u>List of supported Runtime Configuration Flags</u>\n";
     res += "### These are all the public runtime flags in YBA.\n";
     res += "| Name | Key | Scope | Help Text | Data Type |\n";
     res += "| :----: | :----: | :----: | :----: | :----: |\n";
-    for(JsonNode j:Json.parse(contentAsString(result))){
-      if(!j.get("tags").toString().contains("PUBLIC")) continue;
-      res+="| "+j.get("displayName")+" | ";
-      res+=j.get("key")+" | ";
-      res+=j.get("scope")+" | ";
-      res+=j.get("helpTxt")+" | ";
-      res+=j.get("dataType").get("name")+" |\n";
+    for (JsonNode j : Json.parse(contentAsString(result))) {
+      if (!j.get("tags").toString().contains("PUBLIC")) continue;
+      res += "| " + j.get("displayName") + " | ";
+      res += j.get("key") + " | ";
+      res += j.get("scope") + " | ";
+      res += j.get("helpTxt") + " | ";
+      res += j.get("dataType").get("name") + " |\n";
     }
     return res;
   }
 
-  private String currentFlags(){
-    Path p=Paths.get("").toAbsolutePath().getParent().resolve("RUNTIME-FLAGS.md");
+  private String currentFlags() {
+    Path p = Paths.get("").toAbsolutePath().getParent().resolve("RUNTIME-FLAGS.md");
     StringBuilder contentBuilder = new StringBuilder();
     try (Stream<String> stream = Files.lines(p, StandardCharsets.UTF_8)) {
       stream.forEach(S -> contentBuilder.append(S).append("\n"));
-    }
-    catch(Exception e){
-      fail("failed to fetch file. path= "+p.toString());
+    } catch (Exception e) {
+      fail("failed to fetch file. path= " + p.toString());
     }
     return contentBuilder.toString();
   }
@@ -345,14 +353,13 @@ public class SwaggerGenTest extends FakeDBApplication {
       swaggerGenTest.startPlay();
       String expectedFlags = swaggerGenTest.expectedFlags();
       String actualFlags = swaggerGenTest.currentFlags();
-      if(!actualFlags.equals(expectedFlags)){
-        Path p=Paths.get("").toAbsolutePath().getParent().resolve("RUNTIME-FLAGS.md");
-        try(FileWriter fw=new FileWriter(p.toFile())){
-            fw.write(expectedFlags);
-          }
+      if (!actualFlags.equals(expectedFlags)) {
+        Path p = Paths.get("").toAbsolutePath().getParent().resolve("RUNTIME-FLAGS.md");
+        try (FileWriter fw = new FileWriter(p.toFile())) {
+          fw.write(expectedFlags);
+        }
         System.out.println("New flags doc generated...");
-      }
-      else{
+      } else {
         System.out.println("Runtime flags haven't changed");
       }
       System.out.println("Generating swagger spec:" + Arrays.toString(args));

@@ -38,6 +38,7 @@
 #include "yb/master/master.h"
 #include "yb/master/master_backup.pb.h"
 #include "yb/master/master_error.h"
+#include "yb/master/snapshot_state.h"
 #include "yb/master/ysql_tablegroup_manager.h"
 
 #include "yb/client/client-internal.h"
@@ -148,13 +149,12 @@ DEFINE_RUNTIME_int32(pitr_split_disable_check_freq_ms, 500,
     "after which PITR restore can be performed.");
 TAG_FLAG(pitr_split_disable_check_freq_ms, advanced);
 
-DEFINE_RUNTIME_bool(
-    allow_ycql_transactional_xcluster, false,
-    "Determines if xCluster transactional replication on YCQL tables is allowed.");
-
-DEFINE_RUNTIME_bool(
-    enable_fast_pitr, true,
+DEFINE_RUNTIME_bool(enable_fast_pitr, true,
     "Whether fast restore of sys catalog on the master is enabled.");
+
+DEFINE_RUNTIME_uint32(default_snapshot_retention_hours, 24,
+    "Number of hours for which to keep the snapshot around. Only used if no value was provided "
+    "by the client when creating the snapshot.");
 
 namespace yb {
 
@@ -434,13 +434,25 @@ server::Clock* CatalogManager::Clock() {
 
 Status CatalogManager::CreateTransactionAwareSnapshot(
     const CreateSnapshotRequestPB& req, CreateSnapshotResponsePB* resp, CoarseTimePoint deadline) {
+  if (req.has_retention_duration_hours() && req.retention_duration_hours() == 0) {
+    return STATUS(
+        InvalidArgument, "Snapshot Ttl value must be non-zero. -1 to retain indefinitely");
+  }
   CollectFlags flags{CollectFlag::kIncludeParentColocatedTable};
   flags.SetIf(CollectFlag::kAddIndexes, req.add_indexes())
        .SetIf(CollectFlag::kAddUDTypes, req.add_ud_types());
   SysRowEntries entries = VERIFY_RESULT(CollectEntries(req.tables(), flags));
 
+  // If client does not explicitly pass in a value then use a default
+  // governed by gflag default_snapshot_retention_hours. Cases when this can happen:
+  // 1. Client is on a version that does not have this feature.
+  // 2. The user did not specify any Ttl value explicitly.
+  int32_t retention_duration_hours = req.has_retention_duration_hours() ?
+      req.retention_duration_hours() : GetAtomicFlag(&FLAGS_default_snapshot_retention_hours);
+
   auto snapshot_id = VERIFY_RESULT(snapshot_coordinator_.Create(
-      entries, req.imported(), leader_ready_term(), deadline));
+      entries, req.imported(), leader_ready_term(), deadline,
+      retention_duration_hours));
   resp->set_snapshot_id(snapshot_id.data(), snapshot_id.size());
   return Status::OK();
 }
@@ -525,6 +537,10 @@ Status CatalogManager::RepackSnapshotsForBackup(ListSnapshotsResponsePB* resp) {
 
         TRACE("Locking table");
         auto l = table_info->LockForRead();
+        if (l->has_ysql_ddl_txn_verifier_state()) {
+          return STATUS_FORMAT(IllegalState, "Table $0 is undergoing DDL verification, retry later",
+                               table_info->id());
+        }
         // PG schema name is available for YSQL table only, except for colocation parent tables.
         if (l->table_type() == PGSQL_TABLE_TYPE && !IsColocationParentTableId(entry.id())) {
           const auto res = GetPgSchemaName(table_info);
@@ -2649,24 +2665,10 @@ void CatalogManager::CleanupHiddenTablets(
       continue;
     }
     auto hide_hybrid_time = HybridTime::FromPB(lock->pb.hide_hybrid_time());
-    bool cleanup = true;
-    for (const auto& schedule_id_str : lock->pb.retained_by_snapshot_schedules()) {
-      auto schedule_id = TryFullyDecodeSnapshotScheduleId(schedule_id_str);
-      auto it = schedule_min_restore_time.find(schedule_id);
-      // If schedule is not present in schedule_min_restore_time then it means that schedule
-      // was deleted, so it should not retain the tablet.
-      if (it != schedule_min_restore_time.end() && it->second <= hide_hybrid_time) {
-        VLOG_WITH_PREFIX(1)
-            << "Retaining tablet: " << tablet->tablet_id() << ", hide hybrid time: "
-            << hide_hybrid_time << ", because of schedule: " << schedule_id
-            << ", min restore time: " << it->second;
-        cleanup = false;
-        break;
-      }
-    }
-    if (cleanup) {
-      cleanup = !RetainedByXRepl(tablet->id());
-    }
+    bool cleanup = !CatalogManagerUtil::RetainTablet(
+        lock->pb.retained_by_snapshot_schedules(), schedule_min_restore_time,
+        hide_hybrid_time, tablet->tablet_id()) && !RetainedByXRepl(tablet->id()) &&
+        !snapshot_coordinator_.IsTabletCoveredBySnapshot(tablet->id());
     if (cleanup) {
       tablets_to_delete.push_back(tablet);
     }
@@ -2674,8 +2676,8 @@ void CatalogManager::CleanupHiddenTablets(
   if (!tablets_to_delete.empty()) {
     LOG_WITH_PREFIX(INFO) << "Cleanup hidden tablets: " << AsString(tablets_to_delete);
     WARN_NOT_OK(DeleteTabletListAndSendRequests(
-        tablets_to_delete, "Cleanup hidden tablets", {} /* retained_by_snapshot_schedules */,
-        false /* transaction_status_tablets */, epoch),
+        tablets_to_delete, "Cleanup hidden tablets", {} /* retaining_snapshot_schedules */,
+        false /* transaction_status_tablets */, epoch, false /* active_snapshots */),
         "Failed to cleanup hidden tablets");
   }
 
@@ -2696,68 +2698,74 @@ void CatalogManager::CleanupHiddenTablets(
   }
 }
 
-void CatalogManager::CleanupHiddenTables(
-    std::vector<TableInfoPtr> tables,
-    const ScheduleMinRestoreTime& schedule_min_restore_time,
+void CatalogManager::RemoveHiddenColocatedTableFromTablet(
+    const TableInfoPtr& table, const ScheduleMinRestoreTime& schedule_min_restore_time,
     const LeaderEpoch& epoch) {
-  std::vector<TableInfo::WriteLock> locks;
-  EraseIf([this, &locks, &schedule_min_restore_time, &epoch](const TableInfoPtr& table) {
-    {
-      auto lock = table->LockForRead();
-      // If the table is colocated and hidden then remove it from its colocated tablet if
-      // it has expired.
-      if (lock->is_hidden() && !lock->started_deleting()) {
-        auto tablet_info = table->GetColocatedUserTablet();
-        if (tablet_info) {
-          auto tablet_lock = tablet_info->LockForRead();
-          bool cleanup = true;
-          auto hide_hybrid_time = HybridTime::FromPB(lock->pb.hide_hybrid_time());
-
-          for (const auto& schedule_id_str : tablet_lock->pb.retained_by_snapshot_schedules()) {
-            auto schedule_id = TryFullyDecodeSnapshotScheduleId(schedule_id_str);
-            auto it = schedule_min_restore_time.find(schedule_id);
-            // If schedule is not present in schedule_min_restore_time then it means that schedule
-            // was deleted, so it should not retain the tablet.
-            if (it != schedule_min_restore_time.end() && it->second <= hide_hybrid_time) {
-              VLOG_WITH_PREFIX(1)
-                  << "Retaining colocated table: " << table->id() << ", hide hybrid time: "
-                  << hide_hybrid_time << ", because of schedule: " << schedule_id
-                  << ", min restore time: " << it->second;
-              cleanup = false;
-              break;
-            }
-          }
-
-          if (!cleanup) {
-            return true;
-          }
-          LOG(INFO) << "Cleaning up HIDDEN colocated table " << table->name();
-          auto call = std::make_shared<AsyncRemoveTableFromTablet>(
-              master_, AsyncTaskPool(), tablet_info, table, epoch);
-          table->AddTask(call);
-          WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
-          table->ClearTabletMaps();
-        }
-      }
-      if (!lock->is_hidden() || lock->started_deleting() || !table->AreAllTabletsDeleted()) {
-        return true;
-      }
-    }
-    auto lock = table->LockForWrite();
-    if (lock->started_deleting()) {
-      return true;
-    }
-    LOG_WITH_PREFIX(INFO) << "Should delete table: " << AsString(table);
-    lock.mutable_data()->set_state(
-        SysTablesEntryPB::DELETED, Format("Cleanup hidden table at $0", LocalTimeAsString()));
-    locks.push_back(std::move(lock));
-    return false;
-  }, &tables);
-  if (tables.empty()) {
+  auto lock = table->LockForRead();
+  if (!lock->is_hidden_but_not_deleting()) {
     return;
   }
+  auto tablet_info = table->GetColocatedUserTablet();
+  if (!tablet_info) {
+    return;
+  }
+  auto tablet_lock = tablet_info->LockForRead();
+  auto hide_hybrid_time = HybridTime::FromPB(lock->pb.hide_hybrid_time());
+  if (CatalogManagerUtil::RetainTablet(
+          tablet_lock->pb.retained_by_snapshot_schedules(), schedule_min_restore_time,
+          hide_hybrid_time, tablet_info->tablet_id()) ||
+      snapshot_coordinator_.IsTabletCoveredBySnapshot(tablet_info->tablet_id())) {
+    return;
+  }
+  LOG(INFO) << "Removing hidden colocated table " << table->name() << " from its parent tablet";
+  auto call = std::make_shared<AsyncRemoveTableFromTablet>(
+      master_, AsyncTaskPool(), tablet_info, table, epoch);
+  table->AddTask(call);
+  WARN_NOT_OK(ScheduleTask(call), "Failed to send RemoveTableFromTablet request");
+  table->ClearTabletMaps();
+}
 
-  Status s = sys_catalog_->Upsert(epoch, tables);
+void CatalogManager::CleanupHiddenTables(
+    std::vector<TableInfoPtr> tables, const ScheduleMinRestoreTime& schedule_min_restore_time,
+    const LeaderEpoch& epoch) {
+  std::vector<TableInfoPtr> expired_tables;
+  for (auto& table : tables) {
+    if (table->GetColocatedUserTablet() != nullptr) {
+      // Table is colocated and still registered with its parent tablet. Remove it from its parent
+      // tablet's metadata first.
+      RemoveHiddenColocatedTableFromTablet(table, schedule_min_restore_time, epoch);
+    }
+    if (!table->IsHiddenButNotDeleting() || !table->AreAllTabletsDeleted()) {
+      continue;
+    }
+    expired_tables.push_back(std::move(table));
+  }
+  // Sort the expired tables so we acquire write locks in id order. This is the required lock
+  // acquisition order for tables.
+  std::sort(
+      expired_tables.begin(), expired_tables.end(),
+      [](const TableInfoPtr& lhs, const TableInfoPtr& rhs) { return lhs->id() < rhs->id(); });
+  std::vector<TableInfo::WriteLock> locks;
+  for (const auto& table : expired_tables) {
+    auto write_lock = table->LockForWrite();
+    if (write_lock->started_deleting()) {
+      continue;
+    }
+    // Because tablets for hidden tables are deleted first, there is nothing left to delete besides
+    // the table metadata itself now. So we skip the DELETING state and transition directly to
+    // DELETED.
+    write_lock.mutable_data()->set_state(
+        SysTablesEntryPB::DELETED, Format("Cleanup hidden table at $0", LocalTimeAsString()));
+    LOG_WITH_PREFIX(INFO) << Format(
+        "Cleaning up hidden table $0: $1", table->name(), AsString(table));
+    locks.push_back(std::move(write_lock));
+  }
+  if (locks.empty()) {
+    return;
+  }
+  // We skip writes for unmodified sys catalog entries so don't worry about expired tables we
+  // skipped.
+  Status s = sys_catalog_->Upsert(epoch, expired_tables);
   if (!s.ok()) {
     LOG_WITH_PREFIX(WARNING) << "Failed to mark tables as deleted: " << s;
     return;
@@ -3238,122 +3246,6 @@ Status CatalogManager::GetUDTypeMetadata(
   return Status::OK();
 }
 
-Status CatalogManager::ValidateTableSchema(
-    const std::shared_ptr<client::YBTableInfo>& info,
-    const SetupReplicationInfo& setup_info,
-    GetTableSchemaResponsePB* resp) {
-  bool is_ysql_table = info->table_type == client::YBTableType::PGSQL_TABLE_TYPE;
-  if (setup_info.transactional && !GetAtomicFlag(&FLAGS_allow_ycql_transactional_xcluster) &&
-      !is_ysql_table) {
-    return STATUS_FORMAT(
-        NotSupported,
-        "Transactional replication is not supported for non-YSQL tables: $0",
-        info->table_name.ToString());
-  }
-
-  // Get corresponding table schema on local universe.
-  GetTableSchemaRequestPB req;
-
-  auto* table = req.mutable_table();
-  table->set_table_name(info->table_name.table_name());
-  table->mutable_namespace_()->set_name(info->table_name.namespace_name());
-  table->mutable_namespace_()->set_database_type(
-      GetDatabaseTypeForTable(client::ClientToPBTableType(info->table_type)));
-
-  // Since YSQL tables are not present in table map, we first need to list tables to get the table
-  // ID and then get table schema.
-  // Remove this once table maps are fixed for YSQL.
-  ListTablesRequestPB list_req;
-  ListTablesResponsePB list_resp;
-
-  list_req.set_name_filter(info->table_name.table_name());
-  Status status = ListTables(&list_req, &list_resp);
-  SCHECK(status.ok() && !list_resp.has_error(), NotFound,
-         Substitute("Error while listing table: $0", status.ToString()));
-
-  const auto& source_schema = client::internal::GetSchema(info->schema);
-  for (const auto& t : list_resp.tables()) {
-    // Check that table name and namespace both match.
-    if (t.name() != info->table_name.table_name() ||
-        t.namespace_().name() != info->table_name.namespace_name()) {
-      continue;
-    }
-
-    // Check that schema name matches for YSQL tables, if the field is empty, fill in that
-    // information during GetTableSchema call later.
-    bool has_valid_pgschema_name = !t.pgschema_name().empty();
-    if (is_ysql_table && has_valid_pgschema_name &&
-        t.pgschema_name() != source_schema.SchemaName()) {
-      continue;
-    }
-
-    // Get the table schema.
-    table->set_table_id(t.id());
-    status = GetTableSchema(&req, resp);
-    SCHECK(status.ok() && !resp->has_error(), NotFound,
-           Substitute("Error while getting table schema: $0", status.ToString()));
-
-    // Double-check schema name here if the previous check was skipped.
-    if (is_ysql_table && !has_valid_pgschema_name) {
-      std::string target_schema_name = resp->schema().pgschema_name();
-      if (target_schema_name != source_schema.SchemaName()) {
-        table->clear_table_id();
-        continue;
-      }
-    }
-
-    // Verify that the table on the target side supports replication.
-    if (is_ysql_table && t.has_relation_type() && t.relation_type() == MATVIEW_TABLE_RELATION) {
-      return STATUS_FORMAT(NotSupported,
-          "Replication is not supported for materialized view: $0",
-          info->table_name.ToString());
-    }
-
-    Schema consumer_schema;
-    auto result = SchemaFromPB(resp->schema(), &consumer_schema);
-
-    // We now have a table match. Validate the schema.
-    SCHECK(result.ok() && consumer_schema.EquivalentForDataCopy(source_schema), IllegalState,
-           Substitute("Source and target schemas don't match: "
-                      "Source: $0, Target: $1, Source schema: $2, Target schema: $3",
-               info->table_id, resp->identifier().table_id(),
-               info->schema.ToString(), resp->schema().DebugString()));
-    break;
-  }
-
-  SCHECK(table->has_table_id(), NotFound, Substitute(
-      "Could not find matching table for $0$1", info->table_name.ToString(),
-      (is_ysql_table ? " pgschema_name: " + source_schema.SchemaName() : "")));
-
-  // Still need to make map of table id to resp table id (to add to validated map)
-  // For colocated tables, only add the parent table since we only added the parent table to the
-  // original pb (we use the number of tables in the pb to determine when validation is done).
-  if (info->colocated) {
-    // We require that colocated tables have the same colocation ID.
-    //
-    // Backward compatibility: tables created prior to #7378 use YSQL table OID as a colocation ID.
-    auto source_clc_id = info->schema.has_colocation_id()
-        ? info->schema.colocation_id()
-        : CHECK_RESULT(GetPgsqlTableOid(info->table_id));
-    auto target_clc_id = (resp->schema().has_colocated_table_id() &&
-                          resp->schema().colocated_table_id().has_colocation_id())
-        ? resp->schema().colocated_table_id().colocation_id()
-        : CHECK_RESULT(GetPgsqlTableOid(resp->identifier().table_id()));
-    SCHECK(source_clc_id == target_clc_id, IllegalState,
-           Substitute("Source and target colocation IDs don't match for colocated table: "
-                      "Source: $0, Target: $1, Source colocation ID: $2, Target colocation ID: $3",
-                      info->table_id, resp->identifier().table_id(), source_clc_id, target_clc_id));
-  }
-
-  {
-    SharedLock lock(mutex_);
-    if (xcluster_consumer_tables_to_stream_map_.contains(table->table_id())) {
-      return STATUS(IllegalState, "N:1 replication topology not supported");
-    }
-  }
-
-  return Status::OK();
-}
 
 Result<RemoteTabletServer *> CatalogManager::GetLeaderTServer(
     client::internal::RemoteTabletPtr tablet) {

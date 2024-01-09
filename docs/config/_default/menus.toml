@@ -300,21 +300,30 @@
   identifier = "home"
   url = "/"
   [home.params]
-    classes = "separator"
     showSection = true
 
 [[home]]
-  name = "Quick Start"
+  name = "Key benefits"
   weight = 2
-  identifier = "quick-start"
-  url = "/preview/quick-start-yugabytedb-managed/"
+  identifier = "features"
+  url = "/preview/features/"
   [home.params]
     showSection = true
     hideChildren = true
 
 [[home]]
+  name = "Quick Start"
+  weight = 3
+  identifier = "quick-start"
+  url = "/preview/quick-start-yugabytedb-managed/"
+  [home.params]
+    classes = "separator"
+    showSection = true
+    hideChildren = true
+
+[[home]]
   name = "YugabyteDB"
-  weight = 2
+  weight = 4
   identifier = "yugabytedb"
   url = "/preview/"
   [home.params]
@@ -322,7 +331,7 @@
 
 [[home]]
   name = "YugabyteDB Anywhere"
-  weight = 3
+  weight = 5
   identifier = "yugabytedb-anywhere"
   url = "/preview/yugabyte-platform/"
   [home.params]
@@ -330,7 +339,7 @@
 
 [[home]]
   name = "YugabyteDB Managed"
-  weight = 4
+  weight = 6
   identifier = "yugabytedb-managed"
   url = "/preview/yugabyte-cloud/"
   [home.params]
@@ -338,7 +347,7 @@
 
 [[home]]
   name = "YugabyteDB Voyager"
-  weight = 5
+  weight = 7
   identifier = "migrate"
   url = "/preview/yugabyte-voyager/"
   [home.params]
@@ -364,8 +373,17 @@
     showSection = true
 
 [[preview]]
-  name = "Quick Start"
+  name = "Key benefits"
   weight = 3
+  identifier = "features"
+  url = "/preview/features/"
+  [preview.params]
+    showSection = true
+    hideChildren = true
+
+[[preview]]
+  name = "Quick Start"
+  weight = 4
   identifier = "quick-start"
   url = "/preview/quick-start-yugabytedb-managed/"
   [preview.params]
@@ -374,7 +392,7 @@
 
 [[preview]]
   name = "Explore"
-  weight = 4
+  weight = 5
   identifier = "explore"
   url = "/preview/explore/"
   [preview.params]
@@ -382,7 +400,7 @@
 
 [[preview]]
   name = "Develop"
-  weight = 5
+  weight = 6
   identifier = "develop"
   url = "/preview/develop/"
   [preview.params]
@@ -458,6 +476,72 @@
   url = "/preview/integrations/"
   [preview_integrations.params]
     showSection = true
+
+[[preview_integrations]]
+  name = "Drivers and ORMs"
+  weight = 2
+  url = "/preview/drivers-orms/"
+  parent = "integrations"
+
+[[preview_integrations]]
+  name = "Schema migration"
+  weight = 3
+  identifier = "schema-migration"
+  parent = "integrations"
+
+[[preview_integrations]]
+  name = "Data migration"
+  weight = 4
+  identifier = "data-migration"
+  parent = "integrations"
+
+[[preview_integrations]]
+  name = "Data integration"
+  weight = 5
+  identifier = "data-integration"
+  parent = "integrations"
+
+[[preview_integrations]]
+  name = "GUI clients"
+  weight = 6
+  url = "/preview/tools/"
+  parent = "integrations"
+
+[[preview_integrations]]
+  name = "Application frameworks"
+  weight = 7
+  identifier = "application-frameworks"
+  parent = "integrations"
+
+[[preview_integrations]]
+  name = "Development platforms"
+  weight = 8
+  identifier = "development-platforms"
+  parent = "integrations"
+
+[[preview_integrations]]
+  name = "Data discovery"
+  weight = 9
+  identifier = "data-discovery"
+  parent = "integrations"
+
+[[preview_integrations]]
+  name = "Security"
+  weight = 10
+  identifier = "integrations-security"
+  parent = "integrations"
+
+[[preview_integrations]]
+  name = "Applications"
+  weight = 11
+  identifier = "integrations-applications"
+  parent = "integrations"
+
+[[preview_integrations]]
+  name = "Other"
+  weight = 12
+  identifier = "integrations-other"
+  parent = "integrations"
 
 ########## Menus (in preview) for APIs
 
@@ -676,6 +760,60 @@
   name = "YugabyteDB Voyager"
   weight = 2
   identifier = "yugabytedb-voyager"
+  [preview_yugabyte-voyager.params]
+    showSection = true
+    hideLink = true
+
+[[preview_yugabyte-voyager]]
+  name = "Schema migration"
+  parent = "yb-voyager-cli"
+  weight = 3
+  identifier = "schema-migration"
+  [preview_yugabyte-voyager.params]
+    showSection = true
+    hideLink = true
+
+[[preview_yugabyte-voyager]]
+  name = "Data migration"
+  parent = "yb-voyager-cli"
+  weight = 4
+  identifier = "data-migration"
+  [preview_yugabyte-voyager.params]
+    showSection = true
+    hideLink = true
+
+[[preview_yugabyte-voyager]]
+  name = "Cutover and archive"
+  parent = "yb-voyager-cli"
+  weight = 6
+  identifier = "cutover-archive"
+  [preview_yugabyte-voyager.params]
+    showSection = true
+    hideLink = true
+
+[[preview_yugabyte-voyager]]
+  name = "Fall-forward"
+  parent = "yb-voyager-cli"
+  weight = 5
+  identifier = "fall-forward"
+  [preview_yugabyte-voyager.params]
+    showSection = true
+    hideLink = true
+
+[[preview_yugabyte-voyager]]
+  name = "Cutover and archive"
+  parent = "yb-voyager-cli"
+  weight = 6
+  identifier = "cutover-archive"
+  [preview_yugabyte-voyager.params]
+    showSection = true
+    hideLink = true
+
+[[preview_yugabyte-voyager]]
+  name = "Bulk data load"
+  parent = "yb-voyager-cli"
+  weight = 7
+  identifier = "bulk-data-load-ref"
   [preview_yugabyte-voyager.params]
     showSection = true
     hideLink = true

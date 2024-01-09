@@ -174,6 +174,10 @@ class CallResponse {
   // Extract sidecar with specified index to out.
   Result<RefCntSlice> ExtractSidecar(size_t idx) const;
 
+  size_t GetSidecarsCount() const {
+    return sidecars_.GetCount();
+  }
+
   // Transfer all sidecars to specified context, returning the first transferred sidecar index in
   // the context.
   size_t TransferSidecars(Sidecars* dest);
@@ -385,9 +389,13 @@ class OutboundCall : public RpcCall {
 
   size_t ObjectSize() const override { return sizeof(*this); }
 
-  size_t DynamicMemoryUsage() const override {
-    return DynamicMemoryUsageAllowSizeOf(error_pb_) +
-           DynamicMemoryUsageOf(buffer_, call_response_, trace_);
+  size_t DynamicMemoryUsage() const override ON_REACTOR_THREAD EXCLUDES(mtx_) {
+    size_t allow_size_of;
+    {
+      std::lock_guard lock(mtx_);
+      allow_size_of = DynamicMemoryUsageAllowSizeOf(error_pb_);
+    }
+    return allow_size_of + DynamicMemoryUsageOf(buffer_, call_response_, trace_);
   }
 
   CoarseTimePoint CallStartTime() const { return start_; }
@@ -430,6 +438,7 @@ class OutboundCall : public RpcCall {
 
   // See appropriate comments in CallResponse.
   virtual Result<RefCntSlice> ExtractSidecar(size_t idx) const;
+  virtual size_t GetSidecarsCount() const;
   virtual size_t TransferSidecars(Sidecars* dest);
 
   // ----------------------------------------------------------------------------------------------

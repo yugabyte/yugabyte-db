@@ -16,6 +16,8 @@ import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
@@ -76,9 +78,10 @@ public class AvailabilityZoneController extends AuthenticatedController {
    *
    * @return JSON response of newly created zone(s)
    */
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.18.2.0")
   @ApiOperation(
       value =
-          "Deprecated: sinceDate=2023-08-07, sinceYBAVersion=2.18.2.0, Use "
+          "Deprecated since YBA version 2.18.2.0, Use "
               + "/api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions/:rUUID/region_zones"
               + " instead",
       response = AvailabilityZone.class,
@@ -210,9 +213,10 @@ public class AvailabilityZoneController extends AuthenticatedController {
    *
    * @return JSON response of the modified zone
    */
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.18.2.0")
   @ApiOperation(
       value =
-          "Deprecated: sinceDate=2023-08-07, sinceYBAVersion=2.18.2.0, Use "
+          "Deprecated since YBA version 2.18.2.0, Use "
               + "/api/v1/customers/{cUUID}/provider/{pUUID}/provider_regions/:rUUID/region_zones/:zUUID"
               + " instead",
       response = AvailabilityZone.class,
