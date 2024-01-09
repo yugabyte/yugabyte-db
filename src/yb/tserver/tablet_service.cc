@@ -160,6 +160,9 @@ DEFINE_RUNTIME_int32(index_backfill_additional_delay_before_backfilling_ms, 0,
     "but can be as high as the client_rpc_timeout if we want to be more conservative.");
 TAG_FLAG(index_backfill_additional_delay_before_backfilling_ms, evolving);
 
+DEFINE_test_flag(int32, index_backfill_fail_after_random_wait_upto_ms, 0,
+    "If set to > 0 BackfillIndex calls will be failed after randomly waiting.");
+
 DEFINE_RUNTIME_int32(index_backfill_wait_for_old_txns_ms, 0,
     "Index backfill needs to wait for transactions that started before the "
     "WRITE_AND_DELETE phase to commit or abort before choosing a time for "
@@ -681,6 +684,17 @@ void TabletServiceAdminImpl::BackfillIndex(
         STATUS_FORMAT(
             ServiceUnavailable, "Not enough time left $0", deadline - coarse_now),
         &context);
+    return;
+  }
+
+  auto max_sleep_ms = GetAtomicFlag(&FLAGS_TEST_index_backfill_fail_after_random_wait_upto_ms);
+  if (max_sleep_ms > 0) {
+    auto rand_wait = RandomUniformInt(0, max_sleep_ms);
+    LOG(INFO) << "Randomly sleeping for " << rand_wait << " ms before failing";
+    SleepFor(1ms * rand_wait);
+    SetupErrorAndRespond(
+        resp->mutable_error(), STATUS_FORMAT(InvalidArgument, "Failing as requested for testing."),
+        TabletServerErrorPB::OPERATION_NOT_SUPPORTED, &context);
     return;
   }
 
