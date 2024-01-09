@@ -146,6 +146,39 @@ When using an index without transactions enabled, it is the responsibility of th
 
 - A unique index disallows duplicate values from being inserted into the indexed columns. It can be used to ensure uniqueness of index column values.
 
+### DEFERRED INDEX
+
+Currently, an "index backfill" job is launched for each index that is created. For the case where a user creates a table, and adds multiple indexes, this means that the main table will have to be scanned multiple times to populate each index. This is unnecessary, and can also causes issues with the single touch & multi touch block cache algorithm.
+
+After creating a set of indexes with their backfill deferred, the user can then trigger a backfill job for the entire batch of indexes (on the same table) by either:
+
+1. Creating a new index, that is not deferred:
+```cassandraql
+CREATE DEFERRED INDEX idx_1 on table_name(col_1);        // No backfill launched.
+CREATE DEFERRED INDEX idx_2 on table_name(col_2);        // No backfill launched.
+CREATE DEFERRED INDEX idx_9 on table_name(col_9);        // No backfill launched.
+
+
+// To launch backfill ...
+CREATE INDEX idx_10 on table_name(col_10);   // Will launch backfill for idx_10 and             
+                                                    // all deferred indexes idx_1 .. idx_9 
+                                                    // on the same table viz: table_name.
+```
+2. Use `yb-admin` to launch backfill for deferred indexes on the table:
+```cassandraql
+CREATE DEFERRED INDEX idx_1 on table_name(col_1);        // No backfill launched.
+CREATE DEFERRED INDEX idx_2 on table_name(col_2);        // No backfill launched.
+    ...
+CREATE DEFERRED INDEX idx_9 on table_name(col_9);        // No backfill launched.
+CREATE DEFERRED INDEX idx_10 on table_name(col_10);      // No backfill launched.
+
+```
+
+Then launch a backfill job for backfilling all the deferred indexes as:
+```bash
+bin/yb-admin -master_addresses <ip:port> backfill_indexes_for_table table_name
+```
+
 ### PARTIAL INDEX
 
 - If a `WHERE` clause is specified, only rows which satisfy the `index_predicate` are indexed.
