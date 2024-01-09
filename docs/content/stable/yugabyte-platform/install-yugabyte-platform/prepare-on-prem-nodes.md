@@ -13,6 +13,34 @@ type: docs
 
 For on-premises deployments of YugabyteDB universes, you need to import nodes that can be managed by YugabyteDB Anywhere.
 
+## Prerequisites
+
+Using YugabyteDB Anywhere (YBA), you can deploy YugabyteDB universes on nodes with the following architectures and operating systems.
+
+### Supported CPU architectures
+
+YBA supports deploying YugabyteDB on both x86 and ARM (aarch64) architecture-based hardware.
+
+Note that support for ARM architectures is unavailable for airgapped setups, because YBA ARM support for [AWS Graviton](https://aws.amazon.com/ec2/graviton/) requires Internet connectivity.
+
+### Supported operating systems
+
+YBA supports deploying YugabyteDB on a variety of [operating systems](../../../reference/configuration/operating-systems/#yugabytedb-anywhere). YBA additionally supports deploying YugabyteDB on Red Hat Enterprise Linux 8. AlmaLinux OS 9 is used by default.
+
+#### Requirements for all OSes
+
+Python 3 is required. If you're using YugabyteDB Anywhere to provision nodes in public clouds, be sure the custom AMI you plan to use has Python 3 installed.
+
+The host AMI must have `gtar` and `zipinfo` installed.
+
+#### Oracle Linux and AlmaLinux notes
+
+YBA support for Oracle Linux 8 and AlmaLinux OS 8 has the following limitations:
+
+* Oracle Linux 8 uses the `firewall-cmd` client to set default target `ACCEPT`.
+* On Oracle Linux 8, only the Red Hat Linux-compatible kernel is supported, to allow port changing. The Unbreakable Enterprise Kernel (UEK) is not supported.
+* Systemd services are only supported in YugabyteDB Anywhere 2.15.1 and later versions.
+
 ## Prepare ports
 
 The following ports must be opened for intra-cluster communication (they do not need to be exposed to your application, only to other nodes in the cluster and the YugabyteDB Anywhere node):
@@ -59,7 +87,7 @@ The following actions are performed with sudo access:
 * Create the `prometheus:prometheus` user and group.
 
   {{< tip title="Tip" >}}
-If you are using the LDAP directory for managing system users, you can preprovision Yugabyte and Prometheus users, as follows:
+If you are using the LDAP directory for managing system users, you can pre-provision Yugabyte and Prometheus users, as follows:
 
 * Ensure that the `yugabyte` user belongs to the `yugabyte` group.
 
@@ -113,7 +141,7 @@ By default, YugabyteDB Anywhere uses OpenSSH for SSH to remote nodes. YugabyteDB
 
 To upload the Tectia license, manually copy it at `${storage_path}/yugaware/data/licenses/<license.txt>`, where *storage_path* is the path provided during the Replicated installation.
 
-Once the license is uploaded, YugabyteDB Anywhere exposes the runtime flag `yb.security.ssh2_enabled` that you need to enable, as per the following example:
+After the license is uploaded, YugabyteDB Anywhere exposes the runtime flag `yb.security.ssh2_enabled` that you need to enable, as per the following example:
 
 ```shell
 curl --location --request PUT 'http://<ip>/api/v1/customers/<customer_uuid>/runtime_config/00000000-0000-0000-0000-000000000000/key/yb.security.ssh2_enabled'
