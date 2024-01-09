@@ -58,4 +58,5 @@ export interface TaskObject {
   type: string;
   typeName: string;
   userEmail: string;
+  details: Record<string, any>;
 }
