@@ -504,22 +504,22 @@ class UniverseDetail extends Component {
       ...(isReadOnlyUniverse
         ? []
         : [
-            isNotHidden(currentCustomer.data.features, 'universes.details.backups') && (
-              <Tab.Pane
-                eventKey={'backups'}
-                tabtitle={<>Backups</>}
-                key="backups-tab"
-                mountOnEnter={true}
-                unmountOnExit={true}
-                disabled={isDisabled(currentCustomer.data.features, 'universes.details.backups')}
-              >
-                {featureFlags.test['backupv2'] || featureFlags.released['backupv2'] ? (
-                  <UniverseLevelBackup />
-                ) : (
-                  <ListBackupsContainer currentUniverse={currentUniverse.data} />
-                )}
-              </Tab.Pane>
-            ),
+          isNotHidden(currentCustomer.data.features, 'universes.details.backups') && (
+            <Tab.Pane
+              eventKey={'backups'}
+              tabtitle={<>Backups</>}
+              key="backups-tab"
+              mountOnEnter={true}
+              unmountOnExit={true}
+              disabled={isDisabled(currentCustomer.data.features, 'universes.details.backups')}
+            >
+              {featureFlags.test['backupv2'] || featureFlags.released['backupv2'] ? (
+                <UniverseLevelBackup />
+              ) : (
+                <ListBackupsContainer currentUniverse={currentUniverse.data} />
+              )}
+            </Tab.Pane>
+          ),
 
             isNotHidden(currentCustomer.data.features, 'universes.details.health') && (
               <Tab.Pane
@@ -968,9 +968,8 @@ class UniverseDetail extends Component {
                             disabled={isUniverseStatusPending}
                             to={
                               this.isNewUIEnabled()
-                                ? `/universes/${uuid}/${
-                                    this.hasReadReplica(universeInfo) ? 'edit' : 'create'
-                                  }/async`
+                                ? `/universes/${uuid}/${this.hasReadReplica(universeInfo) ? 'edit' : 'create'
+                                }/async`
                                 : `/universes/${uuid}/edit/async`
                             }
                             availability={getFeatureState(
@@ -1013,33 +1012,33 @@ class UniverseDetail extends Component {
 
                       {(featureFlags.test['supportBundle'] ||
                         featureFlags.released['supportBundle']) && (
-                        <>
-                          <MenuItem divider />
-                          {!universePaused && (
-                            <RbacValidator
-                              isControl
-                              accessRequiredOn={{
-                                onResource: uuid,
-                                ...ApiPermissionMap.GET_SUPPORT_BUNDLE
-                              }}
-                            >
-                              <UniverseSupportBundle
-                                currentUniverse={currentUniverse.data}
-                                modal={modal}
-                                closeModal={closeModal}
-                                button={
-                                  <YBMenuItem onClick={showSupportBundleModal}>
-                                    <YBLabelWithIcon icon="fa fa-file-archive-o">
-                                      Support Bundles
-                                    </YBLabelWithIcon>
-                                  </YBMenuItem>
-                                }
-                              />
-                            </RbacValidator>
-                          )}
-                          <MenuItem divider />
-                        </>
-                      )}
+                          <>
+                            <MenuItem divider />
+                            {!universePaused && (
+                              <RbacValidator
+                                isControl
+                                accessRequiredOn={{
+                                  onResource: uuid,
+                                  ...ApiPermissionMap.GET_SUPPORT_BUNDLE
+                                }}
+                              >
+                                <UniverseSupportBundle
+                                  currentUniverse={currentUniverse.data}
+                                  modal={modal}
+                                  closeModal={closeModal}
+                                  button={
+                                    <YBMenuItem onClick={showSupportBundleModal}>
+                                      <YBLabelWithIcon icon="fa fa-file-archive-o">
+                                        Support Bundles
+                                      </YBLabelWithIcon>
+                                    </YBMenuItem>
+                                  }
+                                />
+                              </RbacValidator>
+                            )}
+                            <MenuItem divider />
+                          </>
+                        )}
 
                       {!universePaused && (
                         <RbacValidator
@@ -1065,7 +1064,7 @@ class UniverseDetail extends Component {
                               }
                             >
                               {currentUniverse.data.universeConfig &&
-                              currentUniverse.data.universeConfig.takeBackups === 'true'
+                                currentUniverse.data.universeConfig.takeBackups === 'true'
                                 ? 'Disable Backup'
                                 : 'Enable Backup'}
                             </YBLabelWithIcon>

@@ -192,6 +192,7 @@ export const CreateRole = forwardRef((_, forwardRef) => {
           label={t('form.description')}
           placeholder={t('form.descriptionPlaceholder')}
           disabled={isNonEmptyString(currentRole?.roleUUID) || isSystemRole}
+          multiline
           fullWidth
         />
         {permissionListVal.length === 0 && (

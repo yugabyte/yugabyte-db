@@ -1424,7 +1424,8 @@
           },
           "universeName": "Universe Name",
           "searchPlaceholder": "Search by universe name...",
-          "includeFutureUniverse": "Include future Universes"
+          "includeFutureUniverse": "Include future Universes",
+          "disabledOnUniverseCreatePerm": "Universe selection is not allowed for role with \"Create Universe\" permission"
         }
       }
     },
