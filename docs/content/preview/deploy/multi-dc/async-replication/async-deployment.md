@@ -608,3 +608,34 @@ Alters involving adding/removing columns or modifying data types require replica
     ```output
     Replication enabled successfully
     ```
+#### Adding a column with a non-volatile default value
+
+When adding a new column with a (non-volatile) default expression, make sure to perform the schema modification on the target with the **computed** default value. 
+
+Example:
+
+Let's say we have a replicated table `test_table`.
+1. Pause replication
+1. Execute add column command on the source:
+   ```sql
+   ALTER TABLE test_table ADD COLUMN test_column TIMESTAMP DEFAULT NOW()
+   ```
+1. Perform the above `ALTER TABLE` command with the computed default value on the target.
+   
+    1.1 The computed default value can be retrieved from `pg_attribute.attmissingval`.
+        Example:
+   
+      ```sql
+      SELECT attmissingval FROM pg_attribute WHERE attrelid='test'::regclass AND attname='test_column';
+      ```
+      ```output
+                attmissingval         
+       -------------------------------
+        {"2024-01-09 12:29:11.88894"}
+       (1 row)
+      ```
+   
+    1.1 Finally, execute the `ADD COLUMN` command on the target with the computed default value.
+      ```sql
+         ALTER TABLE test ADD COLUMN test_column TIMESTAMP DEFAULT "2024-01-09 12:29:11.88894"
+      ```
