@@ -1050,6 +1050,12 @@ Status BackfillTable::MarkIndexesAsDesired(
     }
     auto* backfill_state_pb = indexed_table_pb.mutable_backfill_jobs(0)->mutable_backfill_state();
     for (const auto& idx_id : index_ids_set) {
+      auto iter = backfill_state_pb->find(idx_id);
+      if (iter == backfill_state_pb->end()) {
+        LOG(INFO) << "Index " << idx_id << " is not being backfilled. Current backfill_job: "
+                  << indexed_table_pb.backfill_jobs(0).ShortDebugString();
+        return STATUS_FORMAT(InvalidArgument, "Index $0 is not being backfilled", idx_id);
+      }
       backfill_state_pb->at(idx_id) = state;
       VLOG(2) << "Marking index " << idx_id << " as " << BackfillJobPB_State_Name(state);
     }
