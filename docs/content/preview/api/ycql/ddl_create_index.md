@@ -176,7 +176,7 @@ CREATE DEFERRED INDEX idx_10 on table_name(col_10);      // No backfill launched
 
 Then launch a backfill job for backfilling all the deferred indexes as:
 ```bash
-bin/yb-admin -master_addresses <ip:port> backfill_indexes_for_table table_name
+bin/yb-admin -master_addresses <ip:port> backfill_indexes_for_table ycql.ybdemo table_name
 ```
 
 ### PARTIAL INDEX

@@ -640,6 +640,36 @@ Flushed [yugabyte.table_name] tables.
 ```
 ---
 
+
+#### backfill_indexes_for_table
+
+Backfill all DEFERRED indexes in a YCQL table.
+
+**Syntax**
+
+```sh
+yb-admin \
+    -master_addresses <master-addresses> \
+    backfill_indexes_for_table <keyspace> <table_name>
+```
+
+* *master-addresses*: Comma-separated list of YB-Master hosts and ports. Default value is `localhost:7100`.
+* *keyspace*: Specifies the keyspace `ycql.keyspace-name`.
+* *table_name*: Specifies the table name.
+
+**Example**
+
+```sh
+./bin/yb-admin \
+    -master_addresses ip1:7100,ip2:7100,ip3:7100 \
+    backfill_indexes_for_table ybdemo table_name
+```
+
+```output
+```
+
+There is no output from the command, but a new backfill-job will be created for all the `DEFERRED` indexes of the table.
+
 ### Backup and snapshot commands
 
 The following backup and snapshot commands are available:
