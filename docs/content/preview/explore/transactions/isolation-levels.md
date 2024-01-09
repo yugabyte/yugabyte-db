@@ -32,7 +32,7 @@ type: docs
 -->
 </ul>
 
-YugabyteDB supports three isolation levels in the transactional layer: Serializable, Snapshot, and Read committed. PostgreSQL (and the SQL standard) have four isolation levels: Serializable, Repeatable read, Read committed, and Read uncommitted. 
+YugabyteDB supports three isolation levels in the transactional layer: Serializable, Snapshot, and Read committed. PostgreSQL (and the SQL standard) have four isolation levels: Serializable, Repeatable read, Read committed, and Read uncommitted.
 
 The following table shows the mapping between the PostgreSQL isolation levels in YSQL, along with transaction anomalies that can occur at each isolation level:
 
@@ -43,7 +43,7 @@ Read committed   | Read Committed<sup>$</sup> | Not possible | Possible | Possib
 Repeatable read  | Snapshot | Not possible | Not possible | Allowed, but not in YSQL | Possible
 Serializable     | Serializable | Not possible | Not possible | Not possible | Not possible
 
-<sup>$</sup> Read committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag). Read committed isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot isolation).
+<sup>$</sup> Read committed support is currently in [Tech Preview](/preview/releases/versioning/#feature-availability). Read committed isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot isolation).
 
 The default isolation level for the YSQL API is essentially Snapshot (that is, the same as PostgreSQL's `REPEATABLE READ`) because `READ COMMITTED`, which is the YSQL API and PostgreSQL syntactic default, maps to Snapshot isolation (unless the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`).
 
@@ -336,7 +336,7 @@ SELECT * FROM example;
 
 ## Read committed isolation
 
-Read committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag).
+Read committed support is currently in [Tech Preview](/preview/releases/versioning/#feature-availability).
 
 Read committed isolation is the same as Snapshot isolation, except that every statement in the transaction is aware of all data that has been committed before it has been issued (this implicitly means that the statement will see a consistent snapshot). In other words, each statement works on a new snapshot of the database that includes everything that has been committed before the statement is issued. Conflict detection is the same as in Snapshot isolation.
 

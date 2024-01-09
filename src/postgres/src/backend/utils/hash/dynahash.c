@@ -1897,8 +1897,8 @@ AtEOXact_HashTables(bool isCommit)
 
 		for (i = 0; i < num_seq_scans; i++)
 		{
-			elog(WARNING, "leaked hash_seq_search scan for hash table %p",
-				 seq_scan_tables[i]);
+			elog(WARNING, "leaked hash_seq_search scan for hash table %p %s",
+				 seq_scan_tables[i], seq_scan_tables[i]->tabname);
 		}
 	}
 	num_seq_scans = 0;

@@ -161,6 +161,8 @@ class PgMiniTest : public PgMiniTestBase {
   void RunManyConcurrentReadersTest();
 
   void ValidateAbortedTxnMetric();
+
+  int64_t GetBloomFilterCheckedMetric();
 };
 
 class PgMiniTestSingleNode : public PgMiniTest {
@@ -1905,6 +1907,36 @@ TEST_F_EX(
   SleepFor(MonoDelta::FromMilliseconds(2 * FLAGS_heartbeat_interval_ms));
   // Check that connection can handle query (i.e. the catalog cache was updated without an issue)
   ASSERT_OK(aux_conn.Fetch("SELECT 1"));
+}
+
+int64_t PgMiniTest::GetBloomFilterCheckedMetric() {
+  auto peers = ListTabletPeers(cluster_.get(), ListPeersFilter::kAll);
+  auto bloom_filter_checked = 0;
+  for (auto &peer : peers) {
+    const auto tablet = peer->shared_tablet();
+    if (tablet) {
+      bloom_filter_checked += tablet->regulardb_statistics()
+        ->getTickerCount(rocksdb::BLOOM_FILTER_CHECKED);
+    }
+  }
+  return bloom_filter_checked;
+}
+
+TEST_F(PgMiniTest, BloomFilterBackwardScanTest) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (h int, r int, primary key(h, r))"));
+  ASSERT_OK(conn.Execute("INSERT INTO t SELECT i / 10, i % 10"
+                         "FROM generate_series(1, 500) i"));
+
+  FlushAndCompactTablets();
+
+  auto before_blooms_checked = GetBloomFilterCheckedMetric();
+
+  ASSERT_OK(
+      conn.Fetch("SELECT * FROM t WHERE h = 2 AND r > 2 ORDER BY r DESC;"));
+
+  auto after_blooms_checked = GetBloomFilterCheckedMetric();
+  ASSERT_EQ(after_blooms_checked, before_blooms_checked + 1);
 }
 
 } // namespace yb::pgwrapper

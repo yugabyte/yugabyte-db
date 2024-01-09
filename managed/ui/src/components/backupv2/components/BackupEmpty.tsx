@@ -12,6 +12,8 @@ import { OverlayTrigger, Popover } from 'react-bootstrap';
 import { YBButton } from '../../common/forms/fields';
 import clsx from 'clsx';
 
+import { RBAC_ERR_MSG_NO_PERM, RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
 import './BackupEmpty.scss';
 
 const UPLOAD_ICON = <i className="fa fa-upload backup-empty-icon" />;
@@ -26,15 +28,17 @@ export const BackupEmpty: FC<BackupEmptyProps> = ({ children, classNames }) => {
 
 export const ScheduledBackupEmpty = ({
   onActionButtonClick,
-  disabled = false
+  disabled = false,
+  hasPerm = true
 }: {
   onActionButtonClick: Function;
   disabled?: boolean;
+  hasPerm: boolean;
 }) => {
   return (
     <BackupEmpty>
       {UPLOAD_ICON}
-      <BackupDisabledTooltip disabled={disabled}>
+      <BackupDisabledTooltip disabled={disabled} hasPerm={hasPerm}>
         <YBButton
           onClick={onActionButtonClick}
           btnClass="btn btn-orange backup-empty-button"
@@ -49,23 +53,30 @@ export const ScheduledBackupEmpty = ({
 
 export const UniverseLevelBackupEmpty = ({
   onActionButtonClick,
-  disabled = false
+  disabled = false,
+  hasPerm = true
 }: {
   onActionButtonClick: Function;
   disabled?: boolean;
+  hasPerm: boolean;
 }) => {
   return (
     <BackupEmpty>
       {UPLOAD_ICON}
-      <BackupDisabledTooltip disabled={disabled}>
-        <YBButton
-          onClick={onActionButtonClick}
-          btnIcon="fa fa-upload"
-          btnClass="btn btn-orange backup-empty-button"
-          disabled={disabled}
-          btnText="Backup now"
-        />
-      </BackupDisabledTooltip>
+      <RbacValidator
+        accessRequiredOn={{ ...UserPermissionMap.createBackup, onResource: 'CUSTOMER_ID' }}
+        isControl
+      >
+        <BackupDisabledTooltip disabled={disabled} hasPerm={hasPerm}>
+          <YBButton
+            onClick={onActionButtonClick}
+            btnIcon="fa fa-upload"
+            btnClass="btn btn-orange backup-empty-button"
+            disabled={disabled}
+            btnText="Backup now"
+          />
+        </BackupDisabledTooltip>
+      </RbacValidator>
       <div className="sub-text">Currently there are no Backups to show</div>
     </BackupEmpty>
   );
@@ -90,16 +101,25 @@ const BACKUP_DISABLED_POPOVER = (
   />
 );
 
+const RBAC_DISABLED_MSG = (
+  <Popover
+    id="popover-backup-disabled"
+    title={RBAC_ERR_MSG_NO_PERM}
+  />
+);
+
 const BackupDisabledTooltip = ({
   disabled,
-  children
+  children,
+  hasPerm = true
 }: {
   disabled: boolean;
   children: JSX.Element;
+  hasPerm: boolean;
 }) => {
   return disabled ? (
     <div className="backup-disabled-tooltip">
-      <OverlayTrigger trigger="click" placement="top" overlay={BACKUP_DISABLED_POPOVER}>
+      <OverlayTrigger trigger="click" placement="top" overlay={hasPerm ? BACKUP_DISABLED_POPOVER : RBAC_DISABLED_MSG}>
         <div className="placeholder" />
       </OverlayTrigger>
       {children}

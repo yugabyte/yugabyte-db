@@ -64,7 +64,9 @@ import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.lang3.tuple.ImmutablePair;
 
-/** @deprecated Use separate tasks based on UpgradeTaskBase */
+/**
+ * @deprecated Use separate tasks based on UpgradeTaskBase
+ */
 @Deprecated
 @Slf4j
 public class UpgradeUniverse extends UniverseDefinitionTaskBase {
@@ -137,7 +139,7 @@ public class UpgradeUniverse extends UniverseDefinitionTaskBase {
 
         List<InstanceType> instanceTypes =
             InstanceType.findByProvider(
-                Provider.getOrBadRequest(UUID.fromString(provider)), config);
+                Provider.getOrBadRequest(UUID.fromString(provider)), confGetter);
         log.info(instanceTypes.toString());
         InstanceType newInstanceType =
             instanceTypes.stream()

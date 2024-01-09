@@ -222,6 +222,7 @@ public class UniverseYbDbAdminHandler {
     // Verify request params
     requestParams.verifyParams(universe);
     requestParams.validatePassword(policyService);
+    requestParams.validateYCQLTables(universe, tableHandler);
     TaskType taskType =
         userIntent.providerType.equals(Common.CloudType.kubernetes)
             ? TaskType.ConfigureDBApisKubernetes

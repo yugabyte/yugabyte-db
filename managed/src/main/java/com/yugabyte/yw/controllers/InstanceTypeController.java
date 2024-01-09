@@ -119,7 +119,7 @@ public class InstanceTypeController extends AuthenticatedController {
     instanceTypesMap =
         InstanceType.findByProvider(
                 provider,
-                config,
+                confGetter,
                 confGetter.getConfForScope(provider, ProviderConfKeys.allowUnsupportedInstances))
             .stream()
             .filter(

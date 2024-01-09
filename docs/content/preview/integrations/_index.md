@@ -6,14 +6,121 @@ description: Integrate popular third party tools with YugabyteDB, including Pres
 headcontent: Use YugabyteDB with popular third-party integrations
 image: /images/section_icons/develop/api-icon.png
 type: indexpage
+showRightNav: true
 ---
 
-Because YugabyteDB is wire compatible with PostgreSQL, YugabyteDB supports many third-party integrations out of the box.
+Because YugabyteDB is wire compatible with PostgreSQL, most PostgreSQL client drivers, ORM frameworks, and other types of third-party database tools designed for PostgreSQL are compatible with YugabyteDB.
 
-For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and ORMs](../../drivers-orms/).
+Yugabyte has partnered with open-source projects and vendors to support the following popular PostgreSQL tools.
 
-### Choose your integration
+| Support | Description |
+| :--- | :--- |
+| Full    | Compatibility with the vast majority of the tool or driver features is maintained. These tools are regularly tested against the latest version documented. |
+| Partial | Core functions, such as connecting and performing basic database operations, are compatible with YugabyteDB. Full integration may require additional steps, and some features may not be supported or exhibit unexpected behavior. These tools will eventually have full support from YugabyteDB. |
 
+## Choose your integration
+
+### Drivers and ORMs
+
+{{< readfile "../drivers-orms/include-drivers-orms-list.md" >}}
+
+### Schema migration
+
+| Tool | Version | Support | Tutorial |
+| :--- | :--- | :--- | :--- |
+| Liquibase | | Full | [Liquibase](liquibase/) |
+| Flyway    | | Partial | [Flyway](flyway/) |
+| Prisma    | | Full | [Prisma](prisma/) |
+| Schema Evolution Manager | 0.9.47 | Partial | [Schema Evolution Manager](schema-evolution-mgr/) |
+
+### Data migration
+
+| Tool | Version | Support | Tutorial |
+| :--- | :--- | :--- | :--- |
+| PGmigrate | 1.0.7 | Partial | [PGmigrate](pgmigrate/) |
+| YSQL Loader (pgloader) | | Full | [YSQL Loader](ysql-loader/) |
+
+### Data integration (CDC)
+
+| Tool | Version | Support | Tutorial |
+| :--- | :--- | :--- | :--- |
+| Apache Beam    | | Partial | [Apache Beam](apache-beam/) |
+| Apache Flink   | 1.17.1 | Partial | [Apache Flink](apache-flink/) |
+| Apache Kafka   | | Full | [Apache Kafka](apache-kafka/) |
+| Akka Persistence | | Partial | [Akka Persistence](akka-ysql/) |
+| Confluent      | | Full | [Confluent Cloud](../explore/change-data-capture/cdc-tutorials/cdc-confluent-cloud/) |
+| Debezium       | | Full | [Debezium](cdc/debezium/) |
+| Hevo Data      | | Partial | [Hevo Data](hevodata/) |
+| Kinesis Data Streams | | Full | [Kinesis](kinesis/) |
+| RabbitMQ       | | Partial | [RabbitMQ](rabbitmq/) |
+| Synapse        | | Full | [Synapse](../explore/change-data-capture/cdc-tutorials/cdc-azure-event-hub/) |
+
+### GUI clients
+
+| Tool | Support | Tutorial |
+| :--- | :--- | :--- |
+| Apache Superset   | Full | [Apache Superset](../tools/superset/) |
+| Arctype   | Full | [Arctype](../tools/arctype/) |
+| DBeaver   | Full | [DBeaver](../tools/dbeaver-ysql/) |
+| DbSchema  | Full | [DbSchema](../tools/dbschema/) |
+| Metabase  | Full | [Metabase](../tools/metabase/) |
+| pgAdmin   | Full | [pgAdmin](../tools/pgadmin/) |
+| SQL Workbench/J | Full | [SQL Workbench/J](../tools/sql-workbench/) |
+| TablePlus | Full | [TablePlus](../tools/tableplus/) |
+
+### Application frameworks
+
+| Tool | Support | Tutorial |
+| :--- | :--- | :--- |
+| AtomicJar Testcontainers | Partial | [AtomicJar Testcontainers](atomicjar/) |
+| Django | Full | [Django REST Framework](django-rest-framework/) |
+| Hasura | Full | [Hasura](hasura/) |
+| Spring | Full | [Spring](spring-framework/) |
+
+### Development platforms
+
+| IDE | Support | Tutorial |
+| :--- | :--- | :--- |
+| Caspio | Partial | [Caspio](caspio/) |
+| Retool | Partial | [Retool](retool/) |
+| Superblocks | Partial | [Superblocks](superblocks/) |
+| Visual Studio Code | Partial | [Cassandra Workbench](../tools/visualstudioworkbench/) |
+
+### Data discovery and metadata
+
+| Tool | Support | Tutorial |
+| :--- | :--- | :--- |
+| Dataedo     | Partial | [Dataedo](dataedo/) |
+| Datahub     | Partial | [Datahub](datahub/) |
+| DQ Analyzer | Partial | [Ataccama DQ Analyzer](ataccama/) |
+| Metacat     | Partial | [Metacat](metacat/) |
+
+### Security
+
+| Tool | Support | Tutorial |
+| :--- | :--- | :--- |
+| Hashicorp Vault      | Full | [Hashicorp Vault](hashicorp-vault/) |
+| WSO2 Identity Server | Full | [WSO2 Identity Server](wso2/) |
+
+### Applications powered by YugabyteDB
+
+| Tool | Support | Tutorial |
+| :--- | :--- | :--- |
+| Camunda | Partial | [Camunda](camunda/) |
+
+### Other
+
+| Tool | Latest tested version | Support | Tutorial |
+| :--- | :--- | :--- | :--- |
+| Apache Atlas | 2.30 | Partial | [Apache Atlas](atlas-ycql/) |
+| Apache Spark | 3.30 | Full | [Apache Spark](apache-spark/) |
+| Jaeger       |      | Full | [Jaeger](jaeger/) |
+| JanusGraph   |      | Full | [JanusGraph](janusgraph/) |
+| KairosDB     |      | Full | [KairosDB](kairosdb/) |
+| Mirantis MKE |      | Partial | [Mirantis](mirantis/) |
+| Presto       |      | Partial | [Presto](presto/) |
+
+<!--
 <ul class="nav yb-pills">
 
   <li>
@@ -74,6 +181,13 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
     <a href="camunda/">
       <img src="/images/section_icons/develop/ecosystem/camunda.png">
       Camunda
+    </a>
+  </li>
+
+  <li>
+    <a href="caspio/">
+      <img src="/images/section_icons/develop/ecosystem/caspio.png">
+      Caspio
     </a>
   </li>
 
@@ -182,7 +296,7 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
 
   <li>
     <a href="metacat/">
-      <img src="/images/section_icons/develop/ecosystem/metabase.png">
+      <img src="/images/section_icons/develop/ecosystem/metacat.png">
       Metacat
     </a>
   </li>
@@ -221,6 +335,13 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
   </li>
 
   <li>
+    <a href="retool/">
+      <img src="/images/section_icons/develop/ecosystem/retool.png">
+      Retool
+    </a>
+  </li>
+
+  <li>
     <a href="schema-evolution-mgr/">
       Schema Evolution Manager
     </a>
@@ -248,16 +369,16 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
   </li>
 
   <li>
-    <a href="wso2/">
-      <img src="/images/section_icons/develop/ecosystem/wso2.png">
-      WSO2 Identity Server
+    <a href="superblocks/">
+      <img src="/images/section_icons/develop/ecosystem/superblocks.png">
+      Superblocks
     </a>
   </li>
 
   <li>
-    <a href="aiopg/">
-      <i class="fa-brands fa-python"></i>
-      YSQL Aiopg
+    <a href="wso2/">
+      <img src="/images/section_icons/develop/ecosystem/wso2.png">
+      WSO2 Identity Server
     </a>
   </li>
 
@@ -269,30 +390,4 @@ For information on YugabyteDB-compatible drivers and ORMs, refer to [Drivers and
   </li>
 
 </ul>
-
-### Development platforms
-
-<ul class="nav yb-pills">
-
-  <li>
-    <a href="caspio/">
-      <img src="/images/section_icons/develop/ecosystem/caspio.png">
-      Caspio
-    </a>
-  </li>
-
-  <li>
-    <a href="retool/">
-      <img src="/images/section_icons/develop/ecosystem/retool.png">
-      Retool
-    </a>
-  </li>
-
-  <li>
-    <a href="superblocks/">
-      <img src="/images/section_icons/develop/ecosystem/superblocks.png">
-      Superblocks
-    </a>
-  </li>
-
-</ul>
+-->

@@ -46,6 +46,7 @@
 #include "yb/util/metrics.h"
 #include "yb/util/path_util.h"
 #include "yb/util/strongly_typed_bool.h"
+#include "yb/util/strongly_typed_uuid.h"
 
 DECLARE_bool(enable_data_block_fsync);
 
@@ -67,6 +68,8 @@ class ExternalMiniClusterFsInspector;
 class InstanceMetadataPB;
 
 YB_STRONGLY_TYPED_BOOL(ShouldDeleteLogs);
+YB_STRONGLY_TYPED_UUID_DECL(UniverseUuid);
+
 
 struct FsManagerOpts {
   FsManagerOpts();
@@ -196,6 +199,10 @@ class FsManager {
   // Return the tablet IDs in the metadata directory.
   Result<std::vector<std::string>> ListTabletIds();
 
+  Result<std::string> GetUniverseUuidFromTserverInstanceMetadata() const;
+
+  Status SetUniverseUuidOnTserverInstanceMetadata(const UniverseUuid& universe_uuid);
+
   // Return the path where InstanceMetadataPB is stored.
   std::string GetInstanceMetadataPath(const std::string& root) const;
 
@@ -289,6 +296,8 @@ class FsManager {
                           const std::string& path,
                           const std::vector<std::string>& objects);
 
+  Result<std::string> GetExistingInstanceMetadataPath() const;
+
   Env *env_;
 
   // Set on the TabletServer::Init path.
@@ -322,7 +331,8 @@ class FsManager {
   mutable std::mutex auto_flag_mutex_;
   std::string auto_flags_config_path_ GUARDED_BY(auto_flag_mutex_);
 
-  std::unique_ptr<InstanceMetadataPB> metadata_;
+  std::unique_ptr<InstanceMetadataPB> metadata_ GUARDED_BY(metadata_mutex_);
+  mutable std::mutex metadata_mutex_;
 
   // Keep references to counters, counters without reference will be retired.
   std::vector<scoped_refptr<Counter>> counters_;

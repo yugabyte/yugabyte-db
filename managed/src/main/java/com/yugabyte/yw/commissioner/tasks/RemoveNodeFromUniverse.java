@@ -119,7 +119,8 @@ public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
           .setSubTaskGroupType(SubTaskGroupType.RemovingNode);
 
       // Mark the tserver as blacklisted on the master leader.
-      createPlacementInfoTask(Collections.singleton(currentNode))
+      createPlacementInfoTask(
+              Collections.singleton(currentNode), universe.getUniverseDetails().clusters)
           .setSubTaskGroupType(SubTaskGroupType.WaitForDataMigration);
 
       // Wait for tablet quorums to remove the blacklisted tserver. Do not perform load balance

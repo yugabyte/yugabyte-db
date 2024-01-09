@@ -22,6 +22,8 @@ import { api, QUERY_KEY } from '../utils/api';
 import { UniverseFormData, ClusterType, ClusterModes } from '../utils/dto';
 import { UNIVERSE_NAME_FIELD, TOAST_AUTO_DISMISS_INTERVAL } from '../utils/constants';
 import { useFormMainStyles } from '../universeMainStyle';
+import { RbacValidator } from '../../../rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../../rbac/UserPermPathMapping';
 
 // ! How to add new form field ?
 // - add field to it's corresponding config type (CloudConfigFormValue/InstanceConfigFormValue/AdvancedConfigFormValue/..) present in UniverseFormData type at dto.ts
@@ -44,6 +46,7 @@ interface UniverseFormProps {
   onDeleteRR?: () => void;
   submitLabel?: string;
   isNewUniverse?: boolean; // This flag is used only in new cluster creation flow - we don't have proper state params to differentiate
+  universeUUID?: string;
 }
 
 export const UniverseForm: FC<UniverseFormProps> = ({
@@ -53,6 +56,7 @@ export const UniverseForm: FC<UniverseFormProps> = ({
   onClusterTypeChange,
   onDeleteRR,
   submitLabel,
+  universeUUID,
   isNewUniverse = false
 }) => {
   const classes = useFormMainStyles();
@@ -149,9 +153,9 @@ export const UniverseForm: FC<UniverseFormProps> = ({
             {isNewUniverse && onDeleteRR && !!asyncFormData && (
               <YBButton
                 className={classes.clearRRButton}
-                component={Link}
-                variant="ghost"
-                size="small"
+                // component={Link}
+                variant="secondary"
+                size="medium"
                 data-testid="UniverseForm-ClearRR"
                 onClick={onDeleteRR}
               >
@@ -168,7 +172,7 @@ export const UniverseForm: FC<UniverseFormProps> = ({
     return (
       <>
         <Grid container justifyContent="space-between">
-          <Grid item lg={8}>
+          <Grid item lg={6}>
             <Box
               width="100%"
               display="flex"
@@ -179,8 +183,13 @@ export const UniverseForm: FC<UniverseFormProps> = ({
               <UniverseResourceContainer data={universeResourceTemplate} />
             </Box>
           </Grid>
-          <Grid item lg={4}>
-            <Box width="100%" display="flex" justifyContent="flex-end">
+          <Grid item lg={6}>
+            <Box
+              width="100%"
+              display="flex"
+              justifyContent="flex-end"
+              className={classes.universeFormButtons}
+            >
               <YBButton
                 variant="secondary"
                 size="large"
@@ -205,24 +214,42 @@ export const UniverseForm: FC<UniverseFormProps> = ({
               )}
               {/* shown only during edit RR flow */}
               {onDeleteRR && isEditRR && (
-                <YBButton
-                  variant="secondary"
-                  size="large"
-                  onClick={onDeleteRR}
-                  data-testid="UniverseForm-DeleteRR"
+                <RbacValidator
+                  accessRequiredOn={{
+                    onResource: universeUUID,
+                    ...UserPermissionMap.editUniverse
+                  }}
+                  isControl
                 >
-                  {t('universeForm.actions.deleteRR')}
-                </YBButton>
+                  <YBButton
+                    variant="secondary"
+                    size="large"
+                    onClick={onDeleteRR}
+                    data-testid="UniverseForm-DeleteRR"
+                  >
+                    {t('universeForm.actions.deleteRR')}
+                  </YBButton>
+                </RbacValidator>
               )}
               &nbsp;
-              <YBButton
-                variant="primary"
-                size="large"
-                type="submit"
-                data-testid="UniverseForm-Submit"
+              <RbacValidator
+                accessRequiredOn={{
+                  onResource: !isEditMode && isPrimary ? undefined : universeUUID,
+                  ...(!isEditMode && isPrimary
+                    ? UserPermissionMap.createUniverse
+                    : UserPermissionMap.editUniverse)
+                }}
+                isControl
               >
-                {submitLabel ? submitLabel : t('common.save')}
-              </YBButton>
+                <YBButton
+                  variant="primary"
+                  size="large"
+                  type="submit"
+                  data-testid={`UniverseForm-${mode}-${clusterType}`}
+                >
+                  {submitLabel ? submitLabel : t('common.save')}
+                </YBButton>
+              </RbacValidator>
             </Box>
           </Grid>
         </Grid>

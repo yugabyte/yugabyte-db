@@ -12,6 +12,7 @@
 should_create_package="0"
 should_use_package="0"
 use_dynamic_paths="0"
+should_use_pex="0"
 show_usage() {
   cat <<-EOT
 Usage: ${0##*/} [<options>]
@@ -118,4 +119,8 @@ else
           "$virtualenv_dir."
     fi
   fi
+
+  log "Activating pex environment $pex_venv_dir"
+  activate_pex
+  rm $pex_lock
 fi

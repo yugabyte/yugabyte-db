@@ -112,106 +112,88 @@ find_inheritance_children_extended(Oid parentrelId, bool omit_detached,
 	oidarr = (Oid *) palloc(maxoids * sizeof(Oid));
 	numoids = 0;
 
-	if (IsYugaByteEnabled())
+	relation = table_open(InheritsRelationId, AccessShareLock);
+
+	ScanKeyInit(&key[0],
+				Anum_pg_inherits_inhparent,
+				BTEqualStrategyNumber, F_OIDEQ,
+				ObjectIdGetDatum(parentrelId));
+
+	scan = systable_beginscan(relation, InheritsParentIndexId, true,
+							  NULL, 1, key);
+
+	while ((inheritsTuple = systable_getnext(scan)) != NULL)
 	{
 		/*
-		* In a Yugabyte cluster, the pg_inherits table is cached, hence the
-		* relevant information can be fetched from the SysCache.
-		*/
-		CatCList *inhlist = SearchSysCacheList1(INHERITSRELID,
-		ObjectIdGetDatum(parentrelId));
-		oidarr = (Oid *) palloc(inhlist->n_members * sizeof(Oid));
-		for (i = 0; i < inhlist->n_members; i++)
+		 * Cope with partitions concurrently being detached.  When we see a
+		 * partition marked "detach pending", we omit it from the returned set
+		 * of visible partitions if caller requested that and the tuple's xmin
+		 * does not appear in progress to the active snapshot.  (If there's no
+		 * active snapshot set, that means we're not running a user query, so
+		 * it's OK to always include detached partitions in that case; if the
+		 * xmin is still running to the active snapshot, then the partition
+		 * has not been detached yet and so we include it.)
+		 *
+		 * The reason for this hack is that we want to avoid seeing the
+		 * partition as alive in RI queries during REPEATABLE READ or
+		 * SERIALIZABLE transactions: such queries use a different snapshot
+		 * than the one used by regular (user) queries.
+		 */
+		if (((Form_pg_inherits) GETSTRUCT(inheritsTuple))->inhdetachpending)
 		{
-			HeapTuple inheritsTuple = &inhlist->members[i]->tuple;
-			oidarr[numoids++] =
-				((Form_pg_inherits) GETSTRUCT(inheritsTuple))->inhrelid;
-		}
-		ReleaseCatCacheList(inhlist);
-	} else {
-		relation = table_open(InheritsRelationId, AccessShareLock);
+			if (detached_exist)
+				*detached_exist = true;
 
-		ScanKeyInit(&key[0],
-					Anum_pg_inherits_inhparent,
-					BTEqualStrategyNumber, F_OIDEQ,
-					ObjectIdGetDatum(parentrelId));
-
-		scan = systable_beginscan(relation, InheritsParentIndexId, true,
-								  NULL, 1, key);
-
-		while ((inheritsTuple = systable_getnext(scan)) != NULL)
-		{
-			/*
-			 * Cope with partitions concurrently being detached.  When we see a
-			 * partition marked "detach pending", we omit it from the returned set
-			 * of visible partitions if caller requested that and the tuple's xmin
-			 * does not appear in progress to the active snapshot.  (If there's no
-			 * active snapshot set, that means we're not running a user query, so
-			 * it's OK to always include detached partitions in that case; if the
-			 * xmin is still running to the active snapshot, then the partition
-			 * has not been detached yet and so we include it.)
-			 *
-			 * The reason for this hack is that we want to avoid seeing the
-			 * partition as alive in RI queries during REPEATABLE READ or
-			 * SERIALIZABLE transactions: such queries use a different snapshot
-			 * than the one used by regular (user) queries.
-			 */
-			if (((Form_pg_inherits) GETSTRUCT(inheritsTuple))->inhdetachpending)
+			if (omit_detached && ActiveSnapshotSet())
 			{
-				if (detached_exist)
-					*detached_exist = true;
+				TransactionId xmin;
+				Snapshot	snap;
 
-				if (omit_detached && ActiveSnapshotSet())
+				xmin = HeapTupleHeaderGetXmin(inheritsTuple->t_data);
+				snap = GetActiveSnapshot();
+
+				if (!XidInMVCCSnapshot(xmin, snap))
 				{
-					TransactionId xmin;
-					Snapshot	snap;
-
-					xmin = HeapTupleHeaderGetXmin(inheritsTuple->t_data);
-					snap = GetActiveSnapshot();
-
-					if (!XidInMVCCSnapshot(xmin, snap))
+					if (detached_xmin)
 					{
-						if (detached_xmin)
+						/*
+						 * Two detached partitions should not occur (see
+						 * checks in MarkInheritDetached), but if they do,
+						 * track the newer of the two.  Make sure to warn the
+						 * user, so that they can clean up.  Since this is
+						 * just a cross-check against potentially corrupt
+						 * catalogs, we don't make it a full-fledged error
+						 * message.
+						 */
+						if (*detached_xmin != InvalidTransactionId)
 						{
-							/*
-							 * Two detached partitions should not occur (see
-							 * checks in MarkInheritDetached), but if they do,
-							 * track the newer of the two.  Make sure to warn the
-							 * user, so that they can clean up.  Since this is
-							 * just a cross-check against potentially corrupt
-							 * catalogs, we don't make it a full-fledged error
-							 * message.
-							 */
-							if (*detached_xmin != InvalidTransactionId)
-							{
-								elog(WARNING, "more than one partition pending detach found for table with OID %u",
-									 parentrelId);
-								if (TransactionIdFollows(xmin, *detached_xmin))
-									*detached_xmin = xmin;
-							}
-							else
+							elog(WARNING, "more than one partition pending detach found for table with OID %u",
+								 parentrelId);
+							if (TransactionIdFollows(xmin, *detached_xmin))
 								*detached_xmin = xmin;
 						}
-
-						/* Don't add the partition to the output list */
-						continue;
+						else
+							*detached_xmin = xmin;
 					}
+
+					/* Don't add the partition to the output list */
+					continue;
 				}
 			}
-
-			inhrelid = ((Form_pg_inherits) GETSTRUCT(inheritsTuple))->inhrelid;
-			if (numoids >= maxoids)
-			{
-				maxoids *= 2;
-				oidarr = (Oid *) repalloc(oidarr, maxoids * sizeof(Oid));
-			}
-			oidarr[numoids++] = inhrelid;
 		}
 
-		systable_endscan(scan);
-
-		table_close(relation, AccessShareLock);
+		inhrelid = ((Form_pg_inherits) GETSTRUCT(inheritsTuple))->inhrelid;
+		if (numoids >= maxoids)
+		{
+			maxoids *= 2;
+			oidarr = (Oid *) repalloc(oidarr, maxoids * sizeof(Oid));
+		}
+		oidarr[numoids++] = inhrelid;
 	}
+
+	systable_endscan(scan);
+
+	table_close(relation, AccessShareLock);
 
 	/*
 	 * If we found more than one child, sort them by OID.  This ensures

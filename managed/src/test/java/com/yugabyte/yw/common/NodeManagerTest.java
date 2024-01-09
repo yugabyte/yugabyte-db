@@ -2330,7 +2330,7 @@ public class NodeManagerTest extends FakeDBApplication {
   }
 
   private Map<String, String> extractGFlags(List<String> command) {
-    String gflagsJson = mapKeysToValues(command).get("--gflags");
+    String gflagsJson = LocalNodeManager.convertCommandArgListToMap(command).get("--gflags");
     if (gflagsJson == null) {
       throw new IllegalStateException("Empty gflags for " + command);
     }
@@ -3950,7 +3950,7 @@ public class NodeManagerTest extends FakeDBApplication {
 
   private void checkArguments(
       List<String> currentArgs, List<String> allPossibleArgs, String... argsExpected) {
-    Map<String, String> k2v = mapKeysToValues(currentArgs);
+    Map<String, String> k2v = LocalNodeManager.convertCommandArgListToMap(currentArgs);
     List<String> allArgsCpy = new ArrayList<>(allPossibleArgs);
     for (int i = 0; i < argsExpected.length; i += 2) {
       String key = argsExpected[i];
@@ -4008,21 +4008,6 @@ public class NodeManagerTest extends FakeDBApplication {
     ArgumentCaptor<List> arg = ArgumentCaptor.forClass(List.class);
     verify(shellProcessHandler).run(arg.capture(), any(ShellProcessContext.class));
     return new ArrayList<>(arg.getValue());
-  }
-
-  private Map<String, String> mapKeysToValues(List<String> args) {
-    Map<String, String> result = new HashMap<>();
-    for (int i = 0; i < args.size(); i++) {
-      String key = args.get(i);
-      if (key.startsWith("--")) {
-        String value = "";
-        if (i < args.size() - 1 && !args.get(i + 1).startsWith("--")) {
-          value = args.get(++i);
-        }
-        result.put(key, value);
-      }
-    }
-    return result;
   }
 
   private void assertFails(Runnable r, String expectedError) {

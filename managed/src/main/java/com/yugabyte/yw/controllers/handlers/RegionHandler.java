@@ -221,7 +221,8 @@ public class RegionHandler {
         destVpcId = gcpCloudInfo.getDestVpcId();
       }
 
-      region = cloudRegionHelper.createRegion(provider, region.getCode(), destVpcId, metadata);
+      region =
+          cloudRegionHelper.createRegion(provider, region.getCode(), destVpcId, metadata, true);
       modifyImageBundlesIfRequired(provider, region);
     } else {
       // Handle k8s region bootstrap.

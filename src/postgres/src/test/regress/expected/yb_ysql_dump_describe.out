@@ -83,12 +83,12 @@
                                                                                                 List of tablegroup tables
   Group Name  |     Group Owner      | Access privileges | Group Description | Group Tablespace | Group Options |                      Name                      | Type  |        Owner         | Rel Description | Size
 --------------+----------------------+-------------------+-------------------+------------------+---------------+------------------------------------------------+-------+----------------------+-----------------+------
+ grp1         | tablegroup_test_user |                   |                   |                  |               | tgroup_in_between_options                      | table | tablegroup_test_user |                 |
  grp1         | tablegroup_test_user |                   |                   |                  |               | tgroup_no_options_and_tgroup                   | table | tablegroup_test_user |                 |
  grp1         | tablegroup_test_user |                   |                   |                  |               | tgroup_after_options                           | table | tablegroup_test_user |                 |
- grp1         | tablegroup_test_user |                   |                   |                  |               | tgroup_in_between_options                      | table | tablegroup_test_user |                 |
- grp2         | tablegroup_test_user |                   |                   |                  |               | tgroup_options_tgroup_and_custom_colocation_id | table | tablegroup_test_user |                 |
- grp2         | tablegroup_test_user |                   |                   |                  |               | tgroup_one_option_and_tgroup                   | table | tablegroup_test_user |                 |
  grp2         | tablegroup_test_user |                   |                   |                  |               | tgroup_options_and_tgroup                      | table | tablegroup_test_user |                 |
+ grp2         | tablegroup_test_user |                   |                   |                  |               | tgroup_one_option_and_tgroup                   | table | tablegroup_test_user |                 |
+ grp2         | tablegroup_test_user |                   |                   |                  |               | tgroup_options_tgroup_and_custom_colocation_id | table | tablegroup_test_user |                 |
  grp_with_spc | tablegroup_test_user |                   |                   | tsp1             |               | tgroup_with_spc                                | table | tablegroup_test_user |                 |
 (7 rows)
 

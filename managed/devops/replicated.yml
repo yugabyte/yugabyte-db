@@ -129,6 +129,7 @@ components:
             contents: |
               #!/bin/sh
 
+              set -x -o errexit
               rm -f /prometheus_configs/web.yml
               touch /prometheus_configs/web.yml
 
@@ -173,6 +174,7 @@ components:
             contents: |
               #!/bin/bash
 
+              set -x -o errexit
               if [ ! "$(ls -A /var/lib/postgresql/14/data)" ] && [ "$(ls -A /var/lib/postgresql/9.6/data)" ];
               then
                 docker-upgrade pg_upgrade;
@@ -228,12 +230,18 @@ components:
               CREATE USER {{repl ConfigOption "dbuser"}} WITH SUPERUSER CREATEDB CREATEROLE;
           - filename: /home/create_user_if_missing.sh
             contents: |
+              #!/bin/bash
+
+              set -x -o errexit
               # Check for the existence of role before creating.
               if ! ( psql -U postgres -t -c '\du' | cut -d \| -f 1 | grep -qw {{repl ConfigOption "dbuser"}} ) then
                 psql -U postgres -f /home/create_user.sql;
               fi
           - filename: /home/enable_ldap.sh
             contents: |
+              #!/bin/bash
+
+              set -x -o errexit
               sleep 5;
               cat /home/base_pg_hba.conf > /var/lib/postgresql/data/yugaware/pg_hba.conf;
 
@@ -241,6 +249,9 @@ components:
               psql -U postgres -f /home/reload_pg_hba_conf.sql;
           - filename: /home/setup_auth.sh
             contents: |
+              #!/bin/bash
+
+              set -x -o errexit
               # Disable all the existing auth mechanism for the host
               sleep 5;
               cat /home/base_pg_hba.conf > /var/lib/postgresql/data/yugaware/pg_hba.conf;
@@ -256,6 +267,9 @@ components:
               host    all             all             ::1/128                 trust
           - filename: /home/startup.sh
             contents: |
+              #!/bin/bash
+
+              set -x -o errexit
               {{repl if ConfigOptionNotEquals "dbuser" "postgres"}} sh /home/create_user_if_missing.sh {{repl end}}
               {{repl if ConfigOptionEquals "dbldapauth" "0"}} sh /home/setup_auth.sh {{repl else}} sh /home/enable_ldap.sh {{repl end}}
 
@@ -264,7 +278,7 @@ components:
       - source: public
         name: prometheus
         image_name: prom/prometheus
-        version: v2.46.0
+        version: v2.47.1
         volumes:
           - host_path: '{{repl ConfigOption "storage_path"}}/prometheusv2'
             container_path: /prometheus

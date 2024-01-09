@@ -14,6 +14,8 @@
 #include "yb/integration-tests/cql_test_base.h"
 #include "yb/integration-tests/mini_cluster_utils.h"
 
+#include "yb/docdb/deadline_info.h"
+
 #include "yb/tablet/tablet_metadata.h"
 #include "yb/tablet/write_query.h"
 #include "yb/tablet/tablet.h"
@@ -26,21 +28,25 @@
 #include "yb/util/logging.h"
 #include "yb/util/random_util.h"
 #include "yb/util/status_log.h"
+#include "yb/util/stopwatch.h"
 #include "yb/util/test_thread_holder.h"
+#include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
 using namespace std::literals;
 
 DECLARE_bool(allow_index_table_read_write);
+DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_int32(cql_prepare_child_threshold_ms);
 DECLARE_bool(disable_index_backfill);
-DECLARE_bool(transactions_poll_check_aborted);
-DECLARE_bool(TEST_disable_proactive_txn_cleanup_on_abort);
-DECLARE_int32(client_read_write_timeout_ms);
 DECLARE_int32(rpc_workers_limit);
-DECLARE_uint64(transaction_manager_workers_limit);
-DECLARE_uint64(TEST_inject_txn_get_status_delay_ms);
 DECLARE_int64(transaction_abort_check_interval_ms);
+DECLARE_uint64(transaction_manager_workers_limit);
+DECLARE_bool(transactions_poll_check_aborted);
+
+DECLARE_bool(TEST_disable_proactive_txn_cleanup_on_abort);
+DECLARE_int32(TEST_fetch_next_delay_ms);
+DECLARE_uint64(TEST_inject_txn_get_status_delay_ms);
 DECLARE_bool(TEST_writequery_stuck_from_callback_leak);
 
 namespace yb {
@@ -275,7 +281,7 @@ TEST_F(CqlIndexTest, WriteQueryStuckAndVerifyTxnCleanup) {
     if (peer->tablet()->metadata()->table_name() == "t") {
       auto* participant = peer->tablet()->transaction_participant();
       if (participant) {
-        total_txns += participant->TEST_GetNumRunningTransactions();
+        total_txns += participant->GetNumRunningTransactions();
       }
     }
   }
@@ -438,6 +444,104 @@ TEST_F(CqlIndexTest, ConcurrentInsert2Columns) {
 
 TEST_F(CqlIndexTest, ConcurrentUpdate2Columns) {
   TestConcurrentModify2Columns("UPDATE t SET $0 = ? WHERE key = ?");
+}
+
+TEST_F(CqlIndexTest, SlowIndexResponse) {
+  constexpr auto kNumKeys = NonTsanVsTsan(3000, 1500);
+  constexpr auto kWriteBatchSize = NonTsanVsTsan(100, 30);
+  constexpr auto kNumWriteThreads = 8;
+  constexpr auto kFixedCategory = 0;
+  constexpr auto kTestReadDelayMs = 1;
+
+  FLAGS_client_read_write_timeout_ms = 100000 * kTimeMultiplier;
+
+  {
+    auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+
+    ASSERT_OK(session.ExecuteQuery(
+        "CREATE TABLE test_table (key INT PRIMARY KEY, category INT, value INT) WITH "
+        "transactions = { 'enabled' : true }"));
+    ASSERT_OK(session.ExecuteQuery(
+        "CREATE INDEX category_idx ON test_table (category) WITH TABLETS = 1"));
+
+    std::atomic<int> num_rows = 0;
+
+    auto writer = [&num_rows, kFixedCategory, this]() -> void {
+      auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+      auto prepared = ASSERT_RESULT(
+          session.Prepare("INSERT INTO test_table (key, category, value) VALUES (?, ?, ?)"));
+      while (num_rows < kNumKeys) {
+        CassandraBatch batch(CassBatchType::CASS_BATCH_TYPE_LOGGED);
+        for (int i = 0; i < kWriteBatchSize; ++i) {
+          const auto prev_num_rows = num_rows.fetch_add(1);
+          if (prev_num_rows == kNumKeys) {
+            num_rows.fetch_sub(1);
+            break;
+          }
+          auto stmt = prepared.Bind();
+          stmt.Bind(0, prev_num_rows);
+          stmt.Bind(1, kFixedCategory);
+          stmt.Bind(2, prev_num_rows);
+          batch.Add(&stmt);
+        }
+
+        ASSERT_OK(session.ExecuteBatch(batch));
+        YB_LOG_EVERY_N_SECS(INFO, 5) << "Inserted " << num_rows << " rows";
+      }
+    };
+
+    TestThreadHolder writers;
+    for (int i = 0; i < kNumWriteThreads; ++i) {
+      writers.AddThreadFunctor(writer);
+    }
+    writers.JoinAll();
+
+    LOG(INFO) << "Inserted " << num_rows << " rows";
+
+    NO_PENDING_FATALS();
+  }
+
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  // Restart cluster so MetaCache is cleared.
+  ASSERT_OK(RestartCluster());
+
+  auto session = ASSERT_RESULT(EstablishSession(driver_.get()));
+
+  LOG(INFO) << "Running SELECT";
+
+  // We want index tablet scan to take >= FLAGS_client_read_write_timeout_ms in order to reproduce
+  // scenario where MetaCache is trying to lookup tablets based on keys returned by index after
+  // hitting deadline.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_client_read_write_timeout_ms) = kNumKeys * kTestReadDelayMs;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_fetch_next_delay_ms) = kTestReadDelayMs;
+
+  CountDownLatch latch(1);
+  TestThreadHolder select_thread;
+  select_thread.AddThreadFunctor([&session, &latch, kFixedCategory]{
+    Stopwatch sw;
+    sw.start();
+    auto result = session.ExecuteWithResult(
+        Format("SELECT * FROM test_table WHERE category = $0", kFixedCategory));
+    sw.stop();
+    latch.CountDown();
+    ASSERT_NOK(result) << "Expected SELECT to fail due to time out, but got: " << [&result]() {
+      auto iter = result->CreateIterator();
+      return iter.Next() ? AsString(iter.Row().Value(0).As<int64>()) : "<none>";
+    }();
+    ASSERT_GE(sw.elapsed().wall_millis(), FLAGS_client_read_write_timeout_ms)
+        << "SELECT failed too early";
+  });
+
+  const auto timeout_limit_ms =
+      FLAGS_client_read_write_timeout_ms +
+      narrow_cast<int32_t>(kTestReadDelayMs * docdb::kDeadlineCheckGranularity * 1.1);
+  const auto latch_done = latch.WaitFor(timeout_limit_ms * 1ms);
+  LOG(INFO) << "Latch done: " << latch_done;
+  ASSERT_TRUE(latch_done) << "SELECT hasn't completed within " << timeout_limit_ms << " ms";
+
+  select_thread.JoinAll();
 }
 
 } // namespace yb

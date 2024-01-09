@@ -182,9 +182,9 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
   // update this when they're implemented.
   //
   // NOTE: If this returns not-OK, does not take ownership of 'write_op'.
-  void Add(std::shared_ptr<YBOperation> yb_op);
+  void Add(YBOperationPtr yb_op);
 
-  bool Has(const std::shared_ptr<YBOperation>& yb_op) const;
+  bool Has(const YBOperationPtr& yb_op) const;
 
   // Return true if any operations are still pending. An operation is no longer considered
   // pending once it has either errored or succeeded.  Operations are considering pending
@@ -340,7 +340,7 @@ class Batcher : public Runnable, public std::enable_shared_from_this<Batcher> {
 
   // All buffered or in-flight ops.
   // Added to this set during apply, removed during Finished of AsyncRpc.
-  std::vector<std::shared_ptr<YBOperation>> ops_;
+  std::vector<YBOperationPtr> ops_;
   std::vector<InFlightOp> ops_queue_;
   InFlightOpsGroupsWithMetadata ops_info_;
 

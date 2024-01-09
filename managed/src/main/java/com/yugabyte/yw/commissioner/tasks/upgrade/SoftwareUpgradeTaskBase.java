@@ -8,7 +8,6 @@ import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.XClusterConfigTaskBase;
 import com.yugabyte.yw.common.gflags.GFlagsUtil;
-import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeTaskSubType;
 import com.yugabyte.yw.models.Universe;
@@ -17,12 +16,15 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.io.File;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.tuple.Pair;
 
 @Slf4j
 public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
@@ -30,11 +32,6 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
   @Inject
   protected SoftwareUpgradeTaskBase(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
-  }
-
-  @Override
-  protected SoftwareUpgradeParams taskParams() {
-    return (SoftwareUpgradeParams) taskParams;
   }
 
   @Override
@@ -47,12 +44,27 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
     return NodeState.UpgradeSoftware;
   }
 
-  protected UpgradeContext getUpgradeContext() {
+  protected UpgradeContext getUpgradeContext(String targetSoftwareVersion) {
     return UpgradeContext.builder()
         .reconfigureMaster(false)
         .runBeforeStopping(false)
         .processInactiveMaster(true)
-        .targetSoftwareVersion(taskParams().ybSoftwareVersion)
+        .targetSoftwareVersion(targetSoftwareVersion)
+        .build();
+  }
+
+  protected UpgradeContext getRollbackUpgradeContext(
+      Set<NodeDetails> nodesToSkipMasterActions,
+      Set<NodeDetails> nodesToSkipTServerActions,
+      String targetSoftwareVersion) {
+    return UpgradeContext.builder()
+        .reconfigureMaster(false)
+        .runBeforeStopping(false)
+        .processInactiveMaster(true)
+        .processTServersFirst(true)
+        .targetSoftwareVersion(targetSoftwareVersion)
+        .nodesToSkipMasterActions(nodesToSkipMasterActions)
+        .nodesToSkipTServerActions(nodesToSkipTServerActions)
         .build();
   }
 
@@ -70,6 +82,41 @@ public abstract class SoftwareUpgradeTaskBase extends UpgradeTaskBase {
     }
     downloadTaskGroup.setSubTaskGroupType(SubTaskGroupType.DownloadingSoftware);
     getRunnableTask().addSubTaskGroup(downloadTaskGroup);
+  }
+
+  protected void createUpgradeTaskFlowTasks(
+      Pair<List<NodeDetails>, List<NodeDetails>> nodes,
+      String newVersion,
+      UpgradeContext upgradeContext,
+      boolean reProvision) {
+    createUpgradeTaskFlow(
+        (nodes1, processTypes) -> {
+          // Re-provisioning the nodes if ybc needs to be installed and systemd is already
+          // enabled
+          // to register newly introduced ybc service if it is missing in case old universes.
+          // We would skip ybc installation in case of manually provisioned systemd enabled
+          // on-prem
+          // universes as we may not have sudo permissions.
+          if (reProvision) {
+            createSetupServerTasks(nodes1, param -> param.isSystemdUpgrade = true);
+          }
+          createSoftwareInstallTasks(
+              nodes1, getSingle(processTypes), newVersion, getTaskSubGroupType());
+        },
+        nodes,
+        upgradeContext,
+        false);
+  }
+
+  protected void createYbcInstallTask(
+      Universe universe, List<NodeDetails> nodes, String newVersion) {
+    createYbcSoftwareInstallTasks(nodes, newVersion, getTaskSubGroupType());
+    // Start yb-controller process and wait for it to get responsive.
+    createStartYbcProcessTasks(
+        new HashSet<>(nodes),
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd);
+    createUpdateYbcTask(taskParams().getYbcSoftwareVersion())
+        .setSubTaskGroupType(getTaskSubGroupType());
   }
 
   protected void createXClusterSourceRootCertDirPathGFlagTasks() {

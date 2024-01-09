@@ -589,7 +589,7 @@ Valid values: `SERIALIZABLE`, `REPEATABLE READ`, `READ COMMITTED`, and `READ UNC
 
 Default: `READ COMMITTED`<sup>$</sup>
 
-<sup>$</sup> Read Committed support is currently in [Beta](/preview/faq/general/#what-is-the-definition-of-the-beta-feature-tag). Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
+<sup>$</sup> Read Committed Isolation is supported only if the YB-TServer flag `yb_enable_read_committed_isolation` is set to `true`. By default this flag is `false` and in this case the Read Committed isolation level of the YugabyteDB transactional layer falls back to the stricter Snapshot Isolation (in which case `READ COMMITTED` and `READ UNCOMMITTED` of YSQL also in turn use Snapshot Isolation).
 
 ##### --ysql_disable_index_backfill
 
@@ -923,15 +923,19 @@ In addition, as this setting does not propagate to PostgreSQL, it is recommended
 --ysql_pg_conf_csv="ssl_min_protocol_version=TLSv1.2"
 ```
 
-## Packed row flags (Beta)
+## Packed row flags
 
-To learn about the packed row feature, see [Packed row format](../../../architecture/docdb/persistence/#packed-row-format-beta) in the architecture section.
+Packed row format support is currently in [Early Access](/preview/releases/versioning/#feature-availability).
+
+To learn about the packed row feature, see [Packed row format](../../../architecture/docdb/persistence/#packed-row-format) in the architecture section.
 
 ##### --ysql_enable_packed_row
 
 Whether packed row is enabled for YSQL.
 
 Default: `false`
+
+Packed Row for YSQL can be used from version 2.16.4 in production environments if the cluster is not used in xCluster settings. For xCluster scenarios, use version 2.18.1 and later. Starting from version 2.19 and later, the flag default is true for new clusters.
 
 ##### --ysql_packed_row_size_limit
 
@@ -940,6 +944,8 @@ Packed row size limit for YSQL. The default value is 0 (use block size as limit)
 Default: `0`
 
 ##### --ycql_enable_packed_row
+
+--ycql_enable_packed_row support is currently in [Tech Preview](/preview/releases/versioning/#feature-availability).
 
 Whether packed row is enabled for YCQL.
 

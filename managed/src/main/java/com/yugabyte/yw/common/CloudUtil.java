@@ -118,9 +118,7 @@ public interface CloudUtil extends StorageUtil {
     if (checkFileExists(
         configData,
         /* Go to parent directory for backup_keys.json file. */
-        preflightParams
-            .getBackupLocations()
-            .parallelStream()
+        preflightParams.getBackupLocations().parallelStream()
             .map(bL -> bL.substring(0, bL.lastIndexOf('/')))
             .collect(Collectors.toSet()),
         BackupUtil.BACKUP_KEYS_JSON,

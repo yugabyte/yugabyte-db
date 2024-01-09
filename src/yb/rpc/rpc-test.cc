@@ -369,7 +369,7 @@ TEST_F(TestRpc, TestConnectionKeepalive) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_connection_timeout_ms) =
       MonoDelta(kGcTimeout).ToMilliseconds() / 2;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_rpc_keepalive) = true;
-  ASSERT_OK(EnableVerboseLoggingForModule("yb_rpc", 5));
+  google::SetVLOGLevel("yb_rpc", 5);
   // Set up server.
   HostPort server_addr;
   StartTestServer(&server_addr, options);

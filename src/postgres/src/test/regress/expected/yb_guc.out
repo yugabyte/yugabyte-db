@@ -42,11 +42,18 @@ show yb_fetch_size_limit;
  2MB
 (1 row)
 
-set yb_fetch_size_limit = 1234;
+set yb_fetch_size_limit = 789;
 show yb_fetch_size_limit;
  yb_fetch_size_limit
 ---------------------
- 1234kB
+ 789B
+(1 row)
+
+set yb_fetch_size_limit = 2048;
+show yb_fetch_size_limit;
+ yb_fetch_size_limit
+---------------------
+ 2kB
 (1 row)
 
 set yb_fetch_size_limit = -1;  -- ERROR since yb_fetch_size_limit must be non-negative.

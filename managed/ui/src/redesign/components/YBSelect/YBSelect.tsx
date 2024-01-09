@@ -1,5 +1,6 @@
 import { FC, ReactNode } from 'react';
 import { TextField, StandardTextFieldProps } from '@material-ui/core';
+import { ReactComponent as CaretDownIcon } from '../../assets/caret-down.svg';
 
 export type YBSelectProps = {
   tooltip?: ReactNode;
@@ -21,7 +22,7 @@ export const YBSelect: FC<YBSelectProps> = ({ renderValue, ...props }) => (
     {...props}
     select
     SelectProps={{
-      IconComponent: undefined,
+      IconComponent: CaretDownIcon,
       displayEmpty: true,
       renderValue,
       MenuProps: {

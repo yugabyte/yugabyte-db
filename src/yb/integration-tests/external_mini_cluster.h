@@ -200,6 +200,8 @@ struct ExternalMiniClusterOptions {
   void AdjustMasterRpcPorts();
 };
 
+YB_STRONGLY_TYPED_BOOL(RequireExitCode0);
+
 // A mini-cluster made up of subprocesses running each of the daemons separately. This is useful for
 // black-box or grey-box failure testing purposes -- it provides the ability to forcibly kill or
 // stop particular cluster participants, which isn't feasible in the normal MiniCluster.  On the
@@ -243,7 +245,9 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   // Shuts down the whole cluster or part of it, depending on the selected 'mode'.  Currently, this
   // uses SIGKILL on each daemon for a non-graceful shutdown.
-  void Shutdown(NodeSelectionMode mode = ALL);
+  void Shutdown(
+      NodeSelectionMode mode = ALL,
+      RequireExitCode0 require_exit_code_0 = RequireExitCode0::kFalse);
 
   // Waits for the master to finishing running initdb.
   Status WaitForInitDb();
@@ -324,6 +328,11 @@ class ExternalMiniCluster : public MiniClusterBase {
 
   // This API waits for the commit indices of all the master peers to reach the target index.
   Status WaitForMastersToCommitUpTo(int64_t target_index);
+
+  // This API waits for the commit indices of the given master peers to reach the target index.
+  Status WaitForMastersToCommitUpTo(
+      int64_t target_index, const std::vector<ExternalMaster*>& masters,
+      MonoDelta timeout = MonoDelta());
 
   Status WaitForAllIntentsApplied(const MonoDelta& timeout);
 
@@ -541,10 +550,11 @@ class ExternalMiniCluster : public MiniClusterBase {
   Status CheckPortAndMasterSizes() const;
 
   // Return the list of opid's for all master's in this cluster.
-  Status GetLastOpIdForEachMasterPeer(
+  Status GetLastOpIdForMasterPeers(
       const MonoDelta& timeout,
       consensus::OpIdType opid_type,
-      std::vector<OpIdPB>* op_ids);
+      std::vector<OpIdPB>* op_ids,
+      const std::vector<ExternalMaster*>& masters);
 
   // Ensure that the leader server is allowed to process a config change (by having at least one
   // commit in the current term as leader).
@@ -626,11 +636,13 @@ class ExternalDaemon : public RefCountedThreadSafe<ExternalDaemon> {
 
   // Return true if the process is still running.  This may return false if the process crashed,
   // even if we didn't explicitly call Shutdown().
-  bool IsProcessAlive() const;
+  bool IsProcessAlive(RequireExitCode0 require_exit_code_0 = RequireExitCode0::kFalse) const;
 
   bool IsProcessPaused() const;
 
-  virtual void Shutdown(SafeShutdown safe_shutdown = SafeShutdown::kFalse);
+  virtual void Shutdown(
+      SafeShutdown safe_shutdown = SafeShutdown::kFalse,
+      RequireExitCode0 require_exit_code_0 = RequireExitCode0::kFalse);
 
   std::vector<std::string> GetDataDirs() const { return data_dirs_; }
 

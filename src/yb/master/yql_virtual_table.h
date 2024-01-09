@@ -121,6 +121,8 @@ class YQLVirtualTable : public docdb::YQLStorageIf {
     return Status::OK();
   }
 
+  std::string ToString() const override { return Format("YQLVirtualTable $0", table_name_); }
+
  protected:
   // Finds the given column name in the schema and updates the specified column in the given row
   // with the provided value.

@@ -5,7 +5,7 @@ description: Apache Flink
 menu:
   preview_integrations:
     identifier: apache-flink
-    parent: integrations
+    parent: data-integration
     weight: 571
 type: docs
 ---

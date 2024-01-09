@@ -5,7 +5,8 @@ import com.fasterxml.jackson.annotation.JsonFormat;
 import com.google.common.base.Strings;
 import com.google.common.collect.ImmutableSet;
 import com.yugabyte.yw.models.common.YBADeprecated;
-
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import io.swagger.converter.ModelConverter;
 import io.swagger.converter.ModelConverterContext;
 import io.swagger.converter.ModelConverters;
@@ -18,7 +19,6 @@ import java.util.Arrays;
 import java.util.Iterator;
 import java.util.NoSuchElementException;
 import java.util.Optional;
-
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -79,8 +79,12 @@ public class PlatformModelConverter implements ModelConverter {
     if (annotations == null) {
       return false;
     }
-    return Arrays.stream(annotations).anyMatch(a ->
-        a.annotationType().equals(YBADeprecated.class));
+    return Arrays.stream(annotations)
+        .anyMatch(
+            a ->
+                a.annotationType().equals(YBADeprecated.class)
+                    || (a.annotationType().equals(YbaApi.class)
+                        && ((YbaApi) a).visibility() == YbaApiVisibility.DEPRECATED));
   }
 
   private void checkDateTime(Property property, Annotation[] annotations) {
@@ -90,15 +94,17 @@ public class PlatformModelConverter implements ModelConverter {
     }
     if (property instanceof DateTimeProperty) {
       DateTimeProperty dtp = (DateTimeProperty) property;
-      Optional<Annotation> jsonFormatAnnotationOpt = Arrays.stream(annotations)
-          .filter(a -> a.annotationType().equals(JsonFormat.class))
-          .findFirst();
-      String errMsg = String.format("A DateTime property should have annotation " +
-          "@JsonFormat(shape = JsonFormat.Shape.STRING, pattern = \"yyyy-MM-dd'T'HH:mm:ss'Z'\")");
+      Optional<Annotation> jsonFormatAnnotationOpt =
+          Arrays.stream(annotations)
+              .filter(a -> a.annotationType().equals(JsonFormat.class))
+              .findFirst();
+      String errMsg =
+          String.format(
+              "A DateTime property should have annotation @JsonFormat(shape ="
+                  + " JsonFormat.Shape.STRING, pattern = \"yyyy-MM-dd'T'HH:mm:ss'Z'\")");
       try {
         JsonFormat j = (JsonFormat) jsonFormatAnnotationOpt.get();
-        if (Strings.isNullOrEmpty(j.pattern()) ||
-            !j.pattern().equals("yyyy-MM-dd'T'HH:mm:ss'Z'")) {
+        if (Strings.isNullOrEmpty(j.pattern()) || !j.pattern().equals("yyyy-MM-dd'T'HH:mm:ss'Z'")) {
           throw new RuntimeException(errMsg);
         }
       } catch (NoSuchElementException e) {
@@ -120,21 +126,28 @@ public class PlatformModelConverter implements ModelConverter {
     return SKIPPED_PACKAGES.stream().anyMatch(typeName::contains);
   }
 
-  private Optional<YBADeprecated> maybeGetYBADeprecated(Annotation[] annotations) {
-    return Arrays.stream(annotations)
-        .filter(annotation -> annotation.annotationType().equals(YBADeprecated.class))
-        .map(annotation -> (YBADeprecated) annotation)
-        .findFirst();
-  }
-
   // Returns true when the given list contains at least one YBADeprecated annotation that has its
   // sinceDate falling after the condition set in excludeYbaDeprecatedOption, or its sinceVersion
   // greater than the version set in excludeYbaDeprecatedOption.
   private boolean canSkipDeprecated(Annotation[] annotations) {
-    Optional<YBADeprecated> ann = maybeGetYBADeprecated(annotations);
-    if (ann.isPresent()) {
-      YBADeprecated ybaDeprecatedAnnotation = ann.get();
+    Optional<YBADeprecated> ybaDeprecatedAnn =
+        Arrays.stream(annotations)
+            .filter(annotation -> annotation.annotationType().equals(YBADeprecated.class))
+            .map(annotation -> (YBADeprecated) annotation)
+            .findFirst();
+    if (ybaDeprecatedAnn.isPresent()) {
+      YBADeprecated ybaDeprecatedAnnotation = ybaDeprecatedAnn.get();
       return deprecationProcessor.shouldExcludeDeprecated(ybaDeprecatedAnnotation);
+    }
+    Optional<YbaApi> ybaApiAnn =
+        Arrays.stream(annotations)
+            .filter(annotation -> annotation.annotationType().equals(YbaApi.class))
+            .map(annotation -> (YbaApi) annotation)
+            .findFirst();
+    if (ybaApiAnn.isPresent() && ybaApiAnn.get().visibility() == YbaApiVisibility.DEPRECATED) {
+      // TODO: Update deprecationProcessor to handle sinceDate from YbaApi
+      // Until then consider as "deprecate all"
+      return deprecationProcessor.shouldExcludeDeprecated(null);
     }
     return false;
   }

@@ -136,7 +136,7 @@ export const GFlagsField = ({
           {t('universeForm.gFlags.addGflags')}
         </>
       ),
-      className: 'btn btn-orange mr-10',
+      className: 'btn btn-orange mr-10 btn-add-gflag',
       bsStyle: 'danger'
     },
     {
@@ -147,7 +147,8 @@ export const GFlagsField = ({
           {t('universeForm.gFlags.addJson')}
         </>
       ),
-      className: 'btn btn-default'
+      className: 'btn btn-orange mr-10',
+      bsStyle: 'danger'
     }
   ];
   //server list - TO DRY THE CODE

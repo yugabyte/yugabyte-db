@@ -123,13 +123,18 @@ public class UsersController extends AuthenticatedController {
     @RequiredPermissionOnResource(
         requiredPermission =
             @PermissionAttribute(resourceType = ResourceType.USER, action = Action.READ),
-        resourceLocation = @Resource(path = Util.USERS, sourceType = SourceType.ENDPOINT))
+        resourceLocation = @Resource(path = Util.USERS, sourceType = SourceType.ENDPOINT),
+        checkOnlyPermission = true)
   })
   public Result list(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
+    UserWithFeatures u = RequestContext.get(TokenAuthenticator.USER);
+    Set<UUID> resourceUUIDs =
+        roleBindingUtil.getResourceUuids(u.getUser().getUuid(), ResourceType.USER, Action.READ);
     List<Users> users = Users.getAll(customerUUID);
     List<UserWithFeatures> userWithFeaturesList =
         users.stream()
+            .filter(user -> resourceUUIDs.contains(user.getUuid()))
             .map(user -> userService.getUserWithFeatures(customer, user))
             .collect(Collectors.toList());
     return PlatformResults.withData(userWithFeaturesList);
@@ -228,6 +233,10 @@ public class UsersController extends AuthenticatedController {
       // Check the role and resource definitions list field. New RBAC APIs use case. To be
       // standardized.
       else if (formData.getRole() == null && formData.getRoleResourceDefinitions() != null) {
+        // Validate the roles and resource group definitions given.
+        roleBindingUtil.validateRoles(customerUUID, formData.getRoleResourceDefinitions());
+        roleBindingUtil.validateResourceGroups(customerUUID, formData.getRoleResourceDefinitions());
+
         // Create the user.
         user =
             Users.create(
@@ -236,6 +245,10 @@ public class UsersController extends AuthenticatedController {
                 Users.Role.ConnectOnly,
                 customerUUID,
                 false);
+
+        // Populate all the system default resource groups for all system defined roles.
+        roleBindingUtil.populateSystemRoleResourceGroups(
+            customerUUID, user.getUuid(), formData.getRoleResourceDefinitions());
         // Add all the role bindings for the user.
         List<RoleBinding> createdRoleBindings =
             roleBindingUtil.setUserRoleBindings(

@@ -68,7 +68,8 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
       } else {
         universe = lockUniverseForUpdate(-1 /* expectedUniverseVersion */);
       }
-      kubernetesStatus.createYBUniverseEventStatus(universe, getName(), getUserTaskUUID());
+      kubernetesStatus.createYBUniverseEventStatus(
+          universe, params().getKubernetesResourceDetails(), getName(), getUserTaskUUID());
       // Delete xCluster configs involving this universe and put the locked universes to
       // lockedUniversesUuidList.
       createDeleteXClusterConfigSubtasksAndLockOtherUniverses();
@@ -203,9 +204,15 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
 
       // Run all the tasks.
       getRunnableTask().runSubTasks();
-      kubernetesStatus.updateYBUniverseStatus(getUniverse(), getName(), getUserTaskUUID(), null);
+      kubernetesStatus.updateYBUniverseStatus(
+          getUniverse(),
+          params().getKubernetesResourceDetails(),
+          getName(),
+          getUserTaskUUID(),
+          null);
     } catch (Throwable t) {
-      kubernetesStatus.updateYBUniverseStatus(getUniverse(), getName(), getUserTaskUUID(), t);
+      kubernetesStatus.updateYBUniverseStatus(
+          getUniverse(), params().getKubernetesResourceDetails(), getName(), getUserTaskUUID(), t);
       // If for any reason destroy fails we would just unlock the universe for update
       try {
         unlockUniverseForUpdate();
@@ -247,7 +254,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
           KubernetesUtil.getKubernetesNamespace(
               nodePrefix, az, config, newNamingStyle, isReadOnlyCluster);
     }
-    params.setUniverseUUID(taskParams().getUniverseUUID());
+    params.setUniverseUUID(params().getUniverseUUID());
     KubernetesCommandExecutor task = createTask(KubernetesCommandExecutor.class);
     task.initialize(params);
     return task;

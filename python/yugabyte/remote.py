@@ -4,14 +4,15 @@ Copyright (c) YugaByte, Inc.
 This module provides utility and helper functions to work with a remote server through SSH.
 """
 
-import sys
+import argparse
 import json
+import logging
 import os
+import re
 import shlex
 import subprocess
+import sys
 import time
-import logging
-import argparse
 
 from typing import Sequence, Union, Tuple, List, Set, Optional, Dict, Any
 
@@ -19,8 +20,11 @@ from yugabyte.common_util import shlex_join
 
 REMOTE_BUILD_HOST_ENV_VAR = 'YB_REMOTE_BUILD_HOST'
 DEFAULT_UPSTREAM = 'origin'
-DEFAULT_BASE_BRANCH = '{0}/master'.format(DEFAULT_UPSTREAM)
 CONFIG_FILE_PATH = '~/.yb_remote_build.json'
+
+# Allow to prefix the branch name with e.g. "2.18_" so we can auto-detect the upstream branch to
+# use.
+LOCAL_BRANCH_PREFIX_RE = re.compile(r'^([0-9](?:[.][0-9]+)+)_.*')
 
 
 def check_output(args: List[str]) -> str:
@@ -169,12 +173,12 @@ def load_profile(
         args: argparse.Namespace,
         profile_name: Optional[str]) -> None:
     """
-    Loads the profile from config file if it's defined, initializing given arguments
-    in the CLI args map with the ones from profile - if they were omitted in CLI call.
+    Loads the profile from config file if it is defined, initializing some arguments in the command
+    line args map with the ones from profile, if they were not specified on the command line.
     Also appends 'extra_args' from profile to 'build_args' in args map.
+
     :param args: parsed CLI arguments map to init missing values with the loaded args
     :param profile_name: name of the profile to load
-    :return:
     """
     conf: Optional[Dict[str, Any]] = read_config_file()
 
@@ -198,6 +202,7 @@ def load_profile(
                 logging.info("Using profile %s based on the host name", profile_name_to_try)
                 profile = profiles[profile_name_to_try]
                 break
+
     if profile is None:
         raise RuntimeError("Unknown profile '%s'" % profile_name)
 
@@ -240,8 +245,10 @@ def load_profile(
         if getattr(args, arg_name) is None:
             setattr(args, arg_name, profile.get(arg_name))
     if args.build_args is None:
-        args.build_args = []
-    args.build_args += profile.get('extra_args', [])
+        args.build_args = ''
+    extra_args = shlex_join(profile.get('extra_args', []))
+    if extra_args:
+        args.build_args += ' ' + extra_args
 
 
 def sync_changes(
@@ -274,6 +281,8 @@ def sync_changes(
 
     can_clone_and_retry = True
     remote_commit = None
+
+    # This will retry on exception at most once, after trying to clone the repository.
     while True:
         try:
             remote_commit = fetch_remote_commit(
@@ -284,7 +293,9 @@ def sync_changes(
         except subprocess.CalledProcessError as called_process_error:
             if not can_clone_and_retry:
                 raise called_process_error
-            logging.exception(called_process_error)
+            logging.warning(
+                "Failed to determine head commit in the remote repository. It is posisble that "
+                "the remote repository directory does not exist. Trying to clone it.")
 
         can_clone_and_retry = False
         logging.info(
@@ -442,7 +453,9 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument('--remote-path', type=str, default=None,
                         help='path used for build')
     parser.add_argument('--branch', type=str, default=None,
-                        help='base branch for build')
+                        help='Base branch for build. If not specified, we will attempt to '
+                             'auto-detect the branch from the local branch name based on the '
+                             'x.y.z_... pattern')
     parser.add_argument('--upstream', type=str, default=None,
                         help='base upstream for remote host to fetch')
     parser.add_argument('--build-type', type=str, default=None,
@@ -452,8 +465,7 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument('--wait-for-ssh', action='store_true',
                         help='Wait for the remote server to be ssh-able')
     parser.add_argument('--profile',
-                        help='Use a "profile" specified in the {} file'.format(
-                            CONFIG_FILE_PATH))
+                        help='Use a "profile" specified in the {} file'.format(CONFIG_FILE_PATH))
     parser.add_argument('--extra-ssh-args',
                         help="Arguments (separated by whitespace) to add to the SSH command line")
     parser.add_argument('--verbose',
@@ -465,7 +477,23 @@ def apply_default_arg_values(args: argparse.Namespace) -> None:
     args.host = apply_default_host_value(args.host)
 
     if args.branch is None:
-        args.branch = DEFAULT_BASE_BRANCH
+        local_branch_name = subprocess.check_output(
+            shlex.split('git rev-parse --abbrev-ref HEAD')).decode('utf-8')
+        branch_name_match = LOCAL_BRANCH_PREFIX_RE.match(local_branch_name)
+        if branch_name_match:
+            local_branch_name_prefix = branch_name_match.group(1)
+            candidate_branch = 'origin/' + local_branch_name_prefix
+            if subprocess.call(['git', 'show-ref', candidate_branch]) == 0:
+                logging.info("Auto-detected upstream branch %s from local branch name %s",
+                             candidate_branch, local_branch_name)
+                args.branch = candidate_branch
+            else:
+                logging.warning(
+                    "Could not use the local branch name (%s) prefix %s as the upstream branch "
+                    "name, the corresponding upstream branch does not exist" % (
+                        local_branch_name, local_branch_name_prefix))
+        if args.branch is None:
+            args.branch = 'origin/master'
 
     if args.remote_path is None:
         args.remote_path = get_default_remote_path()

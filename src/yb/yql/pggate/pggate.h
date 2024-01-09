@@ -594,7 +594,7 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Transaction control.
-  Status BeginTransaction();
+  Status BeginTransaction(int64_t start_time);
   Status RecreateTransaction();
   Status RestartTransaction();
   Status ResetTransactionReadPoint();
@@ -687,6 +687,10 @@ class PgApiImpl {
   Result<bool> CheckIfPitrActive();
 
   Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
+
+  Result<boost::container::small_vector<RefCntSlice, 2>> GetTableKeyRanges(
+      const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
+      uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length);
 
   MemTracker &GetMemTracker() { return *mem_tracker_; }
 

@@ -3,9 +3,12 @@
 package com.yugabyte.yw.common;
 
 import com.fasterxml.jackson.annotation.JsonAlias;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
 import com.fasterxml.jackson.annotation.JsonInclude;
 import com.fasterxml.jackson.annotation.JsonProperty;
+import com.fasterxml.jackson.databind.PropertyNamingStrategy;
+import com.fasterxml.jackson.databind.annotation.JsonNaming;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
@@ -20,6 +23,8 @@ import lombok.Builder;
 import lombok.EqualsAndHashCode;
 import lombok.NoArgsConstructor;
 import lombok.extern.jackson.Jacksonized;
+import org.yb.CommonNet.CloudInfoPB;
+import org.yb.master.CatalogEntityInfo.PlacementBlockPB;
 
 public class TableSpaceStructures {
 
@@ -63,6 +68,7 @@ public class TableSpaceStructures {
 
   @EqualsAndHashCode
   @NoArgsConstructor
+  @JsonNaming(PropertyNamingStrategy.SnakeCaseStrategy.class)
   public static class PlacementBlock {
     @ApiModelProperty(value = "Cloud")
     @NotNull
@@ -80,17 +86,28 @@ public class TableSpaceStructures {
     public String zone;
 
     @ApiModelProperty(value = "Minimum replicas")
-    @JsonProperty("min_num_replicas")
     @JsonAlias("minNumReplicas")
     @Min(1)
     public int minNumReplicas;
 
     @ApiModelProperty(value = "Leader preference")
     @JsonInclude(value = JsonInclude.Include.NON_NULL)
-    @JsonProperty("leader_preference")
     @JsonAlias("leaderPreference")
     @Min(1)
     public Integer leaderPreference;
+
+    @JsonIgnore
+    public PlacementBlockPB getPlacementBlockPB() {
+      return PlacementBlockPB.newBuilder()
+          .setCloudInfo(
+              CloudInfoPB.newBuilder()
+                  .setPlacementCloud(cloud)
+                  .setPlacementRegion(region)
+                  .setPlacementZone(zone)
+                  .build())
+          .setMinNumReplicas(minNumReplicas)
+          .build();
+    }
   }
 
   public static class TableSpaceQueryResponse {

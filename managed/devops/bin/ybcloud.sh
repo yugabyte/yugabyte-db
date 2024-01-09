@@ -20,7 +20,7 @@ if [ "$is_mac" == false ] && \
    [[ -z ${YB_USE_VIRTUAL_ENV:-} ]] && \
    [ -d "$yb_devops_home/pex/pexEnv" ]; then
     activate_pex
-    $PYTHON_EXECUTABLE $PEX_PATH $SCRIPT_PATH "$@"
+    $PYTHON_EXECUTABLE $SCRIPT_PATH "$@"
 # The virtual environment is used in all other cases.
 else
     activate_virtualenv

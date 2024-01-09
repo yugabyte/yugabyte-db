@@ -27,8 +27,11 @@ public class UserTaskDetails {
     // newly deployed machines, etc.
     Provisioning,
 
-    // Running software upgrade on YugaByte clusters.
+    // Running software upgrade on Yugabyte clusters.
     UpgradingSoftware,
+
+    // Finalizing Yugabyte db software upgrade on Yugabyte clusters.
+    FinalizingUpgrade,
 
     // Download YB software locally but not install it.
     DownloadingSoftware,
@@ -40,6 +43,12 @@ public class UserTaskDetails {
     // Start the masters to create a new universe configuration, wait for leader elections, set
     // placement info, wait for the tservers to start up, etc.
     ConfigureUniverse,
+
+    // Querying the upstream LDAP server
+    QueryLdapServer,
+
+    // Db-Ldap Sync
+    DbLdapSync,
 
     // Increasing disk size
     ResizingDisk,
@@ -231,7 +240,10 @@ public class UserTaskDetails {
     InstallingThirdPartySoftware,
 
     // Promote Auto Flags
-    PromoteAutoFlags
+    PromoteAutoFlags,
+
+    // Validate configurations.
+    ValidateConfigurations
   }
 
   public List<SubTaskDetails> taskDetails;
@@ -261,6 +273,10 @@ public class UserTaskDetails {
         title = "Upgrading software";
         description = "Upgrading YugaByte software on existing clusters.";
         break;
+      case FinalizingUpgrade:
+        title = "Finalizing upgrade";
+        description = "Finalizing Yugabyte DB Software version upgrade on universe";
+        break;
       case InstallingSoftware:
         title = "Installing software";
         description =
@@ -272,6 +288,16 @@ public class UserTaskDetails {
         description =
             "Creating and populating the universe config, waiting for the various"
                 + " machines to discover one another.";
+        break;
+      case QueryLdapServer:
+        title = "Querying LDAP Server";
+        description = "Querying the LDAP Server for user-group mapping";
+        break;
+      case DbLdapSync:
+        title = "Syncing DB roles with LDAP groups";
+        description =
+            "Performing a manual sync of user groups and roles between the Universe DB nodes and"
+                + " the upstream LDAP Server.";
         break;
       case ResizingDisk:
         title = "Increasing disk size";
@@ -537,6 +563,10 @@ public class UserTaskDetails {
       case PromoteAutoFlags:
         title = "Promote Auto flags";
         description = "Promote Auto flags for a universe";
+        break;
+      case ValidateConfigurations:
+        title = "Validating configurations";
+        description = "Validating configurations before proceeding";
         break;
       default:
         LOG.warn("UserTaskDetails: Missing SubTaskDetails for : {}", subTaskGroupType);

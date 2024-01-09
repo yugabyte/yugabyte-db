@@ -569,6 +569,35 @@ TEST_F(MasterPathHandlersItest, TestTablesJsonEndpoint) {
   EXPECT_TRUE(disk_size_obj.HasMember("has_missing_size"));
 }
 
+void verifyMemTrackerObject(const rapidjson::Value* json_obj) {
+  EXPECT_TRUE(json_obj->HasMember("id"));
+  EXPECT_TRUE(json_obj->HasMember("limit_bytes"));
+  EXPECT_TRUE(json_obj->HasMember("current_consumption_bytes"));
+  EXPECT_TRUE(json_obj->HasMember("peak_consumption_bytes"));
+  EXPECT_TRUE(json_obj->HasMember("children"));
+  EXPECT_EQ(rapidjson::kArrayType, (*json_obj)["children"].GetType());
+}
+
+TEST_F(MasterPathHandlersItest, TestMemTrackersJsonEndpoint) {
+  auto table = CreateTestTable();
+
+  faststring result;
+  ASSERT_OK(TestUrlWaitForOK("/api/v1/mem-trackers", &result, 30s /* timeout */));
+
+  JsonReader r(result.ToString());
+  ASSERT_OK(r.Init());
+  const rapidjson::Value* json_obj = nullptr;
+  EXPECT_OK(r.ExtractObject(r.root(), NULL, &json_obj));
+  EXPECT_EQ(rapidjson::kObjectType, CHECK_NOTNULL(json_obj)->GetType());
+
+  // Verify that fields are correct
+  verifyMemTrackerObject(json_obj);
+  EXPECT_GE((*json_obj)["children"].Size(), 1);
+
+  // Check that the first child also has the correct fields
+  verifyMemTrackerObject(&(*json_obj)["children"][0]);
+}
+
 class MultiMasterPathHandlersItest : public MasterPathHandlersItest {
  public:
   int num_masters() const override {
@@ -610,7 +639,7 @@ TEST_F_EX(MasterPathHandlersItest, ShowDeletedTablets, TabletSplitMasterPathHand
     auto insert = table.NewInsertOp();
     auto req = insert->mutable_request();
     QLAddInt32HashValue(req, i);
-    ASSERT_OK(session->ApplyAndFlushSync(insert));
+    ASSERT_OK(session->TEST_ApplyAndFlush(insert));
   }
 
   auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();

@@ -632,6 +632,15 @@ YBCanEnableDBCatalogVersionMode()
 	return (YbGetNumberOfDatabases() > 1);
 }
 
+/*
+ * Used to determine whether we should preload certain catalog tables.
+ */
+bool YbNeedAdditionalCatalogTables() 
+{
+	return *YBCGetGFlags()->ysql_catalog_preload_additional_tables ||
+			IS_NON_EMPTY_STR_FLAG(YBCGetGFlags()->ysql_catalog_preload_additional_table_list);
+}
+
 void
 YBReportFeatureUnsupported(const char *msg)
 {
@@ -3699,8 +3708,17 @@ aggregateStats(YbInstrumentation *instr, const YBCPgExecStats *exec_stats)
 	instr->write_flushes.count += exec_stats->num_flushes;
 	instr->write_flushes.wait_time += exec_stats->flush_wait;
 
-	for (int i = 0; i < YB_ANALYZE_METRIC_COUNT; ++i) {
-		instr->storage_metrics[i] += exec_stats->storage_metrics[i];
+	for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i) {
+		instr->storage_gauge_metrics[i] += exec_stats->storage_gauge_metrics[i];
+	}
+	for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i) {
+		instr->storage_counter_metrics[i] += exec_stats->storage_counter_metrics[i];
+	}
+	for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i) {
+		YbPgEventMetric* agg = &instr->storage_event_metrics[i];
+		const YBCPgExecEventMetric* val = &exec_stats->storage_event_metrics[i];
+		agg->sum += val->sum;
+		agg->count += val->count;
 	}
 }
 
@@ -3726,8 +3744,20 @@ calculateExecStatsDiff(const YbSessionStats *stats, YBCPgExecStats *result)
 	result->num_flushes = current->num_flushes - old->num_flushes;
 	result->flush_wait = current->flush_wait - old->flush_wait;
 
-	for (int i = 0; i < YB_ANALYZE_METRIC_COUNT; ++i) {
-		result->storage_metrics[i] = current->storage_metrics[i] - old->storage_metrics[i];
+	for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i) {
+		result->storage_gauge_metrics[i] =
+				current->storage_gauge_metrics[i] - old->storage_gauge_metrics[i];
+	}
+	for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i) {
+		result->storage_counter_metrics[i] =
+				current->storage_counter_metrics[i] - old->storage_counter_metrics[i];
+	}
+	for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i) {
+		YBCPgExecEventMetric* result_metric = &result->storage_event_metrics[i];
+		const YBCPgExecEventMetric* current_metric = &current->storage_event_metrics[i];
+		const YBCPgExecEventMetric* old_metric = &old->storage_event_metrics[i];
+		result_metric->sum = current_metric->sum - old_metric->sum;
+		result_metric->count = current_metric->count - old_metric->count;
 	}
 }
 
@@ -3747,8 +3777,18 @@ refreshExecStats(YbSessionStats *stats, bool include_catalog_stats)
 		old->catalog = current->catalog;
 
 	if (yb_session_stats.current_state.metrics_capture) {
-		for (int i = 0; i < YB_ANALYZE_METRIC_COUNT; ++i) {
-			old->storage_metrics[i] = current->storage_metrics[i];
+		for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i) {
+			old->storage_gauge_metrics[i] = current->storage_gauge_metrics[i];
+		}
+		for (int i = 0; i < YB_STORAGE_COUNTER_COUNT; ++i) {
+			old->storage_counter_metrics[i] = current->storage_counter_metrics[i];
+		}
+		for (int i = 0; i < YB_STORAGE_EVENT_COUNT; ++i) {
+			YBCPgExecEventMetric* old_metric = &old->storage_event_metrics[i];
+			const YBCPgExecEventMetric* current_metric =
+					&current->storage_event_metrics[i];
+			old_metric->sum = current_metric->sum;
+			old_metric->count = current_metric->count;
 		}
 	}
 }
@@ -3864,8 +3904,10 @@ void YBSetRowLockPolicy(int *docdb_wait_policy, LockWaitPolicy pg_wait_policy)
 		 * "Fail-on-Conflict" and the reason why LockWaitError is not mapped to no-wait
 		 * semantics but to Fail-on-Conflict semantics).
 		 */
+		elog(DEBUG1, "Falling back to LockWaitError since wait-queues are not enabled");
 		*docdb_wait_policy = LockWaitError;
 	}
+	elog(DEBUG2, "docdb_wait_policy=%d pg_wait_policy=%d", *docdb_wait_policy, pg_wait_policy);
 }
 
 uint32_t YbGetNumberOfDatabases()
@@ -3897,19 +3939,24 @@ OptSplit *
 YbGetSplitOptions(Relation rel)
 {
 	OptSplit *split_options = makeNode(OptSplit);
-	split_options->split_type = NUM_TABLETS;
-	split_options->num_tablets = rel->yb_table_properties->num_tablets;
 	/*
-	 * Copy split points if we have a live range key.
-	 * (RelationGetPrimaryKeyIndex returns InvalidOid if pkey is currently
-	 * being dropped).
+	 * The split type is NUM_TABLETS when the relation has hash key columns
+	 * OR if the relation's range key is currently being dropped. Otherwise,
+	 * the split type is SPLIT_POINTS.
 	 */
-	if (rel->yb_table_properties->num_hash_key_columns == 0
-		&& rel->yb_table_properties->num_tablets > 1
-		&& !(rel->rd_rel->relkind == RELKIND_RELATION
-		&& RelationGetPrimaryKeyIndex(rel) == InvalidOid))
+	split_options->split_type =
+		rel->yb_table_properties->num_hash_key_columns > 0 ||
+		(rel->rd_rel->relkind == RELKIND_RELATION &&
+		 RelationGetPrimaryKeyIndex(rel) == InvalidOid) ? NUM_TABLETS :
+		SPLIT_POINTS;
+	split_options->num_tablets = rel->yb_table_properties->num_tablets;
+
+	/*
+	 * Copy split points for range keys with more than one tablet.
+	 */
+	if (split_options->split_type == SPLIT_POINTS
+		&& rel->yb_table_properties->num_tablets > 1)
 	{
-		split_options->split_type = SPLIT_POINTS;
 		YBCPgTableDesc yb_desc = NULL;
 		HandleYBStatus(YBCPgGetTableDesc(MyDatabaseId,
 						RelationGetRelid(rel), &yb_desc));

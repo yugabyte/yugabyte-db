@@ -53,6 +53,7 @@ class CallHome {
 
   void DoCallHome();
   void ScheduleCallHome(int delay_seconds = 10);
+  void Shutdown();
 
  protected:
   template <class ServerType, class CallHomeType>
@@ -84,6 +85,7 @@ class CallHome {
   std::unique_ptr<yb::rpc::Scheduler> scheduler_;
   EasyCurl curl_;
   std::vector<std::unique_ptr<Collector>> collectors_;
+  bool is_shutdown_ = false;
 };
 
 std::string GetCurrentUser();

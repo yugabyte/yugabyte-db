@@ -479,6 +479,7 @@ run_cxx_build() {
       cmake_binary=$( which cmake )
     fi
     log "Using cmake binary: $cmake_binary"
+    find "${BUILD_ROOT}" -name "CMake*.log" -exec rm -f {} \;
     log "Running cmake in $PWD"
     capture_sec_timestamp "cmake_start"
     local cmake_stdout_path=${BUILD_ROOT}/cmake_stdout.txt
@@ -1352,9 +1353,6 @@ while [[ $# -gt 0 ]]; do
     ;;
     --no-latest-symlink)
       export YB_DISABLE_LATEST_SYMLINK=1
-    ;;
-    --static-analyzer)
-      export YB_ENABLE_STATIC_ANALYZER=1
     ;;
     --download-thirdparty|--dltp)
       export YB_DOWNLOAD_THIRDPARTY=1

@@ -105,8 +105,10 @@ struct AutoFlagDescription {
 const AutoFlagDescription* GetAutoFlagDescription(const std::string& flag_name);
 std::vector<const AutoFlagDescription*> GetAllAutoFlagsDescription();
 
-Status PromoteAutoFlag(const std::string& flag_name);
-Status PromoteAllAutoFlags();
+void PromoteAutoFlag(const AutoFlagDescription& flag_desc);
+void PromoteAllAutoFlags();
+
+void DemoteAutoFlag(const AutoFlagDescription& flag_desc);
 
 bool IsFlagPromoted(
     const gflags::CommandLineFlagInfo& flag, const AutoFlagDescription& auto_flag_desc);

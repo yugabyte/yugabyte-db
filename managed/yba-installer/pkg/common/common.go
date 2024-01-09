@@ -107,13 +107,14 @@ func createUpgradeDirs() {
 
 // Copies over necessary files for all services from yba_installer_full to the GetSoftwareRoot()
 func copyBits(vers string) {
-	yugabundleBinary := "yugabundle-" + GetVersion() + "-centos-x86_64.tar.gz"
+	yugabundleBinary := "yugabundle-" + vers + "-centos-x86_64.tar.gz"
 	neededFiles := []string{GoBinaryName, VersionMetadataJSON, yugabundleBinary,
 		GetJavaPackagePath(), GetPostgresPackagePath()}
 
 	for _, file := range neededFiles {
-		if err := Copy(file, GetInstallerSoftwareDir(), false, true); err != nil {
-			log.Fatal("failed to copy " + file + ": " + err.Error())
+		fp := AbsoluteBundlePath(file)
+		if err := Copy(fp, GetInstallerSoftwareDir(), false, true); err != nil {
+			log.Fatal("failed to copy " + fp + ": " + err.Error())
 		}
 	}
 
@@ -382,6 +383,12 @@ func fixConfigValues() {
 		InitViper()
 	}
 
+	if viper.GetBool("postgres.install.enabled") &&
+		len(viper.GetString("postgres.install.password")) == 0 {
+			log.Info("Generating default password for postgres")
+			SetYamlValue(InputFile(), "postgres.install.password", GenerateRandomStringURLSafe(32))
+			InitViper()
+	}
 }
 
 func generateSelfSignedCerts() (string, string) {
@@ -410,7 +417,8 @@ func generateSelfSignedCerts() (string, string) {
 
 }
 
-func WaitForYBAReady() {
+// WaitForYBAReady waits for a YBA to be running with specified version
+func WaitForYBAReady(version string) {
 	log.Info("Waiting for YBA ready.")
 
 	// Needed to access https URL without x509: certificate signed by unknown authority error
@@ -444,9 +452,9 @@ func WaitForYBAReady() {
 		if err == nil {
 			var result map[string]string
 			json.NewDecoder(resp.Body).Decode(&result)
-			if result["version"] != GetVersion() {
+			if result["version"] != version {
 				log.Fatal(fmt.Sprintf("Running YBA version %s does not match expected version %s",
-					result["version"], GetVersion()))
+					result["version"], version))
 			}
 		} else {
 			log.Fatal(fmt.Sprintf("Error waiting for YBA ready: %s", err.Error()))

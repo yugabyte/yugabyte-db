@@ -45,6 +45,11 @@
 #include "utils/rel.h"
 #include "utils/syscache.h"
 
+/* YB includes. */
+#include "pg_yb_utils.h"
+
+static Datum yb_pg_relation_is_publishable(PG_FUNCTION_ARGS, Oid relid);
+
 static void publication_translate_columns(Relation targetrel, List *columns,
 										  int *natts, AttrNumber **attrs);
 
@@ -85,6 +90,13 @@ check_publication_add_relation(Relation targetrel)
 				 errmsg("cannot add relation \"%s\" to publication",
 						RelationGetRelationName(targetrel)),
 				 errdetail("This operation is not supported for unlogged tables.")));
+
+	if (IsYugaByteEnabled() && !YBRelationHasPrimaryKey(targetrel))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("table \"%s\" cannot be replicated",
+						RelationGetRelationName(targetrel)),
+				 errdetail("Replicating tables without primary key is not yet supported.")));
 }
 
 /*
@@ -232,6 +244,11 @@ pg_relation_is_publishable(PG_FUNCTION_ARGS)
 	Oid			relid = PG_GETARG_OID(0);
 	HeapTuple	tuple;
 	bool		result;
+
+	if (IsYugaByteEnabled())
+	{
+		return yb_pg_relation_is_publishable(fcinfo, relid);
+	}
 
 	tuple = SearchSysCache1(RELOID, ObjectIdGetDatum(relid));
 	if (!HeapTupleIsValid(tuple))
@@ -801,6 +818,19 @@ GetAllTablesPublicationRelations(bool pubviaroot)
 		Form_pg_class relForm = (Form_pg_class) GETSTRUCT(tuple);
 		Oid			relid = relForm->oid;
 
+		if (IsYugaByteEnabled())
+		{
+			Relation	rel;
+
+			rel = table_open(relid, AccessShareLock);
+			if (yb_is_publishable_relation(rel))
+				result = lappend_oid(result, relid);
+			table_close(rel, AccessShareLock);
+
+			/* Skip the below is_publishable_class call. */
+			continue;
+		}
+
 		if (is_publishable_class(relid, relForm) &&
 			!(relForm->relispartition && pubviaroot))
 			result = lappend_oid(result, relid);
@@ -1212,4 +1242,34 @@ pg_get_publication_tables(PG_FUNCTION_ARGS)
 	}
 
 	SRF_RETURN_DONE(funcctx);
+}
+
+static Datum
+yb_pg_relation_is_publishable(PG_FUNCTION_ARGS, Oid relid)
+{
+	Relation	rel;
+	HeapTuple	tuple;
+	bool		result;
+
+	tuple = SearchSysCache1(RELOID, ObjectIdGetDatum(relid));
+	if (!tuple)
+		PG_RETURN_NULL();
+
+	rel = table_open(relid, AccessShareLock);
+	result = yb_is_publishable_relation(rel);
+	table_close(rel, AccessShareLock);
+
+	ReleaseSysCache(tuple);
+	PG_RETURN_BOOL(result);
+}
+
+/*
+ * Similar to is_publishable_relation with additional check for user defined
+ * primary key.
+ */
+bool
+yb_is_publishable_relation(Relation rel)
+{
+	return is_publishable_class(RelationGetRelid(rel), rel->rd_rel) &&
+		   YBRelationHasPrimaryKey(rel);
 }

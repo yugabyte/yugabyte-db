@@ -1008,6 +1008,7 @@ Status RaftGroupMetadata::Flush(OnlyIfDirty only_if_dirty) {
     last_flushed_change_metadata_op_id_ = last_applied_change_metadata_op_id;
   }
   TRACE("Metadata flushed");
+  VLOG_WITH_PREFIX(3) << "RaftGroupMetadata flushed";
 
   return Status::OK();
 }
@@ -1254,17 +1255,13 @@ void RaftGroupMetadata::SetSchemaAndTableName(
   SetTableNameUnlocked(namespace_name, table_name, op_id, table_id);
 }
 
-void RaftGroupMetadata::AddTable(const std::string& table_id,
-                                 const std::string& namespace_name,
-                                 const std::string& table_name,
-                                 const TableType table_type,
-                                 const Schema& schema,
-                                 const IndexMap& index_map,
-                                 const dockv::PartitionSchema& partition_schema,
-                                 const boost::optional<IndexInfo>& index_info,
-                                 const SchemaVersion schema_version,
-                                 const OpId& op_id) {
+void RaftGroupMetadata::AddTable(
+    const std::string& table_id, const std::string& namespace_name, const std::string& table_name,
+    const TableType table_type, const Schema& schema, const IndexMap& index_map,
+    const dockv::PartitionSchema& partition_schema, const boost::optional<IndexInfo>& index_info,
+    const SchemaVersion schema_version, const OpId& op_id) {
   DCHECK(schema.has_column_ids());
+  std::lock_guard lock(data_mutex_);
   Primary primary(table_id == primary_table_id_);
   TableInfoPtr new_table_info = std::make_shared<TableInfo>(log_prefix_,
                                                             primary,
@@ -1284,7 +1281,6 @@ void RaftGroupMetadata::AddTable(const std::string& table_id,
       new_table_info->doc_read_context->SetCotableId(new_table_info->cotable_id);
     }
   }
-  std::lock_guard lock(data_mutex_);
   auto& tables = kv_store_.tables;
   auto[iter, inserted] = tables.emplace(table_id, new_table_info);
   OnChangeMetadataOperationAppliedUnlocked(op_id);
@@ -1676,6 +1672,7 @@ Result<docdb::CompactionSchemaInfo> RaftGroupMetadata::ColocationPacking(
 }
 
 std::string RaftGroupMetadata::GetSubRaftGroupWalDir(const RaftGroupId& raft_group_id) const {
+  std::lock_guard lock(data_mutex_);
   return JoinPathSegments(DirName(wal_dir_), MakeTabletDirName(raft_group_id));
 }
 
@@ -1695,6 +1692,7 @@ Result<RaftGroupMetadataPtr> RaftGroupMetadata::CreateSubtabletMetadata(
   RaftGroupMetadataPtr metadata(new RaftGroupMetadata(fs_manager_, raft_group_id_));
   RETURN_NOT_OK(metadata->LoadFromSuperBlock(superblock, /* local_superblock = */ true));
   metadata->raft_group_id_ = raft_group_id;
+  metadata->log_prefix_ = consensus::MakeTabletLogPrefix(raft_group_id, fs_manager_->uuid());
   metadata->wal_dir_ = GetSubRaftGroupWalDir(raft_group_id);
   metadata->kv_store_.kv_store_id = KvStoreId(raft_group_id);
   metadata->kv_store_.lower_bound_key = lower_bound_key;

@@ -41,8 +41,7 @@ class PgNamespaceMasterRestartTest : public PgMiniTestBase {
   }
 };
 
-#ifndef NDEBUG
-TEST_F(PgNamespaceMasterRestartTest, YB_DISABLE_TEST_IN_TSAN(CreateNamespaceWithDelay)) {
+TEST_F(PgNamespaceMasterRestartTest, CreateNamespaceWithDelay) {
   SyncPoint::GetInstance()->LoadDependency(
       {{"CatalogManager::ProcessPendingNamespace:Fail",
         "PgNamespaceMasterRestartTest::CreateNamespaceWithDelay:WaitForFail"}});
@@ -79,7 +78,6 @@ TEST_F(PgNamespaceMasterRestartTest, YB_DISABLE_TEST_IN_TSAN(CreateNamespaceWith
       "SELECT * FROM pg_database where datname = 'test_db'"));
   ASSERT_EQ(0, PQntuples(res.get()));
 }
-#endif // NDEBUG
 
 } // namespace pgwrapper
 } // namespace yb

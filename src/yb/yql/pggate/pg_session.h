@@ -253,7 +253,8 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
       ForceNonBufferable force_non_bufferable = ForceNonBufferable::kFalse);
 
   struct CacheOptions {
-    std::string key;
+    uint64_t key_group;
+    std::string key_value;
     std::optional<uint32_t> lifetime_threshold_ms;
   };
 
@@ -346,6 +347,10 @@ class PgSession : public RefCountedThreadSafe<PgSession> {
   void SetDdlHasSyscatalogChanges();
 
   Result<bool> CheckIfPitrActive();
+
+  Result<boost::container::small_vector<RefCntSlice, 2>> GetTableKeyRanges(
+      const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
+      uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length);
 
   PgDocMetrics& metrics() { return metrics_; }
 

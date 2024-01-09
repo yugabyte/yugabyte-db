@@ -53,6 +53,18 @@ const (
 // SystemdDir service file directory.
 const SystemdDir string = "/etc/systemd/system"
 
+// Version of yba-ctl
+var Version = ""
+
+// YbactlVersion returns the version of yba-ctl
+func YbactlVersion() string {
+	if Version != "" {
+		return Version
+	}
+	log.Fatal("Version unset in directory manager.")
+	return ""
+}
+
 // GetBaseInstall returns the base install directory, as defined by the user
 func GetBaseInstall() string {
 	return dm.BaseInstall()
@@ -157,7 +169,7 @@ func (dm directoryManager) BaseInstall() string {
 // the active directory for install case, and the inactive for upgrade case.
 func (dm directoryManager) WorkingDirectory() string {
 
-	return filepath.Join(dm.BaseInstall(), "software", GetVersion())
+	return filepath.Join(dm.BaseInstall(), "software", YbactlVersion())
 }
 
 // GetActiveSymlink will return the symlink file name

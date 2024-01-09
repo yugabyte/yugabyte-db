@@ -1018,7 +1018,8 @@ public class AlertController extends AuthenticatedController {
     Map<UUID, AlertDefinition> alertDefinitionMap =
         CollectionUtils.isNotEmpty(alertDefinitionUuids)
             ? alertDefinitionService
-                .list(AlertDefinitionFilter.builder().uuids(alertDefinitionUuids).build()).stream()
+                .list(AlertDefinitionFilter.builder().uuids(alertDefinitionUuids).build())
+                .stream()
                 .collect(Collectors.toMap(AlertDefinition::getUuid, Function.identity()))
             : Collections.emptyMap();
     return alerts.stream()

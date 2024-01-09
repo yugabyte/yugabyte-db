@@ -230,6 +230,9 @@ message FlushTabletsRequestPB {
 
   // Whether we want to flush or compact all tablets in the server.
   optional bool all_tablets = 5;
+
+  // Only flush/compact regular RocksDB, not intents RocksDB.
+  optional bool regular_only = 6;
 }
 
 message FlushTabletsResponsePB {

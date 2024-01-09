@@ -19,6 +19,8 @@ val jacksonOverrides = Seq(
 
 dependencyOverrides ++= jacksonOverrides
 
+dependencyOverrides += "com.google.googlejavaformat" % "google-java-format" % "1.17.0"
+
 libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.2.11"
 
 // The Play plugin

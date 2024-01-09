@@ -111,6 +111,8 @@ void TestCallHome(
     call_home.SendData(json);
     ASSERT_TRUE(latch.WaitFor(MonoDelta::FromSeconds(10)));
     latch.Reset(1);
+
+    call_home.Shutdown();
   }
 }
 
@@ -168,6 +170,8 @@ void TestCallHomeFlag(const std::string& webserver_dir, ServerType* server) {
   // Wait for 3 cycles for no callhome posts. The handler is expected to assert
   // if it gets any new HTTP POST now.
   SleepFor(MonoDelta::FromSeconds(3 * FLAGS_callhome_interval_secs * kTimeMultiplier));
+
+  call_home.Shutdown();
 }
 
 template <class ServerType, class CallHomeType>
@@ -186,6 +190,8 @@ void TestGFlagsCallHome(ServerType* server) {
   std::string flags;
   ASSERT_OK(reader.ExtractString(reader.root(), "gflags", &flags));
   ASSERT_TRUE(flags.find(R"(flagA="String with quotes")") != std::string::npos);
+
+  call_home.Shutdown();
 }
 
 }  // namespace yb

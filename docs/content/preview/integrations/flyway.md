@@ -6,7 +6,7 @@ aliases:
 menu:
   preview_integrations:
     identifier: flyway
-    parent: integrations
+    parent: schema-migration
     weight: 571
 type: docs
 ---

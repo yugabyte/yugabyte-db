@@ -8,6 +8,8 @@ import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.PackagesRequestParams;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
@@ -31,8 +33,15 @@ public class PackagesController extends AbstractPlatformController {
 
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
 
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.16.0.0")
   @ApiOperation(
-      value = "Fetch a package",
+      value = "YbaApi Internal. Fetch a package",
       nickname = "fetchPackage",
       response = String.class,
       produces = "application/gzip")
@@ -44,12 +53,9 @@ public class PackagesController extends AbstractPlatformController {
         dataType = "com.yugabyte.yw.forms.PackagesRequestParams",
         paramType = "body")
   })
-  @AuthzPath({
-    @RequiredPermissionOnResource(
-        requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
-  })
+  /* This is used by YBC to download YBC binaries from YBA during YBC software upgrade.
+  Will be deprecated/removed once YBC upgrade improvements work is taken up
+   */
   public Result fetchPackage(Http.Request request) {
 
     PackagesRequestParams taskParams = parseJsonAndValidate(request, PackagesRequestParams.class);

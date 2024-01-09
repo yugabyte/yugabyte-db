@@ -42,7 +42,7 @@ This deployment provides the following advantages:
 
 ## Create a Replicate across regions cluster
 
-Before you can create a multi-region cluster in YugabyteDB Managed, you need to [add your billing profile and payment method](../../../yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](https://support.yugabyte.com/hc/en-us/requests/new?ticket_form_id=360003113431).
+Before you can create a multi-region cluster in YugabyteDB Managed, you need to [add your billing profile and payment method](../../../yugabyte-cloud/cloud-admin/cloud-billing-profile/), or you can [request a free trial](../../../yugabyte-cloud/managed-freetrial/).
 
 To create a multi-region cluster with synchronous replication, refer to [Replicate across regions](../../../yugabyte-cloud/cloud-basics/create-clusters/create-clusters-multisync/). For best results, set up your environment as follows:
 
@@ -86,7 +86,7 @@ To view a table of per-node statistics for the cluster, in YugabyteDB Managed, d
 
 Note that read/write operations are roughly the same across all the nodes, indicating uniform load across the nodes.
 
-To view your cluster metrics such as YSQL Operations/Second and YSQL Average Latency, in YugabyteDB Managed, select the cluster [Performance](/preview/yugabyte-cloud/cloud-monitor/overview/#performance-metrics) tab. You should see similar charts as shown in the following illustration:
+To view your cluster metrics such as YSQL Operations/Second and YSQL Average Latency, in YugabyteDB Managed, select the cluster [Performance](../../../yugabyte-cloud/cloud-monitor/overview/#performance-metrics) tab. You should see similar charts as shown in the following illustration:
 
 ![Performance charts for 3 regions](/images/ce/multisync-managed-charts.png)
 

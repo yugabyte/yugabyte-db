@@ -11,11 +11,12 @@ import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.Sets;
-import com.typesafe.config.Config;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import io.ebean.ExpressionList;
 import io.ebean.Finder;
 import io.ebean.Junction;
@@ -217,14 +218,15 @@ public class InstanceType extends Model {
    * table.
    */
   public static void resetInstanceTypeDetailsForProvider(
-      Provider provider, Config config, boolean allowUnsupported) {
+      Provider provider, RuntimeConfGetter confGetter, boolean allowUnsupported) {
     // We do not want to reset the details for manually added instance types.
 
-    List<InstanceType> instanceTypes = findByProvider(provider, config, allowUnsupported);
+    List<InstanceType> instanceTypes = findByProvider(provider, confGetter, allowUnsupported);
     instanceTypes =
         instanceTypes.stream()
             .filter(
-                supportedInstanceTypes(getAWSInstancePrefixesSupported(config), allowUnsupported))
+                supportedInstanceTypes(
+                    getAWSInstancePrefixesSupported(provider, confGetter), allowUnsupported))
             .collect(Collectors.toList());
 
     for (InstanceType instanceType : instanceTypes) {
@@ -234,8 +236,9 @@ public class InstanceType extends Model {
   }
 
   /** Delete Instance Types corresponding to given provider */
-  public static void deleteInstanceTypesForProvider(Provider provider, Config config) {
-    for (InstanceType instanceType : findByProvider(provider, config, true)) {
+  public static void deleteInstanceTypesForProvider(
+      Provider provider, RuntimeConfGetter confGetter) {
+    for (InstanceType instanceType : findByProvider(provider, confGetter, true)) {
       instanceType.delete();
     }
   }
@@ -260,12 +263,16 @@ public class InstanceType extends Model {
   }
 
   private static List<InstanceType> populateDefaultsIfEmpty(
-      List<InstanceType> entries, Config config, boolean allowUnsupported) {
+      Provider provider,
+      List<InstanceType> entries,
+      RuntimeConfGetter confGetter,
+      boolean allowUnsupported) {
     // For AWS, we would filter and show only supported instance prefixes
     entries =
         entries.stream()
             .filter(
-                supportedInstanceTypes(getAWSInstancePrefixesSupported(config), allowUnsupported))
+                supportedInstanceTypes(
+                    getAWSInstancePrefixesSupported(provider, confGetter), allowUnsupported))
             .collect(Collectors.toList());
     for (InstanceType instanceType : entries) {
       if (instanceType.getInstanceTypeDetails() == null) {
@@ -275,8 +282,8 @@ public class InstanceType extends Model {
         instanceType
             .getInstanceTypeDetails()
             .setVolumeDetailsList(
-                config.getInt(YB_AWS_DEFAULT_VOLUME_COUNT_KEY),
-                config.getInt(YB_AWS_DEFAULT_VOLUME_SIZE_GB_KEY),
+                confGetter.getStaticConf().getInt(YB_AWS_DEFAULT_VOLUME_COUNT_KEY),
+                confGetter.getStaticConf().getInt(YB_AWS_DEFAULT_VOLUME_SIZE_GB_KEY),
                 VolumeType.EBS);
       }
     }
@@ -284,13 +291,13 @@ public class InstanceType extends Model {
   }
 
   /** Query Helper to find supported instance types for a given cloud provider. */
-  public static List<InstanceType> findByProvider(Provider provider, Config config) {
-    return findByProvider(provider, config, false);
+  public static List<InstanceType> findByProvider(Provider provider, RuntimeConfGetter confGetter) {
+    return findByProvider(provider, confGetter, false);
   }
 
   /** Query Helper to find supported instance types for a given cloud provider. */
   public static List<InstanceType> findByProvider(
-      Provider provider, Config config, boolean allowUnsupported) {
+      Provider provider, RuntimeConfGetter confGetter, boolean allowUnsupported) {
     List<InstanceType> entries =
         InstanceType.find
             .query()
@@ -299,7 +306,7 @@ public class InstanceType extends Model {
             .eq("active", true)
             .findList();
     if (provider.getCode().equals("aws")) {
-      return populateDefaultsIfEmpty(entries, config, allowUnsupported);
+      return populateDefaultsIfEmpty(provider, entries, confGetter, allowUnsupported);
     } else {
       return entries;
     }
@@ -315,8 +322,11 @@ public class InstanceType extends Model {
         Json.fromJson(metadata.get("instanceTypeDetails"), InstanceTypeDetails.class));
   }
 
-  public static List<String> getAWSInstancePrefixesSupported(Config config) {
-    if (config.getBoolean("yb.cloud.enabled")) {
+  public static List<String> getAWSInstancePrefixesSupported(
+      Provider provider, RuntimeConfGetter confGetter) {
+    UUID customerUUID = provider.getCustomerUUID();
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    if (confGetter.getConfForScope(customer, CustomerConfKeys.cloudEnabled)) {
       return CLOUD_AWS_INSTANCE_PREFIXES_SUPPORTED;
     }
     return Stream.concat(

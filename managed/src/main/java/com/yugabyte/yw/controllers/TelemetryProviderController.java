@@ -62,6 +62,7 @@ public class TelemetryProviderController extends AuthenticatedController {
     if (provider.getUuid() != null) {
       throw new PlatformServiceException(BAD_REQUEST, "Can't create provider with uuid set");
     }
+    provider.setCustomerUUID(customerUUID);
     provider = telemetryProviderService.save(provider);
     auditService()
         .createAuditEntryWithReqBody(

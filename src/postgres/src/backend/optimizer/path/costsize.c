@@ -205,6 +205,7 @@ static bool cost_qual_eval_walker(Node *node, cost_qual_eval_context *context);
 static void get_restriction_qual_cost(PlannerInfo *root, RelOptInfo *baserel,
 									  ParamPathInfo *param_info,
 									  QualCost *qpqual_cost);
+static List* yb_get_bnl_extra_quals(JoinPath *joinpath);
 static bool has_indexed_join_quals(NestPath *path);
 static double approx_tuple_count(PlannerInfo *root, JoinPath *path,
 								 List *quals);
@@ -3004,7 +3005,7 @@ initial_cost_nestloop(PlannerInfo *root, JoinCostWorkspace *workspace,
 
 	/* cost of source data */
 	int yb_batch_size = 1;
-	if (IsYugaByteEnabled())
+	if (IsYugaByteEnabled() && yb_enable_base_scans_cost_model)
 	{
 		bool is_batched = yb_is_outer_inner_batched(outer_path, inner_path);
 		if (is_batched)
@@ -3099,10 +3100,10 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 		path->jpath.path.rows = path->jpath.path.parent->rows;
 
 	int yb_batch_size = 1;
-	if (IsYugaByteEnabled())
+	if (IsYugaByteEnabled() && yb_enable_base_scans_cost_model)
 	{
-		bool is_batched = yb_is_outer_inner_batched(outer_path, inner_path);
-		if (is_batched)
+		bool yb_is_batched = yb_is_outer_inner_batched(outer_path, inner_path);
+		if (yb_is_batched)
 			yb_batch_size = yb_bnl_batch_size;
 	}
 
@@ -3266,6 +3267,25 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 
 	/* CPU costs */
 	cost_qual_eval(&restrict_qual_cost, path->jpath.joinrestrictinfo, root);
+
+	/*
+	 * YB: If BNL is enabled, it is possible for the enhanced CBO to be
+	 * disabled. In this case, the batched join filter will inaccurately
+	 * cost the BNL higher than its classic NL counterpart. This is a
+	 * temporary measure to sidestep that until we enable the CBO by default
+	 * and this measure is no longer necessary.
+	 * TODO: Get rid of this after CBO is GA.
+	 */
+	if (IsYugaByteEnabled() &&
+		 yb_is_outer_inner_batched(outer_path, inner_path) &&
+		 !yb_enable_base_scans_cost_model)
+	{
+		restrict_qual_cost.startup = 0.0;
+		restrict_qual_cost.per_tuple = 0.0;
+		cost_qual_eval(&restrict_qual_cost,
+					   yb_get_bnl_extra_quals(&path->jpath), root);
+	}
+
 	startup_cost += restrict_qual_cost.startup;
 	cpu_per_tuple = cpu_tuple_cost + restrict_qual_cost.per_tuple;
 	run_cost += cpu_per_tuple * ntuples;
@@ -4913,6 +4933,29 @@ compute_semi_anti_join_factors(PlannerInfo *root,
 	semifactors->match_count = avgmatch;
 }
 
+static List*
+yb_get_bnl_extra_quals(JoinPath *joinpath)
+{
+	bool yb_is_batched =
+		yb_is_outer_inner_batched(joinpath->outerjoinpath, joinpath->innerjoinpath);
+
+	if (!yb_is_batched)
+		return joinpath->joinrestrictinfo;
+
+	List *bnl_extra_quals = NULL;
+	ListCell *lc;
+	foreach(lc, joinpath->joinrestrictinfo)
+	{
+		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
+		if (!yb_can_batch_rinfo(rinfo, joinpath->outerjoinpath->parent->relids,
+										joinpath->innerjoinpath->parent->relids))
+		{
+			bnl_extra_quals = lappend(bnl_extra_quals, rinfo);
+		}
+	}
+	return bnl_extra_quals;
+}
+
 /*
  * has_indexed_join_quals
  *	  Check whether all the joinquals of a nestloop join are used as
@@ -4933,26 +4976,14 @@ has_indexed_join_quals(NestPath *path)
 	bool		found_one;
 	ListCell   *lc;
 
-	bool yb_is_batched =
-		yb_is_outer_inner_batched(joinpath->outerjoinpath, innerpath);
-	List *unbatched_restrictinfos = NIL;
-
-	if (yb_is_batched)
-	{
-		foreach(lc, joinpath->joinrestrictinfo)
-		{
-			RestrictInfo *rinfo = lfirst_node(RestrictInfo, lc);
-			if (!yb_can_batch_rinfo(rinfo, joinpath->outerjoinpath->parent->relids,
-										   innerpath->parent->relids))
-			{
-				unbatched_restrictinfos = lappend(unbatched_restrictinfos, rinfo);
-			}
-		}
-	}
-
 	/* If join still has quals to evaluate, it's not fast */
+	/*
+	 * YB: Technically, we can remove the first condition as it is redundant
+	 * with the second. However, keeping it around to aid those who are merging
+	 * future PG code.
+	 */
 	if (joinpath->joinrestrictinfo != NIL &&
-		 (!yb_is_batched || unbatched_restrictinfos != NIL))
+		 yb_get_bnl_extra_quals(joinpath))
 		return false;
 	/* Nor if the inner path isn't parameterized at all */
 	if (innerpath->param_info == NULL)
@@ -6373,10 +6404,12 @@ yb_compute_result_transfer_cost(double result_tuples, int result_width)
 			 (yb_fetch_row_limit == 0 ||
 			  result_width * yb_fetch_row_limit > yb_fetch_size_limit))
 	{
-		int 		results_per_page =
-			floor(((double)yb_fetch_size_limit) / result_width);
+		int results_per_page = yb_fetch_size_limit / (result_width * 1.25);
+		// TODO(#19113): tuple size is inflated on DocDB side. Estimate it at
+		// 25% larger.
+
 		num_result_pages = ceil(result_tuples / results_per_page);
-		result_page_size_mb = results_per_page * result_width / MEGA;
+		result_page_size_mb = (double) results_per_page * result_width / MEGA;
 	}
 	else
 	{

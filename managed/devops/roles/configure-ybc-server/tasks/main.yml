@@ -124,7 +124,7 @@
   - set_fact:
       systemd_unit_dir: "/usr/lib/systemd/system"
     when:
-      ansible_distribution == "SLES"
+      ansible_os_family == "Suse"
     tags: always
 
   - name: Determine system or user scope

@@ -275,6 +275,12 @@ public class Audit extends Model {
     @EnumValue("Upgrade Software")
     UpgradeSoftware,
 
+    @EnumValue("Finalize Upgrade")
+    FinalizeUpgrade,
+
+    @EnumValue("Rollback Upgrade")
+    RollbackUpgrade,
+
     @EnumValue("Upgrade GFlags")
     UpgradeGFlags,
 
@@ -364,6 +370,9 @@ public class Audit extends Model {
 
     @EnumValue("Toggle Universe's TLS State")
     ToggleTls,
+
+    @EnumValue("Modify Universe's Audit Logging Config")
+    ModifyAuditLogging,
 
     @EnumValue("Tls Configuration Update")
     TlsConfigUpdate,
@@ -549,7 +558,10 @@ public class Audit extends Model {
     DeleteMetadata,
 
     @EnumValue("Unlock Universe")
-    Unlock
+    Unlock,
+
+    @EnumValue("Sync Universe with LDAP server")
+    LdapUniverseSync
   }
 
   // An auto incrementing, user-friendly ID for the audit entry.

@@ -2103,7 +2103,7 @@ YBInitializeTransaction(void)
 {
 	if (YBTransactionsEnabled())
 	{
-		HandleYBStatus(YBCPgBeginTransaction());
+		HandleYBStatus(YBCPgBeginTransaction(xactStartTimestamp));
 
 		HandleYBStatus(
 			YBCPgSetTransactionIsolationLevel(YBGetEffectivePggateIsolationLevel()));

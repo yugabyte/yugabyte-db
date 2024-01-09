@@ -9,6 +9,8 @@
 | "Show costs in UI" | "yb.ui.show_cost" | "CUSTOMER" | "Option to enable/disable costs in UI" | "Boolean" |
 | "Helm chart http download timeout" | "yb.releases.download_helm_chart_http_timeout" | "CUSTOMER" | "The timeout for downloading the Helm chart while importing a release using HTTP" | "Duration" |
 | "Use Redesigned Provider UI" | "yb.ui.feature_flags.provider_redesign" | "CUSTOMER" | "The redesigned provider UI adds a provider list view, a provider details view and improves the provider creation form for AWS, AZU, GCP, and K8s" | "Boolean" |
+| "Show disaster recovery UI" | "yb.ui.feature_flags.disaster_recovery" | "CUSTOMER" | "YBA provides an active-active single-master disaster recovery (DR) solution through the API. This runtime config exposes a user interface for managing DR configurations." | "Boolean" |
+| "Show underlying xCluster configs from DR setup" | "yb.ui.xcluster.dr.show_xcluster_config" | "CUSTOMER" | "YBA creates an underlying transactional xCluster config when setting up an active-active single-master disaster recovery (DR) config. During regular operation you should manage the DR config through the DR UI instead of the xCluster UI. This feature flag serves as a way to expose the underlying xCluster config for troubleshooting." | "Boolean" |
 | "Enforce User Tags" | "yb.universe.user_tags.is_enforced" | "CUSTOMER" | "Prevents universe creation when the enforced tags are not provided." | "Boolean" |
 | "Enforced User Tags List" | "yb.universe.user_tags.enforced_tags" | "CUSTOMER" | "A list of enforced user tag and accepted value pairs during universe creation. Pass '*' to accept all values for a tag. Ex: [\"yb_task:dev\",\"yb_task:test\",\"yb_owner:*\",\"yb_dept:eng\",\"yb_dept:qa\", \"yb_dept:product\", \"yb_dept:sales\"]" | "Key Value SetMultimap" |
 | "Allow Unsupported Instances" | "yb.internal.allow_unsupported_instances" | "PROVIDER" | "Enabling removes supported instance type filtering on AWS providers." | "Boolean" |
@@ -98,6 +100,9 @@
 | "Prometheus auth username" | "yb.metrics.auth_username" | "GLOBAL" | "Username, used for request authentication against embedded Prometheus" | "String" |
 | "Prometheus auth password" | "yb.metrics.auth_password" | "GLOBAL" | "Password, used for request authentication against embedded Prometheus" | "String" |
 | "Force YBC Shutdown during upgrade" | "ybc.upgrade.force_shutdown" | "GLOBAL" | "For YBC Shutdown during upgrade" | "Boolean" |
+| "Enable strict mode to ignore deprecated YBA APIs" | "yb.api.mode.strict" | "GLOBAL" | "Will ignore deprecated APIs" | "Boolean" |
+| "Enable safe mode to ignore preview YBA APIs" | "yb.api.mode.safe" | "GLOBAL" | "Will ignore preview APIs" | "Boolean" |
+| "Enable publishing thread dumps to GCS" | "yb.diag.thread_dumps.gcs.enabled" | "GLOBAL" | "Enable publishing thread dumps to GCS" | "Boolean" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |
 | "Node Checkout Time" | "yb.health.nodeCheckTimeoutSec" | "UNIVERSE" | "The timeout (in seconds) for node check operation as part of universe health check" | "Integer" |
@@ -172,6 +177,8 @@
 | "Enabling Master config change result check" | "yb.checks.change_master_config.enabled" | "UNIVERSE" | "Controls whether or not to wait for master config change to finish" | "Boolean" |
 | "Enabling follower lag check" | "yb.checks.follower_lag.enabled" | "UNIVERSE" | "Controls whether or not to perform the follower lag checks" | "Boolean" |
 | "Follower lag check timeout" | "yb.checks.follower_lag.timeout" | "UNIVERSE" | "Controls the max time out when performing follower lag checks" | "Duration" |
+| "Max threshold for follower lag" | "yb.checks.follower_lag.max_threshold" | "UNIVERSE" | "The maximum time that we allow a tserver to be behind its peers" | "Duration" |
+| "Wait for server ready timeout" | "yb.checks.wait_for_server_ready.timeout" | "UNIVERSE" | "Controls the max time for server to finish locally bootstrapping" | "Duration" |
 | "Memory check timeout" | "yb.dbmem.checks.timeout" | "UNIVERSE" | "Timeout for memory check in secs" | "Long" |
 | "Wait time before doing restore during xCluster setup task" | "yb.xcluster.sleep_time_before_restore" | "UNIVERSE" | "The amount of time to sleep (wait) before executing restore subtask during xCluster setup; it is useful because xCluster setup also drops the database before restore and the sleep makes sure the drop operation has reached all the nodes" | "Duration" |
 | "Use server broadcast address for yb_backup" | "yb.backup.use_server_broadcast_address_for_yb_backup" | "UNIVERSE" | "Controls whether server_broadcast_address entry should be used during yb_backup.py backup/restore" | "Boolean" |
@@ -185,3 +192,5 @@
 | "Default PITR retention period for txn xCluster" | "yb.xcluster.transactional.pitr.default_retention_period" | "UNIVERSE" | "The default retention period used to create PITR configs for transactional xCluster replication; it will be used when there is no existing PITR configs and it is not specified in the task parameters" | "Duration" |
 | "Default PITR snapshot interval for txn xCluster" | "yb.xcluster.transactional.pitr.default_snapshot_interval" | "UNIVERSE" | "The default snapshot interval used to create PITR configs for transactional xCluster replication; it will be used when there is no existing PITR configs and it is not specified in the task parameters" | "Duration" |
 | "Skip backup metadata validation" | "yb.backup.skip_metadata_validation" | "UNIVERSE" | "Skip backup metadata based validation during restore" | "Boolean" |
+| "Parallelism for Node Agent Reinstallation" | "yb.node_agent.reinstall_parallelism" | "UNIVERSE" | "Number of parallel node agent reinstallations at a time" | "Integer" |
+| "To perform sync of user-groups between the Universe DB nodes and LDAP Server" | "yb.security.ldap.ldap_universe_sync" | "UNIVERSE" | "If configured, this feature allows users to synchronise user groups configured on the upstream LDAP Server with user roles in YBDB nodes associated with the universe." | "Boolean" |

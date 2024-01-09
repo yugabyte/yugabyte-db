@@ -11,8 +11,11 @@
 // under the License.
 //
 
+#include <algorithm>
 #include <boost/algorithm/string/join.hpp>
 
+#include "yb/cdc/cdc_service.h"
+#include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_state_table.h"
 
@@ -56,6 +59,8 @@ DECLARE_bool(TEST_xcluster_consumer_fail_after_process_split_op);
 DECLARE_int32(cdc_parent_tablet_deletion_task_retry_secs);
 DECLARE_bool(enable_tablet_split_of_xcluster_bootstrapping_tables);
 DECLARE_int32(cdc_state_checkpoint_update_interval_ms);
+DECLARE_bool(enable_collect_cdc_metrics);
+DECLARE_int32(update_metrics_interval_ms);
 
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
@@ -265,7 +270,8 @@ TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
 
   change_req.set_tablet_id(source_tablet_id);
   change_req.set_stream_id(stream_id.ToString());
-  change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
+  // Skip over the initial schema ops, to fetch the SPLIT_OP and trigger cdc_state children updates.
+  change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(2);
   change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
 
   // Might need to retry since we are performing stepdowns and thus could get LeaderNotReadyToServe.
@@ -276,18 +282,46 @@ TEST_F(CdcTabletSplitITest, GetChangesOnSplitParentTablet) {
 
   ASSERT_OK(GetChangesWithRetries(cdc_proxy.get(), change_req, &change_resp));
 
+  // Also verify that the entries in cdc_state for the children tablets are properly initialized.
+  // They should have the checkpoint set to the split_op, but not have any replication times yet as
+  // they have not been polled for yet.
+  const auto child_tablet_ids = ListActiveTabletIdsForTable(cluster_.get(), table_->id());
+  cdc::CDCStateTable cdc_state_table(client_.get());
+  Status s;
+  int children_found = 0;
+  OpId split_op_checkpoint;
+  for (auto row_result : ASSERT_RESULT(
+           cdc_state_table.GetTableRange(cdc::CDCStateTableEntrySelector().IncludeAll(), &s))) {
+    ASSERT_OK(row_result);
+    auto& row = *row_result;
+    if (child_tablet_ids.contains(row.key.tablet_id)) {
+      ASSERT_TRUE(row.checkpoint);
+      ASSERT_GT(row.checkpoint->index, 0);
+      ++children_found;
+      if (split_op_checkpoint.empty()) {
+        split_op_checkpoint = *row.checkpoint;
+      } else {
+        // Verify that both children have the same checkpoint set.
+        ASSERT_EQ(*row.checkpoint, split_op_checkpoint);
+      }
+    }
+  }
+  ASSERT_OK(s);
+  ASSERT_EQ(children_found, 2);
+
   // Now let the parent tablet get deleted by the background task.
   // To do so, we need to issue a GetChanges to both children tablets.
-  for (const auto& child_tablet_id : ListActiveTabletIdsForTable(cluster_.get(), table_->id())) {
+  for (const auto& child_tablet_id : child_tablet_ids) {
     cdc::GetChangesRequestPB child_change_req;
     cdc::GetChangesResponsePB child_change_resp;
-
     child_change_req.set_tablet_id(child_tablet_id);
     child_change_req.set_stream_id(stream_id.ToString());
-    child_change_req.mutable_from_checkpoint()->mutable_op_id()->set_index(0);
-    child_change_req.mutable_from_checkpoint()->mutable_op_id()->set_term(0);
 
     ASSERT_OK(GetChangesWithRetries(cdc_proxy.get(), child_change_req, &child_change_resp));
+    // Ensure that we get back no records since nothing has been written to the children and we
+    // shouldn't be re-replicating any rows from our parent.
+    ASSERT_EQ(child_change_resp.records_size(), 0);
+    ASSERT_GT(child_change_resp.checkpoint().op_id().index(), split_op_checkpoint.index);
   }
 
   SleepFor(MonoDelta::FromMilliseconds(2 * FLAGS_snapshot_coordinator_poll_interval_ms));
@@ -335,6 +369,8 @@ class XClusterTabletSplitITest : public CdcTabletSplitITest {
 
  protected:
   void DoBeforeTearDown() override {
+    // Stop trying to process metrics when shutting down.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_collect_cdc_metrics) = false;
     ValidateOverlap();
     DeleteReplication();
 
@@ -711,6 +747,142 @@ TEST_F(XClusterTabletSplitITest, ConsumerClusterFailureWhenProcessingSplitOp) {
   ASSERT_OK(CheckForNumRowsOnConsumer(3 * kDefaultNumRows));
 }
 
+class XClusterTabletSplitMetricsTest : public XClusterTabletSplitITest {
+ public:
+  void SetUp() override {
+    // Update metrics more frequently.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_metrics_interval_ms) = 1000;
+    XClusterTabletSplitITest::SetUp();
+  }
+
+  std::pair<int64_t, int64_t> FetchMaxReplicationLag(const xrepl::StreamId stream_id) {
+    int64_t committed_lag_micros = 0, sent_lag_micros = 0;
+    auto tablet_ids = ListTabletIdsForTable(cluster_.get(), table_->id());
+
+    for (auto tserver : cluster_->mini_tablet_servers()) {
+      auto cdc_service = tserver->server()->GetCDCService();
+
+      for (const auto& tablet_id : tablet_ids) {
+        // Fetch the metrics, but ensure we don't create new metric entities.
+        const auto metrics =
+            std::static_pointer_cast<cdc::CDCTabletMetrics>(cdc_service->GetCDCTabletMetrics(
+                {{}, stream_id, tablet_id}, nullptr /* tablet_peer */, cdc::XCLUSTER,
+                cdc::CreateCDCMetricsEntity::kFalse));
+        if (metrics) {
+          committed_lag_micros = std::max(
+              committed_lag_micros, metrics->async_replication_committed_lag_micros->value());
+          sent_lag_micros =
+              std::max(sent_lag_micros, metrics->async_replication_sent_lag_micros->value());
+          LOG(INFO) << tablet_id << ": " << metrics->async_replication_committed_lag_micros->value()
+                    << " " << metrics->async_replication_sent_lag_micros->value();
+        } else {
+          LOG(INFO) << tablet_id << ": no metrics";
+        }
+      }
+    }
+    return std::make_pair(committed_lag_micros, sent_lag_micros);
+  }
+
+  Result<xrepl::StreamId> GetCDCStreamID(const std::string& producer_table_id) {
+    master::ListCDCStreamsResponsePB stream_resp;
+
+    RETURN_NOT_OK(LoggedWaitFor(
+        [this, producer_table_id, &stream_resp]() -> Result<bool> {
+          master::ListCDCStreamsRequestPB req;
+          req.set_table_id(producer_table_id);
+          stream_resp.Clear();
+
+          auto leader_mini_master = cluster_->GetLeaderMiniMaster();
+          if (!leader_mini_master.ok()) {
+            return false;
+          }
+          Status s = (*leader_mini_master)->catalog_manager().ListCDCStreams(&req, &stream_resp);
+          return s.ok() && !stream_resp.has_error() && stream_resp.streams_size() == 1;
+        },
+        kRpcTimeout, "Get CDC stream for table"));
+
+    if (stream_resp.streams(0).table_id().Get(0) != producer_table_id) {
+      return STATUS(
+          IllegalState, Format(
+                            "Expected table id $0, have $1", producer_table_id,
+                            stream_resp.streams(0).table_id().Get(0)));
+    }
+    return xrepl::StreamId::FromString(stream_resp.streams(0).stream_id());
+  }
+};
+
+TEST_F(XClusterTabletSplitMetricsTest, VerifyReplicationLagMetricsOnChildren) {
+  // Perform a split on the producer side and ensure that replication lag metrics continue growing.
+
+  // Default cluster_ will be our producer.
+  auto stream_id = ASSERT_RESULT(GetCDCStreamID(table_->id()));
+  auto split_hash_code = ASSERT_RESULT(WriteRowsAndGetMiddleHashCode(kDefaultNumRows));
+
+  // Wait until the rows are all replicated on the consumer.
+  ASSERT_OK(CheckForNumRowsOnConsumer(kDefaultNumRows));
+
+  // Pause replication.
+  ASSERT_OK(tools::RunAdminToolCommand(
+      consumer_cluster_->GetMasterAddresses(), "set_universe_replication_enabled",
+      kProducerClusterId, "0"));
+
+  {
+    auto [committed_lag_micros, sent_lag_micros] = FetchMaxReplicationLag(stream_id);
+    LOG(INFO) << "Replication lag is : " << committed_lag_micros << ", " << sent_lag_micros;
+    ASSERT_EQ(committed_lag_micros, 0);
+    ASSERT_EQ(sent_lag_micros, 0);
+  }
+
+  SleepFor(FLAGS_update_metrics_interval_ms * 2ms);  // Wait for metrics to update.
+  {
+    auto [committed_lag_micros, sent_lag_micros] = FetchMaxReplicationLag(stream_id);
+    LOG(INFO) << "Replication lag is : " << committed_lag_micros << ", " << sent_lag_micros;
+    ASSERT_EQ(committed_lag_micros, 0);
+    ASSERT_EQ(sent_lag_micros, 0);
+  }
+
+  // Split the tablet on the producer.
+  ASSERT_OK(
+      SplitTabletAndValidate(split_hash_code, kDefaultNumRows, true /* keep_parent_tablet */));
+
+  SleepFor(FLAGS_update_metrics_interval_ms * 2ms);  // Wait for metrics to update.
+  auto [old_committed_lag_micros, old_sent_lag_micros] = FetchMaxReplicationLag(stream_id);
+  LOG(INFO) << "Replication lag is : " << old_committed_lag_micros << ", " << old_sent_lag_micros;
+  ASSERT_GT(old_committed_lag_micros, 0);
+  ASSERT_GT(old_sent_lag_micros, 0);
+
+  for (int i = 1; i <= 2; ++i) {
+    // Write another set of rows, these will only go to the children tablets.
+    ASSERT_RESULT(WriteRows(kDefaultNumRows, (i * kDefaultNumRows) + 1));
+    if (i == 1) {
+      ASSERT_OK(SplitAllTablets(2 * i /* cur_num_tablets */, true /* keep_parent_tablet */));
+    }
+
+    SleepFor(FLAGS_update_metrics_interval_ms * 2ms);  // Wait for metrics to update.
+    {
+      auto [new_committed_lag_micros, new_sent_lag_micros] = FetchMaxReplicationLag(stream_id);
+      LOG(INFO) << "Replication lag is : " << new_committed_lag_micros << ", "
+                << new_sent_lag_micros;
+      ASSERT_GT(new_committed_lag_micros, old_committed_lag_micros);
+      ASSERT_GT(new_sent_lag_micros, old_sent_lag_micros);
+      old_committed_lag_micros = new_committed_lag_micros;
+      old_sent_lag_micros = new_sent_lag_micros;
+    }
+  }
+
+  // Resume replication, ensure that lag goes down to 0.
+  ASSERT_OK(tools::RunAdminToolCommand(
+      consumer_cluster_->GetMasterAddresses(), "set_universe_replication_enabled",
+      kProducerClusterId, "1"));
+  ASSERT_OK(CheckForNumRowsOnConsumer(3 * kDefaultNumRows));
+  SleepFor(FLAGS_update_metrics_interval_ms * 2ms);  // Wait for metrics to update.
+  {
+    auto [committed_lag_micros, sent_lag_micros] = FetchMaxReplicationLag(stream_id);
+    LOG(INFO) << "Replication lag is : " << committed_lag_micros << ", " << sent_lag_micros;
+    ASSERT_EQ(committed_lag_micros, 0);
+    ASSERT_EQ(sent_lag_micros, 0);
+  }
+}
 
 class XClusterExternalTabletSplitITest :
     public XClusterTabletSplitITestBase<TabletSplitExternalMiniClusterITest> {

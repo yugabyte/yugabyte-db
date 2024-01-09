@@ -14,6 +14,8 @@ import {
   fetchUniverseInfo,
   fetchUniverseInfoResponse
 } from '../../../actions/universe';
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
 
 class UniverseAction extends Component {
   constructor(props) {
@@ -115,13 +117,18 @@ class UniverseAction extends Component {
     return (
       <div>
         {!universePaused && (
-          <YBButton
-            btnText={btnLabel}
-            btnIcon={btnIcon}
-            btnClass={`btn ${btnClass}`}
-            disabled={disabled}
-            onClick={disabled ? null : this.openModal}
-          />
+          <RbacValidator
+            accessRequiredOn={UserPermissionMap.editUniverse}
+            isControl
+          >
+            <YBButton
+              btnText={btnLabel}
+              btnIcon={btnIcon}
+              btnClass={`btn ${btnClass}`}
+              disabled={disabled}
+              onClick={disabled ? null : this.openModal}
+            />
+          </RbacValidator>
         )}
         {modalForm}
       </div>

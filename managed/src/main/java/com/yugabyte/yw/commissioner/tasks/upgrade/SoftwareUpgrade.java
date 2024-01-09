@@ -7,9 +7,11 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
+import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashSet;
 import java.util.List;
@@ -35,14 +37,21 @@ public class SoftwareUpgrade extends SoftwareUpgradeTaskBase {
   }
 
   @Override
+  public void validateParams() {
+    taskParams().verifyParams(getUniverse());
+  }
+
+  protected SoftwareUpgradeParams taskParams() {
+    return (SoftwareUpgradeParams) taskParams;
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
           Pair<List<NodeDetails>, List<NodeDetails>> nodes = fetchNodes(taskParams().upgradeOption);
           Set<NodeDetails> allNodes = toOrderedSet(nodes);
           Universe universe = getUniverse();
-          // Verify the request params and fail if invalid.
-          taskParams().verifyParams(universe);
 
           String newVersion = taskParams().ybSoftwareVersion;
 
@@ -66,36 +75,22 @@ public class SoftwareUpgrade extends SoftwareUpgradeTaskBase {
           }
 
           boolean isUniverseOnPremManualProvisioned = Util.isOnPremManualProvisioning(universe);
-
-          // Re-provisioning the nodes if ybc needs to be installed and systemd is already enabled
-          // to register newly introduced ybc service if it is missing in case old universes.
-          // We would skip ybc installation in case of manually provisioned systemd enabled on-prem
-          // universes as we may not have sudo permissions.
-          if (taskParams().installYbc
-              && !isUniverseOnPremManualProvisioned
-              && universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd) {
-            createSetupServerTasks(nodes.getRight(), param -> param.isSystemdUpgrade = true);
-          }
+          boolean reProvisionRequired =
+              taskParams().installYbc
+                  && !isUniverseOnPremManualProvisioned
+                  && universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd;
 
           // Download software to all nodes.
           createDownloadTasks(allNodes, newVersion);
           // Install software on nodes.
-          createUpgradeTaskFlow(
-              (nodes1, processTypes) ->
-                  createSoftwareInstallTasks(
-                      nodes1, getSingle(processTypes), newVersion, getTaskSubGroupType()),
+          createUpgradeTaskFlowTasks(
               nodes,
-              getUpgradeContext(),
-              false);
+              newVersion,
+              getUpgradeContext(taskParams().ybSoftwareVersion),
+              reProvisionRequired);
 
           if (taskParams().installYbc) {
-            createYbcSoftwareInstallTasks(nodes.getRight(), newVersion, getTaskSubGroupType());
-            // Start yb-controller process and wait for it to get responsive.
-            createStartYbcProcessTasks(
-                new HashSet<>(nodes.getRight()),
-                universe.getUniverseDetails().getPrimaryCluster().userIntent.useSystemd);
-            createUpdateYbcTask(taskParams().getYbcSoftwareVersion())
-                .setSubTaskGroupType(getTaskSubGroupType());
+            createYbcInstallTask(universe, new ArrayList<>(allNodes), newVersion);
           }
 
           if (!confGetter.getConfForScope(universe, UniverseConfKeys.skipUpgradeFinalize)) {

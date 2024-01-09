@@ -1140,6 +1140,8 @@ class EventStats : public BaseStats<EventStats> {
  public:
   const AggregateStats* underlying() const { return stats_.get(); }
 
+  void Add(const AggregateStats& other) { stats_->Add(other); }
+
   size_t DynamicMemoryUsage() const { return stats_->DynamicMemoryUsage() + sizeof(*this); }
 
  protected:

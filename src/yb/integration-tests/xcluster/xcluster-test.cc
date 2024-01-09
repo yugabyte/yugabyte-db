@@ -17,6 +17,7 @@
 #include <utility>
 #include <chrono>
 #include <boost/assign.hpp>
+#include "yb/cdc/xrepl_stream_metadata.h"
 #include "yb/integration-tests/cluster_itest_util.h"
 #include "yb/master/master_cluster.proxy.h"
 #include "yb/util/flags.h"
@@ -96,11 +97,10 @@ DECLARE_double(TEST_respond_write_failed_probability);
 DECLARE_bool(TEST_xcluster_write_hybrid_time);
 DECLARE_uint64(TEST_yb_inbound_big_calls_parse_delay_ms);
 DECLARE_bool(allow_insecure_connections);
-DECLARE_bool(allow_ycql_transactional_xcluster);
 DECLARE_int32(async_replication_idle_delay_ms);
 DECLARE_uint32(async_replication_max_idle_wait);
 DECLARE_int32(async_replication_polling_delay_ms);
-DECLARE_int32(cdc_wal_retention_time_secs);
+DECLARE_uint32(cdc_wal_retention_time_secs);
 DECLARE_string(certs_dir);
 DECLARE_string(certs_for_cdc_dir);
 DECLARE_bool(check_bootstrap_required);
@@ -227,14 +227,7 @@ class XClusterTestNoParam : public XClusterTestBase {
       return Status::OK();
     }));
 
-    if (!producer_tables_.empty()) {
-      producer_table_ = producer_tables_.front();
-    }
-    if (!consumer_tables_.empty()) {
-      consumer_table_ = consumer_tables_.front();
-    }
-
-    return WaitForLoadBalancersToStabilize();
+    return PostSetUp();
   }
 
   virtual XClusterTestParams GetTestParam() {
@@ -3884,5 +3877,76 @@ TEST_F_EX(XClusterTest, IsBootstrapRequired, XClusterTestNoParam) {
   // Table with data should require a bootstrap.
   ASSERT_OK(InsertRowsInProducer(0, 1));
   ASSERT_TRUE(ASSERT_RESULT(producer_client()->IsBootstrapRequired({producer_table_->id()})));
+}
+
+TEST_F_EX(XClusterTest, TestStats, XClusterTestNoParam) {
+  const uint32_t kReplicationFactor = 1, kTabletCount = 1, kNumMasters = 1, kNumTservers = 1;
+  ASSERT_OK(SetUpWithParams(
+      {kTabletCount}, {kTabletCount}, kReplicationFactor, kNumMasters, kNumTservers));
+  ASSERT_OK(SetupReplication());
+  ASSERT_OK(CorrectlyPollingAllTablets(kTabletCount));
+
+  auto source_cdc_service = producer_cluster()->mini_tablet_server(0)->server()->GetCDCService();
+  auto* target_xc_consumer =
+      consumer_cluster()->mini_tablet_server(0)->server()->GetXClusterConsumer();
+
+  ASSERT_OK(LoggedWaitFor(
+      [&source_cdc_service]() {
+        auto stats = source_cdc_service->GetAllStreamTabletStats();
+        return !stats.empty() && stats[0].avg_poll_delay_ms > 0;
+      },
+      MonoDelta::FromSeconds(kRpcTimeout), "Waiting for initial source Stats to populate"));
+  ASSERT_OK(LoggedWaitFor(
+      [&target_xc_consumer]() {
+        auto stats = target_xc_consumer->GetPollerStats();
+        return !stats.empty() && stats[0].avg_poll_delay_ms > 0;
+      },
+      MonoDelta::FromSeconds(kRpcTimeout), "Waiting for initial target Stats to populate"));
+
+  // Make sure stats on source and target match.
+  auto source_stats = source_cdc_service->GetAllStreamTabletStats();
+  ASSERT_EQ(source_stats.size(), 1);
+  auto initial_index = source_stats[0].sent_index;
+  auto initial_records_sent = source_stats[0].records_sent;
+  auto initial_time = source_stats[0].last_poll_time;
+  ASSERT_GT(source_stats[0].avg_poll_delay_ms, 0);
+  ASSERT_TRUE(source_stats[0].last_poll_time);
+  ASSERT_EQ(source_stats[0].sent_index, source_stats[0].latest_index);
+  ASSERT_TRUE(source_stats[0].status.ok());
+
+  auto target_stats = target_xc_consumer->GetPollerStats();
+  ASSERT_EQ(target_stats.size(), 1);
+  ASSERT_GT(target_stats[0].avg_poll_delay_ms, 0);
+  ASSERT_TRUE(target_stats[0].status.ok());
+
+  ASSERT_EQ(source_stats[0].records_sent, target_stats[0].records_received);
+  ASSERT_EQ(source_stats[0].mbs_sent, target_stats[0].mbs_received);
+  ASSERT_EQ(source_stats[0].sent_index, target_stats[0].received_index);
+
+  ASSERT_OK(InsertRowsInProducer(0, 100));
+  ASSERT_OK(VerifyRowsMatch());
+
+  // Make sure stats show data was sent and received.
+  source_stats = source_cdc_service->GetAllStreamTabletStats();
+  ASSERT_EQ(source_stats.size(), 1);
+  ASSERT_GT(source_stats[0].avg_poll_delay_ms, 0);
+  ASSERT_GT(source_stats[0].records_sent, 0);
+  ASSERT_GT(source_stats[0].mbs_sent, 0);
+  ASSERT_GT(source_stats[0].sent_index, initial_index);
+  ASSERT_GT(source_stats[0].records_sent, initial_records_sent);
+  ASSERT_GT(source_stats[0].last_poll_time, initial_time);
+  ASSERT_EQ(source_stats[0].sent_index, source_stats[0].latest_index);
+  ASSERT_TRUE(source_stats[0].status.ok());
+
+  target_stats = target_xc_consumer->GetPollerStats();
+  ASSERT_EQ(target_stats.size(), 1);
+  ASSERT_GT(target_stats[0].records_received, 0);
+  ASSERT_GT(target_stats[0].mbs_received, 0);
+  ASSERT_GT(target_stats[0].avg_poll_delay_ms, 0);
+  ASSERT_TRUE(target_stats[0].status.ok());
+
+  ASSERT_EQ(source_stats[0].records_sent, target_stats[0].records_received);
+  ASSERT_EQ(source_stats[0].mbs_sent, target_stats[0].mbs_received);
+  ASSERT_EQ(source_stats[0].sent_index, target_stats[0].received_index);
 }
 }  // namespace yb

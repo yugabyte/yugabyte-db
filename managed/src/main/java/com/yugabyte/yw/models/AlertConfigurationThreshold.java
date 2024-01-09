@@ -26,7 +26,8 @@ import lombok.experimental.Accessors;
 @ApiModel(
     value = "AlertConfigurationThreshold",
     description =
-        "Alert configuration threshold. Conditions can be either greater than a specified value, or less than a specified value.")
+        "Alert configuration threshold. Conditions can be either greater than a specified value, or"
+            + " less than a specified value.")
 public class AlertConfigurationThreshold {
 
   @NotNull

@@ -39,7 +39,7 @@ var upgradeCmd = &cobra.Command{
 			if err != nil {
 				log.Fatal("Cannot upgrade: " + err.Error())
 			}
-			targetVersion := common.GetVersion()
+			targetVersion := ybactl.Version
 			if !common.LessVersions(installedVersion, targetVersion) {
 				log.Fatal(fmt.Sprintf("upgrade target version '%s' must be greater then the installed "+
 					"YugabyteDB Anywhere version '%s'", targetVersion, installedVersion))
@@ -86,7 +86,7 @@ var upgradeCmd = &cobra.Command{
 		services[YbPlatformServiceName].Stop()
 		services[PrometheusServiceName].Stop()
 
-		common.Upgrade(common.GetVersion())
+		common.Upgrade(ybactl.Version)
 
 		for _, name := range serviceOrder {
 			services[name].Upgrade()
@@ -101,7 +101,7 @@ var upgradeCmd = &cobra.Command{
 		*/
 
 		// Here is the postgres minor version/no upgrade workflow
-		common.Upgrade(common.GetVersion())
+		common.Upgrade(ybactl.Version)
 
 		// Check if upgrading requires DB migration.
 
@@ -139,7 +139,7 @@ var upgradeCmd = &cobra.Command{
 			log.Info("Completed restart of component " + name)
 		}
 
-		common.WaitForYBAReady()
+		common.WaitForYBAReady(ybactl.Version)
 
 		var statuses []common.Status
 		//serviceOrder = append([]string{newDbServiceName}, serviceOrder...)

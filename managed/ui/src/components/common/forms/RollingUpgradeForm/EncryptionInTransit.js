@@ -11,6 +11,8 @@ import { updateTLS } from '../../../../actions/customers';
 import { YBBanner, YBBannerVariant } from '../../descriptors';
 import { getAllXClusterConfigs } from '../../../xcluster/ReplicationUtils';
 
+import { hasNecessaryPerm } from '../../../../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../../../redesign/features/rbac/UserPermPathMapping';
 import './EncryptionInTransit.scss';
 
 const CLIENT_TO_NODE_ROTATE_MSG =
@@ -218,6 +220,12 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse, fetchCur
   };
 
   const universeHasXClusterConfig = getAllXClusterConfigs(currentUniverse.data).length > 0;
+
+  const canEditEAT = hasNecessaryPerm({
+    onResource: currentUniverse.data.universeDetails.universeUUID,
+    ...UserPermissionMap.editEncryptionInTransit
+  });
+
   return (
     <YBModalForm
       visible={visible}
@@ -230,6 +238,7 @@ export function EncryptionInTransit({ visible, onHide, currentUniverse, fetchCur
         handleSubmit(values, setStatus);
         setSubmitting(false);
       }}
+      isButtonDisabled={!canEditEAT}
       render={({ values, handleChange, setFieldValue, status, setStatus }) => {
         if (isCertificateListLoading) {
           return <YBLoading />;

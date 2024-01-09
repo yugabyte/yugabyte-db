@@ -75,7 +75,7 @@
           prometheus_systemd_unit_dir: "/lib/systemd/system"
       - set_fact:
           prometheus_systemd_unit_dir: "/usr/lib/systemd/system"
-          when: ansible_distribution == "SLES"
+          when: ansible_os_family == "Suse"
 
       - name: Stop node exporter service
         service:
@@ -118,7 +118,7 @@
           systemd_dir: "/etc/systemd/system"
       - set_fact:
           systemd_dir: "/usr/lib/systemd/system"
-        when: ansible_distribution == "SLES"
+        when: ansible_os_family == "Suse"
       - set_fact:
           systemd_dir: "{{ yb_home_dir | default('/home/yugabyte') }}/.config/systemd/user"
         when: systemd_user.stat.exists

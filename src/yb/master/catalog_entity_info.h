@@ -365,7 +365,7 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   void UpdateReplicaFullCompactionStatus(
       const TabletServerId& ts_uuid, const FullCompactionStatus& full_compaction_status);
 
-  // The next five methods are getters and setters for the transient, in memory list of table ids
+  // The next four methods are getters and setters for the transient, in memory list of table ids
   // hosted by this tablet. They are only used if the underlying tablet proto's
   // hosted_tables_mapped_by_parent_id field is set.
   void SetTableIds(std::vector<TableId>&& table_ids);
@@ -459,6 +459,10 @@ struct PersistentTableInfo : public Persistent<SysTablesEntryPB, SysRowEntryType
 
   bool started_hiding_or_deleting() const {
     return started_hiding() || started_deleting();
+  }
+
+  bool is_hidden_but_not_deleting() const {
+    return is_hidden() && !started_deleting();
   }
 
   // Return the table's name.
@@ -569,6 +573,11 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   bool IsOperationalForClient() const {
     auto l = LockForRead();
     return !l->started_hiding_or_deleting();
+  }
+
+  bool IsHiddenButNotDeleting() const {
+    auto l = LockForRead();
+    return l->is_hidden_but_not_deleting();
   }
 
   // If the table is already hidden then treat it as a duplicate hide request.
@@ -1242,6 +1251,8 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
   const google::protobuf::RepeatedPtrField<std::string> table_id() const;
 
   const NamespaceId namespace_id() const;
+
+  const ReplicationSlotName GetCdcsdkYsqlReplicationSlotName() const;
 
   std::string ToString() const override;
 

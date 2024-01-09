@@ -20,6 +20,20 @@ On this page:
 
 ## Change log
 
+### October 5, 2023
+
+**New Features**
+
+- Support for creating [private service endpoints](../cloud-basics/cloud-vpcs/cloud-add-endpoint/) (PSEs) in the YugabyteDB Managed UI (this feature was previously only available using the YBM CLI). Add PSEs to clusters to connect to your application VPC over a secure private link. Supports AWS PrivateLink and Azure Private Link.
+- Support for [exporting cluster metrics](../cloud-monitor/metrics-export/) to Grafana.
+
+### September 22, 2023
+
+**Database**
+
+- Preview track updated to 2.19.2.0.
+- Production track updated to 2.14.12.0.
+
 ### September 12, 2023
 
 **New Features**
@@ -180,7 +194,7 @@ On this page:
 **New Features**
 
 - Ability to add IP addresses to the cluster IP allow list during cluster creation. The **Create Cluster** wizard includes the new **Networking** page to configure connectivity for your cluster. Automatically detect and add your current IP address or the addresses of any peered VPC to the cluster.
-- Ability to connect to clusters deployed in VPCs from public IP addresses. For clusters deployed in VPCs, enable **Public Access** on the **Settings** tab to connect from addresses outside the peered network. When enabled, a public IP address is added to each region of the cluster. You can view the private and public host addresses under **Connection Parameters** on the cluster **Settings** tab.
+- Ability to connect to clusters deployed in VPCs from public IP addresses. For clusters deployed in VPCs, enable **Public Access** on the **Settings > Network Access** tab to connect from addresses outside the peered network. When enabled, a public IP address is added to each region of the cluster. You can view the private and public host addresses under **Connection Parameters** on the cluster **Settings > Infrastructure** tab.
 
 **Database**
 

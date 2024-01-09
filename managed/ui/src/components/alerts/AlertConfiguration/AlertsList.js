@@ -29,6 +29,8 @@ import {
   NO_DESTINATION
 } from './AlertsFilter';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
+import { RbacValidator, hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
 
 /**
  * This is the header for YB Panel Item.
@@ -45,6 +47,9 @@ const header = (
   updateFilters,
   clearAllFilters
 ) => {
+  const canCreatePolicy = hasNecessaryPerm({
+    ...UserPermissionMap.createAlertsConfig
+  });
   return (
     <>
       <Row className="pills-container">
@@ -71,6 +76,7 @@ const header = (
                   id="bg-nested-dropdown"
                   bsStyle="danger"
                   pullRight
+                  disabled={!canCreatePolicy}
                 >
                   <MenuItem
                     className="alert-config-list"
@@ -274,9 +280,9 @@ export const AlertsList = (props) => {
       .map((destination) => {
         return destination.uuid === row.destinationUUID
           ? {
-              value: destination.uuid,
-              label: destination.name
-            }
+            value: destination.uuid,
+            label: destination.name
+          }
           : null;
       })
       .filter((res) => res !== null);
@@ -294,8 +300,8 @@ export const AlertsList = (props) => {
     const currentDestination = destination[0]?.value
       ? destination[0]?.value
       : row.defaultDestination
-      ? '<default>'
-      : '<empty>';
+        ? '<default>'
+        : '<empty>';
     const targetType = row.target.all ? 'allUniverses' : 'selectedUniverses';
     const univerList =
       isNonEmptyArray(row.target.uuids) &&
@@ -450,6 +456,14 @@ export const AlertsList = (props) => {
   // This method will handle all the required actions for the particular row.
   const editActionLabel = isReadOnly ? 'Alert Details' : 'Edit Alert';
   const formatConfigActions = (cell, row, rowIndex, sizePerPage, totalRecords, currentPage) => {
+
+    const canEditAlerts = hasNecessaryPerm({
+      ...UserPermissionMap.editAlertsConfig
+    });
+    const canDeleteAlerts = hasNecessaryPerm({
+      ...UserPermissionMap.deleteAlertsConfig
+    });
+
     return (
       <>
         <DropdownButton
@@ -460,47 +474,94 @@ export const AlertsList = (props) => {
           dropup={decideDropdownMenuPos(rowIndex, sizePerPage, totalRecords, currentPage)}
           pullRight
         >
-          <MenuItem
-            onClick={() => {
-              handleMetricsCall(row.targetType);
-              onEditAlertConfig(row);
+          <RbacValidator
+            accessRequiredOn={{
+              ...UserPermissionMap.editAlertsConfig
             }}
+            isControl
+            overrideStyle={{ display: 'block' }}
           >
-            <i className="fa fa-pencil"></i> {editActionLabel}
-          </MenuItem>
-
-          {!row.active && !isReadOnly ? (
             <MenuItem
               onClick={() => {
-                onToggleActive(row);
+                if (!canEditAlerts) return;
+                handleMetricsCall(row.targetType);
+                onEditAlertConfig(row);
               }}
+              disabled={!canEditAlerts}
             >
-              <i className="fa fa-toggle-on"></i> Activate
+              <i className="fa fa-pencil"></i> {editActionLabel}
             </MenuItem>
+          </RbacValidator>
+
+          {!row.active && !isReadOnly ? (
+            <RbacValidator
+              accessRequiredOn={{
+                ...UserPermissionMap.editAlertsConfig
+              }}
+              isControl
+              overrideStyle={{ display: 'block' }}
+            >
+              <MenuItem
+                onClick={() => {
+                  onToggleActive(row);
+                }}
+              >
+                <i className="fa fa-toggle-on"></i> Activate
+              </MenuItem>
+            </RbacValidator>
           ) : null}
 
           {row.active && !isReadOnly ? (
-            <MenuItem
-              onClick={() => {
-                onToggleActive(row);
+            <RbacValidator
+              accessRequiredOn={{
+                ...UserPermissionMap.editAlertsConfig
               }}
+              isControl
+              overrideStyle={{ display: 'block' }}
             >
-              <i className="fa fa-toggle-off"></i> Deactivate
-            </MenuItem>
+              <MenuItem
+                onClick={() => {
+                  if (!canEditAlerts) return;
+                  onToggleActive(row);
+                }}
+                disabled={!canEditAlerts}
+              >
+                <i className="fa fa-toggle-off"></i> Deactivate
+              </MenuItem>
+            </RbacValidator>
           ) : null}
 
           {!isReadOnly ? (
-            <MenuItem onClick={() => showDeleteModal(row?.uuid)}>
-              <i className="fa fa-trash"></i> Delete Alert
-            </MenuItem>
+            <RbacValidator
+              accessRequiredOn={{
+                ...UserPermissionMap.deleteAlertsConfig
+              }}
+              isControl
+              overrideStyle={{ display: 'block' }}
+            >
+              <MenuItem onClick={() => {
+                if (!canDeleteAlerts) return;
+                showDeleteModal(row?.uuid);
+              }} disabled={!canDeleteAlerts}>
+                <i className="fa fa-trash"></i> Delete Alert
+              </MenuItem>
+            </RbacValidator>
           ) : null}
 
           {!isReadOnly ? (
-            <MenuItem onClick={() => onSendTestAlert(row)}>
-              <i className="fa fa-paper-plane"></i> Send Test Alert
-            </MenuItem>
+            <RbacValidator
+              accessRequiredOn={{
+                ...UserPermissionMap.sendTestAlert
+              }}
+              isControl
+              overrideStyle={{ display: 'block' }}
+            >
+              <MenuItem onClick={() => onSendTestAlert(row)}>
+                <i className="fa fa-paper-plane"></i> Send Test Alert
+              </MenuItem>
+            </RbacValidator>
           ) : null}
-        </DropdownButton>
+        </DropdownButton >
         <YBConfirmModal
           name="delete-alert-config"
           title="Confirm Delete"
@@ -640,21 +701,25 @@ export const AlertsList = (props) => {
   };
 
   return (
-    <YBPanelItem
-      header={header(
-        isReadOnly,
-        onCreateAlert,
-        enablePlatformAlert,
-        handleMetricsCall,
-        setInitialValues,
-        filterVisible,
-        setFilterVisible,
-        filters,
-        updateFilters,
-        clearAllFilters
-      )}
-      body={
-        <Row>
+    <RbacValidator
+      accessRequiredOn={{
+        ...UserPermissionMap.readAlertsConfig
+      }}
+    >
+      <YBPanelItem
+        header={header(
+          isReadOnly,
+          onCreateAlert,
+          enablePlatformAlert,
+          handleMetricsCall,
+          setInitialValues,
+          filterVisible,
+          setFilterVisible,
+          filters,
+          updateFilters,
+          clearAllFilters
+        )}
+        body={<Row>
           {filterVisible && (
             <Col lg={2} className="filters">
               <AlertListsWithFilter
@@ -766,8 +831,9 @@ export const AlertsList = (props) => {
             </BootstrapTable>
           </Col>
         </Row>
-      }
-      noBackground
-    />
+        }
+        noBackground
+      />
+    </RbacValidator>
   );
 };

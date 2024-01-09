@@ -10,6 +10,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudProviderDelete;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
@@ -141,7 +142,8 @@ public class CustomerTaskManager {
                               || backup.getState().equals(Backup.BackupState.Stopped))
                   .collect(Collectors.groupingBy(Backup::getCategory));
 
-          backupCategoryMap.getOrDefault(BackupCategory.YB_BACKUP_SCRIPT, new ArrayList<>())
+          backupCategoryMap
+              .getOrDefault(BackupCategory.YB_BACKUP_SCRIPT, new ArrayList<>())
               .stream()
               .forEach(backup -> backup.transitionState(Backup.BackupState.Failed));
           List<Backup> ybcBackups =
@@ -483,6 +485,9 @@ public class CustomerTaskManager {
         break;
       case CloudProviderDelete:
         taskParams = Json.fromJson(oldTaskParams, CloudProviderDelete.Params.class);
+        break;
+      case CloudBootstrap:
+        taskParams = Json.fromJson(oldTaskParams, CloudBootstrap.Params.class);
         break;
       default:
         String errMsg =

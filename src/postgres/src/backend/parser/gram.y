@@ -1037,6 +1037,7 @@ stmt:
 			| AlterOpFamilyStmt
 			| AlterOwnerStmt
 			| AlterPolicyStmt
+			| AlterPublicationStmt
 			| AlterRoleSetStmt
 			| AlterRoleStmt
 			| AlterSeqStmt
@@ -1058,6 +1059,7 @@ stmt:
 			| CreateOpFamilyStmt
 			| CreatePLangStmt
 			| CreatePolicyStmt
+			| CreatePublicationStmt
 			| CreateRoleStmt
 			| CreateSchemaStmt
 			| CreateStatsStmt
@@ -1140,7 +1142,6 @@ stmt:
 			| AlterTblSpcStmt { parser_ybc_signal_unsupported(@1, "This statement", 1153); }
 			| AlterTypeStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterCompositeTypeStmt { parser_ybc_not_support(@1, "This statement"); }
-			| AlterPublicationStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterStatsStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| AlterTSDictionaryStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -1148,7 +1149,6 @@ stmt:
 			| CreateAmStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateAssertionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateConversionStmt { parser_ybc_not_support(@1, "This statement"); }
-			| CreatePublicationStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
 			| CreateTransformStmt { parser_ybc_not_support(@1, "This statement"); }
 			| DropSubscriptionStmt { parser_ybc_not_support(@1, "This statement"); }
@@ -7365,7 +7365,7 @@ drop_type_name:
 			| EXTENSION								{ $$ = OBJECT_EXTENSION; }
 			| FOREIGN DATA_P WRAPPER				{ $$ = OBJECT_FDW; }
 			| opt_procedural LANGUAGE				{ $$ = OBJECT_LANGUAGE; }
-			| PUBLICATION	{ parser_ybc_not_support(@1, "DROP PUBLICATION"); $$ = OBJECT_PUBLICATION; }
+			| PUBLICATION							{ $$ = OBJECT_PUBLICATION; }
 			| SCHEMA								{ $$ = OBJECT_SCHEMA; }
 			| SERVER								{ $$ = OBJECT_FOREIGN_SERVER; }
 			| TABLEGROUP							{ $$ = OBJECT_YBTABLEGROUP; }
@@ -10079,7 +10079,6 @@ RenameStmt: ALTER AGGREGATE aggregate_with_argtypes RENAME TO name
 				}
 			| ALTER PUBLICATION name RENAME TO name
 				{
-					parser_ybc_not_support(@1, "ALTER PUBLICATION");
 					RenameStmt *n = makeNode(RenameStmt);
 
 					n->renameType = OBJECT_PUBLICATION;
@@ -11226,7 +11225,6 @@ AlterOwnerStmt: ALTER AGGREGATE aggregate_with_argtypes OWNER TO RoleSpec
 CreatePublicationStmt:
 			CREATE PUBLICATION name opt_definition
 				{
-					parser_ybc_not_support(@1, "CREATE PUBLICATION");
 					CreatePublicationStmt *n = makeNode(CreatePublicationStmt);
 
 					n->pubname = $3;
@@ -11373,7 +11371,6 @@ pub_obj_list:	PublicationObjSpec
 AlterPublicationStmt:
 			ALTER PUBLICATION name SET definition
 				{
-					parser_ybc_not_support(@1, "ALTER PUBLICATION <name>");
 					AlterPublicationStmt *n = makeNode(AlterPublicationStmt);
 
 					n->pubname = $3;
@@ -11382,7 +11379,6 @@ AlterPublicationStmt:
 				}
 			| ALTER PUBLICATION name ADD_P pub_obj_list
 				{
-					parser_ybc_not_support(@1, "ALTER PUBLICATION ADD TABLE");
 					AlterPublicationStmt *n = makeNode(AlterPublicationStmt);
 
 					n->pubname = $3;
@@ -11393,7 +11389,6 @@ AlterPublicationStmt:
 				}
 			| ALTER PUBLICATION name SET pub_obj_list
 				{
-					parser_ybc_not_support(@1, "ALTER PUBLICATION SET TABLE");
 					AlterPublicationStmt *n = makeNode(AlterPublicationStmt);
 
 					n->pubname = $3;
@@ -11404,7 +11399,6 @@ AlterPublicationStmt:
 				}
 			| ALTER PUBLICATION name DROP pub_obj_list
 				{
-					parser_ybc_not_support(@1, "ALTER PUBLICATION DROP TABLE");
 					AlterPublicationStmt *n = makeNode(AlterPublicationStmt);
 
 					n->pubname = $3;

@@ -14,6 +14,7 @@
 #include <memory>
 #include <optional>
 #include <string>
+#include <string_view>
 #include <thread>
 #include <unordered_map>
 
@@ -45,12 +46,15 @@ METRIC_DECLARE_counter(pg_response_cache_entries_removed_by_gc);
 DECLARE_bool(ysql_enable_read_request_caching);
 DECLARE_bool(ysql_minimal_catalog_caches_preload);
 DECLARE_bool(ysql_catalog_preload_additional_tables);
+DECLARE_bool(ysql_use_relcache_file);
 DECLARE_string(ysql_catalog_preload_additional_table_list);
 DECLARE_uint64(TEST_pg_response_cache_catalog_read_time_usec);
 DECLARE_uint64(TEST_committed_history_cutoff_initial_value_usec);
 DECLARE_uint32(pg_cache_response_renew_soft_lifetime_limit_ms);
 DECLARE_uint64(pg_response_cache_size_bytes);
 DECLARE_uint32(pg_response_cache_size_percentage);
+
+using namespace std::literals;
 
 namespace yb::pgwrapper {
 namespace {
@@ -59,36 +63,14 @@ Status EnableCatCacheEventLogging(PGConn* conn) {
   return conn->Execute("SET yb_debug_log_catcache_events = ON");
 }
 
-class Configuration {
- public:
-  constexpr explicit Configuration(bool minimal_catalog_caches_preload)
-    : minimal_catalog_caches_preload_(minimal_catalog_caches_preload) {}
+struct Configuration {
+  bool enable_read_request_caching() const { return response_cache_size_bytes.has_value(); }
 
-  constexpr Configuration(bool minimal_catalog_caches_preload, uint64_t response_cache_size_bytes)
-    : minimal_catalog_caches_preload_(minimal_catalog_caches_preload),
-      response_cache_size_bytes_(response_cache_size_bytes) {}
-
-  constexpr Configuration(
-      bool minimal_catalog_caches_preload, uint64_t response_cache_size_bytes,
-      const std::string& preload_catalog_list, bool preload_catalog_tables)
-      : minimal_catalog_caches_preload_(minimal_catalog_caches_preload),
-        response_cache_size_bytes_(response_cache_size_bytes),
-        preload_additional_catalog_list_(preload_catalog_list),
-        preload_additional_catalog_tables_(preload_catalog_tables) {}
-
-  bool minimal_catalog_caches_preload() const { return minimal_catalog_caches_preload_; }
-  bool enable_read_request_caching() const { return response_cache_size_bytes_.has_value(); }
-  std::optional<uint64_t> response_cache_size_bytes() const { return response_cache_size_bytes_; }
-  std::optional<std::string> preload_additional_catalog_list() const {
-    return preload_additional_catalog_list_;
-  }
-  bool preload_additional_catalog_tables() const { return preload_additional_catalog_tables_; }
-
- private:
-  bool minimal_catalog_caches_preload_;
-  std::optional<uint64_t> response_cache_size_bytes_;
-  std::optional<std::string> preload_additional_catalog_list_;
-  bool preload_additional_catalog_tables_ = false;
+  const bool minimal_catalog_caches_preload = false;
+  const std::optional<uint64_t> response_cache_size_bytes = std::nullopt;
+  const std::string_view preload_additional_catalog_list = {};
+  const bool preload_additional_catalog_tables = false;
+  const bool use_relcache_file = true;
 };
 
 struct MetricCounters {
@@ -142,14 +124,19 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_read_request_caching) =
         config.enable_read_request_caching();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_minimal_catalog_caches_preload) =
-        config.minimal_catalog_caches_preload();
+        config.minimal_catalog_caches_preload;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_response_cache_size_percentage) = 0;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_response_cache_size_bytes) =
-        config.response_cache_size_bytes().value_or(0);
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_catalog_preload_additional_table_list) =
-        config.preload_additional_catalog_list().value_or("");
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_catalog_preload_additional_tables) =
-        config.preload_additional_catalog_tables();
+        config.preload_additional_catalog_tables;
+    if (config.response_cache_size_bytes.has_value()) {
+      ANNOTATE_UNPROTECTED_WRITE(FLAGS_pg_response_cache_size_bytes) =
+          *config.response_cache_size_bytes;
+    }
+    if (!config.preload_additional_catalog_list.empty()) {
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_catalog_preload_additional_table_list) =
+        std::string(config.preload_additional_catalog_list);
+    }
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_use_relcache_file) = config.use_relcache_file;
     PgMiniTestBase::SetUp();
     metrics_.emplace(GetMetricMap(*cluster_->mini_master()->master()),
                      GetMetricMap(*cluster_->mini_tablet_server(0)->server()));
@@ -196,9 +183,9 @@ class PgCatalogPerfTestBase : public PgMiniTestBase {
     return res;
   }
 
-  Result<uint64_t> RPCCountOnStartUp() {
-    auto res = VERIFY_RESULT(metrics_->Delta([this] {
-      VERIFY_RESULT(Connect());
+  Result<uint64_t> RPCCountOnStartUp(const std::string& db_name = {}) {
+    auto res = VERIFY_RESULT(metrics_->Delta([this, &db_name] {
+      VERIFY_RESULT(ConnectToDB(db_name));
       return static_cast<Status>(Status::OK());
     })).master_read_rpc;
     return res;
@@ -236,31 +223,40 @@ class PgCatalogPerfBasicTest : public PgCatalogPerfTestBase {
   }
 };
 
-constexpr int kResponseCacheSize5MB = 5 * 1024 * 1024;
+constexpr auto kResponseCacheSize5MB = 5 * 1024 * 1024;
+constexpr auto kPreloadCatalogList =
+    "pg_cast,pg_inherits,pg_policy,pg_proc,pg_tablespace,pg_trigger"sv;
+constexpr auto kExtendedTableList =
+    "pg_cast,pg_inherits,pg_policy,pg_proc,pg_tablespace,pg_trigger,pg_statistic,pg_invalid"sv;
 
-const Configuration kConfigDefault(
-    /*minimal_catalog_caches_preload=*/false);
+constexpr Configuration kConfigDefault;
 
-const Configuration kConfigWithUnlimitedCache(
-    /*minimal_catalog_caches_preload=*/false, /*response_cache_size_bytes=*/0);
+constexpr Configuration kConfigMinPreload{.minimal_catalog_caches_preload = true};
 
-const Configuration kConfigMinPreload(
-    /*minimal_catalog_caches_preload=*/true);
+constexpr Configuration kConfigWithUnlimitedCache{
+    .response_cache_size_bytes = 0, .preload_additional_catalog_list = kPreloadCatalogList};
 
-const Configuration kConfigWithLimitedCache(
-    /*minimal_catalog_caches_preload=*/false, kResponseCacheSize5MB);
+constexpr Configuration kConfigWithLimitedCache{
+    .response_cache_size_bytes = kResponseCacheSize5MB,
+    .preload_additional_catalog_list = kPreloadCatalogList};
 
-const Configuration kConfigWithPreloadAdditionalCatList(
-    /*minimal_catalog_caches_preload=*/false, kResponseCacheSize5MB,
-    "pg_statistic,pg_invalid", /*preload_catalog_tables*/false);
+constexpr Configuration kConfigWithPreloadAdditionalCatList{
+    .response_cache_size_bytes = kResponseCacheSize5MB,
+    .preload_additional_catalog_list = kExtendedTableList};
 
-const Configuration kConfigWithPreloadAdditionalCatTables(
-    /*minimal_catalog_caches_preload=*/false, kResponseCacheSize5MB,
-    "", /*preload_catalog_tables*/true);
+constexpr Configuration kConfigWithPreloadAdditionalCatTables{
+    .response_cache_size_bytes = kResponseCacheSize5MB,
+    .preload_additional_catalog_list = kPreloadCatalogList,
+    .preload_additional_catalog_tables = true};
 
-const Configuration kConfigWithPreloadAdditionalCatBoth(
-    /*minimal_catalog_caches_preload=*/false, kResponseCacheSize5MB,
-    "pg_statistic,pg_invalid", /*preload_catalog_tables*/true);
+constexpr Configuration kConfigWithPreloadAdditionalCatBoth{
+    .response_cache_size_bytes = kResponseCacheSize5MB,
+    .preload_additional_catalog_list = kExtendedTableList,
+    .preload_additional_catalog_tables = true};
+
+constexpr Configuration kConfigPredictableMemoryUsage{
+    .response_cache_size_bytes = 0,
+    .use_relcache_file = false};
 
 template<class Base, const Configuration& Config>
 class ConfigurableTest : public Base {
@@ -282,6 +278,8 @@ using PgPreloadAdditionalCatTablesTest =
     ConfigurableTest<PgCatalogPerfTestBase, kConfigWithPreloadAdditionalCatTables>;
 using PgPreloadAdditionalCatBothTest =
     ConfigurableTest<PgCatalogPerfTestBase, kConfigWithPreloadAdditionalCatBoth>;
+using PgPredictableMemoryUsageTest =
+    ConfigurableTest<PgCatalogPerfTestBase, kConfigPredictableMemoryUsage>;
 
 class PgCatalogWithStaleResponseCacheTest : public PgCatalogWithUnlimitedCachePerfTest {
  protected:
@@ -298,6 +296,11 @@ class PgCatalogWithStaleResponseCacheTest : public PgCatalogWithUnlimitedCachePe
   }
 };
 
+constexpr uint64_t kFirstConnectionRPCCountDefault = 5;
+constexpr uint64_t kFirstConnectionRPCCountWithAdditionalTables = 6;
+constexpr uint64_t kSubsequentConnectionRPCCount = 2;
+static_assert(kFirstConnectionRPCCountDefault <= kFirstConnectionRPCCountWithAdditionalTables);
+
 } // namespace
 
 // Test checks the number of RPC for very first and subsequent connection to same t-server.
@@ -307,9 +310,9 @@ class PgCatalogWithStaleResponseCacheTest : public PgCatalogWithUnlimitedCachePe
 //       Number of RPCs in all the tests are not the constants and they can be changed in future.
 TEST_F(PgCatalogPerfTest, StartupRPCCount) {
   const auto first_connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
-  ASSERT_EQ(first_connect_rpc_count, 5);
+  ASSERT_EQ(first_connect_rpc_count, kFirstConnectionRPCCountDefault);
   const auto subsequent_connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
-  ASSERT_EQ(subsequent_connect_rpc_count, 2);
+  ASSERT_EQ(subsequent_connect_rpc_count, kSubsequentConnectionRPCCount);
 }
 
 // Test checks number of RPC in case of cache refresh without partitioned tables.
@@ -533,24 +536,54 @@ TEST_F_EX(PgCatalogPerfTest,
           PgPreloadAdditionalCatListTest) {
   // No failures even there are invalid PG catalog on the flag list.
   const auto rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
-  // This value should be no less than the first connection RPC value in the StartupRPCCount test.
-  ASSERT_EQ(rpc_count, 7);
+  ASSERT_EQ(rpc_count, kFirstConnectionRPCCountWithAdditionalTables);
 }
 
 TEST_F_EX(PgCatalogPerfTest,
           RPCCountOnStartupAdditionalCatTablesPreload,
           PgPreloadAdditionalCatTablesTest) {
   const auto rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
-  // This value should be no less than the first connection RPC value in the StartupRPCCount test.
-  ASSERT_EQ(rpc_count, 7);
+  ASSERT_EQ(rpc_count, kFirstConnectionRPCCountWithAdditionalTables);
 }
 
 TEST_F_EX(PgCatalogPerfTest,
           RPCCountOnStartupAdditionalCatBothPreload,
           PgPreloadAdditionalCatBothTest) {
   const auto rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
-  // This value should be no less than the first connection RPC value in the StartupRPCCount test.
-  ASSERT_EQ(rpc_count, 7);
+  ASSERT_EQ(rpc_count, kFirstConnectionRPCCountWithAdditionalTables);
+}
+
+// Test checks that response cache is DB specific.
+// First, start up an initial connection and measure the startup RPC count (a).
+// Then, create a new database. Create a new connection to this database and
+// measure the startup RPC count (b). Both (a) and (b) should be equal to the
+// initial startup RPC count, because the second connection can't use the
+// cached responses from the first connection. We also check that upon creating
+// a subsequent connection to the new database, the startup RPC count is what we
+// expect for a second connection.
+TEST_F_EX(PgCatalogPerfTest, ResponseCacheIsDBSpecific, PgCatalogWithUnlimitedCachePerfTest) {
+  constexpr auto* kDBName = "db1";
+  auto rpc_count_checker = [this](const std::string& db_name = {}) -> Status {
+    for (auto expected_rpc_count : {kFirstConnectionRPCCountWithAdditionalTables,
+                                    kSubsequentConnectionRPCCount}) {
+      const auto rpc_count = VERIFY_RESULT(RPCCountOnStartUp(db_name));
+      SCHECK_EQ(rpc_count, expected_rpc_count, IllegalState, "Unexpected rpc count");
+    }
+    return Status::OK();
+  };
+  ASSERT_OK(rpc_count_checker());
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("CREATE DATABASE $0", kDBName));
+  ASSERT_OK(rpc_count_checker(kDBName));
+}
+
+TEST_F_EX(PgCatalogPerfTest,
+          RPCCountOnStartupPredictableMemoryUsage,
+          PgPredictableMemoryUsageTest) {
+  const auto first_connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
+  ASSERT_EQ(first_connect_rpc_count, kFirstConnectionRPCCountWithAdditionalTables);
+  const auto subsequent_connect_rpc_count = ASSERT_RESULT(RPCCountOnStartUp());
+  ASSERT_EQ(subsequent_connect_rpc_count, kSubsequentConnectionRPCCount);
 }
 
 } // namespace yb::pgwrapper

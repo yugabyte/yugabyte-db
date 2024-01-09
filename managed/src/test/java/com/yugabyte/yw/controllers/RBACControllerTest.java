@@ -26,6 +26,7 @@ import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.rbac.PermissionUtil;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.rbac.ResourceGroup;
 import com.yugabyte.yw.models.rbac.ResourceGroup.ResourceDefinition;
@@ -69,11 +70,14 @@ public class RBACControllerTest extends FakeDBApplication {
   @Before
   public void setUp() {
     customer = ModelFactory.testCustomer();
-    user = ModelFactory.testUser(customer);
+    user = ModelFactory.testSuperAdminUserNewRbac(customer);
     ClassLoader classLoader = Thread.currentThread().getContextClassLoader();
     this.environment = new Environment(new File("."), classLoader, Mode.TEST);
     this.permissionUtil = new PermissionUtil(environment);
     mapper = new ObjectMapper();
+
+    // Set the new RBAC runtime flag to true to allow controller method calls.
+    RuntimeConfigEntry.upsertGlobal("yb.rbac.use_new_authz", "true");
   }
 
   @After
@@ -162,7 +166,8 @@ public class RBACControllerTest extends FakeDBApplication {
     List<PermissionInfo> permissionInfoList = reader.readValue(json);
 
     assertEquals(
-        permissionInfoList.size(), permissionUtil.getAllPermissionInfo(ResourceType.OTHER).size());
+        permissionInfoList.size(),
+        permissionUtil.getAllPermissionInfoFromCache(ResourceType.OTHER).size());
   }
 
   @Test
@@ -198,7 +203,8 @@ public class RBACControllerTest extends FakeDBApplication {
     ObjectReader reader = mapper.readerFor(new TypeReference<List<Role>>() {});
     List<Role> roleList = reader.readValue(json);
 
-    assertEquals(3, roleList.size());
+    // 8 because of the 3 we created above + 5 built-in roles.
+    assertEquals(8, roleList.size());
     assertTrue(roleList.contains(role1));
     assertTrue(roleList.contains(role2));
     assertTrue(roleList.contains(role3));
@@ -305,8 +311,9 @@ public class RBACControllerTest extends FakeDBApplication {
     assertAuditEntry(1, customer.getUuid());
 
     // Get the role from DB and compare with returned result.
-    assertEquals(1, Role.getAll(customer.getUuid()).size());
-    Role roleDb = Role.getAll(customer.getUuid()).get(0);
+    // 6 because of the 1 we created above + 5 built-in roles.
+    assertEquals(6, Role.getAll(customer.getUuid()).size());
+    Role roleDb = Role.get(customer.getUuid(), "custom Read UniverseRole 1");
     assertEquals(roleResult, roleDb);
   }
 
@@ -383,8 +390,9 @@ public class RBACControllerTest extends FakeDBApplication {
     assertAuditEntry(1, customer.getUuid());
 
     // Get the role from DB and compare with returned result.
-    assertEquals(1, Role.getAll(customer.getUuid()).size());
-    Role roleDb = Role.getAll(customer.getUuid()).get(0);
+    // 6 because of the 1 we created above + 5 built-in roles.
+    assertEquals(6, Role.getAll(customer.getUuid()).size());
+    Role roleDb = Role.get(customer.getUuid(), "customReadUniverseRole1");
     assertEquals(roleResult, roleDb);
     // Verify if permissions got updated correctly.
     Set<Permission> permissionList = new HashSet<>(Arrays.asList(permission2));
@@ -447,7 +455,8 @@ public class RBACControllerTest extends FakeDBApplication {
     // Call API and assert if custom role is deleted.
     Result result = deleteRole(customer.getUuid(), role1.getRoleUUID());
     assertEquals(OK, result.status());
-    assertEquals(0, Role.getAll(customer.getUuid()).size());
+    // 5 because of the 5 built-in roles left after deleting the above role.
+    assertEquals(5, Role.getAll(customer.getUuid()).size());
     assertAuditEntry(1, customer.getUuid());
   }
 
@@ -466,7 +475,8 @@ public class RBACControllerTest extends FakeDBApplication {
     Result result =
         assertPlatformException(() -> deleteRole(customer.getUuid(), role1.getRoleUUID()));
     assertEquals(BAD_REQUEST, result.status());
-    assertEquals(1, Role.getAll(customer.getUuid()).size());
+    // 6 because of the 1 we created above + 5 built-in roles.
+    assertEquals(6, Role.getAll(customer.getUuid()).size());
     assertAuditEntry(0, customer.getUuid());
   }
 
@@ -499,8 +509,10 @@ public class RBACControllerTest extends FakeDBApplication {
     Result result =
         assertPlatformException(() -> deleteRole(customer.getUuid(), role1.getRoleUUID()));
     assertEquals(CONFLICT, result.status());
-    assertEquals(1, Role.getAll(customer.getUuid()).size());
-    assertEquals(1, RoleBinding.getAll(user.getUuid()).size());
+    // 6 because of the 1 we created above + 5 built-in roles.
+    assertEquals(6, Role.getAll(customer.getUuid()).size());
+    // 2 because of the 1 we created above + 1 built-in role binding for the test super admin user.
+    assertEquals(2, RoleBinding.getAll(user.getUuid()).size());
     assertAuditEntry(0, customer.getUuid());
   }
 
@@ -556,7 +568,8 @@ public class RBACControllerTest extends FakeDBApplication {
     ObjectReader reader = mapper.readerFor(new TypeReference<Map<UUID, List<RoleBinding>>>() {});
     Map<UUID, List<RoleBinding>> roleBindingList = reader.readValue(json);
 
-    assertEquals(2, roleBindingList.get(user.getUuid()).size());
+    // 3 because of the 2 we created above + 1 built-in role binding for the test super admin user.
+    assertEquals(3, roleBindingList.get(user.getUuid()).size());
     assertTrue(roleBindingList.get(user.getUuid()).contains(roleBinding1));
     assertTrue(roleBindingList.get(user.getUuid()).contains(roleBinding2));
   }

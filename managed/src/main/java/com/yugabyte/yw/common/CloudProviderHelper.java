@@ -20,6 +20,9 @@ import com.yugabyte.yw.controllers.handlers.AvailabilityZoneHandler;
 import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.ImageBundle;
+import com.yugabyte.yw.models.ImageBundle.ImageBundleType;
+import com.yugabyte.yw.models.ImageBundleDetails;
+import com.yugabyte.yw.models.ImageBundleDetails.BundleInfo;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
@@ -977,22 +980,31 @@ public class CloudProviderHelper {
     // So the user must have entered the VPC Info for the regions, as well as
     // the zone info.
     if (!regionsToAdd.isEmpty()) {
+      List<ImageBundle> bundles =
+          editProviderReq.getImageBundles().stream()
+              .filter(iB -> iB.getMetadata().getType() != ImageBundleType.YBA_ACTIVE)
+              .collect(Collectors.toList());
+      boolean enableVMOSPatching = confGetter.getGlobalConf(GlobalConfKeys.enableVMOSPatching);
       for (Region region : regionsToAdd) {
-        if (region.getZones() == null || region.getZones().isEmpty()) {
-          throw new PlatformServiceException(
-              BAD_REQUEST, "Zone info needs to be specified for region: " + region.getCode());
+        if (region.getZones() != null || !region.getZones().isEmpty()) {
+          region
+              .getZones()
+              .forEach(
+                  zone -> {
+                    if (zone.getSubnet() == null
+                        && provider.getCloudCode() != CloudType.onprem
+                        && provider.getCloudCode() != CloudType.kubernetes) {
+                      throw new PlatformServiceException(
+                          BAD_REQUEST, "Required field subnet for zone: " + zone.getCode());
+                    }
+                  });
         }
-        region
-            .getZones()
-            .forEach(
-                zone -> {
-                  if (zone.getSubnet() == null
-                      && provider.getCloudCode() != CloudType.onprem
-                      && provider.getCloudCode() != CloudType.kubernetes) {
-                    throw new PlatformServiceException(
-                        BAD_REQUEST, "Required field subnet for zone: " + zone.getCode());
-                  }
-                });
+
+        if (enableVMOSPatching && provider.getCloudCode() == CloudType.aws) {
+          // Validate the image_bundles when the VM OS Patching is enabled
+          // for AWS providers, as these only have the concept the per region AMIs.
+          validateImageBundles(region, bundles);
+        }
       }
     }
     // TODO: Remove this code once the validators are added for all cloud provider.
@@ -1019,6 +1031,43 @@ public class CloudProviderHelper {
       }
     }
     provider.setLastValidationErrors(newErrors);
+  }
+
+  public void validateImageBundles(Region region, List<ImageBundle> bundles) {
+    /*
+     * Utility function for validating the image bundle when the region is added to
+     * the AWS provider.
+     * We will validate as follows:
+     * 1. YBA_ACTIVE: No Validation
+     * 2. YBA_DEPRECATED: In case the region is not present, we will mark the bundle
+     * with `active: false`, indicating that the user should take action if they want to use
+     * the new region with the image bundle.
+     * 3. CUSTOM: An exception is thrown in case the region is not present.
+     */
+    for (ImageBundle bundle : bundles) {
+      ImageBundleDetails details = bundle.getDetails();
+      ImageBundle.Metadata metadata = bundle.getMetadata();
+      if (details != null) {
+        Map<String, BundleInfo> regionBundleInfo = details.getRegions();
+        if (!regionBundleInfo.containsKey(region.getCode())) {
+          if (metadata != null && metadata.getType() == ImageBundleType.YBA_DEPRECATED) {
+            // For the YBA_DEPRECATED bundles we won't throw the error,
+            // instead modify the state to not Active.
+            log.debug(
+                String.format(
+                    "Marking bundle %s as inactive as region %s AMI is not present",
+                    bundle.getName(), region.getCode()));
+            bundle.setActive(false);
+          } else {
+            throw new PlatformServiceException(
+                BAD_REQUEST,
+                String.format(
+                    "Specify the AMI for the region %s in the image bundle %s",
+                    region.getCode(), bundle.getName()));
+          }
+        }
+      }
+    }
   }
 
   public static String getFirstRegionCode(Provider provider) {

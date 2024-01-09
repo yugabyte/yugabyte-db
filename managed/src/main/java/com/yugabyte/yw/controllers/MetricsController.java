@@ -66,6 +66,8 @@ public class MetricsController extends Controller {
 
   @Inject Config config;
 
+  private Date lastErrorPrinted = null;
+
   private Date lastKamonErrorPrinted = null;
 
   @ApiOperation(
@@ -91,6 +93,11 @@ public class MetricsController extends Controller {
       response.flush();
       return Results.status(OK, response.toString());
     } catch (Exception e) {
+      if (lastErrorPrinted == null
+          || lastErrorPrinted.before(CommonUtils.nowMinus(1, ChronoUnit.HOURS))) {
+        log.error("Failed to retrieve metrics", e);
+        lastErrorPrinted = new Date();
+      }
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
     }
   }

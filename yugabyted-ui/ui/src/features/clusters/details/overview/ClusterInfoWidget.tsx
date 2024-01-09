@@ -5,6 +5,7 @@ import type { ClusterData } from '@app/api/src';
 import { Link as RouterLink } from 'react-router-dom';
 import { roundDecimal, getFaultTolerance } from '@app/helpers';
 import { STATUS_TYPES, YBStatus } from '@app/components';
+import { YBTextBadge } from '@app/components/YBTextBadge/YBTextBadge';
 
 const useStyles = makeStyles((theme) => ({
   clusterInfo: {
@@ -75,24 +76,10 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
     return t('units.GB', { value: diskSizeGb });
   }
 
-  // Get text for encryption
   const encryptionAtRest = clusterSpec?.encryption_info?.encryption_at_rest ?? false;
   const encryptionInTransit = clusterSpec?.encryption_info?.encryption_in_transit ?? false;
-  const getEncryptionText = (encryptionAtRest: boolean, encryptionInTransit: boolean) => {
-    if (encryptionAtRest && encryptionInTransit) {
-      return t('clusters.inTransitAtRest');
-    }
-    if (encryptionAtRest) {
-      return t('clusters.atRest')
-    }
-    if (encryptionInTransit) {
-      return t('clusters.inTransit')
-    }
-    return t('clusters.none')
-  }
-  const encryption = getEncryptionText(encryptionAtRest, encryptionInTransit);
 
-  const authentication = encryptionAtRest || encryptionInTransit ?
+  const authentication = encryptionInTransit === true ?
     t('clusters.password') : t('clusters.none');
 
   return (
@@ -161,14 +148,17 @@ export const ClusterInfoWidget: FC<ClusterInfoWidgetProps> = ({ cluster }) => {
                 <Typography variant="subtitle2" className={classes.label}>
                   {t('clusters.encryption')}
                 </Typography>
-                <Box display="flex">
-                  {!encryptionAtRest && !encryptionInTransit &&
+                {!encryptionAtRest && !encryptionInTransit ?
+                  <Box display="flex">
                     <YBStatus type={STATUS_TYPES.WARNING} />
-                  }
-                  <Typography variant="body2" className={classes.value}>
-                    {encryption}
-                  </Typography>
-                </Box>
+                    <Typography variant="body2" className={classes.value}>None</Typography>
+                  </Box>
+                  :
+                  <Box display="flex" gridGap={4} pt={0.3}>
+                    {encryptionInTransit && <YBTextBadge>{t('clusters.inTransit')}</YBTextBadge>}
+                    {encryptionAtRest && <YBTextBadge>{t('clusters.atRest')}</YBTextBadge>}
+                  </Box>
+                }
               </Grid>
             </Grid>
             <Box className={classes.dividerHorizontal} />

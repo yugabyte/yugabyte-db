@@ -6,7 +6,7 @@ import { Link } from 'react-router';
 import { toast } from 'react-toastify';
 import { useInterval } from 'react-use';
 import _ from 'lodash';
-import { Box, Typography } from '@material-ui/core';
+import { Box, Typography, useTheme } from '@material-ui/core';
 
 import { closeDialog, openDialog } from '../../../actions/modal';
 import {
@@ -49,12 +49,12 @@ import { YBBanner, YBBannerVariant, YBLabelWithIcon } from '../../common/descrip
 import { api, universeQueryKey, xClusterQueryKey } from '../../../redesign/helpers/api';
 import { getAlertConfigurations } from '../../../actions/universe';
 import { MenuItemsContainer } from '../../universes/UniverseDetail/compounds/MenuItemsContainer';
+import SyncXClusterConfigModal from './SyncXClusterModal';
 
 import { Metrics, XClusterConfig } from '../XClusterTypes';
 import { TableType, YBTable } from '../../../redesign/helpers/dtos';
 
 import './ReplicationDetails.scss';
-import SyncXClusterConfigModal from './SyncXClusterModal';
 
 interface Props {
   params: {
@@ -74,6 +74,7 @@ export function ReplicationDetails({
   const { showModal, visibleModal } = useSelector((state: any) => state.modal);
   const dispatch = useDispatch();
   const queryClient = useQueryClient();
+  const theme = useTheme();
 
   const xClusterConfigQuery = useQuery(xClusterQueryKey.detail(xClusterConfigUUID), () =>
     fetchXClusterConfig(xClusterConfigUUID)
@@ -257,10 +258,7 @@ export function ReplicationDetails({
     sourceUniverse,
     targetUniverse
   );
-  const configTableType = getXClusterConfigTableType(
-    xClusterConfig,
-    sourceUniverseTableQuery.data ?? []
-  );
+  const configTableType = getXClusterConfigTableType(xClusterConfig);
   if (configTableType === undefined || sourceUniverseTableQuery.isError) {
     const redirectUrl = `/universes/${xClusterConfig.sourceUniverseUUID}/replication`;
     const errorMessage = sourceUniverseTableQuery.isError
@@ -269,14 +267,14 @@ export function ReplicationDetails({
     return (
       <div className="xCluster-details-error-container">
         <YBErrorIndicator customErrorMessage={errorMessage} />
-        <Box display="flex" flexDirection="column" gridGap="8px">
+        <Box display="flex" flexDirection="column" gridGap={theme.spacing(1)}>
           <Typography variant="h4">{`Replication Name: ${xClusterConfig.name}`}</Typography>
           <Typography variant="h4">
             {'Replication Status: '}
             <XClusterConfigStatusLabel xClusterConfig={xClusterConfig} />
           </Typography>
         </Box>
-        <Box display="flex" marginTop={3} gridGap="8px">
+        <Box display="flex" marginTop={3} gridGap={theme.spacing(1)}>
           {!xClusterConfig.paused && (
             <YBButton
               btnText="Pause Replication"
@@ -353,8 +351,6 @@ export function ReplicationDetails({
     maxAcceptableLagQuery.isSuccess &&
     numTablesAboveLagThreshold > 0 &&
     xClusterConfigTables.length > 0;
-  const isAddTableModalVisible =
-    showModal && visibleModal === XClusterModalName.ADD_TABLE_TO_CONFIG;
   const isEditConfigModalVisible = showModal && visibleModal === XClusterModalName.EDIT_CONFIG;
   const isRestartConfigModalVisible =
     showModal && visibleModal === XClusterModalName.RESTART_CONFIG;
@@ -546,7 +542,10 @@ export function ReplicationDetails({
           </div>
           <Row className="replication-status">
             <Col lg={4}>
-              Replication Status <XClusterConfigStatusLabel xClusterConfig={xClusterConfig} />
+              <Box display="flex" alignItems="center" gridGap={theme.spacing(1)}>
+                <Typography variant="body2">Replication Status</Typography>
+                <XClusterConfigStatusLabel xClusterConfig={xClusterConfig} />
+              </Box>
             </Col>
             <Col lg={8} className="lag-status-graph">
               <div className="lag-stats">
@@ -605,14 +604,6 @@ export function ReplicationDetails({
             </Col>
           </Row>
         </div>
-        {isAddTableModalVisible && (
-          <AddTableModal
-            onHide={hideModal}
-            isVisible={isAddTableModalVisible}
-            xClusterConfig={xClusterConfig}
-            configTableType={configTableType}
-          />
-        )}
         {isEditConfigModalVisible && (
           <EditConfigModal
             xClusterConfig={xClusterConfig}

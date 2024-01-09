@@ -4549,9 +4549,8 @@ yb_is_restart_possible(const ErrorData* edata,
 	if ((!IsYBReadCommitted() && YBIsDataSent()) ||
 			(IsYBReadCommitted() && YBIsDataSentForCurrQuery()))
 	{
-		if (yb_debug_log_internal_restarts)
-			elog(LOG, "Restart isn't possible, data was already sent. Txn error code=%d",
-								edata->yb_txn_errcode);
+		elog(LOG, "Restart isn't possible, data was already sent. Txn error code=%d",
+							edata->yb_txn_errcode);
 		return false;
 	}
 
@@ -4603,8 +4602,7 @@ yb_is_restart_possible(const ErrorData* edata,
 	if (IsYBReadCommitted())
 	{
 		if (YBGetDdlNestingLevel() != 0) {
-			if (yb_debug_log_internal_restarts)
-				elog(LOG, "READ COMMITTED retry semantics don't support DDLs");
+			elog(LOG, "READ COMMITTED retry semantics don't support DDLs");
 			*rc_ignoring_ddl_statement = true;
 			return false;
 		}

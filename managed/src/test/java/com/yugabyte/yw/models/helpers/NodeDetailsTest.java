@@ -30,6 +30,8 @@ public class NodeDetailsTest {
     activeStates.add(NodeDetails.NodeState.Provisioned);
     activeStates.add(NodeDetails.NodeState.SoftwareInstalled);
     activeStates.add(NodeDetails.NodeState.UpgradeSoftware);
+    activeStates.add(NodeDetails.NodeState.FinalizeUpgrade);
+    activeStates.add(NodeDetails.NodeState.RollbackUpgrade);
     activeStates.add(NodeDetails.NodeState.UpdateGFlags);
     activeStates.add(NodeDetails.NodeState.UpdateCert);
     activeStates.add(NodeDetails.NodeState.ToggleTls);
@@ -51,6 +53,8 @@ public class NodeDetailsTest {
   public void testIsQueryable() {
     Set<NodeDetails.NodeState> queryableStates = new HashSet<>();
     queryableStates.add(NodeDetails.NodeState.UpgradeSoftware);
+    queryableStates.add(NodeDetails.NodeState.RollbackUpgrade);
+    queryableStates.add(NodeDetails.NodeState.FinalizeUpgrade);
     queryableStates.add(NodeDetails.NodeState.UpdateGFlags);
     queryableStates.add(NodeDetails.NodeState.UpdateCert);
     queryableStates.add(NodeDetails.NodeState.ToggleTls);

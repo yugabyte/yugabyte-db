@@ -76,14 +76,52 @@ class XClusterYsqlTestBase : public XClusterTestBase {
   static Status ValidateRows(
       const client::YBTableName& table_name, int row_count, Cluster* cluster);
 
+  Status VerifyWrittenRecords(
+      std::shared_ptr<client::YBTable> producer_table = {},
+      std::shared_ptr<client::YBTable> consumer_table = {});
+
+  Status VerifyWrittenRecords(
+      const client::YBTableName& producer_table_name,
+      const client::YBTableName& consumer_table_name);
   static Result<std::vector<xrepl::StreamId>> BootstrapCluster(
       const std::vector<std::shared_ptr<client::YBTable>>& tables,
       XClusterTestBase::Cluster* cluster);
+
+  void BumpUpSchemaVersionsWithAlters(const std::vector<std::shared_ptr<client::YBTable>>& tables);
+
+  Status InsertRowsInProducer(
+      uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> producer_table = {},
+      bool use_transaction = false);
+
+  Status DeleteRowsInProducer(
+      uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> producer_table = {},
+      bool use_transaction = false);
+
+  Status InsertGenerateSeriesOnProducer(
+      uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> producer_table = {});
+
+  Status InsertTransactionalBatchOnProducer(
+      uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> producer_table = {},
+      bool commit_transaction = true);
+
+  Status WriteWorkload(
+      uint32_t start, uint32_t end, Cluster* cluster, const client::YBTableName& table,
+      bool delete_op = false, bool use_transaction = false);
+
+ protected:
+  void TestReplicationWithSchemaChanges(TableId producer_table_id, bool bootstrap);
 
  private:
   // Not thread safe. FLAGS_pgsql_proxy_webserver_port is modified each time this is called so this
   // is not safe to run in parallel.
   Status InitPostgres(Cluster* cluster, const size_t pg_ts_idx, uint16_t pg_port);
+
+  Status WriteGenerateSeries(
+      uint32_t start, uint32_t end, Cluster* cluster, const client::YBTableName& table);
+
+  Status WriteTransactionalWorkload(
+      uint32_t start, uint32_t end, Cluster* cluster, const client::YBTableName& table,
+      bool commit_transaction = true);
 };
 
 }  // namespace yb
