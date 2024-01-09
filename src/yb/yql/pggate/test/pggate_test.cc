@@ -161,7 +161,7 @@ Status PggateTest::Init(const char *test_name,
   }
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_pggate_tserver_shm_fd) = tserver_shared_object_.GetFd();
 
-  YBCInitPgGate(type_table, count, callbacks, nullptr);
+  YBCInitPgGate(type_table, count, callbacks, nullptr, nullptr, nullptr);
 
   // Setup session.
   CHECK_YBC_STATUS(YBCPgInitSession(nullptr /* database_name */, session_stats));
@@ -219,7 +219,7 @@ void PggateTest::BeginDDLTransaction() {
 }
 
 void PggateTest::CommitDDLTransaction() {
-  CHECK_YBC_STATUS(YBCPgExitSeparateDdlTxnMode());
+  CHECK_YBC_STATUS(YBCPgExitSeparateDdlTxnMode(0 /* db_oid */, false /* is_silent_altering */));
 }
 
 void PggateTest::BeginTransaction() {

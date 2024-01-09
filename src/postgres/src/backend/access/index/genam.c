@@ -128,6 +128,14 @@ RelationGetIndexScan(Relation indexRelation, int nkeys, int norderbys)
 	scan->xs_cbuf = InvalidBuffer;
 	scan->xs_continue_hot = false;
 
+	/*
+	 * TODO(jason): for PG 15, xs_ctup.t_self (xs_heaptid there) is not made
+	 * invalid since commit c2fe139c201c48f1133e9fbea2dd99b8efe2fadd.  Not sure
+	 * why that was removed (might have been a mistake), so it is probably
+	 * worth bringing that back for the sake of YB asserts that that PG field
+	 * is not changed in YB logic.
+	 */
+	scan->xs_ctup.t_ybctid = 0;
 	scan->yb_exec_params = NULL;
 	scan->yb_scan_plan = NULL;
 	scan->yb_rel_pushdown = NULL;

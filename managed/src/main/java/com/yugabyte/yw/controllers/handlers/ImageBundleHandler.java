@@ -104,9 +104,11 @@ public class ImageBundleHandler {
           prevDefaultImageBundles.stream()
               .filter(iBundle -> iBundle.getDetails().getArch().equals(arch))
               .findFirst()
-              .get();
-      prevDefaultImageBundle.setUseAsDefault(false);
-      prevDefaultImageBundle.save();
+              .orElse(null);
+      if (prevDefaultImageBundle != null) {
+        prevDefaultImageBundle.setUseAsDefault(false);
+        prevDefaultImageBundle.save();
+      }
       oBundle.setUseAsDefault(bundle.getUseAsDefault());
     }
     oBundle.setDetails(bundle.getDetails());

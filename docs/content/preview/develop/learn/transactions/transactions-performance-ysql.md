@@ -63,18 +63,6 @@ INSERT INTO txndemo VALUES (1,10)
 
 Now, the server automatically updates the row when it fails to insert. Again, this results in one less round trip between the application and the server.
 
-## Avoid long waits
-
-In the [READ COMMITTED](../../../../architecture/transactions/read-committed/) isolation level, clients do not need to retry or handle serialization errors. During conflicts, the server retries indefinitely based on the [retry options](../../../../architecture/transactions/read-committed/#performance-tuning) and [Wait-On-Conflict](../../../../architecture/transactions/concurrency-control/#wait-on-conflict) policy.
-
-To avoid getting stuck in a wait loop because of starvation, you should use a reasonable timeout for the statements, similar to the following:
-
-```plpgsql
-SET statement_timeout = '10s';
-```
-
-This ensures that the transaction would not be blocked for more than 10 seconds.
-
 ## Handle idle applications
 
 When an application takes a long time between two statements in a transaction or just hangs, it could be holding the locks on the [provisional records](../../../../architecture/transactions/distributed-txns/#provisional-records) during that period. It would hit a timeout if the `idle_in_transaction_session_timeout` is set accordingly. After that timeout is reached, the connection is disconnected and the client would have to reconnect. The typical error message would be:

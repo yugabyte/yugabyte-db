@@ -48,7 +48,7 @@ export const ReplicationFactor = ({
 
   const handleChange = (e: ChangeEvent<HTMLInputElement>) => {
     //reset field value
-    const fieldValue = (e.target.value as unknown) as number;
+    const fieldValue = parseInt(e.target.value);
 
     if (!fieldValue || fieldValue < ASYNC_RF_MIN) {
       setValue(REPLICATION_FACTOR_FIELD, ASYNC_RF_MIN, { shouldValidate: true });
@@ -60,7 +60,9 @@ export const ReplicationFactor = ({
       toast.error(t('universeForm.cloudConfig.maxRFvalue', { rfValue: ASYNC_RF_MAX }), {
         autoClose: TOAST_AUTO_DISMISS_INTERVAL
       });
-    } else setValue(REPLICATION_FACTOR_FIELD, fieldValue, { shouldValidate: true });
+    } else {
+      setValue(REPLICATION_FACTOR_FIELD, fieldValue, { shouldValidate: true });
+    }
   };
 
   return (

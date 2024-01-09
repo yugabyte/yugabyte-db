@@ -20,6 +20,7 @@ import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
@@ -29,9 +30,11 @@ import static play.inject.Bindings.bind;
 import static play.test.Helpers.contentAsString;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.collect.ImmutableSet;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.commissioner.Commissioner;
 import com.yugabyte.yw.commissioner.Common;
@@ -48,23 +51,28 @@ import com.yugabyte.yw.common.PlatformGuiceApplicationBaseTest;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ReleaseManager;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.certmgmt.CertConfigType;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.DummyRuntimeConfigFactoryImpl;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
+import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
 import com.yugabyte.yw.forms.CertificateParams;
 import com.yugabyte.yw.forms.CertsRotateParams;
+import com.yugabyte.yw.forms.FinalizeUpgradeParams;
 import com.yugabyte.yw.forms.GFlagsUpgradeParams;
 import com.yugabyte.yw.forms.ITaskParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestartTaskParams;
+import com.yugabyte.yw.forms.RollbackUpgradeParams;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.SystemdUpgradeParams;
 import com.yugabyte.yw.forms.ThirdpartySoftwareUpgradeParams;
 import com.yugabyte.yw.forms.TlsToggleParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
+import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.SoftwareUpgradeState;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
@@ -78,6 +86,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Region;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.extended.FinalizeUpgradeInfoResponse;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
@@ -90,9 +99,11 @@ import java.util.Date;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Consumer;
 import junitparams.JUnitParamsRunner;
+import junitparams.Parameters;
 import org.apache.commons.io.FileUtils;
 import org.junit.After;
 import org.junit.Before;
@@ -119,6 +130,8 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
   private static Commissioner mockCommissioner;
   private Config mockConfig;
   private CertificateHelper certificateHelper;
+  private AutoFlagUtil mockAutoFlagUtil;
+  private XClusterUniverseService mockXClusterUniverseService;
 
   private Universe defaultUniverse;
   private Universe k8sUniverse;
@@ -176,6 +189,8 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
   protected Application provideApplication() {
     mockCommissioner = mock(Commissioner.class);
     mockConfig = mock(Config.class);
+    mockAutoFlagUtil = mock(AutoFlagUtil.class);
+    mockXClusterUniverseService = mock(XClusterUniverseService.class);
     ReleaseManager mockReleaseManager = mock(ReleaseManager.class);
 
     when(mockConfig.getBoolean("yb.cloud.enabled")).thenReturn(false);
@@ -203,6 +218,8 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
             bind(RuntimeConfigFactory.class)
                 .toInstance(new DummyRuntimeConfigFactoryImpl(mockConfig)))
         .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager))
+        .overrides(bind(AutoFlagUtil.class).toInstance(mockAutoFlagUtil))
+        .overrides(bind(XClusterUniverseService.class).toInstance(mockXClusterUniverseService))
         .overrides(bind(HealthChecker.class).toInstance(mock(HealthChecker.class)))
         .overrides(
             bind(CustomWsClientFactory.class).toProvider(CustomWsClientFactoryProvider.class))
@@ -239,6 +256,8 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     defaultUniverse = ModelFactory.createUniverse("Test Universe2", customer.getId());
     defaultUniverse = ModelFactory.addNodesToUniverse(defaultUniverse.getUniverseUUID(), 3);
     k8sUniverse = ModelFactory.createUniverse("k8s", customer.getId(), Common.CloudType.kubernetes);
+    when(mockConfig.hasPath(any())).thenReturn(true);
+    when(mockRuntimeConfigFactory.forUniverse(any())).thenReturn(mockConfig);
   }
 
   @After
@@ -411,10 +430,13 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
   public void testSoftwareUpgradeWithValidParams() {
     UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.SoftwareUpgrade);
     when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
-    UUID universeUUID = createUniverse(customer.getId()).getUniverseUUID();
 
     String url =
-        "/api/customers/" + customer.getUuid() + "/universes/" + universeUUID + "/upgrade/software";
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + defaultUniverse.getUniverseUUID()
+            + "/upgrade/software";
     ObjectNode bodyJson = Json.newObject().put("ybSoftwareVersion", "0.0.1");
     Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
 
@@ -429,14 +451,45 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     SoftwareUpgradeParams taskParams = argCaptor.getValue();
     assertEquals(UpgradeOption.ROLLING_UPGRADE, taskParams.upgradeOption);
     assertEquals("0.0.1", taskParams.ybSoftwareVersion);
+    assertEquals(false, taskParams.rollbackSupport);
 
     CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
     assertNotNull(task);
     assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
-    assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
+    assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe2")));
     assertThat(
         task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.SoftwareUpgrade)));
     assertAuditEntry(1, customer.getUuid());
+
+    // Software upgrade with rollback support.
+    url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + defaultUniverse.getUniverseUUID()
+            + "/upgrade/db_version";
+    fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.SoftwareUpgradeYB);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    bodyJson.put("ybSoftwareVersion", "2.20.3.0-b1");
+    TestHelper.updateUniverseVersion(defaultUniverse, "2.20.2.0-b1");
+    result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    assertOk(result);
+    json = Json.parse(contentAsString(result));
+    assertValue(json, "taskUUID", fakeTaskUUID.toString());
+
+    verify(mockCommissioner, times(1)).submit(eq(TaskType.SoftwareUpgradeYB), argCaptor.capture());
+    taskParams = argCaptor.getValue();
+    assertEquals(UpgradeOption.ROLLING_UPGRADE, taskParams.upgradeOption);
+    assertEquals("2.20.3.0-b1", taskParams.ybSoftwareVersion);
+    assertEquals(true, taskParams.rollbackSupport);
+
+    task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
+    assertNotNull(task);
+    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
+    assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe2")));
+    assertThat(
+        task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.SoftwareUpgrade)));
+    assertAuditEntry(2, customer.getUuid());
   }
 
   @Test
@@ -513,9 +566,343 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     assertThat(
         task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.SoftwareUpgrade)));
     assertAuditEntry(1, customer.getUuid());
+
+    // Software Upgrade with rollback support
+    url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + universe.getUniverseUUID()
+            + "/upgrade/db_version";
+    fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.SoftwareKubernetesUpgradeYB);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    bodyJson.put("ybSoftwareVersion", "2.20.3.0-b1");
+    TestHelper.updateUniverseVersion(universe, "2.20.2.0-b1");
+    result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    assertOk(result);
+    json = Json.parse(contentAsString(result));
+    assertValue(json, "taskUUID", fakeTaskUUID.toString());
+    verify(mockCommissioner, times(1))
+        .submit(eq(TaskType.SoftwareKubernetesUpgradeYB), argCaptor.capture());
+    taskParams = argCaptor.getValue();
+    assertEquals(UpgradeOption.ROLLING_UPGRADE, taskParams.upgradeOption);
+    assertEquals("2.20.3.0-b1", taskParams.ybSoftwareVersion);
+    assertEquals(true, taskParams.rollbackSupport);
+    task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
+    assertNotNull(task);
+    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
+    assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
+    assertThat(
+        task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.SoftwareUpgrade)));
+    assertAuditEntry(2, customer.getUuid());
+  }
+
+  @Test
+  public void testSoftwareUpgradePreCheck() throws IOException {
+    Universe universe1 = createUniverse(customer.getId());
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + universe1.getUniverseUUID()
+            + "/upgrade/software/precheck";
+    ObjectNode bodyJson = Json.newObject();
+    bodyJson.put("ybSoftwareVersion", "2.19.2.0-b1");
+    PlatformServiceException err =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> {
+              doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+            });
+    assertEquals("No software upgrade info available for this universe", err.getMessage());
+    bodyJson.put("ybSoftwareVersion", "2.20.2.0-b2");
+    err =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> {
+              doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+            });
+    assertEquals("No software upgrade info available for this universe", err.getMessage());
+    TestHelper.updateUniverseVersion(universe1, "2.20.2.0-b1");
+    when(mockAutoFlagUtil.upgradeRequireFinalize(anyString(), anyString())).thenReturn(true);
+    Result result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertEquals(true, json.get("finalizeRequired").asBoolean());
+    when(mockAutoFlagUtil.upgradeRequireFinalize(anyString(), anyString())).thenReturn(false);
+    result = doRequestWithAuthTokenAndBody("POST", url, authToken, bodyJson);
+    json = Json.parse(contentAsString(result));
+    assertEquals(false, json.get("finalizeRequired").asBoolean());
+  }
+
+  @Test
+  public void testFinalizeUpgradeInfo() throws IOException {
+    Universe universe1 = createUniverse(customer.getId());
+    String url =
+        "/api/customers/"
+            + customer.getUuid()
+            + "/universes/"
+            + universe1.getUniverseUUID()
+            + "/upgrade/finalize/info";
+    PlatformServiceException err =
+        assertThrows(
+            PlatformServiceException.class,
+            () -> {
+              doRequestWithAuthToken("GET", url, authToken);
+            });
+    assertEquals("No finalize upgrade info available for this universe", err.getMessage());
+    TestHelper.updateUniverseVersion(universe1, "2.20.2.0-b1");
+    Universe universe2 = createUniverse("test-2");
+    Set<UUID> impactedUniverses = ImmutableSet.of(universe2.getUniverseUUID());
+    when(mockXClusterUniverseService.getXClusterTargetUniverseSetToBeImpactedWithUpgradeFinalize(
+            any()))
+        .thenReturn(impactedUniverses);
+    Result result = doRequestWithAuthToken("GET", url, authToken);
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    ObjectMapper mapper = new ObjectMapper();
+    FinalizeUpgradeInfoResponse response =
+        mapper.convertValue(json, FinalizeUpgradeInfoResponse.class);
+    assertEquals(
+        universe2.getUniverseUUID(),
+        response.getImpactedXClusterConnectedUniverse().get(0).universeUUID);
+  }
+
+  @Test
+  @Parameters({
+    "Ready",
+    "UpgradeFailed",
+    "Upgrading",
+    "PreFinalize",
+    "Finalizing",
+    "FinalizeFailed",
+    "RollingBack",
+    "RollbackFailed"
+  })
+  public void testSoftwareUpgradeWithState(SoftwareUpgradeState state) {
+    TestHelper.updateUniverseSoftwareUpgradeState(defaultUniverse, state);
+    if (SoftwareUpgradeParams.ALLOWED_UNIVERSE_SOFTWARE_UPGRADE_STATE_SET.contains(state)) {
+      UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.SoftwareUpgradeYB);
+      when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+      Result result =
+          runUpgrade(
+              defaultUniverse,
+              p -> {
+                p.ybSoftwareVersion = "2.20.2.0-b2";
+              },
+              SoftwareUpgradeParams.class,
+              "software");
+      assertOk(result);
+    } else {
+      PlatformServiceException exception =
+          assertThrows(
+              PlatformServiceException.class,
+              () ->
+                  runUpgrade(
+                      defaultUniverse,
+                      p -> {
+                        p.ybSoftwareVersion = "2.20.2.0-b2";
+                      },
+                      SoftwareUpgradeParams.class,
+                      "software"));
+      assertEquals(
+          exception.getMessage(),
+          "Software upgrade cannot be preformed on universe in state " + state);
+      verifyNoActions();
+    }
+  }
+
+  // RollBack Upgrade
+
+  @Test
+  @Parameters({
+    "Ready",
+    "UpgradeFailed",
+    "Upgrading",
+    "PreFinalize",
+    "Finalizing",
+    "FinalizeFailed",
+    "RollingBack",
+    "RollbackFailed"
+  })
+  public void testRollbackUpgrade(SoftwareUpgradeState state) {
+    TestHelper.updateUniverseSoftwareUpgradeState(defaultUniverse, state);
+    if (RollbackUpgradeParams.ALLOWED_UNIVERSE_ROLLBACK_UPGRADE_STATE_SET.contains(state)) {
+      PlatformServiceException exception =
+          assertThrows(
+              PlatformServiceException.class,
+              () -> runUpgrade(defaultUniverse, p -> {}, RollbackUpgradeParams.class, "rollback"));
+      assertEquals(
+          exception.getMessage(),
+          "Cannot rollback software upgrade as previous upgrade was finalized");
+      TestHelper.updateUniverseIsRollbackAllowed(defaultUniverse, true);
+      // exception =
+      //     assertThrows(
+      //         PlatformServiceException.class,
+      //         () -> runUpgrade(defaultUniverse, p -> {}, RollbackUpgradeParams.class,
+      // "rollback"));
+      // assertEquals(
+      //     exception.getMessage(),
+      //     "Cannot rollback software upgrade as previous upgrade was finalized");
+      // TestHelper.updateUniversePrevSoftwareConfig(
+      //     defaultUniverse, new UniverseDefinitionTaskParams.PrevYBSoftwareConfig());
+      UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.RollbackUpgrade);
+      when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+      Result result = runUpgrade(defaultUniverse, p -> {}, RollbackUpgradeParams.class, "rollback");
+      assertOk(result);
+      JsonNode json = Json.parse(contentAsString(result));
+      assertValue(json, "taskUUID", fakeTaskUUID.toString());
+
+      ArgumentCaptor<RollbackUpgradeParams> argCaptor =
+          ArgumentCaptor.forClass(RollbackUpgradeParams.class);
+      verify(mockCommissioner, times(1)).submit(eq(TaskType.RollbackUpgrade), argCaptor.capture());
+      verify(mockCommissioner, times(1)).submit(eq(TaskType.RollbackUpgrade), argCaptor.capture());
+      RollbackUpgradeParams taskParams = argCaptor.getValue();
+      assertEquals(UpgradeOption.ROLLING_UPGRADE, taskParams.upgradeOption);
+
+      CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
+      assertNotNull(task);
+      assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
+      assertThat(task.getTargetName(), allOf(notNullValue(), equalTo(defaultUniverse.getName())));
+      assertThat(
+          task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.RollbackUpgrade)));
+      assertAuditEntry(1, customer.getUuid());
+    } else {
+      PlatformServiceException exception =
+          assertThrows(
+              PlatformServiceException.class,
+              () -> runUpgrade(defaultUniverse, p -> {}, RollbackUpgradeParams.class, "rollback"));
+      assertEquals(
+          exception.getMessage(),
+          "Cannot rollback software upgrade on the universe in state " + state);
+      verifyNoActions();
+    }
+  }
+
+  @Test
+  public void testRollbackKubernetesUpgrade() {
+    UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.RollbackKubernetesUpgrade);
+    when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+    Universe universe = createUniverse("Test Universe", customer.getId(), CloudType.kubernetes);
+    Map<String, String> universeConfig = new HashMap<>();
+    universeConfig.put(Universe.HELM2_LEGACY, "helm");
+    universe.setConfig(universeConfig);
+    universe.save();
+
+    TestHelper.updateUniverseSoftwareUpgradeState(universe, SoftwareUpgradeState.PreFinalize);
+    TestHelper.updateUniverseIsRollbackAllowed(universe, true);
+    TestHelper.updateUniversePrevSoftwareConfig(
+        universe, new UniverseDefinitionTaskParams.PrevYBSoftwareConfig());
+
+    Result result = runUpgrade(universe, p -> {}, RollbackUpgradeParams.class, "rollback");
+    assertOk(result);
+    JsonNode json = Json.parse(contentAsString(result));
+    assertValue(json, "taskUUID", fakeTaskUUID.toString());
+
+    ArgumentCaptor<RollbackUpgradeParams> argCaptor =
+        ArgumentCaptor.forClass(RollbackUpgradeParams.class);
+    verify(mockCommissioner, times(1))
+        .submit(eq(TaskType.RollbackKubernetesUpgrade), argCaptor.capture());
+
+    RollbackUpgradeParams taskParams = argCaptor.getValue();
+    assertEquals(UpgradeOption.ROLLING_UPGRADE, taskParams.upgradeOption);
+
+    CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
+    assertNotNull(task);
+    assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
+    assertThat(task.getTargetName(), allOf(notNullValue(), equalTo("Test Universe")));
+    assertThat(
+        task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.RollbackUpgrade)));
+    assertAuditEntry(1, customer.getUuid());
+  }
+
+  // Finalize Upgrade
+
+  @Test
+  @Parameters({
+    "Ready",
+    "UpgradeFailed",
+    "Upgrading",
+    "PreFinalize",
+    "Finalizing",
+    "FinalizeFailed",
+    "RollingBack",
+    "RollbackFailed"
+  })
+  public void testFinalizeUpgrade(SoftwareUpgradeState state) {
+    TestHelper.updateUniverseSoftwareUpgradeState(defaultUniverse, state);
+    if (FinalizeUpgradeParams.ALLOWED_FINALIZE_SOFTWARE_UPGRADE_STATE_SET.contains(state)) {
+      UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.FinalizeUpgrade);
+      when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+      Result result = runUpgrade(defaultUniverse, p -> {}, FinalizeUpgradeParams.class, "finalize");
+      assertOk(result);
+      assertOk(result);
+      JsonNode json = Json.parse(contentAsString(result));
+      assertValue(json, "taskUUID", fakeTaskUUID.toString());
+      CustomerTask task = CustomerTask.find.query().where().eq("task_uuid", fakeTaskUUID).findOne();
+      assertNotNull(task);
+      assertThat(task.getCustomerUUID(), allOf(notNullValue(), equalTo(customer.getUuid())));
+      assertThat(task.getTargetName(), allOf(notNullValue(), equalTo(defaultUniverse.getName())));
+      assertThat(
+          task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.FinalizeUpgrade)));
+      assertAuditEntry(1, customer.getUuid());
+    } else {
+      PlatformServiceException exception =
+          assertThrows(
+              PlatformServiceException.class,
+              () -> runUpgrade(defaultUniverse, p -> {}, FinalizeUpgradeParams.class, "finalize"));
+      assertEquals(
+          exception.getMessage(),
+          "Cannot finalize Software upgrade on universe which are in state " + state);
+      verifyNoActions();
+    }
   }
 
   // GFlags upgrade
+
+  @Test
+  @Parameters({
+    "Ready",
+    "UpgradeFailed",
+    "Upgrading",
+    "PreFinalize",
+    "Finalizing",
+    "FinalizeFailed",
+    "RollingBack",
+    "RollbackFailed"
+  })
+  public void testGFlagsUpgradeWithState(SoftwareUpgradeState state) {
+    TestHelper.updateUniverseSoftwareUpgradeState(defaultUniverse, state);
+    if (state.equals(SoftwareUpgradeState.Ready)) {
+      UUID fakeTaskUUID = FakeDBApplication.buildTaskInfo(null, TaskType.GFlagsUpgrade);
+      when(mockCommissioner.submit(any(), any())).thenReturn(fakeTaskUUID);
+      Result result =
+          runUpgrade(
+              defaultUniverse,
+              p -> {
+                p.masterGFlags = Map.of("k1", "v1");
+                p.tserverGFlags = Map.of("k1", "v1");
+              },
+              GFlagsUpgradeParams.class,
+              "gflags");
+      assertOk(result);
+    } else {
+      PlatformServiceException exception =
+          assertThrows(
+              PlatformServiceException.class,
+              () ->
+                  runUpgrade(
+                      defaultUniverse,
+                      p -> {
+                        p.masterGFlags = Map.of("k1", "v1");
+                        p.tserverGFlags = Map.of("k1", "v1");
+                      },
+                      GFlagsUpgradeParams.class,
+                      "gflags"));
+      assertEquals(exception.getMessage(), "Cannot upgrade gflags on universe in state " + state);
+      verifyNoActions();
+    }
+  }
 
   @Test
   public void testGFlagsUpgradeWithInvalidParams() {

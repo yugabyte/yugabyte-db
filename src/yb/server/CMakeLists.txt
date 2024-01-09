@@ -130,3 +130,21 @@ endif()
 set(YB_TEST_LINK_LIBS server_process ${YB_MIN_TEST_LIBS})
 ADD_YB_TEST(webserver-test)
 ADD_YB_TEST(pprof-path-handler_util-test)
+
+#########################################
+# auto_flags_manager_common
+#########################################
+
+set(AUTO_FLAGS_MANAGER_COMMON_SRCS
+  auto_flags_manager_base.cc
+)
+
+add_library(auto_flags_manager_common ${AUTO_FLAGS_MANAGER_COMMON_SRCS})
+target_link_libraries(auto_flags_manager_common
+  server_process
+  yb_common
+  yb_fs
+  gutil
+  yrpc
+  yb_util
+  yb_client)

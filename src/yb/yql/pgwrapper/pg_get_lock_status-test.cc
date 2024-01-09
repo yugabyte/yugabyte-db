@@ -20,6 +20,7 @@
 #include "yb/yql/pgwrapper/pg_locks_test_base.h"
 
 DECLARE_uint64(transaction_heartbeat_usec);
+DECLARE_uint64(refresh_waiter_timeout_ms);
 DECLARE_double(transaction_max_missed_heartbeat_periods);
 DECLARE_int32(transaction_table_num_tablets);
 DECLARE_int32(heartbeat_interval_ms);
@@ -28,6 +29,7 @@ DECLARE_bool(force_global_transactions);
 DECLARE_bool(TEST_mock_tablet_hosts_all_transactions);
 DECLARE_bool(TEST_fail_abort_request_with_try_again);
 DECLARE_bool(enable_wait_queues);
+DECLARE_uint64(force_single_shard_waiter_retry_ms);
 
 using namespace std::literals;
 using std::string;
@@ -606,6 +608,57 @@ TEST_F(PgGetLockStatusTest, TestPgLocksWhileDDLInProgress) {
   ASSERT_OK(status_future.get());
 }
 
+TEST_F(PgGetLockStatusTest, TestWaitStartTimeIsConsistentAcrossWaiterReEntries) {
+  constexpr int kMinTxnAgeMs = 1;
+  constexpr auto waiter_refresh_secs = 2;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_refresh_waiter_timeout_ms) = waiter_refresh_secs * 1000;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.ExecuteFormat("SET yb_locks_min_txn_age='$0ms'", kMinTxnAgeMs));
+
+  auto session_1 = ASSERT_RESULT(Init("foo", "1"));
+  auto init_micros = ASSERT_RESULT(conn.FetchRow<int64_t>(
+      "SELECT DISTINCT(waitend) FROM pg_locks WHERE granted"));
+
+  auto status_future_write_req = std::async(std::launch::async, [&]() -> Status {
+    auto conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    RETURN_NOT_OK(conn.Execute("UPDATE foo SET v=v+1 WHERE k=1"));
+    RETURN_NOT_OK(conn.CommitTransaction());
+    return Status::OK();
+  });
+  auto status_future_read_req = std::async(std::launch::async, [&]() -> Status {
+    auto conn = VERIFY_RESULT(Connect());
+    RETURN_NOT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+    RETURN_NOT_OK(conn.Fetch("SELECT * FROM foo WHERE k=1 FOR UPDATE"));
+    RETURN_NOT_OK(conn.CommitTransaction());
+    return Status::OK();
+  });
+
+
+  SleepFor(2ms * FLAGS_heartbeat_interval_ms * kTimeMultiplier);
+  auto now_micros = ASSERT_RESULT(conn.FetchRow<int64_t>("SELECT NOW()"));
+
+  auto wait_start_time_1_query =
+      "SELECT DISTINCT(waitstart) FROM pg_locks WHERE NOT granted ORDER BY waitstart LIMIT 1";
+  auto wait_start_time_1 = ASSERT_RESULT(conn.FetchRow<int64_t>(wait_start_time_1_query));
+  ASSERT_LE(init_micros, wait_start_time_1);
+  ASSERT_GE(now_micros, wait_start_time_1);
+
+  auto wait_start_time_2_query =
+      "SELECT DISTINCT(waitstart) FROM pg_locks WHERE NOT granted ORDER BY waitstart DESC LIMIT 1";
+  auto wait_start_time_2 = ASSERT_RESULT(conn.FetchRow<int64_t>(wait_start_time_2_query));
+  ASSERT_LE(init_micros, wait_start_time_2);
+  ASSERT_GE(now_micros, wait_start_time_2);
+
+  SleepFor(2 * waiter_refresh_secs * 1s * kTimeMultiplier);
+  ASSERT_EQ(wait_start_time_1, ASSERT_RESULT(conn.FetchRow<int64_t>(wait_start_time_1_query)));
+    ASSERT_EQ(wait_start_time_2, ASSERT_RESULT(conn.FetchRow<int64_t>(wait_start_time_2_query)));
+  ASSERT_OK(session_1.conn->CommitTransaction());
+  ASSERT_OK(status_future_write_req.get());
+  ASSERT_OK(status_future_read_req.get());
+}
+
 class PgGetLockStatusTestRF3 : public PgGetLockStatusTest {
   size_t NumTabletServers() override {
     return 3;
@@ -654,6 +707,68 @@ TEST_F(PgGetLockStatusTestRF3, TestPrioritizeLocksOfOlderTxns) {
       "SELECT DISTINCT(ybdetails->>'transactionid') FROM pg_locks")));
   done.CountDown();
   thread_holder.WaitAndStop(20s * kTimeMultiplier);
+}
+
+TEST_F(PgGetLockStatusTestRF3, TestLocksOfSingleShardWaiters) {
+  constexpr auto table = "foo";
+  constexpr int kMinTxnAgeMs = 1;
+  constexpr int kNumSingleShardWaiters = 2;
+  constexpr int kSingleShardWaiterRetryMs = 5000;
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_single_shard_waiter_retry_ms) = kSingleShardWaiterRetryMs;
+  auto setup_conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(setup_conn.ExecuteFormat("CREATE TABLE $0(k INT PRIMARY KEY, v INT)", table));
+  ASSERT_OK(setup_conn.ExecuteFormat("INSERT INTO $0 SELECT generate_series(1,10), 0", table));
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1 for update", table));
+
+  TestThreadHolder thread_holder;
+  for (int i = 0; i < kNumSingleShardWaiters; i++) {
+    thread_holder.AddThreadFunctor([this, table, i] {
+      SleepFor(i * 100 * 1ms);
+      auto conn = ASSERT_RESULT(Connect());
+      ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET v=v+1 WHERE k=1", table));
+    });
+  }
+  SleepFor(2s * kTimeMultiplier);
+
+  ASSERT_OK(setup_conn.ExecuteFormat("SET yb_locks_min_txn_age='$0ms'", kMinTxnAgeMs));
+  // When we set max num txns to 1, the distributed transaction should get prioritized over
+  // the single shard waiters.
+  ASSERT_OK(setup_conn.Execute("SET yb_locks_max_transactions=1"));
+  auto num_txns = ASSERT_RESULT(setup_conn.FetchRow<int64>(
+      "SELECT COUNT(*) FROM pg_locks WHERE fastpath"));
+  ASSERT_EQ(num_txns, 0);
+
+  ASSERT_OK(setup_conn.Execute("SET yb_locks_max_transactions=10"));
+  num_txns = ASSERT_RESULT(setup_conn.FetchRow<int64>(
+      "SELECT COUNT(DISTINCT(waitstart)) FROM pg_locks WHERE fastpath"));
+  ASSERT_EQ(num_txns, 2);
+  // Assert that the single shard txns are waiting for locks.
+  num_txns = ASSERT_RESULT(setup_conn.FetchRow<int64>(
+      "SELECT COUNT(*) FROM pg_locks WHERE fastpath AND granted"));
+  ASSERT_EQ(num_txns, 0);
+
+  auto waiter1_start_time = ASSERT_RESULT(setup_conn.FetchRow<int64>(
+      "SELECT waitstart FROM pg_locks WHERE fastpath order by waitstart limit 1"));
+  // Now limit the results to just 1 single shard waiter and see that the older one is prioritized.
+  ASSERT_OK(setup_conn.Execute("SET yb_locks_max_transactions=2"));
+  num_txns = ASSERT_RESULT(setup_conn.FetchRow<int64>(
+      "SELECT COUNT(DISTINCT(waitstart)) FROM pg_locks WHERE fastpath"));
+  ASSERT_EQ(num_txns, 1);
+  ASSERT_EQ(waiter1_start_time, ASSERT_RESULT(setup_conn.FetchRow<int64>(
+      "SELECT DISTINCT(waitstart) FROM pg_locks WHERE fastpath"
+  )));
+  // Wait for kSingleShardWaiterRetryMs and check that the start time of the
+  // single shard waiter remains consistent.
+  SleepFor(1ms * 2 * kSingleShardWaiterRetryMs * kTimeMultiplier);
+  ASSERT_EQ(waiter1_start_time, ASSERT_RESULT(setup_conn.FetchRow<int64>(
+      "SELECT DISTINCT(waitstart) FROM pg_locks WHERE fastpath"
+  )));
+  ASSERT_OK(conn.CommitTransaction());
+  thread_holder.WaitAndStop(5s * kTimeMultiplier);
 }
 
 } // namespace pgwrapper

@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCertificate;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RemoveUniverseEntry;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.SupportBundleUtil;
+import com.yugabyte.yw.common.UniverseInProgressException;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
@@ -73,6 +74,17 @@ public class DestroyUniverse extends UniverseTaskBase {
 
   public Params params() {
     return (Params) taskParams;
+  }
+
+  @Override
+  protected void validateUniverseState(Universe universe) {
+    try {
+      super.validateUniverseState(universe);
+    } catch (UniverseInProgressException e) {
+      if (!params().isForceDelete) {
+        throw e;
+      }
+    }
   }
 
   @Override
@@ -150,7 +162,8 @@ public class DestroyUniverse extends UniverseTaskBase {
                 universe.getNodes(),
                 params().isForceDelete,
                 true /* delete node */,
-                true /* deleteRootVolumes */)
+                true /* deleteRootVolumes */,
+                true /* skipDestroyPrecheck */)
             .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
       }
 

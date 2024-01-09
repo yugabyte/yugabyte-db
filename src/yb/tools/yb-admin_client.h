@@ -36,6 +36,7 @@
 
 #include <boost/optional.hpp>
 
+#include "yb/cdc/cdc_service.pb.h"
 #include "yb/client/client.h"
 #include "yb/client/yb_table_name.h"
 
@@ -390,7 +391,8 @@ class ClusterAdminClient {
 
   Status CreateCDCSDKDBStream(
       const TypedNamespaceName& ns, const std::string& CheckPointType,
-      const cdc::CDCRecordType RecordType);
+      const cdc::CDCRecordType RecordType,
+      const std::string& ConsistentSnapshotOption);
 
   Status DeleteCDCStream(const std::string& stream_id, bool force_delete = false);
 
@@ -401,6 +403,9 @@ class ClusterAdminClient {
   Status ListCDCSDKStreams(const std::string& namespace_name);
 
   Status GetCDCDBStreamInfo(const std::string& db_stream_id);
+
+  Status YsqlBackfillReplicationSlotNameToCDCSDKStream(
+      const std::string& stream_id, const std::string& replication_slot_name);
 
   Status SetupNamespaceReplicationWithBootstrap(const std::string& replication_id,
                                   const std::vector<std::string>& producer_addresses,

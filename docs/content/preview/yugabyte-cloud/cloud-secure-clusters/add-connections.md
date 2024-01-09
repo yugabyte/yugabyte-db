@@ -3,7 +3,6 @@ title: IP allow lists
 linkTitle: IP allow lists
 description: Authorize access to a cluster using IP allow lists.
 headcontent: Authorize access to a cluster using IP allow lists
-image: /images/section_icons/deploy/enterprise.png
 aliases:
   - /preview/yugabyte-cloud/manage-access/
   - /preview/yugabyte-cloud/cloud-network/

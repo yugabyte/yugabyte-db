@@ -1,48 +1,50 @@
 ---
 title: Create a KMS configuration using Azure
-headerTitle: Create a KMS configuration using Azure
+headerTitle: Create a KMS configuration
 linkTitle: Create a KMS configuration
 description: Use YugabyteDB Anywhere to create a KMS configuration for Azure Key Vault.
 menu:
   preview_yugabyte-platform:
     parent: security
-    identifier: create-kms-config-1-azure-kms
-    weight: 27
+    identifier: create-kms-config-3-azure-kms
+    weight: 50
 type: docs
 ---
 
+Encryption at rest uses a master key to encrypt and decrypt universe keys. The master key details are stored in YugabyteDB Anywhere in key management service (KMS) configurations. You enable encryption at rest for a universe by assigning the universe a KMS configuration. The master key designated in the configuration is then used for generating the universe keys used for encrypting the universe data.
+
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li >
-    <a href="{{< relref "./aws-kms.md" >}}" class="nav-link">
+    <a href="../aws-kms/" class="nav-link">
       <i class="fa-brands fa-aws" aria-hidden="true"></i>
       AWS KMS
     </a>
   </li>
   <li >
-    <a href="{{< relref "./google-kms.md" >}}" class="nav-link">
+    <a href="../google-kms/" class="nav-link">
       <i class="fa-brands fa-google" aria-hidden="true"></i>
       Google KMS
     </a>
   </li>
   <li >
-    <a href="{{< relref "./azure-kms.md" >}}" class="nav-link active">
+    <a href="../azure-kms/" class="nav-link active">
       <i class="icon-azure" aria-hidden="true"></i>
       Azure Key Vault
     </a>
   </li>
   <li >
-    <a href="{{< relref "./hashicorp-kms.md" >}}" class="nav-link">
+    <a href="../hashicorp-kms/" class="nav-link">
       <i class="icon-postgres" aria-hidden="true"></i>
       HashiCorp Vault
     </a>
   </li>
 </ul>
 
-Encryption at rest uses a master key to encrypt and decrypt universe keys. The master key details are stored in YugabyteDB Anywhere in key management service (KMS) configurations. You enable encryption at rest for a universe by assigning the universe a KMS configuration. The master key designated in the configuration is then used for generating the universe keys used for encrypting the universe data.
-
 Encryption at rest in YugabyteDB Anywhere supports the use of Microsoft [Azure Key Vault](https://learn.microsoft.com/en-us/azure/key-vault/).
 
 Conceptually, Azure Key Vault consists of a key vault containing one or more keys, with each key capable of having multiple versions.
+
+## Prerequisites
 
 Before defining a KMS configuration with YugabyteDB Anywhere, you need to create a key vault through the [Azure portal](https://docs.microsoft.com/en-us/azure/key-vault/general/quick-create-portal). The following settings are required:
 

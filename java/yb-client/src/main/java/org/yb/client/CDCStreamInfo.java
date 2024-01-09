@@ -11,11 +11,13 @@ final public class CDCStreamInfo {
   private final List<String> tableIds;
   private final Map<String, String> options;
   private final String namespaceId;
+  private final String cdcsdkYsqlReplicationSlotName;
 
   public CDCStreamInfo(ByteString streamId,
                        List<ByteString> tableIds,
                        List<CatalogEntityInfo.CDCStreamOptionsPB> options,
-                       ByteString namespaceId) {
+                       ByteString namespaceId,
+                       String cdcsdkYsqlReplicationSlotName) {
     this.streamId = streamId.toStringUtf8();
     this.tableIds = tableIds.stream().map(ByteString::toStringUtf8).collect(Collectors.toList());
     this.options =
@@ -24,6 +26,7 @@ final public class CDCStreamInfo {
                 CatalogEntityInfo.CDCStreamOptionsPB::getKey,
                 option -> option.getValue().toStringUtf8()));
     this.namespaceId = namespaceId.toStringUtf8();
+    this.cdcsdkYsqlReplicationSlotName = cdcsdkYsqlReplicationSlotName;
   }
 
   public String getStreamId() {
@@ -40,5 +43,9 @@ final public class CDCStreamInfo {
 
   public String getNamespaceId() {
     return namespaceId;
+  }
+
+  public String getCdcsdkYsqlReplicationSlotName() {
+    return  cdcsdkYsqlReplicationSlotName;
   }
 }

@@ -192,6 +192,7 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
             List<NodeDetails> tServerNodes = filteredNodePairs.getSecond();
             // Upgrade GFlags in all nodes.
             createGFlagUpgradeTasks(
+                universe,
                 userIntent,
                 masterNodes,
                 tServerNodes,
@@ -246,6 +247,7 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
   }
 
   private void createGFlagUpgradeTasks(
+      Universe universe,
       UniverseDefinitionTaskParams.UserIntent userIntent,
       List<NodeDetails> masterNodes,
       List<NodeDetails> tServerNodes,
@@ -257,7 +259,8 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
       case ROLLING_UPGRADE:
         createRollingUpgradeTaskFlow(
             (nodes, processTypes) ->
-                createServerConfFileUpdateTasks(
+                createNodeSubtasks(
+                    universe,
                     userIntent,
                     nodes,
                     processTypes,
@@ -273,7 +276,8 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
       case NON_ROLLING_UPGRADE:
         createNonRollingUpgradeTaskFlow(
             (nodes, processTypes) ->
-                createServerConfFileUpdateTasks(
+                createNodeSubtasks(
+                    universe,
                     userIntent,
                     nodes,
                     processTypes,
@@ -290,7 +294,8 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
         createNonRestartUpgradeTaskFlow(
             (List<NodeDetails> nodeList, Set<ServerType> processTypes) -> {
               ServerType processType = getSingle(processTypes);
-              createServerConfFileUpdateTasks(
+              createNodeSubtasks(
+                  universe,
                   userIntent,
                   nodeList,
                   processTypes,
@@ -311,6 +316,33 @@ public class GFlagsUpgrade extends UpgradeTaskBase {
             tServerNodes,
             DEFAULT_CONTEXT);
         break;
+    }
+  }
+
+  protected void createNodeSubtasks(
+      Universe universe,
+      UniverseDefinitionTaskParams.UserIntent userIntent,
+      List<NodeDetails> nodes,
+      Set<ServerType> processTypes,
+      UniverseDefinitionTaskParams.Cluster curCluster,
+      Collection<UniverseDefinitionTaskParams.Cluster> curClusters,
+      UniverseDefinitionTaskParams.Cluster newCluster,
+      Collection<UniverseDefinitionTaskParams.Cluster> newClusters) {
+
+    createServerConfFileUpdateTasks(
+        userIntent, nodes, processTypes, curCluster, curClusters, newCluster, newClusters);
+
+    // In case audit logs export is set up - need to re-configure otel collector.
+    if (universe.getUniverseDetails().otelCollectorEnabled
+        && curCluster.userIntent.auditLogConfig != null) {
+      createManageOtelCollectorTasks(
+          userIntent,
+          nodes,
+          false,
+          curCluster.userIntent.auditLogConfig,
+          nodeDetails ->
+              GFlagsUtil.getGFlagsForNode(
+                  nodeDetails, ServerType.TSERVER, newCluster, newClusters));
     }
   }
 }

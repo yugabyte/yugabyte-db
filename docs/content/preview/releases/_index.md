@@ -2,7 +2,7 @@
 title: Releases in YugabyteDB
 headerTitle: Releases
 linkTitle: Releases
-description: An overview of the preview and current stable YugabyteDB database releases, and upcoming releases.
+description: Release support policy, versioning, and feature availability for YugabyteDB.
 image: /images/section_icons/index/quick_start.png
 aliases:
   - /preview/releases/releases-overview/
@@ -70,7 +70,7 @@ For information on key features planned for the upcoming releases, visit [Curren
 
 | Release series | Planned release |
 | :------------- | :-------------- |
-| v2.22 (STS)    | Mid 2024       |
+| Next STS    | Mid 2024       |
 
 ## Recommended release series for projects
 

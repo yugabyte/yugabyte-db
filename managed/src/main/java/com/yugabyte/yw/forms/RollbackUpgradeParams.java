@@ -28,16 +28,17 @@ public class RollbackUpgradeParams extends UpgradeTaskParams {
           "YbaApi Internal. Target software version during rollback which will be set by YBA itself"
               + " and overridden in case user provides it.",
       accessMode = AccessMode.READ_ONLY)
-  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.21.0.0")
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.2.0")
   public String ybSoftwareVersion = null;
 
   public RollbackUpgradeParams() {}
 
-  private static final Set<SoftwareUpgradeState> ALLOWED_UNIVERSE_SOFTWARE_UPGRADE_STATE_SET =
+  public static final Set<SoftwareUpgradeState> ALLOWED_UNIVERSE_ROLLBACK_UPGRADE_STATE_SET =
       ImmutableSet.of(
           SoftwareUpgradeState.PreFinalize,
           SoftwareUpgradeState.Ready,
-          SoftwareUpgradeState.UpgradeFailed);
+          SoftwareUpgradeState.UpgradeFailed,
+          SoftwareUpgradeState.RollbackFailed);
 
   @Override
   public boolean isKubernetesUpgradeSupported() {
@@ -55,15 +56,14 @@ public class RollbackUpgradeParams extends UpgradeTaskParams {
     super.verifyParams(universe, isFirstTry);
 
     UniverseDefinitionTaskParams universeDetails = universe.getUniverseDetails();
-    if (!ALLOWED_UNIVERSE_SOFTWARE_UPGRADE_STATE_SET.contains(
+    if (!ALLOWED_UNIVERSE_ROLLBACK_UPGRADE_STATE_SET.contains(
         universeDetails.softwareUpgradeState)) {
       throw new PlatformServiceException(
           BAD_REQUEST,
           "Cannot rollback software upgrade on the universe in state "
               + universe.getUniverseDetails().softwareUpgradeState);
     }
-    if (!universeDetails.isSoftwareRollbackAllowed
-        || universeDetails.prevYBSoftwareConfig == null) {
+    if (!universeDetails.isSoftwareRollbackAllowed) {
       throw new PlatformServiceException(
           BAD_REQUEST, "Cannot rollback software upgrade as previous upgrade was finalized");
     }

@@ -17,6 +17,8 @@ import { toast } from 'react-toastify';
 import { timeFormatter } from '../../../utils/TableFormatters';
 import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
+import { calculateDuration } from '../../backupv2/common/BackupUtils';
+import { SoftwareUpgradeTaskType } from '../../universes/helpers/universeHelpers';
 
 class TaskDetail extends Component {
   constructor(props) {
@@ -204,14 +206,18 @@ class TaskDetail extends Component {
             <YBResourceCount
               className="text-align-right pull-right"
               kind="Target universe"
-              size={currentTaskData.title?.split(' : ')[1]}
+              sizeClassName="task-header-font"
+              size={currentTaskData?.title?.split(' : ')[1]}
             />
-            <YBResourceCount kind="Task name" size={currentTaskData.title?.split(' : ')[0]} />
+            <YBResourceCount
+              kind="Task name"
+              sizeClassName="task-header-font"
+              size={currentTaskData?.title?.split(' : ')[0]}
+            />
             {taskTopLevelData}
           </div>
           <div className="task-step-bar-container">{taskProgressBarData}</div>
         </div>
-
         <YBPanelItem
           header={
             <h2>
@@ -223,14 +229,58 @@ class TaskDetail extends Component {
             </h2>
           }
           body={
-            <div className="task-detail-container">
-              <Row className="task-heading-row">
-                <Col xs={4}>Task</Col>
-                <Col xs={4}>Started On</Col>
-                <Col xs={4}>Status</Col>
-              </Row>
-              {taskFailureDetails}
-            </div>
+            [
+              SoftwareUpgradeTaskType.SOFTWARE_UPGRADE,
+              SoftwareUpgradeTaskType.ROLLBACK_UPGRADE,
+              SoftwareUpgradeTaskType.FINALIZE_UPGRADE
+            ].includes(currentTaskData?.type) ? (
+              <div className="task-detail-container">
+                <Row className="task-heading-row">
+                  <Col xs={3}>TASK</Col>
+                  <Col xs={2}>START VERSION</Col>
+                  <Col xs={2}>TARGET VERSION</Col>
+                  <Col xs={3}>START TIME</Col>
+                  <Col xs={2}>DURATION</Col>
+                </Row>
+                <Row className="task-value-row">
+                  <Col xs={3}>
+                    <>
+                      {currentTaskData?.type === SoftwareUpgradeTaskType.SOFTWARE_UPGRADE &&
+                        'Database Upgrade'}
+                      {currentTaskData?.type === SoftwareUpgradeTaskType.ROLLBACK_UPGRADE &&
+                        'Roll Back Database Upgrade'}
+                      {currentTaskData?.type === SoftwareUpgradeTaskType.FINALIZE_UPGRADE &&
+                        'Finalize Database Upgrade'}
+                    </>
+                  </Col>
+                  <Col xs={2}>
+                    {currentTaskData?.details?.versionNumbers?.ybPrevSoftwareVersion ?? '-'}
+                  </Col>
+                  <Col xs={2}>
+                    {currentTaskData?.details?.versionNumbers?.ybSoftwareVersion ?? '-'}
+                  </Col>
+                  <Col xs={3}>{currentTaskData.createTime}</Col>
+                  <Col xs={2}>
+                    {currentTaskData?.createTime && currentTaskData?.completionTime
+                      ? calculateDuration(
+                          currentTaskData?.createTime,
+                          currentTaskData?.completionTime
+                        )
+                      : '-'}
+                  </Col>
+                </Row>
+                {taskFailureDetails}
+              </div>
+            ) : (
+              <div className="task-detail-container">
+                <Row className="task-heading-row">
+                  <Col xs={4}>Task</Col>
+                  <Col xs={4}>Started On</Col>
+                  <Col xs={4}>Status</Col>
+                </Row>
+                {taskFailureDetails}
+              </div>
+            )
           }
         />
       </div>

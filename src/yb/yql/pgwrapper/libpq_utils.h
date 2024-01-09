@@ -254,6 +254,8 @@ class PGConn {
 
   bool IsBusy();
 
+  ConnStatusType ConnStatus();
+
   Result<PGResultPtr> Fetch(const std::string& command);
 
   template <class... Args>
@@ -320,12 +322,12 @@ class PGConn {
 struct PGConnSettings {
   constexpr static const char* kDefaultUser = "postgres";
 
-  const std::string& host;
+  std::string host = {};
   uint16_t port;
-  const std::string& dbname = std::string();
-  const std::string& user = kDefaultUser;
-  const std::string& password = std::string();
-  const std::string& replication = std::string();
+  std::string dbname = {};
+  std::string user = kDefaultUser;
+  std::string password = {};
+  std::string replication = {};
   size_t connect_timeout = 0;
 };
 

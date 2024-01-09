@@ -96,6 +96,7 @@
 #include "utils/varlena.h"
 #include "utils/xml.h"
 #include "pg_yb_utils.h"
+#include "yb_ash.h"
 
 #ifndef PG_KRB_SRVTAB
 #define PG_KRB_SRVTAB ""
@@ -1035,6 +1036,16 @@ static struct config_bool ConfigureNamesBool[] =
 			NULL
 		},
 		&yb_bnl_enable_hashing,
+		true,
+		NULL, NULL, NULL
+	},
+	{
+		{"yb_bnl_optimize_first_batch", PGC_USERSET, QUERY_TUNING_METHOD,
+			gettext_noop("Enables batched nested loop joins to predict the "			 	 "size of its first batch and optimize if it's "
+						 "smaller than yb_bnl_batch_size."),
+			NULL
+		},
+		&yb_bnl_optimize_first_batch,
 		true,
 		NULL, NULL, NULL
 	},
@@ -2098,13 +2109,13 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"TEST_ysql_yb_enable_replication_commands", PGC_SUSET, REPLICATION,
+		{"yb_enable_replication_commands", PGC_SUSET, DEVELOPER_OPTIONS,
 			gettext_noop("Enable the replication commands for Publication and Replication Slots."),
 			NULL,
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_enable_replication_commands,
-		true,
+		false,
 		NULL, NULL, NULL
 	},
 
@@ -2153,6 +2164,32 @@ static struct config_bool ConfigureNamesBool[] =
 			GUC_NOT_IN_SAMPLE
 		},
 		&yb_test_fail_next_ddl,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_test_fail_next_inc_catalog_version", PGC_USERSET,DEVELOPER_OPTIONS,
+			gettext_noop("When set, the next increment catalog version will "
+						 "fail right before it's done. This only works when "
+						 "catalog version is stored in pg_yb_catalog_version."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_fail_next_inc_catalog_version,
+		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_test_fail_table_rewrite_after_creation", PGC_USERSET,
+			DEVELOPER_OPTIONS,
+			gettext_noop("When set, DDLs that rewrite tables/indexes will"
+						 " fail after the new table is created."),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_test_fail_table_rewrite_after_creation,
 		false,
 		NULL, NULL, NULL
 	},
@@ -2326,7 +2363,7 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_is_client_ysqlconnmgr", PGC_SU_BACKEND, CUSTOM_OPTIONS,
+		{"yb_is_client_ysqlconnmgr", PGC_BACKEND, CUSTOM_OPTIONS,
 			gettext_noop("Identifies that connection is created by "
 						"Ysql Connection Manager."),
 			NULL
@@ -2379,6 +2416,16 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_explain_hide_non_deterministic_fields,
 		false,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_enable_alter_table_rewrite", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("Enable ALTER TABLE rewrite operations"),
+			NULL
+		},
+		&yb_enable_alter_table_rewrite,
+		true,
 		NULL, NULL, NULL
 	},
 
@@ -2524,6 +2571,16 @@ static struct config_int ConfigureNamesInt[] =
 		},
 		&yb_locks_max_transactions,
 		16, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"ysql_conn_mgr_sticky_object_count", PGC_INTERNAL, CUSTOM_OPTIONS,
+			gettext_noop("Shows the count of database objects that require a sticky connection within this session."),
+			NULL
+		},
+		&ysql_conn_mgr_sticky_object_count,
+		0, 0, INT_MAX,
 		NULL, NULL, NULL
 	},
 
@@ -2860,7 +2917,7 @@ static struct config_int ConfigureNamesInt[] =
 			GUC_UNIT_MS
 		},
 		&RetryMinBackoffMsecs,
-		100, 0, INT_MAX,
+		10, 0, INT_MAX,
 		check_min_backoff, NULL, NULL
 	},
 
@@ -3797,6 +3854,57 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_max_query_layer_retries", PGC_USERSET, CLIENT_CONN_STATEMENT,
+			gettext_noop("Max number of internal query layer retries of a statement"),
+			gettext_noop("Max number of query layer retries of a statement for the following errors: "
+						 "serialization error (40001), \"Restart read required\" (40001), "
+						 "deadlock detected (40P01). In Repeatable Read and Serializable isolation levels, the "
+						 "query layer only retries errors faced in the first statement of a transation. In "
+						 "READ COMMITTED isolation, the query layer has the ability to do retries for any "
+						 "statement in a transaction. Retries are not possible if some response data has "
+						 "already been sent to the client while the query is still executing. This happens if "
+						 "the output buffer, the size of which is configurable using the TServer gflag "
+						 "ysql_output_buffer_size, has filled atleast once and is flushed."),
+		},
+		&yb_max_query_layer_retries,
+		60, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_ash_circular_buffer_size", PGC_POSTMASTER, STATS_MONITORING,
+			gettext_noop("Size of the circular buffer that stores wait events"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE |
+			GUC_DISALLOW_IN_FILE | GUC_UNIT_KB
+		},
+		&yb_ash_circular_buffer_size,
+		16 * 1024, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_ash_sampling_interval", PGC_SUSET, STATS_MONITORING,
+			gettext_noop("Duration between each sample"),
+			NULL,
+			GUC_UNIT_MS
+		},
+		&yb_ash_sampling_interval_ms,
+		1000, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_ash_sample_size", PGC_SUSET, STATS_MONITORING,
+			gettext_noop("Number of wait events captured in each sample"),
+			NULL
+		},
+		&yb_ash_sample_size,
+		500, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL, NULL
@@ -4051,7 +4159,7 @@ static struct config_real ConfigureNamesReal[] =
 			GUC_UNIT_MS
 		},
 		&RetryBackoffMultiplier,
-		2.0, 1.0, 1e10,
+		1.2, 1.0, 1e10,
 		check_backoff_multiplier, NULL, NULL
 	},
 
@@ -12334,6 +12442,15 @@ check_transaction_priority_lower_bound(double *newval, void **extra, GucSource s
 		return false;
 	}
 
+	if (IsYBReadCommitted() || YBIsWaitQueueEnabled())
+	{
+		ereport(NOTICE,
+						(errmsg("priorities don't exist for read committed isolation transations, the "
+										"transaction will wait for conflicting transactions to commit before "
+										"proceeding"),
+						 errdetail("this also applies to other isolation levels if using Wait-on-Conflict "
+											"concurrency control")));
+	}
 	return true;
 }
 
@@ -12346,6 +12463,15 @@ check_transaction_priority_upper_bound(double *newval, void **extra, GucSource s
 		return false;
 	}
 
+	if (IsYBReadCommitted() || YBIsWaitQueueEnabled())
+	{
+		ereport(NOTICE,
+						(errmsg("priorities don't exist for read committed isolation transations, the "
+										"transaction will wait for conflicting transactions to commit before "
+										"proceeding"),
+						 errdetail("this also applies to other isolation levels if using Wait-on-Conflict "
+											"concurrency control")));
+	}
 	return true;
 }
 

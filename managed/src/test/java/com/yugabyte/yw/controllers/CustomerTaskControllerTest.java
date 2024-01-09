@@ -157,7 +157,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
     UUID taskUUID = UUID.randomUUID();
     // Set http context
     TestUtils.setFakeHttpContext(user);
-    TaskInfo taskInfo = new TaskInfo(taskInfoType);
+    TaskInfo taskInfo = new TaskInfo(taskInfoType, null);
     taskInfo.setTaskUUID(taskUUID);
     taskInfo.setDetails(Json.newObject());
     taskInfo.setOwner("");
@@ -201,7 +201,7 @@ public class CustomerTaskControllerTest extends FakeDBApplication {
       ObjectNode responseJson) {
     // Persist subtask
     UserTaskDetails.SubTaskGroupType groupType = UserTaskDetails.SubTaskGroupType.ConfigureUniverse;
-    TaskInfo subTask = new TaskInfo(taskType);
+    TaskInfo subTask = new TaskInfo(taskType, null);
     subTask.setParentUuid(parentUUID);
     subTask.setPosition(position);
     subTask.setSubTaskGroupType(groupType);

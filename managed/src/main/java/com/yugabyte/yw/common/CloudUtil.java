@@ -23,7 +23,7 @@ import org.apache.commons.io.FileUtils;
 public interface CloudUtil extends StorageUtil {
 
   @AllArgsConstructor
-  public static class ConfigLocationInfo {
+  public static class CloudLocationInfo {
     public String bucket;
     public String cloudPath;
   }
@@ -45,11 +45,13 @@ public interface CloudUtil extends StorageUtil {
 
   public static final String DUMMY_DATA = "dummy-text";
 
-  public ConfigLocationInfo getConfigLocationInfo(String location);
+  public CloudLocationInfo getCloudLocationInfo(
+      String region, CustomerConfigData configData, String backupLocation);
 
   public boolean deleteKeyIfExists(CustomerConfigData configData, String defaultBackupLocation);
 
-  public boolean deleteStorage(CustomerConfigData configData, List<String> backupLocations);
+  public boolean deleteStorage(
+      CustomerConfigData configData, Map<String, List<String>> backupRegionLocationsMap);
 
   public <T> T listBuckets(CustomerConfigData configData);
 

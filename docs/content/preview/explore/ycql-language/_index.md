@@ -9,7 +9,7 @@ menu:
   preview:
     identifier: explore-ycql-language
     parent: explore
-    weight: 900
+    weight: 200
 type: indexpage
 showRightNav: true
 ---

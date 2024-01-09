@@ -136,7 +136,7 @@ public class GFlagsValidation {
       AllGFlags data = xmlMapper.readValue(flagStream, AllGFlags.class);
       if (mostUsedGFlags) {
         InputStream inputStream =
-            environment.resourceAsStream("gflags_metadata/" + "most_used_gflags.json");
+            environment.resourceAsStream("gflags_metadata/most_used_gflags.json");
         ObjectMapper mapper = new ObjectMapper();
         MostUsedGFlags freqUsedGFlags = mapper.readValue(inputStream, MostUsedGFlags.class);
         List<GFlagDetails> result = new ArrayList<>();
@@ -306,9 +306,9 @@ public class GFlagsValidation {
         fetchGFlagFilesFromTarGZipInputStream(
             inputStream, version, Collections.singletonList(Util.AUTO_FLAG_FILENAME), releasesPath);
       } catch (Exception e) {
-        LOG.error("Error in extracting flags form DB package: ", e);
+        LOG.error("Error in extracting flags from DB package: ", e);
         throw new PlatformServiceException(
-            INTERNAL_SERVER_ERROR, "Error in extracting flags form DB package");
+            INTERNAL_SERVER_ERROR, "Error in extracting flags from DB package");
       }
     }
     ObjectMapper objectMapper = new ObjectMapper();

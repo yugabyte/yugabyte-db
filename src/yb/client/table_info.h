@@ -37,6 +37,8 @@ struct YBTableInfo {
   bool colocated; // Accounts for databases and tablegroups but not for YSQL system tables.
   boost::optional<master::ReplicationInfoPB> replication_info;
   boost::optional<uint32> wal_retention_secs;
+  // Explicitly stores the PG table id (incase the table was rewritten).
+  TableId pg_table_id;
 
   // Populated and used by GetTableSchema() for YSQL tables.
   boost::optional<google::protobuf::RepeatedPtrField<yb::master::YsqlDdlTxnVerifierStatePB>>

@@ -566,6 +566,12 @@ extern bool yb_test_system_catalogs_creation;
 extern bool yb_test_fail_next_ddl;
 
 /*
+ * If set to true, next increment catalog version operation will fail and
+ * reset this back to false.
+ */
+extern bool yb_test_fail_next_inc_catalog_version;
+
+/*
  * Block the given index creation phase.
  * - "indisready": index state change to indisready
  *   (not supported for non-concurrent)
@@ -579,6 +585,12 @@ extern char *yb_test_block_index_phase;
  * blocking.
  */
 extern char *yb_test_fail_index_state_change;
+
+/*
+ * If set to true, any DDLs that rewrite tables/indexes will fail after
+ * the new table is created.
+ */
+extern bool yb_test_fail_table_rewrite_after_creation;
 
 /*
  * Denotes whether DDL operations touching DocDB system catalog will be rolled
@@ -621,18 +633,24 @@ void YbSetIsGlobalDDL();
 
 typedef enum YbSysCatalogModificationAspect
 {
-	YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT = 1,
-	YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE = 2
+	YB_SYS_CAT_MOD_ASPECT_ALTERING_EXISTING_DATA = 1,
+	YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT = 2,
+	YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE = 4
 } YbSysCatalogModificationAspect;
 
 typedef enum YbDdlMode
 {
-	YB_DDL_MODE_SILENT = 0,
+	YB_DDL_MODE_NO_ALTERING = 0,
+
+	YB_DDL_MODE_SILENT_ALTERING =
+		YB_SYS_CAT_MOD_ASPECT_ALTERING_EXISTING_DATA,
 
 	YB_DDL_MODE_VERSION_INCREMENT =
+		YB_SYS_CAT_MOD_ASPECT_ALTERING_EXISTING_DATA |
 		YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT,
 
 	YB_DDL_MODE_BREAKING_CHANGE =
+		YB_SYS_CAT_MOD_ASPECT_ALTERING_EXISTING_DATA |
 		YB_SYS_CAT_MOD_ASPECT_VERSION_INCREMENT |
 		YB_SYS_CAT_MOD_ASPECT_BREAKING_CHANGE
 } YbDdlMode;
@@ -662,7 +680,8 @@ int32_t YBFollowerReadStalenessMs();
  * Allocates YBCPgYBTupleIdDescriptor with nattrs arguments by using palloc.
  * Resulted object can be released with pfree.
  */
-YBCPgYBTupleIdDescriptor* YBCCreateYBTupleIdDescriptor(Oid db_oid, Oid table_oid, int nattrs);
+YBCPgYBTupleIdDescriptor* YBCCreateYBTupleIdDescriptor(Oid db_oid, Oid table_relfilenode_oid,
+	int nattrs);
 void YBCFillUniqueIndexNullAttribute(YBCPgYBTupleIdDescriptor* descr);
 
 /*
@@ -772,12 +791,16 @@ extern const int yb_funcs_unsafe_for_pushdown_count;
 void YBSetParentDeathSignal();
 
 /**
- * Return the relid to be used for the relation's storage in docDB.
- * Ex: If we have swapped relation A with relation B, relation A's
- * filenode has been set to relation B's OID.
+ * Given a relation, return it's relfilenode OID. In YB, the relfilenode OID
+ * maps to the relation's DocDB table ID. Note: if the table has not
+ * previously been rewritten, this function returns the OID of the table.
  */
-Oid YbGetStorageRelid(Relation relation);
+Oid YbGetRelfileNodeId(Relation relation);
 
+/**
+ * Given a relation ID, return the relation's relfilenode OID.
+ */
+Oid YbGetRelfileNodeIdFromRelId(Oid relationId);
 /*
  * Check whether the user ID is of a user who has the yb_db_admin role.
  */
@@ -935,6 +958,7 @@ OptSplit *YbGetSplitOptions(Relation rel);
 		YBCStatus _status = (status); \
 		if (_status) \
 		{ \
+			const int 		adjusted_elevel = YBCStatusIsFatalError(_status) ? FATAL : elevel; \
 			const uint32_t	pg_err_code = YBCStatusPgsqlError(_status); \
 			const uint16_t	txn_err_code = YBCStatusTransactionError(_status); \
 			const char	   *filename = YBCStatusFilename(_status); \
@@ -951,7 +975,7 @@ OptSplit *YbGetSplitOptions(Relation rel);
 										   &detail_buf, &detail_nargs, \
 										   &detail_args); \
 			YBCFreeStatus(_status); \
-			if (errstart(elevel, __FILE__, \
+			if (errstart(adjusted_elevel, __FILE__, \
 						 lineno > 0 ? lineno : __LINE__, \
 						 PG_FUNCNAME_MACRO, \
 						 TEXTDOMAIN)) \
@@ -1007,5 +1031,19 @@ extern void** YbPtrListToArray(const List* str_list, size_t* length);
  * byte added to the end.
  */
 extern char* YbReadWholeFile(const char *filename, int* length, int elevel);
+
+/*
+ * If the tserver gflag --ysql_enable_db_catalog_version_mode is true
+ * but the number of rows in pg_yb_catalog_version is 1, disallow a DDL
+ * statement if it increments the catalog version.
+ */
+extern void YBCheckDdlForDBCatalogVersionMode(YbDdlMode mode);
+
+extern void YbATCopyPrimaryKeyToCreateStmt(Relation rel,
+										   Relation pg_constraint,
+										   CreateStmt *create_stmt);
+
+extern void YbIndexSetNewRelfileNode(Relation indexRel, Oid relfileNodeId,
+									 bool yb_copy_split_options);
 
 #endif /* PG_YB_UTILS_H */

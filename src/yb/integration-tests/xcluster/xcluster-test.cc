@@ -19,10 +19,10 @@
 #include <boost/assign.hpp>
 #include <gtest/gtest.h>
 
-#include "yb/cdc/cdc_service.h"
 #include "yb/cdc/cdc_service.pb.h"
 #include "yb/cdc/cdc_service.proxy.h"
 #include "yb/cdc/cdc_state_table.h"
+#include "yb/cdc/xcluster_util.h"
 #include "yb/cdc/xrepl_stream_metadata.h"
 
 #include "yb/client/client-test-util.h"
@@ -142,6 +142,7 @@ DECLARE_bool(enable_update_local_peer_min_index);
 DECLARE_bool(TEST_xcluster_fail_snapshot_transfer);
 DECLARE_bool(TEST_xcluster_fail_restore_consumer_snapshot);
 DECLARE_double(TEST_xcluster_simulate_random_failure_after_apply);
+DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
 
 namespace yb {
 
@@ -196,67 +197,6 @@ class XClusterTestNoParam : public XClusterYcqlTestBase {
         client, namespace_name, Format("test_table_$0", idx), num_tablets, &schema);
   }
 
-  Status InsertRowsInProducer(
-      uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> producer_table = {}) {
-    if (!producer_table) {
-      producer_table = producer_table_;
-    }
-    return WriteWorkload(start, end, producer_client(), producer_table);
-  }
-
-  Status InsertRowsInConsumer(
-      uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> consumer_table = {}) {
-    if (!consumer_table) {
-      consumer_table = consumer_table_;
-    }
-    return WriteWorkload(start, end, consumer_client(), consumer_table);
-  }
-
-  Status DeleteRows(
-      uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> producer_table = {}) {
-    if (!producer_table) {
-      producer_table = producer_table_;
-    }
-    return WriteWorkload(start, end, producer_client(), producer_table, true /* delete_op */);
-  }
-
-  // Make sure the rows on the consumer match the rows on the producer.
-  Status VerifyRowsMatch(
-      std::shared_ptr<client::YBTable> producer_table = {}, int timeout_secs = kRpcTimeout) {
-    size_t table_idx = 0;
-    if (producer_table) {
-      for (size_t i = 0; i < producer_tables_.size(); i++) {
-        if (producer_tables_[i] == producer_table) {
-          table_idx = i;
-          break;
-        }
-      }
-    }
-
-    std::vector<std::string> producer_results, consumer_results;
-    const auto s = LoggedWaitFor(
-        [this, &producer_table = producer_tables_[table_idx],
-         &consumer_table = consumer_tables_[table_idx], &producer_results,
-         &consumer_results]() -> Result<bool> {
-          producer_results = ScanTableToStrings(producer_table->name(), producer_client());
-          consumer_results = ScanTableToStrings(consumer_table->name(), consumer_client());
-          return producer_results == consumer_results;
-        },
-        MonoDelta::FromSeconds(timeout_secs), "Verify written records");
-    if (!s.ok()) {
-      LOG(ERROR) << "Producer records: " << JoinStrings(producer_results, ",")
-                 << "; Consumer records: " << JoinStrings(consumer_results, ",");
-    }
-    return s;
-  }
-
-  Status VerifyNumRecordsOnProducer(size_t expected_size, size_t table_idx = 0) {
-    return VerifyNumRecords(producer_tables_[table_idx], producer_client(), expected_size);
-  }
-
-  Status VerifyNumRecordsOnConsumer(size_t expected_size, size_t table_idx = 0) {
-    return VerifyNumRecords(consumer_tables_[table_idx], consumer_client(), expected_size);
-  }
   Result<SessionTransactionPair> CreateSessionWithTransaction(
       YBClient* client, client::TransactionManager* txn_mgr) {
     auto session = client->NewSession(kRpcTimeout * 1s);
@@ -557,7 +497,7 @@ class XClusterTestNoParam : public XClusterYcqlTestBase {
 
   Status WaitForReplicationBootstrap(
       MiniCluster* consumer_cluster, YBClient* consumer_client,
-      const cdc::ReplicationGroupId& replication_group_id) {
+      const xcluster::ReplicationGroupId& replication_group_id) {
     return LoggedWaitFor(
         [=]() -> Result<bool> {
           master::IsSetupNamespaceReplicationWithBootstrapDoneRequestPB req;
@@ -579,7 +519,7 @@ class XClusterTestNoParam : public XClusterYcqlTestBase {
   }
 
   Status VerifyReplicationBootstrapCleanupOnFailure(
-      const cdc::ReplicationGroupId& replication_group_id) {
+      const xcluster::ReplicationGroupId& replication_group_id) {
     rpc::RpcController rpc;
     rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
 
@@ -623,25 +563,6 @@ class XClusterTestNoParam : public XClusterYcqlTestBase {
   }
 
  private:
-  Status WriteWorkload(
-      uint32_t start, uint32_t end, YBClient* client, const std::shared_ptr<client::YBTable>& table,
-      bool delete_op = false) {
-    auto session = client->NewSession(kRpcTimeout * 1s);
-    client::TableHandle table_handle;
-    RETURN_NOT_OK(table_handle.Open(table->name(), client));
-    std::vector<client::YBOperationPtr> ops;
-
-    LOG(INFO) << (delete_op ? "Deleting" : "Inserting") << " rows of key range [" << start << ", "
-              << end << ") into" << table->name().ToString();
-    for (uint32_t i = start; i < end; i++) {
-      auto op = delete_op ? table_handle.NewDeleteOp() : table_handle.NewInsertOp();
-      int32_t key = i;
-      QLAddInt32HashValue(op->mutable_request(), key);
-      ops.push_back(std::move(op));
-    }
-
-    return session->TEST_ApplyAndFlush(ops);
-  }
 
   Status WriteIntents(
       const std::shared_ptr<YBSession>& session, uint32_t start, uint32_t end, YBClient* client,
@@ -662,21 +583,6 @@ class XClusterTestNoParam : public XClusterYcqlTestBase {
     return session->TEST_ApplyAndFlush(ops);
   }
 
-  Status VerifyNumRecords(
-      const std::shared_ptr<client::YBTable>& table, YBClient* client, size_t expected_size) {
-    size_t found_size = 0;
-    Status s = LoggedWaitFor(
-        [table, client, expected_size, &found_size]() -> Result<bool> {
-          auto results = ScanTableToStrings(table->name(), client);
-          found_size = results.size();
-          return found_size == expected_size;
-        },
-        MonoDelta::FromSeconds(kRpcTimeout), "Verify number of records");
-    if (!s.ok()) {
-      LOG(WARNING) << "Only found " << found_size << " records, expected " << expected_size;
-    }
-    return s;
-  }
 };
 
 class XClusterTest : public XClusterTestNoParam,
@@ -1389,7 +1295,7 @@ TEST_P(XClusterTest, PollAndObserveIdleDampening) {
   // After creating the cluster, make sure all tablets being polled for.
   ASSERT_OK(CorrectlyPollingAllTablets(1));
 
-  // Write some Info and query GetChanges to setup the CDCTabletMetrics.
+  // Write some Info and query GetChanges to setup the XClusterTabletMetrics.
   ASSERT_OK(InsertRowsAndVerify(0, 5));
 
   /*****************************************************************
@@ -1456,8 +1362,7 @@ TEST_P(XClusterTest, PollAndObserveIdleDampening) {
   // Find the CDCTabletMetric associated with the above pair.
   auto cdc_service = dynamic_cast<cdc::CDCServiceImpl*>(
       cdc_ts->rpc_server()->TEST_service_pool("yb.cdc.CDCService")->TEST_get_service().get());
-  std::shared_ptr<cdc::CDCTabletMetrics> metrics = std::static_pointer_cast<cdc::CDCTabletMetrics>(
-      cdc_service->GetCDCTabletMetrics({{}, stream_id, tablet_id}));
+  auto metrics = ASSERT_RESULT(GetXClusterTabletMetrics(*cdc_service, tablet_id, stream_id));
 
   /***********************************
    * Setup Complete.  Starting test. *
@@ -2717,8 +2622,8 @@ TEST_P(XClusterTest, TestFailedAlterUniverseOnRestart) {
   ASSERT_OK(consumer_cluster()->RestartSync());
 
   // Wait for alter universe to be deleted on start up
-  ASSERT_OK(
-      WaitForSetupUniverseReplicationCleanUp(GetAlterReplicationGroupId(kReplicationGroupId)));
+  ASSERT_OK(WaitForSetupUniverseReplicationCleanUp(
+      xcluster::GetAlterReplicationGroupId(kReplicationGroupId)));
 
   // Change should not have gone through
   new_req.set_replication_group_id(kReplicationGroupId.ToString());
@@ -2728,7 +2633,8 @@ TEST_P(XClusterTest, TestFailedAlterUniverseOnRestart) {
 
   // Check that the unfinished alter universe was deleted on start up
   rpc.Reset();
-  new_req.set_replication_group_id(GetAlterReplicationGroupId(kReplicationGroupId).ToString());
+  new_req.set_replication_group_id(
+      xcluster::GetAlterReplicationGroupId(kReplicationGroupId).ToString());
   Status s = master_proxy->GetUniverseReplication(new_req, &new_resp, &rpc);
   ASSERT_OK(s);
   ASSERT_TRUE(new_resp.has_error());
@@ -2807,14 +2713,14 @@ TEST_P(XClusterTest, TestNonZeroLagMetricsWithoutGetChange) {
       [&]() { return cdc_service->CDCEnabled(); }, MonoDelta::FromSeconds(30), "IsCDCEnabled"));
 
   // Check that the time_since_last_getchanges metric is updated, even without GetChanges.
-  std::shared_ptr<cdc::CDCTabletMetrics> metrics;
+  std::shared_ptr<xrepl::XClusterTabletMetrics> metrics;
   ASSERT_OK(WaitFor(
       [&]() {
-        metrics = std::static_pointer_cast<cdc::CDCTabletMetrics>(
-            cdc_service->GetCDCTabletMetrics({{}, stream_id, tablet_id}));
-        if (!metrics) {
+        auto metrics_result = GetXClusterTabletMetrics(*cdc_service, tablet_id, stream_id);
+        if (!metrics_result) {
           return false;
         }
+        metrics = metrics_result.get();
         return metrics->time_since_last_getchanges->value() > 0;
       },
       MonoDelta::FromSeconds(30),
@@ -3515,11 +3421,14 @@ TEST_F_EX(XClusterTest, PollerShutdownWithLongPollDelay, XClusterTestNoParam) {
 // This test creates a cluster with 4 tservers, and a table with RF3. It then adds a fourth peer and
 // ensures the cdc checkpoint is set on all tservers.
 TEST_F_EX(XClusterTest, CdcCheckpointPeerMove, XClusterTestNoParam) {
+  google::SetVLOGLevel("tablet", 1);
+  google::SetVLOGLevel("tablet_metadata", 1);
   const uint32_t kReplicationFactor = 3, kTabletCount = 1, kNumMasters = 1, kNumTservers = 4;
   ASSERT_OK(SetUpWithParams(
       {kTabletCount}, {kTabletCount}, kReplicationFactor, kNumMasters, kNumTservers));
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_load_balancing) = false;
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_cdcsdk_retention_barrier_no_revision_interval_secs) = 2;
   ASSERT_TRUE(FLAGS_enable_update_local_peer_min_index);
 
   ASSERT_OK(SetupReplication());
@@ -3613,6 +3522,21 @@ TEST_F_EX(XClusterTest, CdcCheckpointPeerMove, XClusterTestNoParam) {
   ASSERT_OK(VerifyRowsMatch());
   ASSERT_OK(wait_for_checkpoint());
   ASSERT_GE(max_found_checkpoint, min_expected_checkpoint);
+
+  for (auto& tablet_server : producer_cluster()->mini_tablet_servers()) {
+    for (const auto& tablet_peer : tablet_server->server()->tablet_manager()->GetTabletPeers()) {
+      if (tablet_peer->tablet_id() != tablet_id) {
+        continue;
+      }
+      auto cdc_sdk_intents_barrier = tablet_peer->cdc_sdk_min_checkpoint_op_id();
+      auto cdc_sdk_history_barrier = tablet_peer->get_cdc_sdk_safe_time();
+      LOG(INFO) << "TServer: " << tablet_server->server()->ToString()
+                << ", CDCSDK Intents barrier: " << cdc_sdk_intents_barrier
+                << ", CDCSDK history barrier: " << cdc_sdk_history_barrier;
+      ASSERT_EQ(cdc_sdk_intents_barrier, OpId::Invalid());
+      ASSERT_EQ(cdc_sdk_history_barrier, HybridTime::kInvalid);
+    }
+  }
 }
 
 TEST_F_EX(XClusterTest, FetchBootstrapCheckpointsFromLeaders, XClusterTestNoParam) {

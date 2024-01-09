@@ -666,6 +666,12 @@ Status YBClient::GetIndexBackfillProgress(
   return Status::OK();
 }
 
+Result<master::GetBackfillStatusResponsePB> YBClient::GetBackfillStatus(
+    const std::vector<std::string_view>& table_ids) {
+  const auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
+  return data_->GetBackfillStatus(table_ids, deadline);
+}
+
 Status YBClient::DeleteTable(const YBTableName& table_name, bool wait) {
   auto deadline = CoarseMonoClock::Now() + default_admin_operation_timeout();
   return data_->DeleteTable(this,
@@ -1481,7 +1487,11 @@ Status YBClient::GetCDCStream(
     NamespaceId* ns_id,
     std::vector<ObjectId>* object_ids,
     std::unordered_map<std::string, std::string>* options,
-    cdc::StreamModeTransactional* transactional) {
+    cdc::StreamModeTransactional* transactional,
+    std::optional<uint64_t>* consistent_snapshot_time,
+    std::optional<CDCSDKSnapshotOption>* consistent_snapshot_option,
+    std::optional<uint64_t>* stream_creation_time) {
+
   // Setting up request.
   GetCDCStreamRequestPB req;
   req.set_stream_id(stream_id.ToString());
@@ -1510,6 +1520,15 @@ Status YBClient::GetCDCStream(
   }
 
   *transactional = cdc::StreamModeTransactional(resp.stream().transactional());
+  if (consistent_snapshot_time && resp.stream().has_cdcsdk_consistent_snapshot_time()) {
+    *consistent_snapshot_time = resp.stream().cdcsdk_consistent_snapshot_time();
+  }
+  if (consistent_snapshot_option && resp.stream().has_cdcsdk_consistent_snapshot_option()) {
+    *consistent_snapshot_option = resp.stream().cdcsdk_consistent_snapshot_option();
+  }
+  if (stream_creation_time && resp.stream().has_stream_creation_time()) {
+    *stream_creation_time = resp.stream().stream_creation_time();
+  }
 
   return Status::OK();
 }
@@ -1726,9 +1745,98 @@ Status YBClient::BootstrapProducer(
       this, db_type, namespace_name, pg_schema_names, table_names, deadline, std::move(callback));
 }
 
+Result<std::vector<NamespaceId>> YBClient::XClusterCreateOutboundReplicationGroup(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const std::vector<NamespaceName>& namespace_names) {
+  SCHECK(!namespace_names.empty(), InvalidArgument, "At least one namespace name is required");
+
+  master::XClusterCreateOutboundReplicationGroupRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+  for (const auto& ns : namespace_names) {
+    req.add_namespace_names(ns);
+  }
+
+  master::XClusterCreateOutboundReplicationGroupResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, XClusterCreateOutboundReplicationGroup);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  std::vector<NamespaceId> namespace_ids;
+  for (const auto& namespace_id : resp.namespace_ids()) {
+    namespace_ids.push_back(namespace_id);
+  }
+
+  return namespace_ids;
+}
+
+Status YBClient::GetXClusterStreams(
+    CoarseTimePoint deadline, const xcluster::ReplicationGroupId& replication_group_id,
+    const NamespaceId& namespace_id, const std::vector<TableName>& table_names,
+    const std::vector<PgSchemaName>& pg_schema_names, GetXClusterStreamsCallback callback) {
+  return data_->GetXClusterStreams(
+      this, deadline, replication_group_id, namespace_id, table_names, pg_schema_names,
+      std::move(callback));
+}
+
+Status YBClient::IsXClusterBootstrapRequired(
+    CoarseTimePoint deadline, const xcluster::ReplicationGroupId& replication_group_id,
+    const NamespaceId& namespace_id, IsXClusterBootstrapRequiredCallback callback) {
+  return data_->IsXClusterBootstrapRequired(
+      this, deadline, replication_group_id, namespace_id, std::move(callback));
+}
+
+Status YBClient::XClusterDeleteOutboundReplicationGroup(
+    const xcluster::ReplicationGroupId& replication_group_id) {
+  master::XClusterDeleteOutboundReplicationGroupRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+
+  master::XClusterDeleteOutboundReplicationGroupResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, XClusterDeleteOutboundReplicationGroup);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+  return Status::OK();
+}
+
+Result<NamespaceId> YBClient::XClusterAddNamespaceToOutboundReplicationGroup(
+    const xcluster::ReplicationGroupId& replication_group_id, const NamespaceName& namespace_name) {
+  master::XClusterAddNamespaceToOutboundReplicationGroupRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+  req.set_namespace_name(namespace_name);
+
+  master::XClusterAddNamespaceToOutboundReplicationGroupResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC_EX(
+      Replication, req, resp, XClusterAddNamespaceToOutboundReplicationGroup);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  return resp.namespace_id();
+}
+
+Status YBClient::XClusterRemoveNamespaceFromOutboundReplicationGroup(
+    const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id) {
+  master::XClusterRemoveNamespaceFromOutboundReplicationGroupRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+  req.set_namespace_id(namespace_id);
+
+  master::XClusterRemoveNamespaceFromOutboundReplicationGroupResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC_EX(
+      Replication, req, resp, XClusterRemoveNamespaceFromOutboundReplicationGroup);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
+  return Status::OK();
+}
+
 Status YBClient::UpdateConsumerOnProducerSplit(
-    const cdc::ReplicationGroupId& replication_group_id,
-    const xrepl::StreamId& stream_id,
+    const xcluster::ReplicationGroupId& replication_group_id, const xrepl::StreamId& stream_id,
     const master::ProducerSplitTabletInfoPB& split_info) {
   SCHECK(!replication_group_id.empty(), InvalidArgument, "Producer id is required.");
   SCHECK(stream_id, InvalidArgument, "Stream id is required.");
@@ -1744,12 +1852,9 @@ Status YBClient::UpdateConsumerOnProducerSplit(
 }
 
 Status YBClient::UpdateConsumerOnProducerMetadata(
-    const cdc::ReplicationGroupId& replication_group_id,
-    const xrepl::StreamId& stream_id,
-    const tablet::ChangeMetadataRequestPB& meta_info,
-    uint32_t colocation_id,
-    uint32_t producer_schema_version,
-    uint32_t consumer_schema_version,
+    const xcluster::ReplicationGroupId& replication_group_id, const xrepl::StreamId& stream_id,
+    const tablet::ChangeMetadataRequestPB& meta_info, uint32_t colocation_id,
+    uint32_t producer_schema_version, uint32_t consumer_schema_version,
     master::UpdateConsumerOnProducerMetadataResponsePB* resp) {
   SCHECK(!replication_group_id.empty(), InvalidArgument, "ReplicationGroup id is required.");
   SCHECK(stream_id, InvalidArgument, "Stream id is required.");
@@ -1764,6 +1869,23 @@ Status YBClient::UpdateConsumerOnProducerMetadata(
   req.mutable_producer_change_metadata_request()->CopyFrom(meta_info);
 
   CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, (*resp), UpdateConsumerOnProducerMetadata);
+  return Status::OK();
+}
+
+Status YBClient::XClusterReportNewAutoFlagConfigVersion(
+    const xcluster::ReplicationGroupId& replication_group_id, uint32 auto_flag_config_version) {
+  SCHECK(!replication_group_id.empty(), InvalidArgument, "ReplicationGroup id is required");
+  master::XClusterReportNewAutoFlagConfigVersionRequestPB req;
+  req.set_replication_group_id(replication_group_id.ToString());
+  req.set_auto_flag_config_version(auto_flag_config_version);
+
+  master::XClusterReportNewAutoFlagConfigVersionResponsePB resp;
+  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, XClusterReportNewAutoFlagConfigVersion);
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
   return Status::OK();
 }
 

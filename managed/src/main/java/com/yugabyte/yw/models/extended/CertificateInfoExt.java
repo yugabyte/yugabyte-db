@@ -9,8 +9,8 @@ import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import io.swagger.annotations.ApiModel;
 import io.swagger.annotations.ApiModelProperty;
+import jakarta.persistence.Column;
 import java.util.Date;
-import javax.persistence.Column;
 import lombok.Data;
 import lombok.experimental.Accessors;
 
@@ -23,8 +23,8 @@ public class CertificateInfoExt {
 
   @ApiModelProperty(
       value =
-          "The certificate's creation date. Deprecated since "
-              + "YBA version 2.17.2.0. Use stateDateIso instead",
+          "The certificate's creation date. <b style=\"color:#ff0000\">Deprecated since "
+              + "YBA version 2.17.2.0.</b> Use stateDateIso instead",
       accessMode = READ_WRITE)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.17.2.0")
@@ -32,8 +32,8 @@ public class CertificateInfoExt {
 
   @ApiModelProperty(
       value =
-          "The certificate's expiry date. Deprecated since "
-              + "YBA version 2.17.2.0. Use expirtyDateIso instead",
+          "The certificate's expiry date. <b style=\"color:#ff0000\">Deprecated since "
+              + "YBA version 2.17.2.0.</b> Use expirtyDateIso instead",
       accessMode = READ_WRITE)
   @Column(nullable = false)
   @JsonFormat(shape = JsonFormat.Shape.STRING, pattern = "yyyy-MM-dd HH:mm:ss")

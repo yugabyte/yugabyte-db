@@ -108,7 +108,8 @@ YbSeqNext(YbSeqScanState *node)
 										 NULL /* idx_pushdown */,
 										 node->aggrefs,
 										 0 /* distinct_prefixlen */,
-										 &estate->yb_exec_params);
+										 &estate->yb_exec_params,
+										 false /* is_internal_scan */);
 		ybScan->pscan = node->pscan;
 		scandesc = (HeapScanDesc) palloc0(sizeof(HeapScanDescData));
 		scandesc->rs_rd = node->ss.ss_currentRelation;
@@ -203,9 +204,8 @@ YbSeqNext(YbSeqScanState *node)
 
 		/* capture all fetch allocations in the short-lived context */
 		oldcontext = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
-		slot = ybFetchNext(ybScan->handle,
-						   slot,
-						   RelationGetRelid(node->ss.ss_currentRelation));
+		ybFetchNext(ybScan->handle, slot,
+					RelationGetRelid(node->ss.ss_currentRelation));
 		MemoryContextSwitchTo(oldcontext);
 
 		/*

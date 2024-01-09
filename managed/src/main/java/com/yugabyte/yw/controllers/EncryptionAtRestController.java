@@ -636,7 +636,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
 
   @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.19.0.0")
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Refresh KMS Config",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Refresh KMS Config",
       response = YBPSuccess.class)
   @ApiResponses(
       @ApiResponse(
@@ -668,7 +669,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
 
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
   @ApiOperation(
-      value = "YbaApi Internal. Retrive a universe's KMS key",
+      notes = "YbaApi Internal.",
+      value = "Retrive a universe's KMS key",
       response = Object.class,
       responseContainer = "Map")
   @AuthzPath({
@@ -717,7 +719,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
 
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
   @ApiOperation(
-      value = "YbaApi Internal. Get a universe's key reference history",
+      notes = "YbaApi Internal.",
+      value = "Get a universe's key reference history",
       response = Object.class,
       responseContainer = "List")
   @AuthzPath({
@@ -750,9 +753,10 @@ public class EncryptionAtRestController extends AuthenticatedController {
   @Deprecated
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
   @ApiOperation(
-      value =
-          "Deprecated since YBA version 2.20.0.0. Do not use. This API removes a universe's key"
-              + " reference history",
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.20.0.0.</b></p>"
+              + "Do not use.",
+      value = "This API removes a universe's key reference history - deprecated",
       response = YBPSuccess.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -779,7 +783,8 @@ public class EncryptionAtRestController extends AuthenticatedController {
 
   @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
   @ApiOperation(
-      value = "YbaApi Internal. Get a universe's key reference",
+      notes = "YbaApi Internal.",
+      value = "Get a universe's key reference",
       response = Object.class,
       responseContainer = "Map")
   @AuthzPath({

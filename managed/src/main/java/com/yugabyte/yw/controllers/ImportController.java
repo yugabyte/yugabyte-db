@@ -123,9 +123,10 @@ public class ImportController extends AuthenticatedController {
   @YbaApi(visibility = YbaApi.YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.19.3.0")
   @Deprecated
   @ApiOperation(
-      value =
-          "Deprecated since YBA version 2.19.3.0. "
-              + "Do not use, this will be removed soon. Import a universe",
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.19.3.0.</b></p>"
+              + "Do not use, this will be removed soon.",
+      value = "Import a universe - deprecated",
       response = ImportUniverseFormData.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -296,7 +297,7 @@ public class ImportController extends AuthenticatedController {
         results.checks.put("is_provider_present", "FAILURE");
         results.error =
             String.format(
-                "Providers for the customer: %s and type: %s" + " are not present",
+                "Providers for the customer: %s and type: %s are not present",
                 customer.getUuid(), importForm.providerType);
         throw new PlatformServiceException(INTERNAL_SERVER_ERROR, results.error);
       }
@@ -402,7 +403,7 @@ public class ImportController extends AuthenticatedController {
       results.checks.put("is_provider_present", "FAILURE");
       results.error =
           String.format(
-              "Providers for the customer: %s and type: %s" + " are not present",
+              "Providers for the customer: %s and type: %s are not present",
               customer.getUuid(), importForm.providerType);
       throw new PlatformServiceException(INTERNAL_SERVER_ERROR, Json.toJson(results));
     }
@@ -635,7 +636,7 @@ public class ImportController extends AuthenticatedController {
   private boolean executeITask(ITask task, String taskName, ImportUniverseResponseData results) {
     // Submit the task, and get a future object.
     try {
-      UUID taskUUID = taskExecutor.submit(taskExecutor.createRunnableTask(task), executor);
+      UUID taskUUID = taskExecutor.submit(taskExecutor.createRunnableTask(task, null), executor);
       // Wait for the task to complete.
       taskExecutor.waitForTask(taskUUID);
       // Indicate that this task executed successfully.

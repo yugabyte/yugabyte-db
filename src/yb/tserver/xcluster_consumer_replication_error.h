@@ -30,7 +30,7 @@ YB_DEFINE_ENUM(
     (kSent));   // Error has been sent and master has acknowledged it.
 
 using XClusterReplicationErrorsToSendMap =
-    std::unordered_map<cdc::ReplicationGroupId, xcluster::ReplicationGroupErrors>;
+    std::unordered_map<xcluster::ReplicationGroupId, xcluster::ReplicationGroupErrors>;
 
 // Collection of errors from the various Pollers running on this tserver. This class helps keep
 // track of which errors were sent to master.

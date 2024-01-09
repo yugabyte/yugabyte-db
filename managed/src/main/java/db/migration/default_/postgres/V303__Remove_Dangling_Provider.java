@@ -3,7 +3,6 @@
 package db.migration.default_.postgres;
 
 import io.ebean.DB;
-import io.ebean.Ebean;
 import io.ebean.SqlRow;
 import io.ebean.SqlUpdate;
 import java.sql.SQLException;
@@ -24,7 +23,7 @@ public class V303__Remove_Dangling_Provider extends BaseJavaMigration {
 
   public static void removeDanglingProvider() {
     String customerGet = "SELECT distinct uuid from customer";
-    List<SqlRow> customerResultList = Ebean.createSqlQuery(customerGet).findList();
+    List<SqlRow> customerResultList = DB.sqlQuery(customerGet).findList();
     List<String> customerUUIDs = new ArrayList<>();
     for (SqlRow row : customerResultList) {
       String customerUUID = row.getString("uuid");
@@ -32,7 +31,7 @@ public class V303__Remove_Dangling_Provider extends BaseJavaMigration {
     }
 
     String providerGet = "SELECT uuid, customer_uuid from provider";
-    List<SqlRow> providerResultList = Ebean.createSqlQuery(providerGet).findList();
+    List<SqlRow> providerResultList = DB.sqlQuery(providerGet).findList();
 
     List<String> danglingProviderUUIDs = new ArrayList<>();
     for (SqlRow row : providerResultList) {
@@ -57,7 +56,7 @@ public class V303__Remove_Dangling_Provider extends BaseJavaMigration {
     List<String> danglingRegionUUIDs = new ArrayList<>();
     String regionGet =
         "SELECT distinct uuid from region where provider_uuid IN " + uuidList.toString();
-    List<SqlRow> regionsResultList = Ebean.createSqlQuery(regionGet).findList();
+    List<SqlRow> regionsResultList = DB.sqlQuery(regionGet).findList();
     for (SqlRow row : regionsResultList) {
       String regionUUID = row.getString("uuid");
       danglingRegionUUIDs.add(regionUUID);
@@ -76,25 +75,25 @@ public class V303__Remove_Dangling_Provider extends BaseJavaMigration {
 
       String availabilityZoneDelete =
           "DELETE from availability_zone where region_uuid IN " + regionUuidList.toString();
-      sqlUpdate = Ebean.createSqlUpdate(availabilityZoneDelete);
-      rowsDeleted = Ebean.execute(sqlUpdate);
+      sqlUpdate = DB.sqlUpdate(availabilityZoneDelete);
+      rowsDeleted = DB.getDefault().execute(sqlUpdate);
       log.debug("Deleted {} az's", rowsDeleted);
 
       String regionDelete = "DELETE from region where provider_uuid IN " + uuidList.toString();
-      sqlUpdate = Ebean.createSqlUpdate(regionDelete);
-      rowsDeleted = Ebean.execute(sqlUpdate);
+      sqlUpdate = DB.sqlUpdate(regionDelete);
+      rowsDeleted = DB.getDefault().execute(sqlUpdate);
       log.debug("Deleted {} regions", rowsDeleted);
     }
 
     String imageBundleDelete =
         "DELETE from image_bundle where provider_uuid IN " + uuidList.toString();
-    sqlUpdate = Ebean.createSqlUpdate(imageBundleDelete);
-    rowsDeleted = Ebean.execute(sqlUpdate);
+    sqlUpdate = DB.sqlUpdate(imageBundleDelete);
+    rowsDeleted = DB.getDefault().execute(sqlUpdate);
     log.debug("Deleted {} imageBundles", rowsDeleted);
 
     String providerDelete = "DELETE from provider where uuid IN " + uuidList.toString();
-    sqlUpdate = Ebean.createSqlUpdate(providerDelete);
-    rowsDeleted = Ebean.execute(sqlUpdate);
+    sqlUpdate = DB.sqlUpdate(providerDelete);
+    rowsDeleted = DB.getDefault().execute(sqlUpdate);
     log.debug("Deleted {} providers", rowsDeleted);
   }
 }

@@ -18,6 +18,8 @@
 #include <boost/multi_index/ordered_index.hpp>
 #include <boost/multi_index_container.hpp>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/consensus/consensus.messages.h"
 #include "yb/consensus/consensus_round.h"
 #include "yb/consensus/consensus.pb.h"
@@ -271,6 +273,7 @@ Status RetryableRequestsManager::SaveToDisk(std::unique_ptr<RetryableRequests> r
   auto path = NewFilePath();
   LOG(INFO) << "Saving retryable requests up to " << pb.last_op_id() << " to " << path;
   auto* env = fs_manager()->env();
+  SCOPED_WAIT_STATUS(RetryableRequests_SaveToDisk);
   RETURN_NOT_OK_PREPEND(pb_util::WritePBContainerToPath(
                             env, path, pb,
                             pb_util::OVERWRITE, pb_util::SYNC),

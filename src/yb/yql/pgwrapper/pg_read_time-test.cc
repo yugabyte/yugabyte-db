@@ -29,12 +29,12 @@
 #include "yb/util/test_thread_holder.h"
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 #include "yb/tools/tools_test_utils.h"
 
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(enable_wait_queues);
 DECLARE_uint64(max_clock_skew_usec);
-DECLARE_int32(ysql_max_write_restart_attempts);
 DECLARE_string(ysql_pg_conf_csv);
 
 METRIC_DECLARE_counter(picked_read_time_on_docdb);
@@ -53,11 +53,11 @@ class PgReadTimeTest : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
 
-    // TODO: Remove the below guc setting once it becomes the default.
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = "yb_lock_pk_single_rpc=true";
+    // TODO: Remove yb_lock_pk_single_rpc once it becomes the default.
+    // yb_max_query_layer_retries is required for TestConflictRetriesOnDocdb
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) =
+        "yb_lock_pk_single_rpc=true," + MaxQueryLayerRetriesConf(0);
 
-    // for TestConflictRetriesOnDocdb
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_max_write_restart_attempts) = 0;
     PgMiniTestBase::SetUp();
   }
 
@@ -74,21 +74,24 @@ class PgReadTimeTest : public PgMiniTestBase {
     return num_pick_read_time_on_docdb;
   }
 
-  void CheckReadTimePickedOnDocdb(const StmtExecutor& stmt_executor) {
-    CheckReadTimePickingLocation(stmt_executor, true /* read_time_picked_on_docdb */);
+  void CheckReadTimePickedOnDocdb(
+      const StmtExecutor& stmt_executor,
+      uint64_t expected_num_picked_read_time_on_doc_db_metric = 1) {
+    CheckReadTimePickingLocation(stmt_executor, expected_num_picked_read_time_on_doc_db_metric);
   }
 
   void CheckReadTimeProvidedToDocdb(const StmtExecutor& stmt_executor) {
-    CheckReadTimePickingLocation(stmt_executor, false /* read_time_picked_on_docdb */);
+    CheckReadTimePickingLocation(
+        stmt_executor, 0 /* expected_num_picked_read_time_on_doc_db_metric */);
   }
 
  private:
   void CheckReadTimePickingLocation(
-      const StmtExecutor& stmt_executor, bool read_time_picked_on_docdb) {
-    uint64_t initial = GetNumPickedReadTimeOnDocDb();
+      const StmtExecutor& stmt_executor, uint64_t expected_num_picked_read_time_on_doc_db_metric) {
+    const auto initial = GetNumPickedReadTimeOnDocDb();
     stmt_executor();
-    uint64_t diff = GetNumPickedReadTimeOnDocDb() - initial;
-    ASSERT_EQ(diff, (read_time_picked_on_docdb ? 1 : 0));
+    const auto diff = GetNumPickedReadTimeOnDocDb() - initial;
+    ASSERT_EQ(diff, expected_num_picked_read_time_on_doc_db_metric);
   }
 };
 
@@ -127,7 +130,7 @@ TEST_F(PgReadTimeTest, TestConflictRetriesOnDocdb) {
     // the query layer for the below SELECT FOR UPDATE.
     //
     // If there were no retries for kConflict on docdb, then the following statement would fail
-    // because FLAGS_ysql_max_write_restart_attempts=0 and so there are no query layer retries.
+    // because yb_max_query_layer_retries=0 and so there are no query layer retries.
     ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
     ASSERT_OK(conn.Fetch("SELECT * FROM test WHERE k=1 FOR UPDATE"));
     ASSERT_OK(conn.CommitTransaction());
@@ -233,12 +236,16 @@ TEST_F(PgReadTimeTest, CheckReadTimePickingLocation) {
       });
 
   // 4. no pipeline, single operation in first batch, starts a distributed transation
+  //
+  // expected_num_picked_read_time_on_doc_db_metric is set because in case of a SELECT FOR UPDATE,
+  // a read time is picked in read_query.cc, but an extra picking is done in write_query.cc just
+  // after conflict resolution is done (see DoTransactionalConflictsResolved()).
   CheckReadTimePickedOnDocdb(
       [&conn, kTable]() {
         ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
         ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1 FOR UPDATE", kTable));
         ASSERT_OK(conn.CommitTransaction());
-      });
+      }, 2 /* expected_num_picked_read_time_on_doc_db_metric */);
 
   // 5. no pipeline, multiple operations to various tablets in first batch, starts a distributed
   //    transation
@@ -283,6 +290,37 @@ TEST_F(PgReadTimeTest, CheckReadTimePickingLocation) {
         ASSERT_OK(conn.ExecuteFormat("CALL insert_rows_$0(121, 150)", kSingleTabletTable));
       });
   ASSERT_OK(ResetMaxBatchSize(&conn));
+
+  // Test cases in a read committed txn block (in this isolation level each statement uses a new
+  // latest read point). For each statement, if the new read time for that statement can be picked
+  // on docdb, ensure it is.
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
+  CheckReadTimePickedOnDocdb(
+      [&conn, kTable]() {
+        ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1", kTable));
+      });
+
+  CheckReadTimePickedOnDocdb(
+      [&conn, kTable]() {
+        ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET v=1 WHERE k=1", kTable));
+      });
+
+  CheckReadTimeProvidedToDocdb(
+      [&conn, kTable]() {
+        ASSERT_OK(conn.FetchFormat("SELECT COUNT(*) FROM $0", kTable));
+      });
+
+  CheckReadTimePickedOnDocdb(
+      [&conn, kSingleTabletTable]() {
+        ASSERT_OK(conn.FetchFormat("SELECT COUNT(*) FROM $0", kSingleTabletTable));
+      });
+
+  CheckReadTimePickedOnDocdb(
+      [&conn, kTable]() {
+        ASSERT_OK(conn.FetchFormat("SELECT * FROM $0 WHERE k=1 FOR UPDATE", kTable));
+      }, 2 /* expected_num_picked_read_time_on_doc_db_metric */);
+
+  ASSERT_OK(conn.CommitTransaction());
 }
 
 // Test the session configuration parameter yb_read_time which reads the data as of a point in time

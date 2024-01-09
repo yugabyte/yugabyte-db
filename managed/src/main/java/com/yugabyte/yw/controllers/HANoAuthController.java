@@ -30,7 +30,8 @@ public class HANoAuthController extends AbstractPlatformController {
   public static final Logger LOG = LoggerFactory.getLogger(HANoAuthController.class);
 
   @ApiOperation(
-      value = "WARNING: This is a preview API that could change. Finalize is HA Leader.",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Finalize is HA Leader.",
       response = HALeaderResp.class)
   @ApiResponses(
       value = {

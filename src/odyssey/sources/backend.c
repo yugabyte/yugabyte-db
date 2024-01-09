@@ -308,7 +308,15 @@ static inline int od_backend_connect_to(od_server_t *server, char *context,
 	struct addrinfo *ai = NULL;
 
 	/* resolve server address */
+#ifdef YB_SUPPORT_FOUND
+	/* 
+	 * In upstream odyssey, checking only host value if is null isn't sufficient to identify out of
+	 * host and unix socket.
+	 */
+	if (host && strlen(host) > 0) {
+#else
 	if (host) {
+#endif
 		/* assume IPv6 or IPv4 is specified */
 		int rc_resolve = -1;
 		if (strchr(host, ':')) {
@@ -354,6 +362,11 @@ static inline int od_backend_connect_to(od_server_t *server, char *context,
 		od_snprintf(saddr_un.sun_path, sizeof(saddr_un.sun_path),
 			    "%s/.s.PGSQL.%d", instance->config.unix_socket_dir,
 			    port);
+#ifdef YB_SUPPORT_FOUND
+		od_debug(&instance->logger, context, server->client,
+			       server,
+			       "Ysql Connection Manager connecting to unix socket at %s", saddr_un.sun_path);
+#endif
 	}
 
 	uint64_t time_resolve = 0;

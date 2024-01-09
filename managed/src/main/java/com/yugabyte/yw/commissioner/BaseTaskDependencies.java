@@ -12,6 +12,7 @@ package com.yugabyte.yw.commissioner;
 import com.typesafe.config.Config;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.RestoreManagerYb;
 import com.yugabyte.yw.common.TableManager;
@@ -33,7 +34,6 @@ import play.Application;
 @Getter
 @RequiredArgsConstructor(onConstructor_ = {@Inject})
 public class BaseTaskDependencies {
-
   private final Application application;
   private final play.Environment environment;
   private final Config config;
@@ -52,4 +52,6 @@ public class BaseTaskDependencies {
   private final NodeManager nodeManager;
   private final BackupHelper backupHelper;
   private final AutoFlagUtil autoFlagUtil;
+  private final Commissioner commissioner;
+  private final NodeUIApiHelper nodeUIApiHelper;
 }

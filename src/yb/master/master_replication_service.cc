@@ -41,6 +41,7 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (IsSetupNamespaceReplicationWithBootstrapDone)
     (UpdateConsumerOnProducerSplit)
     (UpdateConsumerOnProducerMetadata)
+    (XClusterReportNewAutoFlagConfigVersion)
     (ListCDCStreams)
     (IsObjectPartOfXRepl)
     (SetUniverseReplicationEnabled)
@@ -55,12 +56,19 @@ class MasterReplicationServiceImpl : public MasterServiceBase, public MasterRepl
     (GetTableSchemaFromSysCatalog)
     (ChangeXClusterRole)
     (BootstrapProducer)
+    (YsqlBackfillReplicationSlotNameToCDCSDKStream)
   )
 
   MASTER_SERVICE_IMPL_ON_LEADER_WITH_LOCK(
       XClusterManager,
       (GetXClusterSafeTime)
       (PauseResumeXClusterProducerStreams)
+      (XClusterCreateOutboundReplicationGroup)
+      (XClusterAddNamespaceToOutboundReplicationGroup)
+      (XClusterRemoveNamespaceFromOutboundReplicationGroup)
+      (XClusterDeleteOutboundReplicationGroup)
+      (IsXClusterBootstrapRequired)
+      (GetXClusterStreams)
   )
 };
 

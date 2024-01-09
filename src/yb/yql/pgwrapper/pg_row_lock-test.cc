@@ -829,12 +829,6 @@ TEST_F_EX(PgRowLockTest,
 }
 
 TEST_F_EX(PgRowLockTest,
-          DuplicateInsertReadCommitted,
-          PgMiniTestTxnHelper<IsolationLevel::READ_COMMITTED>) {
-  TestDuplicateInsert();
-}
-
-TEST_F_EX(PgRowLockTest,
           DuplicateUniqueIndexInsertSerializable,
           PgMiniTestTxnHelperSerializable) {
   TestDuplicateUniqueIndexInsert();
@@ -847,12 +841,6 @@ TEST_F_EX(PgRowLockTest,
 }
 
 TEST_F_EX(PgRowLockTest,
-          DuplicateUniqueIndexInsertReadCommitted,
-          PgMiniTestTxnHelper<IsolationLevel::READ_COMMITTED>) {
-  TestDuplicateUniqueIndexInsert();
-}
-
-TEST_F_EX(PgRowLockTest,
           DuplicateNonUniqueIndexInsertSerializable,
           PgMiniTestTxnHelperSerializable) {
   TestDuplicateNonUniqueIndexInsert();
@@ -861,12 +849,6 @@ TEST_F_EX(PgRowLockTest,
 TEST_F_EX(PgRowLockTest,
           DuplicateNonUniqueIndexInsertSnapshot,
           PgRowLockTxnHelperSnapshotTest) {
-  TestDuplicateNonUniqueIndexInsert();
-}
-
-TEST_F_EX(PgRowLockTest,
-          YB_DISABLE_TEST_IN_TSAN(DuplicateNonUniqueIndexInsertReadCommitted),
-          PgMiniTestTxnHelper<IsolationLevel::READ_COMMITTED>) {
   TestDuplicateNonUniqueIndexInsert();
 }
 

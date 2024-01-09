@@ -46,11 +46,10 @@
 
 #include <gtest/gtest_prod.h>
 
-#include "yb/cdc/cdc_producer.h"
 #include "yb/client/client_fwd.h"
-#include "yb/common/common_fwd.h"
 
 #include "yb/common/clock.h"
+#include "yb/common/common_fwd.h"
 #include "yb/common/common_types.pb.h"
 #include "yb/common/entity_ids.h"
 #include "yb/common/pg_types.h"
@@ -66,9 +65,9 @@
 #include "yb/gutil/macros.h"
 #include "yb/gutil/port.h"
 
-#include "yb/master/master_fwd.h"
 #include "yb/master/master_client.fwd.h"
 #include "yb/master/master_ddl.fwd.h"
+#include "yb/master/master_fwd.h"
 #include "yb/master/master_replication.fwd.h"
 
 #include "yb/rpc/rpc_fwd.h"
@@ -101,6 +100,10 @@ class GetAutoFlagsConfigResponsePB;
 namespace tserver {
 class LocalTabletServer;
 class TabletServerServiceProxy;
+}
+
+namespace xcluster {
+YB_STRONGLY_TYPED_STRING(ReplicationGroupId);
 }
 
 namespace client {
@@ -155,6 +158,9 @@ using GetTableLocationsCallback =
 using OpenTableAsyncCallback = std::function<void(const Result<YBTablePtr>&)>;
 using CreateSnapshotCallback = std::function<void(Result<TxnSnapshotId>)>;
 using MasterAddressSource = std::function<std::vector<std::string>()>;
+using GetXClusterStreamsCallback =
+    std::function<void(Result<master::GetXClusterStreamsResponsePB>)>;
+using IsXClusterBootstrapRequiredCallback = std::function<void(Result<bool>)>;
 
 struct TransactionStatusTablets {
   std::vector<TabletId> global_tablets;
@@ -334,6 +340,9 @@ class YBClient {
   Status GetIndexBackfillProgress(
       const std::vector<TableId>& index_ids,
       google::protobuf::RepeatedField<google::protobuf::uint64>* rows_processed_entries);
+
+  Result<master::GetBackfillStatusResponsePB> GetBackfillStatus(
+      const std::vector<std::string_view>& table_ids);
 
   // Delete the specified table.
   // Set 'wait' to true if the call must wait for the table to be fully deleted before returning.
@@ -630,7 +639,10 @@ class YBClient {
       NamespaceId* ns_id,
       std::vector<TableId>* table_ids,
       std::unordered_map<std::string, std::string>* options,
-      cdc::StreamModeTransactional* transactional);
+      cdc::StreamModeTransactional* transactional,
+      std::optional<uint64_t>* consistent_snapshot_time = nullptr,
+      std::optional<CDCSDKSnapshotOption>* consistent_snapshot_option = nullptr,
+      std::optional<uint64_t>* stream_creation_time = nullptr);
 
   Status GetCDCStream(
       const ReplicationSlotName& replication_slot_name,
@@ -665,21 +677,43 @@ class YBClient {
       const std::vector<TableName>& table_names,
       BootstrapProducerCallback callback);
 
+  Result<std::vector<NamespaceId>> XClusterCreateOutboundReplicationGroup(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const std::vector<NamespaceName>& namespace_names);
+
+  Status GetXClusterStreams(
+      CoarseTimePoint deadline, const xcluster::ReplicationGroupId& replication_group_id,
+      const NamespaceId& namespace_id, const std::vector<TableName>& table_names,
+      const std::vector<PgSchemaName>& pg_schema_names, GetXClusterStreamsCallback callback);
+
+  Status IsXClusterBootstrapRequired(
+      CoarseTimePoint deadline, const xcluster::ReplicationGroupId& replication_group_id,
+      const NamespaceId& namespace_id, IsXClusterBootstrapRequiredCallback callback);
+
+  Status XClusterDeleteOutboundReplicationGroup(
+      const xcluster::ReplicationGroupId& replication_group_id);
+
+  Result<NamespaceId> XClusterAddNamespaceToOutboundReplicationGroup(
+      const xcluster::ReplicationGroupId& replication_group_id,
+      const NamespaceName& namespace_name);
+
+  Status XClusterRemoveNamespaceFromOutboundReplicationGroup(
+      const xcluster::ReplicationGroupId& replication_group_id, const NamespaceId& namespace_id);
+
   // Update consumer pollers after a producer side tablet split.
   Status UpdateConsumerOnProducerSplit(
-      const cdc::ReplicationGroupId& replication_group_id,
-      const xrepl::StreamId& stream_id,
+      const xcluster::ReplicationGroupId& replication_group_id, const xrepl::StreamId& stream_id,
       const master::ProducerSplitTabletInfoPB& split_info);
 
   // Update after a producer DDL change. Returns if caller should wait for a similar Consumer DDL.
   Status UpdateConsumerOnProducerMetadata(
-      const cdc::ReplicationGroupId& replication_group_id,
-      const xrepl::StreamId& stream_id,
-      const tablet::ChangeMetadataRequestPB& meta_info,
-      uint32_t colocation_id,
-      uint32_t producer_schema_version,
-      uint32_t consumer_schema_version,
+      const xcluster::ReplicationGroupId& replication_group_id, const xrepl::StreamId& stream_id,
+      const tablet::ChangeMetadataRequestPB& meta_info, uint32_t colocation_id,
+      uint32_t producer_schema_version, uint32_t consumer_schema_version,
       master::UpdateConsumerOnProducerMetadataResponsePB* resp);
+
+  Status XClusterReportNewAutoFlagConfigVersion(
+      const xcluster::ReplicationGroupId& replication_group_id, uint32 auto_flag_config_version);
 
   void GetTableLocations(
       const TableId& table_id, int32_t max_tablets, RequireTabletsRunning require_tablets_running,

@@ -25,7 +25,6 @@ rightNav:
 
 ##### Installation
 
-- [How are the build artifacts packaged and stored for YugabyteDB Anywhere?](#how-are-the-build-artifacts-packaged-and-stored-for-yugabytedb-anywhere)
 - [How does YugabyteDB Anywhere installation work?](#how-does-yugabytedb-anywhere-installation-work)
 - [What are the OS requirements and permissions to run YugabyteDB Anywhere?](#what-are-the-os-requirements-and-permissions-to-run-yugabytedb-anywhere)
 
@@ -53,39 +52,38 @@ Follow the steps in the [vulnerability disclosure policy](/preview/secure/vulner
 
 ## Installation
 
-### How are the build artifacts packaged and stored for YugabyteDB Anywhere?
+<!--### How are the build artifacts packaged and stored for YugabyteDB Anywhere?
 
 YugabyteDB Anywhere software is packaged as a set of Docker container images hosted on the [Quay.io](https://quay.io/) container registry and managed by the [Replicated](https://www.replicated.com/) management tool. Replicated ensures that YugabyteDB Anywhere remains highly available, and allows for instant upgrades by pulling the incremental container images associated with a newer YugabyteDB Anywhere release. If the host running the YugabyteDB Anywhere UI does not have the Internet connectivity, a fully air-gapped installation option is also available.
 
-The data node (YugabyteDB) software is packaged into the YugabyteDB Anywhere application.
+The data node (YugabyteDB) software is packaged into the YugabyteDB Anywhere application.-->
 
 ### How does YugabyteDB Anywhere installation work?
 
-YugabyteDB Anywhere first needs to be installed on a machine. The next step is to configure YugabyteDB Anywhere to work with public and/or private clouds. In the case of public clouds, YugabyteDB Anywhere spawns the machines to orchestrate bringing up the data platform. In the case of private clouds, you add the nodes you want to be a part of the data platform into YugabyteDB Anywhere. YugabyteDB Anywhere needs SSH access into these nodes to manage them.
+YugabyteDB Anywhere first needs to be installed on a machine. The next step is to configure YugabyteDB Anywhere to work with public and/or private clouds. In the case of public clouds, YugabyteDB Anywhere spawns the machines to orchestrate bringing up the data platform. In the case of private clouds, you add the nodes you want to be a part of the data platform into YugabyteDB Anywhere.
 
-Installation of YugabyteDB Anywhere starts with installing Replicated on a Linux host. Replicated installs the [docker-engine](https://docs.docker.com/engine/), the Docker container runtime, and then pulls its own container images from the [Replicated.com container registry](https://help.replicated.com/docs/native/getting-started/docker-registries/). YugabyteDB Anywhere then becomes a managed application of Replicated, which starts by pulling the YugabyteDB Anywhere (`yugaware`) container images from Quay.io for the very first time. YugabyteDB Anywhere then distributes and installs YugabyteDB on the hosts identified to run the data nodes. Because the YugabyteDB software is already packaged into existing artifacts, the data node does not require any Internet connectivity.
+You install YugabyteDB Anywhere using a standalone installer that you download from Yugabyte.
+
+{{< note title="Replicated end of life" >}}
+
+YugabyteDB Anywhere was previously installed using Replicated. However, YugabyteDB Anywhere will end support for Replicated installation at the end of 2024. You can migrate existing Replicated YugabyteDB Anywhere installations using YBA Installer. See [Migrate from Replicated](../../yugabyte-platform/install-yugabyte-platform/install-software/installer/#migrate-from-replicated).
+
+{{< /note >}}
+
+YugabyteDB Anywhere distributes and installs YugabyteDB on the hosts identified to run the data nodes. Because the YugabyteDB software is already packaged into existing artifacts, the data node does not require any Internet connectivity.
 
 For instructions on installing YugabyteDB Anywhere, refer to [Install YugabyteDB Anywhere](../../yugabyte-platform/install-yugabyte-platform/).
 
 ### What are the OS requirements and permissions to run YugabyteDB Anywhere?
 
-YugabyteDB Anywhere requires Replicated; currently, Replicated only supports Linux-based operating systems. The Linux OS should be 3.10+ kernel, 64-bit, and ready to run docker-engine 1.7.1 - 17.06.2-ce (with 17.06.2-ce being the recommended version).
+For a list of operating systems supported by YugabyteDB Anywhere, see [Operating system support](../../reference/configuration/operating-systems/#yugabytedb-anywhere).
 
-For a complete list of operating systems supported by Replicated, see [Supported Operating Systems](https://help.replicated.com/docs/native/customer-installations/supported-operating-systems/).
-
-{{< note title="Note" >}}
-
-This requirement applies only to YugabyteDB Anywhere. For a list of operating systems supported by YugabyteDB, see the [Deployment checklist](../../../deploy/checklist/) for YugabyteDB.
-
-{{< /note >}}
+For Replicated-based installations, YugabyteDB Anywhere supports operating systems supported by Replicated. Replicated only supports Linux-based operating systems. The Linux OS should be 3.10+ kernel, 64-bit, and ready to run docker-engine 1.7.1 - 17.06.2-ce (with 17.06.2-ce being the recommended version). For a complete list of operating systems supported by Replicated, see [Supported Operating Systems](https://help.replicated.com/docs/native/customer-installations/supported-operating-systems/).
 
 YugabyteDB Anywhere also requires the following:
 
 - Connectivity to the Internet, either directly or via an HTTP proxy.
-- Ability to install and configure [docker-engine](https://docs.docker.com/engine/).
-- Ability to install and configure [Replicated](https://www.replicated.com/install-options/), which is a containerized application itself and needs to pull containers from its own [Replicated.com container registry](https://help.replicated.com/docs/native/getting-started/docker-registries/).
-- Ability to pull Yugabyte container images from the [Quay.io](https://quay.io/) container registry (this will be done by Replicated automatically).
-- The following ports open on the platform host: `8800` (Replicated UI), `80` (http access to the YugabyteDB Anywhere UI), `22` (ssh).
+- The following ports open on the platform host: 443 (HTTPS access to the YugabyteDB Anywhere UI), 22 (SSH).
 - Attached disk storage (such as persistent EBS volumes on AWS): 100 GB SSD minimum.
 - A YugabyteDB Anywhere license file from [Yugabyte](https://www.yugabyte.com/platform/#request-trial-form).
 - Ability to connect from the YugabyteDB Anywhere host to all YugabyteDB data nodes via SSH.

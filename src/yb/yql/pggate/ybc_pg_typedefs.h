@@ -234,14 +234,17 @@ typedef struct PgSysColumns {
 //
 // Index-related parameters are used to describe different types of scan.
 //   - Sequential scan: Index parameter is not used.
-//     { index_oid, index_only_scan, use_secondary_index } = { kInvalidOid, false, false }
+//     { index_relfilenode_oid, index_only_scan, use_secondary_index }
+//        = { kInvalidRelfileNodeOid, false, false }
 //   - IndexScan:
-//     { index_oid, index_only_scan, use_secondary_index } = { IndexOid, false, true }
+//     { index_relfilenode_oid, index_only_scan, use_secondary_index }
+//        = { IndexRelfileNodeOid, false, true }
 //   - IndexOnlyScan:
-//     { index_oid, index_only_scan, use_secondary_index } = { IndexOid, true, true }
+//     { index_relfilenode_oid, index_only_scan, use_secondary_index }
+//        = { IndexRelfileNodeOid, true, true }
 //   - PrimaryIndexScan: This is a special case as YugaByte doesn't have a separated
 //     primary-index database object from table object.
-//       index_oid = TableOid
+//       index_relfilenode_oid = TableRelfileNodeOid
 //       index_only_scan = true if ROWID is wanted. Otherwise, regular rowset is wanted.
 //       use_secondary_index = false
 //
@@ -250,7 +253,7 @@ typedef struct PgSysColumns {
 //   - Note that the system catalogs are specifically for Postgres API and not Yugabyte
 //     system-tables.
 typedef struct PgPrepareParameters {
-  YBCPgOid index_oid;
+  YBCPgOid index_relfilenode_oid;
   bool index_only_scan;
   bool use_secondary_index;
   bool querying_colocated_table;
@@ -372,8 +375,6 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_disable_index_backfill;
   const bool*     ysql_disable_server_file_access;
   const bool*     ysql_enable_reindex;
-  const int32_t*  ysql_max_read_restart_attempts;
-  const int32_t*  ysql_max_write_restart_attempts;
   const int32_t*  ysql_num_databases_reserved_in_db_catalog_version_mode;
   const int32_t*  ysql_output_buffer_size;
   const int32_t*  ysql_sequence_cache_minval;
@@ -403,7 +404,7 @@ typedef struct YbTablePropertiesData* YbTableProperties;
 
 typedef struct PgYBTupleIdDescriptor {
   YBCPgOid database_oid;
-  YBCPgOid table_oid;
+  YBCPgOid table_relfilenode_oid;
   size_t nattrs;
   YBCPgAttrValueDescriptor *attrs;
 } YBCPgYBTupleIdDescriptor;
@@ -544,6 +545,31 @@ typedef struct PgReplicationSlotDescriptor {
   YBCPgOid database_oid;
   bool active;
 } YBCReplicationSlotDescriptor;
+
+// A struct to store ASH metadata in PG's procarray
+typedef struct AshMetadata {
+  // A unique id corresponding to a YSQL query in bytes.
+  unsigned char root_request_id[16];
+
+  // Query id as seen on pg_stat_statements to identify identical
+  // normalized queries. There might be many queries with different
+  // root_request_id but with the same query_id.
+  uint64_t query_id;
+
+  // PgClient session id.
+  uint64_t session_id;
+
+  // If addr_family is AF_INET (ipv4) or AF_INET6 (ipv6), client_addr stores
+  // the ipv4/ipv6 address and client_port stores the port of the PG process
+  // where the YSQL query originated. In case of AF_INET, the first 4 bytes
+  // of client_addr are used to store the ipv4 address as raw bytes.
+  // In case of AF_INET6, all the 16 bytes are used to store the ipv6 address
+  // as raw bytes.
+  // If addr_family is AF_UNIX, client_addr and client_port are nulled out.
+  unsigned char client_addr[16];
+  uint16_t client_port;
+  uint8_t addr_family;
+} YBCAshMetadata;
 
 #ifdef __cplusplus
 }  // extern "C"

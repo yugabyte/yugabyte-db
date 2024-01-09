@@ -73,6 +73,7 @@
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/split.h"
 
+#include "yb/master/master_auto_flags_manager.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_manager.h"
@@ -339,7 +340,7 @@ Status SysCatalogTable::CreateNew(FsManager *fs_manager) {
       consensus::MakeTabletLogPrefix(kSysCatalogTabletId, fs_manager->uuid()),
       tablet::Primary::kTrue, kSysCatalogTableId, "", table_name(), TableType::YQL_TABLE_TYPE,
       schema, qlexpr::IndexMap(), boost::none /* index_info */, 0 /* schema_version */,
-      partition_schema);
+      partition_schema, "" /* pg_table_id */);
   string data_root_dir = fs_manager->GetDataRootDirs()[0];
   fs_manager->SetTabletPathByDataPath(kSysCatalogTabletId, data_root_dir);
   auto metadata = VERIFY_RESULT(tablet::RaftGroupMetadata::CreateNew(tablet::RaftGroupMetadataData {
@@ -614,10 +615,10 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       .snapshot_coordinator = &master_->catalog_manager()->snapshot_coordinator(),
       .tablet_splitter = nullptr,
       .allowed_history_cutoff_provider = std::bind(
-          &CatalogManager::AllowedHistoryCutoffProvider,
-          master_->catalog_manager_impl(), std::placeholders::_1),
+          &CatalogManager::AllowedHistoryCutoffProvider, master_->catalog_manager_impl(),
+          std::placeholders::_1),
       .transaction_manager_provider = nullptr,
-      .auto_flags_manager = master_->auto_flags_manager(),
+      .auto_flags_manager = master_->GetAutoFlagsManagerImpl(),
       // We won't be doing full compactions on the catalog tablet.
       .full_compaction_pool = nullptr,
       .admin_triggered_compaction_pool = nullptr,
@@ -1259,9 +1260,10 @@ Status SysCatalogTable::ReadPgClassInfo(
   const auto relname_col_id = VERIFY_RESULT(schema.ColumnIdByName("relname")).rep();
   const auto tablespace_col_id = VERIFY_RESULT(schema.ColumnIdByName("reltablespace")).rep();
   const auto relkind_col_id = VERIFY_RESULT(schema.ColumnIdByName("relkind")).rep();
+  const auto relfilenode_col_id = VERIFY_RESULT(schema.ColumnIdByName("relfilenode")).rep();
 
   std::vector<ColumnIdRep> col_ids = {
-      oid_col_id, relname_col_id, tablespace_col_id, relkind_col_id};
+      oid_col_id, relname_col_id, tablespace_col_id, relkind_col_id, relfilenode_col_id};
 
   ColumnIdRep reloptions_col_id = -1;
   if (is_colocated_database) {
@@ -1369,8 +1371,24 @@ Status SysCatalogTable::ReadPgClassInfo(
     if (tablespace_oid != kInvalidOid) {
       tablespace_id = GetPgsqlTablespaceId(tablespace_oid);
     }
-    const auto& ret = table_to_tablespace_map->emplace(
-        GetPgsqlTableId(database_oid, oid), tablespace_id);
+
+    // Process the relfilenode of this table/index.
+    const auto& relfilenode_col = row.GetValue(relfilenode_col_id);
+    if (!relfilenode_col) {
+      return STATUS(Corruption, "Could not read oid column from pg_class");
+    }
+    const uint32_t relfilenode_oid = relfilenode_col->uint32_value();
+
+    TableId table_id;
+    // If the relfilenode oid is not valid, use the pg table OID to construct
+    // the table id. Otherwise, this may be a rewritten table, so use the
+    // relfilenode to construct the table id.
+    if (relfilenode_oid == kInvalidOid) {
+      table_id = GetPgsqlTableId(database_oid, oid);
+    } else {
+      table_id = GetPgsqlTableId(database_oid, relfilenode_oid);
+    }
+    const auto& ret = table_to_tablespace_map->emplace(table_id, tablespace_id);
     // The map should not have a duplicate entry with the same oid.
     DCHECK(ret.second);
   }

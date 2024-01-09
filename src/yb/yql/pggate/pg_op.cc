@@ -128,7 +128,7 @@ PgsqlReadOp::PgsqlReadOp(ThreadSafeArena* arena, const PgTableDesc& desc, bool i
                          PgsqlMetricsCaptureType metrics_capture)
     : PgsqlReadOp(arena, is_region_local) {
   read_request_.set_client(YQL_CLIENT_PGSQL);
-  read_request_.dup_table_id(desc.id().GetYbTableId());
+  read_request_.dup_table_id(desc.relfilenode_id().GetYbTableId());
   read_request_.set_schema_version(desc.schema_version());
   read_request_.set_stmt_id(reinterpret_cast<int64_t>(&read_request_));
   read_request_.set_metrics_capture(metrics_capture);
@@ -139,9 +139,8 @@ Status PgsqlReadOp::InitPartitionKey(const PgTableDesc& table) {
        table.schema(), table.partition_schema(), table.GetPartitionList(), &read_request_);
 }
 
-PgsqlOpPtr PgsqlReadOp::DeepCopy(const std::shared_ptr<void>& shared_ptr) const {
-  auto result = ArenaMakeShared<PgsqlReadOp>(
-      std::shared_ptr<ThreadSafeArena>(shared_ptr, &arena()), &arena(), is_region_local());
+PgsqlOpPtr PgsqlReadOp::DeepCopy(const std::shared_ptr<ThreadSafeArena>& arena_ptr) const {
+  auto result = ArenaMakeShared<PgsqlReadOp>(arena_ptr, &*arena_ptr, is_region_local());
   result->set_read_time(read_time());
   result->read_request() = read_request();
   return result;

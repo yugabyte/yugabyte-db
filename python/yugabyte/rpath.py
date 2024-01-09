@@ -87,7 +87,7 @@ def set_rpath(file_path: str, rpath: str) -> None:
     else:
         patchelf_path = get_patchelf_path()
         assert patchelf_path is not None
-        cmd_line = [patchelf_path, file_path, '--set-rpath', rpath]
+        cmd_line = [patchelf_path, '--set-rpath', rpath, file_path]
 
     subprocess.check_call(cmd_line)
 

@@ -2377,12 +2377,15 @@ initial_cost_nestloop(PlannerInfo *root, JoinCostWorkspace *workspace,
 
 	/* cost of source data */
 	int yb_batch_size = 1;
+	bool yb_is_batched = false;
 	if (IsYugaByteEnabled() && yb_enable_base_scans_cost_model)
 	{
-		bool is_batched = yb_is_outer_inner_batched(outer_path, inner_path);
-		if (is_batched)
+		yb_is_batched = yb_is_outer_inner_batched(outer_path, inner_path);
+		if (yb_is_batched)
 			yb_batch_size = yb_bnl_batch_size;
 	}
+
+	bool yb_costing_bnl = yb_batch_size > 1;
 
 	/*
 	 * NOTE: clearly, we must pay both outer and inner paths' startup_cost
@@ -2399,8 +2402,8 @@ initial_cost_nestloop(PlannerInfo *root, JoinCostWorkspace *workspace,
 	inner_run_cost = inner_path->total_cost - inner_path->startup_cost;
 	inner_rescan_run_cost = (inner_rescan_total_cost - inner_rescan_start_cost);
 
-	if (jointype == JOIN_SEMI || jointype == JOIN_ANTI ||
-		extra->inner_unique)
+	if ((jointype == JOIN_SEMI || jointype == JOIN_ANTI ||
+		extra->inner_unique) && !yb_costing_bnl)
 	{
 		/*
 		 * With a SEMI or ANTI join, or if the innerrel is known unique, the
@@ -2478,6 +2481,8 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 	if (IsYugaByteEnabled() && yb_enable_base_scans_cost_model && yb_is_batched)
 		yb_batch_size = yb_bnl_batch_size;
 
+	bool yb_costing_bnl = yb_batch_size > 1;
+
 	/* For partial paths, scale row estimate. */
 	if (path->path.parallel_workers > 0)
 	{
@@ -2498,8 +2503,13 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 
 	/* cost of inner-relation source data (we already dealt with outer rel) */
 
-	if (path->jointype == JOIN_SEMI || path->jointype == JOIN_ANTI ||
-		extra->inner_unique)
+	/*
+	 * YB: We exclude BNL semi/anti joins from this because BNL's still pull
+	 * all innerrel tuples instead of stopping prematurely. It still needs
+	 * the adjustment to ntuples that is done after this branch statement.
+	 */
+	if ((path->jointype == JOIN_SEMI || path->jointype == JOIN_ANTI ||
+		extra->inner_unique) && !yb_costing_bnl)
 	{
 		/*
 		 * With a SEMI or ANTI join, or if the innerrel is known unique, the
@@ -2528,13 +2538,8 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 		 * Compute number of tuples processed (not number emitted!).  First,
 		 * account for successfully-matched outer rows.
 		 */
-		 /*
-		  * YB: Note that in the case of BNL, the inner_path_rows gives us the
-		  * number of rows returned by the inner side per BATCH of outer tuples.
-		  * We correct for such cases by dividing by yb_batch_size.
-		  */
-		ntuples = (outer_matched_rows / yb_batch_size)
-			* inner_path_rows * inner_scan_frac;
+
+		ntuples = outer_matched_rows * inner_path_rows * inner_scan_frac;
 
 		/*
 		 * Now we need to estimate the actual costs of scanning the inner
@@ -2561,14 +2566,12 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 			 * case, use inner_run_cost for the first matched tuple and
 			 * inner_rescan_run_cost for additional ones.
 			 */
-
 			if (outer_matched_rows > 0)
 				run_cost += inner_run_cost * inner_scan_frac;
 
-			if (outer_matched_rows > yb_batch_size)
-				run_cost +=
-					((outer_matched_rows - yb_batch_size) / yb_batch_size) *
-						inner_rescan_run_cost * inner_scan_frac;
+			if (outer_matched_rows > 1)
+				run_cost += (outer_matched_rows - 1) *
+					inner_rescan_run_cost * inner_scan_frac;
 
 			/*
 			 * Add the cost of inner-scan executions for unmatched outer rows.
@@ -2576,15 +2579,8 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 			 * of a nonempty scan.  We consider that these are all rescans,
 			 * since we used inner_run_cost once already.
 			 */
-
-			/*
-			 * YB: We assume that when we are using batched nested loop joins,
-			 * the chances of us coming up with a non-matching batch are
-			 * negligible.
-			 */
-			if (yb_batch_size == 1)
-				run_cost += outer_unmatched_rows *
-					inner_rescan_run_cost / inner_path_rows;
+			run_cost += outer_unmatched_rows *
+				inner_rescan_run_cost / inner_path_rows;
 
 			/*
 			 * We won't be evaluating any quals at all for unmatched rows, so
@@ -2607,26 +2603,22 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 			 */
 
 			/* First, count all unmatched join tuples as being processed */
-			ntuples += (outer_unmatched_rows / yb_batch_size) * inner_path_rows;
+			ntuples += outer_unmatched_rows * inner_path_rows;
 
 			/* Now add the forced full scan, and decrement appropriate count */
 			run_cost += inner_run_cost;
-			if (outer_unmatched_rows >= yb_batch_size)
-				outer_unmatched_rows -= yb_batch_size;
+			if (outer_unmatched_rows >= 1)
+				outer_unmatched_rows -= 1;
 			else
-				outer_matched_rows -=
-					outer_matched_rows < yb_batch_size ?
-						outer_matched_rows : yb_batch_size;
+				outer_matched_rows -= 1;
 
 			/* Add inner run cost for additional outer tuples having matches */
 			if (outer_matched_rows > 0)
-				run_cost += (outer_matched_rows / yb_batch_size) *
-					inner_rescan_run_cost * inner_scan_frac ;
+				run_cost += outer_matched_rows * inner_rescan_run_cost * inner_scan_frac;
 
 			/* Add inner run cost for additional unmatched outer tuples */
 			if (outer_unmatched_rows > 0)
-				run_cost += (outer_unmatched_rows / yb_batch_size) *
-					inner_rescan_run_cost;
+				run_cost += outer_unmatched_rows * inner_rescan_run_cost;
 		}
 	}
 	else
@@ -2635,6 +2627,19 @@ final_cost_nestloop(PlannerInfo *root, NestPath *path,
 
 		/* Compute number of tuples processed (not number emitted!) */
 		ntuples = (outer_path_rows / yb_batch_size) * inner_path_rows;
+
+		if (path->jointype == JOIN_SEMI || path->jointype == JOIN_ANTI
+			|| extra->inner_unique)
+		{
+			Assert(yb_is_batched);
+			double		outer_matched_rows;
+			Selectivity inner_scan_frac;
+
+			outer_matched_rows =
+				rint(outer_path_rows * extra->semifactors.outer_match_frac);
+			inner_scan_frac = 2.0 / (extra->semifactors.match_count + 1.0);
+			ntuples = outer_matched_rows * inner_path_rows * inner_scan_frac;
+		}
 	}
 
 	/* CPU costs */
@@ -4279,10 +4284,8 @@ yb_get_bnl_extra_quals(NestPath *joinpath)
 	{
 		RestrictInfo *rinfo = (RestrictInfo *) lfirst(lc);
 		if (!yb_can_batch_rinfo(rinfo, joinpath->outerjoinpath->parent->relids,
-										joinpath->innerjoinpath->parent->relids))
-		{
+								joinpath->innerjoinpath->parent->relids))
 			bnl_extra_quals = lappend(bnl_extra_quals, rinfo);
-		}
 	}
 	return bnl_extra_quals;
 }

@@ -64,7 +64,7 @@ import java.util.Optional;
 import java.util.UUID;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import play.mvc.Http;
 import play.mvc.Result;
 import play.mvc.Results;
@@ -492,7 +492,7 @@ public class NodeInstanceController extends AuthenticatedController {
       if (!CertificateInfo.isCertificateValid(taskParams.rootCA)) {
         String errMsg =
             String.format(
-                "The certificate %s needs info. Update the cert" + " and retry.",
+                "The certificate %s needs info. Update the cert and retry.",
                 CertificateInfo.get(taskParams.rootCA).getLabel());
         log.error(errMsg);
         throw new PlatformServiceException(BAD_REQUEST, errMsg);

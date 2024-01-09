@@ -3,7 +3,6 @@ title: Use an ORM
 linkTitle: Use an ORM
 description: NodeJS ORM support for YugabyteDB
 headcontent: NodeJS ORM support for YugabyteDB
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   v2.14:
     identifier: prisma-1

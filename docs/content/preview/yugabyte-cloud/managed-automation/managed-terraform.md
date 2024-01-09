@@ -3,7 +3,6 @@ title: YugabyteDB Managed Terraform Provider
 headerTitle: Terraform Provider
 linkTitle: Terraform Provider
 description: Terraform Provider for YugabyteDB Managed.
-image: /images/section_icons/explore/administer.png
 headcontent: Manage YugabyteDB Managed accounts and deployments using the Terraform Provider
 menu:
   preview_yugabyte-cloud:
@@ -16,6 +15,7 @@ type: docs
 Use the YugabyteDB Managed Terraform Provider to deploy and manage clusters programmatically. Some examples of what you can accomplish using this provider include:
 
 - Deploy and manage clusters
+- Deploy and manage read replicas
 - Pause and resume clusters automatically, based on a schedule or external events
 - Run on-demand backups and restores
 - Change backup and maintenance schedules

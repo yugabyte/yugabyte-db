@@ -1239,8 +1239,9 @@ public class TestYbBackup extends BasePgSQLTest {
     }
   }
 
-  public String doTestGeoPartitionedBackup(String targetDB, int numRegions, boolean useTablespaces)
-      throws Exception {
+  public String doTestGeoPartitionedBackup(
+      String targetDB, int numRegions, boolean useTablespaces, boolean dropTablespaces,
+      String restoreFlag) throws Exception {
     String output = null;
     try (Statement stmt = connection.createStatement()) {
       output = doCreateGeoPartitionedBackup(numRegions, useTablespaces);
@@ -1258,19 +1259,25 @@ public class TestYbBackup extends BasePgSQLTest {
         args.add("--use_tablespaces");
       }
 
+      if (restoreFlag != null) {
+        args.add(restoreFlag);
+      }
+
       if (!targetDB.equals("yugabyte")) {
         // Drop TABLEs and TABLESPACEs.
         stmt.execute("DROP TABLE tbl_r1");
         stmt.execute("DROP TABLE tbl_r2");
         stmt.execute("DROP TABLE tbl_r3");
         stmt.execute("DROP TABLE tbl");
-        stmt.execute("DROP TABLESPACE region1_ts");
-        stmt.execute("DROP TABLESPACE region2_ts");
-        stmt.execute("DROP TABLESPACE region3_ts");
+        if (dropTablespaces) {
+          stmt.execute("DROP TABLESPACE region1_ts");
+          stmt.execute("DROP TABLESPACE region2_ts");
+          stmt.execute("DROP TABLESPACE region3_ts");
 
-        // Check global TABLESPACEs.
-        assertRowSet(stmt, "SELECT spcname FROM pg_tablespace",
-            asSet(new Row("pg_default"), new Row("pg_global")));
+          // Check global TABLESPACEs.
+          assertRowSet(stmt, "SELECT spcname FROM pg_tablespace",
+              asSet(new Row("pg_default"), new Row("pg_global")));
+        }
 
         args.addAll(Arrays.asList("--keyspace", "ysql." + targetDB));
       }
@@ -1315,6 +1322,12 @@ public class TestYbBackup extends BasePgSQLTest {
     return output;
   }
 
+  public String doTestGeoPartitionedBackup(String targetDB, int numRegions, boolean useTablespaces)
+      throws Exception {
+    return doTestGeoPartitionedBackup(
+        targetDB, numRegions, useTablespaces, /* dropTablespaces */ true, /* restoreFlag */ null);
+  }
+
   @Test
   public void testGeoPartitioning() throws Exception {
     doTestGeoPartitionedBackup("db2", 3, false);
@@ -1353,6 +1366,30 @@ public class TestYbBackup extends BasePgSQLTest {
   @Test
   public void testGeoPartitioningRestoringIntoExistingWithTablespaces() throws Exception {
     doTestGeoPartitionedBackup("yugabyte", 3, true);
+  }
+
+  @Test
+  public void testFailureOnExistingTablespaces() throws Exception {
+    // This value must be synced with the same variable in `yb_backup.py` script.
+    final boolean ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR = false;
+
+    try {
+      doTestGeoPartitionedBackup("db2", 3,
+          /* useTablespaces */ true, /* dropTablespaces */ false, /* restoreFlag */ null);
+
+      if (ENABLE_STOP_ON_YSQL_DUMP_RESTORE_ERROR) {
+        fail("Backup restoring did not fail as expected");
+      }
+    } catch (YBBackupException ex) {
+      LOG.info("Expected exception", ex);
+      assertTrue(ex.getMessage().contains("tablespace \"region1_ts\" already exists"));
+    }
+  }
+
+  @Test
+  public void testIgnoreExistingTablespaces() throws Exception {
+    doTestGeoPartitionedBackup("db2", 3,
+        /* useTablespaces */ true, /* dropTablespaces */ false, "--ignore_existing_tablespaces");
   }
 
   @Test

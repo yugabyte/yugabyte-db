@@ -22,11 +22,16 @@
 
 #include "yb/gutil/map-util.h"
 
+#include "yb/server/default-path-handlers.h"
+#include "yb/server/pprof-path-handlers.h"
 #include "yb/server/webserver.h"
 
+#include "yb/util/flags.h"
 #include "yb/util/jsonwriter.h"
 #include "yb/util/metrics_writer.h"
+#include "yb/util/tcmalloc_util.h"
 #include "yb/util/signal_util.h"
+#include "yb/util/size_literals.h"
 #include "yb/util/status_log.h"
 
 #include "yb/yql/pggate/util/ybc-internal.h"
@@ -65,6 +70,7 @@ static const char *PSQL_SERVER_NEW_CONNECTION_TOTAL = "yb_ysqlserver_new_connect
 
 // YSQL Connection Manager-specific metric labels
 static const char *DATABASE = "database";
+static const char *USER = "user";
 
 namespace {
 
@@ -151,7 +157,8 @@ static void GetYsqlConnMgrStats(std::vector<ConnectionStats> *stats) {
   }
 
   for (uint32_t itr = 0; itr < num_pools; itr++) {
-    if (strcmp(shmp[itr].pool_name, "") == 0)
+    if (strcmp(shmp[itr].database_name, "") == 0
+      || strcmp(shmp[itr].user_name, "") == 0 )
       break;
     stats->push_back(shmp[itr]);
   }
@@ -175,7 +182,8 @@ void emitYsqlConnectionManagerMetrics(PrometheusWriter *pwriter) {
     ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_query_rate", stats.query_rate});
     ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_transaction_rate", stats.transaction_rate});
     ysql_conn_mgr_metrics.push_back({"ysql_conn_mgr_avg_wait_time_ns", stats.avg_wait_time_ns});
-    ysql_conn_mgr_prometheus_attr[DATABASE] = stats.pool_name;
+    ysql_conn_mgr_prometheus_attr[DATABASE] = stats.database_name;
+    ysql_conn_mgr_prometheus_attr[USER] = stats.user_name;
 
     // Publish collected metrics for the current pool.
     for (auto entry : ysql_conn_mgr_metrics) {
@@ -402,8 +410,11 @@ static void PgLogicalRpczHandler(const Webserver::WebRequest &req, Webserver::We
 
     // The type of pool. There are two types of pool in Ysql Connection Manager, "gloabl" and
     // "control".
-    writer.String("pool");
-    writer.String(stat.pool_name);
+    writer.String("database_name");
+    writer.String(stat.database_name);
+
+    writer.String("user_name");
+    writer.String(stat.user_name);
 
     // Number of logical connections that are attached to any physical connection. A logical
     // connection gets attached to a physical connection during lifetime of a transaction.
@@ -555,7 +566,22 @@ YBCStatus StartWebserver(WebserverWrapper *webserver_wrapper) {
       "/statements", "PG Stat Statements", PgStatStatementsHandler, false, false);
   webserver->RegisterPathHandler(
       "/statements-reset", "Reset PG Stat Statements", PgStatStatementsResetHandler, false, false);
+  webserver->RegisterPathHandler("/webserver-heap-snapshot", "",
+      PprofHeapSnapshotHandler, true /* is_styled */, false /* is_on_nav_bar */);
+  webserver->RegisterPathHandler("/memz", "Memory (total)", MemUsageHandler, true, false);
+
   return ToYBCStatus(WithMaskedYsqlSignals([webserver]() { return webserver->Start(); }));
+}
+
+void SetWebserverConfig(
+    WebserverWrapper *webserver_wrapper, bool enable_access_logging, bool enable_tcmalloc_logging,
+    int webserver_profiler_sample_freq_bytes) {
+  Webserver *webserver = reinterpret_cast<Webserver *>(webserver_wrapper);
+  webserver->SetLogging(enable_access_logging, enable_tcmalloc_logging);
+
+  if (GetTCMallocSamplingFrequency() != webserver_profiler_sample_freq_bytes) {
+    SetTCMallocSamplingFrequency(webserver_profiler_sample_freq_bytes);
+  }
 }
 }  // extern "C"
 

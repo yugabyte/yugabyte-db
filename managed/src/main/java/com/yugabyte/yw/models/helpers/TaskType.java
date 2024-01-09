@@ -169,6 +169,9 @@ public enum TaskType {
   KubernetesCheckVolumeExpansion(
       com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCheckVolumeExpansion.class),
 
+  KubernetesPostExpansionCheckVolume(
+      com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesPostExpansionCheckVolume.class),
+
   StartMasterOnNode(com.yugabyte.yw.commissioner.tasks.StartMasterOnNode.class),
 
   DeleteXClusterConfig(com.yugabyte.yw.commissioner.tasks.DeleteXClusterConfig.class),
@@ -263,6 +266,8 @@ public enum TaskType {
       com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets.class),
 
   CheckFollowerLag(com.yugabyte.yw.commissioner.tasks.subtasks.CheckFollowerLag.class),
+
+  CheckNodeSafeToDelete(com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeSafeToDelete.class),
 
   ManipulateDnsRecordTask(
       com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask.class),

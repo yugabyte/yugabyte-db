@@ -306,7 +306,7 @@ Status MiniTabletServer::AddTestTablet(const std::string& ns_id,
   auto table_info = std::make_shared<tablet::TableInfo>(
       consensus::MakeTabletLogPrefix(tablet_id, server_->permanent_uuid()), tablet::Primary::kTrue,
       table_id, ns_id, table_id, table_type, schema_with_ids, qlexpr::IndexMap(),
-      boost::none /* index_info */, 0 /* schema_version */, partition.first);
+      boost::none /* index_info */, 0 /* schema_version */, partition.first, "" /* pg_table_id */);
 
   return ResultToStatus(server_->tablet_manager()->CreateNewTablet(
       table_info, tablet_id, partition.second, config));

@@ -735,14 +735,39 @@ class Tablet : public AbstractTablet,
     return snapshot_coordinator_;
   }
 
+//------------------------------------------------------------------------------------------------
+// CDC Related
+
   docdb::YQLRowwiseIteratorIf* cdc_iterator() {
     return cdc_iterator_;
   }
 
+  Status SetAllCDCRetentionBarriersUnlocked(
+      int64 cdc_wal_index, OpId cdc_sdk_intents_op_id, MonoDelta cdc_sdk_op_id_expiration,
+      HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff,
+      bool initial_retention_barrier);
+
+  Status SetAllInitialCDCRetentionBarriers(
+      log::Log* log, int64 cdc_wal_index, OpId cdc_sdk_intents_op_id,
+      HybridTime cdc_sdk_history_cutoff, bool require_history_cutoff);
+
+  Status SetAllInitialCDCSDKRetentionBarriers(
+      log::Log* log, OpId cdc_sdk_op_id, HybridTime cdc_sdk_history_cutoff,
+      bool require_history_cutoff);
+
+  Result<bool> MoveForwardAllCDCRetentionBarriers(
+      log::Log* log, int64 cdc_wal_index, OpId cdc_sdk_intents_op_id,
+      MonoDelta cdc_sdk_op_id_expiration, HybridTime cdc_sdk_history_cutoff,
+      bool require_history_cutoff);
+
+//------------------------------------------------------------------------------------------------
+
   // Allows us to add tablet-specific information that will get deref'd when the tablet does.
-  void AddAdditionalMetadata(const std::string& key, std::shared_ptr<void> additional_metadata) {
+  std::shared_ptr<void> AddAdditionalMetadata(
+      const std::string& key, std::shared_ptr<void> additional_metadata) {
     std::lock_guard lock(control_path_mutex_);
-    additional_metadata_.emplace(key, std::move(additional_metadata));
+    auto result = additional_metadata_.emplace(key, std::move(additional_metadata));
+    return result.first->second;
   }
 
   std::shared_ptr<void> GetAdditionalMetadata(const std::string& key) {
@@ -864,7 +889,8 @@ class Tablet : public AbstractTablet,
   // present in the associated aborted subtxns.
   Status GetLockStatus(
       const std::map<TransactionId, SubtxnSet>& transactions,
-      TabletLockInfoPB* tablet_lock_info) const;
+      TabletLockInfoPB* tablet_lock_info,
+      uint64_t max_single_shard_waiter_start_time_us) const;
 
   // The returned SchemaPackingProvider lives only as long as this.
   docdb::SchemaPackingProvider& GetSchemaPackingProvider();
@@ -932,8 +958,14 @@ class Tablet : public AbstractTablet,
         max_key_length, std::move(callback), colocated_table_id);
   }
 
+  Status AbortSQLTransactions(CoarseTimePoint deadline) const;
+
   // Lock used to serialize the creation of RocksDB checkpoints.
   mutable std::mutex create_checkpoint_lock_;
+
+  // Serializes access to setting/revising/releasing CDCSDK retention barriers
+  mutable simple_spinlock cdcsdk_retention_barrier_lock_;
+  MonoTime cdcsdk_block_barrier_revision_start_time = MonoTime::Now();
 
  private:
   friend class Iterator;
@@ -1203,7 +1235,7 @@ class Tablet : public AbstractTablet,
 
   docdb::YQLRowwiseIteratorIf* cdc_iterator_ = nullptr;
 
-  AutoFlagsManager* auto_flags_manager_ = nullptr;
+  AutoFlagsManagerBase* auto_flags_manager_ = nullptr;
 
   mutable std::mutex control_path_mutex_;
   std::unordered_map<std::string, std::shared_ptr<void>> additional_metadata_

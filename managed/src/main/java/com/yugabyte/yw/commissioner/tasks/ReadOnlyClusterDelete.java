@@ -13,6 +13,7 @@ package com.yugabyte.yw.commissioner.tasks;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.DnsManager.DnsCommandType;
+import com.yugabyte.yw.common.UniverseInProgressException;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
@@ -40,6 +41,17 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
 
   public Params params() {
     return (Params) taskParams;
+  }
+
+  @Override
+  protected void validateUniverseState(Universe universe) {
+    try {
+      super.validateUniverseState(universe);
+    } catch (UniverseInProgressException e) {
+      if (!params().isForceDelete) {
+        throw e;
+      }
+    }
   }
 
   @Override
@@ -79,7 +91,8 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
               nodesToBeRemoved,
               params().isForceDelete,
               true /* deleteNodeFromDB */,
-              true /* deleteRootVolumes */)
+              true /* deleteRootVolumes */,
+              false /* skipDestroyPrecheck */)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
       // Remove the cluster entry from the universe db entry.

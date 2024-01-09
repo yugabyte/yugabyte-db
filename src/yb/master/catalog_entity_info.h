@@ -32,14 +32,13 @@
 
 #pragma once
 
-#include <shared_mutex>
 #include <mutex>
 #include <vector>
 
 #include <boost/bimap.hpp>
 
 #include "yb/cdc/cdc_types.h"
-#include "yb/common/entity_ids.h"
+#include "yb/cdc/xcluster_types.h"
 #include "yb/master/catalog_entity_base.h"
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_backup.pb.h"
@@ -60,7 +59,6 @@
 #include "yb/tablet/metadata.pb.h"
 
 #include "yb/util/cow_object.h"
-#include "yb/util/format.h"
 #include "yb/util/monotime.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/shared_lock.h"
@@ -123,6 +121,7 @@ struct TabletLeaderLeaseInfo {
   bool initialized = false;
   consensus::LeaderLeaseStatus leader_lease_status =
       consensus::LeaderLeaseStatus::NO_MAJORITY_REPLICATED_LEASE;
+  // Expiration time of leader ht lease, invalid when leader_lease_status != HAS_LEASE.
   MicrosTime ht_lease_expiration = 0;
   // Number of heartbeats that current tablet leader doesn't have a valid lease.
   uint64 heartbeats_without_leader_lease = 0;
@@ -264,6 +263,11 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   void set_last_update_time(const MonoTime& ts);
   MonoTime last_update_time() const;
 
+  // Update last_time_with_valid_leader_ to the Now().
+  void UpdateLastTimeWithValidLeader();
+  MonoTime last_time_with_valid_leader() const;
+  void TEST_set_last_time_with_valid_leader(const MonoTime& time);
+
   // Accessors for the last reported schema version.
   bool set_reported_schema_version(const TableId& table_id, uint32_t version);
   uint32_t reported_schema_version(const TableId& table_id);
@@ -327,6 +331,11 @@ class TabletInfo : public RefCountedThreadSafe<TabletInfo>,
   // The last time the replica locations were updated.
   // Also set when the Master first attempts to create the tablet.
   MonoTime last_update_time_ GUARDED_BY(lock_);
+
+  // The last time the tablet has a valid leader, a valid leader is:
+  // 1. with peer role LEADER.
+  // 2. has not-expired lease.
+  MonoTime last_time_with_valid_leader_ GUARDED_BY(lock_);
 
   // The locations in the latest Raft config where this tablet has been
   // reported. The map is keyed by tablet server UUID.
@@ -541,7 +550,7 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // True if all the column schemas have pg_type_oid set.
   bool has_pg_type_oid() const;
 
-  std::string matview_pg_table_id() const;
+  TableId pg_table_id() const;
   // True if the table is a materialized view.
   bool is_matview() const;
 
@@ -566,6 +575,17 @@ class TableInfo : public RefCountedThreadSafe<TableInfo>,
   // cached in memory separately from the underlying proto with the expectation it will never
   // change.
   bool colocated() const { return colocated_; }
+
+  // Helper for returning the relfilenode OID of the table. Relfilenode OID diverges from PG table
+  // OID after a table rewrite.
+  // Note: For system tables, this simply returns the PG table OID. Table rewrite is not permitted
+  // on system tables.
+  Result<uint32_t> GetPgRelfilenodeOid() const;
+
+  // Helper for returning the PG OID of the table. In case the table was rewritten,
+  // we cannot directly infer the PG OID from the table ID. Instead, we need to use the
+  // stored pg_table_id field.
+  Result<uint32_t> GetPgTableOid() const;
 
   // Return the table type of the table.
   TableType GetTableType() const;
@@ -1142,6 +1162,8 @@ class CDCStreamInfo : public RefCountedThreadSafe<CDCStreamInfo>,
 
   const ReplicationSlotName GetCdcsdkYsqlReplicationSlotName() const;
 
+  bool IsConsistentSnapshotStream() const;
+
   std::string ToString() const override;
 
  private:
@@ -1162,12 +1184,12 @@ class UniverseReplicationInfoBase {
       google::protobuf::RepeatedPtrField<HostPortPB> producer_masters);
 
  protected:
-  explicit UniverseReplicationInfoBase(cdc::ReplicationGroupId replication_group_id)
+  explicit UniverseReplicationInfoBase(xcluster::ReplicationGroupId replication_group_id)
       : replication_group_id_(std::move(replication_group_id)) {}
 
   virtual ~UniverseReplicationInfoBase() = default;
 
-  const cdc::ReplicationGroupId replication_group_id_;
+  const xcluster::ReplicationGroupId replication_group_id_;
 
   std::shared_ptr<XClusterRpcTasks> xcluster_rpc_tasks_;
   std::string master_addrs_;
@@ -1195,11 +1217,11 @@ class UniverseReplicationInfo : public UniverseReplicationInfoBase,
                                 public RefCountedThreadSafe<UniverseReplicationInfo>,
                                 public MetadataCowWrapper<PersistentUniverseReplicationInfo> {
  public:
-  explicit UniverseReplicationInfo(cdc::ReplicationGroupId replication_group_id)
+  explicit UniverseReplicationInfo(xcluster::ReplicationGroupId replication_group_id)
       : UniverseReplicationInfoBase(std::move(replication_group_id)) {}
 
   const std::string& id() const override { return replication_group_id_.ToString(); }
-  const cdc::ReplicationGroupId& ReplicationGroupId() const { return replication_group_id_; }
+  const xcluster::ReplicationGroupId& ReplicationGroupId() const { return replication_group_id_; }
 
   std::string ToString() const override;
 
@@ -1285,13 +1307,13 @@ class UniverseReplicationBootstrapInfo
       public RefCountedThreadSafe<UniverseReplicationBootstrapInfo>,
       public MetadataCowWrapper<PersistentUniverseReplicationBootstrapInfo> {
  public:
-  explicit UniverseReplicationBootstrapInfo(cdc::ReplicationGroupId replication_group_id)
+  explicit UniverseReplicationBootstrapInfo(xcluster::ReplicationGroupId replication_group_id)
       : UniverseReplicationInfoBase(std::move(replication_group_id)) {}
   UniverseReplicationBootstrapInfo(const UniverseReplicationBootstrapInfo&) = delete;
   UniverseReplicationBootstrapInfo& operator=(const UniverseReplicationBootstrapInfo&) = delete;
 
   const std::string& id() const override { return replication_group_id_.ToString(); }
-  const cdc::ReplicationGroupId& ReplicationGroupId() const { return replication_group_id_; }
+  const xcluster::ReplicationGroupId& ReplicationGroupId() const { return replication_group_id_; }
 
   std::string ToString() const override;
 

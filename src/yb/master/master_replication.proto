@@ -33,6 +33,9 @@ message CDCStreamInfoPB {
   optional bytes namespace_id = 4;
   optional bool transactional = 5; // [default = false]
   optional string cdcsdk_ysql_replication_slot_name = 6;
+  optional uint64 cdcsdk_consistent_snapshot_time = 7;
+  optional CDCSDKSnapshotOption cdcsdk_consistent_snapshot_option = 8;
+  optional uint64 stream_creation_time = 9;
 }
 
 message ValidateReplicationInfoRequestPB {
@@ -485,6 +488,98 @@ message GetTableSchemaFromSysCatalogResponsePB {
   optional uint32 version = 3;
 }
 
+message XClusterReportNewAutoFlagConfigVersionRequestPB {
+  required string replication_group_id = 1;
+  required uint32 auto_flag_config_version = 2;
+}
+
+message XClusterReportNewAutoFlagConfigVersionResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB {
+  optional bytes stream_id = 1;
+  optional string cdcsdk_ysql_replication_slot_name = 2;
+}
+
+message YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message XClusterCreateOutboundReplicationGroupRequestPB {
+  required string replication_group_id = 1;
+  repeated string namespace_names = 2;
+}
+
+message XClusterCreateOutboundReplicationGroupResponsePB {
+  optional MasterErrorPB error = 1;
+  repeated bytes namespace_ids = 2; // One per namespace.
+}
+
+message XClusterAddNamespaceToOutboundReplicationGroupRequestPB {
+  required string replication_group_id = 1;
+  optional string namespace_name = 2;
+}
+
+message XClusterAddNamespaceToOutboundReplicationGroupResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bytes namespace_id = 2;
+}
+
+message XClusterRemoveNamespaceFromOutboundReplicationGroupRequestPB {
+  required string replication_group_id = 1;
+  optional bytes namespace_id = 2;
+}
+
+message XClusterRemoveNamespaceFromOutboundReplicationGroupResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message XClusterDeleteOutboundReplicationGroupRequestPB {
+  required string replication_group_id = 1;
+}
+
+message XClusterDeleteOutboundReplicationGroupResponsePB {
+  optional MasterErrorPB error = 1;
+}
+
+message IsXClusterBootstrapRequiredRequestPB {
+  required bytes replication_group_id = 1;
+  optional bytes namespace_id = 2;
+}
+
+message IsXClusterBootstrapRequiredResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bool not_ready = 2;
+  optional bool initial_bootstrap_required = 3;
+}
+
+message GetXClusterStreamsRequestPB {
+  required bytes replication_group_id = 1;
+  optional bytes namespace_id = 2;
+
+  message TableInfo {
+    required string table_name = 1;
+    required string pg_schema_name = 2;
+  }
+  repeated TableInfo table_infos = 3; // If empty, return all tables.
+}
+
+message GetXClusterStreamsResponsePB {
+  optional MasterErrorPB error = 1;
+  optional bool not_ready = 2; // [default = false]
+  optional bool initial_bootstrap_required = 3; // [default = false]
+
+  message TableInfo {
+    required bytes table_id = 1;
+    required bytes xrepl_stream_id = 2;
+    required string table_name = 3;
+    required string pg_schema_name = 4;
+  }
+
+  repeated TableInfo table_infos = 4;
+}
+
 service MasterReplication {
   option (yb.rpc.custom_service_name) = "yb.master.MasterService";
 
@@ -546,4 +641,31 @@ service MasterReplication {
 
   rpc BootstrapProducer(BootstrapProducerRequestPB)
       returns (BootstrapProducerResponsePB);
+
+  rpc XClusterReportNewAutoFlagConfigVersion(
+      XClusterReportNewAutoFlagConfigVersionRequestPB)
+      returns (XClusterReportNewAutoFlagConfigVersionResponsePB);
+
+  // Backfill a replication slot name to an existing CDCSDK stream.
+  rpc YsqlBackfillReplicationSlotNameToCDCSDKStream(
+      YsqlBackfillReplicationSlotNameToCDCSDKStreamRequestPB)
+      returns (YsqlBackfillReplicationSlotNameToCDCSDKStreamResponsePB);
+
+  // xClusterOutboundReplicationGroup RPCs.
+  rpc XClusterCreateOutboundReplicationGroup(
+      XClusterCreateOutboundReplicationGroupRequestPB)
+      returns (XClusterCreateOutboundReplicationGroupResponsePB);
+  rpc XClusterAddNamespaceToOutboundReplicationGroup(
+      XClusterAddNamespaceToOutboundReplicationGroupRequestPB)
+      returns (XClusterAddNamespaceToOutboundReplicationGroupResponsePB);
+  rpc XClusterRemoveNamespaceFromOutboundReplicationGroup(
+      XClusterRemoveNamespaceFromOutboundReplicationGroupRequestPB)
+      returns (XClusterRemoveNamespaceFromOutboundReplicationGroupResponsePB);
+  rpc XClusterDeleteOutboundReplicationGroup(
+      XClusterDeleteOutboundReplicationGroupRequestPB)
+      returns (XClusterDeleteOutboundReplicationGroupResponsePB);
+  rpc IsXClusterBootstrapRequired(IsXClusterBootstrapRequiredRequestPB)
+      returns (IsXClusterBootstrapRequiredResponsePB);
+  rpc GetXClusterStreams(GetXClusterStreamsRequestPB)
+      returns (GetXClusterStreamsResponsePB);
 }

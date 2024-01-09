@@ -41,6 +41,8 @@
 #include <glog/stl_logging.h>
 #include <google/protobuf/message.h>
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/fs/fs.pb.h"
 
 #include "yb/gutil/map-util.h"
@@ -317,6 +319,7 @@ Status FsManager::WriteAutoFlagsConfig(const Message* msg) {
       "AutoFlags config file path not initialized. Please check the --fs_data_dirs parameter.");
 
   // OVERWRITE mode will atomically replace the old contents of the file with the new data.
+  SCOPED_WAIT_STATUS(WriteAutoFlagsConfigToDisk);
   RETURN_NOT_OK(pb_util::WritePBContainerToPath(
       env_, auto_flags_config_path_, *msg, pb_util::OVERWRITE, pb_util::SYNC));
 
@@ -618,6 +621,7 @@ Status FsManager::WriteInstanceMetadata(const InstanceMetadataPB& metadata,
                                         const string& path) {
   // The instance metadata is written effectively once per TS, so the
   // durability cost is negligible.
+  SCOPED_WAIT_STATUS(WriteInstanceMetadataToDisk);
   RETURN_NOT_OK(pb_util::WritePBContainerToPath(env_, path,
                                                 metadata,
                                                 pb_util::NO_OVERWRITE,
@@ -745,6 +749,7 @@ Result<std::string> FsManager::GetRaftGroupMetadataPath(const string& tablet_id)
 
 void FsManager::SetTabletPathByDataPath(const string& tablet_id, const string& path) {
   string tablet_path = path.empty() ? GetDefaultRootDir() : DirName(path);
+  LOG_WITH_FUNC(INFO) << "Tablet " << tablet_id << " metadata path being set to " << tablet_path;
   std::lock_guard lock(data_mutex_);
   InsertOrUpdate(&tablet_id_to_path_, tablet_id, tablet_path);
 }
@@ -799,7 +804,9 @@ Result<std::vector<std::string>> FsManager::ListTabletIds() {
       if (!IsValidTabletId(child)) {
         continue;
       }
-      tablet_id_to_path_.emplace(child, DirName(dir));
+      auto tablet_dirname = DirName(dir);
+      LOG(INFO) << "Found tablet " << child << " metadata at " << tablet_dirname;
+      tablet_id_to_path_.emplace(child, tablet_dirname);
       tablet_ids.push_back(child);
     }
   }

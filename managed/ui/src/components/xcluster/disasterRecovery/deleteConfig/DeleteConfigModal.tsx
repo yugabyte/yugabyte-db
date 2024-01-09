@@ -79,6 +79,11 @@ export const DeleteConfigModal = ({
           invalidateQueries();
         };
 
+        toast.success(
+          <Typography variant="body2" component="span">
+            {t('success.requestSuccess')}
+          </Typography>
+        );
         modalProps.onClose();
         if (redirectUrl) {
           browserHistory.push(redirectUrl);

@@ -10,6 +10,7 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.XClusterUniverseService;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
+import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import java.util.Collections;
 import java.util.HashSet;
@@ -41,15 +42,20 @@ public class SoftwareKubernetesUpgrade extends KubernetesUpgradeTaskBase {
   }
 
   @Override
+  public void validateParams(boolean isFirstTry) {
+    super.validateParams(isFirstTry);
+    taskParams().verifyParams(getUniverse(), isFirstTry);
+  }
+
+  @Override
+  protected void createPrecheckTasks(Universe universe) {
+    createSoftwareUpgradePrecheckTasks(taskParams().ybSoftwareVersion);
+  }
+
+  @Override
   public void run() {
     runUpgrade(
         () -> {
-
-          // Verify the request params and fail if invalid
-          taskParams().verifyParams(getUniverse(), isFirstTry());
-          // Preliminary checks for upgrades.
-          createCheckUpgradeTask(taskParams().ybSoftwareVersion)
-              .setSubTaskGroupType(getTaskSubGroupType());
 
           // Create Kubernetes Upgrade Task
           createUpgradeTask(

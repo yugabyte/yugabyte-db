@@ -37,6 +37,7 @@ class EncryptionManager;
 class TabletHealthManager;
 struct LeaderEpoch;
 class XClusterManager;
+class MasterAutoFlagsManager;
 
 // Tells HandleIn/HandleOnLeader to either acquire the lock briefly to check leadership (kFalse)
 // or to hold it throughout the handler invocation (kTrue).
@@ -121,6 +122,7 @@ class MasterServiceBase {
   EncryptionManager* handler(EncryptionManager*);
   XClusterManager* handler(XClusterManager*);
   TestAsyncRpcManager* handler(TestAsyncRpcManager*);
+  MasterAutoFlagsManager* handler(MasterAutoFlagsManager*);
 
   Master* server_;
 

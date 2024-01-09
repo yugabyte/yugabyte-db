@@ -113,7 +113,8 @@ typedef struct YBParallelPartitionKeysData
 	slock_t		mutex;			/* to synchronize access from the workers */
 	ConditionVariable cv_empty;	/* to wait until buffer has more entries */
 	Oid			database_oid;	/* database of the target relation */
-	Oid			table_oid;		/* oid of the target relation */
+	Oid			table_relfilenode_oid; /* relfilenode_oid of the target 
+										  relation */
 	bool		is_forward;		/* scan direction */
 	uint64_t	read_time_serial_no;	/* to replicate to background workers */
 	uint64_t	used_ht_for_read;	/* to replicate to background workers */
@@ -295,7 +296,8 @@ extern YbScanDesc ybcBeginScan(Relation relation,
 							   PushdownExprs *idx_pushdown,
 							   List *aggrefs,
 							   int distinct_prefixlen,
-							   YBCPgExecParameters *exec_params);
+							   YBCPgExecParameters *exec_params,
+							   bool is_internal_scan);
 
 /* Returns whether the given populated ybScan needs PG-side recheck. */
 extern bool YbNeedsRecheck(YbScanDesc ybScan);
@@ -372,8 +374,7 @@ typedef struct YbSampleData *YbSample;
 YbSample ybBeginSample(Relation rel, int targrows);
 bool ybSampleNextBlock(YbSample ybSample);
 int ybFetchSample(YbSample ybSample, HeapTuple *rows);
-TupleTableSlot *ybFetchNext(YBCPgStatement handle,
-			TupleTableSlot *slot, Oid relid);
+void ybFetchNext(YBCPgStatement handle, TupleTableSlot *slot, Oid relid);
 
 int ybParallelWorkers(double numrows);
 

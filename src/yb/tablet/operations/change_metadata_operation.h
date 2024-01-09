@@ -128,6 +128,8 @@ class ChangeMetadataOperation
 
   Status DoAborted(const Status& status) override;
 
+  Status ProcessCDCSDKCreateStreamContext();
+
   log::Log* const log_;
 
   // The new (target) Schema.

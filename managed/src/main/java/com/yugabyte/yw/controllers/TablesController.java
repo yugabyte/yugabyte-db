@@ -93,7 +93,8 @@ public class TablesController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "YbaApi Internal. Create a YugabyteDB table",
+      notes = "YbaApi Internal.",
+      value = "Create a YugabyteDB table",
       response = YBPTask.class,
       nickname = "createTable")
   @ApiImplicitParams({
@@ -123,7 +124,8 @@ public class TablesController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "YbaApi Internal. Alter a YugabyteDB table",
+      notes = "YbaApi Internal.",
+      value = "Alter a YugabyteDB table",
       nickname = "alterTable",
       response = Object.class,
       responseContainer = "Map")
@@ -139,7 +141,8 @@ public class TablesController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "YbaApi Internal. Drop a YugabyteDB table",
+      notes = "YbaApi Internal.",
+      value = "Drop a YugabyteDB table",
       nickname = "dropTable",
       response = YBPTask.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.2.0.0")
@@ -158,9 +161,10 @@ public class TablesController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "YbaApi Internal. UI_ONLY",
+      notes = "YbaApi Internal. UI_ONLY",
       response = Object.class,
       responseContainer = "Map",
+      value = "Get Column Types",
       hidden = true)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.2.0.0")
   @AuthzPath
@@ -182,8 +186,8 @@ public class TablesController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "YbaApi Internal. List column types",
-      notes = "Get a list of all defined column types.",
+      notes = "YbaApi Internal. Get a list of all defined column types.",
+      value = "List column types",
       response = ColumnDetails.YQLDataType.class,
       responseContainer = "List")
   @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.8.0.0")
@@ -193,9 +197,9 @@ public class TablesController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "YbaApi Internal. List all tables",
+      notes = "YbaApi Internal. Get a list of all tables in the specified universe",
       nickname = "getAllTables",
-      notes = "Get a list of all tables in the specified universe",
+      value = "List all tables",
       response = TableInfoForm.TableInfoResp.class,
       responseContainer = "List")
   @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.8.0.0")
@@ -209,7 +213,7 @@ public class TablesController extends AuthenticatedController {
       UUID customerUUID,
       UUID universeUUID,
       boolean includeParentTableInfo,
-      boolean excludeColocatedTables,
+      @Deprecated boolean excludeColocatedTables,
       boolean includeColocatedParentTables,
       boolean xClusterSupportedOnly) {
     List<TableInfoForm.TableInfoResp> resp =
@@ -224,9 +228,9 @@ public class TablesController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "YbaApi Internal. List all namespaces",
+      notes = "YbaApi Internal. Get a list of all namespaces in the specified universe.",
       nickname = "getAllNamespaces",
-      notes = "Get a list of all namespaces in the specified universe",
+      value = "List all namespaces",
       response = TableInfoForm.NamespaceInfoResp.class,
       responseContainer = "List")
   @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.16.0.0")
@@ -246,13 +250,14 @@ public class TablesController extends AuthenticatedController {
   /**
    * This API will describe a single table.
    *
-   * @param customerUUID UUID of the customer owning the table.
-   * @param universeUUID UUID of the universe in which the table resides.
-   * @param tableUUID UUID of the table to describe.
-   * @return json-serialized description of the table.
+   * @param customerUUID UUID of the customer owning the table
+   * @param universeUUID UUID of the universe in which the table resides
+   * @param tableUUID UUID or ID of the table to describe
+   * @return json-serialized description of the table
    */
   @ApiOperation(
-      value = "YbaApi Internal. Describe a table",
+      notes = "YbaApi Internal.",
+      value = "Describe a table",
       nickname = "describeTable",
       response = TableDefinitionTaskParams.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.2.0.0")
@@ -262,15 +267,18 @@ public class TablesController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
-  public Result describe(UUID customerUUID, UUID universeUUID, UUID tableUUID) {
-    return PlatformResults.withData(tableHandler.describe(customerUUID, universeUUID, tableUUID));
+  public Result describe(UUID customerUUID, UUID universeUUID, String tableUUID) {
+    UUID tableUuid =
+        tableUUID.contains("-") ? UUID.fromString(tableUUID) : getUUIDRepresentation(tableUUID);
+    return PlatformResults.withData(tableHandler.describe(customerUUID, universeUUID, tableUuid));
   }
 
   @ApiOperation(
-      value =
-          "Deprecated since YBA version 2.20.0.0 (Use BackupsController). "
-              + "Create a multi-table backup",
-      tags = {"Backups", "Table management"},
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.20.0.0.</b></p>"
+              + "Use BackupsController.",
+      value = "Create a multi-table backup - deprecated",
+      tags = {"Backups"},
       nickname = "createMultiTableBackup",
       response = YBPTask.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
@@ -368,9 +376,11 @@ public class TablesController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value =
-          "Deprecated since YBA version 2.20.0.0 (Use BackupsController). "
-              + "Create a single-table backup",
+      notes =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.20.0.0.</b></p>"
+              + "Use BackupsController.",
+      value = "Create a single-table backup - deprecated",
+      tags = {"Backups"},
       nickname = "createSingleTableBackup",
       response = YBPTask.class)
   @ApiImplicitParams({
@@ -482,9 +492,10 @@ public class TablesController extends AuthenticatedController {
    * @param tableUUID UUID of the table to describe.
    */
   @ApiOperation(
-      value = "YbaApi Internal. Bulk import data",
+      notes =
+          "YbaApi Internal. Bulk import data into the specified table. This is currently AWS-only.",
+      value = "Bulk import data",
       nickname = "bulkImportData",
-      notes = "Bulk import data into the specified table. This is currently AWS-only.",
       response = YBPTask.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.2.0.0")
   @ApiImplicitParams({
@@ -658,9 +669,9 @@ public class TablesController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "YbaApi Internal. List all tablespaces",
+      notes = "YbaApi Internal. Get a list of all tablespaces of a given universe.",
       nickname = "getAllTableSpaces",
-      notes = "Get a list of all tablespaces of a given universe",
+      value = "List all tablespaces",
       response = TableSpaceInfo.class,
       responseContainer = "List")
   @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.14.0.0")
@@ -692,7 +703,8 @@ public class TablesController extends AuthenticatedController {
    * @param universeUUID UUID of the universe in which the tablespaces will be created.
    */
   @ApiOperation(
-      value = "YbaApi Internal. Create tableSpaces",
+      notes = "YbaApi Internal.",
+      value = "Create tableSpaces",
       nickname = "createTableSpaces",
       response = YBPTask.class)
   @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.14.0.0")

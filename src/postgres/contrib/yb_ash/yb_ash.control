@@ -1,4 +1,0 @@
-# yb_ash extension
-comment = 'track active session history'
-default_version = '1.0'
-module_pathname = '$libdir/yb_ash'

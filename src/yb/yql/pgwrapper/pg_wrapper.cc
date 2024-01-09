@@ -37,15 +37,19 @@
 #include "yb/util/pg_util.h"
 #include "yb/util/result.h"
 #include "yb/util/scope_exit.h"
+#include "yb/util/status.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/stol_utils.h"
 #include "yb/util/string_util.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/thread.h"
 #include "yb/util/to_stream.h"
 
-#include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
+
+#include "ybgate/ybgate_api.h"
+#include "ybgate/ybgate_cpp_util.h"
 
 DECLARE_bool(enable_ysql_conn_mgr);
 
@@ -200,6 +204,9 @@ DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_add_column_missing_default, kExterna
                             "Enable using the default value for existing rows after an ADD COLUMN"
                             " ... DEFAULT operation");
 
+DEFINE_RUNTIME_AUTO_PG_FLAG(bool, yb_enable_alter_table_rewrite, kLocalPersisted, false, true,
+                            "Enable ALTER TABLE rewrite operations");
+
 DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_base_scans_cost_model, false,
     "Enable cost model enhancements");
 
@@ -214,7 +221,7 @@ DEFINE_NON_RUNTIME_bool(enable_ysql_conn_mgr_stats, true,
   "displayed at the endpoint '<ip_address_of_cluster>:13000/connections'");
 
 // TODO(#19211): Convert this to an auto-flag.
-DEFINE_test_flag(bool, ysql_yb_enable_replication_commands, false,
+DEFINE_RUNTIME_PG_PREVIEW_FLAG(bool, yb_enable_replication_commands, false,
     "Enable logical replication commands for Publication and Replication Slots");
 
 DEFINE_RUNTIME_PG_PREVIEW_FLAG(int32, yb_parallel_range_rows, 0,
@@ -398,9 +405,6 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   metricsLibs.push_back("yb_pg_metrics");
   metricsLibs.push_back("pgaudit");
   metricsLibs.push_back("pg_hint_plan");
-  if (FLAGS_enable_yb_ash) {
-    metricsLibs.push_back("yb_ash");
-  }
 
   vector<string> lines;
   string line;
@@ -705,18 +709,22 @@ Status PgWrapper::UpdateAndReloadConfig() {
   return ReloadConfig();
 }
 
-Status PgWrapper::InitDb(bool yb_enabled) {
+Status PgWrapper::InitDb(const string& versioned_data_dir) {
   const string initdb_program_path = GetInitDbExecutablePath();
   RETURN_NOT_OK(CheckExecutableValid(initdb_program_path));
   if (!Env::Default()->FileExists(initdb_program_path)) {
     return STATUS_FORMAT(IOError, "initdb not found at: $0", initdb_program_path);
   }
 
-  vector<string> initdb_args { initdb_program_path, "-D", conf_.data_dir, "-U", "postgres" };
+  // A set versioned_data_dir means it's local initdb, so we need to initialize in the actual
+  // directory. Otherwise, we can use the symlink.
+  const string& data_dir = versioned_data_dir.empty() ? conf_.data_dir : versioned_data_dir;
+  vector<string> initdb_args { initdb_program_path, "-D", data_dir, "-U", "postgres" };
   LOG(INFO) << "Launching initdb: " << AsString(initdb_args);
 
   Subprocess initdb_subprocess(initdb_program_path, initdb_args);
   initdb_subprocess.InheritNonstandardFd(conf_.tserver_shm_fd);
+  bool yb_enabled = versioned_data_dir.empty();
   SetCommonEnv(&initdb_subprocess, yb_enabled);
   int status = 0;
   RETURN_NOT_OK(initdb_subprocess.Start());
@@ -733,14 +741,94 @@ Status PgWrapper::InitDb(bool yb_enabled) {
   return Status::OK();
 }
 
+namespace {
+
+constexpr auto kVersionChars = 2;
+
+Result<int32_t> GetCurrentPgVersion() {
+  const char* curr_pg_ver_cstr;
+  PG_RETURN_NOT_OK(YbgGetPgVersion(&curr_pg_ver_cstr));
+  string curr_pg_ver_str = curr_pg_ver_cstr;
+  return CheckedStoi(curr_pg_ver_str.substr(0, kVersionChars));
+}
+
+Result<int32_t> GetPgDirectoryVersion(const string& data_dir) {
+  std::unique_ptr<SequentialFile> result;
+  std::string full_path = JoinPathSegments(data_dir, "PG_VERSION");
+  RETURN_NOT_OK(Env::Default()->NewSequentialFile(full_path, &result));
+  Slice slc;
+  uint8_t buf[64];
+  RETURN_NOT_OK(result->Read(ARRAYSIZE(buf), &slc, buf));
+  // There's a trailing newline in the PG_VERSION file ("##\n").
+  return CheckedStoi(slc.Prefix(kVersionChars));
+}
+
+}  // namespace
+
+string PgWrapper::MakeVersionedDataDir(int32_t version) {
+  return conf_.data_dir + "_" + std::to_string(version);
+}
+
+// The data directory contains PG files for a particular PG version.
+// Across upgrades and rollbacks, other than briefly during initialization time, we always want a
+// valid data directory that matches the current major PG version. Also, we would like to restore
+// PG11's data in case of rollback. We do this by using a symlink to a version-specific data
+// directory.
+// This code is written to be identical for a tablet server hosting any major PG version.
 Status PgWrapper::InitDbLocalOnlyIfNeeded() {
-  if (Env::Default()->FileExists(conf_.data_dir)) {
-    LOG(INFO) << "Data directory " << conf_.data_dir << " already exists, skipping initdb";
-    return Status::OK();
+  int32_t current_pg_version = VERIFY_RESULT(GetCurrentPgVersion());
+
+  // One-time migration in case this installation is not yet using a symlink
+  if (VERIFY_RESULT(Env::Default()->DoesDirectoryExist(conf_.data_dir)) &&
+      !VERIFY_RESULT(Env::Default()->IsSymlink(conf_.data_dir))) {
+    int32_t directory_version = VERIFY_RESULT(GetPgDirectoryVersion(conf_.data_dir));
+    string migrated_versioned_dir = MakeVersionedDataDir(directory_version);
+    LOG(INFO) << "Data directory " << conf_.data_dir << " already exists for version "
+              << directory_version << ", performing one-time migration to "
+              << migrated_versioned_dir << ".";
+    RETURN_NOT_OK(Env::Default()->RenameFile(conf_.data_dir, migrated_versioned_dir));
+    if (current_pg_version == directory_version) {
+      LOG(INFO) << "Linking " << conf_.data_dir << " to " << migrated_versioned_dir
+                << " and skipping initdb.";
+      return Env::Default()->SymlinkPath(migrated_versioned_dir, conf_.data_dir);
+    }
   }
-  // Do not communicate with the YugaByte cluster at all. This function is only concerned with
-  // setting up the local PostgreSQL data directory on this tablet server.
-  return InitDb(/* yb_enabled */ false);
+
+  string versioned_data_dir = MakeVersionedDataDir(current_pg_version);
+  if (Env::Default()->FileExists(conf_.data_dir)) {
+    // Get version from symlink
+    string link = VERIFY_RESULT(Env::Default()->ReadLink(conf_.data_dir));
+    SCHECK_GE(link.size(), kVersionChars, InternalError,
+              Format("conf_.data_dir too short: $0 bytes", link.size()));
+    int32_t symlink_version = VERIFY_RESULT(CheckedStoi(link.substr(link.size() - kVersionChars)));
+    if (current_pg_version == symlink_version) {
+      LOG(INFO) << "Data directory " << versioned_data_dir
+                << " already exists, skipping initdb";
+      return Status::OK();
+    }
+    if (current_pg_version < symlink_version) {
+      // Looks like a rollback. If the directory exists, use it.
+      if (Env::Default()->DirExists(versioned_data_dir)) {
+        LOG(INFO) << "Data directory " << versioned_data_dir
+                  << " already exists for rollback. Linking " << conf_.data_dir
+                  << " and skipping initdb.";
+        return Env::Default()->SymlinkPath(versioned_data_dir, conf_.data_dir);
+      }
+    }
+  }
+
+  // At this point it's either an upgrade, or no symlink exists. In the upgrade case, there may
+  // have been a prior rollback, and we're trying again. In this case, we want a clean installation.
+  // If no symlink exists, the common case is that this is the first installation, but it's
+  // possible a prior installation failed before creating the symlink, so we want a clean
+  // installation here also.
+  RETURN_NOT_OK(DeleteIfExists(versioned_data_dir, Env::Default()));
+
+  // Run local initdb. Do not communicate with the YugaByte cluster at all. This function is only
+  // concerned with setting up the local PostgreSQL data directory on this tablet server. We skip
+  // local initdb if versioned_data_dir already exists.
+  RETURN_NOT_OK(InitDb(versioned_data_dir));
+  return Env::Default()->SymlinkPath(versioned_data_dir, conf_.data_dir);
 }
 
 Status PgWrapper::InitDbForYSQL(
@@ -770,7 +858,7 @@ Status PgWrapper::InitDbForYSQL(
   });
   PgWrapper pg_wrapper(conf);
   auto start_time = std::chrono::steady_clock::now();
-  Status initdb_status = pg_wrapper.InitDb(/* yb_enabled */ true);
+  Status initdb_status = pg_wrapper.InitDb();
   auto elapsed_time = std::chrono::steady_clock::now() - start_time;
   LOG(INFO)
       << "initdb took "

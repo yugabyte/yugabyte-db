@@ -138,24 +138,24 @@ CREATE TABLE products
   (
      name     TEXT PRIMARY KEY,
      quantity BIGINT DEFAULT 0
-  );  
+  );
 ---
-INSERT INTO products(name, quantity) 
-VALUES 
-  ('apples', 1), 
-  ('oranges', 5) ON CONFLICT(name) DO UPDATE 
-SET 
+INSERT INTO products(name, quantity)
+VALUES
+  ('apples', 1),
+  ('oranges', 5) ON CONFLICT(name) DO UPDATE
+SET
   quantity = products.quantity + excluded.quantity;
 ---
-INSERT INTO products(name, quantity) 
-VALUES 
-  ('apples', 1), 
-  ('oranges', 5) ON CONFLICT(name) DO UPDATE 
-SET 
+INSERT INTO products(name, quantity)
+VALUES
+  ('apples', 1),
+  ('oranges', 5) ON CONFLICT(name) DO UPDATE
+SET
   quantity = products.quantity + excluded.quantity;
 ---
 SELECT * FROM products;
-  name   | quantity 
+  name   | quantity
 ---------+----------
  apples  |        2
  oranges |       10
@@ -184,7 +184,7 @@ For more information, see [Connection pooling](../../drivers-orms/smart-drivers/
 
 ## Use YSQL Connection Manager
 
-YugabyteDB includes a built-in connection pooler, YSQL Connection Manager, which provides the same connection pooling advantages as other external pooling solutions, but without many of their limitations. As the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections.
+YugabyteDB includes a built-in connection pooler, YSQL Connection Manager {{<badge/tp>}}, which provides the same connection pooling advantages as other external pooling solutions, but without many of their limitations. As the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections.
 
 {{<tip>}}
 For more information, refer to the following:

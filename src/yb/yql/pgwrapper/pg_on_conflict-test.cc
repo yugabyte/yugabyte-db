@@ -39,6 +39,7 @@ class PgFailOnConflictTest : public PgOnConflictTest {
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
     opts->extra_tserver_flags.push_back("--enable_wait_queues=false");
+    opts->extra_tserver_flags.push_back("--yb_enable_read_committed_isolation=true");
   }
 };
 
@@ -421,6 +422,53 @@ TEST_F_EX(PgOnConflictTest, ValidSessionAfterTxnCommitConflict, PgFailOnConflict
   ASSERT_NOK(conn.Execute("COMMIT"));
   // Check connection is in valid state after failed COMMIT
   ASSERT_EQ(ASSERT_RESULT(conn.FetchRow<int32_t>("SELECT * FROM test")), 1);
+}
+
+// When a single statement Read Committed transaction executed outside of a begin block faces a
+// kConflict, PG backend could sleep for a while delaying the next rpc which restarts the txn.
+// PgClientSession early aborts such transactions before returning kConflict to the PG backend
+// so as to progress other transactions waiting on a set of locks that could have been acquired
+// by the former transaction. The below test asserts that such transactions are early aborted at
+// PgClientSession.
+//
+// Note: The test is intended to be run with Fail-On-Conflict conflict management policy because
+// we only sleep between query layer retries in Fail-on-Conflict mode.
+TEST_F_EX(PgOnConflictTest, EarlyAbortSingleStatementReadCommittedTxn, PgFailOnConflictTest) {
+  constexpr int kClients = 3;
+  constexpr int kIters = 100;
+  constexpr int kStatementTimeoutMs = 10000 * kTimeMultiplier;
+
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE foo(k INT PRIMARY KEY, v INT)"));
+  ASSERT_OK(conn.Execute("INSERT INTO foo SELECT generate_series(1, 10), 0"));
+
+  ASSERT_OK(conn.StartTransaction(IsolationLevel::READ_COMMITTED));
+  ASSERT_OK(conn.Fetch("SELECT * FROM foo WHERE k=1 FOR UPDATE"));
+
+  TestThreadHolder thread_holder;
+  for (int i = 0; i < kClients; i++) {
+    thread_holder.AddThreadFunctor([&]{
+      auto conn = ASSERT_RESULT(Connect());
+      ASSERT_OK(conn.ExecuteFormat("SET statement_timeout=$0", kStatementTimeoutMs * 2));
+      while (!thread_holder.stop_flag()) {
+        // RPCs to different tablets would be made in parallel, so the transaction would obtain
+        // locks at a few tablets and kConflict at the rest. PG backend would retry the transaction
+        // for a couple of times with sleeps in between, before the statement timesout.
+        ASSERT_NOK(conn.Execute("UPDATE foo SET v=1 WHERE k>=1"));
+      }
+    });
+  }
+
+  thread_holder.AddThreadFunctor([&]{
+    auto conn = ASSERT_RESULT(Connect());
+    ASSERT_OK(conn.ExecuteFormat("SET statement_timeout=$0", kStatementTimeoutMs / 2));
+    for (int i = 0; i < kIters; i++) {
+      // Since PgClientSession would early abort the above conflicting transactions before the sleep
+      // amidst retries in the backend, this statement should get enough window for the updates.
+      ASSERT_OK(conn.Execute("UPDATE foo SET v=1 WHERE k>=2"));
+    }
+  });
+  thread_holder.Wait(30s * kTimeMultiplier);
 }
 
 } // namespace pgwrapper

@@ -40,6 +40,7 @@
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 #include "yb/yql/pgwrapper/pg_tablet_split_test_base.h"
+#include "yb/yql/pgwrapper/pg_test_utils.h"
 
 
 DECLARE_bool(enable_wait_queues);
@@ -52,7 +53,6 @@ DECLARE_uint64(force_single_shard_waiter_retry_ms);
 DECLARE_uint64(rpc_connection_timeout_ms);
 DECLARE_uint64(transactions_status_poll_interval_ms);
 DECLARE_int32(TEST_sleep_amidst_iterating_blockers_ms);
-DECLARE_int32(ysql_max_write_restart_attempts);
 DECLARE_uint64(refresh_waiter_timeout_ms);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(yb_enable_read_committed_isolation);
@@ -61,6 +61,7 @@ DECLARE_int32(send_wait_for_report_interval_ms);
 DECLARE_uint64(TEST_inject_process_update_resp_delay_ms);
 DECLARE_uint64(TEST_delay_rpc_status_req_callback_ms);
 DECLARE_int32(TEST_txn_participant_inject_delay_on_start_shutdown_ms);
+DECLARE_string(ysql_pg_conf_csv);
 
 using namespace std::literals;
 
@@ -77,7 +78,7 @@ class PgWaitQueuesTest : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_select_all_status_tablets) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_force_single_shard_waiter_retry_ms) = 10000;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_max_write_restart_attempts) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = MaxQueryLayerRetriesConf(0);
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_yb_enable_read_committed_isolation) = true;
     PgMiniTestBase::SetUp();
   }
@@ -806,7 +807,7 @@ class PgTabletSplittingWaitQueuesTest : public PgTabletSplitTestBase,
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_rpc_connection_timeout_ms) = 60000;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_automatic_tablet_splitting) = false;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_max_write_restart_attempts) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = MaxQueryLayerRetriesConf(0);
     PgTabletSplitTestBase::SetUp();
   }
 
@@ -899,7 +900,7 @@ class PgWaitQueueContentionStressTest : public PgMiniTestBase {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = true;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_wait_queue_poll_interval_ms) = 2;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_transactions_status_poll_interval_ms) = 5;
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_max_write_restart_attempts) = 0;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = MaxQueryLayerRetriesConf(0);
     PgMiniTestBase::SetUp();
   }
 

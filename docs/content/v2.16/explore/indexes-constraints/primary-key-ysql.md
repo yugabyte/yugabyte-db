@@ -2,7 +2,6 @@
 title: Primary keys
 linkTitle: Primary keys
 description: Defining Primary key constraint in YSQL
-image: /images/section_icons/secure/create-roles.png
 menu:
   v2.16:
     identifier: primary-key-ysql

@@ -143,6 +143,7 @@
 
 #include "common/pg_yb_common.h"
 #include "pg_yb_utils.h"
+#include "yb_ash.h"
 
 #ifdef EXEC_BACKEND
 #include "storage/spin.h"
@@ -1036,6 +1037,10 @@ PostmasterMain(int argc, char *argv[])
 	 */
 	if (!YBIsEnabledInPostgresEnvVar())
 		ApplyLauncherRegister();
+
+	/* Register ASH collector */
+	if (YBIsEnabledInPostgresEnvVar() && YBEnableAsh())
+		YbAshRegister();
 
 	/*
 	 * process any libraries that should be preloaded at postmaster start
@@ -2976,6 +2981,15 @@ reaper(SIGNAL_ARGS)
 				break;
 			}
 
+			if (proc->ybEnteredCriticalSection)
+			{
+				YbCrashInUnmanageableState = true;
+				ereport(WARNING,
+						(errmsg("terminating active server processes due to backend crash of a "
+								"process while it was in a critical section")));
+				break;
+			}
+
 			elog(INFO, "cleaning up after process with pid %d exited with status %d",
 				 pid, exitstatus);
 			if (!CleanupKilledProcess(proc))
@@ -2984,8 +2998,8 @@ reaper(SIGNAL_ARGS)
 				ereport(WARNING,
 						(errmsg("terminating active server processes due to backend crash that is "
 								"unable to be cleaned up")));
-				break;
 			}
+			break;
 		}
 
 		/*
@@ -3446,22 +3460,22 @@ CleanupKilledProcess(PGPROC *proc)
 
 		/* From SharedInvalBackendInit */
 		CleanupInvalidationStateForProc(proc);
-
-		/* From ProcKill */
-		ReplicationSlotCleanupForProc(proc);
-		SyncRepCleanupAtProcExit(proc);
-		ConditionVariableCancelSleepForProc(proc);
-
-		if (proc->lockGroupLeader != NULL)
-		{
-			elog(WARNING, "cannot cleanup after a process in a lockgroup");
-			return false;
-		}
-
-		DisownLatchOnBehalfOfPid(&proc->procLatch, proc->pid);
-
-		ReleaseProcToFreeList(proc);
 	}
+
+	/* From ProcKill */
+	ReplicationSlotCleanupForProc(proc);
+	SyncRepCleanupAtProcExit(proc);
+	ConditionVariableCancelSleepForProc(proc);
+
+	if (proc->lockGroupLeader != NULL)
+	{
+		elog(WARNING, "cannot cleanup after a process in a lockgroup");
+		return false;
+	}
+
+	DisownLatchOnBehalfOfPid(&proc->procLatch, proc->pid);
+
+	ReleaseProcToFreeList(proc);
 
 	KilledProcToClean = NULL;
 	return true;
@@ -4273,7 +4287,7 @@ static void
 SetOomScoreAdjForPid(pid_t pid, char *oom_score_adj)
 {
 #ifdef __linux__
-	if (oom_score_adj == NULL)
+	if (oom_score_adj[0] == 0)
 		return;
 
 	char file_name[64];

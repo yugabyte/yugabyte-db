@@ -170,6 +170,10 @@ public class ModelFactory {
     return Provider.create(customer.getUuid(), Common.CloudType.kubernetes, "Kubernetes");
   }
 
+  public static Provider kubernetesProvider(Customer customer, String name) {
+    return Provider.create(customer.getUuid(), Common.CloudType.kubernetes, name);
+  }
+
   public static Provider newProvider(Customer customer, Common.CloudType cloud) {
     return Provider.create(customer.getUuid(), cloud, cloud.toString());
   }
@@ -372,12 +376,19 @@ public class ModelFactory {
   }
 
   public static CustomerConfig createNfsStorageConfig(Customer customer, String configName) {
+    return createNfsStorageConfig(customer, configName, "/foo/bar");
+  }
+
+  public static CustomerConfig createNfsStorageConfig(
+      Customer customer, String configName, String backupLocation) {
     JsonNode formData =
         Json.parse(
             "{\"configName\": \""
                 + configName
                 + "\", \"name\": \"NFS\","
-                + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \"/foo/bar\"}}");
+                + " \"type\": \"STORAGE\", \"data\": {\"BACKUP_LOCATION\": \""
+                + backupLocation
+                + "\"}}");
     return CustomerConfig.createWithFormData(customer.getUuid(), formData);
   }
 

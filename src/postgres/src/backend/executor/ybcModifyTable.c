@@ -29,6 +29,7 @@
 #include "catalog/indexing.h"
 #include "catalog/pg_authid_d.h"
 #include "catalog/pg_auth_members_d.h"
+#include "catalog/pg_shseclabel_d.h"
 #include "catalog/pg_tablespace_d.h"
 #include "catalog/pg_type.h"
 #include "catalog/pg_yb_role_profile.h"
@@ -126,11 +127,11 @@ Datum YBCGetYBTupleIdFromTuple(Relation rel,
 							   TupleDesc tupleDesc) {
 	Oid dboid = YBCGetDatabaseOid(rel);
 	YBCPgTableDesc ybc_table_desc = NULL;
-	HandleYBStatus(YBCPgGetTableDesc(dboid, YbGetStorageRelid(rel), &ybc_table_desc));
+	HandleYBStatus(YBCPgGetTableDesc(dboid, YbGetRelfileNodeId(rel), &ybc_table_desc));
 	Bitmapset *pkey    = YBGetTableFullPrimaryKeyBms(rel);
 	AttrNumber minattr = YBSystemFirstLowInvalidAttributeNumber + 1;
 	YBCPgYBTupleIdDescriptor *descr = YBCCreateYBTupleIdDescriptor(
-		dboid, YbGetStorageRelid(rel), bms_num_members(pkey));
+		dboid, YbGetRelfileNodeId(rel), bms_num_members(pkey));
 	YBCPgAttrValueDescriptor *next_attr = descr->attrs;
 	int col = -1;
 	while ((col = bms_next_member(pkey, col)) >= 0) {
@@ -208,28 +209,44 @@ static void YBCExecWriteStmt(YBCPgStatement ybc_stmt,
 		YbUpdateCatalogCacheVersion(YbGetCatalogCacheVersion() + 1);
 	}
 
-	if (YBIsDBCatalogVersionMode() &&
-		RelationGetForm(rel)->relisshared &&
-		RelationSupportsSysCache(RelationGetRelid(rel)) &&
-		!(*YBCGetGFlags()->ysql_disable_global_impact_ddl_statements))
+	if (YBIsDBCatalogVersionMode())
 	{
-		/* NOTE: relisshared implies that rel is a system relation. */
-		Assert(IsSystemRelation(rel));
-		Assert(/* pg_authid */
-			   RelationGetRelid(rel) == AuthIdRelationId ||
-			   RelationGetRelid(rel) == AuthIdRolnameIndexId ||
+		Oid relid = RelationGetRelid(rel);
+		if (RelationGetForm(rel)->relisshared &&
+			(RelationSupportsSysCache(relid) ||
+			 YbRelationIdIsInInitFileAndNotCached(relid)) &&
+			!(*YBCGetGFlags()->ysql_disable_global_impact_ddl_statements))
+		{
+			/* NOTE: relisshared implies that rel is a system relation. */
+			Assert(IsSystemRelation(rel));
+			/*
+			 * There are two sections in the next Assert. Relation ids
+			 * in each section are grouped together and two sections
+			 * are separated with an empty line.
+			 *
+			 * Section 1 contains relations in relcache init file that
+			 * support sys cache. Should be kept in sync with shared
+			 * relids in RelationSupportsSysCache.
+			 *
+			 * Section 2 contains relations in relcache init file but
+			 * do not support sys cache. Should be kept in sync with
+			 * YbRelationIdIsInInitFileAndNotCached.
+			 * As of 2023-11-27, SECURITY LABEL command is not supported.
+			 * Add SharedSecLabelRelationId, SharedSecLabelObjectIndexId
+			 * to section 2 when SECURITY LABEL command is supported.
+			 */
+			Assert(relid == AuthIdRelationId ||
+				   relid == AuthIdRolnameIndexId ||
+				   relid == AuthMemRelationId ||
+				   relid == AuthMemRoleMemIndexId ||
+				   relid == AuthMemMemRoleIndexId ||
+				   relid == DatabaseRelationId ||
+				   relid == TableSpaceRelationId ||
 
-			   /* pg_auth_members */
-			   RelationGetRelid(rel) == AuthMemRelationId ||
-			   RelationGetRelid(rel) == AuthMemRoleMemIndexId ||
-			   RelationGetRelid(rel) == AuthMemMemRoleIndexId ||
+				   relid == DatabaseNameIndexId);
 
-			   /* pg_database */
-			   RelationGetRelid(rel) == DatabaseRelationId ||
-
-			   /* pg_tablespace */
-			   RelationGetRelid(rel) == TableSpaceRelationId);
-		YbSetIsGlobalDDL();
+			YbSetIsGlobalDDL();
+		}
 	}
 }
 
@@ -244,12 +261,12 @@ static Oid YBCExecuteInsertInternal(Oid dboid,
                                     Datum *ybctid,
                                     YBCPgTransactionSetting transaction_setting)
 {
-	Oid            relid    = RelationGetRelid(rel);
-	AttrNumber     minattr  = YBGetFirstLowInvalidAttributeNumber(rel);
-	int            natts    = RelationGetNumberOfAttributes(rel);
-	Bitmapset      *pkey    = YBGetTablePrimaryKeyBms(rel);
-	YBCPgStatement insert_stmt = NULL;
-	bool           is_null  = false;
+	Oid            relfileNodeId    = YbGetRelfileNodeId(rel);
+	AttrNumber     minattr          = YBGetFirstLowInvalidAttributeNumber(rel);
+	int            natts            = RelationGetNumberOfAttributes(rel);
+	Bitmapset      *pkey            = YBGetTablePrimaryKeyBms(rel);
+	YBCPgStatement insert_stmt      = NULL;
+	bool           is_null          = false;
 
 	/* Generate a new oid for this row if needed */
 	if (rel->rd_rel->relhasoids)
@@ -260,7 +277,7 @@ static Oid YBCExecuteInsertInternal(Oid dboid,
 
 	/* Create the INSERT request and add the values from the tuple. */
 	HandleYBStatus(YBCPgNewInsert(dboid,
-	                              YbGetStorageRelid(rel),
+	                              relfileNodeId,
 	                              YBCIsRegionLocal(rel),
 	                              &insert_stmt,
 	                              transaction_setting));
@@ -344,7 +361,7 @@ static Oid YBCExecuteInsertInternal(Oid dboid,
 	YBCPgDeleteStatement(insert_stmt);
 	/* Add row into foreign key cache */
 	if (transaction_setting != YB_SINGLE_SHARD_TRANSACTION)
-		YBCPgAddIntoForeignKeyReferenceCache(relid, tuple->t_ybctid);
+		YBCPgAddIntoForeignKeyReferenceCache(relfileNodeId, tuple->t_ybctid);
 
 	bms_free(pkey);
 	return HeapTupleGetOid(tuple);
@@ -451,12 +468,14 @@ static YBCPgYBTupleIdDescriptor*
 YBCBuildNonNullUniqueIndexYBTupleId(Relation unique_index, Datum *values)
 {
 	Oid dboid = YBCGetDatabaseOid(unique_index);
-	Oid relid = RelationGetRelid(unique_index);
+	Oid relfileNodeId = YbGetRelfileNodeId(unique_index);
 	YBCPgTableDesc ybc_table_desc = NULL;
-	HandleYBStatus(YBCPgGetTableDesc(dboid, relid, &ybc_table_desc));
+	HandleYBStatus(YBCPgGetTableDesc(dboid, relfileNodeId,
+		&ybc_table_desc));
 	TupleDesc tupdesc = RelationGetDescr(unique_index);
 	const int nattrs = IndexRelationGetNumberOfKeyAttributes(unique_index);
-	YBCPgYBTupleIdDescriptor* result = YBCCreateYBTupleIdDescriptor(dboid, relid, nattrs + 1);
+	YBCPgYBTupleIdDescriptor* result = YBCCreateYBTupleIdDescriptor(dboid,
+		relfileNodeId, nattrs + 1);
 	YBCPgAttrValueDescriptor *next_attr = result->attrs;
 	for (AttrNumber attnum = 1; attnum <= nattrs; ++attnum)
 	{
@@ -529,7 +548,6 @@ void YBCExecuteInsertIndexForDb(Oid dboid,
 	Assert(index->rd_rel->relkind == RELKIND_INDEX);
 	Assert(ybctid != 0);
 
-	Oid            relid    = RelationGetRelid(index);
 	YBCPgStatement insert_stmt = NULL;
 
 	/* Create the INSERT request and add the values from the tuple. */
@@ -537,7 +555,7 @@ void YBCExecuteInsertIndexForDb(Oid dboid,
 	const bool is_non_distributed_txn_write =
 		is_backfill || (!IsSystemRelation(index) && yb_disable_transactional_writes);
 	HandleYBStatus(YBCPgNewInsert(
-		dboid, relid, YBCIsRegionLocal(index), &insert_stmt,
+		dboid, YbGetRelfileNodeId(index), YBCIsRegionLocal(index), &insert_stmt,
 		is_non_distributed_txn_write ? YB_NON_TRANSACTIONAL : YB_TRANSACTIONAL));
 
 	callback(insert_stmt, indexstate, index, values, isnull,
@@ -587,16 +605,17 @@ bool YBCExecuteDelete(Relation rel,
 	Oid				relid = RelationGetRelid(rel);
 	YBCPgStatement	delete_stmt = NULL;
 	Datum			ybctid;
+	Oid				relfileNodeId = YbGetRelfileNodeId(rel);
 
 	/* YB_SINGLE_SHARD_TRANSACTION always implies target tuple wasn't fetched. */
 	Assert((transaction_setting != YB_SINGLE_SHARD_TRANSACTION) || !target_tuple_fetched);
 
 	/* Create DELETE request. */
 	HandleYBStatus(YBCPgNewDelete(dboid,
-								  YbGetStorageRelid(rel),
+								  relfileNodeId,
 								  YBCIsRegionLocal(rel),
 								  &delete_stmt,
-									transaction_setting));
+								  transaction_setting));
 
 	/*
 	 * Look for ybctid. Raise error if ybctid is not found.
@@ -629,7 +648,7 @@ bool YBCExecuteDelete(Relation rel,
 	MemoryContextSwitchTo(oldContext);
 
 	/* Delete row from foreign key cache */
-	YBCPgDeleteFromForeignKeyReferenceCache(relid, ybctid);
+	YBCPgDeleteFromForeignKeyReferenceCache(relfileNodeId, ybctid);
 
 	/* Execute the statement. */
 	int rows_affected_count = 0;
@@ -752,15 +771,14 @@ void YBCExecuteDeleteIndex(Relation index,
 	Assert(index->rd_rel->relkind == RELKIND_INDEX);
 
 	Oid            dboid    = YBCGetDatabaseOid(index);
-	Oid            relid    = RelationGetRelid(index);
 	YBCPgStatement delete_stmt = NULL;
 
 	/* Create the DELETE request and add the values from the tuple. */
 	HandleYBStatus(YBCPgNewDelete(dboid,
-								  relid,
+								  YbGetRelfileNodeId(index),
 								  YBCIsRegionLocal(index),
 								  &delete_stmt,
-									YB_TRANSACTIONAL));
+								  YB_TRANSACTIONAL));
 
 	callback(delete_stmt, indexstate, index, values, isnull,
 			 IndexRelationGetNumberOfKeyAttributes(index),
@@ -811,10 +829,10 @@ bool YBCExecuteUpdate(Relation rel,
 
 	/* Create update statement. */
 	HandleYBStatus(YBCPgNewUpdate(dboid,
-								  relid,
+								  YbGetRelfileNodeId(rel),
 								  YBCIsRegionLocal(rel),
 								  &update_stmt,
-									transaction_setting));
+								  transaction_setting));
 
 	/*
 	 * Look for ybctid. Raise error if ybctid is not found.
@@ -1157,7 +1175,8 @@ void YBCDeleteSysCatalogTuple(Relation rel, HeapTuple tuple)
 										   false /* is_null */);
 
 	/* Delete row from foreign key cache */
-	YBCPgDeleteFromForeignKeyReferenceCache(relid, tuple->t_ybctid);
+	YBCPgDeleteFromForeignKeyReferenceCache(YbGetRelfileNodeId(rel),
+											tuple->t_ybctid);
 
 	HandleYBStatus(YBCPgDmlBindColumn(delete_stmt, YBTupleIdAttributeNumber, ybctid_expr));
 

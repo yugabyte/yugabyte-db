@@ -260,8 +260,8 @@ class PgSession::RunHelper {
     // can never occur).
 
     VLOG(2) << "Apply " << (op->is_read() ? "read" : "write") << " op, table name: "
-            << table.table_name().table_name() << ", table id: " << table.id()
-            << ", force_non_bufferable: " << force_non_bufferable;
+            << table.table_name().table_name() << ", table relfilenode id: "
+            << table.relfilenode_id() << ", force_non_bufferable: " << force_non_bufferable;
     auto& buffer = pg_session_.buffer_;
 
     // Try buffering this operation if it is a write operation, buffering is enabled and no
@@ -309,7 +309,7 @@ class PgSession::RunHelper {
 
     const auto row_mark_type = GetRowMarkType(*op);
 
-    operations_.Add(std::move(op), table.id());
+    operations_.Add(std::move(op), table.relfilenode_id());
 
     if (!IsTransactional()) {
       return Status::OK();
@@ -700,7 +700,6 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
         "DDL operation should not be performed while yb_read_time is set to nonzero.");
     ReadHybridTime::FromMicros(yb_read_time).ToPB(options.mutable_read_time());
   }
-  auto promise = std::make_shared<std::promise<PerformResult>>();
 
   // If all operations belong to the same database then set the namespace.
   // System database template1 is ignored as we may read global system catalog like tablespaces
@@ -755,10 +754,8 @@ Result<PerformFuture> PgSession::Perform(BufferableOperations&& ops, PerformOpti
 
   DCHECK(!options.has_read_time() || options.isolation() != IsolationLevel::SERIALIZABLE_ISOLATION);
 
-  pg_client_.PerformAsync(&options, &ops.operations, [promise](const PerformResult& result) {
-    promise->set_value(result);
-  });
-  return PerformFuture(promise->get_future(), this, std::move(ops.relations));
+  auto future = pg_client_.PerformAsync(&options, &ops.operations);
+  return PerformFuture(std::move(future), this, std::move(ops.relations));
 }
 
 Result<bool> PgSession::ForeignKeyReferenceExists(const LightweightTableYbctid& key,

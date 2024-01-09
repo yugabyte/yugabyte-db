@@ -820,6 +820,10 @@ export const ApiPermissionMap = {
         requestType: ApiRequestType.POST,
         endpoint: '/universes/$uniUUID<[^/]+>/upgrade/software'
     },
+    UPGRADE_NEW_UNIVERSE_SOFTWARE: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/universes/$uniUUID<[^/]+>/upgrade/db_version'
+    },
     UPGRADE_UNIVERSE_SYSTEMD: {
         requestType: ApiRequestType.POST,
         endpoint: '/universes/$uniUUID<[^/]+>/upgrade/systemd'
@@ -1080,20 +1084,40 @@ export const ApiPermissionMap = {
         requestType: ApiRequestType.POST,
         endpoint: '/dr_configs'
     },
-    GET_DR_CONFIG_BY_ID: {
+    GET_DR_CONFIG: {
         requestType: ApiRequestType.GET,
         endpoint: '/dr_configs/$drUUID<[^/]+>'
     },
-    MODIFY_DR_CONFIG_BY_ID: {
-        requestType: ApiRequestType.PUT,
-        endpoint: '/dr_configs/$drUUID<[^/]+>'
+    DR_CONFIG_REPLACE_REPLICA: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/dr_configs/$drUUID<[^/]+>/replace_replica'
     },
-    MODIFY_DR_CONFIG_FAILOVER: {
+    DR_CONFIG_SWITCHOVER: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/dr_configs/$drUUID<[^/]+>/switchover'
+    },
+    DR_CONFIG_FAILOVER: {
         requestType: ApiRequestType.POST,
         endpoint: '/dr_configs/$drUUID<[^/]+>/failover',
+    },
+    DR_CONFIG_RESTART: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/dr_configs/$drUUID<[^/]+>/restart',
+    },
+    DR_CONFIG_SET_TABLES: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/dr_configs/$drUUID<[^/]+>/set_tables',
+    },
+    DR_CONFIG_SYNC: {
+        requestType: ApiRequestType.POST,
+        endpoint: '/dr_configs/$drUUID<[^/]+>/sync',
     },
     DELETE_DR_CONFIG: {
         requestType: ApiRequestType.DELETE,
         endpoint: '/dr_configs/$drUUID<[^/]+>'
+    },
+    GET_DR_CONFIG_SAFETIME: {
+        requestType: ApiRequestType.GET,
+        endpoint: '/dr_configs/$drUUID<[^/]+>/safetime'
     }
 } satisfies ApiPermissionMapType;

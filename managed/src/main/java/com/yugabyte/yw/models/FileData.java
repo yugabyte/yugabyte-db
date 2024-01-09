@@ -13,7 +13,9 @@ import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.inject.StaticInjectorHolder;
 import io.ebean.Finder;
 import io.ebean.Model;
-import io.ebean.annotation.CreatedTimestamp;
+import io.ebean.annotation.WhenCreated;
+import jakarta.persistence.EmbeddedId;
+import jakarta.persistence.Entity;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -29,11 +31,9 @@ import java.util.Set;
 import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
-import javax.persistence.EmbeddedId;
-import javax.persistence.Entity;
 import lombok.Data;
 import lombok.EqualsAndHashCode;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.io.FileUtils;
 import org.apache.commons.io.FilenameUtils;
 import org.slf4j.Logger;
@@ -55,7 +55,7 @@ public class FileData extends Model {
 
   @Constraints.Required private UUID parentUUID;
   // The task creation time.
-  @CreatedTimestamp private Date timestamp;
+  @WhenCreated private Date timestamp;
 
   public String getRelativePath() {
     return this.file.filePath;

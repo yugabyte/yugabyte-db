@@ -103,9 +103,11 @@
 #include "utils/tqual.h"
 
 #include "access/yb_scan.h"
+#include "catalog/index.h"
 #include "catalog/pg_yb_profile.h"
 #include "catalog/pg_yb_role_profile.h"
 #include "catalog/yb_catalog_version.h"
+#include "commands/ybccmds.h"
 #include "pg_yb_utils.h"
 #include "utils/yb_inheritscache.h"
 
@@ -424,6 +426,7 @@ static void IndexSupportInitialize(oidvector *indclass,
 static OpClassCacheEnt *LookupOpclassInfo(Oid operatorClassOid,
 				  StrategyNumber numSupport);
 static void RelationCacheInitFileRemoveInDir(const char *tblspcpath);
+static void YbRelationCacheInitFileRemoveInDir(const char *initfiledir);
 static void unlink_initfile(const char *initfilename, int elevel);
 static bool equalPartitionDescs(PartitionKey key, PartitionDesc partdesc1,
 					PartitionDesc partdesc2);
@@ -2728,7 +2731,7 @@ YbParseAdditionalCatalogList(YbPFetchTable **prefetch_tables,
 	const bool preload_additional_tables =
 		*YBCGetGFlags()->ysql_catalog_preload_additional_tables;
 	const char *default_additional_tables =
-		"pg_am,pg_amproc,pg_cast,pg_tablespace";
+		"pg_am,pg_amproc,pg_cast,pg_inherits,pg_policy,pg_proc,pg_tablespace,pg_trigger";
 	const char *extra_tables = NULL;
 
 	if (!IS_NON_EMPTY_STR_FLAG(preload_cat_flag))
@@ -2874,19 +2877,6 @@ YbPreloadRelCacheImpl(YbRunWithPrefetcherContext *ctx)
 			YB_PFETCH_TABLE_YB_PG_PROFILE,
 			YB_PFETCH_TABLE_YB_PG_ROLE_PROFILE,
 			YB_PFETCH_TABLE_PG_CAST
-		};
-		YbRegisterTables(prefetcher, tables, lengthof(tables));
-	}
-
-	if (YbNeedAdditionalCatalogTables())
-	{
-		static const YbPFetchTable tables[] = {
-			YB_PFETCH_TABLE_PG_CAST,
-			YB_PFETCH_TABLE_PG_INHERITS,
-			YB_PFETCH_TABLE_PG_POLICY,
-			YB_PFETCH_TABLE_PG_PROC,
-			YB_PFETCH_TABLE_PG_TABLESPACE,
-			YB_PFETCH_TABLE_PG_TRIGGER
 		};
 		YbRegisterTables(prefetcher, tables, lengthof(tables));
 	}
@@ -5345,7 +5335,8 @@ RelationBuildLocalRelation(const char *relname,
  */
 void
 RelationSetNewRelfilenode(Relation relation, char persistence,
-						  TransactionId freezeXid, MultiXactId minmulti)
+						  TransactionId freezeXid, MultiXactId minmulti,
+						  bool yb_copy_split_options)
 {
 	Oid			newrelfilenode;
 	RelFileNodeBackend newrnode;
@@ -5376,22 +5367,38 @@ RelationSetNewRelfilenode(Relation relation, char persistence,
 			 RelationGetRelid(relation));
 	classform = (Form_pg_class) GETSTRUCT(tuple);
 
-	/*
-	 * Create storage for the main fork of the new relfilenode.
-	 *
-	 * NOTE: any conflict in relfilenode value will be caught here, if
-	 * GetNewRelFileNode messes up for any reason.
-	 */
-	newrnode.node = relation->rd_node;
-	newrnode.node.relNode = newrelfilenode;
-	newrnode.backend = relation->rd_backend;
-	RelationCreateStorage(newrnode.node, persistence);
-	smgrclosenode(newrnode);
+	if (IsYBRelation(relation))
+	{
+		/* Currently, this function is only used during reindex in YB. */
+		Assert(relation->rd_rel->relkind == RELKIND_INDEX);
+		/*
+		 * Drop the old DocDB table associated with this index.
+		 * Note: The drop isn't finalized until after the txn commits/aborts.
+		 */
+		YBCDropIndex(relation);
+		/* Create a new DocDB table for the index. */
+		YbIndexSetNewRelfileNode(relation, newrelfilenode,
+								 yb_copy_split_options);
+	}
+	else
+	{
+		/*
+		 * Create storage for the main fork of the new relfilenode.
+		 *
+		 * NOTE: any conflict in relfilenode value will be caught here, if
+		 * GetNewRelFileNode messes up for any reason.
+		 */
+		newrnode.node = relation->rd_node;
+		newrnode.node.relNode = newrelfilenode;
+		newrnode.backend = relation->rd_backend;
+		RelationCreateStorage(newrnode.node, persistence);
+		smgrclosenode(newrnode);
 
-	/*
-	 * Schedule unlinking of the old storage at transaction commit.
-	 */
-	RelationDropStorage(relation);
+		/*
+		 * Schedule unlinking of the old storage at transaction commit.
+		 */
+		RelationDropStorage(relation);
+	}
 
 	/*
 	 * Now update the pg_class row.  However, if we're dealing with a mapped
@@ -8169,10 +8176,7 @@ write_item(const void *data, Size len, FILE *fp)
 bool
 RelationIdIsInInitFile(Oid relationId)
 {
-	if (relationId == SharedSecLabelRelationId ||
-		relationId == TriggerRelidNameIndexId ||
-		relationId == DatabaseNameIndexId ||
-		relationId == SharedSecLabelObjectIndexId)
+	if (YbRelationIdIsInInitFileAndNotCached(relationId))
 	{
 		/*
 		 * If this Assert fails, we don't need the applicable special case
@@ -8182,6 +8186,16 @@ RelationIdIsInInitFile(Oid relationId)
 		return true;
 	}
 	return RelationSupportsSysCache(relationId);
+}
+
+bool
+YbRelationIdIsInInitFileAndNotCached(Oid relationId)
+{
+	/* These rel ids are copied from the original RelationIdIsInInitFile. */
+	return (relationId == SharedSecLabelRelationId ||
+			relationId == TriggerRelidNameIndexId ||
+			relationId == DatabaseNameIndexId ||
+			relationId == SharedSecLabelObjectIndexId);
 }
 
 /*
@@ -8278,6 +8292,58 @@ RelationCacheInitFilePostInvalidate(void)
 }
 
 /*
+ * The YB version of RelationCacheInitFileRemove that considers two YB
+ * specifics of rel cache init files (see RelCacheInitFileName).
+ * (1) Placement change for per-database rel cache init files. For example,
+ * In native PG the rel cache init file of database that has OID 16386:
+ *   pg_data/base/16386/pg_internal.init
+ * In YB the rel cache init file of database that has OID 16384:
+ *   pg_data/16384_pg_internal.init
+ * (2) Name change in per-database catalog version mode. For example, each
+ * database has both a shared and a non-shared rel cache init file.
+ * pg_data/global/13245_pg_internal.init.db # shared
+ * pg_data/13245_pg_internal.init.db        # non-shared
+ * YB NOTE: The placement change assumes CREATE TABLESPACE LOCATION is
+ * not supported in YSQL. Tablespace is repurposed in YSQL and LOCATION
+ * clause that specifies a file system location is ignored. If we ever
+ * support LOCATION, then we will need to either redesign the above YB
+ * specifics and/or adjust this YB version of rel cache init files removal
+ * function.
+ */
+static void
+YbRelationCacheInitFileRemove()
+{
+	/* Remove shared rel cache init files. */
+	YbRelationCacheInitFileRemoveInDir("global");
+
+	/* Remove per-database rel cache init files. */
+	YbRelationCacheInitFileRemoveInDir(".");
+}
+
+static void
+YbRelationCacheInitFileRemoveInDir(const char *initfiledir)
+{
+	DIR		   *dir;
+	struct dirent *de;
+	char		initfilename[MAXPGPATH * 2];
+
+	dir = AllocateDir(initfiledir);
+
+	while ((de = ReadDir(dir, initfiledir)) != NULL)
+	{
+		if (strstr(de->d_name, RELCACHE_INIT_FILENAME))
+		{
+			/* Remove the init file, including any temporary one. */
+			snprintf(initfilename, sizeof(initfilename), "%s/%s",
+					 initfiledir, de->d_name);
+			unlink_initfile(initfilename, ERROR);
+		}
+	}
+
+	FreeDir(dir);
+}
+
+/*
  * Remove the init files during postmaster startup.
  *
  * We used to keep the init files across restarts, but that is unsafe in PITR
@@ -8294,12 +8360,9 @@ RelationCacheInitFileRemove(void)
 	struct dirent *de;
 	char		path[MAXPGPATH + 10 + sizeof(TABLESPACE_VERSION_DIRECTORY)];
 
-	/*
-	 * In YugaByte mode we anyway do a cache version check on each backend init
-	 * so no need to preemptively clean up the init files here.
-	 */
-	if (IsYugaByteEnabled())
+	if (YBIsEnabledInPostgresEnvVar())
 	{
+		YbRelationCacheInitFileRemove();
 		return;
 	}
 

@@ -853,7 +853,7 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt, const char *queryString,
 		else if (strcmp(opt->defname, "dist") == 0)
 			es->rpc = defGetBoolean(opt);
 		else if (strcmp(opt->defname, "debug") == 0)
-			es->debug = defGetBoolean(opt);
+			es->yb_debug = defGetBoolean(opt);
 		else if (strcmp(opt->defname, "timing") == 0)
 		{
 			timing_set = true;
@@ -902,13 +902,13 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt, const char *queryString,
 	/* if hiding of non-deterministic fields is requested, turn off debug and verbose modes */
 	if (yb_explain_hide_non_deterministic_fields)
 	{
-		if (es->debug)
+		if (es->yb_debug)
 		{
 			ereport(WARNING,
 					(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
 					 errmsg("GUC yb_explain_hide_non_deterministic_fields "
 							"disables EXPLAIN option DEBUG")));
-			es->debug = false;
+			es->yb_debug = false;
 		}
 
 		if (es->verbose)
@@ -940,7 +940,7 @@ ExplainQuery(ParseState *pstate, ExplainStmt *stmt, const char *queryString,
 
 	/* Turn on timing of RPC requests in accordance to the flags passed */
 	YbToggleSessionStatsTimer(es->timing);
-	if (es->debug) {
+	if (es->yb_debug) {
 		YbSetMetricsCaptureType(YB_YQL_METRICS_CAPTURE_ALL);
 	}
 
@@ -1377,7 +1377,7 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 									es->yb_stats.flush.count,
 									es->yb_stats.flush.wait_time);
 
-			if (es->debug) {
+			if (es->yb_debug) {
 				for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i) {
 					YbExplainRpcRequestGauge(&yb_es, i, es->yb_stats.storage_gauge_metrics[i],
 											 false /* is_mean */);
@@ -2389,7 +2389,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 										   planstate, es);
 			if (is_yb_rpc_stats_required)
 				show_yb_rpc_stats(planstate, true/*indexScan*/, es);
-			if (es->debug && yb_enable_base_scans_cost_model)
+			if (es->yb_debug && yb_enable_base_scans_cost_model)
 			{
 				ExplainPropertyFloat(
 					"Estimated Seeks", NULL,
@@ -2428,7 +2428,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 									 planstate->instrument->ntuples2, 0, es);
 			if (is_yb_rpc_stats_required)
 				show_yb_rpc_stats(planstate, true/*indexScan*/, es);
-			if (es->debug && yb_enable_base_scans_cost_model)
+			if (es->yb_debug && yb_enable_base_scans_cost_model)
 			{
 				ExplainPropertyFloat(
 					"Estimated Seeks", NULL,
@@ -2485,7 +2485,7 @@ ExplainNode(PlanState *planstate, List *ancestors,
 										   planstate, es);
 			if (is_yb_rpc_stats_required)
 				show_yb_rpc_stats(planstate, false /*indexScan*/, es);
-			if (es->debug && yb_enable_base_scans_cost_model)
+			if (es->yb_debug && yb_enable_base_scans_cost_model)
 			{
 				ExplainPropertyFloat(
 					"Estimated Seeks", NULL,
@@ -2649,6 +2649,16 @@ ExplainNode(PlanState *planstate, List *ancestors,
 			if (((NestLoop *) plan)->join.joinqual)
 				show_instrumentation_count("Rows Removed by Join Filter", 1,
 										   planstate, es);
+			if (IsA(plan, YbBatchedNestLoop))
+			{
+				YbBatchedNestLoop *bnl = (YbBatchedNestLoop *) plan;
+				if (bnl->numSortCols > 0)
+					show_sort_group_keys(planstate, "Sort Keys",
+										 bnl->numSortCols, bnl->sortColIdx,
+										 bnl->sortOperators, bnl->collations,
+										 bnl->nullsFirst, ancestors, es);
+			}
+
 			show_upper_qual(plan->qual, "Filter", planstate, ancestors, es);
 			if (plan->qual)
 				show_instrumentation_count("Rows Removed by Filter", 2,
@@ -3886,7 +3896,7 @@ show_yb_rpc_stats(PlanState *planstate, bool indexScan, ExplainState *es)
 	YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_STORAGE_FLUSH, flushes,
 							flushes_wait);
 
-	if (es->debug) {
+	if (es->yb_debug) {
 		for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i) {
 			YbExplainRpcRequestGauge(&yb_es, i, yb_instr->storage_gauge_metrics[i] / nloops,
 									 true /* is_mean */);
@@ -3939,7 +3949,7 @@ ExplainIndexScanDetails(Oid indexid, ScanDirection indexorderdir,
 		}
 		ExplainPropertyText("Scan Direction", scandir, es);
 		ExplainPropertyText("Index Name", indexname, es);
-		if (es->debug && yb_enable_base_scans_cost_model)
+		if (es->yb_debug && yb_enable_base_scans_cost_model)
 		{
 			ExplainPropertyFloat("Estimated Seeks", NULL, yb_estimated_num_seeks, 0, es);
 			ExplainPropertyFloat("Estimated Nexts", NULL, yb_estimated_num_nexts, 0, es);

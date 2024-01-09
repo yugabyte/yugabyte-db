@@ -89,7 +89,7 @@ import java.util.stream.Stream;
 import javax.annotation.Nullable;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
-import org.apache.commons.collections.CollectionUtils;
+import org.apache.commons.collections4.CollectionUtils;
 import org.apache.commons.lang3.StringUtils;
 import org.apache.commons.lang3.tuple.Pair;
 import play.libs.Json;
@@ -1683,57 +1683,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   /**
-   * Performs preflight checks for nodes in cluster. No fail tasks are created.
-   *
-   * @return map of failed nodes
-   */
-  private Map<String, String> performClusterPreflightChecks(Cluster cluster) {
-    Map<String, String> failedNodes = new HashMap<>();
-    // This check is only applied to onperm nodes
-    if (cluster.userIntent.providerType != CloudType.onprem) {
-      return failedNodes;
-    }
-    Set<NodeDetails> nodes = taskParams().getNodesInCluster(cluster.uuid);
-    Collection<NodeDetails> nodesToProvision = PlacementInfoUtil.getNodesToProvision(nodes);
-    UserIntent userIntent = cluster.userIntent;
-    Boolean rootAndClientRootCASame = taskParams().rootAndClientRootCASame;
-    Boolean rootCARequired =
-        EncryptionInTransitUtil.isRootCARequired(userIntent, rootAndClientRootCASame);
-    Boolean clientRootCARequired =
-        EncryptionInTransitUtil.isClientRootCARequired(userIntent, rootAndClientRootCASame);
-
-    for (NodeDetails currentNode : nodesToProvision) {
-      String preflightStatus =
-          performPreflightCheck(
-              cluster,
-              currentNode,
-              rootCARequired ? taskParams().rootCA : null,
-              clientRootCARequired ? taskParams().getClientRootCA() : null);
-      if (preflightStatus != null) {
-        failedNodes.put(currentNode.nodeName, preflightStatus);
-      }
-    }
-
-    return failedNodes;
-  }
-
-  /**
-   * Performs preflight checks and creates failed preflight tasks.
-   *
-   * @return true if everything is OK
-   */
-  public boolean performUniversePreflightChecks(Collection<Cluster> clusters) {
-    Map<String, String> failedNodes = new HashMap<>();
-    for (Cluster cluster : clusters) {
-      failedNodes.putAll(performClusterPreflightChecks(cluster));
-    }
-    if (!failedNodes.isEmpty()) {
-      createFailedPrecheckTask(failedNodes).setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
-    }
-    return failedNodes.isEmpty();
-  }
-
-  /**
    * Finds the given list of nodes in the universe. The lookup is done by the node name.
    *
    * @param universe Universe to which the node belongs.
@@ -2380,7 +2329,9 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   public SubTaskGroup createInstanceExistsCheckTasks(
-      UUID universeUuid, Collection<NodeDetails> nodes) {
+      UUID universeUuid,
+      UniverseDefinitionTaskParams parentTaskParams,
+      Collection<NodeDetails> nodes) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("InstanceExistsCheck");
     for (NodeDetails node : nodes) {
       if (node.placementUuid == null) {
@@ -2393,6 +2344,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       params.nodeUuid = node.nodeUuid;
       params.azUuid = node.azUuid;
       params.placementUuid = node.placementUuid;
+      params.clusters = parentTaskParams.clusters;
       InstanceExistCheck task = createTask(InstanceExistCheck.class);
       task.initialize(params);
       subTaskGroup.addSubTask(task);
@@ -2492,6 +2444,10 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
   }
 
   protected SubTaskGroup createUpdateUniverseIntentTask(Cluster cluster) {
+    if (cluster == null) {
+      // can be null if only editing read replica
+      return null;
+    }
     SubTaskGroup subTaskGroup = createSubTaskGroup("UniverseUpdateDetails");
     UpdateUniverseIntent.Params params = new UpdateUniverseIntent.Params();
     params.setUniverseUUID(taskParams().getUniverseUUID());

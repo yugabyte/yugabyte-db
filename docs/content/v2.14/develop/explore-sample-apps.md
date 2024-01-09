@@ -3,7 +3,6 @@ title: Explore YugabyteDB sample applications
 headerTitle: Explore sample applications
 linkTitle: Explore sample apps
 description: Explore sample applications running on YugabyteDB.
-image: /images/section_icons/index/develop.png
 menu:
   v2.14:
     identifier: explore-sample-apps

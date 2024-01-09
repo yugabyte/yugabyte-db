@@ -114,7 +114,9 @@ Result<AutoFlagsInfoMap> GetAvailableAutoFlags() {
 
   string full_path = JoinPathSegments(auto_flags_file_json_path, kAutoFlagsJsonFileName);
   std::ifstream json_file(full_path);
-  SCHECK(!json_file.fail(), IOError, Format("Could not open JSON file $0", full_path));
+  SCHECK(
+      !json_file.fail(), IOError,
+      Format("Could not open JSON file $0: $1", full_path, strerror(errno)));
 
   rapidjson::IStreamWrapper stream_wrapper(json_file);
   Document doc;
@@ -182,6 +184,10 @@ Result<AutoFlagsInfoMap> GetFlagsEligibleForPromotion(
 Result<bool> AreAutoFlagsCompatible(
     const AutoFlagsNameMap& base_flags, const AutoFlagsNameMap& to_check_flags,
     const AutoFlagsInfoMap& auto_flag_infos, AutoFlagClass min_class) {
+  // Allowed test flags that we do not care about.
+  static const std::set<std::string> kAutoFlagAllowList = {
+      "TEST_auto_flags_initialized", "TEST_auto_flags_new_install"};
+
   for (const auto& [process_name, base_process_flags] : base_flags) {
     auto process_flag_info = FindOrNull(auto_flag_infos, process_name);
     SCHECK(process_flag_info, NotFound, "AutoFlags info for process $0 not found", process_name);
@@ -193,8 +199,16 @@ Result<bool> AreAutoFlagsCompatible(
       if (!base_process_flags.contains(flag.name)) {
         continue;
       }
+
       num_flags++;
+      if (kAutoFlagAllowList.contains(flag.name)) {
+        VLOG_WITH_FUNC(3) << "Skipping flag " << flag.name << " of process " << process_name;
+        continue;
+      }
       if (flag.flag_class < min_class) {
+        VLOG_WITH_FUNC(3) << "Skipping flag " << flag.name << " of process " << process_name
+                          << " since its class " << flag.flag_class << " is less than min class "
+                          << min_class;
         continue;
       }
 

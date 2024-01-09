@@ -88,9 +88,15 @@ ADD_YB_LIBRARY(xcluster_producer_proto
   DEPS ${XCLUSTER_PRODUCER_YRPC_LIBS}
   NONLINK_DEPS ${XCLUSTER_PRODUCER_YRPC_TGTS})
 
+set(CDC_UTIL_SRCS
+  cdc_util.cc
+  xcluster_types.cc
+  xcluster_util.cc
+)
+
 ADD_YB_LIBRARY(
     cdc_util
-    SRCS cdc_util.cc
+    SRCS ${CDC_UTIL_SRCS}
     DEPS yb_client ql_util)
 
 #########################################
@@ -99,7 +105,7 @@ ADD_YB_LIBRARY(
 
 set(CDC_SRCS
   cdc_service.cc
-  cdc_metrics.cc
+  xrepl_metrics.cc
   xcluster_producer.cc
   xcluster_producer_bootstrap.cc
   cdcsdk_producer.cc
@@ -113,3 +119,7 @@ ADD_YB_LIBRARY(
     SRCS ${CDC_SRCS}
     DEPS protobuf cdc_service_proto cdc_util master_proto consensus_proto log_proto log consensus
          yrpc server_common server_process tablet yb_util ql_util gutil yb_client)
+
+# Tests
+set(YB_TEST_LINK_LIBS integration-tests ${YB_MIN_TEST_LIBS})
+ADD_YB_TEST(xcluster_producer-test)

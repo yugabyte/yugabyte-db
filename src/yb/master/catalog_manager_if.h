@@ -13,7 +13,7 @@
 
 #pragma once
 
-#include "yb/cdc/cdc_fwd.h"
+#include "yb/cdc/xrepl_types.h"
 
 #include "yb/common/common_fwd.h"
 
@@ -308,6 +308,7 @@ class CatalogManagerIf {
   virtual Status PromoteTableToRunningState(TableInfoPtr table_info, const LeaderEpoch& epoch) = 0;
 
   virtual Status PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
+      const scoped_refptr<TableInfo>& table,
       const yb::TabletId& tablet_id,
       const xrepl::StreamId& cdc_sdk_stream_id,
       const yb::OpIdPB& safe_opid,

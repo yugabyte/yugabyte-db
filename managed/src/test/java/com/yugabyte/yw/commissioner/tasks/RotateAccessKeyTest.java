@@ -4,13 +4,17 @@ package com.yugabyte.yw.commissioner.tasks;
 
 import static com.yugabyte.yw.models.TaskInfo.State.Failure;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
+import static org.hamcrest.CoreMatchers.containsString;
+import static org.hamcrest.MatcherAssert.assertThat;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
 import static org.junit.Assert.assertTrue;
 import static org.junit.Assert.fail;
 
 import com.google.common.collect.ImmutableList;
 import com.yugabyte.yw.commissioner.tasks.params.RotateAccessKeyParams;
 import com.yugabyte.yw.common.AccessKeyRotationUtilTest;
+import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.NodeInstance;
 import com.yugabyte.yw.models.TaskInfo;
@@ -75,7 +79,7 @@ public class RotateAccessKeyTest extends UniverseModifyBaseTest {
     try {
       UUID taskUUID = commissioner.submit(TaskType.RotateAccessKey, taskParams);
       return waitForTask(taskUUID);
-    } catch (Exception e) {
+    } catch (InterruptedException e) {
       log.error("Failing with error {}", e.getMessage());
       fail();
     }
@@ -132,8 +136,9 @@ public class RotateAccessKeyTest extends UniverseModifyBaseTest {
   public void testRotateAccessKeyPausedUniverseFailure() {
     AccessKeyRotationUtilTest.setUniversePaused(true, defaultUniverse);
     RotateAccessKeyParams taskParams = createRotateAccessKeyParams(defaultUniverse, newAccessKey);
-    TaskInfo taskInfo = submitTask(taskParams);
-    assertEquals(Failure, taskInfo.getTaskState());
+    PlatformServiceException thrown =
+        assertThrows(PlatformServiceException.class, () -> submitTask(taskParams));
+    assertThat(thrown.getMessage(), containsString("is currently paused"));
     AccessKeyRotationUtilTest.setUniversePaused(false, defaultUniverse);
   }
 

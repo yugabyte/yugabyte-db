@@ -3,7 +3,6 @@ title: Scale and configure clusters
 linkTitle: Scale and configure clusters
 description: Scale YugabyteDB Managed clusters.
 headcontent: Scale clusters horizontally and vertically
-image: /images/section_icons/deploy/enterprise.png
 menu:
   preview_yugabyte-cloud:
     identifier: configure-clusters
@@ -37,10 +36,10 @@ The **Regions** section on the cluster **Settings > Infrastructure** tab summari
 
 ## Limitations
 
-- You can horizontally scale nodes in clusters with Node Level fault tolerance in increments of 1. Nodes in clusters with Region and Availability Zone Level fault tolerance are scaled in increments of 3.
+- You can horizontally scale nodes in clusters with Node Level fault tolerance in increments of 1. Nodes in clusters with Availability Zone Level fault tolerance are scaled in increments of 3 (1 per zone). Nodes in clusters with Region Level fault tolerance are scaled in increments of 1 per region.
 - You can configure up to 16 vCPUs per node. To have more than 16 vCPUs per node, send your request to {{% support-cloud %}}.
 - To avoid data loss, you can only increase disk size per node; once increased, you can't reduce it.
-- You can't change the fault tolerance of a cluster after it is created.
+- You can't change the [fault tolerance](../../cloud-basics/create-clusters-overview/#fault-tolerance) of a cluster after it is created.
 - You can't scale single node clusters (fault tolerance none), you can only increase disk size.
 - You can't scale Sandbox clusters.
 - If another [locking cluster operation](../#locking-operations) is already running, you must wait for it to finish.
@@ -54,7 +53,7 @@ You can scale multi-node single-region clusters horizontally and vertically, as 
 
 To add or remove read replicas, refer to [Read replicas](../managed-read-replica/).
 
-For Availability Zone Level fault tolerant clusters, you must scale nodes in increments of 3.
+For Availability Zone Level fault tolerant clusters, you must scale nodes in increments of 3 (all zones must have the same number of nodes).
 
 To scale a single-region cluster:
 

@@ -13,6 +13,9 @@
 
 package org.yb.ysqlconnmgr;
 
+import java.util.HashMap;
+import java.util.Map;
+
 import org.junit.AfterClass;
 import org.junit.Before;
 import org.slf4j.Logger;
@@ -27,14 +30,27 @@ public class BaseYsqlConnMgr extends BaseMiniClusterTest {
   protected static final int NUM_TSERVER = 3;
   private static final String DEFAULT_PG_USER = "yugabyte";
 
+  protected String getHbaConf()
+  {
+    return "host all all all trust, local all all trust";
+  }
+
   @Override
   protected void customizeMiniClusterBuilder(MiniYBClusterBuilder builder) {
+    Map<String, String> additionalTserverFlags = new HashMap<String, String>() {
+      {
+          put("ysql_hba_conf_csv", getHbaConf());
+          put("ysql_conn_mgr_use_unix_conn", "true");
+      }
+    };
+
     super.customizeMiniClusterBuilder(builder);
     builder.enableYsql(true);
     builder.enableYsqlConnMgr(true);
     builder.numTservers(NUM_TSERVER);
     builder.replicationFactor(NUM_TSERVER);
     builder.addCommonTServerFlag("ysql_conn_mgr_dowarmup", "false");
+    builder.addCommonTServerFlags(additionalTserverFlags);
   }
 
   protected ConnectionBuilder getConnectionBuilder() {

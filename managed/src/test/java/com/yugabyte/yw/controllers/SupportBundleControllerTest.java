@@ -139,7 +139,7 @@ public class SupportBundleControllerTest extends FakeDBApplication {
             bundlePath1,
             new Date(),
             new Date(),
-            new BundleDetails(EnumSet.allOf(BundleDetails.ComponentType.class)),
+            new BundleDetails(EnumSet.allOf(BundleDetails.ComponentType.class), 0, 0),
             SupportBundle.SupportBundleStatusType.Success);
     sb1.save();
     String bundlePath2 = "yb-support-bundle-" + "universe_name" + "-" + datePrefix + "-logs1";
@@ -150,7 +150,7 @@ public class SupportBundleControllerTest extends FakeDBApplication {
             bundlePath2,
             new Date(),
             new Date(),
-            new BundleDetails(EnumSet.noneOf(BundleDetails.ComponentType.class)),
+            new BundleDetails(EnumSet.noneOf(BundleDetails.ComponentType.class), 0, 0),
             SupportBundle.SupportBundleStatusType.Running);
     sb2.save();
 
@@ -188,7 +188,7 @@ public class SupportBundleControllerTest extends FakeDBApplication {
             bundlePath1,
             new Date(),
             new Date(),
-            new BundleDetails(EnumSet.allOf(BundleDetails.ComponentType.class)),
+            new BundleDetails(EnumSet.allOf(BundleDetails.ComponentType.class), 0, 0),
             SupportBundle.SupportBundleStatusType.Success);
     sb1.save();
 
@@ -448,7 +448,7 @@ public class SupportBundleControllerTest extends FakeDBApplication {
             fakeSupportBundleBasePath + fakeSupportBundleFileName,
             new Date(),
             new Date(),
-            new BundleDetails(EnumSet.allOf(BundleDetails.ComponentType.class)),
+            new BundleDetails(EnumSet.allOf(BundleDetails.ComponentType.class), 0, 0),
             SupportBundle.SupportBundleStatusType.Success);
     sb1.save();
 
@@ -473,7 +473,7 @@ public class SupportBundleControllerTest extends FakeDBApplication {
             fakeSupportBundleBasePath + fakeSupportBundleFileName,
             new Date(),
             new Date(),
-            new BundleDetails(EnumSet.allOf(BundleDetails.ComponentType.class)),
+            new BundleDetails(EnumSet.allOf(BundleDetails.ComponentType.class), 0, 0),
             SupportBundle.SupportBundleStatusType.Running);
     sb1.save();
 
@@ -504,7 +504,7 @@ public class SupportBundleControllerTest extends FakeDBApplication {
             fakeSupportBundleBasePath + fakeSupportBundleFileName,
             new Date(),
             new Date(),
-            new BundleDetails(EnumSet.allOf(BundleDetails.ComponentType.class)),
+            new BundleDetails(EnumSet.allOf(BundleDetails.ComponentType.class), 0, 0),
             SupportBundle.SupportBundleStatusType.Success);
     sb1.save();
 
@@ -536,7 +536,7 @@ public class SupportBundleControllerTest extends FakeDBApplication {
             fakeSupportBundleBasePath + fakeSupportBundleFileName,
             new Date(),
             new Date(),
-            new BundleDetails(EnumSet.allOf(BundleDetails.ComponentType.class)),
+            new BundleDetails(EnumSet.allOf(BundleDetails.ComponentType.class), 0, 0),
             SupportBundle.SupportBundleStatusType.Running);
     sb1.save();
 

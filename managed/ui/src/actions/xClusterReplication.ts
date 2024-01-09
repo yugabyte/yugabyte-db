@@ -10,26 +10,17 @@ import {
   XClusterConfigType
 } from '../components/xcluster/constants';
 import { ApiTimeout } from '../redesign/helpers/api';
-import { YBPTask } from '../redesign/helpers/dtos';
+import { MetricsQueryParams, YBPTask } from '../redesign/helpers/dtos';
 import { XClusterConfig } from '../components/xcluster/dtos';
 
 // TODO: Move this out of the /actions folder since these functions aren't Redux actions.
 
-export function getUniverseInfo(universeUUID: string) {
-  const cUUID = localStorage.getItem('customerId');
-  return axios.get(`${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}`);
-}
-
-/**
- * @deprecated Pleaes use fetchUniverseList from helpers/api.ts instead.
- */
 export function fetchUniversesList() {
   const cUUID = localStorage.getItem('customerId');
   return axios.get(`${ROOT_URL}/customers/${cUUID}/universes`);
 }
 
 export type UniverseTableFilters = {
-  excludeColocatedTables?: boolean;
   includeParentTableInfo?: boolean;
   xClusterSupportedOnly?: boolean;
 };
@@ -192,7 +183,7 @@ export function queryLagMetricsForUniverse(
     start: moment().utc().subtract('1', 'hour').format('X'),
     end: moment().utc().format('X'),
     nodePrefix,
-    metrics: [MetricName.TSERVER_ASYNC_REPLICATION_LAG_METRIC],
+    metrics: [MetricName.TSERVER_ASYNC_REPLICATION_LAG],
     xClusterConfigUuid: replicationUUID
   };
 
@@ -218,13 +209,70 @@ export function queryLagMetricsForTable(
     streamId,
     tableId,
     nodePrefix,
-    metrics: [MetricName.TSERVER_ASYNC_REPLICATION_LAG_METRIC]
+    metrics: [MetricName.TSERVER_ASYNC_REPLICATION_LAG]
   };
   const customerUUID = localStorage.getItem('customerId');
   return axios
     .post<Metrics<'tserver_async_replication_lag_micros'>>(
       `${ROOT_URL}/customers/${customerUUID}/metrics`,
       DEFAULT_GRAPH_FILTER
+    )
+    .then((response) => response.data);
+}
+
+interface TableReplicationLagQueryParams {
+  nodePrefix: string | undefined;
+  streamId: string;
+  tableId: string;
+
+  start?: string;
+  end?: string;
+}
+interface ConfigReplicationLagQueryParms {
+  nodePrefix: string | undefined;
+  replicationUuid: string;
+
+  start?: string;
+  end?: string;
+}
+export function fetchReplicationLag(
+  metricRequestParams: TableReplicationLagQueryParams | ConfigReplicationLagQueryParms
+) {
+  const metricsQueryParams: MetricsQueryParams = {
+    ...metricRequestParams,
+    start: metricRequestParams.start ?? moment().utc().subtract('1', 'hour').format('X'),
+    end: metricRequestParams.end ?? moment().utc().format('X'),
+    metrics: [MetricName.TSERVER_ASYNC_REPLICATION_LAG]
+  };
+  const customerUuid = localStorage.getItem('customerId');
+  return axios
+    .post<Metrics<'tserver_async_replication_lag_micros'>>(
+      `${ROOT_URL}/customers/${customerUuid}/metrics`,
+      metricsQueryParams
+    )
+    .then((response) => response.data);
+}
+
+interface ReplicationSafeTimeLagQueryParam {
+  targetUniverseNodePrefix: string | undefined;
+
+  start?: string;
+  end?: string;
+  namespaceId?: string;
+}
+export function fetchReplicationSafeTimeLag(metricRequestParams: ReplicationSafeTimeLagQueryParam) {
+  const metricsQueryParams: MetricsQueryParams = {
+    start: metricRequestParams.start ?? moment().utc().subtract('1', 'hour').format('X'),
+    end: metricRequestParams.end ?? moment().utc().format('X'),
+    nodePrefix: metricRequestParams.targetUniverseNodePrefix,
+    namespaceId: metricRequestParams.namespaceId,
+    metrics: [MetricName.CONSUMER_SAFE_TIME_LAG]
+  };
+  const customerUuid = localStorage.getItem('customerId');
+  return axios
+    .post<Metrics<'consumer_safe_time_lag'>>(
+      `${ROOT_URL}/customers/${customerUuid}/metrics`,
+      metricsQueryParams
     )
     .then((response) => response.data);
 }

@@ -90,6 +90,9 @@ ybcGetForeignRelSize(PlannerInfo *root,
 
 	ybc_plan = (YbFdwPlanState *) palloc0(sizeof(YbFdwPlanState));
 
+	if (baserel->tuples == 0)
+		baserel->tuples = YBC_DEFAULT_NUM_ROWS;
+
 	/* Set the estimate for the total number of rows (tuples) in this table. */
 	if (yb_enable_optimizer_statistics)
 	{
@@ -97,9 +100,6 @@ ybcGetForeignRelSize(PlannerInfo *root,
 	}
 	else
 	{
-		if (baserel->tuples == 0)
-			baserel->tuples = YBC_DEFAULT_NUM_ROWS;
-
 		/*
 		* Initialize the estimate for the number of rows returned by this query.
 		* This does not yet take into account the restriction clauses, but it will
@@ -335,7 +335,7 @@ ybcBeginForeignScan(ForeignScanState *node, int eflags)
 
 	node->fdw_state = (void *) ybc_state;
 	HandleYBStatus(YBCPgNewSelect(YBCGetDatabaseOid(relation),
-								  YbGetStorageRelid(relation),
+								  YbGetRelfileNodeId(relation),
 								  NULL /* prepare_params */,
 								  YBCIsRegionLocal(relation),
 								  &ybc_state->handle));
@@ -564,9 +564,8 @@ ybcIterateForeignScan(ForeignScanState *node)
 	 * If function forms a heap tuple, the ForeignNext function will set proper
 	 * t_tableOid value there, so do not bother passing valid relid now.
 	 */
-	return ybFetchNext(ybc_state->handle,
-					   node->ss.ss_ScanTupleSlot,
-					   InvalidOid);
+	ybFetchNext(ybc_state->handle, node->ss.ss_ScanTupleSlot, InvalidOid);
+	return node->ss.ss_ScanTupleSlot;
 }
 
 static void

@@ -23,6 +23,7 @@
 #include "yb/dockv/intent.h"
 #include "yb/docdb/shared_lock_manager.h"
 #include "yb/docdb/wait_queue.h"
+#include "yb/tablet/tablet_fwd.h"
 
 namespace rocksdb {
 
@@ -95,6 +96,7 @@ Status ResolveTransactionConflicts(const DocOperations& doc_ops,
                                    HybridTime intial_resolution_ht,
                                    HybridTime read_time,
                                    int64_t txn_start_us,
+                                   uint64_t req_start_us,
                                    const DocDB& doc_db,
                                    dockv::PartialRangeKeyIntents partial_range_key_intents,
                                    TransactionStatusManager* status_manager,
@@ -119,6 +121,7 @@ Status ResolveOperationConflicts(const DocOperations& doc_ops,
                                  const ConflictManagementPolicy conflict_management_policy,
                                  HybridTime intial_resolution_ht,
                                  int64_t txn_start_us,
+                                 uint64_t req_start_us,
                                  const DocDB& doc_db,
                                  dockv::PartialRangeKeyIntents partial_range_key_intents,
                                  TransactionStatusManager* status_manager,

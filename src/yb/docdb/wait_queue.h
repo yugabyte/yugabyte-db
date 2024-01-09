@@ -36,6 +36,9 @@ class ScopedWaitingTxnRegistration {
     const TransactionId& waiting,
     std::shared_ptr<ConflictDataManager> blockers,
     const TabletId& status_tablet) = 0;
+  virtual Status RegisterSingleShardWaiter(
+      const TabletId& tablet_id,
+      uint64_t wait_start_us) = 0;
   virtual int64 GetDataUseCount() const = 0;
   virtual ~ScopedWaitingTxnRegistration() = default;
 };
@@ -76,7 +79,8 @@ class WaitQueue {
   Status WaitOn(
       const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
       std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet_id,
-      uint64_t serial_no, int64_t txn_start_us, WaitDoneCallback callback);
+      uint64_t serial_no, int64_t txn_start_us, uint64_t req_start_us,
+      WaitDoneCallback callback);
 
   // Check the wait queue for any active blockers which would conflict with locks. This method
   // should be called as the first step in conflict resolution when processing a new request to
@@ -87,7 +91,8 @@ class WaitQueue {
   // status in case of some unresolvable error.
   Result<bool> MaybeWaitOnLocks(
       const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
-      const TabletId& status_tablet_id, uint64_t serial_no, int64_t txn_start_us,
+      const TabletId& status_tablet_id, uint64_t serial_no,
+      int64_t txn_start_us, uint64_t req_start_us,
       WaitDoneCallback callback);
 
   void Poll(HybridTime now);
@@ -120,6 +125,7 @@ class WaitQueue {
   // from this wait queue. If transactions is not empty, restrict returned information to locks
   // which are requested by the given set of transactions.
   Status GetLockStatus(const std::map<TransactionId, SubtxnSet>& transactions,
+                       uint64_t max_single_shard_waiter_start_time_us,
                        const TableInfoProvider& table_info_provider,
                        TransactionLockInfoManager* lock_info_manager) const;
 

@@ -1,7 +1,6 @@
 ---
 title: Connect an app
 linkTitle: Connect an app
-image: /images/section_icons/sample-data/s_s1-sampledata-3x.png
 menu:
   v2.14:
     identifier: postgres-node-driver
@@ -142,7 +141,6 @@ async.series([
   console.log('Shutting down');
   client.end();
 });
->>>>>>> master
 ```
 
 When you run the application using the command `node yb-ysql-helloworld-ssl.js`, you should see output similar to the following:

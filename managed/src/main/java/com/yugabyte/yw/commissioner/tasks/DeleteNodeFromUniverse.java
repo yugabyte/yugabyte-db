@@ -63,50 +63,58 @@ public class DeleteNodeFromUniverse extends UniverseTaskBase {
 
   @Override
   public void run() {
-    super.runUpdateTasks(
-        () -> {
-          Universe universe = getUniverse();
-          NodeDetails currentNode = universe.getNode(taskParams().nodeName);
-          log.info(
-              "Delete Node with name {} from universe {}",
-              taskParams().nodeName,
-              taskParams().getUniverseUUID());
+    checkUniverseVersion();
+    Universe universe =
+        lockAndFreezeUniverseForUpdate(
+            taskParams().expectedUniverseVersion, null /* Txn callback */);
+    try {
+      NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+      log.info(
+          "Delete Node with name {} from universe {}",
+          taskParams().nodeName,
+          taskParams().getUniverseUUID());
 
-          preTaskActions();
+      preTaskActions();
 
-          UserIntent userIntent =
-              universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid).userIntent;
-          boolean isOnprem = CloudType.onprem.equals(userIntent.providerType);
+      UserIntent userIntent =
+          universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid).userIntent;
+      boolean isOnprem = CloudType.onprem.equals(userIntent.providerType);
 
-          taskParams().azUuid = currentNode.azUuid;
-          taskParams().placementUuid = currentNode.placementUuid;
+      taskParams().azUuid = currentNode.azUuid;
+      taskParams().placementUuid = currentNode.placementUuid;
 
-          // DELETE action is allowed on InstanceCreated, SoftwareInstalled states etc.
-          // A failed AddNodeToUniverse after ReleaseInstanceFromUniverse can leave instances
-          // behind.
-          if (instanceExists(taskParams()) || isOnprem) {
-            Collection<NodeDetails> currentNodeDetails = Sets.newHashSet(currentNode);
-            // Create tasks to terminate that instance.
-            // If destroy of the instance fails for some reason, this task can always be retried
-            // because there is no change in the node state that can make this task move to one of
-            // the disallowed actions.
-            createDestroyServerTasks(
-                    universe,
-                    currentNodeDetails,
-                    true /* isForceDelete */,
-                    false /* deleteNode */,
-                    true /* deleteRootVolumes */)
-                .setSubTaskGroupType(SubTaskGroupType.DeletingNode);
-          }
+      // DELETE action is allowed on InstanceCreated, SoftwareInstalled states etc.
+      // A failed AddNodeToUniverse after ReleaseInstanceFromUniverse can leave instances
+      // behind.
+      if (instanceExists(taskParams()) || isOnprem) {
+        Collection<NodeDetails> currentNodeDetails = Sets.newHashSet(currentNode);
+        // Create tasks to terminate that instance.
+        // If destroy of the instance fails for some reason, this task can always be retried
+        // because there is no change in the node state that can make this task move to one of
+        // the disallowed actions.
+        createDestroyServerTasks(
+                universe,
+                currentNodeDetails,
+                true /* isForceDelete */,
+                false /* deleteNode */,
+                true /* deleteRootVolumes */,
+                false /* skipDestroyPrecheck */)
+            .setSubTaskGroupType(SubTaskGroupType.DeletingNode);
+      }
 
-          createDeleteNodeFromUniverseTask(taskParams().nodeName)
-              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeletingNode);
-          // Set Universe Update Success to true, if delete node succeeds for now.
-          // Should probably roll back to a previous success state instead of setting to true
-          createMarkUniverseUpdateSuccessTasks()
-              .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeletingNode);
-          getRunnableTask().runSubTasks();
-        });
+      createDeleteNodeFromUniverseTask(taskParams().nodeName)
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeletingNode);
+      // Set Universe Update Success to true, if delete node succeeds for now.
+      // Should probably roll back to a previous success state instead of setting to true
+      createMarkUniverseUpdateSuccessTasks()
+          .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.DeletingNode);
+      getRunnableTask().runSubTasks();
+    } catch (RuntimeException e) {
+      log.error("Error executing task {}, error='{}'", getName(), e.getMessage(), e);
+      throw e;
+    } finally {
+      unlockUniverseForUpdate();
+    }
     log.info("Finished {} task.", getName());
   }
 }

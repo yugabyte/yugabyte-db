@@ -299,7 +299,7 @@ Status FetchExistingYbctids(PgSession::ScopedRefPtr session,
       for (auto& row : rowsets) {
         RETURN_NOT_OK(row.ProcessSystemColumns());
         for (const auto& ybctid : row.ybctids()) {
-          ybctids->emplace_back(it->table()->id().object_oid, ybctid.ToBuffer());
+          ybctids->emplace_back(it->table()->relfilenode_id().object_oid, ybctid.ToBuffer());
         }
       }
     }
@@ -413,7 +413,7 @@ Result<dockv::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
     PgSession* session, const YBCPgYBTupleIdDescriptor& descr) {
   Prepare();
   auto target_desc = VERIFY_RESULT(session->LoadTable(
-      PgObjectId(descr.database_oid, descr.table_oid)));
+      PgObjectId(descr.database_oid, descr.table_relfilenode_oid)));
   const auto num_keys = target_desc->num_key_columns();
   SCHECK_EQ(
       descr.nattrs, num_keys,
@@ -489,7 +489,8 @@ Result<dockv::KeyBytes> PgApiImpl::TupleIdBuilder::Build(
 
 PgApiImpl::PgApiImpl(
     PgApiContext context, const YBCPgTypeEntity *YBCDataTypeArray, int count,
-    YBCPgCallbacks callbacks, std::optional<uint64_t> session_id)
+    YBCPgCallbacks callbacks, std::optional<uint64_t> session_id,
+    const YBCAshMetadata *ash_metadata, bool *is_ash_metadata_set)
     : metric_registry_(std::move(context.metric_registry)),
       metric_entity_(std::move(context.metric_entity)),
       mem_tracker_(std::move(context.mem_tracker)),
@@ -511,7 +512,7 @@ PgApiImpl::PgApiImpl(
 
   CHECK_OK(pg_client_.Start(
       proxy_cache_.get(), &messenger_holder_.messenger->scheduler(),
-      tserver_shared_object_, session_id));
+      tserver_shared_object_, session_id, ash_metadata, is_ash_metadata_set));
 }
 
 PgApiImpl::~PgApiImpl() {
@@ -891,12 +892,14 @@ Status PgApiImpl::NewCreateTable(const char *database_name,
                                  const ColocationId colocation_id,
                                  const PgObjectId& tablespace_oid,
                                  bool is_matview,
-                                 const PgObjectId& matview_pg_table_oid,
+                                 const PgObjectId& pg_table_oid,
+                                 const PgObjectId& old_relfilenode_oid,
                                  PgStatement **handle) {
   auto stmt = std::make_unique<PgCreateTable>(
       pg_session_, database_name, schema_name, table_name,
       table_id, is_shared_table, if_not_exist, add_primary_key, is_colocated_via_database,
-      tablegroup_oid, colocation_id, tablespace_oid, is_matview, matview_pg_table_oid);
+      tablegroup_oid, colocation_id, tablespace_oid, is_matview, pg_table_oid,
+      old_relfilenode_oid);
   if (pg_txn_manager_->IsDdlMode()) {
     stmt->UseTransaction();
   }
@@ -1179,12 +1182,14 @@ Status PgApiImpl::NewCreateIndex(const char *database_name,
                                  const PgObjectId& tablegroup_oid,
                                  const YBCPgOid& colocation_id,
                                  const PgObjectId& tablespace_oid,
+                                 const PgObjectId& pg_table_id,
+                                 const PgObjectId& old_relfilenode_id,
                                  PgStatement **handle) {
   auto stmt = std::make_unique<PgCreateTable>(
       pg_session_, database_name, schema_name, index_name, index_id, is_shared_index,
       if_not_exist, false /* add_primary_key */,
       is_colocated_via_database, tablegroup_oid, colocation_id,
-      tablespace_oid, false /* is_matview */, PgObjectId() /* matview_pg_table_id */);
+      tablespace_oid, false /* is_matview */, pg_table_id, old_relfilenode_id);
   stmt->SetupIndex(base_table_id, is_unique_index, skip_index_backfill);
   if (pg_txn_manager_->IsDdlMode()) {
       stmt->UseTransaction();
@@ -1901,6 +1906,10 @@ uint64_t PgApiImpl::GetSharedAuthKey() const {
   return tserver_shared_object_->postgres_auth_key();
 }
 
+const unsigned char *PgApiImpl::GetLocalTserverUuid() const {
+  return tserver_shared_object_->tserver_uuid();
+}
+
 // Tuple Expression -----------------------------------------------------------------------------
 Status PgApiImpl::NewTupleExpr(
     YBCPgStatement stmt, const YBCPgTypeEntity *tuple_type_entity,
@@ -1990,10 +1999,10 @@ bool PgApiImpl::HasWriteOperationsInDdlTxnMode() const {
   return pg_session_->HasWriteOperationsInDdlMode();
 }
 
-Status PgApiImpl::ExitSeparateDdlTxnMode() {
+Status PgApiImpl::ExitSeparateDdlTxnMode(PgOid db_oid, bool is_silent_modification) {
   // Flush all buffered operations as ddl txn use its own transaction session.
   RETURN_NOT_OK(pg_session_->FlushBufferedOperations());
-  RETURN_NOT_OK(pg_txn_manager_->ExitSeparateDdlTxnMode(Commit::kTrue));
+  RETURN_NOT_OK(pg_txn_manager_->ExitSeparateDdlTxnModeWithCommit(db_oid, is_silent_modification));
   // Next reads from catalog tables have to see changes made by the DDL transaction.
   ResetCatalogReadTime();
   return Status::OK();
@@ -2001,7 +2010,7 @@ Status PgApiImpl::ExitSeparateDdlTxnMode() {
 
 Status PgApiImpl::ClearSeparateDdlTxnMode() {
   pg_session_->DropBufferedOperations();
-  return pg_txn_manager_->ExitSeparateDdlTxnMode(Commit::kFalse);
+  return pg_txn_manager_->ExitSeparateDdlTxnModeWithAbort();
 }
 
 Status PgApiImpl::SetActiveSubTransaction(SubTransactionId id) {

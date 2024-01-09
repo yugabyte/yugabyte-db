@@ -1,0 +1,20 @@
+// Copyright (c) YugaByte, Inc.
+
+package com.yugabyte.operator;
+
+public class OperatorConfig {
+  private static final boolean ossMode;
+
+  static {
+    // Set the flag value here
+        ossMode = ###OSSMODE### ;
+  }
+
+  // Method to access the flag value
+  public static boolean getOssMode() {
+    return ossMode;
+  }
+
+  // Prevent instantiation
+  private OperatorConfig() {}
+}

@@ -37,6 +37,9 @@
 #include "utils/ps_status.h"
 #include "utils/timeout.h"
 
+/* YB includes */
+#include "yb_ash.h"
+
 /*
  * The postmaster's list of registered background workers, in private memory.
  */
@@ -129,6 +132,9 @@ static const struct
 	},
 	{
 		"ApplyWorkerMain", ApplyWorkerMain
+	},
+	{
+		"YbAshMain", YbAshMain
 	}
 };
 
