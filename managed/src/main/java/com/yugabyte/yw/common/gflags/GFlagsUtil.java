@@ -859,9 +859,14 @@ public class GFlagsUtil {
       if (cluster.clusterType == UniverseDefinitionTaskParams.ClusterType.ASYNC) {
         return getGFlagsForNode(node, serverType, primary, allClusters);
       }
-      return serverType == UniverseTaskBase.ServerType.MASTER
-          ? userIntent.masterGFlags
-          : userIntent.tserverGFlags;
+      Map<String, String> retFlags =
+          (serverType == UniverseTaskBase.ServerType.MASTER)
+              ? userIntent.masterGFlags
+              : userIntent.tserverGFlags;
+      if (retFlags == null) {
+        retFlags = new HashMap<>();
+      }
+      return new HashMap<>(retFlags);
     }
   }
 
