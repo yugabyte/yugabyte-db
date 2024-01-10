@@ -109,7 +109,7 @@ See [CREATE SEQUENCE](../ddl_create_sequence) for reference.
 
 #### Multiple Identity Columns
 
-PostgreSQL & YugabyteDB allow a table to have more than one identity column. The SQL standard specifies that a table can have at most one identity column. 
+PostgreSQL and YugabyteDB allow a table to have more than one identity column. The SQL standard specifies that a table can have at most one identity column. 
 
 This relaxation primarily aims to provide increased flexibility for carrying out schema modifications or migrations. 
 
