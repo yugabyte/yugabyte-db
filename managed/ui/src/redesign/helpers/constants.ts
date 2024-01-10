@@ -48,7 +48,9 @@ export const RuntimeConfigKey = {
   SHOW_DR_XCLUSTER_CONFIG: 'yb.ui.xcluster.dr.show_xcluster_config',
   IS_GFLAG_MULTILINE_ENABLED: 'yb.ui.feature_flags.gflag_multiline_conf',
   ENABLE_NODE_AGENT: 'yb.node_agent.client.enabled',
-  GFLAGS_ALLOW_DURING_PREFINALIZE: 'yb.gflags.allow_during_prefinalize'
+  GFLAGS_ALLOW_DURING_PREFINALIZE: 'yb.gflags.allow_during_prefinalize',
+  ENABLE_DEDICATED_NODES: 'yb.ui.enable_dedicated_nodes',
+  GEO_PARTITIONING_UI_FEATURE_FLAG: 'yb.universe.geo_partitioning_enabled'
 } as const;
 
 /**

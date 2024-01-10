@@ -115,7 +115,8 @@ export const universeQueryKey = {
 export const runtimeConfigQueryKey = {
   ALL: ['runtimeConfig'],
   globalScope: () => [...runtimeConfigQueryKey.ALL, 'global'],
-  customerScope: (customerUuid: string) => [...runtimeConfigQueryKey.ALL, 'customer', customerUuid]
+  customerScope: (customerUuid: string) => [...runtimeConfigQueryKey.ALL, 'customer', customerUuid],
+  providerScope: (providerUuid: string) => [...runtimeConfigQueryKey.ALL, 'provider', providerUuid]
 };
 
 export const instanceTypeQueryKey = {
