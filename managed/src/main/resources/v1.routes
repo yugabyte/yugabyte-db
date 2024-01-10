@@ -364,6 +364,7 @@ POST    /customers/:cUUID/universes/:uniUUID/need_bootstrap                    c
 # Disaster Recovery API
 POST    /customers/:cUUID/dr_configs                                           com.yugabyte.yw.controllers.DrConfigController.create(cUUID: java.util.UUID, request: Request)
 GET     /customers/:cUUID/dr_configs/:drUUID                                   com.yugabyte.yw.controllers.DrConfigController.get(cUUID: java.util.UUID, drUUID: java.util.UUID)
+POST    /customers/:cUUID/dr_configs/:drUUID/edit                              com.yugabyte.yw.controllers.DrConfigController.edit(cUUID: java.util.UUID, drUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/dr_configs/:drUUID/replace_replica                   com.yugabyte.yw.controllers.DrConfigController.replaceReplica(cUUID: java.util.UUID, drUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/dr_configs/:drUUID/switchover                        com.yugabyte.yw.controllers.DrConfigController.switchover(cUUID: java.util.UUID, drUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/dr_configs/:drUUID/failover                          com.yugabyte.yw.controllers.DrConfigController.failover(cUUID: java.util.UUID, drUUID: java.util.UUID, request: Request)

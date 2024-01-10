@@ -2520,7 +2520,7 @@
       "description" : "Backup parameters for bootstrapping",
       "properties" : {
         "parallelism" : {
-          "description" : "Number of concurrent commands to run on nodes over SSH",
+          "description" : "Number of concurrent commands used by yb_backup (not ybc) to run on nodes over SSH",
           "format" : "int32",
           "type" : "integer"
         },
@@ -4547,6 +4547,16 @@
         }
       },
       "required" : [ "dbs", "name", "sourceUniverseUUID", "targetUniverseUUID" ],
+      "type" : "object"
+    },
+    "DrConfigEditForm" : {
+      "description" : "drConfig edit form",
+      "properties" : {
+        "bootstrapParams" : {
+          "$ref" : "#/definitions/RestartBootstrapParams",
+          "description" : "Parameters used to do Backup/restore"
+        }
+      },
       "type" : "object"
     },
     "DrConfigFailoverForm" : {
@@ -6900,8 +6910,8 @@
     "NamespaceSafetime" : {
       "properties" : {
         "estimatedDataLossMs" : {
-          "format" : "int64",
-          "type" : "integer"
+          "format" : "double",
+          "type" : "number"
         },
         "namespaceId" : {
           "type" : "string"
@@ -17545,6 +17555,50 @@
           "apiKeyAuth" : [ ]
         } ],
         "summary" : "Get disaster recovery config",
+        "tags" : [ "Disaster Recovery" ]
+      }
+    },
+    "/api/v1/customers/{cUUID}/dr_configs/{drUUID}/edit" : {
+      "post" : {
+        "description" : "",
+        "operationId" : "editDrConfig",
+        "parameters" : [ {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "cUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "format" : "uuid",
+          "in" : "path",
+          "name" : "drUUID",
+          "required" : true,
+          "type" : "string"
+        }, {
+          "in" : "query",
+          "name" : "request",
+          "required" : false
+        }, {
+          "description" : "Disaster Recovery Edit Form Data",
+          "in" : "body",
+          "name" : "disaster_recovery_edit_form_data",
+          "required" : true,
+          "schema" : {
+            "$ref" : "#/definitions/DrConfigEditForm"
+          }
+        } ],
+        "responses" : {
+          "200" : {
+            "description" : "successful operation",
+            "schema" : {
+              "$ref" : "#/definitions/DrConfig"
+            }
+          }
+        },
+        "security" : [ {
+          "apiKeyAuth" : [ ]
+        } ],
+        "summary" : "Edit disaster recovery config",
         "tags" : [ "Disaster Recovery" ]
       }
     },
