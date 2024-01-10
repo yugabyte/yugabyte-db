@@ -178,6 +178,7 @@ Then launch a backfill job for backfilling all the deferred indexes as:
 ```bash
 bin/yb-admin -master_addresses <ip:port> backfill_indexes_for_table ycql.ybdemo table_name
 ```
+3. Use [`--defer_index_backfill` flag](../../../reference/configuration/yb-master#defer-index-backfill) in yb-master service to force all indexes to be DEFERRED and run `yb-admin backfill_indexes_for_table` to backfill indexes.
 
 ### PARTIAL INDEX
 
