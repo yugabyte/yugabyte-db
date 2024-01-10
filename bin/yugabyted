@@ -23,7 +23,7 @@ import operator
 import string
 import glob
 import tarfile
-from datetime import datetime
+from datetime import datetime, timedelta
 from signal import SIGABRT, SIGINT, SIGKILL, SIGTERM, SIG_DFL, SIG_IGN, signal
 from threading import Thread
 
@@ -89,12 +89,17 @@ YBC_DOWNLOAD_LINK = "https://s3.us-west-2.amazonaws.com/downloads.yugabyte.com/y
 DEFAULT_DEMO_DATABASE = "northwind"
 DEFAULT_FAULT_TOLERANCE = "zone"
 DEFAULT_START_FAULT_TOLERANCE = "none"
+DEAFULT_RETENTION_PERIOD = 7
 SAMPLE_DATA_LINKS = {
     "retail": "https://docs.yugabyte.com/latest/quick-start/explore-ysql/",
     "chinook": "https://docs.yugabyte.com/latest/sample-data/chinook/",
     "sports": "https://docs.yugabyte.com/latest/sample-data/sportsdb/",
     "northwind": "https://docs.yugabyte.com/latest/sample-data/northwind/"
 }
+SYSTEM_NAMESPACES = [
+    "system_schema", "system_auth", "system",
+    "system_platform", "template0", "template1"
+]
 EXIT_SIGNALS = (SIGABRT, SIGINT, SIGTERM)
 REQUIRED_LOOPBACK_ADDRESSES = [
     '127\.0\.0\.2',
@@ -147,6 +152,7 @@ PREFIX = {
     'configure data_placement': "",
     'configure encrypt_at_rest': "",
     'configure admin_operation': "",
+    'configure point_in_time_recovery': "",
     'configure_read_replica' : "",
     'configure_read_replica new': "",
     'configure_read_replica modify': "",
@@ -175,6 +181,7 @@ USAGE = {
     'configure data_placement': "yugabyted configure data_placement [flags]",
     'configure encrypt_at_rest': "yugabyted configure encrypt_at_rest [flags]",
     'configure admin_operation' : "yugabyted configure admin_operation [flags]",
+    'configure point_in_time_recovery' : "yugabyted configure point_in_time_recovery [flags]",
     'configure_read_replica' : "yugabyted configure_read_replica [command] [flags]",
     'configure_read_replica new': "yugabyted configure_read_replica new [flags]",
     'configure_read_replica modify': "yugabyted configure_read_replica modify [flags]",
@@ -211,7 +218,10 @@ EXAMPLE = {
                "# Backup a YCQL namespace into AWS S3 Bucket: \n" +
                "yugabyted backup --namespace=default --cloud_storage_uri=s3://\n\n",
     'restore' : "# Restore a YSQL Database into AWS S3 Bucket: \n" +
-                "yugabyted restore --database=northwind --cloud_storage_uri=s3://\n\n",
+                "yugabyted restore --database=northwind --cloud_storage_uri=s3://\n\n" +
+                "# Recover to a point in time for a database:\n" +
+                "yugabyted restore " + \
+                "--recover_to_point_in_time '2024-01-29 9:30:00 PM' --database yugabyte \n\n",
     'configure_read_replica' : "# Configure a new read replica cluster:\n" +
                   "yugabyted configure_read_replica new --rf=<replication_factor> " +
                   "--data_placement_constraint=<placement_policy_for_rr_cluster>\n\n" +
@@ -229,12 +239,15 @@ EXAMPLE = {
     "delete" : "# Delete an existing read replica cluster:\n" +
                "yugabyted configure_read_replica delete",
     'configure' : "# Configure a multi-zone cluster:\n" +
-                  "yugabyted configure data_placement --fault_tolerance=zone\n\n" +
-                  "# Enable encryption at rest:\n" +
-                  "yugabyted configure encrypt_at_rest --enable\n\n" +
-                  "For more examples use 'yugabyted configure [command] -h'\n\n" +
-                  "# Execute yb-admin command on the YugabyteDB cluster:\n" +
-                  "yugabyted configure admin_operation --command <yb-admin_coomand>",
+                "yugabyted configure data_placement --fault_tolerance=zone\n\n" +
+                "# Enable encryption at rest:\n" +
+                "yugabyted configure encrypt_at_rest --enable\n\n" +
+                "# Execute yb-admin command on the YugabyteDB cluster:\n" +
+                "yugabyted configure admin_operation --command <yb-admin_command> \n\n" +
+                "# Enable point-in-time recovery for a database:\n" +
+                "yugabyted configure point_in_time_recovery --enable" + \
+                " --retention <retention_period> --database <database_name> \n\n" +
+                "For more examples use 'yugabyted configure [command] -h'\n\n",
     'data_placement' : "# Configure a multi-zone cluster:\n" +
                        "yugabyted configure data_placement --fault_tolerance=zone\n\n" +
                        "# Configure a multi-region cluster:\n" +
@@ -255,7 +268,16 @@ EXAMPLE = {
                         "# Disable encryption at rest for a cluster:\n" +
                         "yugabyted configure encrypt_at_rest --disable\n\n",
     'admin_operation' : "# Execute yb-admin command on the YugabyteDB cluster:\n" +
-                         "yugabyted configure admin_operation --command 'get_universe_config'\n\n",
+                        "yugabyted configure admin_operation --command 'get_universe_config'\n\n",
+    'point_in_time_recovery' : "# Enable point-in-time recovery for a database:\n" +
+                        "yugabyted configure point_in_time_recovery --enable" + \
+                        " --retention <retention_period> --database <database_name> \n\n" +
+                        "# Disable point-in-time recovery for a database:\n" +
+                        "yugabyted configure point_in_time_recovery --disable" + \
+                        " --database <database_name> \n\n" +
+                        "# Display point-in-time recovery status for a YugabyteDB cluster:\n" +
+                        "yugabyted configure point_in_time_recovery " + \
+                        "--status \n\n",
 }
 
 EPILOG_COMMON = "Run '{} [command] -h' for help with specific commands.".format(SCRIPT_NAME)
@@ -705,11 +727,119 @@ class ControlScript(object):
         ]
         Output.print_out(self.get_status_string_common(status_details))
 
+    # PITR restore
+    def restore_pitr(self):
+        if self.configs.temp_data.get("database_name_backup_restore"):
+            pitr_object = "ysql.{}".format(self.configs.temp_data.get(
+                                                "database_name_backup_restore"))
+            pitr_object_name = pitr_object.split('.', 1)[1]
+            pitr_yb_api_type = "database"
+        elif self.configs.temp_data.get("keyspace_name_backup_restore"):
+            pitr_object = "ycql.{}".format(self.configs.temp_data.get(
+                                                "keyspace_name_backup_restore"))
+            pitr_object_name = pitr_object.split('.', 1)[1]
+            pitr_yb_api_type = "keyspace"
+
+        Output.init_animation("Verifying Point-In-Time Recovery configs...")
+        master_addresses = self.configs.saved_data.get("current_masters")
+        schedules = YBAdminProxy.list_schedules(master_addresses)
+        if schedules is None:
+            Output.log_error_and_exit(Output.update_animation("Failed to verify"
+            " Point-In-Time Recovery configs.", status=Output.ANIMATION_FAIL))
+
+        pitr_object_exists, is_pitr_enabled = self.validate_pitr_configs(pitr_object, schedules)
+        if not pitr_object_exists:
+            Output.update_animation("Failed to verify Point-In-Time Recovery configs.",
+                        status=Output.ANIMATION_FAIL)
+            Output.log_error_and_exit(
+            Output.make_red("ERROR") + ": The specified {} {} does not exist. Please "
+            "specify a valid {} to recover to a point in time.".format(
+                                        pitr_yb_api_type, pitr_object_name, pitr_yb_api_type)
+            )
+        if not is_pitr_enabled:
+            Output.update_animation("Failed to verify Point-In-Time Recovery configs.",
+                        status=Output.ANIMATION_FAIL)
+            Output.log_error_and_exit(
+            Output.make_red("ERROR") + ": Point-in-time recovery is not enabled"
+            " for {} {}. Please enable point-in-time recovery"
+            " before recovering to a point in time.".format(pitr_yb_api_type, pitr_object_name)
+            )
+        restore_time = self.configs.temp_data.get("restore_time")
+        # Get the schedule ID to perform pitr
+        pitr_object_id, earliest_recoverable_time, _ = self.get_pitr_object_details(
+                                                        pitr_object, schedules)
+        valid, error_message = self.validate_restore_time(earliest_recoverable_time, restore_time)
+        if not valid:
+            Output.update_animation("Failed to verify Point-In-Time Recovery configs.",
+                    status=Output.ANIMATION_FAIL)
+            Output.log_error_and_exit(Output.make_red("ERROR") + ": " + error_message)
+
+        Output.update_animation("Verified Point-In-Time Recovery configs.")
+        Output.init_animation("Recovering to a Point-In-Time...")
+        restore_time_object = datetime.strptime(restore_time, "%Y-%m-%d %I:%M:%S %p")
+        ret_code, err = YBAdminProxy.restore_snapshot_schedule(master_addresses,
+                pitr_object_id, restore_time_object.strftime("%Y-%m-%d %H:%M:%S"))
+
+        # Catch specific errors
+        if ret_code:
+            if "Cannot perform a forward restore" in err:
+                # Extract the specific times using regex
+                times = re.findall(r'\{ days: (\d+) time: ([^}]+) \}', err)
+                # Convert and format the times
+                collected_times = []
+                for days, time in times:
+                    days = int(days)
+                    date = datetime(1970, 1, 1) + timedelta(days=days)
+                    # Check if the time string includes fractional seconds
+                    has_fractional = '.' in time
+                    if has_fractional:
+                        time_format = "%Y-%m-%d %H:%M:%S.%f"
+                    else:
+                        time_format = "%Y-%m-%d %H:%M:%S"
+
+                    date_time = datetime.strptime('{} {}'.format(date.date(), time), time_format)
+                    # If there is a fractional part, zero out the microseconds
+                    if has_fractional:
+                        date_time = date_time.replace(microsecond=0)
+                    collected_times.append(date_time.strftime("%Y-%m-%d %I:%M:%S %p"))
+
+                Output.update_animation("Recovery Failed.",
+                        status=Output.ANIMATION_FAIL)
+                Output.log_error_and_exit(Output.make_red("FAILED") +
+                    ": The requested restoration time {} "
+                    "is in between a previous restored to and restored from time. "
+                    "Please do not specify a time between {} and {}."
+                    .format(collected_times[2], collected_times[0], collected_times[1])
+                )
+            elif "YSQL upgrade" in err:
+                Output.update_animation("Recovery Failed.",
+                        status=Output.ANIMATION_FAIL)
+                Output.log_error_and_exit(Output.make_red("FAILED") +
+                    ": The requested restoration time {} is before performing a"
+                    " YSQl upgrade. Please specify a restoration time after the upgrade"
+                    " was completed.".format(restore_time)
+                )
+            else:
+                Output.log(err)
+                Output.log_error_and_exit(Output.update_animation("Recovery Failed.",
+                        status=Output.ANIMATION_FAIL))
+        else:
+            Output.log("Successfully recovered to a point in time.")
+
+        Output.update_animation("Successfully recovered to the specified Point-In-Time.")
+        status_details = self.get_pitr_config_details(pitr_object, restore_time = restore_time)
+
+        Output.print_out(self.get_status_string_common(status_details[0], status_details[1]))
+        sys.exit(0)
+
     # Restore a database.
     def restore(self):
 
         status_details = []
         status_display_info = {}
+
+        if self.configs.temp_data.get("restore_time"):
+            self.restore_pitr()
 
         if not self.configs.saved_data.get("backup_daemon"):
             final_status = "Backup daemon process not found. " + \
@@ -1094,6 +1224,42 @@ class ControlScript(object):
                 (Output.make_yellow("Collected logs path"), display_msg)
         ])
         Output.print_and_log(self.get_status_string_common(status_details))
+
+    # Configuring PITR in YugabyteDB cluster
+    def configure_point_in_time_recovery(self):
+        if not self.script.is_running():
+            Output.log_error_and_exit(Output.make_red("ERROR") + ": No YugabyteDB node " +
+                "is running in the data_dir {}".format(self.configs.saved_data.get("data_dir")))
+
+        if self.configs.temp_data.get("database_name_backup_restore"):
+            pitr_object = "ysql.{}".format(self.configs.temp_data.get(
+                                                "database_name_backup_restore"))
+            pitr_yb_api_type = "database"
+        elif self.configs.temp_data.get("keyspace_name_backup_restore"):
+            pitr_object = "ycql.{}".format(self.configs.temp_data.get(
+                                                "keyspace_name_backup_restore"))
+            pitr_yb_api_type = "keyspace"
+        else:
+            pitr_object = None
+            pitr_yb_api_type = None
+
+        Output.init_animation("Verifying Point-In-Time Recovery configs...")
+        master_addresses = self.configs.saved_data.get("current_masters")
+        schedules = YBAdminProxy.list_schedules(master_addresses)
+        if schedules is None:
+            Output.log("Failed to retrieve Point-In-Time Recovery schedules")
+            Output.log_error_and_exit(Output.update_animation("Failed to verify"
+            " Point-In-Time Recovery configs.", status=Output.ANIMATION_FAIL))
+
+        # Enable PITR
+        if self.configs.temp_data.get("enable_pitr"):
+            self.enable_pitr(pitr_object, pitr_yb_api_type, schedules)
+        # Disable PITR
+        elif self.configs.temp_data.get("disable_pitr"):
+            self.disable_pitr(pitr_object, pitr_yb_api_type, schedules)
+        # Show PITR status
+        else:
+            self.display_pitr(pitr_object, pitr_yb_api_type, schedules)
 
     # Configuring the primary cluster data placement policy
     def configure_data_placement(self):
@@ -3273,7 +3439,286 @@ class ControlScript(object):
         placement_str = ",".join(placement_constraints)
         return placement_str, priority_constraints
 
-    # Get status details to print after configure data_placement was run
+    def enable_pitr(self, pitr_object, pitr_yb_api_type, schedules):
+        pitr_object_name = pitr_object.split('.', 1)[1]
+        pitr_object_exists, is_pitr_enabled = self.validate_pitr_configs(pitr_object, schedules)
+        if not pitr_object_exists:
+            Output.update_animation("Failed to verify Point-In-Time Recovery configs.",
+                        status=Output.ANIMATION_FAIL)
+            Output.log_error_and_exit(
+            Output.make_red("ERROR") + ": The specified {} {} does not exist. Please "
+            "specify a valid {} to enable point-in-time recovery.".format(
+                                    pitr_yb_api_type, pitr_object_name, pitr_yb_api_type)
+            )
+        if is_pitr_enabled:
+            Output.update_animation("Failed to verify Point-In-Time Recovery configs.",
+                    status=Output.ANIMATION_FAIL)
+            Output.log_error_and_exit(
+            Output.make_red("ERROR") + ": Point-in-time recovery already enabled"
+            " for {} {}. Please disable point-in-time recovery"
+            " before attempting to enable it.".format(pitr_yb_api_type, pitr_object_name)
+            )
+        Output.update_animation("Verified Point-In-Time Recovery configs.")
+        # Run YBAdmin command to enable pitr
+        retention_period = self.configs.temp_data.get("retention_period")
+        master_addresses = self.configs.saved_data.get("current_masters")
+        Output.init_animation("Enabling Point-In-Time Recovery...")
+        if not YBAdminProxy.create_snapshot_schedule(master_addresses,
+            retention_period, pitr_object):
+            Output.log_error_and_exit(Output.update_animation("Failed to "
+                "enable Point-In-Time Recovery.",status=Output.ANIMATION_FAIL))
+        else:
+            Output.log("Successful in enabling point-in-time recovery.")
+
+        Output.update_animation("Successfully enabled Point-In-Time recovery for {} {}.".format(
+                                                            pitr_yb_api_type, pitr_object_name))
+        status_details = self.get_pitr_config_details(pitr_object, retention = retention_period)
+
+        Output.print_out(self.get_status_string_common(status_details[0], status_details[1]))
+
+    def disable_pitr(self, pitr_object, pitr_yb_api_type, schedules):
+        pitr_object_name = pitr_object.split('.', 1)[1]
+        pitr_object_exists, is_pitr_enabled = self.validate_pitr_configs(pitr_object, schedules)
+        if not pitr_object_exists:
+            Output.update_animation("Failed to verify Point-In-Time Recovery configs.",
+                        status=Output.ANIMATION_FAIL)
+            Output.log_error_and_exit(
+            Output.make_red("ERROR") + ": The specified {} {} does not exist. Please "
+            "specify a valid {} to disable point-in-time recovery.".format(
+                                        pitr_yb_api_type, pitr_object_name, pitr_yb_api_type)
+            )
+        if not is_pitr_enabled:
+            Output.update_animation("Failed to verify Point-In-Time Rcovery configs.",
+                        status=Output.ANIMATION_FAIL)
+            Output.log_error_and_exit(
+            Output.make_red("ERROR") + ": Point-in-time recovery is not enabled"
+            " for {} {}. Please enable point-in-time recovery"
+            " before attempting to disable it.".format(pitr_yb_api_type, pitr_object_name)
+            )
+        Output.update_animation("Verified Point-In-Time Recovery configs.")
+        # Get the schedule ID to disable pitr
+        pitr_object_id, _, _ = self.get_pitr_object_details(pitr_object, schedules)
+        master_addresses = self.configs.saved_data.get("current_masters")
+        Output.init_animation("Disabling Point-In-Time Recovery...")
+        if not YBAdminProxy.delete_snapshot_schedule(master_addresses, pitr_object_id):
+            Output.log_error_and_exit(Output.update_animation("Failed to "
+                "disable Point-In-Time Recovery.",status=Output.ANIMATION_FAIL))
+        else:
+            Output.log("Successful in disabling point-in-time recovery.")
+
+        Output.update_animation("Successfully disabled Point-In-Time recovery for {} {}.".format(
+                                                            pitr_yb_api_type, pitr_object_name))
+        status_details = self.get_pitr_config_details(pitr_object)
+
+        Output.print_out(self.get_status_string_common(status_details[0], status_details[1]))
+
+
+    def display_pitr(self, pitr_object, pitr_yb_api_type, schedules):
+
+        status_details = []
+        status_display_info = {}
+
+        # Case Scenario: When either database or keyspace is specified
+        if pitr_object:
+            pitr_object_name = pitr_object.split('.', 1)[1]
+            pitr_object_exists, is_pitr_enabled = self.validate_pitr_configs(pitr_object, schedules)
+            if not pitr_object_exists:
+                Output.update_animation("Failed to verify Point-In-Time Recovery configs.",
+                        status=Output.ANIMATION_FAIL)
+                Output.log_error_and_exit(
+                Output.make_red("ERROR") + ": The specified {} {} does not exist. Please "
+                "specify a valid {} to display point-in-time recovery status.".format(
+                                pitr_yb_api_type, pitr_object_name, pitr_yb_api_type)
+                )
+            Output.update_animation("Verified Point-In-Time Recovery configs.")
+            Output.init_animation("Fetching info from Point-In-Time Recovery configs...")
+            if is_pitr_enabled:
+                final_status = "Point-In-Time recovery enabled for {} {}.".format(
+                                        pitr_yb_api_type, pitr_object_name)
+                status_display_info[final_status] = Output.make_green
+                # Get earliest recoverable time and retention
+                _,earliest_recoverable_time, retention = self.get_pitr_object_details(
+                                                            pitr_object, schedules)
+                status_details = [
+                (Output.make_yellow("Status"), final_status),
+                ]
+                status_details.append((Output.make_yellow("Recovery Schedule"),
+                                        "Schedule:"))
+                additional_status_details = self.display_pitr_helper(pitr_object,
+                                                    earliest_recoverable_time, retention)
+                status_details.extend(additional_status_details)
+            else:
+                final_status = "Point-In-Time recovery not enabled for {} {}.".format(
+                                                        pitr_yb_api_type, pitr_object_name)
+                status_details = [
+                (Output.make_yellow("Status"), final_status),
+                ]
+
+        # Case Scenario: When neither database or keyspace is specified
+        else:
+            Output.update_animation("Verified Point-In-Time Recovery configs.")
+            Output.init_animation("Fetching info from Point-In-Time Recovery configs...")
+            active_schedules = False
+            for schedule in reversed(schedules):
+                options = schedule.get("options", {})
+                if "delete_time" not in options:
+                    active_schedules = True
+                    break
+
+            if active_schedules:
+                final_status = "Point-In-Time recovery enabled."
+                status_display_info[final_status] = Output.make_green
+                status_details = [
+                (Output.make_yellow("Status"), final_status),
+                ]
+                status_details.append((Output.make_yellow("Recovery Schedule"), "Following are the"
+                                            " recovery schedules:"))
+
+                # Display status detail for each schedule
+                valid_schedule_count = 0
+                for schedule in schedules:
+                    options = schedule.get("options", {})
+                    if options.get("delete_time"):
+                        continue
+
+                    valid_schedule_count += 1
+                    pitr_object = options.get("filter", "")
+                    retention = options.get("retention")
+                    earliest_recoverable_time = schedule["snapshots"][0]["snapshot_time"]
+                    schedule_entry = "Schedule " + str(valid_schedule_count) + ":"
+                    status_display_info[schedule_entry] = Output.make_yellow
+                    status_details.append((Output.make_yellow(""), schedule_entry))
+                    additional_status_details = self.display_pitr_helper(pitr_object,
+                                                    earliest_recoverable_time, retention)
+                    status_details.extend(additional_status_details)
+
+            else:
+                final_status = "Point-In-Time recovery not enabled."
+                status_details = [
+                (Output.make_yellow("Status"), final_status),
+                ]
+
+        Output.update_animation("Successful in Fetching Point-In-Time Recovery configs.")
+        Output.print_out(self.get_status_string_common(status_details, status_display_info))
+
+    # Validate PITR configs
+    def validate_pitr_configs(self, pitr_object, schedules):
+        pitr_object_exists = False
+        is_pitr_enabled = False
+        pitr_object_name = pitr_object.split('.', 1)[1]
+        # Validate database or keyspace
+        if pitr_object.startswith("ysql."):
+            ysql_proxy = YsqlProxy(self.advertise_ip(), self.configs.saved_data.get("ysql_port"))
+            pitr_object_exists = ysql_proxy.db_exists(pitr_object_name)
+        else:
+            ycql_proxy = YcqlProxy(self.advertise_ip(), self.configs.saved_data.get("ycql_port"))
+            pitr_object_exists = ycql_proxy.keyspace_exists(pitr_object_name)
+        # Check if pitr is already configured
+        if pitr_object_exists:
+            is_pitr_enabled = self.is_pitr_enabled_for_object(pitr_object, schedules)
+
+        return pitr_object_exists, is_pitr_enabled
+
+    # Check if PITR is enabled or not
+    def is_pitr_enabled_for_object(self, pitr_object, schedules):
+        # Check the most recent schedule
+        for schedule in reversed(schedules):
+            options = schedule.get("options", {})
+            target_object = options.get("filter", "")
+            if pitr_object == target_object:
+                return not options.get("delete_time")
+
+        return False
+
+    # Get the schedule details
+    def get_pitr_object_details(self, pitr_object, schedules):
+        for schedule in reversed(schedules):
+            options = schedule.get("options", {})
+            target_object = options.get("filter", "")
+            if pitr_object == target_object:
+                schedule_id = schedule.get("id", " ")
+                earliest_recoverable_time = schedule["snapshots"][0]["snapshot_time"]
+                retention = options.get("retention")
+                break
+
+        return schedule_id, earliest_recoverable_time, retention
+
+    # Print output for enabling, disabling and restoring pitr
+    def get_pitr_config_details(self, pitr_object, retention = None, restore_time = None):
+        status_details = []
+        status_display_info = {}
+        pitr_object_name = pitr_object.split('.', 1)[1]
+        final_status = "Success"
+
+        status_details = [
+            (Output.make_yellow("Status"), final_status),
+        ]
+        status_display_info[final_status] = Output.make_green
+        if pitr_object.startswith("ysql."):
+            status_details.append((Output.make_yellow("Database"), pitr_object_name))
+        else:
+            status_details.append((Output.make_yellow("Keyspace"), pitr_object_name))
+
+        if retention is not None:
+            retention_days = "{} days".format(retention)
+            status_details.append((Output.make_yellow("Retention Period"), retention_days))
+            status_details.append((Output.make_yellow("Interval"), "24 hours"))
+
+        if restore_time is not None:
+            status_details.append((Output.make_yellow("Recovery Point"), restore_time))
+
+        return [status_details, status_display_info]
+
+    # Format PITR status details
+    def display_pitr_helper(self, pitr_object, earliest_recoverable_time, retention):
+
+        status_details = []
+        # Parsing and formatting the earliest recoverable time and retention
+        earliest_recoverable_time_object = \
+            datetime.strptime(earliest_recoverable_time, "%Y-%m-%d %H:%M:%S.%f")
+        earliest_recoverable_time_object = \
+            (earliest_recoverable_time_object + timedelta(seconds=1)).replace(microsecond=0)
+        retention_days = int(retention.split(' ')[0]) // 1440
+        pitr_object_name = pitr_object.split('.', 1)[1]
+        if pitr_object.startswith("ysql."):
+            status_details.append((Output.make_yellow(""), "Database: " + pitr_object_name))
+        else:
+            status_details.append((Output.make_yellow(""), "Keyspace: " + pitr_object_name))
+        status_details.append((Output.make_yellow(""), "Interval: " + "24 hours"))
+        status_details.append((Output.make_yellow(""), "Retention: " +
+                                                        str(retention_days) + " days"))
+        status_details.append((Output.make_yellow(""), "Earliest Recoverable Time: "
+                    + earliest_recoverable_time_object.strftime("%Y-%m-%d %I:%M:%S %p")))
+
+        return status_details
+
+    # Validate restore time
+    def validate_restore_time(self, earliest_recoverable_time, restore_time):
+        # Convert string times to datetime objects
+        earliest_recoverable_time_object = \
+            datetime.strptime(earliest_recoverable_time, "%Y-%m-%d %H:%M:%S.%f")
+        earliest_recoverable_time_object = \
+            (earliest_recoverable_time_object + timedelta(seconds=1)).replace(microsecond=0)
+        restore_time_object = datetime.strptime(restore_time, "%Y-%m-%d %I:%M:%S %p")
+        curr_time_object = datetime.now()
+
+        # Restore time should be earlier than current time
+        if restore_time_object > curr_time_object:
+            error_msg = ("The specified restore time {} is in the future." + \
+            " Please provide a time that is not later than the current time.").format(
+                restore_time)
+            return False, error_msg
+
+        # Check if restore time is earlier than the earliest recoverable time
+        if restore_time_object < earliest_recoverable_time_object:
+            error_msg = ("The specified restore time {} is earlier than"
+            " the earliest recoverable time. Please provide a time after {}.").format(
+            restore_time, earliest_recoverable_time_object.strftime("%Y-%m-%d %I:%M:%S %p"))
+            return False, error_msg
+
+        # Restore time is valid
+        return True, ""
+
     def get_configure_status_details(self, placement_locations, new_masters, priority_info):
 
         fault_tolerance = self.configs.temp_data.get("fault_tolerance")
@@ -4824,6 +5269,26 @@ class ControlScript(object):
 
         return False
 
+    # Validate time format
+    def validate_time_format(self, restore_time):
+        try:
+            # Check for value errors
+            datetime.strptime(restore_time, "%Y-%m-%d %I:%M:%S %p")
+            # Split the restore_time string to directly check the length of each component.
+            date, time = restore_time.split(' ')[0:2]
+            _, month, day = date.split('-')
+            hour, minute, second = time.split(':')
+
+            for component in [month, day, hour, minute, second]:
+                if len(component) != 2:
+                    return False
+
+            return True
+
+        except ValueError:
+        # The time string does not match the expected format.
+            return False
+
 
     # Parse config file and input args. Validate them and save any new configs.
     def validate_and_set_configs(self, args):
@@ -4838,8 +5303,63 @@ class ControlScript(object):
                 has_errors = True
 
         if args.parser == "restore":
-            if not self.validate_ybc_args(args):
-                has_errors = True
+            if not args.cloud_storage_uri and not args.recover_to_point_in_time:
+                Output.print_out(Output.make_red("Error") + ": Specify either " +
+                    "--cloud_storage_uri or --recover_to_point_in_time " +
+                    "to perform a restore operation.")
+                sys.exit(1)
+
+            # PITR operation
+            if args.recover_to_point_in_time is not None:
+
+                restore_error = []
+
+                if not self.validate_time_format(args.recover_to_point_in_time):
+                    restore_error.append(
+                    "* Invalid time format specified for --recover_to_point_in_time flag: {}. " \
+                    "Please follow the format: 'YYYY-MM-DD HH:MM:SS AM/PM'." \
+                                    .format(args.recover_to_point_in_time)
+                    )
+                if not (args.database or args.keyspace):
+                    restore_error.append(
+                    "* Specify either database or keyspace to" \
+                    " restore to a point in time."
+                    )
+                if args.database and args.keyspace:
+                    restore_error.append(
+                    "* Cannot specify both database and keyspace args." \
+                    " Please specify either database or keyspace name."
+                    )
+                if (args.database in SYSTEM_NAMESPACES) or (args.keyspace in SYSTEM_NAMESPACES):
+                        restore_error.append(
+                        "* Cannot specify system namespaces to recover to a point" \
+                        " in time. Please specify a non-system namespace."
+                    )
+                if args.cloud_storage_uri:
+                    restore_error.append(
+                        "* --recover_to_point_in_time flag can't be used with " \
+                        "--cloud_storage_uri flag. Please remove the --cloud_storage_uri flag" \
+                        " when specifying the --recover_to_point_in_time flag."
+                    )
+                if args.status:
+                    restore_error.append(
+                        "* --recover_to_point_in_time flag can't be used with " \
+                        "--status flag. Please remove the --status flag" \
+                        " when specifying the --recover_to_point_in_time flag."
+                    )
+                if restore_error:
+                    has_errors = True
+                    Output.print_out(Output.make_red("Error") + ": Following errors found" +
+                                " while restoring to a point in time:\n" +
+                                "\n".join(restore_error))
+                # No errors found in PITR restore args
+                else:
+                    self.configs.temp_data["database_name_backup_restore"] = args.database
+                    self.configs.temp_data["keyspace_name_backup_restore"] = args.keyspace
+                    self.configs.temp_data["restore_time"] = args.recover_to_point_in_time
+            else:
+                if not self.validate_ybc_args(args):
+                    has_errors = True
 
         if args.parser == "collect_logs":
             self.configs.temp_data["collect_logs_stdout"] = args.stdout
@@ -4853,6 +5373,117 @@ class ControlScript(object):
             collect_at_dir=self.configs.temp_data.get("collect_at_dir")
             if not os.path.isdir(collect_at_dir):
                 os.makedirs(collect_at_dir)
+
+        if args.parser == "point_in_time_recovery":
+            # All three action flags namely --enable,--disable
+            # and --status must be mutually exclusive
+            if not args.enable and not args.disable and not args.status:
+                has_errors = True
+                Output.print_and_log(
+                    Output.make_red("Error") +
+                    ": Specify either the --enable, --disable or --status flag."
+                )
+            elif args.enable and args.disable and args.status:
+                has_errors = True
+                Output.print_and_log(
+                    Output.make_red("Error") +
+                    ": --enable, --disable and --status flags can't be used together."
+                )
+            elif args.enable and args.disable:
+                has_errors = True
+                Output.print_and_log(
+                    Output.make_red("Error") +
+                    ": --enable flag can't be used together with --disable flag."
+                )
+            elif args.enable and args.status:
+                has_errors = True
+                Output.print_and_log(
+                    Output.make_red("Error") +
+                    ": --enable flag can't be used together with --status flag."
+                )
+            elif args.disable and args.status:
+                has_errors = True
+                Output.print_and_log(
+                    Output.make_red("Error") +
+                    ": --disable flag can't be used together with --status flag."
+                )
+            # Validation checks for each PITR action
+            else:
+                pitr_error_map = {
+                        'enable': [],
+                        'disable': [],
+                        'status': [],
+                    }
+                if args.enable:
+                    action = 'enable'
+                    self.configs.temp_data["enable_pitr"] = args.enable
+                elif args.disable:
+                    action = 'disable'
+                    self.configs.temp_data["disable_pitr"] = args.disable
+                elif args.status:
+                    action = 'status'
+
+                # Case Scenario: When database or keyspace is not specified
+                # with --enable or --disable flag
+                if not (args.database or args.keyspace) and action != 'status':
+                    pitr_error_map[action].append(
+                    "* Specify either database or keyspace to " \
+                    "{} point-in-time recovery.".format(action)
+                )
+                # Case Scenario: When both database and keyspace are specified
+                if args.database and args.keyspace:
+                        pitr_error_map[action].append(
+                        "* Cannot specify both database and keyspace args." \
+                        " Please specify either database or keyspace name."
+                        )
+                # Case Scenario: When a system namespace is specified
+                if (args.database in SYSTEM_NAMESPACES) or (args.keyspace in SYSTEM_NAMESPACES):
+                        pitr_error_map[action].append(
+                        "* Cannot specify system namespaces to configure point" \
+                        "-in-time recovery. Please specify a non-system namespace."
+                        )
+
+                if args.retention:
+                    # Case Scenario: When retention flag is specified
+                    # with --disable or status flag
+                    if action in ["disable", "status"]:
+                        pitr_error_map[action].append(
+                        "* --retention flag can't be used with --{} flag." \
+                        " Please remove the --retention flag when specifying" \
+                        " the --{} flag.".format(action, action)
+                        )
+                    elif not args.retention.isdigit() or int(args.retention) < 2:
+                        pitr_error_map[action].append(
+                        "* Retention period must be a positive integer greater than 1." \
+                        " Please specify a valid postive integer greater than 1 to" \
+                        " enable point-in-time recovery."
+                        )
+
+                # List errors found while configuring pitr for a YugabyteDB cluster
+                if pitr_error_map.get("enable"):
+                    has_errors = True
+                    Output.print_out(Output.make_red("Error") + ": Following errors found" +
+                                " while enabling point-in-time recovery:\n" +
+                                "\n".join(pitr_error_map["enable"]))
+                if pitr_error_map.get("disable"):
+                    has_errors = True
+                    Output.print_out(Output.make_red("Error") + ": Following errors found" +
+                                " while disabling point-in-time recovery:\n" +
+                                "\n".join(pitr_error_map["disable"]))
+                if pitr_error_map.get("status"):
+                    has_errors = True
+                    Output.print_out(Output.make_red("Error") + ": Following errors found" +
+                                " while displaying the point-in-time recovery status:\n" +
+                                "\n".join(pitr_error_map["status"]))
+
+                # If no errors are found save the configs
+                if not has_errors:
+                    if args.database:
+                        self.configs.temp_data["database_name_backup_restore"] = args.database
+                    if args.keyspace:
+                        self.configs.temp_data["keyspace_name_backup_restore"] = args.keyspace
+                    if args.retention:
+                        self.configs.temp_data["retention_period"] = int(args.retention)
 
         if args.parser == "admin_operation":
             if not args.command:
@@ -5488,19 +6119,22 @@ class ControlScript(object):
         # Top Level command: configure
         example = Output.make_yellow("Examples") + ": \n" + EXAMPLE["configure"]
         configure_parser = subparsers.add_parser("configure", description=example,
-                                                help="Configure data placement or " +
-                                                "toggle encryption at rest for " +
-                                                "the cluster.", parents=[common_parser])
+                                                help="Configure data placement," +
+                                                " toggle encryption at rest or run" +
+                                                " point-in-time recovery operations on" +
+                                                " the cluster.", parents=[common_parser])
 
         # Sub-commands for top level `configure` command: data_placement,
-        # encrypt_at_rest, admin_operation
+        # encrypt_at_rest, admin_operation, point_in_time_recovery
         all_parsers["configure"] = configure_parser
         configure_subparsers = configure_parser.add_subparsers(dest="parser", metavar="")
         configure_subparsers.required = True
         for cmd, description in (
-                ("data_placement", "Configure multi-zone/multi-region cluster."),
-                ("encrypt_at_rest", "Enable or disable encryption at rest."),
-                ("admin_operation", "Run yb-admin command on the YugabyteDB cluster.")):
+        ("data_placement", "Configure multi-zone/multi-region cluster."),
+        ("encrypt_at_rest", "Enable or disable encryption at rest."),
+        ("admin_operation", "Run yb-admin command on the YugabyteDB cluster."),
+        ("point_in_time_recovery", "Configure point-in-time recovery for "
+            "a database or keyspace."),):
             example = ""
             if EXAMPLE.get(cmd):
                 example = Output.make_yellow("Examples") + ": \n" + EXAMPLE[cmd]
@@ -5553,6 +6187,36 @@ class ControlScript(object):
                 "masters of the cluster.",
                 metavar=""
             )
+
+        # Flags for sub-command: point_in_time_recovery
+        for cmd in ("configure_point_in_time_recovery",):
+            cur_parser = all_parsers[cmd]
+            cur_parser.add_argument(
+                "--enable", help="Enable point-in-time recovery for a database or keyspace.",
+                action="store_true", default=None
+                )
+            cur_parser.add_argument(
+                "--retention", help="Specify the retention period of the snapshots.",
+                metavar=""
+                )
+            cur_parser.add_argument(
+                "--disable", help="Disable point-in-time recovery for a database or keyspace.",
+                action="store_true", default=None
+                )
+            cur_parser.add_argument(
+                "--database", help="Name of the YSQL database for which " + \
+                "point-in-time recovery is being configured.",
+                metavar=""
+                )
+            cur_parser.add_argument(
+                "--keyspace", help="Name of the YCQL keyspace for which " + \
+                "point-in-time recovery is being configured.",
+                metavar=""
+                )
+            cur_parser.add_argument(
+                "--status", help="Display point-in-time recovery status for a " + \
+                "YugabyteDB cluster.", action="store_true", default=None
+                )
 
         # Top Level command: configure_read_replica
         example = Output.make_yellow("Examples") + ": \n" + EXAMPLE["configure_read_replica"]
@@ -5634,6 +6298,11 @@ class ControlScript(object):
                 "--status",
                 help="Check the status of the restore task.",
                 action="store_true", default=None
+            )
+            cur_parser.add_argument(
+                "--recover_to_point_in_time", help="Restore to the specified point" + \
+                "-in-time with timestamp enclosed within single quotes.",
+                metavar=""
             )
 
         # Commands that can alter configuration file.
@@ -5883,9 +6552,15 @@ class Configs(object):
             "admin_operation_master_addresses":"",
             "rr_data_placement_constraint": "",
             "rr_replication_factor": "",
+            "collect_at_dir": os.path.join(os.path.expanduser("~"), "yugabyte_collected_logs"),
+            "enable_pitr": False,
+            "disable_pitr": False,
+            "retention_period": DEAFULT_RETENTION_PERIOD,
+            "restore_time": None,
             "ui_port_available": True,
             "collect_at_dir": os.path.join(os.path.expanduser("~"), "yugabyte_collected_logs"),
-            "database_name_backup_restore": "",
+            "database_name_backup_restore": None,
+            "keyspace_name_backup_restore": None,
             "ybc_cloud_type": "",
             "ybc_cloud_storage_bucket": "",
             "ybc_cloud_storage_dir": "",
@@ -6652,6 +7327,49 @@ class YBAdminProxy(object):
             return None
         return out
 
+    # Enable point_in_time_recovery
+    @staticmethod
+    def create_snapshot_schedule(master_addrs, retention,
+                pitr_object, timeout=10):
+        cmd = YBAdminProxy.cmd_args + [
+            "--master_addresses", master_addrs, "create_snapshot_schedule",
+            "1440", str(retention*1440), pitr_object]
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        return ret_code == 0
+
+    # Disable point_in_time_recovery
+    @staticmethod
+    def delete_snapshot_schedule(master_addrs, pitr_object_id, timeout=10):
+        cmd = YBAdminProxy.cmd_args + [
+            "--master_addresses", master_addrs, "delete_snapshot_schedule", pitr_object_id]
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        return ret_code == 0
+
+    # List point_in_time recovery configuration details
+    @staticmethod
+    def list_schedules(master_addrs, timeout=10):
+        cmd = YBAdminProxy.cmd_args + ["--master_addresses", master_addrs,
+                                        "list_snapshot_schedules"]
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        if ret_code:
+            return None
+        try:
+            data = json.loads(out)
+            # Return an empty list if there are no schedules,
+            # rather than None, to signify no schedules found without error
+            return data.get("schedules", [])
+        except Exception:
+            return None
+
+    # Restore to a specific point in time
+    @staticmethod
+    def restore_snapshot_schedule(master_addrs, pitr_object_id, restore_time, timeout=10):
+        cmd = YBAdminProxy.cmd_args + [
+            "--master_addresses", master_addrs, "restore_snapshot_schedule", pitr_object_id,
+                                            restore_time]
+        out, err, ret_code = run_process(cmd, timeout=timeout, log_cmd=True)
+        return ret_code, err
+
     # Passthrough method for all the yb-admin commands
     # @staticmethod
     # def call_yb_admin_command(master_addrss, command, timeout=10):
@@ -6889,7 +7607,11 @@ class YcqlProxy(object):
         cmd = self.cmd + ["-u", self.username, "-p", self.password, "-e",
             "SELECT keyspace_name FROM system_schema.keyspaces WHERE keyspace_name='{}';".
             format(keyspace)]
-        return run_process_checked(cmd).strip() == keyspace
+        output = run_process_checked(cmd=cmd)
+        if keyspace in output:
+            return True
+
+        return False
 
     # Create specified keyspace
     def create_keyspace(self, keyspace):
@@ -7295,7 +8017,10 @@ class Output(object):
     @staticmethod
     def log_error_and_exit(msg):
         if Output.log_dir:
-            msg += "\nFor more information, check the logs in {}".format(Output.log_dir)
+            if msg is None:
+                msg = "For more information, check the logs in {}".format(Output.log_dir)
+            else:
+                msg += "\nFor more information, check the logs in {}".format(Output.log_dir)
         Output.print_and_log(msg, logging.ERROR)
         Output.console_access = False
         if Output.script_exit_func:
