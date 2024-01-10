@@ -246,7 +246,8 @@ public class TestPgAlterTableColumnType extends BasePgSQLTest {
           new Row(0.0)));
       // Verify that not null constraints are preserved after an ALTER TYPE operation.
       runInvalidQuery(statement, "INSERT INTO not_null_table VALUES (null)",
-        "ERROR: null value in column \"c1\" violates not-null constraint");
+        "ERROR: null value in column \"c1\" of relation \"not_null_table\" violates not-null" +
+        " constraint");
       // Test that we can perform ALTER TYPE ... USING null when the column is nullable.
       statement.execute("ALTER TABLE not_null_table ALTER c1 DROP NOT NULL");
       statement.execute("ALTER TABLE not_null_table ALTER c1 TYPE float USING null");

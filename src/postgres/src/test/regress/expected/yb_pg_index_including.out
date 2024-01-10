@@ -132,7 +132,7 @@ SELECT pg_get_constraintdef(oid), conname, conkey FROM pg_constraint WHERE conre
 INSERT INTO tbl SELECT 1, 2, 3*x, 4 FROM generate_series(1,10) AS x;
 ERROR:  duplicate key value violates unique constraint "covering"
 INSERT INTO tbl SELECT 1, NULL, 3*x, 4 FROM generate_series(1,10) AS x;
-ERROR:  null value in column "c2" violates not-null constraint
+ERROR:  null value in column "c2" of relation "tbl" violates not-null constraint
 DETAIL:  Failing row contains (1, null, 3, 4).
 INSERT INTO tbl SELECT x, 2*x, NULL, NULL FROM generate_series(1,10) AS x;
 explain (costs off)
@@ -187,7 +187,7 @@ SELECT pg_get_constraintdef(oid), conname, conkey FROM pg_constraint WHERE conre
 INSERT INTO tbl SELECT 1, 2, 3*x, 4 FROM generate_series(1,10) AS x;
 ERROR:  duplicate key value violates unique constraint "tbl_pkey"
 INSERT INTO tbl SELECT 1, NULL, 3*x, 4 FROM generate_series(1,10) AS x;
-ERROR:  null value in column "c2" violates not-null constraint
+ERROR:  null value in column "c2" of relation "tbl" violates not-null constraint
 DETAIL:  Failing row contains (1, null, 3, 4).
 INSERT INTO tbl SELECT x, 2*x, NULL, NULL FROM generate_series(1,10) AS x;
 DROP TABLE tbl;
