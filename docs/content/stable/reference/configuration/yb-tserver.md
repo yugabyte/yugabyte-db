@@ -1301,7 +1301,7 @@ Default: 1 second (auto-computed)
 
 The number of table rows to backfill at a time. In case of [GIN indexes](../../../explore/indexes-constraints/gin/), the number can include more index rows.
 
-Default 128
+Default: 128
 
 ## Admin UI
 
