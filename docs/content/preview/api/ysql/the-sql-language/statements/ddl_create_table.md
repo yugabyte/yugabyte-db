@@ -100,7 +100,7 @@ On an `INSERT` statement:
 - when `BY DEFAULT` is used, then the user-supplied value takes precedence. See [INSERT statement](../dml_insert/) for reference. (In the `COPY` statement, user-supplied values are always used regardless of this setting.)
 
 On an `UPDATE` statement:
-- when `ALWAYS` is used, any update of the column to any value other than `DEFAULT` will be rejected.
+- when `ALWAYS` is used, a column update to a value other than `DEFAULT` will be rejected.
 - when `BY DEFAULT` is used, the column can be updated normally. (`OVERRIDING` clause cannot be used for the UPDATE statement)
 
 The `sequence_options` optional clause can be used to override the options of the generated sequence. 
