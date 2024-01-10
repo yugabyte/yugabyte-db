@@ -298,6 +298,7 @@ public class LocalNodeManager {
               processAndWriteGFLags(
                   args, ybcGFlags, userIntent, UniverseTaskBase.ServerType.CONTROLLER, nodeInfo);
             }
+            commandArgs.addAll(NodeManager.getInlineWaitForClockSyncCommandArgs(this.confGetter));
             break;
           case Software:
             updateSoftwareOnNode(userIntent, params.ybSoftwareVersion);

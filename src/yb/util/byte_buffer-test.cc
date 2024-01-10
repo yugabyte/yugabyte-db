@@ -31,10 +31,10 @@ TEST(ByteBufferTest, Assign) {
   ASSERT_EQ(buffer, copy);
   copy = buffer;
   Buffer moved(std::move(buffer));
-  ASSERT_TRUE(buffer.empty());
+  ASSERT_TRUE(buffer.empty()); // NOLINT(bugprone-use-after-move)
   ASSERT_EQ(moved, copy);
   moved = std::move(copy);
-  ASSERT_TRUE(copy.empty());
+  ASSERT_TRUE(copy.empty()); // NOLINT(bugprone-use-after-move)
   buffer.Assign(str);
   ASSERT_EQ(buffer, moved);
 }

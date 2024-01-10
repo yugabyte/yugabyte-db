@@ -274,6 +274,8 @@ case "$command" in
     fi
     exit_on_running
     print_err_out "Starting yb-$daemon on `hostname` $start_mode"
+    # Before starting the process, make sure clock is synchronized.
+    "{{ yb_home_dir }}/bin/clock-sync.sh"
     # We need all three file descriptors closed so SSH connections running this do not hang!
     nohup ${daemon_binary} $create_option --flagfile ${daemon_conf} \
       >>"$daemon_home/${daemon}.out" 2>>"$daemon_home/${daemon}.err" </dev/null &
