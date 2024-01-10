@@ -12,6 +12,7 @@ import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Date;
 import java.util.List;
@@ -46,16 +47,34 @@ class CoreFilesComponent implements SupportBundleComponent {
       throws Exception {
     String nodeHomeDir = nodeUniverseManager.getYbHomeDir(node, universe);
     String coresDir = nodeHomeDir + "/cores/";
+
+    // Get and filter the core files list based on the 2 params given in the request body.
     List<Pair<Integer, String>> fileSizeNameList =
-        nodeUniverseManager.getNodeFilePathsAndSize(node, universe, coresDir);
+        nodeUniverseManager.getNodeFilePathsAndSize(node, universe, coresDir).stream()
+            .limit(supportBundleTaskParams.bundleData.maxNumRecentCores)
+            .filter(p -> p.getFirst() <= supportBundleTaskParams.bundleData.maxCoreFileSize)
+            .collect(Collectors.toList());
 
     // Filter the core files list based on the 2 params given in the request body.
     List<String> sourceNodeFiles =
-        fileSizeNameList.stream()
-            .limit(supportBundleTaskParams.bundleData.maxNumRecentCores)
-            .filter(p -> p.getFirst() <= supportBundleTaskParams.bundleData.maxCoreFileSize)
-            .map(p -> "cores/" + p.getSecond())
-            .collect(Collectors.toList());
+        fileSizeNameList.stream().map(p -> "cores/" + p.getSecond()).collect(Collectors.toList());
+
+    // Check if YBA node has enough space to store all cores files from the DB nodes.
+    long YbaDiskSpaceFreeInBytes = Files.getFileStore(bundlePath).getUsableSpace();
+    long coreFilesSize = fileSizeNameList.stream().mapToLong(Pair::getFirst).sum();
+
+    // Throw error if YBA node doesn't have enough space to download the core files from this DB
+    // node. Exception is caught in CreateSupportBundle.java to continue with rest of support bundle
+    // execution.
+    if (Long.compare(coreFilesSize, YbaDiskSpaceFreeInBytes) > 0) {
+      String errMsg =
+          String.format(
+              "Cannot download core files due to insuffient space. Node: '%s', Core files size in"
+                  + " bytes: '%d', YBA space free in bytes: '%d'.",
+              node.nodeName, coreFilesSize, YbaDiskSpaceFreeInBytes);
+      throw new RuntimeException(errMsg);
+    }
+    ;
 
     log.debug(
         "List of core files to get from the node '{}' after filtering: '{}'",
