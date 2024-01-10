@@ -23,6 +23,7 @@ import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.SupportBundle;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
@@ -164,6 +165,16 @@ public class SupportBundleUtil {
     } else {
       log.info("Failed to delete file with path: {}", filePath);
     }
+  }
+
+  public void deleteSupportBundle(SupportBundle supportBundle) {
+    // Delete the actual archive file
+    Path supportBundlePath = supportBundle.getPathObject();
+    if (supportBundlePath != null) {
+      deleteFile(supportBundlePath);
+    }
+    // Deletes row from the support_bundle db table
+    SupportBundle.delete(supportBundle.getBundleUUID());
   }
 
   /**

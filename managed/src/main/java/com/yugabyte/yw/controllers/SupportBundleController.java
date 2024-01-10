@@ -268,11 +268,14 @@ public class SupportBundleController extends AuthenticatedController {
     SupportBundle supportBundle = SupportBundle.getOrBadRequest(bundleUUID);
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe.getOrBadRequest(universeUUID, customer);
-    // Deletes row from the support_bundle db table
-    SupportBundle.delete(bundleUUID);
 
-    // Delete the actual archive file
-    supportBundleUtil.deleteFile(supportBundle.getPathObject());
+    // Throw error if support bundle is running.
+    if (SupportBundleStatusType.Running.equals(supportBundle.getStatus())) {
+      throw new PlatformServiceException(BAD_REQUEST, "The support bundle is in running state.");
+    }
+
+    // Delete file from disk and record from DB.
+    supportBundleUtil.deleteSupportBundle(supportBundle);
 
     auditService()
         .createAuditEntry(
