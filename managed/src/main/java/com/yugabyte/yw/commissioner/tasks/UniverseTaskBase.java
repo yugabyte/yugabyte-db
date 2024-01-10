@@ -2985,7 +2985,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     BackupTableParams backupTableParams = getBackupTableParams(backupRequestParams, tablesToBackup);
     CloudType cloudType = universe.getUniverseDetails().getPrimaryCluster().userIntent.providerType;
 
-    createPreflightValidateBackupTask(backupTableParams, ybcBackup);
+    createPreflightValidateBackupTask(backupTableParams, ybcBackup)
+        .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
 
     if (!ybcBackup) {
       if (cloudType != CloudType.kubernetes) {
@@ -3095,7 +3096,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     if (taskInfo.getTaskType().equals(TaskType.RestoreBackup)
         && pCluster.userIntent.providerType != CloudType.local) {
       getAndSaveRestoreBackupCategory(restoreBackupParams, taskInfo);
-      createPreflightValidateRestoreTask(restoreBackupParams);
+      createPreflightValidateRestoreTask(restoreBackupParams)
+          .setSubTaskGroupType(SubTaskGroupType.PreflightChecks);
     }
     if (restoreBackupParams.alterLoadBalancer) {
       createLoadBalancerStateChangeTask(false).setSubTaskGroupType(subTaskGroupType);
