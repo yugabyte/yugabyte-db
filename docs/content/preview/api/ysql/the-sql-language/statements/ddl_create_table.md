@@ -113,7 +113,7 @@ PostgreSQL and YugabyteDB allow a table to have more than one identity column. T
 
 This relaxation primarily aims to provide increased flexibility for carrying out schema modifications or migrations. 
 
-It's important to be aware that the [INSERT](../dml_insert/) command can only accommodate one override clause for the entire statement. As a result, having several identity columns, each exhibiting distinct behaviors, is not effectively supported.
+Note that the [INSERT](../dml_insert/) command can only accommodate one override clause for an entire statement. As a result, having several identity columns, each exhibiting distinct behaviours, is not effectively supported.
 
 
 ### TEMPORARY or TEMP
