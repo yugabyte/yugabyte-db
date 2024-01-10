@@ -89,9 +89,11 @@ public class AzureCloudInfo implements CloudInfoInterface {
     if (azuClientId != null) {
       envVars.put("AZURE_TENANT_ID", azuTenantId);
       envVars.put("AZURE_CLIENT_ID", azuClientId);
-      envVars.put("AZURE_CLIENT_SECRET", azuClientSecret);
       envVars.put("AZURE_SUBSCRIPTION_ID", azuSubscriptionId);
       envVars.put("AZURE_RG", azuRG);
+      if (StringUtils.isNotBlank(azuClientSecret)) {
+        envVars.put("AZURE_CLIENT_SECRET", azuClientSecret);
+      }
       if (StringUtils.isNotBlank(azuNetworkRG)) {
         envVars.put("AZURE_NETWORK_RG", azuNetworkRG);
       }

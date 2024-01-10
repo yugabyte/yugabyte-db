@@ -6,7 +6,10 @@ import static com.google.common.collect.MoreCollectors.onlyElement;
 import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
+import com.azure.core.credential.TokenCredential;
 import com.azure.core.management.SubResource;
+import com.azure.identity.ClientSecretCredentialBuilder;
+import com.azure.identity.DefaultAzureCredentialBuilder;
 import com.azure.resourcemanager.compute.fluent.models.VirtualMachineInner;
 import com.azure.resourcemanager.compute.models.NetworkInterfaceReference;
 import com.azure.resourcemanager.network.fluent.models.BackendAddressPoolInner;
@@ -44,6 +47,7 @@ import java.util.function.Function;
 import java.util.stream.Collectors;
 import lombok.extern.slf4j.Slf4j;
 import org.apache.commons.collections4.SetUtils;
+import org.apache.commons.lang3.StringUtils;
 
 @Slf4j
 public class AZUCloudImpl implements CloudAPI {
@@ -488,5 +492,31 @@ public class AZUCloudImpl implements CloudAPI {
   public void validateInstanceTemplate(Provider provider, String instanceTemplate) {
     throw new PlatformServiceException(
         BAD_REQUEST, "Instance templates are currently not supported for Azure");
+  }
+
+  public static TokenCredential getCredsOrFallbackToDefault(
+      String clientID, String clientSecret, String tenantID) {
+    if (StringUtils.isNotEmpty(clientSecret)) {
+      // Use service principal credentials if available
+      return new ClientSecretCredentialBuilder()
+          .clientId(clientID)
+          .clientSecret(clientSecret)
+          .tenantId(tenantID)
+          .build();
+    } else {
+      // Try diff auth methods in a pre-defined order:
+      // Environment variables, Workload Identity, Managed Identity
+      return new DefaultAzureCredentialBuilder()
+          .tenantId(tenantID)
+          .managedIdentityClientId(clientID)
+          .build();
+    }
+  }
+
+  public static TokenCredential getCredsOrFallbackToDefault(AzureCloudInfo azureCloudInfo) {
+    return getCredsOrFallbackToDefault(
+        azureCloudInfo.getAzuClientId(),
+        azureCloudInfo.getAzuClientSecret(),
+        azureCloudInfo.getAzuTenantId());
   }
 }
