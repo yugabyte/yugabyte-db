@@ -44,7 +44,9 @@ export const RuntimeConfigKey = {
   IS_UNIVERSE_AUTH_ENFORCED: 'yb.universe.auth.is_enforced',
   USE_K8_CUSTOM_RESOURCES_FEATURE_FLAG: 'yb.use_k8s_custom_resources',
   IS_GFLAG_MULTILINE_ENABLED: 'yb.ui.feature_flags.gflag_multiline_conf',
-  SHOW_DR_XCLUSTER_CONFIG: 'yb.ui.xcluster.dr.show_xcluster_config'
+  SHOW_DR_XCLUSTER_CONFIG: 'yb.ui.xcluster.dr.show_xcluster_config',
+  ENABLE_DEDICATED_NODES: 'yb.ui.enable_dedicated_nodes',
+  GEO_PARTITIONING_UI_FEATURE_FLAG: 'yb.universe.geo_partitioning_enabled'
 } as const;
 
 /**
