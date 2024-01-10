@@ -97,7 +97,7 @@ An implicit sequence will be created, attached to it, and new rows will automati
 
 On an `INSERT` statement:
 - when `ALWAYS` is used, a user-provided value is only accepted if the `INSERT` statement uses `OVERRIDING SYSTEM VALUE`. 
-- when `BY DEFAULT` is used, then the user-supplied value takes precedence. See [INSERT statement](../dml_insert/) for reference. (In the `COPY` statement, user-supplied values are always used regardless of this setting.)
+- when `BY DEFAULT` is used, then the user-provided value takes precedence. See [INSERT statement](../dml_insert/) for reference. (In the `COPY` statement, user-supplied values are always used regardless of this setting.)
 
 On an `UPDATE` statement:
 - when `ALWAYS` is used, a column update to a value other than `DEFAULT` will be rejected.
