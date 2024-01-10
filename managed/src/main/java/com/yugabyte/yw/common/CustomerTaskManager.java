@@ -590,6 +590,9 @@ public class CustomerTaskManager {
       case CloudProviderDelete:
         taskParams = Json.fromJson(oldTaskParams, CloudProviderDelete.Params.class);
         break;
+      case RestartUniverseKubernetesUpgrade:
+        taskParams = Json.fromJson(oldTaskParams, RestartTaskParams.class);
+        break;
       default:
         String errMsg =
             String.format(
