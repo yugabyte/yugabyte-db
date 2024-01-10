@@ -55,6 +55,9 @@ export const getYBAHost = (hostInfo: HostInfo) => {
   if (!(typeof hostInfo.aws === 'string' || hostInfo.aws instanceof String)) {
     return YBAHost.AWS;
   }
+  if(!(typeof hostInfo.azu === 'string' || hostInfo.azu instanceof String)){
+    return YBAHost.AZU;
+  }
   return YBAHost.SELF_HOSTED;
 };
 

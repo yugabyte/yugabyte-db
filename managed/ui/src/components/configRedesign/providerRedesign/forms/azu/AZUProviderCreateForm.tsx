@@ -4,12 +4,14 @@ import { Box, CircularProgress, FormHelperText, Typography } from '@material-ui/
 import { FormProvider, SubmitHandler, useForm } from 'react-hook-form';
 import { yupResolver } from '@hookform/resolvers/yup';
 import { toast } from 'react-toastify';
+import { useQuery } from 'react-query';
 
 import {
   RadioGroupOrientation,
   YBInputField,
   YBRadioGroupField,
-  YBToggleField
+  YBToggleField,
+  OptionProps
 } from '../../../../../redesign/components';
 import { YBButton } from '../../../../common/forms/fields';
 import {
@@ -45,17 +47,26 @@ import { CreateInfraProvider } from '../../InfraProvider';
 import { RegionOperation } from '../configureRegion/constants';
 import { NTP_SERVER_REGEX } from '../constants';
 
-import { AZURegionMutation, AZUAvailabilityZoneMutation } from '../../types';
+import { AZURegionMutation, AZUAvailabilityZoneMutation, YBProviderMutation } from '../../types';
 import { RbacValidator } from '../../../../../redesign/features/rbac/common/RbacApiPermValidator';
 import { constructImageBundlePayload } from '../../components/linuxVersionCatalog/LinuxVersionUtils';
 import { ApiPermissionMap } from '../../../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { LinuxVersionCatalog } from '../../components/linuxVersionCatalog/LinuxVersionCatalog';
 import { CloudType } from '../../../../../redesign/helpers/dtos';
 import { ImageBundle } from '../../../../../redesign/features/universe/universe-form/utils/dto';
+import { getYBAHost } from '../../utils';
+import { api, hostInfoQueryKey } from '../../../../../redesign/helpers/api';
+import { YBErrorIndicator, YBLoading } from '../../../../common/indicators';
+import { YBAHost } from '../../../../../redesign/helpers/constants';
 
 interface AZUProviderCreateFormProps {
   createInfraProvider: CreateInfraProvider;
   onBack: () => void;
+}
+
+enum ProviderCredentialType {
+  HOST_INSTANCE_MI = 'hostInstanceMI',
+  SPECIFIED_SERVICE_PRINCIPAL = 'specifiedServicePrincipal'
 }
 
 export interface AZUProviderCreateFormFieldValues {
@@ -77,7 +88,8 @@ export interface AZUProviderCreateFormFieldValues {
   sshPort: number;
   sshPrivateKeyContent: File;
   sshUser: string;
-  imageBundles: ImageBundle[]
+  imageBundles: ImageBundle[];
+  providerCredentialType: ProviderCredentialType
 }
 
 export const DEFAULT_FORM_VALUES: Partial<AZUProviderCreateFormFieldValues> = {
@@ -87,7 +99,8 @@ export const DEFAULT_FORM_VALUES: Partial<AZUProviderCreateFormFieldValues> = {
   providerName: '',
   regions: [] as CloudVendorRegionField[],
   sshKeypairManagement: KeyPairManagement.YBA_MANAGED,
-  sshPort: DEFAULT_SSH_PORT
+  sshPort: DEFAULT_SSH_PORT,
+  providerCredentialType: ProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL,
 } as const;
 
 const VALIDATION_SCHEMA = object().shape({
@@ -98,7 +111,10 @@ const VALIDATION_SCHEMA = object().shape({
       'Provider name cannot contain special characters other than "-", and "_"'
     ),
   azuClientId: string().required('Azure Client ID is required.'),
-  azuClientSecret: string().required('Azure Client Secret is required.'),
+  azuClientSecret: mixed().when('providerCredentialType', {
+    is: ProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL,
+    then: mixed().required('Azure Client Secret is required.')
+  }),
   azuRG: string().required('Azure Resource Group is required.'),
   azuSubscriptionId: string().required('Azure Subscription ID is required.'),
   azuTenantId: string().required('Azure Tenant ID is required.'),
@@ -137,6 +153,14 @@ export const AZUProviderCreateForm = ({
     defaultValues: DEFAULT_FORM_VALUES,
     resolver: yupResolver(VALIDATION_SCHEMA)
   });
+
+  const hostInfoQuery = useQuery(hostInfoQueryKey.ALL, () => api.fetchHostInfo());
+  if (hostInfoQuery.isLoading) {
+    return <YBLoading />;
+  }
+  if (hostInfoQuery.isError) {
+    return <YBErrorIndicator customErrorMessage="Error fetching host info." />;
+  }
   const showAddRegionFormModal = () => {
     setRegionSelection(undefined);
     setRegionOperation(RegionOperation.ADD);
@@ -188,6 +212,23 @@ export const AZUProviderCreateForm = ({
   const onDeleteRegionSubmit = (currentRegion: CloudVendorRegionField) =>
     deleteItem(currentRegion, regions, setRegions);
 
+  const credentialOptions: OptionProps[] = [
+    {
+      value: ProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL,
+      label: 'Specify Client Secret'
+    },
+    {
+      value: ProviderCredentialType.HOST_INSTANCE_MI,
+      label: `Use Managed Identity from this YBA host's instance`,
+      disabled: hostInfoQuery.data === undefined || getYBAHost(hostInfoQuery.data) !== YBAHost.AZU
+    }
+  ];
+
+  const providerCredentialType = formMethods.watch(
+    'providerCredentialType',
+    DEFAULT_FORM_VALUES.providerCredentialType
+  );
+
   const keyPairManagement = formMethods.watch(
     'sshKeypairManagement',
     DEFAULT_FORM_VALUES.sshKeypairManagement
@@ -209,7 +250,7 @@ export const AZUProviderCreateForm = ({
           </FormField>
           <Box width="100%" display="flex" flexDirection="column" gridGap="32px">
             <FieldGroup heading="Cloud Info">
-              <FormField>
+            <FormField>
                 <FieldLabel>Client ID</FieldLabel>
                 <YBInputField
                   control={formMethods.control}
@@ -217,16 +258,34 @@ export const AZUProviderCreateForm = ({
                   disabled={isFormDisabled}
                   fullWidth
                 />
-              </FormField>
-              <FormField>
-                <FieldLabel>Client Secret</FieldLabel>
-                <YBInputField
+            </FormField>
+            <FormField>
+                <FieldLabel
+                  infoTitle="Credential Type"
+                  infoContent="For public cloud providers, YBA creates compute instances and therefore requires sufficient permissions to do so."
+                >
+                  Credential Type
+                </FieldLabel>
+                <YBRadioGroupField
+                  name="providerCredentialType"
                   control={formMethods.control}
-                  name="azuClientSecret"
-                  disabled={isFormDisabled}
-                  fullWidth
+                  options={credentialOptions}
+                  orientation={RadioGroupOrientation.HORIZONTAL}
                 />
               </FormField>
+              {providerCredentialType === ProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL && (
+                <>
+                  <FormField>
+                    <FieldLabel>Client Secret</FieldLabel>
+                    <YBInputField
+                      control={formMethods.control}
+                      name="azuClientSecret"
+                      disabled={isFormDisabled}
+                      fullWidth
+                    />
+                  </FormField>
+                </>
+              )}
               <FormField>
                 <FieldLabel>Resource Group</FieldLabel>
                 <YBInputField
@@ -443,7 +502,7 @@ export const AZUProviderCreateForm = ({
   );
 };
 
-const constructProviderPayload = async (formValues: AZUProviderCreateFormFieldValues) => {
+const constructProviderPayload = async (formValues: AZUProviderCreateFormFieldValues): Promise<YBProviderMutation> =>{
   let sshPrivateKeyContent = '';
   try {
     sshPrivateKeyContent = formValues.sshPrivateKeyContent
@@ -469,7 +528,9 @@ const constructProviderPayload = async (formValues: AZUProviderCreateFormFieldVa
       cloudInfo: {
         [ProviderCode.AZU]: {
           azuClientId: formValues.azuClientId,
-          azuClientSecret: formValues.azuClientSecret,
+          ...(formValues.providerCredentialType === ProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL && {
+            azuClientSecret: formValues.azuClientSecret
+          }),
           ...(formValues.azuHostedZoneId && { azuHostedZoneId: formValues.azuHostedZoneId }),
           azuRG: formValues.azuRG,
           ...(formValues.azuNetworkRG && { azuNetworkRG: formValues.azuNetworkRG }),
