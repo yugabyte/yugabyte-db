@@ -152,6 +152,8 @@ class PGConn {
 
   bool IsBusy();
 
+  ConnStatusType ConnStatus();
+
   Result<PGResultPtr> Fetch(const std::string& command);
 
   template <class... Args>

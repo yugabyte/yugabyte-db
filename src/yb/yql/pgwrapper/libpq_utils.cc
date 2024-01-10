@@ -336,6 +336,10 @@ Status PGConn::Execute(const std::string& command, bool show_query_in_error) {
   return Status::OK();
 }
 
+ConnStatusType PGConn::ConnStatus() {
+  return PQstatus(impl_.get());
+}
+
 bool PGConn::IsBusy() {
   static constexpr int kIsBusy = 1;
   return PQisBusy(impl_.get()) == kIsBusy;

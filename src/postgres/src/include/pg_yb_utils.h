@@ -818,6 +818,7 @@ void YbSetIsBatchedExecution(bool value);
 		YBCStatus _status = (status); \
 		if (_status) \
 		{ \
+			const int 		adjusted_elevel = YBCStatusIsFatalError(_status) ? FATAL : elevel; \
 			const uint32_t	pg_err_code = YBCStatusPgsqlError(_status); \
 			const uint16_t	txn_err_code = YBCStatusTransactionError(_status); \
 			const char	   *filename = YBCStatusFilename(_status); \
@@ -834,7 +835,7 @@ void YbSetIsBatchedExecution(bool value);
 										   &detail_buf, &detail_nargs, \
 										   &detail_args); \
 			YBCFreeStatus(_status); \
-			if (errstart(elevel, filename ? filename : __FILE__, \
+			if (errstart(adjusted_elevel, filename ? filename : __FILE__, \
 						 lineno > 0 ? lineno : __LINE__, \
 						 funcname ? funcname : PG_FUNCNAME_MACRO, TEXTDOMAIN)) \
 			{ \
