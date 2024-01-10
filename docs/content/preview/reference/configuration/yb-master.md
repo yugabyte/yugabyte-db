@@ -167,6 +167,12 @@ See [`CREATE DEFERRED INDEX`](../../../api/ycql/ddl_create_index/#deferred-index
 
 Default: `false`
 
+##### --allow_batching_non_deferred_indexes
+
+If enabled, indexes on the same (YCQL) table may be batched together during backfill, even if they were not deferred.
+
+Default: `true`
+
 ## YSQL flags
 
 ##### --enable_ysql
