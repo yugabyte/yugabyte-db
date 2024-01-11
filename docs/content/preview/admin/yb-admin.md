@@ -665,9 +665,6 @@ yb-admin \
     backfill_indexes_for_table ybdemo table_name
 ```
 
-```output
-```
-
 There is no output from the command, but a new backfill-job gets created for all the `DEFERRED` indexes of the table.
 
 ### Backup and snapshot commands
