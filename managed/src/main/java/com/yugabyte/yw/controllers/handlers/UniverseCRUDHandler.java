@@ -2147,6 +2147,14 @@ public class UniverseCRUDHandler {
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
     }
 
+    if (!Objects.equals(taskParams.nodePrefix, universe.getUniverseDetails().nodePrefix)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Cannot change node prefix (from %s to %s)",
+              universe.getUniverseDetails().nodePrefix, taskParams.nodePrefix));
+    }
+
     Set<UniverseDefinitionTaskParams.UpdateOptions> updateOptions =
         getUpdateOptions(taskParams, UniverseConfigureTaskParams.ClusterOperationType.EDIT);
     if (!updateOptions.contains(UniverseDefinitionTaskParams.UpdateOptions.UPDATE)
