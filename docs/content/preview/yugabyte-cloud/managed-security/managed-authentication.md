@@ -120,7 +120,7 @@ To configure federated authentication using PingOne, do the following:
 1. Navigate to **Security > Access Control > Authentication**, then click **Enable Federated Authentication** to display the **Enable Federated Authentication** dialog.
 1. Choose PingOne identity provider.
 1. Enter the client ID and secret of the PingOne application you created.
-1. Enter the authorization URL.
+1. Enter the Authorization URL for your application. To obtain this, in your application on the **Configuration** tab, click **URLs**.
 1. Click **Enable**.
 
 You are redirected to sign in to your IdP to test the connection. Once test connection is successful, federated authentication is enabled.
