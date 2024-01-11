@@ -182,6 +182,18 @@ It quietly succeeds. Now `\d children` shows that the foreign key constraint `ch
 
 Add the specified constraint to the table.
 
+
+{{< warning >}}
+Adding a `PRIMARY KEY` constraint will result in a full table rewrite and full-rewrite of all indexes associated with the table.
+This happens because of the clustered storage by primary-key that YugabyteDB uses to store rows and indexes. 
+Tables without a `PRIMARY KEY` have a hidden one underneath and rows are stored clustered on it. The secondary indexes of the table
+link to this hidden `PRIMARY KEY`.
+During this time, you may lose modification made to the table. 
+For reference, the same semantics as [Alter type with table rewrite](#alter-type-with-table-rewrite) apply.
+{{< /warning >}}
+
+
+
 #### [*alter_column_type*]
 
 Change the type of an existing column. The following semantics apply:
@@ -246,6 +258,14 @@ Drop the named constraint from the table.
 
 - `RESTRICT` — Remove only the specified constraint.
 - `CASCADE` — Remove the specified constraint and any dependent objects.
+
+{{< warning >}}
+Dropping the `PRIMARY KEY` constraint will result in a full table rewrite and full-rewrite of all indexes associated with the table.
+This happens because of the clustered storage by primary-key that YugabyteDB uses to store rows and indexes.
+During this time, you may lose modification made to the table. 
+For reference, the same semantics as [Alter type with table rewrite](#alter-type-with-table-rewrite) apply.
+{{< /warning >}}
+
 
 #### RENAME [ COLUMN ] *column_name* TO *column_name*
 
