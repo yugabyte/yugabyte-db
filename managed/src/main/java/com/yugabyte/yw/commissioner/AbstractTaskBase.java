@@ -5,7 +5,6 @@ package com.yugabyte.yw.commissioner;
 import static com.yugabyte.yw.common.PlatformExecutorFactory.SHUTDOWN_TIMEOUT_MINUTES;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.base.Supplier;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.typesafe.config.Config;
@@ -38,6 +37,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import play.Application;
@@ -278,6 +278,10 @@ public abstract class AbstractTaskBase implements ITask {
       totalDelayMs -= currentDelayMs;
     } while (totalDelayMs > 0);
     return false;
+  }
+
+  protected boolean doWithConstTimeout(long delayMs, long totalDelayMs, Supplier<Boolean> funct) {
+    return doWithModifyingTimeout((prevDelay) -> delayMs, totalDelayMs, funct);
   }
 
   protected UUID getUserTaskUUID() {

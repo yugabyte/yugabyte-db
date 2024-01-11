@@ -1005,4 +1005,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Enables the ability to execute SQL queries through YBA API",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> verifyClusterStateBeforeTask =
+      new ConfKeyInfo<>(
+          "yb.task.verify_cluster_state",
+          ScopeType.UNIVERSE,
+          "Verify current cluster state (from db perspective) before running task",
+          "Verify current cluster state (from db perspective) before running task",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

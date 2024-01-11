@@ -1541,6 +1541,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       // Assign the node IP to ensure deletion of the correct node.
       params.nodeIP = node.cloudInfo.private_ip;
       params.useSystemd = userIntent.useSystemd;
+      params.otelCollectorInstalled = universe.getUniverseDetails().otelCollectorEnabled;
       // Create the Ansible task to destroy the server.
       AnsibleDestroyServer task = createTask(AnsibleDestroyServer.class);
       task.initialize(params);

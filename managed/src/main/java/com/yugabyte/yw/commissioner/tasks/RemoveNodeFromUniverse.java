@@ -73,6 +73,9 @@ public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
     if (alwaysWaitForDataMove) {
       performPrecheck();
     }
+    if (isFirstTry()) {
+      verifyClustersConsistency();
+    }
   }
 
   @Override

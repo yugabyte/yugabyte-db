@@ -33,7 +33,15 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.EnumSet;
+import java.util.HashSet;
+import java.util.Iterator;
+import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.stream.Collectors;
 import javax.inject.Inject;
@@ -58,6 +66,13 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     if (isFirstTry) {
       // Verify the task params.
       verifyParams(UniverseOpType.EDIT);
+    }
+  }
+
+  @Override
+  protected void createPrecheckTasks(Universe universe) {
+    if (isFirstTry()) {
+      verifyClustersConsistency();
     }
   }
 

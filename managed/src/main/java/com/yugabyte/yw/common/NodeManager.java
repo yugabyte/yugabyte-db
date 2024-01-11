@@ -360,9 +360,13 @@ public class NodeManager extends DevopsBase {
     ProviderDetails providerDetails = provider.getDetails();
     if (params instanceof AnsibleDestroyServer.Params
         && providerType.equals(Common.CloudType.onprem)) {
-      subCommand.add("--install_node_exporter");
+      subCommand.add("--clean_node_exporter");
       if (!providerDetails.skipProvisioning) {
         subCommand.add("--provisioning_cleanup");
+      }
+      AnsibleDestroyServer.Params destroyParams = (AnsibleDestroyServer.Params) params;
+      if (destroyParams.otelCollectorInstalled) {
+        subCommand.add("--clean_otel_collector");
       }
     }
 

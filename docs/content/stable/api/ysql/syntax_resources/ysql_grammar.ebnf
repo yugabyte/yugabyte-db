@@ -694,6 +694,7 @@ column_constraint = [ 'CONSTRAINT' constraint_name ]
                          | 'NULL'
                          | 'CHECK' '(' expression ')'
                          | 'DEFAULT' expression
+                         | 'GENERATED' ('ALWAYS' | 'BY DEFAULT') 'AS' 'IDENTITY' [ ( sequence_options ) ]
                          | 'UNIQUE' index_parameters
                          | 'PRIMARY' 'KEY'
                          | references_clause ) \
@@ -1038,7 +1039,7 @@ import_foreign_schema = 'IMPORT' 'FOREIGN' 'SCHEMA' remote_schema \
                         [ ( 'LIMIT' 'TO' | 'EXCEPT' ) '(' table_name {, table_name} ')' ] \
                         'FROM' 'SERVER' server_name 'INTO' local_schema \
                         [ 'OPTIONS' '(' fdw_options ')' ] ;
-                        
+
 remote_schema = text_literal ;
 
 local_schema = text_literal ;
@@ -1047,6 +1048,7 @@ local_schema = text_literal ;
 
 insert = [ with_clause ] \
          'INSERT' 'INTO' table_name [ 'AS' alias ] [ '(' column_names ')' ] \
+         [ 'OVERRIDING' { 'SYSTEM' | 'USER' } 'VALUE' ]
          ( ( 'DEFAULT' 'VALUES' ) |
              'VALUES' '(' column_values ')' { ',' '(' column_values ')' } |
              subquery ) \
