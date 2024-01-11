@@ -304,7 +304,7 @@ export const LinuxVersionsCard: FC<LinuxVersionCardProps> = ({
           />
         )}
       </BootstrapTable>
-      {images.filter((i) => i.metadata.type === ImageBundleType.YBA_DEPRECATED).length > 0 && (
+      {images.filter((i) => i?.metadata?.type === ImageBundleType.YBA_DEPRECATED).length > 0 && (
         <div
           onClick={() => toggleShowRetiredVersions(!showRetiredVersions)}
           className={classes.showHideRecommendations}
