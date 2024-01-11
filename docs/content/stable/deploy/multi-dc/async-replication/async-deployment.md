@@ -607,8 +607,11 @@ Alters involving adding/removing columns or modifying data types require replica
     Replication enabled successfully
     ```
 #### Adding a column with a non-volatile default value
+
 When adding a new column with a (non-volatile) default expression, make sure to perform the schema modification on the target with the _computed_ default value. 
+
 For example, say you have a replicated table `test_table`.
+
 1. Pause replication on both sides. 
 1. Execute add column command on the source:
    ```sql
@@ -617,6 +620,7 @@ For example, say you have a replicated table `test_table`.
 1. Run the preceding `ALTER TABLE` command with the computed default value on the target as follows:
    
     - The computed default value can be retrieved from the `attmissingval` column in the `pg_attribute` catalog table.
+
       Example:
    
       ```sql
