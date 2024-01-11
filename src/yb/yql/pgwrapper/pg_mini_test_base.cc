@@ -26,6 +26,9 @@
 #include "yb/util/metrics.h"
 #include "yb/util/tsan_util.h"
 
+#include "yb/yql/pgwrapper/pg_test_utils.h"
+
+DECLARE_bool(enable_wait_queues);
 DECLARE_bool(enable_ysql);
 DECLARE_bool(hide_pg_catalog_table_creation_logs);
 DECLARE_bool(master_auto_run_initdb);
@@ -36,6 +39,7 @@ DECLARE_int32(pggate_rpc_timeout_secs);
 DECLARE_int32(pgsql_proxy_webserver_port);
 DECLARE_int32(timestamp_history_retention_interval_sec);
 DECLARE_int32(ysql_num_shards_per_tserver);
+DECLARE_string(ysql_pg_conf_csv);
 
 namespace yb::pgwrapper {
 
@@ -167,6 +171,12 @@ Result<PGConn> PgMiniTestBase::ConnectToDB(const std::string& dbname) const {
 
 Status PgMiniTestBase::SetupConnection(PGConn* conn) const {
   return Status::OK();
+}
+
+void PgMiniTestBase::EnableFailOnConflict() {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
+  // Set the number of retries to 2 to speed up the test.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = MaxQueryLayerRetriesConf(2);
 }
 
 } // namespace yb::pgwrapper

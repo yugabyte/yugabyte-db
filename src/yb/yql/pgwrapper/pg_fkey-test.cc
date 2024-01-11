@@ -191,7 +191,7 @@ class PgFKeyTestConcurrentModification : public PgFKeyTest,
   void SetUp() override {
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
-    FLAGS_enable_wait_queues = false;
+    EnableFailOnConflict();
     PgFKeyTest::SetUp();
     auto aux_conn = ASSERT_RESULT(Connect());
     ASSERT_OK(CreateTables(&aux_conn));

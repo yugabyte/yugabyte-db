@@ -159,7 +159,7 @@ class PgTxnTestFailOnConflict : public PgTxnTest {
   void SetUp() override {
     // This test depends on fail-on-conflict concurrency control to perform its validation.
     // TODO(wait-queues): https://github.com/yugabyte/yugabyte-db/issues/17871
-    ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_wait_queues) = false;
+    EnableFailOnConflict();
     PgTxnTest::SetUp();
   }
 };
