@@ -68,6 +68,9 @@ DEFINE_test_flag(bool, pause_catalog_manager_bg_loop_start, false,
 DEFINE_test_flag(bool, pause_catalog_manager_bg_loop_end, false,
                  "Pause the bg tasks thread at the end of the loop.");
 
+DEFINE_test_flag(bool, cdcsdk_skip_processing_dynamic_table_addition, false,
+                "Skip finding unprocessed tables for cdcsdk streams");
+
 DECLARE_bool(enable_ysql);
 
 namespace yb {
@@ -232,23 +235,28 @@ void CatalogManagerBgTasks::Run() {
       }
 
       {
-        // Find if there have been any new tables added to any namespace with an active cdcsdk
-        // stream.
-        TableStreamIdsMap table_unprocessed_streams_map;
-        // In case of master leader restart of leadership changes, we will scan all streams for
-        // unprocessed tables, but from the second iteration onwards we will only consider the
-        // 'cdcsdk_unprocessed_tables' field of CDCStreamInfo object stored in the cdc_state_map.
-        Status s =
-            catalog_manager_->FindCDCSDKStreamsForAddedTables(&table_unprocessed_streams_map);
+        if (!FLAGS_TEST_cdcsdk_skip_processing_dynamic_table_addition) {
+          // Find if there have been any new tables added to any namespace with an active cdcsdk
+          // stream.
+          TableStreamIdsMap table_unprocessed_streams_map;
+          // In case of master leader restart of leadership changes, we will scan all streams for
+          // unprocessed tables, but from the second iteration onwards we will only consider the
+          // 'cdcsdk_unprocessed_tables' field of CDCStreamInfo object stored in the cdc_state_map.
+          Status s =
+              catalog_manager_->FindCDCSDKStreamsForAddedTables(&table_unprocessed_streams_map);
 
-        if (s.ok() && !table_unprocessed_streams_map.empty()) {
-          s = catalog_manager_->AddTabletEntriesToCDCSDKStreamsForNewTables(
-              table_unprocessed_streams_map);
-        }
-        if (!s.ok()) {
-          YB_LOG_EVERY_N(WARNING, 10)
-              << "Encountered failure while trying to add unprocessed tables to cdc_state table: "
-              << s.ToString();
+          if (s.ok() && !table_unprocessed_streams_map.empty()) {
+            s = catalog_manager_->AddTabletEntriesToCDCSDKStreamsForNewTables(
+                table_unprocessed_streams_map);
+          }
+          if (!s.ok()) {
+            YB_LOG_EVERY_N(WARNING, 10)
+                << "Encountered failure while trying to add unprocessed tables to cdc_state table: "
+                << s.ToString();
+          }
+        } else {
+          LOG(INFO) << "Skipping processing of dynamic table addition due to "
+                       "cdcsdk_skip_processing_dynamic_table_addition being true";
         }
       }
 
