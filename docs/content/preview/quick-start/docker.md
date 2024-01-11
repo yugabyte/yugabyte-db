@@ -144,7 +144,7 @@ In the preceding `docker run` command, the data stored in YugabyteDB does not pe
            -v ~/yb_data:/home/yugabyte/yb_data \
            yugabytedb/yugabyte:latest bin/yugabyted start \
            --base_dir=/home/yugabyte/yb_data \
-           --background=true
+           --background=false
   ```
 
   If running macOS Monterey, replace `-p7000:7000` with `-p7001:7000`.
