@@ -788,6 +788,7 @@ _outYbBatchedNestLoop(StringInfo str, const YbBatchedNestLoop *node)
 		appendStringInfo(str, "%d", current_hinfo->innerHashAttNo);
 		appendStringInfoString(str, " :" "outerParamExpr" " "),
 		outNode(str, current_hinfo->outerParamExpr);
+                outNode(str, current_hinfo->orig_expr);
 	}
 }
 

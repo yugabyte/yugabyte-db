@@ -348,6 +348,7 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 		palloc(num_hashClauseInfos * sizeof(AttrNumber));
 	ExprState **keyexprs = palloc(num_hashClauseInfos * (sizeof(ExprState*)));
 	List *outerParamExprs = NULL;
+	List *hashExprs = NULL;
 	YbBNLHashClauseInfo *current_hinfo = plan->hashClauseInfos;
 
 	for (int i = 0; i < num_hashClauseInfos; i++)
@@ -359,6 +360,7 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 		Expr *outerExpr = current_hinfo->outerParamExpr;
 		keyexprs[i] = ExecInitExpr(outerExpr, (PlanState *) bnlstate);
 		outerParamExprs = lappend(outerParamExprs, outerExpr);
+		hashExprs = lappend(hashExprs, current_hinfo->orig_expr);
 		current_hinfo++;
 	}
 	Oid *eqFuncOids;
@@ -387,6 +389,7 @@ InitHash(YbBatchedNestLoopState *bnlstate)
 								 econtext->ecxt_per_query_memory, tablecxt,
 								 econtext->ecxt_per_tuple_memory, econtext,
 								 false);
+	bnlstate->ht_lookup_fn = ExecInitQual(hashExprs, (PlanState *) bnlstate);
 
 	bnlstate->hashiterinit = false;
 	bnlstate->current_hash_entry = NULL;
@@ -439,7 +442,7 @@ GetNewOuterTupleHash(YbBatchedNestLoopState *bnlstate, ExprContext *econtext)
 {
 	TupleTableSlot *inner = econtext->ecxt_innertuple;
 	TupleHashTable ht = bnlstate->hashtable;
-	ExprState *eq = bnlstate->js.joinqual;
+	ExprState *eq = bnlstate->ht_lookup_fn;
 
 	TupleHashEntry data;
 	data = FindTupleHashEntry(ht,
