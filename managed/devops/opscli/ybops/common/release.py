@@ -16,7 +16,6 @@ import re
 
 from ybops.common.exceptions import YBOpsRuntimeError
 
-RELEASE_VERSION_PATTERN = r"\d+.\d+.\d+.\d+"
 RELEASE_REPOS = {"devops", "yugaware", "yugabyte", "yugabundle_support", "yba_installer",
                  "node_agent"}
 
@@ -87,7 +86,7 @@ class ReleasePackage(object):
         type, ie: -release, -debug, etc.
         """
         # Expect <repo>-<version>.
-        pattern = "^(?P<repo>[^-]+)(?:-[^-]+)?-(?P<version>{})".format(RELEASE_VERSION_PATTERN)
+        pattern = "^(?P<repo>[^-]+)(?:-[^-]+)?-(?P<version>[.0-9]+)"
         # If this is an official release, we expect a commit hash and maybe a build_type, else we
         # expect a "-b" and a build number.
         if is_official_release:

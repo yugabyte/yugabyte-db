@@ -24,7 +24,7 @@ import sys
 
 from enum import Enum
 
-from ybops.common.release import ReleasePackage, RELEASE_VERSION_PATTERN
+from ybops.common.release import ReleasePackage
 from ybops.common.colors import Colors
 from ybops.common.exceptions import YBOpsRuntimeError
 from ybops.utils.remote_shell import RemoteShell
@@ -223,7 +223,7 @@ def get_default_release_version(repo_path=None):
     if not os.path.isfile(version_file):
         raise YBOpsRuntimeError("Could not file version file: {}".format(version_file))
     version = open(version_file).read().strip()
-    match = re.match("({})-b(\d+)".format(RELEASE_VERSION_PATTERN), version)
+    match = re.match("([.0-9]+)-b(\d+)", version)
     if not match:
         raise YBOpsRuntimeError("Invalid version format {}".format(version))
     return match.group(1)
