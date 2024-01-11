@@ -228,6 +228,7 @@ alter_table_action =
     | 'DISABLE' 'ROW' 'LEVEL' 'SECURITY'
     | 'ENABLE' 'ROW' 'LEVEL' 'SECURITY'
     | 'FORCE' 'ROW' 'LEVEL' 'SECURITY'
+    | 'SET' 'TABLESPACE' tablespace_name
     | 'NO' 'FORCE' 'ROW' 'LEVEL' 'SECURITY' ) ;
 
 alter_table_constraint = [ 'CONSTRAINT' constraint_name ] \

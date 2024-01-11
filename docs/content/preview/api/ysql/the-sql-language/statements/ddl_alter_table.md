@@ -67,6 +67,27 @@ Renaming a table is a non blocking metadata change operation.
 {{< /note >}}
 
 
+#### SET TABLESPACE *tablespace_name*
+
+Asynchronously change the tablespace of an existing table. 
+The tablespace change will immediately reflect in the config of the table, however the tablet move by the load balancer happens in the background. 
+While the load balancer is performing the move it is perfectly safe from a correctness perspective to do reads and writes, however some query optimization that happens based on the data location may be off while data is being moved.
+
+{{< note title="Note" >}}
+
+This is a BETA feature, and we do not recommend running this command on a production database. You will see a warning when running the command but you can ignore it. Here is an example below:
+
+```sql
+yugabyte=# ALTER TABLE bank_transactions_eu SET TABLESPACE eu_central_1_tablespace;
+WARNING:  'tablespace_alteration' is a beta feature!
+LINE 1: ALTER TABLE bank_transactions_eu SET TABLESPACE eu_central_1...
+                                         ^
+HINT:  To suppress this warning, set the 'ysql_beta_feature_tablespace_alteration' yb-tserver gflag to true.
+(Set 'ysql_beta_features' yb-tserver gflag to true to suppress the warning for all beta features.)
+```
+
+{{< /note >}}
+
 #### DROP [ COLUMN ] [ IF EXISTS ] *column_name* [ RESTRICT | CASCADE ]
 
 Drop the named column from the table.
