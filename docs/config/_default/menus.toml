@@ -628,6 +628,14 @@
   [preview_tutorials.params]
     showSection = true
 
+[[preview_tutorials]]
+  name = "CDC"
+  weight = 7
+  identifier = "tutorials-cdc"
+  parent = "tutorials"
+  [preview_tutorials.params]
+    showSection = true
+
 ########## Menus (in preview) for APIs
 
 # [[preview_api]]
