@@ -2,7 +2,7 @@
 title: Tutorials for developing with YugabyteDB
 headerTitle: Tutorials
 linkTitle: Tutorials
-description: How to Develop Applications with Azure and YugabyteDB
+description: How to develop applications with YugabyteDB using your preferred environment, software and programming language.
 headcontent: Step-by-step guides for building scalable and fault tolerant applications with YugabyteDB using your favorite programming language, software, and services
 image: /images/section_icons/index/develop.png
 type: indexpage
@@ -31,6 +31,24 @@ cascade:
 ### Cloud
 
 Develop cloud-native applications using YugabyteDB and your preferred cloud environment.
+
+<div class="row">
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="azure/">
+      <div class="head">
+        <img class="icon" src="/images/tutorials/azure/azure-logo.png" aria-hidden="true" />
+        <div class="title">Azure</div>
+      </div>
+      <div class="body">
+        Build with YugabyteDB on Microsoft Azure.
+      </div>
+    </a>
+  </div>
+
+</div>
+
+### CDC
 
 <div class="row">
 

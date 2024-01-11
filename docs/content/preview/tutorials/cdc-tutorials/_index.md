@@ -1,15 +1,16 @@
 ---
 title: Change data capture environment tutorials
 headerTitle: Kafka environments
-linkTitle: Environments
-description: Use YugabyteDB CDC with different Kafka environments.
-headcontent:
+linkTitle: Kafka environments
+description: Use YugabyteDB CDC to stream data with different Kafka environments such as Amazon MSK, Event Hubs, Confluent Cloud, and more.
+headcontent: Use YugabyteDB CDC to stream data with different Kafka environments
 image: /images/section_icons/index/develop.png
+cascade:
+  earlyAccess: /preview/releases/versioning/#feature-availability
 menu:
-  preview:
-    identifier: cdc-tutorials
-    parent: explore-change-data-capture
-    weight: 299
+  preview_tutorials:
+    identifier: tutorials-kafka-stream
+    parent: tutorials-cdc
 type: indexpage
 ---
 

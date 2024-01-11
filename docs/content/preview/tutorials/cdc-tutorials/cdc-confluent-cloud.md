@@ -6,7 +6,7 @@ description: Confluent Cloud for Change Data Capture in YugabyteDB.
 headcontent:
 menu:
   preview:
-    parent: cdc-tutorials
+    parent: tutorials-kafka-stream
     identifier: cdc-confluent-cloud
     weight: 30
 type: docs

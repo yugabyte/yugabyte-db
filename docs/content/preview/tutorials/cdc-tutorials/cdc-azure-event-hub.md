@@ -6,7 +6,7 @@ description: Azure Synapse Analytics Integration using Azure Event Hubs for Chan
 headcontent: Azure Synapse Analytics integration using Azure Event Hubs
 menu:
   preview:
-    parent: cdc-tutorials
+    parent: tutorials-kafka-stream
     identifier: cdc-azure-event-hub
     weight: 20
 type: docs
