@@ -755,6 +755,8 @@ public class UniverseCRUDHandler {
     TaskType taskType = TaskType.CreateUniverse;
     DB.beginTransaction();
     try {
+      // If the subsequent universe task fails on validation step, we will show error in UI.
+      taskParams.updateSucceeded = false;
       universe = Universe.create(taskParams, customer.getId());
       LOG.info("Created universe {} : {}.", universe.getUniverseUUID(), universe.getName());
       if (taskParams.runtimeFlags != null) {
