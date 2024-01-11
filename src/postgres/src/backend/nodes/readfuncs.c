@@ -2133,6 +2133,11 @@ _readYbBatchedNestLoop(void)
 	for (int i = 0; i < local_node->num_hashClauseInfos; i++)
 		local_node->hashClauseInfos[i].outerParamExpr = nodeRead(NULL, 0);
 
+	/* Ignore :orig_expr */
+	pg_strtok(&length);
+	for (int i = 0; i < local_node->num_hashClauseInfos; i++)
+		local_node->hashClauseInfos[i].orig_expr = nodeRead(NULL, 0);
+
 	READ_INT_FIELD(numSortCols);
 	READ_ATTRNUMBER_ARRAY(sortColIdx, local_node->numSortCols);
 	READ_OID_ARRAY(sortOperators, local_node->numSortCols);
