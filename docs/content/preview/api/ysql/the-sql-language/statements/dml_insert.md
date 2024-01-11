@@ -78,11 +78,39 @@ the INSERT ON CONFLICT variant is often colloquially referred to as "upsert".
 
 ### *returning_clause*
 
+The `RETURNING` clause causes the `INSERT` statement to compute and return value(s) based on each row actually inserted (or updated, if an `ON CONFLICT DO UPDATE` clause is used). 
+
+This is useful for obtaining values that were supplied by defaults, such as a serial sequence number. Any expression using the table's columns is allowed. 
+
+`RETURNING` column list is identical to that of the output list of `SELECT`. 
+
+Only successfully inserted or updated rows are returned.
+
+
 ### *column_values*
 
 ### *conflict_target*
 
+Specifies which conflicts ON CONFLICT takes the alternative action on by choosing arbiter indexes. 
+Either performs unique index inference, or names a constraint explicitly. 
+For ON CONFLICT DO NOTHING, it is optional to specify a conflict_target; when omitted, conflicts with all usable constraints (and unique indexes) are handled. 
+For ON CONFLICT DO UPDATE, a conflict_target must be provided.
+
+
+Specify which arbiter index to use to match rows for `ON CONFLICT`.
+It either checks a unique index, or specify a constraint explicitly.
+When using `ON CONFLICT DO UPDATE`, the `conflict_target` is required.
+When using `ON CONFLICT DO NOTHING`, the `conflict_target` is optional. If omitted, it will conflict using all usable constraints and unique indexes of the table.
+
 ### *conflict_action*
+
+`conflict_action` clause specifies an action that happens when using `ON CONFLICT`. It can be `DO NOTHING`, or `DO UPDATE`. `DO UPDATE` clause specifies the `UPDATE` action to be executed on conflicted rows.
+
+`SET` and `WHERE` clauses in `ON CONFLICT DO UPDATE` clause can access the existing row using the table's name (or an alias), and the rows proposed for insertion using the special `excluded` table. 
+
+`SELECT` privilege is required on the excluded columns that are read.
+
+All per-row `BEFORE INSERT` triggers are reflected in `excluded` values, since those effects may have contributed to the row being excluded from insertion.
 
 ```
 DO NOTHING | DO UPDATE SET *update_item* [ , ... ] [ WHERE *condition* ]
@@ -92,9 +120,34 @@ DO NOTHING | DO UPDATE SET *update_item* [ , ... ] [ WHERE *condition* ]
 
 #### *condition*
 
+An expression that returns a value of type boolean. 
+All rows will be locked when the ON CONFLICT DO UPDATE actio is taken, but only rows where this expression returns true will actually be updated.
+
+This condition is evaluated after a conflict has been identified as a candidate to update.
+
+Only `NOT DEFERRABLE` constraints and unique indexes are supported as arbiters.
+`exclusion` constraints are not supported as arbiters with `ON CONFLICT DO UPDATE`. 
+
+The `ON CONFLICT DO UPDATE` clause is a “deterministic” statement. 
+The command is not allowed to update any existing row more than once, a `cardinality violation` error will be raised in such cases.
+Rows to be inserted must not conflict with each other on the used constraint or arbiter index.
+
+`ON CONFLICT DO UPDATE` does not support updating the partition key of a conflicting row in a partitioned table that results in the row moving to a new partition.
+
+{{< note title="Tip" >}}
+
+It is preferable to use a unique index for `ON CONFLICT` instead of a constraint because you can replace the underlying unique index with another more or less equivalent index before dropping the index being replaced.
+
+{{< /note >}}
+
 ### Compatibility
 
-The SQL standard specifies that `OVERRIDING SYSTEM VALUE` can only be specified if an identity column that is generated always exists. YugabyteDB allows the clause in any case and ignores it if it is not applicable.
+There are several PostgreSQL extensions to the SQL standard inherited in YugabyteDB:
+
+- The `RETURNING` clause. 
+- The ability to use `WITH` with `INSERT`.
+- The ability to specify an alternative action with `ON CONFLICT`. When the column name list is omitted, and not all columns are filled from the `VALUES` clause or query, it's disallowed in the `SQL` standard. 
+- The SQL standard specifies that `OVERRIDING SYSTEM VALUE` can only be specified if an identity column that is generated always exists. PostgreSQL allows the clause in any case and ignores it if it is not applicable.
 
 
 ## Examples
