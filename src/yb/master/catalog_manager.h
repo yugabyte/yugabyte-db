@@ -1252,12 +1252,17 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const LeaderEpoch& epoch);
 
   Status PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
-    const scoped_refptr<TableInfo>& table,
-    const yb::TabletId& tablet_id,
-    const xrepl::StreamId& cdc_sdk_stream_id,
-    const yb::OpIdPB& safe_opid,
-    const yb::HybridTime& proposed_snapshot_time,
-    const bool require_history_cutoff) override;
+      const scoped_refptr<TableInfo>& table,
+      const yb::TabletId& tablet_id,
+      const xrepl::StreamId& cdc_sdk_stream_id,
+      const yb::OpIdPB& safe_opid,
+      const yb::HybridTime& proposed_snapshot_time,
+      bool require_history_cutoff) override;
+
+  Status WaitForSnapshotSafeOpIdToBePopulated(
+      const xrepl::StreamId& stream_id,
+      const std::vector<TableId>& table_ids,
+      CoarseTimePoint deadline) override;
 
   // Get the Table schema from system catalog table.
   Status GetTableSchemaFromSysCatalog(

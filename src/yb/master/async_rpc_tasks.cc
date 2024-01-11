@@ -40,6 +40,7 @@
 #include "yb/util/source_location.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
+#include "yb/util/sync_point.h"
 #include "yb/util/thread_restrictions.h"
 #include "yb/util/threadpool.h"
 
@@ -942,6 +943,9 @@ void AsyncAlterTable::HandleResponse(int attempt) {
     // If there is an error while populating the cdc_state table, it can be ignored here
     // as it will be handled in CatalogManager::CreateNewXReplStream
     if (cdc_sdk_stream_id_) {
+      auto sync_point_tablet = tablet_id();
+      TEST_SYNC_POINT_CALLBACK("AsyncAlterTable::CDCSDKCreateStream", &sync_point_tablet);
+
       if (resp_.has_cdc_sdk_snapshot_safe_op_id() && resp_.has_propagated_hybrid_time()) {
         WARN_NOT_OK(
             master_->catalog_manager()->PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(

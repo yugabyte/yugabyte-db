@@ -115,6 +115,39 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestTwoCSStream) {
   ASSERT_EQ(state1, state2);
 }
 
+// The goal of this test is to check if the cdc_state table entries are populated
+// as expected even if the ALTER TABLE from any tablet is slow
+TEST_F(CDCSDKConsistentSnapshotTest, TestCreateStreamWithSlowAlterTable) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  auto table = EXPECT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 2));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 2);
+
+  yb::SyncPoint::GetInstance()->SetCallBack("AsyncAlterTable::CDCSDKCreateStream", [&](void* arg) {
+    auto sync_point_tablet_id = reinterpret_cast<std::string*>(arg);
+    LOG(INFO) << "Tablet id: " << *sync_point_tablet_id;
+    if (*sync_point_tablet_id == tablets[0].tablet_id()) {
+      LOG(INFO) << "Found the tablet for which we shall slow down AlterTable";
+      SleepFor(MonoDelta::FromSeconds(2 * kTimeMultiplier));
+    }
+  });
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  // Create a Consistent Snapshot Stream with USE_SNAPSHOT option
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  auto checkpoints = ASSERT_RESULT(GetCDCCheckpoint(stream_id, tablets));
+  for (auto cp : checkpoints) {
+    LOG(INFO) << "Checkpoint = " << cp;
+    ASSERT_NE(cp, OpId::Invalid());
+  }
+
+  yb::SyncPoint::GetInstance()->DisableProcessing();
+  yb::SyncPoint::GetInstance()->ClearAllCallBacks();
+}
+
 // The goal of this test is to confirm that the consistent snapshot related metadata is
 // persisted in the sys_catalog
 TEST_F(CDCSDKConsistentSnapshotTest, TestConsistentSnapshotMetadataPersistence) {
