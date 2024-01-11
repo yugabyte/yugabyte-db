@@ -155,4 +155,4 @@ CONNECT_VALUE_CONVERTER_SCHEMA_REGISTRY_BASIC_AUTH_USER_INFO: "SCHEMA_REGISTRY_U
     docker-compose up
     ```
 
-1. Deploy the connector. For more information, refer to [Deployment](../../debezium-connector-yugabytedb/#deployment).
+1. Deploy the connector. For more information, refer to [Deployment](../../../explore/change-data-capture/debezium-connector-yugabytedb/#deployment).

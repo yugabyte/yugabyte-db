@@ -944,6 +944,13 @@
   to = "/stable/manage/data-migration/bulk-export-ysql/"
   force = true
 
+# CDC tutorials was in explore, now in Tutorials
+
+[[redirects]]
+  from = "/preview/explore/change-data-capture/cdc-tutorials/*"
+  to = "/preview/tutorials/cdc-tutorials/:splat"
+  force = true
+
 
 # Redirect older versions of specific sections
 

@@ -57,10 +57,10 @@ In addition, CDC support for the following features will be added in upcoming re
 * Support for enabling CDC on Read Replicas is tracked in issue [11116](https://github.com/yugabyte/yugabyte-db/issues/11116).
 * Support for schema evolution with before image is tracked in issue [15197](https://github.com/yugabyte/yugabyte-db/issues/15197).
 
-## Further reading
+## Learn more
 
 * Refer to [CDC Examples](https://github.com/yugabyte/cdc-examples/tree/main) for CDC usage and pattern examples.
-* Refer to [Tutorials](../cdc-tutorials/) to deploy in different Kafka environments.
+* Refer to [Tutorials](../../../tutorials/cdc-tutorials/) to deploy in different Kafka environments.
 * Refer to blogs about CDC:
   * [Data Streaming Using YugabyteDB CDC, Kafka, and SnowflakeSinkConnector](https://www.yugabyte.com/blog/data-streaming-using-yugabytedb-cdc-kafka-and-snowflakesinkconnector/)
   * [Unlock Azure Storage Options With YugabyteDB CDC](https://www.yugabyte.com/blog/unlocking-azure-storage-options-with-yugabytedb-cdc/)
