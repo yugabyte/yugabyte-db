@@ -866,7 +866,7 @@ export default class UniverseOverviewNew extends Component {
           [
             SoftwareUpgradeTaskType.ROLLBACK_UPGRADE,
             SoftwareUpgradeTaskType.SOFTWARE_UPGRADE
-          ].includes(failedTask.type) && (
+          ].includes(failedTask?.type) && (
             <Row className="p-16">
               <FailedBanner universeData={universeInfo} taskDetail={failedTask} />
             </Row>
@@ -879,6 +879,7 @@ export default class UniverseOverviewNew extends Component {
               <DBVersionWidget
                 higherVersionCount={updateAvailable}
                 isRollBackFeatureEnabled={isRollBackFeatureEnabled}
+                failedTaskDetails={failedTask}
               />
             </Col>
           )}
