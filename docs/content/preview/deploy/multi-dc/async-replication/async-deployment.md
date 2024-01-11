@@ -621,7 +621,7 @@ For example, say you have a replicated table `test_table`.
    ```
 1. Run the preceding `ALTER TABLE` command with the computed default value on the target as follows:
    
-    - The computed default value can be retrieved from `pg_attribute.attmissingval`.
+    - The computed default value can be retrieved from the `attmissingval` column in the `pg_attribute` catalog table.
 
       Example:
    
