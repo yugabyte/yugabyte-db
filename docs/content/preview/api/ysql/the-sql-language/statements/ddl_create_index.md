@@ -232,6 +232,29 @@ yugabyte=# create table shipments(id int, delivery_status text, address text, de
 yugabyte=# create index shipment_delivery on shipments(delivery_status, address, delivery_date) where delivery_status != 'delivered';
 ```
 
+### Expression indexes
+
+An index column need not be just a column of the underlying table, but can be a function or scalar expression computed from one or more columns of the table. This feature is useful to obtain fast access to tables based on the results of computations.
+
+A simple example is indexing unique emails in a users table:
+
+```plpgsql
+CREATE TABLE users(id BIGSERIAL PRIMARY KEY, email TEXT NOT NULL);
+
+CREATE UNIQUE INDEX users_email_idx ON users(lower(email));
+```
+
+This would prevent inserting duplicate email addresses using a different case.
+
+Note that index expressions are only evaluated at index time, to use the index for a specific query the expression must match exactly:
+
+```plpgsql
+SELECT * FROM users WHERE lower(email)='user@example.com'; # will use the index created above
+SELECT * FROM users WHERE email='user@example.com'; # will NOT use the index
+```
+
+Expression indexes are often used to [index jsonb columns](../../../datatypes/type_json/create-indexes-check-constraints/).
+
 ## Troubleshooting
 
 If the following troubleshooting tips don't resolve your issue, ask for help in our [community Slack]({{<slack-invite>}}) or [file a GitHub issue](https://github.com/yugabyte/yugabyte-db/issues/new?title=Index+backfill+failure).
