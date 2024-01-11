@@ -64,7 +64,7 @@ The following built-in roles are available:
   - Delete any existing backup or backup schedule.
   - Edit existing backups.
 
-  Backup Admin has View permissions for all other resources.
+  Backup Admin has view permissions for all other resources.
 
 - **Read-only** access level provides view permissions for the UI and API.
 
