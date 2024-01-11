@@ -128,6 +128,7 @@ DECLARE_bool(cdc_populate_end_markers_transactions);
 DECLARE_uint64(cdc_stream_records_threshold_size_bytes);
 DECLARE_int64(cdc_resolve_intent_lag_threshold_ms);
 DECLARE_bool(enable_tablet_split_of_cdcsdk_streamed_tables);
+DECLARE_bool(TEST_cdcsdk_skip_processing_dynamic_table_addition);
 
 namespace yb {
 
@@ -459,6 +460,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const IntentCountCompareOption intentCountCompareOption, int64* num_intents);
 
   Result<GetCDCDBStreamInfoResponsePB> GetDBStreamInfo(const xrepl::StreamId db_stream_id);
+
+  void VerifyTablesInStreamMetadata(
+      const xrepl::StreamId& stream_id, const std::unordered_set<std::string>& expected_table_ids,
+      const std::string& timeout_msg);
 
   Status ChangeLeaderOfTablet(size_t new_leader_index, const TabletId tablet_id);
 
