@@ -1,0 +1,137 @@
+{{/*
+Outputs a table of all known master or tserver flags.
+
+Syntax:
+  {{< flag-listing version="2.16.1.0" process="[master|tserver]" [flagType="[all|runtime]"] >}}
+
+  * version is the four-place version number. Required.
+  * process is "master" or "tserver". Required.
+  * flagType is "all" or "runtime". Default is runtime.
+
+Examples:
+
+* Output all runtime flags for yb-master:
+    {{< flag-listing version="2.16.1.0" process="master" >}}
+
+* Output all flags for yb-tserver:
+    {{< flag-listing version="2.16.1.0" process="tserver" flagType="all" >}}
+
+TROUBLESHOOTING
+
+  * If you get an error like this:
+      "execute of template failed at <transform.Unmarshal>: error calling Unmarshal: no data to transform",
+    The most likely reason is that $remoteUrl is incorrect.
+
+  * If you get the "no version name!" error, check params.toml for problems in the [[versions]] entries.
+*/}}
+
+{{ $process := .Get "process" }}
+{{ $flagType := default "runtime" (.Get "flagType") }}
+{{ $version := .Get "version" }}
+{{ $build := "b50" }}
+{{ $pagePermalink := .Page.RelPermalink }}
+{{ $remoteUrl := "https://downloads.yugabyte.com/releases/" }}
+
+{{/* Add the version and filename to the remote URL */}}
+{{/* (This part will need redoing when we start using per-build flag lists.) */}}
+{{- if $version -}}
+  {{ $remoteUrl = printf "%s%s/yugabyte-%s-%s-%s_flags.xml" $remoteUrl $version $version $build $process }}
+{{ else }}
+  {{ errorf "Something went wrong in %s shortcode: no version name! %s" .Name .Position }}
+{{ end }}
+
+{{/* Get the remote XML file and load it up as an array. Then, build the table. */}}
+
+{{ if eq $flagType "all" }}
+
+  {{ with resources.GetRemote $remoteUrl | transform.Unmarshal }}
+
+<p>The following table lists {{ $flagType }} flags for <a href="/v{{ $version }}/reference/configuration/{{.program}}/">{{ .program }}</a> version {{ $version }}:</p>
+
+<table>
+  <thead>
+    <th style="text-align:left">GFlag</th>
+    <th style="text-align:left">Description</th>
+    <th style="text-align:left">Default value</th>
+  </thead>
+  <tbody>
+
+    {{/* Iterate over each GFlag record and check for tags we don't want. */}}
+    {{ range .flag }}
+      {{ $publish := true }}
+      {{ with split .tags "," }}
+        {{ range . }}
+          {{/* See if anything says testing or unsafe or hidden. */}}
+          {{/* If yes, break out of this range iteration to stop processing this GFlag. */}}
+          {{/* If no, continue checking the tags. */}}
+          {{ if or (eq . "hidden") (eq . "unsafe") (eq . "testing") }}
+            {{ $publish = false }}
+            {{ break }}
+          {{ end }}
+        {{ end }}
+      {{ end }}
+
+      {{/* If this GFlag doesn't have any bad tags, publish it in a table row. */}}
+      {{ if $publish }}
+  <tr>
+    <td style="text-align:left"><code>{{ .name | plainify | htmlUnescape }}</code> ({{ .type | plainify | htmlUnescape }})
+    {{- if .tags -}}<br/><strong>Tags: </strong><em>{{ .tags | plainify | htmlUnescape }}</em>{{- end -}}
+    </td>
+    <td style="text-align:left">{{ .meaning | plainify | htmlUnescape }}</td>
+    <td style="text-align:left">{{ .default | plainify | htmlUnescape }}</td>
+  </tr>
+      {{ end }}
+    {{ end }}
+  </tbody>
+</table>
+  {{ end }}
+
+{{ else if eq $flagType "runtime" }}
+  {{ with resources.GetRemote $remoteUrl | transform.Unmarshal }}
+
+<p>The following table lists {{ $flagType }} flags for <a href="/v{{ $version }}/reference/configuration/{{.program}}/">{{ .program }}</a> version {{ $version }}:</p>
+
+<table>
+  <thead>
+    <th style="text-align:left">GFlag</th>
+    <th style="text-align:left">Description</th>
+    <th style="text-align:left">Default value</th>
+  </thead>
+  <tbody>
+
+    {{/* Iterate over each GFlag record and check for tags we don't want. */}}
+    {{ range .flag }}
+      {{ $publish := false }}
+      {{ with split .tags "," }}
+        {{ range . }}
+          {{ if eq . "runtime" }}
+            {{ $publish = true }}
+            {{/*
+              If this GFlag has a "runtime" tag, that's good, but let's
+              keep going in case it's also got a tag we don't want.
+            */}}
+          {{ else if or (eq . "testing") (eq . "unsafe") (eq . "hidden") }}
+            {{/* See if anything says testing or unsafe or hidden. */}}
+            {{/* If yes, break out of this range iteration to stop processing this GFlag. */}}
+            {{/* If no, continue checking the tags. */}}
+            {{ $publish = false }}
+            {{ break }}
+          {{ end }}
+        {{ end }}
+      {{ end }}
+
+      {{/* If this GFlag doesn't have any bad tags, publish it in a table row. */}}
+      {{ if $publish }}
+<tr>
+  <td style="text-align:left"><code>{{ .name | plainify | htmlUnescape }}</code> ({{ .type | plainify | htmlUnescape }})
+  {{- if .tags -}}<br/><strong>Tags: </strong><em>{{ .tags | plainify | htmlUnescape }}</em>{{- end -}}
+  </td>
+  <td style="text-align:left">{{ .meaning | plainify | htmlUnescape }}</td>
+  <td style="text-align:left">{{ .default | plainify | htmlUnescape }}</td>
+</tr>
+      {{ end }}
+    {{ end }}
+  </tbody>
+</table>
+  {{ end }}
+{{ end }}
