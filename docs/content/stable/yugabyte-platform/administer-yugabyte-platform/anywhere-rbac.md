@@ -40,7 +40,7 @@ A user can interact with a YugabyteDB Anywhere through the UI or REST API.
 
 Users are assigned roles, which define the set of actions users can perform. If fine-grained RBAC is enabled, you can also define the set of universes to which the user has access.
 
-YugabyteDB Anywhere includes built-in roles. If you have enabled fine-grained RBAC, you can define custom roles for team members to restrict access to specific account features.
+YugabyteDB Anywhere includes built-in roles. If you have enabled fine-grained RBAC, you can also define custom roles for team members to restrict access to specific account features.
 
 [API tokens](../../anywhere-automation/) generated for users are assigned the same role as the user that generated them.
 
@@ -66,13 +66,15 @@ The following built-in roles are available:
 
   Backup Admin has view permissions for all other resources.
 
-- **Read-only** access level provides view permissions for the UI and API.
+- **Read Only** access level provides view permissions for the UI and API.
 
-- **Connect-only** access level allows users to sign in and access their user profile only. This role is assigned to users who are not explicitly assigned a role.
+- **Connect Only** access level allows users to sign in and access their user profile only. This role is assigned to users who are not explicitly assigned a role.
 
 You can't delete or edit built-in roles.
 
 ## Manage users
+
+As a Super Admin or Admin, you can invite new users and manage existing users for your YugabyteDB Anywhere instance.
 
 How you add and modify users varies depending on whether you have enabled fine-grained RBAC. You can only assign, create, and modify custom roles if you have enabled fine-grained RBAC.
 
@@ -86,18 +88,18 @@ How you add and modify users varies depending on whether you have enabled fine-g
   <li>
     <a href="#finegrain" class="nav-link" id="finegrain-tab" data-toggle="tab"
       role="tab" aria-controls="finegrain" aria-selected="false">
-      Fine grained
+      Fine grained (v2.20.1.0)
     </a>
   </li>
 </ul>
 <div class="tab-content">
   <div id="classic" class="tab-pane fade show active" role="tabpanel" aria-labelledby="classic-tab">
 
-As a Super Admin or Admin, you can invite new users and manage existing users for your tenant.
-
-You can invite new users to your tenant as follows:
+You can invite new users to your YugabyteDB Anywhere instance as follows:
 
 1. Navigate to **Admin > User Management > Users** and click **Add User**.
+
+    ![Add User](/images/yp/authorization-platform/add-user-classic.png)
 
 1. Enter the user's email.
 
@@ -107,15 +109,13 @@ You can invite new users to your tenant as follows:
 
 1. Click **Submit**.
 
-To modify a user role or delete the user, navigate to **Admin > User Management > Users**. Click **Actions** that corresponds to the specific user, and then select either **Edit User Role** or **Delete User**.
+To modify a user role, navigate to **Admin > User Management > Users**, click **Actions** that corresponds to the specific user, and choose **Edit User Role**.
 
   </div>
 
   <div id="finegrain" class="tab-pane fade" role="tabpanel" aria-labelledby="finegrain-tab">
 
-As a Super Admin or Admin, you can invite new users and manage existing users for your YugabyteDB Anywhere instance.
-
-You can assign built-in and custom roles to users to determine the actions they are allowed to perform, and specify the universes that they can access.
+Using fine-grained RBAC, you can assign built-in and custom roles to users to determine the actions they are allowed to perform, and specify the universes that they can access.
 
 To create a user, do the following:
 
@@ -124,6 +124,7 @@ To create a user, do the following:
     ![Add User](/images/yp/authorization-platform/add-user.png)
 
 1. Enter the user's email.
+1. Enter a password for the user to sign in with.
 1. To assign a built-in role, under **Built-in Role**, click **Assign New Built-in Role**, and select a built-in role.
 1. To assign a custom role, under **Custom Role**, click **Assign New Custom Role**, and select a custom role.
 
@@ -143,11 +144,11 @@ To modify a user, do the following:
 1. To customize access to universes, click **Edit Selection**, and select the universes that you want to grant access for. Select the **Include future universes** option to automatically grant access to any universe created in the future. Click **Confirm** when you are done.
 1. Click **Edit User**.
 
-To delete a user, navigate to **Admin > Access Management > Users**, click **Actions** for the user to delete, and choose **Delete User**.
-
   </div>
 
 </div>
+
+To delete a user, navigate to **Admin > Access Management > Users**, click **Actions** for the user to delete, and choose **Delete User**.
 
 ## Manage custom roles
 
