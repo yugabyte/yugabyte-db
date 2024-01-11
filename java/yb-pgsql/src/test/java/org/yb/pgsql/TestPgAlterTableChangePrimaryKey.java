@@ -127,7 +127,7 @@ public class TestPgAlterTableChangePrimaryKey extends BasePgSQLTest {
       stmt.executeUpdate("INSERT INTO nopk VALUES (1)");
 
       runInvalidQuery(stmt, "ALTER TABLE nopk ADD PRIMARY KEY (id)",
-          "column \"id\" contains null values");
+          "Missing/null value for primary key column");
 
       assertRowList(stmt, "SELECT * FROM nopk ORDER BY id", Arrays.asList(
           new Row(1),

@@ -630,7 +630,7 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
       stmt.execute("INSERT INTO " + tableName + " VALUES (1, 1)");
 
       runInvalidQuery(stmt, "ALTER TABLE " + tableName + " ADD COLUMN c INT NOT NULL",
-          "column \"c\" contains null values");
+          "column \"c\" of relation \"" + tableName + "\" contains null values");
 
       Thread.sleep(20000); // 20 seconds
       assertQuery(stmt, "SELECT COUNT(*) FROM " + tableName, new Row(1));

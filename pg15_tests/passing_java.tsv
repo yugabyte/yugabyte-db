@@ -1,5 +1,7 @@
+org.yb.pgsql.TestAlterTableWithConcurrentTxn#testMultipleDmlTransactionWithAlterOnCurrentResource
 org.yb.pgsql.TestJWTAuth
 org.yb.pgsql.TestPg15Regress
+org.yb.pgsql.TestPgAlterTable#testAddColumnWithNotNullConstraint
 org.yb.pgsql.TestPgAlterTableColumnType#testAlterPartitionColumnTypeFailure
 org.yb.pgsql.TestPgAlterTableColumnType#testMultipleRewrites
 org.yb.pgsql.TestPgAlterTableColumnType#testNotNullConstraints

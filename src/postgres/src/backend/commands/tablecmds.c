@@ -21364,8 +21364,9 @@ YbATCopyTableRowsUnchecked(Relation old_rel, Relation new_rel,
 
 					ereport(ERROR,
 							(errcode(ERRCODE_NOT_NULL_VIOLATION),
-							 errmsg("column \"%s\" contains null values",
-									NameStr(attr->attname)),
+							 errmsg("column \"%s\" of relation \"%s\" contains null values",
+									NameStr(attr->attname),
+									RelationGetRelationName(old_rel)),
 							 errtablecol(old_rel, attn + 1)));
 				}
 			}

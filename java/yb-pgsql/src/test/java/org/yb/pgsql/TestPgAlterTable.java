@@ -131,7 +131,7 @@ public class TestPgAlterTable extends BasePgSQLTest {
       runInvalidQuery(
           statement,
           "ALTER TABLE test_table ADD c int NOT NULL",
-          "column \"c\" contains null values"
+          "column \"c\" of relation \"test_table\" contains null values"
       );
     }
   }

@@ -238,8 +238,10 @@ public class TestPgAlterTableColumnType extends BasePgSQLTest {
       // Test that we can't perform ALTER TYPE ... USING null when the column is not nullable.
       statement.execute("CREATE TABLE not_null_table(c1 int not null)");
       statement.execute("INSERT INTO not_null_table VALUES (1), (2)");
+      // YB_TODO(jason): "_temp_old" suffix is expected to be removed after master gets rid of table
+      // copying in favor of relfilenode swapping.
       runInvalidQuery(statement, "ALTER TABLE not_null_table ALTER c1 TYPE float USING null",
-        "ERROR: column \"c1\" contains null values");
+        "ERROR: column \"c1\" of relation \"not_null_table_temp_old\" contains null values");
       statement.execute("ALTER TABLE not_null_table ALTER c1 TYPE float USING 0");
       assertRowList(statement, "SELECT * from not_null_table", Arrays.asList(
           new Row(0.0),
