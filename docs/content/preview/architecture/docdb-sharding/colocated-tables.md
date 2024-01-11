@@ -153,7 +153,7 @@ For a colocated table, a TRUNCATE / DROP operation may abort due to conflicts if
 
 ## xCluster and colocation
 
-xCluster is supported for colocated tables in v2.18.0 only via [yb-admin](../../../admin/yb-admin/). To set up xCluster for colocated tables, the `colocationid` for a given table needs to match on the source and target universes.
+xCluster is supported for colocated tables and indexes in v2.18.0 only via [yb-admin](../../../admin/yb-admin/). To set up xCluster for colocated tables, the `colocationid` for a given table or index needs to match on the source and target universes.
 
 To set up xCluster for colocated tables, do the following:
 
@@ -167,6 +167,18 @@ To set up xCluster for colocated tables, do the following:
 
     ```SQL
     CREATE TABLE <name> WITH (COLOCATION = true, COLOCATION_ID = 20000)
+    ```
+
+1. Create the index in the colocated database on the source universe with colocation ID explicitly specified.
+
+    ```SQL
+    CREATE INDEX <index_name> ON TABLE <table_name> WITH (COLOCATION_ID = 20000)
+    ```
+
+1. Create the index in the colocated database on the target universe using the same colocation ID.
+
+    ```SQL
+    CREATE INDEX <index_name> ON TABLE <table_name> WITH (COLOCATION_ID = 20000)
     ```
 
 1. Get the parent table UUID for the colocated database.
