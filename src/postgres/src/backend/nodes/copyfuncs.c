@@ -909,10 +909,12 @@ _copyYbBatchedNestLoop(const YbBatchedNestLoop *from)
 			from->num_hashClauseInfos * sizeof(YbBNLHashClauseInfo));
 	
 	for (int i = 0; i < from->num_hashClauseInfos; i++)
-	{
-		newnode->hashClauseInfos[i].outerParamExpr =
+		newnode->hashClauseInfos[i].outerParamExpr = (Expr *)
 			copyObject(from->hashClauseInfos[i].outerParamExpr);
-	}
+
+	for (int i = 0; i < from->num_hashClauseInfos; i++)
+		newnode->hashClauseInfos[i].orig_expr = (Expr *)
+			copyObject(from->hashClauseInfos[i].orig_expr);
 
 	COPY_SCALAR_FIELD(numSortCols);
 	COPY_POINTER_FIELD(sortColIdx, from->numSortCols * sizeof(AttrNumber));

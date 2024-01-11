@@ -1713,7 +1713,7 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 			{
 				Expr *clause = (Expr *) lfirst(l);
 				Oid hashOp = current_hinfo->hashOp;
-				
+
 				if (OidIsValid(hashOp))
 				{
 					Assert(IsA(clause, OpExpr));
@@ -1724,7 +1724,7 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 
 					if (IsA(leftArg, RelabelType))
 						leftArg = ((RelabelType *) leftArg)->arg;
-					
+
 					if (IsA(rightArg, RelabelType))
 						rightArg = ((RelabelType *) rightArg)->arg;
 
@@ -1742,12 +1742,13 @@ set_join_references(PlannerInfo *root, Join *join, int rtoffset)
 						outerArg = leftArg;
 						innerArg = (Var *) rightArg;
 					}
-					
+
 					Assert(innerArg->varno = INNER_VAR);
 
 					current_hinfo->innerHashAttNo =
 						((Var *) innerArg)->varattno;
 					current_hinfo->outerParamExpr = outerArg;
+					current_hinfo->orig_expr = clause;
 				}
 				current_hinfo++;
 			}
