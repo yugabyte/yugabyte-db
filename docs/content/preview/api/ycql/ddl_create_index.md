@@ -153,31 +153,30 @@ Currently, an "index backfill" job is launched for each index that is created. F
 After creating a set of indexes with their backfill deferred, you can then trigger a backfill job for the entire batch of indexes (on the same table) by either:
 
 1. Creating a new index, that is not deferred:
-```cassandraql
-CREATE DEFERRED INDEX idx_1 on table_name(col_1);        // No backfill launched.
-CREATE DEFERRED INDEX idx_2 on table_name(col_2);        // No backfill launched.
-CREATE DEFERRED INDEX idx_9 on table_name(col_9);        // No backfill launched.
-
-
-// To launch backfill ...
-CREATE INDEX idx_10 on table_name(col_10);   // Will launch backfill for idx_10 and             
-                                                    // all deferred indexes idx_1 .. idx_9 
-                                                    // on the same table viz: table_name.
-```
+    ```cassandraql
+    CREATE DEFERRED INDEX idx_1 on table_name(col_1);        // No backfill launched.
+    CREATE DEFERRED INDEX idx_2 on table_name(col_2);        // No backfill launched.
+    CREATE DEFERRED INDEX idx_9 on table_name(col_9);        // No backfill launched.
+    
+    
+    // To launch backfill ...
+    CREATE INDEX idx_10 on table_name(col_10);   // Will launch backfill for idx_10 and             
+                                                        // all deferred indexes idx_1 .. idx_9 
+                                                        // on the same table viz: table_name.
+    ```
 1. Use `yb-admin` to launch backfill for deferred indexes on the table:
-```cassandraql
-CREATE DEFERRED INDEX idx_1 on table_name(col_1);        // No backfill launched.
-CREATE DEFERRED INDEX idx_2 on table_name(col_2);        // No backfill launched.
-    ...
-CREATE DEFERRED INDEX idx_9 on table_name(col_9);        // No backfill launched.
-CREATE DEFERRED INDEX idx_10 on table_name(col_10);      // No backfill launched.
+    ```cassandraql
+    CREATE DEFERRED INDEX idx_1 on table_name(col_1);        // No backfill launched.
+    CREATE DEFERRED INDEX idx_2 on table_name(col_2);        // No backfill launched.
+        ...
+    CREATE DEFERRED INDEX idx_9 on table_name(col_9);        // No backfill launched.
+    CREATE DEFERRED INDEX idx_10 on table_name(col_10);      // No backfill launched.
+    ```
 
-```
-
-Then launch a backfill job for backfilling all the deferred indexes as:
-```bash
-bin/yb-admin -master_addresses <ip:port> backfill_indexes_for_table ycql.ybdemo table_name
-```
+    Then launch a backfill job for backfilling all the deferred indexes as:
+    ```bash
+    bin/yb-admin -master_addresses <ip:port> backfill_indexes_for_table ycql.ybdemo table_name
+    ```
 1. Use [`--defer_index_backfill` flag](../../../reference/configuration/yb-master#defer-index-backfill) in yb-master service to force all indexes to be DEFERRED and run `yb-admin backfill_indexes_for_table` to backfill indexes.
 
 ### PARTIAL INDEX
