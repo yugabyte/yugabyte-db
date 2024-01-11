@@ -137,6 +137,7 @@ DECLARE_bool(enable_log_retention_by_op_idx);
 DECLARE_bool(yb_enable_cdc_consistent_snapshot_streams);
 DECLARE_uint32(cdcsdk_tablet_not_of_interest_timeout_secs);
 DECLARE_uint32(cdcsdk_retention_barrier_no_revision_interval_secs);
+DECLARE_bool(TEST_cdcsdk_skip_processing_dynamic_table_addition);
 
 namespace yb {
 
@@ -505,6 +506,10 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
       const IntentCountCompareOption intentCountCompareOption, int64* num_intents);
 
   Result<GetCDCDBStreamInfoResponsePB> GetDBStreamInfo(const xrepl::StreamId db_stream_id);
+
+  void VerifyTablesInStreamMetadata(
+      const xrepl::StreamId& stream_id, const std::unordered_set<std::string>& expected_table_ids,
+      const std::string& timeout_msg);
 
   Status ChangeLeaderOfTablet(size_t new_leader_index, const TabletId tablet_id);
 
