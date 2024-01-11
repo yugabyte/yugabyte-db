@@ -85,9 +85,7 @@ You are redirected to sign in to your IdP to test the connection. Once test conn
 
   {{% tab header="Ping" lang="ping" %}}
 
-To use Ping for your IdP, do the following:
-
-1. Make sure all users have email IDs assigned.
+To use PingOne for your IdP, do the following:
 
 1. Sign in to your PingIdentity account and create an application.
 
@@ -112,11 +110,10 @@ To use Ping for your IdP, do the following:
 
 1. Enable the client application.
 
-In addition, to configure PingOne federated authentication in YugabyteDB Managed, you need the following:
+To configure PingOne federated authentication in YugabyteDB Managed, you need the following:
 
-- Client ID of the application you created.
-- Client secret of the application.
-- the Authorization URL for your application. To obtain this, in your application on the **Configuration** tab, click **URLs**.
+- Client ID and secret of the application you created. These are provided on the **Overview** tab.
+- Authorization URL for your application. This is displayed on the **Configuration** tab under **URLs**.
 
 **Configure**
 
