@@ -73,7 +73,7 @@ Refer to [Create a new client secret](https://learn.microsoft.com/en-us/entra/id
 
 **Configure**
 
-To configure federated authentication, do the following:
+To configure federated authentication using Entra, do the following:
 
 1. Navigate to **Security > Access Control > Authentication**, then click **Enable Federated Authentication** to display the **Enable Federated Authentication** dialog.
 1. Choose the Microsoft Entra ID identity provider.
@@ -90,12 +90,14 @@ To use Ping for your IdP, do the following:
 
 1. Make sure all users have email IDs assigned.
 
-1. Create an application.
+1. Sign in to your PingIdentity account and create an application.
 
-    - On the **Application** tab, add a new application.
-    - Set Application Type to OIDC Web App.
+    - Under **Applications**, add a new application.
+    - Enter a name for the application.
+    - Set **Application Type** to OIDC Web App.
+    - Click **Save**.
 
-1. On the **Configuration** tab, make sure **Response Type** is set to Code and **Grant Type** to Authorization Code.
+1. Select the application you created and, on the **Configuration** tab, make sure **Response Type** is set to Code and **Grant Type** to Authorization Code.
 
 1. Add <https://yugabyte-cloud.okta.com/oauth2/v1/authorize/callback> in **Redirect URIs**.
 
@@ -105,19 +107,20 @@ To use Ping for your IdP, do the following:
 
 1. On the **Resources** tab, add openid, email, profile as ALLOWED SCOPES.
 
-    Optionally, you can configure Policies and Attribute Mappings as required.
+1. Optionally, you can configure **Policies** and **Attribute Mappings** as required.
 
-1. On the **Access** tab, assign user's groups to the application.
+1. On the **Access** tab, assign user groups to the application.
 
 1. Enable the client application.
 
 **Configure**
 
-To configure federated authentication, do the following:
+To configure federated authentication using PingOne, do the following:
 
 1. Navigate to **Security > Access Control > Authentication**, then click **Enable Federated Authentication** to display the **Enable Federated Authentication** dialog.
 1. Choose PingOne identity provider.
-1. Enter your PingOne application client ID and secret.
+1. Enter the client ID and secret of the PingOne application you created.
+1. Enter the authorization URL.
 1. Click **Enable**.
 
 You are redirected to sign in to your IdP to test the connection. Once test connection is successful, federated authentication is enabled.
