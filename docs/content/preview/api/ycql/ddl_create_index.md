@@ -164,7 +164,7 @@ CREATE INDEX idx_10 on table_name(col_10);   // Will launch backfill for idx_10 
                                                     // all deferred indexes idx_1 .. idx_9 
                                                     // on the same table viz: table_name.
 ```
-2. Use `yb-admin` to launch backfill for deferred indexes on the table:
+1. Use `yb-admin` to launch backfill for deferred indexes on the table:
 ```cassandraql
 CREATE DEFERRED INDEX idx_1 on table_name(col_1);        // No backfill launched.
 CREATE DEFERRED INDEX idx_2 on table_name(col_2);        // No backfill launched.
