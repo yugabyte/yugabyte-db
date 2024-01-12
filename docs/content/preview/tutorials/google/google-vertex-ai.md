@@ -24,6 +24,7 @@ The [sample application](https://github.com/YugabyteDB-Samples/yugabytedb-azure-
 ## Prerequisites
 
 - A Google Cloud account with appropriate permissions
+- The [gcloud command-line utility](https://cloud.google.com/sdk/docs/install)
 - A YugabyteDB cluster running [v2.19.2 or later](https://download.yugabyte.com/)
 - [Node.js](https://github.com/nodejs/release#release-schedule) v18 or later
 - The latest version of [Docker](https://docs.docker.com/desktop/)
@@ -82,7 +83,7 @@ bin/yugabyted start --join=yugabytedb_node1 \
 --base_dir=/home/yugabyte/yb_data --background=false
 ```
 
-The database connectivity settings are provided in the `{project_dir}/backend/.env` file and do not need to be changed if you started the cluster with the command above.
+The database connectivity settings are provided in the `{project_dir}/backend/.env` file and do not need to be changed if you started the cluster with the preceding command.
 
 Navigate to the YugabyteDB UI to confirm that the database is up and running, at <http://127.0.0.1:15433>.
 
@@ -99,7 +100,7 @@ As long as the application provides a lodging recommendation service for San Fra
     docker cp {project_dir}/sql/1_airbnb_embeddings.csv yugabytedb-node1:/home
    ```
 
-1. Load the dataset to the cluster with properties in San Francisco.  Note: it can take a minute to load the data.:
+1. Load the dataset to the cluster with properties in San Francisco (this can take a minute or two):
 
     ```shell
     docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 -c '\i /home/0_airbnb_listings.sql'
@@ -121,8 +122,7 @@ To start using Google Vertex AI in the application:
 
 1. Create a project in Google Cloud.
 1. Enable the Vertex AI API.
-1. Install the [gcloud command-line utility](https://cloud.google.com/sdk/docs/install).
-1. Log-in to Google Cloud via the CLI to run the application locally.
+1. Sign in to Google Cloud via the CLI to run the application locally.
 
     ```shell
     gcloud auth application-default login
@@ -132,11 +132,15 @@ To start using Google Vertex AI in the application:
 
 ## Generate embeddings for Airbnb listings
 
-Airbnb properties come with detailed descriptions of the accommodations, location, and various other features of the listing. By transforming the text in the `description` column of our database into a vectorized representation, we can use `pgvector` to execute a similarity search based on user prompts.
+Airbnb listings provide a detailed property description including number of rooms, types of amenities, a location, and other features. That information is stored in the `description` column and is a perfect fit for the similarity search against user prompts. However, to enable the similarity search, each description first needs to be transformed into its vectorized representation.
 
-Execute the `embeddingsGenerator.js` script to generate embeddings in Google Vertex AI for each property, and store them in the `description_embedding` column in the database. This process can take over 10 minutes to complete.
+The application comes with the embeddings generator (`{project_dir}backend/embeddings_generator.js`) that creates embeddings for all Airbnb properties descriptions.
 
-```shell
+Execute the `embeddingsGenerator.js` script to generate embeddings in Google Vertex AI for each property, and store them in the `description_embedding` column in the database.
+
+Note that it can take 10+ minutes to generate embeddings for more than 7500 Airbnb properties.
+
+```sh
 node {project_directory}/backend/vertex/embeddingsGenerator.js
 ....
 Processing rows starting from 34746755
@@ -145,20 +149,22 @@ Processing rows starting from 35291912
 Finished generating embeddings for 7551 rows
 ```
 
-## Run the pplication
+## Start the application
+
+With the Airbnb data with embeddings loaded in YugabyteDB, start to explore the application:
 
 1. Start the Node.js backend.
 
-   ```
-   cd {project_dir}/backend
-   npm start
-   ```
+    ```sh
+    cd {project_dir}/backend
+    npm start
+    ```
 
 1. Start the React UI.
 
-   ```
-   npm run dev
-   ```
+    ```sh
+    npm run dev
+    ```
 
 1. Access the application UI at [http://localhost:5173](http://localhost:5173).
 
