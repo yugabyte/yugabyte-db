@@ -188,7 +188,7 @@ Adding a `PRIMARY KEY` constraint results in a full table rewrite and full rewri
 This happens because of the clustered storage by primary key that YugabyteDB uses to store rows and indexes. 
 Tables without a `PRIMARY KEY` have a hidden one underneath and rows are stored clustered on it. The secondary indexes of the table
 link to this hidden `PRIMARY KEY`.
-During this time, you may lose modification made to the table. 
+While the tables and indexes are being rewritten, you may lose any modifications made to the table. 
 For reference, the same semantics as [Alter type with table rewrite](#alter-type-with-table-rewrite) apply.
 {{< /warning >}}
 
