@@ -26,10 +26,11 @@ namespace yb::pgwrapper {
 namespace {
 
 Result<size_t> GetMetric(const MetricWatcherDescriptor& desc) {
-  auto item = desc.map.find(&desc.proto);
-  RSTATUS_DCHECK(item != desc.map.end(), IllegalState, "Metric not found");
-  const auto& metric = *item->second;
-  switch(metric.prototype()->type()) {
+  auto metric_ptr = desc.entity.FindOrNull(desc.proto);
+  RSTATUS_DCHECK(metric_ptr, IllegalState, "Metric not found");
+  const auto& metric = *metric_ptr;
+  const auto& type = metric.prototype()->type();
+  switch(type) {
     case MetricType::kHistogram: return down_cast<const Histogram&>(metric).TotalCount();
     case MetricType::kEventStats:
         return down_cast<const EventStats&>(metric).TotalCount();
@@ -38,8 +39,7 @@ Result<size_t> GetMetric(const MetricWatcherDescriptor& desc) {
     case MetricType::kGauge: break;
     case MetricType::kLag: break;
   }
-  RSTATUS_DCHECK(
-      false, IllegalState, Format("Unsupported metric type $0", metric.prototype()->type()));
+  RSTATUS_DCHECK(false, IllegalState, Format("Unsupported metric type $0", type));
   return 0;
 }
 
@@ -56,11 +56,6 @@ Status UpdateDelta(
     d->delta_receiver = VERIFY_RESULT(GetMetric(*d)) - d->delta_receiver;
   }
   return Status::OK();
-}
-
-const MetricEntity::MetricMap& GetMetricMap(
-    std::reference_wrapper<const server::RpcServerBase> server) {
-  return server.get().metric_entity()->UnsafeMetricsMapForTests();
 }
 
 bool HasTransactionError(const Status& status) {
@@ -100,5 +95,16 @@ std::string_view SerializeAccessErrorMessageSubstring() {
 std::string MaxQueryLayerRetriesConf(uint16_t max_retries) {
   return Format("yb_max_query_layer_retries=$0", max_retries);
 }
+
+SingleMetricDescriber::SingleMetricDescriber(
+    std::reference_wrapper<const MetricEntity> entity,
+    std::reference_wrapper<const MetricPrototype> proto)
+    : descriptors{Descriptor{&delta, entity, proto}} {}
+
+
+SingleMetricDescriber::SingleMetricDescriber(
+    std::reference_wrapper<const server::RpcServerBase> server,
+    std::reference_wrapper<const MetricPrototype> proto)
+    : SingleMetricDescriber(*server.get().metric_entity(), proto) {}
 
 } // namespace yb::pgwrapper
