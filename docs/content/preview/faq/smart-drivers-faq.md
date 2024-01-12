@@ -88,7 +88,7 @@ No.
 
 Apart from directing connections to healthy nodes, smart driver connections are no different. Smart drivers require no special optimizations or modifications to your application's connection handling.
 
-### How can I limit traffic to specific clouds, regions, or AZs with the Smart Driver?
+### How do I limit traffic to specific clouds, regions, or AZs using a smart driver?
 
 Traffic can be limited or directed to specific clouds, regions, or AZs using Topology Keys; each smart driver client sets this with a key pattern particular to each language.
 
