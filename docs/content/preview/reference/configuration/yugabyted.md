@@ -207,7 +207,7 @@ Advanced flags can be set by using the configuration file in the `--config` flag
 #### Deprecated flags
 
 --daemon *bool*
-: Enable or disable running yugabyted in the background as a daemon. Does not persist on restart. Default: `true`.
+: Enable or disable running yugabyted in the background as a daemon. Does not persist on restart. Use [--background](#flags) instead. Default: `true`.
 
 --listen *bind-ip*
 : The IP address or localhost name to which yugabyted will listen.

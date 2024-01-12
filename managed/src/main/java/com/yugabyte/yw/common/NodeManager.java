@@ -230,6 +230,37 @@ public class NodeManager extends DevopsBase {
     return command;
   }
 
+  /**
+   * Inline wait for clock sync means to wait for clock skew to go below the threshold before
+   * cronjob or systemd starts the master and tserver processes. It is useful to handle out-of-band
+   * restart of the nodes.
+   *
+   * @return The list of the arguments required to force cronjob and systemd to wait for clock skew
+   *     to decrease below the threshold before starting the master and tserver processes
+   */
+  public static List<String> getInlineWaitForClockSyncCommandArgs(RuntimeConfGetter confGetter) {
+    List<String> args = new ArrayList<>();
+    if (!confGetter.getGlobalConf(GlobalConfKeys.acceptableClockSkewWaitEnabled)) {
+      return args;
+    }
+    args.add("--acceptable_clock_skew_wait_enabled");
+    args.add("--acceptable_clock_skew_sec");
+    args.add(
+        String.format(
+            "%.9f",
+            confGetter
+                    .getGlobalConf(GlobalConfKeys.waitForClockSyncMaxAcceptableClockSkew)
+                    .toNanos()
+                / Math.pow(10, 9)));
+    // Because the script checks the clock skew every 1 second, we can pass the number of seconds
+    // as the number of retries.
+    args.add("--acceptable_clock_skew_max_tries");
+    args.add(
+        String.valueOf(
+            confGetter.getGlobalConf(GlobalConfKeys.waitForClockSyncTimeout).toSeconds()));
+    return args;
+  }
+
   private List<String> getAccessKeySpecificCommand(NodeTaskParams params, NodeCommandType type) {
     List<String> subCommand = new ArrayList<>();
     if (params.getUniverseUUID() == null) {
@@ -329,9 +360,13 @@ public class NodeManager extends DevopsBase {
     ProviderDetails providerDetails = provider.getDetails();
     if (params instanceof AnsibleDestroyServer.Params
         && providerType.equals(Common.CloudType.onprem)) {
-      subCommand.add("--install_node_exporter");
+      subCommand.add("--clean_node_exporter");
       if (!providerDetails.skipProvisioning) {
         subCommand.add("--provisioning_cleanup");
+      }
+      AnsibleDestroyServer.Params destroyParams = (AnsibleDestroyServer.Params) params;
+      if (destroyParams.otelCollectorInstalled) {
+        subCommand.add("--clean_otel_collector");
       }
     }
 
@@ -1965,6 +2000,7 @@ public class NodeManager extends DevopsBase {
           if (taskParam.installThirdPartyPackages) {
             commandArgs.add("--install_third_party_packages");
           }
+          commandArgs.addAll(getInlineWaitForClockSyncCommandArgs(this.confGetter));
           commandArgs.addAll(getAccessKeySpecificCommand(taskParam, type));
           if (nodeTaskParam.deviceInfo != null) {
             commandArgs.addAll(getDeviceArgs(nodeTaskParam));

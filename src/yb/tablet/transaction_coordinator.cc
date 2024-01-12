@@ -1691,7 +1691,7 @@ class TransactionCoordinator::Impl : public TransactionStateContext,
       if (!submit_status.ok()) {
         LOG_WITH_PREFIX(DFATAL)
             << "Could not submit transaction status update operation: "
-            << update->ToString() << ", status: " << submit_status;
+            << "status: " << submit_status;
       }
     }
   }

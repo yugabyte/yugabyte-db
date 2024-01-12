@@ -1963,8 +1963,8 @@ int64_t PgMiniTest::GetBloomFilterCheckedMetric() {
 TEST_F(PgMiniTest, BloomFilterBackwardScanTest) {
   auto conn = ASSERT_RESULT(Connect());
   ASSERT_OK(conn.Execute("CREATE TABLE t (h int, r int, primary key(h, r))"));
-  ASSERT_OK(conn.Execute("INSERT INTO t SELECT i / 10, i % 10"
-                         "FROM generate_series(1, 500) i"));
+  ASSERT_OK(conn.Execute(
+      "INSERT INTO t SELECT i / 10, i % 10 FROM generate_series(1, 500) i"));
 
   FlushAndCompactTablets();
 

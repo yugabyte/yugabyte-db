@@ -242,6 +242,8 @@ class CDCSDKTestBase : public YBTest {
 
   Result<xrepl::StreamId> CreateDBStreamBasedOnCheckpointType(CDCCheckpointType checkpoint_type);
 
+  Result<master::ListCDCStreamsResponsePB> ListDBStreams();
+
  protected:
   // Every test needs to initialize this cdc_proxy_.
   std::unique_ptr<CDCServiceProxy> cdc_proxy_;

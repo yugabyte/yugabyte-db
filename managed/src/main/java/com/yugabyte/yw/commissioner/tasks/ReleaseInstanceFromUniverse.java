@@ -61,6 +61,14 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
   }
 
   @Override
+  protected void createPrecheckTasks(Universe universe) {
+
+    NodeDetails currentNode = universe.getNode(taskParams().nodeName);
+    Collection<NodeDetails> currentNodeDetails = Collections.singleton(currentNode);
+    createCheckNodeSafeToDeleteTasks(universe, currentNodeDetails);
+  }
+
+  @Override
   public void run() {
     log.info(
         "Started {} task for node {} in univ uuid={}",
@@ -85,22 +93,11 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
       taskParams().nodeUuid = currentNode.nodeUuid;
       Collection<NodeDetails> currentNodeDetails = Collections.singleton(currentNode);
 
-      // Wait for Master Leader before doing Master operations, like blacklisting.
-      createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
-      // If the node fails in Adding state during ADD action, IP may not be available.
-      // Check to make sure that the node IP is available.
-      if (Util.getNodeIp(universe, currentNode) != null) {
-        // Create a task for removal of this server from blacklist on master leader.
-        createModifyBlackListTask(
-                null /* addNodes */,
-                currentNodeDetails /* removeNodes */,
-                false /* isLeaderBlacklist */)
-            .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
-      }
       UserIntent userIntent =
           universe.getUniverseDetails().getClusterByUuid(currentNode.placementUuid).userIntent;
+      boolean instanceExists = instanceExists(taskParams());
       // Method instanceExists also checks for on-prem.
-      if (instanceExists(taskParams())) {
+      if (instanceExists) {
         if (userIntent.providerType == CloudType.onprem) {
           // Stop master and tservers.
           createStopServerTasks(currentNodeDetails, ServerType.MASTER, true /* isForceDelete */)
@@ -112,17 +109,35 @@ public class ReleaseInstanceFromUniverse extends UniverseTaskBase {
                 .setSubTaskGroupType(SubTaskGroupType.StoppingNodeProcesses);
           }
         }
+      }
 
-        // Set the node states to Removing.
+      // Wait for Master Leader before doing Master operations, like blacklisting.
+      createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
+
+      if (instanceExists) {
+        // Set the node states to Terminating.
         createSetNodeStateTasks(currentNodeDetails, NodeDetails.NodeState.Terminating)
             .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
+
         // Create tasks to terminate that instance. Force delete and ignore errors.
         createDestroyServerTasks(
                 universe,
                 currentNodeDetails,
                 true /* isForceDelete */,
                 false /* deleteNode */,
-                true /* deleteRootVolumes */)
+                true /* deleteRootVolumes */,
+                false /* skipDestroyPrecheck */)
+            .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
+      }
+
+      // If the node fails in Adding state during ADD action, IP may not be available.
+      // Check to make sure that the node IP is available.
+      if (Util.getNodeIp(universe, currentNode) != null) {
+        // Create a task for removal of this server from blacklist on master leader.
+        createModifyBlackListTask(
+                null /* addNodes */,
+                currentNodeDetails /* removeNodes */,
+                false /* isLeaderBlacklist */)
             .setSubTaskGroupType(SubTaskGroupType.ReleasingInstance);
       }
 

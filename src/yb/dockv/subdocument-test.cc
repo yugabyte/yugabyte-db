@@ -158,14 +158,14 @@ TEST(SubDocumentTest, TestCopyMove) {
   ASSERT_EQ(s3, s4);
   ASSERT_EQ(s3.GetTtl(), s4.GetTtl());
   ASSERT_EQ(s3.GetWriteTime(), s4.GetWriteTime());
-  ASSERT_EQ(ValueEntryType::kNullLow, s1.value_type());
+  ASSERT_EQ(ValueEntryType::kNullLow, s1.value_type()); // NOLINT(bugprone-use-after-move)
 
   SubDocument s5;
   s5 = std::move(s2);
   ASSERT_EQ(s3, s5);
   ASSERT_EQ(s3.GetTtl(), s5.GetTtl());
   ASSERT_EQ(s3.GetWriteTime(), s5.GetWriteTime());
-  ASSERT_EQ(ValueEntryType::kNullLow, s2.value_type());
+  ASSERT_EQ(ValueEntryType::kNullLow, s2.value_type()); // NOLINT(bugprone-use-after-move)
 }
 
 }  // namespace yb::dockv

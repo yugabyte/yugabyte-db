@@ -5,7 +5,6 @@ package com.yugabyte.yw.commissioner;
 import static com.yugabyte.yw.common.PlatformExecutorFactory.SHUTDOWN_TIMEOUT_MINUTES;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.base.Supplier;
 import com.google.common.util.concurrent.MoreExecutors;
 import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import com.typesafe.config.Config;
@@ -15,6 +14,7 @@ import com.yugabyte.yw.commissioner.TaskExecutor.TaskCache;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.ConfigHelper;
 import com.yugabyte.yw.common.NodeManager;
+import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.PlatformExecutorFactory;
 import com.yugabyte.yw.common.RestoreManagerYb;
 import com.yugabyte.yw.common.ShellResponse;
@@ -37,6 +37,7 @@ import java.util.concurrent.ThreadFactory;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
+import java.util.function.Supplier;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import play.Application;
@@ -81,6 +82,7 @@ public abstract class AbstractTaskBase implements ITask {
   protected final NodeManager nodeManager;
   protected final BackupHelper backupHelper;
   protected final AutoFlagUtil autoFlagUtil;
+  protected final NodeUIApiHelper nodeUIApiHelper;
 
   @Inject
   protected AbstractTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -103,6 +105,7 @@ public abstract class AbstractTaskBase implements ITask {
     this.nodeManager = baseTaskDependencies.getNodeManager();
     this.backupHelper = baseTaskDependencies.getBackupHelper();
     this.autoFlagUtil = baseTaskDependencies.getAutoFlagUtil();
+    this.nodeUIApiHelper = baseTaskDependencies.getNodeUIApiHelper();
   }
 
   protected ITaskParams taskParams() {
@@ -275,6 +278,10 @@ public abstract class AbstractTaskBase implements ITask {
       totalDelayMs -= currentDelayMs;
     } while (totalDelayMs > 0);
     return false;
+  }
+
+  protected boolean doWithConstTimeout(long delayMs, long totalDelayMs, Supplier<Boolean> funct) {
+    return doWithModifyingTimeout((prevDelay) -> delayMs, totalDelayMs, funct);
   }
 
   protected UUID getUserTaskUUID() {

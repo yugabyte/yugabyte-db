@@ -78,6 +78,10 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
         throw new RuntimeException(msg);
       }
 
+      if (isFirstTry()) {
+        verifyClustersConsistency();
+      }
+
       preTaskActions();
 
       // Delete all the read-only cluster nodes.
@@ -91,7 +95,8 @@ public class ReadOnlyClusterDelete extends UniverseDefinitionTaskBase {
               nodesToBeRemoved,
               params().isForceDelete,
               true /* deleteNodeFromDB */,
-              true /* deleteRootVolumes */)
+              true /* deleteRootVolumes */,
+              false /* skipDestroyPrecheck */)
           .setSubTaskGroupType(SubTaskGroupType.RemovingUnusedServers);
 
       // Remove the cluster entry from the universe db entry.

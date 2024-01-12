@@ -22,6 +22,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -363,6 +364,9 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
         TaskType.EditUniverse,
         taskParams);
     universe = Universe.getOrBadRequest(defaultUniverse.getUniverseUUID());
+    setDumpEntitiesMock(universe, "", false);
+    when(mockClient.getLeaderMasterHostAndPort())
+        .thenReturn(HostAndPort.fromHost(defaultUniverse.getMasters().get(0).cloudInfo.private_ip));
     taskParams = performShrink(universe);
     super.verifyTaskRetries(
         defaultCustomer,
@@ -377,6 +381,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   public void testVolumeSizeValidation() {
     Universe universe = defaultUniverse;
     UniverseDefinitionTaskParams taskParams = performFullMove(universe);
+    setDumpEntitiesMock(defaultUniverse, "", false);
     taskParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize--;
     PlatformServiceException exception =
         assertThrows(PlatformServiceException.class, () -> submitTask(taskParams));
@@ -392,6 +397,7 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
     UniverseDefinitionTaskParams taskParams = performFullMove(universe);
     taskParams.getPrimaryCluster().userIntent.deviceInfo.volumeSize--;
     taskParams.getPrimaryCluster().userIntent.deviceInfo.numVolumes++;
+    setDumpEntitiesMock(defaultUniverse, "", false);
     TaskInfo taskInfo = submitTask(taskParams);
     assertEquals(Success, taskInfo.getTaskState());
   }

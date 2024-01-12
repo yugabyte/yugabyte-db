@@ -927,6 +927,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + "are watched. Requires restart to take effect",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Boolean> acceptableClockSkewWaitEnabled =
+      new ConfKeyInfo<>(
+          "yb.wait_for_clock_sync.inline_enabled",
+          ScopeType.GLOBAL,
+          "Whether to wait for clock skew decrease",
+          "Whether to wait for the clock skew to go below the threshold before starting the "
+              + "master and tserver processes",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> waitForClockSyncMaxAcceptableClockSkew =
       new ConfKeyInfo<>(
           "yb.wait_for_clock_sync.max_acceptable_clock_skew",
@@ -1151,4 +1160,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "If Kubernetes Operator thread fails, crash YBA",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Integer> xclusterBootstrapRequiredRpcMaxThreads =
+      new ConfKeyInfo<>(
+          "yb.xcluster.is_bootstrap_required_rpc_pool.max_threads",
+          ScopeType.GLOBAL,
+          "XCluster isBootstrapRequired rpc max parallel threads",
+          "Sets the maximum allowed number of threads to be run concurrently for xcluster"
+              + " isBootstrapRequired rpc",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

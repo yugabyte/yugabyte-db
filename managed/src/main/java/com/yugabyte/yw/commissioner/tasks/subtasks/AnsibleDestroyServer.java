@@ -40,6 +40,8 @@ public class AnsibleDestroyServer extends NodeTaskBase {
     public boolean deleteRootVolumes = false;
     // IP of node to be deleted.
     public String nodeIP = null;
+    // Flag, indicating OpenTelemetry Collector is installed on the DB node.
+    public boolean otelCollectorInstalled = false;
   }
 
   @Override

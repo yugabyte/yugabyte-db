@@ -48,8 +48,8 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
-import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ThreadPoolExecutor;
 import junitparams.JUnitParamsRunner;
 import kamon.instrumentation.play.GuiceModule;
 import org.junit.Before;
@@ -71,7 +71,7 @@ public class UniversePerfControllerTest extends FakeDBApplication {
   private UniversePerfHandler universePerfHandler;
   private HashedTimestampColumnFinder hashedTimestampColumnFinder;
   private AuditService auditService;
-  private ExecutorService executorService;
+  private ThreadPoolExecutor executorService;
   private UnusedIndexFinder unusedIndexFinder;
   private NodeUniverseManager mockNodeUniverseManager = mock(NodeUniverseManager.class);
   private PlatformExecutorFactory mockPlatformExecutorFactory = mock(PlatformExecutorFactory.class);
@@ -114,7 +114,7 @@ public class UniversePerfControllerTest extends FakeDBApplication {
   @Before
   public void setUp() {
     auditService = new AuditService();
-    executorService = Executors.newFixedThreadPool(1);
+    executorService = (ThreadPoolExecutor) Executors.newFixedThreadPool(1);
     universePerfController.setAuditService(auditService);
 
     // Parse different shell responses and populate in shellResponses list
@@ -585,7 +585,7 @@ public class UniversePerfControllerTest extends FakeDBApplication {
             shellResponsesUnusedIndex.get(3),
             shellResponsesUnusedIndex.get(3));
     when(mockPlatformExecutorFactory.createFixedExecutor(anyString(), anyInt(), any()))
-        .thenReturn(executorService, Executors.newFixedThreadPool(1));
+        .thenReturn(executorService, (ThreadPoolExecutor) Executors.newFixedThreadPool(1));
     Result unusedIndexResponse =
         universePerfController.getUnusedIndexes(customer.getUuid(), universe.getUniverseUUID());
 

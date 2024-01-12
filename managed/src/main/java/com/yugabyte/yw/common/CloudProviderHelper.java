@@ -5,7 +5,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.node.ObjectNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.HashMultimap;
 import com.google.common.collect.Multimap;
 import com.google.inject.Inject;
@@ -464,10 +464,10 @@ public class CloudProviderHelper {
 
   private void updateGCPProviderConfig(Provider provider, Map<String, String> config) {
     GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
-    JsonNode gcpCredentials = gcpCloudInfo.getGceApplicationCredentials();
-    if (gcpCredentials != null) {
+    if (StringUtils.isNotEmpty(gcpCloudInfo.getGceApplicationCredentials())) {
       String gcpCredentialsFile =
-          accessManager.createGCPCredentialsFile(provider.getUuid(), gcpCredentials);
+          accessManager.createGCPCredentialsFile(
+              provider.getUuid(), gcpCloudInfo.getGceApplicationCredentials());
       if (gcpCredentialsFile != null) {
         gcpCloudInfo.setGceApplicationCredentialsPath(gcpCredentialsFile);
       }
@@ -539,9 +539,20 @@ public class CloudProviderHelper {
        * Preferences for GCP Project. 1. User provided project name. 2. `project_id` present in gcp
        * credentials user provided. 3. Metadata query to fetch the same.
        */
-      ObjectNode credentialJSON = (ObjectNode) gcpCloudInfo.getGceApplicationCredentials();
-      if (credentialJSON != null && credentialJSON.has("project_id")) {
-        gcpCloudInfo.setGceProject(credentialJSON.get("project_id").asText());
+      try {
+        String credentials = gcpCloudInfo.getGceApplicationCredentials();
+        if (StringUtils.isNotEmpty(credentials)) {
+          ObjectMapper objectMapper = Json.mapper();
+          JsonNode gceCreds = objectMapper.readTree(credentials);
+          if (gceCreds != null && gceCreds.has("project_id")) {
+            gcpCloudInfo.setGceProject(gceCreds.get("project_id").asText());
+          }
+        }
+      } catch (Exception e) {
+        throw new PlatformServiceException(
+            INTERNAL_SERVER_ERROR,
+            String.format(
+                "Failed to retrieve GCP project information, %s", e.getLocalizedMessage()));
       }
     }
   }

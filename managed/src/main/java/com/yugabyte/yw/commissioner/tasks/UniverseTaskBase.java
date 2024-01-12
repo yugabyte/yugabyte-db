@@ -37,6 +37,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.BulkImport;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeAdminPassword;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CheckFollowerLag;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeSafeToDelete;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateAlertDefinitions;
 import com.yugabyte.yw.commissioner.tasks.subtasks.CreateTable;
 import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteBackup;
@@ -134,6 +135,7 @@ import com.yugabyte.yw.common.NodeAgentManager;
 import com.yugabyte.yw.common.NodeManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.RetryTaskUntilCondition;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.UniverseInProgressException;
 import com.yugabyte.yw.common.Util;
@@ -145,6 +147,7 @@ import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
 import com.yugabyte.yw.common.gflags.SpecificGFlags;
+import com.yugabyte.yw.common.nodeui.DumpEntitiesResponse;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
 import com.yugabyte.yw.forms.BulkImportParams;
@@ -341,6 +344,8 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     REDISSERVER,
     EITHER
   }
+
+  public static final String DUMP_ENTITIES_URL_SUFFIX = "/dump-entities";
 
   @Inject
   protected UniverseTaskBase(BaseTaskDependencies baseTaskDependencies) {
@@ -1471,16 +1476,25 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
    * @param isForceDelete if this is true, ignore ansible errors
    * @param deleteNode if true, the node info is deleted from the universe db.
    * @param deleteRootVolumes if true, the volumes are deleted.
+   * @param skipDestroyPrecheck if true, skips the pre-check validation subtask before destroying
+   *     server.
    */
   public SubTaskGroup createDestroyServerTasks(
       Universe universe,
       Collection<NodeDetails> nodes,
       boolean isForceDelete,
       boolean deleteNode,
-      boolean deleteRootVolumes) {
+      boolean deleteRootVolumes,
+      boolean skipDestroyPrecheck) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("AnsibleDestroyServers");
     UserIntent userIntent = universe.getUniverseDetails().getPrimaryCluster().userIntent;
     nodes = filterUniverseNodes(universe, nodes, n -> true);
+
+    // TODO: Update to use node whitelist when the db implements this.
+    if (!skipDestroyPrecheck) {
+      createCheckNodeSafeToDeleteTasks(universe, nodes);
+    }
+
     for (NodeDetails node : nodes) {
       // Check if the private ip for the node is set. If not, that means we don't have
       // a clean state to delete the node. Log it, free up the onprem node
@@ -1527,6 +1541,7 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
       // Assign the node IP to ensure deletion of the correct node.
       params.nodeIP = node.cloudInfo.private_ip;
       params.useSystemd = userIntent.useSystemd;
+      params.otelCollectorInstalled = universe.getUniverseDetails().otelCollectorEnabled;
       // Create the Ansible task to destroy the server.
       AnsibleDestroyServer task = createTask(AnsibleDestroyServer.class);
       task.initialize(params);
@@ -1888,6 +1903,98 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     subTaskGroup.addSubTask(task);
     getRunnableTask().addSubTaskGroup(subTaskGroup);
     return subTaskGroup;
+  }
+
+  /*
+   * Create subtask to determine that the node is not part of the universe quorum.
+   * Checks that no tablets exists on the tserver (if applicable) and node ip is not
+   * part of the quorum.
+   *
+   * @param universe universe for which the node belongs.
+   * @param node node we want to check.
+   */
+  public void createCheckNodeSafeToDeleteTasks(Universe universe, Collection<NodeDetails> nodes) {
+    boolean clusterMembershipCheckEnabled =
+        confGetter.getConfForScope(universe, UniverseConfKeys.clusterMembershipCheckEnabled);
+    if (clusterMembershipCheckEnabled) {
+      SubTaskGroup subTaskGroup = createSubTaskGroup("CheckNodeSafeToDelete");
+      for (NodeDetails node : nodes) {
+        NodeTaskParams params = new NodeTaskParams();
+        params.setUniverseUUID(taskParams().getUniverseUUID());
+        params.nodeName = node.getNodeName();
+        CheckNodeSafeToDelete task = createTask(CheckNodeSafeToDelete.class);
+        task.initialize(params);
+        subTaskGroup.addSubTask(task);
+      }
+      getRunnableTask().addSubTaskGroup(subTaskGroup);
+      subTaskGroup.setSubTaskGroupType(SubTaskGroupType.ValidatingNode);
+    }
+  }
+
+  /*
+   * For a given node, finds the tablets assigned to its tserver (if relevant).
+   *
+   * @param universe universe for which the node belongs.
+   * @param currentNode node we want to check.
+   * @return a set of tablets for the associated tserver.
+   */
+  public Set<String> getTserverTablets(Universe universe, NodeDetails currentNode) {
+    // Wait for a maximum of 10 seconds for url to succeed.
+    NodeDetails masterLeaderNode = universe.getMasterLeaderNode();
+    HostAndPort masterLeaderHostPort =
+        HostAndPort.fromParts(
+            masterLeaderNode.cloudInfo.private_ip, masterLeaderNode.masterHttpPort);
+    String masterLeaderUrl =
+        String.format("http://%s%s", masterLeaderHostPort.toString(), DUMP_ENTITIES_URL_SUFFIX);
+
+    RetryTaskUntilCondition<DumpEntitiesResponse> waitForCheck =
+        new RetryTaskUntilCondition<>(
+            () -> {
+              log.debug("Making url request to endpoint: {}", masterLeaderUrl);
+              JsonNode masterLeaderDumpJson = nodeUIApiHelper.getRequest(masterLeaderUrl);
+              DumpEntitiesResponse dumpEntities =
+                  Json.fromJson(masterLeaderDumpJson, DumpEntitiesResponse.class);
+              return dumpEntities;
+            },
+            (d) -> {
+              if (d.getError() != null) {
+                log.warn("Url request to {} failed with error {}", masterLeaderUrl, d.getError());
+                return false;
+              }
+              return true;
+            });
+
+    DumpEntitiesResponse dumpEntitiesResponse = waitForCheck.retryWithBackoff(1, 2, 10);
+
+    HostAndPort currentNodeHP =
+        HostAndPort.fromParts(currentNode.cloudInfo.private_ip, currentNode.tserverRpcPort);
+
+    return dumpEntitiesResponse.getTabletsByTserverAddress(currentNodeHP);
+  }
+
+  /*
+   * Checks whether or not the node has a master process in the universe quorum
+   *
+   * @param universe universe for which the node belongs
+   * @param currentNode node we want to check for
+   * @return whether or not the node has a master process in the universe in the quorum
+   */
+  protected boolean nodeInMasterConfig(Universe universe, NodeDetails node) {
+    String ip = node.cloudInfo.private_ip;
+    String masterAddresses = universe.getMasterAddresses();
+
+    try (YBClient client =
+        ybService.getClient(masterAddresses, universe.getCertificateNodetoNode())) {
+      ListMastersResponse response = client.listMasters();
+      List<ServerInfo> servers = response.getMasters();
+      return servers.stream().anyMatch(s -> s.getHost().equals(ip));
+    } catch (Exception e) {
+      String msg =
+          String.format(
+              "Error when fetching listMasters rpc for node %s - %s",
+              node.nodeName, e.getMessage());
+      throw new RuntimeException(msg, e);
+    }
   }
 
   /**

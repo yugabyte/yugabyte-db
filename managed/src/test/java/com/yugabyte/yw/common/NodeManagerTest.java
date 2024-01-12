@@ -568,6 +568,12 @@ public class NodeManagerTest extends FakeDBApplication {
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ssh2Enabled))).thenReturn(false);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.devopsCommandTimeout)))
         .thenReturn(Duration.ofHours(1));
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.acceptableClockSkewWaitEnabled)))
+        .thenReturn(true);
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.waitForClockSyncMaxAcceptableClockSkew)))
+        .thenReturn(Duration.ofMillis(500));
+    when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.waitForClockSyncTimeout)))
+        .thenReturn(Duration.ofSeconds(300));
 
     when(mockConfGetter.getConfForScope(
             any(Universe.class), eq(UniverseConfKeys.notifyPeerOnRemoval)))
@@ -1145,6 +1151,11 @@ public class NodeManagerTest extends FakeDBApplication {
                 Json.toJson(
                     getExtraGflags(configureParams, params, userIntent, testData, useHostname))));
 
+        expectedCommand.add("--acceptable_clock_skew_wait_enabled");
+        expectedCommand.add("--acceptable_clock_skew_sec");
+        expectedCommand.add("0.500000000");
+        expectedCommand.add("--acceptable_clock_skew_max_tries");
+        expectedCommand.add("300");
         break;
       case Destroy:
         AnsibleDestroyServer.Params destroyParams = (AnsibleDestroyServer.Params) params;
