@@ -260,7 +260,7 @@ Drop the named constraint from the table.
 - `CASCADE` — Remove the specified constraint and any dependent objects.
 
 {{< warning >}}
-Dropping the `PRIMARY KEY` constraint will result in a full table rewrite and full-rewrite of all indexes associated with the table.
+Dropping the `PRIMARY KEY` constraint results in a full table rewrite and full rewrite of all indexes associated with the table.
 This happens because of the clustered storage by primary-key that YugabyteDB uses to store rows and indexes.
 During this time, you may lose modification made to the table. 
 For reference, the same semantics as [Alter type with table rewrite](#alter-type-with-table-rewrite) apply.
