@@ -355,10 +355,9 @@ public class GCPProjectApiClient {
   public Compute buildComputeClient(GCPCloudInfo cloudInfo)
       throws GeneralSecurityException, IOException {
     ObjectMapper mapper = Json.mapper();
-    JsonNode gcpCredentials = cloudInfo.getGceApplicationCredentials();
+    JsonNode gceCreds = mapper.readTree(cloudInfo.getGceApplicationCredentials());
     GoogleCredentials credentials =
-        GoogleCredentials.fromStream(
-            new ByteArrayInputStream(mapper.writeValueAsBytes(gcpCredentials)));
+        GoogleCredentials.fromStream(new ByteArrayInputStream(mapper.writeValueAsBytes(gceCreds)));
     HttpRequestInitializer requestInitializer = new HttpCredentialsAdapter(credentials);
     HttpTransport httpTransport = GoogleNetHttpTransport.newTrustedTransport();
     // Create Compute Engine object.
