@@ -29,7 +29,7 @@ The [sample application](https://github.com/YugabyteDB-Samples/yugabytedb-azure-
 - The latest version of [Docker](https://docs.docker.com/desktop/)
 - [ysqlsh](../../../admin/ysqlsh/) or [psql](https://www.postgresql.org/docs/current/app-psql.html)
 
-## Initialize the project
+## Set up the application
 
 1. Clone the repository.
 
@@ -49,7 +49,7 @@ The [sample application](https://github.com/YugabyteDB-Samples/yugabytedb-azure-
 
 1. Configure the application environment variables in `{project_directory/backend/.env}`.
 
-## Set up YugabyteDB and load the sample dataset
+## Set up YugabyteDB
 
 YugabyteDB introduced support for the PostgreSQL pgvector extension in v2.19.2. This extension makes it possible to use [PostgreSQL](https://www.yugabyte.com/postgresql/) and YugabyteDB as a vectorized database.
 
@@ -63,23 +63,23 @@ docker network create custom-network
 docker run -d --name yugabytedb_node1 --net custom-network \
 -p 15433:15433 -p 7001:7000 -p 9001:9000 -p 5433:5433 \
 -v ~/yb_docker_data/node1:/home/yugabyte/yb_data --restart unless-stopped \
-yugabytedb/yugabyte:2.19.2.0-b121 \
+yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
 bin/yugabyted start \
---base_dir=/home/yugabyte/yb_data --daemon=false
+--base_dir=/home/yugabyte/yb_data --background=false
 
 docker run -d --name yugabytedb_node2 --net custom-network \
 -p 15434:15433 -p 7002:7000 -p 9002:9000 -p 5434:5433 \
 -v ~/yb_docker_data/node2:/home/yugabyte/yb_data --restart unless-stopped \
-yugabytedb/yugabyte:2.19.2.0-b121 \
+yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
 bin/yugabyted start --join=yugabytedb_node1 \
---base_dir=/home/yugabyte/yb_data --daemon=false
+--base_dir=/home/yugabyte/yb_data --background=false
 
 docker run -d --name yugabytedb_node3 --net custom-network \
 -p 15435:15433 -p 7003:7000 -p 9003:9000 -p 5435:5433 \
 -v ~/yb_docker_data/node3:/home/yugabyte/yb_data --restart unless-stopped \
-yugabytedb/yugabyte:2.19.2.0-b121 \
+yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
 bin/yugabyted start --join=yugabytedb_node1 \
---base_dir=/home/yugabyte/yb_data --daemon=false
+--base_dir=/home/yugabyte/yb_data --background=false
 ```
 
 The database connectivity settings are provided in the `{project_dir}/backend/.env` file and do not need to be changed if you started the cluster with the command above.
