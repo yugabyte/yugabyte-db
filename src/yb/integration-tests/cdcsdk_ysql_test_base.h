@@ -128,6 +128,7 @@ DECLARE_bool(cdc_populate_end_markers_transactions);
 DECLARE_uint64(cdc_stream_records_threshold_size_bytes);
 DECLARE_int64(cdc_resolve_intent_lag_threshold_ms);
 DECLARE_bool(enable_tablet_split_of_cdcsdk_streamed_tables);
+DECLARE_bool(TEST_cdcsdk_skip_processing_dynamic_table_addition);
 
 namespace yb {
 
@@ -1961,6 +1962,27 @@ class CDCSDKYsqlTest : public CDCSDKTestBase {
     get_rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
     RETURN_NOT_OK(cdc_proxy_->GetCDCDBStreamInfo(get_req, &get_resp, &get_rpc));
     return get_resp;
+  }
+
+  void VerifyTablesInStreamMetadata(
+      const std::string& stream_id, const std::unordered_set<std::string>& expected_table_ids,
+      const std::string& timeout_msg) {
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          auto get_resp = GetDBStreamInfo(stream_id);
+          if (get_resp.ok() && !get_resp->has_error()) {
+            const uint64_t table_info_size = get_resp->table_info_size();
+            if (table_info_size == expected_table_ids.size()) {
+              std::unordered_set<std::string> table_ids;
+              for (auto entry : get_resp->table_info()) {
+                table_ids.insert(entry.table_id());
+              }
+              if (expected_table_ids == table_ids) return true;
+            }
+          }
+          return false;
+        },
+        MonoDelta::FromSeconds(60), timeout_msg));
   }
 
   Status ChangeLeaderOfTablet(size_t new_leader_index, const TabletId tablet_id) {
