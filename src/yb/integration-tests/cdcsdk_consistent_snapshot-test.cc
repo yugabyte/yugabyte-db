@@ -113,9 +113,6 @@ void CDCSDKConsistentSnapshotTest::TestCSStreamFailureRollback(
         << s.status().message().AsStringView();
     ASSERT_NE(s.status().message().AsStringView().find("timed out after"), std::string::npos)
         << s.status().message().AsStringView();
-
-    SleepFor(
-        MonoDelta::FromSeconds(120 * kTimeMultiplier));
   } else {
     ASSERT_NE(s.status().message().AsStringView().find(expected_error), std::string::npos)
         << s.status().message().AsStringView();
