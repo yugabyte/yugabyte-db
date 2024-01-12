@@ -152,7 +152,8 @@ Currently, an "index backfill" job is launched for each index that is created. F
 
 After creating a set of indexes with their backfill deferred, you can then trigger a backfill job for the entire batch of indexes (on the same table) in one of the following ways:
 
-1. Creating a new index, that is not deferred:
+- Create a new index that is not deferred:
+
     ```cassandraql
     CREATE DEFERRED INDEX idx_1 on table_name(col_1);        // No backfill launched.
     CREATE DEFERRED INDEX idx_2 on table_name(col_2);        // No backfill launched.
