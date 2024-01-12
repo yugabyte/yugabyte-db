@@ -154,7 +154,7 @@ After creating a set of indexes with their backfill deferred, you can then trigg
 
 - Create a new index that is not deferred:
 
-    ```cassandraql
+    ```cql
     CREATE DEFERRED INDEX idx_1 on table_name(col_1);        // No backfill launched.
     CREATE DEFERRED INDEX idx_2 on table_name(col_2);        // No backfill launched.
     CREATE DEFERRED INDEX idx_9 on table_name(col_9);        // No backfill launched.
@@ -168,7 +168,7 @@ After creating a set of indexes with their backfill deferred, you can then trigg
 
 - Use yb-admin to launch backfill for deferred indexes on the table.
 
-    ```cassandraql
+    ```cql
     CREATE DEFERRED INDEX idx_1 on table_name(col_1);        // No backfill launched.
     CREATE DEFERRED INDEX idx_2 on table_name(col_2);        // No backfill launched.
         ...
