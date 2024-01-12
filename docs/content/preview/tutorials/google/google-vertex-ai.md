@@ -32,6 +32,8 @@ The [sample application](https://github.com/YugabyteDB-Samples/yugabytedb-azure-
 
 ## Set up the application
 
+Download the application and provide settings specific to your deployment:
+
 1. Clone the repository.
 
     ```sh
