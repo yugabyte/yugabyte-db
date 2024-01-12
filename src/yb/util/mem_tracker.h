@@ -371,6 +371,7 @@ class MemTracker : public std::enable_shared_from_this<MemTracker> {
   int64_t SpareCapacity() const;
 
   int64_t limit() const { return limit_; }
+  int64_t soft_limit() const { return soft_limit_; }
   bool has_limit() const { return limit_ >= 0; }
   const std::string& id() const { return id_; }
   const std::string& metric_name() const { return metric_name_; }
