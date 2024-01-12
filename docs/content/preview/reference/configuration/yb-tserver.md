@@ -879,7 +879,7 @@ Default: `5`
 
 Number of bits to use for sharding the block cache. The maximum permissible value is 19.
 
-Default: `-1` (indicates a dynamic scheme that evaluates to 4 if number of cores is less than or equal to 16, 5 for 17-32 cores, 6 for 33-64 cores and so on.)
+Default: `-1` (indicates a dynamic scheme that evaluates to 4 if number of cores is less than or equal to 16, 5 for 17-32 cores, 6 for 33-64 cores, and so on.)
 
 {{< note title="Note" >}}
 
