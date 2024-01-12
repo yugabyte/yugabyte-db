@@ -97,5 +97,6 @@ You can direct connections to specific clouds, regions, or AZs using topology ke
 - C#: `Topology Keys`
 - Go: `topology_keys`
 - Python: `topology_keys`
+- Rust: `topology_keys`
 
 More info on each language can be found at [drivers page](../../reference/drivers/). 
