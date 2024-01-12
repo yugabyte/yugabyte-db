@@ -757,7 +757,7 @@ Default: `true`
 
 Deadline (in milliseconds) for each internal YB-Master to YB-TServer RPC for backfilling a chunk of the index.
 
-Default: 1 minute
+Default: 60000 (1 minute)
 
 ## Admin UI
 
