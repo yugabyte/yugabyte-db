@@ -24,7 +24,7 @@ The [sample application](https://github.com/YugabyteDB-Samples/yugabytedb-azure-
 ## Prerequisites
 
 - A Google Cloud account with appropriate permissions
-- The [gcloud command-line utility](https://cloud.google.com/sdk/docs/install)
+- [gcloud CLI](https://cloud.google.com/sdk/docs/install)
 - A YugabyteDB cluster running [v2.19.2 or later](https://download.yugabyte.com/)
 - [Node.js](https://github.com/nodejs/release#release-schedule) v18 or later
 - The latest version of [Docker](https://docs.docker.com/desktop/)
@@ -62,25 +62,25 @@ mkdir ~/yb_docker_data
 docker network create custom-network
 
 docker run -d --name yugabytedb-node1 --net custom-network \
--p 15433:15433 -p 7001:7000 -p 9001:9000 -p 5433:5433 \
--v ~/yb_docker_data/node1:/home/yugabyte/yb_data --restart unless-stopped \
-yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
-bin/yugabyted start \
---base_dir=/home/yugabyte/yb_data --background=false
+    -p 15433:15433 -p 7001:7000 -p 9001:9000 -p 5433:5433 \
+    -v ~/yb_docker_data/node1:/home/yugabyte/yb_data --restart unless-stopped \
+    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
+    bin/yugabyted start \
+    --base_dir=/home/yugabyte/yb_data --background=false
 
 docker run -d --name yugabytedb-node2 --net custom-network \
--p 15434:15433 -p 7002:7000 -p 9002:9000 -p 5434:5433 \
--v ~/yb_docker_data/node2:/home/yugabyte/yb_data --restart unless-stopped \
-yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
-bin/yugabyted start --join=yugabytedb-node1 \
---base_dir=/home/yugabyte/yb_data --background=false
+    -p 15434:15433 -p 7002:7000 -p 9002:9000 -p 5434:5433 \
+    -v ~/yb_docker_data/node2:/home/yugabyte/yb_data --restart unless-stopped \
+    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
+    bin/yugabyted start --join=yugabytedb-node1 \
+    --base_dir=/home/yugabyte/yb_data --background=false
 
 docker run -d --name yugabytedb-node3 --net custom-network \
--p 15435:15433 -p 7003:7000 -p 9003:9000 -p 5435:5433 \
--v ~/yb_docker_data/node3:/home/yugabyte/yb_data --restart unless-stopped \
-yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
-bin/yugabyted start --join=yugabytedb-node1 \
---base_dir=/home/yugabyte/yb_data --background=false
+    -p 15435:15433 -p 7003:7000 -p 9003:9000 -p 5435:5433 \
+    -v ~/yb_docker_data/node3:/home/yugabyte/yb_data --restart unless-stopped \
+    yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
+    bin/yugabyted start --join=yugabytedb-node1 \
+    --base_dir=/home/yugabyte/yb_data --background=false
 ```
 
 The database connectivity settings are provided in the `{project_dir}/backend/.env` file and do not need to be changed if you started the cluster with the preceding command.
@@ -98,7 +98,7 @@ As long as the application provides a lodging recommendation service for San Fra
     ```shell
     docker cp {project_dir}/sql/0_airbnb_listings.sql yugabytedb-node1:/home
     docker cp {project_dir}/sql/1_airbnb_embeddings.csv yugabytedb-node1:/home
-   ```
+    ```
 
 1. Load the dataset to the cluster with properties in San Francisco (this can take a minute or two):
 
@@ -108,7 +108,7 @@ As long as the application provides a lodging recommendation service for San Fra
 
     docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 \
     -c "\copy airbnb_listing from /home/sf_airbnb_listings.csv with DELIMITER ',' CSV HEADER"
-   ```
+    ```
 
 1. Add the PostgreSQL `pgvector` extension and `description_embedding` column of type vector.
 
@@ -124,7 +124,7 @@ To start using Google Vertex AI in the application:
 1. Enable the Vertex AI API.
 1. Sign in to Google Cloud via the CLI to run the application locally.
 
-    ```shell
+    ```sh
     gcloud auth application-default login
     ```
 
@@ -190,7 +190,7 @@ const dbRes = await pool.query(
     "SELECT name, description, price, 1 - (description_embedding <=> $1) as similarity " +
     "FROM airbnb_listing WHERE 1 - (description_embedding <=> $1) > 0.7 ORDER BY similarity DESC LIMIT 5",
     [embeddings]
-   );
+    );
 ```
 
 ![YugaLodgings Application Search Results](/images/tutorials/google/google-vertex-ai/yugalodgings-search-results.png "YugaLodgings Application Search Results")
