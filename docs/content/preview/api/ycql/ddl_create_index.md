@@ -173,7 +173,8 @@ After creating a set of indexes with their backfill deferred, you can then trigg
     CREATE DEFERRED INDEX idx_10 on table_name(col_10);      // No backfill launched.
     ```
 
-    Then launch a backfill job for backfilling all the deferred indexes as:
+   Launch a backfill job for backfilling all the deferred indexes using the `backfill_indexes_for_table` command as follows:
+
     ```bash
     bin/yb-admin -master_addresses <ip:port> backfill_indexes_for_table ycql.ybdemo table_name
     ```
