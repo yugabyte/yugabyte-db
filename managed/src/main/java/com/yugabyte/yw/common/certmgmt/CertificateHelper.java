@@ -36,6 +36,7 @@ import java.security.KeyFactory;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.NoSuchAlgorithmException;
+import java.security.NoSuchProviderException;
 import java.security.PrivateKey;
 import java.security.cert.CertificateException;
 import java.security.cert.CertificateFactory;
@@ -803,8 +804,9 @@ public class CertificateHelper {
     }
   }
 
-  public static KeyPair getKeyPairObject() throws NoSuchAlgorithmException {
-    KeyPairGenerator keypairGen = KeyPairGenerator.getInstance("RSA");
+  public static KeyPair getKeyPairObject()
+      throws NoSuchAlgorithmException, NoSuchProviderException {
+    KeyPairGenerator keypairGen = KeyPairGenerator.getInstance("RSA", "BC");
     keypairGen.initialize(2048);
     return keypairGen.generateKeyPair();
   }
