@@ -98,7 +98,7 @@ To use PingOne for your IdP, do the following:
 
 1. Add `https://yugabyte-cloud.okta.com/oauth2/v1/authorize/callback` in **Redirect URIs**.
 
-1. Set **Token Endpoint Authentication Method** to Client Secret Post.
+1. Set **Token Endpoint Authentication Method** to **Client Secret Post**.
 
 1. Set **Initiate Login URI** to `https://cloud.yugabyte.com/login`.
 
