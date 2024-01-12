@@ -83,7 +83,7 @@ You are redirected to sign in to your IdP to test the connection. Once test conn
 
   {{% /tab %}}
 
-  {{% tab header="Ping" lang="ping" %}}
+  {{% tab header="PingOne" lang="ping" %}}
 
 To use PingOne for your IdP, do the following:
 
@@ -91,28 +91,30 @@ To use PingOne for your IdP, do the following:
 
     - Under **Applications**, add a new application.
     - Enter a name for the application.
-    - Set **Application Type** to **OIDC Web App**.
+    - Under **Application Type**, select **OIDC Web App**.
     - Click **Save**.
 
-1. Select the application you created and, on the **Configuration** tab, make sure **Response Type** is set to **Code** and **Grant Type** to **Authorization Code**.
+1. Select the application you created and, on the **Configuration** tab, click **Edit** and set the following options:
 
-1. Add `https://yugabyte-cloud.okta.com/oauth2/v1/authorize/callback` in **Redirect URIs**.
+    - **Response Type** - select **Code**.
+    - **Grant Type** - select **Authorization Code**.
+    - **Redirect URIs** - enter `https://yugabyte-cloud.okta.com/oauth2/v1/authorize/callback`.
+    - **Token Endpoint Authentication Method** - select **Client Secret Post**.
+    - **Initiate Login URI** - enter `https://cloud.yugabyte.com/login`.
 
-1. Set **Token Endpoint Authentication Method** to **Client Secret Post**.
+    Click **Save** when you are done.
 
-1. Set **Initiate Login URI** to `https://cloud.yugabyte.com/login`.
+1. On the **Resources** tab, edit the **ALLOWED SCOPES**, select the **openid**, **email**, and **profile** scopes, and click **Save** when you are done.
 
-1. On the **Resources** tab, add **openid**, **email**, and **profile** under **ALLOWED SCOPES**.
+1. Configure **Policies** and **Attribute Mappings** as required.
 
-1. Optionally, you can configure **Policies** and **Attribute Mappings** as required.
+1. On the **Access** tab, click **Edit**, select the user groups you want to access YugabyteDB Managed, and click **Save** when you are done.
 
-1. On the **Access** tab, assign the user groups you want to access YugabyteDB Managed to the application.
+1. Enable the application by turning on the slider control at the top of the page.
 
-1. Enable the client application.
+To configure PingOne federated authentication in YugabyteDB Managed, you need the following application properties:
 
-To configure PingOne federated authentication in YugabyteDB Managed, you need the following:
-
-- Client ID and secret of the application you created. These are provided on the **Overview** tab.
+- Client ID and secret of the application you created. These are provided on the **Overview** and **Configuration** tabs.
 - Authorization URL for your application. This is displayed on the **Configuration** tab under **URLs**.
 
 For more information, refer to the [PingOne for Enterprise](https://docs.pingidentity.com/r/en-us/pingoneforenterprise/p14e_landing) documentation.
