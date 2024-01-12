@@ -38,7 +38,7 @@ Using federated authentication, you can use an IdP to manage access to your Yuga
 
 Note that after federated authentication is enabled, only Admin users can sign in using email-based login.
 
-Currently, Microsoft Entra ID and PingOne IdPs, and the OIDC protocol are supported.
+Currently, YugabyteDB Managed supports the Microsoft Entra ID and PingOne for Enterprise IdPs, and the OIDC protocol.
 
 ### Prerequisites
 
@@ -114,6 +114,8 @@ To configure PingOne federated authentication in YugabyteDB Managed, you need th
 
 - Client ID and secret of the application you created. These are provided on the **Overview** tab.
 - Authorization URL for your application. This is displayed on the **Configuration** tab under **URLs**.
+
+For more information, refer to the [PingOne for Enterprise](https://docs.pingidentity.com/r/en-us/pingoneforenterprise/p14e_landing) documentation.
 
 **Configure**
 
