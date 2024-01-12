@@ -46,7 +46,6 @@ export const DBVersionField = ({ disabled }: DBVersionFieldProps): ReactElement 
   //watchers
   const provider = useWatch({ name: PROVIDER_FIELD });
   const cpuArch = useWatch({ name: CPU_ARCHITECTURE_FIELD });
-
   const isOsPatchingEnabled = IsOsPatchingEnabled();
 
 
@@ -67,8 +66,10 @@ export const DBVersionField = ({ disabled }: DBVersionFieldProps): ReactElement 
   );
 
   useEffect(() => {
-    setValue(SOFTWARE_VERSION_FIELD, null);
-  }, [cpuArch]);
+    if (isOsPatchingEnabled && !disabled) {
+      setValue(SOFTWARE_VERSION_FIELD, null);
+    }
+  }, [cpuArch, isOsPatchingEnabled]);
 
   const handleChange = (e: ChangeEvent<{}>, option: any) => {
     setValue(SOFTWARE_VERSION_FIELD, option?.value ?? DEFAULT_ADVANCED_CONFIG.ybSoftwareVersion, {
@@ -85,8 +86,8 @@ export const DBVersionField = ({ disabled }: DBVersionFieldProps): ReactElement 
       rules={{
         required: !disabled
           ? (t('universeForm.validation.required', {
-              field: t('universeForm.advancedConfig.dbVersion')
-            }) as string)
+            field: t('universeForm.advancedConfig.dbVersion')
+          }) as string)
           : ''
       }}
       render={({ field, fieldState }) => {

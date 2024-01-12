@@ -285,8 +285,9 @@ class CDCStreamLoader : public Visitor<PersistentCDCStreamInfo> {
 
     // For CDCSDK Streams, we scan all the tables in the namespace, and compare it with all the
     // tables associated with the stream.
-    if (metadata.state() == SysCDCStreamEntryPB::ACTIVE && ns &&
-        ns->state() == SysNamespaceEntryPB::RUNNING) {
+    if ((metadata.state() == SysCDCStreamEntryPB::ACTIVE ||
+         metadata.state() == SysCDCStreamEntryPB::DELETING_METADATA) &&
+        ns && ns->state() == SysNamespaceEntryPB::RUNNING) {
       catalog_manager_->FindAllTablesMissingInCDCSDKStream(
           stream_id, metadata.table_id(), metadata.namespace_id());
     }
@@ -1119,10 +1120,13 @@ Status CatalogManager::SetAllCDCSDKRetentionBarriers(
     }
   }
 
-  auto deadline = rpc->GetClientDeadline();
-  // TODO(#18934): Handle partial failures by rolling back all changes.
-  for (const auto& table_id : table_ids) {
-    RETURN_NOT_OK(WaitForAlterTableToFinish(table_id, deadline));
+  if (has_consistent_snapshot_option) {
+    auto deadline = rpc->GetClientDeadline();
+    // TODO(#18934): Handle partial failures by rolling back all changes.
+    for (const auto& table_id : table_ids) {
+      RETURN_NOT_OK(WaitForAlterTableToFinish(table_id, deadline));
+    }
+    RETURN_NOT_OK(WaitForSnapshotSafeOpIdToBePopulated(stream_id, table_ids, deadline));
   }
 
   return Status::OK();
@@ -1202,6 +1206,48 @@ Status CatalogManager::PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
   }
 
   return cdc_state_table_->InsertEntries(entries);
+}
+
+Status CatalogManager::WaitForSnapshotSafeOpIdToBePopulated(
+    const xrepl::StreamId& stream_id, const std::vector<TableId>& table_ids,
+    CoarseTimePoint deadline) {
+
+  auto num_expected_tablets = 0;
+  for (const auto& table_id : table_ids) {
+    auto table = VERIFY_RESULT(FindTableById(table_id));
+    num_expected_tablets += table->GetTablets().size();
+  }
+
+  return WaitFor(
+      [&stream_id, &num_expected_tablets, this]() -> Result<bool> {
+        VLOG(1) << "Checking snapshot safe opids for stream: " << stream_id;
+
+        std::vector<cdc::CDCStateTableKey> cdc_state_entries;
+        Status iteration_status;
+        auto all_entry_keys = VERIFY_RESULT(cdc_state_table_->GetTableRange(
+            cdc::CDCStateTableEntrySelector().IncludeCheckpoint(), &iteration_status));
+
+        auto num_rows = 0;
+        for (const auto& entry_result : all_entry_keys) {
+          RETURN_NOT_OK(entry_result);
+          const auto& entry = *entry_result;
+
+          if (stream_id == entry.key.stream_id) {
+            num_rows++;
+            if (!entry.checkpoint.has_value() || *entry.checkpoint == OpId().Invalid()) {
+              return false;
+            }
+          }
+        }
+
+        RETURN_NOT_OK(iteration_status);
+        VLOG(1) << "num_rows=" << num_rows << ", num_expected_tablets=" << num_expected_tablets;
+        // In case of colocated tables, there would be extra rows, check for >=
+        return (num_rows >= num_expected_tablets);
+      },
+      deadline - CoarseMonoClock::now(),
+      Format("Waiting for snapshot safe opids to be populated for stream_id: $0", stream_id),
+      500ms /* initial_delay */, 1 /* delay_multiplier */);
 }
 
 Status CatalogManager::BackfillMetadataForCDC(
@@ -1387,7 +1433,8 @@ Status CatalogManager::FindCDCSDKStreamsForAddedTables(
     }
 
     auto ltm = stream_info->LockForRead();
-    if (ltm->pb.state() == SysCDCStreamEntryPB::ACTIVE) {
+    if (ltm->pb.state() == SysCDCStreamEntryPB::ACTIVE ||
+        ltm->pb.state() == SysCDCStreamEntryPB::DELETING_METADATA) {
       for (const auto& unprocessed_table_id : *unprocessed_tables) {
         auto table = tables_->FindTableOrNull(unprocessed_table_id);
         Schema schema;

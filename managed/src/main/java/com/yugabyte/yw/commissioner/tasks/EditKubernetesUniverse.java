@@ -38,6 +38,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -79,10 +80,14 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       // TODO: Would it make sense to have a precheck k8s task that does
       // some precheck operations to verify kubeconfig, svcaccount, connectivity to universe here ?
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-      kubernetesStatus.createYBUniverseEventStatus(
+      if (isFirstTry()) {
+        verifyClustersConsistency();
+      }
+
+      kubernetesStatus.startYBUniverseEventStatus(
           universe,
           taskParams().getKubernetesResourceDetails(),
-          getName(),
+          TaskType.EditKubernetesUniverse.name(),
           getUserTaskUUID(),
           UniverseState.EDITING);
       // Reset any state from previous tasks if this is a new invocation.
@@ -201,7 +206,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
       kubernetesStatus.updateYBUniverseStatus(
           getUniverse(),
           taskParams().getKubernetesResourceDetails(),
-          getName(),
+          TaskType.EditKubernetesUniverse.name(),
           getUserTaskUUID(),
           (th != null) ? UniverseState.ERROR : UniverseState.READY,
           th);

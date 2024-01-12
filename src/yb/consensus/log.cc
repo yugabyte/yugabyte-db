@@ -619,12 +619,12 @@ Log::Log(
       peer_uuid_(std::move(peer_uuid)),
       schema_(std::make_unique<Schema>(schema)),
       schema_version_(schema_version),
-      active_segment_sequence_number_(options.initial_active_segment_sequence_number),
+      active_segment_sequence_number_(options_.initial_active_segment_sequence_number),
       log_state_(kLogInitialized),
       max_segment_size_(options_.segment_size_bytes),
       // We halve the initial log segment size here because we double it for every new segment,
       // including the very first segment.
-      cur_max_segment_size_((options.initial_segment_size_bytes + 1) / 2),
+      cur_max_segment_size_((options_.initial_segment_size_bytes + 1) / 2),
       appender_(new Appender(this, append_thread_pool)),
       allocation_token_(allocation_thread_pool->NewToken(ThreadPool::ExecutionMode::SERIAL)),
       background_sync_threadpool_token_(
@@ -641,7 +641,7 @@ Log::Log(
       create_new_segment_at_start_(create_new_segment),
       new_segment_allocation_callback_(callback),
       pre_log_rollover_callback_(pre_log_rollover_callback) {
-  set_wal_retention_secs(options.retention_secs);
+  set_wal_retention_secs(options_.retention_secs);
   if (table_metric_entity_ && tablet_metric_entity_) {
     metrics_.reset(new LogMetrics(table_metric_entity_, tablet_metric_entity_));
   }

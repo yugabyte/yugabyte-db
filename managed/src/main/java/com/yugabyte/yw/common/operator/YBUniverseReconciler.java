@@ -40,6 +40,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.DeviceInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
 import io.fabric8.kubernetes.api.model.KubernetesResourceList;
 import io.fabric8.kubernetes.api.model.ObjectMeta;
 import io.fabric8.kubernetes.api.model.Secret;
@@ -120,11 +121,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   @Override
   public void onUpdate(YBUniverse oldUniverse, YBUniverse newUniverse) {
     // Handle the delete workflow first, as we get a this call before onDelete is called
-    if (newUniverse.getMetadata().getDeletionTimestamp() != null
-        && !newUniverse
-            .getMetadata()
-            .getDeletionTimestamp()
-            .equals(oldUniverse.getMetadata().getDeletionTimestamp())) {
+    if (newUniverse.getMetadata().getDeletionTimestamp() != null) {
       enqueueYBUniverse(newUniverse, OperatorWorkQueue.ResourceAction.DELETE);
       return;
     }
@@ -353,6 +350,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
   private Result createUniverse(
       UUID customerUUID, UniverseConfigureTaskParams taskParams, YBUniverse ybUniverse) {
     log.info("creating universe via k8s operator");
+    kubernetesStatusUpdater.createYBUniverseEventStatus(
+        null, null, TaskType.CreateKubernetesUniverse.name());
     Customer customer = Customer.getOrBadRequest(customerUUID);
     taskParams.isKubernetesOperatorControlled = true;
     taskParams.clusterOperation = UniverseConfigureTaskParams.ClusterOperationType.CREATE;
@@ -395,13 +394,11 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
             .collect(Collectors.toList());
     universeDetails.clusters.add(primaryCluster);
 
-    // Add kubernetes event.
-    String startingTask =
-        String.format("Starting task on universe {}", currentUserIntent.universeName);
-    kubernetesStatusUpdater.doKubernetesEventUpdate(
-        KubernetesResourceDetails.fromResource(ybUniverse), startingTask);
-
+    KubernetesResourceDetails k8ResourceDetails =
+        KubernetesResourceDetails.fromResource(ybUniverse);
     if (!incomingIntent.universeOverrides.equals(currentUserIntent.universeOverrides)) {
+      kubernetesStatusUpdater.createYBUniverseEventStatus(
+          universe, k8ResourceDetails, TaskType.KubernetesOverridesUpgrade.name());
       if (checkAndHandleUniverseLock(universe, OperatorWorkQueue.ResourceAction.UPDATE)) {
         return;
       }
@@ -409,27 +406,30 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       updateOverridesYbUniverse(
           universeDetails, cust, ybUniverse, incomingIntent.universeOverrides);
     } else if (checkIfGFlagsChanged(universe, currentUserIntent)) {
+      kubernetesStatusUpdater.createYBUniverseEventStatus(
+          universe, k8ResourceDetails, TaskType.GFlagsKubernetesUpgrade.name());
       if (checkAndHandleUniverseLock(universe, OperatorWorkQueue.ResourceAction.UPDATE)) {
         return;
       }
       log.info("Updating Gflags");
       updateGflagsYbUniverse(universeDetails, cust, ybUniverse);
     } else if (currentUserIntent.numNodes != incomingIntent.numNodes) {
+      kubernetesStatusUpdater.createYBUniverseEventStatus(
+          universe, k8ResourceDetails, TaskType.EditKubernetesUniverse.name());
       if (checkAndHandleUniverseLock(universe, OperatorWorkQueue.ResourceAction.UPDATE)) {
         return;
       }
       log.info("Updating nodes");
       updateYBUniverse(universeDetails, cust, ybUniverse);
     } else if (!currentUserIntent.ybSoftwareVersion.equals(incomingIntent.ybSoftwareVersion)) {
+      kubernetesStatusUpdater.createYBUniverseEventStatus(
+          universe, k8ResourceDetails, TaskType.UpgradeKubernetesUniverse.name());
       if (checkAndHandleUniverseLock(universe, OperatorWorkQueue.ResourceAction.UPDATE)) {
         return;
       }
       log.info("Upgrading software");
       upgradeYBUniverse(universeDetails, cust, ybUniverse);
     } else {
-      if (checkAndHandleUniverseLock(universe, OperatorWorkQueue.ResourceAction.UPDATE)) {
-        return;
-      }
       log.info("No update made");
     }
   }

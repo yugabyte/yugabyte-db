@@ -13,6 +13,7 @@ import static org.junit.Assert.assertTrue;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
+import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.cloud.PublicCloudConstants;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
@@ -50,6 +51,7 @@ import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
 import com.yugabyte.yw.models.Region;
+import com.yugabyte.yw.models.RuntimeConfigEntry;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
@@ -440,6 +442,8 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
             12,
             5.5,
             new InstanceType.InstanceTypeDetails());
+
+    RuntimeConfigEntry.upsertGlobal("yb.task.verify_cluster_state", "true");
   }
 
   /**
@@ -877,5 +881,16 @@ public abstract class LocalProviderUniverseTestBase extends PlatformGuiceApplica
       failedTasksMessages.forEach(t -> errorBuilder.append(separator).append(t));
     }
     assertEquals(errorBuilder.toString(), TaskInfo.State.Success, taskInfo.getTaskState());
+  }
+
+  protected String getMasterLeader(Universe universe) {
+    try (YBClient client =
+        ybClientService.getClient(
+            universe.getMasterAddresses(), universe.getCertificateNodetoNode())) {
+      HostAndPort leaderMasterHostAndPort = client.getLeaderMasterHostAndPort();
+      return leaderMasterHostAndPort.getHost();
+    } catch (Exception e) {
+      throw new RuntimeException(e);
+    }
   }
 }

@@ -182,8 +182,11 @@ hard_kill_postgres() {
     if [[ ${postmaster_pid} =~ ^[0-9]+$ ]]; then
       local pg_pids=()
       # In case of the ps command returning nothing, it returns as an error.
+      # The output of the ps command is required to have no padding for easy parsing.
+      # To ensure this, the pid column is explicitly width controlled via "pid:1".
       set +e
-      mapfile -t pg_pids < <(ps -p "${postmaster_pid}" --ppid "${postmaster_pid}" -o pid=)
+      mapfile -t pg_pids < <(ps --no-headers -p "${postmaster_pid}" --ppid "${postmaster_pid}" \
+        -o pid:1)
       set -e
 
       if [[ -n ${pg_pids:-} ]]; then
@@ -274,6 +277,8 @@ case "$command" in
     fi
     exit_on_running
     print_err_out "Starting yb-$daemon on `hostname` $start_mode"
+    # Before starting the process, make sure clock is synchronized.
+    "{{ yb_home_dir }}/bin/clock-sync.sh"
     # We need all three file descriptors closed so SSH connections running this do not hang!
     nohup ${daemon_binary} $create_option --flagfile ${daemon_conf} \
       >>"$daemon_home/${daemon}.out" 2>>"$daemon_home/${daemon}.err" </dev/null &

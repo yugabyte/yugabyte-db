@@ -863,6 +863,7 @@ YBInitPostgresBackend(
 		callbacks.UnixEpochToPostgresEpoch = &YbUnixEpochToPostgresEpoch;
 		callbacks.ConstructArrayDatum = &YbConstructArrayDatum;
 		callbacks.CheckUserMap = &check_usermap;
+		callbacks.PgstatReportWaitStart = &yb_pgstat_report_wait_start;
 		YBCInitPgGate(type_table, count, callbacks, session_id, &MyProc->yb_ash_metadata,
 					  &MyProc->yb_is_ash_metadata_set);
 		YBCInstallTxnDdlHook();

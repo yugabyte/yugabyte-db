@@ -86,10 +86,10 @@ TEST_F(SharedLockManagerTest, LockBatchMoveConstructor) {
   EXPECT_FALSE(lb2.empty());
   ASSERT_OK(lb2.status());
 
-  // lb has been moved from and is now empty
-  EXPECT_EQ(0, lb.size());
-  EXPECT_TRUE(lb.empty());
-  ASSERT_OK(lb.status());
+  // lb has been moved from and is now empty.
+  EXPECT_EQ(0, lb.size()); // NOLINT(bugprone-use-after-move)
+  EXPECT_TRUE(lb.empty()); // NOLINT(bugprone-use-after-move)
+  ASSERT_OK(lb.status()); // NOLINT(bugprone-use-after-move)
 
   LockBatch lb_fail2(std::move(lb_fail));
   ASSERT_FALSE(lb_fail2.status().ok());
@@ -108,9 +108,9 @@ TEST_F(SharedLockManagerTest, LockBatchMoveAssignment) {
   EXPECT_FALSE(lb2.empty());
   ASSERT_OK(lb2.status());
 
-  // lb has been moved from and is now empty
-  EXPECT_EQ(0, lb.size());
-  EXPECT_TRUE(lb.empty());
+  // lb has been moved from and is now empty.
+  EXPECT_EQ(0, lb.size()); // NOLINT(bugprone-use-after-move)
+  EXPECT_TRUE(lb.empty()); // NOLINT(bugprone-use-after-move)
 
   LockBatch lb_fail2 = std::move(lb_fail);
   ASSERT_FALSE(lb_fail2.status().ok());
