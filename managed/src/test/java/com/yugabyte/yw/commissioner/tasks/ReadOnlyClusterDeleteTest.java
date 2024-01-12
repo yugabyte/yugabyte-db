@@ -19,7 +19,6 @@ import static org.mockito.Mockito.when;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
-import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -44,7 +43,6 @@ import org.junit.Ignore;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.junit.MockitoJUnitRunner;
-import org.yb.client.ListMastersResponse;
 import org.yb.client.YBClient;
 import play.libs.Json;
 
@@ -53,7 +51,6 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
 
   private Universe defaultUniverse;
   private Cluster readOnlyCluster;
-  private YBClient mockClient;
 
   private TaskInfo submitTask(
       UniverseDefinitionTaskParams taskParams, TaskType type, int expectedVersion) {
@@ -83,16 +80,14 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     userIntent.regionList = ImmutableList.of(region.getUuid());
     userIntent.provider = defaultProvider.getUuid().toString();
     defaultUniverse = createUniverse(defaultCustomer.getId());
-    defaultUniverse =
-        Universe.saveDetails(
-            defaultUniverse.getUniverseUUID(),
-            ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
-    mockClient = mock(YBClient.class);
+    Universe.saveDetails(
+        defaultUniverse.getUniverseUUID(),
+        ApiUtils.mockUniverseUpdater(userIntent, true /* setMasters */));
+    YBClient mockClient = mock(YBClient.class);
     when(mockYBClient.getClient(any(), any())).thenReturn(mockClient);
     lenient().when(mockClient.waitForServer(any(), anyLong())).thenReturn(true);
     ShellResponse dummyShellResponse = new ShellResponse();
     dummyShellResponse.message = "true";
-    ListMastersResponse listMastersResponse = mock(ListMastersResponse.class);
     when(mockNodeManager.nodeCommand(any(), any())).thenReturn(dummyShellResponse);
 
     UniverseDefinitionTaskParams taskParams = new UniverseDefinitionTaskParams();
@@ -131,7 +126,6 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
   private static final List<TaskType> CLUSTER_DELETE_TASK_SEQUENCE =
       ImmutableList.of(
           TaskType.SetNodeState,
-          TaskType.CheckNodeSafeToDelete,
           TaskType.AnsibleDestroyServer,
           TaskType.ReadOnlyClusterDelete,
           TaskType.UpdatePlacementInfo,
@@ -140,7 +134,6 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
 
   private static final List<JsonNode> CLUSTER_DELETE_TASK_EXPECTED_RESULTS =
       ImmutableList.of(
-          Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
           Json.toJson(ImmutableMap.of()),
@@ -171,9 +164,6 @@ public class ReadOnlyClusterDeleteTest extends CommissionerBaseTest {
     ReadOnlyClusterDelete.Params taskParams = new ReadOnlyClusterDelete.Params();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.clusterUUID = readOnlyCluster.uuid;
-    setDumpEntitiesMock(defaultUniverse, "", false);
-    when(mockClient.getLeaderMasterHostAndPort())
-        .thenReturn(HostAndPort.fromHost(defaultUniverse.getMasters().get(0).cloudInfo.private_ip));
     TaskInfo taskInfo = submitTask(taskParams, TaskType.ReadOnlyClusterDelete, -1);
     assertEquals(Success, taskInfo.getTaskState());
 
