@@ -280,6 +280,7 @@ SELECT tj FROM text_table WHERE yb_hash_code(tj) <= 63;
 CREATE TABLE t(h INT, r INT, PRIMARY KEY(h, r));
 INSERT INTO t VALUES(1, 1), (1, 3);
 SELECT * FROM t WHERE h = 1 AND r in(1, 3) FOR KEY SHARE;
+DROP TABLE t;
 
 -- Test for ItemPointerIsValid assertion failure
 CREATE TYPE rainbow AS ENUM ('red', 'orange', 'yellow', 'green', 'blue', 'purple');
@@ -348,3 +349,12 @@ WITH aaa AS (SELECT 1 AS ctea, ' Foo' AS cteb) INSERT INTO upsert_test
   DO UPDATE SET (b, a) = (SELECT upsert_test.b||cteb, upsert_test.a FROM aaa) RETURNING *;
 
 DROP TABLE upsert_test;
+
+-- Update partitioned table with multiple partitions
+CREATE TABLE t(id int) PARTITION BY range(id);
+CREATE TABLE t_1_100 PARTITION OF t FOR VALUES FROM (1) TO (100);
+CREATE TABLE t_101_200 PARTITION OF t FOR VALUES FROM (101) TO (200);
+INSERT INTO t VALUES (1);
+UPDATE t SET id = 2;
+SELECT * FROM t;
+DROP TABLE t;

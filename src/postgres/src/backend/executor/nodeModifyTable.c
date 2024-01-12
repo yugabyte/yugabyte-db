@@ -4311,6 +4311,7 @@ ExecModifyTable(PlanState *pstate)
 				if (isNull)
 					elog(ERROR, "ybctid is NULL");
 
+				TABLETUPLE_YBCTID(context.planSlot) = datum;
 				HEAPTUPLE_YBCTID(&oldtupdata) = datum;
 
 				oldtuple = &oldtupdata;
@@ -4350,7 +4351,10 @@ ExecModifyTable(PlanState *pstate)
 				}
 
 				if(IsYBRelation(relation))
+				{
 					tuple_ctid.yb_item.ybctid = datum;
+					TABLETUPLE_YBCTID(context.planSlot) = datum;
+				}
 				else
 				{
 					tupleid = (ItemPointer) DatumGetPointer(datum);

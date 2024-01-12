@@ -96,7 +96,7 @@ bool YBCIsSingleRowTxnCapableRel(ResultRelInfo *resultRelInfo)
 Datum YBCGetYBTupleIdFromSlot(TupleTableSlot *slot)
 {
 	/*
-	 * Look for ybctid in the tuple first if the slot contains a tuple packed with ybctid.
+	 * Look for ybctid in the slot's item pointer field first.
 	 * Otherwise, look for it in the attribute list as a junk attribute.
 	 */
 	if (TABLETUPLE_YBCTID(slot) != 0)
