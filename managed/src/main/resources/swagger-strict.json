@@ -5282,6 +5282,9 @@
         "destVpcId" : {
           "type" : "string"
         },
+        "gceApplicationCredentials" : {
+          "type" : "string"
+        },
         "gceApplicationCredentialsPath" : {
           "readOnly" : true,
           "type" : "string"

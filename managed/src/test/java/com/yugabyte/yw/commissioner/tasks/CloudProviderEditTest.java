@@ -27,6 +27,7 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.test.Helpers.contentAsString;
 
 import com.amazonaws.services.ec2.model.Image;
+import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
@@ -413,7 +414,9 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
   }
 
   @Test
-  public void testModifyGCPProviderCredentials() throws InterruptedException {
+  public void testModifyGCPProviderCredentials()
+      throws InterruptedException, JsonProcessingException {
+    ObjectMapper mapper = Json.mapper();
     Provider gcpProvider =
         Provider.create(
             defaultCustomer.getUuid(), Common.CloudType.gcp, "test", new ProviderDetails());
@@ -422,19 +425,23 @@ public class CloudProviderEditTest extends CommissionerBaseTest {
     GCPCloudInfo gcp = new GCPCloudInfo();
     gcpProvider.getDetails().getCloudInfo().setGcp(gcp);
     gcp.setGceProject("gce_proj");
-    gcp.setGceApplicationCredentials(Json.newObject().put("GCE_EMAIL", "test@yugabyte.com"));
+    JsonNode gceAppicationCredentials = Json.newObject().put("GCE_EMAIL", "test@yugabyte.com");
+    gcp.setGceApplicationCredentials(mapper.writeValueAsString(gceAppicationCredentials));
     gcpProvider.save();
-    ((ObjectNode) gcpProvider.getDetails().getCloudInfo().getGcp().getGceApplicationCredentials())
-        .put("client_id", "Client ID");
+    ((ObjectNode) gceAppicationCredentials).put("client_id", "Client ID");
+    gcpProvider
+        .getDetails()
+        .getCloudInfo()
+        .getGcp()
+        .setGceApplicationCredentials(mapper.writeValueAsString(gceAppicationCredentials));
     UUID taskUUID = doEditProvider(gcpProvider, false);
     TaskInfo taskInfo = waitForTask(taskUUID);
     gcpProvider = Provider.getOrBadRequest(gcpProvider.getUuid());
-    assertEquals(
-        "Client ID",
-        ((ObjectNode)
-                gcpProvider.getDetails().getCloudInfo().getGcp().getGceApplicationCredentials())
-            .get("client_id")
-            .textValue());
+    JsonNode creds =
+        mapper.readTree(
+            gcpProvider.getDetails().getCloudInfo().getGcp().getGceApplicationCredentials());
+
+    assertEquals("Client ID", creds.get("client_id").asText());
   }
 
   @Test
