@@ -24,7 +24,7 @@ showRightNav: false
 - [Do smart drivers know when a region fails?](#do-smart-drivers-know-when-a-region-fails)
 - [Do smart drivers provide metrics that can be monitored via JMX?](#do-smart-drivers-provide-metrics-that-can-be-monitored-via-jmx)
 - [Are there recommended settings for the maximum lifetime of a connection?](#are-there-recommended-settings-for-the-maximum-lifetime-of-a-connection)
-- [How can I limit traffic to specific clouds, regions, or AZs with the Smart Driver?](#how-can-i-limit-traffic-to-specific-clouds-regions-or-azs-with-the-smart-driver)
+- [How do I limit traffic to specific clouds, regions, or AZs using a smart driver?](#how-do-i-limit-traffic-to-specific-clouds-regions-or-azs-using-a-smart-driver)
 
 ### What is a smart driver?
 
