@@ -90,7 +90,7 @@ Apart from directing connections to healthy nodes, smart driver connections are 
 
 ### How do I limit traffic to specific clouds, regions, or AZs using a smart driver?
 
-Traffic can be limited or directed to specific clouds, regions, or AZs using Topology Keys; each smart driver client sets this with a key pattern particular to each language.
+You can direct connections to specific clouds, regions, or AZs using topology keys. Each smart driver client sets this using a parameter particular to each language, as follows:
 
 - Java: `topology-keys`
 - Node: `topologyKeys`
