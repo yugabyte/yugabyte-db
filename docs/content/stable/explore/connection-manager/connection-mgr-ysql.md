@@ -23,11 +23,11 @@ However, these products have some severe limitations such as the following:
 
 YugabyteDB includes a built-in connection pooler, YSQL Connection Manager, which provides the same connection pooling advantages as other pooling solutions but without these limitations. As the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections.
 
+![Connection manager](/images/explore/ysql-connection-manager.png)
+
 {{< note title = "Note">}}
 YSQL Connection Manager is currently not supported for [YugabyteDB Anywhere](../../../yugabyte-platform/) and [YugabyteDB Managed](../../../yugabyte-cloud/).
 {{< /note >}}
-
-![Connection manager](/images/explore/ysql-connection-manager.png)
 
 ## Key features
 
