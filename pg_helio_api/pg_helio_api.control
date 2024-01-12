@@ -1,0 +1,6 @@
+comment = 'Single Node API surface for PostgreSQL'
+default_version = '0.12-0'
+module_pathname = '$libdir/pg_helio_api'
+relocatable = false
+superuser = true
+requires = 'pg_helio_core, pg_cron, tsm_system_rows, vector, postgis'

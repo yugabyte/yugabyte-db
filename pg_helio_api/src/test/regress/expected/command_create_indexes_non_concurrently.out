@@ -1,0 +1,940 @@
+SET search_path TO helio_api, helio_api_catalog,helio_core;
+SET helio_api.next_collection_id TO 6000;
+SET helio_api.next_collection_index_id TO 6000;
+---- createIndexes - top level - parse error ----
+SELECT helio_api_internal.create_indexes_non_concurrently('db', NULL);
+ERROR:  arg cannot be NULL
+SELECT helio_api_internal.create_indexes_non_concurrently(NULL, '{}');
+ERROR:  dbName cannot be NULL
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "unknown_field": []}');
+ERROR:  BSON field 'createIndexes.unknown_field' is an unknown field
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": null, "indexes": [{"key": {"a": 1, "": -1}, "name": "my_idx"}]}');
+ERROR:  collection name has invalid type null
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": null}');
+ERROR:  BSON field 'createIndexes.indexes' is the wrong type 'null', expected type 'array'
+HINT:  BSON field 'createIndexes.indexes' is the wrong type 'null', expected type 'array'
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": 5}');
+ERROR:  BSON field 'createIndexes.indexes' is the wrong type 'int', expected type 'array'
+HINT:  BSON field 'createIndexes.indexes' is the wrong type 'int', expected type 'array'
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": []}');
+ERROR:  Must specify at least one index to create
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1"}');
+ERROR:  BSON field 'createIndexes.indexes' is missing but a required field
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{}');
+ERROR:  BSON field 'createIndexes.indexes' is missing but a required field
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": 1}');
+ERROR:  collection name has invalid type int
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": 1}');
+ERROR:  BSON field 'createIndexes.indexes' is the wrong type 'int', expected type 'array'
+HINT:  BSON field 'createIndexes.indexes' is the wrong type 'int', expected type 'array'
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [1,2]}');
+ERROR:  BSON field 'createIndexes.indexes.0' is the wrong type 'int', expected type 'object'
+HINT:  BSON field 'createIndexes.indexes.0' is the wrong type 'int', expected type 'object'
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": 1}]}');
+ERROR:  Error in specification { "key" : 1 } :: caused by :: The field 'key' must be an object, but got int
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"name": 1}]}');
+ERROR:  Error in specification { "name" : 1 } :: caused by :: The field 'name' must be an string, but got int
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"unique": "1"}]}');
+ERROR:  Error in specification { "unique" : "1" } :: caused by :: The field 'unique' has value unique: "1", which is not convertible to bool
+HINT:  Field in index definition has value of type string, which is not convertible to bool
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1}}]}');
+ERROR:  Error in specification { "key" : { "a" : 1 } } :: caused by :: The 'name' field is a required property of an index specification
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"name": "my_idx"}]}');
+ERROR:  Error in specification { "name" : "my_idx" } :: caused by :: The 'key' field is a required property of an index specification
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"unknown_field": "111"}]}');
+ERROR:  Error in specification { "unknown_field" : "111" } :: caused by :: The field 'unknown_field' is not valid for an index specification. Specification: { "unknown_field" : "111" }
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"name": "_name_", "unknown_field": "111"}]}');
+ERROR:  Error in specification { "name" : "_name_", "unknown_field" : "111" } :: caused by :: The field 'unknown_field' is not valid for an index specification. Specification: { "name" : "_name_", "unknown_field" : "111" }
+---- createIndexes - indexes.key - parse error ----
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"": 1}, "name": "my_idx"}]}');
+ERROR:  Error in specification { "key" : { "" : 1 }, "name" : "my_idx" } :: caused by :: Index keys cannot be an empty field
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1, "": -1}, "name": "my_idx"}]}');
+ERROR:  Error in specification { "key" : { "a" : 1, "" : -1 }, "name" : "my_idx" } :: caused by :: Index keys cannot be an empty field
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$**": 1, "b": -1}, "name": "my_idx"}]}');
+ERROR:  Error in specification { "key" : { "a.$**" : 1, "b" : -1 }, "name" : "my_idx" } :: caused by :: wildcard indexes do not allow compounding
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {".$**": 1}, "name": "my_idx"}]}');
+ERROR:  Error in specification { "key" : { ".$**" : 1 }, "name" : "my_idx" } :: caused by :: Index keys cannot contain an empty field.
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$**": "bad"}, "name": "my_idx"}]}');
+ERROR:  Error in specification { "key" : { "a.$**" : "bad" }, "name" : "my_idx" } :: caused by :: Unknown index plugin "bad"
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$**": 0}, "name": "my_idx"}]}');
+ERROR:  Error in specification { "key" : { "a.$**" : 0 }, "name" : "my_idx" } :: caused by :: Values in the index key pattern cannot be 0.
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$**": ""}, "name": "my_idx"}]}');
+ERROR:  Error in specification { "key" : { "a.$**" : "" }, "name" : "my_idx" } :: caused by :: Values in the index key pattern cannot be empty strings
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$**": {"a": 1}}, "name": "my_idx"}]}');
+ERROR:  Error in specification { "key" : { "a.$**" : { "a" : 1 } }, "name" : "my_idx" } :: caused by :: Values in v:2 index key pattern cannot be of type object. Only numbers > 0, numbers < 0, and strings are allowed.
+-- note that those are valid ..
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a$**foo": 1}, "name": "my_idx_1"}]}');
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a$**": 1}, "name": "my_idx_3"}]}',true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "2" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- valid sparse index
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"asparse": 1}, "name": "my_sparse_idx1", "sparse": true}]}',true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "3" }, "numIndexesAfter" : { "$numberInt" : "4" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"asparse_num": 1}, "name": "my_sparse_num_idx1", "sparse": 1}]}',true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "4" }, "numIndexesAfter" : { "$numberInt" : "5" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"asparse_num": 1}, "name": "my_non_sparse_num_idx1", "sparse": 0}]}',true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "5" }, "numIndexesAfter" : { "$numberInt" : "6" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.sparse.double": 1}, "name": "my_sparse_double_idx1", "sparse": 0.2}]}',true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "6" }, "numIndexesAfter" : { "$numberInt" : "7" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": null, "createIndexes": "collection_1", "indexes": [{"key": 0, "key": {"bsparse": 1}, "name": "my_non_sparse_idx1", "sparse": false}]}',true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "7" }, "numIndexesAfter" : { "$numberInt" : "8" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"cs.$**": 1}, "name": "my_wildcard_non_sparse_idx1", "sparse": false}]}',true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "8" }, "numIndexesAfter" : { "$numberInt" : "9" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- invalid sparse indexes
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"bs.$**": 1}, "name": "my_wildcard_sparse_idx1", "sparse": true}]}',true);
+ERROR:  Error in specification { "key" : { "bs.$**" : 1 }, "name" : "my_wildcard_sparse_idx1", "sparse" : true } :: caused by :: Index type 'wildcard' does not support the sparse option
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"bs.$**": 1}, "name": "my_wildcard_sparse_idx1", "sparse": "true"}]}',true);
+ERROR:  Error in specification { "key" : { "bs.$**" : 1 }, "name" : "my_wildcard_sparse_idx1", "sparse" : "true" } :: caused by :: The field 'sparse' has value sparse: "true", which is not convertible to bool
+HINT:  Field in index definition has value of type string, which is not convertible to bool
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"bs.a": 1}, "name": "my_sparse_with_pfe_idx", "sparse": true, "partialFilterExpression": { "rating": { "$gt": 5 } }}]}',true);
+ERROR:  Error in specification { "key" : { "bs.a" : 1 }, "name" : "my_sparse_with_pfe_idx", "sparse" : true, "partialFilterExpression" : { "rating" : { "$gt" : 5 } } } :: caused by :: cannot mix "partialFilterExpression" and "sparse" options
+-- sparse can create index for same key with different sparse options
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.sparse.b": 1}, "name": "my_sparse_a_b_idx", "sparse": true}]}',true);
+                                                                                                    create_indexes_non_concurrently                                                                                                    
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "9" }, "numIndexesAfter" : { "$numberInt" : "10" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.sparse.b": 1}, "name": "my_non_sparse_a_b_idx", "sparse": false}]}',true);
+                                                                                                    create_indexes_non_concurrently                                                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "10" }, "numIndexesAfter" : { "$numberInt" : "11" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- valid hash indexes
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": "hashed"}, "name": "my_idx_hashed"}]}',true);
+ERROR:  operator class "helio_api_catalog.pgmongo_rum_hashed_ops" does not exist for access method "helio_rum"
+CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_6011 ON helio_data.documents_6000 USING helio_rum ( document helio_api_catalog.pgmongo_rum_hashed_ops(path='a')) "
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": "hashed", "b": 1 }, "name": "my_idx_hashed_compound"}]}',true);
+ERROR:  operator class "helio_api_catalog.pgmongo_rum_hashed_ops" does not exist for access method "helio_rum"
+CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_6012 ON helio_data.documents_6000 USING helio_rum ( document helio_api_catalog.pgmongo_rum_hashed_ops(path='a'), document helio_api_catalog.bson_rum_single_path_ops(path='b')) "
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1, "b": "hashed" }, "name": "my_idx_hashed_compound_hash"}]}',true);
+ERROR:  operator class "helio_api_catalog.pgmongo_rum_hashed_ops" does not exist for access method "helio_rum"
+CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_6013 ON helio_data.documents_6000 USING helio_rum ( document helio_api_catalog.bson_rum_single_path_ops(path='a'), document helio_api_catalog.pgmongo_rum_hashed_ops(path='b')) "
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a$**": "hashed"}, "name": "my_idx_dollar_name_1"}]}',true);
+ERROR:  operator class "helio_api_catalog.pgmongo_rum_hashed_ops" does not exist for access method "helio_rum"
+CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_6014 ON helio_data.documents_6000 USING helio_rum ( document helio_api_catalog.pgmongo_rum_hashed_ops(path='a$**')) "
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.c$": "hashed"}, "name": "my_idx_dollar_name_2"}]}',true);
+ERROR:  operator class "helio_api_catalog.pgmongo_rum_hashed_ops" does not exist for access method "helio_rum"
+CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_6015 ON helio_data.documents_6000 USING helio_rum ( document helio_api_catalog.pgmongo_rum_hashed_ops(path='a.c$')) "
+-- invalid hash indexes
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"b": "hashed" }, "unique": 1, "name": "invalid_hashed"}]}',true);
+ERROR:  Error in specification { "key" : { "b" : "hashed" }, "unique" : 1, "name" : "invalid_hashed" } :: caused by :: Currently hashed indexes cannot guarantee uniqueness. Use a regular index
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"b": "hashed", "c": "hashed" }, "name": "invalid_hashed"}]}',true);
+ERROR:  Error in specification { "key" : { "b" : "hashed", "c" : "hashed" }, "name" : "invalid_hashed" } :: caused by :: A maximum of one index field is allowed to be hashed but found 2
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"b": "hashed", "c": 1, "d": "hashed" }, "name": "invalid_hashed"}]}',true);
+ERROR:  Error in specification { "key" : { "b" : "hashed", "c" : 1, "d" : "hashed" }, "name" : "invalid_hashed" } :: caused by :: A maximum of one index field is allowed to be hashed but found 2
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"b.$**": "hashed" }, "name": "invalid_hashed"}]}',true);
+ERROR:  Error in specification { "key" : { "b.$**" : "hashed" }, "name" : "invalid_hashed" } :: caused by :: Index key contains an illegal field name: field name starts with '$'.
+-- can't create index on same key with same sparse options
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.sparse.b": 1}, "name": "my_non_sparse_a_b_idx1"}]}',true);
+ERROR:  Index already exists with a different name: my_non_sparse_a_b_idx
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.sparse.b": 1}, "name": "my_non_sparse_a_b_idx2", "sparse": false}]}',true);
+ERROR:  Index already exists with a different name: my_non_sparse_a_b_idx
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.sparse.b": 1}, "name": "my_non_sparse_a_b_idx3", "sparse": true}]}',true);
+ERROR:  Index already exists with a different name: my_sparse_a_b_idx
+-- invalid index names
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1 }, "name": "*"}]}');
+ERROR:  Error in specification { "key" : { "a" : 1 }, "name" : "*" } :: caused by :: The index name '*' is not valid
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1 }, "name": "name\u0000field"}]}');
+ERROR:  Error in specification { "key" : { "a" : 1 }, "name" : "name\u0000field" } :: caused by :: The index name cannot contain embedded nulls
+-- For the next test, show the commands that we internally execute to build
+-- & clean-up the collection indexes.
+SET client_min_messages TO DEBUG1;
+-- Creating another index with the same name is not ok.
+-- Note that we won't create other indexes too, even if it would be ok to create them in a separate command.
+SELECT helio_api_internal.create_indexes_non_concurrently(
+'db',
+'{
+    "createIndexes": "collection_1",
+    "indexes": [
+      {"key": {"x.y.z": 1}, "name": "valid_index_1"},
+      {"key": {"c.d.e": 1}, "name": "my_idx_5"},
+      {"key": {"x.y": 1}, "name": "valid_index_2"}
+    ]
+}', true);
+DEBUG:  executing "SELECT index_id, index_spec FROM helio_api_catalog.collection_indexes WHERE collection_id = $1 AND (index_spec).index_name = $2 AND (index_is_valid OR helio_api_internal.index_build_is_in_progress(index_id))" via SPI
+DEBUG:  executing "SELECT index_id, index_spec FROM helio_api_catalog.collection_indexes WHERE collection_id = $1 AND helio_api_internal.index_spec_options_are_equivalent(index_spec, $2) AND (index_is_valid OR helio_api_internal.index_build_is_in_progress(index_id))" via SPI
+DEBUG:  executing "SELECT index_id, index_spec FROM helio_api_catalog.collection_indexes WHERE collection_id = $1 AND (index_spec).index_name = $2 AND (index_is_valid OR helio_api_internal.index_build_is_in_progress(index_id))" via SPI
+DEBUG:  executing "SELECT index_id, index_spec FROM helio_api_catalog.collection_indexes WHERE collection_id = $1 AND helio_api_internal.index_spec_options_are_equivalent(index_spec, $2) AND (index_is_valid OR helio_api_internal.index_build_is_in_progress(index_id))" via SPI
+DEBUG:  executing "SELECT index_id, index_spec FROM helio_api_catalog.collection_indexes WHERE collection_id = $1 AND (index_spec).index_name = $2 AND (index_is_valid OR helio_api_internal.index_build_is_in_progress(index_id))" via SPI
+DEBUG:  executing "SELECT index_id, index_spec FROM helio_api_catalog.collection_indexes WHERE collection_id = $1 AND helio_api_internal.index_spec_options_are_equivalent(index_spec, $2) AND (index_is_valid OR helio_api_internal.index_build_is_in_progress(index_id))" via SPI
+DEBUG:  executing "SELECT COUNT(*) FROM helio_api_catalog.collection_indexes WHERE collection_id = 6000 AND (index_is_valid OR helio_api_internal.index_build_is_in_progress(index_id))" via SPI
+DEBUG:  executing "INSERT INTO helio_api_catalog.collection_indexes (collection_id, index_spec, index_is_valid) VALUES ($1, $2, $3) RETURNING index_id" via SPI
+DEBUG:  executing "CREATE INDEX  documents_rum_index_6016 ON helio_data.documents_6000 USING helio_rum ( document helio_api_catalog.bson_rum_single_path_ops(path='x.y.z')) " via SPI
+DEBUG:  building index "documents_rum_index_6016" on table "documents_6000" serially
+DEBUG:  executing "INSERT INTO helio_api_catalog.collection_indexes (collection_id, index_spec, index_is_valid) VALUES ($1, $2, $3) RETURNING index_id" via SPI
+DEBUG:  executing "CREATE INDEX  documents_rum_index_6017 ON helio_data.documents_6000 USING helio_rum ( document helio_api_catalog.bson_rum_single_path_ops(path='c.d.e')) " via SPI
+DEBUG:  building index "documents_rum_index_6017" on table "documents_6000" serially
+DEBUG:  executing "INSERT INTO helio_api_catalog.collection_indexes (collection_id, index_spec, index_is_valid) VALUES ($1, $2, $3) RETURNING index_id" via SPI
+DEBUG:  executing "CREATE INDEX  documents_rum_index_6018 ON helio_data.documents_6000 USING helio_rum ( document helio_api_catalog.bson_rum_single_path_ops(path='x.y')) " via SPI
+DEBUG:  building index "documents_rum_index_6018" on table "documents_6000" serially
+DEBUG:  executing "SELECT COUNT(*) FROM helio_api_catalog.collection_indexes WHERE collection_id = 6000 AND (index_is_valid OR helio_api_internal.index_build_is_in_progress(index_id))" via SPI
+                                                                                                    create_indexes_non_concurrently                                                                                                     
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "11" }, "numIndexesAfter" : { "$numberInt" : "14" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+RESET client_min_messages;
+-- show that we didn't leave any invalid collection indexes behind
+SELECT * FROM helio_test_helpers.get_collection_indexes('db', 'collection_1') ORDER BY collection_id, index_id;
+ collection_id | index_id |                                                             index_spec_as_bson                                                              | index_is_valid 
+---------------+----------+---------------------------------------------------------------------------------------------------------------------------------------------+----------------
+          6000 |     6000 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" }                                               | t
+          6000 |     6001 | { "v" : { "$numberInt" : "2" }, "key" : { "a$**foo" : { "$numberInt" : "1" } }, "name" : "my_idx_1" }                                       | t
+          6000 |     6002 | { "v" : { "$numberInt" : "2" }, "key" : { "a$**" : { "$numberInt" : "1" } }, "name" : "my_idx_3" }                                          | t
+          6000 |     6003 | { "v" : { "$numberInt" : "2" }, "key" : { "asparse" : { "$numberInt" : "1" } }, "name" : "my_sparse_idx1", "sparse" : true }                | t
+          6000 |     6004 | { "v" : { "$numberInt" : "2" }, "key" : { "asparse_num" : { "$numberInt" : "1" } }, "name" : "my_sparse_num_idx1", "sparse" : true }        | t
+          6000 |     6005 | { "v" : { "$numberInt" : "2" }, "key" : { "asparse_num" : { "$numberInt" : "1" } }, "name" : "my_non_sparse_num_idx1", "sparse" : false }   | t
+          6000 |     6006 | { "v" : { "$numberInt" : "2" }, "key" : { "a.sparse.double" : { "$numberInt" : "1" } }, "name" : "my_sparse_double_idx1", "sparse" : true } | t
+          6000 |     6007 | { "v" : { "$numberInt" : "2" }, "key" : { "bsparse" : { "$numberInt" : "1" } }, "name" : "my_non_sparse_idx1", "sparse" : false }           | t
+          6000 |     6008 | { "v" : { "$numberInt" : "2" }, "key" : { "cs.$**" : { "$numberInt" : "1" } }, "name" : "my_wildcard_non_sparse_idx1", "sparse" : false }   | t
+          6000 |     6009 | { "v" : { "$numberInt" : "2" }, "key" : { "a.sparse.b" : { "$numberInt" : "1" } }, "name" : "my_sparse_a_b_idx", "sparse" : true }          | t
+          6000 |     6010 | { "v" : { "$numberInt" : "2" }, "key" : { "a.sparse.b" : { "$numberInt" : "1" } }, "name" : "my_non_sparse_a_b_idx", "sparse" : false }     | t
+          6000 |     6016 | { "v" : { "$numberInt" : "2" }, "key" : { "x.y.z" : { "$numberInt" : "1" } }, "name" : "valid_index_1" }                                    | t
+          6000 |     6017 | { "v" : { "$numberInt" : "2" }, "key" : { "c.d.e" : { "$numberInt" : "1" } }, "name" : "my_idx_5" }                                         | t
+          6000 |     6018 | { "v" : { "$numberInt" : "2" }, "key" : { "x.y" : { "$numberInt" : "1" } }, "name" : "valid_index_2" }                                      | t
+(14 rows)
+
+-- also show that we didn't leave any invalid pg indexes behind
+SELECT indexrelid::regclass, indisvalid, indisready
+FROM helio_test_helpers.get_data_table_indexes('db', 'collection_1')
+ORDER BY indexrelid;
+             indexrelid              | indisvalid | indisready 
+-------------------------------------+------------+------------
+ helio_data.collection_pk_6000       | t          | t
+ helio_data.documents_rum_index_6001 | t          | t
+ helio_data.documents_rum_index_6002 | t          | t
+ helio_data.documents_rum_index_6003 | t          | t
+ helio_data.documents_rum_index_6004 | t          | t
+ helio_data.documents_rum_index_6005 | t          | t
+ helio_data.documents_rum_index_6006 | t          | t
+ helio_data.documents_rum_index_6007 | t          | t
+ helio_data.documents_rum_index_6008 | t          | t
+ helio_data.documents_rum_index_6009 | t          | t
+ helio_data.documents_rum_index_6010 | t          | t
+ helio_data.documents_rum_index_6016 | t          | t
+ helio_data.documents_rum_index_6017 | t          | t
+ helio_data.documents_rum_index_6018 | t          | t
+(14 rows)
+
+-- Test invalid indexes are not left behind
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$**foo": 1}, "name": "my_idx"}]}');
+ERROR:  Error in specification { "key" : { "a.$**foo" : 1 }, "name" : "my_idx" } :: caused by :: Index key contains an illegal field name
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$**.foo": 1}, "name": "my_idx"}]}');
+ERROR:  Error in specification { "key" : { "a.$**.foo" : 1 }, "name" : "my_idx" } :: caused by :: Index key contains an illegal field name
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"b": -1, "a.$**": 1}, "name": "my_idx"}]}');
+ERROR:  Error in specification { "key" : { "b" : -1, "a.$**" : 1 }, "name" : "my_idx" } :: caused by :: wildcard indexes do not allow compounding
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {}, "name": "my_idx"}]}');
+ERROR:  Error in specification { "key" : {  }, "name" : "my_idx" } :: caused by :: Index keys cannot be an empty field
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"name": "my_idx"}]}');
+ERROR:  Error in specification { "name" : "my_idx" } :: caused by :: The 'key' field is a required property of an index specification
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"$**foo": 1}, "name": "my_idx_13"}]}');
+ERROR:  Error in specification { "key" : { "$**foo" : 1 }, "name" : "my_idx_13" } :: caused by :: Index key contains an illegal field name: field name starts with '$'.
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"..": 1}, "name": "my_idx_12"}]}');
+ERROR:  Error in specification { "key" : { ".." : 1 }, "name" : "my_idx_12" } :: caused by :: Index keys cannot contain an empty field.
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a..b.$**": 1}, "name": "my_idx_10"}]}');
+ERROR:  Error in specification { "key" : { "a..b.$**" : 1 }, "name" : "my_idx_10" } :: caused by :: Index keys cannot contain an empty field.
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a..b.foo": 1}, "name": "my_idx_11"}]}');
+ERROR:  Error in specification { "key" : { "a..b.foo" : 1 }, "name" : "my_idx_11" } :: caused by :: Index keys cannot contain an empty field.
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"$a": 1}, "name": "my_idx_12"}]}');
+ERROR:  Error in specification { "key" : { "$a" : 1 }, "name" : "my_idx_12" } :: caused by :: Index key contains an illegal field name: field name starts with '$'.
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {".": 1}, "name": "my_idx_12"}]}');
+ERROR:  Error in specification { "key" : { "." : 1 }, "name" : "my_idx_12" } :: caused by :: Index keys cannot contain an empty field.
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$b": 1}, "name": "my_idx_12"}]}');
+ERROR:  Error in specification { "key" : { "a.$b" : 1 }, "name" : "my_idx_12" } :: caused by :: Index key contains an illegal field name: field name starts with '$'.
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.$b.$**": 1}, "name": "my_idx_12"}]}');
+ERROR:  Error in specification { "key" : { "a.$b.$**" : 1 }, "name" : "my_idx_12" } :: caused by :: Index key contains an illegal field name: field name starts with '$'.
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.": 1}, "name": "my_idx_12"}]}');
+ERROR:  Error in specification { "key" : { "a." : 1 }, "name" : "my_idx_12" } :: caused by :: Index keys cannot contain an empty field.
+-- show that we didn't leave any invalid collection indexes behind
+SELECT * FROM helio_test_helpers.get_collection_indexes('db', 'collection_1') ORDER BY collection_id, index_id;
+ collection_id | index_id |                                                             index_spec_as_bson                                                              | index_is_valid 
+---------------+----------+---------------------------------------------------------------------------------------------------------------------------------------------+----------------
+          6000 |     6000 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" }                                               | t
+          6000 |     6001 | { "v" : { "$numberInt" : "2" }, "key" : { "a$**foo" : { "$numberInt" : "1" } }, "name" : "my_idx_1" }                                       | t
+          6000 |     6002 | { "v" : { "$numberInt" : "2" }, "key" : { "a$**" : { "$numberInt" : "1" } }, "name" : "my_idx_3" }                                          | t
+          6000 |     6003 | { "v" : { "$numberInt" : "2" }, "key" : { "asparse" : { "$numberInt" : "1" } }, "name" : "my_sparse_idx1", "sparse" : true }                | t
+          6000 |     6004 | { "v" : { "$numberInt" : "2" }, "key" : { "asparse_num" : { "$numberInt" : "1" } }, "name" : "my_sparse_num_idx1", "sparse" : true }        | t
+          6000 |     6005 | { "v" : { "$numberInt" : "2" }, "key" : { "asparse_num" : { "$numberInt" : "1" } }, "name" : "my_non_sparse_num_idx1", "sparse" : false }   | t
+          6000 |     6006 | { "v" : { "$numberInt" : "2" }, "key" : { "a.sparse.double" : { "$numberInt" : "1" } }, "name" : "my_sparse_double_idx1", "sparse" : true } | t
+          6000 |     6007 | { "v" : { "$numberInt" : "2" }, "key" : { "bsparse" : { "$numberInt" : "1" } }, "name" : "my_non_sparse_idx1", "sparse" : false }           | t
+          6000 |     6008 | { "v" : { "$numberInt" : "2" }, "key" : { "cs.$**" : { "$numberInt" : "1" } }, "name" : "my_wildcard_non_sparse_idx1", "sparse" : false }   | t
+          6000 |     6009 | { "v" : { "$numberInt" : "2" }, "key" : { "a.sparse.b" : { "$numberInt" : "1" } }, "name" : "my_sparse_a_b_idx", "sparse" : true }          | t
+          6000 |     6010 | { "v" : { "$numberInt" : "2" }, "key" : { "a.sparse.b" : { "$numberInt" : "1" } }, "name" : "my_non_sparse_a_b_idx", "sparse" : false }     | t
+          6000 |     6016 | { "v" : { "$numberInt" : "2" }, "key" : { "x.y.z" : { "$numberInt" : "1" } }, "name" : "valid_index_1" }                                    | t
+          6000 |     6017 | { "v" : { "$numberInt" : "2" }, "key" : { "c.d.e" : { "$numberInt" : "1" } }, "name" : "my_idx_5" }                                         | t
+          6000 |     6018 | { "v" : { "$numberInt" : "2" }, "key" : { "x.y" : { "$numberInt" : "1" } }, "name" : "valid_index_2" }                                      | t
+(14 rows)
+
+-- also show that we didn't leave any invalid pg indexes behind
+SELECT indexrelid::regclass, indisvalid, indisready
+FROM helio_test_helpers.get_data_table_indexes('db', 'collection_1')
+ORDER BY indexrelid;
+             indexrelid              | indisvalid | indisready 
+-------------------------------------+------------+------------
+ helio_data.collection_pk_6000       | t          | t
+ helio_data.documents_rum_index_6001 | t          | t
+ helio_data.documents_rum_index_6002 | t          | t
+ helio_data.documents_rum_index_6003 | t          | t
+ helio_data.documents_rum_index_6004 | t          | t
+ helio_data.documents_rum_index_6005 | t          | t
+ helio_data.documents_rum_index_6006 | t          | t
+ helio_data.documents_rum_index_6007 | t          | t
+ helio_data.documents_rum_index_6008 | t          | t
+ helio_data.documents_rum_index_6009 | t          | t
+ helio_data.documents_rum_index_6010 | t          | t
+ helio_data.documents_rum_index_6016 | t          | t
+ helio_data.documents_rum_index_6017 | t          | t
+ helio_data.documents_rum_index_6018 | t          | t
+(14 rows)
+
+-- ******* Wilcard projection indexes ******* --
+-- cannot specify wildcardProjection for a non-root wildcard index
+SELECT helio_api_internal.create_indexes_non_concurrently(
+  'wp_test',
+  '{
+     "createIndexes": "fail_test",
+     "indexes": [
+       {
+         "key": {"a.$**": 1}, "name": "idx",
+         "wildcardProjection": {"a": 1}
+       }
+     ]
+   }'
+);
+ERROR:  Error in specification { "key" : { "a.$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : 1 } } :: caused by :: The field 'wildcardProjection' is only allowed when 'key' is {"$**": ±1}
+-- cannot specify wildcardProjection for a non-wildcard index
+SELECT helio_api_internal.create_indexes_non_concurrently(
+  'wp_test',
+  '{
+     "createIndexes": "fail_test",
+     "indexes": [
+       {
+         "key": {"a": 1}, "name": "idx",
+         "wildcardProjection": {"a": 1}
+       }
+     ]
+   }'
+);
+ERROR:  Error in specification { "key" : { "a" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : 1 } } :: caused by :: The field 'wildcardProjection' is only allowed in an 'wildcard' index
+CREATE FUNCTION create_index_arg_using_wp(p_wp text)
+RETURNS helio_core.bson
+AS $$
+BEGIN
+	RETURN format(
+    '{
+        "createIndexes": "fail_test",
+        "indexes": [
+            {
+                "key": {"$**": 1}, "name": "idx",
+                "wildcardProjection": %s
+            }
+        ]
+    }',
+    p_wp
+  )::helio_core.bson;
+END;
+$$ LANGUAGE plpgsql;
+-- all fields specified in wildcardProjection must be included or excluded, except _id field
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": 1, "b": 0}'));
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : 1, "b" : 0 } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Cannot do exclusion on field b in inclusion projection.
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": 1, "b.c": 0}'));
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : 1, "b.c" : 0 } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Cannot do exclusion on field b.c in inclusion projection.
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"b.c": 1, "a": 0}'));
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "b.c" : 1, "a" : 0 } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Cannot do exclusion on field a in inclusion projection.
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": {"x": 1, "y.t": 0}, "b.c": 0}'));
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : { "x" : 1, "y.t" : 0 }, "b.c" : 0 } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Cannot do exclusion on field y.t in inclusion projection.
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": {"x": 1, "y": 1}, "b.c": 0}'));
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : { "x" : 1, "y" : 1 }, "b.c" : 0 } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Cannot do exclusion on field b.c in inclusion projection.
+-- wildcardProjection cannot be empty
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{}'));
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : {  } } :: caused by :: The 'wildcardProjection' field can't be an empty object
+-- wildcardProjection must be document
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('5'));
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : 5 } :: caused by :: The field 'wildcardProjection' must be a non-empty object, but got int
+-- wildcardProjection cannot contain an empty document as an inner-level specification
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": 1, "b": {"c": 1, "d": {}, "e": 1}}'));
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : 1, "b" : { "c" : 1, "d" : {  }, "e" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: An empty sub-projection is not a valid value. Found empty object at path
+-- and inner-level specification must be a document or a path string
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": 1, "b": {"c": 1, "d": [], "e": 1}}'));
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : 1, "b" : { "c" : 1, "d" : [  ], "e" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Bad projection specification, cannot use computed fields when parsing a spec in kBanComputedFields mode
+-- show that we throw an error for invalid paths used in wildcardProjection document
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a..b": 1}'));
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a..b" : 1 } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: FieldPath field names may not be empty strings.
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": -1, "b": {"a..b": 1}}'));
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : -1, "b" : { "a..b" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: FieldPath field names may not be empty strings.
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": -1, "b": {"a.b.": 1}}'));
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : -1, "b" : { "a.b." : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: FieldPath must not end with a '.'.
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": -1, "b": {"": 1}}'));
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : -1, "b" : { "" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: FieldPath cannot be constructed with empty string.
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": -1, "b": {"$aa": 1}}'));
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : -1, "b" : { "$aa" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Bad projection specification, cannot use computed fields when parsing a spec in kBanComputedFields mode
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"$a": -1, "b": {"aa": 1}}'));
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "$a" : -1, "b" : { "aa" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: FieldPath field names may not start with '$'. Consider using $getField or $setField
+-- idx_1: for _id field, we will take the last inclusion specification into the account
+-- idx_2: not specifying inclusion for _id field would result in excluding _id field by default
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test',
+    '{
+        "createIndexes": "ok_test_1",
+        "indexes": [
+            {
+                "key": {"$**": 1}, "name": "idx_1",
+                "wildcardProjection": {"_id": 0, "a": {"x": 10.5, "y": true}, "_id": false, "b.c": 1, "_id": -0.6}
+            },
+            {
+                "key": {"$**": -1}, "name": "idx_2",
+                "wildcardProjection": {"a": {"x": 10.5, "y": true, "z.a.b": -100}, "b.c": 1, "k": {"z.a.b": -100}}
+            }
+        ]
+    }',
+    TRUE
+);
+ERROR:  Error in specification { "key" : { "$**" : -1 }, "name" : "idx_2", "wildcardProjection" : { "a" : { "x" : 10.5, "y" : true, "z.a.b" : -100 }, "b.c" : 1, "k" : { "z.a.b" : -100 } } } :: caused by :: A numeric value in a $** index key pattern must be positive.
+SELECT helio_test_helpers.helio_index_get_pg_def('wp_test', 'ok_test_1', 'idx_1');
+ helio_index_get_pg_def 
+------------------------
+(0 rows)
+
+SELECT helio_test_helpers.helio_index_get_pg_def('wp_test', 'ok_test_1', 'idx_2');
+ helio_index_get_pg_def 
+------------------------
+(0 rows)
+
+SELECT helio_test_helpers.get_collection_indexes('wp_test','ok_test_1');
+ get_collection_indexes 
+------------------------
+(0 rows)
+
+-- using $ in a field path is ok unless it's the first character
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test',
+    '{
+        "createIndexes": "ok_test_2",
+        "indexes": [
+            {
+                "key": {"$**": 1}, "name": "idx_1",
+                "wildcardProjection": {"a": -1, "b": {"b.a$a.k$": 1}}
+            }
+        ]
+    }',
+    TRUE
+);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT helio_test_helpers.helio_index_get_pg_def('wp_test', 'ok_test_2', 'idx_1');
+                                                                                           helio_index_get_pg_def                                                                                            
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ CREATE INDEX documents_rum_index_6020 ON helio_data.documents_6001 USING helio_rum (document bson_rum_wildcard_project_path_ops (includeid='false', pathspec='[ "a", "b.b.a$a.k$" ]', isexclusion='false'))
+(1 row)
+
+SELECT helio_test_helpers.get_collection_indexes('wp_test','ok_test_2');
+                                                                                                              get_collection_indexes                                                                                                               
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ (6001,6019,"{ ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""_id"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""_id_"" }",t)
+ (6001,6020,"{ ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""$**"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx_1"", ""wildcardProjection"" : { ""a"" : true, ""b"" : { ""b"" : { ""a$a"" : { ""k$"" : true } } }, ""_id"" : false } }",t)
+(2 rows)
+
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test',
+    '{
+        "createIndexes": "ok_test_3",
+        "indexes": [
+            {
+                "key": {"$**": 1}, "name": "idx_1",
+                "wildcardProjection": {"a": 1, "b": {"c": 1, "d.e": 1}, "_id": 0}
+            }
+        ]
+    }',
+    TRUE
+);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT helio_test_helpers.drop_primary_key('wp_test', 'ok_test_3');
+ drop_primary_key 
+------------------
+ 
+(1 row)
+
+SELECT helio_test_helpers.get_collection_indexes('wp_test','ok_test_3');
+                                                                                                              get_collection_indexes                                                                                                              
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ (6002,6022,"{ ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""$**"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx_1"", ""wildcardProjection"" : { ""a"" : true, ""b"" : { ""c"" : true, ""d"" : { ""e"" : true } }, ""_id"" : false } }",t)
+(1 row)
+
+BEGIN;
+  set local enable_seqscan TO OFF;
+  -- can use idx_1
+  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "a.b": { "$eq": 1 } }, "projection": { "a": 1 } }');
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_6002 collection
+   Recheck Cond: (document @= '{ "a.b" : { "$numberInt" : "1" } }'::bson)
+   Filter: (shard_key_value = '6002'::bigint)
+   ->  Bitmap Index Scan on idx_1
+         Index Cond: (document @= '{ "a.b" : { "$numberInt" : "1" } }'::bson)
+(5 rows)
+
+  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "a": { "$eq": 1 } }, "projection": { "a": 1 } }');
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_6002 collection
+   Recheck Cond: (document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
+   Filter: (shard_key_value = '6002'::bigint)
+   ->  Bitmap Index Scan on idx_1
+         Index Cond: (document @= '{ "a" : { "$numberInt" : "1" } }'::bson)
+(5 rows)
+
+  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "a": { "$eq": {"b": 1} } }, "projection": { "a": 1 } }');
+                                      QUERY PLAN                                      
+--------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_6002 collection
+   Recheck Cond: (document @= '{ "a" : { "b" : { "$numberInt" : "1" } } }'::bson)
+   Filter: (shard_key_value = '6002'::bigint)
+   ->  Bitmap Index Scan on idx_1
+         Index Cond: (document @= '{ "a" : { "b" : { "$numberInt" : "1" } } }'::bson)
+(5 rows)
+
+  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "a": { "_id": 1 } }, "projection": { "a": 1 } }');
+                                       QUERY PLAN                                       
+----------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_6002 collection
+   Recheck Cond: (document @= '{ "a" : { "_id" : { "$numberInt" : "1" } } }'::bson)
+   Filter: (shard_key_value = '6002'::bigint)
+   ->  Bitmap Index Scan on idx_1
+         Index Cond: (document @= '{ "a" : { "_id" : { "$numberInt" : "1" } } }'::bson)
+(5 rows)
+
+  -- cannot use idx_1
+  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "b.d": { "$eq": 1 } }, "projection": { "a": 1 } }');
+                                                    QUERY PLAN                                                    
+------------------------------------------------------------------------------------------------------------------
+ Seq Scan on documents_6002 collection
+   Filter: ((document #= '{ "b.d" : { "$numberInt" : "1" } }'::bsonquery) AND (shard_key_value = '6002'::bigint))
+(2 rows)
+
+  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "b": { "$eq": {"d": 1} } }, "projection": { "a": 1 } }');
+                                                        QUERY PLAN                                                        
+--------------------------------------------------------------------------------------------------------------------------
+ Seq Scan on documents_6002 collection
+   Filter: ((document #= '{ "b" : { "d" : { "$numberInt" : "1" } } }'::bsonquery) AND (shard_key_value = '6002'::bigint))
+(2 rows)
+
+  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_3", "filter": { "e": { "$eq": 1 } }, "projection": { "a": 1 } }');
+                                                   QUERY PLAN                                                   
+----------------------------------------------------------------------------------------------------------------
+ Seq Scan on documents_6002 collection
+   Filter: ((document #= '{ "e" : { "$numberInt" : "1" } }'::bsonquery) AND (shard_key_value = '6002'::bigint))
+(2 rows)
+
+COMMIT;
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test',
+    '{
+        "createIndexes": "ok_test_4",
+        "indexes": [
+            {
+                "key": {"$**": 1}, "name": "idx_1",
+                "wildcardProjection": {"a": 0, "b": {"c": 0, "d.e": 0}, "f.g.h": 0}
+            }
+        ]
+    }',
+    TRUE
+);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT helio_test_helpers.drop_primary_key('wp_test', 'ok_test_4');
+ drop_primary_key 
+------------------
+ 
+(1 row)
+
+SELECT helio_test_helpers.get_collection_indexes('wp_test','ok_test_4');
+                                                                                                                                   get_collection_indexes                                                                                                                                   
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ (6003,6024,"{ ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""$**"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx_1"", ""wildcardProjection"" : { ""a"" : false, ""b"" : { ""c"" : false, ""d"" : { ""e"" : false } }, ""f"" : { ""g"" : { ""h"" : false } }, ""_id"" : false } }",t)
+(1 row)
+
+BEGIN;
+  set local enable_seqscan TO OFF;
+  -- cannot use idx_1
+  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "a.b": { "$eq": 1 } }, "projection": { "a": 1 } }');
+                                                    QUERY PLAN                                                    
+------------------------------------------------------------------------------------------------------------------
+ Seq Scan on documents_6003 collection
+   Filter: ((document #= '{ "a.b" : { "$numberInt" : "1" } }'::bsonquery) AND (shard_key_value = '6003'::bigint))
+(2 rows)
+
+  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "a": { "$eq": 1 } }, "projection": { "a": 1 } }');
+                                                   QUERY PLAN                                                   
+----------------------------------------------------------------------------------------------------------------
+ Seq Scan on documents_6003 collection
+   Filter: ((document #= '{ "a" : { "$numberInt" : "1" } }'::bsonquery) AND (shard_key_value = '6003'::bigint))
+(2 rows)
+
+  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "a": { "$eq": {"b": 1} } }, "projection": { "a": 1 } }');
+                                                        QUERY PLAN                                                        
+--------------------------------------------------------------------------------------------------------------------------
+ Seq Scan on documents_6003 collection
+   Filter: ((document #= '{ "a" : { "b" : { "$numberInt" : "1" } } }'::bsonquery) AND (shard_key_value = '6003'::bigint))
+(2 rows)
+
+  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "a": { "_id": 1 } }, "projection": { "a": 1 } }');
+                                                         QUERY PLAN                                                         
+----------------------------------------------------------------------------------------------------------------------------
+ Seq Scan on documents_6003 collection
+   Filter: ((document #= '{ "a" : { "_id" : { "$numberInt" : "1" } } }'::bsonquery) AND (shard_key_value = '6003'::bigint))
+(2 rows)
+
+  -- can use idx_1
+  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "b.d": { "$eq": 1 } }, "projection": { "a": 1 } }');
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_6003 collection
+   Recheck Cond: (document @= '{ "b.d" : { "$numberInt" : "1" } }'::bson)
+   Filter: (shard_key_value = '6003'::bigint)
+   ->  Bitmap Index Scan on idx_1
+         Index Cond: (document @= '{ "b.d" : { "$numberInt" : "1" } }'::bson)
+(5 rows)
+
+  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "b": { "$eq": {"d": 1} } }, "projection": { "a": 1 } }');
+                                      QUERY PLAN                                      
+--------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_6003 collection
+   Recheck Cond: (document @= '{ "b" : { "d" : { "$numberInt" : "1" } } }'::bson)
+   Filter: (shard_key_value = '6003'::bigint)
+   ->  Bitmap Index Scan on idx_1
+         Index Cond: (document @= '{ "b" : { "d" : { "$numberInt" : "1" } } }'::bson)
+(5 rows)
+
+  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "e": { "$eq": 1 } }, "projection": { "a": 1 } }');
+                                 QUERY PLAN                                 
+----------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_6003 collection
+   Recheck Cond: (document @= '{ "e" : { "$numberInt" : "1" } }'::bson)
+   Filter: (shard_key_value = '6003'::bigint)
+   ->  Bitmap Index Scan on idx_1
+         Index Cond: (document @= '{ "e" : { "$numberInt" : "1" } }'::bson)
+(5 rows)
+
+  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "f.g": { "$eq": 1 } }, "projection": { "a": 1 } }');
+                                  QUERY PLAN                                  
+------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_6003 collection
+   Recheck Cond: (document @= '{ "f.g" : { "$numberInt" : "1" } }'::bson)
+   Filter: (shard_key_value = '6003'::bigint)
+   ->  Bitmap Index Scan on idx_1
+         Index Cond: (document @= '{ "f.g" : { "$numberInt" : "1" } }'::bson)
+(5 rows)
+
+COMMIT;
+SELECT helio_api.insert_one('wp_test', 'ok_test_4', '{"b": {"d": 1}, "a": {"k": 1}}');
+                           insert_one                            
+-----------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT helio_api.insert_one('wp_test', 'ok_test_4', '{"b": {"d": 1}, "a": {"k": 2}}');
+                           insert_one                            
+-----------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT helio_api.insert_one('wp_test', 'ok_test_4', '{"b": {"d": 2}, "a": {"k": 2}}');
+                           insert_one                            
+-----------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+(1 row)
+
+BEGIN;
+  set local enable_seqscan TO OFF;
+  -- can use idx_1
+  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "$and": [{"b.d": { "$eq": 1 } }, {"a.k": {"$eq": 1}}]}, "projection": { "a": 1 } }');
+                                                    QUERY PLAN                                                    
+------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_6003 collection
+   Recheck Cond: (document @= '{ "b.d" : { "$numberInt" : "1" } }'::bson)
+   Filter: ((document #= '{ "a.k" : { "$numberInt" : "1" } }'::bsonquery) AND (shard_key_value = '6003'::bigint))
+   ->  Bitmap Index Scan on idx_1
+         Index Cond: (document @= '{ "b.d" : { "$numberInt" : "1" } }'::bson)
+(5 rows)
+
+  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": { "$and": [{"a.k": { "$eq": 1 } }, {"b.d": {"$eq": 1}}]}, "projection": { "a": 1 } }');
+                                                    QUERY PLAN                                                    
+------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_6003 collection
+   Recheck Cond: (document @= '{ "b.d" : { "$numberInt" : "1" } }'::bson)
+   Filter: ((document #= '{ "a.k" : { "$numberInt" : "1" } }'::bsonquery) AND (shard_key_value = '6003'::bigint))
+   ->  Bitmap Index Scan on idx_1
+         Index Cond: (document @= '{ "b.d" : { "$numberInt" : "1" } }'::bson)
+(5 rows)
+
+  SELECT COUNT(*)=1 FROM helio_api.collection('wp_test', 'ok_test_4') WHERE document OPERATOR(helio_api_catalog.@@) '{"b.d": 1, "a.k": 1}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ ?column? 
+----------
+ t
+(1 row)
+
+  SELECT COUNT(*)=1 FROM helio_api.collection('wp_test', 'ok_test_4') WHERE document OPERATOR(helio_api_catalog.@@) '{"a.k": 1, "b.d": 1}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ ?column? 
+----------
+ t
+(1 row)
+
+  -- can use idx_1
+  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": {"b.d": {"$in": [1,2,3]}}, "projection": { "a": 1 } }');
+                                                            QUERY PLAN                                                             
+-----------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_6003 collection
+   Recheck Cond: (document @*= '{ "b.d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::bson)
+   Filter: (shard_key_value = '6003'::bigint)
+   ->  Bitmap Index Scan on idx_1
+         Index Cond: (document @*= '{ "b.d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::bson)
+(5 rows)
+
+  -- cannot use idx_1 due to filter on "a.z.r" in "$or"
+  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": {"$or": [{"b.d": {"$eq": [1,2,3]}}, {"a.z": {"r": {"$gte": 5}}}]}, "projection": { "a": 1 } }');
+                                                                                                                           QUERY PLAN                                                                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Seq Scan on documents_6003 collection
+   Filter: ((shard_key_value = '6003'::bigint) AND ((document #= '{ "b.d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::bsonquery) OR (document #= '{ "a.z" : { "r" : { "$gte" : { "$numberInt" : "5" } } } }'::bsonquery)))
+(2 rows)
+
+  -- can use idx_1 since none of the quals in "$or" are excluded
+  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": {"$or": [{"b.d": {"$eq": [1,2,3]}}, {"k": 5}]}, "projection": { "a": 1 } }');
+                                                                                                              QUERY PLAN                                                                                                               
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_6003 collection
+   Recheck Cond: ((document @= '{ "b.d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::bson) OR (document @= '{ "k" : { "$numberInt" : "5" } }'::bson))
+   Filter: ((shard_key_value = '6003'::bigint) AND ((document #= '{ "b.d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::bsonquery) OR (document #= '{ "k" : { "$numberInt" : "5" } }'::bsonquery)))
+   ->  BitmapOr
+         ->  Bitmap Index Scan on idx_1
+               Index Cond: (document @= '{ "b.d" : [ { "$numberInt" : "1" }, { "$numberInt" : "2" }, { "$numberInt" : "3" } ] }'::bson)
+         ->  Bitmap Index Scan on idx_1
+               Index Cond: (document @= '{ "k" : { "$numberInt" : "5" } }'::bson)
+(8 rows)
+
+COMMIT;
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test',
+    '{
+        "createIndexes": "ok_test_5",
+        "indexes": [
+            {
+                "key": {"$**": 1}, "name": "idx_1",
+                "wildcardProjection": {"a": 0, "b": {"c": {"p": 0, "r": false}, "d._id": 0}, "_id": 1}
+            }
+        ]
+    }',
+    TRUE
+);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT helio_test_helpers.drop_primary_key('wp_test', 'ok_test_5');
+ drop_primary_key 
+------------------
+ 
+(1 row)
+
+SELECT helio_test_helpers.get_collection_indexes('wp_test','ok_test_5') ORDER BY 1;
+                                                                                                                             get_collection_indexes                                                                                                                              
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ (6004,6026,"{ ""v"" : { ""$numberInt"" : ""2"" }, ""key"" : { ""$**"" : { ""$numberInt"" : ""1"" } }, ""name"" : ""idx_1"", ""wildcardProjection"" : { ""a"" : false, ""b"" : { ""c"" : { ""p"" : false, ""r"" : false }, ""d"" : { ""_id"" : false } }, ""_id"" : true } }",t)
+(1 row)
+
+BEGIN;
+  set local enable_seqscan TO OFF;
+  -- can use idx_1
+  EXPLAIN (COSTS OFF) SELECT document FROM bson_aggregation_find('wp_test', '{ "find": "ok_test_4", "filter": {"d.e.f": {"$eq": 1}, "_id": {"$eq": 0}}, "projection": { "a": 1 } }');
+                                                                                 QUERY PLAN                                                                                 
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ Bitmap Heap Scan on documents_6003 collection
+   Recheck Cond: (document @= '{ "d.e.f" : { "$numberInt" : "1" } }'::bson)
+   Filter: ((document #= '{ "_id" : { "$numberInt" : "0" } }'::bsonquery) AND (object_id = '{ "" : { "$numberInt" : "0" } }'::bson) AND (shard_key_value = '6003'::bigint))
+   ->  Bitmap Index Scan on idx_1
+         Index Cond: (document @= '{ "d.e.f" : { "$numberInt" : "1" } }'::bson)
+(5 rows)
+
+COMMIT;
+-- not the same index since this doesn't specify wildcardProjection
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test',
+    '{
+        "createIndexes": "ok_test_5",
+        "indexes": [
+            {
+                "key": {"$**": 1}, "name": "idx_2"
+            }
+        ]
+    }',
+    TRUE
+);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- test path collision
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": 1, "a.b": 1}'));
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : 1, "a.b" : 1 } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Path collision at a.b remaining portion b
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a.b": 1, "a": 1}'));
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a.b" : 1, "a" : 1 } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Path collision at a
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a.b": {"c.d": 1}, "a.b.c": 1}'));
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a.b" : { "c.d" : 1 }, "a.b.c" : 1 } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Path collision at a.b.c
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a.b": {"c.d": 1}, "a": {"b.c": 1}}'));
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a.b" : { "c.d" : 1 }, "a" : { "b.c" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Path collision at b.c
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a.b": {"c.d": 1}, "a": {"b.c.d.e": 1}}'));
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a.b" : { "c.d" : 1 }, "a" : { "b.c.d.e" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Path collision at b.c.d.e remaining portion c.d.e
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a.b": {"c.d": 1}, "a": {"b.c": {"d.e": 1}}}'));
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a.b" : { "c.d" : 1 }, "a" : { "b.c" : { "d.e" : 1 } } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Path collision at d.e remaining portion e
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a.b.c": 1, "a.b": {"c.d": 1}}'));
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a.b.c" : 1, "a.b" : { "c.d" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Path collision at c.d remaining portion d
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": {"b.c": 1}, "a.b": {"c.d": 1}}'));
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : { "b.c" : 1 }, "a.b" : { "c.d" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Path collision at c.d remaining portion d
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": {"b.c.d.e": 1}, "a.b": {"c.d": 1}}'));
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : { "b.c.d.e" : 1 }, "a.b" : { "c.d" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Path collision at c.d
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test', create_index_arg_using_wp('{"a": {"b.c": {"d.e": 1}}, "a.b": {"c.d": 1}}'));
+ERROR:  Error in specification { "key" : { "$**" : 1 }, "name" : "idx", "wildcardProjection" : { "a" : { "b.c" : { "d.e" : 1 } }, "a.b" : { "c.d" : 1 } } } :: caused by :: Failed to parse: wildcardProjection :: caused by :: Path collision at c.d
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test',
+    '{
+        "createIndexes": "no_path_collision_1",
+        "indexes": [
+            {
+                "key": {"$**": 1}, "name": "idx_1",
+                "wildcardProjection": {"a": 1, "a": {"b": 1}}
+            }
+        ]
+    }',
+    TRUE
+);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT helio_test_helpers.helio_index_get_pg_def('wp_test', 'no_path_collision_1', 'idx_1');
+                                                                                     helio_index_get_pg_def                                                                                      
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ CREATE INDEX documents_rum_index_6029 ON helio_data.documents_6005 USING helio_rum (document bson_rum_wildcard_project_path_ops (includeid='false', pathspec='[ "a.b" ]', isexclusion='false'))
+(1 row)
+
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test',
+    '{
+        "createIndexes": "no_path_collision_2",
+        "indexes": [
+            {
+                "key": {"$**": 1}, "name": "idx_1",
+                "wildcardProjection": {"a": {"b": 1}, "a": 1}
+            }
+        ]
+    }'
+);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT helio_test_helpers.helio_index_get_pg_def('wp_test', 'no_path_collision_2', 'idx_1');
+                                                                                    helio_index_get_pg_def                                                                                     
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ CREATE INDEX documents_rum_index_6031 ON helio_data.documents_6006 USING helio_rum (document bson_rum_wildcard_project_path_ops (includeid='false', pathspec='[ "a" ]', isexclusion='false'))
+(1 row)
+
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test',
+    '{
+        "createIndexes": "no_path_collision_3",
+        "indexes": [
+            {
+                "key": {"$**": 1}, "name": "idx_1",
+                "wildcardProjection": {"a.b": {"c.d": 1}, "a.b": 1}
+            }
+        ]
+    }'
+);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT helio_test_helpers.helio_index_get_pg_def('wp_test', 'no_path_collision_3', 'idx_1');
+                                                                                     helio_index_get_pg_def                                                                                      
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ CREATE INDEX documents_rum_index_6033 ON helio_data.documents_6007 USING helio_rum (document bson_rum_wildcard_project_path_ops (includeid='false', pathspec='[ "a.b" ]', isexclusion='false'))
+(1 row)
+
+SELECT helio_api_internal.create_indexes_non_concurrently('wp_test',
+    '{
+        "createIndexes": "no_path_collision_4",
+        "indexes": [
+            {
+                "key": {"$**": 1}, "name": "idx_1",
+                "wildcardProjection": {"a.b": 1, "a.b": {"c.d": 1}}
+            }
+        ]
+    }'
+);
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT helio_test_helpers.helio_index_get_pg_def('wp_test', 'no_path_collision_4', 'idx_1');
+                                                                                       helio_index_get_pg_def                                                                                        
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ CREATE INDEX documents_rum_index_6035 ON helio_data.documents_6008 USING helio_rum (document bson_rum_wildcard_project_path_ops (includeid='false', pathspec='[ "a.b.c.d" ]', isexclusion='false'))
+(1 row)
+

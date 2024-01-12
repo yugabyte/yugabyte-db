@@ -1,0 +1,6 @@
+comment = 'Core API surface for HelioDB on PostgreSQL'
+default_version = '0.12-0'
+module_pathname = '$libdir/pg_helio_core'
+relocatable = false
+superuser = true
+requires = ''

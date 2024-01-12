@@ -1,0 +1,646 @@
+SET search_path TO helio_api, helio_api_catalog,helio_core;
+SET helio_api.next_collection_id TO 5000;
+SET helio_api.next_collection_index_id TO 5000;
+-- before reshard
+SELECT helio_api.insert_one('db','reshard','{"_id":"1", "value": { "$numberInt" : "11" }}');
+NOTICE:  creating collection
+                           insert_one                            
+-----------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+(1 row)
+
+BEGIN;
+SET LOCAL enable_seqscan TO OFF;
+SET LOCAL seq_page_cost TO 9999999;
+EXPLAIN (COSTS OFF)
+SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":11}';
+                              QUERY PLAN                               
+-----------------------------------------------------------------------
+ Index Scan using _id_ on documents_5000 collection
+   Index Cond: (shard_key_value = '5000'::bigint)
+   Filter: (document @@ '{ "value" : { "$numberInt" : "11" } }'::bson)
+(3 rows)
+
+SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":11}';
+NOTICE:  using bson_query_match implementation
+                      document                      
+----------------------------------------------------
+ { "_id" : "1", "value" : { "$numberInt" : "11" } }
+(1 row)
+
+ROLLBACK;
+-- invalid inputs
+SELECT helio_api.shard_collection('db','reshard', '{"value":1}');
+ERROR:  only shard keys that use hashed are supported
+SELECT helio_api.shard_collection('db','reshard', '{"value":"hash"}');
+ERROR:  invalid value for shard key: hash
+-- create two indexes before re-sharding
+SELECT helio_api_internal.create_indexes_non_concurrently(
+  'db',
+  '{
+     "createIndexes": "reshard",
+     "indexes": [
+       {"key": {"a.b.c.$**": 1}, "name": "idx_1"},
+       {"key": {"z": 1}, "name": "idx_2"}
+     ]
+   }',
+   true
+);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT collection_id AS reshard_collection_id FROM helio_api_catalog.collections
+WHERE collection_name = 'reshard' AND database_name = 'db' \gset
+\d helio_data.documents_:reshard_collection_id
+                      Table "helio_data.documents_5000"
+     Column      |           Type           | Collation | Nullable | Default 
+-----------------+--------------------------+-----------+----------+---------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           | not null | now()
+Indexes:
+    "collection_pk_5000" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_5001" helio_rum (document bson_rum_single_path_ops (path='a.b.c', iswildcard='true'))
+    "documents_rum_index_5002" helio_rum (document bson_rum_single_path_ops (path=z))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = '5000'::bigint)
+
+-- insert an invalid index metadata entry before re-sharding
+INSERT INTO helio_api_catalog.collection_indexes (collection_id, index_id, index_spec, index_is_valid)
+VALUES (:reshard_collection_id, 2020, ('invalid_index', '{"c": 1}', null, null, null, null, 2, null), false);
+-- shard based on value key
+SELECT helio_api.shard_collection('db','reshard', '{"value":"hashed"}', false);
+ shard_collection 
+------------------
+ 
+(1 row)
+
+\d helio_data.documents_:reshard_collection_id
+                      Table "helio_data.documents_5000"
+     Column      |           Type           | Collation | Nullable | Default 
+-----------------+--------------------------+-----------+----------+---------
+ shard_key_value | bigint                   |           | not null | 
+ object_id       | bson                     |           | not null | 
+ document        | bson                     |           | not null | 
+ creation_time   | timestamp with time zone |           | not null | now()
+Indexes:
+    "collection_pk_5000" PRIMARY KEY, btree (shard_key_value, object_id)
+    "documents_rum_index_5003" helio_rum (document bson_rum_single_path_ops (path=_id))
+    "documents_rum_index_5004" helio_rum (document bson_rum_single_path_ops (path='a.b.c', iswildcard='true'))
+    "documents_rum_index_5005" helio_rum (document bson_rum_single_path_ops (path=z))
+Check constraints:
+    "shard_key_value_check" CHECK (shard_key_value = helio_api_internal.get_shard_key_value('{ "value" : "hashed" }'::bson, 5000::bigint, document))
+
+SELECT helio_api.collection_table('db','reshard') AS db_shard_data_table_name \gset
+ERROR:  function helio_api.collection_table(unknown, unknown) does not exist
+LINE 1: SELECT helio_api.collection_table('db','reshard') AS db_shar...
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+-- make plans (more) deterministic
+VACUUM (ANALYZE) :db_shard_data_table_name;
+ERROR:  syntax error at or near ":"
+LINE 1: VACUUM (ANALYZE) :db_shard_data_table_name;
+                         ^
+SELECT * FROM helio_test_helpers.get_collection_indexes('db', 'reshard') ORDER BY index_id;
+ collection_id | index_id |                                          index_spec_as_bson                                          | index_is_valid 
+---------------+----------+------------------------------------------------------------------------------------------------------+----------------
+          5000 |     5003 | { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" }        | t
+          5000 |     5004 | { "v" : { "$numberInt" : "2" }, "key" : { "a.b.c.$**" : { "$numberInt" : "1" } }, "name" : "idx_1" } | t
+          5000 |     5005 | { "v" : { "$numberInt" : "2" }, "key" : { "z" : { "$numberInt" : "1" } }, "name" : "idx_2" }         | t
+(3 rows)
+
+SELECT helio_api.insert_one('db','reshard','{"value":{"$numberLong" : "134311"}, "_id":"2" }');
+                           insert_one                            
+-----------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT helio_api.insert_one('db','reshard','{"_id":"3", "value": 11}');
+                           insert_one                            
+-----------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+(1 row)
+
+-- documents without a shard key are allowed
+SELECT helio_api.insert_one('db','reshard','{"_id":"4", "novalue": 0}');
+                           insert_one                            
+-----------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT count(*) FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":{"$exists":false}}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     1
+(1 row)
+
+-- documents with an object shard key are allowed
+SELECT helio_api.insert_one('db','reshard','{"_id":"5", "value": {"hello":"world"}}');
+                           insert_one                            
+-----------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT count(*) FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":{"hello":"world"}}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     1
+(1 row)
+
+-- documents with an array shard key are not allowed
+SELECT helio_api.insert_one('db','reshard','{"_id":"6", "value": ["hello","world"]}');
+                                                                                                   insert_one                                                                                                   
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "1088" }, "errmsg" : "Shard key cannot contain an array." } ] }
+(1 row)
+
+-- documents with regex shard key are not allowed
+SELECT helio_api.insert_one('db','reshard','{"_id":"6", "value":  {"$regularExpression":{"pattern":"foo","options":""}}}');
+                                                                                                  insert_one                                                                                                   
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "1088" }, "errmsg" : "Shard key cannot contain a regex." } ] }
+(1 row)
+
+-- documents with double shard key are allowed
+SELECT helio_api.insert_one('db','reshard','{"_id":"6", "value": 15.0}');
+                           insert_one                            
+-----------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+(1 row)
+
+-- after reshard
+BEGIN;
+SET LOCAL enable_seqscan TO OFF;
+SET LOCAL seq_page_cost TO 9999999;
+EXPLAIN (COSTS OFF)
+SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":11}' ORDER BY document->'id';
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Sort
+   Sort Key: ((collection.document -> 'id'::text))
+   ->  Seq Scan on documents_5000 collection
+         Filter: (document @@ '{ "value" : { "$numberInt" : "11" } }'::bson)
+(4 rows)
+
+SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":11}' ORDER BY document->'id';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                      document                      
+----------------------------------------------------
+ { "_id" : "1", "value" : { "$numberInt" : "11" } }
+ { "_id" : "3", "value" : { "$numberInt" : "11" } }
+(2 rows)
+
+ROLLBACK;
+-- small longs have the same hash as ints
+BEGIN;
+SET LOCAL enable_seqscan TO OFF;
+SET LOCAL seq_page_cost TO 9999999;
+EXPLAIN (COSTS OFF)
+SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":{"$numberLong" : "134311"}}' ORDER BY document->'id';
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Sort
+   Sort Key: ((collection.document -> 'id'::text))
+   ->  Seq Scan on documents_5000 collection
+         Filter: (document @@ '{ "value" : { "$numberLong" : "134311"} }'::bson)
+(4 rows)
+
+SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":{"$numberLong" : "134311"}}' ORDER BY document->'id';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                        document                        
+--------------------------------------------------------
+ { "_id" : "2", "value" : { "$numberLong" : "134311"} }
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SET LOCAL enable_seqscan TO OFF;
+SET LOCAL seq_page_cost TO 9999999;
+EXPLAIN (COSTS OFF)
+SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":{"$numberInt" : "134311"}}' ORDER BY document->'id';
+                                   QUERY PLAN                                    
+---------------------------------------------------------------------------------
+ Sort
+   Sort Key: ((collection.document -> 'id'::text))
+   ->  Seq Scan on documents_5000 collection
+         Filter: (document @@ '{ "value" : { "$numberInt" : "134311" } }'::bson)
+(4 rows)
+
+SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":{"$numberInt" : "134311"}}' ORDER BY document->'id';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                        document                        
+--------------------------------------------------------
+ { "_id" : "2", "value" : { "$numberLong" : "134311"} }
+(1 row)
+
+ROLLBACK;
+-- should find doubles too when looking for int
+BEGIN;
+SET LOCAL enable_seqscan TO OFF;
+SET LOCAL seq_page_cost TO 9999999;
+EXPLAIN (COSTS OFF)
+SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":15}' ORDER BY document->'id';
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Sort
+   Sort Key: ((collection.document -> 'id'::text))
+   ->  Seq Scan on documents_5000 collection
+         Filter: (document @@ '{ "value" : { "$numberInt" : "15" } }'::bson)
+(4 rows)
+
+SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":15}' ORDER BY document->'id';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                        document                         
+---------------------------------------------------------
+ { "_id" : "6", "value" : { "$numberDouble" : "15.0" } }
+(1 row)
+
+ROLLBACK;
+-- reshard based on value and _id key
+SELECT helio_api.shard_collection('db','reshard', '{"value":"hashed","_id":"hashed"}', true);
+ shard_collection 
+------------------
+ 
+(1 row)
+
+-- after reshard
+BEGIN;
+SET LOCAL enable_seqscan TO OFF;
+SET LOCAL seq_page_cost TO 9999999;
+SET LOCAL helio_api.ForceUseIndexIfAvailable to OFF;
+EXPLAIN (COSTS OFF)
+SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"$and":[{"value":{"$eq":11}},{"_id":{"$eq":"1"}}]}';
+                                                           QUERY PLAN                                                            
+---------------------------------------------------------------------------------------------------------------------------------
+ Seq Scan on documents_5000 collection
+   Filter: (document @@ '{ "$and" : [ { "value" : { "$eq" : { "$numberInt" : "11" } } }, { "_id" : { "$eq" : "1" } } ] }'::bson)
+(2 rows)
+
+SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"$and":[{"value":{"$eq":11}},{"_id":{"$eq":"1"}}]}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                      document                      
+----------------------------------------------------
+ { "_id" : "1", "value" : { "$numberInt" : "11" } }
+(1 row)
+
+ROLLBACK;
+BEGIN;
+SET LOCAL enable_seqscan TO OFF;
+SET LOCAL seq_page_cost TO 9999999;
+SET LOCAL helio_api.ForceUseIndexIfAvailable to OFF;
+EXPLAIN (COSTS OFF)
+SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":11,"_id":"1"}';
+                                     QUERY PLAN                                     
+------------------------------------------------------------------------------------
+ Seq Scan on documents_5000 collection
+   Filter: (document @@ '{ "value" : { "$numberInt" : "11" }, "_id" : "1" }'::bson)
+(2 rows)
+
+SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":11,"_id":"1"}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                      document                      
+----------------------------------------------------
+ { "_id" : "1", "value" : { "$numberInt" : "11" } }
+(1 row)
+
+ROLLBACK;
+SELECT helio_api_internal.get_shard_key_value('{"value":1,"_id":1}',1,'{"_id":"1","value":11}');
+ get_shard_key_value  
+----------------------
+ -2638831846010261801
+(1 row)
+
+SELECT helio_api_internal.get_shard_key_value('{"value":1,"_id":1}',1,'{"value":11,"_id":"1"}');
+ get_shard_key_value  
+----------------------
+ -2638831846010261801
+(1 row)
+
+-- different order of fields
+SELECT helio_api_internal.get_shard_key_value('{"_id":1,"value":1}', 1,'{"_id":"1","value":11}');
+ get_shard_key_value  
+----------------------
+ -1749061796927280186
+(1 row)
+
+SELECT helio_api_internal.get_shard_key_value('{"_id":1,"value":1}', 1,'{"value":11,"_id":"1"}');
+ get_shard_key_value  
+----------------------
+ -1749061796927280186
+(1 row)
+
+-- should produce different hash values because type is taken into account
+SELECT helio_api_internal.get_shard_key_value('{"a":1,"b":1}', 1,'{"_id":"1","a":1,"b":true}');
+ get_shard_key_value  
+----------------------
+ -5223650992195555312
+(1 row)
+
+SELECT helio_api_internal.get_shard_key_value('{"a":1,"b":1}', 1,'{"_id":"1","a":true,"b":1}');
+ get_shard_key_value  
+----------------------
+ -2857368848324726306
+(1 row)
+
+-- only 1 part of shard key specified, goes to multiple shards
+BEGIN;
+SET LOCAL enable_seqscan TO OFF;
+SET LOCAL seq_page_cost TO 9999999;
+EXPLAIN (COSTS OFF)
+SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":11}' ORDER BY document->'id';
+                                 QUERY PLAN                                  
+-----------------------------------------------------------------------------
+ Sort
+   Sort Key: ((collection.document -> 'id'::text))
+   ->  Seq Scan on documents_5000 collection
+         Filter: (document @@ '{ "value" : { "$numberInt" : "11" } }'::bson)
+(4 rows)
+
+SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":11}' ORDER BY document->'id';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                      document                      
+----------------------------------------------------
+ { "_id" : "1", "value" : { "$numberInt" : "11" } }
+ { "_id" : "3", "value" : { "$numberInt" : "11" } }
+(2 rows)
+
+ROLLBACK;
+-- no shard key filter specified
+SELECT count(*) FROM helio_api.collection('db','reshard') WHERE true;
+ count 
+-------
+     6
+(1 row)
+
+SELECT count(*) FROM helio_api.collection('db','reshard') WHERE false;
+ count 
+-------
+     0
+(1 row)
+
+SELECT count(*) FROM helio_api.collection('db','reshard') WHERE document @@ '{"value":{"$exists":1}}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     5
+(1 row)
+
+-- reshard based on nested path
+SELECT helio_api.shard_collection('db','reshard', '{"a.b":"hashed"}', true);
+ shard_collection 
+------------------
+ 
+(1 row)
+
+-- we should not allow arrays in the path even if the value is not an array
+SELECT helio_api.insert_one('db','reshard','{"_id":"10", "a": [{"b":22}]}');
+                                                                                                               insert_one                                                                                                                
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "1088" }, "errmsg" : "Shard key cannot contain array values or array descendants." } ] }
+(1 row)
+
+-- nested objects should be fine
+SELECT helio_api.insert_one('db','reshard','{"_id":"10", "a": {"b":22}}');
+                           insert_one                            
+-----------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+(1 row)
+
+BEGIN;
+SET LOCAL enable_seqscan TO OFF;
+SET LOCAL seq_page_cost TO 9999999;
+EXPLAIN (COSTS OFF)
+SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"a.b":22}' ORDER BY document->'id';
+                                QUERY PLAN                                 
+---------------------------------------------------------------------------
+ Sort
+   Sort Key: ((collection.document -> 'id'::text))
+   ->  Seq Scan on documents_5000 collection
+         Filter: (document @@ '{ "a.b" : { "$numberInt" : "22" } }'::bson)
+(4 rows)
+
+SELECT document FROM helio_api.collection('db','reshard') WHERE document @@ '{"a.b":22}' ORDER BY document->'id';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                         document                          
+-----------------------------------------------------------
+ { "_id" : "10", "a" : { "b" : { "$numberInt" : "22" } } }
+(1 row)
+
+ROLLBACK;
+-- try to shard a non-existent collection
+SELECT helio_api.shard_collection('db','not_exists', '{"value":"hashed"}', false);
+NOTICE:  creating collection
+ shard_collection 
+------------------
+ 
+(1 row)
+
+-- shard a collection that has no user-created indexes
+SELECT helio_api.insert_one('db','shard_collection_no_indexes','{"_id":"1", "value": { "$numberInt" : "11" }}');
+NOTICE:  creating collection
+                           insert_one                            
+-----------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+(1 row)
+
+BEGIN;
+  -- Shard it twice within a xact block to test whether we drop the temp table
+  -- (v_saved_index_entries) before completing helio_api.shard_collection().
+  SELECT helio_api.shard_collection('db','shard_collection_no_indexes', '{"value":"hashed"}', false);
+ shard_collection 
+------------------
+ 
+(1 row)
+
+  SELECT helio_api.shard_collection('db','shard_collection_no_indexes', '{"value":"hashed"}', false);
+NOTICE:  Skipping Sharding for collection db.shard_collection_no_indexes as the same options were passed in.
+ shard_collection 
+------------------
+ 
+(1 row)
+
+COMMIT;
+-- shard creates a new collection.
+BEGIN;
+  SELECT helio_api.shard_collection('db', 'newCollectionToCreate', '{ "value": "hashed" }', false);
+NOTICE:  creating collection
+ shard_collection 
+------------------
+ 
+(1 row)
+
+  SELECT database_name, collection_name FROM helio_api_catalog.collections WHERE collection_name = 'newCollectionToCreate' ORDER BY database_name, collection_name;
+ database_name |    collection_name    
+---------------+-----------------------
+ db            | newCollectionToCreate
+(1 row)
+
+ROLLBACK;
+-- shard collection with indexes with bson text as hex binary still works.
+BEGIN;
+set local helio_core.bsonUseEJson to false;
+SELECT helio_api.insert_one('db','reshardwithindexes2','{"_id":"1", "value": 11, "otherValue": 15 }');
+NOTICE:  creating collection
+                   insert_one                    
+-------------------------------------------------
+ BSONHEX14000000106f6b0001000000106e000100000000
+(1 row)
+
+-- create some indexes
+SELECT helio_api_internal.create_indexes_non_concurrently('db',
+  '{
+      "createIndexes": "reshardwithindexes2",
+      "indexes": [
+        {"key": { "value": 1 }, "name": "idx1"},
+        {"key": { "otherValue": 1 }, "name": "idx2"}
+      ]
+  }',
+  true
+);
+                                                                                                                   create_indexes_non_concurrently                                                                                                                   
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ BSONHEX7e00000003726177006c0000000364656661756c7453686172640059000000106e756d496e64657865734265666f72650001000000106e756d496e6465786573416674657200030000000863726561746564436f6c6c656374696f6e4175746f6d61746963616c6c790000106f6b00010000000000106f6b000100000000
+(1 row)
+
+-- now shard the collection
+SELECT helio_api.shard_collection('db', 'reshardwithindexes2', '{ "value": "hashed" }', false);
+ shard_collection 
+------------------
+ 
+(1 row)
+
+SELECT collection_id AS reshard_collection_id FROM helio_api_catalog.collections
+WHERE collection_name = 'reshardwithindexes2' AND database_name = 'db' \gset
+set local helio_core.bsonUseEJson to true;
+SELECT index_spec from helio_api_catalog.collection_indexes WHERE collection_id = :reshard_collection_id order by index_id ASC;
+                           index_spec                            
+-----------------------------------------------------------------
+ (_id_,"{ ""_id"" : { ""$numberInt"" : ""1"" } }",,,,,2,)
+ (idx1,"{ ""value"" : { ""$numberInt"" : ""1"" } }",,,,,2,)
+ (idx2,"{ ""otherValue"" : { ""$numberInt"" : ""1"" } }",,,,,2,)
+(3 rows)
+
+SELECT database_name, collection_name, shard_key from helio_api_catalog.collections WHERE collection_id = :reshard_collection_id;
+ database_name |   collection_name   |       shard_key        
+---------------+---------------------+------------------------
+ db            | reshardwithindexes2 | { "value" : "hashed" }
+(1 row)
+
+ROLLBACK;
+-- create a new sharded collection
+SELECT helio_api.create_collection('db', 'reshardoptions');
+NOTICE:  creating collection
+ create_collection 
+-------------------
+ t
+(1 row)
+
+-- now shard it.
+SELECT helio_api.shard_collection('db', 'reshardoptions', '{ "a.b": "hashed" }', false);
+ shard_collection 
+------------------
+ 
+(1 row)
+
+-- shard with the same key
+SELECT helio_api.shard_collection('db', 'reshardoptions', '{ "a.b": "hashed" }');
+NOTICE:  Skipping Sharding for collection db.reshardoptions as the same options were passed in.
+ shard_collection 
+------------------
+ 
+(1 row)
+
+-- shard with a new key with reshard:false (should fail)
+SELECT helio_api.shard_collection('db', 'reshardoptions', '{ "c.d": "hashed" }', false);
+ERROR:  Sharding already enabled for collection db.reshardoptions with options { "_id": "db.reshardoptions", "dropped" : false, "key" : { "c.d" : "hashed" }, "unique": false }.
+-- key should now be { "a.b": "hashed" }
+SELECT database_name, collection_name, shard_key FROM helio_api_internal.get_collection('db', 'reshardoptions');
+ERROR:  function helio_api_internal.get_collection(unknown, unknown) does not exist
+LINE 1: ...CT database_name, collection_name, shard_key FROM helio_api_...
+                                                             ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+-- shard with a new key with reshard:true (should work)
+SELECT helio_api.shard_collection('db', 'reshardoptions', '{ "c.d": "hashed" }', true);
+ shard_collection 
+------------------
+ 
+(1 row)
+
+-- key should now be { "c.d": "hashed" }
+SELECT database_name, collection_name, shard_key FROM helio_api_internal.get_collection('db', 'reshardoptions');
+ERROR:  function helio_api_internal.get_collection(unknown, unknown) does not exist
+LINE 1: ...CT database_name, collection_name, shard_key FROM helio_api_...
+                                                             ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+-- reshard on non existing collections or non-sharded collections should fail
+SELECT helio_api.shard_collection('db', 'nonExistingCollection', '{ "a.b": "hashed" }', true);
+ERROR:  Collection db.nonExistingCollection is not sharded
+HINT:  Can not reshard collection that doesn't exist: db.nonExistingCollection
+SELECT helio_api.create_collection('db', 'nonShardedCollection');
+NOTICE:  creating collection
+ create_collection 
+-------------------
+ t
+(1 row)
+
+SELECT helio_api.shard_collection('db', 'nonShardedCollection', '{ "a.b": "hashed" }', true);
+ERROR:  Collection db.nonShardedCollection is not sharded
+HINT:  Can not reshard collection that is not sharded: db.nonShardedCollection

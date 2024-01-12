@@ -1,0 +1,40 @@
+SET search_path TO helio_api,helio_core;
+SET helio_api.next_collection_id TO 4500;
+SET helio_api.next_collection_index_id TO 4500;
+-- this is further tested in isolation tests
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": 1, "pipeline": [ { "$currentOp": 1 }] }');
+ERROR:  function bson_aggregation_pipeline(unknown, unknown) does not exist
+LINE 1: SELECT document FROM bson_aggregation_pipeline('db', '{ "agg...
+                             ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": 1, "pipeline": [ { "$match": { } }, { "$currentOp": {} }] }');
+ERROR:  function bson_aggregation_pipeline(unknown, unknown) does not exist
+LINE 1: SELECT document FROM bson_aggregation_pipeline('db', '{ "agg...
+                             ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": 1, "pipeline": [ { "$currentOp": {} }] }');
+ERROR:  function bson_aggregation_pipeline(unknown, unknown) does not exist
+LINE 1: SELECT document FROM bson_aggregation_pipeline('db', '{ "agg...
+                             ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT document FROM bson_aggregation_pipeline('admin', '{ "aggregate": "coll", "pipeline": [ { "$currentOp": {} }] }');
+ERROR:  function bson_aggregation_pipeline(unknown, unknown) does not exist
+LINE 1: SELECT document FROM bson_aggregation_pipeline('admin', '{ "...
+                             ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT document FROM bson_aggregation_pipeline('admin', '{ "aggregate": 1, "pipeline": [ { "$currentOp": {} }] }');
+ERROR:  function bson_aggregation_pipeline(unknown, unknown) does not exist
+LINE 1: SELECT document FROM bson_aggregation_pipeline('admin', '{ "...
+                             ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+EXPLAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggregation_pipeline('admin', '{ "aggregate": 1, "pipeline": [ { "$currentOp": {} }] }');
+ERROR:  function bson_aggregation_pipeline(unknown, unknown) does not exist
+LINE 1: ...LAIN (VERBOSE ON, COSTS OFF) SELECT document FROM bson_aggre...
+                                                             ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+-- collection agnostic with no pipeline should work and return 0 rows.
+SELECT document from bson_aggregation_pipeline('db', '{ "aggregate" : 1.0, "pipeline" : [  ], "cursor" : {  }, "txnNumber" : 0, "lsid" : { "id" : { "$binary" : { "base64": "H+W3J//vSn6obaefeJ6j/g==", "subType" : "04" } } }, "$db" : "admin" }');
+ERROR:  function bson_aggregation_pipeline(unknown, unknown) does not exist
+LINE 1: SELECT document from bson_aggregation_pipeline('db', '{ "agg...
+                             ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.

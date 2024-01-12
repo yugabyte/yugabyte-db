@@ -1,0 +1,13 @@
+
+
+GIT_INDEX_DIR=$(OSS_SRC_DIR)/../.git/index
+ifeq ($(shell test -e $(OSS_SRC_DIR)/.git/index && echo -n yes),yes)
+	GIT_INDEX_DIR=$(OSS_SRC_DIR)/.git/index
+endif
+
+
+
+build/include/metadata/extension_version.h: $(version_file_inputs) $(GIT_INDEX_DIR)
+	mkdir -p build/include/metadata
+	$(BUILD_SCRIPT_DIR)scripts/generate_extension_version.sh build/include/metadata/extension_version.h $(EXTENSION) || exit 1
+
