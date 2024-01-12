@@ -261,7 +261,7 @@ Drop the named constraint from the table.
 
 {{< warning >}}
 Dropping the `PRIMARY KEY` constraint results in a full table rewrite and full rewrite of all indexes associated with the table.
-This happens because of the clustered storage by primary-key that YugabyteDB uses to store rows and indexes.
+This happens because of the clustered storage by primary key that YugabyteDB uses to store rows and indexes.
 While the tables and indexes are being rewritten, you may lose any modifications made to the table. 
 For reference, the same semantics as [Alter type with table rewrite](#alter-type-with-table-rewrite) apply.
 {{< /warning >}}
