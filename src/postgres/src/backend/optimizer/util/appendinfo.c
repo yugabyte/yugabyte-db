@@ -876,7 +876,8 @@ add_row_identity_columns(PlannerInfo *root, Index rtindex,
 		if (YBRelHasOldRowTriggers(target_relation, commandType) ||
 			YBRelHasSecondaryIndices(target_relation))
 		{
-			var = makeWholeRowVar(target_rte, rtindex, 0, false);
+			var = makeVar(rtindex, InvalidAttrNumber, RECORDOID, -1, InvalidOid,
+						  0);
 			add_row_identity_var(root, var, rtindex, "wholerow");
 		}
 

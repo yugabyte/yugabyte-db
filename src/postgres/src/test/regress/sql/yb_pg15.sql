@@ -358,3 +358,12 @@ INSERT INTO t VALUES (1);
 UPDATE t SET id = 2;
 SELECT * FROM t;
 DROP TABLE t;
+
+-- Update partitioned table with multiple partitions and secondary index
+CREATE TABLE t3(id int primary key, name int, add int, unique(id, name)) PARTITION BY range(id);
+CREATE TABLE t3_1_100 partition of t3 FOR VALUES FROM (1) TO (100);
+CREATE TABLE t3_101_200 partition of t3 FOR VALUES FROM (101) TO (200);
+INSERT INTO t3 VALUES (1, 1, 1);
+UPDATE t3 SET ADD = 2;
+SELECT * from t3;
+DROP TABLE t3;
