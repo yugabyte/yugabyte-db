@@ -15,7 +15,7 @@ type: docs
 
 This tutorial outlines the steps required to build a scalable, generative AI application using the Azure OpenAI Service and YugabyteDB.
 
-Follow the guide to learn how to programmatically interface with the Azure OpenAI GPT and Embeddings models, store embeddings in YugabyteDB, and perform a similarity search across a distributed YugabyteDB cluster using the [pgvector extension](https://github.com/pgvector/pgvector).
+Follow the guide to learn how to programmatically interface with the Azure OpenAI GPT and Embeddings models, store embeddings in YugabyteDB, and perform a similarity search across a distributed YugabyteDB cluster using the [pgvector extension](../../../explore/ysql-language-features/pg-extensions/extension-pgvector/).
 
 The [sample application](https://github.com/YugabyteDB-Samples/yugabytedb-azure-openai-lodging-service) we will use is a lodging recommendations service for travelers going to San Francisco. It supports two distinct modes:
 

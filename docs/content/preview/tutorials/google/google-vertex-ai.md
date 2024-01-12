@@ -15,7 +15,7 @@ type: docs
 
 This tutorial outlines the steps required to build a scalable, generative AI application using Google Vertex AI and YugabyteDB.
 
-Follow the guide to learn how to programmatically interface with the Google Vertex AI to generate text embeddings (a vectorized representation of the data) for each listing description, store embeddings in YugabyteDB, and perform a similarity search across a distributed YugabyteDB cluster using the [pgvector extension](https://github.com/pgvector/pgvector).
+Follow the guide to learn how to programmatically interface with the Google Vertex AI to generate text embeddings (a vectorized representation of the data) for each listing description, store embeddings in YugabyteDB, and perform a similarity search across a distributed YugabyteDB cluster using the [pgvector extension](../../../explore/ysql-language-features/pg-extensions/extension-pgvector/).
 
 The [sample application](https://github.com/YugabyteDB-Samples/yugabytedb-azure-openai-lodging-service) we will use is a lodging recommendations service for travelers going to San Francisco.
 
@@ -171,7 +171,7 @@ The application UI should display, and is available at the address <http://local
 
 ![Lodging Service](/images/tutorials/azure/azure-openai/azure-openai-lodging-service.png "Lodging Service")
 
-## Test the Application
+## Test the application
 
 Test the application with relevant prompts. For instance:
 
