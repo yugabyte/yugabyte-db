@@ -44,7 +44,7 @@ Currently, YugabyteDB Managed supports the Microsoft Entra ID and PingOne for En
 
 Before configuring federated authentication, keep in mind the following:
 
-- Be sure to allow pop-ups from your IdP. While configuring federated authentication, the provider needs to confirm your identity in a new window.
+- Be sure to allow pop-up requests from your IdP. While configuring federated authentication, the provider needs to confirm your identity in a new window.
 
 {{< tabpane text=true >}}
 
@@ -91,22 +91,22 @@ To use PingOne for your IdP, do the following:
 
     - Under **Applications**, add a new application.
     - Enter a name for the application.
-    - Set **Application Type** to OIDC Web App.
+    - Set **Application Type** to **OIDC Web App**.
     - Click **Save**.
 
-1. Select the application you created and, on the **Configuration** tab, make sure **Response Type** is set to Code and **Grant Type** to Authorization Code.
+1. Select the application you created and, on the **Configuration** tab, make sure **Response Type** is set to **Code** and **Grant Type** to **Authorization Code**.
 
-1. Add <https://yugabyte-cloud.okta.com/oauth2/v1/authorize/callback> in **Redirect URIs**.
+1. Add `https://yugabyte-cloud.okta.com/oauth2/v1/authorize/callback` in **Redirect URIs**.
 
 1. Set **Token Endpoint Authentication Method** to Client Secret Post.
 
-1. Set **Initiate Login URI** to <https://cloud.yugabyte.com/login>.
+1. Set **Initiate Login URI** to `https://cloud.yugabyte.com/login`.
 
-1. On the **Resources** tab, add openid, email, profile as ALLOWED SCOPES.
+1. On the **Resources** tab, add **openid**, **email**, and **profile** under **ALLOWED SCOPES**.
 
 1. Optionally, you can configure **Policies** and **Attribute Mappings** as required.
 
-1. On the **Access** tab, assign user groups to the application.
+1. On the **Access** tab, assign the user groups you want to access YugabyteDB Managed to the application.
 
 1. Enable the client application.
 
