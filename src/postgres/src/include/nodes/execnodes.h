@@ -1886,6 +1886,7 @@ typedef struct YbBatchedNestLoopState
 	FmgrInfo *hashFunctions;
 	int numLookupAttrs;
 	AttrNumber *innerAttrs;
+	ExprState *ht_lookup_fn;
 
 	/* Function pointers to local join methods */
 	FlushTupleFn_t FlushTupleImpl;

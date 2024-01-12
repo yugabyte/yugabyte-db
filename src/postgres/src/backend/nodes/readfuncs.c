@@ -2114,7 +2114,11 @@ _readYbBatchedNestLoop(void)
 		tok = pg_strtok(&length);
 		(void) tok;
 		current_hinfo->outerParamExpr = nodeRead(NULL, 0);
-		current_hinfo++;
+
+                tok = pg_strtok(&length);
+                (void) tok;
+                current_hinfo->orig_expr = nodeRead(NULL, 0);
+                current_hinfo++;
 	}
 
 	READ_DONE();
