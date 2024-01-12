@@ -23,11 +23,11 @@ However, these products have some severe limitations such as the following:
 
 YugabyteDB includes a built-in connection pooler, YSQL Connection Manager, which provides the same connection pooling advantages as other pooling solutions but without these limitations. As the manager is bundled with the product, it is convenient to manage, monitor, and configure the server connections.
 
+![Connection manager](/images/explore/ysql-connection-manager.png)
+
 {{< note title = "Note">}}
 YSQL Connection Manager is currently not supported for [YugabyteDB Anywhere](../../../yugabyte-platform/) and [YugabyteDB Managed](../../../yugabyte-cloud/).
 {{< /note >}}
-
-<!-- ----- Add Diagram---- -->
 
 ## Key features
 
@@ -45,7 +45,7 @@ YSQL Connection Manager has the following key features:
 
 ## Use YSQL Connection Manager
 
-To start a YugabtyeDB cluster with YSQL Connection Manager, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag `enable_ysql_conn_mgr` flag to true.
+To start a YugabtyeDB cluster with YSQL Connection Manager, set the [yb-tserver](../../../reference/configuration/yb-tserver/) flag `enable_ysql_conn_mgr` to true.
 
 When `enable_ysql_conn_mgr` is set, each YB-TServer starts the YSQL Connection Manager process along with the PostgreSQL process. You should see one YSQL Connection Manager process per YB-TServer.
 
