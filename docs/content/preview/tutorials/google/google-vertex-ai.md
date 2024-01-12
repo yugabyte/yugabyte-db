@@ -160,27 +160,30 @@ With the Airbnb data with embeddings loaded in YugabyteDB, start to explore the 
     npm start
     ```
 
-1. Start the React UI.
+1. Start the React frontend:
 
     ```sh
+    cd {project_dir}/frontend
     npm run dev
     ```
 
-1. Access the application UI at [http://localhost:5173](http://localhost:5173).
+The application UI should display, and is available at the address <http://localhost:3000/>.
+
+![Lodging Service](/images/tutorials/azure/azure-openai/azure-openai-lodging-service.png "Lodging Service")
 
 ## Test the Application
 
 Test the application with relevant prompts. For instance:
 
-   *We're traveling to San Francisco from February 21st through 28th. We need a place to stay with parking available.*
+- *We're traveling to San Francisco from February 21st through 28th. We need a place to stay with parking available.*
 
-   *I'm looking for an apartment near the Golden Gate Bridge with a nice view of the Bay.*
+- *I'm looking for an apartment near the Golden Gate Bridge with a nice view of the Bay.*
 
-   *Full house with ocean views for a family of 6.*
+- *Full house with ocean views for a family of 6.*
 
-   *Room for 1 in downtown SF, walking distance to Moscone Center.*
+- *Room for 1 in downtown SF, walking distance to Moscone Center.*
 
-These prompts will first be sent to Vertex AI to be converted to embeddings. Next, the returned embeddings will be used to search for similar properties, stored in YugabyteDB.
+These prompts are first sent to Vertex AI to be converted to embeddings. Next, the returned embeddings are used to search for similar properties, stored in YugabyteDB.
 
 ```javascript
 const dbRes = await pool.query(
