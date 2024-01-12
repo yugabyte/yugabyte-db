@@ -125,6 +125,7 @@ DECLARE_int64(db_index_block_size_bytes);
 DECLARE_int64(db_write_buffer_size);
 DECLARE_bool(enable_automatic_tablet_splitting);
 DECLARE_int64(tablet_force_split_threshold_bytes);
+DECLARE_int64(tablet_split_low_phase_shard_count_per_node);
 DECLARE_int64(tablet_split_low_phase_size_threshold_bytes);
 DECLARE_double(TEST_xcluster_simulate_random_failure_after_apply);
 DECLARE_int32(tserver_heartbeat_metrics_interval_ms);
@@ -443,6 +444,15 @@ TEST_F(
       ListActiveTabletIdsForTable(producer_cluster(), producer_table_->id()).size();
   auto consumer_tablets_size =
       ListActiveTabletIdsForTable(consumer_cluster(), consumer_table_->id()).size();
+
+  // Setting low phase shards count per node explicitly to guarantee a table can split at least
+  // up to max(producer_tablets_size, consumer_tablets_size) tablets within the low phase.
+  const auto low_phase_shard_count_per_node = std::ceil(
+      static_cast<double>(std::max(producer_tablets_size, consumer_tablets_size)) /
+      std::min(producer_cluster_.mini_cluster_->num_tablet_servers(),
+               consumer_cluster_.mini_cluster_->num_tablet_servers()));
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_tablet_split_low_phase_shard_count_per_node)
+      = low_phase_shard_count_per_node;
 
   ASSERT_NO_FATALS(MultiTransactionConsistencyTest(
       100, 50, producer_table_, consumer_table_, true /* commit_all_transactions */,

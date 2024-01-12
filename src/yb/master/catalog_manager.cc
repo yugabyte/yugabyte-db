@@ -455,14 +455,14 @@ TAG_FLAG(ysql_legacy_colocated_database_creation, advanced);
 
 DEPRECATE_FLAG(int64, tablet_split_size_threshold_bytes, "10_2022");
 
-DEFINE_RUNTIME_int64(tablet_split_low_phase_shard_count_per_node, 8,
+DEFINE_RUNTIME_int64(tablet_split_low_phase_shard_count_per_node, 1,
     "The per-node tablet leader count until which a table is splitting at the phase 1 threshold, "
     "as defined by tablet_split_low_phase_size_threshold_bytes.");
 DEFINE_RUNTIME_int64(tablet_split_high_phase_shard_count_per_node, 24,
     "The per-node tablet leader count until which a table is splitting at the phase 2 threshold, "
     "as defined by tablet_split_high_phase_size_threshold_bytes.");
 
-DEFINE_RUNTIME_int64(tablet_split_low_phase_size_threshold_bytes, 512_MB,
+DEFINE_RUNTIME_int64(tablet_split_low_phase_size_threshold_bytes, 128_MB,
     "The tablet size threshold at which to split tablets in phase 1. "
     "See tablet_split_low_phase_shard_count_per_node.");
 DEFINE_RUNTIME_int64(tablet_split_high_phase_size_threshold_bytes, 10_GB,
