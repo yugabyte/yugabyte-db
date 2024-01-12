@@ -164,7 +164,9 @@ After creating a set of indexes with their backfill deferred, you can then trigg
                                                         // all deferred indexes idx_1 .. idx_9 
                                                         // on the same table viz: table_name.
     ```
-1. Use `yb-admin` to launch backfill for deferred indexes on the table:
+
+- Use yb-admin to launch backfill for deferred indexes on the table.
+
     ```cassandraql
     CREATE DEFERRED INDEX idx_1 on table_name(col_1);        // No backfill launched.
     CREATE DEFERRED INDEX idx_2 on table_name(col_2);        // No backfill launched.
