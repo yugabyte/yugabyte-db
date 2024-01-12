@@ -148,7 +148,7 @@ When using an index without transactions enabled, it is the responsibility of th
 
 ### DEFERRED INDEX
 
-Currently, an "index backfill" job is launched for each index that is created. For the case where you create a table and add multiple indexes, the main table needs to be scanned multiple times to populate each index. This is unnecessary, and can also causes issues with the single touch and multi touch block cache algorithm.
+Currently, an "index backfill" job is launched for each index that is created. For the case where you create a table and add multiple indexes, the main table needs to be scanned multiple times to populate each index. This is unnecessary, and can also cause issues with the single touch and multi touch block cache algorithm.
 
 After creating a set of indexes with their backfill deferred, you can then trigger a backfill job for the entire batch of indexes (on the same table) by either:
 
