@@ -99,4 +99,4 @@ You can direct connections to specific clouds, regions, or AZs using topology ke
 - Python: `topology_keys`
 - Rust: `topology_keys`
 
-More info on each language can be found at [drivers page](../../reference/drivers/). 
+For more information, refer to [Topology-aware connection load balancing](../../drivers-orms/smart-drivers/#topology-aware-connection-load-balancing). 
