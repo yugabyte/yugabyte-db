@@ -541,6 +541,12 @@ TEST_F_EX(YBBackupTest,
   ASSERT_OK(cluster_->SetFlagOnMasters("enable_automatic_tablet_splitting", "true"));
   ASSERT_OK(cluster_->SetFlagOnMasters("tablet_split_limit_per_table",
                                        IntToString(expected_num_tablets)));
+  // Setting low phase shards count per node explicitly to guarantee a table can split at least
+  // up to expected_num_tablets per table within the low phase.
+  const auto low_phase_shard_count_per_node = std::ceil(
+      static_cast<double>(expected_num_tablets) / GetNumTabletServers());
+  ASSERT_OK(cluster_->SetFlagOnMasters("tablet_split_low_phase_shard_count_per_node",
+                                       IntToString(low_phase_shard_count_per_node)));
 
   const string table_name = "mytbl";
 
