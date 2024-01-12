@@ -38,7 +38,7 @@ Using federated authentication, you can use an IdP to manage access to your Yuga
 
 Note that after federated authentication is enabled, only Admin users can sign in using email-based login.
 
-Currently, Microsoft Entra ID and PingOne IdPs and the OIDC protocol are supported.
+Currently, Microsoft Entra ID and PingOne IdPs, and the OIDC protocol are supported.
 
 ### Prerequisites
 
@@ -48,7 +48,7 @@ Before configuring federated authentication, keep in mind the following:
 
 {{< tabpane text=true >}}
 
-  {{% tab header="Microsft Entra" lang="entra" %}}
+  {{% tab header="Microsoft Entra" lang="entra" %}}
 
 **Register an application**
 
