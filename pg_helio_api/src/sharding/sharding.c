@@ -219,7 +219,11 @@ command_shard_collection(PG_FUNCTION_ARGS)
 					 qualifiedDataTableName, ApiAdminRole);
 	ExtensionExecuteQueryViaSPI(queryInfo->data, readOnly, SPI_OK_UTILITY, &isNull);
 
-	/* Get all valid or in progress indexes and delete them from metadata entries related to the collection. */
+	/* Get all valid or in progress indexes and delete them from metadata entries related to the collection.
+	 * TODO(MX): This really should not be CommutativeWrites for the entire query. Ideally only hte DELETE itself
+	 * is commutative and is separate out from the other queries. This only really becomes a concern wiht MX
+	 * and so for now this is left as-is.
+	 */
 	resetStringInfo(queryInfo);
 	appendStringInfo(queryInfo,
 					 " WITH cte AS ("
@@ -230,9 +234,9 @@ command_shard_collection(PG_FUNCTION_ARGS)
 					 ApiInternalSchemaName, ApiInternalSchemaName);
 
 	bool isNullIndexSpecArray = true;
-	Datum indexSpecArray = ExtensionExecuteQueryViaSPI(queryInfo->data, readOnly,
-													   SPI_OK_SELECT,
-													   &isNullIndexSpecArray);
+	Datum indexSpecArray = RunQueryWithCommutativeWrites(queryInfo->data, 0, NULL, NULL,
+														 NULL, SPI_OK_SELECT,
+														 &isNullIndexSpecArray);
 
 	/* Create a vanilla RUM _id index but don't register it yet since we need to build it. */
 	resetStringInfo(queryInfo);

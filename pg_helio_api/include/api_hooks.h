@@ -82,6 +82,11 @@ void PostProcessShardCollection(const char *tableName, uint64_t collectionId,
 								text *databaseName, text *collectionName,
 								pgbson *shardKey);
 
+/*
+ * Handle any post actions after the collection is dropped
+ */
+void PostProcessCollectionDrop(uint64_t collectionId, text *databaseName,
+							   text *collectionName, bool trackChanges);
 
 /*
  * Entrypoint to modify a list of column names for queries

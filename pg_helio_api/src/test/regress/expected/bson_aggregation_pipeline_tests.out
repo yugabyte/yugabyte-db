@@ -1251,7 +1251,8 @@ EXPLAIN (COSTS OFF)SELECT document FROM bson_aggregation_pipeline('db', '{ "aggr
 ERROR:  current transaction is aborted, commands ignored until end of transaction block
 COMMIT;
 SELECT drop_collection('db','aggregation_pipeline_empty_vector');
-ERROR:  function drop_collection(unknown, unknown) does not exist
-LINE 1: SELECT drop_collection('db','aggregation_pipeline_empty_vect...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ drop_collection 
+-----------------
+ t
+(1 row)
+

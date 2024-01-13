@@ -26,6 +26,7 @@ DistributePostgresTable_HookType distribute_postgres_table_hook = NULL;
 ModifyCreateTableSchema_HookType modify_create_table_schema_hook = NULL;
 PostProcessCreateTable_HookType post_process_create_table_hook = NULL;
 PostProcessShardCollection_HookType post_process_shard_collection_hook = NULL;
+PostProcessCollectionDrop_HookType post_process_drop_collection_hook = NULL;
 ModifyTableColumnNames_HookType modify_table_column_names_hook = NULL;
 RunQueryWithNestedDistribution_HookType run_query_with_nested_distribution_hook = NULL;
 
@@ -190,6 +191,24 @@ PostProcessShardCollection(const char *tableName, uint64_t collectionId,
 	{
 		post_process_shard_collection_hook(tableName, collectionId, databaseName,
 										   collectionName, shardKey);
+	}
+}
+
+
+/*
+ * Handles any post processing for a collection being dropped.
+ * Noop for a single node scenario
+ *
+ */
+void
+PostProcessCollectionDrop(uint64_t collectionId, text *databaseName,
+						  text *collectionName, bool trackChanges)
+{
+	/* Noop for single node scenarios: Don't do anything unless overriden */
+	if (post_process_drop_collection_hook != NULL)
+	{
+		post_process_drop_collection_hook(collectionId, databaseName,
+										  collectionName, trackChanges);
 	}
 }
 

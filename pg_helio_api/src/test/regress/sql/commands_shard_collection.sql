@@ -231,13 +231,13 @@ SELECT helio_api.shard_collection('db', 'reshardoptions', '{ "a.b": "hashed" }')
 SELECT helio_api.shard_collection('db', 'reshardoptions', '{ "c.d": "hashed" }', false);
 
 -- key should now be { "a.b": "hashed" }
-SELECT database_name, collection_name, shard_key FROM helio_api_internal.get_collection('db', 'reshardoptions');
+SELECT database_name, collection_name, shard_key FROM helio_api_catalog.collections WHERE database_name = 'db' AND collection_name = 'reshardoptions';
 
 -- shard with a new key with reshard:true (should work)
 SELECT helio_api.shard_collection('db', 'reshardoptions', '{ "c.d": "hashed" }', true);
 
 -- key should now be { "c.d": "hashed" }
-SELECT database_name, collection_name, shard_key FROM helio_api_internal.get_collection('db', 'reshardoptions');
+SELECT database_name, collection_name, shard_key FROM helio_api_catalog.collections WHERE database_name = 'db' AND collection_name = 'reshardoptions';
 
 -- reshard on non existing collections or non-sharded collections should fail
 SELECT helio_api.shard_collection('db', 'nonExistingCollection', '{ "a.b": "hashed" }', true);

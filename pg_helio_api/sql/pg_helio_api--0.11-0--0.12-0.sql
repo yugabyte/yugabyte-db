@@ -36,4 +36,11 @@ SET search_path TO helio_api;
  */
 #include "udfs/index_mgmt/create_index_background--0.12-0.sql"
 
+
+/*
+ * Region: Schema Management APIs
+ */
+#include "udfs/schema_mgmt/drop_collection--0.12-0.sql"
+
+
 RESET search_path;

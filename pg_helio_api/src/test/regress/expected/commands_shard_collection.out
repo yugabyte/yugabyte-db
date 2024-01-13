@@ -612,11 +612,12 @@ NOTICE:  Skipping Sharding for collection db.reshardoptions as the same options 
 SELECT helio_api.shard_collection('db', 'reshardoptions', '{ "c.d": "hashed" }', false);
 ERROR:  Sharding already enabled for collection db.reshardoptions with options { "_id": "db.reshardoptions", "dropped" : false, "key" : { "c.d" : "hashed" }, "unique": false }.
 -- key should now be { "a.b": "hashed" }
-SELECT database_name, collection_name, shard_key FROM helio_api_internal.get_collection('db', 'reshardoptions');
-ERROR:  function helio_api_internal.get_collection(unknown, unknown) does not exist
-LINE 1: ...CT database_name, collection_name, shard_key FROM helio_api_...
-                                                             ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT database_name, collection_name, shard_key FROM helio_api_catalog.collections WHERE database_name = 'db' AND collection_name = 'reshardoptions';
+ database_name | collection_name |      shard_key       
+---------------+-----------------+----------------------
+ db            | reshardoptions  | { "a.b" : "hashed" }
+(1 row)
+
 -- shard with a new key with reshard:true (should work)
 SELECT helio_api.shard_collection('db', 'reshardoptions', '{ "c.d": "hashed" }', true);
  shard_collection 
@@ -625,11 +626,12 @@ SELECT helio_api.shard_collection('db', 'reshardoptions', '{ "c.d": "hashed" }',
 (1 row)
 
 -- key should now be { "c.d": "hashed" }
-SELECT database_name, collection_name, shard_key FROM helio_api_internal.get_collection('db', 'reshardoptions');
-ERROR:  function helio_api_internal.get_collection(unknown, unknown) does not exist
-LINE 1: ...CT database_name, collection_name, shard_key FROM helio_api_...
-                                                             ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT database_name, collection_name, shard_key FROM helio_api_catalog.collections WHERE database_name = 'db' AND collection_name = 'reshardoptions';
+ database_name | collection_name |      shard_key       
+---------------+-----------------+----------------------
+ db            | reshardoptions  | { "c.d" : "hashed" }
+(1 row)
+
 -- reshard on non existing collections or non-sharded collections should fail
 SELECT helio_api.shard_collection('db', 'nonExistingCollection', '{ "a.b": "hashed" }', true);
 ERROR:  Collection db.nonExistingCollection is not sharded

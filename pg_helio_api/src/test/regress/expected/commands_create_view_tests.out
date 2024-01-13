@@ -237,44 +237,42 @@ SELECT document FROM helio_api_catalog.bson_aggregation_find('db', '{ "find": "c
 (4 rows)
 
 SELECT helio_api.drop_collection('db', 'create_view_tests_view_3');
-ERROR:  function helio_api.drop_collection(unknown, unknown) does not exist
-LINE 1: SELECT helio_api.drop_collection('db', 'create_view_tests_vi...
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+NOTICE:  table "documents_6509" does not exist, skipping
+NOTICE:  table "retry_6509" does not exist, skipping
+ drop_collection 
+-----------------
+ t
+(1 row)
+
 -- drop the collection (view still works)
 SELECT helio_api.drop_collection('db', 'create_view_tests');
-ERROR:  function helio_api.drop_collection(unknown, unknown) does not exist
-LINE 1: SELECT helio_api.drop_collection('db', 'create_view_tests');
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ drop_collection 
+-----------------
+ t
+(1 row)
+
 SELECT document FROM helio_api_catalog.bson_aggregation_find('db', '{ "find": "create_view_tests_view_1" }');
-                              document                              
---------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "4" } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "1" } }
- { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "140" } }
- { "_id" : { "$numberInt" : "4" }, "a" : { "$numberInt" : "40" } }
-(4 rows)
+ document 
+----------
+(0 rows)
 
 -- create a view cycle (fails)
 SELECT helio_api.create_collection_view('db', '{ "create": "create_view_tests", "viewOn": "create_view_tests_view_1" }');
-ERROR:  ns: db.create_view_tests already exists with different options: {}
+ERROR:  View cycle detected: db.create_view_tests -> db.create_view_tests_view_1 ->  db.create_view_tests
 -- recreate a collection
 SELECT helio_api.insert_one('db', 'create_view_tests', '{ "_id": 3, "a": 140 }');
-                                                                                                                      insert_one                                                                                                                       
--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
- { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "0" }, "writeErrors" : [ { "index" : { "$numberInt" : "0" }, "code" : { "$numberInt" : "83906754" }, "errmsg" : "duplicate key value violates unique constraint \"collection_pk_6503\"" } ] }
+NOTICE:  creating collection
+                           insert_one                            
+-----------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
 (1 row)
 
 -- view works again
 SELECT document FROM helio_api_catalog.bson_aggregation_find('db', '{ "find": "create_view_tests_view_1" }');
                               document                              
 --------------------------------------------------------------------
- { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "4" } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "1" } }
  { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "140" } }
- { "_id" : { "$numberInt" : "4" }, "a" : { "$numberInt" : "40" } }
-(4 rows)
+(1 row)
 
 -- do a coll_mod
 SELECT database_name, collection_name, view_definition FROM helio_api_catalog.collections WHERE collection_name = 'create_view_tests_view_1';

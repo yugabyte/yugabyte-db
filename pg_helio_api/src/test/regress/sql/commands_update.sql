@@ -362,7 +362,7 @@ SELECT 1 FROM helio_api.insert_one('update', 'test_sort_returning', '{"_id":3,"a
 
 -- sort in ascending order and project & return old document
 WITH test_sort_returning AS (
-    SELECT * FROM helio_api_internal.get_collection('update', 'test_sort_returning')
+    SELECT * FROM helio_api_catalog.collections WHERE database_name = 'update' AND collection_name = 'test_sort_returning'
 )
 SELECT result.* FROM test_sort_returning, helio_api_internal.update_one(
     p_collection_id=>test_sort_returning.collection_id,
@@ -381,7 +381,7 @@ SELECT result.* FROM test_sort_returning, helio_api_internal.update_one(
 -- sort by multiple fields (i) and project & return new document
 BEGIN;
     WITH test_sort_returning AS (
-        SELECT * FROM helio_api_internal.get_collection('update', 'test_sort_returning')
+    SELECT * FROM helio_api_catalog.collections WHERE database_name = 'update' AND collection_name = 'test_sort_returning'
     )
     SELECT result.* FROM test_sort_returning, helio_api_internal.update_one(
         p_collection_id=>test_sort_returning.collection_id,
@@ -401,7 +401,7 @@ BEGIN;
 ROLLBACK;
 
 WITH test_sort_returning AS (
-    SELECT * FROM helio_api_internal.get_collection('update', 'test_sort_returning')
+    SELECT * FROM helio_api_catalog.collections WHERE database_name = 'update' AND collection_name = 'test_sort_returning'
 )
 SELECT result.* FROM test_sort_returning, helio_api_internal.update_one(
     p_collection_id=>test_sort_returning.collection_id,

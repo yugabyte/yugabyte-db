@@ -5,3 +5,4 @@ test: bson_update_document_tests commands_update
 test: commands_delete commands_find_and_modify commands_shard_collection
 test: bson_aggregation_pipeline_tests bson_aggregation_pipeline_tests_facet_group bson_aggregation_pipeline_tests_coll_agnostic
 test: commands_create_indexes_background commands_create_view_tests
+test: collection_management

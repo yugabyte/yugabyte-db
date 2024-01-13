@@ -1886,10 +1886,11 @@ select helio_api.update('db', '{"update":"updateme",  "updates":[{"q":{"_id":33,
 ERROR:  Unexpected additional updates
 rollback;
 select helio_api.drop_collection('db','updateme');
-ERROR:  function helio_api.drop_collection(unknown, unknown) does not exist
-LINE 1: select helio_api.drop_collection('db','updateme');
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ drop_collection 
+-----------------
+ t
+(1 row)
+
 SELECT 1 FROM helio_api.insert_one('update', 'test_sort_returning', '{"_id":1,"a":3,"b":7}');
 NOTICE:  creating collection
  ?column? 
@@ -1911,7 +1912,7 @@ SELECT 1 FROM helio_api.insert_one('update', 'test_sort_returning', '{"_id":3,"a
 
 -- sort in ascending order and project & return old document
 WITH test_sort_returning AS (
-    SELECT * FROM helio_api_internal.get_collection('update', 'test_sort_returning')
+    SELECT * FROM helio_api_catalog.collections WHERE database_name = 'update' AND collection_name = 'test_sort_returning'
 )
 SELECT result.* FROM test_sort_returning, helio_api_internal.update_one(
     p_collection_id=>test_sort_returning.collection_id,
@@ -1926,14 +1927,18 @@ SELECT result.* FROM test_sort_returning, helio_api_internal.update_one(
     p_array_filters=>null::bson,
     p_transaction_id=>null::text
 ) result;
-ERROR:  function helio_api_internal.get_collection(unknown, unknown) does not exist
-LINE 2:     SELECT * FROM helio_api_internal.get_collection('update'...
-                          ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ o_is_row_updated | o_update_skipped | o_is_retry | o_reinsert_document | o_upserted_object_id |        o_result_document         
+------------------+------------------+------------+---------------------+----------------------+----------------------------------
+ t                | f                | f          |                     |                      | { "b" : { "$numberInt" : "5" } }
+(1 row)
+
 -- sort by multiple fields (i) and project & return new document
 BEGIN;
     WITH test_sort_returning AS (
-        SELECT * FROM helio_api_internal.get_collection('update', 'test_sort_returning')
+    SELECT * FROM helio_api_catalog.collections WHERE database_name = 'update' AND collection_name = 'test_sort_returning'
     )
     SELECT result.* FROM test_sort_returning, helio_api_internal.update_one(
         p_collection_id=>test_sort_returning.collection_id,
@@ -1948,15 +1953,25 @@ BEGIN;
         p_array_filters=>null::bson,
         p_transaction_id=>null::text
     ) result;
-ERROR:  function helio_api_internal.get_collection(unknown, unknown) does not exist
-LINE 2:         SELECT * FROM helio_api_internal.get_collection('upd...
-                              ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ o_is_row_updated | o_update_skipped | o_is_retry | o_reinsert_document | o_upserted_object_id |                        o_result_document                         
+------------------+------------------+------------+---------------------+----------------------+------------------------------------------------------------------
+ t                | f                | f          |                     |                      | { "_id" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "4" } }
+(1 row)
+
     SELECT document FROM helio_api.collection('update', 'test_sort_returning') ORDER BY 1;
-ERROR:  current transaction is aborted, commands ignored until end of transaction block
+                                            document                                            
+------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "c" : { "$numberInt" : "4" } }
+ { "_id" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "6" } }
+(3 rows)
+
 ROLLBACK;
 WITH test_sort_returning AS (
-    SELECT * FROM helio_api_internal.get_collection('update', 'test_sort_returning')
+    SELECT * FROM helio_api_catalog.collections WHERE database_name = 'update' AND collection_name = 'test_sort_returning'
 )
 SELECT result.* FROM test_sort_returning, helio_api_internal.update_one(
     p_collection_id=>test_sort_returning.collection_id,
@@ -1971,16 +1986,20 @@ SELECT result.* FROM test_sort_returning, helio_api_internal.update_one(
     p_array_filters=>null::bson,
     p_transaction_id=>null::text
 ) result;
-ERROR:  function helio_api_internal.get_collection(unknown, unknown) does not exist
-LINE 2:     SELECT * FROM helio_api_internal.get_collection('update'...
-                          ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ o_is_row_updated | o_update_skipped | o_is_retry | o_reinsert_document | o_upserted_object_id |                        o_result_document                         
+------------------+------------------+------------+---------------------+----------------------+------------------------------------------------------------------
+ t                | f                | f          |                     |                      | { "_id" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "4" } }
+(1 row)
+
 SELECT document FROM helio_api.collection('update', 'test_sort_returning') ORDER BY 1;
                                             document                                            
 ------------------------------------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "3" }, "b" : { "$numberInt" : "7" } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "2" }, "b" : { "$numberInt" : "5" } }
- { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "6" } }
+ { "_id" : { "$numberInt" : "2" }, "c" : { "$numberInt" : "3" } }
+ { "_id" : { "$numberInt" : "3" }, "c" : { "$numberInt" : "4" } }
 (3 rows)
 
 -- show that we validate "update" document even if collection doesn't exist

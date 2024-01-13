@@ -61,7 +61,7 @@ command_create_collection_core(PG_FUNCTION_ARGS)
 								text_to_cstring(result.response))));
 		}
 
-		PG_RETURN_BOOL(strcasecmp(text_to_cstring(result.response), "true") == 0);
+		PG_RETURN_BOOL(strcasecmp(text_to_cstring(result.response), "t") == 0);
 	}
 
 	MongoCollection *collection = GetMongoCollectionByNameDatum(

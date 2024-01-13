@@ -936,10 +936,11 @@ select helio_api.delete('db', '{"delete":"removeme", "deletes": [{"q":{"a":{"$eq
 ERROR:  Unexpected additional deletes
 rollback;
 select helio_api.drop_collection('db','removeme');
-ERROR:  function helio_api.drop_collection(unknown, unknown) does not exist
-LINE 1: select helio_api.drop_collection('db','removeme');
-               ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+ drop_collection 
+-----------------
+ t
+(1 row)
+
 SELECT 1 FROM helio_api.insert_one('delete', 'test_sort_returning', '{"_id": 1,"a":3,"b":7}');
 NOTICE:  creating collection
  ?column? 
@@ -961,7 +962,7 @@ SELECT 1 FROM helio_api.insert_one('delete', 'test_sort_returning', '{"_id": 3,"
 
 -- sort in ascending order and project & return deleted document
 WITH test_sort_returning AS (
-    SELECT * FROM helio_api_internal.get_collection('delete', 'test_sort_returning')
+    SELECT * FROM helio_api_catalog.collections WHERE database_name = 'delete' AND collection_name = 'test_sort_returning'
 )
 SELECT result.*
 FROM test_sort_returning,
@@ -974,14 +975,18 @@ FROM test_sort_returning,
         p_return_fields=>'{"a": 0}'::bson,
         p_transaction_id=>null::text
      ) AS result;
-ERROR:  function helio_api_internal.get_collection(unknown, unknown) does not exist
-LINE 2:     SELECT * FROM helio_api_internal.get_collection('delete'...
-                          ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ o_is_row_deleted |                    o_result_deleted_document                     
+------------------+------------------------------------------------------------------
+ t                | { "_id" : { "$numberInt" : "2" }, "b" : { "$numberInt" : "5" } }
+(1 row)
+
 -- sort by multiple fields (i) and return deleted document
 BEGIN;
     WITH test_sort_returning AS (
-        SELECT * FROM helio_api_internal.get_collection('delete', 'test_sort_returning')
+        SELECT * FROM helio_api_catalog.collections WHERE database_name = 'delete' AND collection_name = 'test_sort_returning'
     )
     SELECT result.*
     FROM test_sort_returning,
@@ -994,14 +999,17 @@ BEGIN;
             p_return_fields=>null::bson,
             p_transaction_id=>null::text
          ) AS result;
-ERROR:  function helio_api_internal.get_collection(unknown, unknown) does not exist
-LINE 2:         SELECT * FROM helio_api_internal.get_collection('del...
-                              ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ o_is_row_deleted |                                   o_result_deleted_document                                    
+------------------+------------------------------------------------------------------------------------------------
+ t                | { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "3" }, "b" : { "$numberInt" : "7" } }
+(1 row)
+
 ROLLBACK;
 -- sort by multiple fields (ii) and return deleted document
 WITH test_sort_returning AS (
-    SELECT * FROM helio_api_internal.get_collection('delete', 'test_sort_returning')
+    SELECT * FROM helio_api_catalog.collections WHERE database_name = 'delete' AND collection_name = 'test_sort_returning'
 )
 SELECT result.*
 FROM test_sort_returning,
@@ -1014,17 +1022,18 @@ FROM test_sort_returning,
         p_return_fields=>null::bson,
         p_transaction_id=>null::text
      ) AS result;
-ERROR:  function helio_api_internal.get_collection(unknown, unknown) does not exist
-LINE 2:     SELECT * FROM helio_api_internal.get_collection('delete'...
-                          ^
-HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ o_is_row_deleted |                                   o_result_deleted_document                                    
+------------------+------------------------------------------------------------------------------------------------
+ t                | { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "6" } }
+(1 row)
+
 SELECT document FROM helio_api.collection('delete', 'test_sort_returning') ORDER BY 1;
                                             document                                            
 ------------------------------------------------------------------------------------------------
  { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "3" }, "b" : { "$numberInt" : "7" } }
- { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "2" }, "b" : { "$numberInt" : "5" } }
- { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "6" } }
-(3 rows)
+(1 row)
 
 -- show that we validate "query" document even if collection doesn't exist
 -- i) ordered=true

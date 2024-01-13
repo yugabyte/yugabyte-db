@@ -242,7 +242,7 @@ SELECT 1 FROM helio_api.insert_one('delete', 'test_sort_returning', '{"_id": 3,"
 
 -- sort in ascending order and project & return deleted document
 WITH test_sort_returning AS (
-    SELECT * FROM helio_api_internal.get_collection('delete', 'test_sort_returning')
+    SELECT * FROM helio_api_catalog.collections WHERE database_name = 'delete' AND collection_name = 'test_sort_returning'
 )
 SELECT result.*
 FROM test_sort_returning,
@@ -259,7 +259,7 @@ FROM test_sort_returning,
 -- sort by multiple fields (i) and return deleted document
 BEGIN;
     WITH test_sort_returning AS (
-        SELECT * FROM helio_api_internal.get_collection('delete', 'test_sort_returning')
+        SELECT * FROM helio_api_catalog.collections WHERE database_name = 'delete' AND collection_name = 'test_sort_returning'
     )
     SELECT result.*
     FROM test_sort_returning,
@@ -276,7 +276,7 @@ ROLLBACK;
 
 -- sort by multiple fields (ii) and return deleted document
 WITH test_sort_returning AS (
-    SELECT * FROM helio_api_internal.get_collection('delete', 'test_sort_returning')
+    SELECT * FROM helio_api_catalog.collections WHERE database_name = 'delete' AND collection_name = 'test_sort_returning'
 )
 SELECT result.*
 FROM test_sort_returning,

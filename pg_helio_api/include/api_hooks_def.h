@@ -87,6 +87,14 @@ typedef void (*PostProcessShardCollection_HookType)(const char *tableName, uint6
 													pgbson *shardKey);
 extern PostProcessShardCollection_HookType post_process_shard_collection_hook;
 
+/*
+ * Handle any post action after the collection is drop
+ */
+typedef void (*PostProcessCollectionDrop_HookType)(uint64_t collectionId,
+												   text *databaseName,
+												   text *collectionName, bool
+												   trackChanges);
+extern PostProcessCollectionDrop_HookType post_process_drop_collection_hook;
 
 /*
  * Entrypoint to modify a list of column names for queries

@@ -40,6 +40,7 @@ static pgbson * SerializeIndexSpec(const IndexSpec *spec, bool isGetIndexes,
 								   const char *namespaceName);
 static IndexOptionsEquivalency IndexKeyDocumentEquivalent(pgbson *leftKey,
 														  pgbson *rightKey);
+static void DeleteCollectionIndexRecordCore(uint64 collectionId, int *indexId);
 
 
 /* --------------------------------------------------------- */
@@ -730,18 +731,46 @@ CollectionIdsGetIndexCount(ArrayType *collectionIdsArray)
 
 
 /*
- * DeleteCollectionIndexRecord deletes the record inserted for given index from
- * ApiCatalogSchemaName.collection_indexes using SPI.
+ * DeleteAllCollectionIndexRecords wrapper for DeleteCollectionIndexRecordCore that deletes
+ * all indexes of a collection. The delete is done as a commutative write
+ */
+void
+DeleteAllCollectionIndexRecords(uint64 collectionId)
+{
+	DeleteCollectionIndexRecordCore(collectionId, NULL);
+}
+
+
+/*
+ * DeleteCollectionIndexRecord wrapper for DeleteCollectionIndexRecordCore that deletes with a
+ * specific indexId. The delete is done as a commutative write
  */
 void
 DeleteCollectionIndexRecord(uint64 collectionId, int indexId)
 {
+	DeleteCollectionIndexRecordCore(collectionId, &indexId);
+}
+
+
+/*
+ * DeleteCollectionIndexRecordCore deletes the record inserted for given index from
+ * mongo_catalog.collection_indexes using SPI. Delete all indexes of the collection
+ * if indexId is NULL. The delete is done as a commutative write
+ */
+static void
+DeleteCollectionIndexRecordCore(uint64 collectionId, int *indexId)
+{
 	StringInfo cmdStr = makeStringInfo();
 	appendStringInfo(cmdStr,
 					 "DELETE FROM %s.collection_indexes WHERE "
-					 "collection_id = "
-					 UINT64_FORMAT " AND index_id = %d",
-					 ApiCatalogSchemaName, collectionId, indexId);
+					 "collection_id = " UINT64_FORMAT,
+					 ApiCatalogSchemaName, collectionId);
+
+	if (indexId != NULL)
+	{
+		appendStringInfo(cmdStr,
+						 " AND index_id = %d", *indexId);
+	}
 
 	bool isNull = true;
 	int nargs = 0;

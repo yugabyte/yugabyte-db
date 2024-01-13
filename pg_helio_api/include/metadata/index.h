@@ -193,6 +193,7 @@ int CollectionIdsGetIndexCount(ArrayType *collectionIdsArray);
 int RecordCollectionIndex(uint64 collectionId, const IndexSpec *indexSpec,
 						  bool isKnownValid);
 int MarkIndexesAsValid(uint64 collectionId, const List *indexIdList);
+void DeleteAllCollectionIndexRecords(uint64 collectionId);
 void DeleteCollectionIndexRecord(uint64 collectionId, int indexId);
 
 List * MergeTextIndexWeights(List *textIndexes, const bson_value_t *weights,
