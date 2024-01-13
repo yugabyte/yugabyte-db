@@ -15,6 +15,7 @@
 #include <funcapi.h>
 #include <utils/builtins.h>
 #include <catalog/namespace.h>
+#include <catalog/pg_am_d.h>
 
 #include "io/bson_core.h"
 #include "metadata/index.h"
@@ -28,6 +29,8 @@
 #include "commands/diagnostic_commands_common.h"
 #include "io/bson_set_returning_functions.h"
 #include "metadata/collection.h"
+#include "metadata/index.h"
+#include "utils/guc_utils.h"
 
 
 /*
@@ -74,7 +77,7 @@ typedef struct
 	const char *operationId;
 
 	/* The raw mongo table (if it could be determined) */
-	const char *rawMongoTable;
+	char *rawMongoTable;
 
 	/* The wait_event_type in the pg_stat_activity */
 	const char *wait_event_type;
@@ -96,6 +99,9 @@ typedef struct
 
 	/* During processing, whether or not to add index build stats */
 	bool processedBuildIndexStatProgress;
+
+	/* Index spec for running create Index */
+	IndexSpec *indexSpec;
 } SingleWorkerActivity;
 
 PG_FUNCTION_INFO_V1(command_current_op_command);
@@ -116,11 +122,13 @@ static const char * WriteCommandAndGetQueryType(const char *query,
 												SingleWorkerActivity *activity,
 												pgbson_writer *commandWriter);
 static void DetectMongoCollection(SingleWorkerActivity *activity);
+static IndexSpec * GetIndexSpecForShardedCreateIndexQuery(SingleWorkerActivity *activity);
 static void AddFailedIndexBuilds(TupleDesc descriptor, Tuplestorestate *tupleStore);
 static const char * WriteIndexBuildProgressAndGetMessage(SingleWorkerActivity *activity,
 														 pgbson_writer *writer);
 static void WriteGlobalPidOfLockingProcess(SingleWorkerActivity *activity,
 										   pgbson_writer *writer);
+static void WriteIndexSpec(SingleWorkerActivity *activity, pgbson_writer *commandWriter);
 
 
 /*
@@ -805,6 +813,7 @@ WriteCommandAndGetQueryType(const char *query, SingleWorkerActivity *activity,
 	{
 		PgbsonWriterAppendUtf8(commandWriter, "createIndexes", 13,
 							   activity->processedMongoCollection);
+		WriteIndexSpec(activity, commandWriter);
 		activity->processedBuildIndexStatProgress = true;
 		return "workerCommand";
 	}
@@ -814,6 +823,7 @@ WriteCommandAndGetQueryType(const char *query, SingleWorkerActivity *activity,
 		PgbsonWriterAppendUtf8(commandWriter, "createIndexes", 13,
 							   activity->processedMongoCollection);
 		PgbsonWriterAppendBool(commandWriter, "unique", 6, true);
+		WriteIndexSpec(activity, commandWriter);
 		activity->processedBuildIndexStatProgress = true;
 		return "workerCommand";
 	}
@@ -875,6 +885,16 @@ DetectMongoCollection(SingleWorkerActivity *activity)
 {
 	activity->processedMongoDatabase = "";
 	activity->processedMongoCollection = "";
+	if (activity->rawMongoTable == NULL &&
+		(strstr(activity->query, "CREATE INDEX") != NULL))
+	{
+		/* Get Index Spec for sharded create index query, for this activity->rawMongoTable could be null */
+		IndexSpec *spec = GetIndexSpecForShardedCreateIndexQuery(activity);
+		if (spec != NULL)
+		{
+			activity->indexSpec = spec;
+		}
+	}
 
 	/* No raw collection found */
 	if (activity->rawMongoTable == NULL ||
@@ -896,6 +916,82 @@ DetectMongoCollection(SingleWorkerActivity *activity)
 		activity->processedMongoDatabase = collection->name.databaseName;
 		activity->processedMongoCollection = collection->name.collectionName;
 	}
+}
+
+
+/*
+ * GetIndexSpecForShardedCreateIndexQuery gets index_spec and collection_name for sharded CREATE INDEX query
+ */
+static IndexSpec *
+GetIndexSpecForShardedCreateIndexQuery(SingleWorkerActivity *activity)
+{
+	ArrayType *indexAmIdsArray = NULL;
+	int arraySize = 4;
+	Datum indexAmIdsDatum[4] = { 0 };
+	indexAmIdsDatum[0] = RumIndexAmId();
+	indexAmIdsDatum[1] = PgVectorHNSWIndexAmId();
+	indexAmIdsDatum[2] = PgVectorIvfFlatIndexAmId();
+	indexAmIdsDatum[3] = GIST_AM_OID;
+	indexAmIdsArray = construct_array(indexAmIdsDatum, arraySize, OIDOID,
+									  sizeof(Oid), true,
+									  TYPALIGN_INT);
+
+	StringInfo cmdStr = makeStringInfo();
+	appendStringInfo(cmdStr,
+					 "SELECT pc.relname::text AS relation_name FROM pg_stat_activity psa LEFT JOIN pg_locks pl ON psa.pid = pl.pid LEFT JOIN pg_class pc ON pl.relation = pc.oid WHERE psa.application_name = 'citus_internal gpid=%ld' AND pc.relam = ANY($1) LIMIT 1",
+					 activity->global_pid);
+
+	int argCount = 1;
+	Oid argTypes[1] = { OIDARRAYOID };
+	Datum argValues[1] = { PointerGetDatum(indexAmIdsArray) };
+	char argNulls[1] = { ' ' };
+
+	bool readOnly = true;
+	bool isNull;
+	Datum result = ExtensionExecuteQueryWithArgsViaSPI(cmdStr->data, argCount, argTypes,
+													   argValues,
+													   argNulls,
+													   readOnly, SPI_OK_SELECT, &isNull);
+	if (isNull)
+	{
+		return NULL;
+	}
+	char *relationName = text_to_cstring(DatumGetTextP(result));
+
+	int indexId = 0;
+	int prefixLength = strlen(MONGO_DATA_TABLE_INDEX_NAME_FORMAT_PREFIX);
+
+	if (relationName == NULL ||
+		strncmp(relationName, MONGO_DATA_TABLE_INDEX_NAME_FORMAT_PREFIX, prefixLength) !=
+		0)
+	{
+		return NULL;
+	}
+
+	/* relationName = documents_rum_index_497_102044 or documents_rum_index_497 */
+	relationName += prefixLength;
+	const char *underscore = strchr(relationName, '_');
+
+	char *numEndPointer = NULL;
+	int parsedIndexId = (int) strtol(relationName, &numEndPointer, 10);
+
+	if (numEndPointer == underscore || numEndPointer == NULL || *numEndPointer == '\0')
+	{
+		indexId = parsedIndexId;
+	}
+	else
+	{
+		return NULL;
+	}
+
+	IndexDetails *detail = IndexIdGetIndexDetails(indexId);
+
+	/* assign right value to rawMongoTable */
+	activity->rawMongoTable = (char *) palloc(NAMEDATALEN);
+	snprintf(activity->rawMongoTable, NAMEDATALEN, MONGO_DATA_TABLE_NAME_FORMAT,
+			 detail->collectionId);
+
+	return &(detail->indexSpec);
 }
 
 
@@ -1040,20 +1136,21 @@ static const char *
 WriteIndexBuildProgressAndGetMessage(SingleWorkerActivity *activity,
 									 pgbson_writer *writer)
 {
+	/* For multi-shard operations like create index that uses multiple connections per node, we could see multiple entries in citus_stat_activity with same global_pid but different pids on same node. We should check for global_pid here */
 	const char *query =
-		"SELECT phase, blocks_done, blocks_total, tuples_done, tuples_total, pg_catalog.citus_calculate_gpid(pg_catalog.citus_nodeid_for_gpid($2), current_locker_pid::integer)"
-		" FROM pg_stat_progress_create_index WHERE pid = $1 LIMIT 1";
+		"SELECT phase, blocks_done, blocks_total, tuples_done, tuples_total, pg_catalog.citus_calculate_gpid(pg_catalog.citus_nodeid_for_gpid($1), current_locker_pid::integer)"
+		" FROM pg_stat_progress_create_index WHERE pid IN (SELECT process_id FROM pg_catalog.get_all_active_transactions() WHERE global_pid = $1) LIMIT 1";
 
-	Oid argTypes[2] = { INT8OID, INT8OID };
-	Datum argValues[2] = {
-		Int64GetDatum(activity->stat_pid), Int64GetDatum(activity->global_pid)
+	Oid argTypes[1] = { INT8OID };
+	Datum argValues[1] = {
+		Int64GetDatum(activity->global_pid)
 	};
-	char argNulls[2] = { ' ', ' ' };
+	char argNulls[1] = { ' ' };
 	bool readOnly = true;
 
 	Datum outputValues[6] = { 0 };
 	bool outputNulls[6] = { 0 };
-	ExtensionExecuteMultiValueQueryWithArgsViaSPI(query, 2, argTypes, argValues, argNulls,
+	ExtensionExecuteMultiValueQueryWithArgsViaSPI(query, 1, argTypes, argValues, argNulls,
 												  readOnly, SPI_OK_SELECT, outputValues,
 												  outputNulls, 6);
 
@@ -1182,4 +1279,21 @@ WriteGlobalPidOfLockingProcess(SingleWorkerActivity *activity, pgbson_writer *wr
 	pfree(val_array);
 	pfree(val_datums);
 	pfree(val_is_null_marker);
+}
+
+
+/*
+ * Given an indexSpec, write the index detail
+ */
+static void
+WriteIndexSpec(SingleWorkerActivity *activity,
+			   pgbson_writer *commandWriter)
+{
+	if (activity->indexSpec == NULL)
+	{
+		return;
+	}
+	WriteIndexSpecAsCurrentOpCommand(commandWriter, activity->processedMongoDatabase,
+									 activity->processedMongoCollection,
+									 activity->indexSpec);
 }

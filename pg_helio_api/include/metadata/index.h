@@ -112,7 +112,7 @@ typedef struct IndexDetails
 	int indexId;
 
 	/* collection id of a collection to which this Mongo index belongs*/
-	int collectionId;
+	uint64 collectionId;
 
 	/* Mongo index spec */
 	IndexSpec indexSpec;
@@ -237,6 +237,10 @@ IndexSpec * DatumGetIndexSpec(Datum datum);
 IndexSpec MakeIndexSpecForBuiltinIdIndex(void);
 Datum IndexSpecGetDatum(IndexSpec *indexSpec);
 IndexSpec * CopyIndexSpec(const IndexSpec *indexSpec);
+void WriteIndexSpecAsCurrentOpCommand(pgbson_writer *finalWriter, const
+									  char *databaseName,
+									  const char *collectionName, const
+									  IndexSpec *indexSpec);
 void RemoveRequestFromIndexQueue(int indexId, char cmdType);
 void MarkIndexRequestStatus(int indexId, char cmdType, IndexCmdStatus status,
 							pgbson *comment,

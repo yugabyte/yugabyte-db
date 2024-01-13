@@ -152,22 +152,39 @@ get_index_spec_as_current_op_command(PG_FUNCTION_ARGS)
 	}
 	IndexSpec *indexSpec = DatumGetIndexSpec(ExpandedRecordGetDatum(
 												 PG_GETARG_EXPANDED_RECORD(2)));
+	pgbson_writer finalWriter;
+	PgbsonWriterInit(&finalWriter);
+	WriteIndexSpecAsCurrentOpCommand(&finalWriter, databaseName, collectionName,
+									 indexSpec);
+	PG_RETURN_POINTER(PgbsonWriterGetPgbson(&finalWriter));
+}
+
+
+/*
+ * Takes an IndexSpec (Composite type) and writes the index spec to the passed writer in the format that the wire protocol "current_op" command needs.
+ * The format is
+ * command: {
+ *       createIndexes: 'mycollection',
+ *       indexes: [ { v: 2, unique: true, key: { name: 1 }, name: 'name_1' } ],
+ *       '$db': 'mydatabase'
+ *     }
+ */
+void
+WriteIndexSpecAsCurrentOpCommand(pgbson_writer *finalWriter, const char *databaseName,
+								 const char *collectionName, const IndexSpec *indexSpec)
+{
 	bool isGetIndexes = true;
 	char *namespaceName = NULL;
 	pgbson *result = SerializeIndexSpec(indexSpec, isGetIndexes, namespaceName);
 
-	pgbson_writer finalWriter;
-	PgbsonWriterInit(&finalWriter);
-	PgbsonWriterAppendUtf8(&finalWriter, "createIndexes", 13, collectionName);
+	PgbsonWriterAppendUtf8(finalWriter, "createIndexes", 13, collectionName);
 
 	pgbson_array_writer arrayWriter;
-	PgbsonWriterStartArray(&finalWriter, "indexes", 7, &arrayWriter);
+	PgbsonWriterStartArray(finalWriter, "indexes", 7, &arrayWriter);
 	PgbsonArrayWriterWriteDocument(&arrayWriter, result);
-	PgbsonWriterEndArray(&finalWriter, &arrayWriter);
+	PgbsonWriterEndArray(finalWriter, &arrayWriter);
 
-	PgbsonWriterAppendUtf8(&finalWriter, "$db", 3, databaseName);
-
-	PG_RETURN_POINTER(PgbsonWriterGetPgbson(&finalWriter));
+	PgbsonWriterAppendUtf8(finalWriter, "$db", 3, databaseName);
 }
 
 
