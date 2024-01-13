@@ -86,7 +86,12 @@ void MarkCurrentCommandUsed() {
 bool YBCIsSingleRowTxnCapableRel(ResultRelInfo *resultRelInfo)
 {
 	bool has_triggers = resultRelInfo->ri_TrigDesc && resultRelInfo->ri_TrigDesc->numtriggers > 0;
-	bool has_indices = YBCRelInfoHasSecondaryIndices(resultRelInfo);
+	/*
+	 * It would be nice to use YBCRelInfoHasSecondaryIndices(resultRelInfo)
+	 * instead of the below, but that doesn't work because the callers (2 of 2
+	 * at the time of writing) do not have that information populated yet.
+	 */
+	bool has_indices = YBRelHasSecondaryIndices(resultRelInfo->ri_RelationDesc);
 	return !has_indices && !has_triggers;
 }
 
