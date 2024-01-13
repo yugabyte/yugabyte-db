@@ -94,7 +94,8 @@ static const SkippableError SkippableErrors[] = {
 	{ 2600, "column cannot have more than 2000 dimensions for ivfflat index" },
 	{ 261 /* Postgres ERRCODE_PROGRAM_LIMIT_EXCEEDED */, "index row size " },
 	{ 261 /* ERRCODE_PROGRAM_LIMIT_EXCEEDED */, "memory required is " },
-	{ 687865923, "unsupported language: " }
+	{ 687865923, "unsupported language: " },
+	{ 687882611, "Can't extract geo keys" }
 };
 static const int NumberOfSkippableErrors = sizeof(SkippableErrors) /
 										   sizeof(SkippableError);

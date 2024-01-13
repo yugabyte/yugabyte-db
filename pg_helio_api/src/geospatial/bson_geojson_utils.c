@@ -504,20 +504,6 @@ WriteBufferGeoJsonMultiPoints(const bson_value_t *multiPointValue, const GeoJson
 							GEO_HINT_PREFIX(state->errorCtxt))));
 		}
 
-		if (duplicateFirst != -1 && duplicateSecond != -1)
-		{
-			RETURN_FALSE_IF_ERROR_NOT_EXPECTED(
-				shouldThrowError, (
-					errcode(GEO_ERROR_CODE(state->errorCtxt)),
-					errmsg("%sLoop is not valid: %s Duplicate vertices: %d and %d",
-						   GEO_ERROR_PREFIX(state->errorCtxt),
-						   BsonValueToJsonForLogging(multiPointValue),
-						   duplicateFirst, duplicateSecond),
-					errhint("%sLoop is not valid, Duplicate vertices found at: %d and %d",
-							GEO_HINT_PREFIX(state->errorCtxt),
-							duplicateFirst, duplicateSecond)));
-		}
-
 		memset(&point, 0, sizeof(Point));
 
 		const bson_value_t *value = bson_iter_value(&multiPointsValueIter);
@@ -533,6 +519,20 @@ WriteBufferGeoJsonMultiPoints(const bson_value_t *multiPointValue, const GeoJson
 		if (isPolyOrLinestring && point.x == last.x && point.y == last.y)
 		{
 			continue;
+		}
+
+		if (duplicateFirst != -1 && duplicateSecond != -1)
+		{
+			RETURN_FALSE_IF_ERROR_NOT_EXPECTED(
+				shouldThrowError, (
+					errcode(GEO_ERROR_CODE(state->errorCtxt)),
+					errmsg("%sLoop is not valid: %s Duplicate vertices: %d and %d",
+						   GEO_ERROR_PREFIX(state->errorCtxt),
+						   BsonValueToJsonForLogging(multiPointValue),
+						   duplicateFirst, duplicateSecond),
+					errhint("%sLoop is not valid, Duplicate vertices found at: %d and %d",
+							GEO_HINT_PREFIX(state->errorCtxt),
+							duplicateFirst, duplicateSecond)));
 		}
 
 		/*
