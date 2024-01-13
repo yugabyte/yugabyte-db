@@ -15,7 +15,7 @@ type: docs
 
 This tutorial outlines the steps required to build a scalable, generative AI application using the Azure OpenAI Service and YugabyteDB.
 
-Follow the guide to learn how to programmatically interface with the Azure OpenAI GPT and Embeddings models, store embeddings in YugabyteDB, and perform a similarity search across a distributed YugabyteDB cluster with the [pgvector extension](https://github.com/pgvector/pgvector).
+Follow the guide to learn how to programmatically interface with the Azure OpenAI GPT and Embeddings models, store embeddings in YugabyteDB, and perform a similarity search across a distributed YugabyteDB cluster using the [pgvector extension](../../../explore/ysql-language-features/pg-extensions/extension-pgvector/).
 
 The [sample application](https://github.com/YugabyteDB-Samples/yugabytedb-azure-openai-lodging-service) we will use is a lodging recommendations service for travelers going to San Francisco. It supports two distinct modes:
 
@@ -87,25 +87,25 @@ mkdir ~/yb_docker_data
 
 docker network create custom-network
 
-docker run -d --name yugabytedb_node1 --net custom-network \
+docker run -d --name yugabytedb-node1 --net custom-network \
     -p 15433:15433 -p 7001:7000 -p 9001:9000 -p 5433:5433 \
     -v ~/yb_docker_data/node1:/home/yugabyte/yb_data --restart unless-stopped \
     yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
     bin/yugabyted start \
     --base_dir=/home/yugabyte/yb_data --background=false
 
-docker run -d --name yugabytedb_node2 --net custom-network \
+docker run -d --name yugabytedb-node2 --net custom-network \
     -p 15434:15433 -p 7002:7000 -p 9002:9000 -p 5434:5433 \
     -v ~/yb_docker_data/node2:/home/yugabyte/yb_data --restart unless-stopped \
     yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
-    bin/yugabyted start --join=yugabytedb_node1 \
+    bin/yugabyted start --join=yugabytedb-node1 \
     --base_dir=/home/yugabyte/yb_data --background=false
 
-docker run -d --name yugabytedb_node3 --net custom-network \
+docker run -d --name yugabytedb-node3 --net custom-network \
     -p 15435:15433 -p 7003:7000 -p 9003:9000 -p 5435:5433 \
     -v ~/yb_docker_data/node3:/home/yugabyte/yb_data --restart unless-stopped \
     yugabytedb/yugabyte:{{< yb-version version="preview" format="build">}} \
-    bin/yugabyted start --join=yugabytedb_node1 \
+    bin/yugabyted start --join=yugabytedb-node1 \
     --base_dir=/home/yugabyte/yb_data --background=false
 ```
 
@@ -300,6 +300,8 @@ The application performs the following steps to generate the recommendations (se
 
 The Azure OpenAI Service simplifies the process of designing, building, and productizing generative AI applications by offering developer APIs for various major programming languages.
 
-YugabyteDB enhances the scalability of these applications by distributing data and embeddings across a cluster of nodes, facilitating similarity searches on a large scale.
+With the help of the PostgreSQL pgvector extension, YugabyteDB enhances the scalability of these applications by distributing data and embeddings across a cluster of nodes, facilitating similarity searches on a large scale.
 
 To learn more about additional updates to YugabyteDB with release 2.19, check out [Dream Big, Go Bigger: Turbocharging PostgreSQL](https://www.yugabyte.com/blog/postgresql-turbocharging/).
+
+To learn how to run this application using Google Cloud, see [Build scalable generative AI applications with Google Vertex AI and YugabyteDB](../../google/google-vertex-ai/).
