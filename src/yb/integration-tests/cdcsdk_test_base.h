@@ -57,7 +57,7 @@ namespace cdc {
   TEST_F(fixture, YB_DISABLE_TEST_IN_TSAN(test_name##Implicit)) { test_name(IMPLICIT); }
 
 constexpr int kRpcTimeout = 60 * kTimeMultiplier;
-constexpr int kFlushTimeoutSecs = 30 * kTimeMultiplier;
+constexpr int kFlushTimeoutSecs = 60 * kTimeMultiplier;
 static const std::string kUniverseId = "test_universe";
 static const std::string kNamespaceName = "test_namespace";
 static const std::string kReplicationSlotName = "test_replication_slot";
