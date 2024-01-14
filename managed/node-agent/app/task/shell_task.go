@@ -11,7 +11,6 @@ import (
 	"node-agent/util"
 	"os"
 	"os/exec"
-	"regexp"
 	"sort"
 	"strconv"
 	"strings"
@@ -49,7 +48,6 @@ const (
 )
 
 var (
-	envRegex     = regexp.MustCompile("[A-Za-z_0-9]+=.*")
 	redactParams = map[string]bool{
 		"jwt":       true,
 		"api_token": true,
@@ -140,7 +138,7 @@ func (s *ShellTask) command(
 	return cmd, nil
 }
 
-func (s *ShellTask) userEnv(ctx context.Context, userDetail *util.UserDetail) []string {
+func (s *ShellTask) userEnv(ctx context.Context, userDetail *util.UserDetail) ([]string, error) {
 	// Approximate capacity of 100.
 	env := make([]string, 0, 100)
 	// Interactive shell to source ~/.bashrc.
@@ -153,19 +151,59 @@ func (s *ShellTask) userEnv(ctx context.Context, userDetail *util.UserDetail) []
 		env = append(env, os.Environ()...)
 		util.FileLogger().Warnf(
 			ctx, "Failed to run command to get env variables. Error: %s", err.Error())
-		return env
+		return env, err
 	}
 	defer ptty.Close()
-	ptty.Write([]byte("env 2>/dev/null\n"))
+	// Run env and end each output line with NULL instead of newline.
+	ptty.Write([]byte("env -0 2>/dev/null\n"))
 	ptty.Write([]byte("exit 0\n"))
 	// End of transmission.
 	ptty.Write([]byte{4})
 	scanner := bufio.NewScanner(ptty)
-	for scanner.Scan() {
-		line := scanner.Text()
-		if envRegex.MatchString(line) {
-			env = append(env, line)
+	// Custom delimiter to tokenize at NULL byte.
+	scanner.Split(func(data []byte, atEOF bool) (int, []byte, error) {
+		if atEOF && len(data) == 0 {
+			return 0, nil, nil
 		}
+		var token []byte
+		for i, b := range data {
+			if b == 0 {
+				// NULL marker is found.
+				return i + 1, token, nil
+			}
+			if b != '\r' {
+				if token == nil {
+					token = make([]byte, 0, len(data))
+				}
+				token = append(token, b)
+			}
+		}
+		if atEOF {
+			return len(data), token, nil
+		}
+		return 0, nil, nil
+	})
+	beginOutput := false
+	for scanner.Scan() {
+		entry := scanner.Text()
+		sepIdx := strings.Index(entry, "=")
+		if !beginOutput {
+			if sepIdx > 0 {
+				// Remove any preceding input commands followed by newline
+				// as STDIN and STDOUT are the same.
+				nIdx := strings.LastIndex(entry[:sepIdx], "\n")
+				if nIdx >= 0 {
+					entry = entry[nIdx+1:]
+				}
+			}
+			beginOutput = true
+		}
+		if sepIdx > 0 {
+			env = append(env, entry)
+		}
+	}
+	if util.FileLogger().IsDebugEnabled() {
+		util.FileLogger().Debugf(ctx, "Env: %v", env)
 	}
 	err = cmd.Wait()
 	if err != nil {
@@ -173,9 +211,9 @@ func (s *ShellTask) userEnv(ctx context.Context, userDetail *util.UserDetail) []
 		env = append(env, os.Environ()...)
 		util.FileLogger().Warnf(
 			ctx, "Failed to get env variables. Error: %s", err.Error())
-		return env
+		return env, err
 	}
-	return env
+	return env, nil
 }
 
 // Command returns a command with the environment set.
@@ -186,7 +224,7 @@ func (s *ShellTask) Command(ctx context.Context, name string, arg ...string) (*e
 	}
 	util.FileLogger().Debugf(ctx, "Using user: %s, uid: %d, gid: %d",
 		userDetail.User.Username, userDetail.UserID, userDetail.GroupID)
-	env := s.userEnv(ctx, userDetail)
+	env, _ := s.userEnv(ctx, userDetail)
 	cmd, err := s.command(ctx, userDetail, name, arg...)
 	if err != nil {
 		util.FileLogger().Warnf(ctx, "Failed to create command %s. Error: %s", name, err.Error())

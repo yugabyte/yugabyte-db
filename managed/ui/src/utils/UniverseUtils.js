@@ -224,6 +224,10 @@ export const isYbcInstalledInUniverse = (universeDetails) => {
   return universeDetails?.ybcInstalled;
 };
 
+export const isAsymmetricCluster = (cluster) =>
+  isNonEmptyObject(cluster.userIntent.specificGFlags?.perAZ) ||
+  isNonEmptyObject(cluster.userIntent.userIntentOverrides?.azOverrides);
+
 /**
  * Returns an array of unique regions in the universe
  */

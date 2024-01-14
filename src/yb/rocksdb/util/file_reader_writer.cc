@@ -89,7 +89,16 @@ Status RandomAccessFileReader::ReadAndValidate(
     StopWatch sw(env_, effective_statistics, hist_type_,
                  (effective_statistics != nullptr) ? &elapsed : nullptr);
     IOSTATS_TIMER_GUARD(read_nanos);
-    s = file_->ReadAndValidate(offset, n, result, scratch, validator);
+    constexpr auto kMaxReadAttempts = 2;
+    for (size_t read_attempt = 1; read_attempt <= kMaxReadAttempts; ++read_attempt) {
+      s = file_->ReadAndValidate(offset, n, result, scratch, validator);
+      if (s.ok()) {
+        break;
+      }
+      TEST_SYNC_POINT("RandomAccessFileReader::ReadAndValidate:0");
+      LOG(WARNING) << Format("Read attempt #$0 failed in file $1 : $2",
+          read_attempt, file_->filename(), s);
+    }
     IOSTATS_ADD_IF_POSITIVE(bytes_read, result->size());
   }
   if (effective_statistics == stats_ && stats_ != nullptr && file_read_hist_ != nullptr) {
