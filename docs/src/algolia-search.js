@@ -80,6 +80,8 @@ import algoliasearch from 'algoliasearch';
    * Main Docs section HTML.
    */
   function docsSection(hitIs) {
+    const searchText = searchInput.value.trim();
+
     let content = '';
     hitIs.forEach(hit => {
       let pageBreadcrumb = '';
@@ -100,17 +102,26 @@ import algoliasearch from 'algoliasearch';
       }
 
       if (hit._highlightResult.title.matchLevel !== 'full' && hit._highlightResult.description.matchLevel !== 'full') {
-        let partialHeaderMatched = 0;
+        let partialHeaderLength = 0;
+        let partialExactMatch = -1;
         if (hit._highlightResult.headers) {
           hit._highlightResult.headers.every(pageHeader => {
             if (pageHeader.matchLevel) {
               if (pageHeader.matchLevel === 'full') {
                 pageHash = generateHeadingIDs(pageHeader.value);
                 subHead = pageHeader.value.replace(/<em>|<\/em>/g, '');
-              } else if (pageHeader.matchLevel === 'partial' && pageHeader.matchedWords.length > partialHeaderMatched) {
-                partialHeaderMatched = pageHeader.matchedWords.length;
+              } else if (pageHeader.matchLevel === 'partial' && pageHeader.matchedWords.length > partialHeaderLength) {
+                partialHeaderLength = pageHeader.matchedWords.length;
                 pageHash = generateHeadingIDs(pageHeader.value);
                 subHead = pageHeader.value.replace(/<em>|<\/em>/g, '');
+                partialExactMatch = subHead.indexOf(searchText);
+              } else if (pageHeader.matchLevel === 'partial' && pageHeader.matchedWords.length === partialHeaderLength) {
+                const testSubhead = pageHeader.value.replace(/<em>|<\/em>/g, '');
+                if (partialExactMatch === -1 && testSubhead.indexOf(searchText) !== -1) {
+                  partialHeaderLength = pageHeader.matchedWords.length;
+                  pageHash = generateHeadingIDs(pageHeader.value);
+                  subHead = pageHeader.value.replace(/<em>|<\/em>/g, '');
+                }
               }
 
               if (pageHeader.matchLevel === 'full') {
