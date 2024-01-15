@@ -128,7 +128,20 @@ Navigate to **Configs > Infrastructure > Google Cloud Platform** to see a list o
 
 To view a provider, select it in the list of GCP Configs to display the **Overview**.
 
-To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of options.
+To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of fields such as the following:
+
+- Provider Name
+- Credential Type. You can upload a new Google Service Account JSON file (`gceApplicationCredentials`). Note that the `project_id` field in the file should not have a new entry. If the file contains a new GCE project,
+
+    ```json
+    {
+      "type": "service_account",
+      "project_id": "new-project-yb",
+       ...
+    }
+    ```
+
+    then the backend request fails and you will receive a toast notification via the UI indicating that you can't change the GCE project for an in-use provider.
 
 To view the universes created using the provider, select **Universes**.
 
