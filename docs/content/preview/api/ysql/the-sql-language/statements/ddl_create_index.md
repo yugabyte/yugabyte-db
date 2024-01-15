@@ -246,7 +246,7 @@ CREATE UNIQUE INDEX users_email_idx ON users(lower(email));
 
 Creating a unique index prevents inserting duplicate email addresses using a different case.
 
-Note that index expressions are only evaluated at index time, to use the index for a specific query the expression must match exactly:
+Note that index expressions are only evaluated at index time, so to use the index for a specific query the expression must match exactly. 
 
 ```plpgsql
 SELECT * FROM users WHERE lower(email)='user@example.com'; # will use the index created above
