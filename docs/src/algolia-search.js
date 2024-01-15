@@ -110,6 +110,10 @@ import algoliasearch from 'algoliasearch';
               if (pageHeader.matchLevel === 'full') {
                 pageHash = generateHeadingIDs(pageHeader.value);
                 subHead = pageHeader.value.replace(/<em>|<\/em>/g, '');
+
+                if (subHead.indexOf(searchText) !== -1) {
+                  return false;
+                }
               } else if (pageHeader.matchLevel === 'partial' && pageHeader.matchedWords.length > partialHeaderLength) {
                 partialHeaderLength = pageHeader.matchedWords.length;
                 pageHash = generateHeadingIDs(pageHeader.value);
@@ -122,10 +126,6 @@ import algoliasearch from 'algoliasearch';
                   pageHash = generateHeadingIDs(pageHeader.value);
                   subHead = pageHeader.value.replace(/<em>|<\/em>/g, '');
                 }
-              }
-
-              if (pageHeader.matchLevel === 'full') {
-                return false;
               }
             }
 
