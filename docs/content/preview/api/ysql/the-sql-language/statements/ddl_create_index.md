@@ -244,7 +244,7 @@ CREATE TABLE users(id BIGSERIAL PRIMARY KEY, email TEXT NOT NULL);
 CREATE UNIQUE INDEX users_email_idx ON users(lower(email));
 ```
 
-This would prevent inserting duplicate email addresses using a different case.
+Creating a unique index prevents inserting duplicate email addresses using a different case.
 
 Note that index expressions are only evaluated at index time, to use the index for a specific query the expression must match exactly:
 
