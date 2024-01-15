@@ -3472,7 +3472,8 @@ Status CDCServiceImpl::CheckStreamActive(
 Status CDCServiceImpl::CheckTabletNotOfInterest(
     const TabletStreamInfo& producer_tablet, int64_t last_active_time_passed, bool deletion_check) {
   // This is applicable only to Consistent Snapshot Streams,
-  auto record = VERIFY_RESULT(GetStream(producer_tablet.stream_id));
+  auto record = VERIFY_RESULT(
+      GetStream(producer_tablet.stream_id, RefreshStreamMapOption::kIfInitiatedState));
   if (!record->GetSnapshotOption().has_value() || !record->GetStreamCreationTime().has_value()) {
     return Status::OK();
   }
