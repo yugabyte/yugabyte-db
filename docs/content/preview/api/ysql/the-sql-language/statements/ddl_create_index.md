@@ -234,7 +234,7 @@ yugabyte=# create index shipment_delivery on shipments(delivery_status, address,
 
 ### Expression indexes
 
-An index column need not be just a column of the underlying table, but can be a function or scalar expression computed from one or more columns of the table. This feature is useful to obtain fast access to tables based on the results of computations.
+An index column need not be just a column of the underlying table, but can be a function, or scalar expression computed from one or more columns of the table. You can also obtain fast access to tables based on the results of computations.
 
 A simple example is indexing unique emails in a users table:
 
