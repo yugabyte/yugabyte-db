@@ -10,7 +10,7 @@ menu:
   preview_faq:
     identifier: faq-api-compatibility
     parent: faq
-    weight: 20
+    weight: 60
 type: docs
 rightNav:
   hideH3: true

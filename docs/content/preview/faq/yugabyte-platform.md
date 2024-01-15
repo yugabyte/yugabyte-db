@@ -9,7 +9,7 @@ menu:
   preview_faq:
     identifier: faq-yugabyte-platform
     parent: faq
-    weight: 50
+    weight: 20
 type: docs
 rightNav:
   hideH3: true
