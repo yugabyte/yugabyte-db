@@ -42,7 +42,9 @@ import { RuntimeConfigKey } from '../../../redesign/helpers/constants';
 import {
   SoftwareUpgradeState,
   getcurrentUniverseFailedTask,
-  SoftwareUpgradeTaskType
+  SoftwareUpgradeTaskType,
+  getUniverseStatus,
+  UniverseState
 } from '../helpers/universeHelpers';
 
 class DatabasePanel extends PureComponent {
@@ -846,6 +848,10 @@ export default class UniverseOverviewNew extends Component {
     const dedicatedNodes = userIntent?.dedicatedNodes;
     const failedTask = getcurrentUniverseFailedTask(universeInfo, tasks.customerTaskList);
     const ybSoftwareUpgradeState = universeDetails?.softwareUpgradeState;
+    const universeStatus = getUniverseStatus(universeInfo);
+    const isUpgradePreCheckFailed =
+      universeStatus.state === UniverseState.GOOD &&
+      failedTask?.type === SoftwareUpgradeTaskType.SOFTWARE_UPGRADE;
 
     const isRollBackFeatureEnabled =
       runtimeConfigs?.data?.configEntries?.find(
@@ -866,7 +872,8 @@ export default class UniverseOverviewNew extends Component {
           [
             SoftwareUpgradeTaskType.ROLLBACK_UPGRADE,
             SoftwareUpgradeTaskType.SOFTWARE_UPGRADE
-          ].includes(failedTask?.type) && (
+          ].includes(failedTask?.type) &&
+          !isUpgradePreCheckFailed && (
             <Row className="p-16">
               <FailedBanner universeData={universeInfo} taskDetail={failedTask} />
             </Row>
