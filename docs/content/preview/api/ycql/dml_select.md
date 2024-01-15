@@ -59,7 +59,7 @@ Where
 - `ALLOW FILTERING` is provided for syntax compatibility with Cassandra. You can always filter on all columns.
 - Reads default to `QUORUM` and read from the tablet-leader.
 - To read from followers use `ONE` consistency level. 
-- To get the benefit of local reads, in addition to specifying the consistency level of `ONE`, the `region` also has to be set in the client driver to indicate where the request is coming from, and it should match the `--placement_region` argument for the yb-tservers in that region.
+- To benefit from local reads, in addition to specifying the consistency level of `ONE`, set the `region` also in the client driver to indicate where the request is coming from, and it should match the `--placement_region` argument for the yb-tservers in that region.
 
 ### `ORDER BY` clause
 
