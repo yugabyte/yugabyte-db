@@ -194,7 +194,11 @@ Navigate to **Configs > Infrastructure > Managed Kubernetes Service** to see a l
 
 To view a provider, select it in the list of Managed Kubernetes Service Configs to display the **Overview**.
 
-To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of options.
+To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset  of fields such as the following:
+
+- Provider Name
+- Pull Secret
+- Kube Config (kubeConfigName, kubeConfigContent, kubeConfig fields in the Kube Config File)
 
 To view the universes created using the provider, select **Universes**.
 

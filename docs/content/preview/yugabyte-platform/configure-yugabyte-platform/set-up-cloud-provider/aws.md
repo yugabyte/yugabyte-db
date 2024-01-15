@@ -98,11 +98,7 @@ Navigate to **Configs > Infrastructure > Amazon Web Services** to see a list of 
 
 To view a provider, select it in the list of AWS Configs to display the **Overview**.
 
-To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of fields such as the following:
-
-- Provider Name
-- Access Key ID
-- Secret Access Key
+To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of options.
 
 To view the universes created using the provider, select **Universes**.
 
