@@ -1,0 +1,3 @@
+-- add preconsistent function to single path ops for fast intersections.
+ALTER OPERATOR FAMILY __API_CATALOG_SCHEMA__.bson_rum_single_path_ops USING __EXTENSION_OBJECT__(_rum) ADD FUNCTION 7 (__CORE_SCHEMA__.bson) __API_CATALOG_SCHEMA__.gin_bson_pre_consistent(internal,smallint, __CORE_SCHEMA__.bson,int,internal,internal,internal,internal);
+ALTER OPERATOR FAMILY __API_CATALOG_SCHEMA__.bson_rum_single_path_ops USING __EXTENSION_OBJECT__(_rum) ADD FUNCTION 12 (__CORE_SCHEMA__.bson) __API_CATALOG_SCHEMA__.gin_bson_can_pre_consistent(smallint, __CORE_SCHEMA__.bson, int, internal, internal, internal);

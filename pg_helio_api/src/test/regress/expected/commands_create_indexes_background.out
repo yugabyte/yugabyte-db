@@ -1,0 +1,31 @@
+SET search_path TO helio_api,helio_core,helio_api_internal;
+SET helio_api.next_collection_id TO 5500;
+SET helio_api.next_collection_index_id TO 5500;
+\d helio_api_catalog.helio_index_queue;
+                 Table "helio_api_catalog.helio_index_queue"
+      Column      |           Type           | Collation | Nullable | Default 
+------------------+--------------------------+-----------+----------+---------
+ index_cmd        | text                     |           | not null | 
+ cmd_type         | character(1)             |           |          | 
+ index_id         | integer                  |           | not null | 
+ index_cmd_status | integer                  |           |          | 1
+ global_pid       | bigint                   |           |          | 
+ start_time       | timestamp with time zone |           |          | 
+ collection_id    | bigint                   |           | not null | 
+ comment          | bson                     |           |          | 
+ attempt          | smallint                 |           |          | 
+ update_time      | timestamp with time zone |           |          | now()
+Indexes:
+    "helio_index_queue_cmdtype_collectionid_cmdstatus" btree (cmd_type, collection_id, index_cmd_status)
+    "helio_index_queue_indexid_cmdtype" btree (index_id, cmd_type)
+Check constraints:
+    "helio_index_queue_cmd_type_check" CHECK (cmd_type = ANY (ARRAY['C'::bpchar, 'R'::bpchar]))
+
+SELECT helio_api.create_indexes_background('db', NULL);
+ERROR:  arg cannot be NULL
+SELECT helio_api.create_indexes_background('db', '{}');
+                                                                                                                     create_indexes_background                                                                                                                     
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""raw"" : { ""defaultShard"" : { ""ok"" : { ""$numberInt"" : ""0"" }, ""errmsg"" : ""BSON field 'createIndexes.indexes' is missing but a required field"", ""code"" : { ""$numberInt"" : ""687865858"" } } }, ""ok"" : { ""$numberInt"" : ""0"" } }",f,"{ }")
+(1 row)
+

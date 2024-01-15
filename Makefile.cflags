@@ -1,0 +1,58 @@
+
+
+LIBBSON := $(shell pkg-config --cflags libbson-static-1.0)
+INTEL_DECIMAL_MATH_LIB = $(shell pkg-config --cflags intelmathlib)
+PCRE2_LIB = $(shell pkg-config --cflags libpcre2-8)
+
+
+PG_CPPFLAGS = $(shell pkg-config --cflags libbson-static-1.0) -I$(libpq_srcdir) $(INTEL_DECIMAL_MATH_LIB) $(PCRE2_LIB) -Isrc -Iinclude -Ibuild/include/
+PG_LDFLAGS = $(shell pkg-config --static --libs --cflags libbson-static-1.0) $(shell pkg-config --static --libs --cflags intelmathlib) $(shell pkg-config --static --libs --cflags libpcre2-8) -L/usr/lib
+
+ifeq ($(CC),gcc)
+    PG_CFLAGS = -std=gnu99 -Wall -Wextra -Werror -Wno-declaration-after-statement -Wno-unused-parameter -Wno-maybe-uninitialized -Wno-implicit-fallthrough $(LIBBSON) $(INTEL_DECIMAL_MATH_LIB) $(PCRE2_LIB)
+else
+    PG_CFLAGS = -std=gnu99 -Wall -Wextra -Werror -Wno-declaration-after-statement -Wno-unused-parameter -Wno-implicit-fallthrough $(LIBBSON) $(INTEL_DECIMAL_MATH_LIB) $(PCRE2_LIB)
+endif
+
+ifneq ($(SKIP_API_SCHEMA),yes)
+    ifndef API_SCHEMA_NAME
+    $(error API_SCHEMA_NAME is not set)
+    endif
+
+    ifndef API_SCHEMA_INTERNAL_NAME
+    $(error API_SCHEMA_INTERNAL_NAME is not set)
+    endif
+
+    ifndef API_CATALOG_SCHEMA_NAME
+    $(error API_CATALOG_SCHEMA_NAME is not set)
+    endif
+
+    ifndef API_DATA_SCHEMA_NAME
+    $(error API_DATA_SCHEMA_NAME is not set)
+    endif
+
+    ifndef API_ADMIN_ROLE
+    $(error API_ADMIN_ROLE is not set)
+    endif
+
+    EXTENSION_SQL_ONLY_DEFINES = -D__API_CATALOG_SCHEMA__=$(API_CATALOG_SCHEMA_NAME) \
+                                 -D__API_SCHEMA__=$(API_SCHEMA_NAME) \
+                                 -D__API_SCHEMA_INTERNAL__=$(API_SCHEMA_INTERNAL_NAME) \
+                                 -D__API_DATA_SCHEMA__=$(API_DATA_SCHEMA_NAME) \
+                                 -D__API_ADMIN_ROLE_STR__=\'$(API_ADMIN_ROLE)\' \
+                                 -D__API_ADMIN_ROLE__=$(API_ADMIN_ROLE)
+endif
+
+ifndef CORE_SCHEMA_NAME
+    $(error CORE_SCHEMA_NAME is not set)
+endif
+
+ifndef EXTENSION_OBJECT_PREFIX
+    $(error EXTENSION_OBJECT_PREFIX is not set)
+endif
+
+
+EXTENSION_SQL_ONLY_DEFINES += -D__EXTENSION_OBJECT_PREFIX__=$(EXTENSION_OBJECT_PREFIX)
+EXTENSION_SQL_ONLY_DEFINES += -D__CORE_SCHEMA__=$(CORE_SCHEMA_NAME)
+
+SQL_DEFINES = $(EXTENSION_SQL_ONLY_DEFINES)

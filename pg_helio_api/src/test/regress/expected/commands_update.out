@@ -1,0 +1,2621 @@
+SET search_path TO helio_api,helio_core,helio_api_catalog;
+SET helio_api.next_collection_id TO 1500;
+SET helio_api.next_collection_index_id TO 1500;
+select 1 from helio_api.insert_one('db', 'updateme', '{"a":1,"_id":1,"b":1}');
+NOTICE:  creating collection
+ ?column? 
+----------
+        1
+(1 row)
+
+select 1 from helio_api.insert_one('db', 'updateme', '{"a":2,"_id":2,"b":2}');
+ ?column? 
+----------
+        1
+(1 row)
+
+select 1 from helio_api.insert_one('db', 'updateme', '{"a":3,"_id":3,"b":3}');
+ ?column? 
+----------
+        1
+(1 row)
+
+select 1 from helio_api.insert_one('db', 'updateme', '{"a":4,"_id":4,"b":4}');
+ ?column? 
+----------
+        1
+(1 row)
+
+select 1 from helio_api.insert_one('db', 'updateme', '{"a":5,"_id":5,"b":5}');
+ ?column? 
+----------
+        1
+(1 row)
+
+select 1 from helio_api.insert_one('db', 'updateme', '{"a":6,"_id":6,"b":6}');
+ ?column? 
+----------
+        1
+(1 row)
+
+select 1 from helio_api.insert_one('db', 'updateme', '{"a":7,"_id":7,"b":7}');
+ ?column? 
+----------
+        1
+(1 row)
+
+select 1 from helio_api.insert_one('db', 'updateme', '{"a":8,"_id":8,"b":8}');
+ ?column? 
+----------
+        1
+(1 row)
+
+select 1 from helio_api.insert_one('db', 'updateme', '{"a":9,"_id":9,"b":9}');
+ ?column? 
+----------
+        1
+(1 row)
+
+select 1 from helio_api.insert_one('db', 'updateme', '{"a":10,"_id":10,"b":10}');
+ ?column? 
+----------
+        1
+(1 row)
+
+-- exercise invalid update syntax errors
+select helio_api.update('db', NULL);
+ERROR:  update document cannot be NULL
+select helio_api.update(NULL, '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":true}]}');
+ERROR:  database name cannot be NULL
+select helio_api.update('db', '{"updates":[{"q":{},"u":{"$set":{"b":0}},"multi":true}]}');
+ERROR:  BSON field 'update.update' is missing but a required field
+select helio_api.update('db', '{"update":"updateme"}');
+ERROR:  BSON field 'update.updates' is missing but a required field
+select helio_api.update('db', '{"update":["updateme"], "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":true}]}');
+ERROR:  collection name has invalid type array
+select helio_api.update('db', '{"update":"updateme", "updates":{"q":{},"u":{"$set":{"b":0}},"multi":true}}');
+ERROR:  BSON field 'update.updates' is the wrong type 'object', expected type 'array'
+HINT:  BSON field 'update.updates' is the wrong type 'object', expected type 'array'
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":true}], "extra":1}');
+ERROR:  BSON field 'update.extra' is an unknown field
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{}}]}');
+ERROR:  BSON field 'update.updates.u' is missing but a required field
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{},"multi":true}]}');
+ERROR:  BSON field 'update.updates.u' is missing but a required field
+select helio_api.update('db', '{"update":"updateme", "updates":[{"multi":true}]}');
+ERROR:  BSON field 'update.updates.q' is missing but a required field
+select helio_api.update('db', '{"update":"updateme", "updates":[{"u":{"$set":{"b":0}}}]}');
+ERROR:  BSON field 'update.updates.q' is missing but a required field
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":"text"}]}');
+ERROR:  BSON field 'update.updates.u' is the wrong type 'string', expected type 'object' or 'array'
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":[],"u":{"$set":{"b":0}},"multi":true}]}');
+ERROR:  BSON field 'update.updates.q' is the wrong type 'array', expected type 'object'
+HINT:  BSON field 'update.updates.q' is the wrong type 'array', expected type 'object'
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":1}]}');
+ERROR:  BSON field 'update.updates.multi' is the wrong type 'int', expected type 'bool'
+HINT:  BSON field 'update.updates.multi' is the wrong type 'int', expected type 'bool'
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":true,"extra":1}]}');
+ERROR:  BSON field 'update.updates.extra' is an unknown field
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":true}],"ordered":1}');
+ERROR:  BSON field 'update.ordered' is the wrong type 'int', expected type 'bool'
+HINT:  BSON field 'update.ordered' is the wrong type 'int', expected type 'bool'
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$bork":{"b":0}},"multi":true}]}');
+NOTICE:  using bson_query_match implementation
+                                                                                                                                                                                  update                                                                                                                                                                                   
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687865865"" }, ""errmsg"" : ""Unknown modifier: $bork. Expected a valid update modifier or pipeline-style update specified as an array"" } ] }",f)
+(1 row)
+
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"upsert":[]}]}');
+ERROR:  BSON field 'update.updates.upsert' is the wrong type 'array', expected type 'bool'
+HINT:  BSON field 'update.updates.upsert' is the wrong type 'array', expected type 'bool'
+-- Disallow writes to system.views
+select helio_api.update('db', '{"update":"system.views", "updates":[{"q":{},"u":{"$set":{"b":0}}}]}');
+ERROR:  cannot write to db.system.views
+-- update all
+begin;
+SET LOCAL search_path TO '';
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":true}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                             update                                                              
+---------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""10""}, ""n"" : { ""$numberLong"" : ""10""} }",t)
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document OPERATOR(helio_api_catalog.@@) '{"b":0}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+    10
+(1 row)
+
+rollback;
+-- update some
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":{"$lte":3}},"u":{"$set":{"b":0}},"multi":true}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""3""}, ""n"" : { ""$numberLong"" : ""3""} }",t)
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"b":0}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     3
+(1 row)
+
+rollback;
+-- update multi with a replace is not supported
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":{"$lte":3}},"u":{"b":0},"multi":true}]}');
+                                                                                                                                                           update                                                                                                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""33685634"" }, ""errmsg"" : ""multi update is not supported for replacement-style update"" } ] }",f)
+(1 row)
+
+rollback;
+-- update multi with an aggregation pipeline is supported
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":{"$lte":3}},"u":[{"$unset":["b"]}],"multi":true}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""3""}, ""n"" : { ""$numberLong"" : ""3""} }",t)
+(1 row)
+
+rollback;
+-- update all from non-existent collection
+select helio_api.update('db', '{"update":"notexists", "updates":[{"q":{},"u":{"$set":{"b":0}}}]}');
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""} }",t)
+(1 row)
+
+-- query syntax errors are added the response
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":{"$ltr":5}},"u":{"$set":{"b":0}},"multi":true}]}');
+NOTICE:  using bson_query_match implementation
+                                                                                                                                         update                                                                                                                                          
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown operator: $ltr"" } ] }",f)
+(1 row)
+
+-- when ordered, expect only first update to be executed
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":1},"u":{"$set":{"b":0}}},{"q":{"$a":2},"u":{"$set":{"b":0}}},{"q":{"a":3},"u":{"$set":{"b":0}}}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                                                                                                                                                             update                                                                                                                                                                                              
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown top level operator: $a. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" } ] }",f)
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"b":0}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":1},"u":{"$set":{"b":0}}},{"q":{"$a":2},"u":{"$set":{"b":0}}},{"q":{"a":3},"u":{"$set":{"b":0}}}],"ordered":true}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                                                                                                                                                             update                                                                                                                                                                                              
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown top level operator: $a. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" } ] }",f)
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"b":0}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+-- when not ordered, expect first and last update to be executed
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":1},"u":{"$set":{"b":0}}},{"q":{"$a":2},"u":{"$set":{"b":0}}},{"q":{"a":3},"u":{"$set":{"b":0}}}],"ordered":false}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                                                                                                                                                             update                                                                                                                                                                                              
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""2""}, ""n"" : { ""$numberLong"" : ""2""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown top level operator: $a. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" } ] }",f)
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme');
+ count 
+-------
+    10
+(1 row)
+
+rollback;
+-- update 1 without filters is supported for unsharded collections
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":false}]}');
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"b":0}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+-- update 1 with a replace that preserves the _id
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":3},"u":{"b":0},"multi":false}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+select document from helio_api.collection('db', 'updateme') where document @@ '{"b":0}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                             document                             
+------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "3" }, "b" : { "$numberInt" : "0" } }
+(1 row)
+
+rollback;
+-- update 1 with a replace that tries to change the _id
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":3},"u":{"_id":0,"b":0},"multi":false}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                                                                                                                                         update                                                                                                                                                                         
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687865922"" }, ""errmsg"" : ""After applying the update, the (immutable) field '_id' was found to have been altered"" } ] }",f)
+(1 row)
+
+rollback;
+-- update 1 is retryable on unsharded collection (second call is a noop)
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":1},"u":{"$inc":{"b":1}},"multi":false}]}', NULL, 'xact-1');
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":1},"u":{"$inc":{"b":1}},"multi":false}]}', NULL, 'xact-1');
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+select document from helio_api.collection('db', 'updateme') where document @@ '{"a":1}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                            document                                            
+------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "2" } }
+(1 row)
+
+-- third call is considered a new try
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":1},"u":{"$inc":{"b":1}},"multi":false}]}', NULL, 'xact-1');
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+select document from helio_api.collection('db', 'updateme') where document @@ '{"a":1}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                            document                                            
+------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "3" } }
+(1 row)
+
+rollback;
+-- update 1 is supported in the _id case
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":6},"u":{"$set":{"b":0}},"multi":false}]}');
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+select document from helio_api.collection('db', 'updateme') where document @@ '{"_id":6}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                            document                                            
+------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "6" }, "b" : { "$numberInt" : "0" } }
+(1 row)
+
+rollback;
+-- update 1 is supported in the multiple identical _id case
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"$and":[{"_id":6},{"_id":6}]},"u":{"$set":{"b":0}},"multi":false}]}');
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+select document from helio_api.collection('db', 'updateme') where document @@ '{"_id":6}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                            document                                            
+------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "6" }, "b" : { "$numberInt" : "0" } }
+(1 row)
+
+rollback;
+-- update 1 is supported in the multiple distinct _id case
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"$and":[{"_id":6},{"_id":5}]},"u":{"$set":{"b":0}},"multi":false}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""} }",t)
+(1 row)
+
+select document from helio_api.collection('db', 'updateme') where document @@ '{"_id":6}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                            document                                            
+------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "6" }, "b" : { "$numberInt" : "6" } }
+(1 row)
+
+rollback;
+-- update some with range filter that excludes all rows
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":{"$lt":0}},"u":{"$set":{"b":0,"_id":11}},"multi":true,"upsert":true}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                                                                               update                                                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""1""}, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""11"" } } ] }",t)
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"b":0}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+-- upsert 1 with range filter is supported for unsharded collections
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"b":{"$lt":0}},"u":{"$set":{"b":0,"_id":11}},"multi":false,"upsert":true}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                                                                               update                                                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""1""}, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""11"" } } ] }",t)
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"b":0}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+-- upsert 1 with a replace that preserves the _id
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":11},"u":{"b":0},"multi":false,"upsert":true}]}');
+                                                                                                               update                                                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""1""}, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""11"" } } ] }",t)
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"b":0}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+-- upsert 1 with a replace that set the _id
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":33},"u":{"_id":0,"b":0},"multi":false,"upsert":true}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                                                                               update                                                                                                               
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""1""}, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""0"" } } ] }",t)
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"_id":0}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+-- upsert 1 is retryable on unsharded collection (second call is a noop)
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":33,"_id":11},"u":{"$inc":{"c":33}},"multi":false,"upsert":true}]}', NULL, 'xact-ups');
+                                                                                                               update                                                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""1""}, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""11"" } } ] }",t)
+(1 row)
+
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":33,"_id":11},"u":{"$inc":{"c":33}},"multi":false,"upsert":true}]}', NULL, 'xact-ups');
+                                                                                                               update                                                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""1""}, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""11"" } } ] }",t)
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"c":33}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     1
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"c":66}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     0
+(1 row)
+
+-- third call is considered a new try
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":33,"_id":11},"u":{"$inc":{"c":33}},"multi":false,"upsert":true}]}', NULL, 'xact-ups');
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"c":33}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     0
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"c":66}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+-- upsert 1 is supported in the _id case
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":33},"u":{"$set":{"b":0}},"multi":false,"upsert":true}]}');
+                                                                                                               update                                                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""1""}, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""33"" } } ] }",t)
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"_id":33}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+-- test _id extraction from update
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":33},"u":{"$set":{"b":3}},"multi":false,"upsert":true}]}');
+                                                                                                               update                                                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""1""}, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""33"" } } ] }",t)
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"_id":33, "b":3}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     1
+(1 row)
+
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":33},"u":{"$set":{"b":4}},"multi":false,"upsert":true}]}');
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"_id":33, "b":4}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":33},"u":{"$set":{"b":0}},"multi":false,"upsert":true}]}');
+                                                                                                               update                                                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""1""}, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""33"" } } ] }",t)
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"_id":33, "b":0}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     1
+(1 row)
+
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":33},"u":{"$set":{"b":1}},"multi":true,"upsert":true}]}');
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"_id":33, "b":1}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+-- shard the collection
+select helio_api.shard_collection('db', 'updateme', '{"a":"hashed"}', false);
+ shard_collection 
+------------------
+ 
+(1 row)
+
+-- make sure we get the expected results after sharding a collection
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":{"$lte":5}},"u":{"$set":{"b":0}},"multi":true}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""5""}, ""n"" : { ""$numberLong"" : ""5""} }",t)
+(1 row)
+
+select document from helio_api.collection('db', 'updateme') where document @@ '{"a":1}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                            document                                            
+------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "0" } }
+(1 row)
+
+select document from helio_api.collection('db', 'updateme') where document @@ '{"a":10}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                             document                                              
+---------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "10" }, "a" : { "$numberInt" : "10" }, "b" : { "$numberInt" : "10" } }
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"b":0}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     5
+(1 row)
+
+rollback;
+-- test pruning logic in update
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":{"$eq":5}},"u":{"$set":{"b":0}},"multi":true}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+select document from helio_api.collection('db', 'updateme') where document @@ '{"a":5}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                            document                                            
+------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "5" }, "b" : { "$numberInt" : "0" } }
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"b":0}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"$and":[{"a":5},{"a":{"$gt":0}}]},"u":{"$set":{"b":0}},"multi":true}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+select document from helio_api.collection('db', 'updateme') where document @@ '{"a":5}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                            document                                            
+------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "5" }, "b" : { "$numberInt" : "0" } }
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"b":0}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+-- update 1 without filters is unsupported for sharded collections
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{},"u":{"$set":{"b":0}},"multi":false}]}');
+                                                                                                                                                                                   update                                                                                                                                                                                   
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""50856066"" }, ""errmsg"" : ""A {multi:false} update on a sharded collection must contain an exact match on _id or target a single shard"" } ] }",f)
+(1 row)
+
+-- update 1 with shard key filters is supported for sharded collections
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":{"$eq":5}},"u":{"$set":{"b":0}},"multi":false}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+select document from helio_api.collection('db', 'updateme') where document @@ '{"a":5}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                            document                                            
+------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "5" }, "a" : { "$numberInt" : "5" }, "b" : { "$numberInt" : "0" } }
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"b":0}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+-- update 1 with shard key filters is retryable
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":{"$eq":10}},"u":{"$inc":{"b":1}},"multi":false}]}', NULL, 'xact-2');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":{"$eq":10}},"u":{"$inc":{"b":1}},"multi":false}]}', NULL, 'xact-2');
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+select document from helio_api.collection('db', 'updateme') where document @@ '{"a":10}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                             document                                              
+---------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "10" }, "a" : { "$numberInt" : "10" }, "b" : { "$numberInt" : "11" } }
+(1 row)
+
+rollback;
+-- upsert 1 with shard key filters is retryable
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":33,"_id":11},"u":{"$inc":{"c":33}},"multi":false,"upsert":true}]}', NULL, 'xact-ups');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                                                                               update                                                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""1""}, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""11"" } } ] }",t)
+(1 row)
+
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":33,"_id":11},"u":{"$inc":{"c":33}},"multi":false,"upsert":true}]}', NULL, 'xact-ups');
+                                                                                                               update                                                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""1""}, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""11"" } } ] }",t)
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"c":33}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     1
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"c":66}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     0
+(1 row)
+
+-- third call is considered a new try
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":33,"_id":11},"u":{"$inc":{"c":33}},"multi":false,"upsert":true}]}', NULL, 'xact-ups');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"c":33}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     0
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"c":66}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+-- update 1 that does not match any rows is still retryable
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":{"$eq":15}},"u":{"$inc":{"b":1}},"multi":false}]}', NULL, 'xact-3');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""} }",t)
+(1 row)
+
+select 1 from helio_api.insert_one('db', 'updateme', '{"a":15,"_id":15}');
+ ?column? 
+----------
+        1
+(1 row)
+
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":{"$eq":15}},"u":{"$inc":{"b":1}},"multi":false}]}', NULL, 'xact-3');
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""} }",t)
+(1 row)
+
+rollback;
+-- update 1 is supported in the _id case even on sharded collections
+begin;
+-- add an additional _id 10
+select 1 from helio_api.insert_one('db', 'updateme', '{"a":11,"_id":10}');
+ ?column? 
+----------
+        1
+(1 row)
+
+-- update first row where _id = 10
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":10,"b":{"$ne":0}},"u":{"$set":{"b":0}},"multi":false}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"_id":10}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     2
+(1 row)
+
+-- update second row where _id = 10
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":10,"b":{"$ne":0}},"u":{"$set":{"b":0}},"multi":false}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"b":0}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     2
+(1 row)
+
+-- no more row where _id = 10 and b != 0
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":10,"b":{"$ne":0}},"u":{"$set":{"b":0}},"multi":false}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""} }",t)
+(1 row)
+
+rollback;
+-- update 1 with with _id filter on a sharded collection is retryable
+begin;
+-- add an additional _id 10
+select 1 from helio_api.insert_one('db', 'updateme', '{"a":11,"_id":10}');
+ ?column? 
+----------
+        1
+(1 row)
+
+-- update first row where _id = 10
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":10},"u":{"$inc":{"b":1}},"multi":false}]}', NULL, 'xact-4');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+-- second time is a noop
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":10},"u":{"$inc":{"b":1}},"multi":false}]}', NULL, 'xact-4');
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+select document from helio_api.collection('db', 'updateme') where document @@ '{"_id":10}' ORDER BY object_id;
+ERROR:  column "object_id" does not exist
+LINE 1: ...pdateme') where document @@ '{"_id":10}' ORDER BY object_id;
+                                                             ^
+rollback;
+-- upsert on sharded collection with multi:true
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"b":33},"u":{"$set":{"b":33,"_id":11}},"multi":true,"upsert":true}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                                                                               update                                                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""1""}, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""11"" } } ] }",t)
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"b":33}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+-- updating shard key is disallowed when using multi:true
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"b":1},"u":{"$inc":{"a":1}},"multi":true}]}');
+NOTICE:  using bson_query_match implementation
+                                                                                                                                                                               update                                                                                                                                                                                
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""67391682"" }, ""errmsg"" : ""new row for relation \\""documents_1500\\"" violates check constraint \\""shard_key_value_check\\"""" } ] }",f)
+(1 row)
+
+rollback;
+-- updating shard key is disallowed when using multi:true, even with a shard key filter
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":1},"u":{"$inc":{"a":1}},"multi":true}]}');
+NOTICE:  using bson_query_match implementation
+                                                                                                                                                                               update                                                                                                                                                                                
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""67391682"" }, ""errmsg"" : ""new row for relation \\""documents_1500\\"" violates check constraint \\""shard_key_value_check\\"""" } ] }",f)
+(1 row)
+
+rollback;
+-- updating shard key is disallowed without a shard key filter
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"b":1},"u":{"$inc":{"a":1}},"multi":false}]}');
+                                                                                                                                                                                   update                                                                                                                                                                                   
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""50856066"" }, ""errmsg"" : ""A {multi:false} update on a sharded collection must contain an exact match on _id or target a single shard"" } ] }",f)
+(1 row)
+
+rollback;
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":1},"u":{"$inc":{"a":1}},"multi":false}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                                                                                                                                                update                                                                                                                                                                                
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""1088"" }, ""errmsg"" : ""shard key value update is only supported when filtering by the full shard key and specifying multi:false"" } ] }",f)
+(1 row)
+
+rollback;
+-- updating shard key is allowed when multi:false and shard key filter is specified
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":1},"u":{"$inc":{"a":1}},"multi":false}]}');
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"a":2}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     2
+(1 row)
+
+rollback;
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":10},"u":{"$set":{"a":20}},"multi":false}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"a":20}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+-- empty shard key value is allowed (hash becomes 0)
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"a":1},"u":{"$unset":{"a":1}},"multi":false}]}');
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+select document from helio_api.collection('db', 'updateme') where document @@ '{"b":1}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                             document                             
+------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "1" } }
+(1 row)
+
+rollback;
+-- update 1 is supported in the multiple identical _id case
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"$and":[{"_id":6},{"_id":6}]},"u":{"$set":{"b":0}},"multi":false}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+select document from helio_api.collection('db', 'updateme') where document @@ '{"_id":6}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                            document                                            
+------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "6" }, "b" : { "$numberInt" : "0" } }
+(1 row)
+
+rollback;
+-- update 1 is unsupported in the multiple distinct _id case
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"$and":[{"_id":6},{"_id":5}]},"u":{"$set":{"b":0}},"multi":false}]}');
+                                                                                                                                                                                   update                                                                                                                                                                                   
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""50856066"" }, ""errmsg"" : ""A {multi:false} update on a sharded collection must contain an exact match on _id or target a single shard"" } ] }",f)
+(1 row)
+
+select document from helio_api.collection('db', 'updateme') where document @@ '{"_id":6}';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                            document                                            
+------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "6" }, "a" : { "$numberInt" : "6" }, "b" : { "$numberInt" : "6" } }
+(1 row)
+
+rollback;
+-- test _id extraction from update
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":33, "a": 10 },"u":{"$set":{"b":3}},"multi":false,"upsert":true}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                                                                               update                                                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""1""}, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""33"" } } ] }",t)
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"_id":33, "b":3 }';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     1
+(1 row)
+
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":33, "a": 10 },"u":{"$set":{"b":4}},"multi":false,"upsert":true}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"_id":33, "b":4 }';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+begin;
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":33, "a": 10 },"u":{"$set":{"b":1}},"multi":false,"upsert":true}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                                                                               update                                                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""1""}, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""33"" } } ] }",t)
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"_id":33, "b":1 }';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     1
+(1 row)
+
+select helio_api.update('db', '{"update":"updateme", "updates":[{"q":{"_id":33, "a": 10 },"u":{"$set":{"b":2}},"multi":true,"upsert":true}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{"_id":33, "b":2 }';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     1
+(1 row)
+
+rollback;
+-- update with docs specified on special section
+begin;
+select helio_api.update('db', '{"update":"updateme"}', '{ "":[{"q":{"_id":36, "a": 10 },"u":{"$set":{"bz":1}},"multi":false,"upsert":true}] }');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                                                                               update                                                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""1""}, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""36"" } } ] }",t)
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{ "bz":1 }';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     1
+(1 row)
+
+select helio_api.update('db', '{"update":"updateme"}', '{ "":[{"q":{"_id":37, "a": 10 },"u":{"$set":{"bz":1}},"multi":false,"upsert":true}] }');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                                                                               update                                                                                                                
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""1""}, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""37"" } } ] }",t)
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{ "bz":1 }';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     2
+(1 row)
+
+select helio_api.update('db', '{"update":"updateme"}', '{ "":[{"q":{"_id":36, "a": 10 },"u":{"$set":{"bz":2}},"multi":false }, {"q":{"_id":37, "a": 10 },"u":{"$set":{"bz":2}},"multi":false}] }');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""2""}, ""n"" : { ""$numberLong"" : ""2""} }",t)
+(1 row)
+
+select count(*) from helio_api.collection('db', 'updateme') where document @@ '{ "bz":2 }';
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+ count 
+-------
+     2
+(1 row)
+
+rollback;
+-- update with docs specified on both
+begin;
+select helio_api.update('db', '{"update":"updateme",  "updates":[{"q":{"_id":33, "a": 10 },"u":{"$set":{"b":2}},"multi":true,"upsert":true}]}', '{ "":[{"q":{"_id":33, "a": 10 },"u":{"$set":{"b":1}},"multi":false,"upsert":true}] }');
+ERROR:  Unexpected additional updates
+rollback;
+select helio_api.drop_collection('db','updateme');
+ERROR:  function helio_api.drop_collection(unknown, unknown) does not exist
+LINE 1: select helio_api.drop_collection('db','updateme');
+               ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT 1 FROM helio_api.insert_one('update', 'test_sort_returning', '{"_id":1,"a":3,"b":7}');
+NOTICE:  creating collection
+ ?column? 
+----------
+        1
+(1 row)
+
+SELECT 1 FROM helio_api.insert_one('update', 'test_sort_returning', '{"_id":2,"a":2,"b":5}');
+ ?column? 
+----------
+        1
+(1 row)
+
+SELECT 1 FROM helio_api.insert_one('update', 'test_sort_returning', '{"_id":3,"a":1,"b":6}');
+ ?column? 
+----------
+        1
+(1 row)
+
+-- sort in ascending order and project & return old document
+WITH test_sort_returning AS (
+    SELECT * FROM helio_api_internal.get_collection('update', 'test_sort_returning')
+)
+SELECT result.* FROM test_sort_returning, helio_api_internal.update_one(
+    p_collection_id=>test_sort_returning.collection_id,
+    p_shard_key_value=>test_sort_returning.collection_id,
+    p_query=>'{"a": {"$gte": 1}}'::bson,
+    p_update=>'{"": {"c": 3}}'::bson,
+    p_shard_key=>null::bson,
+    p_is_upsert=>false,
+    p_sort=>'{"b": 1}'::bson,
+    p_return_old_or_new=>false,
+    p_return_fields=>'{"_id": 0, "b": 1}'::bson,
+    p_array_filters=>null::bson,
+    p_transaction_id=>null::text
+) result;
+ERROR:  function helio_api_internal.get_collection(unknown, unknown) does not exist
+LINE 2:     SELECT * FROM helio_api_internal.get_collection('update'...
+                          ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+-- sort by multiple fields (i) and project & return new document
+BEGIN;
+    WITH test_sort_returning AS (
+        SELECT * FROM helio_api_internal.get_collection('update', 'test_sort_returning')
+    )
+    SELECT result.* FROM test_sort_returning, helio_api_internal.update_one(
+        p_collection_id=>test_sort_returning.collection_id,
+        p_shard_key_value=>test_sort_returning.collection_id,
+        p_query=>'{"a": {"$gte": 1}}'::bson,
+        p_update=>'{"": {"c": 4}}'::bson,
+        p_shard_key=>null::bson,
+        p_is_upsert=>false,
+        p_sort=>'{"b": -1, "a": 1}'::bson,
+        p_return_old_or_new=>true,
+        p_return_fields=>null::bson,
+        p_array_filters=>null::bson,
+        p_transaction_id=>null::text
+    ) result;
+ERROR:  function helio_api_internal.get_collection(unknown, unknown) does not exist
+LINE 2:         SELECT * FROM helio_api_internal.get_collection('upd...
+                              ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+    SELECT document FROM helio_api.collection('update', 'test_sort_returning') ORDER BY 1;
+ERROR:  current transaction is aborted, commands ignored until end of transaction block
+ROLLBACK;
+WITH test_sort_returning AS (
+    SELECT * FROM helio_api_internal.get_collection('update', 'test_sort_returning')
+)
+SELECT result.* FROM test_sort_returning, helio_api_internal.update_one(
+    p_collection_id=>test_sort_returning.collection_id,
+    p_shard_key_value=>test_sort_returning.collection_id,
+    p_query=>'{"a": {"$gte": 1}}'::bson,
+    p_update=>'{"": {"c": 4}}'::bson,
+    p_shard_key=>null::bson,
+    p_is_upsert=>false,
+    p_sort=>'{"a": 1, "b": -1}'::bson,
+    p_return_old_or_new=>true,
+    p_return_fields=>null::bson,
+    p_array_filters=>null::bson,
+    p_transaction_id=>null::text
+) result;
+ERROR:  function helio_api_internal.get_collection(unknown, unknown) does not exist
+LINE 2:     SELECT * FROM helio_api_internal.get_collection('update'...
+                          ^
+HINT:  No function matches the given name and argument types. You might need to add explicit type casts.
+SELECT document FROM helio_api.collection('update', 'test_sort_returning') ORDER BY 1;
+                                            document                                            
+------------------------------------------------------------------------------------------------
+ { "_id" : { "$numberInt" : "1" }, "a" : { "$numberInt" : "3" }, "b" : { "$numberInt" : "7" } }
+ { "_id" : { "$numberInt" : "2" }, "a" : { "$numberInt" : "2" }, "b" : { "$numberInt" : "5" } }
+ { "_id" : { "$numberInt" : "3" }, "a" : { "$numberInt" : "1" }, "b" : { "$numberInt" : "6" } }
+(3 rows)
+
+-- show that we validate "update" document even if collection doesn't exist
+-- i) ordered=true
+SELECT helio_api.update(
+    'update',
+    '{
+        "update": "dne",
+        "updates": [
+            {"q": {"a": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"b": 1}, "u": { "$set": { "p": 1 }, "$unset": {"p": 1 } } },
+            {"q": {"c": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"d": 1}, "u": { "$set": { "p": 1 }, "$unset": {"p": 1 } } },
+            {"q": {"e": 1}, "u": { "$set": { "p": 1 } } }
+        ],
+        "ordered": true
+     }'
+);
+                                                                                                                                                        update                                                                                                                                                         
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""687865896"" }, ""errmsg"" : ""Updating the path 'p' would create a conflict at 'p'"" } ] }",f)
+(1 row)
+
+-- ii) ordered=false
+SELECT helio_api.update(
+    'update',
+    '{
+        "update": "dne",
+        "updates": [
+            {"q": {"a": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"b": 1}, "u": { "$set": { "p": 1 }, "$unset": {"p": 1 } } },
+            {"q": {"c": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"d": 1}, "u": { "$set": { "p": 1 }, "$unset": {"p": 1 } } },
+            {"q": {"e": 1}, "u": { "$set": { "p": 1 } } }
+        ],
+        "ordered": false
+     }'
+);
+                                                                                                                                                                                                                                         update                                                                                                                                                                                                                                          
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""687865896"" }, ""errmsg"" : ""Updating the path 'p' would create a conflict at 'p'"" }, { ""index"" : { ""$numberInt"" : ""3"" }, ""code"" : { ""$numberInt"" : ""687865896"" }, ""errmsg"" : ""Updating the path 'p' would create a conflict at 'p'"" } ] }",f)
+(1 row)
+
+-- show that we validate "query" document even if collection doesn't exist
+-- i) ordered=true
+SELECT helio_api.update(
+    'update',
+    '{
+        "update": "dne",
+        "updates": [
+            {"q": {"a": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"$b": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"c": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"$d": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"e": 1}, "u": { "$set": { "p": 1 } } }
+        ],
+        "ordered": true
+     }'
+);
+                                                                                                                                                                                             update                                                                                                                                                                                              
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown top level operator: $b. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" } ] }",f)
+(1 row)
+
+-- ii) ordered=false
+SELECT helio_api.update(
+    'update',
+    '{
+        "update": "dne",
+        "updates": [
+            {"q": {"a": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"$b": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"c": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"$d": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"e": 1}, "u": { "$set": { "p": 1 } } }
+        ],
+        "ordered": false
+     }'
+);
+                                                                                                                                                                                                                                                                                                                   update                                                                                                                                                                                                                                                                                                                    
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown top level operator: $b. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" }, { ""index"" : { ""$numberInt"" : ""3"" }, ""code"" : { ""$numberInt"" : ""687865858"" }, ""errmsg"" : ""unknown top level operator: $d. If you have a field name that starts with a '$' symbol, consider using $getField or $setField."" } ] }",f)
+(1 row)
+
+SELECT helio_api.create_collection('update', 'no_match');
+NOTICE:  creating collection
+ create_collection 
+-------------------
+ t
+(1 row)
+
+-- show that we validate "update" document even if we can't match any documents
+-- i) ordered=true
+SELECT helio_api.update(
+    'update',
+    '{
+        "update": "no_match",
+        "updates": [
+            {"q": {"a": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"b": 1}, "u": { "$set": { "p": 1 }, "$unset": {"p": 1 } } },
+            {"q": {"c": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"d": 1}, "u": { "$set": { "p": 1 }, "$unset": {"p": 1 } } },
+            {"q": {"e": 1}, "u": { "$set": { "p": 1 } } }
+        ],
+        "ordered": true
+     }'
+);
+                                                                                                                                                        update                                                                                                                                                         
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""687865896"" }, ""errmsg"" : ""Updating the path 'p' would create a conflict at 'p'"" } ] }",f)
+(1 row)
+
+-- ii) ordered=false
+SELECT helio_api.update(
+    'update',
+    '{
+        "update": "no_match",
+        "updates": [
+            {"q": {"a": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"b": 1}, "u": { "$set": { "p": 1 }, "$unset": {"p": 1 } } },
+            {"q": {"c": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"d": 1}, "u": { "$set": { "p": 1 }, "$unset": {"p": 1 } } },
+            {"q": {"e": 1}, "u": { "$set": { "p": 1 } } }
+        ],
+        "ordered": false
+     }'
+);
+                                                                                                                                                                                                                                         update                                                                                                                                                                                                                                          
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""1"" }, ""code"" : { ""$numberInt"" : ""687865896"" }, ""errmsg"" : ""Updating the path 'p' would create a conflict at 'p'"" }, { ""index"" : { ""$numberInt"" : ""3"" }, ""code"" : { ""$numberInt"" : ""687865896"" }, ""errmsg"" : ""Updating the path 'p' would create a conflict at 'p'"" } ] }",f)
+(1 row)
+
+-- show that we validate "query" document even if we can't match any documents
+-- i) ordered=true
+SELECT helio_api.update(
+    'update',
+    '{
+        "update": "no_match",
+        "updates": [
+            {"q": {"a": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"$b": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"c": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"$d": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"e": 1}, "u": { "$set": { "p": 1 } } }
+        ],
+        "ordered": true
+     }'
+);
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""} }",t)
+(1 row)
+
+-- ii) ordered=false
+SELECT helio_api.update(
+    'update',
+    '{
+        "update": "no_match",
+        "updates": [
+            {"q": {"a": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"$b": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"c": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"$d": 1}, "u": { "$set": { "p": 1 } } },
+            {"q": {"e": 1}, "u": { "$set": { "p": 1 } } }
+        ],
+        "ordered": false
+     }'
+);
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""} }",t)
+(1 row)
+
+-- Validate multi and single updates with no-op return matched and updated as expected
+SELECT 1 FROM helio_api.insert_one('update', 'multi', '{"_id":1,"a":1,"b":1}');
+NOTICE:  creating collection
+ ?column? 
+----------
+        1
+(1 row)
+
+SELECT 1 FROM helio_api.insert_one('update', 'multi', '{"_id":2,"a":2,"b":1}');
+ ?column? 
+----------
+        1
+(1 row)
+
+SELECT 1 FROM helio_api.insert_one('update', 'multi', '{"_id":3,"a":3,"b":1}');
+ ?column? 
+----------
+        1
+(1 row)
+
+SELECT 1 FROM helio_api.insert_one('update', 'multi', '{"_id":4,"a":100,"b":1}');
+ ?column? 
+----------
+        1
+(1 row)
+
+SELECT 1 FROM helio_api.insert_one('update', 'multi', '{"_id":5,"a":200,"b":1}');
+ ?column? 
+----------
+        1
+(1 row)
+
+SELECT 1 FROM helio_api.insert_one('update', 'multi', '{"_id":6,"a":6,"b":1}');
+ ?column? 
+----------
+        1
+(1 row)
+
+select helio_api.update('update', '{"update":"multi", "updates":[{"q":{"b": 1 },"u":{"$max":{"a":3}},"multi":true,"upsert":false}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""2""}, ""n"" : { ""$numberLong"" : ""6""} }",t)
+(1 row)
+
+select helio_api.update('update', '{"update":"multi", "updates":[{"q":{"b": 1 },"u":{"$max":{"a":7}},"multi":true,"upsert":false}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""4""}, ""n"" : { ""$numberLong"" : ""6""} }",t)
+(1 row)
+
+select helio_api.update('update', '{"update":"multi", "updates":[{"q":{"b": 1 },"u":{"$min":{"a":150}},"multi":true,"upsert":false}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""6""} }",t)
+(1 row)
+
+select helio_api.update('update', '{"update":"multi", "updates":[{"q":{"b": 1 },"u":{"$min":{"a":99}},"multi":true,"upsert":false}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""2""}, ""n"" : { ""$numberLong"" : ""6""} }",t)
+(1 row)
+
+-- no match
+select helio_api.update('update', '{"update":"multi", "updates":[{"q":{"b": 50 },"u":{"$min":{"a":99}},"multi":true,"upsert":false}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""} }",t)
+(1 row)
+
+-- all updated
+select helio_api.update('update', '{"update":"multi", "updates":[{"q":{"b": 1 },"u":{"$max":{"a":500}},"multi":true,"upsert":false}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""6""}, ""n"" : { ""$numberLong"" : ""6""} }",t)
+(1 row)
+
+-- all match, no-op update
+select helio_api.update('update', '{"update":"multi", "updates":[{"q":{"b": 1 },"u":{"$max":{"a":100}},"multi":true,"upsert":false}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""6""} }",t)
+(1 row)
+
+-- single update
+SELECT 1 FROM helio_api.insert_one('update', 'single', '{"_id":1,"a":1,"b":1}');
+NOTICE:  creating collection
+ ?column? 
+----------
+        1
+(1 row)
+
+select helio_api.update('update', '{"update":"single", "updates":[{"q":{"b": 1 },"u":{"$max":{"a":100}},"multi":false,"upsert":false}]}');
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+select helio_api.update('update', '{"update":"single", "updates":[{"q":{"b": 1 },"u":{"$min":{"a":50}},"multi":false,"upsert":false}]}');
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""1""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+-- no-op update single
+select helio_api.update('update', '{"update":"single", "updates":[{"q":{"b": 1 },"u":{"$min":{"a":50}},"multi":false,"upsert":false}]}');
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+select helio_api.update('update', '{"update":"single", "updates":[{"q":{"b": 1 },"u":{"$max":{"a":50}},"multi":false,"upsert":false}]}');
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""1""} }",t)
+(1 row)
+
+-- no match
+select helio_api.update('update', '{"update":"single", "updates":[{"q":{"b": 50 },"u":{"$max":{"a":50}},"multi":false,"upsert":false}]}');
+NOTICE:  using bson_query_match implementation
+                                                            update                                                             
+-------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""} }",t)
+(1 row)
+
+--upsert with same field in querySpec 
+select helio_api.update('update', '{"update":"single", "updates":[{"q":{"_id":1234, "$and" : [{"x" : {"$eq": 1}}, {"x": 2}]},"u":{},"upsert":true}]}');
+                                                                                                                update                                                                                                                 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""1""}, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""1234"" } } ] }",t)
+(1 row)
+
+select helio_api.update('update', '{"update":"single", "updates":[{"q":{"_id":2345, "x": 1, "x.x": 1},"u":{},"upsert":true}]}');
+                                                                                                                update                                                                                                                 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""1""}, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""2345"" } } ] }",t)
+(1 row)
+
+select helio_api.update('update', '{"update":"single", "updates":[{"q":{"_id":3456, "x": {}, "x.x": 1},"u":{},"upsert":true}]}');
+                                                                                                                update                                                                                                                 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""1""}, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""3456"" } } ] }",t)
+(1 row)
+
+select helio_api.update('update', '{"update":"single", "updates":[{"q":{"_id":4567, "x": {"x": 1}, "x.x": 1},"u":{},"upsert":true}]}');
+                                                                                                                update                                                                                                                 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""1""}, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""4567"" } } ] }",t)
+(1 row)
+
+select helio_api.update('update', '{"update":"single", "updates":[{"q":{"_id":5678, "x": {"x": 1}, "x.y": 1},"u":{},"upsert":true}]}');
+                                                                                                                update                                                                                                                 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""1""}, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""5678"" } } ] }",t)
+(1 row)
+
+select helio_api.update('update', '{"update":"single", "updates":[{"q":{"_id":6789, "x": [1, {"x": 1}], "x.x": 1},"u":{},"upsert":true}]}');
+                                                                                                                update                                                                                                                 
+---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""1""}, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""6789"" } } ] }",t)
+(1 row)
+
+select helio_api.update('update', '{"update":"single", "updates":[{"q":{"_id": 1, "_id": 2},"u":{},"upsert":true}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                                                                                                                             update                                                                                                                                                             
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687865910"" }, ""errmsg"" : ""cannot infer query fields to set, path '_id' is matched twice"" } ] }",f)
+(1 row)
+
+select helio_api.update('update', '{"update":"single", "updates":[{"q":{"x": 1, "x": 5},"u":{"$set" : {"x":10}},"upsert":true}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                                                                                                                            update                                                                                                                                                            
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687865910"" }, ""errmsg"" : ""cannot infer query fields to set, path 'x' is matched twice"" } ] }",f)
+(1 row)
+
+select helio_api.update('update', '{"update":"single", "updates":[{"q":{"_id": 1, "_id.b": 2},"u":{"_id":3, "a":4},"upsert":true}]}');
+NOTICE:  using bson_query_match implementation
+                                                                                                                                                                  update                                                                                                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687865967"" }, ""errmsg"" : ""field at '_id' must be exactly specified, field at sub-path '_id.b'found"" } ] }",f)
+(1 row)
+
+select helio_api.update('update', '{"update":"single", "updates":[{"q":{"_idab.b": 2},"u":{"_id":3, "a":4},"upsert":true}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                                                                               update                                                                                                               
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""1""}, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberInt"" : ""3"" } } ] }",t)
+(1 row)
+
+select helio_api.update('update', '{"update":"single", "updates":[{"q":{"_id.c": 2},"u":{"_id":3, "a":4},"upsert":true}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                                                                                                                                  update                                                                                                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687865967"" }, ""errmsg"" : ""field at '_id' must be exactly specified, field at sub-path '_id.c'found"" } ] }",f)
+(1 row)
+
+select helio_api.update('update', '{"update":"single", "updates":[{"q":{"_id": 1, "_id": 2},"u":{"_id":3},"upsert":true}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                                                                                                                             update                                                                                                                                                             
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687865910"" }, ""errmsg"" : ""cannot infer query fields to set, path '_id' is matched twice"" } ] }",f)
+(1 row)
+
+select helio_api.update('update', '{"update":"single", "updates":[{"q":{"_id": 1, "_id": 2},"u":{"$set" : {"_id":3} },"upsert":true}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                                                                                                                             update                                                                                                                                                             
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687865910"" }, ""errmsg"" : ""cannot infer query fields to set, path '_id' is matched twice"" } ] }",f)
+(1 row)
+
+-- array filters sent to final update command.
+BEGIN;
+select helio_api.update('update', '{"update":"single", "updates":[{"q":{"_id": 134111, "b": [ 5, 2, 4 ] },"u":{"$set" : {"b.$[a]":3} },"upsert":true, "arrayFilters": [ { "a": 2 } ]}]}');
+                                                                                                                                                                     update                                                                                                                                                                     
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""52461700"" }, ""errmsg"" : ""function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist"" } ] }",f)
+(1 row)
+
+SELECT helio_api.insert_one('update', 'multi', '{ "_id": 134112, "blah": [ 5, 1, 4 ] }');
+                           insert_one                            
+-----------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT helio_api.insert_one('update', 'multi', '{ "_id": 134113, "blah": [ 6, 3, 1 ] }');
+                           insert_one                            
+-----------------------------------------------------------------
+ { "ok" : { "$numberInt" : "1" }, "n" : { "$numberInt" : "1" } }
+(1 row)
+
+select helio_api.update('update', '{"update":"multi", "updates":[{"q":{"blah": 1 },"u":{"$max":{"blah.$[a]":99}},"multi":true,"upsert":false, "arrayFilters": [ { "a": 1 } ]}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                                                                                                                                     update                                                                                                                                                                     
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""52461700"" }, ""errmsg"" : ""function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist"" } ] }",f)
+(1 row)
+
+-- no match here.
+select helio_api.update('update', '{"update":"multi", "updates":[{"q":{"blah": 1 },"u":{"$max":{"blah.$[a]":99}},"multi":false,"upsert":false, "arrayFilters": [ { "a": 1 } ]}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                                                                                                                                     update                                                                                                                                                                     
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""52461700"" }, ""errmsg"" : ""function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist"" } ] }",f)
+(1 row)
+
+-- updates one of the two.
+select helio_api.update('update', '{"update":"multi", "updates":[{"q":{"blah": 99 },"u":{"$max":{"blah.$[a]":109}},"multi":false,"upsert":false, "arrayFilters": [ { "a": 99 } ]}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                                                                                                                                     update                                                                                                                                                                     
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""52461700"" }, ""errmsg"" : ""function helio_api_catalog.bson_value_dollar_eq(internal, bson) does not exist"" } ] }",f)
+(1 row)
+
+ROLLBACK;
+-- test replace with upsert
+select helio_api.update('test@', '{ "update" : "shell_wc_a", "ordered" : true, "updates" : [ { "q" : { "_id" : 1.0 }, "u" : { "_id" : 1.0 }, "multi" : false, "upsert" : true } ] }');
+NOTICE:  creating collection
+                                                                                                                 update                                                                                                                  
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""1""}, ""upserted"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""_id"" : { ""$numberDouble"" : ""1.0"" } } ] }",t)
+(1 row)
+
+--upsert with $expr
+select helio_api.update('update', '{"update":"single", "updates":[{"q":{"$and" : [{"$expr" : {"$eq": ["$a",1]}}]},"u":{},"upsert":true}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                                                                                                                           update                                                                                                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687866080"" }, ""errmsg"" : ""$expr is not allowed in the query predicate for an upsert"" } ] }",f)
+(1 row)
+
+select helio_api.update('update', '{"update":"single", "updates":[{"q":{"$or" : [{"$expr" : {"$gt": ["$b",1]}}, {"x": 2}]},"u":{"$set" : {"a": 10}},"upsert":true}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                                                                                                                           update                                                                                                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687866080"" }, ""errmsg"" : ""$expr is not allowed in the query predicate for an upsert"" } ] }",f)
+(1 row)
+
+select helio_api.update('update', '{"update":"single", "updates":[{"q":{"$or" : [{"$expr" : {"$gte": ["$c", 100]}}]},"u":{"$set": {"a" :10}},"upsert":true}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                                                                                                                           update                                                                                                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687866080"" }, ""errmsg"" : ""$expr is not allowed in the query predicate for an upsert"" } ] }",f)
+(1 row)
+
+select helio_api.update('update', '{"update":"single", "updates":[{"q":{"$or" : [{"$or" : [{"$expr" : {"$gte": ["$c", 100]}}]}]},"u":{"$set": {"a" :10}},"upsert":true}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                                                                                                                           update                                                                                                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687866080"" }, ""errmsg"" : ""$expr is not allowed in the query predicate for an upsert"" } ] }",f)
+(1 row)
+
+select helio_api.update('update', '{"update":"single", "updates":[{"q":{"$and" : [{"$or" : [{"x": 10},{"$expr" : {"$gte": ["$c", 100]}}, {"y": 10}]}]},"u":{"$set": {"a" :10}},"upsert":true}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                                                                                                                           update                                                                                                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687866080"" }, ""errmsg"" : ""$expr is not allowed in the query predicate for an upsert"" } ] }",f)
+(1 row)
+
+select helio_api.update('update', '{"update":"single", "updates":[{"q":{"$expr": {"$gt" : ["$x",10]}},"u":{},"upsert":true}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                                                                                                                           update                                                                                                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687866080"" }, ""errmsg"" : ""$expr is not allowed in the query predicate for an upsert"" } ] }",f)
+(1 row)
+
+select helio_api.update('update', '{"update":"single", "updates":[{"q":{"$and" : [{"a": 10}, {"$or" : [{"x": 10},{"$expr" : {"$gte": ["$c", 100]}}, {"y": 10}]}, {"b":11} ]},"u":{"$set": {"a" :10}},"upsert":true}]}');
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+NOTICE:  using bson_query_match implementation
+                                                                                                                                                           update                                                                                                                                                           
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ ("{ ""ok"" : { ""$numberInt"" : ""1"" }, ""nModified"" : { ""$numberLong"" : ""0""}, ""n"" : { ""$numberLong"" : ""0""}, ""writeErrors"" : [ { ""index"" : { ""$numberInt"" : ""0"" }, ""code"" : { ""$numberInt"" : ""687866080"" }, ""errmsg"" : ""$expr is not allowed in the query predicate for an upsert"" } ] }",f)
+(1 row)
+
