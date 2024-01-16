@@ -146,6 +146,11 @@ class XClusterManager : public XClusterManagerIf {
       const xcluster::ReplicationGroupId& replication_group_id) const
       REQUIRES_SHARED(outbound_replication_group_map_mutex_);
 
+  Result<std::vector<TableInfoPtr>> GetTablesToReplicate(const NamespaceId& namespace_id);
+
+  Result<std::vector<xrepl::StreamId>> BootstrapTables(
+      const std::vector<TableInfoPtr>& table_infos, CoarseTimePoint deadline);
+
   Master* const master_;
   CatalogManager* const catalog_manager_;
   SysCatalogTable* const sys_catalog_;

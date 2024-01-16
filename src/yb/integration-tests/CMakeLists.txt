@@ -215,7 +215,7 @@ ADD_YB_TEST(xcluster/xcluster_ysql_index-test)
 ADD_YB_TEST(xcluster/xcluster_ysql-test)
 ADD_YB_TEST(xcluster/xcluster-tablet-split-itest)
 ADD_YB_TEST(xcluster/xcluster-test)
-ADD_YB_TEST(xcluster/xcluster_outbound_replication_group-test)
+ADD_YB_TEST(xcluster/xcluster_outbound_replication_group-itest)
 ADD_YB_TEST(retryable_request-test)
 
 set(YB_TEST_LINK_LIBS_SAVED ${YB_TEST_LINK_LIBS})
