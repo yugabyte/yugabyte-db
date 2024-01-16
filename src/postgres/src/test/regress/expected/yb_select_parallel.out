@@ -125,11 +125,11 @@ explain (costs off)
 explain (costs off)
 	select  sum(sp_parallel_restricted(unique1)) from tenk1
 	group by(sp_parallel_restricted(unique1));
-                     QUERY PLAN
-----------------------------------------------------
+                  QUERY PLAN
+----------------------------------------------
  HashAggregate
    Group Key: sp_parallel_restricted(unique1)
-   ->  Index Only Scan using tenk1_unique1 on tenk1
+   ->  Seq Scan on tenk1
 (3 rows)
 
 -- test prepared statement
@@ -311,7 +311,7 @@ explain (costs off)
  Aggregate
    ->  YB Batched Nested Loop Join
          Join Filter: (tenk1.unique1 = tenk2.unique1)
-         ->  Index Only Scan using tenk2_unique1 on tenk2
+         ->  Seq Scan on tenk2
          ->  Index Only Scan using tenk1_unique1 on tenk1
                Index Cond: (unique1 = ANY (ARRAY[tenk2.unique1, $1, $2, ..., $1023]))
 (6 rows)
@@ -524,10 +524,10 @@ reset enable_hashagg;
 -- check parallelized int8 aggregate (bug #14897)
 explain (costs off)
 select avg(unique1::int8) from tenk1;
-                     QUERY PLAN
-----------------------------------------------------
+       QUERY PLAN
+-------------------------
  Aggregate
-   ->  Index Only Scan using tenk1_unique1 on tenk1
+   ->  Seq Scan on tenk1
 (2 rows)
 
 select avg(unique1::int8) from tenk1;
@@ -665,7 +665,7 @@ explain (costs off, verbose)
                Output: b.unique1, (row_number() OVER (?))
                ->  WindowAgg
                      Output: b.unique1, row_number() OVER (?)
-                     ->  Index Only Scan using tenk1_unique1 on public.tenk1 b
+                     ->  Seq Scan on public.tenk1 b
                            Output: b.unique1
 (12 rows)
 
@@ -789,7 +789,7 @@ SELECT 1 FROM tenk1_vw_sec WHERE EXISTS (SELECT 1 WHERE unique1 = 0);
 ---------------------------------------------------------
  Subquery Scan on tenk1_vw_sec
    Filter: (alternatives: SubPlan 1 or hashed SubPlan 2)
-   ->  Index Only Scan using tenk1_unique1 on tenk1
+   ->  Seq Scan on tenk1
    SubPlan 1
      ->  Result
            One-Time Filter: (tenk1_vw_sec.unique1 = 0)
