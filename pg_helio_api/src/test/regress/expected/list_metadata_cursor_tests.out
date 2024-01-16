@@ -1,0 +1,126 @@
+SET search_path TO helio_core, helio_api, public;
+SET helio_api.next_collection_id TO 9100;
+SET helio_api.next_collection_index_id TO 9100;
+-- create a collection in db1
+SELECT helio_api.create_collection('list_metadata_db1', 'list_metadata_coll1');
+NOTICE:  creating collection
+ create_collection 
+-------------------
+ t
+(1 row)
+
+UPDATE helio_api_catalog.collections SET collection_uuid = NULL WHERE database_name = 'list_metadata_db1';
+SELECT cursorpage, continuation, persistconnection, cursorid  FROM helio_api.list_collections_cursor_first_page('list_metadata_db1', '{ "listCollections": 1, "nameOnly": true }');
+                                                                                                   cursorpage                                                                                                   | continuation | persistconnection | cursorid 
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------+--------------+-------------------+----------
+ { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "list_metadata_db1.$cmd.ListCollections", "firstBatch" : [ { "name" : "list_metadata_coll1", "type" : "collection" } ] }, "ok" : { "$numberInt" : "1" } } |              | f                 |        0
+(1 row)
+
+-- create a sharded collection in db1
+SELECT helio_api.create_collection('list_metadata_db1', 'list_metadata_coll2');
+NOTICE:  creating collection
+ create_collection 
+-------------------
+ t
+(1 row)
+
+SELECT helio_api.shard_collection('list_metadata_db1', 'list_metadata_coll2', '{ "_id": "hashed" }', false);
+ shard_collection 
+------------------
+ 
+(1 row)
+
+-- create 2 collection in db2
+SELECT helio_api.create_collection('list_metadata_db2', 'list_metadata_db2_coll1');
+NOTICE:  creating collection
+ create_collection 
+-------------------
+ t
+(1 row)
+
+SELECT helio_api.create_collection('list_metadata_db2', 'list_metadata_db2_coll2');
+NOTICE:  creating collection
+ create_collection 
+-------------------
+ t
+(1 row)
+
+-- create 2 views (one for db1 and one for db2)
+SELECT helio_api.create_collection_view('list_metadata_db1', '{ "create": "list_metadata_view1_1", "viewOn": "list_metadata_coll1", "pipeline": [{ "$limit": 100 }] }');
+      create_collection_view       
+-----------------------------------
+ { "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT helio_api.create_collection_view('list_metadata_db2', '{ "create": "list_metadata_view2_1", "viewOn": "list_metadata_coll2", "pipeline": [{ "$skip": 100 }] }');
+      create_collection_view       
+-----------------------------------
+ { "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- reset collection_uuids
+UPDATE helio_api_catalog.collections SET collection_uuid = NULL WHERE database_name = 'list_metadata_db1';
+UPDATE helio_api_catalog.collections SET collection_uuid = NULL WHERE database_name = 'list_metadata_db2';
+SELECT helio_api_catalog.bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_collections_cursor_first_page('list_metadata_db1', '{ "listCollections": 1 }') ORDER BY 1;
+                                                                                                                                                                                             bson_dollar_unwind                                                                                                                                                                                              
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "list_metadata_db1.$cmd.ListCollections", "firstBatch" : { "name" : "list_metadata_coll1", "type" : "collection", "options" : {  }, "info" : { "readOnly" : false }, "idIndex" : { "v" : { "$numberInt" : "2" }, "name" : "_id_", "key" : { "_id" : { "$numberInt" : "1" } } } } }, "ok" : { "$numberInt" : "1" } }
+ { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "list_metadata_db1.$cmd.ListCollections", "firstBatch" : { "name" : "list_metadata_coll2", "type" : "collection", "options" : {  }, "info" : { "readOnly" : false, "shardKey" : { "_id" : "hashed" } }, "idIndex" : { "v" : { "$numberInt" : "2" }, "name" : "_id_", "key" : { "_id" : { "$numberInt" : "1" } } } } }, "ok" : { "$numberInt" : "1" } }
+ { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "list_metadata_db1.$cmd.ListCollections", "firstBatch" : { "name" : "list_metadata_view1_1", "type" : "view", "options" : { "viewOn" : "list_metadata_coll1", "pipeline" : [ { "$limit" : { "$numberInt" : "100" } } ] }, "info" : { "readOnly" : true }, "idIndex" : null } }, "ok" : { "$numberInt" : "1" } }
+(3 rows)
+
+SELECT helio_api_catalog.bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_collections_cursor_first_page('list_metadata_db2', '{ "listCollections": 1, "nameOnly": true }') ORDER BY 1;
+                                                                                               bson_dollar_unwind                                                                                               
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "list_metadata_db2.$cmd.ListCollections", "firstBatch" : { "name" : "list_metadata_db2_coll1", "type" : "collection" } }, "ok" : { "$numberInt" : "1" } }
+ { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "list_metadata_db2.$cmd.ListCollections", "firstBatch" : { "name" : "list_metadata_db2_coll2", "type" : "collection" } }, "ok" : { "$numberInt" : "1" } }
+ { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "list_metadata_db2.$cmd.ListCollections", "firstBatch" : { "name" : "list_metadata_view2_1", "type" : "view" } }, "ok" : { "$numberInt" : "1" } }
+(3 rows)
+
+SELECT helio_api_catalog.bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_collections_cursor_first_page('list_metadata_db2', '{ "listCollections": 1 }') ORDER BY 1;
+                                                                                                                                                                              bson_dollar_unwind                                                                                                                                                                              
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "list_metadata_db2.$cmd.ListCollections", "firstBatch" : { "name" : "list_metadata_db2_coll1", "type" : "collection", "options" : {  }, "info" : { "readOnly" : false }, "idIndex" : { "v" : { "$numberInt" : "2" }, "name" : "_id_", "key" : { "_id" : { "$numberInt" : "1" } } } } }, "ok" : { "$numberInt" : "1" } }
+ { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "list_metadata_db2.$cmd.ListCollections", "firstBatch" : { "name" : "list_metadata_db2_coll2", "type" : "collection", "options" : {  }, "info" : { "readOnly" : false }, "idIndex" : { "v" : { "$numberInt" : "2" }, "name" : "_id_", "key" : { "_id" : { "$numberInt" : "1" } } } } }, "ok" : { "$numberInt" : "1" } }
+ { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "list_metadata_db2.$cmd.ListCollections", "firstBatch" : { "name" : "list_metadata_view2_1", "type" : "view", "options" : { "viewOn" : "list_metadata_coll2", "pipeline" : [ { "$skip" : { "$numberInt" : "100" } } ] }, "info" : { "readOnly" : true }, "idIndex" : null } }, "ok" : { "$numberInt" : "1" } }
+(3 rows)
+
+SELECT helio_api_catalog.bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_collections_cursor_first_page('list_metadata_db1', '{ "listCollections": 1, "filter": { "type": "view" } }') ORDER BY 1;
+                                                                                                                                                                          bson_dollar_unwind                                                                                                                                                                          
+----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "list_metadata_db1.$cmd.ListCollections", "firstBatch" : { "name" : "list_metadata_view1_1", "type" : "view", "options" : { "viewOn" : "list_metadata_coll1", "pipeline" : [ { "$limit" : { "$numberInt" : "100" } } ] }, "info" : { "readOnly" : true }, "idIndex" : null } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT helio_api_catalog.bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_collections_cursor_first_page('list_metadata_db1', '{ "listCollections": 1, "filter": { "info.readOnly": false } }') ORDER BY 1;
+                                                                                                                                                                                             bson_dollar_unwind                                                                                                                                                                                              
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "list_metadata_db1.$cmd.ListCollections", "firstBatch" : { "name" : "list_metadata_coll1", "type" : "collection", "options" : {  }, "info" : { "readOnly" : false }, "idIndex" : { "v" : { "$numberInt" : "2" }, "name" : "_id_", "key" : { "_id" : { "$numberInt" : "1" } } } } }, "ok" : { "$numberInt" : "1" } }
+ { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "list_metadata_db1.$cmd.ListCollections", "firstBatch" : { "name" : "list_metadata_coll2", "type" : "collection", "options" : {  }, "info" : { "readOnly" : false, "shardKey" : { "_id" : "hashed" } }, "idIndex" : { "v" : { "$numberInt" : "2" }, "name" : "_id_", "key" : { "_id" : { "$numberInt" : "1" } } } } }, "ok" : { "$numberInt" : "1" } }
+(2 rows)
+
+-- create some indexes for the collections in db1
+SELECT helio_api_internal.create_indexes_non_concurrently('list_metadata_db1', '{ "createIndexes": "list_metadata_coll1", "indexes": [ { "key": { "a": 1 }, "name": "a_1" }, { "key": { "b.$**": 1 }, "name": "b_1"} ]}', TRUE);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "3" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+SELECT helio_api_catalog.bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_indexes_cursor_first_page('list_metadata_db1', '{ "listIndexes": "list_metadata_coll1" }') ORDER BY 1;
+                                                                                                               bson_dollar_unwind                                                                                                               
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "list_metadata_db1.list_metadata_coll1", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberInt" : "1" } }
+ { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "list_metadata_db1.list_metadata_coll1", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "a" : { "$numberInt" : "1" } }, "name" : "a_1" } }, "ok" : { "$numberInt" : "1" } }
+ { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "list_metadata_db1.list_metadata_coll1", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "b.$**" : { "$numberInt" : "1" } }, "name" : "b_1" } }, "ok" : { "$numberInt" : "1" } }
+(3 rows)
+
+SELECT helio_api_catalog.bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_indexes_cursor_first_page('list_metadata_db1', '{ "listIndexes": "list_metadata_coll2" }') ORDER BY 1;
+                                                                                                              bson_dollar_unwind                                                                                                               
+-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "cursor" : { "id" : { "$numberLong" : "0"}, "ns" : "list_metadata_db1.list_metadata_coll2", "firstBatch" : { "v" : { "$numberInt" : "2" }, "key" : { "_id" : { "$numberInt" : "1" } }, "name" : "_id_" } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- fails
+SELECT helio_api_catalog.bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_indexes_cursor_first_page('list_metadata_db1', '{ "listIndexes": "list_metadata_view1_1" }') ORDER BY 1;
+ERROR:  Namespace list_metadata_db1.list_metadata_view1_1 is a view, not a collection
+SELECT helio_api_catalog.bson_dollar_unwind(cursorpage, '$cursor.firstBatch') FROM helio_api.list_indexes_cursor_first_page('list_metadata_db1', '{ "listIndexes": "list_metadata_non_existent" }') ORDER BY 1;
+ERROR:  ns does not exist: list_metadata_db1.list_metadata_non_existent

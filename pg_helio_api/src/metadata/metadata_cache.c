@@ -138,7 +138,7 @@ typedef struct HelioApiOidCacheData
 	Oid BsonCurrentOpAggregationFunctionId;
 
 	/* OID of the mongo_api_v1.list_indexes function */
-	Oid ApiListIndexesFunctionId;
+	Oid IndexSpecAsBsonFunctionId;
 
 	/* OID of the sample_collection function */
 	Oid ApiSampleCollectionFunctionId;
@@ -642,6 +642,9 @@ typedef struct HelioApiOidCacheData
 
 	/* Oid of the ST_SetSRID Postgis function */
 	Oid PostgisSetSRIDFunctionId;
+
+	/* Oid of the ApiInternalSchemaName.index_build_is_in_progress function */
+	Oid IndexBuildIsInProgressFunctionId;
 
 	/* Oid of the ApiDataSchemaName namespace */
 	Oid ApiDataNamespaceOid;
@@ -1980,25 +1983,25 @@ BsonCurrentOpAggregationFunctionId(void)
 
 
 /*
- * ApiListIndexesFunctionId returns the OID of the ApiSchemaName.list_indexes function.
+ * IndexSpecAsBsonFunctionId returns the OID of the ApiInternalSchemaName.index_spec_as_bson function.
  */
 Oid
-ApiListIndexesFunctionId(void)
+IndexSpecAsBsonFunctionId(void)
 {
 	InitializeHelioApiExtensionCache();
 
-	if (Cache.ApiListIndexesFunctionId == InvalidOid)
+	if (Cache.IndexSpecAsBsonFunctionId == InvalidOid)
 	{
-		List *functionNameList = list_make2(makeString(ApiSchemaName),
-											makeString("list_indexes"));
-		Oid paramOids[2] = { TEXTOID, TEXTOID };
+		List *functionNameList = list_make2(makeString(ApiInternalSchemaName),
+											makeString("index_spec_as_bson"));
+		Oid paramOids[3] = { IndexSpecTypeId(), BOOLOID, TEXTOID };
 		bool missingOK = false;
 
-		Cache.ApiListIndexesFunctionId =
-			LookupFuncName(functionNameList, 2, paramOids, missingOK);
+		Cache.IndexSpecAsBsonFunctionId =
+			LookupFuncName(functionNameList, 3, paramOids, missingOK);
 	}
 
-	return Cache.ApiListIndexesFunctionId;
+	return Cache.IndexSpecAsBsonFunctionId;
 }
 
 
@@ -2380,7 +2383,7 @@ RowGetBsonFunctionOid(void)
 	if (Cache.ApiCatalogRowGetBsonFunctionOid == InvalidOid)
 	{
 		/* Given it's a variadic function, we just look it up by name */
-		List *functionNameList = list_make2(makeString(ApiCatalogSchemaName),
+		List *functionNameList = list_make2(makeString(CoreSchemaName),
 											makeString("row_get_bson"));
 		bool missingOK = false;
 		ObjectWithArgs args = { 0 };
@@ -3714,6 +3717,22 @@ GetClusterBsonQueryTypeId()
 	}
 
 	return BsonQueryTypeId();
+}
+
+
+/*
+ * Returns the OID of the ApiInternalSchemaName.index_build_is_in_progress function.
+ */
+Oid
+IndexBuildIsInProgressFunctionId()
+{
+	int nargs = 1;
+	Oid argTypes[1] = { INT4OID };
+	bool missingOk = false;
+	return GetSchemaFunctionIdWithNargs(&Cache.IndexBuildIsInProgressFunctionId,
+										ApiInternalSchemaName,
+										"index_build_is_in_progress", nargs, argTypes,
+										missingOk);
 }
 
 

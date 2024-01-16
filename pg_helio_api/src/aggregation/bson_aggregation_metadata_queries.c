@@ -31,6 +31,7 @@
 #include <utils/builtins.h>
 #include <catalog/pg_aggregate.h>
 #include <catalog/pg_class.h>
+#include <catalog/pg_collation.h>
 #include <parser/parsetree.h>
 #include <utils/array.h>
 #include <utils/builtins.h>
@@ -302,9 +303,8 @@ HandleCurrentOp(const bson_value_t *existingValue, Query *query,
 
 
 /*
- * Generates the base query that queries the mongo_api_v1.list_indexes
+ * Generates the base query that queries the ApiCatalogSchemaName.collection_indexes
  * for a listIndexes scenario.
- * TODO: Move this to directly query the table (so we can do cursors).
  */
 static Query *
 GenerateBaseListIndexesQuery(Datum databaseDatum, const StringView *collectionName,
@@ -318,56 +318,123 @@ GenerateBaseListIndexesQuery(Datum databaseDatum, const StringView *collectionNa
 												 collectionName);
 	context->collectionNameView = *collectionName;
 
+	MongoCollection *collection = GetMongoCollectionByNameDatum(databaseDatum,
+																CStringGetTextDatum(
+																	collectionName->string),
+																NoLock);
+	if (collection == NULL)
+	{
+		ereport(ERROR, (errcode(MongoNamespaceNotFound),
+						errmsg("ns does not exist: %s", context->namespaceName)));
+	}
+
+	/* Add ApiInternalSchemaName.index_spec_as_bson(index_spec, TRUE) projector */
+
+	/* create Var that references the index_spec column in ApiCatalogSchemaName.collection_indexes */
+	Index varno = 1;
+	Index varlevelsup = 0;
+	Var *indexSpecVar = makeVar(varno, 3,
+								IndexSpecTypeId(), -1,
+								InvalidOid, varlevelsup);
+
+	bool boolConstValue = true;
+	bool isNull = false;
+	List *args = list_make2(indexSpecVar,
+							makeBoolConst(boolConstValue, isNull));
+	FuncExpr *indexSpecAsBsonExpr = makeFuncExpr(IndexSpecAsBsonFunctionId(),
+												 BsonTypeId(),
+												 args, InvalidOid, InvalidOid,
+												 COERCE_EXPLICIT_CALL);
+
+	TargetEntry *baseTargetEntry = makeTargetEntry((Expr *) indexSpecAsBsonExpr, 1,
+												   "indexes", false);
+	query->targetList = list_make1(baseTargetEntry);
+
 	RangeTblEntry *rte = makeNode(RangeTblEntry);
 
-	/* Match spec for mongo_api_v1.list_indexes function */
-	List *colNames = list_make1(makeString("list_indexes"));
-
-	rte->rtekind = RTE_FUNCTION;
-	rte->relid = InvalidOid;
-
-	rte->alias = rte->eref = makeAlias("list_indexes", colNames);
+	/* Match spec for ApiCatalogSchemaName.collection_indexes function */
+	List *colNames = list_concat(list_make3(makeString("collection_id"),
+											makeString("index_id"),
+											makeString("index_spec")),
+								 list_make1(makeString("index_is_valid")));
+	rte->rtekind = RTE_RELATION;
+	rte->alias = rte->eref = makeAlias("indexspec", colNames);
 	rte->lateral = false;
 	rte->inFromCl = true;
+	rte->relkind = RELKIND_RELATION;
 	rte->functions = NIL;
-	rte->inh = false;
+	rte->inh = true;
 	rte->requiredPerms = ACL_SELECT;
 	rte->rellockmode = AccessShareLock;
 
-	/* Now create the rtfunc*/
-	List *args = list_make2(makeConst(TEXTOID, -1, InvalidOid, -1, databaseDatum, false,
-									  false),
-							MakeTextConst(collectionName->string,
-										  collectionName->length));
-	FuncExpr *rangeFunc = makeFuncExpr(ApiListIndexesFunctionId(), BsonTypeId(),
-									   args, InvalidOid, InvalidOid,
-									   COERCE_EXPLICIT_CALL);
-	rangeFunc->funcretset = true;
-
-	RangeTblFunction *rangeTableFunction = makeNode(RangeTblFunction);
-	rangeTableFunction->funccolcount = 1;
-	rangeTableFunction->funccolnames = colNames;
-	rangeTableFunction->funccoltypes = list_make1_oid(BsonTypeId());
-	rangeTableFunction->funccoltypmods = NIL;
-	rangeTableFunction->funccolcollations = list_make1_oid(InvalidOid);
-	rangeTableFunction->funcparams = NULL;
-	rangeTableFunction->funcexpr = (Node *) rangeFunc;
-
-	/* Add the RTFunc to the RTE */
-	rte->functions = list_make1(rangeTableFunction);
+	RangeVar *rangeVar = makeRangeVar(ApiCatalogSchemaName, "collection_indexes", -1);
+	rte->relid = RangeVarGetRelid(rangeVar, AccessShareLock, false);
 
 	query->rtable = list_make1(rte);
 
-	/* Now register the RTE in the "FROM" clause with a single filter on the database_name */
+	/* Register the RTE in the "FROM" clause and add where clause
+	 *  collection_id = <id> AND (index_is_valud OR ApiInternalSchemaName.index_build_is_in_progress)*/
 	RangeTblRef *rtr = makeNode(RangeTblRef);
 	rtr->rtindex = 1;
-	query->jointree = makeFromExpr(list_make1(rtr), NULL);
 
-	/* Add a result projector bson document */
-	Var *rowExpr = makeVar(1, 1, BsonTypeId(), -1, InvalidOid, 0);
-	TargetEntry *baseTargetEntry = makeTargetEntry((Expr *) rowExpr, 1, "document",
-												   false);
-	query->targetList = list_make1(baseTargetEntry);
+	Var *indexIsValidIdVar = makeVar(varno, 4,
+									 BOOLOID, -1,
+									 InvalidOid, varlevelsup);
+	Var *indexIdVar = makeVar(varno, 2, INT4OID, -1, InvalidOid, varlevelsup);
+
+	FuncExpr *indexBuildIsInProgressExpr = makeFuncExpr(
+		IndexBuildIsInProgressFunctionId(), BOOLOID,
+		list_make1(indexIdVar),
+		InvalidOid, InvalidOid,
+		COERCE_EXPLICIT_CALL);
+
+	/* index_is_valud OR ApiInternalSchemaName.index_build_is_in_progress */
+	Expr *orClause = make_orclause(list_make2(indexIsValidIdVar,
+											  indexBuildIsInProgressExpr));
+
+
+	Var *collectionIdVar = makeVar(varno, 1, INT8OID, -1, InvalidOid, varlevelsup);
+
+	/* collection_id = <id> */
+	Expr *opExpr = make_opclause(BigintEqualOperatorId(), BOOLOID, false,
+								 (Expr *) collectionIdVar,
+								 (Expr *) makeConst(INT8OID, -1,
+													InvalidOid,
+													sizeof(int64_t),
+													Int64GetDatum(
+														collection->collectionId),
+													false, true),
+								 InvalidOid, InvalidOid);
+
+	/* collection_id = <id> AND (index_is_valud OR ApiInternalSchemaName.index_build_is_in_progress) */
+	Expr *andClause = make_andclause(list_make2(opExpr, orClause));
+
+	query->jointree = makeFromExpr(list_make1(rtr), (Node *) andClause);
+
+	/* ORDER BY index_id */
+	TargetEntry *entry = linitial(query->targetList);
+	ParseState *parseState = make_parsestate(NULL);
+	parseState->p_expr_kind = EXPR_KIND_ORDER_BY;
+
+	/* set after what is already taken */
+	parseState->p_next_resno = entry->resno + 1;
+
+	SortBy *sortBy = makeNode(SortBy);
+	sortBy->location = -1;
+	sortBy->sortby_dir = SORTBY_ASC;
+	sortBy->node = (Node *) indexIdVar;
+
+	bool resjunk = true;
+	TargetEntry *sortEntry = makeTargetEntry((Expr *) indexIdVar,
+											 (AttrNumber) parseState->p_next_resno++,
+											 "?sort?",
+											 resjunk);
+	query->targetList = lappend(query->targetList, sortEntry);
+	List *sortlist = addTargetToSortList(parseState, sortEntry,
+										 NIL, query->targetList, sortBy);
+
+	pfree(parseState);
+	query->sortClause = sortlist;
 
 	return query;
 }
@@ -392,7 +459,7 @@ GenerateBaseListCollectionsQuery(Datum databaseDatum, bool nameOnly,
 
 	RangeTblEntry *rte = makeNode(RangeTblEntry);
 
-	/* Match spec for mongo_cataloc.collections function */
+	/* Match spec for ApiCatalogSchemaName.collections function */
 	List *colNames = list_concat(list_make3(makeString("database_name"), makeString(
 												"collection_name"), makeString(
 												"collection_id")),
@@ -423,7 +490,7 @@ GenerateBaseListCollectionsQuery(Datum databaseDatum, bool nameOnly,
 								 (Expr *) databaseVar,
 								 (Expr *) makeConst(TEXTOID, -1, InvalidOid, -1,
 													databaseDatum, false, false),
-								 InvalidOid, InvalidOid);
+								 DEFAULT_COLLATION_OID, DEFAULT_COLLATION_OID);
 	query->jointree = makeFromExpr(list_make1(rtr), (Node *) opExpr);
 
 	/* Add a row_get_bson to make it a single bson document */
