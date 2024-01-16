@@ -225,7 +225,7 @@ If you are doing an airgapped installation, download the node exporter using a c
 
 On each node, perform the following as a user with sudo access:
 
-1. Copy the `node_exporter-1.3.1.linux-amd64.gz` package file that you downloaded into the `/tmp` directory on each of the YugabyteDB nodes. Ensure that this file is readable by the user (for example, `centos`).
+1. Copy the `node_exporter-1.3.1.linux-amd64.tar.gz` package file that you downloaded into the `/tmp` directory on each of the YugabyteDB nodes. Ensure that this file is readable by the user (for example, `centos`).
 
 1. Run the following commands:
 
@@ -234,12 +234,15 @@ On each node, perform the following as a user with sudo access:
     sudo mkdir /etc/prometheus
     sudo mkdir /var/log/prometheus
     sudo mkdir /var/run/prometheus
+    sudo mkdir -p /tmp/yugabyte/metrics
     sudo mv /tmp/node_exporter-1.3.1.linux-amd64.tar.gz  /opt/prometheus
     sudo adduser --shell /bin/bash prometheus # (also adds group "prometheus")
     sudo chown -R prometheus:prometheus /opt/prometheus
     sudo chown -R prometheus:prometheus /etc/prometheus
     sudo chown -R prometheus:prometheus /var/log/prometheus
     sudo chown -R prometheus:prometheus /var/run/prometheus
+    sudo chown -R yugabyte:yugabyte /tmp/yugabyte/metrics
+    sudo chmod -R 755 /tmp/yugabyte/metrics
     sudo chmod +r /opt/prometheus/node_exporter-1.3.1.linux-amd64.tar.gz
     sudo su - prometheus (user session is now as user "prometheus")
     ```
