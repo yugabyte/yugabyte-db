@@ -3,7 +3,7 @@ title: Writes
 headerTitle: Scaling writes
 linkTitle: Scaling writes
 description: Writes scale horizontally in YugabyteDB as you add more nodes
-headcontent: Writes scale horizontally in YugabyteDB as you add more nodes
+headcontent: Write performance when scaling horizonatally
 menu:
   preview:
     identifier: scaling-writes
