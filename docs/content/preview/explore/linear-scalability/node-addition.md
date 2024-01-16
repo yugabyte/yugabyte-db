@@ -1,9 +1,9 @@
 ---
 title: Horizontal scaling by adding new nodes
 headerTitle: Scale out by adding new nodes
-linkTitle: Add nodes
+linkTitle: Adding nodes
 description: Scale your cluster on demand by adding new nodes
-headcontent: Seamlessly scale your cluster on demand
+headcontent: Seamlessly scale and load balance your cluster on demand
 menu:
   preview:
     identifier: scalability-node-addition

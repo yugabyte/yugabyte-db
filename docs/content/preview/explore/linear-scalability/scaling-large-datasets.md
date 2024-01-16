@@ -15,7 +15,15 @@ type: docs
 
 With ever-growing data workloads, such as time series metrics and IoT sensor events, databases need to handle large data (larger than 10 TB). Running a highly dense database cluster where each node stores terabytes of data makes perfect sense from a cost-efficiency standpoint. But spinning up new data nodes to get more storage-per-node leads to significant wastage of expensive compute resources.
 
-YugabyteDB has been designed from the ground up to handle large data and is powered by a radical replication and [storage architecture](../../../architecture/docdb/). Bootstrapping new nodes and removing existing nodes is much simpler and more resilient in YugabyteDB when compared to the eventually-consistent Cassandra-compatible databases.
+YugabyteDB has been designed from the ground up to handle large data and is powered by a radical replication and storage architecture. [DocDB](../../../architecture/docdb/), YugabyteDB's underlying distributed document store, uses a heavily customized version of RocksDB for node-local persistence. It has been engineered from the ground up to deliver high performance at a massive scale. Several features have been built into DocDB to enhance performance, including the following:
+
+- Scan-resistant global block cache
+- Bloom/index data splitting
+- Global memstore limit
+- Separate compaction queues to reduce read amplification
+- Smart load balancing across disks
+
+Bootstrapping new nodes and removing existing nodes is much simpler and more resilient in YugabyteDB when compared to the eventually-consistent Cassandra-compatible databases.
 
 The following scenario shows how YugabyteDB handles a total of 18 TB on just four general-purpose machines.
 
