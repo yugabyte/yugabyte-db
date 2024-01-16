@@ -91,6 +91,7 @@ set_log_dir_permission() {
 set_node_agent_base_url() {
   local RESPONSE_FILE="/tmp/session_info_${INSTALL_USER}.json"
   local STATUS_CODE=""
+  set +e
   STATUS_CODE=$(curl -s ${SKIP_VERIFY_CERT:+ "-k"} -w "%{http_code}" -L --request GET \
     "$SESSION_INFO_URL" --header "$HEADER: $HEADER_VAL" --output "$RESPONSE_FILE"
     )
@@ -99,7 +100,6 @@ set_node_agent_base_url() {
     echo "Fail to get session info. Status code $STATUS_CODE"
     exit 1
   fi
-  set +e
   CUSTOMER_ID="$(grep -o '"customerUUID":"[^"]*"' "$RESPONSE_FILE" | cut -d: -f2 | tr -d '"')"
   NODE_AGENT_BASE_URL="$PLATFORM_URL/api/v1/customers/$CUSTOMER_ID/node_agents"
   rm -rf "$RESPONSE_FILE"
@@ -109,6 +109,7 @@ set_node_agent_base_url() {
 uninstall_node_agent() {
   local RESPONSE_FILE="/tmp/node_agent_${INSTALL_USER}.json"
   local STATUS_CODE=""
+  set +e
   STATUS_CODE=$(curl -s ${SKIP_VERIFY_CERT:+ "-k"} -w "%{http_code}" -L --request GET \
     "$NODE_AGENT_BASE_URL?nodeIp=$NODE_IP" --header "$HEADER: $HEADER_VAL" \
     --output "$RESPONSE_FILE"
@@ -120,7 +121,6 @@ uninstall_node_agent() {
   fi
   # Command jq is not available.
   # Continue after pipefail.
-  set +e
   local NODE_AGENT_UUID=""
   NODE_AGENT_UUID="$(grep -o '"uuid":"[^"]*"' "$RESPONSE_FILE" | cut -d: -f2 | tr -d '"')"
   rm -rf "$RESPONSE_FILE"
@@ -130,7 +130,6 @@ uninstall_node_agent() {
     sudo systemctl stop yb-node-agent
     sudo systemctl disable yb-node-agent
   fi
-  set -e
   if [ -n "$NODE_AGENT_UUID" ]; then
     local STATUS_CODE=""
     STATUS_CODE=$(curl -s ${SKIP_VERIFY_CERT:+ "-k"} -w "%{http_code}" -L --request DELETE \
@@ -141,6 +140,7 @@ uninstall_node_agent() {
       exit 1
     fi
   fi
+  set -e
 }
 
 download_package() {
@@ -157,9 +157,11 @@ download_package() {
     mkdir -p "$NODE_AGENT_RELEASE_DIR"
     pushd "$NODE_AGENT_RELEASE_DIR"
     local RESPONSE_CODE=""
+    set +e
     RESPONSE_CODE=$(curl -s ${SKIP_VERIFY_CERT:+ "-k"} -w "%{http_code}" --location --request GET \
     "$NODE_AGENT_DOWNLOAD_URL?downloadType=package&os=$OS&arch=$GO_ARCH_TYPE" \
     --header "$HEADER: $HEADER_VAL" --output "$NODE_AGENT_PKG_TGZ")
+    set -e
     popd
     if [ "$RESPONSE_CODE" -ne 200 ]; then
       echo "x Error while downloading the node agent build package"
@@ -562,7 +564,7 @@ if [ -z "$INSTALL_USER" ]; then
   INSTALL_USER="$CURRENT_USER"
 elif [ "$INSTALL_USER" != "$CURRENT_USER" ] && [ "$COMMAND" != "install_service" ]; then
   show_usage >&2
-  echo "Different user can be passed only for installing service."
+  echo "Different user is only used for installing service."
   exit 1
 fi
 
