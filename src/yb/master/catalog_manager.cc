@@ -7971,7 +7971,7 @@ void CatalogManager::NotifyTabletDeleteFinished(
                  << " doesn't exist";
   } else {
     LOG(INFO) << "Clearing pending delete for tablet " << tablet_id << " in ts " << tserver_uuid;
- //   ts_desc->ClearPendingTabletDelete(tablet_id);
+    ts_desc->ClearPendingTabletDelete(tablet_id);
   }
   CheckTableDeleted(table, epoch);
 }
