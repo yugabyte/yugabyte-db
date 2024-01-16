@@ -14,15 +14,19 @@ type: docs
 
 When DDL changes are made to databases in replication for disaster recovery (DR) (such as creating, altering, or dropping tables or partitions), the changes have to be performed at the SQL level on both the DR primary and replica, and updated in the DR configuration. There is a specific order of these operations, which varies depending on whether performing a CREATE, DROP, ALTER, and so forth.
 
-| Change to database on DR primary | Do the following |
-| :----------- | :--- |
-| CREATE TABLE | In DB on DR replica, use SQL to CREATE TABLE.<br>In YBA, add the table to replication. |
-| DROP TABLE   | In DB on DR replica, use SQL to DROP TABLE |
-| CREATE INDEX | In DB on DR replica, use SQL to CREATE INDEX.<br>In YBA, reconcile config with database. |
-| DROP INDEX   | In DB on DR replica, use SQL to DROP INDEX.<br>In YBA, reconcile config with database. |
-| CREATE TABLE foo PARTITION OF bar | Same as CREATE TABLE |
+| Change to database on DR primary | On DR replica | In YBA |
+| :----------- | :----------- | :--- |
+| CREATE TABLE | CREATE TABLE | Add the table to replication |
+| DROP TABLE   | DROP TABLE   | |
+| CREATE INDEX | CREATE INDEX | [Resynchronize](#resynchronize-yba) |
+| DROP INDEX   | DROP INDEX   | [Resynchronize](#resynchronize-yba) |
+| CREATE TABLE foo PARTITION OF bar | Same as CREATE TABLE | |
 
 Use the following guidance when managing tables and indexes in universes with DR configured.
+
+## Best practices
+
+- If you are performing application upgrades involving both adding and dropping tables, perform the upgrade in two parts: first add tables, then drop tables.
 
 ## Add a table to DR
 
@@ -57,6 +61,8 @@ Note the following:
 
 ## Remove a table from DR
 
+When dropping a table, remove the table from DR before dropping the table in the DR primary and replica databases.
+
 Remove tables from DR in the following sequence:
 
 1. Navigate to your primary universe and select **Disaster Recovery**.
@@ -66,9 +72,9 @@ Remove tables from DR in the following sequence:
 
 ## Add an index to DR
 
-Indexes are automatically added to replication in an atomic fashion after you create the indexes separately on DR primary and replica. You do not have to stop the writes on the primary.
+Indexes are automatically added to replication in an atomic fashion after you create the indexes separately on DR primary and replica. You don't need to stop the writes on the primary.
 
-**Note**: The Create Index DDL may kill some in-flight transactions. This is a temporary error. Retry any failed transactions.
+CREATE INDEX may kill some in-flight transactions. This is a temporary error. Retry any failed transactions.
 
 Add indexes to replication in the following sequence:
 
