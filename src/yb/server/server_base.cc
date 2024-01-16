@@ -120,6 +120,14 @@ METRIC_DEFINE_lag(server, server_uptime_ms,
                   "Server uptime",
                   "The amount of time a server has been up for.");
 
+METRIC_DEFINE_gauge_int64(server, server_memory_hard_limit,
+    "Server hard memory limit", yb::MetricUnit::kBytes,
+    "If the server has a hard memory limit, that in bytes, otherwise -1.");
+
+METRIC_DEFINE_gauge_int64(server, server_memory_soft_limit,
+    "Server soft memory limit", yb::MetricUnit::kBytes,
+    "If the server has a soft memory limit, that in bytes, otherwise -1.");
+
 using namespace std::literals;
 using namespace std::placeholders;
 
@@ -455,6 +463,14 @@ RpcAndWebServerBase::RpcAndWebServerBase(
     const scoped_refptr<server::Clock>& clock)
     : RpcServerBase(name, options, metric_namespace, std::move(mem_tracker), clock),
       web_server_(new Webserver(options_.CompleteWebserverOptions(), name_)) {
+  auto root = MemTracker::GetRootTracker();
+  int64_t hard_limit = root->has_limit() ? root->limit() : -1;
+  int64_t soft_limit = root->has_limit() ? root->soft_limit() : -1;
+  server_hard_limit_ = metric_entity_->FindOrCreateGauge(
+      &METRIC_server_memory_hard_limit, static_cast<int64_t>(hard_limit));
+  server_soft_limit_ = metric_entity_->FindOrCreateGauge(
+      &METRIC_server_memory_soft_limit, static_cast<int64_t>(soft_limit));
+
   FsManagerOpts fs_opts;
   fs_opts.metric_registry = metric_registry_.get();
   fs_opts.parent_mem_tracker = mem_tracker_;
