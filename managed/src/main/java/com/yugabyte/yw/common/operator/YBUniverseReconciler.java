@@ -2,6 +2,8 @@
 
 package com.yugabyte.yw.common.operator;
 
+import static com.yugabyte.yw.forms.UniverseDefinitionTaskParams.ExposingServiceState;
+
 import com.fasterxml.jackson.annotation.JsonInclude.Include;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.DeserializationFeature;
@@ -629,6 +631,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
     userIntent.enableNodeToNodeEncrypt = ybUniverse.getSpec().getEnableNodeToNodeEncrypt();
     userIntent.enableClientToNodeEncrypt = ybUniverse.getSpec().getEnableClientToNodeEncrypt();
     userIntent.kubernetesOperatorVersion = ybUniverse.getMetadata().getGeneration();
+    userIntent.enableExposingService =
+        ExposingServiceState.valueOf(ybUniverse.getSpec().getEnableExposingService().name());
 
     // Handle Passwords
     YsqlPassword ysqlPassword = ybUniverse.getSpec().getYsqlPassword();

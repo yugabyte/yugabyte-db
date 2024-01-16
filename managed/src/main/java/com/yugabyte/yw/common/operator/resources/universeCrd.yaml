@@ -171,6 +171,10 @@ spec:
                   rule: self == oldSelf
               enableExposingService:
                 type: string
+                enum:
+                - EXPOSED
+                - NONE
+                - UNEXPOSED
                 x-kubernetes-validations:
                 - message:   enableExposingService cannot be changed once set.
                   rule: self == oldSelf
