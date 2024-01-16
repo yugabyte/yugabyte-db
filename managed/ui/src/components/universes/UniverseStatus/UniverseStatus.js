@@ -158,11 +158,11 @@ export default class UniverseStatus extends Component {
                   ![
                     SoftwareUpgradeTaskType.ROLLBACK_UPGRADE,
                     SoftwareUpgradeTaskType.SOFTWARE_UPGRADE
-                  ].includes(failedTask.type) || !isRollBackFeatEnabled
+                  ].includes(failedTask?.type) || !isRollBackFeatEnabled
                     ? 'status-error__reason'
                     : 'status-error__noHideText'
                 }
-              >{`${failedTask.type} ${failedTask.target} failed`}</span>
+              >{`${failedTask?.type} ${failedTask?.target} failed`}</span>
             ) : (
               <span>{universeStatus.state.text}</span>
             ))}
@@ -172,7 +172,7 @@ export default class UniverseStatus extends Component {
             (![
               SoftwareUpgradeTaskType.ROLLBACK_UPGRADE,
               SoftwareUpgradeTaskType.SOFTWARE_UPGRADE
-            ].includes(failedTask.type) ||
+            ].includes(failedTask?.type) ||
               !isRollBackFeatEnabled) && (
               <YBButton
                 btnText={'View Details'}
@@ -185,11 +185,11 @@ export default class UniverseStatus extends Component {
           {shouldDisplayTaskButton &&
             !universePendingTask &&
             failedTask !== undefined &&
-            failedTask.retryable &&
+            failedTask?.retryable &&
             (![
               SoftwareUpgradeTaskType.ROLLBACK_UPGRADE,
               SoftwareUpgradeTaskType.SOFTWARE_UPGRADE
-            ].includes(failedTask.type) ||
+            ].includes(failedTask?.type) ||
               !isRollBackFeatEnabled) && (
               <RbacValidator
                 accessRequiredOn={{
