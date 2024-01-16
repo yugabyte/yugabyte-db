@@ -78,9 +78,12 @@
 #include "commands/defrem.h"
 #include "commands/variable.h"
 #include "commands/ybccmds.h"
+#include "common/ip.h"
 #include "common/pg_yb_common.h"
 #include "lib/stringinfo.h"
 #include "libpq/hba.h"
+#include "libpq/libpq.h"
+#include "libpq/libpq-be.h"
 #include "optimizer/cost.h"
 #include "parser/parse_utilcmd.h"
 #include "tcop/utility.h"
@@ -4141,6 +4144,39 @@ YbReadWholeFile(const char *filename, int* length, int elevel)
 
 	buf[*length] = '\0';
 	return buf;
+}
+
+/*
+ * Needed to support the guc variable yb_use_tserver_key_auth, which is
+ * processed before authentication i.e. before setting this variable.
+ */
+bool yb_use_tserver_key_auth;
+
+bool
+yb_use_tserver_key_auth_check_hook(bool *newval, void **extra, GucSource source)
+{
+	/* Allow setting yb_use_tserver_key_auth to false */
+	if (!(*newval))
+		return true;
+
+	/*
+	 * yb_use_tserver_key_auth can only be set for client connections made on
+	 * unix socket.
+	 */
+	if (!IS_AF_UNIX(MyProcPort->raddr.addr.ss_family))
+		ereport(FATAL,
+				(errcode(ERRCODE_PROTOCOL_VIOLATION),
+				 errmsg("yb_use_tserver_key_auth can only be set if the "
+						"connection is made over unix domain socket")));
+
+	/*
+	 * If yb_use_tserver_key_auth is set, authentication method used
+	 * is yb_tserver_key. The auth method is decided even before setting the
+	 * yb_use_tserver_key GUC variable in hba_getauthmethod (present in hba.c).
+	 */
+	Assert(MyProcPort->yb_is_tserver_auth_method);
+
+	return true;
 }
 
 /*

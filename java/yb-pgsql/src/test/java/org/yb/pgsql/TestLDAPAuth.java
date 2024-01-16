@@ -125,7 +125,6 @@ public class TestLDAPAuth extends BasePgSQLTest {
     if (connectionEndpoint == ConnectionEndpoint.YSQL_CONN_MGR) {
       builder.enableYsqlConnMgr(true);
       builder.addCommonTServerFlag("ysql_conn_mgr_dowarmup", "false");
-      builder.addCommonTServerFlag("ysql_conn_mgr_use_unix_conn", "true");
     }
   }
 
@@ -142,8 +141,7 @@ public class TestLDAPAuth extends BasePgSQLTest {
                 "ldapbinddn=\"\"cn=admin,ou=Users,dc=myorg,dc=com\"\" " +
                 "ldapbindpasswd=\"\"adminPasswd\"\" ldapsearchattribute=\"\"cn\"\" " +
                 "ldapport=10389\"," +
-                "\"host all all 0.0.0.0/0 trust\"," +
-                "\"local all all trust\"");
+                "\"host all all 0.0.0.0/0 trust\"");
     LOG.info(flagMap.get("ysql_hba_conf_csv"));
     restartClusterWithFlags(
         Collections.emptyMap(),
@@ -185,8 +183,7 @@ public class TestLDAPAuth extends BasePgSQLTest {
                 "ldapbinddn=\"\"cn=admin,ou=Users,dc=myorg,dc=com\"\" " +
                 "ldapbindpasswd=\"\"YSQL_LDAP_BIND_PWD_ENV\"\" ldapsearchattribute=\"\"cn\"\" " +
                 "ldapport=10389\"," +
-                "\"host all all 0.0.0.0/0 trust\"," +
-                "\"local all all trust\"");
+                "\"host all all 0.0.0.0/0 trust\"");
     LOG.info(flagMap.get("ysql_hba_conf_csv"));
     restartClusterWithFlagsAndEnv(
         Collections.emptyMap(),
@@ -237,8 +234,7 @@ public class TestLDAPAuth extends BasePgSQLTest {
                 "ldapbinddn=\"\"cn=admin,ou=Users,dc=myorg,dc=com\"\" " +
                 "ldapbindpasswd=\"\"YSQL_LDAP_BIND_PWD_ENV\"\" ldapsearchattribute=\"\"cn\"\" " +
                 "ldapport=10389\"," +
-                "\"host all all 0.0.0.0/0 trust\"," +
-                "\"local all all trust\"");
+                "\"host all all 0.0.0.0/0 trust\"");
     LOG.info(flagMap.get("ysql_hba_conf_csv"));
     restartClusterWithFlags(
         Collections.emptyMap(),
