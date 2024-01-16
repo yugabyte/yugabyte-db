@@ -3,7 +3,7 @@ title: Manage tables and indexes for disaster recovery
 headerTitle: Manage tables and indexes
 linkTitle: Tables and indexes
 description: Manage tables and indexes in universes with disaster recovery
-headContent: How to add and remove tables and indexes from a DR primary universe
+headContent: Add and remove tables and indexes in universes with disaster recovery
 menu:
   stable_yugabyte-platform:
     parent: disaster-recovery
@@ -12,7 +12,9 @@ menu:
 type: docs
 ---
 
-When DDL changes are made to databases in replication for disaster recovery (DR) (such as creating, altering, or dropping tables or partitions), the changes have to be performed at the SQL level on both the DR primary and replica, and updated in the DR configuration. There is a specific order of these operations, which varies depending on whether performing a CREATE, DROP, ALTER, and so forth.
+When DDL changes are made to databases in replication for disaster recovery (DR) (such as creating, altering, or dropping tables or partitions), the changes have to be performed at the SQL level on both the DR primary and replica, and updated in the DR configuration.
+
+You should perform these actions in a specific order, depending on whether performing a CREATE, DROP, ALTER, and so forth.
 
 | Change to database on DR primary | On DR replica | In YBA |
 | :----------- | :----------- | :--- |
