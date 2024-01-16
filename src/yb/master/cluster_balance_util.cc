@@ -500,7 +500,7 @@ Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
   }
   // If this server has a pending tablet delete, don't use it.
   if (global_state_->servers_with_pending_deletes_.count(to_ts)) {
-    YB_LOG_EVERY_N_SECS(INFO, 30) << "tablet server " << to_ts << " has a pending delete. "
+    LOG(INFO) << "tablet server " << to_ts << " has a pending delete. "
               << "Not allowing it to take more tablets";
     return false;
   }
