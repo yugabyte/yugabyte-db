@@ -3904,7 +3904,7 @@ EXPLAIN (COSTS false) SELECT * FROM t1 WHERE t1.id = 1;
 
 TRUNCATE hint_plan.hints;
 VACUUM ANALYZE hint_plan.hints;
-WARNING:  VACUUM will be ignored
+NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
 -- plpgsql test
 EXPLAIN (COSTS false) SELECT id FROM t1 WHERE t1.id = 1;
            QUERY PLAN

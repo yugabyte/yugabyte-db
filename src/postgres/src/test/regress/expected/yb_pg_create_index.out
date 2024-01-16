@@ -145,7 +145,7 @@ COMMIT;
 -- Failed builds are left invalid by VACUUM FULL, fixed by REINDEX
 -- YB note: VACUUM and REINDEX TABLE are not yet supported
 VACUUM FULL concur_heap;
-WARNING:  VACUUM will be ignored
+NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
 REINDEX TABLE concur_heap;
 ERROR:  REINDEX TABLE not supported yet
 LINE 1: REINDEX TABLE concur_heap;
