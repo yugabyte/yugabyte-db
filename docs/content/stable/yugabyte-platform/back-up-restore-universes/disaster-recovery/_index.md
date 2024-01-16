@@ -61,11 +61,18 @@ After DR is configured, the DR replica will only be available for reads.
 
     The value depends on how long a network partition or DR replica outage can be tolerated, and the amount of WAL expected to be generated during that period.
 
+- [Set a replication lag alert](./disaster-recovery-setup/#set-up-replication-lag-alerts) for the DR primary to be alerted when the replication lag exceeds acceptable levels.
+
 ## DR vs xCluster replication
 
 DR is a superset of xCluster functionality. xCluster focuses on moving data from a primary universe to a replica. DR adds higher-level orchestration workflows to make the end-to-end setup, switchover, and failover of a primary universe to a replica simpler. Note that a universe configured for DR can't be used for xCluster replication, and although DR uses xCluster replication, DR replications are not shown in the **xCluster Replication** tab.
 
-(When in transactional YSQL mode, you can perform setup, failover, and switchover manually using a combination of xCluster replication and yb-admin CLI commands. Refer to [Set up transactional xCluster replication](../../../../deploy/multi-dc/async-replication/async-transactional-setup/).)
+(When in transactional YSQL mode, you can perform setup, failover, and switchover manually using a combination of xCluster replication and yb-admin CLI commands. Refer to [Set up transactional xCluster replication](../../../deploy/multi-dc/async-replication/async-transactional-setup/).)
+
+For additional information on xCluster replication in YugabyteDB, see the following:
+
+- [xCluster replication: overview and architecture](../../../architecture/docdb-replication/async-replication/)
+- [xCluster replication between universes in YugabyteDB](../../../deploy/multi-dc/async-replication/)
 
 DR does have some limitations versus xCluster - DR handles a narrower set of scenarios, while xCluster is more flexible. Whether you use DR or xCluster will depend on your use case.
 

@@ -28,9 +28,21 @@ To set up disaster recovery for a universe, do the following:
 
     You can add databases containing colocated tables to the DR configuration as long as the underlying database is v2.18.1.0 or later. Colocated tables on the DR primary and replica should be created with the same colocation ID if they already exist on both the DR primary and replica prior to DR setup.
 
-1. Select a storage config to be used for backup and restore in case a full copy needs to be transferred to the DR replica database.
+1. Click **Validate Selection**.
 
-1. Click **Apply Changes**.
+    YugabyteDB Anywhere checks whether or not data needs to be copied to the DR replica for the selected databases and its tables.
+
+1. If data needs to be copied, click **Next: Configure Full Copy**, and select a storage configuration.
+
+    The storage is used to transfer the data to the DR replica database. For information on how to configure storage, see [Configure backup storage](../../configure-backup-storage/).
+
+1. Click **Next: Confirm Alert Threshold**.
+
+    If you have [set an alert for replication lag](#set-up-replication-lag-alerts) on the universe, the threshold for alerting is displayed.
+
+1. Click **Confirm and Enable Disaster Recovery**.
+
+YugabyteDB Anywhere proceeds to set up DR for the universe. How long this takes depend mainly on the amount of data that needs to be copied to the DR replica.
 
 ## Monitor replication
 
@@ -72,7 +84,20 @@ The **Disaster Recovery** tab also lists all the tables in replication and their
 
 ## Set up replication lag alerts
 
+Replication lag measures how far behind in time the DR replica lags the DR primary. In a failover scenario, the longer the lag, the more data is at risk of being lost.
 
+To be notified if the lag exceeds a specific threshold so that you can take remedial measures, set a Universe alert for Replication Lag.
+
+To create an alert:
+
+1. Navigate to **Admin > Alert Configurations > Alert Policies**.
+1. Click **Create Alert Policy** and choose **Universe Alert**.
+1. Set **Policy Template** to **Replication Lag**.
+1. Set **Target** to **Selected Universes** and select the DR primary.
+1. Set the conditions for the alert.
+1. Click **Save** when you are done.
+
+For more information on alerting in YugabyteDB Anywhere, refer to [Alerts](../../../alerts-monitoring/alert/).
 
 ## Add a database to an existing replication
 
