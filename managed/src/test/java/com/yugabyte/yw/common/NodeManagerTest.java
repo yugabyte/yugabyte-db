@@ -461,8 +461,8 @@ public class NodeManagerTest extends FakeDBApplication {
     ReleaseManager.ReleaseMetadata releaseMetadata = new ReleaseManager.ReleaseMetadata();
     releaseMetadata.filePath = "/yb/release.tar.gz";
     when(releaseManager.getReleaseByVersion("0.0.1")).thenReturn(releaseMetadata);
-
     when(mockConfig.getString(NodeManager.BOOT_SCRIPT_PATH)).thenReturn("");
+    when(mockConfGetter.getStaticConf()).thenReturn(mockConfig);
     when(mockConfGetter.getConfForScope(
             any(Provider.class), eq(ProviderConfKeys.universeBootScript)))
         .thenReturn("");
@@ -512,6 +512,13 @@ public class NodeManagerTest extends FakeDBApplication {
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.ssh2Enabled))).thenReturn(false);
     when(mockConfGetter.getGlobalConf(eq(GlobalConfKeys.devopsCommandTimeout)))
         .thenReturn(Duration.ofHours(1));
+
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.notifyPeerOnRemoval)))
+        .thenReturn(true);
+    when(mockConfGetter.getConfForScope(
+            any(Universe.class), eq(UniverseConfKeys.notifyPeerOnRemoval)))
+        .thenReturn(true);
   }
 
   private String getMountPoints(AnsibleConfigureServers.Params taskParam) {

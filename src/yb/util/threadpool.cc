@@ -36,7 +36,6 @@
 #include <memory>
 
 #include "yb/util/flags.h"
-#include <glog/logging.h>
 
 #include "yb/gutil/callback.h"
 #include "yb/gutil/macros.h"

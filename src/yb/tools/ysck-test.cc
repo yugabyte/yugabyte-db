@@ -34,7 +34,7 @@
 #include <unordered_map>
 
 #include <boost/lexical_cast.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/gutil/callback.h"

@@ -50,6 +50,7 @@
 
 // Need to add rapidjson.h to the list of recognized third-party libraries in our linter.
 
+DECLARE_uint32(trace_max_dump_size);
 
 using yb::debug::TraceLog;
 using yb::debug::TraceResultBuffer;
@@ -87,6 +88,70 @@ TEST_F(TraceTest, TestBasic) {
   ASSERT_EQ("XXXX XX:XX:XX.XXXXXX trace-test.cc:XX] hello world, XXXXX\n"
             "XXXX XX:XX:XX.XXXXXX trace-test.cc:XX] goodbye cruel world, XXXXX\n",
             result);
+}
+
+TEST_F(TraceTest, TestDumpLargeTrace) {
+  scoped_refptr<Trace> t(new Trace);
+  constexpr int kNumLines = 100;
+  const string kLongLine(1000, 'x');
+  for (int i = 1; i <= kNumLines; i++) {
+    TRACE_TO(t, "Line $0 : $1", i, kLongLine);
+  }
+  size_t kTraceDumpSize = t->DumpToString(true).size();
+  const size_t kGlogMessageSizeLimit = google::LogMessage::kMaxLogMessageLen;
+
+  class LogSink : public google::LogSink {
+   public:
+    void send(
+        google::LogSeverity severity, const char* full_filename, const char* base_filename,
+        int line, const struct ::tm* tm_time, const char* message, size_t message_len) {
+      logged_bytes_ += message_len;
+    }
+
+    size_t logged_bytes() const { return logged_bytes_; }
+
+   private:
+    std::atomic<size_t> logged_bytes_{0};
+  } log_sink;
+
+  google::AddLogSink(&log_sink);
+  size_t size_before_logging;
+  size_t size_after_logging;
+
+  LOG(INFO) << "Dumping DumpToString may result in the trace getting truncated after ~30 lines";
+  size_before_logging = log_sink.logged_bytes();
+  LOG(INFO) << t->DumpToString(true);
+  size_after_logging = log_sink.logged_bytes();
+  ASSERT_LE(size_after_logging - size_before_logging, kGlogMessageSizeLimit);
+  ASSERT_LT(size_after_logging - size_before_logging, kTraceDumpSize);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_trace_max_dump_size) = std::numeric_limits<uint32>::max();
+  LOG(INFO) << "DumpToLogInfo should not be truncated";
+  size_before_logging = log_sink.logged_bytes();
+  t->DumpToLogInfo(true);
+  size_after_logging = log_sink.logged_bytes();
+  ASSERT_GT(size_after_logging - size_before_logging, kGlogMessageSizeLimit);
+  // We expect the output to be split into 4 lines. 4 newlines will be removed while printing.
+  ASSERT_EQ(size_after_logging - size_before_logging, kTraceDumpSize - 4);
+
+  LOG(INFO) << "with trace_max_dump_size=30000 DumpToLogInfo should be truncated";
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_trace_max_dump_size) = 30000;
+  size_before_logging = log_sink.logged_bytes();
+  t->DumpToLogInfo(true);
+  size_after_logging = log_sink.logged_bytes();
+  ASSERT_LE(size_after_logging - size_before_logging, kGlogMessageSizeLimit);
+  ASSERT_LT(size_after_logging - size_before_logging, kTraceDumpSize);
+
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_trace_max_dump_size) = 0;
+  LOG(INFO) << "with trace_max_dump_size=0 DumpToLogInfo should not be truncated";
+  size_before_logging = log_sink.logged_bytes();
+  t->DumpToLogInfo(true);
+  size_after_logging = log_sink.logged_bytes();
+  ASSERT_GT(size_after_logging - size_before_logging, kGlogMessageSizeLimit);
+  // We expect the output to be split into 4 lines. 4 newlines will be removed while printing.
+  ASSERT_EQ(size_after_logging - size_before_logging, kTraceDumpSize - 4);
+
+  google::RemoveLogSink(&log_sink);
 }
 
 TEST_F(TraceTest, TestAttach) {

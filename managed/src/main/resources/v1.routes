@@ -107,6 +107,7 @@ DELETE  /customers/:cUUID/configs/:configUUID/delete                           c
 # List keys that we allow configuring - no auth needed
 GET /runtime_config/mutable_keys                                               com.yugabyte.yw.controllers.RuntimeConfController.listKeys()
 GET /runtime_config/mutable_key_info                                           com.yugabyte.yw.controllers.RuntimeConfController.listKeyInfo()
+GET /runtime_config/feature_flags                                              com.yugabyte.yw.controllers.RuntimeConfController.listFeatureFlags()
 
 # List of Scopes for a given customer - static scope, the global scope, current customer scope and all its
 # sub-scopes (i.e. universes and providers owned by this customer)
@@ -605,6 +606,7 @@ GET /customers/:cUUID/rbac/role_binding                                        c
 POST /customers/:cUUID/rbac/role_binding/:userUUID                             com.yugabyte.yw.controllers.RBACController.setRoleBindings(cUUID: java.util.UUID, userUUID: java.util.UUID, request: Request)
 # UI Only API
 GET /customers/:cUUID/rbac/user/:userUUID                                      com.yugabyte.yw.controllers.RBACController.getUserResourcePermissions(cUUID: java.util.UUID, userUUID: java.util.UUID, resourceType: String ?= null)
+GET /rbac/routes                                                               com.yugabyte.yw.controllers.RBACController.fetchRoutesPermissionDetails()
 
 # Telemetry Provider APIs
 GET /customers/:cUUID/telemetry_provider/:intUUID                              com.yugabyte.yw.controllers.TelemetryProviderController.getTelemetryProvider(cUUID: java.util.UUID, intUUID: java.util.UUID)

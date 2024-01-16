@@ -35,8 +35,6 @@
 
 #include <algorithm>
 
-#include <glog/logging.h>
-
 #include "yb/gutil/macros.h"
 
 #include "yb/util/fault_injection.h"

@@ -32,6 +32,9 @@ public class SetDrStates extends XClusterConfigTaskBase {
 
     // The target universe new dr state.
     public TargetUniverseState targetUniverseState;
+
+    // The keyspace name that is undergoing changes by the xCluster task.
+    public String keyspacePending;
   }
 
   @Override
@@ -42,12 +45,14 @@ public class SetDrStates extends XClusterConfigTaskBase {
   @Override
   public String getName() {
     return String.format(
-        "%s(xClusterConfig=%s,drConfigState=%s,sourceUniverseState=%s,targetUniverseState=%s)",
+        "%s(xClusterConfig=%s,drConfigState=%s,sourceUniverseState=%s,"
+            + "targetUniverseState=%s,keyspacePending=%s)",
         super.getName(),
         taskParams().getXClusterConfig(),
         taskParams().drConfigState,
         taskParams().sourceUniverseState,
-        taskParams().targetUniverseState);
+        taskParams().targetUniverseState,
+        taskParams().keyspacePending);
   }
 
   @Override
@@ -61,6 +66,8 @@ public class SetDrStates extends XClusterConfigTaskBase {
           "SetDrStates subtask can only run for xCluster configs that are used for DR");
     }
 
+    // The parameter keyspacePending is not added intentionally because when it is null, the task
+    // will set keyspacePending in the xCluster config object to null.
     if (Objects.isNull(taskParams().drConfigState)
         && Objects.isNull(taskParams().sourceUniverseState)
         && Objects.isNull(taskParams().targetUniverseState)) {
@@ -92,6 +99,13 @@ public class SetDrStates extends XClusterConfigTaskBase {
             xClusterConfig.getTargetUniverseState());
         xClusterConfig.setTargetUniverseState(taskParams().targetUniverseState);
       }
+
+      log.info(
+          "Setting pending keyspace of xCluster config {} to {} from {}",
+          xClusterConfig.getUuid(),
+          taskParams().keyspacePending,
+          xClusterConfig.getKeyspacePending());
+      xClusterConfig.setKeyspacePending(taskParams().keyspacePending);
 
       xClusterConfig.update();
     } catch (Exception e) {

@@ -1,4 +1,4 @@
-import React, { FC } from 'react';
+import { FC } from 'react';
 import { Tab } from 'react-bootstrap';
 import { useTranslation } from 'react-i18next';
 
@@ -8,6 +8,9 @@ import { CustomerRuntimeConfig } from './CustomerRuntimeConfig';
 import { UniverseRuntimeConfig } from './UniverseRuntimeConfig';
 import { ProviderRuntimeConfig } from './ProviderRuntimeConfig';
 
+import { RbacValidator } from '../../../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../../redesign/features/rbac/UserPermPathMapping';
+import { Action, Resource } from '../../../redesign/features/rbac';
 import '../AdvancedConfig.scss';
 
 interface RuntimeConfigProps {
@@ -61,13 +64,18 @@ export const RuntimeConfig: FC<RuntimeConfigProps> = ({
           title={t('admin.advanced.globalConfig.CustomerConfigTitle')}
           unmountOnExit
         >
-          <CustomerRuntimeConfig
-            setRuntimeConfig={setRuntimeConfig}
-            deleteRunTimeConfig={deleteRunTimeConfig}
-            fetchRuntimeConfigs={fetchRuntimeConfigs}
-            resetRuntimeConfigs={resetRuntimeConfigs}
-            configTagFilter={configTagFilter}
-          />
+          <RbacValidator
+            accessRequiredOn={UserPermissionMap.listRuntimeConfig}
+            overrideStyle={{ marginTop: '50px' }}
+          >
+            <CustomerRuntimeConfig
+              setRuntimeConfig={setRuntimeConfig}
+              deleteRunTimeConfig={deleteRunTimeConfig}
+              fetchRuntimeConfigs={fetchRuntimeConfigs}
+              resetRuntimeConfigs={resetRuntimeConfigs}
+              configTagFilter={configTagFilter}
+            />
+          </RbacValidator>
         </Tab>
 
         <Tab
@@ -75,13 +83,24 @@ export const RuntimeConfig: FC<RuntimeConfigProps> = ({
           title={t('admin.advanced.globalConfig.UniverseConfigTitle')}
           unmountOnExit
         >
-          <UniverseRuntimeConfig
-            setRuntimeConfig={setRuntimeConfig}
-            deleteRunTimeConfig={deleteRunTimeConfig}
-            fetchRuntimeConfigs={fetchRuntimeConfigs}
-            resetRuntimeConfigs={resetRuntimeConfigs}
-            configTagFilter={configTagFilter}
-          />
+          <RbacValidator
+            accessRequiredOn={UserPermissionMap.listRuntimeConfig}
+            customValidateFunction={(perms) => {
+              const universeWithReadPerm = perms.filter((p) => {
+                return p.resourceType === Resource.UNIVERSE && p.actions.includes(Action.READ);
+              });
+              return universeWithReadPerm.length !== 0;
+            }}
+            overrideStyle={{ marginTop: '150px' }}
+          >
+            <UniverseRuntimeConfig
+              setRuntimeConfig={setRuntimeConfig}
+              deleteRunTimeConfig={deleteRunTimeConfig}
+              fetchRuntimeConfigs={fetchRuntimeConfigs}
+              resetRuntimeConfigs={resetRuntimeConfigs}
+              configTagFilter={configTagFilter}
+            />
+          </RbacValidator>
         </Tab>
 
         <Tab
@@ -89,13 +108,18 @@ export const RuntimeConfig: FC<RuntimeConfigProps> = ({
           title={t('admin.advanced.globalConfig.ProviderConfigTitle')}
           unmountOnExit
         >
-          <ProviderRuntimeConfig
-            setRuntimeConfig={setRuntimeConfig}
-            deleteRunTimeConfig={deleteRunTimeConfig}
-            fetchRuntimeConfigs={fetchRuntimeConfigs}
-            resetRuntimeConfigs={resetRuntimeConfigs}
-            configTagFilter={configTagFilter}
-          />
+          <RbacValidator
+            accessRequiredOn={UserPermissionMap.listRuntimeConfig}
+            overrideStyle={{ marginTop: '150px' }}
+          >
+            <ProviderRuntimeConfig
+              setRuntimeConfig={setRuntimeConfig}
+              deleteRunTimeConfig={deleteRunTimeConfig}
+              fetchRuntimeConfigs={fetchRuntimeConfigs}
+              resetRuntimeConfigs={resetRuntimeConfigs}
+              configTagFilter={configTagFilter}
+            />
+          </RbacValidator>
         </Tab>
       </YBTabsPanel>
     </div>

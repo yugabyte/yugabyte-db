@@ -41,8 +41,6 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include "yb/util/logging.h"
-
 #include <signal.h>
 #include <stdio.h>
 
@@ -52,7 +50,7 @@
 
 #include <boost/uuid/uuid_generators.hpp>
 #include <boost/uuid/uuid_io.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/callback.h"
 #include "yb/gutil/ref_counted.h"

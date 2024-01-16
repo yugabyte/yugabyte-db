@@ -45,6 +45,7 @@ import com.yugabyte.yw.models.Audit.ActionType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.configs.CustomerConfig;
 import com.yugabyte.yw.models.configs.data.CustomerConfigPasswordPolicyData;
 import com.yugabyte.yw.models.helpers.CommonUtils;
@@ -847,7 +848,11 @@ public class SessionController extends AbstractPlatformController {
     private final String htmlMessage;
   }
 
-  @ApiOperation(value = "getAdminNotifications", response = AdminNotifications.class)
+  @ApiOperation(
+      value =
+          "WARNING: This is a preview API that could change."
+              + " Returns the current list of notifications for admin",
+      response = AdminNotifications.class)
   @With(TokenAuthenticator.class)
   @AuthzPath({
     @RequiredPermissionOnResource(
@@ -855,6 +860,7 @@ public class SessionController extends AbstractPlatformController {
             @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
         resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.18.0.0")
   public Result getAdminNotifications(UUID customerUUID) {
     // Validate Customer UUID
     Customer.getOrBadRequest(customerUUID);

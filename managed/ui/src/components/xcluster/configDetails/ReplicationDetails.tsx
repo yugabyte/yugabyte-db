@@ -37,7 +37,6 @@ import {
   getXClusterConfigTableType,
   getLatestMaxNodeLag
 } from '../ReplicationUtils';
-import { AddTableModal } from './addTable/AddTableModal';
 import { EditConfigModal } from './EditConfigModal';
 import { LagGraph } from './LagGraph';
 import { ReplicationTables } from './ReplicationTables';
@@ -49,9 +48,10 @@ import { YBBanner, YBBannerVariant, YBLabelWithIcon } from '../../common/descrip
 import { api, universeQueryKey, xClusterQueryKey } from '../../../redesign/helpers/api';
 import { getAlertConfigurations } from '../../../actions/universe';
 import { MenuItemsContainer } from '../../universes/UniverseDetail/compounds/MenuItemsContainer';
-import SyncXClusterConfigModal from './SyncXClusterModal';
+import { SyncXClusterConfigModal } from './SyncXClusterModal';
 
-import { Metrics, XClusterConfig } from '../XClusterTypes';
+import { Metrics } from '../XClusterTypes';
+import { XClusterConfig } from '../dtos';
 import { TableType, YBTable } from '../../../redesign/helpers/dtos';
 
 import './ReplicationDetails.scss';
@@ -631,7 +631,10 @@ export function ReplicationDetails({
           />
         )}
         {isSyncConfigModalVisible && (
-          <SyncXClusterConfigModal xClusterConfig={xClusterConfig} onHide={hideModal} />
+          <SyncXClusterConfigModal
+            xClusterConfig={xClusterConfig}
+            modalProps={{ open: isSyncConfigModalVisible, onClose: hideModal }}
+          />
         )}
       </div>
     </>

@@ -818,6 +818,30 @@ TEST_F_EX(MasterPathHandlersItest, TestTabletUnderReplicationEndpoint,
   cluster_->Shutdown();
 }
 
+TEST_F_EX(MasterPathHandlersItest, TestTabletUnderReplicationEndpointDeadTserver,
+    MasterPathHandlersUnderReplicationItest) {
+  ASSERT_OK(cluster_->SetFlagOnMasters("tserver_unresponsive_timeout_ms", "3000"));
+
+  auto tablet_ids = ASSERT_RESULT(CreateTestTableAndGetTabletIds());
+  ASSERT_OK(WaitFor([&]() {
+    return CheckNotUnderReplicated(tablet_ids).ok();
+  }, 10s, "Wait for not underreplicated"));
+
+  // The tablet endpoint should count replicas on the dead tserver as valid replicas (so the tablet
+  // is not under-replicated).
+  cluster_->tablet_server(0)->Shutdown();
+  ASSERT_OK(cluster_->WaitForMasterToMarkTSDead(0));
+  ASSERT_OK(CheckNotUnderReplicated(tablet_ids));
+
+  // The tablet IS under-replicated once the replica on the dead tserver is kicked out of quorum.
+  ASSERT_OK(WaitFor([&]() {
+    return CheckUnderReplicatedInPlacements(tablet_ids, {kLivePlacementUuid}).ok();
+  }, 3s * FLAGS_follower_unavailable_considered_failed_sec, "Wait for underreplicated"));
+
+  // YBMiniClusterTestBase test-end verification will fail if the cluster is up with stopped nodes.
+  cluster_->Shutdown();
+}
+
 TEST_F_EX(MasterPathHandlersItest, TestTabletUnderReplicationEndpointTableReplicationInfo,
     MasterPathHandlersUnderReplicationItest) {
   auto tablet_ids = ASSERT_RESULT(CreateTestTableAndGetTabletIds());

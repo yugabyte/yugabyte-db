@@ -5,58 +5,18 @@ import {
   DROPDOWN_DIVIDER,
   MetricName,
   METRIC_TIME_RANGE_OPTIONS,
-  XClusterConfigStatus,
-  XClusterConfigType,
-  XClusterTableEligibility,
-  XClusterTableStatus
+  XClusterTableEligibility
 } from './constants';
 
-import { PitrConfig, TableType, YBTable } from '../../redesign/helpers/dtos';
+import { TableType, YBTable } from '../../redesign/helpers/dtos';
+import { XClusterTableDetails } from './dtos';
 
 /**
  * XCluster supported table type.
  */
 export type XClusterTableType = typeof TableType.PGSQL_TABLE_TYPE | typeof TableType.YQL_TABLE_TYPE;
 
-/**
- * Source: XClusterTableConfig.java
- */
-export interface XClusterTableDetails {
-  indexTable: boolean;
-  needBootstrap: boolean;
-  replicationSetupDone: true;
-  status: XClusterTableStatus;
-  streamId: string;
-  tableId: string;
-
-  bootstrapCreateTime?: string;
-  restoreTime?: string;
-}
-
 export type XClusterTable = YBTable & Omit<XClusterTableDetails, 'tableId'>;
-
-export interface XClusterConfig {
-  createTime: string;
-  imported: boolean;
-  modifyTime: string;
-  name: string;
-  paused: boolean;
-  pitrConfigs: PitrConfig[];
-  replicationGroupName: string;
-  sourceActive: boolean;
-  status: XClusterConfigStatus;
-  tableDetails: XClusterTableDetails[];
-  tableType: 'UNKNOWN' | 'YSQL' | 'YCQL';
-  tables: string[];
-  targetActive: boolean;
-  type: XClusterConfigType;
-  usedForDr: boolean;
-  uuid: string;
-
-  sourceUniverseUUID?: string;
-  targetUniverseUUID?: string;
-  txnTableDetails?: XClusterTableDetails;
-}
 
 //------------------------------------------------------------------------------------
 // Table Selection Types

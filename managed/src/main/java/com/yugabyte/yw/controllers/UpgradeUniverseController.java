@@ -377,7 +377,7 @@ public class UpgradeUniverseController extends AuthenticatedController {
    * @return Result indicating the success of the modification operation
    */
   @ApiOperation(
-      value = "Modify Audit Logging Configuration",
+      value = "YbaApi Internal. Modify Audit Logging Configuration",
       notes = "Modifies the audit logging configuration for a universe.",
       nickname = "modifyAuditLogging",
       response = YBPTask.class)
@@ -388,6 +388,7 @@ public class UpgradeUniverseController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.forms.AuditLogConfigParams",
           required = true,
           paramType = "body"))
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
   public Result modifyAuditLogging(UUID customerUuid, UUID universeUuid, Http.Request request) {
     return requestHandler(
         request,
@@ -608,7 +609,8 @@ public class UpgradeUniverseController extends AuthenticatedController {
         universe.getUniverseUUID(),
         customer.getUuid());
     JsonNode additionalDetails = null;
-    if (type.equals(GFlagsUpgradeParams.class)) {
+    if (GFlagsUpgradeParams.class.isAssignableFrom(type)) {
+      log.debug("setting up gflag audit logging");
       additionalDetails =
           gFlagsAuditHandler.constructGFlagAuditPayload((GFlagsUpgradeParams) requestParams);
     }

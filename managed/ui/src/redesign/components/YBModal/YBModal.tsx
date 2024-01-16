@@ -268,7 +268,9 @@ export const YBModal: FC<YBModalProps> = (props: YBModalProps) => {
     >
       <form className={classes.form}>
         {customTitle ? (
-          <div className={clsx(classes.modalTitle, titleContentProps)}>{customTitle}</div>
+          <DialogTitle id="form-dialog-title" disableTypography className={dialogTitle}>
+            {customTitle}
+          </DialogTitle>
         ) : (
           title && (
             <DialogTitle id="form-dialog-title" disableTypography className={dialogTitle}>

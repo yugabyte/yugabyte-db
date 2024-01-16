@@ -127,6 +127,7 @@ DECLARE_bool(cdc_populate_end_markers_transactions);
 DECLARE_uint64(cdc_stream_records_threshold_size_bytes);
 DECLARE_int64(cdc_resolve_intent_lag_threshold_ms);
 DECLARE_bool(enable_tablet_split_of_cdcsdk_streamed_tables);
+DECLARE_bool(ysql_yb_enable_replication_commands);
 
 namespace yb {
 

@@ -32,7 +32,7 @@
 #pragma once
 
 #include <boost/smart_ptr/detail/yield_k.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/atomicops.h"
 #include "yb/gutil/port.h"

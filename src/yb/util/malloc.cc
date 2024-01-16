@@ -30,7 +30,7 @@
 // under the License.
 //
 #include "yb/util/malloc.h"
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #if defined(__linux__)
 #include <malloc.h>

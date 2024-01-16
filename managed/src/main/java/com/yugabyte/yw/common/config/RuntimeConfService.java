@@ -17,6 +17,7 @@ import com.google.inject.Inject;
 import com.typesafe.config.Config;
 import com.typesafe.config.ConfigRenderOptions;
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.common.config.ConfKeyInfo.ConfKeyTags;
 import com.yugabyte.yw.common.config.impl.RuntimeConfig;
 import com.yugabyte.yw.common.config.impl.SettableRuntimeConfigFactory;
 import com.yugabyte.yw.controllers.AuthenticatedController;
@@ -31,6 +32,7 @@ import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CommonUtils;
 import io.ebean.Model;
 import io.ebean.annotation.Transactional;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Map.Entry;
@@ -99,6 +101,31 @@ public class RuntimeConfService extends AuthenticatedController {
 
   public Set<String> getMutableKeys() {
     return mutableKeys;
+  }
+
+  public List<String> getFeatureFlagKeys() {
+    return keyMetaData.values().stream()
+        .filter(
+            cki ->
+                (cki.tags.contains(ConfKeyTags.FEATURE_FLAG)
+                    && ScopeType.GLOBAL.equals(cki.getScope())))
+        .map(cki -> cki.getKey())
+        .collect(Collectors.toList());
+  }
+
+  public List<ConfigEntry> getFeatureFlagEntries() {
+    List<ConfigEntry> featureFlagEntries = new ArrayList<>();
+    Config globalConfig = settableRuntimeConfigFactory.globalRuntimeConf();
+    for (String k : getFeatureFlagKeys()) {
+      String value = globalConfig.getValue(k).render(ConfigRenderOptions.concise());
+      value = unwrap(value);
+      if (sensitiveKeys.contains(k)) {
+        value = CommonUtils.getEmptiableMaskedValue(k, value);
+      }
+      featureFlagEntries.add(new ConfigEntry(false, k, value));
+    }
+
+    return featureFlagEntries;
   }
 
   public ScopedConfig getConfig(

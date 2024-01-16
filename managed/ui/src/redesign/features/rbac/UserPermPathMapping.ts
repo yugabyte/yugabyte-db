@@ -85,6 +85,7 @@ export const UserPermissionMap = {
         permissionRequired: [Action.CREATE]
     },
     listProvider: {
+        onResource: 'CUSTOMER_ID',
         resourceType: RbacResourceTypes.PROVIDER,
         permissionRequired: [Action.READ]
     },
@@ -283,6 +284,11 @@ export const UserPermissionMap = {
         onResource: 'CUSTOMER_ID',
         resourceType: RbacResourceTypes.RUN_TIME_CONFIG,
         permissionRequired: [Action.UPDATE]
+    },
+    listRuntimeConfig: {
+        onResource: 'CUSTOMER_ID',
+        resourceType: RbacResourceTypes.RUN_TIME_CONFIG,
+        permissionRequired: [Action.READ]
     },
 
     //Create user

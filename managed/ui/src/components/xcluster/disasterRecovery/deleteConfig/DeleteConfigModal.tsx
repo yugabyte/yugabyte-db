@@ -11,7 +11,9 @@ import { api, drConfigQueryKey, universeQueryKey } from '../../../../redesign/he
 import { fetchTaskUntilItCompletes } from '../../../../actions/xClusterReplication';
 import { handleServerError } from '../../../../utils/errorHandlingUtils';
 
-import { DrConfig } from '../types';
+import { DrConfig } from '../dtos';
+
+import toastStyles from '../../../../redesign/styles/toastStyles.module.scss';
 
 interface DeleteConfigModalProps {
   drConfig: DrConfig;
@@ -21,14 +23,6 @@ interface DeleteConfigModalProps {
 }
 
 const useStyles = makeStyles((theme) => ({
-  toastContainer: {
-    display: 'flex',
-    gap: theme.spacing(0.5),
-    '& a': {
-      textDecoration: 'underline',
-      color: '#fff'
-    }
-  },
   consequenceText: {
     marginTop: theme.spacing(2)
   }
@@ -56,25 +50,33 @@ export const DeleteConfigModal = ({
 
           // Refetch the source & target universes to remove references to the deleted DR config.
           queryClient.invalidateQueries(
-            universeQueryKey.detail(drConfig.xClusterConfig.sourceUniverseUUID)
+            universeQueryKey.detail(drConfig.xClusterConfig.sourceUniverseUUID),
+            { exact: true }
           );
           queryClient.invalidateQueries(
-            universeQueryKey.detail(drConfig.xClusterConfig.targetUniverseUUID)
+            universeQueryKey.detail(drConfig.xClusterConfig.targetUniverseUUID),
+            { exact: true }
           );
         };
         const handleTaskCompletion = (error: boolean) => {
           if (error) {
             toast.error(
-              <span className={classes.toastContainer}>
+              <span className={toastStyles.toastMessage}>
                 <i className="fa fa-exclamation-circle" />
-                <span>{t('error.taskFailure')}</span>
+                <Typography variant="body2" component="span">
+                  {t('error.taskFailure')}
+                </Typography>
                 <a href={`/tasks/${response.taskUUID}`} rel="noopener noreferrer" target="_blank">
                   {t('viewDetails', { keyPrefix: 'task' })}
                 </a>
               </span>
             );
           } else {
-            toast.success(t('success.taskSuccess'));
+            toast.success(
+              <Typography variant="body2" component="span">
+                {t('success.taskSuccess')}
+              </Typography>
+            );
           }
           invalidateQueries();
         };
@@ -86,7 +88,7 @@ export const DeleteConfigModal = ({
         fetchTaskUntilItCompletes(response.taskUUID, handleTaskCompletion, invalidateQueries);
       },
       onError: (error: Error | AxiosError) =>
-        handleServerError(error, { customErrorLabel: t('error.requestFailure') })
+        handleServerError(error, { customErrorLabel: t('error.requestFailureLabel') })
     }
   );
 
@@ -121,6 +123,7 @@ export const DeleteConfigModal = ({
         <YBInput
           fullWidth
           placeholder={drConfig.name}
+          value={confirmationText}
           onChange={(event) => setConfirmationText(event.target.value)}
         />
       </Box>

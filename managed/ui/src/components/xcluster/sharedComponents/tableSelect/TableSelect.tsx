@@ -61,7 +61,8 @@ import {
   UniverseNamespace,
   YBTable
 } from '../../../../redesign/helpers/dtos';
-import { XClusterConfig, XClusterTableType } from '../../XClusterTypes';
+import { XClusterTableType } from '../../XClusterTypes';
+import { XClusterConfig } from '../../dtos';
 import {
   EligibilityDetails,
   KeyspaceItem,
@@ -88,7 +89,7 @@ interface CommonTableSelectProps {
   selectionWarning: { title: string; body: string } | undefined;
 }
 
-type TableSelectProps =
+export type TableSelectProps =
   | (CommonTableSelectProps & {
       configAction: typeof XClusterConfigAction.CREATE;
       isTransactionalConfig: boolean;

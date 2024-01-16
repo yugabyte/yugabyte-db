@@ -20,7 +20,8 @@ import { ExpandedConfigTableSelect } from './ExpandedConfigTableSelect';
 import { SortOrder, YBTableRelationType } from '../../../../redesign/helpers/constants';
 
 import { TableType, Universe, YBTable } from '../../../../redesign/helpers/dtos';
-import { XClusterConfig, XClusterTable, XClusterTableType } from '../../XClusterTypes';
+import { XClusterTable, XClusterTableType } from '../../XClusterTypes';
+import { XClusterConfig } from '../../dtos';
 
 import styles from './ConfigTableSelect.module.scss';
 

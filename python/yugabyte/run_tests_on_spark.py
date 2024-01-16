@@ -51,18 +51,20 @@ Run Java tests satisfying a particular regex:
 
 import argparse
 import errno
+import functools
 import getpass
 import glob
 import gzip
 import json
 import logging
+import operator
 import os
 import platform
 import pwd
 import random
 import re
+import shlex
 import shutil
-import signal
 import socket
 import subprocess
 import sys
@@ -72,21 +74,19 @@ import traceback
 
 from datetime import datetime
 
-from yugabyte import file_util
-
 from collections import defaultdict
 
 from typing import List, Dict, Set, Tuple, Optional, Any, cast
 
+sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from yugabyte import file_util  # noqa
+from yugabyte import build_paths  # noqa
+from yugabyte.test_descriptor import TEST_DESCRIPTOR_SEPARATOR  # noqa
+
 # An upper bound on a single test's running time. In practice there are multiple other timeouts
 # that should be triggered earlier.
 TEST_TIMEOUT_UPPER_BOUND_SEC = 35 * 60
-
-# We wait for a special "flag file" to appear indicating that the test has started running, which is
-# created by the about_to_start_running_test in common-test-env.sh. If this does not happen within
-# this amount of time, we terminate the run-test.sh script. This should prevent tests getting stuck
-# for a long time in macOS builds.
-TIME_SEC_TO_START_RUNNING_TEST = 5 * 60
 
 # Defaults for maximum test failure threshold, after which the Spark job will be aborted
 DEFAULT_MAX_NUM_TEST_FAILURES_MACOS_DEBUG = 150
@@ -167,16 +167,83 @@ SPARK_URLS = {
 CTEST_TEST_PROGRAM_RE = re.compile(r'^.* ctest test: \"(.*)\"$')
 
 # Non-gtest tests and tests with internal dependencies that we should run in one shot. This almost
-# duplicates a  from common-test-env.sh, but that is probably OK since we should not be adding new
+# duplicates a from common-test-env.sh, but that is probably OK since we should not be adding new
 # such tests.
 ONE_SHOT_TESTS = set([
-        'merge_test',
         'c_test',
-        'compact_on_deletion_collector_test',
-        'db_sanity_test',
-        'tests-rocksdb/thread_local_test'])
+        'db_sanity_test'])
 
 HASH_COMMENT_RE = re.compile('#.*$')
+
+THREAD_JOIN_TIMEOUT_SEC = 10
+
+UNTAR_SCRIPT_TEMPLATE = """#!{bash_shebang}
+set -euo pipefail
+(
+    PATH=/usr/local/bin:$PATH
+    # Options for asynchronous clean-up jobs.
+    # Optional argument for checking workspace path associated with this spark app.
+    if [[ "${{1:-none}}" == "path" ]]; then
+      echo '{remote_yb_src_root}'
+      exit 0
+    fi
+    # Optional argument for marking workspace to be removed.
+    if [[ "${{1:-none}}" == "remove" ]]; then
+      rm -f '{archive_path}'
+      mv '{remote_yb_src_job_dir}' '{remote_yb_src_removal}/'
+      exit 0
+    fi
+    flock -w 180 200 || exit 5
+    # Clean up any pending removals before we unpack the archive.
+    rm -rf {remote_yb_src_removal}/*
+    # Check existing workspace.
+    if [[ -d '{remote_yb_src_root}' ]]; then
+        previous_sha256_file_path='{remote_yb_src_root}/extracted_from_archive.sha256'
+        if [[ ! -f $previous_sha256_file_path ]]; then
+            # Prevent accidental deletion of directories that were not installed by untarring
+            # an archive.
+            echo "File $previous_sha256_file_path does not exist!" >&2
+            exit 1
+        fi
+        previous_sha256sum=$(<"$previous_sha256_file_path")
+        if [[ $previous_sha256sum == '{expected_archive_sha256sum}' ]]; then
+            echo "Found existing archive installation at '{remote_yb_src_root}' with correct" \
+                 "expected checksum '$previous_sha256sum'."
+        else
+            echo "Removing '{remote_yb_src_root}': it was installed from archive with checksum" \
+                 "'$previous_sha256sum' but we are installing one with checksum" \
+                 "'{expected_archive_sha256sum}'."
+            rm -rf '{remote_yb_src_root}'
+        fi
+    fi
+    if [[ ! -d '{remote_yb_src_root}' ]]; then
+        if [[ ! -f '{untar_script_path_for_reference}' ]]; then
+            cp '{untar_script_path}' '{untar_script_path_for_reference}'
+        fi
+        actual_archive_sha256sum=$( (
+            [[ $OSTYPE == linux* ]] && sha256sum '{archive_path}' ||
+            shasum --algorithm 256 '{archive_path}'
+        ) | awk '{{ print $1 }}' )
+        if [[ $actual_archive_sha256sum != '{expected_archive_sha256sum}' ]]; then
+          echo "Archive SHA256 sum of '{archive_path}' is $actual_archive_sha256sum, which" \
+               "does not match expected value: {expected_archive_sha256sum}." >&2
+          exit 1
+        fi
+        chmod 0755 '{untar_script_path_for_reference}'
+        yb_src_root_extract_tmp_dir='{remote_yb_src_root}'.$RANDOM.$RANDOM.$RANDOM.$RANDOM
+        mkdir -p "$yb_src_root_extract_tmp_dir"
+        if [[ -x /bin/pigz ]]; then
+            # Decompress faster with pigz
+            /bin/pigz -dc '{archive_path}' | tar xf - -C "$yb_src_root_extract_tmp_dir"
+        else
+            tar xzf '{archive_path}' -C "$yb_src_root_extract_tmp_dir"
+        fi
+        echo '{expected_archive_sha256sum}' \
+                >"$yb_src_root_extract_tmp_dir/extracted_from_archive.sha256"
+        mv "$yb_src_root_extract_tmp_dir" '{remote_yb_src_root}'
+    fi
+)  200>'{lock_path}'
+"""
 
 # Global variables. Some of these are used on the remote worker side.
 verbose = False
@@ -193,16 +260,6 @@ def configure_logging() -> None:
     logging.basicConfig(
         level=log_level,
         format="[%(filename)s:%(lineno)d] %(asctime)s %(levelname)s: %(message)s")
-
-
-def is_pid_running(pid: int) -> bool:
-    import psutil  # type: ignore
-    try:
-        process = psutil.Process(pid)
-        return process.status() != psutil.STATUS_ZOMBIE
-    except psutil.NoSuchProcess:
-        # Not running.
-        return False
 
 
 def delete_if_exists_log_errors(file_path: str) -> None:
@@ -326,7 +383,7 @@ def copy_spark_stderr(
         spark_stderr_src = os.path.join(os.path.abspath(SparkFiles.getRootDirectory()), 'stderr')
 
         test_descriptor = yb_dist_tests.TestDescriptor(test_descriptor_str)
-        error_output_path = test_descriptor.error_output_path
+        error_output_path = join_build_root_with(test_descriptor.rel_error_output_path)
         spark_stderr_dest = error_output_path.replace('__error.log', '__spark_stderr.log')
 
         error_log_dir_path = os.path.dirname(spark_stderr_dest)
@@ -343,6 +400,15 @@ def copy_spark_stderr(
         result = artifact_upload.FileTransferResult()
         result.exception_traceback = traceback.format_exc()
         return result
+
+
+def get_build_root() -> str:
+    assert yb_dist_tests.global_conf is not None
+    return yb_dist_tests.global_conf.build_root
+
+
+def join_build_root_with(rel_path: str) -> str:
+    return os.path.join(get_build_root(), rel_path)
 
 
 def parallel_run_test(test_descriptor_str: str, fail_count: Any) -> yb_dist_tests.TestResult:
@@ -378,7 +444,9 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any) -> yb_dist_test
             prefix='yb_test_started_running_flag_file')
 
     os.environ['YB_TEST_STARTED_RUNNING_FLAG_FILE'] = test_started_running_flag_file
-    os.environ['YB_TEST_EXTRA_ERROR_LOG_PATH'] = test_descriptor.error_output_path
+
+    error_output_path = join_build_root_with(test_descriptor.rel_error_output_path)
+    os.environ['YB_TEST_EXTRA_ERROR_LOG_PATH'] = error_output_path
 
     timestamp_str = datetime.now().strftime('%Y%m%d%H%M%S%f')
     random_part = ''.join([str(random.randint(0, 9)) for i in range(10)])
@@ -392,85 +460,50 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any) -> yb_dist_test
     os.environ['YB_TEST_ARTIFACT_LIST_PATH'] = artifact_list_path
     logging.info("Setting YB_TEST_ARTIFACT_LIST_PATH to %s", artifact_list_path)
 
-    # We could use "run_program" here, but it collects all the output in memory, which is not
-    # ideal for a large amount of test log output. The "tee" part also makes the output visible in
-    # the standard error of the Spark task as well, which is sometimes helpful for debugging.
-    def run_test() -> Tuple[int, float]:
+    timer_thread = None
+    try:
         start_time_sec = time.time()
-        error_log_dir_path = os.path.dirname(os.path.abspath(test_descriptor.error_output_path))
-        if not os.path.isdir(error_log_dir_path):
-            subprocess.check_call(['mkdir', '-p', error_log_dir_path])
-        runner_oneline = 'set -o pipefail; "%s" %s 2>&1 | tee "%s"; exit ${PIPESTATUS[0]}' % (
-            global_conf.get_run_test_script_path(),
-            test_descriptor.args_for_run_test,
-            test_descriptor.error_output_path
-        )
+        error_log_dir_path = os.path.dirname(os.path.abspath(error_output_path))
+        file_util.mkdir_p(error_log_dir_path)
+        runner_oneline = \
+            'set -o pipefail; cd %s; "%s" %s 2>&1 | tee "%s"; exit ${PIPESTATUS[0]}' % (
+                shlex.quote(get_build_root()),
+                global_conf.get_run_test_script_path(),
+                test_descriptor.args_for_run_test,
+                error_output_path
+            )
         process = subprocess.Popen(
-            [get_bash_path(), '-c', runner_oneline]
+            [get_bash_path(), '-c', runner_oneline],
+            cwd=get_build_root()
         )
 
-        found_flag_file = False
-        while is_pid_running(process.pid):
-            elapsed_time_sec = time.time() - start_time_sec
-            termination_reason = None
-            if elapsed_time_sec > TEST_TIMEOUT_UPPER_BOUND_SEC:
-                termination_reason = 'ran longer than %d seconds' % TEST_TIMEOUT_UPPER_BOUND_SEC
+        # Terminate extremely long running tests using a timer thread.
+        def handle_timeout() -> None:
+            if process.poll() is None:
+                elapsed_time_sec = time.time() - start_time_sec
+                logging.warning("Test %s is being terminated due to timeout after %.1f seconds",
+                                test_descriptor, elapsed_time_sec)
+                process.kill()
 
-            failed_to_launch = False
-            if not found_flag_file:
-                if os.path.exists(test_started_running_flag_file):
-                    found_flag_file = True
-                elif elapsed_time_sec > TIME_SEC_TO_START_RUNNING_TEST:
-                    termination_reason = (
-                        'could not start running the test in %d seconds (file %s not created). '
-                        'Ran command: {{ %s }}.'
-                    ) % (
-                        TIME_SEC_TO_START_RUNNING_TEST,
-                        test_started_running_flag_file,
-                        runner_oneline
-                    )
-                    failed_to_launch = True
-
-            if termination_reason:
-                error_msg = "Test %s is being terminated (ran for %.1f seconds), reason: %s" % (
-                    test_descriptor, elapsed_time_sec, termination_reason
-                )
-                logging.info(error_msg)
-                try:
-                    os.kill(process.pid, signal.SIGKILL)
-                except OSError as os_error:
-                    if os_error.errno == errno.ESRCH:
-                        logging.info(
-                            "Process with pid %d disappeared suddenly, that's OK",
-                            process.pid)
-                        pass
-                    raise os_error
-
-                if failed_to_launch:
-                    # This exception should bubble up to Spark and cause it to hopefully re-run the
-                    # test on some other node.
-                    raise RuntimeError(error_msg)
-                break
-
-            time.sleep(0.5)
-
+        timer_thread = threading.Timer(
+            interval=TEST_TIMEOUT_UPPER_BOUND_SEC, function=handle_timeout, args=[])
+        timer_thread.start()
         exit_code = process.wait()
+        elapsed_time_sec = time.time() - start_time_sec
+
+        additional_log_message = ''
+        if elapsed_time_sec > TEST_TIMEOUT_UPPER_BOUND_SEC:
+            additional_log_message = '(ran longer than %d seconds)' % TEST_TIMEOUT_UPPER_BOUND_SEC
 
         elapsed_time_sec = time.time() - start_time_sec
-        logging.info("Test %s ran on %s in %.1f seconds, rc=%d",
-                     test_descriptor, socket.gethostname(), elapsed_time_sec, exit_code)
+        logging.info(
+            f"Test {test_descriptor} ran on {socket.gethostname()} in {elapsed_time_sec:.2f} "
+            f"seconds, exit code: {exit_code}{additional_log_message}")
         if exit_code != 0:
             fail_count.add(1)
-        return exit_code, elapsed_time_sec
 
-    # End of the local run_test() function.
-
-    artifact_copy_result: Optional[artifact_upload.FileTransferResult] = None
-    spark_error_copy_result: Optional[artifact_upload.FileTransferResult] = None
-
-    try:
-        exit_code, elapsed_time_sec = run_test()
-        error_output_path = test_descriptor.error_output_path
+        artifact_copy_result: Optional[artifact_upload.FileTransferResult] = None
+        spark_error_copy_result: Optional[artifact_upload.FileTransferResult] = None
 
         failed_without_output = False
         if os.path.isfile(error_output_path) and os.path.getsize(error_output_path) == 0:
@@ -479,10 +512,10 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any) -> yb_dist_test
                 # Test succeeded, no error output.
                 os.remove(error_output_path)
             else:
+                # The test failed, but there is no error output.
                 failed_without_output = True
 
         artifact_paths = []
-        num_errors_copying_artifacts = 0
 
         rel_artifact_paths = None
         if global_conf.archive_for_workers:
@@ -526,6 +559,9 @@ def parallel_run_test(test_descriptor_str: str, fail_count: Any) -> yb_dist_test
         delete_if_exists_log_errors(test_started_running_flag_file)
         delete_if_exists_log_errors(artifact_list_path)
         os.umask(old_umask)
+        if timer_thread is not None:
+            timer_thread.cancel()
+            timer_thread.join(timeout=THREAD_JOIN_TIMEOUT_SEC)
 
 
 def get_bash_shebang() -> str:
@@ -582,73 +618,16 @@ def initialize_remote_task() -> yb_dist_tests.GlobalTestConfig:
             # Do the locking using the flock command in Bash -- file locking in Python is painful.
             # Some curly braces in the script template are escaped as "{{" and }}".
 
-            untar_script_file.write("""#!{bash_shebang}
-set -euo pipefail
-(
-    PATH=/usr/local/bin:$PATH
-    # Options for asynchronous clean-up jobs.
-    # Optional argument for checking workspace path associated with this spark app.
-    if [[ "${{1:-none}}" == "path" ]]; then
-      echo '{remote_yb_src_root}'
-      exit 0
-    fi
-    # Optional argument for marking workspace to be removed.
-    if [[ "${{1:-none}}" == "remove" ]]; then
-      rm -f '{archive_path}'
-      mv '{remote_yb_src_job_dir}' '{remote_yb_src_removal}/'
-      exit 0
-    fi
-    flock -w 180 200 || exit 5
-    # Clean up any pending removals before we unpack the archive.
-    rm -rf {remote_yb_src_removal}/*
-    # Check existing workspace.
-    if [[ -d '{remote_yb_src_root}' ]]; then
-        previous_sha256_file_path='{remote_yb_src_root}/extracted_from_archive.sha256'
-        if [[ ! -f $previous_sha256_file_path ]]; then
-            # Prevent accidental deletion of directories that were not installed by untarring
-            # an archive.
-            echo "File $previous_sha256_file_path does not exist!" >&2
-            exit 1
-        fi
-        previous_sha256sum=$(<"$previous_sha256_file_path")
-        if [[ $previous_sha256sum == '{expected_archive_sha256sum}' ]]; then
-            echo "Found existing archive installation at '{remote_yb_src_root}' with correct" \
-                 "expected checksum '$previous_sha256sum'."
-        else
-            echo "Removing '{remote_yb_src_root}': it was installed from archive with checksum" \
-                 "'$previous_sha256sum' but we are installing one with checksum" \
-                 "'{expected_archive_sha256sum}'."
-            rm -rf '{remote_yb_src_root}'
-        fi
-    fi
-    if [[ ! -d '{remote_yb_src_root}' ]]; then
-        if [[ ! -f '{untar_script_path_for_reference}' ]]; then
-            cp '{untar_script_path}' '{untar_script_path_for_reference}'
-        fi
-        actual_archive_sha256sum=$( (
-            [[ $OSTYPE == linux* ]] && sha256sum '{archive_path}' ||
-            shasum --algorithm 256 '{archive_path}'
-        ) | awk '{{ print $1 }}' )
-        if [[ $actual_archive_sha256sum != '{expected_archive_sha256sum}' ]]; then
-          echo "Archive SHA256 sum of '{archive_path}' is $actual_archive_sha256sum, which" \
-               "does not match expected value: {expected_archive_sha256sum}." >&2
-          exit 1
-        fi
-        chmod 0755 '{untar_script_path_for_reference}'
-        yb_src_root_extract_tmp_dir='{remote_yb_src_root}'.$RANDOM.$RANDOM.$RANDOM.$RANDOM
-        mkdir -p "$yb_src_root_extract_tmp_dir"
-        if [[ -x /bin/pigz ]]; then
-            # Decompress faster with pigz
-            /bin/pigz -dc '{archive_path}' | tar xf - -C "$yb_src_root_extract_tmp_dir"
-        else
-            tar xzf '{archive_path}' -C "$yb_src_root_extract_tmp_dir"
-        fi
-        echo '{expected_archive_sha256sum}' \
-                >"$yb_src_root_extract_tmp_dir/extracted_from_archive.sha256"
-        mv "$yb_src_root_extract_tmp_dir" '{remote_yb_src_root}'
-    fi
-)  200>'{lock_path}'
-""".format(**locals()))
+            untar_script_file.write(UNTAR_SCRIPT_TEMPLATE.format(
+                archive_path=archive_path,
+                bash_shebang=bash_shebang,
+                expected_archive_sha256sum=expected_archive_sha256sum,
+                lock_path=lock_path,
+                remote_yb_src_job_dir=remote_yb_src_job_dir,
+                remote_yb_src_removal=remote_yb_src_removal,
+                remote_yb_src_root=remote_yb_src_root,
+                untar_script_path=untar_script_path,
+                untar_script_path_for_reference=untar_script_path_for_reference))
         os.chmod(untar_script_path, 0o755)
         subprocess.check_call(untar_script_path)
 
@@ -665,20 +644,23 @@ set -euo pipefail
     return global_conf
 
 
-def parallel_list_test_descriptors(rel_test_path: str) -> List[str]:
+def parallel_list_test_descriptors(rel_test_path: str) -> Tuple[List[str], float]:
     """
     This is invoked in parallel to list all individual tests within our C++ test programs. Without
     this, listing all gtest tests across 330 test programs might take about 5 minutes on TSAN and 2
     minutes in debug.
     """
 
+    start_time_sec = time.time()
+
     from yugabyte import yb_dist_tests, command_util
     global_conf = initialize_remote_task()
 
     os.environ['BUILD_ROOT'] = global_conf.build_root
-    find_or_download_thirdparty_script_path = os.path.join(
-        global_conf.yb_src_root, 'build-support', 'find_or_download_thirdparty.sh')
-    subprocess.check_call(find_or_download_thirdparty_script_path)
+    if not os.path.isdir(os.environ['YB_THIRDPARTY_DIR']):
+        find_or_download_thirdparty_script_path = os.path.join(
+            global_conf.yb_src_root, 'build-support', 'find_or_download_thirdparty.sh')
+        subprocess.check_call(find_or_download_thirdparty_script_path)
 
     wait_for_path_to_exist(global_conf.build_root)
     list_tests_cmd_line = [
@@ -687,7 +669,7 @@ def parallel_list_test_descriptors(rel_test_path: str) -> List[str]:
     try:
         prog_result = command_util.run_program(list_tests_cmd_line)
     except OSError as ex:
-        logging.error("Failed running the command: %s", list_tests_cmd_line)
+        logging.exception("Failed running the command: %s", list_tests_cmd_line)
         raise
 
     # --gtest_list_tests gives us the following output format:
@@ -714,7 +696,7 @@ def parallel_list_test_descriptors(rel_test_path: str) -> List[str]:
 
     current_test: Optional[str] = None
     test_descriptors: List[str] = []
-    test_descriptor_prefix = rel_test_path + yb_dist_tests.TEST_DESCRIPTOR_SEPARATOR
+    test_descriptor_prefix = rel_test_path + TEST_DESCRIPTOR_SEPARATOR
     for line in prog_result.stdout.split("\n"):
         if ('Starting tracking the heap' in line or 'Dumping heap profile to' in line):
             continue
@@ -726,7 +708,7 @@ def parallel_list_test_descriptors(rel_test_path: str) -> List[str]:
         else:
             current_test = trimmed_line
 
-    return test_descriptors
+    return test_descriptors, time.time() - start_time_sec
 
 
 def get_username() -> str:
@@ -820,7 +802,7 @@ def save_report(
         report_base_dir: str,
         results: List[yb_dist_tests.TestResult],
         total_elapsed_time_sec: float,
-        spark_succeeded: bool,
+        gzip_full_report: bool,
         save_to_build_dir: bool = False) -> None:
     historical_report_path = None
     global_conf = yb_dist_tests.get_global_conf()
@@ -862,8 +844,10 @@ def save_report(
             artifact_paths=result.artifact_paths
         )
         test_reports_by_descriptor[test_descriptor.descriptor_str] = test_report_dict
-        if test_descriptor.error_output_path and os.path.isfile(test_descriptor.error_output_path):
-            test_report_dict['error_output_path'] = test_descriptor.error_output_path
+        error_output_path = test_descriptor.rel_error_output_path
+        if os.path.isfile(error_output_path):
+            test_report_dict['error_output_path'] = os.path.relpath(
+                error_output_path, global_conf.yb_src_root)
 
     jenkins_env_var_values = {}
     for jenkins_env_var_name in JENKINS_ENV_VARS:
@@ -873,10 +857,8 @@ def save_report(
     report = dict(
         conf=vars(yb_dist_tests.global_conf),
         total_elapsed_time_sec=total_elapsed_time_sec,
-        spark_succeeded=spark_succeeded,
         jenkins_env_vars=jenkins_env_var_values,
-        tests=test_reports_by_descriptor
-        )
+        tests=test_reports_by_descriptor)
 
     full_report_paths = []
     if historical_report_path:
@@ -884,7 +866,7 @@ def save_report(
     if save_to_build_dir:
         full_report_paths.append(os.path.join(global_conf.build_root, 'full_build_report.json'))
 
-    save_json_to_paths('full build report', report, full_report_paths, should_gzip=True)
+    save_json_to_paths('full build report', report, full_report_paths, should_gzip=gzip_full_report)
 
     if save_to_build_dir:
         del report['tests']
@@ -996,17 +978,20 @@ def collect_cpp_tests(
     # Use fewer "slices" (tasks) than there are test programs, in hope to get some batching.
     num_slices = (len(test_programs) + 1) / 2
     assert spark_context is not None
-    all_test_descriptor_lists = run_spark_action(
+    test_descriptor_lists_and_times: List[Tuple[List[str], float]] = run_spark_action(
         lambda: spark_context.parallelize(  # type: ignore
             test_programs, numSlices=num_slices).map(parallel_list_test_descriptors).collect()
     )
+    total_elapsed_time_sec = sum([t[1] for t in test_descriptor_lists_and_times])
+
     elapsed_time_sec = time.time() - start_time_sec
-    test_descriptor_strs = one_shot_test_programs + [
-        test_descriptor_str
-        for test_descriptor_str_list in all_test_descriptor_lists
-        for test_descriptor_str in test_descriptor_str_list]
-    logging.info("Collected the list of %d gtest tests in %.2f sec" % (
-        len(test_descriptor_strs), elapsed_time_sec))
+    test_descriptor_strs = one_shot_test_programs + functools.reduce(
+        operator.add, [t[0] for t in test_descriptor_lists_and_times], [])
+    logging.info(
+        f"Collected the list of {len(test_descriptor_strs)} gtest tests in "
+        f"{elapsed_time_sec:.2f} sec wallclock time, total time spent on Spark workers: "
+        f"{total_elapsed_time_sec:.2f} sec, average time per test program: "
+        f"{total_elapsed_time_sec / len(test_programs):.2f} sec")
     for test_descriptor_str in test_descriptor_strs:
         if 'YB_DISABLE_TEST_IN_' in test_descriptor_str:
             raise RuntimeError(
@@ -1104,7 +1089,8 @@ def collect_tests(args: argparse.Namespace) -> List[yb_dist_tests.TestDescriptor
         num_tests_before_filtering = len(test_descriptors)
         test_descriptors = [
             test_descriptor for test_descriptor in test_descriptors
-            if test_filter_re_compiled.match(test_descriptor.descriptor_str_without_attempt_index)
+            # Use search() instead of match() to allow matching anywhere in the string.
+            if test_filter_re_compiled.search(test_descriptor.descriptor_str_without_attempt_index)
         ]
         logging.info(
             "Filtered %d tests using regular expression %s to %d tests",
@@ -1135,7 +1121,9 @@ def propagate_env_vars() -> None:
             num_propagated += 1
 
     for env_var_name, env_var_value in os.environ.items():
-        if env_var_name.startswith(PROPAGATED_ENV_VAR_PREFIX):
+        if (env_var_name.startswith(PROPAGATED_ENV_VAR_PREFIX) and
+                # Skip YB_SCRIPT_PATH_... variables, the scripts on the worker can set them.
+                not env_var_name.startswith('YB_SCRIPT_PATH_')):
             propagated_env_vars[env_var_name] = env_var_value
             logging.info("Propagating env var %s (value: %s) to Spark workers",
                          env_var_name, env_var_value)
@@ -1170,6 +1158,7 @@ def main() -> None:
     parser.add_argument('--all', dest='run_all_tests', action='store_true',
                         help='Run tests in all languages')
     parser.add_argument('--test_list',
+                        metavar='TEST_LIST_FILE',
                         help='A file with a list of tests to run. Useful when e.g. re-running '
                              'failed tests using a file produced with --failed_test_list.')
     parser.add_argument('--build-root', dest='build_root', required=True,
@@ -1192,8 +1181,11 @@ def main() -> None:
                         help='Save a test report to the build directory directly, in addition '
                              'to any reports saved in the common reports directory. This should '
                              'work even if neither --reports-dir or --write_report are specified.')
+    parser.add_argument('--no_gzip_full_report',
+                        action='store_true',
+                        help='Do not gzip the full report (will gzip it by default).')
     parser.add_argument('--test_filter_re',
-                        help='A regular expression to filter tests')
+                        help='A regular expression to filter tests. Not anchored on either end.')
     parser.add_argument('--test_conf',
                         help='A file with a JSON configuration describing what tests to run, '
                              'produced by dependency_graph.py')
@@ -1300,6 +1292,9 @@ def main() -> None:
     # ---------------------------------------------------------------------------------------------
 
     os.environ['YB_BUILD_HOST'] = socket.gethostname()
+    thirdparty_path = build_paths.BuildPaths(args.build_root).thirdparty_path
+    assert thirdparty_path is not None
+    os.environ['YB_THIRDPARTY_DIR'] = thirdparty_path
 
     # ---------------------------------------------------------------------------------------------
     # Start the timer.
@@ -1329,10 +1324,13 @@ def main() -> None:
             yb_dist_tests.compute_archive_sha256sum()
 
     propagate_env_vars()
+    collect_tests_time_sec: Optional[float] = None
     if test_list_path:
         test_descriptors = load_test_list(test_list_path)
     else:
+        collect_tests_start_time_sec = time.time()
         test_descriptors = collect_tests(args)
+        collect_tests_time_sec = time.time() - collect_tests_start_time_sec
 
     if not test_descriptors and not args.allow_no_tests:
         logging.info("No tests to run")
@@ -1372,7 +1370,6 @@ def main() -> None:
 
     # By this point, test_descriptors have been duplicated the necessary number of times, with
     # attempt indexes attached to each test descriptor.
-    spark_succeeded = False
 
     results: List[yb_dist_tests.TestResult] = []
     if test_descriptors:
@@ -1409,7 +1406,7 @@ def main() -> None:
 
         finally:
             counter_stop.set()
-            counter_thread.join(timeout=10)
+            counter_thread.join(timeout=THREAD_JOIN_TIMEOUT_SEC)
 
     else:
         # Allow running zero tests, for testing the reporting logic.
@@ -1430,6 +1427,7 @@ def main() -> None:
     result: yb_dist_tests.TestResult
     total_artifact_upload_time_sec: float = 0.0
     total_retry_wait_time_sec: float = 0.0
+    total_test_run_time_sec: float = 0.0
     for result in results:
         test_language = result.test_descriptor.language
         if result.exit_code != 0:
@@ -1446,6 +1444,8 @@ def main() -> None:
         if result.spark_error_copy_result:
             total_artifact_upload_time_sec += result.spark_error_copy_result.total_time_sec
             total_retry_wait_time_sec += result.spark_error_copy_result.total_wait_time_sec
+
+        total_test_run_time_sec += result.elapsed_time_sec
 
         num_tests_by_language[test_language] += 1
     logging.info("Total time spent uploading artifacts: %.2f sec (total retry wait time: %.2f sec)",
@@ -1466,12 +1466,21 @@ def main() -> None:
     for language, num_failures in sorted(failures_by_language.items()):
         logging.info("Failures in {} tests: {}".format(language, num_failures))
 
-    total_elapsed_time_sec = time.time() - global_start_time
-    logging.info("Total elapsed time: {} sec".format(total_elapsed_time_sec))
+    wallclock_time_sec = time.time() - global_start_time
+    logging.info(f"Wallclock time (collecting and running tests): {wallclock_time_sec:.2f} sec")
+    if collect_tests_time_sec is not None:
+        logging.info(f"Wallclock time spent collecting tests: {collect_tests_time_sec:.2f} sec")
+        logging.info(f"Wallclock time running tests only: "
+                     f"{wallclock_time_sec - collect_tests_time_sec:.2f} sec")
+    logging.info(f"Total elapsed time running tests on workers: {total_test_run_time_sec:.2f} sec")
 
     if report_base_dir and write_report or args.save_report_to_build_dir:
-        save_report(report_base_dir, results, total_elapsed_time_sec, spark_succeeded,
-                    save_to_build_dir=args.save_report_to_build_dir)
+        save_report(
+            report_base_dir=report_base_dir,
+            results=results,
+            total_elapsed_time_sec=total_test_run_time_sec,
+            gzip_full_report=not args.no_gzip_full_report,
+            save_to_build_dir=args.save_report_to_build_dir)
 
     if args.sleep_after_tests:
         # This can be used as a way to keep the Spark app running during debugging while examining

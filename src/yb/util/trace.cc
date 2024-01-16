@@ -38,7 +38,9 @@
 #include <vector>
 
 #include <boost/range/adaptor/indirected.hpp>
+#include <glog/logging.h>
 
+#include "yb/gutil/strings/stringpiece.h"
 #include "yb/gutil/strings/substitute.h"
 #include "yb/gutil/walltime.h"
 
@@ -55,6 +57,10 @@ using std::string;
 
 DEFINE_RUNTIME_bool(enable_tracing, false, "Flag to enable/disable tracing across the code.");
 TAG_FLAG(enable_tracing, advanced);
+
+DEFINE_RUNTIME_uint32(trace_max_dump_size, 30000,
+    "The max size of a trace dumped to the logs in Trace::DumpToLogInfo. 0 means unbounded.");
+TAG_FLAG(trace_max_dump_size, advanced);
 
 DEFINE_RUNTIME_int32(sampled_trace_1_in_n, 1000,
     "Flag to enable/disable sampled tracing. 0 disables.");
@@ -371,6 +377,39 @@ void Trace::AddEntry(TraceEntry* entry) {
 
 void Trace::Dump(std::ostream *out, bool include_time_deltas) const {
   Dump(out, 0, include_time_deltas);
+}
+
+void Trace::DumpToLogInfo(bool include_time_deltas) const {
+  auto trace_buffer = DumpToString(include_time_deltas);
+  const size_t trace_max_dump_size = GetAtomicFlag(&FLAGS_trace_max_dump_size);
+  const size_t kMaxDumpSize =
+      (trace_max_dump_size > 0 ? trace_max_dump_size : std::numeric_limits<uint32_t>::max());
+  size_t start = 0;
+  size_t max_to_print = std::min(trace_buffer.size(), kMaxDumpSize);
+  const size_t kMaxLogMessageLen = google::LogMessage::kMaxLogMessageLen;
+  bool skip_newline = false;
+  do {
+    size_t len = max_to_print - start;
+    if (len > google::LogMessage::kMaxLogMessageLen) {
+      // Try to split a line by \n starting a search from the end of the printable interval till
+      // the middle of that interval to not shrink too much.
+      auto last_end_of_line_pos =
+          std::string_view(
+              trace_buffer.c_str() + start + (kMaxLogMessageLen / 2), kMaxLogMessageLen)
+              .rfind('\n');
+      // If we have a really long line, we have no option but to only print a part of it.
+      if (last_end_of_line_pos == string::npos) {
+        len = kMaxLogMessageLen;
+      } else {
+        len = last_end_of_line_pos;
+        skip_newline = true;
+      }
+    }
+    LOG(INFO) << std::string_view(trace_buffer.c_str() + start, len);
+    start += len;
+    // Skip the newline character which would otherwise be at the begining of the next part.
+    start += static_cast<size_t>(skip_newline);
+  } while (start < max_to_print);
 }
 
 void Trace::Dump(std::ostream* out, int32_t tracing_depth, bool include_time_deltas) const {

@@ -10,60 +10,124 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <chrono>
 #include <memory>
 #include <string>
 
 #include <gtest/gtest.h>
 
-#include "yb/client/yb_table_name.h"
+#include "yb/integration-tests/mini_cluster.h"
+
+#include "yb/client/session.h"
+#include "yb/client/yb_op.h"
+
+#include "yb/master/catalog_manager.h"
+#include "yb/master/master_defaults.h"
+
 #include "yb/tserver/mini_tablet_server.h"
+#include "yb/tserver/stateful_services/stateful_service_base.h"
 #include "yb/tserver/tablet_server.h"
-#include "yb/util/lw_function.h"
+
+#include "yb/util/string_case.h"
 #include "yb/util/test_macros.h"
+#include "yb/util/tostring.h"
+
+#include "yb/yql/cql/ql/util/statement_result.h"
 
 #include "yb/yql/pgwrapper/libpq_utils.h"
 #include "yb/yql/pgwrapper/pg_mini_test_base.h"
 
-DECLARE_string(vmodule);
 DECLARE_bool(ysql_enable_table_mutation_counter);
 DECLARE_bool(ysql_enable_auto_analyze_service);
+DECLARE_uint64(ysql_node_level_mutation_reporting_interval_ms);
+DECLARE_uint32(ysql_cluster_level_mutation_persist_interval_ms);
+
+using namespace std::chrono_literals;
 
 namespace yb {
+
+std::string GetStatefulServiceTableName(const StatefulServiceKind& service_kind) {
+  return ToLowerCase(StatefulServiceKind_Name(service_kind)) + "_table";
+}
+
+const client::YBTableName kAutoAnalyzeFullyQualifiedTableName(
+    YQL_DATABASE_CQL, master::kSystemNamespaceName,
+    GetStatefulServiceTableName(StatefulServiceKind::PG_AUTO_ANALYZE));
+
 namespace pgwrapper {
 namespace {
 
 class PgAutoAnalyzeTest : public PgMiniTestBase {
  protected:
   void SetUp() override {
-    PgMiniTestBase::SetUp();
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_table_mutation_counter) = true;
+
+    // Set low values for the node level mutation reporting and the cluster level persisting
+    // intervals ensures that the aggregate mutations are frequently applied to the underlying YCQL
+    // table, hence capping the test time low.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_node_level_mutation_reporting_interval_ms) = 50;
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_cluster_level_mutation_persist_interval_ms) = 50;
+
+    PgMiniTestBase::SetUp();
+
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_enable_auto_analyze_service) = true;
-    ASSERT_OK(SET_FLAG(vmodule, "pg_auto_analyze*=5"));
+
+    ASSERT_OK(CreateClient());
+    ASSERT_OK(client_->WaitForCreateTableToFinish(kAutoAnalyzeFullyQualifiedTableName));
   }
 
+  // TODO(auto-analyze): Change this to 3 to test cross tablet server mutation aggregation.
   size_t NumTabletServers() override {
     return 1;
+  }
+
+  void GetTableMutationsFromCQLTable(std::unordered_map<TableId, uint64>* table_mutations) {
+    client::TableHandle table;
+    CHECK_OK(table.Open(kAutoAnalyzeFullyQualifiedTableName, client_.get()));
+
+    const client::YBqlReadOpPtr op = table.NewReadOp();
+    auto* const req = op->mutable_request();
+    table.AddColumns(
+        {yb::master::kPgAutoAnalyzeTableId, yb::master::kPgAutoAnalyzeMutations}, req);
+
+    auto session = NewSession();
+    CHECK_OK(session->TEST_ApplyAndFlush(op));
+    EXPECT_EQ(op->response().status(), QLResponsePB::YQL_STATUS_OK);
+    auto rowblock = ql::RowsResult(op.get()).GetRowBlock();
+    for (const auto& row : rowblock->rows()) {
+      (*table_mutations)[row.column(0).string_value()] = row.column(1).int64_value();
+    }
   }
 
   void ExecuteStmtAndCheckMutationCounts(
       const std::function<void()>& stmt_executor,
       const std::unordered_map<TableId, uint64>& expected_table_mutations) {
-    auto& tserver = *cluster_->mini_tablet_server(0)->server();
-    auto& node_level_mutation_counter = tserver.GetPgNodeLevelMutationCounter();
-
+    std::unordered_map<TableId, uint64> table_mutations_in_cql_table_before;
+    GetTableMutationsFromCQLTable(&table_mutations_in_cql_table_before);
     stmt_executor();
 
-    auto table_mutations = node_level_mutation_counter.GetAndClear();
-    // There is no assertion that the sizes of expected_table_mutations matches table_mutations
-    // because table_mutations also contains mutations to Pg sys catalog tables.
-    for (auto [table_id, expected_mutations] : expected_table_mutations) {
-      auto table_mutation = table_mutations.find(table_id);
-      if (expected_mutations == 0) {
-        ASSERT_TRUE(table_mutation == table_mutations.end() || table_mutation->second == 0);
-        continue;
-      }
-      ASSERT_NE(table_mutation, table_mutations.end());
-      ASSERT_EQ(expected_mutations, table_mutation->second);
+    // Sleep for ysql_node_level_mutation_reporting_interval_ms and
+    // ysql_cluster_level_mutation_persist_interval_ms plus some buffer to ensure
+    // that the mutation counts have been reported to and applied by the global auto-analyze
+    // service.
+    auto wait_for_mutation_reporting_and_persisting_ms =
+        FLAGS_ysql_node_level_mutation_reporting_interval_ms +
+        FLAGS_ysql_cluster_level_mutation_persist_interval_ms + 10 * kTimeMultiplier;
+    std::this_thread::sleep_for(wait_for_mutation_reporting_and_persisting_ms * 1ms);
+
+    std::unordered_map<TableId, uint64> table_mutations_in_cql_table_after;
+    GetTableMutationsFromCQLTable(&table_mutations_in_cql_table_after);
+
+    LOG(INFO) << "table_mutations_in_cql_table_before: "
+              << yb::ToString(table_mutations_in_cql_table_before)
+              << ", table_mutations_in_cql_table_after: "
+              << yb::ToString(table_mutations_in_cql_table_after);
+
+    for (const auto& [table_id, expected_mutations] : expected_table_mutations) {
+      ASSERT_EQ(
+          table_mutations_in_cql_table_after[table_id] -
+              table_mutations_in_cql_table_before[table_id],
+          expected_mutations);
     }
   }
 };
@@ -147,7 +211,7 @@ TEST_F(PgAutoAnalyzeTest, CheckTableMutationsCount) {
   // Insert duplicate key
   ExecuteStmtAndCheckMutationCounts(
       [&conn, table1_name] {
-        ASSERT_NOK(conn.ExecuteFormat("INSERT INTO $0 (11, 11, 11, 11)", table1_name));
+        ASSERT_NOK(conn.ExecuteFormat("INSERT INTO $0 VALUES (11, 11, 11, 11)", table1_name));
       },
       {{table1_id, 0}, {table2_id, 0}});
 
@@ -223,6 +287,13 @@ TEST_F(PgAutoAnalyzeTest, CheckTableMutationsCount) {
         ASSERT_OK(conn.ExecuteFormat("COMMIT"));
       },
       {{table1_id, 10}, {table2_id, 5}});
+
+  // TODO(auto-analyze, #19475): Test the following scenarios:
+  // 1. Pg connections to more than 1 node.
+  // 2. Read committed mode: count only once in case of conflict retries
+  // 3. Ensure toggling ysql_enable_table_mutation_counter works
+  // 4. Ensure retriable errors are handled in the mutation sender and auto analyze stateful
+  //    service. This is to ensure we don't under count when possible.
 }
 
 } // namespace pgwrapper

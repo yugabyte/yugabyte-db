@@ -28,10 +28,12 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestHelper;
+import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UpgradeTaskParams.UpgradeOption;
 import com.yugabyte.yw.models.AvailabilityZone;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.TaskInfo;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
@@ -166,9 +168,6 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
           TaskType.AnsibleConfigureServers,
           TaskType.SetNodeState);
 
-  private ArgumentCaptor<String> ybAdminFuncName;
-  private ArgumentCaptor<List<String>> ybAdminArgs;
-
   @Override
   @Before
   public void setUp() {
@@ -179,9 +178,6 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     softwareUpgrade.setUserTaskUUID(UUID.randomUUID());
     ShellResponse successResponse = new ShellResponse();
     successResponse.message = "YSQL successfully upgraded to the latest version";
-
-    ybAdminFuncName = ArgumentCaptor.forClass(String.class);
-    ybAdminArgs = ArgumentCaptor.forClass(List.class);
 
     ShellResponse shellResponse = new ShellResponse();
     shellResponse.message = "Command output:\n2989898";
@@ -406,14 +402,14 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
-    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     // XCluster gflag set up.
+    assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
     assertTaskType(subTasksByPosition.get(position++), TaskType.XClusterInfoPersist);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
 
     List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
     assertTaskType(downloadTasks, TaskType.AnsibleConfigureServers);
@@ -450,14 +446,14 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
-    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     // XCluster gflag set up.
+    assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
     assertTaskType(subTasksByPosition.get(position++), TaskType.XClusterInfoPersist);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
 
     List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
     assertTaskType(downloadTasks, TaskType.AnsibleConfigureServers);
@@ -518,14 +514,14 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
-    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     // XCluster gflag set up.
+    assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
     assertTaskType(subTasksByPosition.get(position++), TaskType.XClusterInfoPersist);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
 
     List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
     assertTaskType(downloadTasks, TaskType.AnsibleConfigureServers);
@@ -584,14 +580,14 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
-    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     // XCluster gflag set up.
+    assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
     assertTaskType(subTasksByPosition.get(position++), TaskType.XClusterInfoPersist);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
 
     List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
     assertTaskType(downloadTasks, TaskType.AnsibleConfigureServers);
@@ -626,14 +622,14 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
     Map<Integer, List<TaskInfo>> subTasksByPosition =
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
     int position = 0;
-    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckUpgrade);
     assertTaskType(subTasksByPosition.get(position++), TaskType.CheckMemory);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
     // XCluster gflag set up.
+    assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
+    assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
     assertTaskType(subTasksByPosition.get(position++), TaskType.XClusterInfoPersist);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
-    assertTaskType(subTasksByPosition.get(position++), TaskType.AnsibleConfigureServers);
 
     List<TaskInfo> downloadTasks = subTasksByPosition.get(position++);
     assertTaskType(downloadTasks, TaskType.AnsibleConfigureServers);
@@ -659,6 +655,26 @@ public class SoftwareUpgradeTest extends UpgradeTaskTest {
             :
             // Primary cluster getFirst(), then read replica.
             Arrays.asList(3, 1, 2, 4, 5, 8, 6, 7);
+  }
+
+  @Test
+  public void testSoftwareUpgradeRetries() {
+    updateDefaultUniverseTo5Nodes(true);
+    SoftwareUpgradeParams taskParams = new SoftwareUpgradeParams();
+    taskParams.ybSoftwareVersion = "2.17.0.0-b1";
+    taskParams.expectedUniverseVersion = -1;
+    taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
+    taskParams.clusters.add(defaultUniverse.getUniverseDetails().getPrimaryCluster());
+    taskParams.creatingUser = defaultUser;
+    TestUtils.setFakeHttpContext(defaultUser);
+    super.verifyTaskRetries(
+        defaultCustomer,
+        CustomerTask.TaskType.SoftwareUpgrade,
+        CustomerTask.TargetType.Universe,
+        defaultUniverse.getUniverseUUID(),
+        TaskType.SoftwareUpgrade,
+        taskParams,
+        false);
   }
 
   // Configures default universe to have 5 nodes with RF=3.

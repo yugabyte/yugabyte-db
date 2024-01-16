@@ -1620,7 +1620,8 @@ ExecDelete(ModifyTableContext *context,
 										  context->planSlot,
 										  ((ModifyTable *)context->mtstate->ps.plan)->ybReturningColumns,
 										  context->mtstate->yb_fetch_target_tuple,
-										  estate->yb_es_is_single_row_modify_txn,
+										  estate->yb_es_is_single_row_modify_txn
+													? YB_SINGLE_SHARD_TRANSACTION : YB_TRANSACTIONAL,
 										  changingPart,
 										  estate);
 
@@ -2532,7 +2533,8 @@ yb_lreplace:;
 		row_found = YBCExecuteUpdate(resultRelInfo, context->planSlot, slot,
 									 oldtuple, estate, plan,
 									 context->mtstate->yb_fetch_target_tuple,
-									 estate->yb_es_is_single_row_modify_txn,
+									 estate->yb_es_is_single_row_modify_txn
+											? YB_SINGLE_SHARD_TRANSACTION : YB_TRANSACTIONAL,
 									 actualUpdatedCols, canSetTag);
 
 	bms_free(extraUpdatedCols);

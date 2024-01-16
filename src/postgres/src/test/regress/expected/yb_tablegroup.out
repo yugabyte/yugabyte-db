@@ -113,7 +113,7 @@ ERROR:  cannot use 'colocation=true/false' with tablegroup
 CREATE TABLE tgroup_optout (col1 int, col2 int) WITH (colocation=false) TABLEGROUP bad_tgroupname;
 ERROR:  tablegroup "bad_tgroupname" does not exist
 CREATE TEMP TABLE tgroup_temp (col1 int, col2 int) TABLEGROUP tgroup1;
-ERROR:  Cannot use TABLEGROUP with TEMP table.
+ERROR:  cannot use TABLEGROUP with TEMP table
 CREATE INDEX ON tgroup_test3(col1) TABLEGROUP tgroup1; -- fail
 ERROR:  syntax error at or near "TABLEGROUP"
 LINE 1: CREATE INDEX ON tgroup_test3(col1) TABLEGROUP tgroup1;

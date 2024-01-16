@@ -33,8 +33,6 @@
 #include <iostream>
 #include <string>
 
-#include <glog/logging.h>
-
 #include "yb/util/env.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
