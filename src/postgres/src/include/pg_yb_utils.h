@@ -1039,6 +1039,11 @@ extern char* YbReadWholeFile(const char *filename, int* length, int elevel);
  */
 extern void YBCheckDdlForDBCatalogVersionMode(YbDdlMode mode);
 
+extern bool yb_use_tserver_key_auth;
+
+extern bool yb_use_tserver_key_auth_check_hook(bool *newval,
+		void **extra, GucSource source);
+
 extern void YbATCopyPrimaryKeyToCreateStmt(Relation rel,
 										   Relation pg_constraint,
 										   CreateStmt *create_stmt);

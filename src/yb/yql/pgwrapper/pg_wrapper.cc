@@ -680,6 +680,9 @@ Status PgWrapper::Start() {
   proc_->SetEnv("FLAGS_mem_tracker_update_consumption_interval_us",
                 FLAGS_pg_mem_tracker_update_consumption_interval_us);
 
+  proc_->SetEnv("YB_ALLOW_CLIENT_SET_TSERVER_KEY_AUTH",
+      FLAGS_enable_ysql_conn_mgr ? "1" : "0");
+
   RETURN_NOT_OK(proc_->Start());
   if (!FLAGS_postmaster_cgroup.empty()) {
     std::string path = FLAGS_postmaster_cgroup + "/cgroup.procs";

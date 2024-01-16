@@ -83,4 +83,7 @@ extern void YbCreateClientId();
 
 extern void YbSetUserContext(const Oid roleid, const bool is_superuser, const char *rname);
 
+extern bool yb_is_client_ysqlconnmgr_check_hook(bool *newval, void **extra,
+												GucSource source);
+
 extern void YbSendFatalForLogicalConnectionPacket();
