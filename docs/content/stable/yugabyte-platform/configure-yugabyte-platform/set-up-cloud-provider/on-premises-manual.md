@@ -225,7 +225,7 @@ If you are doing an airgapped installation, download the node exporter using a c
 
 On each node, perform the following as a user with sudo access:
 
-1. Copy the `node_exporter-1.3.1.linux-amd64.gz` package file that you downloaded into the `/tmp` directory on each of the YugabyteDB nodes. Ensure that this file is readable by the user (for example, `centos`).
+1. Copy the `node_exporter-1.3.1.linux-amd64.tar.gz` package file that you downloaded into the `/tmp` directory on each of the YugabyteDB nodes. Ensure that this file is readable by the user (for example, `centos`).
 
 1. Run the following commands:
 
