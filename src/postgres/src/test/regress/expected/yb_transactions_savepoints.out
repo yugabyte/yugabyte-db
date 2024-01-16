@@ -396,10 +396,10 @@ rollback;  -- we are not in a transaction at this point
 WARNING:  there is no transaction in progress
 -- implicit transaction block is still a transaction block, for e.g. VACUUM
 SELECT 1\; VACUUM;
-WARNING:  VACUUM will be ignored
+NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
 SELECT 1\; COMMIT\; VACUUM;
 WARNING:  there is no transaction in progress
-WARNING:  VACUUM will be ignored
+NOTICE:  VACUUM is a no-op statement since YugabyteDB performs garbage collection of dead tuples automatically
 -- we disallow savepoint-related commands in implicit-transaction state
 SELECT 1\; SAVEPOINT sp;
 ERROR:  SAVEPOINT can only be used in transaction blocks
