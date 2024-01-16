@@ -27,8 +27,8 @@
 #include <tsearch/ts_cache.h>
 #include <regex/regex.h>
 
-#include "io/bson_core.h"
-#include "query/bson_compare.h"
+#include "io/helio_bson_core.h"
+#include "query/helio_bson_compare.h"
 #include "utils/mongo_errors.h"
 #include "types/pcre_regex.h"
 #include "query/bson_dollar_operators.h"

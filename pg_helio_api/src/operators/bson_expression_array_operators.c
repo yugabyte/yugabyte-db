@@ -14,14 +14,14 @@
 #include <nodes/pg_list.h>
 #include <utils/hsearch.h>
 
-#include "io/bson_core.h"
-#include "query/bson_compare.h"
+#include "io/helio_bson_core.h"
+#include "query/helio_bson_compare.h"
 #include "operators/bson_expression.h"
 #include "operators/bson_expression_operators.h"
 #include "utils/hashset_utils.h"
 #include "commands/commands_common.h"
 
-#include "planner/pgmongo_planner.h"
+#include "planner/helio_planner.h"
 
 #define MAX_BUFFER_SIZE_DOLLAR_RANGE (64 * 1024 * 1024)
 #define EMPTY_BSON_ARRAY_SIZE_BYTES 5 /* size of empty array is fixed as 5 bytes. */

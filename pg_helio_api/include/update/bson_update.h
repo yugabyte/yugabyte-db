@@ -11,7 +11,7 @@
 #ifndef BSON_UPDATE_H
 #define BSON_UPDATE_H
 
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 
 typedef enum
 {

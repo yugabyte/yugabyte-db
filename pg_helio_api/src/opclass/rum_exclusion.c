@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/index/pgmongo_rum_exclusion.c
+ * src/opclass/rum_exclusion.c
  *
  * Rum implementations for indexing of the shard key based term for the purposes
  * of unique index via exclusion constraints.
@@ -47,10 +47,10 @@
 #include <utils/typcache.h>
 
 #include "utils/mongo_errors.h"
-#include "opclass/pgmongo_bson_gin_private.h"
-#include "opclass/pgmongo_gin_index_mgmt.h"
+#include "opclass/helio_bson_gin_private.h"
+#include "opclass/helio_gin_index_mgmt.h"
 #include "metadata/metadata_cache.h"
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 
 /* --------------------------------------------------------- */
 /* Forward declaration */

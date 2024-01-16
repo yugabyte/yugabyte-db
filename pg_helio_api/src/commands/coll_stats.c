@@ -22,7 +22,7 @@
 #include "metadata/metadata_cache.h"
 #include "utils/query_utils.h"
 #include "utils/feature_counter.h"
-#include "planner/pgmongo_planner.h"
+#include "planner/helio_planner.h"
 #include "utils/hashset_utils.h"
 #include "utils/version_utils.h"
 #include "commands/parse_error.h"

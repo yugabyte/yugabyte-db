@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/index/pgmongo_bson_hashed_gin.c
+ * src/opclass/bson_hashed_gin.c
  *
  * Gin operator implementations of BSON Hash indexing.
  * See also: https://www.postgresql.org/docs/current/gin-extensibility.html
@@ -16,9 +16,9 @@
 #include <string.h>
 #include <access/reloptions.h>
 
-#include "io/bson_core.h"
-#include "opclass/pgmongo_gin_common.h"
-#include "opclass/pgmongo_gin_index_mgmt.h"
+#include "io/helio_bson_core.h"
+#include "opclass/helio_gin_common.h"
+#include "opclass/helio_gin_index_mgmt.h"
 #include "utils/mongo_errors.h"
 #include "io/bson_traversal.h"
 

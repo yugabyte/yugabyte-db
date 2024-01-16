@@ -19,7 +19,7 @@
 #include <nodes/bitmapset.h>
 
 #include "update/bson_update_common.h"
-#include "query/bson_compare.h"
+#include "query/helio_bson_compare.h"
 #include "utils/mongo_errors.h"
 #include "aggregation/bson_tree.h"
 #include "operators/bson_expr_eval.h"

@@ -16,7 +16,7 @@
 #include <utils/syscache.h>
 #include <access/htup_details.h>
 
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 #include "utils/list_utils.h"
 
 

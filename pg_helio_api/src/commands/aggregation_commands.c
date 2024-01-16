@@ -18,7 +18,7 @@
 
 #include <metadata/metadata_cache.h>
 #include <utils/mongo_errors.h>
-#include <io/bson_core.h>
+#include <io/helio_bson_core.h>
 #include <commands/cursor_private.h>
 #include <aggregation/bson_aggregation_pipeline.h>
 

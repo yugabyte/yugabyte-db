@@ -12,7 +12,7 @@
 #define BSON_PROJECT_H
 
 
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 #include "aggregation/bson_projection_tree.h"
 
 extern const StringView IdFieldStringView;

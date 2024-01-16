@@ -17,7 +17,7 @@
 #include <catalog/namespace.h>
 #include <catalog/pg_am_d.h>
 
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 #include "metadata/index.h"
 #include "metadata/metadata_cache.h"
 #include "utils/mongo_errors.h"

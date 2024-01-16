@@ -15,7 +15,7 @@
 #include <tcop/utility.h>
 
 #include "metadata/index.h"
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 #include "operators/bson_expression.h"
 
 /*

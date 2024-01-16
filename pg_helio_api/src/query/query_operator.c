@@ -31,8 +31,8 @@
 #include <metadata/metadata_cache.h>
 #include <math.h>
 
-#include "io/bson_core.h"
-#include "query/bson_compare.h"
+#include "io/helio_bson_core.h"
+#include "query/helio_bson_compare.h"
 #include "aggregation/bson_query.h"
 #include "types/decimal128.h"
 #include "utils/mongo_errors.h"
@@ -40,11 +40,11 @@
 #include "geospatial/bson_geospatial_common.h"
 #include "geospatial/bson_geospatial_shape_operators.h"
 #include "metadata/collection.h"
-#include "planner/pgmongo_planner.h"
+#include "planner/helio_planner.h"
 #include "query/query_operator.h"
 #include "sharding/sharding.h"
 #include "utils/rel.h"
-#include "opclass/pgmongo_bson_text_gin.h"
+#include "opclass/helio_bson_text_gin.h"
 #include "utils/feature_counter.h"
 #include "vector/vector_common.h"
 #include "types/pcre_regex.h"

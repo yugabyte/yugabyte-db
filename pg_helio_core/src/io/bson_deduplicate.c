@@ -13,7 +13,7 @@
 #include <nodes/pg_list.h>
 #include <utils/hsearch.h>
 
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 #include "utils/hashset_utils.h"
 
 

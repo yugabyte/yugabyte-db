@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/planner/pgmongo_custom_scan_continuation.c
+ * src/customscan/custom_scan_continuation.c
  *
  * Implementation and Definitions for a custom scan for extension that handles cursors.
  *
@@ -23,8 +23,8 @@
 #include <access/detoast.h>
 #include <miscadmin.h>
 
-#include "io/bson_core.h"
-#include "customscan/pgmongo_custom_scan.h"
+#include "io/helio_bson_core.h"
+#include "customscan/helio_custom_scan.h"
 #include "customscan/custom_scan_registrations.h"
 #include "metadata/metadata_cache.h"
 #include "query/query_operator.h"
@@ -678,7 +678,7 @@ ValidateCursorCustomScanPlan(Plan *plan)
 
 /*
  * When doing Explain Analyze, the parameter values aren't available in the worker.
- * To avoid this issue, we apply the same hack that is in the pgmongo_planner to
+ * To avoid this issue, we apply the same hack that is in the helio planner to
  * replace the param value with the replaced const, and use the bson_true_function
  * on the param to ensure it gets sent to the worker.
  * One of the tracking bugs: https://github.com/citusdata/citus/issues/5787

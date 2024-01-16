@@ -21,7 +21,7 @@
 #include "utils/timestamp.h"
 #include "utils/hashset_utils.h"
 #include "commands/coll_stats.h"
-#include "planner/pgmongo_planner.h"
+#include "planner/helio_planner.h"
 #include "commands/diagnostic_commands_common.h"
 #include "api_hooks.h"
 

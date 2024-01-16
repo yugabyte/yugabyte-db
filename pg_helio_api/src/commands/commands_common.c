@@ -16,7 +16,7 @@
 #include "lib/stringinfo.h"
 #include "utils/builtins.h"
 
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 #include "commands/commands_common.h"
 #include "utils/mongo_errors.h"
 #include "aggregation/bson_query.h"

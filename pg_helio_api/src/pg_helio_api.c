@@ -13,7 +13,7 @@
 
 #include "bson_init.h"
 #include "utils/feature_counter.h"
-#include "infrastructure/pgmongo_external_configs.h"
+#include "infrastructure/helio_external_configs.h"
 #include "helio_api_init.h"
 
 PG_MODULE_MAGIC;

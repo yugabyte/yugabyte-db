@@ -13,7 +13,7 @@
 #include <postgres.h>
 #include <utils/array.h>
 
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 
 #define INVALID_INDEX_ID ((int) 0)
 

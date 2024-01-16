@@ -13,8 +13,8 @@
 #include <commands/sequence.h>
 #include <executor/spi.h>
 
-#include "io/bson_core.h"
-#include "query/bson_compare.h"
+#include "io/helio_bson_core.h"
+#include "query/helio_bson_compare.h"
 #include "metadata/metadata_cache.h"
 #include "utils/list_utils.h"
 #include "utils/query_utils.h"

@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/index/pgmongo_bson_gin_elemmatch.c
+ * src/opclass/bson_gin_elemmatch.c
  *
  * Gin operator implementations of BSON for the $elemmatch operator.
  *
@@ -15,15 +15,15 @@
 #include <catalog/pg_type.h>
 #include <funcapi.h>
 
-#include "opclass/pgmongo_bson_gin_private.h"
-#include "io/bson_core.h"
-#include "query/bson_compare.h"
+#include "opclass/helio_bson_gin_private.h"
+#include "io/helio_bson_core.h"
+#include "query/helio_bson_compare.h"
 #include "utils/mongo_errors.h"
 #include "operators/bson_expr_eval.h"
 #include "nodes/makefuncs.h"
 #include "query/query_operator.h"
-#include "opclass/pgmongo_gin_index_mgmt.h"
-#include "opclass/pgmongo_gin_index_term.h"
+#include "opclass/helio_gin_index_mgmt.h"
+#include "opclass/helio_gin_index_term.h"
 
 
 /* --------------------------------------------------------- */

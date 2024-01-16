@@ -12,7 +12,7 @@
 #ifndef BSON_QUERY_COMMON_H
 #define BSON_QUERY_COMMON_H
 
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 #include "utils/mongo_errors.h"
 
 /*

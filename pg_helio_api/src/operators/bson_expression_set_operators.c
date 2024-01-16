@@ -13,12 +13,12 @@
 #include <math.h>
 #include <common/hashfn.h>
 
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 #include "operators/bson_expression.h"
 #include "operators/bson_expression_operators.h"
 #include "types/decimal128.h"
 #include "utils/mongo_errors.h"
-#include "query/bson_compare.h"
+#include "query/helio_bson_compare.h"
 #include "utils/hashset_utils.h"
 
 /* --------------------------------------------------------- */

@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/index/pgmongo_bson_gin_core.c
+ * src/opclass/bson_gin_core.c
  *
  * Gin operator implementations of BSON.
  * See also: https://www.postgresql.org/docs/current/gin-extensibility.html
@@ -26,13 +26,13 @@
 #include <funcapi.h>
 #include <lib/stringinfo.h>
 
-#include "opclass/pgmongo_gin_common.h"
-#include "opclass/pgmongo_bson_gin_private.h"
-#include "opclass/pgmongo_gin_index_mgmt.h"
-#include "opclass/pgmongo_gin_index_term.h"
-#include "io/bson_core.h"
+#include "opclass/helio_gin_common.h"
+#include "opclass/helio_bson_gin_private.h"
+#include "opclass/helio_gin_index_mgmt.h"
+#include "opclass/helio_gin_index_term.h"
+#include "io/helio_bson_core.h"
 #include "aggregation/bson_query_common.h"
-#include "query/bson_compare.h"
+#include "query/helio_bson_compare.h"
 #include "query/bson_dollar_operators.h"
 #include "query/query_operator.h"
 #include "utils/mongo_errors.h"

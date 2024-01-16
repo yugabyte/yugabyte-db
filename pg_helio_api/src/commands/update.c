@@ -76,7 +76,7 @@
 #include "utils/builtins.h"
 #include "utils/typcache.h"
 
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 #include "aggregation/bson_project.h"
 #include "aggregation/bson_query.h"
 #include "update/bson_update.h"
@@ -86,7 +86,7 @@
 #include "commands/update.h"
 #include "metadata/collection.h"
 #include "metadata/metadata_cache.h"
-#include "infrastructure/plan_cache.h"
+#include "infrastructure/helio_plan_cache.h"
 #include "query/query_operator.h"
 #include "sharding/sharding.h"
 #include "commands/retryable_writes.h"

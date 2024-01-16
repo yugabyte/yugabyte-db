@@ -12,8 +12,8 @@
 #include <fmgr.h>
 #include <catalog/pg_type.h>
 
-#include "io/bson_core.h"
-#include "query/bson_compare.h"
+#include "io/helio_bson_core.h"
+#include "query/helio_bson_compare.h"
 #include <utils/array.h>
 #include <utils/builtins.h>
 #include "utils/mongo_errors.h"

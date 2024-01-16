@@ -10,7 +10,7 @@
 #ifndef VECTOR_UTILITIES__H
 #define VECTOR_UTILITIES__H
 
-#include <io/bson_core.h>
+#include <io/helio_bson_core.h>
 #include <fmgr.h>
 
 

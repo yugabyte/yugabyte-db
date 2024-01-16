@@ -14,7 +14,7 @@
 
 #include "helio_api_init.h"
 #include "metadata/metadata_guc.h"
-#include "planner/pgmongo_planner.h"
+#include "planner/helio_planner.h"
 #include "customscan/custom_scan_registrations.h"
 #include "commands/connection_management.h"
 

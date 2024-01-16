@@ -11,7 +11,7 @@
 #include <utils/guc.h>
 #include <limits.h>
 
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 #include "lib/stringinfo.h"
 #include "api_hooks.h"
 #include "api_hooks_def.h"

@@ -13,7 +13,7 @@
 #include <utils/builtins.h>
 #include <funcapi.h>
 
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 #include "update/bson_update.h"
 #include "commands/commands_common.h"
 #include "commands/delete.h"

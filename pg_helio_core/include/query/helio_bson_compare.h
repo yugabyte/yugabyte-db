@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/bson/bson_compare.h
+ * include/bson/helio_bson_compare.h
  *
  * Common declarations of the bson comparisons.
  *

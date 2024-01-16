@@ -10,7 +10,7 @@
 #ifndef COMMANDS_INSERT_H
 #define COMMANDS_INSERT_H
 
-#include <io/bson_core.h>
+#include <io/helio_bson_core.h>
 #include "commands/commands_common.h"
 
 MongoCollection * CreateCollectionForInsert(Datum databaseNameDatum,

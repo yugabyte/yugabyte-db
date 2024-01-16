@@ -11,7 +11,7 @@
 #ifndef BSON_JSON_SCHEMA_TREE_H
 #define BSON_JSON_SCHEMA_TREE_H
 
-#include "query/bson_compare.h"
+#include "query/helio_bson_compare.h"
 
 #include "types/pcre_regex.h"
 #include "query/bson_dollar_operators.h"

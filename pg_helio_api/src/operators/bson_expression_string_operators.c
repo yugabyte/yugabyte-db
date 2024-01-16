@@ -11,11 +11,11 @@
 
 #include <postgres.h>
 
-#include "io/bson_core.h"
-#include "query/bson_compare.h"
+#include "io/helio_bson_core.h"
+#include "query/helio_bson_compare.h"
 #include "operators/bson_expression.h"
 #include "operators/bson_expression_operators.h"
-#include "query/bson_compare.h"
+#include "query/helio_bson_compare.h"
 #include "utils/mongo_errors.h"
 #include "utils/string_view.h"
 #include "utils/hashset_utils.h"

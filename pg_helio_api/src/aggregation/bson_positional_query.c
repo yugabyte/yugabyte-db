@@ -13,7 +13,7 @@
 #include <catalog/pg_collation.h>
 #include <nodes/makefuncs.h>
 
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 #include "aggregation/bson_positional_query.h"
 #include "query/query_operator.h"
 #include "operators/bson_expr_eval.h"

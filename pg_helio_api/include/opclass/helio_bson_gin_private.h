@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/index/pmgongo_bson_gin_private.h
+ * include/opclass/helio_bson_gin_private.h
  *
  * Private declarations of the bson gin methods shared across files
  * that implement the GIN index extensibility
@@ -9,14 +9,14 @@
  *-------------------------------------------------------------------------
  */
 
-#ifndef PGMONGO_BSON_GIN_PRIVATE_H
-#define PGMONGO_BSON_GIN_PRIVATE_H
+#ifndef HELIO_BSON_GIN_PRIVATE_H
+#define HELIO_BSON_GIN_PRIVATE_H
 
-#include "opclass/pgmongo_gin_common.h"
+#include "opclass/helio_gin_common.h"
 #include "planner/mongo_query_operator.h"
 #include "operators/bson_expr_eval.h"
-#include "opclass/pgmongo_gin_index_term.h"
-#include "opclass/pgmongo_gin_index_mgmt.h"
+#include "opclass/helio_gin_index_term.h"
+#include "opclass/helio_gin_index_mgmt.h"
 
 /*
  * Arguments to Extract query used by mongo operators wrapped in a struct.

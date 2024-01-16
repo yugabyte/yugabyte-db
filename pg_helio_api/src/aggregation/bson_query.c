@@ -12,8 +12,8 @@
 #include "miscadmin.h"
 #include "utils/builtins.h"
 
-#include "io/bson_core.h"
-#include "query/bson_compare.h"
+#include "io/helio_bson_core.h"
+#include "query/helio_bson_compare.h"
 #include "aggregation/bson_query.h"
 #include "utils/mongo_errors.h"
 

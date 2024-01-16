@@ -11,8 +11,8 @@
 #include <postgres.h>
 #include <utils/hsearch.h>
 
-#include "io/bson_core.h"
-#include "query/bson_compare.h"
+#include "io/helio_bson_core.h"
+#include "query/helio_bson_compare.h"
 #include "utils/hashset_utils.h"
 
 /*

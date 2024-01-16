@@ -36,15 +36,15 @@
 #include <utils/builtins.h>
 #include <utils/lsyscache.h>
 
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 #include "metadata/metadata_cache.h"
 #include "query/query_operator.h"
-#include "planner/pgmongo_planner.h"
+#include "planner/helio_planner.h"
 #include "aggregation/bson_aggregation_pipeline.h"
 #include "commands/parse_error.h"
 #include "commands/commands_common.h"
 #include "utils/feature_counter.h"
-#include "customscan/pgmongo_custom_scan.h"
+#include "customscan/helio_custom_scan.h"
 #include "utils/version_utils.h"
 
 #include "aggregation/bson_aggregation_pipeline_private.h"

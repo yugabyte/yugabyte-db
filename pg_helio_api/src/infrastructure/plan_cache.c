@@ -18,7 +18,7 @@
 
 #include "utils/memutils.h"
 
-#include "infrastructure/plan_cache.h"
+#include "infrastructure/helio_plan_cache.h"
 
 /* QueryKey is used as the key of a query in the cache */
 typedef struct QueryKey

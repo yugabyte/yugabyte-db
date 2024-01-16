@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/index/pgmongo_bson_text_gin.c
+ * src/opclass/bson_text_gin.c
  *
  * Gin operator implementations of BSON Text indexing.
  * See also: https://www.postgresql.org/docs/current/gin-extensibility.html
@@ -23,14 +23,14 @@
 #include <utils/array.h>
 #include <nodes/makefuncs.h>
 
-#include "io/bson_core.h"
-#include "opclass/pgmongo_gin_common.h"
-#include "opclass/pgmongo_gin_index_mgmt.h"
-#include "opclass/pgmongo_bson_gin_private.h"
+#include "io/helio_bson_core.h"
+#include "opclass/helio_gin_common.h"
+#include "opclass/helio_gin_index_mgmt.h"
+#include "opclass/helio_bson_gin_private.h"
 #include "utils/mongo_errors.h"
-#include "opclass/pgmongo_bson_text_gin.h"
+#include "opclass/helio_bson_text_gin.h"
 #include "metadata/metadata_cache.h"
-#include "opclass/pgmongo_index_support.h"
+#include "opclass/helio_index_support.h"
 
 
 extern QueryTextIndexData *QueryTextData;

@@ -14,8 +14,8 @@
 #include <funcapi.h>
 #include <miscadmin.h>
 
-#include "io/bson_core.h"
-#include "query/bson_compare.h"
+#include "io/helio_bson_core.h"
+#include "query/helio_bson_compare.h"
 #include "jsonschema/bson_json_schema_tree.h"
 #include "utils/mongo_errors.h"
 #include "metadata/metadata_cache.h"

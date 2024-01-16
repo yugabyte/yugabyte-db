@@ -13,7 +13,7 @@
 
 #include <utils/elog.h>
 #include <metadata/collection.h>
-#include <io/bson_core.h>
+#include <io/helio_bson_core.h>
 
 /*
  * Maximum size of a output bson document is 16MB.

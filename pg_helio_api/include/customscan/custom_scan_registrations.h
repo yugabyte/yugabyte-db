@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/planner/custom_scan_registrations.h
+ * include/customscan/custom_scan_registrations.h
  *
  *  Implementation of a custom scan plan for PGMongo.
  *

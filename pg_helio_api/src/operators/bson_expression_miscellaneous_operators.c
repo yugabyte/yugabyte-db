@@ -13,12 +13,12 @@
 #include <miscadmin.h>
 #include <fmgr.h>
 
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 #include "operators/bson_expression.h"
 #include "operators/bson_expression_operators.h"
 #include "utils/mongo_errors.h"
 #include "metadata/metadata_cache.h"
-#include "opclass/pgmongo_bson_text_gin.h"
+#include "opclass/helio_bson_text_gin.h"
 #include "vector/vector_utilities.h"
 #include "utils/lsyscache.h"
 #include "utils/fmgroids.h"

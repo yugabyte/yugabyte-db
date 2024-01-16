@@ -7,7 +7,7 @@
  *
  *-------------------------------------------------------------------------
  */
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 #include "utils/string_view.h"
 
 #ifndef BSON_TREE_COMMON_H

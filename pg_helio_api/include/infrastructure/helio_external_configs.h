@@ -1,15 +1,15 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/configs/pgmongo_external_configs.h
+ * include/infrastructure/helio_external_configs.h
  *
  * User facing configuration options for pg_helio_api
  *
  *-------------------------------------------------------------------------
  */
 
-#ifndef PGMONGO_EXTERNAL_CONFIGS_H
-#define PGMONGO_EXTERNAL_CONFIGS_H
+#ifndef HELIO_EXTERNAL_CONFIGS_H
+#define HELIO_EXTERNAL_CONFIGS_H
 
 /*-------------------------------------------------------------------------
  * Data types
@@ -92,7 +92,7 @@ typedef struct ExtensionExternalConfigInfo
 	ConfigValues values;
 } ExtensionExternalConfigInfo;
 
-/* External Pgmongo External Configs GUC's runtime variables */
+/* External Configs GUC's runtime variables */
 extern bool PEC_FeatureFlagCollModIndexUnique;
 extern bool PEC_FeatureFlagTimeseriesMetricIndexes;
 extern int PEC_TransactionTimeoutLimitSeconds;

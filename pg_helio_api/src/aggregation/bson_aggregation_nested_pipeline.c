@@ -30,10 +30,10 @@
 #include <catalog/pg_aggregate.h>
 #include <catalog/pg_class.h>
 
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 #include "metadata/metadata_cache.h"
 #include "query/query_operator.h"
-#include "planner/pgmongo_planner.h"
+#include "planner/helio_planner.h"
 #include "aggregation/bson_aggregation_pipeline.h"
 #include "commands/parse_error.h"
 #include "commands/commands_common.h"

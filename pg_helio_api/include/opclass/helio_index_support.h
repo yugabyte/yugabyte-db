@@ -1,17 +1,17 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/index/pmongo_index_support.h
+ * include/opclass/helio_index_support.h
  *
  * Common declarations for Index support functions.
  *
  *-------------------------------------------------------------------------
  */
 
-#ifndef PGMONGO_INDEX_SUPPORT_H
-#define PGMONGO_INDEX_SUPPORT_H
+#ifndef HELIO_INDEX_SUPPORT_H
+#define HELIO_INDEX_SUPPORT_H
 
-#include <opclass/pgmongo_bson_text_gin.h>
+#include <opclass/helio_bson_text_gin.h>
 #include <vector/vector_utilities.h>
 
 /*

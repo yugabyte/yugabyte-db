@@ -25,7 +25,7 @@
 #include <funcapi.h>
 #include <lib/stringinfo.h>
 
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 #include "operators/bson_expression.h"
 #include "operators/bson_expression_operators.h"
 #include "aggregation/bson_tree.h"

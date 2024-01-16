@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/configs/pgmongo_external_configs.c
+ * src/infrastructure/external_configs.c
  *
  * This provides utilities to work with user facing configuration parameters for the current extension.
  *-------------------------------------------------------------------------
@@ -10,7 +10,7 @@
 #include <postgres.h>
 #include <utils/guc.h>
 
-#include "infrastructure/pgmongo_external_configs.h"
+#include "infrastructure/helio_external_configs.h"
 
 #define DEFAULT_FEATURE_FLAG_COLL_MOD_INDEX_UNIQUE false
 bool PEC_FeatureFlagCollModIndexUnique = DEFAULT_FEATURE_FLAG_COLL_MOD_INDEX_UNIQUE;

@@ -18,7 +18,7 @@
 #include <pcre2.h>
 #include <postgres.h>
 #include <utils/builtins.h>
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 #include "utils/mongo_errors.h"
 #include "types/pcre_regex.h"
 

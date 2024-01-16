@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/rum/pgmongo_rum.c
+ * src/index_am/rum.c
  *
  * Rum access method implementations for helioapi.
  * See also: https://www.postgresql.org/docs/current/gin-extensibility.html
@@ -19,7 +19,7 @@
 #include "math.h"
 
 #include "planner/mongo_query_operator.h"
-#include "opclass/pgmongo_gin_index_mgmt.h"
+#include "opclass/helio_gin_index_mgmt.h"
 #include "metadata/metadata_cache.h"
 
 

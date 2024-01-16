@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/bson/bson_core.h
+ * include/bson/helio_bson_core.h
  *
  * Core declarations of the bson type.
  *

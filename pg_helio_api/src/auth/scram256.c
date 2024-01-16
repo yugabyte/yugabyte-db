@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/oss_backend/auth/pgmongo_scram256.c
+ * src/auth/scram256.c
  *
  * Implementation of SCRAM SHA 256 authentication
  *
@@ -12,7 +12,7 @@
 #include "common/scram-common.h"
 #include "libpq/crypt.h"
 #include "utils/builtins.h"
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 #include "common/base64.h" /* Postgres base64 encode / decode functions */
 #include "common/hmac.h"   /* Postgres hmac functions */
 #include "utils/varlena.h" /* Postgres variable-length builtIn types functions*/
@@ -158,7 +158,7 @@ static bool ScramSaltedPassword(const char *password, const char *decodedSalt,
 /* ------------------------------------------------------------------------- */
 
 /*
- * FUNCTION DECLARATIONS FORMAT FOR PGMONGO EXTENSION FUNCTIONS
+ * FUNCTION DECLARATIONS FORMAT FOR HELIO EXTENSION FUNCTIONS
  */
 PG_FUNCTION_INFO_V1(command_authenticate_with_scram_sha256);
 PG_FUNCTION_INFO_V1(command_scram_sha256_get_salt_and_iterations);

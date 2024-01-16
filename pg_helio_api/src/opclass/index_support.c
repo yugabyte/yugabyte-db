@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/index/pgmongo_index_support.c
+ * src/opclass/index_support.c
  *
  * Support methods for index selection and push down.
  * See also: https://www.postgresql.org/docs/current/gin-extensibility.html
@@ -23,14 +23,14 @@
 
 #include "query/query_operator.h"
 #include "planner/mongo_query_operator.h"
-#include "opclass/pgmongo_index_support.h"
-#include "opclass/pgmongo_gin_index_mgmt.h"
-#include "opclass/pgmongo_bson_text_gin.h"
+#include "opclass/helio_index_support.h"
+#include "opclass/helio_gin_index_mgmt.h"
+#include "opclass/helio_bson_text_gin.h"
 #include "metadata/metadata_cache.h"
 #include "utils/mongo_errors.h"
 #include "vector/vector_utilities.h"
 #include "utils/version_utils.h"
-#include "query/bson_compare.h"
+#include "query/helio_bson_compare.h"
 
 /* --------------------------------------------------------- */
 /* Forward declaration */

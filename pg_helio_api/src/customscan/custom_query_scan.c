@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/planner/pgmongo_custom_query_scan.c
+ * src/customscan/custom_query_scan.c
  *
  * Base Implementation and Definitions for a custom query scan for the extension.
  * This is a scan node that holds query level data needed for its processing
@@ -23,8 +23,8 @@
 #include <access/detoast.h>
 #include <miscadmin.h>
 
-#include "io/bson_core.h"
-#include "customscan/pgmongo_custom_query_scan.h"
+#include "io/helio_bson_core.h"
+#include "customscan/helio_custom_query_scan.h"
 #include "customscan/custom_scan_registrations.h"
 #include "metadata/metadata_cache.h"
 #include "query/query_operator.h"

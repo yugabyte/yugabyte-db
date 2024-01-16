@@ -38,7 +38,7 @@
 #include <utils/syscache.h>
 
 #include "api_hooks.h"
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 #include "aggregation/bson_projection_tree.h"
 #include "commands/commands_common.h"
 #include "commands/create_indexes.h"

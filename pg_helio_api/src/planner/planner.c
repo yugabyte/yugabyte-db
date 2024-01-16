@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/planner/pgmongo_planner.c
+ * src/planner/planner.c
  *
  * Implementation of the helioapi planner hook.
  *
@@ -32,14 +32,14 @@
 
 #include "metadata/collection.h"
 #include "metadata/metadata_cache.h"
-#include "planner/pgmongo_planner.h"
+#include "planner/helio_planner.h"
 #include "query/query_operator.h"
-#include "opclass/pgmongo_index_support.h"
-#include "opclass/pgmongo_gin_index_mgmt.h"
+#include "opclass/helio_index_support.h"
+#include "opclass/helio_gin_index_mgmt.h"
 #include "metadata/index.h"
-#include "customscan/pgmongo_custom_scan.h"
-#include "customscan/pgmongo_custom_query_scan.h"
-#include "opclass/pgmongo_bson_text_gin.h"
+#include "customscan/helio_custom_scan.h"
+#include "customscan/helio_custom_query_scan.h"
+#include "opclass/helio_bson_text_gin.h"
 #include "aggregation/bson_aggregation_pipeline.h"
 #include "utils/query_utils.h"
 

@@ -20,7 +20,7 @@
 #include <storage/ipc.h>
 #include <storage/shmem.h>
 
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 #include "metadata/collection.h"
 #include "utils/builtins.h"
 #include "utils/feature_counter.h"

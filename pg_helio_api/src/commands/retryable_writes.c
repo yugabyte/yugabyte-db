@@ -14,8 +14,8 @@
 #include "lib/stringinfo.h"
 #include "utils/builtins.h"
 
-#include "io/bson_core.h"
-#include "infrastructure/plan_cache.h"
+#include "io/helio_bson_core.h"
+#include "infrastructure/helio_plan_cache.h"
 #include "commands/retryable_writes.h"
 #include "metadata/metadata_cache.h"
 

@@ -13,7 +13,7 @@
 
 #include <storage/lockdefs.h>
 
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 
 
 /* The max depth a view can have */

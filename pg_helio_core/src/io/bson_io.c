@@ -25,7 +25,7 @@
 
 #include "utils/type_cache.h"
 #include "utils/mongo_errors.h"
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 
 
 extern bool BsonTextUseJsonRepresentation;

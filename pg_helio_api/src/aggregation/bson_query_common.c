@@ -10,7 +10,7 @@
 
 #include <postgres.h>
 
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 #include "aggregation/bson_query_common.h"
 
 

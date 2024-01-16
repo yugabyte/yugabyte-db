@@ -18,7 +18,7 @@
 #include <tcop/pquery.h>
 #include <tcop/tcopprot.h>
 #include <metadata/metadata_cache.h>
-#include <io/bson_core.h>
+#include <io/helio_bson_core.h>
 #include <utils/snapmgr.h>
 #include <common/hashfn.h>
 #include <commands/portalcmds.h>

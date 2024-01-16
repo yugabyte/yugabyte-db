@@ -13,7 +13,7 @@
 #include <nodes/pathnodes.h>
 #include <nodes/pg_list.h>
 
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 #include "vector/vector_utilities.h"
 
 

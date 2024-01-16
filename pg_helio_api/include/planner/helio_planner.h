@@ -1,15 +1,15 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/planner/pgmongo_planner.h
+ * include/planner/helio_planner.h
  *
  * The pg_helio_api planner hook function.
  *
  *-------------------------------------------------------------------------
  */
 
-#ifndef PGMONGO_PLANNER_H
-#define PGMONGO_PLANNER_H
+#ifndef HELIO_PLANNER_H
+#define HELIO_PLANNER_H
 
 
 #include "postgres.h"

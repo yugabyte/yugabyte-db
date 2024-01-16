@@ -27,7 +27,7 @@
 #include "utils/query_utils.h"
 #include "utils/feature_counter.h"
 #include "utils/version_utils.h"
-#include "planner/pgmongo_planner.h"
+#include "planner/helio_planner.h"
 #include "commands/diagnostic_commands_common.h"
 
 

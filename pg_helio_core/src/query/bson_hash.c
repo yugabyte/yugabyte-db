@@ -12,7 +12,7 @@
 #include <common/hashfn.h>
 #include <math.h>
 
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 #include "types/decimal128.h"
 
 /* --------------------------------------------------------- */

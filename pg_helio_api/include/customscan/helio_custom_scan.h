@@ -1,15 +1,15 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/planner/pgmongo_custom_scan.h
+ * include/customscan/helio_custom_scan.h
  *
  *  Implementation of a custom scan plan for PGMongo.
  *
  *-------------------------------------------------------------------------
  */
 
-#ifndef PGMONGO_CUSTOM_SCAN_H
-#define PGMONGO_CUSTOM_SCAN_H
+#ifndef HELIO_CUSTOM_SCAN_H
+#define HELIO_CUSTOM_SCAN_H
 
 #include <optimizer/plancat.h>
 

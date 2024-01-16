@@ -13,7 +13,7 @@
 
 #include <postgres.h>
 
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 #include "geospatial/bson_geospatial_private.h"
 
 #define GEOJSON_CRS_BIGPOLYGON "urn:x-mongodb:crs:strictwinding:EPSG:4326"

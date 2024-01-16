@@ -12,7 +12,7 @@
 #define BSON_QUERY_H
 
 
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 
 /* The function that is called when dealing with a querySpec on a leaf
  * query filter (e.g. "a.b" : <value>)

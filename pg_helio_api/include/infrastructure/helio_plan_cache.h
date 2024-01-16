@@ -1,15 +1,15 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/planner/plan_cache.h
+ * include/planner/helio_plan_cache.h
  *
  * Common declarations for the pg_helio_api plan cache.
  *
  *-------------------------------------------------------------------------
  */
 
-#ifndef PGMONGO_PLAN_CACHE_H
-#define PGMONGO_PLAN_CACHE_H
+#ifndef HELIO_PLAN_CACHE_H
+#define HELIO_PLAN_CACHE_H
 
 #include <executor/spi.h>
 

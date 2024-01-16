@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/index/pgmongo_bson_gin_entrypoint
+ * src/opclass/bson_gin_entrypoint
  * .c
  *
  * Gin operator implementations of BSON.
@@ -27,12 +27,12 @@
 #include <funcapi.h>
 #include <lib/stringinfo.h>
 
-#include "opclass/pgmongo_gin_common.h"
-#include "opclass/pgmongo_bson_gin_private.h"
-#include "opclass/pgmongo_gin_index_mgmt.h"
-#include "opclass/pgmongo_gin_index_term.h"
-#include "io/bson_core.h"
-#include "query/bson_compare.h"
+#include "opclass/helio_gin_common.h"
+#include "opclass/helio_bson_gin_private.h"
+#include "opclass/helio_gin_index_mgmt.h"
+#include "opclass/helio_gin_index_term.h"
+#include "io/helio_bson_core.h"
+#include "query/helio_bson_compare.h"
 #include "utils/mongo_errors.h"
 #include "metadata/metadata_cache.h"
 #include <math.h>

@@ -14,17 +14,17 @@
 #include <utils/builtins.h>
 #include <math.h>
 
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 #include "aggregation/bson_query_common.h"
 #include "io/bson_traversal.h"
-#include "query/bson_compare.h"
+#include "query/helio_bson_compare.h"
 #include "operators/bson_expression.h"
 #include "query/bson_dollar_operators.h"
 #include "utils/mongo_errors.h"
 #include "operators/bson_expr_eval.h"
 #include "utils/fmgr_utils.h"
 #include "utils/hashset_utils.h"
-#include "opclass/pgmongo_bson_text_gin.h"
+#include "opclass/helio_bson_text_gin.h"
 #include "types/decimal128.h"
 
 /* --------------------------------------------------------- */

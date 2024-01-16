@@ -20,7 +20,7 @@
 #include <utils/lsyscache.h>
 
 #include "api_hooks.h"
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 #include "commands/parse_error.h"
 #include "commands/commands_common.h"
 #include "commands/drop_indexes.h"

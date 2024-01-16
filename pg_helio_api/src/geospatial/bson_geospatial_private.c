@@ -12,7 +12,7 @@
 #include "math.h"
 #include "lib/stringinfo.h"
 
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 #include "geospatial/bson_geospatial_common.h"
 #include "geospatial/bson_geospatial_private.h"
 #include "geospatial/bson_geojson_utils.h"

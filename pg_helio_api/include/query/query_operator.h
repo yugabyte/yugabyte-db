@@ -15,8 +15,8 @@
 #include <nodes/parsenodes.h>
 
 #include "metadata/collection.h"
-#include "io/bson_core.h"
-#include "opclass/pgmongo_gin_common.h"
+#include "io/helio_bson_core.h"
+#include "opclass/helio_gin_common.h"
 #include "planner/mongo_query_operator.h"
 
 /* BsonElemMatchContext is passed down while expanding BSON query expressions to handle $elemMatch operator */

@@ -1,15 +1,15 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/index/pmgongo_gin_index_mgmt.h
+ * include/opclass/helio_gin_index_mgmt.h
  *
  * Common declarations of the bson index management methods.
  *
  *-------------------------------------------------------------------------
  */
 
-#ifndef PGMONGO_GIN_INDEX_MGMT_H
-#define PGMONGO_GIN_INDEX_MGMT_H
+#ifndef HELIO_GIN_INDEX_MGMT_H
+#define HELIO_GIN_INDEX_MGMT_H
 
 /*
  * Enum identifying the kind of index based on the options.

@@ -19,8 +19,8 @@
 
 #include <miscadmin.h>
 #include "api_hooks.h"
-#include "io/bson_core.h"
-#include "query/bson_compare.h"
+#include "io/helio_bson_core.h"
+#include "query/helio_bson_compare.h"
 #include "commands/create_indexes.h"
 #include "metadata/index.h"
 #include "metadata/metadata_cache.h"

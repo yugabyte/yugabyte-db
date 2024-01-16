@@ -12,7 +12,7 @@
 #define EXTENSION_API_HOOKS_COMMON_H
 
 #include <postgres.h>
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 
 /*
  * Represents a single row result that is

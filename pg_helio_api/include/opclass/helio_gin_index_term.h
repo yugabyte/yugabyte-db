@@ -1,18 +1,18 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * include/index/pgmongo_gin_index_term.h
+ * include/opclass/helio_gin_index_term.h
  *
  * Common declarations of the serialization of index terms.
  *
  *-------------------------------------------------------------------------
  */
 
-#ifndef PGMONGO_GIN_INDEX_TERM_H
-#define PGMONGO_GIN_INDEX_TERM_H
+#ifndef HELIO_GIN_INDEX_TERM_H
+#define HELIO_GIN_INDEX_TERM_H
 
 #include "utils/string_view.h"
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 
 /* Struct used in manipulating bson index terms */
 typedef struct BsonIndexTerm

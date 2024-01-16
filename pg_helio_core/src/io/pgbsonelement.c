@@ -22,7 +22,7 @@
 #include <funcapi.h>
 #include <lib/stringinfo.h>
 
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 #include "io/pgbsonelement.h"
 
 /* --------------------------------------------------------- */

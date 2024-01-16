@@ -25,12 +25,12 @@
 #include <utils/guc.h>
 #include <utils/guc_utils.h>
 
-#include "io/bson_core.h"
-#include "opclass/pgmongo_gin_common.h"
-#include "opclass/pgmongo_gin_index_mgmt.h"
-#include "opclass/pgmongo_bson_gin_private.h"
+#include "io/helio_bson_core.h"
+#include "opclass/helio_gin_common.h"
+#include "opclass/helio_gin_index_mgmt.h"
+#include "opclass/helio_bson_gin_private.h"
 #include "utils/mongo_errors.h"
-#include "opclass/pgmongo_bson_text_gin.h"
+#include "opclass/helio_bson_text_gin.h"
 #include "metadata/metadata_cache.h"
 
 #include "access/attnum.h"

@@ -8,8 +8,8 @@
  */
 
 #include <postgres.h>
-#include "io/bson_core.h"
-#include "query/bson_compare.h"
+#include "io/helio_bson_core.h"
+#include "query/helio_bson_compare.h"
 #include "types/decimal128.h"
 #include "jsonschema/bson_json_schema_tree.h"
 #include "utils/mongo_errors.h"

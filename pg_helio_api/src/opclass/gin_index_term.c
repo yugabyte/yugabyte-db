@@ -1,7 +1,7 @@
 /*-------------------------------------------------------------------------
  * Copyright (c) Microsoft Corporation.  All rights reserved.
  *
- * src/index/pgmongo_gin_index_term.c
+ * src/opclass/gin_index_term.c
  *
  * Serialization and storage of index terms in the GIN/RUM index.
  *
@@ -12,8 +12,8 @@
 #include <postgres.h>
 #include <fmgr.h>
 #include <miscadmin.h>
-#include "opclass/pgmongo_gin_index_term.h"
-#include "query/bson_compare.h"
+#include "opclass/helio_gin_index_term.h"
+#include "query/helio_bson_compare.h"
 #include "utils/mongo_errors.h"
 #include "types/decimal128.h"
 #include "io/bsonvalue_utils.h"

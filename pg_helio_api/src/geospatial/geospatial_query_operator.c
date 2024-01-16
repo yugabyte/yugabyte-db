@@ -14,7 +14,7 @@
 #include <utils/builtins.h>
 #include <utils/guc.h>
 
-#include "io/bson_core.h"
+#include "io/helio_bson_core.h"
 #include "io/pgbsonelement.h"
 #include "geospatial/bson_geospatial_common.h"
 #include "geospatial/bson_geospatial_shape_operators.h"
