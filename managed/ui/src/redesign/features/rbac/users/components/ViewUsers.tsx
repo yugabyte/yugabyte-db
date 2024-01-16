@@ -198,7 +198,7 @@ export const ViewUsers = ({ routerProps }: { routerProps: WithRouterProps }) => 
               return (
                 <RbacValidator
                   isControl
-                  accessRequiredOn={{ ...UserPermissionMap.updateUser, onResource: user.uuid }}
+                  accessRequiredOn={{ ...UserPermissionMap.deleteUser, onResource: user.uuid }}
                   overrideStyle={{ display: 'block' }}
                 >
                   {elem}

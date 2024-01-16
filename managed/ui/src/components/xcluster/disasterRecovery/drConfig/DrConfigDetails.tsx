@@ -3,12 +3,11 @@ import { TabContext, TabList, TabPanel } from '@material-ui/lab';
 import { makeStyles, Tab, useTheme } from '@material-ui/core';
 import { useTranslation } from 'react-i18next';
 
-import { DrStatus } from './DrStatus';
+import { ReplicationTables } from '../../configDetails/ReplicationTables';
 
-import { DrConfig } from '../types';
-import { DrConfigOverview } from './DrConfigOverview';
+import { DrConfig } from '../dtos';
 
-interface DisasterRecoveryConfigProps {
+interface DrConfigDetailsProps {
   drConfig: DrConfig;
 }
 
@@ -26,15 +25,15 @@ const useStyles = makeStyles((theme) => ({
 }));
 
 const DrConfigTab = {
-  OVERVIEW: 'overview',
-  DR_STREAM_STATUS: 'drStreamStatus'
+  METRICS: 'metrics',
+  TABLES: 'tables'
 } as const;
 type DrConfigTab = typeof DrConfigTab[keyof typeof DrConfigTab];
 
-const DEFAULT_TAB = DrConfigTab.OVERVIEW;
+const DEFAULT_TAB = DrConfigTab.METRICS;
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery.config';
 
-export const DisasterRecoveryConfig = ({ drConfig }: DisasterRecoveryConfigProps) => {
+export const DrConfigDetails = ({ drConfig }: DrConfigDetailsProps) => {
   const [currentTab, setCurrentTab] = useState<DrConfigTab>(DEFAULT_TAB);
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
   const classes = useStyles();
@@ -54,14 +53,19 @@ export const DisasterRecoveryConfig = ({ drConfig }: DisasterRecoveryConfigProps
           onChange={handleTabChange}
           aria-label={t('aria.drConfigTabs')}
         >
-          <Tab label={t('tab.overview')} value={DrConfigTab.OVERVIEW} />
-          <Tab label={t('tab.drStatus')} value={DrConfigTab.DR_STREAM_STATUS} />
+          <Tab label={t('tab.metrics')} value={DrConfigTab.METRICS} />
+          <Tab label={t('tab.tables')} value={DrConfigTab.TABLES} />
         </TabList>
-        <TabPanel value={DrConfigTab.OVERVIEW}>
-          <DrConfigOverview drConfig={drConfig} />
+        <TabPanel value={DrConfigTab.METRICS}>
+          {/* Below component seems to cause rerendering? */}
+          {/* <ReplicationContainer
+            sourceUniverseUUID={drConfig.xClusterConfig.sourceUniverseUUID}
+            hideHeader={true}
+            replicationUUID={drConfig.xClusterConfig.uuid}
+          /> */}
         </TabPanel>
-        <TabPanel value={DrConfigTab.DR_STREAM_STATUS}>
-          <DrStatus drConfig={drConfig} />
+        <TabPanel value={DrConfigTab.TABLES}>
+          <ReplicationTables xClusterConfig={drConfig.xClusterConfig} isDrConfig={true} />
         </TabPanel>
       </TabContext>
     </div>

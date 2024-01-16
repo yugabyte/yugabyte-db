@@ -83,7 +83,6 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
       <h2 className="content-title">Provider Configuration</h2>
       <RbacValidator
         accessRequiredOn={{
-          onResource: "CUSTOMER_ID",
           ...UserPermissionMap.listProvider
         }}
       >

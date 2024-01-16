@@ -125,6 +125,7 @@ DEFINE_test_flag(
 
 DECLARE_bool(xcluster_wait_on_ddl_alter);
 DECLARE_int32(master_rpc_timeout_ms);
+DECLARE_bool(ysql_yb_enable_replication_commands);
 
 #define RETURN_ACTION_NOT_OK(expr, action) \
   RETURN_NOT_OK_PREPEND((expr), Format("An error occurred while $0", action))
@@ -726,11 +727,25 @@ Status CatalogManager::CreateCDCStream(
   }
 
   std::string id_type_option_value(cdc::kTableId);
+  bool source_type_found = false;
+  std::string source_type_option_value(CDCRequestSource_Name(cdc::CDCRequestSource::XCLUSTER));
 
   for (auto option : req->options()) {
     if (option.key() == cdc::kIdType) {
       id_type_option_value = option.value();
     }
+    if (option.key() == cdc::kSourceType) {
+      source_type_found = true;
+      source_type_option_value = option.value();
+    }
+  }
+
+  if (source_type_option_value == CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK) &&
+      !FLAGS_ysql_yb_enable_replication_commands) {
+    RETURN_INVALID_REQUEST_STATUS(
+        "Creation of CDCSDK stream is disallowed when ysql_yb_enable_replication_commands is "
+        "false",
+        (*req));
   }
 
   if (req->has_table_id()) {
@@ -757,18 +772,12 @@ Status CatalogManager::CreateCDCStream(
       RETURN_NOT_OK(AddTableIdToCDCStream(*req));
     }
   } else {
-    bool source_type_found = false;
-    for (auto option : req->options()) {
-      if (option.key() == cdc::kSourceType) {
-        source_type_found = true;
-        if (option.value() != CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK)) {
-          RETURN_INVALID_REQUEST_STATUS(
-              "Namespace CDC stream is only supported for CDCSDK", (*req));
-        }
-      }
-    }
     if (!source_type_found) {
       RETURN_INVALID_REQUEST_STATUS("source_type wasn't found in the request", (*req));
+    }
+
+    if (source_type_option_value != CDCRequestSource_Name(cdc::CDCRequestSource::CDCSDK)) {
+      RETURN_INVALID_REQUEST_STATUS("Namespace CDC stream is only supported for CDCSDK", (*req));
     }
 
     if (id_type_option_value != cdc::kNamespaceId) {
@@ -789,10 +798,10 @@ Status CatalogManager::CreateNewCDCStreamForNamespace(
     const CreateCDCStreamRequestPB& req, CreateCDCStreamResponsePB* resp, rpc::RpcContext* rpc,
     const LeaderEpoch& epoch) {
   auto ns = VERIFY_RESULT(FindNamespaceById(req.namespace_id()));
-  if (ns->database_type() == YQL_DATABASE_PGSQL && !req.has_cdcsdk_ysql_replication_slot_name()) {
-    RETURN_INVALID_REQUEST_STATUS(
-        "cdcsdk_ysql_replication_slot_name is required for YSQL databases", req);
-  }
+
+  // TODO(#19211): Validate that if the ns type is PGSQL, it must have the replication slot name in
+  // the request. This can only be done after we have ensured that YSQL is the only client
+  // requesting to create CDC streams.
 
   std::vector<TableInfoPtr> tables;
   {
@@ -928,11 +937,15 @@ Status CatalogManager::CreateNewXReplStream(
     auto table = VERIFY_RESULT(FindTableById(table_id));
     for (const auto& tablet : table->GetTablets()) {
       cdc::CDCStateTableEntry entry(tablet->id(), stream->StreamId());
-      // For CDCSDK streams, the initial checkpoint must be Invalid (-1, -1).
-      entry.checkpoint = (mode == CreateNewCDCStreamMode::kCdcsdkNamespaceAndTableIds)
-                             ? OpId().Invalid()
-                             : OpId().Min();
-      entry.last_replication_time = GetCurrentTimeMicros();
+      if (mode == CreateNewCDCStreamMode::kCdcsdkNamespaceAndTableIds) {
+        entry.checkpoint = OpId().Invalid();
+        entry.active_time = 0;
+        entry.cdc_sdk_safe_time = 0;
+      } else {
+        DCHECK(mode == CreateNewCDCStreamMode::kXClusterTableIds);
+        entry.checkpoint = OpId().Min();
+        entry.last_replication_time = GetCurrentTimeMicros();
+      }
       entries.push_back(std::move(entry));
     }
   }
@@ -4806,11 +4819,11 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
   auto replication_group_map =
       l.mutable_data()->pb.mutable_consumer_registry()->mutable_producer_map();
   auto producer_entry = FindOrNull(*replication_group_map, replication_group_id.ToString());
-  SCHECK(producer_entry, NotFound, Format("Missing universe $0", replication_group_id));
+  SCHECK(producer_entry, NotFound, Format("Missing replication group $0", replication_group_id));
   auto stream_entry = FindOrNull(*producer_entry->mutable_stream_map(), stream_id.ToString());
   SCHECK(
       stream_entry, NotFound,
-      Format("Missing universe $0, stream $1", replication_group_id, stream_id));
+      Format("Missing replication group $0, stream $1", replication_group_id, stream_id));
   auto schema_cached = stream_entry->mutable_producer_schema();
   // Clear out any cached schema version
   schema_cached->Clear();
@@ -4858,7 +4871,13 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
   } else {
     // If we have already seen this producer schema version, then verify that the consumer schema
     // version matches what we saw from other tablets or we received a new one.
-    DCHECK(req->consumer_schema_version() >= current_consumer_schema_version);
+    // If we get an older schema version from the consumer, that's an indication that it
+    // has not yet performed the ALTER and caught up to the latest schema version so fail the
+    // request until it catches up to the latest schema version.
+    SCHECK(req->consumer_schema_version() >= current_consumer_schema_version, InternalError,
+        Format(
+            "Received Older Consumer schema version $0 for replication group $1, table $2",
+            req->consumer_schema_version(), replication_group_id, consumer_table_id));
   }
 
   schema_versions_pb->set_current_producer_schema_version(current_producer_schema_version);
@@ -4887,7 +4906,7 @@ Status CatalogManager::UpdateConsumerOnProducerMetadata(
   LOG(INFO) << Format(
       "Updated the schema versions for table $0 with stream id $1, colocation id $2."
       "Current producer schema version:$3, current consumer schema version:$4 "
-      "old producer schema version:$5, old consumer schema version:$6, universe:$7",
+      "old producer schema version:$5, old consumer schema version:$6, replication group:$7",
       replication_group_id, stream_id, req->colocation_id(), current_producer_schema_version,
       current_consumer_schema_version, old_producer_schema_version, old_consumer_schema_version,
       replication_group_id);
@@ -6462,6 +6481,8 @@ bool CatalogManager::ShouldAddTableToXClusterReplication(
   }
 
   // Only user created YSQL Indexes should be automatically added to xCluster replication.
+  // For Colocated tables, this function will return false since it is only called on the parent
+  // colocated table which cannot be an index.
   if (pb.colocated() || pb.table_type() != PGSQL_TABLE_TYPE || !IsIndex(pb) ||
       !IsUserCreatedTable(table)) {
     return false;

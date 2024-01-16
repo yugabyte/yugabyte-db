@@ -34,7 +34,7 @@
 
 #include <string>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"

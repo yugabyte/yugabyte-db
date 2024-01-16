@@ -9,6 +9,7 @@ import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.Audit;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.TelemetryProvider;
+import com.yugabyte.yw.models.common.YbaApi;
 import com.yugabyte.yw.models.helpers.TelemetryProviderService;
 import io.swagger.annotations.Api;
 import io.swagger.annotations.ApiImplicitParam;
@@ -27,7 +28,10 @@ public class TelemetryProviderController extends AuthenticatedController {
 
   @Inject private TelemetryProviderService telemetryProviderService;
 
-  @ApiOperation(value = "Get Telemetry Provider", response = TelemetryProvider.class)
+  @ApiOperation(
+      value = "YbaApi Internal. Get Telemetry Provider",
+      response = TelemetryProvider.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
   public Result getTelemetryProvider(UUID customerUUID, UUID providerUUID) {
     Customer.getOrBadRequest(customerUUID);
     TelemetryProvider provider =
@@ -36,10 +40,11 @@ public class TelemetryProviderController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "List All Telemetry Providers",
+      value = "YbaApi Internal. List All Telemetry Providers",
       response = TelemetryProvider.class,
       responseContainer = "List",
       nickname = "listAllTelemetryProviders")
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
   public Result listTelemetryProviders(UUID customerUUID) {
     Customer.getOrBadRequest(customerUUID);
     List<TelemetryProvider> providers = telemetryProviderService.list(customerUUID);
@@ -47,7 +52,7 @@ public class TelemetryProviderController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "Create Telemetry Provider",
+      value = "YbaApi Internal. Create Telemetry Provider",
       response = TelemetryProvider.class,
       nickname = "createTelemetry")
   @ApiImplicitParams(
@@ -56,6 +61,7 @@ public class TelemetryProviderController extends AuthenticatedController {
           dataType = "com.yugabyte.yw.models.TelemetryProvider",
           required = true,
           paramType = "body"))
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
   public Result createTelemetryProvider(UUID customerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
     TelemetryProvider provider = parseJson(request, TelemetryProvider.class);
@@ -73,7 +79,8 @@ public class TelemetryProviderController extends AuthenticatedController {
     return PlatformResults.withData(provider);
   }
 
-  @ApiOperation(value = "Delete a telemetry provider", response = YBPSuccess.class)
+  @ApiOperation(value = "YbaApi Internal. Delete a telemetry provider", response = YBPSuccess.class)
+  @YbaApi(visibility = YbaApi.YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.20.0.0")
   public Result deleteTelemetryProvider(
       UUID customerUUID, UUID providerUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);

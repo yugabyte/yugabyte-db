@@ -36,19 +36,20 @@
 # a summary of the error which caused the test to fail.
 
 import argparse
-import os
 import re
-import sys
+import logging
 
 from xml.sax.saxutils import quoteattr
 
 from typing import Iterable, List, Pattern, Match, Dict, Tuple, Optional, TextIO
 
+from yugabyte import file_util, common_util
+
 
 # Read at most 100MB of a test log.
 # Rarely would this be exceeded, but we don't want to end up
 # swapping, etc.
-MAX_MEMORY = 100 * 1024 * 1024
+MAX_MEMORY_BYTES = 100 * 1024 * 1024
 
 START_TESTCASE_RE = re.compile(r'\[ RUN\s+\] (.+)$')
 END_TESTCASE_RE = re.compile(r'\[\s+(?:OK|FAILED)\s+\] (.+)$')
@@ -179,19 +180,6 @@ def extract_failures(log_text: str) -> Tuple[List[str], Dict[Optional[str], List
     return (tests_seen_in_order, errors_by_test)
 
 
-# Return failure summary formatted as text.
-def text_failure_summary(tests: List[str], errors_by_test: Dict[Optional[str], List[str]]) -> str:
-    msg = ''
-    for test_name in tests:
-        if test_name not in errors_by_test:
-            continue
-        for error in errors_by_test[test_name]:
-            if msg:
-                msg += "\n"
-            msg += "%s: %s\n" % (test_name, error)
-    return msg
-
-
 # Print failure summary based on desired output format.
 # 'tests' is a list of all tests run (in order), not just the failed ones.
 # This allows us to print the test results in the order they were run.
@@ -199,98 +187,101 @@ def text_failure_summary(tests: List[str], errors_by_test: Dict[Optional[str], L
 def print_failure_summary(
         tests: List[str],
         errors_by_test: Dict[Optional[str], List[str]],
-        is_xml: bool) -> None:
-    # Plain text dump.
-    if not is_xml:
-        sys.stdout.write(text_failure_summary(tests, errors_by_test))
+        xml_output_path: str) -> None:
+    # Example format:
+    """
+    <testsuites>
+        <testsuite name="ClientTest">
+        <testcase name="TestReplicatedMultiTabletTableFailover" classname="ClientTest">
+            <error message="Check failed: ABC != XYZ">
+            <![CDATA[ ... stack trace ... ]]>
+            </error>
+        </testcase>
+        </testsuite>
+    </testsuites>
+    """
 
-    # Fake a JUnit report file.
-    else:
-        # Example format:
-        """
-        <testsuites>
-          <testsuite name="ClientTest">
-            <testcase name="TestReplicatedMultiTabletTableFailover" classname="ClientTest">
-              <error message="Check failed: ABC != XYZ">
-                <![CDATA[ ... stack trace ... ]]>
-              </error>
-            </testcase>
-          </testsuite>
-        </testsuites>
-        """
-        cur_test_suite = None
-        print('<testsuites>')
+    lines = []
 
-        found_test_suites = False
-        for test_name in tests:
-            (test_suite, test_case) = test_name.split(".")
+    cur_test_suite = None
+    lines.append('<testsuites>')
+    found_test_suites = False
+    for test_name in tests:
+        (test_suite, test_case) = test_name.split(".")
 
-            # Test suite initialization or name change.
-            if test_suite and test_suite != cur_test_suite:
-                if cur_test_suite:
-                    print('  </testsuite>')
-                cur_test_suite = test_suite
-                print('  <testsuite name="%s">' % cur_test_suite)
-                found_test_suites = True
+        # Test suite initialization or name change.
+        if test_suite and test_suite != cur_test_suite:
+            if cur_test_suite:
+                lines.append('  </testsuite>')
+            cur_test_suite = test_suite
+            lines.append('  <testsuite name="%s">' % cur_test_suite)
+            found_test_suites = True
 
-            # Print each test case.
-            print('    <testcase name="%s" classname="%s">' % (test_case, cur_test_suite))
-            if errors_by_test.get(test_name):
-                errors = "\n\n".join(errors_by_test[test_name])
-                first_line = re.sub("\n.*", '', errors)
-                print('      <error message=%s>' % quoteattr(first_line))
-                print('<![CDATA[')
-                print(errors)
-                print(']]>')
-                print('      </error>')
-            print('    </testcase>')
+        # Print each test case.
+        lines.append('    <testcase name="%s" classname="%s">' % (test_case, cur_test_suite))
+        if errors_by_test.get(test_name):
+            errors = "\n\n".join(errors_by_test[test_name])
+            first_line = re.sub("\n.*", '', errors)
+            lines.extend([
+                '      <error message=%s>' % quoteattr(first_line),
+                '<![CDATA[',
+                errors,
+                ']]>',
+                '      </error>',
+            ])
+        lines.append('    </testcase>')
 
-        if found_test_suites:
-            print('  </testsuite>')
-        print('</testsuites>')
+    if found_test_suites:
+        lines.append('  </testsuite>')
+    lines.append('</testsuites>')
+
+    file_util.write_file(lines, xml_output_path)
+
+
+def generate_xml_report_from_log(
+        input_path: str,
+        xml_output_path: str,
+        test_case_id: Optional[str]) -> None:
+    with open(input_path) as in_file:
+        tests: List[str]
+        errors_by_test: Dict[Optional[str], List[str]]
+
+        log_text = in_file.read(MAX_MEMORY_BYTES)
+        (tests, errors_by_test) = extract_failures(log_text)
+
+    # For non-gtest tests we need to generate XML without errors.
+    # Errors will be added by update_test_result_xml.py if needed.
+    if len(tests) == 0:
+        if test_case_id is None:
+            logging.warning("No test case ID provided, and could not detect test cases in "
+                            "the log file %s, can't generate XML report", input_path)
+            return
+        else:
+            tests.append(test_case_id)
+            errors_by_test[test_case_id] = []
+
+    print_failure_summary(tests, errors_by_test, xml_output_path)
 
 
 def main() -> None:
+    common_util.init_logging(verbose=False)
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "-x", "--xml",
-        help="Print output in JUnit report XML format (default: plain text)",
-        action="store_true")
+        "--xml_output_path",
+        help="Write XML output file to the given path.",
+        required=True)
     parser.add_argument(
-        "junit_test_case_id",
-        nargs="?",
+        "--input_path",
+        help="File to parse.",
+        required=True)
+    parser.add_argument(
+        "--junit_test_case_id",
         help="Test case ID in <Test suite>.<test case> format to be used for report in case it "
              "couldn't be parsed from log")
-    parser.add_argument(
-        "path",
-        nargs="?",
-        help="File to parse. If not provided, parses stdin")
+
     args = parser.parse_args()
-
-    test_case_id = args.junit_test_case_id
-
-    in_file: Optional[TextIO]
-    if args.path:
-        in_file = open(args.path) if os.path.isfile(args.path) else None
-    else:
-        in_file = sys.stdin
-
-    tests: List[str]
-    errors_by_test: Dict[Optional[str], List[str]]
-
-    if in_file:
-        log_text = in_file.read(MAX_MEMORY)
-        (tests, errors_by_test) = extract_failures(log_text)
-    else:
-        tests = [test_case_id]
-        errors_by_test = {test_case_id: ['Log file not found, check global build log']}
-
-    # For non-gtest test we need to generate XML without errors.
-    # Errors will be added by update_test_result_xml.py if needed.
-    if len(tests) == 0:
-        tests.append(test_case_id)
-        errors_by_test[test_case_id] = []
-    print_failure_summary(tests, errors_by_test, args.xml)
+    generate_xml_report_from_log(args.input_path, args.xml_output_path, args.junit_test_case_id)
 
 
 if __name__ == "__main__":

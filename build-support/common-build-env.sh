@@ -79,6 +79,8 @@ $YB_SRC_ROOT/python/yugabyte/split_long_command_line.py
 $YB_SRC_ROOT/python/yugabyte/update_test_result_xml.py
   export YB_SCRIPT_PATH_YB_RELEASE_CORE_DB=$YB_SRC_ROOT/python/yugabyte/yb_release_core_db.py
   export YB_SCRIPT_PATH_LIST_PACKAGED_TARGETS=$YB_SRC_ROOT/python/yugabyte/list_packaged_targets.py
+  export YB_SCRIPT_PATH_VALIDATE_BUILD_ROOT=$YB_SRC_ROOT/python/yugabyte/validate_build_root.py
+  export YB_SCRIPT_PATH_ANALYZE_TEST_RESULTS=$YB_SRC_ROOT/python/yugabyte/analyze_test_results.py
 }
 
 set_yb_src_root() {
@@ -641,10 +643,14 @@ set_cmake_build_type_and_compiler_type() {
 
   if [[ -z ${build_type:-} ]]; then
     if [[ ${YB_LINKING_TYPE:-} == *-lto ]]; then
-      log "Setting build type to 'release' by default (YB_LINKING_TYPE=${YB_LINKING_TYPE})"
+      if [[ ${yb_set_build_type_quietly:-} != "true" ]]; then
+        log "Setting build type to 'release' by default (YB_LINKING_TYPE=${YB_LINKING_TYPE})"
+      fi
       build_type=release
     else
-      log "Setting build type to 'debug' by default"
+      if [[ ${yb_set_build_type_quietly:-} != "true" ]]; then
+        log "Setting build type to 'debug' by default"
+      fi
       build_type=debug
     fi
   fi
@@ -2037,7 +2043,7 @@ handle_predefined_build_root() {
   if [[ $predefined_build_root != $YB_BUILD_INTERNAL_PARENT_DIR/* && \
         $predefined_build_root != $YB_BUILD_EXTERNAL_PARENT_DIR/* ]]; then
     # Sometimes $predefined_build_root contains symlinks on its path.
-    "$YB_SRC_ROOT/build-support/validate_build_root.py" \
+    "$YB_SCRIPT_PATH_VALIDATE_BUILD_ROOT" \
       "$predefined_build_root" \
       "$YB_BUILD_INTERNAL_PARENT_DIR" \
       "$YB_BUILD_EXTERNAL_PARENT_DIR"
@@ -2258,6 +2264,7 @@ check_python_script_syntax() {
 run_shellcheck() {
   local scripts_to_check=(
     bin/release_package_docker_test.sh
+    bin/run_tests_on_spark_tool.sh
     build-support/common-build-env.sh
     build-support/common-cli-env.sh
     build-support/common-test-env.sh

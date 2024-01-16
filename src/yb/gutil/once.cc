@@ -15,7 +15,7 @@
 // under the License.
 //
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include "yb/gutil/logging-inl.h"
 #include "yb/gutil/once.h"
 #include "yb/gutil/dynamic_annotations.h"

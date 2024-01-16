@@ -2218,27 +2218,16 @@ _readJoin(void)
 }
 
 /*
- * ReadCommonNestLoop
- */
-static void
-ReadCommonNestLoop(NestLoop *local_node)
-{
-	READ_TEMP_LOCALS();
-
-	ReadCommonJoin(&local_node->join);
-
-	READ_NODE_FIELD(nestParams);
-}
-
-/*
  * _readNestLoop
  */
 static NestLoop *
 _readNestLoop(void)
 {
-	READ_LOCALS_NO_FIELDS(NestLoop);
+	READ_LOCALS(NestLoop);
 
-	ReadCommonNestLoop(local_node);
+	ReadCommonJoin(&local_node->join);
+
+	READ_NODE_FIELD(nestParams);
 
 	READ_DONE();
 }
@@ -2249,33 +2238,35 @@ _readNestLoop(void)
 static YbBatchedNestLoop *
 _readYbBatchedNestLoop(void)
 {
-	int			num_hashClauseInfos;
 	READ_LOCALS(YbBatchedNestLoop);
 
-	ReadCommonNestLoop(&local_node->nl);
+	ReadCommonJoin(&local_node->nl.join);
+
+	READ_NODE_FIELD(nl.nestParams);
 	READ_INT_FIELD(num_hashClauseInfos);
-	num_hashClauseInfos = local_node->num_hashClauseInfos;
 	local_node->hashClauseInfos =
-		palloc0(num_hashClauseInfos * sizeof(YbBNLHashClauseInfo));
+		palloc0(local_node->num_hashClauseInfos * sizeof(YbBNLHashClauseInfo));
 
-	YbBNLHashClauseInfo *current_hinfo = local_node->hashClauseInfos;
-	for (int i = 0; i < num_hashClauseInfos; i++)
+	/* Ignore :hashOps */
+	pg_strtok(&length);
+	for (int i = 0; i < local_node->num_hashClauseInfos; i++)
 	{
-		const char *tok = pg_strtok(&length);
-		(void) tok;
-		tok = pg_strtok(&length);
-		current_hinfo->hashOp = atoi(tok);
-
-		tok = pg_strtok(&length);
-		(void) tok;
-		tok = pg_strtok(&length);
-		current_hinfo->innerHashAttNo = atoi(tok);
-
-		tok = pg_strtok(&length);
-		(void) tok;
-		current_hinfo->outerParamExpr = nodeRead(NULL, 0);
-		current_hinfo++;
+		token = pg_strtok(&length);
+		local_node->hashClauseInfos[i].hashOp = atoi(token);
 	}
+
+	/* Ignore :innerHashAttNos */
+	pg_strtok(&length);
+	for (int i = 0; i < local_node->num_hashClauseInfos; i++)
+	{
+		token = pg_strtok(&length);
+		local_node->hashClauseInfos[i].innerHashAttNo = atoi(token);
+	}
+
+	/* Ignore :outerParamExprs */
+	pg_strtok(&length);
+	for (int i = 0; i < local_node->num_hashClauseInfos; i++)
+		local_node->hashClauseInfos[i].outerParamExpr = nodeRead(NULL, 0);
 
 	READ_DONE();
 }
@@ -2629,6 +2620,7 @@ _readNestLoopParam(void)
 
 	READ_INT_FIELD(paramno);
 	READ_NODE_FIELD(paramval);
+	READ_INT_FIELD(yb_batch_size);
 
 	READ_DONE();
 }
@@ -3060,7 +3052,7 @@ parseNodeString(void)
 		return_value = _readJoin();
 	else if (MATCH("NESTLOOP", 8))
 		return_value = _readNestLoop();
-	else if (MATCH("YbBatchedNestLoop", 15))
+	else if (MATCH("YBBATCHEDNESTLOOP", 17))
 		return_value = _readYbBatchedNestLoop();
 	else if (MATCH("MERGEJOIN", 9))
 		return_value = _readMergeJoin();

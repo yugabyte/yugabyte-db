@@ -41,7 +41,7 @@ const getRoleResourceDefinitionsSchema = (t: TFunction) => {
           const customRoles = val?.filter((v) => v.role?.roleType === RoleType.CUSTOM);
           return (
             uniqWith(customRoles, (a, b) => {
-              return isEqual(a.role, b.role) && isEqual(a.resourceGroup, b.resourceGroup);
+              return isEqual(a.role, b.role);
             }).length === customRoles?.length
           );
         } as any

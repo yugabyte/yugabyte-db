@@ -42,7 +42,6 @@
 #include <unordered_map>
 #include <vector>
 
-#include <glog/logging.h>
 #include <gtest/gtest.h>
 
 #include "yb/client/client.h"
@@ -1344,7 +1343,7 @@ Status ExternalMiniCluster::WaitForInitDb() {
 }
 
 Result<bool> ExternalMiniCluster::is_ts_stale(int ts_idx, MonoDelta deadline) {
-  auto proxy = GetMasterProxy<master::MasterClusterProxy>();
+  auto proxy = GetLeaderMasterProxy<master::MasterClusterProxy>();
   std::shared_ptr<rpc::RpcController> controller = std::make_shared<rpc::RpcController>();
   master::ListTabletServersRequestPB req;
   master::ListTabletServersResponsePB resp;
@@ -2518,6 +2517,14 @@ Result<bool> ExternalDaemon::ExtractMetricValue<bool>(const JsonReader& r,
                                                       const char* value_field) {
   bool value;
   RETURN_NOT_OK(r.ExtractBool(metric, value_field, &value));
+  return value;
+}
+
+template <>
+Result<uint32_t> ExternalDaemon::ExtractMetricValue<uint32_t>(
+    const JsonReader& r, const Value* metric, const char* value_field) {
+  uint32_t value;
+  RETURN_NOT_OK(r.ExtractUInt32(metric, value_field, &value));
   return value;
 }
 

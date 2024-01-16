@@ -1041,7 +1041,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "New RBAC Authz feature",
           "New RBAC Authz feature with custom role creation",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.INTERNAL));
+          ImmutableList.of(ConfKeyTags.INTERNAL, ConfKeyTags.FEATURE_FLAG));
   public static final ConfKeyInfo<Boolean> enableVMOSPatching =
       new ConfKeyInfo<>(
           "yb.provider.vm_os_patching",
@@ -1091,4 +1091,20 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + " Ex: [\"yb_task:dev\",\"yb_owner:dev\",\"yb_dept:eng\"]",
           ConfDataType.StringListType,
           ImmutableList.of(ConfKeyTags.INTERNAL));
+  public static final ConfKeyInfo<Boolean> granularMetrics =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.granular_metrics",
+          ScopeType.GLOBAL,
+          "Granular level metrics",
+          "View granular level metrics when user selects specific time period in a chart",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> gflagMultilineConf =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.gflag_multiline_conf",
+          ScopeType.GLOBAL,
+          "Enable multiline option for GFlag conf.",
+          "Allows user to enter postgres hba rules and ident map rules in multiple rows",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

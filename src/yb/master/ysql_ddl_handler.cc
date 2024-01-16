@@ -208,8 +208,7 @@ Status CatalogManager::YsqlDdlTxnCompleteCallbackInternal(
 
   auto& metadata = l.mutable_data()->pb;
 
-  SCHECK(metadata.state() == SysTablesEntryPB::RUNNING ||
-         metadata.state() == SysTablesEntryPB::ALTERING, Aborted,
+  SCHECK(l->is_running(), Aborted,
          "Unexpected table state ($0), abandoning DDL rollback for $1",
          SysTablesEntryPB_State_Name(metadata.state()), table->ToString());
 

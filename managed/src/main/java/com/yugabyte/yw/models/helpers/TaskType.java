@@ -337,6 +337,9 @@ public enum TaskType {
   DeleteXClusterConfigEntry(
       com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteXClusterConfigEntry.class),
 
+  DeleteXClusterTableConfigEntry(
+      com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.DeleteXClusterTableConfigEntry.class),
+
   DeleteDrConfigEntry(com.yugabyte.yw.commissioner.tasks.subtasks.DeleteDrConfigEntry.class),
 
   WaitForReplicationDrain(
@@ -481,6 +484,8 @@ public enum TaskType {
   RunYsqlUpgrade(com.yugabyte.yw.commissioner.tasks.subtasks.RunYsqlUpgrade.class),
 
   PromoteAutoFlags(com.yugabyte.yw.commissioner.tasks.subtasks.PromoteAutoFlags.class),
+
+  RollbackAutoFlags(com.yugabyte.yw.commissioner.tasks.subtasks.RollbackAutoFlags.class),
 
   StoreAutoFlagConfigVersion(
       com.yugabyte.yw.commissioner.tasks.subtasks.StoreAutoFlagConfigVersion.class),

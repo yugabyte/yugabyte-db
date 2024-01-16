@@ -50,6 +50,10 @@ export const isRbacEnabled = () => {
   return localStorage.getItem(rbac_identifier) === 'true';
 };
 
+export const getRbacEnabledVal = () => {
+  return localStorage.getItem(rbac_identifier);
+};
+
 export const clearRbacCreds = () => {
   localStorage.removeItem(rbac_identifier);
 };

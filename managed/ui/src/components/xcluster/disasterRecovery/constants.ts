@@ -1,17 +1,14 @@
+import { DrConfigState } from './dtos';
+
 export const DrConfigActions = {
   CREATE: 'createDrConfig',
   DELETE: 'deleteDrConfig',
   EDIT: 'editDrConfig',
   EDIT_TARGET: 'editDrConfigTarget',
-  INITIATE_FAILOVER: 'initiateFailover'
+  SWITCHOVER: 'switchover',
+  FAILOVER: 'failover'
 } as const;
 export type DrConfigActions = typeof DrConfigActions[keyof typeof DrConfigActions];
-
-export const FailoverType = {
-  PLANNED: 'plannedFailover',
-  UNPLANNED: 'unplannedFailover'
-} as const;
-export type FailoverType = typeof FailoverType[keyof typeof FailoverType];
 
 export const RpoUnit = {
   SECOND: 'second',

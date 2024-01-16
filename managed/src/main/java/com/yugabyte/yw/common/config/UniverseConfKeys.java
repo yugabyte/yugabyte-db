@@ -160,15 +160,6 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           ConfDataType.LongType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
 
-  public static final ConfKeyInfo<Boolean> granularMetrics =
-      new ConfKeyInfo<>(
-          "yb.ui.feature_flags.granular_metrics",
-          ScopeType.UNIVERSE,
-          "Granular level metrics",
-          "View granular level metrics when user selects specific time period in a chart",
-          ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.BETA));
-
   public static final ConfKeyInfo<Boolean> pgBasedBackup =
       new ConfKeyInfo<>(
           "yb.backup.pg_based",
@@ -954,4 +945,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
               + " with the universe.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> notifyPeerOnRemoval =
+      new ConfKeyInfo<>(
+          "yb.gflags.notify_peer_of_removal_from_cluster",
+          ScopeType.UNIVERSE,
+          "Notify Peers in Cluster on Node Removal",
+          "Notify peers in cluster on a master node removal",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

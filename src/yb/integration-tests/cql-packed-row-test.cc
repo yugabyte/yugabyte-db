@@ -382,7 +382,7 @@ void CqlPackedRowTest::TestRemoteBootstrap() {
 }
 
 TEST_F(CqlPackedRowTest, RemoteBootstrap) {
-  FLAGS_TEST_invalidate_last_change_metadata_op = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_invalidate_last_change_metadata_op) = true;
   TestRemoteBootstrap();
 }
 

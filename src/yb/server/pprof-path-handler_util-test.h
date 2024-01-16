@@ -17,7 +17,7 @@
 #include <thread>
 
 #include <gflags/gflags_declare.h>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/gutil/dynamic_annotations.h"

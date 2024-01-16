@@ -25,8 +25,18 @@
       - job_name: 'prometheus'
         scrape_interval: {{ yamlPath "prometheus.scrapeInterval" }}
         scrape_timeout:  {{ yamlPath "prometheus.scrapeTimeout" }}
+        {{ if eq (yamlPath "prometheus.enableHttps") "true" }}
+        scheme: https
+        tls_config:
+          insecure_skip_verify: true
+        {{ end }}
+        {{ if eq (yamlPath "prometheus.enableAuth") "true" }}
+        basic_auth:
+          username: {{ yamlPath "prometheus.authUsername" }}
+          password: {{ yamlPath "prometheus.authPassword" }}
+        {{ end }}
         static_configs:
-          - targets: ['127.0.0.1:{{ yamlPath "prometheus.port" }}']
+          - targets: ['{{ yamlPath "host" }}:{{ yamlPath "prometheus.port" }}']
 
       - job_name: 'platform'
         {{if eq (yamlPath "platform.port") "443"}}
@@ -37,7 +47,7 @@
         scrape_timeout:  {{ yamlPath "prometheus.scrapeTimeout" }}
         metrics_path: "/api/v1/prometheus_metrics"
         static_configs:
-          - targets: ['127.0.0.1:{{ yamlPath "platform.port" }}']
+          - targets: ['{{ yamlPath "host" }}:{{ yamlPath "platform.port" }}']
 
       - job_name: 'node-agent'
         scrape_timeout:  {{ yamlPath "prometheus.scrapeTimeout" }}
@@ -183,6 +193,7 @@
       --web.console.libraries={{ .PromDir }}/console_libraries \
       --web.enable-admin-api \
       --web.enable-lifecycle \
+      --web.config.file={{ .WebConfFile }} \
       --web.listen-address=:{{ yamlPath "prometheus.port" }} \
       --query.max-concurrency={{ yamlPath "prometheus.maxConcurrency" }} \
       --query.max-samples={{ yamlPath "prometheus.maxSamples" }} \
@@ -193,3 +204,12 @@
 
       [Install]
       WantedBy=multi-user.target
+
+  - name: prometheusWebConf
+    fileName: "{{ .WebConfFile }}"
+    contents: |
+      {{ if eq (yamlPath "prometheus.enableHttps") "true" }}
+      tls_server_config:
+        cert_file: "{{ yamlPath "prometheus.httpsCertPath" }}"
+        key_file: "{{ yamlPath "prometheus.httpsKeyPath" }}"
+      {{ end }}

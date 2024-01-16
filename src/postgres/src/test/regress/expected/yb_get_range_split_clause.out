@@ -56,7 +56,7 @@ CREATE TEMP TABLE temp_tbl (
   a INT,
   PRIMARY KEY(a ASC)
 ) WITH (table_oid = 20000) SPLIT AT VALUES((-100), (250));
-WARNING:  Split options on TEMP table will be ignored
+WARNING:  split options on TEMP table will be ignored
 SELECT yb_get_range_split_clause('temp_tbl'::regclass);
 NOTICE:  relation with oid 20000 is not backed by YB
  yb_get_range_split_clause

@@ -242,6 +242,9 @@ public class UserTaskDetails {
     // Promote Auto Flags
     PromoteAutoFlags,
 
+    // Rollback Auto Flags
+    RollbackAutoFlags,
+
     // Validate configurations.
     ValidateConfigurations
   }
@@ -563,6 +566,10 @@ public class UserTaskDetails {
       case PromoteAutoFlags:
         title = "Promote Auto flags";
         description = "Promote Auto flags for a universe";
+        break;
+      case RollbackAutoFlags:
+        title = "Rollback Auto flags";
+        description = "Rollback Auto flags for a universe";
         break;
       case ValidateConfigurations:
         title = "Validating configurations";

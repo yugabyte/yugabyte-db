@@ -626,7 +626,9 @@ restore_backup() {
   fi
 
   # Restore prometheus data.
+  set +e
   prom_snapshot=$(tar -tf "${input_path}" | grep -E $prometheus_dir_regex)
+  set -e
   if [[ -n "$prom_snapshot" ]]; then
     echo "Restoring prometheus snapshot..."
     set_prometheus_data_dir "${prometheus_host}" "${prometheus_port}" "${data_dir}"

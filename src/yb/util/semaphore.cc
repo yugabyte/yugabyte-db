@@ -33,7 +33,7 @@
 #include "yb/util/semaphore.h"
 
 #include <semaphore.h>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include "yb/gutil/walltime.h"
 namespace yb {
 

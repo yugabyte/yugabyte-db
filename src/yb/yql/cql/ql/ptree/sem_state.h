@@ -20,7 +20,7 @@
 
 #pragma once
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include "yb/common/common_fwd.h"
 #include "yb/common/ql_datatype.h"
 

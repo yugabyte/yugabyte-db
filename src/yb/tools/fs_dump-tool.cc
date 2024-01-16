@@ -34,8 +34,6 @@
 #include <memory>
 #include <vector>
 
-#include <glog/logging.h>
-
 #include "yb/tools/fs_tool.h"
 #include "yb/util/flags.h"
 #include "yb/util/logging.h"
