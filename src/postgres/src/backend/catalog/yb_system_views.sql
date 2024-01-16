@@ -25,6 +25,10 @@ SELECT
 FROM yb_pg_stat_get_queries(NULL) AS S
 LEFT JOIN pg_database AS D ON (S.db_oid = D.oid);
 
+CREATE VIEW yb_active_session_history AS
+    SELECT *
+    FROM yb_active_session_history();
+
 CREATE VIEW pg_roles AS
     SELECT
         rolname,

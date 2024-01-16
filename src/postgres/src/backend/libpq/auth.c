@@ -657,6 +657,14 @@ ClientAuthentication(Port *port)
 		case uaYbTserverKey:
 #ifdef HAVE_UNIX_SOCKETS
 			Assert(IsYugaByteEnabled());
+
+			if (YbIsClientYsqlConnMgr() && port->yb_is_auth_passthrough_req)
+			{
+				YbSendFatalForLogicalConnectionPacket();
+				elog(WARNING, "YbTserverKey authentication is not supported "
+							  " in auth passthrough");
+			}
+
 			status = CheckYbTserverKeyAuth(port, &logdetail);
 #else
 			Assert(false);

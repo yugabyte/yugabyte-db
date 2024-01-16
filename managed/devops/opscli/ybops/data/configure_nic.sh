@@ -7,6 +7,10 @@ mgmt_rtb_id=251
 mgmt_rtb_name="mgmt" # This is management side of the routing table
 tmp_dir="/tmp"
 
+os_name=$([ -f /etc/os-release ] && grep -e "^ID=" /etc/os-release | cut -d = -f 2 | tr -d '"')
+os_version=$([ -f /etc/os-release ] && grep -e "^VERSION_ID=" /etc/os-release | cut -d = -f 2 | \
+tr -d '"' | cut -d . -f 1)
+
 # AWS - Primary - ens5 :: Secondary interface can be - eth0 eth1 ens6
 # GCP - Primary - eth0 or ens5 :: Secondary can be - eth1 ens6
 # We will use secondary or the customer side to be the default route
@@ -19,6 +23,13 @@ tmp_dir="/tmp"
 # whichever order it came up
 
 fix_ifcfg() {
+    # When using network manager dispatcher scripts, we do not want to mess with the DEFROUTE setup.
+    # Setting it to no results in incorrect variables being set by the dispatcher.
+    # E.g. $IP4_GATEWAY = 0.0.0.0/0 instead of the actual internet gateway IP.
+    if [ "${use_network_manager_dispatcher}" = true ]; then
+        return
+    fi
+
     #eth0 - primary interface is ens5 and AWS setup eth0
     #eth1 - primary interface is eth0 and AWS configured secondary
     #ens6 - primary interface is ens5 and AWS messed secondary
@@ -29,7 +40,7 @@ fix_ifcfg() {
         if_config_file="/etc/sysconfig/network-scripts/ifcfg-$ifname"
         if [ -f "${if_config_file}" ]; then
             DEFROUTE=""
-            source ${if_config_file}
+            source "${if_config_file}"
             echo "Current value of DEFROUTE for $ifname : ${DEFROUTE}"
             if [ "${DEFROUTE}" != "no" ]; then
                 # It can be either yes or does not exisit, so we need to check
@@ -48,102 +59,157 @@ fix_ifcfg() {
     done
 }
 
+create_route_tables() {
+    # Create the route table for the customer side.
+    echo "Creating route tables"
+    if grep -q "^${rtb_id}" /etc/iproute2/rt_tables; then
+        echo "Route table with ID $rtb_id already exists"
+    else
+        echo -e "${rtb_id}\t$rtb_name" >>/etc/iproute2/rt_tables
+        echo "Created route table ${rtb_name}"
+    fi
+
+    # Create the route table for the management side.
+    echo "Creating route table ${mgmt_rtb_id}"
+    if grep -q "^${mgmt_rtb_id}" /etc/iproute2/rt_tables; then
+        echo "Route table with ID $mgmt_rtb_id already exists"
+    else
+        echo -e "${mgmt_rtb_id}\t$mgmt_rtb_name" >>/etc/iproute2/rt_tables
+        echo "Created route table ${mgmt_rtb_name}"
+    fi
+}
+
 configure_nics() {
-    #disable Network Manager for any interface
-    systemctl disable NetworkManager &> /dev/null
-    # Create Table for customer side
-    echo "Create route table ${rtb_id}"
-    egrep "^${rtb_id}" /etc/iproute2/rt_tables && {
-        echo "RTb ID $rtb_id exists, no changes required"
-        exit 0
-    }
-    echo -e "${rtb_id}\t$rtb_name" >>/etc/iproute2/rt_tables
+    create_route_tables
+    if [ "${use_network_manager_dispatcher}" = false ]; then
+        # Disable Network Manager for any interface.
+        echo "Disabling network manager"
+        systemctl disable NetworkManager
+        semanage permissive -a dhcpc_t
+        up_hook_file="/etc/dhcp/dhclient-up-hooks"
+    else
+        # Keep NetworkManager enabled. Needed for RHEL 8+ (AlmaLinux 8, 9 OS).
+        # We will use NetworkManager dispatcher scripts to activate the interfaces.
+        # https://access.redhat.com/documentation/en-us/red_hat_enterprise_linux/8/html/
+        # configuring_and_managing_networking/assembly_running-dhclient-exit-hooks-using-
+        # networkmanager-a-dispatcher-script_configuring-and-managing-networking
+        up_hook_file="/etc/NetworkManager/dispatcher.d/20-yb-configure-2-nics"
+    fi
 
-    # Create Table for Mgmt side
-    echo "Create route table ${mgmt_rtb_id}"
-    egrep "^${mgmt_rtb_id}" /etc/iproute2/rt_tables && {
-        echo "RTb ID $mgmt_rtb_id exists, no changes required"
-        exit 0
-    }
-    echo -e "${mgmt_rtb_id}\t$mgmt_rtb_name" >>/etc/iproute2/rt_tables
-
-  # Allow DHCP up hook to access firewalld: https://yugabyte.atlassian.net/browse/CLOUDGA-6494
-  semanage permissive -a dhcpc_t
-
-  cat - >/etc/dhcp/dhclient-up-hooks <<EOF
+  cat - >"${up_hook_file}" <<EOF
 #!/usr/bin/env bash
 set -x
-log_file="${tmp_dir}/dhclient-script-up-hook-\${interface}-\$(date)-\$(uuidgen)"
-log(){
- echo "\$*" >> "\${log_file}"
-}
-# Parameters
+
+# Rebinding variables from configure_nic.sh script for context/clarity.
 secondary_network="${secondary_network}"
 secondary_netmask="${secondary_netmask}"
 
-if [[ "$cloud" == "gcp" ]]; then
-  # Re-bind variable to comply with AWS
-  new_network_number="\${route_targets[1]}"
-  new_routers="\${route_targets[0]}"
-  new_subnet_mask="\$prefix"
-fi
+log(){
+ echo "\$*" >> "\${log_file}"
+}
 
-log "ENV: new_network_number=\${route_targets[1]}"
-log "ENV: new_routers=\${route_targets[0]}"
-log "ENV: new_subnet_mask=\$prefix"
-log "ENV: interface=\$interface"
-log "ENV: new_ip_address=\$new_ip_address"
-log "Configure for \$new_network_number"
-
-if [ "\$new_network_number" == "\${secondary_network}" ]; then
- log "It's secondary CIDR (\${secondary_network}), update rule and route!"
- ip rule show | grep "from \${secondary_network}/\${secondary_netmask} table $rtb_name" && {
-   log "Rule already set"
- } || {
-   ip rule add from \${secondary_network}/\${secondary_netmask} table $rtb_name
- }
- ip route show | grep "default table $rtb_name via \$new_routers dev \$interface" && {
-   log "Route already set"
- } || {
-   ip route add default table $rtb_name via \$new_routers dev \$interface
- }
- #Add default route via the customer interface
- ip route del default
- ip route add default via \$new_routers
-else
- log "It's management CIDR !"
- ip rule show | grep "from \${new_network_number}/\${new_subnet_mask} table $mgmt_rtb_name" && {
-   log "Rule already set"
- } || {
-   ip rule add from \${new_network_number}/\${new_subnet_mask} table $mgmt_rtb_name
- }
- ip route show | grep "default table $mgmt_rtb_name via \$new_routers dev \$interface" && {
-   log "Route already set"
- } || {
-   ip route add default table $mgmt_rtb_name via \$new_routers dev \$interface
- }
- log "Configure DNAT to allow GCP LB to send resps"
- if [ '${cloud}' == 'gcp' ]; then
-    if [ "\$(systemctl is-enabled firewalld 2>/dev/null)" == 'enabled' ]; then
-      log "DNAT for firewalld"
-      echo >/etc/firewalld/direct.xml \\
-        "<?xml version=\"1.0\" encoding=\"utf-8\"?><direct>" \\
-        "<rule priority=\"0\" table=\"nat\" ipv=\"ipv4\" chain=\"PREROUTING\">" \\
-        "-p tcp -i "\${interface}" -j DNAT --to-destination "\${new_ip_address}"" \\
-        "</rule></direct>"
-      [ \$(systemctl is-active firewalld) == 'active' ] && systemctl reload firewalld
+# Function to add an ip policy rule.
+# \$1 - the source network.
+# \$2 - the source netmask.
+# \$3 - the route table name to use for route lookup.
+add_ip_rule() {
+    if ip rule show | grep -q "from \${1}/\${2} lookup \${3}"; then
+        log "Rule \${1}/\${2} -> \${3} already set"
     else
-      log "DNAT for iptables"
-      iptables -t nat -A PREROUTING \\
-        -p tcp -i "\${interface}" -j DNAT --to-destination "\${new_ip_address}"
+        ip rule add from \${1}/\${2} lookup \${3}
     fi
- else
-  log "DNAT is not required for non-GCP"
- fi
+}
+
+# Function to add a default route for a route table.
+# \$1 - the route table to add the route to.
+# \$2 - the gateway to route to.
+# \$3 - the network interface.
+add_default_route() {
+    if ip route show table "\${1}" | grep "default via \${2} dev \${3}"; then
+        log "Route default via \${2} dev \${3} table \${1} set"
+    else
+        ip route add default via "\${2}" dev "\${3}" table "\${1}"
+    fi
+}
+
+# Function to configure dnat. Only required for GCP.
+configure_dnat() {
+    if [ "\$(systemctl is-enabled firewalld 2>/dev/null)" == 'enabled' ]; then
+        log "DNAT for firewalld"
+        echo >/etc/firewalld/direct.xml \\
+            "<?xml version=\"1.0\" encoding=\"utf-8\"?><direct>" \\
+            "<rule priority=\"0\" table=\"nat\" ipv=\"ipv4\" chain=\"PREROUTING\">" \\
+            "-p tcp -i "\${interface}" -j DNAT --to-destination "\${new_ip_address}"" \\
+            "</rule></direct>"
+        [ \$(systemctl is-active firewalld) == 'active' ] && systemctl reload firewalld
+    else
+        log "DNAT for iptables"
+        iptables -t nat -A PREROUTING \\
+            -p tcp -i "\${interface}" -j DNAT --to-destination "\${new_ip_address}"
+    fi
+}
+
+if [ "${use_network_manager_dispatcher}" = true ]; then
+    # Only run network manager dispatcher scripts once the interface is up.
+    if [ "\${NM_DISPATCHER_ACTION}" != "up" ]; then
+        exit
+    fi
+    if [ -z "\${IP4_GATEWAY}" ] || [ -z "\${IP4_ROUTE_0}" ] || [ -z "\${DEVICE_IP_IFACE}" ]; then
+        echo "IP4_GATEWAY=\${IP4_GATEWAY}"
+        echo "IP4_ROUTE_0=\${IP4_ROUTE_0}"
+        echo "DEVICE_IP_IFACE=\${DEVICE_IP_IFACE}"
+        echo "The following variables have to be set: IP4_GATEWAY, IP4_ROUTE_0, DEVICE_IP_IFACE." \
+             "Exiting."
+        exit
+    fi
+    # Set script variables.
+    interface="\${DEVICE_IP_IFACE}"
+    new_network_number="\${IP4_ROUTE_0%%/*}"
+    new_routers="\${IP4_GATEWAY}"
+    new_subnet_mask="\$(echo \"\${IP4_ROUTE_0}\" | grep -Po '(?<=/)[0-9]+')"
+else
+    if [ "$cloud" = "gcp" ]; then
+        # Set script variables (already set for AWS).
+        new_network_number="\${route_targets[1]}"
+        new_routers="\${route_targets[0]}"
+        new_subnet_mask="\$prefix"
+    fi
+fi
+log_file="${tmp_dir}/dhclient-\${interface}-up-\$(date +%s)"
+log "ENV: interface=\${interface}"
+log "ENV: new_routers=\${new_routers}"
+log "ENV: new_network_number=\${new_network_number}"
+log "ENV: new_subnet_mask=\${new_subnet_mask}"
+log "ENV: new_ip_address=\${new_ip_address}"
+
+if [ "\$new_network_number" = "${secondary_network}" ]; then
+    log "It's secondary CIDR (${secondary_network}), update rule and route!"
+    add_ip_rule "${secondary_network}" "${secondary_netmask}" "${rtb_name}"
+    add_default_route "${rtb_name}" "\${new_routers}" "\${interface}"
+
+    # Add default route via the customer interface
+    ip route del default
+    ip route add default via "\${new_routers}"
+else
+    log "It's management CIDR, update rule and route!"
+    add_ip_rule "\${new_network_number}" "\${new_subnet_mask}" "${mgmt_rtb_name}"
+    add_default_route "${mgmt_rtb_name}" "\${new_routers}" "\${interface}"
+    if [ '${cloud}' == 'gcp' ]; then
+        log "Configure DNAT to allow GCP LB to send resps"
+        configure_dnat
+    fi
 fi
 log Done
 EOF
-    chmod +x /etc/dhcp/dhclient-up-hooks
+    echo "Updated interface up hook script at ${up_hook_file}"
+    if [ "${use_network_manager_dispatcher}" = true ]; then
+        # File must only be accessible by the root user (rwx).
+        chown root:root "${up_hook_file}"
+        chmod 700 "${up_hook_file}"
+    else
+        chmod +x "${up_hook_file}"
+    fi
+    echo "Done"
 }
 
 show_usage() {
@@ -162,7 +228,7 @@ EOT
 }
 
 err_msg() {
-    echo $@ >&2
+    echo "$@" >&2
 }
 
 if [[ ! $# -gt 0 ]]; then
@@ -207,6 +273,9 @@ while [[ $# -gt 0 ]]; do
     shift
 done
 
-#Common for both clouds now to fix the correct interface config
+use_network_manager_dispatcher=false
+[ "$cloud" = "aws" ] && [ "$os_name" = "almalinux" ] && [ "$os_version" = "9" ] && \
+  use_network_manager_dispatcher=true
+
 fix_ifcfg
 configure_nics

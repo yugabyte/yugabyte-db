@@ -1141,7 +1141,10 @@
       "unassignedNodesTitle": "Unassigned Nodes",
       "viewDetailsButton": "View Details",
       "unreachableInstanceAgents": "Instance agents are unreachable",
-      "contactSupport": "Contact Support"
+      "contactSupport": "Contact Support",
+      "delete": "Delete",
+      "deleteNodeAgent": "Delete Node Agent",
+      "confirmDeletionMessage": "Are you sure you want to delete the Node Agent associated with the provider {{provider_name}} ?"
     },
     "OIDCJWT": {
       "emailId": "Email ID",
