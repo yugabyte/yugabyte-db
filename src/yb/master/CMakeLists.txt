@@ -245,6 +245,7 @@ ADD_YB_TEST(sys_catalog_xrepl-test)
 ADD_YB_TEST(table_index_test)
 ADD_YB_TEST(tablet_limits_test)
 ADD_YB_TEST(xcluster/xcluster_safe_time_service-test)
+ADD_YB_TEST(xcluster/xcluster_outbound_replication_group-test)
 
 # Actual master executable. In LTO mode, can also act as the tablet server if executed through a
 # symlink named as the tablet server executable.
