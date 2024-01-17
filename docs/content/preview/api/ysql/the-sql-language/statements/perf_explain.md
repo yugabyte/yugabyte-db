@@ -17,7 +17,7 @@ type: docs
 Use the `EXPLAIN` statement to show the execution plan for a statement. If the `ANALYZE` option is used, the statement will be executed, rather than just planned. In that case, execution information (rather than just the planner's estimates) is added to the `EXPLAIN` result.
 
 {{< warning title="DML vs DDL" >}}
-The `EXPLAIN` statement is designed to work primarily for DML statements (eg, `SELECT`, `INSERT` ...). DDL statements are **not** explainable and in such cases show only an approximation. This would be the case when DDL & DML are mixed. For eg. `EXPLAIN` on `SELECT * FROM <TABLE-1> INTO <TABLE-2>` would produce only an approximation as `INTO` is a DDL statement.
+The `EXPLAIN` statement is designed to work primarily for DML statements (for example, `SELECT`, `INSERT`, and so on). DDL statements are **not** explainable and in cases where DDL and DML are combined, the EXPLAIN statement shows only an approximation. For example, `EXPLAIN` on `SELECT * FROM <TABLE-1> INTO <TABLE-2>` provides only an approximation as `INTO` is a DDL statement.
 {{</ warning >}}
 
 ## Syntax
@@ -41,7 +41,7 @@ Present more details about the plan, such as the output column list for each nod
 
 ### BUFFERS
 
-Include information on buffer usage. Specifically, include the number of shared blocks hit, read, dirtied, and written, the number of local blocks hit, read, dirtied, and written, the number of temp blocks read and written (default: `FALSE`).
+Include information on buffer usage. Specifically, include the number of shared blocks hit, read, dirtied, and written, the number of local blocks hit, read, dirtied, and written, the number of temporary blocks read and written (default: `FALSE`).
 
 ### COSTS
 
@@ -49,7 +49,7 @@ Incorporate details about the anticipated startup and total expenses for each pl
 
 ### DIST
 
-Display additional runtime statistics related to the distributed storage layer as seen at the query layer. The purpose of this flag is to provide more implementation-specific insights into the distributed nature of query execution (default: `FALSE`).
+Display additional runtime statistics related to the distributed storage layer as seen at the query layer. The flag also provides more implementation-specific insights into the distributed nature of query execution (default: `FALSE`).
 
 ### DEBUG
 
@@ -57,7 +57,7 @@ Display low-level runtime statistics related to the distributed storage layer (d
 
 ### FORMAT
 
-Define the desired output format, choosing from TEXT, XML, JSON, or YAML. Non-text output retains the same information as the text format but is more programmatically accessible (default: `TEXT`).
+Define the desired output format, choosing from TEXT, XML, JSON, or YAML. Non-text output retains the same information as the text format, but is more programmatically accessible (default: `TEXT`).
 
 ## Examples
 
