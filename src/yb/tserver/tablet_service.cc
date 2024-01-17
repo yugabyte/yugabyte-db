@@ -107,7 +107,6 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
-#include "yb/util/pg_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
@@ -1972,15 +1971,10 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
   // TODO(jason): come up with a more efficient connection reuse method for tserver-postgres
   // communication.  As of D19621, connections are spawned each request for YSQL upgrade, index
   // backfill, and this.  Creating the connection has a startup cost.
-  auto res = pgwrapper::PGConnBuilder({
-        .host = PgDeriveSocketDir(server_->pgsql_proxy_bind_address()),
-        .port = server_->pgsql_proxy_bind_address().port(),
-        .dbname = "template1",
-        .user = "postgres",
-        .password = UInt64ToString(server_->GetSharedMemoryPostgresAuthKey()),
-        .connect_timeout = make_unsigned(std::max(
-            2, narrow_cast<int>(ToSeconds(modified_deadline - CoarseMonoClock::Now())))),
-      }).Connect();
+  auto res = pgwrapper::CreateInternalPGConnBuilder(
+                 server_->pgsql_proxy_bind_address(), "template1",
+                 server_->GetSharedMemoryPostgresAuthKey(), modified_deadline)
+                 .Connect();
   if (!res.ok()) {
     LOG_WITH_PREFIX_AND_FUNC(ERROR) << "failed to connect to local postgres: " << res.status();
     SetupErrorAndRespond(resp->mutable_error(), res.status(), &context);
