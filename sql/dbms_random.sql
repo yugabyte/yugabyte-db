@@ -21,4 +21,4 @@ SELECT dbms_random.string('a', 10);
 SELECT dbms_random.string('x', 10);
 SELECT dbms_random.string('p', 10);
 SELECT dbms_random.string('uu', 10); -- error
-SELECT dbms_random.string('w', 10);  
+SELECT dbms_random.string('w', 10);
