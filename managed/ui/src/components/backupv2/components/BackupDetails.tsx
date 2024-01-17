@@ -380,7 +380,7 @@ export const BackupDetails: FC<BackupDetailsProps> = ({
               </div>
               <div>
                 <div className="header-text">Expiration</div>
-                <div>{ybFormatDate(backupDetails.expiryTime)}</div>
+                <div>{backupDetails.expiryTime ? ybFormatDate(backupDetails.expiryTime) : "Won't Expire"}</div>
               </div>
               <div className="details-storage-config">
                 <div className="header-text">Storage Config</div>
