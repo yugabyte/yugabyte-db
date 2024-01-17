@@ -1,8 +1,8 @@
 ---
 title: Scaling Transactions
-headerTitle: Transactions
+headerTitle: Scaling transactions
 linkTitle: Scaling transactions
-description: Transactions
+description: Transaction performance when scaling horizontally
 headcontent: Transaction performance when scaling horizontally
 menu:
   preview:
@@ -47,7 +47,7 @@ The following shows the results for the TPC-C benchmark using the following conf
 
 The 100K benchmark was run on a universe with 59 nodes.
 
-| Efficiency | TPMC       | Average NewOrder Latency  (ms) | YSQL Ops/sec | CPU USage (%) |
+| Efficiency | TPMC       | Average New Order Latency (ms) | YSQL Ops/sec | CPU Usage (%) |
 | :--------- | ---------- | ------------------------------ | ------------ | ------------- |
 | 99.83      | 1283804.18 | 51.86                          | 348602.48    | 58.22         |
 
@@ -57,7 +57,7 @@ With only 59 nodes, YugabyteDB breezed through the 100K warehouse at a 99.83% ef
 
 The 100K benchmark was run on a universe scaled out to 75 nodes.
 
-| Efficiency | TPMC | Average NewOrder Latency  (ms) | YSQL Ops/sec | CPU USage (%) |
+| Efficiency | TPMC | Average New Order Latency (ms) | YSQL Ops/sec | CPU Usage (%) |
 | :--------- | -----| ------------------------------ | ------------ | ------------- |
 | 99.3       | 1M   | 123.33                         | 950K         | 80            |
 

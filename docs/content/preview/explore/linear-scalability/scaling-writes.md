@@ -1,5 +1,5 @@
 ---
-title: Writes
+title: Scaling writes
 headerTitle: Scaling writes
 linkTitle: Scaling writes
 description: Writes scale horizontally in YugabyteDB as you add more nodes
