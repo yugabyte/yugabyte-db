@@ -215,6 +215,8 @@ class CDCSDKTestBase : public YBTest {
       CDCCheckpointType checkpoint_type = CDCCheckpointType::EXPLICIT,
       CDCRecordType record_type = CDCRecordType::CHANGE);
 
+  Result<master::ListCDCStreamsResponsePB> ListDBStreams();
+
  protected:
   // Every test needs to initialize this cdc_proxy_.
   std::unique_ptr<CDCServiceProxy> cdc_proxy_;

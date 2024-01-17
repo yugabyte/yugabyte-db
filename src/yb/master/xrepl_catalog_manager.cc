@@ -156,6 +156,11 @@ return STATUS( \
       InvalidArgument, error_msg, req.ShortDebugString(), \
       MasterError(MasterErrorPB::INVALID_REQUEST))
 
+#define SET_CDCSDK_STREAM_CREATION_STATE(value) \
+  if (mode == CreateNewCDCStreamMode::kCdcsdkNamespaceAndTableIds) { \
+    cdcsdk_stream_creation_state = value; \
+  } \
+
 namespace yb {
 using client::internal::RemoteTabletServer;
 
@@ -776,9 +781,6 @@ Status CatalogManager::CreateCDCStream(
     RETURN_NOT_OK(CreateNewCDCStreamForNamespace(*req, resp, rpc, epoch));
   }
 
-  // Now that the stream is set up, mark the entire cluster as a cdc enabled.
-  SetCDCServiceEnabled();
-
   return Status::OK();
 }
 
@@ -837,6 +839,28 @@ Status CatalogManager::CreateNewXReplStream(
   bool consistent_snapshot_option_use = false;
 
   CDCStreamInfoPtr stream;
+  xrepl::StreamId stream_id = xrepl::StreamId::Nil();
+
+  // Kick-off the CDC state table creation before any other logic.
+  CreateTableResponsePB table_resp;
+  RETURN_NOT_OK(CreateTableIfNotFound(
+      cdc::CDCStateTable::GetNamespaceName(), cdc::CDCStateTable::GetTableName(),
+      &cdc::CDCStateTable::GenerateCreateCdcStateTableRequest, &table_resp, /* rpc */ nullptr,
+      epoch));
+  // Mark the cluster as CDC enabled now that we have trigged the CDC state table creation.
+  SetCDCServiceEnabled();
+  TRACE("Created CDC state table");
+
+  // TODO(#18934): Move to the DDL transactional atomicity model.
+  CDCSDKStreamCreationState cdcsdk_stream_creation_state = CDCSDKStreamCreationState::kInitialized;
+  auto se = ScopeExit([this, &stream_id, &cdcsdk_stream_creation_state] {
+    WARN_NOT_OK(
+        RollbackFailedCreateCDCSDKStream(stream_id, cdcsdk_stream_creation_state),
+        Format(
+            "Failed to cleanup failed CDC stream $0 at state $1", stream_id,
+            cdcsdk_stream_creation_state));
+  });
+
   {
     TRACE("Acquired catalog manager lock");
     LockGuard lock(mutex_);
@@ -873,7 +897,7 @@ Status CatalogManager::CreateNewXReplStream(
       has_consistent_snapshot_option && FLAGS_yb_enable_cdc_consistent_snapshot_streams;
 
     // Construct the CDC stream if the producer wasn't bootstrapped.
-    auto stream_id =
+    stream_id =
       VERIFY_RESULT(xrepl::StreamId::FromString(GenerateIdUnlocked(SysRowEntryType::CDC_STREAM)));
 
     stream = make_scoped_refptr<CDCStreamInfo>(stream_id);
@@ -922,28 +946,36 @@ Status CatalogManager::CreateNewXReplStream(
   }
   TRACE("Inserted new CDC stream into CatalogManager maps");
 
+  // Any failure beyond this point requires a rollback for CDCSDK streams.
+  SET_CDCSDK_STREAM_CREATION_STATE(CDCSDKStreamCreationState::kAddedToMaps);
+
+  RETURN_NOT_OK(
+      TEST_CDCSDKFailCreateStreamRequestIfNeeded("CreateCDCSDKStream::kBeforeSysCatalogEntry"));
+
   // Update the on-disk system catalog.
   RETURN_NOT_OK(CheckLeaderStatusAndSetupError(
       sys_catalog_->Upsert(leader_ready_term(), stream), "inserting CDC stream into sys-catalog",
       resp));
+  SET_CDCSDK_STREAM_CREATION_STATE(CDCSDKStreamCreationState::kPreCommitMutation);
   TRACE("Wrote CDC stream to sys-catalog");
+
+  RETURN_NOT_OK(
+      TEST_CDCSDKFailCreateStreamRequestIfNeeded("CreateCDCSDKStream::kBeforeInMemoryStateCommit"));
 
   // Commit the in-memory state.
   stream->mutable_metadata()->CommitMutation();
+  SET_CDCSDK_STREAM_CREATION_STATE(CDCSDKStreamCreationState::kPostCommitMutation);
   LOG(INFO) << "Created CDC stream " << stream->ToString();
 
-  CreateTableResponsePB table_resp;
-  RETURN_NOT_OK(CreateTableIfNotFound(
-      cdc::CDCStateTable::GetNamespaceName(), cdc::CDCStateTable::GetTableName(),
-      &cdc::CDCStateTable::GenerateCreateCdcStateTableRequest, &table_resp, /* rpc */ nullptr,
-      epoch));
-  TRACE("Created CDC state table");
+  RETURN_NOT_OK(
+      TEST_CDCSDKFailCreateStreamRequestIfNeeded("CreateCDCSDKStream::kAfterInMemoryStateCommit"));
 
   // Skip if disable_cdc_state_insert_on_setup is set.
   // If this is a bootstrap (initial state not ACTIVE), let the BootstrapProducer logic take care of
   // populating entries in cdc_state.
   if (PREDICT_FALSE(FLAGS_TEST_disable_cdc_state_insert_on_setup) ||
       (req.has_initial_state() && req.initial_state() != master::SysCDCStreamEntryPB::ACTIVE)) {
+    SET_CDCSDK_STREAM_CREATION_STATE(CDCSDKStreamCreationState::kReady);
     return Status::OK();
   }
 
@@ -955,7 +987,6 @@ Status CatalogManager::CreateNewXReplStream(
   uint64 consistent_snapshot_time = 0;
   bool record_type_option_all = false;
   if (mode == CreateNewCDCStreamMode::kCdcsdkNamespaceAndTableIds) {
-
     for (auto option : req.options()) {
       if (option.key() == cdc::kRecordType) {
         record_type_option_all =
@@ -963,14 +994,32 @@ Status CatalogManager::CreateNewXReplStream(
       }
     }
 
+    // Step 1: Insert checkpoint Invalid in cdc state table.
+    // The rollback mechanism relies on finding entries in the CDC state table, so we do this insert
+    // before any change that we would like to revert in case of failures.
+    // These inserts are treated as non-consistent snapshot since we haven't yet established the
+    // consistent snapshot time.
+    RETURN_NOT_OK(PopulateCDCStateTable(
+        stream->StreamId(), table_ids, false /* has_consistent_snapshot_option */,
+        false /* consistent_snapshot_option_use */, 0 /* ignored */, 0 /* ignored */));
+
+    RETURN_NOT_OK(TEST_CDCSDKFailCreateStreamRequestIfNeeded(
+        "CreateCDCSDKStream::kAfterDummyCDCStateEntries"));
+
+    // Step 2: Set retention barriers for all tables.
     auto require_history_cutoff = consistent_snapshot_option_use || record_type_option_all;
     RETURN_NOT_OK(SetAllCDCSDKRetentionBarriers(
         req, rpc, epoch, table_ids, stream->StreamId(), has_consistent_snapshot_option,
         require_history_cutoff));
 
-    // At this stage, establish the consistent snapshot time
-    // This time is the same across all involved tablets and is the
-    // mechanism through which consistency is established
+    RETURN_NOT_OK(
+        TEST_CDCSDKFailCreateStreamRequestIfNeeded("CreateCDCSDKStream::kAfterRetentionBarriers"));
+
+    // Step 3: At this stage, the retention barriers have been set using ALTER TABLE and the
+    // SnapshotSafeOpId details have been written to the CDC state table via callback.
+    // Establish the consistent snapshot time.
+    // This time is the same across all involved tablets and is the mechanism through which
+    // consistency is established
     auto stream_creation_time = GetCurrentTimeMicros();
     if (has_consistent_snapshot_option) {
       auto cs_hybrid_time = Clock()->MaxGlobalNow();
@@ -995,6 +1044,11 @@ Status CatalogManager::CreateNewXReplStream(
     RETURN_NOT_OK(PopulateCDCStateTable(
         stream->StreamId(), table_ids, has_consistent_snapshot_option,
         consistent_snapshot_option_use, consistent_snapshot_time, stream_creation_time));
+
+    RETURN_NOT_OK(TEST_CDCSDKFailCreateStreamRequestIfNeeded(
+        "CreateCDCSDKStream::kAfterStoringConsistentSnapshotDetails"));
+
+    SET_CDCSDK_STREAM_CREATION_STATE(CDCSDKStreamCreationState::kReady);
   } else {
     DCHECK(mode == CreateNewCDCStreamMode::kXClusterTableIds);
     std::vector<cdc::CDCStateTableEntry> entries;
@@ -1014,12 +1068,77 @@ Status CatalogManager::CreateNewXReplStream(
   return Status::OK();
 }
 
+Status CatalogManager::RollbackFailedCreateCDCSDKStream(
+    const xrepl::StreamId& stream_id, CDCSDKStreamCreationState& cdcsdk_stream_creation_state) {
+  if (cdcsdk_stream_creation_state == CDCSDKStreamCreationState::kInitialized ||
+      cdcsdk_stream_creation_state == CDCSDKStreamCreationState::kReady ||
+      stream_id == xrepl::StreamId::Nil()) {
+    return Status::OK();
+  }
+
+  LOG(WARNING) << "Rolling back the CDC stream creation for stream_id = " << stream_id
+               << ", cdcsdk_stream_creation_state = " << cdcsdk_stream_creation_state;
+
+  CDCStreamInfoPtr stream;
+  {
+    TRACE("Acquired catalog manager lock for rolling back CDCSDK stream creation");
+    SharedLock lock(mutex_);
+    stream = cdc_stream_map_[stream_id];
+  }
+
+  switch (cdcsdk_stream_creation_state) {
+    case CDCSDKStreamCreationState::kAddedToMaps: {
+      LockGuard lock(mutex_);
+      RETURN_NOT_OK(CleanUpCDCSDKStreamFromMaps(stream));
+      break;
+    }
+    case CDCSDKStreamCreationState::kPreCommitMutation:
+      // Call AbortMutation since we didn't commit the in-memory changes so that the write lock
+      // is released.
+      stream->mutable_metadata()->AbortMutation();
+      FALLTHROUGH_INTENDED;
+    case CDCSDKStreamCreationState::kPostCommitMutation: {
+      RETURN_NOT_OK(MarkCDCStreamsForMetadataCleanup({stream}, SysCDCStreamEntryPB::DELETING));
+      break;
+    }
+
+    case CDCSDKStreamCreationState::kInitialized: FALLTHROUGH_INTENDED;
+    case CDCSDKStreamCreationState::kReady:
+      VLOG(2) << "Nothing to rollback";
+  }
+
+  return Status::OK();
+}
+
 Status CatalogManager::PopulateCDCStateTable(const xrepl::StreamId& stream_id,
                                              const std::vector<TableId>& table_ids,
                                              bool has_consistent_snapshot_option,
                                              bool consistent_snapshot_option_use,
                                              uint64_t consistent_snapshot_time,
                                              uint64_t stream_creation_time) {
+  // Validate that the AlterTable callback has populated the checkpoint i.e. it is no longer
+  // OpId::Invalid().
+  std::unordered_set<TabletId> seen_tablet_ids;
+  if (has_consistent_snapshot_option) {
+    std::vector<cdc::CDCStateTableKey> cdc_state_entries;
+    Status iteration_status;
+    auto all_entry_keys = VERIFY_RESULT(cdc_state_table_->GetTableRange(
+        cdc::CDCStateTableEntrySelector().IncludeCheckpoint(), &iteration_status));
+    for (const auto& entry_result : all_entry_keys) {
+      RETURN_NOT_OK(entry_result);
+      const auto& entry = *entry_result;
+
+      if (stream_id == entry.key.stream_id) {
+        seen_tablet_ids.insert(entry.key.tablet_id);
+        SCHECK(
+           *entry.checkpoint != OpId().Invalid(), IllegalState,
+            Format(
+                "Checkpoint for tablet id $0 unexpectedly found Invalid for stream id $1",
+                entry.key.tablet_id, stream_id));
+      }
+    }
+    RETURN_NOT_OK(iteration_status);
+  }
 
   std::vector<cdc::CDCStateTableEntry> entries;
   for (const auto& table_id : table_ids) {
@@ -1027,6 +1146,16 @@ Status CatalogManager::PopulateCDCStateTable(const xrepl::StreamId& stream_id,
     for (const auto& tablet : table->GetTablets()) {
       cdc::CDCStateTableEntry entry(tablet->id(), stream_id);
       if (has_consistent_snapshot_option) {
+        // We must have seen this tablet id in the above check for Invalid checkpoint. If not, this
+        // means that the list of tablets is different from what it was at the start of the stream
+        // creation which indicates a tablet split. In that case, fail the creation and let the
+        // client retry the creation again.
+        if (!seen_tablet_ids.contains(tablet->id())) {
+          return STATUS_FORMAT(
+              IllegalState, "CDC State Table entry unexpectedly not found for tablet id $0",
+              tablet->id());
+        }
+
         // For USE_SNAPSHOT option, leave entry in POST_SNAPSHOT_BOOTSTRAP state
         // For NOEXPORT_SNAPSHOT option, leave entry in SNAPSHOT_DONE state
         if (consistent_snapshot_option_use)
@@ -1179,7 +1308,10 @@ Status CatalogManager::PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
     entries.push_back(std::move(col_entry));
   }
 
-  return cdc_state_table_->InsertEntries(entries);
+  RETURN_NOT_OK(TEST_CDCSDKFailCreateStreamRequestIfNeeded(
+      "CreateCDCSDKStream::kWhileStoringConsistentSnapshotDetails"));
+
+  return cdc_state_table_->UpsertEntries(entries);
 }
 
 Status CatalogManager::WaitForSnapshotSafeOpIdToBePopulated(
@@ -1745,10 +1877,7 @@ Status CatalogManager::CleanUpCDCMetadataFromSystemCatalog(
         auto ltm = cdc_stream_info->LockForWrite();
         // Delete the stream from cdc_stream_map_ if all tables associated with stream are dropped.
         if (ltm->table_id().size() == static_cast<int>(drop_table_list.size())) {
-          if (!cdc_stream_map_.erase(cdc_stream_info->StreamId())) {
-            return STATUS(
-                IllegalState, "Could not remove CDC stream from map", cdc_stream_info->id());
-          }
+          RETURN_NOT_OK(CleanUpCDCSDKStreamFromMaps(cdc_stream_info));
           streams_to_delete.push_back(cdc_stream_info);
         } else {
           // Remove those tables info, that are dropped from the cdc_stream_map_ and update the
@@ -1861,9 +1990,13 @@ Status CatalogManager::CleanUpDeletedCDCStreams(
     stream_id_to_stream_info_map.emplace(stream->StreamId(), stream.get());
   }
 
+  // We use GetTableRangeAsync here since it could be that we came here to rollback a CDCSDK stream
+  // with the CDC state table creation still in progress. This can happen in case the stream being
+  // rolled back is the first CDC stream in the universe. In this case, we skip the rollback and the
+  // caller (CatalogManagerBgTasks) is expected to retry this cleanup at a later time.
   Status iteration_status;
-  auto all_entry_keys =
-      VERIFY_RESULT(cdc_state_table_->GetTableRange({} /* just key columns */, &iteration_status));
+  auto all_entry_keys = VERIFY_RESULT(
+      cdc_state_table_->GetTableRangeAsync({} /* just key columns */, &iteration_status));
   std::vector<cdc::CDCStateTableKey> entries_to_delete;
   std::vector<cdc::CDCStateTableEntry> entries_to_update;
 
@@ -1929,25 +2062,10 @@ Status CatalogManager::CleanUpDeletedCDCStreams(
   {
     LockGuard lock(mutex_);
     for (const auto& stream : streams_to_delete) {
-      if (cdc_stream_map_.erase(stream->StreamId()) < 1) {
-        return STATUS(IllegalState, "Could not remove CDC stream from map", stream->id());
-      }
+      RETURN_NOT_OK(CleanUpCDCSDKStreamFromMaps(stream));
+
       for (auto& id : stream->table_id()) {
         xcluster_producer_tables_to_stream_map_[id].erase(stream->StreamId());
-        cdcsdk_tables_to_stream_map_[id].erase(stream->StreamId());
-      }
-
-      // Delete entry from cdcsdk_replication_slots_to_stream_map_ if the map contains the same
-      // stream_id for the replication_slot_name key.
-      // It can contain a different stream_id in scenarios where a CreateCDCStream with same
-      // replication slot name was immediately invoked after DeleteCDCStream before the background
-      // cleanup task was executed.
-      auto cdcsdk_ysql_replication_slot_name = stream->GetCdcsdkYsqlReplicationSlotName();
-      if (!cdcsdk_ysql_replication_slot_name.empty() &&
-          cdcsdk_replication_slots_to_stream_map_.contains(cdcsdk_ysql_replication_slot_name) &&
-          FindOrDie(cdcsdk_replication_slots_to_stream_map_, cdcsdk_ysql_replication_slot_name) ==
-              stream->StreamId()) {
-        cdcsdk_replication_slots_to_stream_map_.erase(cdcsdk_ysql_replication_slot_name);
       }
     }
   }
@@ -1957,6 +2075,31 @@ Status CatalogManager::CleanUpDeletedCDCStreams(
   for (auto& lock : locks) {
     lock.Commit();
   }
+  return Status::OK();
+}
+
+Status CatalogManager::CleanUpCDCSDKStreamFromMaps(CDCStreamInfoPtr stream) {
+  if (cdc_stream_map_.erase(stream->StreamId()) < 1) {
+    return STATUS(IllegalState, "Could not remove CDC stream from map", stream->id());
+  }
+
+  for (auto& id : stream->table_id()) {
+    cdcsdk_tables_to_stream_map_[id].erase(stream->StreamId());
+  }
+
+  // Delete entry from cdcsdk_replication_slots_to_stream_map_ if the map contains the same
+  // stream_id for the replication_slot_name key.
+  // It can contain a different stream_id in scenarios where a CreateCDCStream with same
+  // replication slot name was immediately invoked after DeleteCDCStream before the background
+  // cleanup task was executed.
+  auto cdcsdk_ysql_replication_slot_name = stream->GetCdcsdkYsqlReplicationSlotName();
+  if (!cdcsdk_ysql_replication_slot_name.empty() &&
+      cdcsdk_replication_slots_to_stream_map_.contains(cdcsdk_ysql_replication_slot_name) &&
+      FindOrDie(cdcsdk_replication_slots_to_stream_map_, cdcsdk_ysql_replication_slot_name) ==
+          stream->StreamId()) {
+    cdcsdk_replication_slots_to_stream_map_.erase(cdcsdk_ysql_replication_slot_name);
+  }
+
   return Status::OK();
 }
 
@@ -5649,6 +5792,15 @@ Status CatalogManager::GetReplicationStatus(
     RETURN_NOT_OK(PopulateReplicationGroupErrors(replication_id, resp));
   }
 
+  return Status::OK();
+}
+
+Status CatalogManager::TEST_CDCSDKFailCreateStreamRequestIfNeeded(const std::string& sync_point) {
+  bool fail_create_cdc_stream_request = false;
+  TEST_SYNC_POINT_CALLBACK(sync_point, &fail_create_cdc_stream_request);
+  if (fail_create_cdc_stream_request) {
+    return STATUS_FORMAT(Aborted, "Test failure for sync point $0.", sync_point);
+  }
   return Status::OK();
 }
 

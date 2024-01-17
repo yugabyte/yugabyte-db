@@ -121,6 +121,9 @@ class CDCStateTable {
 
   Result<CDCStateTableRange> GetTableRange(
       CDCStateTableEntrySelector&& field_filter, Status* iteration_status) EXCLUDES(mutex_);
+  // Returns early if the CDC state table doesn't exist.
+  Result<CDCStateTableRange> GetTableRangeAsync(
+      CDCStateTableEntrySelector&& field_filter, Status* iteration_status) EXCLUDES(mutex_);
 
   // Get a single row from the table. If the row is not found, returns an nullopt.
   Result<std::optional<CDCStateTableEntry>> TryFetchEntry(
@@ -129,6 +132,8 @@ class CDCStateTable {
  private:
   Result<client::YBClient*> GetClient();
   Result<std::shared_ptr<client::YBSession>> GetSession();
+  Status WaitForCreateTableToFinishWithCache() REQUIRES(mutex_);
+  Status WaitForCreateTableToFinishWithoutCache();
   Result<std::shared_ptr<client::TableHandle>> GetTable() EXCLUDES(mutex_);
   Status OpenTable(client::TableHandle* cdc_table);
   template<class CDCEntry>
@@ -141,6 +146,7 @@ class CDCStateTable {
   client::YBClient* client_ = nullptr;
 
   std::shared_ptr<client::TableHandle> cdc_table_ GUARDED_BY(mutex_);
+  bool created_ GUARDED_BY(mutex_) = false;
 };
 
 class CdcStateTableIterator : public client::TableIterator {
