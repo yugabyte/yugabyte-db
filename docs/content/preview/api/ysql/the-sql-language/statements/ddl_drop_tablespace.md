@@ -29,7 +29,7 @@ Use the `DROP TABLESPACE` statement to remove a tablespace from the cluster.
 - Be aware that even if the current database isn't using the tablespace, objects from other databases might still occupy it. 
 - Additionally, the DROP operation may encounter issues if the tablespace is specified in the `temp_tablespaces` setting of any active session, as there could be temporary files or objects present in the tablespace.
 
-#### *if_exists*
+### *if_exists*
 
 Under normal operation, an error is raised if the tablespace does not exist.  Adding `IF EXISTS` will quietly ignore any non-existent tablespaces specified.
 
