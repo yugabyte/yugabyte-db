@@ -504,12 +504,13 @@ public class CloudProviderApiController extends AuthenticatedController {
       // JSON object.
       ObjectMapper mapper = Json.mapper();
       ObjectNode details = (ObjectNode) requestBody.get("details");
-      if (details.has("cloudInfo")) {
+      if (details != null && details.has("cloudInfo")) {
         ObjectNode cloudInfo = (ObjectNode) details.get("cloudInfo");
-        if (cloudInfo.has("gcp")) {
+        if (cloudInfo != null && cloudInfo.has("gcp")) {
           ObjectNode gcpCloudInfo = (ObjectNode) cloudInfo.get("gcp");
           try {
-            if (gcpCloudInfo.has("gceApplicationCredentials")
+            if (gcpCloudInfo != null
+                && gcpCloudInfo.has("gceApplicationCredentials")
                 && !(gcpCloudInfo.get("gceApplicationCredentials").isTextual())) {
               gcpCloudInfo.put(
                   "gceApplicationCredentials",
