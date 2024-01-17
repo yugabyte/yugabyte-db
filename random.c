@@ -207,10 +207,15 @@ dbms_random_string(PG_FUNCTION_ARGS)
 
 	if (PG_ARGISNULL(0) || PG_ARGISNULL(1))
 		ereport(ERROR,
-				(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
+			(errcode(ERRCODE_NULL_VALUE_NOT_ALLOWED),
 				 errmsg("an argument is NULL")));
 
 	option = text_to_cstring(PG_GETARG_TEXT_P(0));
+	if (VARSIZE_ANY_EXHDR(PG_GETARG_TEXT_P(0)) != 1)		 
+		ereport(ERROR,
+			(errcode(ERRCODE_STRING_DATA_RIGHT_TRUNCATION),
+				 errmsg("this first parameter value is more than 1 characters long")));
+
 	len = PG_GETARG_INT32(1);
 
 	switch (option[0])
@@ -241,14 +246,11 @@ dbms_random_string(PG_FUNCTION_ARGS)
 			chrset_size = strlen(printable);
 			break;
 			
+		/* Otherwise the returning string is in uppercase alpha characters. */  
 		default:
-			ereport(ERROR,
-				(errcode(ERRCODE_INVALID_PARAMETER_VALUE),
-				 errmsg("unknown option '%s'", option),
-				 errhint("available option \"aAlLuUxXpP\"")));
-			/* be compiler a quiete */
-			charset = NULL;
-			chrset_size = 0;
+			charset = upper_only;
+			chrset_size = strlen(upper_only);
+			break;
 	}
 
 	PG_RETURN_TEXT_P(random_string(charset, chrset_size, len));
