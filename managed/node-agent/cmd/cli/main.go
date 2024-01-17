@@ -49,6 +49,14 @@ func setDefaultConfigs() {
 	if err != nil {
 		panic(err)
 	}
+	nodeIp := config.String(util.NodeIpKey)
+	if nodeIp != "" {
+		// Populate bind IP if it is not already populated.
+		_, err = config.CompareAndUpdate(util.NodeBindIpKey, nil, nodeIp)
+		if err != nil {
+			panic(err)
+		}
+	}
 }
 
 // Entry for all commands.

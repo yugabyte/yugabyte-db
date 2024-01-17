@@ -65,6 +65,7 @@ const (
 
 	// Node config keys.
 	NodeIpKey                  = "node.ip"
+	NodeBindIpKey              = "node.bind_ip"
 	NodePortKey                = "node.port"
 	RequestTimeoutKey          = "node.request_timeout_sec"
 	NodeNameKey                = "node.name"
@@ -90,6 +91,7 @@ const (
 var (
 	nodeAgentHome         string
 	onceLoadNodeAgentHome = &sync.Once{}
+	ErrNotExist           = errors.New("Entity does not exist")
 )
 
 // ContextKey is the key type go context values.
@@ -171,6 +173,11 @@ func PlatformRegisterAgentEndpoint(cuuid string) string {
 	return fmt.Sprintf("/api/v1/customers/%s/node_agents", cuuid)
 }
 
+// Returns the platform endpoint for getting a node agent by IP.
+func PlatformGetNodeAgentEndpoint(cuuid string, ip string) string {
+	return fmt.Sprintf("/api/v1/customers/%s/node_agents?nodeIp=%s", cuuid, ip)
+}
+
 // Returns the platform endpoint for unregistering a node agent.
 func PlatformUnregisterAgentEndpoint(cuuid string, nuuid string) string {
 	return fmt.Sprintf("/api/v1/customers/%s/node_agents/%s", cuuid, nuuid)
@@ -191,13 +198,13 @@ func PlatformPutAgentEndpoint(cuuid string, nuuid string) string {
 	return fmt.Sprintf("/api/customers/%s/node_agents/%s", cuuid, nuuid)
 }
 
-// Returns the platform endpoint for fetching instance_type details.
-func PlatformGetInstanceTypeEndpoint(cuuid string, puuid string, instance_type string) string {
+// Returns the platform endpoint for fetching instanceType details.
+func PlatformGetInstanceTypeEndpoint(cuuid string, puuid string, instanceType string) string {
 	return fmt.Sprintf(
 		"/api/customers/%s/providers/%s/instance_types/%s",
 		cuuid,
 		puuid,
-		instance_type,
+		instanceType,
 	)
 }
 
@@ -210,6 +217,11 @@ func PlatformPostNodeInstancesEndpoint(cuuid string, azid string) string {
 // Returns the platform endpoint for validating the node configs.
 func PlatformValidateNodeInstanceEndpoint(cuuid string, azid string) string {
 	return fmt.Sprintf("/api/customers/%s/zones/%s/nodes/validate", cuuid, azid)
+}
+
+// Returns the platform endpoint for deleting a node instance.
+func PlatformDeleteNodeInstanceEndpoint(cuuid string, puuid string, ip string) string {
+	return fmt.Sprintf("/api/customers/%s/providers/%s/instances/%s", cuuid, puuid, ip)
 }
 
 // Returns the home directory.

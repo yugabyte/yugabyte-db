@@ -184,6 +184,7 @@ func (config *Config) StoreCommandFlagString(
 	ctx context.Context,
 	cmd *cobra.Command,
 	flagName, configKey string,
+	defaultValue *string,
 	isRequired bool,
 	validator func(string) (string, error),
 ) (string, error) {
@@ -192,7 +193,17 @@ func (config *Config) StoreCommandFlagString(
 		FileLogger().Errorf(ctx, "Unable to get %s - %s", flagName, err.Error())
 		return value, err
 	}
-	if value != "" {
+	if value == "" {
+		if defaultValue != nil {
+			// Save the default value.
+			err = config.Update(configKey, *defaultValue)
+			if err != nil {
+				FileLogger().Errorf(ctx, "Unable to save %s - %s", configKey, err.Error())
+				return value, err
+			}
+			value = *defaultValue
+		}
+	} else {
 		if validator != nil {
 			value, err = validator(value)
 			if err != nil {
