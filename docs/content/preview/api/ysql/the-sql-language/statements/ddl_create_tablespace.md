@@ -28,7 +28,7 @@ Use the `CREATE TABLESPACE` statement to create a tablespace in the cluster. It 
 ### *tablespace_option*
 
 - Can be one of [`replica_placement`].
-- Use `replica_placement` to specify the number of replicas stored in specific zones,regions or clouds.
+- Use `replica_placement` to specify the number of replicas stored in specific zones, regions, or clouds.
 
 ## Examples
 
