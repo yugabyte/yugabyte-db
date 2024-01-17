@@ -22,11 +22,12 @@
 /* Forward Declaration */
 /* --------------------------------------------------------- */
 static bool SerializeTermToWriter(pgbson_writer *writer, pgbsonelement *indexElement,
-								  int32_t indexTermSizeLimit);
+								  const IndexTermCreateMetadata *termMetadata);
 
 static BsonIndexTermSerialized SerializeBsonIndexTermCore(pgbsonelement *indexElement,
-														  int32_t indexTermSizeLimit, bool
-														  forceTruncated);
+														  const IndexTermCreateMetadata *
+														  createMetadata,
+														  bool forceTruncated);
 
 /* --------------------------------------------------------- */
 /* Top level exports */
@@ -343,27 +344,50 @@ TruncateArrayTerm(int32_t dataSize, int32_t indexTermSizeLimit,
  */
 static bool
 SerializeTermToWriter(pgbson_writer *writer, pgbsonelement *indexElement,
-					  int32_t indexTermSizeLimit)
+					  const IndexTermCreateMetadata *termMetadata)
 {
-	if (indexTermSizeLimit <= 0)
+	/* Bson size + \0 overhead + path + \0 + type marker */
+	StringView indexPath =
 	{
-		PgbsonWriterAppendValue(writer, indexElement->path, indexElement->pathLength,
+		.length = indexElement->pathLength,
+		.string = indexElement->path
+	};
+
+	if (termMetadata->pathPrefix.length > 0)
+	{
+		if (StringViewEquals(&indexPath, &termMetadata->pathPrefix))
+		{
+			/* Index term should occupy a minimal amount of space */
+			indexPath.length = 1;
+			indexPath.string = "$";
+		}
+		else if (StringViewStartsWithStringView(&indexPath, &termMetadata->pathPrefix))
+		{
+			ereport(ERROR, (errcode(MongoInternalError),
+							errmsg("Wildcard Prefix with path truncation not supported"),
+							errhint(
+								"Wildcard Prefix with path truncation not supported")));
+		}
+	}
+
+	if (termMetadata->indexTermSizeLimit <= 0)
+	{
+		PgbsonWriterAppendValue(writer, indexPath.string, indexPath.length,
 								&indexElement->bsonValue);
 		return false;
 	}
 
-	/* Bson size + \0 overhead + path + \0 + type marker */
-	int32_t dataSize = 5 + indexElement->pathLength + 2;
+	int32_t dataSize = 5 + indexPath.length + 2;
 
-	if (dataSize >= indexTermSizeLimit)
+	if (dataSize >= termMetadata->indexTermSizeLimit)
 	{
 		ereport(ERROR, (errcode(MongoInternalError),
 						errmsg(
 							"Cannot create index key because the path length %d exceeds truncation limit %d.",
-							dataSize, indexTermSizeLimit),
+							dataSize, termMetadata->indexTermSizeLimit),
 						errhint(
 							"Cannot create index key because the path length %d exceeds truncation limit %d.",
-							dataSize, indexTermSizeLimit)));
+							dataSize, termMetadata->indexTermSizeLimit)));
 	}
 
 	switch (indexElement->bsonValue.value_type)
@@ -382,7 +406,7 @@ SerializeTermToWriter(pgbson_writer *writer, pgbsonelement *indexElement,
 		case BSON_TYPE_TIMESTAMP:
 		case BSON_TYPE_UNDEFINED:
 		{
-			PgbsonWriterAppendValue(writer, indexElement->path, indexElement->pathLength,
+			PgbsonWriterAppendValue(writer, indexPath.string, indexPath.length,
 									&indexElement->bsonValue);
 			return false;
 		}
@@ -412,13 +436,13 @@ SerializeTermToWriter(pgbson_writer *writer, pgbsonelement *indexElement,
 			 * due to numeric value rewrites (see TruncateArrayTerm)
 			 */
 			int32_t fixedTermSize = 21;
-			int32_t loweredSizeLimit = indexTermSizeLimit - fixedTermSize;
+			int32_t loweredSizeLimit = termMetadata->indexTermSizeLimit - fixedTermSize;
 
 			bson_iter_t arrayIterator;
 			pgbson_array_writer arrayWriter;
 			bool truncated = false;
 			BsonValueInitIterator(&indexElement->bsonValue, &arrayIterator);
-			PgbsonWriterStartArray(writer, indexElement->path, indexElement->pathLength,
+			PgbsonWriterStartArray(writer, indexPath.string, indexPath.length,
 								   &arrayWriter);
 			truncated = TruncateArrayTerm(dataSize, loweredSizeLimit, &arrayIterator,
 										  &arrayWriter);
@@ -431,7 +455,7 @@ SerializeTermToWriter(pgbson_writer *writer, pgbsonelement *indexElement,
 		case BSON_TYPE_DBPOINTER:
 		case BSON_TYPE_DOCUMENT:
 		{
-			PgbsonWriterAppendValue(writer, indexElement->path, indexElement->pathLength,
+			PgbsonWriterAppendValue(writer, indexPath.string, indexPath.length,
 									&indexElement->bsonValue);
 			return false;
 		}
@@ -441,25 +465,27 @@ SerializeTermToWriter(pgbson_writer *writer, pgbsonelement *indexElement,
 			/* Regex truncation is in the history but removed for now;
 			 * TODO: Add this back.
 			 */
-			PgbsonWriterAppendValue(writer, indexElement->path, indexElement->pathLength,
+			PgbsonWriterAppendValue(writer, indexPath.string, indexPath.length,
 									&indexElement->bsonValue);
 			return false;
 		}
 
 		case BSON_TYPE_BINARY:
 		{
-			bool truncated = TruncateStringOrBinaryTerm(dataSize, indexTermSizeLimit,
+			bool truncated = TruncateStringOrBinaryTerm(dataSize,
+														termMetadata->indexTermSizeLimit,
 														BSON_TYPE_BINARY,
 														&indexElement->bsonValue.value.
 														v_binary.data_len);
-			PgbsonWriterAppendValue(writer, indexElement->path, indexElement->pathLength,
+			PgbsonWriterAppendValue(writer, indexPath.string, indexPath.length,
 									&indexElement->bsonValue);
 			return truncated;
 		}
 
 		case BSON_TYPE_CODE:
 		{
-			bool truncated = TruncateStringOrBinaryTerm(dataSize, indexTermSizeLimit,
+			bool truncated = TruncateStringOrBinaryTerm(dataSize,
+														termMetadata->indexTermSizeLimit,
 														BSON_TYPE_CODE,
 														&indexElement->bsonValue.value.
 														v_code.code_len);
@@ -473,36 +499,38 @@ SerializeTermToWriter(pgbson_writer *writer, pgbsonelement *indexElement,
 					bsonValue.value.v_code.code_len);
 			}
 
-			PgbsonWriterAppendValue(writer, indexElement->path, indexElement->pathLength,
+			PgbsonWriterAppendValue(writer, indexPath.string, indexPath.length,
 									&indexElement->bsonValue);
 			return truncated;
 		}
 
 		case BSON_TYPE_SYMBOL:
 		{
-			bool truncated = TruncateStringOrBinaryTerm(dataSize, indexTermSizeLimit,
+			bool truncated = TruncateStringOrBinaryTerm(dataSize,
+														termMetadata->indexTermSizeLimit,
 														BSON_TYPE_SYMBOL,
 														&indexElement->bsonValue.value.
 														v_symbol.len);
-			PgbsonWriterAppendValue(writer, indexElement->path, indexElement->pathLength,
+			PgbsonWriterAppendValue(writer, indexPath.string, indexPath.length,
 									&indexElement->bsonValue);
 			return truncated;
 		}
 
 		case BSON_TYPE_UTF8:
 		{
-			bool truncated = TruncateStringOrBinaryTerm(dataSize, indexTermSizeLimit,
+			bool truncated = TruncateStringOrBinaryTerm(dataSize,
+														termMetadata->indexTermSizeLimit,
 														BSON_TYPE_UTF8,
 														&indexElement->bsonValue.value.
 														v_utf8.len);
-			PgbsonWriterAppendValue(writer, indexElement->path, indexElement->pathLength,
+			PgbsonWriterAppendValue(writer, indexPath.string, indexPath.length,
 									&indexElement->bsonValue);
 			return truncated;
 		}
 
 		default:
 		{
-			PgbsonWriterAppendValue(writer, indexElement->path, indexElement->pathLength,
+			PgbsonWriterAppendValue(writer, indexPath.string, indexPath.length,
 									&indexElement->bsonValue);
 			return false;
 		}
@@ -517,7 +545,7 @@ SerializeTermToWriter(pgbson_writer *writer, pgbsonelement *indexElement,
  */
 static BsonIndexTermSerialized
 SerializeBsonIndexTermCore(pgbsonelement *indexElement,
-						   int32_t indexTermSizeLimit,
+						   const IndexTermCreateMetadata *createMetadata,
 						   bool forceTruncated)
 {
 	BsonIndexTerm indexTerm = {
@@ -532,7 +560,7 @@ SerializeBsonIndexTermCore(pgbsonelement *indexElement,
 	pgbson_writer writer;
 	PgbsonWriterInit(&writer);
 	indexTerm.isIndexTermTruncated = SerializeTermToWriter(&writer, indexElement,
-														   indexTermSizeLimit);
+														   createMetadata);
 	if (forceTruncated)
 	{
 		indexTerm.isIndexTermTruncated = true;
@@ -540,16 +568,17 @@ SerializeBsonIndexTermCore(pgbsonelement *indexElement,
 
 	uint32_t dataSize = PgbsonWriterGetSize(&writer);
 
-	if (indexTermSizeLimit > 0 && dataSize > (uint32_t) indexTermSizeLimit)
+	if (createMetadata->indexTermSizeLimit > 0 &&
+		dataSize > (uint32_t) createMetadata->indexTermSizeLimit)
 	{
 		ereport(ERROR, (errcode(MongoInternalError),
 						errmsg(
 							"Truncation size limit specified %d, but index term with type %s was larger %d",
-							indexTermSizeLimit, BsonTypeName(
+							createMetadata->indexTermSizeLimit, BsonTypeName(
 								indexElement->bsonValue.value_type), dataSize),
 						errhint(
 							"Truncation size limit specified %d, but index term with type %s was larger %d",
-							indexTermSizeLimit, BsonTypeName(
+							createMetadata->indexTermSizeLimit, BsonTypeName(
 								indexElement->bsonValue.value_type), dataSize)));
 	}
 
@@ -574,8 +603,11 @@ SerializeBsonIndexTermCore(pgbsonelement *indexElement,
  * byte 1:N: A single bson object with { path : value }
  */
 BsonIndexTermSerialized
-SerializeBsonIndexTerm(pgbsonelement *indexElement, int32_t indexTermSizeLimit)
+SerializeBsonIndexTerm(pgbsonelement *indexElement, const
+					   IndexTermCreateMetadata *indexTermSizeLimit)
 {
+	Assert(indexTermSizeLimit != NULL);
+
 	bool forceTruncated = false;
 	return SerializeBsonIndexTermCore(indexElement, indexTermSizeLimit, forceTruncated);
 }
@@ -594,7 +626,13 @@ GenerateRootTerm(void)
 	element.path = "";
 	element.pathLength = 0;
 	element.bsonValue.value_type = BSON_TYPE_MINKEY;
-	return PointerGetDatum(SerializeBsonIndexTerm(&element, 0).indexTermVal);
+
+	IndexTermCreateMetadata termData =
+	{
+		.indexTermSizeLimit = 0,
+		.pathPrefix = { 0 }
+	};
+	return PointerGetDatum(SerializeBsonIndexTerm(&element, &termData).indexTermVal);
 }
 
 
@@ -611,9 +649,15 @@ GenerateRootTruncatedTerm(void)
 	element.path = "";
 	element.pathLength = 0;
 
+	IndexTermCreateMetadata termData =
+	{
+		.indexTermSizeLimit = 0,
+		.pathPrefix = { 0 }
+	};
+
 	/* Use maxKey just so they're differentiated from the Root term */
 	element.bsonValue.value_type = BSON_TYPE_MAXKEY;
 	bool forceTruncated = true;
-	return PointerGetDatum(SerializeBsonIndexTermCore(&element, 0,
+	return PointerGetDatum(SerializeBsonIndexTermCore(&element, &termData,
 													  forceTruncated).indexTermVal);
 }

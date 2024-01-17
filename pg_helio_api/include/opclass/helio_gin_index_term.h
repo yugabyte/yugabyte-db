@@ -34,12 +34,25 @@ typedef struct BsonIndexTermSerialized
 	bytea *indexTermVal;
 } BsonIndexTermSerialized;
 
+/*
+ * Index term metadata used in creating index terms.
+ */
+typedef struct IndexTermCreateMetadata
+{
+	/* Index term size limit for the term. */
+	int32_t indexTermSizeLimit;
+
+	/* The path prefix to truncate from the index term path. */
+	StringView pathPrefix;
+} IndexTermCreateMetadata;
+
 
 bool IsSerializedIndexTermTruncated(bytea *indexTermSerialized);
 void InitializeBsonIndexTerm(bytea *indexTermSerialized, BsonIndexTerm *indexTerm);
 
 BsonIndexTermSerialized SerializeBsonIndexTerm(pgbsonelement *indexElement,
-											   int32_t indexTermSizeLimit);
+											   const IndexTermCreateMetadata *
+											   indexMetadata);
 
 Datum GenerateRootTerm(void);
 Datum GenerateRootTruncatedTerm(void);

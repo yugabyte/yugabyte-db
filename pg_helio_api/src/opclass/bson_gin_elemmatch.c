@@ -310,10 +310,10 @@ GinBsonExtractQueryElemMatchForExpression(BsonExtractQueryArgs *args)
 	extraDataPtr[0] = (Pointer) elemMatchState;
 	(*partialmatch)[0] = true;
 	entries[0] = PointerGetDatum(SerializeBsonIndexTerm(&termElement,
-														args->indexTermSizeLimit).
+														&args->termMetadata).
 								 indexTermVal);
 
-	if (args->indexTermSizeLimit > 0)
+	if (args->termMetadata.indexTermSizeLimit > 0)
 	{
 		*nentries = 2;
 		extraDataPtr[1] = (Pointer) elemMatchState;
@@ -628,7 +628,7 @@ ProcessFuncExprForIndexPushdown(FuncExpr *function,
 		.partialmatch = &partialMatch,
 		.extra_data = &consistentState->extra_data,
 		.options = indexOptions,
-		.indexTermSizeLimit = GetIndexTermSizeLimit(indexOptions)
+		.termMetadata = GetIndexTermMetadata(indexOptions)
 	};
 
 	Datum *entries = GinBsonExtractQueryCore(operator->indexStrategy, &args);

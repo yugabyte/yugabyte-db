@@ -33,7 +33,7 @@ typedef struct BsonExtractQueryArgs
 
 	bytea *options;
 
-	int32_t indexTermSizeLimit;
+	IndexTermCreateMetadata termMetadata;
 } BsonExtractQueryArgs;
 
 /*
@@ -145,8 +145,8 @@ typedef struct
 	/* Whether or not to generate the not found term for a path */
 	bool generateNotFoundTerm;
 
-	/* Truncation limit for index terms. */
-	int32_t indexTermSizeLimit;
+	/* metadata including truncation limit for index terms. */
+	IndexTermCreateMetadata termMetadata;
 
 	/* Whether a root truncation term has already been created for this document */
 	bool hasTruncatedTerms;
@@ -167,6 +167,6 @@ Datum *GinBsonExtractQueryOrderBy(PG_FUNCTION_ARGS);
 int32_t GinBsonComparePartialOrderBy(BsonIndexTerm *queryValue,
 									 BsonIndexTerm *compareValue);
 
-int32_t GetIndexTermSizeLimit(void *indexOptions);
+IndexTermCreateMetadata GetIndexTermMetadata(void *indexOptions);
 
 #endif

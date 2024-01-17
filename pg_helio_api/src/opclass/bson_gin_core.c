@@ -154,9 +154,12 @@ static int32_t GinBsonComparePartialBitsWiseOperator(BsonIndexTerm *queryValue,
 													 bitsCompareFunc);
 static void ProcessExtractQueryForRegex(pgbsonelement *element,
 										bool *partialmatch, Pointer *extra_data);
-static Datum GenerateEmptyArrayTerm(pgbsonelement *filterElement);
+static Datum GenerateEmptyArrayTerm(pgbsonelement *filterElement, const
+									IndexTermCreateMetadata *metadata);
 static inline Datum * GenerateNullEqualityIndexTerms(int32 *nentries, bool **partialmatch,
-													 pgbsonelement *filterElement);
+													 pgbsonelement *filterElement,
+													 const IndexTermCreateMetadata *
+													 metadata);
 
 inline static bool
 HandleConsistentEqualsNull(bool *check, bool *recheck)
@@ -195,7 +198,7 @@ GenerateSinglePathTermsCore(pgbson *bson, GenerateTermsContext *context,
 	context->options = (void *) singlePathOptions;
 	context->traverseOptionsFunc = &GetSinglePathIndexTraverseOption;
 	context->generateNotFoundTerm = singlePathOptions->generateNotFoundTerm;
-	context->indexTermSizeLimit = GetIndexTermSizeLimit(singlePathOptions);
+	context->termMetadata = GetIndexTermMetadata(singlePathOptions);
 
 	bool generateRootTerm = true;
 	GenerateTerms(bson, context, generateRootTerm);
@@ -215,7 +218,7 @@ GenerateWildcardPathTermsCore(pgbson *bson, GenerateTermsContext *context,
 
 	/* Wildcard indexes always do not generate the not-found term */
 	context->generateNotFoundTerm = false;
-	context->indexTermSizeLimit = GetIndexTermSizeLimit(wildcardOptions);
+	context->termMetadata = GetIndexTermMetadata(wildcardOptions);
 
 	bool generateRootTerm = true;
 	GenerateTerms(bson, context, generateRootTerm);
@@ -233,6 +236,7 @@ GinBsonConsistentCore(BsonIndexStrategy strategy,
 	switch (strategy)
 	{
 		case BSON_INDEX_STRATEGY_DOLLAR_GREATER:
+		case BSON_INDEX_STRATEGY_DOLLAR_LESS:
 		{
 			if (check[0])
 			{
@@ -241,8 +245,12 @@ GinBsonConsistentCore(BsonIndexStrategy strategy,
 				return check[0];
 			}
 
-			bool isTermTruncated = IsSerializedIndexTermTruncated(DatumGetByteaP(
-																	  queryKeys[0]));
+			bool isTermTruncated = false;
+			if (numKeys == 2)
+			{
+				isTermTruncated = IsSerializedIndexTermTruncated(DatumGetByteaP(
+																	 queryKeys[1]));
+			}
 
 			if (!isTermTruncated)
 			{
@@ -267,22 +275,6 @@ GinBsonConsistentCore(BsonIndexStrategy strategy,
 
 			*recheck = false;
 			return false;
-		}
-
-		case BSON_INDEX_STRATEGY_DOLLAR_LESS:
-		{
-			if (numKeys == 1)
-			{
-				/* No truncation we trust the index */
-				*recheck = false;
-			}
-			else
-			{
-				/* Truncation happened, we can trust if not $eq based on truncation */
-				*recheck = check[1];
-			}
-
-			return check[0];
 		}
 
 		case BSON_INDEX_STRATEGY_DOLLAR_MOD:
@@ -631,6 +623,11 @@ GinBsonConsistentCore(BsonIndexStrategy strategy,
 				}
 				else if (isTruncated)
 				{
+					/*
+					 * Document is truncated in one or more terms,
+					 * and the equality term could be a false positive.
+					 * recheck in the runtime.
+					 */
 					*recheck = true;
 				}
 			}
@@ -679,7 +676,7 @@ GinBsonExtractQueryUniqueIndexTerms(PG_FUNCTION_ARGS)
 	context.options = (void *) options;
 	context.traverseOptionsFunc = &GetSinglePathIndexTraverseOption;
 	context.generateNotFoundTerm = options->generateNotFoundTerm;
-	context.indexTermSizeLimit = GetIndexTermSizeLimit(options);
+	context.termMetadata = GetIndexTermMetadata(options);
 
 	bool addRootTerm = false;
 	GenerateTerms(query, &context, addRootTerm);
@@ -701,6 +698,15 @@ GinBsonExtractQueryOrderBy(PG_FUNCTION_ARGS)
 	int32 *nentries = (int32 *) PG_GETARG_POINTER(1);
 	bool **partialMatch = (bool **) PG_GETARG_POINTER(3);
 
+
+	if (!PG_HAS_OPCLASS_OPTIONS())
+	{
+		ereport(ERROR, (errmsg("Index does not have options")));
+	}
+
+	bytea *options = (bytea *) PG_GET_OPCLASS_OPTIONS();
+	IndexTermCreateMetadata termMetadata = GetIndexTermMetadata(options);
+
 	Datum *entries;
 	pgbsonelement filterElement;
 	PgbsonToSinglePgbsonElement(query, &filterElement);
@@ -708,11 +714,9 @@ GinBsonExtractQueryOrderBy(PG_FUNCTION_ARGS)
 	filterElement.bsonValue.value_type = BSON_TYPE_MINKEY;
 
 	*nentries = 2;
-
-	int32_t sizeLimitUnused = 0;
 	entries = (Datum *) palloc(sizeof(Datum) * 2);
 	entries[0] = PointerGetDatum(SerializeBsonIndexTerm(&filterElement,
-														sizeLimitUnused).indexTermVal);
+														&termMetadata).indexTermVal);
 	entries[1] = PointerGetDatum(GenerateRootTerm());
 
 	*partialMatch = palloc0(sizeof(bool) * 2);
@@ -953,7 +957,7 @@ GenerateTermsCore(bson_iter_t *bsonIter, const char *basePath,
 				element.pathLength = pathtoInsertLength;
 				element.bsonValue = *bson_iter_value(bsonIter);
 				BsonIndexTermSerialized serializedTerm = SerializeBsonIndexTerm(
-					&element, context->indexTermSizeLimit);
+					&element, &context->termMetadata);
 				AddTerm(context, PointerGetDatum(
 							serializedTerm.indexTermVal));
 				if (serializedTerm.isIndexTermTruncated)
@@ -1164,24 +1168,22 @@ GinBsonExtractQueryCore(BsonIndexStrategy strategy, BsonExtractQueryArgs *args)
  */
 static inline Datum *
 GenerateNullEqualityIndexTerms(int32 *nentries, bool **partialmatch,
-							   pgbsonelement *filterElement)
+							   pgbsonelement *filterElement,
+							   const IndexTermCreateMetadata *metadata)
 {
 	*nentries = 3;
 	*partialmatch = (bool *) palloc(sizeof(bool) * 3);
 	Datum *entries = (Datum *) palloc(sizeof(Datum) * 3);
 
-	/* size limit is not needed for NULL/UNDEFINED terms */
-	int32_t sizeLimitUnused = 0;
-
 	/* the first term generated is the value itself (null) */
 	entries[0] = PointerGetDatum(SerializeBsonIndexTerm(filterElement,
-														sizeLimitUnused).indexTermVal);
+														metadata).indexTermVal);
 	(*partialmatch)[0] = false;
 
 	/* The next term is undefined */
 	filterElement->bsonValue.value_type = BSON_TYPE_UNDEFINED;
 	entries[1] = PointerGetDatum(SerializeBsonIndexTerm(filterElement,
-														sizeLimitUnused).indexTermVal);
+														metadata).indexTermVal);
 	(*partialmatch)[1] = false;
 
 	/* the next term generated is the root term */
@@ -1214,14 +1216,15 @@ GinBsonExtractQueryEqual(BsonExtractQueryArgs *args)
 	if (filterElement.bsonValue.value_type == BSON_TYPE_NULL)
 	{
 		/* special case for $eq on null. */
-		entries = GenerateNullEqualityIndexTerms(nentries, partialmatch, &filterElement);
+		entries = GenerateNullEqualityIndexTerms(nentries, partialmatch,
+												 &filterElement, &args->termMetadata);
 	}
 	else
 	{
 		*nentries = 1;
 		entries = (Datum *) palloc(sizeof(Datum));
 		entries[0] = PointerGetDatum(SerializeBsonIndexTerm(&filterElement,
-															args->indexTermSizeLimit).
+															&args->termMetadata).
 									 indexTermVal);
 	}
 
@@ -1270,7 +1273,7 @@ GinBsonExtractQueryDollarBitWiseOperators(BsonExtractQueryArgs *args)
 	entries = (Datum *) palloc(sizeof(Datum) * 3);
 
 	entries[0] = PointerGetDatum(SerializeBsonIndexTerm(&numberMinElement,
-														args->indexTermSizeLimit).
+														&args->termMetadata).
 								 indexTermVal);
 
 	pgbsonelement binaryMinElement = filterElement;
@@ -1278,7 +1281,7 @@ GinBsonExtractQueryDollarBitWiseOperators(BsonExtractQueryArgs *args)
 	binaryMinElement.bsonValue.value.v_binary.subtype = BSON_SUBTYPE_BINARY;
 	binaryMinElement.bsonValue.value.v_binary.data_len = 0;
 	entries[1] = PointerGetDatum(SerializeBsonIndexTerm(&binaryMinElement,
-														args->indexTermSizeLimit).
+														&args->termMetadata).
 								 indexTermVal);
 
 	entries[2] = GenerateRootTruncatedTerm();
@@ -1310,8 +1313,7 @@ GinBsonExtractQueryDollarRange(BsonExtractQueryArgs *args)
 		.bsonValue = rangeValues->params.maxValue
 	};
 	BsonIndexTermSerialized maxSerialized = SerializeBsonIndexTerm(&maxElement,
-																   args->
-																   indexTermSizeLimit);
+																   &args->termMetadata);
 	rangeValues->maxValueIndexTerm = maxSerialized.indexTermVal;
 
 	pgbsonelement minElement =
@@ -1321,8 +1323,7 @@ GinBsonExtractQueryDollarRange(BsonExtractQueryArgs *args)
 		.bsonValue = rangeValues->params.minValue
 	};
 	BsonIndexTermSerialized minSerialized = SerializeBsonIndexTerm(&minElement,
-																   args->
-																   indexTermSizeLimit);
+																   &args->termMetadata);
 	rangeValues->minValueIndexTerm = minSerialized.indexTermVal;
 
 	*nentries = 2;
@@ -1355,7 +1356,8 @@ GinBsonExtractQueryDollarRange(BsonExtractQueryArgs *args)
 	pgbson *emptyArrayBson = PgbsonWriterGetPgbson(&writer);
 
 	PgbsonToSinglePgbsonElement(emptyArrayBson, &minElement);
-	entries[1] = PointerGetDatum(SerializeBsonIndexTerm(&minElement, 0).indexTermVal);
+	entries[1] = PointerGetDatum(SerializeBsonIndexTerm(&minElement,
+														&args->termMetadata).indexTermVal);
 	(*partialmatch)[1] = true;
 	extraDataArray[1] = (Pointer) rangeValues;
 
@@ -1398,7 +1400,7 @@ GinBsonExtractQueryNotEqual(BsonExtractQueryArgs *args)
 	*nentries = 2;
 
 	BsonIndexTermSerialized serialized = SerializeBsonIndexTerm(&element,
-																args->indexTermSizeLimit);
+																&args->termMetadata);
 	entries[0] = GenerateRootTerm();
 	entries[1] = PointerGetDatum(serialized.indexTermVal);
 	return entries;
@@ -1427,7 +1429,8 @@ GinBsonExtractQueryGreaterEqual(BsonExtractQueryArgs *args)
 	if (element.bsonValue.value_type == BSON_TYPE_NULL)
 	{
 		/* special case for $gte: null */
-		return GenerateNullEqualityIndexTerms(nentries, partialmatch, &element);
+		return GenerateNullEqualityIndexTerms(nentries, partialmatch, &element,
+											  &args->termMetadata);
 	}
 
 	entries = (Datum *) palloc(sizeof(Datum) * 2);
@@ -1435,8 +1438,8 @@ GinBsonExtractQueryGreaterEqual(BsonExtractQueryArgs *args)
 	*nentries = 2;
 
 	BsonIndexTermSerialized serializedTerm = SerializeBsonIndexTerm(&element,
-																	args->
-																	indexTermSizeLimit);
+																	&args->
+																	termMetadata);
 	entries[0] = PointerGetDatum(serializedTerm.indexTermVal);
 	(*partialmatch)[0] = true;
 
@@ -1472,8 +1475,8 @@ GinBsonExtractQueryGreater(BsonExtractQueryArgs *args)
 	*nentries = 1;
 
 	BsonIndexTermSerialized serializedTerm = SerializeBsonIndexTerm(&element,
-																	args->
-																	indexTermSizeLimit);
+																	&args->
+																	termMetadata);
 	entries[0] = PointerGetDatum(serializedTerm.indexTermVal);
 	(*partialmatch)[0] = true;
 
@@ -1506,7 +1509,7 @@ GinBsonExtractQueryLessEqual(BsonExtractQueryArgs *args)
 	{
 		/* special case for $lte: null */
 		entries = GenerateNullEqualityIndexTerms(nentries, partialmatch,
-												 &documentElement);
+												 &documentElement, &args->termMetadata);
 	}
 	else
 	{
@@ -1518,7 +1521,7 @@ GinBsonExtractQueryLessEqual(BsonExtractQueryArgs *args)
 
 		/* Also serialize the actual index term */
 		BsonIndexTermSerialized serializedTerm =
-			SerializeBsonIndexTerm(&queryElement, args->indexTermSizeLimit);
+			SerializeBsonIndexTerm(&queryElement, &args->termMetadata);
 
 		/* store the query value in extra data - this allows us to compute upper bound using */
 		/* this extra value. */
@@ -1530,7 +1533,7 @@ GinBsonExtractQueryLessEqual(BsonExtractQueryArgs *args)
 		/* since we don't have the table of these values, we safely start out with Minkey. */
 		documentElement.bsonValue.value_type = BSON_TYPE_MINKEY;
 		entries[0] = PointerGetDatum(SerializeBsonIndexTerm(&documentElement,
-															args->indexTermSizeLimit).
+															&args->termMetadata).
 									 indexTermVal);
 
 		/* In the case where we have truncation, also track equality on $lt */
@@ -1577,7 +1580,7 @@ GinBsonExtractQueryLess(BsonExtractQueryArgs *args)
 
 	/* Also serialize the actual index term */
 	BsonIndexTermSerialized serializedTerm =
-		SerializeBsonIndexTerm(&queryElement, args->indexTermSizeLimit);
+		SerializeBsonIndexTerm(&queryElement, &args->termMetadata);
 
 
 	*extra_data = (Pointer *) palloc(sizeof(Pointer) * 2);
@@ -1589,7 +1592,7 @@ GinBsonExtractQueryLess(BsonExtractQueryArgs *args)
 	/* since we don't have the table of these values, we safely start out with Minkey. */
 	documentElement.bsonValue.value_type = BSON_TYPE_MINKEY;
 	entries[0] = PointerGetDatum(SerializeBsonIndexTerm(&documentElement,
-														args->indexTermSizeLimit).
+														&args->termMetadata).
 								 indexTermVal);
 
 	/* In the case where we have truncation, also track equality on $lt */
@@ -1695,8 +1698,8 @@ GinBsonExtractQueryIn(BsonExtractQueryArgs *args)
 		}
 
 		BsonIndexTermSerialized serializedTerm = SerializeBsonIndexTerm(&element,
-																		args->
-																		indexTermSizeLimit);
+																		&args->
+																		termMetadata);
 		entries[index] = PointerGetDatum(serializedTerm.indexTermVal);
 
 		inQueryData->arrayHasTruncation = inQueryData->arrayHasTruncation ||
@@ -1817,8 +1820,8 @@ GinBsonExtractQueryNotIn(BsonExtractQueryArgs *args)
 		}
 
 		BsonIndexTermSerialized serialized = SerializeBsonIndexTerm(&element,
-																	args->
-																	indexTermSizeLimit);
+																	&args->
+																	termMetadata);
 		entries[index] = PointerGetDatum(serialized.indexTermVal);
 
 		queryData->arrayHasNull = queryData->arrayHasNull ||
@@ -1911,7 +1914,7 @@ GinBsonExtractQueryRegex(BsonExtractQueryArgs *args)
 	emptyStringElement.bsonValue.value.v_utf8.len = 0;
 
 	entries[0] = PointerGetDatum(SerializeBsonIndexTerm(&emptyStringElement,
-														args->indexTermSizeLimit).
+														&args->termMetadata).
 								 indexTermVal);
 
 	entries[1] = GenerateRootTruncatedTerm();
@@ -1920,7 +1923,7 @@ GinBsonExtractQueryRegex(BsonExtractQueryArgs *args)
 	{
 		/* Also match for the regex itself */
 		entries[2] = PointerGetDatum(SerializeBsonIndexTerm(&queryElement,
-															args->indexTermSizeLimit).
+															&args->termMetadata).
 									 indexTermVal);
 	}
 
@@ -1982,7 +1985,7 @@ GinBsonExtractQueryMod(BsonExtractQueryArgs *args)
 	*partialmatch = (bool *) palloc(sizeof(bool));
 	**partialmatch = true;
 	entries[0] = PointerGetDatum(SerializeBsonIndexTerm(&documentElement,
-														args->indexTermSizeLimit).
+														&args->termMetadata).
 								 indexTermVal);
 
 	return entries;
@@ -2029,7 +2032,7 @@ GinBsonExtractQueryExists(BsonExtractQueryArgs *args)
 		*partialmatch = (bool *) palloc(sizeof(bool));
 		**partialmatch = true;
 		entries[0] = PointerGetDatum(SerializeBsonIndexTerm(&documentElement,
-															args->indexTermSizeLimit).
+															&args->termMetadata).
 									 indexTermVal);
 	}
 	else
@@ -2041,7 +2044,7 @@ GinBsonExtractQueryExists(BsonExtractQueryArgs *args)
 		/* first term is the exists term. */
 		(*partialmatch)[0] = true;
 		entries[0] = PointerGetDatum(SerializeBsonIndexTerm(&documentElement,
-															args->indexTermSizeLimit).
+															&args->termMetadata).
 									 indexTermVal);
 
 		/* second term is the root term. */
@@ -2082,7 +2085,7 @@ GinBsonExtractQuerySize(BsonExtractQueryArgs *args)
 
 	/* now create a bson for that path which has the min value for the field */
 	/* we map this to an empty array since that's the smallest value we'll encounter */
-	entries[0] = GenerateEmptyArrayTerm(&documentElement);
+	entries[0] = GenerateEmptyArrayTerm(&documentElement, &args->termMetadata);
 	return entries;
 }
 
@@ -2229,7 +2232,7 @@ GinBsonExtractQueryDollarType(BsonExtractQueryArgs *args)
 	pgbsonelement termElement = documentElement;
 	termElement.bsonValue.value_type = BSON_TYPE_MINKEY;
 	entries[0] = PointerGetDatum(SerializeBsonIndexTerm(&termElement,
-														args->indexTermSizeLimit).
+														&args->termMetadata).
 								 indexTermVal);
 
 	return entries;
@@ -2325,8 +2328,8 @@ GinBsonExtractQueryDollarAll(BsonExtractQueryArgs *args)
 										(Pointer *) &dollarAllState->regexData);
 
 			BsonIndexTermSerialized serializedTerm = SerializeBsonIndexTerm(&element,
-																			args->
-																			indexTermSizeLimit);
+																			&args->
+																			termMetadata);
 			entries[index] = PointerGetDatum(serializedTerm.indexTermVal);
 			queryData->arrayHasRegex = true;
 		}
@@ -2346,14 +2349,14 @@ GinBsonExtractQueryDollarAll(BsonExtractQueryArgs *args)
 				&innerDocumentElement.bsonValue);
 
 			/* reset the element to point to an empty array */
-			entries[index] = GenerateEmptyArrayTerm(&element);
+			entries[index] = GenerateEmptyArrayTerm(&element, &args->termMetadata);
 			queryData->arrayHasElemMatch = true;
 		}
 		else
 		{
 			BsonIndexTermSerialized serializedTerm = SerializeBsonIndexTerm(&element,
-																			args->
-																			indexTermSizeLimit);
+																			&args->
+																			termMetadata);
 			entries[index] = PointerGetDatum(serializedTerm.indexTermVal);
 			queryData->arrayHasTruncation = queryData->arrayHasTruncation ||
 											serializedTerm.isIndexTermTruncated;
@@ -2411,11 +2414,13 @@ GeneratePathUndefinedTerm(void *options)
 							"Undefined term should only be set on single path indexes")));
 	}
 
+	IndexTermCreateMetadata termMetadata = GetIndexTermMetadata(options);
+
 	pgbsonelement element = { 0 };
 	element.path = "";
 	element.pathLength = 0;
 	element.bsonValue.value_type = BSON_TYPE_NULL;
-	return PointerGetDatum(SerializeBsonIndexTerm(&element, 0).indexTermVal);
+	return PointerGetDatum(SerializeBsonIndexTerm(&element, &termMetadata).indexTermVal);
 }
 
 
@@ -3180,7 +3185,8 @@ ProcessExtractQueryForRegex(pgbsonelement *element, bool *partialmatch,
 
 
 static Datum
-GenerateEmptyArrayTerm(pgbsonelement *filterElement)
+GenerateEmptyArrayTerm(pgbsonelement *filterElement,
+					   const IndexTermCreateMetadata *metadata)
 {
 	pgbson_writer bsonWriter;
 
@@ -3193,5 +3199,5 @@ GenerateEmptyArrayTerm(pgbsonelement *filterElement)
 
 	pgbsonelement termElement;
 	PgbsonToSinglePgbsonElement(doc, &termElement);
-	return PointerGetDatum(SerializeBsonIndexTerm(&termElement, 0).indexTermVal);
+	return PointerGetDatum(SerializeBsonIndexTerm(&termElement, metadata).indexTermVal);
 }

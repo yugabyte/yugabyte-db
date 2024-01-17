@@ -223,6 +223,9 @@ typedef struct
 	/* Ignorable properties for 2dsphere index */
 	int32_t *finestIndexedLevel;
 	int32_t *coarsestIndexedLevel;
+
+	/* Feature flag to enable large index term. */
+	bool enableLargeIndexKeys;
 } IndexDef;
 
 /*

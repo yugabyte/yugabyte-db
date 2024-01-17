@@ -131,7 +131,7 @@ gin_bson_exclusion_extract_value(PG_FUNCTION_ARGS)
 	pgbson *document = GetShardKeyAndDocument(input, &shardKey);
 	GenerateTermsContext context = { 0 };
 	context.options = options;
-	context.indexTermSizeLimit = GetIndexTermSizeLimit(options);
+	context.termMetadata = GetIndexTermMetadata(options);
 	bool generateRootTerm = true;
 	GenerateTermsForExclusion(document, shardKey, &context, generateRootTerm);
 	*nentries = context.totalTermCount;
@@ -171,7 +171,7 @@ gin_bson_exclusion_extract_query(PG_FUNCTION_ARGS)
 	GenerateTermsContext context = { 0 };
 	context.options = options;
 	bool generateRootTerm = false;
-	context.indexTermSizeLimit = GetIndexTermSizeLimit(options);
+	context.termMetadata = GetIndexTermMetadata(options);
 	GenerateTermsForExclusion(document, shardKey, &context, generateRootTerm);
 	*nentries = context.totalTermCount;
 	PG_RETURN_POINTER(context.terms.entries);

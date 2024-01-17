@@ -184,7 +184,7 @@ gin_bson_extract_query(PG_FUNCTION_ARGS)
 		.partialmatch = (bool **) PG_GETARG_POINTER(3),
 		.extra_data = (Pointer **) PG_GETARG_POINTER(4),
 		.options = options,
-		.indexTermSizeLimit = GetIndexTermSizeLimit(options)
+		.termMetadata = GetIndexTermMetadata(options)
 	};
 
 	Datum *entries = GinBsonExtractQueryCore(strategy, &args);
@@ -787,23 +787,34 @@ ValidateIndexForQualifierValue(bytea *indexOptions, Datum queryValue, BsonIndexS
 
 /*
  * Given an opaque index options returns the index
- * term size limit if applicable.
+ * term metadata for the index if applicable.
  */
-int32_t
-GetIndexTermSizeLimit(void *indexOptions)
+IndexTermCreateMetadata
+GetIndexTermMetadata(void *indexOptions)
 {
-	if (!EnableIndexTermTruncation)
-	{
-		return 0;
-	}
-
 	BsonGinIndexOptionsBase *options = (BsonGinIndexOptionsBase *) indexOptions;
 	if (options->indexTermTruncateLimit > 0)
 	{
-		return options->indexTermTruncateLimit;
+		StringView pathPrefix = { 0 };
+		if (options->type == IndexOptionsType_SinglePath)
+		{
+			/* For single path indexes, we can elide the index path prefix */
+			BsonGinSinglePathOptions *singlePathOptions =
+				(BsonGinSinglePathOptions *) options;
+			Get_Index_Path_Option(singlePathOptions, path, pathPrefix.string,
+								  pathPrefix.length);
+		}
+
+		return (IndexTermCreateMetadata) {
+				   .indexTermSizeLimit = options->indexTermTruncateLimit,
+				   .pathPrefix = pathPrefix
+		};
 	}
 
-	return 0;
+	return (IndexTermCreateMetadata) {
+			   .indexTermSizeLimit = 0,
+			   .pathPrefix = { 0 }
+	};
 }
 
 

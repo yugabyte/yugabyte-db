@@ -63,7 +63,6 @@
 
 #define MAX_INDEX_OPTIONS_LENGTH 1500
 
-extern bool EnableExtendedIndexFilters;
 
 /*
  * Represents the type of index for a given path.
@@ -221,7 +220,8 @@ static const int NumberOfMongoIndexTypes = sizeof(MongoIndexSupportedList) /
 
 
 extern bool EnableIndexTermTruncation;
-
+extern bool EnableExtendedIndexFilters;
+extern bool ForceIndexTermTruncation;
 extern int IndexTruncationLimitOverride;
 
 #define WILDCARD_INDEX_SUFFIX "$**"
@@ -337,7 +337,8 @@ static char * GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexD
 								   const BsonIntermediatePathNode *
 								   indexDefWildcardProjTree,
 								   const char *indexName, const char *defaultLanguage,
-								   const char *languageOverride);
+								   const char *languageOverride,
+								   bool enableLargeIndexKeys);
 static char * Generate2dsphereIndexExprStr(const IndexDefKey *indexDefKey);
 static char * Generate2dsphereSparseExprStr(const IndexDefKey *indexDefKey);
 static char * GenerateVectorIndexExprStr(IndexDefKey *indexDefKey,
@@ -1698,6 +1699,12 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 			*(indexDef->coarsestIndexedLevel) = BsonValueAsInt32(bson_iter_value(
 																	 &indexDefDocIter));
 		}
+		else if (strcmp(indexDefDocKey, "enableLargeIndexKeys") == 0 &&
+				 EnableIndexTermTruncation)
+		{
+			const bson_value_t *value = bson_iter_value(&indexDefDocIter);
+			indexDef->enableLargeIndexKeys = BsonValueAsBool(value);
+		}
 		else if (!ignoreUnknownIndexOptions)
 		{
 			/*
@@ -1819,6 +1826,13 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 						errmsg(
 							"Index type 'text' does not support the unique option")));
+	}
+
+	if (indexDef->unique == BoolIndexOption_True && indexDef->enableLargeIndexKeys)
+	{
+		ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+						errmsg(
+							"enableLargeIndexKeys does not support the unique option")));
 	}
 
 	if (indexDef->key->hasCosmosIndexes)
@@ -4357,6 +4371,12 @@ MakeIndexSpecForIndexDef(IndexDef *indexDef)
 								*indexDef->coarsestIndexedLevel);
 	}
 
+	if (indexDef->enableLargeIndexKeys)
+	{
+		PgbsonWriterAppendInt32(&writer, "enableLargeIndexKeys", 20,
+								indexDef->enableLargeIndexKeys);
+	}
+
 	if (!IsPgbsonWriterEmptyDocument(&writer))
 	{
 		indexSpec.indexOptions = PgbsonWriterGetPgbson(&writer);
@@ -4418,6 +4438,14 @@ CreatePostgresIndexCreationCmd(uint64 collectionId, IndexDef *indexDef, int inde
 							 ApiDataSchemaName, collectionId);
 		}
 
+		if (indexDef->enableLargeIndexKeys)
+		{
+			ereport(ERROR, (errcode(MongoCannotCreateIndex),
+							errmsg(
+								"enableLargeIndexKeys with unique indexes is not supported yet")));
+		}
+
+		bool enableLargeIndexKeys = false;
 		appendStringInfo(cmdStr,
 						 " ADD CONSTRAINT " MONGO_DATA_TABLE_INDEX_NAME_FORMAT
 						 " EXCLUDE USING %s_rum (%s) %s%s%s",
@@ -4426,7 +4454,8 @@ CreatePostgresIndexCreationCmd(uint64 collectionId, IndexDef *indexDef, int inde
 											  indexDef->wildcardProjectionTree,
 											  indexDef->name,
 											  indexDef->defaultLanguage,
-											  indexDef->languageOverride),
+											  indexDef->languageOverride,
+											  enableLargeIndexKeys),
 						 indexDef->partialFilterExpr ? "WHERE (" : "",
 						 indexDef->partialFilterExpr ?
 						 GenerateIndexFilterStr(collectionId,
@@ -4586,7 +4615,8 @@ CreatePostgresIndexCreationCmd(uint64 collectionId, IndexDef *indexDef, int inde
 											  indexDef->wildcardProjectionTree,
 											  indexDef->name,
 											  indexDef->defaultLanguage,
-											  indexDef->languageOverride),
+											  indexDef->languageOverride,
+											  indexDef->enableLargeIndexKeys),
 						 indexDef->partialFilterExpr ? "WHERE (" : "",
 						 indexDef->partialFilterExpr ?
 						 GenerateIndexFilterStr(collectionId,
@@ -4944,7 +4974,7 @@ static char *
 GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 					 const BsonIntermediatePathNode *indexDefWildcardProjTree,
 					 const char *indexName, const char *defaultLanguage,
-					 const char *languageOverride)
+					 const char *languageOverride, bool enableLargeIndexKeys)
 {
 	StringInfo indexExprStr = makeStringInfo();
 
@@ -4982,7 +5012,7 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 							errmsg("Cannot create wildcard unique indexes")));
 		}
 
-		if (EnableIndexTermTruncation)
+		if (enableLargeIndexKeys || ForceIndexTermTruncation)
 		{
 			sprintf(indexTermSizeLimitArg, ",tl=%u",
 					ComputeIndexTermLimit(SINGLE_PATH_INDEX_TERM_SIZE_LIMIT));
@@ -5084,7 +5114,7 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 		}
 
 		/* We can't truncate terms on unique indexes as that would break uniqueness checks. */
-		if (!unique && EnableIndexTermTruncation)
+		if (!unique && (enableLargeIndexKeys || ForceIndexTermTruncation))
 		{
 			uint32_t indexTermSizeLimit = list_length(indexDefKey->keyPathList) > 1 ?
 										  COMPOUND_INDEX_TERM_SIZE_LIMIT :

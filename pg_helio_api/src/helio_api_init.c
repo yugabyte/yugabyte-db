@@ -183,6 +183,10 @@ int IndexQueueEvictionIntervalInSec = DEFAULT_INDEX_BUILD_EVICTION_INTERVAL_IN_S
 #define DEFAULT_ENABLE_INDEX_TERM_TRUNCATION false
 bool EnableIndexTermTruncation = DEFAULT_ENABLE_INDEX_TERM_TRUNCATION;
 
+
+#define DEFAULT_FORCE_INDEX_TERM_TRUNCATION false
+bool ForceIndexTermTruncation = DEFAULT_FORCE_INDEX_TERM_TRUNCATION;
+
 #define DEFAULT_INDEX_TRUNCATION_LIMIT_OVERRIDE INT_MAX
 int IndexTruncationLimitOverride = DEFAULT_INDEX_TRUNCATION_LIMIT_OVERRIDE;
 
@@ -479,6 +483,13 @@ InitApiConfigurations(char *prefix)
 		gettext_noop(
 			"Whether to enable the feature for index term truncation"),
 		NULL, &EnableIndexTermTruncation, DEFAULT_ENABLE_INDEX_TERM_TRUNCATION,
+		PGC_USERSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.forceIndexTermTruncation", prefix),
+		gettext_noop(
+			"Whether to force the feature for index term truncation"),
+		NULL, &ForceIndexTermTruncation, DEFAULT_ENABLE_INDEX_TERM_TRUNCATION,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomIntVariable(
