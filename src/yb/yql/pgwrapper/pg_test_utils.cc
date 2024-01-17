@@ -26,7 +26,7 @@ namespace yb::pgwrapper {
 namespace {
 
 Result<size_t> GetMetric(const MetricWatcherDescriptor& desc) {
-  auto metric_ptr = desc.entity.FindOrNull(desc.proto);
+  auto metric_ptr = desc.entity.FindOrNull<Metric>(desc.proto);
   RSTATUS_DCHECK(metric_ptr, IllegalState, "Metric not found");
   const auto& metric = *metric_ptr;
   const auto& type = metric.prototype()->type();
