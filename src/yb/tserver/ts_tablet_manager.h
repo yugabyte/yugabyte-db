@@ -364,6 +364,8 @@ class TSTabletManager : public tserver::TabletPeerLookupIf, public tablet::Table
 
   FullCompactionManager* full_compaction_manager() { return full_compaction_manager_.get(); }
 
+  docdb::LocalWaitingTxnRegistry* waiting_txn_registry() { return waiting_txn_registry_.get(); }
+
   Status UpdateSnapshotsInfo(const master::TSSnapshotsInfoPB& info);
 
   // Background task that verifies the data on each tablet for consistency.

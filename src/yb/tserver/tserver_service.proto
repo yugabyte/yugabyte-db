@@ -70,6 +70,10 @@ service TabletServerService {
   rpc GetTransactionStatus(GetTransactionStatusRequestPB) returns (GetTransactionStatusResponsePB);
   // Returns the oldest transactions (older than a specified age) from a specified status tablet.
   rpc GetOldTransactions(GetOldTransactionsRequestPB) returns (GetOldTransactionsResponsePB);
+  // Returns the oldest single shard waiters (older than a specified age) by querying the
+  // waiting transaction registry at the Tablet Server.
+  rpc GetOldSingleShardWaiters(GetOldSingleShardWaitersRequestPB)
+      returns (GetOldSingleShardWaitersResponsePB);
   // Returns transaction status at participant, i.e. number of replicated batches or whether it was
   // aborted.
   rpc GetTransactionStatusAtParticipant(GetTransactionStatusAtParticipantRequestPB)
@@ -127,8 +131,8 @@ message GetLockStatusRequestPB {
   }
 
   // Tablets to scan. Limit per tablet results to the specified transaction_ids in
-  // TabletTransactionInfoPB when non-empty. If empty, include lock info of all transactions at that
-  // tablet.
+  // TabletTransactionInfoPB when non-empty. If empty and 'max_single_shard_waiter_start_time_us'
+  // is left at default, include lock info of all transactions at that tablet.
   map<string, TabletTransactionInfoPB> transactions_by_tablet = 1;
 
   optional bool include_trace = 2 [ default = false ];
@@ -137,6 +141,11 @@ message GetLockStatusRequestPB {
 
   // Limit results to the specified transaction_ids when transactions_by_tablet is empty.
   repeated bytes transaction_ids = 4;
+
+  // Sets the maximum start time of single shard waiters that should be returned, i.e, all
+  // single shard waiters with start time before the specified value will be returned. All
+  // tablets listed in 'transactions_by_tablet' would be scanned.
+  optional fixed64 max_single_shard_waiter_start_time_us = 5 [ default = 0 ];
 }
 
 message GetLockStatusResponsePB {
@@ -279,6 +288,26 @@ message GetOldTransactionsResponsePB {
     optional string host_node_uuid = 5;
   }
   repeated OldTransactionMetadataPB txn = 2;
+
+  optional fixed64 propagated_hybrid_time = 3;
+}
+
+message GetOldSingleShardWaitersRequestPB {
+  optional uint32 min_txn_age_ms = 1;
+  optional uint32 max_num_txns = 2;
+  optional fixed64 propagated_hybrid_time = 3;
+}
+
+message GetOldSingleShardWaitersResponsePB {
+  // Error message, if any.
+  optional TabletServerErrorPB error = 1;
+
+  message OldSingleShardWaiterMetadataPB {
+    optional bytes tablet = 1;
+    optional fixed64 start_time = 2;
+    optional string host_node_uuid = 3;
+  }
+  repeated OldSingleShardWaiterMetadataPB txn = 2;
 
   optional fixed64 propagated_hybrid_time = 3;
 }

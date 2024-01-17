@@ -4452,7 +4452,8 @@ Status PopulateLockInfoFromIntent(
 }
 
 Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transactions,
-                             TabletLockInfoPB* tablet_lock_info) const {
+                             TabletLockInfoPB* tablet_lock_info,
+                             uint64_t max_single_shard_waiter_start_time_us) const {
   if (metadata_->table_type() != PGSQL_TABLE_TYPE) {
     return STATUS_FORMAT(
         InvalidArgument, "Cannot get lock status for non YSQL table $0", metadata_->table_id());
@@ -4553,7 +4554,8 @@ Status Tablet::GetLockStatus(const std::map<TransactionId, SubtxnSet>& transacti
 
   const auto& wait_queue = transaction_participant()->wait_queue();
   if (wait_queue) {
-    RETURN_NOT_OK(wait_queue->GetLockStatus(transactions, *this, &lock_info_manager));
+    RETURN_NOT_OK(wait_queue->GetLockStatus(
+        transactions, max_single_shard_waiter_start_time_us, *this, &lock_info_manager));
   }
 
   return Status::OK();

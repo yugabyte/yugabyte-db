@@ -887,7 +887,8 @@ class Tablet : public AbstractTablet,
   // present in the associated aborted subtxns.
   Status GetLockStatus(
       const std::map<TransactionId, SubtxnSet>& transactions,
-      TabletLockInfoPB* tablet_lock_info) const;
+      TabletLockInfoPB* tablet_lock_info,
+      uint64_t max_single_shard_waiter_start_time_us) const;
 
   // The returned SchemaPackingProvider lives only as long as this.
   docdb::SchemaPackingProvider& GetSchemaPackingProvider();
