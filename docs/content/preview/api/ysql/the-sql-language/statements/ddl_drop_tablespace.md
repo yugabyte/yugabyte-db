@@ -33,7 +33,7 @@ Use the `DROP TABLESPACE` statement to remove a tablespace from the cluster.
 
 Under normal operation, an error is raised if the tablespace does not exist.  Adding `IF EXISTS` will quietly ignore any non-existent tablespaces specified.
 
-#### *tablespace_name*
+### *tablespace_name*
 
 Specify the name of the tablespace to be dropped.
 
