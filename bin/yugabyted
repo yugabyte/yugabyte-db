@@ -959,7 +959,10 @@ class ControlScript(object):
     # Prints status of YugabyteDB.
     def status(self):
         if len(os.listdir(self.configs.saved_data.get("data_dir"))) != 0:
-            Output.print_out(self.get_status_string())
+            Output.init_animation("Fetching status...")
+            status_output = self.get_status_string().strip()
+            Output.update_animation("")
+            Output.print_out(status_output)
         else:
             Output.print_out("{} is not running.".format(SCRIPT_NAME))
 
@@ -2162,6 +2165,7 @@ class ControlScript(object):
             return "Failed to start tserver {}".format(SCRIPT_NAME)
 
         if not was_already_setup:
+            self.configs.saved_data["cluster_member"] = True
             master_addresses = self.configs.saved_data.get("current_masters")
             universe_uuid = YBAdminProxy.get_cluster_uuid(master_addresses)
             if universe_uuid and universe_uuid != self.configs.saved_data["universe_uuid"]:
@@ -2181,6 +2185,7 @@ class ControlScript(object):
             return "Failed to start tserver {}".format(SCRIPT_NAME)
 
         if not was_already_setup:
+            self.configs.saved_data["cluster_member"] = True
             master_addresses = self.configs.saved_data.get("current_masters")
             universe_uuid = YBAdminProxy.get_cluster_uuid(master_addresses)
             if universe_uuid and universe_uuid != self.configs.saved_data["universe_uuid"]:
@@ -3239,6 +3244,10 @@ class ControlScript(object):
         except HTTPError as http_err:
             Output.log('HTTP error occurred while fetching current' +
                     'masters from tserver: {}', http_err)
+            return ''
+        except URLError as url_err:
+            Output.log('URL error occurred while fetching current' +
+                    'masters from tserver: {}', url_err)
             return ''
         except Exception as err:
             Output.log('Other error occurred while fetching current' +
@@ -4357,7 +4366,6 @@ class ControlScript(object):
             # join_ip, let's try to add ourselves to it, otherwise
             # it is a hard failure.
             if current_node_master_uuid in master_uuids:
-                self.configs.saved_data["cluster_member"] = True
                 if not join_ip:
                     placement_uuid = self.configs.saved_data.get("placement_uuid")
                     placement_info = list()
@@ -4402,7 +4410,6 @@ class ControlScript(object):
 
         try:
             if retry_op_with_argument(self.get_master_uuids, master_addrs, timeout):
-                self.configs.saved_data["cluster_member"] = True
                 Output.log("Completed setup and wait for master.")
                 return True
         except RuntimeError:
@@ -4550,6 +4557,8 @@ class ControlScript(object):
             if was_already_setup:
                 if master_addrs:
                     status = "Running."
+                else:
+                    status = "Bootstrapping."
             else:
                 if self.wait_get_all_masters(timeout=10):
                     status = "Running."
@@ -4582,10 +4591,10 @@ class ControlScript(object):
                 Output.update_animation("Data placement constraint successfully verified")
             else:
                 rf = YBAdminProxy.get_cluster_rf(master_addrs)
-            status_info = [
-                (Output.make_yellow("Status"), status),
-                (Output.make_yellow("Replication Factor"), rf),
-            ]
+
+            status_info = [(Output.make_yellow("Status"), status)]
+            if rf:
+                status_info.append((Output.make_yellow("Replication Factor"), rf))
 
             if enabled_security_features:
                 status_info += [
@@ -5814,6 +5823,7 @@ class ControlScript(object):
             if args.background is None:
                 args.background = "True"
 
+            cluster_member = self.configs.saved_data.get("cluster_member")
             if args.join is not None:
                 if not self.validate_hostname_ip(args.join):
                     Output.log_error_and_exit(Output.make_red("ERROR") + ": --join" +
@@ -5821,66 +5831,79 @@ class ControlScript(object):
                         "IPV6 or DNS.")
 
                 Output.print_and_log("Fetching configs from join IP...")
-                # Check if tserver webserver at join_IP is reachable or not
-                # Also get the leader master(used to get the info of all tservers)
-                master_leader = self.get_current_master_leader_from_api(args.join)
-                args.join = master_leader
+                if not cluster_member:
+                    # Check if tserver webserver at join_IP is reachable or not
+                    # Also get the leader master(used to get the info of all tservers)
+                    master_leader = self.get_current_master_leader_from_api(args.join)
+                    args.join = master_leader
 
-                # Get info on all tservers
-                master_leader_hostport = "{}:{}".format(master_leader,
-                                    self.configs.saved_data.get("master_webserver_port"))
-                tservers_info = dict(self.get_all_tserver_info(master_leader_hostport))
+                    # Get info on all tservers
+                    master_leader_hostport = "{}:{}".format(master_leader,
+                                        self.configs.saved_data.get("master_webserver_port"))
+                    tservers_info = dict(self.get_all_tserver_info(master_leader_hostport))
 
-                # Check if any existing node has the same IP as advertise address
-                for uuid, nodes in tservers_info.items():
-                    for node in [node.split(":")[0] for node in list(nodes.keys())]:
-                        if args.advertise_address == node:
-                            Output.log_error_and_exit(Output.make_red("ERROR:") + " A node is " +
-                                        "already running on {}, please ".format(args.join) +
-                                        "specify a valid address.")
+                    # Check if any existing node has the same IP as advertise address
+                    for uuid, nodes in tservers_info.items():
+                        for node in [node.split(":")[0] for node in list(nodes.keys())]:
+                            if args.advertise_address == node:
+                                Output.log_error_and_exit(Output.make_red("ERROR:") + " A node" +
+                                    " is already running on {}, please ".format(args.join) +
+                                    "specify a valid address.")
 
-                is_placement_uuid_set = False
+                    is_placement_uuid_set = False
 
-                # Set placement UUID for the node according to it's properties(rr or primary)
-                if args.read_replica:
-                    # When the 1st read replica node is started use a new uuid
-                    if len(tservers_info) == 1:
-                        is_placement_uuid_set = True
-                        Output.log("Starting first read replica node. " +
-                                    "Using {} as placement_uuid".format(
-                                        self.configs.saved_data.get("placement_uuid")))
-                    # When a read replica cluster exists use the existing placement UUID
+                    # Set placement UUID for the node according to it's properties(rr or primary)
+                    if args.read_replica:
+                        # When the 1st read replica node is started use a new uuid
+                        if len(tservers_info) == 1:
+                            is_placement_uuid_set = True
+                            Output.log("Starting first read replica node. " +
+                                        "Using {} as placement_uuid".format(
+                                            self.configs.saved_data.get("placement_uuid")))
+                        # When a read replica cluster exists use the existing placement UUID
+                        else:
+                            for uuid, nodes in tservers_info.items():
+                                nodes_list = [node.split(":")[0] for node in list(nodes.keys())]
+                                if master_leader not in nodes_list and len(nodes) != 0:
+                                    self.configs.saved_data["placement_uuid"] = uuid
+                                    Output.log("Using placement_uuid {} from ".format(uuid) +
+                                                "existing read replica cluster.")
+                                    is_placement_uuid_set = True
                     else:
+                        # Use placement uuid set for the primary cluster when 1st node was started.
                         for uuid, nodes in tservers_info.items():
                             nodes_list = [node.split(":")[0] for node in list(nodes.keys())]
-                            if master_leader not in nodes_list and len(nodes) != 0:
+                            if master_leader in nodes_list:
                                 self.configs.saved_data["placement_uuid"] = uuid
                                 Output.log("Using placement_uuid {} from ".format(uuid) +
-                                            "existing read replica cluster.")
+                                                "existing primary cluster.")
                                 is_placement_uuid_set = True
+
+                    # If placement UUID could not be set for some reason, throw an error
+                    if not is_placement_uuid_set:
+                        Output.log("Cannot find placement UUID for the node. " +
+                                "Leader Master node: {}. ".format(master_leader) +
+                                "Response from tablet-servers API: {}".format(
+                                    str(tservers_info)))
+                        Output.log_error_and_exit(Output.make_red("ERROR:") +
+                                " Unable to start the node.")
+
+                # Restart node as a part of an existing cluster with the join flag specified
                 else:
-                    # Use placement uuid set for the primary cluster when 1st node was started.
-                    for uuid, nodes in tservers_info.items():
-                        nodes_list = [node.split(":")[0] for node in list(nodes.keys())]
-                        if master_leader in nodes_list:
-                            self.configs.saved_data["placement_uuid"] = uuid
-                            Output.log("Using placement_uuid {} from ".format(uuid) +
-                                            "existing primary cluster.")
-                            is_placement_uuid_set = True
+                    Output.log("Restarting node as part of an existing cluster. " +
+                                            "Using {} as placement_uuid".format(
+                                            self.configs.saved_data.get("placement_uuid")))
 
-                # If placement UUID could not be set for some reason, throw an error
-                if not is_placement_uuid_set:
-                    Output.log("Cannot find placement UUID for the node. " +
-                            "Leader Master node: {}. ".format(master_leader) +
-                            "Response from tablet-servers API: {}".format(
-                                str(tservers_info)))
-                    Output.log_error_and_exit(Output.make_red("ERROR:") +
-                            " Unable to start the node.")
-
-            # If no --join is passed then start a new cluster with a new placement_uuid
+            # If no --join is passed, check if its a first time start or its a restart
             else:
-                Output.log("Starting first primary node. Using {} as placement_uuid".format(
+                if not cluster_member:
+                    Output.log("Starting first primary node. Using {} as placement_uuid".format(
                                            self.configs.saved_data.get("placement_uuid")))
+                # Restart node as a part of an existing cluster without the join flag specified
+                else:
+                    Output.log("Restarting node as part of an existing cluster. " +
+                                            "Using {} as placement_uuid".format(
+                                            self.configs.saved_data.get("placement_uuid")))
 
             self.find_security_nature_of_deployment(args)
 
@@ -5891,7 +5914,7 @@ class ControlScript(object):
                     ": --certs_dir flag needs to be accompanied with the --secure flag.")
 
             if args.insecure:
-                if args.join:
+                if args.join and not cluster_member:
                     master_hostport = "{}:{}".format(args.join,
                             self.configs.saved_data.get("master_webserver_port"))
                     if self.is_leader_master_secure(master_hostport):
@@ -5902,7 +5925,7 @@ class ControlScript(object):
                             "IP was provided in --join flag has SSL/TLS enabled. Cannot join a " +
                             "secure and an insecure node.")
             elif args.secure:
-                if args.join:
+                if args.join and not cluster_member:
                     master_hostport = "{}:{}".format(args.join,
                             self.configs.saved_data.get("master_webserver_port"))
                     if not self.is_leader_master_secure(master_hostport):
@@ -6535,6 +6558,7 @@ class Configs(object):
             "backup_daemon": False,
             "dns_enabled": False,
             "read_replica": False,
+            "cluster_member": False,
         }
         # Used to store data specific to certain functions that we don't want to save.
         self.temp_data = {
@@ -7951,7 +7975,12 @@ class Output(object):
                     symbol = status
                     running = False
 
-                line = "\r{} {}".format(symbol, msg)
+                if msg == "":
+                    line = "\r" + " " * line_len
+                    running = False
+                else:
+                    line = "\r{} {}".format(symbol, msg)
+
                 line_len = max(len(line), line_len)
                 line_to_write = "{:<{}}".format(line, line_len)
                 if not running:
