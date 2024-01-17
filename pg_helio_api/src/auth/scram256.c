@@ -78,7 +78,7 @@ typedef struct ScramAuthResult
 
 /*
  * Response to be send by the test helper function
- * (pgmongo_generate_auth_message_client_proof) that generates the Auth Message
+ * (generate_auth_message_client_proof) that generates the Auth Message
  * and the Client Proof which is to be fed to
  * command_authenticate_with_scram_sha256 in the regression test suite.
  */

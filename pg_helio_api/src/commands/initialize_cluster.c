@@ -359,8 +359,8 @@ InvalidateClusterMetadata()
 
 	StringInfo cmdStr = makeStringInfo();
 	appendStringInfo(cmdStr,
-					 "UPDATE %s.pgmongo_cluster_data SET metadata = metadata;",
-					 ApiCatalogSchemaName);
+					 "UPDATE %s.%s_cluster_data SET metadata = metadata;",
+					 ApiCatalogSchemaName, ExtensionObjectPrefix);
 	ExtensionExecuteQueryViaSPI(cmdStr->data, readOnly, SPI_OK_UPDATE,
 								&isNull);
 }

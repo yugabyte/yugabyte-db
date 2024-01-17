@@ -153,8 +153,8 @@ bool EnableVectorPreFilter = DEFAULT_ENABLE_VECTOR_PRE_FILTER;
 #define DEFAULT_MAX_NUM_ACTIVE_USERS_INDEX_BUILDS 2
 int MaxNumActiveUsersIndexBuilds = DEFAULT_MAX_NUM_ACTIVE_USERS_INDEX_BUILDS;
 
-#define DEFAULT_PGMONGO_PG_READ_ONLY_FOR_DISK_FULL false
-bool PgmongoPGReadOnlyForDiskFull = DEFAULT_PGMONGO_PG_READ_ONLY_FOR_DISK_FULL;
+#define DEFAULT_HELIO_PG_READ_ONLY_FOR_DISK_FULL false
+bool HelioPGReadOnlyForDiskFull = DEFAULT_HELIO_PG_READ_ONLY_FOR_DISK_FULL;
 
 /* GUCs for cluster-wide read-write concern */
 #define DEFAULT_READ_CONCERN_LEVEL ReadConcernLevel_MAJORITY
@@ -412,7 +412,7 @@ InitApiConfigurations(char *prefix)
 	DefineCustomBoolVariable(
 		psprintf("%s.enableVectorPreFilter", prefix),
 		gettext_noop(
-			"Enables support for vector pre-filtering feature for vector search in pgmongo."),
+			"Enables support for vector pre-filtering feature for vector search in pg_helio_api."),
 		NULL, &EnableVectorPreFilter, DEFAULT_ENABLE_VECTOR_PRE_FILTER,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
@@ -429,7 +429,7 @@ InitApiConfigurations(char *prefix)
 		psprintf("%s.IsPgReadOnlyForDiskFull", prefix),
 		gettext_noop(
 			"Determines whether postgres is in readonly mode since disk is full"),
-		NULL, &PgmongoPGReadOnlyForDiskFull, DEFAULT_PGMONGO_PG_READ_ONLY_FOR_DISK_FULL,
+		NULL, &HelioPGReadOnlyForDiskFull, DEFAULT_HELIO_PG_READ_ONLY_FOR_DISK_FULL,
 		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomEnumVariable(

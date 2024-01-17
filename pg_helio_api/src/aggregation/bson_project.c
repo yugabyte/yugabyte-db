@@ -274,7 +274,6 @@ GetProjectionStateForBsonProject(bson_iter_t *projectionSpecIter,
 
 
 /*
- * https://docs.mongodb.com/manual/reference/operator/aggregation/addFields/
  * bson_dollar_add_fields performs
  *      (1) a projection of all the fields in a binary serialized bson,
  *      (2) evaluates and add new fields (driven by the addFields specs) to the projection.
@@ -332,7 +331,6 @@ GetProjectionStateForBsonAddFields(bson_iter_t *projectionSpecIter)
 
 
 /*
- * https://docs.mongodb.com/v4.2/reference/operator/aggregation/set/
  * bson_dollar_set performs
  *      (1) a projection of all the fields in a binary serialized bson,
  *      (2) evaluates and add new fields (driven by the $set specs) to the projection.
@@ -346,7 +344,6 @@ bson_dollar_set(PG_FUNCTION_ARGS)
 
 
 /*
- * https://docs.mongodb.com/manual/reference/operator/aggregation/replaceRoot/
  * bson_dollar_replace_root performs
  *      (1) evaluates the newRoot Expression provided by the spec and projects the evaluated
  * document as the new document.

@@ -3173,11 +3173,11 @@ ValidateVectorQuerySpec(pgbson *vectorQuerySpecValue, char **queryVectorPath,
 		{
 			if (!EnableVectorPreFilter)
 			{
-				/* Safe guard against the pgmongo.enableVectorPreFilter GUC */
+				/* Safe guard against the enableVectorPreFilter GUC */
 				ereport(ERROR, (errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
 								errmsg("$filter is not supported for vector search yet."),
 								errhint(
-									"vector pre-filter is disabled. Set pgmongo.enableVectorPreFilter to true to enable vector pre filter.")));
+									"vector pre-filter is disabled. Set helio_api.enableVectorPreFilter to true to enable vector pre filter.")));
 			}
 
 			if (!BSON_ITER_HOLDS_DOCUMENT(&specIter))

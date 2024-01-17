@@ -1,7 +1,6 @@
 
 /*
- * dbcommand.findAndModify, see
- * https://docs.mongodb.com/v5.0/reference/command/findAndModify/
+ * helio_api.find_and_modify processes a Mongo wire protocol findAndModify command.
  */
 CREATE OR REPLACE FUNCTION __API_SCHEMA__.find_and_modify(
     p_database_name text,

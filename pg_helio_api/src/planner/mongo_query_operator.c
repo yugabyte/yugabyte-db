@@ -305,7 +305,7 @@ static const MongoOperatorInfo QueryOperators[] = {
 	 *
 	 * For these operators we have quals of this form to match to the sparse 2d index
 	 *
-	 * pgmongo_bson_validate(document, 'path') @|-| 'geowithin query'
+	 * bson_validate(document, 'path') @|-| 'geowithin query'
 	 *
 	 * Note: $within is deprecated in 2.4 and is replaced with $geoWithin but because this is heavily used in jstests
 	 * we are bound support this and it is just another name for $geoWithin for us.

@@ -372,8 +372,7 @@ PG_FUNCTION_INFO_V1(bson_expression_map);
 
 /*
  * bson_expression_get evaluates a bson expression from a given
- * document. This follows operator expressions as per
- * https://docs.mongodb.com/manual/meta/aggregation-quick-reference/#expressions
+ * document. This follows operator expressions as per mongo aggregation expressions.
  * The input is expected to be a single value bson document
  * e.g. { "sum": "$a.b"}
  * The output is a bson document that contains the evaluation of that field
@@ -437,8 +436,7 @@ bson_expression_get(PG_FUNCTION_ARGS)
 
 /*
  * bson_expression_map evaluates a bson expression from a given array of
- * document. This follows operator expressions as per
- * https://docs.mongodb.com/manual/meta/aggregation-quick-reference/#expressions
+ * document. This follows operator expressions as per mongo aggregation expressions.
  * The input document should be a document containing the given field name that
  * points to an array of documents.
  * e.g. { "array": [{"_id": 1 ...}, {"_id": 2 ...}, ...]}

@@ -428,10 +428,10 @@ typedef struct HelioApiOidCacheData
 	/* OID of the rum_extract_tsvector function */
 	Oid RumExtractTsVectorFunctionId;
 
-	/* OID of the operator class for BSON Text operations with pgmongo_rum */
+	/* OID of the operator class for BSON Text operations with helio_rum */
 	Oid BsonRumTextPathOperatorFamily;
 
-	/* OID of the operator class for BSON Single Path operations with pgmongo_rum */
+	/* OID of the operator class for BSON Single Path operations with helio_rum */
 	Oid BsonRumSinglePathOperatorFamily;
 
 	/* OID of the bson_text_meta_qual function ID */
@@ -3302,7 +3302,7 @@ BsonLessThanOperatorId(void)
 
 
 /*
- * OID of the operator class for BSON Text operations with pgmongo_rum
+ * OID of the operator class for BSON Text operations with helio_rum
  */
 Oid
 BsonRumTextPathOperatorFamily(void)
@@ -3325,7 +3325,7 @@ BsonRumTextPathOperatorFamily(void)
 
 
 /*
- * OID of the operator class for BSON Single Path operations with pgmongo_rum
+ * OID of the operator class for BSON Single Path operations with helio_rum
  */
 Oid
 BsonRumSinglePathOperatorFamily(void)

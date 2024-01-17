@@ -4396,7 +4396,6 @@ CreatePostgresIndexCreationCmd(uint64 collectionId, IndexDef *indexDef, int inde
 	/*
 	 * TODO: "For a compound multikey index, each indexed document can have at
 	 *       most one indexed field whose value is an array".
-	 *       (https://docs.mongodb.com/manual/core/index-multikey/#compound-multikey-indexes)
 	 *       Need to ensure this is the case when building the index.
 	 *
 	 * TODO: Currently we don't know how to build unique RUM indexes concurrently.
@@ -5144,9 +5143,10 @@ GenerateIndexExprStr(bool unique, bool sparse, IndexDefKey *indexDefKey,
 					}
 
 					appendStringInfo(indexExprStr,
-									 "%s document %s.pgmongo_rum_hashed_ops(path=%s)",
+									 "%s document %s.%s_rum_hashed_ops(path=%s)",
 									 firstColumnWritten ? "," : "",
 									 ApiCatalogSchemaName,
+									 ExtensionObjectPrefix,
 									 quote_literal_cstr(keyPath));
 					break;
 				}

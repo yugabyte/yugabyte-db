@@ -46,8 +46,8 @@
 #define VECTOR_SEARCH_1M_COLLECTION_ROWS 1000000
 
 /*
- * pgmongo.enableVectorHNSWIndex GUC determines vector indexes
- * and queries are enabled in pgmongo or not.
+ * helioapi.enableVectorHNSWIndex GUC determines vector indexes
+ * and queries are enabled in pg_helio_api or not.
  */
 extern bool EnableVectorHNSWIndex;
 

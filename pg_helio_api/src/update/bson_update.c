@@ -154,8 +154,6 @@ PG_FUNCTION_INFO_V1(bson_update_returned_value);
  * { "": <update|replace|pipeline> }.
  * The third argument is the query spec used to form this update. This is the document
  * that is generally passed to the @@ operator and is of the form { "$and": [ { "a": 1}, { "b": 1 }]}
- * For more details see:
- * https://docs.mongodb.com/manual/reference/command/update/#mongodb-dbcommand-dbcmd.update
  */
 Datum
 bson_update_document(PG_FUNCTION_ARGS)

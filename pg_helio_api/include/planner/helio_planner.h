@@ -24,7 +24,7 @@ extern planner_hook_type ExtensionPreviousPlannerHook;
 extern set_rel_pathlist_hook_type ExtensionPreviousSetRelPathlistHook;
 extern explain_get_index_name_hook_type ExtensionPreviousIndexNameHook;
 extern bool SimulateRecoveryState;
-extern bool PgmongoPGReadOnlyForDiskFull;
+extern bool HelioPGReadOnlyForDiskFull;
 
 
 PlannedStmt * HelioApiPlanner(Query *parse, const char *queryString, int cursorOptions,
@@ -50,13 +50,13 @@ ThrowIfWriteCommandNotAllowed(void)
 							"Can't execute write operation, the database is in recovery and waiting for the standby node to be promoted.")));
 	}
 
-	if (PgmongoPGReadOnlyForDiskFull)
+	if (HelioPGReadOnlyForDiskFull)
 	{
 		/*
 		 *  We want to throw `ERRCODE_DISK_FULL` from backend when the disk is say `90% full` as opposed to waiting
 		 *  for the disk to be `100% full`. Marlin runs a background task that monitors the disk and
 		 *  sets a config `helio_api.IsPgReadOnlyForDiskFull = true`, the postgres process then reads the config
-		 *  and stores it in the `PgmongoPGReadOnlyForDiskFull` variable. Marlin also set the postgres config
+		 *  and stores it in the `HelioPGReadOnlyForDiskFull` variable. Marlin also set the postgres config
 		 *  `default_transaction_read_only = on` which makes postgres throw `ERRCODE_READ_ONLY_SQL_TRANSACTION`
 		 *  for any operation that can update data.
 		 *

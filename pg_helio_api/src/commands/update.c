@@ -54,8 +54,7 @@
  *    To handle retryable writes, we look across all shards in the retry
  *    records table for the transaction ID before starting the process.
  *
- *    Upserts in this scenario are not supported, see:
- *    https://docs.mongodb.com/manual/reference/command/update/#upsert-on-a-sharded-collection
+ *    Upserts in this scenario are not supported currently.
  *
  *    Overall, updates in this scenario are very expensive and best avoided,
  *    but provided for compatibility.
@@ -968,8 +967,7 @@ ProcessUpdate(MongoCollection *collection, UpdateSpec *updateSpec,
 		else if (isUpsert)
 		{
 			/*
-			 * Upsert on a shard collection without a shard key filter is not supported:
-			 * https://docs.mongodb.com/manual/reference/command/update/#upsert-on-a-sharded-collection
+			 * Upsert on a shard collection without a shard key filter is not supported currently.
 			 *
 			 * TODO: Use ErrorCodes.ShardKeyNotFound
 			 */

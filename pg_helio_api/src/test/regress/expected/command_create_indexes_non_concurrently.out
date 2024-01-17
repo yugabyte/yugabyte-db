@@ -136,20 +136,20 @@ SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes
 
 -- valid hash indexes
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": "hashed"}, "name": "my_idx_hashed"}]}',true);
-ERROR:  operator class "helio_api_catalog.pgmongo_rum_hashed_ops" does not exist for access method "helio_rum"
-CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_6011 ON helio_data.documents_6000 USING helio_rum ( document helio_api_catalog.pgmongo_rum_hashed_ops(path='a')) "
+ERROR:  operator class "helio_api_catalog.helio_rum_hashed_ops" does not exist for access method "helio_rum"
+CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_6011 ON helio_data.documents_6000 USING helio_rum ( document helio_api_catalog.helio_rum_hashed_ops(path='a')) "
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": "hashed", "b": 1 }, "name": "my_idx_hashed_compound"}]}',true);
-ERROR:  operator class "helio_api_catalog.pgmongo_rum_hashed_ops" does not exist for access method "helio_rum"
-CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_6012 ON helio_data.documents_6000 USING helio_rum ( document helio_api_catalog.pgmongo_rum_hashed_ops(path='a'), document helio_api_catalog.bson_rum_single_path_ops(path='b')) "
+ERROR:  operator class "helio_api_catalog.helio_rum_hashed_ops" does not exist for access method "helio_rum"
+CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_6012 ON helio_data.documents_6000 USING helio_rum ( document helio_api_catalog.helio_rum_hashed_ops(path='a'), document helio_api_catalog.bson_rum_single_path_ops(path='b')) "
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a": 1, "b": "hashed" }, "name": "my_idx_hashed_compound_hash"}]}',true);
-ERROR:  operator class "helio_api_catalog.pgmongo_rum_hashed_ops" does not exist for access method "helio_rum"
-CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_6013 ON helio_data.documents_6000 USING helio_rum ( document helio_api_catalog.bson_rum_single_path_ops(path='a'), document helio_api_catalog.pgmongo_rum_hashed_ops(path='b')) "
+ERROR:  operator class "helio_api_catalog.helio_rum_hashed_ops" does not exist for access method "helio_rum"
+CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_6013 ON helio_data.documents_6000 USING helio_rum ( document helio_api_catalog.bson_rum_single_path_ops(path='a'), document helio_api_catalog.helio_rum_hashed_ops(path='b')) "
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a$**": "hashed"}, "name": "my_idx_dollar_name_1"}]}',true);
-ERROR:  operator class "helio_api_catalog.pgmongo_rum_hashed_ops" does not exist for access method "helio_rum"
-CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_6014 ON helio_data.documents_6000 USING helio_rum ( document helio_api_catalog.pgmongo_rum_hashed_ops(path='a$**')) "
+ERROR:  operator class "helio_api_catalog.helio_rum_hashed_ops" does not exist for access method "helio_rum"
+CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_6014 ON helio_data.documents_6000 USING helio_rum ( document helio_api_catalog.helio_rum_hashed_ops(path='a$**')) "
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"a.c$": "hashed"}, "name": "my_idx_dollar_name_2"}]}',true);
-ERROR:  operator class "helio_api_catalog.pgmongo_rum_hashed_ops" does not exist for access method "helio_rum"
-CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_6015 ON helio_data.documents_6000 USING helio_rum ( document helio_api_catalog.pgmongo_rum_hashed_ops(path='a.c$')) "
+ERROR:  operator class "helio_api_catalog.helio_rum_hashed_ops" does not exist for access method "helio_rum"
+CONTEXT:  SQL statement "CREATE INDEX  documents_rum_index_6015 ON helio_data.documents_6000 USING helio_rum ( document helio_api_catalog.helio_rum_hashed_ops(path='a.c$')) "
 -- invalid hash indexes
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_1", "indexes": [{"key": {"b": "hashed" }, "unique": 1, "name": "invalid_hashed"}]}',true);
 ERROR:  Error in specification { "key" : { "b" : "hashed" }, "unique" : 1, "name" : "invalid_hashed" } :: caused by :: Currently hashed indexes cannot guarantee uniqueness. Use a regular index
