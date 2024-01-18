@@ -78,10 +78,6 @@ class PgsqlWriteOperation :
   // Execute write.
   Status Apply(const DocOperationApplyData& data) override;
 
-  Status UpdateIterator(
-      DocOperationApplyData* data, DocOperation* prev, SingleOperation single_operation,
-      std::optional<DocRowwiseIterator>* iterator) final;
-
  private:
   void ClearResponse() override {
     if (response_) {

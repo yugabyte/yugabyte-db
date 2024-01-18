@@ -60,8 +60,12 @@ public class TestPgFastpathIntentdbSeeks extends BasePgSQLTestWithRpcMetric {
       updateCounter(counter);
       final int seeks = counter.intentdbSeeks.get("t").value();
 
-      // - Expect one seek per conflict resolution.
-      assertEquals(seeks, 1);
+      // - Expect four seeks for the columns being updated (kStrongWrite intents)
+      // - Expect four seeks for the weak intents
+      //   - Two seeks for the range components
+      //   - One seek for the hash component
+      //   - One seek for the tablet/relation
+      assertEquals(seeks, 8);
       stmt.execute("COMMIT");
     }
   }
