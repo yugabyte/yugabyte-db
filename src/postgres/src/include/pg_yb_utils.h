@@ -1076,4 +1076,7 @@ extern void YbIndexSetNewRelfileNode(Relation indexRel, Oid relfileNodeId,
  */
 extern SortByDir YbSortOrdering(SortByDir ordering, bool is_colocated, bool is_tablegroup, bool is_first_key);
 
+extern void YbGetRedactedQueryString(const char* query, int query_len,
+									 const char** redacted_query, int* redacted_query_len);
+
 #endif /* PG_YB_UTILS_H */
