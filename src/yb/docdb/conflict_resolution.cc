@@ -28,6 +28,7 @@
 #include "yb/docdb/docdb.messages.h"
 #include "yb/docdb/doc_read_context.h"
 #include "yb/docdb/docdb_rocksdb_util.h"
+#include "yb/docdb/docdb_filter_policy.h"
 #include "yb/docdb/iter_util.h"
 #include "yb/docdb/shared_lock_manager.h"
 #include "yb/docdb/transaction_dump.h"
@@ -206,7 +207,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
   }
 
   // Reads conflicts for specified intent from DB.
-  Status ReadIntentConflicts(IntentTypeSet type, bool first, KeyBytes* intent_key_prefix) {
+  Status ReadIntentConflicts(IntentTypeSet type, KeyBytes* intent_key_prefix) {
     EnsureIntentIteratorCreated();
 
     const auto conflicting_intent_types = kIntentTypeSetConflicts[type.ToUIntPtr()];
@@ -230,12 +231,7 @@ class ConflictResolver : public std::enable_shared_from_this<ConflictResolver> {
     VLOG_WITH_PREFIX_AND_FUNC(4) << "Check conflicts in intents DB; Seek: "
                                  << intent_key_prefix->AsSlice().ToDebugHexString() << " for type "
                                  << ToString(type);
-    if (first) {
-      intent_iter_.Seek(intent_key_prefix->AsSlice());
-    } else {
-      intent_iter_.RevalidateAfterUpperBoundChange();
-      SeekForward(intent_key_prefix->AsSlice(), &intent_iter_);
-    }
+    intent_iter_.Seek(intent_key_prefix->AsSlice());
     int64_t num_keys_scanned = 0;
     while (intent_iter_.Valid()) {
       auto existing_key = intent_iter_.key();
@@ -789,20 +785,19 @@ class StrongConflictChecker {
         buffer_(*buffer)
   {}
 
-  Status Check(
-      Slice intent_key, bool strong, ConflictManagementPolicy conflict_management_policy,
-      BloomFilterMode bloom_filter_mode) {
-    if (PREDICT_FALSE(!value_iter_.Initialized())) {
+Status Check(
+      Slice intent_key, bool strong, ConflictManagementPolicy conflict_management_policy) {
+    const auto bloom_filter_prefix = VERIFY_RESULT(ExtractFilterPrefixFromKey(intent_key));
+    if (!value_iter_.Initialized() || bloom_filter_prefix != value_iter_bloom_filter_prefix_) {
       value_iter_ = CreateRocksDBIterator(
           resolver_.doc_db().regular,
           resolver_.doc_db().key_bounds,
-          bloom_filter_mode,
+          BloomFilterMode::USE_BLOOM_FILTER,
           intent_key,
           rocksdb::kDefaultQueryId);
-      value_iter_.Seek(intent_key);
-    } else {
-      SeekForward(intent_key, &value_iter_);
+      value_iter_bloom_filter_prefix_ = bloom_filter_prefix;
     }
+    value_iter_.Seek(intent_key);
 
     VLOG_WITH_PREFIX_AND_FUNC(4)
         << "Overwrite; Seek: " << intent_key.ToDebugString() << " ("
@@ -863,7 +858,7 @@ class StrongConflictChecker {
       buffer_.Reset(existing_key);
       // Already have ValueType::kHybridTime at the end
       buffer_.AppendHybridTime(DocHybridTime::kMin);
-      SeekForward(buffer_.AsSlice(), &value_iter_);
+      ROCKSDB_SEEK(&value_iter_, buffer_.AsSlice());
     }
 
     return value_iter_.status();
@@ -882,6 +877,7 @@ class StrongConflictChecker {
 
   // RocksDb iterator with bloom filter can be reused in case keys has same hash component.
   BoundedRocksDbIterator value_iter_;
+  Slice value_iter_bloom_filter_prefix_;
 };
 
 class ConflictResolverContextBase : public ConflictResolverContext {
@@ -1082,43 +1078,20 @@ class TransactionConflictResolverContext : public ConflictResolverContextBase {
     // DB where the provisional record has already been removed.
     resolver->EnsureIntentIteratorCreated();
 
-    // Check if we could use bloom filter for value_iter_.
-    auto bloom_filter_mode = BloomFilterMode::USE_BLOOM_FILTER;
-    // Whether we plan to instantiate value_iter_.
-    if (read_time_ != HybridTime::kMax) {
-      Slice bloom_filter_component;
-      for (const auto& [key_buffer, data] : container) {
-        const Slice intent_key = key_buffer.AsSlice();
-        if (data.full_doc_key || HasStrong(data.types)) {
-          if (bloom_filter_component.empty()) {
-            auto size_result = VERIFY_RESULT(dockv::DocKey::EncodedSize(
-                intent_key, dockv::DocKeyPart::kUpToHashOrFirstRange));
-            bloom_filter_component = intent_key.Prefix(size_result);
-          } else if (!intent_key.starts_with(bloom_filter_component)) {
-            bloom_filter_mode = BloomFilterMode::DONT_USE_BLOOM_FILTER;
-            break;
-          }
-        }
-      }
-    }
-
-    bool first = true;
     for (const auto& i : container) {
+      const Slice intent_key = i.first.AsSlice();
       if (read_time_ != HybridTime::kMax) {
-        const Slice intent_key = i.first.AsSlice();
         bool strong = HasStrong(i.second.types);
         // For strong intents or weak intents at a full document key level (i.e. excluding intents
         // that omit some final range components of the document key), check for conflicts with
         // records in regular RocksDB. We need this because the row might have been deleted
         // concurrently by a single-shard transaction or a committed and applied transaction.
         if (strong || i.second.full_doc_key) {
-          RETURN_NOT_OK(checker.Check(
-              intent_key, strong, GetConflictManagementPolicy(), bloom_filter_mode));
+          RETURN_NOT_OK(checker.Check(intent_key, strong, GetConflictManagementPolicy()));
         }
       }
-      buffer.Reset(i.first.AsSlice());
-      RETURN_NOT_OK(resolver->ReadIntentConflicts(i.second.types, first, &buffer));
-      first = false;
+      buffer.Reset(intent_key);
+      RETURN_NOT_OK(resolver->ReadIntentConflicts(i.second.types, &buffer));
     }
 
     return Status::OK();
@@ -1264,11 +1237,9 @@ class OperationConflictResolverContext : public ConflictResolverContextBase {
       return Status::OK();
     }
 
-    bool first = true;
     for (const auto& [key, intent_data] : container) {
       encoded_key_buffer.Reset(key.AsSlice());
-      RETURN_NOT_OK(resolver->ReadIntentConflicts(intent_data.types, first, &encoded_key_buffer));
-      first = false;
+      RETURN_NOT_OK(resolver->ReadIntentConflicts(intent_data.types, &encoded_key_buffer));
     }
 
     return Status::OK();
