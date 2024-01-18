@@ -56,6 +56,8 @@ public class TestYbAsh extends BasePgSQLTest {
    */
   @Test
   public void testAshViewWithoutEnablingAsh() throws Exception {
+    // We need to restart the cluster because ASH may already have been enabled
+    restartCluster();
     try (Statement statement = connection.createStatement()) {
       runInvalidQuery(statement, "SELECT * FROM " + ASH_VIEW,
           "TEST_yb_enable_ash gflag must be enabled");
@@ -128,6 +130,28 @@ public class TestYbAsh extends BasePgSQLTest {
       int res = getSingleRow(statement, "SELECT COUNT(*) FROM " + ASH_VIEW +
           " WHERE wait_event_component='TServer'").getLong(0).intValue();
       assertGreaterThan(res, 0);
+    }
+  }
+
+  /**
+   * Query id of utility statements shouldn't be zero
+   */
+  @Test
+  public void testUtilityStatementsQueryId() throws Exception {
+    setAshConfigAndRestartCluster(100, ASH_SAMPLE_SIZE);
+    try (Statement statement = connection.createStatement()) {
+      statement.execute("CREATE TABLE test_table1(k INT)");
+      statement.execute("ALTER TABLE test_table1 ADD value TEXT");
+      statement.execute("ALTER TABLE test_table1 RENAME TO test_table2");
+      for (int i = 0; i < 10; ++i) {
+        statement.execute(String.format("INSERT INTO test_table2 VALUES(%d, 'v-%d')", i, i));
+      }
+      statement.execute("TRUNCATE TABLE test_table2");
+      statement.execute("DROP TABLE test_table2");
+      // TODO: remove wait_event_component='Postgres' once ASH metadata is propagated to
+      // TServer
+      assertOneRow(statement, "SELECT COUNT(*) FROM " + ASH_VIEW + " WHERE query_id = 0 " +
+          "AND wait_event_component='Postgres'", 0);
     }
   }
 }

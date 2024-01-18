@@ -1566,9 +1566,7 @@ pgss_store(const char *query, uint64 queryId,
 		query_len--;
 
 	/* Use the redacted query for checking purposes. */
-	redacted_query = pnstrdup(query, query_len);
-	redacted_query = RedactPasswordIfExists(redacted_query);
-	redacted_query_len = strlen(redacted_query);
+	YbGetRedactedQueryString(query, query_len, &redacted_query, &redacted_query_len);
 
 	/*
 	 * For utility statements, we just hash the query string to get an ID.
