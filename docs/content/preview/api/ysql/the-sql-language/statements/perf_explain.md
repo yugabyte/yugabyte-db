@@ -17,7 +17,7 @@ type: docs
 Use the `EXPLAIN` statement to show the execution plan for a statement. If the `ANALYZE` option is used, the statement will be executed, rather than just planned. In that case, execution information (rather than just the planner's estimates) is added to the `EXPLAIN` result.
 
 {{< warning title="DML vs DDL" >}}
-The `EXPLAIN` statement is designed to work primarily for DML statements (for example, `SELECT`, `INSERT`, and so on). DDL statements are **not** explainable and in cases where DDL and DML are combined, the EXPLAIN statement shows only an approximation. For example, `EXPLAIN` on `SELECT * FROM <TABLE-1> INTO <TABLE-2>` provides only an approximation as `INTO` is a DDL statement.
+The `EXPLAIN` statement is designed to work primarily for DML statements (for example, `SELECT`, `INSERT`, and so on). DDL statements are _not_ explainable and in cases where DDL and DML are combined, the EXPLAIN statement shows only an approximation. For example, `EXPLAIN` on `SELECT * FROM <TABLE-1> INTO <TABLE-2>` provides only an approximation as `INTO` is a DDL statement.
 {{</ warning >}}
 
 ## Syntax
@@ -29,7 +29,7 @@ The `EXPLAIN` statement is designed to work primarily for DML statements (for ex
 
 ## Semantics
 
-Where statement is the target statement (see more [here](../dml_select/)).
+Where statement is the target statement (see [SELECT](../dml_select/)).
 
 ### ANALYZE
 
@@ -41,7 +41,7 @@ Present more details about the plan, such as the output column list for each nod
 
 ### BUFFERS
 
-Include information on buffer usage. Specifically, include the number of shared blocks hit, read, dirtied, and written, the number of local blocks hit, read, dirtied, and written, the number of temporary blocks read and written (default: `FALSE`).
+Include information on buffer usage. Specifically, include the number of shared blocks hit, read, dirtied, and written; the number of local blocks hit, read, dirtied, and written; and the number of temporary blocks read and written (default: `FALSE`).
 
 ### COSTS
 
