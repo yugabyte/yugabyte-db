@@ -35,6 +35,8 @@ export const PreFinalizeBanner: FC<PreFinalizeBannerProps> = ({ universeData }) 
         <Typography variant="body1">
           {t('universeActions.dbRollbackUpgrade.preFinalize.bannerMsg1')}
         </Typography>
+        {/* 
+        Do not remove this, We need this once We get Doc link
         <Box display="flex" mt={1.5} mb={2} flexDirection={'row'} alignItems={'center'}>
           <Typography variant="body2">
             {t('universeActions.dbRollbackUpgrade.preFinalize.bannerMsg2')}{' '}
@@ -44,7 +46,7 @@ export const PreFinalizeBanner: FC<PreFinalizeBannerProps> = ({ universeData }) 
           </Typography>
           &nbsp;
           <img src={LinkIcon} alt="---" height={'16px'} width="16px" />
-        </Box>
+        </Box> */}
         <Typography variant="body2">
           {t('universeActions.dbRollbackUpgrade.preFinalize.bannerMsg3')}
           <b>{t('universeActions.dbRollbackUpgrade.preFinalize.finalizeUpgrade')}</b>{' '}
@@ -72,7 +74,6 @@ export const PreFinalizeBanner: FC<PreFinalizeBannerProps> = ({ universeData }) 
           </YBButton>
         </Box>
       </Box>
-      (
       {openPreFinalModal && (
         <PreFinalizeModal
           open={openPreFinalModal}
