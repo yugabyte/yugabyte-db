@@ -514,6 +514,7 @@ void ClusterLoadBalancer::RunLoadBalancerWithOptions(Options* options) {
                    << StatusToString(handle_analyze_tablets);
       per_table_states_.erase(table->id());
       master_errors++;
+      continue;
     }
 
     if (!state_->sorted_load_.empty()) {
