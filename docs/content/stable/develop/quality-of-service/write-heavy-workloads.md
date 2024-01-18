@@ -57,8 +57,9 @@ Stop writes trigger is activated in one of the following scenarios:
 
   The number of SST files exceeds the value determined by the flag `sst_files_hard_limit`, which defaults to 48. Once the hard limit is hit, no more writes are processed, all incoming writes are rejected.
 
-* **Memstores flushed too frequently:**
-This condition occurs if there are a large number of tables (or more accurately, a large number of tablets) all of which get writes. In such cases, the memstores are forced to flush frequently, resulting in too many SST files. In such cases, you can tune the total memstore size allocated.
+* **Memstores flushed too frequently**
+
+  This condition occurs if there are a large number of tables (or more accurately, a large number of tablets) all of which get writes. In such cases, the memstores are forced to flush frequently, resulting in too many SST files. In such cases, you can tune the total memstore size allocated.
 
   Total memstore size is the minimum of the following two flags:
   
