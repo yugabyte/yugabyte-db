@@ -702,8 +702,8 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
         }
         kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.EDITING);
         taskUUID = updateGflagsYbUniverse(universeDetails, cust, ybUniverse);
-      } else if (currentUserIntent.numNodes != incomingIntent.numNodes) {
-        log.info("Updating nodes");
+      } else if (shouldUpdateYbUniverse(currentUserIntent, incomingIntent)) {
+        log.info("Calling Edit Universe");
         kubernetesStatusUpdater.createYBUniverseEventStatus(
             universe, k8ResourceDetails, TaskType.EditKubernetesUniverse.name());
         if (checkAndHandleUniverseLock(
@@ -732,6 +732,18 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       kubernetesStatusUpdater.updateUniverseState(k8ResourceDetails, UniverseState.ERROR_UPDATING);
       throw e;
     }
+  }
+
+  private boolean shouldUpdateYbUniverse(UserIntent currentUserIntent, UserIntent incomingIntent) {
+    // Check if we need to call edit universe.
+    // We currently support changing tserver, master spec,
+    // volume size and number of nodes.
+    return !currentUserIntent.masterK8SNodeResourceSpec.equals(
+            incomingIntent.masterK8SNodeResourceSpec)
+        || !currentUserIntent.tserverK8SNodeResourceSpec.equals(
+            incomingIntent.tserverK8SNodeResourceSpec)
+        || !currentUserIntent.deviceInfo.volumeSize.equals(incomingIntent.deviceInfo.volumeSize)
+        || !(currentUserIntent.numNodes == incomingIntent.numNodes);
   }
 
   private UUID updateOverridesYbUniverse(
