@@ -96,7 +96,7 @@ Configurable performance parameters and incremental backups are mediated using t
         <div class="title">Disaster recovery</div>
       </div>
       <div class="body">
-        Failover to a backup universe in case of unplanned outages.
+        Fail over to a backup universe in case of unplanned outages.
       </div>
     </a>
   </div>

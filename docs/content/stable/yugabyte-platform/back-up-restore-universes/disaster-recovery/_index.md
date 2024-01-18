@@ -3,7 +3,7 @@ title: Configure disaster recovery for a YugabyteDB Anywhere universe
 headerTitle: Disaster recovery
 linkTitle: Disaster recovery
 description: Enable deployment using transactional (active-standby) replication between universes
-headContent: Configure disaster recovery
+headContent: Fail over to a backup universe in case of unplanned outages
 image: /images/section_icons/manage/enterprise/upgrade_universe.png
 menu:
   stable_yugabyte-platform:
@@ -16,7 +16,7 @@ showRightNav: true
 
 Use disaster recovery (DR) to recover from an unplanned outage (failover) or for planned switchover.
 
-A DR configuration consists of a primary universe, which serves both reads and writes, and a DR replica universe. Data from the primary is replicated asynchronously to the DR replica (which is read only). Due to the asynchronous nature of the replication, this deployment comes with non-zero recovery point objective (RPO) in the case of a primary universe outage. The actual value depends on the replication lag, which in turn depends on the network characteristics between the universes.
+A DR configuration consists of a primary universe, which serves both reads and writes, and a DR replica universe, which can also serve reads. Data from the primary is replicated asynchronously to the DR replica (which is read only). Due to the asynchronous nature of the replication, this deployment comes with non-zero recovery point objective (RPO) in the case of a primary universe outage. The actual value depends on the replication lag, which in turn depends on the network characteristics between the universes.
 
 The recovery time objective (RTO) is very low, as it only depends on the applications switching their connections from one universe to another. Applications should be designed in such a way that the switch happens as quickly as possible.
 
