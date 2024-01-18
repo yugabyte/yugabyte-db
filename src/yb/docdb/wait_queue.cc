@@ -60,6 +60,7 @@
 #include "yb/util/source_location.h"
 #include "yb/util/status_format.h"
 #include "yb/util/sync_point.h"
+#include "yb/util/thread_restrictions.h"
 #include "yb/util/trace.h"
 #include "yb/util/unique_lock.h"
 
@@ -745,23 +746,25 @@ struct SerialWaiter {
   }
 };
 
-void ResumeWaiterOnReactor(SerialWaiter to_resume, const std::string log_prefix) {
-    auto& waiter = to_resume.waiter;
-    VLOG(1) << log_prefix << "Resuming waiter " << waiter->LogPrefix() << "on reactor thread.";
+void ResumeContentiousWaiter(const SerialWaiter& to_resume) {
+  DCHECK(PREDICT_TRUE(ThreadRestrictions::IsIOAllowed()))
+      << "IO disallowed, but the thread might have to perform IO operations downstearm.";
 
-    auto start_time = MonoTime::Now();
-    auto deadline = waiter->deadline();
-    auto s = waiter->InvokeCallback(Status::OK(), to_resume.resolve_ht, deadline);
-    if (s.ok()) {
-      VLOG(4) << log_prefix << "Successfully executed waiter " << waiter->LogPrefix()
-              << "callback on reactor thread.";
-      return;
-    }
+  auto& waiter = to_resume.waiter;
+  VLOG(1) << "Resuming waiter " << waiter->LogPrefix() << "on Scheduler.";
 
-    s = s.CloneAndAppend(Format("timeout: $0", deadline - ToCoarse(start_time)));
-    VLOG(1) << log_prefix << "Couldn't resume waiter on reactor thread: " << s;
-    DCHECK_OK(waiter->InvokeCallback(s));
+  auto start_time = MonoTime::Now();
+  auto deadline = waiter->deadline();
+  auto s = waiter->InvokeCallback(Status::OK(), to_resume.resolve_ht, deadline);
+  if (s.ok()) {
+    VLOG(4) << "Successfully executed waiter " << waiter->LogPrefix() << "callback on Scheduler.";
+    return;
   }
+
+  s = s.CloneAndAppend(Format("timeout: $0", deadline - ToCoarse(start_time)));
+  VLOG(1) << "Couldn't resume waiter on Scheduler: " << s;
+  DCHECK_OK(waiter->InvokeCallback(s));
+}
 
 // Resumes waiters async, in serial, and in the order of the waiter's serial_no, running the lowest
 // serial number first in a best effort manner.
@@ -879,16 +882,20 @@ class ResumedWaiterRunner {
         if (is_shutting_down) {
           // A shutdown request could have arrived after the waiter was popped off pq_, and we
           // could have failed to invoke the waiter's callback due to inability to obtain the
-          // shared in-memory locks. Instead of scheduling the callback on a reactor thread,
-          // execute the callback in-line here.
+          // shared in-memory locks. Instead of scheduling the callback, execute the callback
+          // in-line here.
           serial_waiter.waiter->InvokeCallbackOrWarn(kShuttingDownError);
         } else {
-          auto status = ScheduleWaiterResumptionOnReactor(serial_waiter);
-          if (!status.ok()) {
-            // When unable to schedule waiter resumption on a reactor thread, invoke the waiter
-            // callback with the error status.
-            serial_waiter.waiter->InvokeCallbackOrWarn(status);
-          }
+          VLOG_WITH_PREFIX(1) << "Scheduling waiter " << serial_waiter.waiter->LogPrefix()
+                              << "resumption on the Tablet Server's Scheduler.";
+          messenger_->scheduler().Schedule([serial_waiter](const Status& s) {
+            if (!s.ok()) {
+              serial_waiter.waiter->InvokeCallbackOrWarn(
+                  s.CloneAndPrepend("Failed scheduling contentious waiter resumption: "));
+              return;
+            }
+            ResumeContentiousWaiter(serial_waiter);
+          }, std::chrono::milliseconds(100));
         }
       }
     }), "Failed to trigger poll of ResumedWaiterRunner in wait queue");
@@ -911,18 +918,6 @@ class ResumedWaiterRunner {
     }
   }
 
-  Status ScheduleWaiterResumptionOnReactor(const SerialWaiter& to_resume) {
-    auto& waiter = to_resume.waiter;
-    VLOG_WITH_PREFIX(1) << "Scheduling waiter " << waiter->LogPrefix()
-                        << "resumption on reactor thread.";
-    VERIFY_RESULT_PREPEND(
-        messenger_->ScheduleOnReactor(
-            std::bind(&ResumeWaiterOnReactor, to_resume, log_prefix_),
-            MonoDelta::FromMilliseconds(100), SOURCE_LOCATION()),
-        Format("Failed to schedule waiter resumption $0", waiter->LogPrefix()));
-    return Status::OK();
-  }
-
   std::string LogPrefix() const {
     return Format("ResumedWaiterRunner: $0", log_prefix_);
   }
@@ -930,7 +925,7 @@ class ResumedWaiterRunner {
   mutable rw_spinlock mutex_;
   std::priority_queue<
       SerialWaiter, std::vector<SerialWaiter>, SerialWaiter> pq_ GUARDED_BY(mutex_);
-  // Set of weak waiter data pointers scheduled for resumption on reactor threads.
+  // Set of weak waiter data pointers scheduled for resumption.
   std::vector<std::weak_ptr<WaiterData>> contentious_waiters_ GUARDED_BY(mutex_);
   ThreadPoolToken* thread_pool_token_;
   bool shutting_down_ GUARDED_BY(mutex_) = false;

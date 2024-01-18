@@ -947,12 +947,12 @@ TEST_F(PgWaitQueueContentionStressTest, YB_DISABLE_TEST_IN_TSAN(ConcurrentReader
   PerformConcurrentReads();
 }
 
-// When a waiter fails to re-acquire the shared in-memory locks while being resumed from the
-// thread running ResumedWaiterRunner (which resumes waiters serially), it is scheduled for
-// retry on a reactor thread which attempts to re-acquire the shared in-memory locks until
-// the request deadline passes. The below test simulates a contentious workload and helps
-// assert the above, particularly in tsan mode.
-TEST_F(PgWaitQueueContentionStressTest, TestResumeWaitersOnReactor) {
+// When a waiter fails to re-acquire the shared in-memory locks while being resumed from the thread
+// running ResumedWaiterRunner (which resumes waiters serially), it is scheduled for retry on the
+// Tablet Server's Scheduler which attempts to re-acquire the shared in-memory locks until the
+// request deadline passes. The below test simulates a contentious workload and helps assert the
+// above, particularly in tsan mode.
+TEST_F(PgWaitQueueContentionStressTest, TestResumeWaitersOnScheduler) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_wait_for_relock_unblocked_txn_keys_ms) = 100;
   PerformConcurrentReads();
 }
