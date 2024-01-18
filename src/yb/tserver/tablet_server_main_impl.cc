@@ -254,7 +254,7 @@ int TabletServerMain(int argc, char** argv) {
   }
 
   LOG_AND_RETURN_FROM_MAIN_NOT_OK(MasterTServerParseFlagsAndInit(
-      TabletServerOptions::kServerType, &argc, &argv));
+      TabletServerOptions::kServerType, /*is_master=*/false, &argc, &argv));
 
   auto termination_monitor = TerminationMonitor::Create();
 
