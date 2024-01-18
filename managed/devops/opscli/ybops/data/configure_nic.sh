@@ -175,7 +175,7 @@ else
         new_subnet_mask="\$prefix"
     fi
 fi
-log_file="${tmp_dir}/dhclient-\${interface}-up-\$(date +%s)"
+log_file="${tmp_dir}/dhclient-script-\${interface}-up-\$(date +%s)"
 log "ENV: interface=\${interface}"
 log "ENV: new_routers=\${new_routers}"
 log "ENV: new_network_number=\${new_network_number}"
@@ -274,8 +274,8 @@ while [[ $# -gt 0 ]]; do
 done
 
 use_network_manager_dispatcher=false
-[ "$cloud" = "aws" ] && [ "$os_name" = "almalinux" ] && [ "$os_version" = "9" ] && \
-  use_network_manager_dispatcher=true
+[ "$cloud" = "aws" ] && { [ "$os_version" = "8" ] || [ "$os_version" = "9" ]; } && \
+  [ "$os_name" = "almalinux" ] && use_network_manager_dispatcher=true
 
 fix_ifcfg
 configure_nics
