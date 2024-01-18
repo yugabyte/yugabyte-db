@@ -33,10 +33,12 @@
 set(YB_PCH_PREFIX integration-tests)
 set(YB_PCH_DEP_LIBS boost_regex opid_proto)
 
-file(COPY
-  ${CMAKE_SOURCE_DIR}/test_certs DESTINATION
-  ${CMAKE_BINARY_DIR}
-  FILE_PERMISSIONS OWNER_WRITE OWNER_READ)
+add_custom_command(
+  OUTPUT ${CMAKE_BINARY_DIR}/test_certs
+  WORKING_DIRECTORY ${YB_BUILD_ROOT}
+  COMMAND ${BUILD_SUPPORT_DIR}/generate_test_certificates.sh ${CMAKE_BINARY_DIR}/test_certs)
+
+add_custom_target(generate_test_certs DEPENDS ${CMAKE_BINARY_DIR}/test_certs)
 
 ADD_YB_TEST_LIBRARY(
     cdc_test_util
@@ -96,7 +98,8 @@ add_dependencies(integration-tests
   "${YB_TSERVER_DYNAMIC_EXE_NAME}"
   yb-admin
   gen_auto_flags_json
-  yb-ts-cli)
+  yb-ts-cli
+  generate_test_certs)
 
 ADD_YB_TEST_LIBRARY(
     cql_test_util
