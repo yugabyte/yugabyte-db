@@ -18,25 +18,8 @@ import org.yb.annotations.InterfaceAudience;
 
 @InterfaceAudience.Private
 public class SnapshotUtil {
-
-    public static UUID convertToUUID(@Nullable ByteString byteString) {
-        if (Objects.isNull(byteString) || byteString.isEmpty()) {
-          return null;
-        }
-        byte[] bytes = byteString.toByteArray();
-        ByteBuffer bb = ByteBuffer.wrap(bytes);
-        return new UUID(bb.getLong(), bb.getLong());
-    }
-
-    public static ByteString convertToByteString(UUID uuid) {
-        ByteBuffer bb = ByteBuffer.wrap(new byte[16]);
-        bb.putLong(uuid.getMostSignificantBits());
-        bb.putLong(uuid.getLeastSignificantBits());
-        return ByteString.copyFrom(bb.array());
-    }
-
     public static SnapshotInfo parseSnapshotInfoPB(SnapshotInfoPB snapshotInfoPB) {
-        UUID snapshotUUID = convertToUUID(snapshotInfoPB.getId());
+        UUID snapshotUUID = CommonUtil.convertToUUID(snapshotInfoPB.getId());
         CatalogEntityInfo.SysSnapshotEntryPB snapshotEntry = snapshotInfoPB.getEntry();
         long snapshotTimeInMillis =
             HTTimestampToPhysicalAndLogical(snapshotEntry
@@ -54,10 +37,10 @@ public class SnapshotUtil {
 
     public static SnapshotRestorationInfo parseSnapshotRestorationInfoPB(
         RestorationInfoPB restorationInfoPB) {
-        UUID restorationUUID = convertToUUID(restorationInfoPB.getId());
+        UUID restorationUUID = CommonUtil.convertToUUID(restorationInfoPB.getId());
         SysRestorationEntryPB restorationEntry = restorationInfoPB.getEntry();
-        UUID snapshotUUID = convertToUUID(restorationEntry.getSnapshotId());
-        UUID scheduleUUID = convertToUUID(restorationEntry.getScheduleId());
+        UUID snapshotUUID = CommonUtil.convertToUUID(restorationEntry.getSnapshotId());
+        UUID scheduleUUID = CommonUtil.convertToUUID(restorationEntry.getScheduleId());
         long restoreTime = HTTimestampToPhysicalAndLogical(
                             restorationEntry.getRestoreAtHt())[0]/1000L;
         long completionTime = HTTimestampToPhysicalAndLogical(

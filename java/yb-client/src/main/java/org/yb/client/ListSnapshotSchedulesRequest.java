@@ -19,6 +19,7 @@ import org.yb.master.MasterBackupOuterClass.SnapshotScheduleFilterPB;
 import org.yb.master.MasterBackupOuterClass.SnapshotScheduleInfoPB;
 import org.yb.master.MasterBackupOuterClass.SnapshotScheduleOptionsPB;
 import org.yb.master.MasterTypes;
+import org.yb.util.CommonUtil;
 import org.yb.util.Pair;
 import org.yb.util.SnapshotUtil;
 
@@ -38,7 +39,7 @@ public class ListSnapshotSchedulesRequest extends YRpc<ListSnapshotSchedulesResp
         final ListSnapshotSchedulesRequestPB.Builder builder =
                 ListSnapshotSchedulesRequestPB.newBuilder();
         if (snapshotScheduleUUID != null) {
-            builder.setSnapshotScheduleId(SnapshotUtil.convertToByteString(snapshotScheduleUUID));
+            builder.setSnapshotScheduleId(CommonUtil.convertToByteString(snapshotScheduleUUID));
         }
         return toChannelBuffer(header, builder.build());
     }
@@ -66,7 +67,7 @@ public class ListSnapshotSchedulesRequest extends YRpc<ListSnapshotSchedulesResp
         if (!hasErr) {
             for (SnapshotScheduleInfoPB schedule: respBuilder.getSchedulesList()) {
                 SnapshotScheduleInfo snapshotScheduleInfo;
-                UUID scheduleUUID = SnapshotUtil.convertToUUID(schedule.getId());
+                UUID scheduleUUID = CommonUtil.convertToUUID(schedule.getId());
                 SnapshotScheduleOptionsPB snapshotScheduleOptions = schedule.getOptions();
                 SnapshotScheduleFilterPB snapshotScheduleFilter =
                         snapshotScheduleOptions.getFilter();

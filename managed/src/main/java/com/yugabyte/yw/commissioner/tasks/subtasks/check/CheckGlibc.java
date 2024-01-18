@@ -127,12 +127,9 @@ public class CheckGlibc extends UniverseTaskBase {
                             + dbGlibcVersion.get());
                   }
                   return true;
-                },
-                // delay between retry of task in sec
-                2,
-                // timeout for retry in secs
-                timeout);
-        if (!waitForCheck.retryUntilCond()) {
+                });
+        if (!waitForCheck.retryUntilCond(
+            2 /* delayBetweenRetrySecs */, timeout /* timeoutSecs */)) {
           throw new PlatformServiceException(
               INTERNAL_SERVER_ERROR, "Failed to fetch glibc on node " + node.cloudInfo.private_ip);
         }

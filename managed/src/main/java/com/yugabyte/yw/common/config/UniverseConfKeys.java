@@ -994,4 +994,12 @@ public class UniverseConfKeys extends RuntimeConfigKeysModule {
           "Enable Clock Sync check",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> alwaysWaitForDataMove =
+      new ConfKeyInfo<>(
+          "yb.always_wait_for_data_move",
+          ScopeType.UNIVERSE,
+          "Always wait for data move on remove node",
+          "Always run wait for data move during remove node",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.INTERNAL));
 }

@@ -28,6 +28,7 @@ import org.yb.master.MasterBackupOuterClass.TableIdentifiersPB;
 import org.yb.master.MasterTypes.MasterErrorPB;
 import org.yb.master.MasterTypes.NamespaceIdentifierPB;
 import org.yb.master.MasterTypes.TableIdentifierPB;
+import org.yb.util.CommonUtil;
 import org.yb.util.Pair;
 import org.yb.util.SnapshotUtil;
 
@@ -124,7 +125,7 @@ public class CreateSnapshotScheduleRequest extends YRpc<CreateSnapshotScheduleRe
     readProtobuf(callResponse.getPBMessage(), respBuilder);
 
     MasterErrorPB serverError = respBuilder.hasError() ? respBuilder.getError() : null;
-    UUID scheduleUuid = SnapshotUtil.convertToUUID(respBuilder.getSnapshotScheduleId());
+    UUID scheduleUuid = CommonUtil.convertToUUID(respBuilder.getSnapshotScheduleId());
     CreateSnapshotScheduleResponse response =
         new CreateSnapshotScheduleResponse(
             deadlineTracker.getElapsedMillis(),

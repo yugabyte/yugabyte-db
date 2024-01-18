@@ -912,6 +912,17 @@ public class AsyncYBClient implements AutoCloseable {
   }
 
   /**
+   * Get the list of live tablet servers.
+   * @return a deferred object that yields a list of live tablet servers
+   */
+  public Deferred<ListLiveTabletServersResponse> listLiveTabletServers() {
+    checkIsClosed();
+    ListLiveTabletServersRequest rpc = new ListLiveTabletServersRequest(this.masterTable);
+    rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    return sendRpcToTablet(rpc);
+  }
+
+  /**
    * Get the list of all the masters.
    * @return a deferred object that yields a list of masters
    */
