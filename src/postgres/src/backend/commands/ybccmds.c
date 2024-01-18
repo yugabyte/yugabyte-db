@@ -30,6 +30,7 @@
 #include "catalog/index.h"
 #include "catalog/indexing.h"
 #include "catalog/namespace.h"
+#include "catalog/partition.h"
 #include "catalog/pg_am.h"
 #include "catalog/pg_attribute.h"
 #include "catalog/pg_class.h"
@@ -1282,8 +1283,7 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 					YBCPgAlterTableIncrementSchemaVersion(
 						increment_schema_handle));
 			}
-			Relation dependent_rel = NULL;
-			YBCPgStatement alter_cmd_handle = NULL;
+			List* dependent_rels = NIL;
 			/*
 			 * For attach and detach partition cases, assigning
 			 * the partition table as dependent relation.
@@ -1305,16 +1305,43 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 					return handles;
 				}
 
-				dependent_rel = heap_openrv(partition_rv, AccessExclusiveLock);
+				List* affectedPartitions = NIL;
+				affectedPartitions = lappend(affectedPartitions,
+					heap_openrv(partition_rv, AccessExclusiveLock));
+
+				/*
+				 * While attaching a partition to the parent partitioned table,
+				 * additionally increment the schema version of the default
+				 * partition as well. This will prevent any concurrent
+				 * operations inserting data matching this new partition from
+				 * being inserted into the default partition
+				 */
+
+				if (cmd->subtype == AT_AttachPartition)
+				{
+					Oid defaultOid = get_default_partition_oid(rel->rd_id);
+					if (OidIsValid(defaultOid))
+					{
+						Relation defaultPartition = heap_open(defaultOid, AccessExclusiveLock);
+						affectedPartitions = lappend(affectedPartitions, defaultPartition);
+					}
+				}
+
 				/*
 				 * If the partition table is not YB supported table including
 				 * foreign table, skip schema version increment.
 				 */
-				if (!IsYBBackedRelation(dependent_rel) ||
-					dependent_rel->rd_rel->relkind == RELKIND_FOREIGN_TABLE)
+				ListCell *lc = NULL;
+				foreach(lc, affectedPartitions)
 				{
-					heap_close(dependent_rel, AccessExclusiveLock);
-					dependent_rel = NULL;
+					Relation partition = (Relation) lfirst(lc);
+					if (!IsYBBackedRelation(partition) ||
+						partition->rd_rel->relkind == RELKIND_FOREIGN_TABLE)
+					{
+						heap_close(partition, AccessExclusiveLock);
+						continue;
+					}
+					dependent_rels = lappend(dependent_rels, partition);
 				}
 			}
 			/*
@@ -1324,8 +1351,9 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 			else if (cmd->subtype == AT_AddConstraintRecurse &&
 					 ((Constraint *) cmd->def)->contype == CONSTR_FOREIGN)
 			{
-				dependent_rel = heap_openrv(((Constraint *) cmd->def)->pktable,
-											AccessExclusiveLock);
+				dependent_rels = lappend(dependent_rels,
+					heap_openrv(((Constraint *) cmd->def)->pktable,
+								AccessExclusiveLock));
 			}
 			/*
 			 * For drop foreign key case, assigning the primary key table
@@ -1375,8 +1403,8 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 					if (con->contype == CONSTRAINT_FOREIGN &&
 						relationId != con->confrelid)
 					{
-						dependent_rel = heap_open(con->confrelid,
-												  AccessExclusiveLock);
+						dependent_rels = lappend(dependent_rels,
+							heap_open(con->confrelid, AccessExclusiveLock));
 					}
 				}
 			}
@@ -1398,16 +1426,20 @@ YBCPrepareAlterTableCmd(AlterTableCmd* cmd, Relation rel, List *handles,
 							 errmsg("This ALTER TABLE command is"
 									" not yet supported.")));
 				}
-				dependent_rel = heap_openrv(index->relation,
-											AccessExclusiveLock);
+				dependent_rels = lappend(dependent_rels,
+					heap_openrv(index->relation, AccessExclusiveLock));
 			}
 			/*
 			 * If dependent relation exists, apply increment schema version
 			 * operation on the dependent relation.
 			 */
-			if (dependent_rel != NULL)
+			ListCell *lc = NULL;
+			foreach(lc, dependent_rels)
 			{
+				Relation dependent_rel = (Relation) lfirst(lc);
+				Assert(dependent_rel != NULL);
 				Oid relationId = RelationGetRelid(dependent_rel);
+				YBCPgStatement alter_cmd_handle = NULL;
 				HandleYBStatus(
 					YBCPgNewAlterTable(
 						YBCGetDatabaseOidByRelid(relationId),
