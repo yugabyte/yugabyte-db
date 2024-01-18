@@ -536,6 +536,19 @@ explain (costs off) select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1
                Index Cond: (c2 = ANY (ARRAY[q1.c2, $1, $2, ..., $1023]))
 (7 rows)
 
+explain (costs off) select q2.c1, q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
+                                  QUERY PLAN
+-------------------------------------------------------------------------------
+ Limit
+   ->  Result
+         ->  YB Batched Nested Loop Join
+               Join Filter: (q1.c2 = q2.c2)
+               Sort Keys: q1.c1
+               ->  Index Scan using q1_pkey on q1
+               ->  Index Scan using q2_pkey on q2
+                     Index Cond: (c2 = ANY (ARRAY[q1.c2, $1, $2, ..., $1023]))
+(8 rows)
+
 create table q3(a int, b int, c name, primary key(a,b));
 create index q3_range on q3(a asc);
 explain (costs off) select * from q1 p1 left join (SELECT p2.c1 as a1, p3.a as a2 from q2 p2 join q3 p3 on true) j1 on j1.a1 = p1.c1;
