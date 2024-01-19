@@ -166,10 +166,8 @@ int od_instance_main(od_instance_t *instance, int argc, char **argv)
 		goto error;
 	}
 
-#if YB_POOL_MODE == POOL_PER_DB
 	yb_read_conf_from_env_var(&router.rules, &instance->config,
 				 &instance->logger);
-#endif
 
 #ifdef PROM_FOUND
 	rc = od_prom_metrics_init(cron.metrics);

@@ -21,6 +21,9 @@
 #include "yb/util/mem_tracker.h"
 
 namespace yb {
+
+class Subprocess;
+
 namespace rpc {
 
 YB_STRONGLY_TYPED_BOOL(MatchingCertKeyPair);
@@ -58,6 +61,8 @@ StreamFactoryPtr SecureStreamFactory(
     const SecureContext* context);
 
 void InitOpenSSL();
+
+void SetOpenSSLEnv(Subprocess* proc);
 
 bool AllowInsecureConnections();
 

@@ -1237,6 +1237,17 @@ class TransactionParticipant::Impl
   }
 
   Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) {
+    // Once a WriteQuery passes conflict resolution, it performs all the required read operations
+    // as part of docdb::AssembleDocWriteBatch. While iterating over the relevant intents, it
+    // requests statuses of the corresponding transactions as of the picked read time. On seeing
+    // an ABORTED status, it decides to wait until the coordinator returned safe time so as to not
+    // wrongly interpret a COMMITTED transaction as aborted. A shutdown request could arrive in
+    // the meanwhile and change the state of the tablet peer. If so, return a retryable error
+    // instead of invoking the downstream code which eventually does a blocking wait until the
+    // deadline passes.
+    if (Closing()) {
+      return STATUS_FORMAT(IllegalState, "$0Transaction Participant is shutting down", LogPrefix());
+    }
     return participant_context_.WaitForSafeTime(safe_time, deadline);
   }
 

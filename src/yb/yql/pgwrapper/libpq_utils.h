@@ -358,4 +358,10 @@ class PGConnPerf {
   Subprocess process_;
 };
 
+// Utility function for creating internal pg connections (ie local connection using yb-tserver-key
+// authentication).
+PGConnBuilder CreateInternalPGConnBuilder(
+    const HostPort& pgsql_proxy_bind_address, const std::string& database_name,
+    uint64_t postgres_auth_key, const std::optional<CoarseTimePoint>& deadline);
+
 } // namespace yb::pgwrapper

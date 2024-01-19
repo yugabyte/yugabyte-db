@@ -1134,6 +1134,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allows user to enter postgres hba rules and ident map rules in multiple rows",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> releasesRedesign =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.releases_redesign",
+          ScopeType.GLOBAL,
+          "Enable the option to view new releases page",
+          "Enable the option to view new releases page",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.BETA));
   public static final ConfKeyInfo<Boolean> haDisableCertValidation =
       new ConfKeyInfo<>(
           "yb.ha.ws.ssl.loose.acceptAnyCertificate",

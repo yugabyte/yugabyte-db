@@ -19,6 +19,7 @@
 
 #include "yb/master/master.h"
 #include "yb/master/master_cluster.pb.h"
+#include "yb/master/ts_descriptor.h"
 #include "yb/master/xcluster/xcluster_config.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 
@@ -26,6 +27,8 @@
 
 #include "yb/util/logging.h"
 #include "yb/util/result.h"
+
+#include "yb/cdc/cdc_service.proxy.h"
 
 DEFINE_test_flag(bool, enable_xcluster_api_v2, false, "Allow the usage of new xCluster APIs");
 
@@ -103,22 +106,40 @@ Status XClusterManager::InsertOutboundReplicationGroup(
 XClusterOutboundReplicationGroup XClusterManager::InitOutboundReplicationGroup(
     const xcluster::ReplicationGroupId& replication_group_id,
     const SysXClusterOutboundReplicationGroupEntryPB& metadata) {
-  return XClusterOutboundReplicationGroup(
-      replication_group_id, metadata, sys_catalog_,
-      [catalog_manager = catalog_manager_](const NamespaceId& namespace_id) {
-        return catalog_manager->GetTableInfosForNamespace(namespace_id);
+  XClusterOutboundReplicationGroup::HelperFunctions helper_functions = {
+      .get_namespace_id_func =
+          [catalog_manager = catalog_manager_](
+              YQLDatabase db_type, const NamespaceName& namespace_name) {
+            return catalog_manager->GetNamespaceId(db_type, namespace_name);
+          },
+      .get_tables_func =
+          [this](const NamespaceId& namespace_id) { return GetTablesToReplicate(namespace_id); },
+      .bootstrap_tables_func =
+          [this](const std::vector<TableInfoPtr>& table_infos, CoarseTimePoint deadline)
+          -> Result<std::vector<xrepl::StreamId>> {
+        return BootstrapTables(table_infos, deadline);
       },
-      [catalog_manager = catalog_manager_](
-          YQLDatabase db_type, const NamespaceName& namespace_name) {
-        return catalog_manager->GetNamespaceId(db_type, namespace_name);
-      },
-      [catalog_manager = catalog_manager_](
-          const DeleteCDCStreamRequestPB& req,
-          const LeaderEpoch& epoch) -> Result<DeleteCDCStreamResponsePB> {
+      .delete_cdc_stream_func = [catalog_manager = catalog_manager_](
+                                    const DeleteCDCStreamRequestPB& req,
+                                    const LeaderEpoch& epoch) -> Result<DeleteCDCStreamResponsePB> {
         DeleteCDCStreamResponsePB resp;
         RETURN_NOT_OK(catalog_manager->DeleteCDCStream(&req, &resp, nullptr));
         return resp;
-      });
+      },
+      .upsert_to_sys_catalog_func =
+          [sys_catalog = sys_catalog_](
+              const LeaderEpoch& epoch, XClusterOutboundReplicationGroupInfo* info) {
+            return sys_catalog->Upsert(epoch.leader_term, info);
+          },
+      .delete_from_sys_catalog_func =
+          [sys_catalog = sys_catalog_](
+              const LeaderEpoch& epoch, XClusterOutboundReplicationGroupInfo* info) {
+            return sys_catalog->Delete(epoch.leader_term, info);
+          },
+  };
+
+  return XClusterOutboundReplicationGroup(
+      replication_group_id, metadata, std::move(helper_functions));
 }
 
 Result<XClusterOutboundReplicationGroup*> XClusterManager::GetOutboundReplicationGroup(
@@ -463,6 +484,76 @@ Status XClusterManager::GetXClusterStreams(
   }
 
   return Status::OK();
+}
+
+namespace {
+// Should the table be part of xCluster replication?
+bool ShouldReplicateTable(const TableInfoPtr& table) {
+  if (table->GetTableType() != PGSQL_TABLE_TYPE || table->is_system()) {
+    // Limited to ysql databases.
+    // System tables are not replicated. DDLs statements will be replicated and executed on the
+    // target universe to handle catalog changes.
+    return false;
+  }
+
+  if (table->is_matview()) {
+    // Materialized views need not be replicated, since they are not modified. Every time the view
+    // is refreshed, new tablets are created. The same refresh can just run on the target universe.
+    return false;
+  }
+
+  if (table->IsColocatedUserTable()) {
+    // Only the colocated parent table needs to be replicated.
+    return false;
+  }
+
+  return true;
+}
+
+}  // namespace
+
+Result<std::vector<TableInfoPtr>> XClusterManager::GetTablesToReplicate(
+    const NamespaceId& namespace_id) {
+  auto table_infos = VERIFY_RESULT(catalog_manager_->GetTableInfosForNamespace(namespace_id));
+  EraseIf([](const TableInfoPtr& table) { return !ShouldReplicateTable(table); }, &table_infos);
+  return table_infos;
+}
+
+Result<std::vector<xrepl::StreamId>> XClusterManager::BootstrapTables(
+    const std::vector<TableInfoPtr>& table_infos, CoarseTimePoint deadline) {
+  cdc::BootstrapProducerRequestPB bootstrap_req;
+  master::TSDescriptor* ts = nullptr;
+  for (const auto& table_info : table_infos) {
+    bootstrap_req.add_table_ids(table_info->id());
+
+    if (!ts) {
+      ts = VERIFY_RESULT(table_info->GetTablets().front()->GetLeader());
+    }
+  }
+  SCHECK(ts, IllegalState, "No valid tserver found to bootstrap from");
+
+  std::shared_ptr<cdc::CDCServiceProxy> proxy;
+  RETURN_NOT_OK(ts->GetProxy(&proxy));
+
+  cdc::BootstrapProducerResponsePB bootstrap_resp;
+  rpc::RpcController bootstrap_rpc;
+  bootstrap_rpc.set_deadline(deadline);
+
+  // TODO(Hari): DB-9416 Make this async and atomic with upsert of the outbound replication group.
+  RETURN_NOT_OK(proxy->BootstrapProducer(bootstrap_req, &bootstrap_resp, &bootstrap_rpc));
+  if (bootstrap_resp.has_error()) {
+    RETURN_NOT_OK(StatusFromPB(bootstrap_resp.error().status()));
+  }
+
+  SCHECK_EQ(
+      table_infos.size(), bootstrap_resp.cdc_bootstrap_ids_size(), IllegalState,
+      "Number of tables to bootstrap and number of bootstrap ids do not match");
+
+  std::vector<xrepl::StreamId> stream_ids;
+  for (const auto& bootstrap_id : bootstrap_resp.cdc_bootstrap_ids()) {
+    stream_ids.emplace_back(VERIFY_RESULT(xrepl::StreamId::FromString(bootstrap_id)));
+  }
+  return stream_ids;
 }
 
 }  // namespace yb::master
