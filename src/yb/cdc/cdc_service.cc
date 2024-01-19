@@ -3415,7 +3415,8 @@ Status CDCServiceImpl::CheckTabletNotOfInterest(
     bool deletion_check) {
 
   // This is applicable only to Consistent Snapshot Streams,
-  auto record = VERIFY_RESULT(GetStream(producer_tablet.stream_id));
+  auto record = VERIFY_RESULT(
+      GetStream(producer_tablet.stream_id, RefreshStreamMapOption::kIfInitiatedState));
   if (!record->GetSnapshotOption().has_value() || !record->GetStreamCreationTime().has_value()) {
     return Status::OK();
   }
