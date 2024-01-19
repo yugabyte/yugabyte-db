@@ -16,7 +16,7 @@ Planned switchover is the process of switching write access from the DR primary 
 
 Switchover can be used by enterprises when performing regular business continuity or disaster recovery testing. Switchover is also used for failback after a [Failover](../disaster-recovery-failover/); that is, switching traffic back to the former DR primary after it is brought back online.
 
-## Switchover
+## Perform switchover
 
 First, confirm there is no lag between the DR primary and replica. You can monitor lag on the **Disaster Recovery** tab.
 

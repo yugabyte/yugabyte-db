@@ -48,7 +48,7 @@ Add tables to DR in the following sequence:
 
 1. Click **Validate Selection**.
 1. If the validation is successful, click **Next: Configure Full Copy**.
-1. Select a storage config to be used for backup and restore in case a full copy needs to be transferred to the DR replica database.
+1. Select a storage configuration to be used for backup and restore in case a full copy needs to be transferred to the DR replica database.
 1. Click **Apply Changes**.
 
 Note the following:

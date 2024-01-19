@@ -12,7 +12,35 @@ menu:
 type: docs
 ---
 
-The following assumes you have set up two universes to act as the DR primary and DR replica. Refer to [Prerequisites](../#prerequisites).
+## Prerequisites
+
+Create two universes, the primary universe which will serve reads and writes, and the DR replica.
+
+Ensure the universes have the following characteristics:
+
+- Both universes have the same encryption in transit settings.
+- They reside in different regions.
+- They use the same backup configuration.
+- They have enough disk space. DR requires more disk space to store write ahead logs (WAL) in case of a network partition or a complete outage of the DR replica universe.
+
+Prepare your database and tables on the DR primary. The DR primary can be empty or have data. If the DR primary has a lot of data, the DR setup will take longer as the data must be copied to the DR replica before replication starts.
+
+On the DR replica, create a database with the same name as that on the DR primary. During initial DR setup, you don't need to create objects on the DR replica. DR performs a full copy of the data to be replicated on the DR primary and automatically creates tables and objects and restores data on the DR replica from the DR primary.
+
+After DR is configured, the DR replica will only be available for reads.
+
+### Best practices
+
+- Keep CPU use below 65%.
+- Keep disk space use under 65%.
+- Create the DR primary and DR replica universes with TLS enabled.
+- Set the YB-TServer [log_min_seconds_to_retain](../../../../reference/configuration/yb-tserver/#log-min-seconds-to-retain) flag to 86400 on both DR primary and replica.
+
+    This flag determines the duration for which WAL is retained on the DR primary in case of a network partition or a complete outage of the DR replica. Be sure to allocate enough disk space to hold WAL generated for this duration.
+
+    The value depends on how long a network partition or DR replica outage can be tolerated, and the amount of WAL expected to be generated during that period.
+
+- [Set a replication lag alert](#set-up-replication-lag-alerts) for the DR primary to be alerted when the replication lag exceeds acceptable levels.
 
 ## Set up disaster recovery
 
@@ -42,7 +70,7 @@ To set up disaster recovery for a universe, do the following:
 
 1. Click **Confirm and Enable Disaster Recovery**.
 
-YugabyteDB Anywhere proceeds to set up DR for the universe. How long this takes depend mainly on the amount of data that needs to be copied to the DR replica.
+YugabyteDB Anywhere proceeds to set up DR for the universe. How long this takes depends mainly on the amount of data that needs to be copied to the DR replica.
 
 ## Monitor replication
 
@@ -99,11 +127,31 @@ To create an alert:
 
 For more information on alerting in YugabyteDB Anywhere, refer to [Alerts](../../../alerts-monitoring/alert/).
 
-## Add a database to an existing replication
+## Add a database to an existing DR
 
-Note that, although you don't need to create objects on DR replica during initial replication, when you add a new database to an existing replication stream, you _do_ need to create the same objects on the DR replica. If DR primary and replica objects don't match, you won't be able to add the database to the replication.
+Note that, although you don't need to create objects on the DR replica during initial DR setup, when you add a new database to an existing DR configuration, you _do_ need to create the same objects on the DR replica. If DR primary and replica objects don't match, you won't be able to add the database to DR.
 
-In addition, If the WALs are garbage collected from DR primary, then the database will need to be bootstrapped. The bootstrap process is handled by YBA. Only the single database is bootstrapped, not all the databases involved in the existing replication.
+To add a database to DR, do the following:
+
+1. Navigate to your primary universe and select **Disaster Recovery**.
+
+1. Click **Actions > Select Databases and Tables**.
+
+1. Select the databases to be copied to the DR replica for disaster recovery.
+
+    You can add databases containing colocated tables to the DR configuration as long as the underlying database is v2.18.1.0 or later. Colocated tables on the DR primary and replica should be created with the same colocation ID if they already exist on both the DR primary and replica prior to DR setup.
+
+1. Click **Validate Selection**.
+
+    YugabyteDB Anywhere checks whether or not data needs to be copied to the DR replica for the selected databases and its tables.
+
+1. If data needs to be copied, click **Next: Configure Full Copy**, and select a storage configuration.
+
+    The storage is used to transfer the data to the DR replica database. For information on how to configure storage, see [Configure backup storage](../../configure-backup-storage/).
+
+1. Click **Apply Changes**.
+
+YugabyteDB Anywhere proceeds to copy the database to the DR replica. How long this takes depends mainly on the amount of data that needs to be copied.
 
 ## Change the DR replica
 
@@ -117,7 +165,7 @@ To change the universe that is used as a DR replica, do the following:
 
 1. Enter the name of the DR replica and click **Next: Configure Full Copy**.
 
-1. Select a storage config to be used for backup and restore in case a full copy needs to be transferred to the new DR replica.
+1. Select a storage configuration to be used for backup and restore in case a full copy needs to be transferred to the new DR replica.
 
 1. Click **Apply Changes**.
 

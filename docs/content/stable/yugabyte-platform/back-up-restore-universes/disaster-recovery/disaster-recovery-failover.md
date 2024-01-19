@@ -14,7 +14,7 @@ type: docs
 
 Unplanned failover is the process of switching application traffic to the DR replica universe in case the DR primary universe becomes unavailable. One of the common reasons for such a scenario is an outage of the primary region.
 
-## Performing failover
+## Perform failover
 
 Use the following procedure to perform an unplanned failover to the DR replica and resume applications.
 
