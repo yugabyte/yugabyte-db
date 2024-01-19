@@ -128,7 +128,7 @@ This condition is evaluated after a conflict has been identified as a candidate 
 Only `NOT DEFERRABLE` constraints and unique indexes are supported as arbiters.
 `exclusion` constraints are not supported as arbiters with `ON CONFLICT DO UPDATE`. 
 
-The `ON CONFLICT DO UPDATE` clause is a “deterministic” statement. 
+The `ON CONFLICT DO UPDATE` clause is a _deterministic_ statement. 
 The command is not allowed to update any existing row more than once, a `cardinality violation` error will be raised in such cases.
 Rows to be inserted must not conflict with each other on the used constraint or arbiter index.
 
