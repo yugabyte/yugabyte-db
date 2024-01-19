@@ -779,12 +779,13 @@ YbIsUnsatisfiableCondition(int nkeys, ScanKey keys[])
 
 		/*
 		 * Look for two cases:
-		 * - = null
+		 * - op null
 		 * - row(a, b, c) op row(null, e, f)
 		 */
-		if ((key->sk_strategy == BTEqualStrategyNumber ||
-			 (i > 0 && YbIsRowHeader(keys[i - 1]) &&
-			  key->sk_flags & SK_ROW_MEMBER)) &&
+		if (((key->sk_strategy != InvalidStrategy &&
+			  (key->sk_flags & SK_ROW_MEMBER) == 0)||
+			(i > 0 && YbIsRowHeader(keys[i - 1]) &&
+			 key->sk_flags & SK_ROW_MEMBER)) &&
 			YbIsNeverTrueNullCond(key))
 		{
 			elog(DEBUG1, "skipping a scan due to unsatisfiable condition");
