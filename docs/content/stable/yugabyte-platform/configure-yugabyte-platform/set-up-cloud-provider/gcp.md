@@ -143,6 +143,9 @@ To edit the provider, select **Config Details**, make changes, and click **Apply
 
     then the backend request fails and you will receive a toast notification via the UI indicating that you can't change the GCE project for an in-use provider.
 
+- Regions - You can add regions and zones to an in-use provider.
+Note that you cannot edit existing region details (such as shared subnet, yb image, and so on), or delete a region if any of the region's zones are in use. You also cannot delete zones which are in-use.
+
 To view the universes created using the provider, select **Universes**.
 
 To delete the provider, click **Actions** and choose **Delete Configuration**. You can only delete providers that are not in use by a universe.
