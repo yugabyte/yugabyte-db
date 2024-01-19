@@ -206,8 +206,6 @@ class DocOperationTest : public DocDBTestBase {
       .doc_write_batch = &doc_write_batch,
       .read_operation_data = ReadOperationData(),
       .restart_read_ht = &restart_read_ht,
-      .iterator = nullptr,
-      .restart_seek = true,
       .schema_packing_provider = nullptr,
     }));
     ASSERT_OK(WriteToRocksDB(doc_write_batch, hybrid_time));
@@ -391,8 +389,6 @@ TEST_F(DocOperationTest, TestRedisSetKVWithTTL) {
       .doc_write_batch = &doc_write_batch,
       .read_operation_data = {},
       .restart_read_ht = nullptr,
-      .iterator = nullptr,
-      .restart_seek = true,
       .schema_packing_provider = nullptr,
   }));
 

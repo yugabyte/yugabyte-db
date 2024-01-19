@@ -734,4 +734,32 @@ TEST_F(PgSingleTServerTest, BoundedRangeScanWithLargeTransaction) {
   holder.WaitAndStop(std::chrono::seconds(5));
 }
 
+TEST_F(PgSingleTServerTest, RangeConflict) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (key INT, value INT, PRIMARY KEY (key ASC))"));
+
+  auto conn2 = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn2.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
+  LOG(INFO) << "Rows: " << conn2.FetchAllAsString("SELECT * FROM t");
+
+  ASSERT_OK(conn.ExecuteFormat("INSERT INTO t VALUES (1, 1), (2, 1)"));
+  ASSERT_OK(WaitForAllIntentsApplied(cluster_.get()));
+  ASSERT_OK(cluster_->FlushTablets());
+
+  ASSERT_NOK(conn2.Execute("INSERT INTO t VALUES (0, 2), (1, 2)"));
+}
+
+TEST_F(PgSingleTServerTest, UpdateIndexWithHole) {
+  auto conn = ASSERT_RESULT(Connect());
+  ASSERT_OK(conn.Execute("CREATE TABLE t (id INT PRIMARY KEY, value INT)"));
+  // Need missing entry in index table, so UPSERT will be the first operation.
+  ASSERT_OK(conn.Execute("CREATE INDEX value_idx ON t (value ASC) where value != 2"));
+  ASSERT_OK(conn.Execute("INSERT INTO t VALUES (1, 2), (2, 4)"));
+  ASSERT_OK(conn.Execute("UPDATE t SET value = value - 1"));
+
+  auto num_index_rows = ASSERT_RESULT(conn.FetchValue<int64_t>(
+      "SELECT COUNT(*) FROM t WHERE value > 2"));
+  ASSERT_EQ(num_index_rows, 1);
+}
+
 }  // namespace yb::pgwrapper

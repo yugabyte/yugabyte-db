@@ -1365,58 +1365,22 @@ const dockv::ReaderProjection& PgsqlWriteOperation::projection() const {
   return *projection_;
 }
 
-Status PgsqlWriteOperation::UpdateIterator(
-    DocOperationApplyData* data, DocOperation* prev_op, SingleOperation single_operation,
-      std::optional<DocRowwiseIterator>* iterator) {
-  if (prev_op) {
-    auto* prev = down_cast<PgsqlWriteOperation*>(prev_op);
-    if (request_.table_id() == prev->request_.table_id() &&
-        projection() == prev->projection()) {
-      data->restart_seek = doc_key_ <= prev->doc_key_;
-      return Status::OK();
-    }
-  }
-
-  iterator->emplace(
-      projection(),
-      *doc_read_context_,
-      txn_op_context_,
-      data->doc_write_batch->doc_db(),
-      data->read_operation_data,
-      data->doc_write_batch->pending_op());
-
-  static const dockv::DocKey kEmptyDocKey;
-  auto& key = single_operation ? doc_key_ : kEmptyDocKey;
-  static const dockv::KeyEntryValues kEmptyVec;
-  DocPgsqlScanSpec scan_spec(
-      doc_read_context_->schema(),
-      request_.stmt_id(),
-      /* hashed_components= */ kEmptyVec,
-      /* range_components= */ kEmptyVec,
-      /* condition= */ nullptr ,
-      /* hash_code= */ boost::none,
-      /* max_hash_code= */ boost::none,
-      key,
-      /* is_forward_scan= */ true ,
-      key,
-      key,
-      0,
-      AddHighestToUpperDocKey::kTrue);
-
-  data->iterator = &**iterator;
-  data->restart_seek = true;
-
-  return (**iterator).Init(scan_spec, SkipSeek::kTrue);
-}
-
 Result<bool> PgsqlWriteOperation::ReadColumns(
     const DocOperationApplyData& data, dockv::PgTableRow* table_row) {
   // Filter the columns using primary key.
-  if (!VERIFY_RESULT(data.iterator->PgFetchRow(
-          encoded_doc_key_.as_slice(), data.restart_seek, table_row))) {
+  DocPgsqlScanSpec spec(doc_read_context_->schema(), request_.stmt_id(), doc_key_);
+  auto iterator = DocRowwiseIterator(
+      projection(),
+      *doc_read_context_,
+      txn_op_context_,
+      data.doc_write_batch->doc_db(),
+      data.read_operation_data,
+      data.doc_write_batch->pending_op());
+  RETURN_NOT_OK(iterator.Init(spec));
+  if (!VERIFY_RESULT(iterator.PgFetchNext(table_row))) {
     return false;
   }
-  data.restart_read_ht->MakeAtLeast(VERIFY_RESULT(data.iterator->RestartReadHt()));
+  data.restart_read_ht->MakeAtLeast(VERIFY_RESULT(iterator.RestartReadHt()));
 
   return true;
 }
