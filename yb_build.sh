@@ -1091,6 +1091,9 @@ java_build_common_opts+=( install "-DbinDir=$BUILD_ROOT/bin" )
 
 # Build Java code and prepare for running the tests, if necessary, but do not run them yet.
 if [[ ${build_java} == "true" ]]; then
+  # We need a truststore for the CA used in unit tests, only for Java tests, so we generate it here.
+  "${BASH_SOURCE%/*}"/build-support/generate_test_truststore.sh "$BUILD_ROOT/test_certs"
+
   # We'll need this for running Java tests.
   set_sanitizer_runtime_options
   set_mvn_parameters

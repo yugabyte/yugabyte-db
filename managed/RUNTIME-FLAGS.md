@@ -45,6 +45,7 @@
 | "Azure Disk Params blob" | "yb.azure.custom_params.disk" | "PROVIDER" | "Custom JSON of Azure parameters to apply on top of data disk creation." | "String" |
 | "Azure Network Interface Params blob" | "yb.azure.custom_params.network" | "PROVIDER" | "Custom JSON of Azure parameters to apply on top of network interface creation." | "String" |
 | "Monitored mount roots" | "yb.provider.monitored_mount_roots" | "PROVIDER" | "Mount roots, which we show on the merics dashboard and which we're alerting on." | "String" |
+| "Enable Geo-partitioning" | "yb.universe.geo_partitioning_enabled" | "PROVIDER" | "Enables geo-partitioning for universes created with this provider." | "Boolean" |
 | "Max Number of Parallel Node Checks" | "yb.health.max_num_parallel_node_checks" | "GLOBAL" | "Number of parallel node checks, spawned as part of universes health check process" | "Integer" |
 | "Log Script Output For YBA HA Feature" | "yb.ha.logScriptOutput" | "GLOBAL" | "To log backup restore script output for debugging issues" | "Boolean" |
 | "Use Kubectl" | "yb.use_kubectl" | "GLOBAL" | "Use java library instead of spinning up kubectl process." | "Boolean" |
@@ -94,6 +95,7 @@
 | "Regex for match Yugabyte DB release .tar.gz files" | "yb.regex.release_pattern.ybdb" | "GLOBAL" | "Regex pattern used to find Yugabyte DB release .tar.gz files" | "String" |
 | "Regex for match Yugabyte DB release helm .tar.gz files" | "yb.regex.release_pattern.helm" | "GLOBAL" | "Regex pattern used to find Yugabyte DB helm .tar.gz files" | "String" |
 | "tmp directory path" | "yb.filepaths.tmpDirectory" | "GLOBAL" | "Path to the tmp directory to be used by YBA" | "String" |
+| "Whether to wait for clock skew decrease" | "yb.wait_for_clock_sync.inline_enabled" | "GLOBAL" | "Whether to wait for the clock skew to go below the threshold before starting the master and tserver processes" | "Boolean" |
 | "Delete Expired Backup MAX GC Size" | "yb.backup.delete_expired_backup_max_gc_size" | "GLOBAL" | "Number of expired backups to be deleted in a single GC iteration." | "Integer" |
 | "Prometheus external URL" | "yb.metrics.external.url" | "GLOBAL" | "URL used to generate Prometheus metrics on YBA UI and to set up HA metrics federation." | "String" |
 | "Prometheus link use browser FQDN" | "yb.metrics.link.use_browser_fqdn" | "GLOBAL" | "If Prometheus link in browser should point to current FQDN in browser or use value from backend." | "Boolean" |
@@ -110,6 +112,7 @@
 | "Enable multiline option for GFlag conf." | "yb.ui.feature_flags.gflag_multiline_conf" | "GLOBAL" | "Allows user to enter postgres hba rules and ident map rules in multiple rows" | "Boolean" |
 | "Disable all cert validation for HA communication" | "yb.ha.ws.ssl.loose.acceptAnyCertificate" | "GLOBAL" | "When set, https certs will not be validated for HA communication. Communication will still be encrypted." | "Boolean" |
 | "Disable hostname cert validation for HA communication" | "yb.ha.ws.ssl.loose.disableHostnameVerification" | "GLOBAL" | "When set, the hostname in https certs will not be validated for HA communication. Communication will still be encrypted." | "Boolean" |
+| "XCluster isBootstrapRequired rpc max parallel threads" | "yb.xcluster.is_bootstrap_required_rpc_pool.max_threads" | "GLOBAL" | "Sets the maximum allowed number of threads to be run concurrently for xcluster isBootstrapRequired rpc" | "Integer" |
 | "Clock Skew" | "yb.alert.max_clock_skew_ms" | "UNIVERSE" | "Default threshold for Clock Skew alert" | "Duration" |
 | "Health Log Output" | "yb.health.logOutput" | "UNIVERSE" | "It determines whether to log the output of the node health check script to the console" | "Boolean" |
 | "Node Checkout Time" | "yb.health.nodeCheckTimeoutSec" | "UNIVERSE" | "The timeout (in seconds) for node check operation as part of universe health check" | "Integer" |

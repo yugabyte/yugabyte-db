@@ -33,6 +33,7 @@ class YsqlConnMgrConf : public yb::ProcessWrapperCommonConfig {
   explicit YsqlConnMgrConf(const std::string& data_path);
 
   std::string CreateYsqlConnMgrConfigAndGetPath();
+  std::string yb_tserver_key_;
 
  private:
   const std::string conf_file_name_ = "ysql_conn_mgr.conf";

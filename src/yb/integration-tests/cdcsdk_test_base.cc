@@ -418,6 +418,9 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStream(
   InitCreateStreamRequest(&req, checkpoint_type, record_type);
 
   RETURN_NOT_OK(cdc_proxy_->CreateCDCStream(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
 
   return xrepl::StreamId::FromString(resp.db_stream_id());
 }
@@ -462,6 +465,10 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateConsistentSnapshotStream(
   req.set_cdcsdk_consistent_snapshot_option(snapshot_option);
 
   RETURN_NOT_OK(cdc_proxy_->CreateCDCStream(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
+  }
+
   // Sleep for 1 second - temporary till synchronous implementation of CreateCDCStream
   SleepFor(MonoDelta::FromSeconds(1));
 
@@ -472,6 +479,28 @@ Result<xrepl::StreamId> CDCSDKTestBase::CreateDBStreamBasedOnCheckpointType(
     CDCCheckpointType checkpoint_type) {
   return checkpoint_type == CDCCheckpointType::EXPLICIT ? CreateDBStreamWithReplicationSlot()
                                                         : CreateDBStream(IMPLICIT);
+}
+
+Result<master::ListCDCStreamsResponsePB> CDCSDKTestBase::ListDBStreams() {
+  auto ns_id = VERIFY_RESULT(GetNamespaceId(kNamespaceName));
+
+  master::ListCDCStreamsRequestPB req;
+  master::ListCDCStreamsResponsePB resp;
+
+  req.set_namespace_id(ns_id);
+
+  master::MasterReplicationProxy master_proxy(
+      &test_cluster_.client_->proxy_cache(),
+      VERIFY_RESULT(test_cluster_.mini_cluster_->GetLeaderMasterBoundRpcAddr()));
+
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+  RETURN_NOT_OK(master_proxy.ListCDCStreams(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return STATUS(IllegalState, "Failed listing CDC streams");
+  }
+
+  return resp;
 }
 
 }  // namespace cdc

@@ -19,6 +19,7 @@ import { RbacValidator } from '../../../redesign/features/rbac/common/RbacApiPer
 import { ApiPermissionMap } from '../../../redesign/features/rbac/ApiAndUserPermMapping';
 import { calculateDuration } from '../../backupv2/common/BackupUtils';
 import { SoftwareUpgradeTaskType } from '../../universes/helpers/universeHelpers';
+import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 
 class TaskDetail extends Component {
   constructor(props) {
@@ -259,7 +260,9 @@ class TaskDetail extends Component {
                   <Col xs={2}>
                     {currentTaskData?.details?.versionNumbers?.ybSoftwareVersion ?? '-'}
                   </Col>
-                  <Col xs={3}>{currentTaskData.createTime}</Col>
+                  <Col xs={3}>
+                    {currentTaskData?.createTime ? ybFormatDate(currentTaskData?.createTime) : '-'}
+                  </Col>
                   <Col xs={2}>
                     {currentTaskData?.createTime && currentTaskData?.completionTime
                       ? calculateDuration(

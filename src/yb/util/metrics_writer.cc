@@ -25,8 +25,7 @@ PrometheusWriter::PrometheusWriter(std::stringstream* output,
       timestamp_(std::chrono::duration_cast<std::chrono::milliseconds>(
           std::chrono::system_clock::now().time_since_epoch()).count()),
       export_help_and_type_(opts.export_help_and_type),
-      prometheus_metric_filter_(
-          std::make_unique<PrometheusMetricFilter>(opts.priority_regex_string)) {}
+      prometheus_metric_filter_(CreatePrometheusMetricFilter(opts)) {}
 
 PrometheusWriter::~PrometheusWriter() {}
 
@@ -108,10 +107,11 @@ Status PrometheusWriter::WriteSingleEntry(
     const std::string& name,
     int64_t value,
     AggregationFunction aggregation_function,
-    AggregationLevels aggregation_levels,
+    AggregationLevels default_levels,
     const char* type,
     const char* description) {
-  aggregation_levels &= prometheus_metric_filter_->GetAggregationLevels(name);
+  AggregationLevels aggregation_levels =
+      prometheus_metric_filter_->GetAggregationLevels(name, default_levels);
 
   auto metric_type_it = attr.find("metric_type");
   DCHECK(metric_type_it != attr.end());
@@ -140,8 +140,6 @@ Status PrometheusWriter::WriteSingleEntry(
       AddAggregatedEntry(tablet_id_it->second, attr, name, value, aggregation_function,
           type, description);
     }
-    // Currently, if a metric is exported on table level, it shouldn't be on other levels.
-    return Status::OK();
   }
 
   if (aggregation_levels & kServerLevel) {

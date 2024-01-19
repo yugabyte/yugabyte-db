@@ -98,7 +98,7 @@ yb-voyager import data --export-dir /dir/export-dir \
 An example for all live migration scenarios is as follows:
 
 ```sh
-yb-voyager import data to target--export-dir /dir/export-dir \
+yb-voyager import data to target --export-dir /dir/export-dir \
         --target-db-host 127.0.0.1 \
         --target-db-user ybvoyager \
         --target-db-password 'password' \

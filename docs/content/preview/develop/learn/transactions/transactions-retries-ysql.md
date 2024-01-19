@@ -17,7 +17,7 @@ The examples in the following sections illustrate failure scenarios and techniqu
 
 ## Prerequisites
 
-Follow the [setup instructions](../../../../explore#tabs-00-00) to start a single local YugabytedDB instance, and create a table as follows:
+Follow the [setup instructions](../../../../explore#tabs-00-00) to start a single local YugabyteDB instance, and create a table as follows:
 
 1. Create the table as follows:
 

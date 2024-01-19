@@ -112,6 +112,8 @@ export const PreFinalizeModal: FC<PreFinalizeModalProps> = ({
         <Typography variant="body2">
           {t('universeActions.dbRollbackUpgrade.preFinalize.modalMsg2')}
         </Typography>
+        {/* 
+        Do not remove this, We need this once We get Doc link
         <Box display="flex" flexDirection={'row'} alignItems={'center'} mt={3}>
           <Typography variant="body2">
             <Link underline="always" color="inherit">
@@ -120,7 +122,7 @@ export const PreFinalizeModal: FC<PreFinalizeModalProps> = ({
           </Typography>
           &nbsp;
           <img src={LinkIcon} alt="---" height={'16px'} width="16px" />
-        </Box>
+        </Box> */}
       </>
     );
   };

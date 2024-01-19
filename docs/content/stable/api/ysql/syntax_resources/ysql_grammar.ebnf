@@ -694,6 +694,7 @@ column_constraint = [ 'CONSTRAINT' constraint_name ]
                          | 'NULL'
                          | 'CHECK' '(' expression ')'
                          | 'DEFAULT' expression
+                         | 'GENERATED' ('ALWAYS' | 'BY DEFAULT') 'AS' 'IDENTITY' [ ( sequence_options ) ]
                          | 'UNIQUE' index_parameters
                          | 'PRIMARY' 'KEY'
                          | references_clause ) \
@@ -972,12 +973,14 @@ execute_statement = 'EXECUTE' name [ '(' expression { ',' expression } ')' ] ;
 explain = 'EXPLAIN' [ ( [ 'ANALYZE' ] [ 'VERBOSE' ] ) | '(' option { ',' option } ')' ] sql_stmt ;
 
 option = 'ANALYZE' [ boolean ]
-           | 'VERBOSE' [ boolean ]
-           | 'COSTS' [ boolean ]
            | 'BUFFERS' [ boolean ]
-           | 'TIMING' [ boolean ]
-           | 'SUMMARY' [ boolean ]
+           | 'COSTS' [ boolean ]
+           | 'DEBUG' [boolean]
+           | 'DIST' [boolean]
            | 'FORMAT' ( 'TEXT' | 'XML' | 'JSON' | 'YAML' ) ;
+           | 'SUMMARY' [ boolean ]
+           | 'TIMING' [ boolean ]
+           | 'VERBOSE' [ boolean ]
 
 (* 'GRANT' *)
 grant = ( grant_table |
@@ -1038,7 +1041,7 @@ import_foreign_schema = 'IMPORT' 'FOREIGN' 'SCHEMA' remote_schema \
                         [ ( 'LIMIT' 'TO' | 'EXCEPT' ) '(' table_name {, table_name} ')' ] \
                         'FROM' 'SERVER' server_name 'INTO' local_schema \
                         [ 'OPTIONS' '(' fdw_options ')' ] ;
-                        
+
 remote_schema = text_literal ;
 
 local_schema = text_literal ;
@@ -1047,6 +1050,7 @@ local_schema = text_literal ;
 
 insert = [ with_clause ] \
          'INSERT' 'INTO' table_name [ 'AS' alias ] [ '(' column_names ')' ] \
+         [ 'OVERRIDING' { 'SYSTEM' | 'USER' } 'VALUE' ]
          ( ( 'DEFAULT' 'VALUES' ) |
              'VALUES' '(' column_values ')' { ',' '(' column_values ')' } |
              subquery ) \

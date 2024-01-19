@@ -1154,6 +1154,67 @@ select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 DESC limit 10;
  195
 (10 rows)
 
+explain (costs off) select q2.c1, q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
+                            QUERY PLAN
+-------------------------------------------------------------------
+ Limit
+   ->  Result
+         ->  YB Batched Nested Loop Join
+               Join Filter: (q1.c2 = q2.c2)
+               Sort Keys: q1.c1
+               ->  Index Scan using q1_pkey on q1
+               ->  Index Scan using q2_pkey on q2
+                     Index Cond: (c2 = ANY (ARRAY[q1.c2, $1, $2]))
+(8 rows)
+
+select q2.c1, q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
+ c1 | c1
+----+----
+  0 |  0
+  1 |  0
+  0 |  1
+  1 |  1
+  0 |  2
+  1 |  2
+  0 |  3
+  1 |  3
+  2 |  4
+  3 |  4
+(10 rows)
+
+create index on q2(c1 asc);
+create table q3(c1 int, c2 int, c3 int, primary key(c3 desc));
+insert into q3 select i, i, i from generate_series(0,999) i;
+/*+Leading((q3 q2))*/explain (costs off) select q3.c3, q2.c2 from q2, q3 where q3.c3 = q2.c1 order by 1 desc limit 10;
+                            QUERY PLAN
+-------------------------------------------------------------------
+ Limit
+   ->  Result
+         ->  YB Batched Nested Loop Join
+               Join Filter: (q2.c1 = q3.c3)
+               Sort Keys: q3.c3 DESC
+               ->  Index Scan using q3_pkey on q3
+               ->  Index Scan using q2_c1_idx on q2
+                     Index Cond: (c1 = ANY (ARRAY[q3.c3, $1, $2]))
+(8 rows)
+
+/*+Leading((q3 q2))*/select q3.c3, q2.c2 from q2, q3 where q3.c3 = q2.c1 order by 1 desc limit 10;
+ c3  | c2
+-----+-----
+ 999 | 499
+ 998 | 499
+ 997 | 498
+ 996 | 498
+ 995 | 497
+ 994 | 497
+ 993 | 496
+ 992 | 496
+ 991 | 495
+ 990 | 495
+(10 rows)
+
+drop index q2_c1_idx;
+drop table q3;
 CREATE TABLE q1nulls (a int, b int);
 CREATE INDEX ON q1nulls (a ASC NULLS FIRST, b DESC NULLS LAST);
 INSERT INTO q1nulls SELECT i/10, i % 10 from generate_series(1, 100) i;
@@ -2404,3 +2465,45 @@ EXPLAIN (COSTS OFF) SELECT 1 FROM (SELECT dummy() as x) AS ss, tbl, tbl2 WHERE t
    ->  Index Scan using tbl2_pkey on tbl2
          Index Cond: (c1 = ANY (ARRAY[(ss.x).a, ($2), ($3)]))
 (11 rows)
+
+create table ss1 (a int, b int);
+create table ss2(a int, b int);
+create table ss3(a int, b int);
+create index on ss3(a asc);
+insert into ss1 values (1,1), (1,2);
+insert into ss2 values (1,1), (1,2);
+insert into ss3 values (1,1), (1,3);
+explain (costs off) /*+Set(enable_hashjoin off)
+Set(enable_material off)
+Set(enable_mergejoin off)
+Set(yb_bnl_batch_size 1024)
+NestLoop(ss1 ss2) Rows(ss1 ss2 #1024)*/select ss1.*, p.* from ss1, ss2, ss3 p where ss1.a = ss2.a and ss1.b = ss2.b and p.b <= ss2.b + 1 and p.a = ss1.a order by 1,2,3,4;
+                               QUERY PLAN
+------------------------------------------------------------------------
+ Sort
+   Sort Key: ss1.a, ss1.b, p.b
+   ->  YB Batched Nested Loop Join
+         Join Filter: ((ss1.a = p.a) AND (p.b <= (ss2.b + 1)))
+         ->  Nested Loop
+               Join Filter: ((ss1.a = ss2.a) AND (ss1.b = ss2.b))
+               ->  Seq Scan on ss1
+               ->  Seq Scan on ss2
+         ->  Index Scan using ss3_a_idx on ss3 p
+               Index Cond: (a = ANY (ARRAY[ss1.a, $1, $2, ..., $1023]))
+(10 rows)
+
+/*+Set(enable_hashjoin off)
+Set(enable_material off)
+Set(enable_mergejoin off)
+Set(yb_bnl_batch_size 1024)
+NestLoop(ss1 ss2) Rows(ss1 ss2 #1024)*/select ss1.*, p.* from ss1, ss2, ss3 p where ss1.a = ss2.a and ss1.b = ss2.b and p.b <= ss2.b + 1 and p.a = ss1.a order by 1,2,3,4;
+ a | b | a | b
+---+---+---+---
+ 1 | 1 | 1 | 1
+ 1 | 2 | 1 | 1
+ 1 | 2 | 1 | 3
+(3 rows)
+
+drop table ss1;
+drop table ss2;
+drop table ss3;

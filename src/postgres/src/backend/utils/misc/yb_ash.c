@@ -27,6 +27,7 @@
 #include "yb_ash.h"
 
 #include "executor/executor.h"
+#include "funcapi.h"
 #include "miscadmin.h"
 #include "parser/analyze.h"
 #include "pgstat.h"
@@ -37,11 +38,15 @@
 #include "storage/procarray.h"
 #include "storage/shmem.h"
 #include "tcop/utility.h"
+#include "utils/builtins.h"
 #include "utils/guc.h"
+#include "utils/timestamp.h"
+#include "utils/uuid.h"
 
 #include "pg_yb_utils.h"
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pggate/ybc_pggate.h"
+#include "yb/yql/pggate/util/ybc_util.h"
 
 /* GUC variables */
 int yb_ash_circular_buffer_size;
@@ -124,6 +129,10 @@ static void yb_ash_ProcessUtility(PlannedStmt *pstmt, const char *queryString,
 static const unsigned char *get_yql_endpoint_tserver_uuid();
 static void copy_pgproc_sample_fields(PGPROC *proc);
 static void copy_non_pgproc_sample_fields(float8 sample_weight, TimestampTz sample_time);
+
+static void uchar_to_uuid(unsigned char *in, pg_uuid_t *out);
+static void client_ip_to_string(unsigned char *client_addr, uint16 client_port,
+								uint8_t addr_family, char *client_ip);
 
 void
 YbAshRegister(void)
@@ -209,6 +218,7 @@ YbAshShmemInit(void)
 		LWLockInitialize(&yb_ash->lock, LWTRANCHE_YB_ASH_CIRCULAR_BUFFER);
 		yb_ash->index = 0;
 		yb_ash->max_entries = yb_ash_cb_max_entries();
+		MemSet(yb_ash->circular_buffer, 0, yb_ash->max_entries * sizeof(YbAshSample));
 	}
 }
 
@@ -440,4 +450,150 @@ copy_non_pgproc_sample_fields(float8 sample_weight, TimestampTz sample_time)
 	cb_sample->rpc_request_id = 0;
 	cb_sample->sample_weight = sample_weight;
 	cb_sample->sample_time = sample_time;
+}
+
+Datum
+yb_active_session_history(PG_FUNCTION_ARGS)
+{
+	ReturnSetInfo *rsinfo = (ReturnSetInfo *) fcinfo->resultinfo;
+	TupleDesc	tupdesc;
+	Tuplestorestate *tupstore;
+	MemoryContext per_query_ctx;
+	MemoryContext oldcontext;
+	int			i;
+#define ACTIVE_SESSION_HISTORY_COLS 12
+
+	/* ASH must be loaded first */
+	if (!yb_ash)
+		ereport(ERROR,
+				(errcode(ERRCODE_OBJECT_NOT_IN_PREREQUISITE_STATE),
+				 errmsg("TEST_yb_enable_ash gflag must be enabled")));
+
+	/* check to see if caller supports us returning a tuplestore */
+	if (rsinfo == NULL || !IsA(rsinfo, ReturnSetInfo))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("set-valued function called in context that cannot accept a set")));
+
+	if (!(rsinfo->allowedModes & SFRM_Materialize))
+		ereport(ERROR,
+				(errcode(ERRCODE_FEATURE_NOT_SUPPORTED),
+				 errmsg("materialize mode required, but it is not " \
+						"allowed in this context")));
+
+	/* Switch context to construct returned data structures */
+	per_query_ctx = rsinfo->econtext->ecxt_per_query_memory;
+	oldcontext = MemoryContextSwitchTo(per_query_ctx);
+
+	/* Build a tuple descriptor */
+	if (get_call_result_type(fcinfo, NULL, &tupdesc) != TYPEFUNC_COMPOSITE)
+		ereport(ERROR,
+				(errmsg_internal("return type must be a row type")));
+
+	tupstore = tuplestore_begin_heap(true, false, work_mem);
+	rsinfo->returnMode = SFRM_Materialize;
+	rsinfo->setResult = tupstore;
+	rsinfo->setDesc = tupdesc;
+
+	MemoryContextSwitchTo(oldcontext);
+
+	LWLockAcquire(&yb_ash->lock, LW_SHARED);
+
+	for (i = 0; i < yb_ash->max_entries; ++i)
+	{
+		Datum		values[ACTIVE_SESSION_HISTORY_COLS];
+		bool		nulls[ACTIVE_SESSION_HISTORY_COLS];
+		int			j = 0;
+		pg_uuid_t	root_request_id;
+		pg_uuid_t	yql_endpoint_tserver_uuid;
+		/* 22 bytes required for ipv4 and 48 for ipv6 (including null character) */
+		char		client_node_ip[48];
+
+		memset(values, 0, sizeof(values));
+		memset(nulls, 0, sizeof(nulls));
+
+		YbAshSample *sample = &yb_ash->circular_buffer[i];
+		YBCAshMetadata *metadata = &sample->metadata;
+
+		if (sample->sample_time != 0)
+			values[j++] = TimestampTzGetDatum(sample->sample_time);
+		else
+			break; /* The circular buffer is not fully filled yet */
+
+		uchar_to_uuid(metadata->root_request_id, &root_request_id);
+		values[j++] = UUIDPGetDatum(&root_request_id);
+
+		if (sample->rpc_request_id != 0)
+			values[j++] = Int64GetDatum(sample->rpc_request_id);
+		else
+			nulls[j++] = true;
+
+		values[j++] = CStringGetTextDatum(YBCGetWaitEventComponent(sample->wait_event_code));
+		values[j++] = CStringGetTextDatum(pgstat_get_wait_event_type(sample->wait_event_code));
+		values[j++] = CStringGetTextDatum(pgstat_get_wait_event(sample->wait_event_code));
+
+		uchar_to_uuid(sample->yql_endpoint_tserver_uuid, &yql_endpoint_tserver_uuid);
+		values[j++] = UUIDPGetDatum(&yql_endpoint_tserver_uuid);
+
+		values[j++] = UInt64GetDatum(metadata->query_id);
+		values[j++] = UInt64GetDatum(metadata->session_id);
+
+		if (metadata->addr_family == AF_INET || metadata->addr_family == AF_INET6)
+		{
+			client_ip_to_string(metadata->client_addr, metadata->client_port, metadata->addr_family,
+								client_node_ip);
+			values[j++] = CStringGetTextDatum(client_node_ip);
+		}
+		else
+		{
+			Assert(metadata->addr_family == AF_UNIX);
+			nulls[j++] = true;
+		}
+
+		if (sample->aux_info[0] != '\0')
+			values[j++] = CStringGetTextDatum(sample->aux_info);
+		else
+			nulls[j++] = true;
+
+		values[j++] = Float4GetDatum(sample->sample_weight);
+
+		tuplestore_putvalues(tupstore, tupdesc, values, nulls);
+	}
+
+	LWLockRelease(&yb_ash->lock);
+
+#undef ACTIVE_SESSION_HISTORY_COLS
+
+	/* clean up and return the tuplestore */
+	tuplestore_donestoring(tupstore);
+
+	return (Datum) 0;
+}
+
+static void
+uchar_to_uuid(unsigned char *in, pg_uuid_t *out)
+{
+	memcpy(out->data, in, UUID_LEN);
+}
+
+static void
+client_ip_to_string(unsigned char *client_addr, uint16 client_port,
+					uint8_t addr_family, char *client_ip)
+{
+	if (addr_family == AF_INET)
+	{
+		sprintf(client_ip, "%d.%d.%d.%d:%d",
+				client_addr[0], client_addr[1], client_addr[2], client_addr[3],
+				client_port);
+	}
+	else
+	{
+		sprintf(client_ip,
+				"[%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x:%02x%02x]:%d",
+				client_addr[0], client_addr[1], client_addr[2], client_addr[3],
+				client_addr[4], client_addr[5], client_addr[6], client_addr[7],
+				client_addr[8], client_addr[9], client_addr[10], client_addr[11],
+				client_addr[12], client_addr[13], client_addr[14], client_addr[15],
+				client_port);
+	}
 }

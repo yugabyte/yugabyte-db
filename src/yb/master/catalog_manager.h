@@ -163,14 +163,27 @@ constexpr int32_t kInvalidClusterConfigVersion = 0;
 
 YB_DEFINE_ENUM(
     CreateNewCDCStreamMode,
-    // Only populate the namespace_id. It is only used by CDCSDK while creating a stream from
-    // cdc_service. The caller is expected to populate table_ids in subsequent requests.
-    // This should not be needed after we tackle #18890.
-    (kNamespaceId)
     // Only populate the table_id. It is only used by xCluster.
     (kXClusterTableIds)
     // Populate the namespace_id and a list of table ids. It is only used by CDCSDK.
     (kCdcsdkNamespaceAndTableIds)
+);
+
+YB_DEFINE_ENUM(
+    CDCSDKStreamCreationState,
+    // Stream has been initialized but no in-memory data structures or sys-catalog have been
+    // modified.
+    (kInitialized)
+    // Stream has been added to the in-memory maps.
+    (kAddedToMaps)
+    // Stream has been added to the in-memory maps and sys-catalog. Also an in-memory mutation has
+    // been created but not yet committed.
+    (kPreCommitMutation)
+    // Stream has been added to the in-memory maps and sys-catalog. The in-memory mutation has
+    // been committed.
+    (kPostCommitMutation)
+    // Stream has been created successfully and is ready to be streamed.
+    (kReady)
 );
 
 using DdlTxnIdToTablesMap =
@@ -1243,12 +1256,17 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const LeaderEpoch& epoch);
 
   Status PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
-    const scoped_refptr<TableInfo>& table,
-    const yb::TabletId& tablet_id,
-    const xrepl::StreamId& cdc_sdk_stream_id,
-    const yb::OpIdPB& safe_opid,
-    const yb::HybridTime& proposed_snapshot_time,
-    const bool require_history_cutoff) override;
+      const scoped_refptr<TableInfo>& table,
+      const yb::TabletId& tablet_id,
+      const xrepl::StreamId& cdc_sdk_stream_id,
+      const yb::OpIdPB& safe_opid,
+      const yb::HybridTime& proposed_snapshot_time,
+      bool require_history_cutoff) override;
+
+  Status WaitForSnapshotSafeOpIdToBePopulated(
+      const xrepl::StreamId& stream_id,
+      const std::vector<TableId>& table_ids,
+      CoarseTimePoint deadline) override;
 
   // Get the Table schema from system catalog table.
   Status GetTableSchemaFromSysCatalog(
@@ -1423,6 +1441,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const CreateCDCStreamRequestPB& req, const std::string& source_type_option_value,
       const std::string& record_type_option_value, const std::string& id_type_option_value);
 
+  Status RollbackFailedCreateCDCSDKStream(
+      const xrepl::StreamId& stream_id, CDCSDKStreamCreationState& cdcsdk_stream_creation_state);
+
   // Process the newly created tables that are relevant to existing CDCSDK streams.
   Status ProcessNewTablesForCDCSDKStreams(
       const TableStreamIdsMap& table_to_unprocessed_streams_map, const LeaderEpoch& epoch);
@@ -1448,6 +1469,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   using StreamTablesMap = std::unordered_map<xrepl::StreamId, std::set<TableId>>;
 
   Status CleanUpCDCMetadataFromSystemCatalog(const StreamTablesMap& drop_stream_tablelist);
+
+  Status CleanUpCDCSDKStreamFromMaps(CDCStreamInfoPtr stream) REQUIRES(mutex_);
 
   Status UpdateCDCStreams(
       const std::vector<xrepl::StreamId>& stream_ids,
@@ -2705,6 +2728,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const TableId& table_id, rpc::RpcContext* rpc, const LeaderEpoch& epoch);
 
   Status ReplicationSlotValidateName(const std::string& replication_slot_name);
+
+  Status TEST_CDCSDKFailCreateStreamRequestIfNeeded(const std::string& sync_point);
 
   // Create the cdc_state table if needed (i.e. if it does not exist already).
   //

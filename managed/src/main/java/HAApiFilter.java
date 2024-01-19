@@ -38,7 +38,6 @@ public class HAApiFilter extends Filter {
         if (!rh.method().equals("GET")) {
           // Also allow any HA, login, or read only specific APIs to succeed
           if (!HA_ENDPOINT_PATTERN.matcher(rh.path()).matches()
-              && !rh.path().startsWith("/api/v1/login")
               && TokenAuthenticator.READ_POST_ENDPOINTS.stream()
                   .noneMatch(path -> rh.path().endsWith(path))) {
             Result result = Results.status(503, "API not available for follower YBA");

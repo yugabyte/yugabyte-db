@@ -342,16 +342,6 @@ class LibraryPackager:
         if not os.access(file_path, os.X_OK):
             subprocess.check_call(['chmod', 'u+x', file_path])
 
-        if using_linuxbrew():
-            # When using Linuxbrew, we manage RPATH as follows:
-            # - Remove RPATH altogether during packaging (what we are doing here).
-            # - Generate a post_install.sh file, which, when executed, sets the RPATH appropriately
-            #   according to the installation location.
-            logging.debug("Removing RPATH from file: %s", file_path)
-            self.rpath_removal_stats_by_dir[os.path.dirname(file_path)] += 1
-            remove_rpath(file_path)
-            return
-
         file_abs_path = os.path.abspath(file_path)
         new_rpath = ':'.join(LibraryPackager.get_relative_rpath_items(
                     dest_root_dir, os.path.dirname(file_abs_path)))
@@ -596,10 +586,7 @@ class LibraryPackager:
                 logging.info(
                     "Not packaging any of the above dependencies from a system-wide directory.")
                 continue
-            if category == 'postgres' and not using_linuxbrew():
-                # Only avoid copying postgres libraries into the lib/yb directory in non-Linuxbrew
-                # mode. In Linuxbrew mode, post_install.sh has complex logic for changing rpaths
-                # and that is not updated to allow us to find libraries in postgres/lib.
+            if category == 'postgres':
                 logging.info(
                     "Not installing any of the above YSQL libraries because they will be "
                     "installed as part of copying the entire postgres directory.")
@@ -636,85 +623,6 @@ class LibraryPackager:
         for installed_binary in self.installed_dyn_linked_binaries:
             # Sometimes files that we copy from other locations are not even writable by user!
             subprocess.check_call(['chmod', 'u+w', installed_binary])
-
-        post_install_path = os.path.join(self.main_dest_bin_dir, 'post_install.sh')
-
-        if using_linuxbrew():
-            # Add other files used by glibc at runtime.
-            assert linuxbrew_home is not None
-
-            linuxbrew_dir = linuxbrew_home.linuxbrew_dir
-            assert linuxbrew_dir is not None
-            assert linuxbrew_home.ldd_path is not None
-
-            linuxbrew_glibc_real_path = os.path.normpath(
-                os.path.join(os.path.realpath(linuxbrew_home.ldd_path), '..', '..'))
-
-            assert linuxbrew_home is not None
-            linuxbrew_glibc_rel_path = os.path.relpath(
-                linuxbrew_glibc_real_path, os.path.realpath(linuxbrew_dir))
-
-            # We expect glibc to live under a path like "Cellar/glibc/3.23" in
-            # the Linuxbrew directory.
-            if not linuxbrew_glibc_rel_path.startswith('Cellar/glibc/'):
-                raise ValueError(
-                    "Expected to find glibc under Cellar/glibc/<version> in Linuxbrew, but found it"
-                    " at: '%s'" % linuxbrew_glibc_rel_path)
-
-            rel_paths = []
-            for glibc_rel_path in [
-                'etc/ld.so.cache',
-                'etc/localtime',
-                'lib/locale/locale-archive',
-                'lib/gconv',
-                'libexec/getconf',
-                'share/locale',
-                'share/zoneinfo',
-            ]:
-                rel_paths.append(os.path.join(linuxbrew_glibc_rel_path, glibc_rel_path))
-
-            terminfo_glob_pattern = os.path.join(
-                    linuxbrew_dir, 'Cellar/ncurses/*/share/terminfo')
-            terminfo_paths = glob.glob(terminfo_glob_pattern)
-            if len(terminfo_paths) != 1:
-                raise ValueError(
-                    "Failed to find the terminfo directory using glob pattern %s. "
-                    "Found: %s" % (terminfo_glob_pattern, terminfo_paths))
-            terminfo_rel_path = os.path.relpath(terminfo_paths[0], linuxbrew_dir)
-            rel_paths.append(terminfo_rel_path)
-
-            for rel_path in rel_paths:
-                src = os.path.join(linuxbrew_dir, rel_path)
-                dst = os.path.join(linuxbrew_dest_dir, rel_path)
-                copy_deep(src, dst, create_dst_dir=True)
-
-            with open(post_install_path) as post_install_script_input:
-                post_install_script = post_install_script_input.read()
-
-            new_post_install_script = post_install_script
-            replacements = [
-                ("original_linuxbrew_path_to_patch", linuxbrew_dir),
-                ("original_linuxbrew_path_length", len(linuxbrew_dir)),
-            ]
-            for macro_var_name, list_of_binary_names in [
-                ("main_elf_names_to_patch", main_elf_names_to_patch),
-                ("postgres_executable_names_to_patch", postgres_executable_names_to_patch),
-                ("postgres_lib_rel_paths_to_patch", postgres_lib_rel_paths_to_patch),
-            ]:
-                replacements.append(
-                    (macro_var_name, self.join_binary_names_for_bash(list_of_binary_names)))
-
-            for macro_var_name, value in replacements:
-                new_post_install_script = new_post_install_script.replace(
-                    '${%s}' % macro_var_name, str(value))
-        else:
-            new_post_install_script = (
-                    '#!/usr/bin/env bash\n'
-                    '# For backward-compatibility only. We do not need this script anymore.\n'
-                )
-
-        with open(post_install_path, 'w') as post_install_script_output:
-            post_install_script_output.write(new_post_install_script)
 
         self.log_rpath_stats()
 

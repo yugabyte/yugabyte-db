@@ -315,6 +315,11 @@ class CatalogManagerIf {
       const yb::HybridTime& proposed_snapshot_time,
       const bool require_history_cutoff) = 0;
 
+  virtual Status WaitForSnapshotSafeOpIdToBePopulated(
+      const xrepl::StreamId& stream_id,
+      const std::vector<TableId>& table_ids,
+      CoarseTimePoint deadline) = 0;
+
   virtual ~CatalogManagerIf() = default;
 };
 

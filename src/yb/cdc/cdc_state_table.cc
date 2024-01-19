@@ -278,9 +278,23 @@ Result<master::CreateTableRequestPB> CDCStateTable::GenerateCreateCdcStateTableR
   return req;
 }
 
-Status CDCStateTable::OpenTable(client::TableHandle* cdc_table) {
+Status CDCStateTable::WaitForCreateTableToFinishWithCache() {
+  if (created_) {
+    return Status::OK();
+  }
   auto* client = VERIFY_RESULT(GetClient());
   RETURN_NOT_OK(client->WaitForCreateTableToFinish(kCdcStateYBTableName));
+  created_ = true;
+  return Status::OK();
+}
+
+Status CDCStateTable::WaitForCreateTableToFinishWithoutCache() {
+  auto* client = VERIFY_RESULT(GetClient());
+  return client->WaitForCreateTableToFinish(kCdcStateYBTableName);
+}
+
+Status CDCStateTable::OpenTable(client::TableHandle* cdc_table) {
+  auto* client = VERIFY_RESULT(GetClient());
   RETURN_NOT_OK(cdc_table->Open(kCdcStateYBTableName, client));
   return Status::OK();
 }
@@ -288,6 +302,7 @@ Status CDCStateTable::OpenTable(client::TableHandle* cdc_table) {
 Result<std::shared_ptr<client::TableHandle>> CDCStateTable::GetTable() {
   bool use_cache = GetAtomicFlag(&FLAGS_enable_cdc_state_table_caching);
   if (!use_cache) {
+    RETURN_NOT_OK(WaitForCreateTableToFinishWithoutCache());
     auto cdc_table = std::make_shared<client::TableHandle>();
     RETURN_NOT_OK(OpenTable(cdc_table.get()));
     return cdc_table;
@@ -304,6 +319,7 @@ Result<std::shared_ptr<client::TableHandle>> CDCStateTable::GetTable() {
   if (cdc_table_) {
     return cdc_table_;
   }
+  RETURN_NOT_OK(WaitForCreateTableToFinishWithCache());
   auto cdc_table = std::make_shared<client::TableHandle>();
   RETURN_NOT_OK(OpenTable(cdc_table.get()));
   cdc_table_.swap(cdc_table);
@@ -411,6 +427,19 @@ Result<CDCStateTableRange> CDCStateTable::GetTableRange(
   VLOG_WITH_FUNC(1) << yb::ToString(columns);
 
   return CDCStateTableRange(VERIFY_RESULT(GetTable()), iteration_status, std::move(columns));
+}
+
+Result<CDCStateTableRange> CDCStateTable::GetTableRangeAsync(
+    CDCStateTableEntrySelector&& field_filter, Status* iteration_status) {
+  auto* client = VERIFY_RESULT(GetClient());
+
+  bool table_creation_in_progress = false;
+  RETURN_NOT_OK(client->IsCreateTableInProgress(kCdcStateYBTableName, &table_creation_in_progress));
+  if (table_creation_in_progress) {
+    return STATUS(Uninitialized, "CDC State Table creation is in progress");
+  }
+
+  return GetTableRange(std::move(field_filter), iteration_status);
 }
 
 Result<std::optional<CDCStateTableEntry>> CDCStateTable::TryFetchEntry(

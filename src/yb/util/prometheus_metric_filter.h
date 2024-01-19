@@ -21,21 +21,53 @@ namespace yb {
 
 class PrometheusMetricFilter {
  public:
-  explicit PrometheusMetricFilter(const std::string& priority_regex_string);
+  virtual AggregationLevels GetAggregationLevels(
+      const std::string& metric_name, AggregationLevels default_levels) = 0;
 
-  AggregationLevels GetAggregationLevels(const std::string& metric_name);
+  virtual std::string Version() const = 0;
+
+  virtual ~PrometheusMetricFilter() = default;
 
   MetricAggregationMap* TEST_GetAggregationMap() {
     return &metric_filter_;
   }
 
- private:
-  bool MatchMetricAgainstRegex(const std::string& metric_name,
-                               const boost::regex& regex) const;
-
-  boost::regex priority_regex_;
-
+ protected:
   MetricAggregationMap metric_filter_;
 };
+
+
+class PrometheusMetricFilterV1 : public PrometheusMetricFilter {
+ public:
+  explicit PrometheusMetricFilterV1(const MetricPrometheusOptions& opts);
+
+  AggregationLevels GetAggregationLevels(
+      const std::string& metric_name, AggregationLevels default_levels) override;
+
+  std::string Version() const override;
+
+ private:
+  const boost::regex priority_regex_;
+};
+
+
+class PrometheusMetricFilterV2 : public PrometheusMetricFilter {
+ public:
+  explicit PrometheusMetricFilterV2(const MetricPrometheusOptions& opts);
+
+  AggregationLevels GetAggregationLevels(
+      const std::string& metric_name, AggregationLevels default_levels) override;
+
+  std::string Version() const override;
+
+ private:
+  const boost::regex table_allowlist_;
+  const boost::regex table_blocklist_;
+  const boost::regex server_allowlist_;
+  const boost::regex server_blocklist_;
+};
+
+std::unique_ptr<PrometheusMetricFilter> CreatePrometheusMetricFilter(
+    const MetricPrometheusOptions& opts);
 
 } // namespace yb

@@ -1052,7 +1052,7 @@ Status CDCServiceImpl::CreateCDCStreamForNamespace(
 
   xrepl::StreamId db_stream_id = VERIFY_RESULT_OR_SET_CODE(
       client()->CreateCDCSDKStreamForNamespace(ns_id, options, populate_namespace_id_as_table_id,
-                                               ReplicationSlotName(""), snapshot_option),
+                                               ReplicationSlotName(""), snapshot_option, deadline),
       CDCError(CDCErrorPB::INTERNAL_ERROR));
   resp->set_db_stream_id(db_stream_id.ToString());
   return Status::OK();
@@ -2481,6 +2481,9 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
 
     // Add the {tablet_id, stream_id} pair to the set if its checkpoint is OpId::Max().
     if (tablet_stream_to_be_deleted && checkpoint == OpId::Max()) {
+      VLOG(2) << "We will remove the entry for the stream: " << stream_id
+              << ", tablet_id: " << tablet_id
+              << ", from cdc_state table since it has OpId::Max().";
       tablet_stream_to_be_deleted->insert({tablet_id, stream_id});
     }
 
@@ -3469,7 +3472,8 @@ Status CDCServiceImpl::CheckStreamActive(
 Status CDCServiceImpl::CheckTabletNotOfInterest(
     const TabletStreamInfo& producer_tablet, int64_t last_active_time_passed, bool deletion_check) {
   // This is applicable only to Consistent Snapshot Streams,
-  auto record = VERIFY_RESULT(GetStream(producer_tablet.stream_id));
+  auto record = VERIFY_RESULT(
+      GetStream(producer_tablet.stream_id, RefreshStreamMapOption::kIfInitiatedState));
   if (!record->GetSnapshotOption().has_value() || !record->GetStreamCreationTime().has_value()) {
     return Status::OK();
   }

@@ -12,6 +12,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert.Update
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.Universe;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -31,6 +32,13 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
   @Override
   public SubTaskGroupType getTaskSubGroupType() {
     return SubTaskGroupType.RotatingCert;
+  }
+
+  @Override
+  protected void createPrecheckTasks(Universe universe) {
+    if (isFirstTry()) {
+      verifyClustersConsistency();
+    }
   }
 
   @Override

@@ -17,12 +17,15 @@
 
 #pragma once
 
+#include "yb/ash/wait_state.h"
+
 #include "yb/common/transaction.pb.h"
+
+#include "yb/gutil/macros.h"
 
 struct PgExecParameters;
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 
 RowMarkType GetRowMarkType(const PgExecParameters* exec_params);
 
@@ -31,5 +34,21 @@ struct Bound {
   bool is_inclusive;
 };
 
-} // namespace pggate
-} // namespace yb
+// A helper to set the specified wait_event_info in the specified
+// MyProc and revert to the previous wait_event_info based on RAII
+// when it goes out of scope.
+class PgWaitEventWatcher {
+ public:
+  using Starter = uint32_t (*)(uint32_t wait_event);
+
+  PgWaitEventWatcher(Starter starter, ash::WaitStateCode wait_event);
+  ~PgWaitEventWatcher();
+
+ private:
+  const Starter starter_;
+  const uint32_t prev_wait_event_;
+
+  DISALLOW_COPY_AND_ASSIGN(PgWaitEventWatcher);
+};
+
+} // namespace yb::pggate

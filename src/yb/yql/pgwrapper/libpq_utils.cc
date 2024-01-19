@@ -29,6 +29,7 @@
 #include "yb/util/logging.h"
 #include "yb/util/monotime.h"
 #include "yb/util/net/net_util.h"
+#include "yb/util/pg_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/string_util.h"
@@ -717,6 +718,28 @@ PGConnPerf::PGConnPerf(yb::pgwrapper::PGConn* conn)
 PGConnPerf::~PGConnPerf() {
   CHECK_OK(process_.Kill(SIGINT));
   LOG(INFO) << "Perf exec code: " << CHECK_RESULT(process_.Wait());
+}
+
+PGConnBuilder CreateInternalPGConnBuilder(
+    const HostPort& pgsql_proxy_bind_address, const std::string& database_name,
+    uint64_t postgres_auth_key, const std::optional<CoarseTimePoint>& deadline) {
+  size_t connect_timeout = 0;
+  if (deadline) {
+    // By default, connect_timeout is 0, meaning infinite. 1 is automatically converted to 2, so set
+    // it to at least 2 in the first place. See connectDBComplete.
+    connect_timeout = static_cast<size_t>(
+        std::max(2, static_cast<int>(ToSeconds(*deadline - CoarseMonoClock::Now()))));
+  }
+
+  // Note that the plain password in the connection string will be sent over the wire, but since
+  // it only goes over a unix-domain socket, there should be no eavesdropping/tampering issues.
+  return PGConnBuilder(
+      {.host = PgDeriveSocketDir(pgsql_proxy_bind_address),
+       .port = pgsql_proxy_bind_address.port(),
+       .dbname = database_name,
+       .user = "postgres",
+       .password = UInt64ToString(postgres_auth_key),
+       .connect_timeout = connect_timeout});
 }
 
 template GetValueResult<int16_t> GetValue<int16_t>(const PGresult*, int, int);

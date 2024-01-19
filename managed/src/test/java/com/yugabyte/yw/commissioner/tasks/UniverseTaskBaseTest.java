@@ -59,7 +59,7 @@ import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.ExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import junitparams.converters.Nullable;
@@ -81,7 +81,7 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
 
   @Mock private PlatformExecutorFactory platformExecutorFactory;
 
-  @Mock private ExecutorService executorService;
+  @Mock private ThreadPoolExecutor executorService;
 
   private static final int NUM_NODES = 3;
   private TestUniverseTaskBase universeTaskBase;
@@ -224,7 +224,7 @@ public class UniverseTaskBaseTest extends FakeDBApplication {
     universeDetails.clusters.add(cluster);
     Mockito.when(universe.getCluster(Mockito.any())).thenReturn(cluster);
     Mockito.when(universe.getUniverseDetails()).thenReturn(universeDetails);
-    universeTaskBase.createDestroyServerTasks(universe, nodes, false, false, false);
+    universeTaskBase.createDestroyServerTasks(universe, nodes, false, false, false, true);
     for (int i = 0; i < NUM_NODES; i++) {
       // Node should not be in use.
       NodeInstance ni = NodeInstance.get(nodes.get(i).nodeUuid);
