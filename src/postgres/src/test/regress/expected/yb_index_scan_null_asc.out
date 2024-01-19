@@ -28,6 +28,7 @@ DEBUG:  skipping a scan due to unsatisfiable condition
 EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
 /*+ IndexScan(t1) NestLoop(t2 t1) Leading((t2 t1)) */
 SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON t1.a <= t2.x;
+DEBUG:  skipping a scan due to unsatisfiable condition
                                  QUERY PLAN
 ----------------------------------------------------------------------------
  Nested Loop (actual rows=0 loops=1)
@@ -35,12 +36,12 @@ SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON t1.a <= t2.x;
          Storage Table Read Requests: 3
    ->  Index Scan using i_nulltest_a on nulltest t1 (actual rows=0 loops=1)
          Index Cond: (a <= t2.x)
-         Storage Index Read Requests: 1
-(6 rows)
+(5 rows)
 
 EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
 /*+ IndexScan(t1) NestLoop(t2 t1) Leading((t2 t1)) */
 SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON t1.a BETWEEN t2.x AND t2.x + 2;
+DEBUG:  skipping a scan due to unsatisfiable condition
                                  QUERY PLAN
 ----------------------------------------------------------------------------
  Nested Loop (actual rows=0 loops=1)
@@ -48,8 +49,7 @@ SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON t1.a BETWEEN t2.x AND t2.x + 2;
          Storage Table Read Requests: 3
    ->  Index Scan using i_nulltest_a on nulltest t1 (actual rows=0 loops=1)
          Index Cond: ((a >= t2.x) AND (a <= (t2.x + 2)))
-         Storage Index Read Requests: 1
-(6 rows)
+(5 rows)
 
 EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
 /*+ IndexScan(t1) NestLoop(t2 t1) Leading((t2 t1)) */
@@ -67,6 +67,7 @@ DEBUG:  skipping a scan due to unsatisfiable condition
 EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
 /*+ IndexScan(t1) NestLoop(t2 t1) Leading((t2 t1)) */
 SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON (t1.a, t1.b) <= (t2.x, t2.y);
+DEBUG:  skipping a scan due to unsatisfiable condition
                                  QUERY PLAN
 ----------------------------------------------------------------------------
  Nested Loop (actual rows=0 loops=1)
@@ -75,19 +76,18 @@ SELECT * FROM nulltest t1 JOIN nulltest2 t2 ON (t1.a, t1.b) <= (t2.x, t2.y);
    ->  Index Scan using i_nulltest_a on nulltest t1 (actual rows=0 loops=1)
          Index Cond: (a <= t2.x)
          Filter: (ROW(a, b) <= ROW(t2.x, t2.y))
-         Storage Index Read Requests: 1
-(7 rows)
+(6 rows)
 
 EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
 /*+ IndexScan(t1) */
 SELECT * FROM nulltest t1 WHERE (a, b) <= (null, 1);
+DEBUG:  skipping a scan due to unsatisfiable condition
                               QUERY PLAN
 ----------------------------------------------------------------------
  Index Scan using i_nulltest_a on nulltest t1 (actual rows=0 loops=1)
    Index Cond: (a <= NULL::integer)
    Filter: (ROW(a, b) <= ROW(NULL::integer, 1))
-   Storage Index Read Requests: 1
-(4 rows)
+(3 rows)
 
 EXPLAIN (ANALYZE, COSTS OFF, DIST ON, TIMING OFF, SUMMARY OFF)
 /*+ IndexScan(t1 i_nulltest_ba) */
