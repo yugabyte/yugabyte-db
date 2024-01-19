@@ -182,6 +182,8 @@ analyze q2;
 
 explain (costs off) select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
 
+explain (costs off) select q2.c1, q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
+
 create table q3(a int, b int, c name, primary key(a,b));
 create index q3_range on q3(a asc);
 
