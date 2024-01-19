@@ -1029,9 +1029,12 @@ std::unique_ptr<YBNamespaceAlterer> YBClient::NewNamespaceAlterer(
 }
 
 Result<vector<NamespaceInfo>> YBClient::ListNamespaces(
-    const boost::optional<YQLDatabase>& database_type) {
+  IncludeNonrunningNamespaces include_nonrunning, std::optional<YQLDatabase> database_type) {
   ListNamespacesRequestPB req;
   ListNamespacesResponsePB resp;
+  if (include_nonrunning) {
+    req.set_include_nonrunning(include_nonrunning);
+  }
   if (database_type) {
     req.set_database_type(*database_type);
   }
@@ -1122,20 +1125,22 @@ Status YBClient::GrantRevokePermission(GrantRevokeStatementType statement_type,
   return Status::OK();
 }
 
-Result<bool> YBClient::NamespaceExists(const std::string& namespace_name,
-                                       const boost::optional<YQLDatabase>& database_type) {
-  for (const auto& ns : VERIFY_RESULT(ListNamespaces(database_type))) {
-    if (ns.id.name() == namespace_name) {
+Result<bool> YBClient::NamespaceExists(
+    const std::string& NamespaceName, const std::optional<YQLDatabase>& database_type) {
+  for (const auto& ns :
+       VERIFY_RESULT(ListNamespaces(IncludeNonrunningNamespaces::kFalse, database_type))) {
+    if (ns.id.name() == NamespaceName) {
       return true;
     }
   }
   return false;
 }
 
-Result<bool> YBClient::NamespaceIdExists(const std::string& namespace_id,
-                                         const boost::optional<YQLDatabase>& database_type) {
-  for (const auto& ns : VERIFY_RESULT(ListNamespaces(database_type))) {
-    if (ns.id.id() == namespace_id) {
+Result<bool> YBClient::NamespaceIdExists(
+    const std::string& NamespaceId, const std::optional<YQLDatabase>& database_type) {
+  for (const auto& ns :
+       VERIFY_RESULT(ListNamespaces(IncludeNonrunningNamespaces::kFalse, database_type))) {
+    if (ns.id.id() == NamespaceId) {
       return true;
     }
   }
@@ -2776,10 +2781,6 @@ CoarseTimePoint YBClient::PatchAdminDeadline(CoarseTimePoint deadline) const {
     return deadline;
   }
   return CoarseMonoClock::Now() + default_admin_operation_timeout();
-}
-
-Result<vector<NamespaceInfo>> YBClient::ListNamespaces() {
-  return ListNamespaces(boost::none);
 }
 
 Result<YBTablePtr> YBClient::OpenTable(const TableId& table_id) {
