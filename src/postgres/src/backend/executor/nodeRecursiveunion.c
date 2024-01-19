@@ -254,7 +254,8 @@ ExecInitRecursiveUnion(RecursiveUnion *node, EState *estate, int eflags)
 		execTuplesHashPrepare(node->numCols,
 							  node->dupOperators,
 							  &rustate->eqfuncoids,
-							  &rustate->hashfunctions);
+							  &rustate->hashfunctions,
+							  NULL);
 		build_hash_table(rustate);
 	}
 
