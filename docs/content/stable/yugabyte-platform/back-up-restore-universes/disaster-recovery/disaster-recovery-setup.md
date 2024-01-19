@@ -3,7 +3,7 @@ title: Set up transactional xCluster replication
 headerTitle: Set up Disaster Recovery
 linkTitle: Setup
 description: Setting up Disaster Recovery for a universe
-headContent: Configure Disaster Recovery in case of an outage
+headContent: Start replication from your primary to your replica
 menu:
   stable_yugabyte-platform:
     parent: disaster-recovery
@@ -12,7 +12,7 @@ menu:
 type: docs
 ---
 
-The following assumes you have set up DR primary and DR replica. Refer to [Prerequisites](../#prerequisites).
+The following assumes you have set up two universes to act as the DR primary and DR replica. Refer to [Prerequisites](../#prerequisites).
 
 ## Set up disaster recovery
 
@@ -20,9 +20,9 @@ To set up disaster recovery for a universe, do the following:
 
 1. Navigate to your primary universe and select **Disaster Recovery**.
 
-1. Click **Configure & Enable DR**.
+1. Click **Configure & Enable Disaster Recovery**.
 
-1. Select the DR replica universe, then click **Next: Select Databases**.
+1. Select the universe to use as the DR replica, then click **Next: Select Databases**.
 
 1. Select the databases to be copied to the DR replica for disaster recovery.
 
@@ -121,11 +121,11 @@ To change the universe that is used as a DR replica, do the following:
 
 1. Click **Apply Changes**.
 
-    This removes the current DR replica from the DR config and sets up the new DR replica, with a full copy of the databases if needed.
+    This removes the current DR replica and sets up the new DR replica, with a full copy of the databases if needed.
 
 ## Restart replication
 
-In some cases like extended network partitions between the DR primary and replica can cause a permanent failure of replication due to WAL logs being no longer available on the DR primary.
+Some situations, such as extended network partitions between the DR primary and replica, can cause a permanent failure of replication due to WAL logs being no longer available on the DR primary.
 
 In these cases, restart replication as follows:
 

@@ -18,11 +18,63 @@ Use disaster recovery (DR) to recover from an unplanned outage (failover) or for
 
 A DR configuration consists of a primary universe, which serves both reads and writes, and a DR replica universe, which can also serve reads. Data from the primary is replicated asynchronously to the DR replica (which is read only). Due to the asynchronous nature of the replication, this deployment comes with non-zero recovery point objective (RPO) in the case of a primary universe outage. The actual value depends on the replication lag, which in turn depends on the network characteristics between the universes.
 
-The recovery time objective (RTO) is very low, as it only depends on the applications switching their connections from one universe to another. Applications should be designed in such a way that the switch happens as quickly as possible.
+The recovery time objective (RTO) is very low, as it only depends on applications switching their connections from one universe to another. Applications should be designed in such a way that the switch happens as quickly as possible.
 
 DR further allows for the role of each universe to switch during planned switchover and unplanned failover scenarios.
 
 ![Disaster recovery](/images/deploy/xcluster/xcluster-transactional.png)
+
+<div class="row">
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="disaster-recovery-setup/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/fault_tolerance.png" aria-hidden="true" />
+        <div class="title">Set up Disaster Recovery</div>
+      </div>
+      <div class="body">
+        Designate a universe to act as DR replica.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="disaster-recovery-failover/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/explore/high_performance.png" aria-hidden="true" />
+        <div class="title">Unplanned failover</div>
+      </div>
+      <div class="body">
+        Fail over to the DR replica in case of an outage.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="disaster-recovery-switchover/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/manage/backup.png" aria-hidden="true" />
+        <div class="title">Planned switchover</div>
+      </div>
+      <div class="body">
+        Switch over to the DR replica.
+      </div>
+    </a>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="disaster-recovery-tables/">
+      <div class="head">
+        <img class="icon" src="/images/section_icons/architecture/concepts/replication.png" aria-hidden="true" />
+        <div class="title">Add and remove tables and indexes</div>
+      </div>
+      <div class="body">
+        Perform DDL changes to databases in replication.
+      </div>
+    </a>
+  </div>
+
+</div>
 
 ## Prerequisites
 
@@ -49,6 +101,8 @@ After DR is configured, the DR replica will only be available for reads.
     Error ERROR:  database "database_name" is being accessed by other users
     DETAIL:  There is 1 other session using the database.
     ```
+
+- DDL replication is not supported. Refer to [Manage tables and indexes](./disaster-recovery-tables/).
 
 ## Best practices
 
