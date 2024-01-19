@@ -584,13 +584,14 @@ struct IndexState {
       const Schema& schema, const PgsqlReadRequestPB& request,
       std::unique_ptr<YQLRowwiseIteratorIf>* iterator_holder, ColumnId ybbasectid_id)
       : projection(CreateProjection(schema, request)), row(projection), iter(iterator_holder),
-        ybbasectid_idx(projection.ColumnIdxById(ybbasectid_id)) {
+        ybbasectid_idx(projection.ColumnIdxById(ybbasectid_id)), scanned_rows(0) {
   }
 
   dockv::ReaderProjection projection;
   dockv::PgTableRow row;
   FilteringIterator iter;
   const size_t ybbasectid_idx;
+  uint64_t scanned_rows;
 };
 
 Result<FetchResult> FetchTableRow(
@@ -604,8 +605,10 @@ Result<FetchResult> FetchTableRow(
         return FetchResult::NotFound;
       case FetchResult::FilteredOut:
         VLOG(1) << "Row filtered out by colocated index condition";
+        ++index->scanned_rows;
         return FetchResult::FilteredOut;
       case FetchResult::Found:
+        ++index->scanned_rows;
         break;
     }
 
@@ -1531,6 +1534,11 @@ Result<size_t> PgsqlReadOperation::Execute(
   if (index_iter_) {
     restart_read_ht->MakeAtLeast(VERIFY_RESULT(index_iter_->RestartReadHt()));
   }
+
+  response_.mutable_metrics()->set_scanned_table_rows(scanned_table_rows_);
+  if (scanned_index_rows_ > 0) {
+    response_.mutable_metrics()->set_scanned_index_rows(scanned_index_rows_);
+  }
   return fetched_rows;
 }
 
@@ -1722,6 +1730,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(
     if (fetch_result == FetchResult::NotFound) {
       break;
     }
+    ++scanned_table_rows_;
     if (fetch_result == FetchResult::Found) {
       ++match_count;
       if (request_.is_aggregate()) {
@@ -1768,6 +1777,10 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(
     *has_paging_state = VERIFY_RESULT(SetPagingState(
         iterator, read_context->schema(), read_operation_data.read_time));
   }
+
+  if (index_state) {
+    scanned_index_rows_ += index_state->scanned_rows;
+  }
   return fetched_rows;
 }
 
@@ -1804,6 +1817,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
   std::optional<FilteringIterator> iter;
   size_t row_count = 0;
   size_t fetched_rows = 0;
+  size_t filtered_rows = 0;
   for (const auto& batch_argument : batch_args) {
     if (!iter) {
       // It can be the case like when there is a tablet split that we still want
@@ -1827,6 +1841,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
         iter = std::nullopt;
         break;
       case FetchResult::FilteredOut:
+        ++filtered_rows;
         break;
       case FetchResult::Found:
         ++row_count;
@@ -1862,6 +1877,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
     // Mark all rows were processed even in case some of the ybctids were not found.
     response_.set_batch_arg_count(request_.batch_arguments_size());
 
+  scanned_table_rows_ += filtered_rows + row_count;
   return fetched_rows;
 }
 
