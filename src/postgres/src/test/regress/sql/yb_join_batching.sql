@@ -315,6 +315,18 @@ select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
 explain (costs off) select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 DESC limit 10;
 select q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 DESC limit 10;
 
+explain (costs off) select q2.c1, q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
+select q2.c1, q1.c1 from q1 join q2 on q1.c2 = q2.c2 order by q1.c1 limit 10;
+
+create index on q2(c1 asc);
+create table q3(c1 int, c2 int, c3 int, primary key(c3 desc));
+insert into q3 select i, i, i from generate_series(0,999) i;
+
+/*+Leading((q3 q2))*/explain (costs off) select q3.c3, q2.c2 from q2, q3 where q3.c3 = q2.c1 order by 1 desc limit 10;
+/*+Leading((q3 q2))*/select q3.c3, q2.c2 from q2, q3 where q3.c3 = q2.c1 order by 1 desc limit 10;
+
+drop index q2_c1_idx;
+drop table q3;
 CREATE TABLE q1nulls (a int, b int);
 CREATE INDEX ON q1nulls (a ASC NULLS FIRST, b DESC NULLS LAST);
 INSERT INTO q1nulls SELECT i/10, i % 10 from generate_series(1, 100) i;
