@@ -122,7 +122,7 @@ DO NOTHING | DO UPDATE SET *update_item* [ , ... ] [ WHERE *condition* ]
 #### *condition*
 
 An expression that returns a value of type boolean. 
-All rows will be locked when the ON CONFLICT DO UPDATE actio is taken, but only rows where this expression returns true will actually be updated.
+All rows are locked when the `ON CONFLICT DO UPDATE` action is taken, but only rows where this expression returns true get updated.
 
 This condition is evaluated after a conflict has been identified as a candidate to update.
 
