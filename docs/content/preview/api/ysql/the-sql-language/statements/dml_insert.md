@@ -93,6 +93,7 @@ Only successfully inserted or updated rows are returned.
 
 Specifies which conflicts ON CONFLICT takes the alternative action on by choosing arbiter indexes. 
 Either performs unique index inference, or names a constraint explicitly. 
+
 For ON CONFLICT DO NOTHING, it is optional to specify a conflict_target; when omitted, conflicts with all usable constraints (and unique indexes) are handled. 
 
 For ON CONFLICT DO UPDATE, a conflict_target must be provided.
