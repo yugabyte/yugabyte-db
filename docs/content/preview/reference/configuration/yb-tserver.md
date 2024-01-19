@@ -1308,7 +1308,7 @@ Default: 86400000 (1 day)
 
 The time to exclude from the YB-Master flag [ysql_index_backfill_rpc_timeout_ms](../yb-master/#ysql-index-backfill-rpc-timeout-ms) in order to return results to YB-Master in the specified deadline. Should be set to at least the amount of time each batch would require, and less than `ysql_index_backfill_rpc_timeout_ms`.
 
-Default: 1000 (1 second auto-computed internally)
+Default: -1, where the system automatically calculates the value to be approximately 1 second.
 
 ##### backfill_index_write_batch_size
 
