@@ -99,7 +99,7 @@ For ON CONFLICT DO UPDATE, a conflict_target must be provided.
 
 
 Specify which arbiter index to use to match rows for `ON CONFLICT`.
-It either checks a unique index, or specify a constraint explicitly.
+`ON CONFLICT` either checks a unique index, or specifies a constraint explicitly.
 When using `ON CONFLICT DO UPDATE`, the `conflict_target` is required.
 When using `ON CONFLICT DO NOTHING`, the `conflict_target` is optional. If omitted, it will conflict using all usable constraints and unique indexes of the table.
 
