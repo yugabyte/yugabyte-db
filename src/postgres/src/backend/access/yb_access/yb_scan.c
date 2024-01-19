@@ -1197,6 +1197,104 @@ static bool YbIsScanCompatible(Oid column_typid,
 	}
 }
 
+static bool YbShouldRecheckEquality(Oid column_typid, Oid value_typid)
+{
+	if (column_typid == value_typid)
+		return false;
+
+	bool is_compatible_int_type = false;
+	switch (column_typid)
+	{
+		case INT8OID:
+			switch_fallthrough();
+		case INT4OID:
+			is_compatible_int_type |= (value_typid == INT4OID);
+			switch_fallthrough();
+		case INT2OID:
+			is_compatible_int_type |= (value_typid == INT2OID);
+			break;
+		default:
+			Assert(!is_compatible_int_type);
+			break;
+	}
+	return !is_compatible_int_type;
+}
+
+static bool YbNeedTupleRangeCheck(Datum value, TupleDesc bind_desc,
+								  int key_length, ScanKey keys[])
+{
+	/* Move past header key. */
+	++keys;
+	--key_length;
+
+	Oid tupType =
+		HeapTupleHeaderGetTypeId(DatumGetHeapTupleHeader(value));
+	Oid tupTypmod =
+		HeapTupleHeaderGetTypMod(DatumGetHeapTupleHeader(value));
+	TupleDesc val_tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
+	bool need_check = false;
+
+	for (int i = 0; i < key_length; i++)
+	{
+		Oid val_type = ybc_get_atttypid(val_tupdesc, i + 1);
+		Oid column_type = ybc_get_atttypid(bind_desc, keys[i]->sk_attno);
+		if (YbShouldRecheckEquality(column_type, val_type))
+		{
+			need_check = true;
+			break;
+		}
+	}
+	ReleaseTupleDesc(val_tupdesc);
+	return need_check;
+}
+
+static bool YbIsTupleInRange(Datum value, TupleDesc bind_desc,
+							 int key_length, ScanKey keys[])
+{
+	/* Move past header key. */
+	++keys;
+	--key_length;
+
+	Oid tupType =
+		HeapTupleHeaderGetTypeId(DatumGetHeapTupleHeader(value));
+	Oid tupTypmod =
+		HeapTupleHeaderGetTypMod(DatumGetHeapTupleHeader(value));
+	TupleDesc val_tupdesc = lookup_rowtype_tupdesc(tupType, tupTypmod);
+
+	Datum datum_values[key_length];
+	bool datum_nulls[key_length];
+
+	HeapTupleData tuple;
+	ItemPointerSetInvalid(&(tuple.t_self));
+	tuple.t_tableOid = InvalidOid;
+	tuple.t_len = HeapTupleHeaderGetDatumLength(value);
+	tuple.t_data = DatumGetHeapTupleHeader(value);
+	heap_deform_tuple(&tuple, val_tupdesc,
+					  datum_values, datum_nulls);
+	(void) datum_nulls;
+	bool is_in_range = true;
+
+	for (int i = 0; i < key_length; i++) {
+		Datum val = datum_values[i];
+		Oid val_type = ybc_get_atttypid(val_tupdesc, i + 1);
+		Oid column_type = ybc_get_atttypid(bind_desc, keys[i]->sk_attno);
+
+		if (!YbShouldRecheckEquality(column_type, val_type))
+			continue;
+
+		if ((column_type == INT2OID || column_type == INT4OID) &&
+			!YbIsIntegerInRange(val, val_type,
+								column_type == INT2OID ? SHRT_MIN : INT_MIN,
+								column_type == INT2OID ? SHRT_MAX : INT_MAX))
+		{
+			is_in_range = false;
+			break;
+		}
+	}
+	ReleaseTupleDesc(val_tupdesc);
+	return is_in_range;
+}
+
 /*
  * We require compatible column type and value type to avoid misinterpreting the value Datum
  * using a column type that can cause wrong scan results. Returns true if the column type
@@ -1233,7 +1331,7 @@ YbCheckScanTypes(YbScanDesc ybScan, YbScanPlan scan_plan, int i)
 
 static bool
 YbBindRowComparisonKeys(YbScanDesc ybScan, YbScanPlan scan_plan,
-								int skey_index, bool is_for_precheck)
+						int skey_index, bool is_for_precheck)
 {
 	int last_att_no = YBFirstLowInvalidAttributeNumber;
 	Relation index = ybScan->index;
@@ -1503,6 +1601,10 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 								   scan_plan->bind_key_attnums[i]);
 
 	num_valid = 0;
+
+	bool should_check_row_range = is_row && num_elems > 0 &&
+		YbNeedTupleRangeCheck(elem_values[0], scan_plan->bind_desc,
+							  length_of_key, &ybScan->keys[i]);
 	for (j = 0; j < num_elems; j++)
 	{
 		if (elem_nulls[j])
@@ -1525,11 +1627,21 @@ YbBindSearchArray(YbScanDesc ybScan, YbScanPlan scan_plan,
 		 * This needs to be rechecked when row IN filters can
 		 * arise through other means.
 		 */
-		if ((!is_row && !elem_nulls[j])
-			|| (is_row &&
-				!HeapTupleHeaderHasNulls(
-					DatumGetHeapTupleHeader(elem_values[j]))))
-			elem_values[num_valid++] = elem_values[j];
+		if (is_row)
+		{
+			if (HeapTupleHeaderHasNulls(
+					DatumGetHeapTupleHeader(elem_values[j])))
+				continue;
+
+			if (should_check_row_range &&
+				!YbIsTupleInRange(elem_values[j],
+			 					  scan_plan->bind_desc,
+			 					  length_of_key,
+								  &ybScan->keys[i]))
+				continue;
+		}
+
+		elem_values[num_valid++] = elem_values[j];
 	}
 
 	pfree(elem_nulls);
