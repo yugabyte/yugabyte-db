@@ -207,6 +207,7 @@ using yb::master::ListTabletServersRequestPB;
 using yb::master::ListTabletServersResponsePB;
 using yb::master::ListTabletServersResponsePB_Entry;
 using yb::master::MasterDdlProxy;
+using yb::master::MasterReplicationProxy;
 using yb::master::PlacementInfoPB;
 using yb::master::RedisConfigGetRequestPB;
 using yb::master::RedisConfigGetResponsePB;
@@ -1453,7 +1454,8 @@ Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
     const std::unordered_map<std::string, std::string>& options,
     bool populate_namespace_id_as_table_id,
     const ReplicationSlotName& replication_slot_name,
-    const std::optional<CDCSDKSnapshotOption>& consistent_snapshot_option) {
+    const std::optional<CDCSDKSnapshotOption>& consistent_snapshot_option,
+    CoarseTimePoint deadline) {
   CreateCDCStreamRequestPB req;
 
   if (populate_namespace_id_as_table_id) {
@@ -1476,7 +1478,8 @@ Result<xrepl::StreamId> YBClient::CreateCDCSDKStreamForNamespace(
   }
 
   CreateCDCStreamResponsePB resp;
-  CALL_SYNC_LEADER_MASTER_RPC_EX(Replication, req, resp, CreateCDCStream);
+  deadline = PatchAdminDeadline(deadline);
+  CALL_SYNC_LEADER_MASTER_RPC_WITH_DEADLINE(Replication, req, resp, deadline, CreateCDCStream);
   return xrepl::StreamId::FromString(resp.stream_id());
 }
 
