@@ -80,8 +80,10 @@
 #include "yb/common/colocated_util.h"
 #include "yb/common/common.pb.h"
 #include "yb/common/common_flags.h"
+#include "yb/common/common_types.pb.h"
 #include "yb/common/common_util.h"
 #include "yb/common/constants.h"
+#include "yb/common/entity_ids.h"
 #include "yb/common/key_encoder.h"
 #include "yb/common/pgsql_error.h"
 #include "yb/common/pg_catversions.h"
@@ -212,6 +214,7 @@
 #include "yb/util/uuid.h"
 #include "yb/util/yb_pg_errcodes.h"
 
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/pgwrapper/pg_wrapper.h"
 #include "yb/yql/redis/redisserver/redis_constants.h"
 
@@ -1642,7 +1645,7 @@ Status CatalogManager::PrepareDefaultSysConfig(int64_t term) {
 Result<bool> CatalogManager::StartRunningInitDbIfNeeded(int64_t term) {
   {
     auto l = ysql_catalog_config_->LockForRead();
-    if (l->pb.ysql_catalog_config().initdb_done()) {
+    if (l->pb.ysql_catalog_config().initdb_done() && !FLAGS_TEST_online_pg11_to_pg15_upgrade) {
       LOG(INFO) << "Cluster configuration indicates that initdb has already completed";
       return false;
     }
@@ -1663,18 +1666,38 @@ Result<bool> CatalogManager::StartRunningInitDbIfNeeded(int64_t term) {
     return false;
   }
 
-  LOG(INFO) << "initdb has never been run on this cluster, running it";
+  std::vector<std::pair<std::string, YBCPgOid>> db_name_to_oid_list;
+  if (!FLAGS_TEST_online_pg11_to_pg15_upgrade) {
+    LOG(INFO) << "initdb has never been run on this cluster, running it";
+  } else {
+    LOG(INFO) << "Running initdb as part of online pg11 to pg15 upgrade";
+    // Store DB name to OID mapping for all system databases except template1. This mapping will be
+    // passed to initdb so that the system database OIDs will match. The template1 database is
+    // special because it's created by the bootstrap phase of initdb (see file comment for initdb.c
+    // for more details). The template1 database always has OID 1.
+    for (const auto& [ns_id, ns_info] : namespace_ids_map_) {
+      if (!IsPgsqlId(ns_id)) {
+        continue;
+      }
+      uint32_t oid = VERIFY_RESULT(GetPgsqlDatabaseOid(ns_id));
+      if (oid < kPgFirstNormalObjectId && oid != kTemplate1Oid) {
+        const string& db = ns_info->name();
+        db_name_to_oid_list.push_back({db, oid});
+      }
+    }
+  }
 
   string master_addresses_str = MasterAddressesToString(
       *master_->opts().GetMasterAddresses());
 
-  initdb_future_ = std::async(std::launch::async, [this, master_addresses_str, term] {
+  initdb_future_ = std::async(std::launch::async, [this, master_addresses_str, term,
+                                                   db_name_to_oid_list] {
     if (FLAGS_create_initial_sys_catalog_snapshot) {
       initial_snapshot_writer_.emplace();
     }
 
-    Status status =
-        PgWrapper::InitDbForYSQL(master_addresses_str, FLAGS_tmp_dir, master_->GetSharedMemoryFd());
+    Status status = PgWrapper::InitDbForYSQL(master_addresses_str, FLAGS_tmp_dir,
+                                             master_->GetSharedMemoryFd(), db_name_to_oid_list);
 
     if (FLAGS_create_initial_sys_catalog_snapshot && status.ok()) {
       auto sys_catalog_tablet_result = sys_catalog_->tablet_peer()->shared_tablet_safe();
@@ -8530,56 +8553,102 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
   std::vector<scoped_refptr<TableInfo>> pgsql_tables;
   TransactionMetadata txn;
   const auto db_type = GetDatabaseType(*req);
+  NamespaceInfo::WriteLock ns_l;
   {
     LockGuard lock(mutex_);
     TRACE("Acquired catalog manager lock");
 
     // Validate the user request.
 
-    // Verify that the namespace with same id does not already exist.
+    auto check_ns_errors = [req, resp, db_type](const scoped_refptr<NamespaceInfo>& ns,
+                                                bool by_id) -> Status {
+      Status return_status;
+      if (FLAGS_TEST_online_pg11_to_pg15_upgrade) {
+        // During the online PG11 -> PG15 upgrade, each system namespace (template1, template0,
+        // postgres, yugabyte, and system_platform) is "created" twice: once by initdb, and then
+        // once again after a DROP DATABASE that's part of upstream Postgres's dump and restore
+        // process. In both cases, the PG11 version of the namespace must already exist, and we re-
+        // use it. Therefore it's an error if ns is nullptr.
+        //
+        // The first time through this process, upgrade_state is RUNNING. The second time (yet to be
+        // implemented), it will be DELETED.
+        //
+        // User-created namespaces are expected to be "created" once by pg_restore. In this case,
+        // the PG11 version of the namespace must already exist, and we will re-use it. However,
+        // this case has not yet been tested.
+        //
+        // TODO(20710): Implement functionality required to run pg_restore.
+        // TODO(20710): Verify upgrade behavior with user-created databases.
+        // TODO(20710): Add a preflight check that the user has all 5 system databases and has not
+        // dropped any of them.
+        if (ns == nullptr) {
+          std::string context;
+          if (by_id) {
+            context = "No new namespaces can be created";
+          } else {
+            context = "Namespace is unexpectedly missing from the namespace names mapper";
+          }
+          return_status = STATUS(IllegalState,
+                                 StrCat(context, " during a ysql major version upgrade"));
+          return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_NOT_FOUND,
+                            return_status);
+        }
+        RSTATUS_DCHECK_EQ(ns->name(), req->name(), InternalError,
+                          Format("Namespace created during a ysql major version upgrade had $0 "
+                                 "that matched a different namespace $1",
+                                 by_id ? "an ID" : "a name", by_id ? "name" : "ID"));
+      } else if (ns != nullptr) {
+        // If this is the by-id case, and PG OID collision happens, use the PG error code:
+        // YB_PG_DUPLICATE_DATABASE to signal PG backend to retry CREATE DATABASE using the next
+        // available OID. Otherwise, don't set a customized error code in the return status.
+        // This is the default behavior of STATUS().
+        resp->set_id(ns->id());
+        auto pg_createdb_oid_collision_errcode =
+            PgsqlError(YBPgErrorCode::YB_PG_DUPLICATE_DATABASE);
+        return_status = STATUS(AlreadyPresent,
+                              Format("Keyspace '$0' with id '$1' already exists", req->name(),
+                                     req->namespace_id()),
+                              Slice(),
+                              db_type == YQL_DATABASE_PGSQL && by_id
+                                  ? &pg_createdb_oid_collision_errcode : nullptr);
+        LOG(WARNING) << "Found keyspace: " << ns->id() << ". Failed creating keyspace with error: "
+                    << return_status.ToString() << " Request:\n" << req->DebugString();
+        return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_ALREADY_PRESENT,
+                          return_status);
+      }
+      return Status::OK();
+    };
+
+    // Verify that the namespace with same id does not already exist, except in the case of online
+    // PG11 -> PG15 upgrade, in which case it will be reused.
     ns = FindPtrOrNull(namespace_ids_map_, req->namespace_id());
-    if (ns != nullptr) {
-      // If PG OID collision happens. Use the PG error code: YB_PG_DUPLICATE_DATABASE to signal PG
-      // backend to retry CREATE DATABASE using the next available OID.
-      // Otherwise, don't set customized error code in the return status.
-      // This is the default behavior of STATUS().
-      resp->set_id(ns->id());
-      auto pg_createdb_oid_collision_errcode = PgsqlError(YBPgErrorCode::YB_PG_DUPLICATE_DATABASE);
-      return_status = STATUS(AlreadyPresent,
-                             Format("Keyspace with id '$0' already exists", req->namespace_id()),
-                             Slice(),
-                             db_type == YQL_DATABASE_PGSQL
-                                ? &pg_createdb_oid_collision_errcode : nullptr);
-      LOG(WARNING) << "Found keyspace: " << ns->id() << ". Failed creating keyspace with error: "
-                   << return_status.ToString() << " Request:\n" << req->DebugString();
-      return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_ALREADY_PRESENT,
-                        return_status);
-    }
+    RETURN_NOT_OK(check_ns_errors(ns, true /* by_id */));
+
     // Use the by name namespace map to enforce global uniqueness for both YCQL keyspaces and YSQL
     // databases.  Although postgres metadata normally enforces db name uniqueness, it fails in
     // case of concurrent CREATE DATABASE requests in different sessions.
     ns = FindPtrOrNull(namespace_names_mapper_[db_type], req->name());
-    if (ns != nullptr) {
-      resp->set_id(ns->id());
-      return_status = STATUS_SUBSTITUTE(AlreadyPresent, "Keyspace '$0' already exists",
-                                        req->name());
-      LOG(WARNING) << "Found keyspace: " << ns->id() << ". Failed creating keyspace with error: "
-                   << return_status.ToString() << " Request:\n" << req->DebugString();
-      return SetupError(resp->mutable_error(), MasterErrorPB::NAMESPACE_ALREADY_PRESENT,
-                        return_status);
-    }
+    RETURN_NOT_OK(check_ns_errors(ns, false /* by_id */));
 
     // Add the new namespace.
 
-    // Create unique id for this new namespace.
-    NamespaceId new_id = !req->namespace_id().empty()
-        ? req->namespace_id() : GenerateIdUnlocked(SysRowEntryType::NAMESPACE);
-    ns = new NamespaceInfo(new_id);
-    ns->mutable_metadata()->StartMutation();
-    SysNamespaceEntryPB *metadata = &ns->mutable_metadata()->mutable_dirty()->pb;
+    // Create unique id for this new namespace, unless it already exists in the online PG11->PG15
+    // upgrade case.
+    if (!FLAGS_TEST_online_pg11_to_pg15_upgrade) {
+      NamespaceId new_id = !req->namespace_id().empty()
+          ? req->namespace_id() : GenerateIdUnlocked(SysRowEntryType::NAMESPACE);
+      ns = new NamespaceInfo(new_id);
+    }
+    ns_l = ns->LockForWrite();
+    SysNamespaceEntryPB *metadata = &ns_l.mutable_data()->pb;
     metadata->set_name(req->name());
     metadata->set_database_type(db_type);
     metadata->set_colocated(req->colocated());
+    // Note that during online PG11 -> PG15 upgrade, a namespace whose PG15 catalogs are being
+    // prepared will switch into state PREPARING. This is safe because DDLs are not allowed during
+    // the upgrade.
+    // TODO(20710): Rollback needs to handle cases where the state does not return to RUNNING during
+    // this process.
     metadata->set_state(SysNamespaceEntryPB::PREPARING);
 
     // For namespace created for a Postgres database, save the list of tables and indexes for
@@ -8594,8 +8663,26 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
                             source_oid.status());
         }
         for (const auto& table : tables_->GetAllTables()) {
+          // The expectation is that we're copying "all" of the PG tables from the source namespace
+          // to the target namespace. There are 3 situations in which we copy a namespace:
+          //  1) initdb, during a clean install
+          //  2) initdb, running as part of a PG11 to PG15 upgrade
+          //  3) steady state in either case (post-universe-creation, or post-upgrade)
+          //
+          // What does "all" mean in these cases?
+          //  * In case #1, it means all PG tables, though they will all be PG15 catalog tables.
+          //  * In case #2, it means only PG15 system catalog tables, because PG11 catalog tables
+          //    and user tables (which do not have a version) have already been added to the
+          //    namespace previously.
+          //  * In case #3, it means all PG tables, though they will all be PG15 catalog tables or
+          //    user tables (which do not have a version).
+          //
+          // So in case #2, we must accept only PG15 catalog tables.
           const auto& table_id = table->id();
           if (IsPgsqlId(table_id) && CHECK_RESULT(GetPgsqlDatabaseOid(table_id)) == *source_oid) {
+            if (FLAGS_TEST_online_pg11_to_pg15_upgrade && !IsPg15CatalogId(table_id)) {
+              continue;
+            }
             // Since indexes have dependencies on the base tables, put the tables in the front.
             const bool is_table = table->indexed_table_id().empty();
             pgsql_tables.insert(is_table ? pgsql_tables.begin() : pgsql_tables.end(), table);
@@ -8639,12 +8726,11 @@ Status CatalogManager::CreateNamespace(const CreateNamespaceRequestPB* req,
       namespace_ids_map_.erase(ns->id());
       namespace_names_mapper_[db_type].erase(req->name());
     }
-    ns->mutable_metadata()->AbortMutation();
     return CheckIfNoLongerLeaderAndSetupError(return_status, resp);
   }
   TRACE("Wrote keyspace to sys-catalog");
   // Commit the namespace in-memory state.
-  ns->mutable_metadata()->CommitMutation();
+  ns_l.Commit();
 
   LOG(INFO) << "Created keyspace " << ns->ToString();
 
@@ -9949,7 +10035,7 @@ Status CatalogManager::GetYsqlDBCatalogVersion(uint32_t db_oid,
   // of upgrade mode, in which case we might need to do a one-time bump of the PG15
   // pg_yb_catalog_version number.
   //
-  // YB_TODO: Support per-DB catalog versions using the same philosophy.
+  // TODO(20710): Support per-DB catalog versions using the same philosophy.
   TableId table_id;
   if (FLAGS_TEST_online_pg11_to_pg15_upgrade) {
     table_id = kPgYbCatalogVersionTableIdPg11;

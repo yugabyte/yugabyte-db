@@ -15,12 +15,14 @@
 #include <atomic>
 #include <optional>
 #include <string>
+#include <vector>
 
 #include "yb/gutil/ref_counted.h"
 #include "yb/util/flags.h"
 #include "yb/util/subprocess.h"
 #include "yb/util/status_fwd.h"
 #include "yb/util/enums.h"
+#include "yb/yql/pggate/ybc_pg_typedefs.h"
 #include "yb/yql/process_wrapper/process_wrapper.h"
 
 namespace yb {
@@ -87,15 +89,41 @@ class PgWrapper : public ProcessWrapper {
   // only once after the cluster has started up. tmp_dir_base is used as a base directory to
   // create a temporary PostgreSQL directory that is later deleted.
   static Status InitDbForYSQL(
-      const std::string& master_addresses, const std::string& tmp_dir_base, int tserver_shm_fd);
+      const std::string& master_addresses, const std::string& tmp_dir_base, int tserver_shm_fd,
+      std::vector<std::pair<std::string, YBCPgOid>> db_to_oid);
 
   Status SetYsqlConnManagerStatsShmKey(key_t statsshmkey);
  private:
+  struct LocalInitdbParams {
+    std::string versioned_data_dir;
+  };
+  struct GlobalInitdbParams {
+    std::vector<std::pair<std::string, YBCPgOid>> db_to_oid;
+  };
+  using InitdbParams = std::variant<LocalInitdbParams, GlobalInitdbParams>;
+
   // Calls PostgreSQL's initdb program for initial database initialization.
-  // versioned_data_dir - if set, just do local initdb to initialize a PostgreSQL data directory.
-  //                      This is only done once from outside of the YB cluster. If empty, the
-  //                      actual initdb process is run, talking to a Yugabyte cluster.
-  Status InitDb(const std::string& versioned_data_dir = "");
+  //
+  // initdb_params - initdb is run in one of two modes: 1) local initdb, which initializes a
+  //                 PostgreSQL data directory and does not access the YB cluster; or 2) global
+  //                 cluster initdb, which does initialization of catalogs and system objects
+  //                 against the YugabyteDB cluster.
+  //
+  //                 In local initdb mode, the caller must pass the data directory to use, which
+  //                 is expected to be a directory that's versioned to support online upgrade.
+  //
+  //                 In global cluster initdb mode, the caller must pass a mapping from database
+  //                 name to database OID. If there is already an existing cluster and it's going
+  //                 through an online upgrade, the caller must pass entries for all existing
+  //                 system-generated databases other than template1 (typically template0,
+  //                 postgres, yugabyte, and system platform), so that such OIDs can be reused in
+  //                 the new version of PostgreSQL. The template1 database is special because it's
+  //                 created by the bootstrap phase of initdb (see file comment for initdb.c for
+  //                 more details). The template1 database always has OID 1.
+  //
+  //                 For a new cluster, the caller must pass an empty map, which indicates that
+  //                 default OIDs are to be used.
+  Status InitDb(InitdbParams initdb_params);
 
   // Creates a directory name "<conf_.data_dir>_<version>".
   std::string MakeVersionedDataDir(int32_t version);

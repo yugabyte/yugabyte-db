@@ -25,6 +25,7 @@
  *-------------------------------------------------------------------------
  */
 
+#include <limits.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -236,4 +237,18 @@ bool
 YBIsTestOnlinePg11ToPg15Upgrade()
 {
 	return YBCIsEnvVarTrue("FLAGS_TEST_online_pg11_to_pg15_upgrade");
+}
+
+Oid YBGetDatabaseOidFromEnv(const char *database_name)
+{
+	char *env_var = psprintf("YB_DATABASE_OID_%s", database_name);
+	const char *database_oid_str = getenv(env_var);
+	pfree(env_var);
+	if (database_oid_str)
+	{
+		unsigned long full_oid = strtoul(database_oid_str, NULL, 10);
+		if (full_oid <= OID_MAX)
+			return (Oid) full_oid;
+	}
+	return InvalidOid;
 }

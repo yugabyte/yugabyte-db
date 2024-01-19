@@ -1946,6 +1946,7 @@ make_template0(FILE *cmdfd)
 	 * a little bit slower and make the new cluster a little bit bigger.
 	 */
 	static const char *const template0_setup[] = {
+		/* YB: Must be kept in sync with the below version using the provided OID. */
 		"CREATE DATABASE template0 IS_TEMPLATE = true ALLOW_CONNECTIONS = false"
 		" OID = " CppAsString2(Template0DbOid)
 		" STRATEGY = file_copy;\n\n",
@@ -1986,7 +1987,22 @@ make_template0(FILE *cmdfd)
 	 */
 	if (IsYugaByteGlobalClusterInitdb())
 	{
-		PG_CMD_PUTS(template0_setup[0]);
+		/*
+		 * In an online YSQL major version upgrade, we maintain catalogs for the
+		 * old and new PG versions. Because the YB master has its own data
+		 * structures tracking databases/namespaces in addition to the PG
+		 * catalog tracking them, it makes the most sense to preserve the old PG
+		 * version's database OIDs. For a new installation, we use PG's expected
+		 * OID.
+		 */
+		Oid template0_oid = YBGetDatabaseOidFromEnv("template0");
+		if (OidIsValid(template0_oid))
+			PG_CMD_PRINTF("CREATE DATABASE template0 IS_TEMPLATE = true"
+						  " ALLOW_CONNECTIONS = false OID = %u"
+						  " STRATEGY = file_copy;\n\n",
+						  template0_oid);
+		else
+			PG_CMD_PUTS(template0_setup[0]);
 		PG_CMD_PUTS(template0_setup[2]);
 		PG_CMD_PUTS(template0_setup[3]);
 		PG_CMD_PUTS(template0_setup[4]);
@@ -2011,13 +2027,25 @@ make_postgres(FILE *cmdfd)
 	 * OID to postgres and select the file_copy strategy.
 	 */
 	static const char *const postgres_setup[] = {
+		/* YB: Must be kept in sync with the below version using the provided OID. */
 		"CREATE DATABASE postgres OID = " CppAsString2(PostgresDbOid)
 		" STRATEGY = file_copy;\n\n",
 		"COMMENT ON DATABASE postgres IS 'default administrative connection database';\n\n",
 		NULL
 	};
 
-	for (line = postgres_setup; *line; line++)
+	/*
+	 * Just as we did for template0, and for the same reasons, set the postgres
+	 * database OID to the existing database OID for online upgrade.
+	 */
+	Oid postgres_oid = YBGetDatabaseOidFromEnv("postgres");
+	if (IsYugaByteGlobalClusterInitdb() && OidIsValid(postgres_oid))
+		PG_CMD_PRINTF("CREATE DATABASE postgres OID = %u STRATEGY = file_copy;\n\n",
+					  postgres_oid);
+	else
+		PG_CMD_PUTS(postgres_setup[0]);
+
+	for (line = &postgres_setup[1]; *line; line++)
 		PG_CMD_PUTS(*line);
 }
 
@@ -2030,13 +2058,27 @@ make_yugabyte(FILE *cmdfd)
 {
 	const char *const *line;
 	static const char *const yugabyte_setup[] = {
-		"CREATE USER yugabyte SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS PASSWORD 'yugabyte';\n\n"
+		"CREATE USER yugabyte SUPERUSER INHERIT CREATEROLE CREATEDB LOGIN REPLICATION BYPASSRLS PASSWORD 'yugabyte';\n\n",
+		/* YB: Must be kept in sync with the below version using the provided OID. */
 		"CREATE DATABASE yugabyte;\n\n",
 		"COMMENT ON DATABASE yugabyte IS 'default administrative connection database';\n\n",
 		NULL
 	};
 
-	for (line = yugabyte_setup; *line; line++)
+	/*
+	 * As we did for template0, set the yugabyte database OID to the existing
+	 * database OID for online upgrade. However, for a clean install, we don't
+	 * have a reserved OID and just let one be assigned.
+	 */
+	Oid yugabyte_oid = YBGetDatabaseOidFromEnv("yugabyte");
+
+	PG_CMD_PUTS(yugabyte_setup[0]);
+	if (OidIsValid(yugabyte_oid))
+		PG_CMD_PRINTF("CREATE DATABASE yugabyte OID = %u;\n\n", yugabyte_oid);
+	else
+		PG_CMD_PUTS(yugabyte_setup[1]);
+
+	for (line = &yugabyte_setup[2]; *line; line++)
 		PG_CMD_PUTS(*line);
 }
 
@@ -2048,12 +2090,25 @@ static void
 make_system_platform(FILE *cmdfd) {
 	const char *const *line;
 	static const char *const system_platform_setup[] = {
+		/* YB: Must be kept in sync with the below version using the provided OID. */
 		"CREATE DATABASE system_platform;\n\n",
 		"COMMENT ON DATABASE system_platform IS 'system database for YugaByte platform';\n\n",
 		NULL
 	};
 
-	for (line = system_platform_setup; *line; line++)
+	/*
+	 * Set the system_platform database OID the same way we do for the yugabyte
+	 * database.
+	 */
+	Oid system_platform_oid = YBGetDatabaseOidFromEnv("system_platform");
+
+	if (OidIsValid(system_platform_oid))
+		PG_CMD_PRINTF("CREATE DATABASE system_platform OID = %u;\n\n",
+					  system_platform_oid);
+	else
+		PG_CMD_PUTS(system_platform_setup[0]);
+
+	for (line = &system_platform_setup[1]; *line; line++)
 		PG_CMD_PUTS(*line);
 }
 

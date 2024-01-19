@@ -155,4 +155,11 @@ extern bool YBColocateDatabaseByDefault();
  */
 extern bool YBIsTestOnlinePg11ToPg15Upgrade();
 
+/**
+ * Returns the OID for database_name from the environment, if it exists and is
+ * valid. Otherwise, returns InvalidOid.
+ * Used for online upgrades.
+ */
+Oid YBGetDatabaseOidFromEnv(const char *database_name);
+
 #endif /* PG_YB_COMMON_H */

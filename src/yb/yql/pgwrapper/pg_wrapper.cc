@@ -21,6 +21,7 @@
 #include <regex>
 #include <string>
 #include <thread>
+#include <variant>
 #include <vector>
 
 #include <boost/algorithm/string.hpp>
@@ -704,26 +705,34 @@ Status PgWrapper::UpdateAndReloadConfig() {
   return ReloadConfig();
 }
 
-Status PgWrapper::InitDb(const string& versioned_data_dir) {
+Status PgWrapper::InitDb(InitdbParams initdb_params) {
   const string initdb_program_path = GetInitDbExecutablePath();
   RETURN_NOT_OK(CheckExecutableValid(initdb_program_path));
   if (!Env::Default()->FileExists(initdb_program_path)) {
     return STATUS_FORMAT(IOError, "initdb not found at: $0", initdb_program_path);
   }
 
-  // A set versioned_data_dir means it's local initdb, so we need to initialize in the actual
-  // directory. Otherwise, we can use the symlink.
-  const string& data_dir = versioned_data_dir.empty() ? conf_.data_dir : versioned_data_dir;
+  // If InitdbParams is LocalInitdbParams, then it's local initdb, and we need to initialize in the
+  // actual directory. Otherwise, we can use the symlink.
+  const string& data_dir =
+      std::holds_alternative<LocalInitdbParams>(initdb_params)
+          ? std::get<LocalInitdbParams>(initdb_params).versioned_data_dir
+          : conf_.data_dir;
   vector<string> initdb_args { initdb_program_path, "-D", data_dir, "-U", "postgres" };
   LOG(INFO) << "Launching initdb: " << AsString(initdb_args);
 
   Subprocess initdb_subprocess(initdb_program_path, initdb_args);
   initdb_subprocess.InheritNonstandardFd(conf_.tserver_shm_fd);
-  bool yb_enabled = versioned_data_dir.empty();
-  SetCommonEnv(&initdb_subprocess, yb_enabled);
+  bool global_initdb = std::holds_alternative<GlobalInitdbParams>(initdb_params);
+  SetCommonEnv(&initdb_subprocess, global_initdb);
   initdb_subprocess.SetEnv(
       "FLAGS_TEST_online_pg11_to_pg15_upgrade",
       FLAGS_TEST_online_pg11_to_pg15_upgrade ? "true" : "false");
+  if (global_initdb) {
+    for (const auto& [db_name, db_oid] : std::get<GlobalInitdbParams>(initdb_params).db_to_oid) {
+      initdb_subprocess.SetEnv("YB_DATABASE_OID_" + db_name, std::to_string(db_oid));
+    }
+  }
   int status = 0;
   RETURN_NOT_OK(initdb_subprocess.Start());
   RETURN_NOT_OK(initdb_subprocess.Wait(&status));
@@ -825,13 +834,13 @@ Status PgWrapper::InitDbLocalOnlyIfNeeded() {
   // Run local initdb. Do not communicate with the YugaByte cluster at all. This function is only
   // concerned with setting up the local PostgreSQL data directory on this tablet server. We skip
   // local initdb if versioned_data_dir already exists.
-  RETURN_NOT_OK(InitDb(versioned_data_dir));
+  RETURN_NOT_OK(InitDb(LocalInitdbParams{versioned_data_dir}));
   return Env::Default()->SymlinkPath(versioned_data_dir, conf_.data_dir);
 }
 
 Status PgWrapper::InitDbForYSQL(
     const string& master_addresses, const string& tmp_dir_base,
-    int tserver_shm_fd) {
+    int tserver_shm_fd, std::vector<std::pair<string, YBCPgOid>> db_to_oid) {
   LOG(INFO) << "Running initdb to initialize YSQL cluster with master addresses "
             << master_addresses;
   PgProcessConf conf;
@@ -856,7 +865,7 @@ Status PgWrapper::InitDbForYSQL(
   });
   PgWrapper pg_wrapper(conf);
   auto start_time = std::chrono::steady_clock::now();
-  Status initdb_status = pg_wrapper.InitDb();
+  Status initdb_status = pg_wrapper.InitDb(GlobalInitdbParams{db_to_oid});
   auto elapsed_time = std::chrono::steady_clock::now() - start_time;
   LOG(INFO)
       << "initdb took "

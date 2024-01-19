@@ -567,7 +567,12 @@ boot_column_val:
 Boot_CheckInitDbDone:
       YBCHECKINITDBDONE
       {
-				if (YBIsInitDbAlreadyDone())
+				/*
+				 * In the normal case, don't run initdb twice. During a ysql major version upgrade,
+				 * initdb is already done for the prior version, but we need to run it for the new
+				 * version.
+				 */
+				if (!YBIsTestOnlinePg11ToPg15Upgrade() && YBIsInitDbAlreadyDone())
 					exit(YB_INITDB_ALREADY_DONE_EXIT_CODE);
 			}
 

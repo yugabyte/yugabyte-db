@@ -24,6 +24,12 @@ fi
 pushd "$prefix/yugabyte-$ybversion_pg11"
 yb_ctl_destroy_create --rf=3
 
+# Store PG DB OIDs for later comparison
+pghost2=127.0.0.$((ip_start + 1))
+pghost3=127.0.0.$((ip_start + 2))
+bin/yb-admin --master_addresses=$PGHOST:7100,$pghost2:7100,$pghost3:7100 list_namespaces \
+  | grep 30008 | sort -k2 | awk '{print $1 " " $2}' > $data_dir/pg11_dbs.txt
+
 # Create pre-existing PG11 table
 ysqlsh <<EOT
 SHOW server_version;
@@ -37,7 +43,7 @@ popd
 
 # Upgrade to PG15 by first starting the masters in a mode that runs initdb in a mode that's aware of
 # the PG11 to PG15 upgrade process, and then doing the actual upgrade flow (dump+restore).
-# TODO: Run initdb and do the actual upgrade flow.
+# TODO: Do the actual upgrade flow.
 
 # Restart the masters as PG15 masters
 for i in {1..3}; do
@@ -45,11 +51,39 @@ for i in {1..3}; do
       --master_flags="master_auto_run_initdb=true,TEST_online_pg11_to_pg15_upgrade=true"
 done
 
-# There is no code yet to run initdb on the PG15 catalogs, but PG11 tservers should still work.
-# Ensure that the masters can still respond to PG11 queries.
+# Wait until initdb has finished. On a Mac, it takes around 22 seconds on a release build, or over
+# 90 seconds on debug. initdb typically starts on node 1, but we monitor all nodes in case it starts
+# on another one.
+echo initdb starting at $(date +"%r")
+timeout 120 bash -c "tail -F $data_dir/node-1/disk-1/yb-data/master/logs/yb-master.INFO \
+                             $data_dir/node-2/disk-1/yb-data/master/logs/yb-master.INFO \
+                             $data_dir/node-3/disk-1/yb-data/master/logs/yb-master.INFO | \
+    grep -m 1 \"initdb completed successfully\""
+
+# Ensure that the PG15 initdb didn't create or modify namespace entries on the YB master.
+diff $data_dir/pg11_dbs.txt <(build/latest/bin/yb-admin \
+  --master_addresses=$PGHOST:7100,$pghost2:7100,$pghost3:7100 list_namespaces | grep 30008 \
+  | sort -k2 | awk '{print $1 " " $2}')
+
+# Restart tserver 2 to PG15 for the upgrade, with postgres binaries in binary_upgrade mode
+yb_ctl restart_node 2 --tserver_flags="TEST_pg_binary_upgrade=true"
+
+# At this point, all of the masters are upgraded to PG15, and tserver node 2 is upgraded to PG15
+# also. The tservers for nodes 1 and 3 remain on PG11. Test that PG11 still completely works,
+# i.e., that you can select the entire table. Note that by default ysqlsh connects to node 1.
 ysqlsh <<EOT
 SHOW server_version;
 SELECT * FROM yb_servers();
 SELECT * FROM pg_am;
 SELECT * FROM t;
+EOT
+
+# Initdb has been run, but not pg_restore. Therefore, there are no user tables available in PG15
+# yet. However the database should work.
+ysqlsh 2 <<EOT
+SHOW server_version;
+SELECT * FROM yb_servers();
+SELECT * FROM pg_am;
+-- This statement wouldn't find the table.
+-- SELECT * FROM t;
 EOT
