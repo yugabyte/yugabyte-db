@@ -142,21 +142,12 @@ public class Region extends Model {
   @JsonIgnore
   public long getNodeCount() {
     Set<UUID> azUUIDs = getZones().stream().map(az -> az.getUuid()).collect(Collectors.toSet());
-    long universeNodeCount =
-        Customer.get(getProvider().getCustomerUUID())
-            .getUniversesForProvider(getProvider().getUuid())
-            .stream()
-            .flatMap(u -> u.getUniverseDetails().nodeDetailsSet.stream())
-            .filter(nd -> azUUIDs.contains(nd.azUuid))
-            .count();
-
-    long onpremInstanceCount = 0;
-    if (provider.getCloudCode() == CloudType.onprem) {
-      // We will have to consider the not-in-use instances associated with the az.
-      onpremInstanceCount = NodeInstance.listByRegion(getUuid(), null).stream().count();
-    }
-
-    return universeNodeCount + onpremInstanceCount;
+    return Customer.get(getProvider().getCustomerUUID())
+        .getUniversesForProvider(getProvider().getUuid())
+        .stream()
+        .flatMap(u -> u.getUniverseDetails().nodeDetailsSet.stream())
+        .filter(nd -> azUUIDs.contains(nd.azUuid))
+        .count();
   }
 
   @JsonProperty("securityGroupId")

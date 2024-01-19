@@ -142,23 +142,6 @@ public class NodeInstance extends Model {
     return nodes;
   }
 
-  public static List<NodeInstance> listByRegion(UUID regionUUID, String instanceTypeCode) {
-    Region region = Region.getOrBadRequest(regionUUID);
-    List<UUID> azUUIDs =
-        region.getZones().stream().map(az -> az.getUuid()).collect(Collectors.toList());
-    List<NodeInstance> nodes = null;
-    // Search in the proper AZ.
-    ExpressionList<NodeInstance> exp = NodeInstance.find.query().where().in("zone_uuid", azUUIDs);
-    // Search only for nodes not in use.
-    exp.where().eq("in_use", false);
-    // Filter by instance type if asked to.
-    if (instanceTypeCode != null) {
-      exp.where().eq("instance_type_code", instanceTypeCode);
-    }
-    nodes = exp.findList();
-    return nodes;
-  }
-
   public static List<NodeInstance> listByProvider(UUID providerUUID) {
     String nodeQuery =
         "select DISTINCT n.* from node_instance n, availability_zone az, region r, provider p "
