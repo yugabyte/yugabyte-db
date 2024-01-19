@@ -67,8 +67,6 @@ Status ApplyWriteRequest(
       .doc_write_batch = write_batch,
       .read_operation_data = {},
       .restart_read_ht = nullptr,
-      .iterator = nullptr,
-      .restart_seek = true,
       .schema_packing_provider = schema_packing_provider,
   };
   qlexpr::IndexMap index_map;
