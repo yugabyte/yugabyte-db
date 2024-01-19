@@ -108,6 +108,8 @@ YB_STRONGLY_TYPED_STRING(ReplicationGroupId);
 
 namespace client {
 
+YB_STRONGLY_TYPED_BOOL(IncludeNonrunningNamespaces);
+
 struct NamespaceInfo {
     master::NamespaceIdentifierPB id;
     master::SysNamespaceEntryPB_State state;
@@ -504,9 +506,9 @@ class YBClient {
                                const std::string& role_name);
 
   // List all namespace identifiers.
-  Result<std::vector<NamespaceInfo>> ListNamespaces();
   Result<std::vector<NamespaceInfo>> ListNamespaces(
-      const boost::optional<YQLDatabase>& database_type);
+      IncludeNonrunningNamespaces include_nonrunning = IncludeNonrunningNamespaces::kFalse,
+      std::optional<YQLDatabase> database_type = std::nullopt);
 
   // Get namespace information.
   Status GetNamespaceInfo(const std::string& namespace_id,
@@ -517,9 +519,9 @@ class YBClient {
   // Check if the namespace given by 'namespace_name' or 'namespace_id' exists.
   // Result value is set only on success.
   Result<bool> NamespaceExists(const std::string& namespace_name,
-                               const boost::optional<YQLDatabase>& database_type = boost::none);
+                               const std::optional<YQLDatabase>& database_type = std::nullopt);
   Result<bool> NamespaceIdExists(const std::string& namespace_id,
-                                 const boost::optional<YQLDatabase>& database_type = boost::none);
+                                 const std::optional<YQLDatabase>& database_type = std::nullopt);
 
   Status CreateTablegroup(const std::string& namespace_name,
                           const std::string& namespace_id,

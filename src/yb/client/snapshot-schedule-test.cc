@@ -200,7 +200,7 @@ TEST_F(SnapshotScheduleTest, TablegroupGC) {
                                      "" /* ns_id */, "" /* src_ns_id */,
                                      boost::none /* next_pg_oid */, nullptr /* txn */, false));
   {
-    auto namespaces = ASSERT_RESULT(client->ListNamespaces(boost::none));
+    auto namespaces = ASSERT_RESULT(client->ListNamespaces());
     for (const auto& ns : namespaces) {
       if (ns.id.name() == namespace_name) {
         namespace_id = ns.id.id();

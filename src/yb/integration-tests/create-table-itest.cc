@@ -335,7 +335,7 @@ TEST_F(CreateTableITest, LegacyColocatedDBTableColocationRemoteBootstrapTest) {
 
   {
     string ns_id;
-    auto namespaces = ASSERT_RESULT(client_->ListNamespaces(boost::none));
+    auto namespaces = ASSERT_RESULT(client_->ListNamespaces());
     for (const auto& ns : namespaces) {
       if (ns.id.name() == "colocation_test") {
         ns_id = ns.id.id();
@@ -472,7 +472,7 @@ TEST_F(CreateTableITest, TablegroupRemoteBootstrapTest) {
                                      boost::none /* next_pg_oid */, nullptr /* txn */, false));
 
   {
-    auto namespaces = ASSERT_RESULT(client_->ListNamespaces(boost::none));
+    auto namespaces = ASSERT_RESULT(client_->ListNamespaces());
     for (const auto& ns : namespaces) {
       if (ns.id.name() == namespace_name) {
         namespace_id = ns.id.id();

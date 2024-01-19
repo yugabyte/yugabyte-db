@@ -9824,9 +9824,11 @@ Status CatalogManager::ListNamespaces(const ListNamespacesRequestPB* req,
     if (req->has_database_type() && namespace_info.database_type() != req->database_type()) {
       continue;
     }
-    // Only return RUNNING namespaces.
+    // Only return namespaces in state RUNNING unless list_all is true.
     if (namespace_info.state() != SysNamespaceEntryPB::RUNNING) {
-      continue;
+      if (!req->include_nonrunning()) {
+        continue;
+      }
     }
 
     NamespaceIdentifierPB *ns = resp->add_namespaces();
