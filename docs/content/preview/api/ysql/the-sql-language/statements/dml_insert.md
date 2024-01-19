@@ -136,7 +136,7 @@ Rows to be inserted must not conflict with each other on the used constraint or 
 
 {{< note title="Tip" >}}
 
-It is preferable to use a unique index for `ON CONFLICT` instead of a constraint because you can replace the underlying unique index with another more or less equivalent index before dropping the index being replaced.
+It is recommended to use a unique index for `ON CONFLICT` instead of a constraint, because you can replace the underlying unique index with another more or less equivalent index before dropping the index being replaced.
 
 {{< /note >}}
 
