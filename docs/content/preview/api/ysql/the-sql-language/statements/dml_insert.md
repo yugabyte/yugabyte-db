@@ -130,7 +130,7 @@ Only `NOT DEFERRABLE` constraints and unique indexes are supported as arbiters.
 `exclusion` constraints are not supported as arbiters with `ON CONFLICT DO UPDATE`. 
 
 The `ON CONFLICT DO UPDATE` clause is a _deterministic_ statement. 
-The command is not allowed to update any existing row more than once, a `cardinality violation` error will be raised in such cases.
+The command is not allowed to update any existing row more than once, and doing so raises a `cardinality violation` error.
 Rows to be inserted must not conflict with each other on the used constraint or arbiter index.
 
 `ON CONFLICT DO UPDATE` does not support updating the partition key of a conflicting row in a partitioned table that results in the row moving to a new partition.
