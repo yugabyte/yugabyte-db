@@ -555,6 +555,10 @@ message PgsqlRequestMetricsPB {
   repeated PgsqlRequestCounterMetricPB counter_metrics = 2;
   // Event stats metrics changes as a result of processing the request.
   repeated PgsqlRequestEventMetricPB event_metrics = 3;
+  // Count of table rows scanned as a result of processing the request.
+  optional int64 scanned_table_rows = 4;
+  // Count of secondary index rows scanned as a result of processing the request.
+  optional int64 scanned_index_rows = 5;
 }
 
 // Response from tablet server for both read and write.

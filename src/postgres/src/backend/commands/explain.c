@@ -157,11 +157,15 @@ typedef enum YbStatLabel
 
 	YB_STAT_LABEL_STORAGE_TABLE_READ,
 	YB_STAT_LABEL_STORAGE_TABLE_WRITE,
+	YB_STAT_LABEL_STORAGE_TABLE_ROWS_SCANNED,
 
 	YB_STAT_LABEL_STORAGE_INDEX_READ,
 	YB_STAT_LABEL_STORAGE_INDEX_WRITE,
+	YB_STAT_LABEL_STORAGE_INDEX_ROWS_SCANNED,
 
 	YB_STAT_LABEL_STORAGE_FLUSH,
+
+	YB_STAT_LABEL_STORAGE_ROWS_SCANNED,
 
 	YB_STAT_LABEL_LAST
 } YbStatLabel;
@@ -183,38 +187,52 @@ typedef struct YbExplainState
 
 #define BUILD_STAT_LABEL_DATA(NAME, IS_NON_DETERMINISTIC) \
 	{ \
-		NAME " Requests", NAME " Execution Time", IS_NON_DETERMINISTIC \
+		NAME, NULL, IS_NON_DETERMINISTIC \
 	}
 
-#define BUILD_NON_DETERMINISTIC_STAT_LABEL_DATA(NAME) \
-	BUILD_STAT_LABEL_DATA(NAME, true)
+#define BUILD_REQUEST_STAT_LABEL_DATA(NAME, IS_NON_DETERMINISTIC) \
+	{ \
+		NAME " Requests", NAME " Execution Time", IS_NON_DETERMINISTIC \
+	}
 
 #define BUILD_DETERMINISTIC_STAT_LABEL_DATA(NAME) \
 	BUILD_STAT_LABEL_DATA(NAME, false)
 
+#define BUILD_NON_DETERMINISTIC_REQUEST_STAT_LABEL_DATA(NAME) \
+	BUILD_REQUEST_STAT_LABEL_DATA(NAME, true)
+
+#define BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA(NAME) \
+	BUILD_REQUEST_STAT_LABEL_DATA(NAME, false)
+
 const YbStatLabelData yb_stat_label_data[] = {
 	[YB_STAT_LABEL_CATALOG_READ] =
-		BUILD_NON_DETERMINISTIC_STAT_LABEL_DATA("Catalog Read"),
+		BUILD_NON_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Catalog Read"),
 	[YB_STAT_LABEL_CATALOG_WRITE] =
-		BUILD_NON_DETERMINISTIC_STAT_LABEL_DATA("Catalog Write"),
+		BUILD_NON_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Catalog Write"),
 
 	[YB_STAT_LABEL_STORAGE_READ] =
-		BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Read"),
+		BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Read"),
 	[YB_STAT_LABEL_STORAGE_WRITE] =
-		BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Write"),
+		BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Write"),
+	[YB_STAT_LABEL_STORAGE_ROWS_SCANNED] =
+		BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Rows Scanned"),
 
 	[YB_STAT_LABEL_STORAGE_TABLE_READ] =
-		BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Table Read"),
+		BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Table Read"),
 	[YB_STAT_LABEL_STORAGE_TABLE_WRITE] =
-		BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Table Write"),
+		BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Table Write"),
+	[YB_STAT_LABEL_STORAGE_TABLE_ROWS_SCANNED] =
+		BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Table Rows Scanned"),
 
 	[YB_STAT_LABEL_STORAGE_INDEX_READ] =
-		BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Index Read"),
+		BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Index Read"),
 	[YB_STAT_LABEL_STORAGE_INDEX_WRITE] =
-		BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Index Write"),
+		BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Index Write"),
+	[YB_STAT_LABEL_STORAGE_INDEX_ROWS_SCANNED] =
+		BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Index Rows Scanned"),
 
 	[YB_STAT_LABEL_STORAGE_FLUSH] =
-		BUILD_DETERMINISTIC_STAT_LABEL_DATA("Storage Flush"),
+		BUILD_DETERMINISTIC_REQUEST_STAT_LABEL_DATA("Storage Flush"),
 };
 
 #undef BUILD_STAT_LABEL_DATA
@@ -1366,6 +1384,9 @@ ExplainOnePlan(PlannedStmt *plannedstmt, IntoClause *into, ExplainState *es,
 			YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_STORAGE_READ,
 									es->yb_stats.read.count,
 									es->yb_stats.read.wait_time);
+			YbExplainStatWithoutTiming(&yb_es,
+									   YB_STAT_LABEL_STORAGE_ROWS_SCANNED,
+									   es->yb_stats.read.rows_scanned);
 			YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_WRITE,
 									   es->yb_stats.write_count);
 			YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_CATALOG_READ,
@@ -3876,6 +3897,8 @@ show_yb_rpc_stats(PlanState *planstate, bool indexScan, ExplainState *es)
 	double table_read_wait = yb_instr->tbl_reads.wait_time / nloops;
 	double index_reads = yb_instr->index_reads.count / nloops;
 	double index_read_wait = yb_instr->index_reads.wait_time / nloops;
+	double table_rows_scanned = yb_instr->tbl_reads.rows_scanned / nloops;
+	double index_rows_scanned = yb_instr->index_reads.rows_scanned / nloops ;
 
 	/* Write stats */
 	double table_writes = yb_instr->tbl_writes / nloops;
@@ -3887,8 +3910,13 @@ show_yb_rpc_stats(PlanState *planstate, bool indexScan, ExplainState *es)
 
 	YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_STORAGE_TABLE_READ,
 							table_reads, table_read_wait);
+	YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_TABLE_ROWS_SCANNED,
+							   table_rows_scanned);
 	YbExplainRpcRequestStat(&yb_es, YB_STAT_LABEL_STORAGE_INDEX_READ,
 							index_reads, index_read_wait);
+	YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_INDEX_ROWS_SCANNED,
+							   index_rows_scanned);
+
 	YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_TABLE_WRITE,
 							   table_writes);
 	YbExplainStatWithoutTiming(&yb_es, YB_STAT_LABEL_STORAGE_INDEX_WRITE,
@@ -4920,6 +4948,10 @@ YbAggregateExplainableRPCRequestStat(ExplainState			 *es,
 	// Storage Flushes
 	es->yb_stats.flush.count += yb_instr->write_flushes.count;
 	es->yb_stats.flush.wait_time += yb_instr->write_flushes.wait_time;
+
+	// Rows Scanned
+	es->yb_stats.read.rows_scanned +=
+		yb_instr->tbl_reads.rows_scanned + yb_instr->index_reads.rows_scanned;
 
 	// RPC Storage Metrics
 	for (int i = 0; i < YB_STORAGE_GAUGE_COUNT; ++i) {
