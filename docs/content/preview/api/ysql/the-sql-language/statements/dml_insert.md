@@ -142,7 +142,7 @@ It is preferable to use a unique index for `ON CONFLICT` instead of a constraint
 
 ### Compatibility
 
-There are several PostgreSQL extensions to the SQL standard inherited in YugabyteDB:
+There are several PostgreSQL extensions to the SQL standard inherited in YugabyteDB as follows:
 
 - The `RETURNING` clause. 
 - The ability to use `WITH` with `INSERT`.
