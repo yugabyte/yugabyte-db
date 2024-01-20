@@ -1,6 +1,6 @@
 ---
 title: Install and upgrade issues on Kubernetes
-headerTitle: Install and upgrade issues on Kubernetes
+headerTitle: Install and upgrade issues
 linkTitle: Install and upgrade issues
 description: Troubleshoot issues encountered when installing or upgrading YugabyteDB Anywhere on Kubernetes.
 menu:
@@ -13,13 +13,19 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
 
- <li>
+  <li>
+    <a href="../installer/" class="nav-link">
+      <i class="fa-solid fa-building"></i>
+      YBA Installer</a>
+  </li>
+
+  <li>
     <a href="../vm/" class="nav-link">
       <i class="fa-solid fa-building"></i>
       Virtual machine </a>
   </li>
 
-<li>
+  <li>
     <a href="../kubernetes/" class="nav-link active">
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes

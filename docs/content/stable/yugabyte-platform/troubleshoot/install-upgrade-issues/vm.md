@@ -1,6 +1,6 @@
 ---
 title: Install and upgrade issues on virtual machines
-headerTitle: Install and upgrade issues on virtual machines
+headerTitle: Install and upgrade issues
 linkTitle: Install and upgrade issues
 description: Troubleshoot issues encountered when installing or upgrading YugabyteDB Anywhere on virtual machines.
 menu:
@@ -13,12 +13,18 @@ type: docs
 
 <ul class="nav nav-tabs-alt nav-tabs-yb">
   <li>
+    <a href="../installer/" class="nav-link">
+      <i class="fa-solid fa-building"></i>
+      YBA Installer</a>
+  </li>
+
+  <li>
     <a href="../vm/" class="nav-link active">
       <i class="fa-solid fa-building"></i>
       Virtual machine</a>
   </li>
 
-<li>
+  <li>
     <a href="../kubernetes/" class="nav-link">
       <i class="fa-regular fa-dharmachakra" aria-hidden="true"></i>
       Kubernetes
