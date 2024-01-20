@@ -17,9 +17,12 @@
 
 #include "yb/common/hybrid_time.h"
 
-#include "yb/master/master.h"
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/master_cluster.pb.h"
 #include "yb/master/ts_descriptor.h"
+#include "yb/master/master.h"
+#include "yb/master/post_tablet_create_task_base.h"
+#include "yb/master/xcluster/add_table_to_xcluster_target_task.h"
 #include "yb/master/xcluster/xcluster_config.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 
@@ -29,6 +32,9 @@
 #include "yb/util/result.h"
 
 #include "yb/cdc/cdc_service.proxy.h"
+
+DEFINE_RUNTIME_bool(disable_auto_add_index_to_xcluster, false,
+    "Disables the automatic addition of indexes to transactional xCluster replication.");
 
 DEFINE_test_flag(bool, enable_xcluster_api_v2, false, "Allow the usage of new xCluster APIs");
 
@@ -556,4 +562,102 @@ Result<std::vector<xrepl::StreamId>> XClusterManager::BootstrapTables(
   return stream_ids;
 }
 
+bool XClusterManager::ShouldAddTableToXClusterTarget(const TableInfo& table) const {
+  if (FLAGS_disable_auto_add_index_to_xcluster) {
+    return false;
+  }
+
+  const auto& pb = table.metadata().dirty().pb;
+
+  // Only user created YSQL Indexes should be automatically added to xCluster replication.
+  // For Colocated tables, this function will return false since it is only called on the parent
+  // colocated table, which cannot be an index.
+  if (pb.colocated() || pb.table_type() != PGSQL_TABLE_TYPE || !IsIndex(pb) ||
+      !catalog_manager_->IsUserCreatedTable(table)) {
+    return false;
+  }
+
+  auto indexed_table_stream_ids =
+      catalog_manager_->GetXClusterConsumerStreamIdsForTable(table.id());
+  if (!indexed_table_stream_ids.empty()) {
+    VLOG(1) << "Index " << table.ToString() << " is already part of xcluster replication "
+            << yb::ToString(indexed_table_stream_ids);
+    return false;
+  }
+
+  auto indexed_table = catalog_manager_->GetTableInfo(GetIndexedTableId(pb));
+  if (!indexed_table) {
+    LOG(WARNING) << "Indexed table for " << table.id() << " not found";
+    return false;
+  }
+
+  auto stream_ids = catalog_manager_->GetXClusterConsumerStreamIdsForTable(indexed_table->id());
+  if (stream_ids.empty()) {
+    return false;
+  }
+
+  if (stream_ids.size() > 1) {
+    LOG(WARNING) << "Skipping adding index " << table.ToString()
+                 << " to xCluster replication as the base table" << indexed_table->ToString()
+                 << " is part of multiple replication streams " << yb::ToString(stream_ids);
+    return false;
+  }
+
+  const auto& replication_group_id = stream_ids.begin()->first;
+  auto cluster_config = catalog_manager_->ClusterConfig();
+  {
+    auto l = cluster_config->LockForRead();
+    const auto& consumer_registry = l.data().pb.consumer_registry();
+    // Only add if we are in a transactional replication with STANDBY mode.
+    if (consumer_registry.role() != cdc::XClusterRole::STANDBY ||
+        !consumer_registry.transactional()) {
+      return false;
+    }
+
+    auto producer_entry =
+        FindOrNull(consumer_registry.producer_map(), replication_group_id.ToString());
+    if (producer_entry) {
+      // Check if the table is already part of replication.
+      // This is needed despite the check for GetXClusterConsumerStreamIdsForTable as the in-memory
+      // list is not atomically updated.
+      for (auto& stream_info : producer_entry->stream_map()) {
+        if (stream_info.second.consumer_table_id() == table.id()) {
+          VLOG(1) << "Index " << table.ToString() << " is already part of xcluster replication "
+                  << stream_info.first;
+          return false;
+        }
+      }
+    }
+  }
+
+  scoped_refptr<UniverseReplicationInfo> universe;
+  {
+    auto universe = catalog_manager_->GetUniverseReplication(replication_group_id);
+    if (universe == nullptr) {
+      LOG(WARNING) << "Skip adding index " << table.ToString()
+                   << " to xCluster replication as the universe " << replication_group_id
+                   << " was not found";
+      return false;
+    }
+
+    if (universe->LockForRead()->is_deleted_or_failed()) {
+      LOG(WARNING) << "Skip adding index " << table.ToString()
+                   << " to xCluster replication as the universe " << replication_group_id
+                   << " is in a deleted or failed state";
+      return false;
+    }
+  }
+
+  return true;
+}
+
+std::vector<std::shared_ptr<PostTabletCreateTaskBase>> XClusterManager::GetPostTabletCreateTasks(
+    const TableInfoPtr& table_info, const LeaderEpoch& epoch) {
+  if (!ShouldAddTableToXClusterTarget(*table_info)) {
+    return {};
+  }
+
+  return {std::make_shared<AddTableToXClusterTargetTask>(
+      *catalog_manager_, *master_->messenger(), table_info, epoch)};
+}
 }  // namespace yb::master
