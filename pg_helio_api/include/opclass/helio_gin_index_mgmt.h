@@ -40,6 +40,19 @@ typedef enum IndexOptionsType
 
 
 /*
+ * Versioning for indexes when making breaking changes to index layout/terms.
+ */
+typedef enum IndexOptionsVersion
+{
+	/* The default value (version that got started with) */
+	IndexOptionsVersion_V0 = 0,
+
+	/* Version that includes term path prefix elision for single path indexes & index term truncation */
+	IndexOptionsVersion_V1 = 1,
+} IndexOptionsVersion;
+
+
+/*
  * Base struct for all options used in the GIN index.
  * Note - all option classes must have the same layout.
  */
@@ -47,6 +60,7 @@ typedef struct
 {
 	int32 vl_len_;              /* varlena header (do not touch directly!) */
 	IndexOptionsType type;      /* This must be the first field */
+	IndexOptionsVersion version;
 	int intOption_deprecated;   /* This is a deprecated field for int type fields */
 	int32_t indexTermTruncateLimit; /* this must be the next field in all index options */
 } BsonGinIndexOptionsBase;

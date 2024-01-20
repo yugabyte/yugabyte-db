@@ -44,6 +44,9 @@ typedef struct IndexTermCreateMetadata
 
 	/* The path prefix to truncate from the index term path. */
 	StringView pathPrefix;
+
+	/* If the path prefix is a wildcard path */
+	bool isWildcardPathPrefix;
 } IndexTermCreateMetadata;
 
 

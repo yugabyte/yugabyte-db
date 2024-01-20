@@ -355,18 +355,25 @@ SerializeTermToWriter(pgbson_writer *writer, pgbsonelement *indexElement,
 
 	if (termMetadata->pathPrefix.length > 0)
 	{
-		if (StringViewEquals(&indexPath, &termMetadata->pathPrefix))
+		if (!termMetadata->isWildcardPathPrefix)
 		{
+			if (!StringViewEquals(&indexPath, &termMetadata->pathPrefix))
+			{
+				ereport(ERROR, (errcode(MongoInternalError),
+								errmsg(
+									"Wildcard Prefix path encountered with non-wildcard index - path %s, prefix %s",
+									indexPath.string, termMetadata->pathPrefix.string),
+								errhint(
+									"Wildcard Prefix path encountered with non-wildcard index")));
+			}
+
 			/* Index term should occupy a minimal amount of space */
 			indexPath.length = 1;
 			indexPath.string = "$";
 		}
-		else if (StringViewStartsWithStringView(&indexPath, &termMetadata->pathPrefix))
+		else
 		{
-			ereport(ERROR, (errcode(MongoInternalError),
-							errmsg("Wildcard Prefix with path truncation not supported"),
-							errhint(
-								"Wildcard Prefix with path truncation not supported")));
+			/* Wildcard index path: TODO: Consider how to support this. For now just use full paths */
 		}
 	}
 

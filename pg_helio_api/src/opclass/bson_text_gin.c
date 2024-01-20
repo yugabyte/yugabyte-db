@@ -227,7 +227,12 @@ rum_bson_text_path_options(PG_FUNCTION_ARGS)
 							IndexOptionsType_Text, /* min */
 							IndexOptionsType_Text, /* max */
 							offsetof(BsonGinTextPathOptions, base.type));
-
+	add_local_int_reloption(relopts, "version",
+							"The version of the options struct.",
+							IndexOptionsVersion_V0,         /* default value */
+							IndexOptionsVersion_V0,         /* min */
+							IndexOptionsVersion_V0,         /* max */
+							offsetof(BsonGinTextPathOptions, base.version));
 	bool isWildcardDefault = false;
 	add_local_bool_reloption(relopts, "iswildcard",
 							 "Whether the path is a wildcard", isWildcardDefault,

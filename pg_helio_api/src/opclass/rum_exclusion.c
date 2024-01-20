@@ -198,6 +198,12 @@ gin_bson_exclusion_options(PG_FUNCTION_ARGS)
 							IndexOptionsType_UniqueShardKey, /* min */
 							IndexOptionsType_UniqueShardKey, /* max */
 							offsetof(BsonGinExclusionHashOptions, base.type));
+	add_local_int_reloption(relopts, "version",
+							"The version of the options struct.",
+							IndexOptionsVersion_V0,         /* default value */
+							IndexOptionsVersion_V0,         /* min */
+							IndexOptionsVersion_V0,         /* max */
+							offsetof(BsonGinExclusionHashOptions, base.version));
 	add_local_string_reloption(relopts, "path",
 							   "Prefix path for the index",
 							   NULL, &ValidateExclusionPathSpec, &FillSinglePathSpec,

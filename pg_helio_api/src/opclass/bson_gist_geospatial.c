@@ -116,6 +116,12 @@ bson_gist_geometry_2d_options(PG_FUNCTION_ARGS)
 							IndexOptionsType_2d, /* min */
 							IndexOptionsType_2d, /* max */
 							offsetof(Bson2dGeometryPathOptions, base.type));
+	add_local_int_reloption(relopts, "version",
+							"The version of the options struct.",
+							IndexOptionsVersion_V0,         /* default value */
+							IndexOptionsVersion_V0,         /* min */
+							IndexOptionsVersion_V0,         /* max */
+							offsetof(Bson2dGeometryPathOptions, base.version));
 	add_local_string_reloption(relopts, "path",
 							   "Prefix path for the index",
 							   NULL, &ValidateSinglePathSpec, &FillSinglePathSpec,
@@ -399,6 +405,12 @@ bson_gist_geography_options(PG_FUNCTION_ARGS)
 							IndexOptionsType_2dsphere, /* min */
 							IndexOptionsType_2dsphere, /* max */
 							offsetof(Bson2dGeographyPathOptions, base.type));
+	add_local_int_reloption(relopts, "version",
+							"The version of the options struct.",
+							IndexOptionsVersion_V0,         /* default value */
+							IndexOptionsVersion_V0,         /* min */
+							IndexOptionsVersion_V0,         /* max */
+							offsetof(Bson2dGeographyPathOptions, base.version));
 	add_local_string_reloption(relopts, "path",
 							   "Prefix path for the index",
 							   NULL, &ValidateSinglePathSpec, &FillSinglePathSpec,

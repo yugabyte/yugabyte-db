@@ -796,6 +796,7 @@ GetIndexTermMetadata(void *indexOptions)
 	if (options->indexTermTruncateLimit > 0)
 	{
 		StringView pathPrefix = { 0 };
+		bool isWildcardPrefix = false;
 		if (options->type == IndexOptionsType_SinglePath)
 		{
 			/* For single path indexes, we can elide the index path prefix */
@@ -803,17 +804,20 @@ GetIndexTermMetadata(void *indexOptions)
 				(BsonGinSinglePathOptions *) options;
 			Get_Index_Path_Option(singlePathOptions, path, pathPrefix.string,
 								  pathPrefix.length);
+			isWildcardPrefix = singlePathOptions->isWildcard;
 		}
 
 		return (IndexTermCreateMetadata) {
 				   .indexTermSizeLimit = options->indexTermTruncateLimit,
-				   .pathPrefix = pathPrefix
+				   .pathPrefix = pathPrefix,
+				   .isWildcardPathPrefix = isWildcardPrefix
 		};
 	}
 
 	return (IndexTermCreateMetadata) {
 			   .indexTermSizeLimit = 0,
-			   .pathPrefix = { 0 }
+			   .pathPrefix = { 0 },
+			   .isWildcardPathPrefix = false
 	};
 }
 
