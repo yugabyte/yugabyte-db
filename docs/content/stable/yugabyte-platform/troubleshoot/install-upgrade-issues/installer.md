@@ -55,7 +55,7 @@ Affected releases: All
 
 Workaround: Change permissions on `yba_installer_full` directory to 755
 
-## Preflight check for Prometheus scrape fails
+## Preflight check for Prometheus fails
 
 Upgrades fail the preflight check with the following error when run as `yba-ctl preflight --upgrade`:
 
@@ -79,7 +79,7 @@ Workaround: If you want to configure the new settings to non-default values, man
 
 ## High availability on Replicated installation with HTTP no longer works after migration
 
-If you have a Replicated installation that uses HTTP and [migrate to YBA Installer](../../../install-yugabyte-platform/install-software/installer/#migrate-from-replicated), your [high availability](../../../administer-yugabyte-platform/high-availability/) (HA) setup will no longer work after the migration. This is because YBA Installer always uses HTTPS. YBA Installer blocks migration if it detects a Replicated installation with HA enabled that uses HTTP.
+If you have a Replicated installation that uses HTTP and you [migrate to YBA Installer](../../../install-yugabyte-platform/install-software/installer/#migrate-from-replicated), your [high availability](../../../administer-yugabyte-platform/high-availability/) (HA) setup will no longer work after the migration. This is because YBA Installer always uses HTTPS. YBA Installer will attempt to block the migration if it detects a Replicated installation with HA enabled that uses HTTP.
 
 Affected releases: all
 
