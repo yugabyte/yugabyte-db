@@ -156,7 +156,7 @@ const RegionZoneComponent = (classes: ClassNameMap, t: TFunction) => (
                 {region_and_zone.zone}
             </Typography>
         </Box>
-        {region_and_zone.preference !== undefined &&
+        {region_and_zone.preference !== undefined && region_and_zone.preference !== -1 &&
             <YBTextBadge>
                 {t('clusterDetail.nodes.preference', { preference: region_and_zone.preference })}
             </YBTextBadge>
