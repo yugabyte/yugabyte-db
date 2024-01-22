@@ -53,8 +53,8 @@ fi
 VERSION_FULL=$(<version.txt)
 BUILD_NUMBER=${YB_RELEASE_BUILD_NUMBER:-0}
 # IFS splits input according to delimiter.
-IFS='-' read -ra VERSION_NUMBER <<< "$VERSION_FULL"
-VERSION="${VERSION_NUMBER[0]}-b${BUILD_NUMBER}"
+IFS='+' read -ra VERSION_NUMBER <<< "$VERSION_FULL"
+VERSION="${VERSION_NUMBER[0]}+${BUILD_NUMBER}"
 GOOS="linux"
 GOARCH="amd64"
 PACKAGE_NAME="yba_installer-$VERSION-$GOOS-$GOARCH.tar.gz"

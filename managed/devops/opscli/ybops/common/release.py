@@ -86,12 +86,12 @@ class ReleasePackage(object):
         type, ie: -release, -debug, etc.
         """
         # Expect <repo>-<version>.
-        pattern = "^(?P<repo>[^-]+)(?:-[^-]+)?-(?P<version>[.0-9]+)"
-        # If this is an official release, we expect a commit hash and maybe a build_type, else we
-        # expect a "-b" and a build number.
+        pattern = "^(?P<repo>[^-]+)(?:-[^-]+)?-(?P<version>[.0-9]+(?:-rc[0-9]+)?)"
+        # If this is an official release, we expect a "-b" (or "+") and a build number, else
+        # expect a commit hash and maybe a build_type.
         if is_official_release:
             # Add build number.
-            pattern += "-b(?P<build_number>[0-9]+)"
+            pattern += r"(?:-b|\+)(?P<build_number>[0-9]+)"
         else:
             # Add commit hash and maybe build type.
             pattern += "-(?P<commit_hash>[^-]+)(-(?P<build_type>[^-]+))?"

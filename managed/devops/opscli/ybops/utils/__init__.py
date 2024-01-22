@@ -223,7 +223,7 @@ def get_default_release_version(repo_path=None):
     if not os.path.isfile(version_file):
         raise YBOpsRuntimeError("Could not file version file: {}".format(version_file))
     version = open(version_file).read().strip()
-    match = re.match("([.0-9]+)-b(\d+)", version)
+    match = re.match(r"([.0-9]+(?:-rc\d+)?)(?:-b|\+)(\d+)", version)
     if not match:
         raise YBOpsRuntimeError("Invalid version format {}".format(version))
     return match.group(1)

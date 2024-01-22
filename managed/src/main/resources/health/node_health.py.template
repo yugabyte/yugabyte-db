@@ -53,8 +53,8 @@ POSTMASTER = "yb-postmaster"
 POSTGRES = "postgres"
 
 ALERT_ENHANCEMENTS_RELEASE_BUILD = "2.6.0.0-b0"
-RELEASE_BUILD_PATTERN = "(\\d+)\\.(\\d+)\\.(\\d+)\\.(\\d+)[-](.+)"
-BUILD_NUMBER_PATTERN = "b(\\d+).*"
+RELEASE_BUILD_PATTERN = "(\\d+)\\.(\\d+)\\.(\\d+)(?:\\.(\\d+))?[-+](.+)"
+BUILD_NUMBER_PATTERN = "b?(\\d+).*"
 CQL_AUTH_FAILURE_MESSAGE = \
         "AuthenticationFailed('Remote end requires authentication"
 
