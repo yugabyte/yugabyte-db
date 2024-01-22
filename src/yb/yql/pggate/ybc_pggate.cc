@@ -993,6 +993,10 @@ YBCStatus YBCPgDmlBindColumn(YBCPgStatement handle, int attr_num, YBCPgExpr attr
   return ToYBCStatus(pgapi->DmlBindColumn(handle, attr_num, attr_value));
 }
 
+YBCStatus YBCPgDmlBindRow(YBCPgStatement handle, YBCBindColumn* columns, int count) {
+  return ToYBCStatus(pgapi->DmlBindRow(handle, columns, count));
+}
+
 YBCStatus YBCPgDmlAddRowUpperBound(YBCPgStatement handle,
                                     int n_col_values,
                                     YBCPgExpr *col_values,

@@ -574,6 +574,14 @@ typedef struct AshMetadata {
   uint8_t addr_family;
 } YBCAshMetadata;
 
+typedef struct YBCBindColumn {
+  int attr_num;
+  const YBCPgTypeEntity* type_entity;
+  YBCPgCollationInfo collation_info;
+  bool is_null;
+  uint64_t datum;
+} YBCBindColumn;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

@@ -277,6 +277,15 @@ class PGConn {
     return libpq_utils::internal::FetchHelper<Args...>::FetchRows(Fetch(query));
   }
 
+  // The following two methods are really important because they convenient way for checking table
+  // content and debugging tests.
+  // Please do not remove them. Consult @sergei if you have any questions.
+  Result<std::string> FetchRowAsString(
+      const std::string& command, const std::string& sep = DefaultColumnSeparator());
+  Result<std::string> FetchAllAsString(const std::string& command,
+      const std::string& column_sep = DefaultColumnSeparator(),
+      const std::string& row_sep = DefaultRowSeparator());
+
   Status StartTransaction(IsolationLevel isolation_level);
   Status CommitTransaction();
   Status RollbackTransaction();
