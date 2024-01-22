@@ -140,6 +140,10 @@ clean_data_paths() {
     if [ "$daemon" == "tserver" ]; then
       rm -rf "${MOUNT_PATHS[i]}"/pg_data
     fi
+
+    if [ "$daemon" == "controller" ]; then
+      rm -rf "${MOUNT_PATHS[i]}"/ybc-data
+    fi
   done
 
   print_err_out "Cleaning core files on `hostname`"
