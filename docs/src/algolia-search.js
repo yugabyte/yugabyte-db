@@ -2,6 +2,8 @@ import algoliasearch from 'algoliasearch';
 
 /* eslint no-underscore-dangle: 0 */
 (function () {
+  const algoliaAppId = 'UMBCUJCBE8';
+  const algoliaApiKey = 'b6c4bdb11b865250add6fecc38d8ebdf';
   const ignoreClickOnMeElement = document.querySelector('body:not(.td-searchpage) .search-area');
   const searchInput = document.getElementById('search-query');
 
@@ -63,6 +65,78 @@ import algoliasearch from 'algoliasearch';
   }
 
   /**
+   * Send the click events to Algolia.
+   *
+   * @param {Object} e click event.
+   */
+  function clickEvents(e) {
+    if ((e.target.parentNode && e.target.parentNode.className === 'search-title') || (e.target.parentNode.parentNode && e.target.parentNode.parentNode.className === 'search-title')) {
+      let clickResult;
+
+      if (e.target.href) {
+        clickResult = e.target;
+        e.preventDefault();
+      } else if (e.target.parentNode.href) {
+        clickResult = e.target.parentNode;
+        e.preventDefault();
+      }
+
+      let hitPosition = 0;
+      let objectId = '';
+      let pageLink = '';
+      let queryId = '';
+
+      if (clickResult.href) {
+        pageLink = clickResult.href;
+
+        if (clickResult.getAttribute('data-objectid')) {
+          objectId = clickResult.getAttribute('data-objectid');
+        }
+
+        if (clickResult.getAttribute('data-queryid')) {
+          queryId = clickResult.getAttribute('data-queryid');
+        }
+
+        if (clickResult.getAttribute('data-position')) {
+          hitPosition = clickResult.getAttribute('data-position');
+        }
+      }
+
+      if (objectId !== '' && queryId !== '' && hitPosition > 0) {
+        (async () => {
+          const rawResponse = await fetch('https://insights.algolia.io/1/events', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              'X-Algolia-Application-Id': algoliaAppId,
+              'X-Algolia-API-Key': algoliaApiKey,
+            },
+            body: JSON.stringify(
+              {
+                events: [{
+                  eventType: 'click',
+                  eventName: 'Link clicked',
+                  index: 'yugabytedb_docs',
+                  timestamp: Date.now(),
+                  queryID: queryId,
+                  objectIDs: [objectId],
+                  positions: [parseInt(hitPosition, 10)],
+                }],
+              },
+            ),
+          });
+
+          await rawResponse.json();
+        })();
+      }
+
+      if (pageLink !== '') {
+        window.location = pageLink;
+      }
+    }
+  }
+
+  /**
    * Show Message when Search is empty.
    */
   function emptySearch() {
@@ -79,11 +153,11 @@ import algoliasearch from 'algoliasearch';
   /**
    * Main Docs section HTML.
    */
-  function docsSection(hitIs) {
+  function docsSection(queryID, hitIs) {
     const searchText = searchInput.value.trim();
 
     let content = '';
-    hitIs.forEach(hit => {
+    hitIs.forEach((hit, index) => {
       let pageBreadcrumb = '';
       let pageHash = '';
       let pageTitle = '';
@@ -146,7 +220,7 @@ import algoliasearch from 'algoliasearch';
 
       content += `<li>
         <div class="search-title">
-          <a href="${hit.url.replace(/^(?:\/\/|[^/]+)*\//, '/')}${pageHash}">
+          <a href="${hit.url.replace(/^(?:\/\/|[^/]+)*\//, '/')}${pageHash}" data-objectid="${hit.objectID}" data-queryid="${queryID}" data-position="${index + 1}">
             <span class="search-title-inner">${pageTitle}</span>
             <div class="search-subhead-inner">${subHead}</div>
             <div class="breadcrumb-item">${pageBreadcrumb}</div>
@@ -168,6 +242,7 @@ import algoliasearch from 'algoliasearch';
       currentPage, pagerId, pagerType, totalPages,
     } = pagerInfo;
     const searchpager = document.getElementById(pagerId);
+    const searchResults = document.getElementById('doc-hit');
 
     let firstPage = '<span class="pager-btn" data-pager="1">1</span>';
     let lastPage = `<span class="pager-btn" data-pager="${totalPages}">${totalPages}</span>`;
@@ -252,6 +327,11 @@ import algoliasearch from 'algoliasearch';
       pagerClick[pagerLoop].addEventListener('click', searchSettings);
       pagerLoop += 1;
     }
+
+    if (searchResults) {
+      searchResults.addEventListener('click', clickEvents);
+      searchResults.addEventListener('contextmenu', clickEvents);
+    }
   }
 
   /**
@@ -274,7 +354,7 @@ import algoliasearch from 'algoliasearch';
       perPageCount = 10;
     }
 
-    const client = algoliasearch('UMBCUJCBE8', 'b6c4bdb11b865250add6fecc38d8ebdf');
+    const client = algoliasearch(algoliaAppId, algoliaApiKey);
     const index = client.initIndex('yugabytedb_docs');
     const pageItems = searchURLParameter('page');
     const searchpagerparent = document.querySelector('#pagination-docs');
@@ -289,11 +369,11 @@ import algoliasearch from 'algoliasearch';
 
     index.search(searchValue, searchOptions).then(
       ({
-        hits, nbHits, nbPages, page,
+        hits, nbHits, nbPages, page, queryID,
       }) => {
         let pagerDetails = {};
         let sectionHTML = '';
-        sectionHTML += docsSection(hits);
+        sectionHTML += docsSection(queryID, hits);
         if (hits.length > 0 && sectionHTML !== '') {
           document.getElementById('doc-hit').innerHTML = sectionHTML;
         } else {
