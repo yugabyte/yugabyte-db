@@ -29,6 +29,10 @@ CREATE VIEW yb_active_session_history AS
     SELECT *
     FROM yb_active_session_history();
 
+CREATE VIEW yb_local_tablets AS
+    SELECT *
+    FROM yb_local_tablets();
+
 CREATE VIEW pg_roles AS
     SELECT
         rolname,

@@ -25,6 +25,7 @@ import "yb/common/wire_protocol.proto";
 import "yb/master/master_ddl.proto";
 import "yb/master/master_types.proto";
 import "yb/rpc/lightweight_message.proto";
+import "yb/tablet/tablet.proto";
 
 service PgClientService {
   rpc Heartbeat(PgHeartbeatRequestPB) returns (PgHeartbeatResponsePB);
@@ -96,6 +97,8 @@ service PgClientService {
 
   rpc GetNewObjectId(PgGetNewObjectIdRequestPB)
       returns (PgGetNewObjectIdResponsePB);
+
+  rpc TabletsMetadata(PgTabletsMetadataRequestPB) returns (PgTabletsMetadataResponsePB);
 
   // DEPRECATED: GetReplicationSlot RPC is a superset of this GetReplicationSlotStatus.
   // So GetReplicationSlot should be used everywhere.
@@ -932,4 +935,12 @@ message YCQLStatementStatsPB {
   double max_time = 7;
   double mean_time = 8;
   double stddev_time = 9;
+}
+
+message PgTabletsMetadataRequestPB {
+}
+
+message PgTabletsMetadataResponsePB {
+  AppStatusPB status = 1;
+  repeated tablet.TabletStatusPB tablets = 2;
 }
