@@ -107,7 +107,6 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
-#include "yb/util/pg_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
@@ -928,10 +927,15 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
           << " version=" << schema_version << " current-schema=" << tablet_schema.ToString()
           << " to request-schema=" << req_schema.ToString()
           << " for table ID=" << table_info->table_id;
+
+  // There is no need to pause writes for an AlterSchema operation that is only going
+  // to be setting retention barriers, as is the case when an AlterSchema is issued in
+  // the context of a CDCSDK Create Stream
   ScopedRWOperationPause pause_writes;
-  if ((tablet.tablet->table_type() == TableType::YQL_TABLE_TYPE &&
+  if (!req->has_retention_requester_id() &&
+      ((tablet.tablet->table_type() == TableType::YQL_TABLE_TYPE &&
        !GetAtomicFlag(&FLAGS_disable_alter_vs_write_mutual_exclusion)) ||
-      tablet.tablet->table_type() == TableType::PGSQL_TABLE_TYPE) {
+      tablet.tablet->table_type() == TableType::PGSQL_TABLE_TYPE)) {
     // For schema change operations we will have to pause the write operations
     // until the schema change is done. This will be done synchronously.
     pause_writes = tablet.tablet->PauseWritePermits(context.GetClientDeadline());
@@ -1972,15 +1976,10 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
   // TODO(jason): come up with a more efficient connection reuse method for tserver-postgres
   // communication.  As of D19621, connections are spawned each request for YSQL upgrade, index
   // backfill, and this.  Creating the connection has a startup cost.
-  auto res = pgwrapper::PGConnBuilder({
-        .host = PgDeriveSocketDir(server_->pgsql_proxy_bind_address()),
-        .port = server_->pgsql_proxy_bind_address().port(),
-        .dbname = "template1",
-        .user = "postgres",
-        .password = UInt64ToString(server_->GetSharedMemoryPostgresAuthKey()),
-        .connect_timeout = make_unsigned(std::max(
-            2, narrow_cast<int>(ToSeconds(modified_deadline - CoarseMonoClock::Now())))),
-      }).Connect();
+  auto res = pgwrapper::CreateInternalPGConnBuilder(
+                 server_->pgsql_proxy_bind_address(), "template1",
+                 server_->GetSharedMemoryPostgresAuthKey(), modified_deadline)
+                 .Connect();
   if (!res.ok()) {
     LOG_WITH_PREFIX_AND_FUNC(ERROR) << "failed to connect to local postgres: " << res.status();
     SetupErrorAndRespond(resp->mutable_error(), res.status(), &context);

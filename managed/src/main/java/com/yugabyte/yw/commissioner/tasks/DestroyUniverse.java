@@ -372,7 +372,7 @@ public class DestroyUniverse extends UniverseTaskBase {
     List<SupportBundle> supportBundles = SupportBundle.getAll(universeUUID);
     if (!supportBundles.isEmpty()) {
       for (SupportBundle supportBundle : supportBundles) {
-        supportBundleUtil.deleteFile(supportBundle.getPathObject());
+        supportBundleUtil.deleteSupportBundle(supportBundle);
       }
     }
   }

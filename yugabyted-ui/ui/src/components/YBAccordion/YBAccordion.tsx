@@ -25,7 +25,8 @@ const useAccordionStyles = makeStyles((theme: Theme) => ({
     border: `1px solid ${theme.palette.grey[200]}`
   },
   summary: {
-    minHeight: theme.spacing(8)
+    minHeight: theme.spacing(8),
+    padding: theme.spacing(0, 2),
   },
   title: {
     display: 'flex',

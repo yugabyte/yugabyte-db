@@ -107,11 +107,6 @@ spec:
                 x-kubernetes-validations:
                 - message: enableClientToNodeEncrypt cannot be changed
                   rule: self == oldSelf
-              enableVolumeEncryption:
-                type: boolean
-                x-kubernetes-validations:
-                - message: enableVolumeEncryption cannot be changed
-                  rule: self == oldSelf
               ybSoftwareVersion:
                 type: string
               providerName:
@@ -171,6 +166,11 @@ spec:
                   rule: self == oldSelf
               enableExposingService:
                 type: string
+                default: NONE
+                enum:
+                - EXPOSED
+                - NONE
+                - UNEXPOSED
                 x-kubernetes-validations:
                 - message:   enableExposingService cannot be changed once set.
                   rule: self == oldSelf

@@ -683,7 +683,7 @@ public class TestPgCacheConsistency extends BasePgSQLTest {
         final int endPartition = 10 * (part_idx + 1);
 
         // Alternatively test creating a new partition and attaching a new partition.
-        if (part_idx % 2 == 1) {
+        if (part_idx % 2 == 0) {
           stmt2.executeUpdate(String.format("CREATE TABLE prt_p%d (a int, b varchar)",
                                             part_idx + 1));
           stmt2.executeUpdate(String.format(

@@ -171,8 +171,6 @@ With the Airbnb data with embeddings loaded in YugabyteDB, start to explore the 
 
 The application UI should display, and is available at the address <http://localhost:3000/>.
 
-![Lodging Service](/images/tutorials/azure/azure-openai/azure-openai-lodging-service.png "Lodging Service")
-
 ## Test the application
 
 Test the application with relevant prompts. For instance:

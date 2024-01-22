@@ -41,8 +41,8 @@ DEFINE_UNKNOWN_double(transaction_pool_reserve_factor, 2,
               "During cleanup we will preserve number of transactions in pool that equals to"
                   " average number or take requests during prepration multiplied by this factor");
 
-DEFINE_UNKNOWN_bool(force_global_transactions, false,
-            "Force all transactions to be global transactions");
+DEFINE_RUNTIME_bool(force_global_transactions, false,
+                    "Force all transactions to be global transactions");
 
 DEFINE_test_flag(bool, track_last_transaction, false,
                  "Keep track of the last transaction taken from pool for testing");

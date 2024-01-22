@@ -14,7 +14,7 @@ type: docs
 
 Horizontal scaling is a first-class feature in YugabyteDB. The database is designed to scale horizontally seamlessly when adding nodes. Data is moved transparently to the new nodes without any service interruption.
 
-YugabyteDB stores table data in tablets. Sharding is the process of splitting and distributing table data into tablets. Horizontal scalability requires transparent sharding of data.
+YugabyteDB stores table data in tablets (also known as shards). Sharding is the process of splitting and distributing table data into tablets. Horizontal scalability requires transparent sharding of data.
 
 The following illustrates how sharding works.
 
@@ -32,7 +32,7 @@ As you add more data to the table, the leaders and followers of tablet `T1` star
 
 ## Tablet splitting
 
-Once a tablet reaches a threshold size, say 4 rows for the purpose of this illustration, the tablet `T1` splits into two by creating a new tablet, `T2`. The tablet splitting is almost instantaneous and is transparent to the application. The newly created tablet will have leaders and followers.
+Once a tablet reaches a configurable threshold size, say 4 rows for the purpose of this illustration, the tablet `T1` splits into two by creating a new tablet, `T2`. The tablet splitting is almost instantaneous and is transparent to the application. The newly created tablet will have leaders and followers.
 
 ![Split into two](/images/explore/scalability/sharding-single-tablet-split.png)
 
@@ -52,6 +52,15 @@ As more data is added to the table, the tablets split further and are rebalanced
 
 ![completely scaled out](/images/explore/scalability/sharding-fully-scaled.png)
 
+This process of sharding, replication, and rebalancing is fully automatic, taking place in the background as you scale horizontally, and is completely transparent to applications. And while this example shows a single table with a few tablets, real world YugabyteDB clusters can have many more tables and tablets (100+).
+
+Sharding is fully configurable, and you can also pre-split tables when you create them.
+
+## Next steps
+
+- [Adding nodes and rebalancing](../node-addition/)
+- [Try it out](../scaling-universe/)
+
 ## Learn more
 
-* [Sharding strategies](../../../architecture/docdb-sharding/sharding/)
+- [Sharding strategies](../../../architecture/docdb-sharding/sharding/)

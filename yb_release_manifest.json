@@ -33,13 +33,18 @@
       "bin/yugabyted",
       "bin/openssl_proxy.sh",
       "build-support/post_install.sh",
+      "scripts/installation/bin/fips_install.sh",
       "scripts/installation/bin/yb-ctl",
+      "thirdparty/installed/common/bin/openssl",
       "thirdparty/installed/common/bin/redis-cli",
       "thirdparty/installed/common/cqlsh/bin/cqlsh",
       "thirdparty/installed/common/cqlsh/bin/ycqlsh",
       "thirdparty/installed/common/cqlsh/bin/ycqlsh.py"
     ],
-    "lib": ["thirdparty/installed/common/cqlsh/lib/*"],
+    "lib": [
+      "thirdparty/installed/common/cqlsh/lib/*",
+      "thirdparty/installed/common/lib/ossl-modules"
+    ],
     "postgres": ["$BUILD_ROOT/postgres/*"],
     "pylib": ["thirdparty/installed/common/cqlsh/pylib/*"],
     "share": [
@@ -66,12 +71,17 @@
     "bin": [
       "$BUILD_ROOT/postgres/bin/ysqlsh",
       "build-support/post_install.sh",
+      "scripts/installation/bin/fips_install.sh",
+      "thirdparty/installed/common/bin/openssl",
       "thirdparty/installed/common/bin/redis-cli",
       "thirdparty/installed/common/cqlsh/bin/cqlsh",
       "thirdparty/installed/common/cqlsh/bin/ycqlsh",
       "thirdparty/installed/common/cqlsh/bin/ycqlsh.py"
     ],
-    "lib": ["thirdparty/installed/common/cqlsh/lib/*"],
+    "lib": [
+      "thirdparty/installed/common/cqlsh/lib/*",
+      "thirdparty/installed/common/lib/ossl-modules"
+    ],
     "pylib": ["thirdparty/installed/common/cqlsh/pylib/*"],
     "share": [
       "sample/*.sql"

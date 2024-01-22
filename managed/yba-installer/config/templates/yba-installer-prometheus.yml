@@ -159,11 +159,11 @@
           target_label: "service_type"
           replacement: "$2"
         - source_labels: ["__name__"]
-          regex: "handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(_sum|_count)"
+          regex: "handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(_sum|_count)?"
           target_label: "service_method"
           replacement: "$3"
         - source_labels: ["__name__"]
-          regex: "handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(_sum|_count)"
+          regex: "handler_latency_(yb_[^_]*)_([^_]*)_([^_]*)(_sum|_count)?"
           target_label: "__name__"
           replacement: "rpc_latency$4"
         - source_labels: ["__name__"]

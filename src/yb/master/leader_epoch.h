@@ -32,6 +32,9 @@
 #pragma once
 
 #include <cstdint>
+#include <string>
+
+#include "yb/util/tostring.h"
 
 namespace yb {
 namespace master {
@@ -53,6 +56,12 @@ struct LeaderEpoch {
   explicit LeaderEpoch(int64_t term) : LeaderEpoch(term, 0) {}
 
   LeaderEpoch() : LeaderEpoch(-1, 0) {}
+
+  bool operator==(const LeaderEpoch& rhs) const {
+    return leader_term == rhs.leader_term && pitr_count == rhs.pitr_count;
+  }
+
+  std::string ToString() const { return YB_STRUCT_TO_STRING(leader_term, pitr_count); }
 };
 
 }  // namespace master

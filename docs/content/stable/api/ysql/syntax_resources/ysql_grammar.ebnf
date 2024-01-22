@@ -973,12 +973,14 @@ execute_statement = 'EXECUTE' name [ '(' expression { ',' expression } ')' ] ;
 explain = 'EXPLAIN' [ ( [ 'ANALYZE' ] [ 'VERBOSE' ] ) | '(' option { ',' option } ')' ] sql_stmt ;
 
 option = 'ANALYZE' [ boolean ]
-           | 'VERBOSE' [ boolean ]
-           | 'COSTS' [ boolean ]
            | 'BUFFERS' [ boolean ]
-           | 'TIMING' [ boolean ]
-           | 'SUMMARY' [ boolean ]
+           | 'COSTS' [ boolean ]
+           | 'DEBUG' [boolean]
+           | 'DIST' [boolean]
            | 'FORMAT' ( 'TEXT' | 'XML' | 'JSON' | 'YAML' ) ;
+           | 'SUMMARY' [ boolean ]
+           | 'TIMING' [ boolean ]
+           | 'VERBOSE' [ boolean ]
 
 (* 'GRANT' *)
 grant = ( grant_table |

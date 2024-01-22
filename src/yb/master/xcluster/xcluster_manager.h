@@ -31,6 +31,7 @@ class CDCStreamInfo;
 class GetMasterXClusterConfigResponsePB;
 class PauseResumeXClusterProducerStreamsRequestPB;
 class PauseResumeXClusterProducerStreamsResponsePB;
+class PostTabletCreateTaskBase;
 class TSHeartbeatRequestPB;
 class TSHeartbeatResponsePB;
 class XClusterConfig;
@@ -92,6 +93,9 @@ class XClusterManager : public XClusterManagerIf {
   Result<XClusterNamespaceToSafeTimeMap> RefreshAndGetXClusterNamespaceToSafeTimeMap(
       const LeaderEpoch& epoch) override;
 
+  std::vector<std::shared_ptr<PostTabletCreateTaskBase>> GetPostTabletCreateTasks(
+      const TableInfoPtr& table_info, const LeaderEpoch& epoch);
+
   XClusterSafeTimeService* TEST_xcluster_safe_time_service() {
     return xcluster_safe_time_service_.get();
   }
@@ -145,6 +149,13 @@ class XClusterManager : public XClusterManagerIf {
   Result<const XClusterOutboundReplicationGroup*> GetOutboundReplicationGroup(
       const xcluster::ReplicationGroupId& replication_group_id) const
       REQUIRES_SHARED(outbound_replication_group_map_mutex_);
+
+  Result<std::vector<TableInfoPtr>> GetTablesToReplicate(const NamespaceId& namespace_id);
+
+  Result<std::vector<xrepl::StreamId>> BootstrapTables(
+      const std::vector<TableInfoPtr>& table_infos, CoarseTimePoint deadline);
+
+  bool ShouldAddTableToXClusterTarget(const TableInfo& table_info) const;
 
   Master* const master_;
   CatalogManager* const catalog_manager_;

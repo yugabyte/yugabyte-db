@@ -306,6 +306,8 @@ int TabletServerMain(int argc, char** argv) {
     ysql_conn_mgr_wrapper::YsqlConnMgrConf ysql_conn_mgr_conf =
         ysql_conn_mgr_wrapper::YsqlConnMgrConf(
           tablet_server_options->fs_opts.data_paths.front());
+    ysql_conn_mgr_conf.yb_tserver_key_ = UInt64ToString(
+        server->GetSharedMemoryPostgresAuthKey());
 
     LOG_AND_RETURN_FROM_MAIN_NOT_OK(SetSslConf(server, &ysql_conn_mgr_conf));
 

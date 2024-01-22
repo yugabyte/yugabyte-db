@@ -37,12 +37,12 @@ namespace pgwrapper {
 struct MetricWatcherDescriptor {
   MetricWatcherDescriptor(
       size_t* delta_receiver_,
-      std::reference_wrapper<const MetricEntity::MetricMap> map_,
+      std::reference_wrapper<const MetricEntity> entity_,
       std::reference_wrapper<const MetricPrototype> proto_)
-      : delta_receiver(*delta_receiver_), map(map_), proto(proto_) {}
+      : delta_receiver(*delta_receiver_), entity(entity_), proto(proto_) {}
 
   size_t& delta_receiver;
-  const MetricEntity::MetricMap& map;
+  const MetricEntity& entity;
   const MetricPrototype& proto;
 
  private:
@@ -53,9 +53,6 @@ using MetricWatcherFunctor = std::function<Status()>;
 
 Status UpdateDelta(
   const MetricWatcherDescriptor* descrs, size_t count, const MetricWatcherFunctor& func);
-
-const MetricEntity::MetricMap& GetMetricMap(
-    std::reference_wrapper<const server::RpcServerBase> server);
 
 template<class Describer>
 class MetricWatcherBase {
@@ -91,14 +88,12 @@ struct MetricWatcherDeltaDescriberTraits {
 };
 
 struct SingleMetricDescriber : public MetricWatcherDeltaDescriberTraits<size_t, 1> {
-  SingleMetricDescriber(std::reference_wrapper<const MetricEntity::MetricMap> map,
-                        std::reference_wrapper<const MetricPrototype> metric)
-      : descriptors{Descriptor{&delta, map, metric}} {}
+  SingleMetricDescriber(std::reference_wrapper<const MetricEntity> entity,
+                        std::reference_wrapper<const MetricPrototype> proto);
 
 
   SingleMetricDescriber(std::reference_wrapper<const server::RpcServerBase> server,
-                        std::reference_wrapper<const MetricPrototype> metric)
-      : SingleMetricDescriber(GetMetricMap(server), metric) {}
+                        std::reference_wrapper<const MetricPrototype> proto);
 
   DeltaType delta;
   Descriptors descriptors;

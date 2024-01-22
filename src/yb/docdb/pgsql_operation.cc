@@ -584,13 +584,14 @@ struct IndexState {
       const Schema& schema, const PgsqlReadRequestPB& request,
       std::unique_ptr<YQLRowwiseIteratorIf>* iterator_holder, ColumnId ybbasectid_id)
       : projection(CreateProjection(schema, request)), row(projection), iter(iterator_holder),
-        ybbasectid_idx(projection.ColumnIdxById(ybbasectid_id)) {
+        ybbasectid_idx(projection.ColumnIdxById(ybbasectid_id)), scanned_rows(0) {
   }
 
   dockv::ReaderProjection projection;
   dockv::PgTableRow row;
   FilteringIterator iter;
   const size_t ybbasectid_idx;
+  uint64_t scanned_rows;
 };
 
 Result<FetchResult> FetchTableRow(
@@ -604,8 +605,10 @@ Result<FetchResult> FetchTableRow(
         return FetchResult::NotFound;
       case FetchResult::FilteredOut:
         VLOG(1) << "Row filtered out by colocated index condition";
+        ++index->scanned_rows;
         return FetchResult::FilteredOut;
       case FetchResult::Found:
+        ++index->scanned_rows;
         break;
     }
 
@@ -1365,58 +1368,22 @@ const dockv::ReaderProjection& PgsqlWriteOperation::projection() const {
   return *projection_;
 }
 
-Status PgsqlWriteOperation::UpdateIterator(
-    DocOperationApplyData* data, DocOperation* prev_op, SingleOperation single_operation,
-      std::optional<DocRowwiseIterator>* iterator) {
-  if (prev_op) {
-    auto* prev = down_cast<PgsqlWriteOperation*>(prev_op);
-    if (request_.table_id() == prev->request_.table_id() &&
-        projection() == prev->projection()) {
-      data->restart_seek = doc_key_ <= prev->doc_key_;
-      return Status::OK();
-    }
-  }
-
-  iterator->emplace(
-      projection(),
-      *doc_read_context_,
-      txn_op_context_,
-      data->doc_write_batch->doc_db(),
-      data->read_operation_data,
-      data->doc_write_batch->pending_op());
-
-  static const dockv::DocKey kEmptyDocKey;
-  auto& key = single_operation ? doc_key_ : kEmptyDocKey;
-  static const dockv::KeyEntryValues kEmptyVec;
-  DocPgsqlScanSpec scan_spec(
-      doc_read_context_->schema(),
-      request_.stmt_id(),
-      /* hashed_components= */ kEmptyVec,
-      /* range_components= */ kEmptyVec,
-      /* condition= */ nullptr ,
-      /* hash_code= */ std::nullopt,
-      /* max_hash_code= */ std::nullopt,
-      key,
-      /* is_forward_scan= */ true ,
-      key,
-      key,
-      0,
-      AddHighestToUpperDocKey::kTrue);
-
-  data->iterator = &**iterator;
-  data->restart_seek = true;
-
-  return (**iterator).Init(scan_spec, SkipSeek::kTrue);
-}
-
 Result<bool> PgsqlWriteOperation::ReadColumns(
     const DocOperationApplyData& data, dockv::PgTableRow* table_row) {
   // Filter the columns using primary key.
-  if (!VERIFY_RESULT(data.iterator->PgFetchRow(
-          encoded_doc_key_.as_slice(), data.restart_seek, table_row))) {
+  DocPgsqlScanSpec spec(doc_read_context_->schema(), request_.stmt_id(), doc_key_);
+  auto iterator = DocRowwiseIterator(
+      projection(),
+      *doc_read_context_,
+      txn_op_context_,
+      data.doc_write_batch->doc_db(),
+      data.read_operation_data,
+      data.doc_write_batch->pending_op());
+  RETURN_NOT_OK(iterator.Init(spec));
+  if (!VERIFY_RESULT(iterator.PgFetchNext(table_row))) {
     return false;
   }
-  data.restart_read_ht->MakeAtLeast(VERIFY_RESULT(data.iterator->RestartReadHt()));
+  data.restart_read_ht->MakeAtLeast(VERIFY_RESULT(iterator.RestartReadHt()));
 
   return true;
 }
@@ -1566,6 +1533,11 @@ Result<size_t> PgsqlReadOperation::Execute(
   *restart_read_ht = VERIFY_RESULT(table_iter_->RestartReadHt());
   if (index_iter_) {
     restart_read_ht->MakeAtLeast(VERIFY_RESULT(index_iter_->RestartReadHt()));
+  }
+
+  response_.mutable_metrics()->set_scanned_table_rows(scanned_table_rows_);
+  if (scanned_index_rows_ > 0) {
+    response_.mutable_metrics()->set_scanned_index_rows(scanned_index_rows_);
   }
   return fetched_rows;
 }
@@ -1758,6 +1730,7 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(
     if (fetch_result == FetchResult::NotFound) {
       break;
     }
+    ++scanned_table_rows_;
     if (fetch_result == FetchResult::Found) {
       ++match_count;
       if (request_.is_aggregate()) {
@@ -1804,6 +1777,10 @@ Result<size_t> PgsqlReadOperation::ExecuteScalar(
     *has_paging_state = VERIFY_RESULT(SetPagingState(
         iterator, read_context->schema(), read_operation_data.read_time));
   }
+
+  if (index_state) {
+    scanned_index_rows_ += index_state->scanned_rows;
+  }
   return fetched_rows;
 }
 
@@ -1840,6 +1817,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
   std::optional<FilteringIterator> iter;
   size_t row_count = 0;
   size_t fetched_rows = 0;
+  size_t filtered_rows = 0;
   for (const auto& batch_argument : batch_args) {
     if (!iter) {
       // It can be the case like when there is a tablet split that we still want
@@ -1863,6 +1841,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
         iter = std::nullopt;
         break;
       case FetchResult::FilteredOut:
+        ++filtered_rows;
         break;
       case FetchResult::Found:
         ++row_count;
@@ -1898,6 +1877,7 @@ Result<size_t> PgsqlReadOperation::ExecuteBatchYbctid(
     // Mark all rows were processed even in case some of the ybctids were not found.
     response_.set_batch_arg_count(request_.batch_arguments_size());
 
+  scanned_table_rows_ += filtered_rows + row_count;
   return fetched_rows;
 }
 

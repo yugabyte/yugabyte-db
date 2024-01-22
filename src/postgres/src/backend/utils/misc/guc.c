@@ -2363,14 +2363,15 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_is_client_ysqlconnmgr", PGC_BACKEND, CUSTOM_OPTIONS,
+		/* YB: Not for general use */
+		{"yb_is_client_ysqlconnmgr", PGC_BACKEND, UNGROUPED,
 			gettext_noop("Identifies that connection is created by "
 						"Ysql Connection Manager."),
 			NULL
 		},
 		&yb_is_client_ysqlconnmgr,
 		false,
-		NULL, NULL, NULL
+		yb_is_client_ysqlconnmgr_check_hook, NULL, NULL
 	},
 
 	{
@@ -2427,6 +2428,19 @@ static struct config_bool ConfigureNamesBool[] =
 		&yb_enable_alter_table_rewrite,
 		true,
 		NULL, NULL, NULL
+	},
+
+	{
+		/* YB: Not for general use */
+		{"yb_use_tserver_key_auth", PGC_BACKEND, UNGROUPED,
+			gettext_noop("If set, the client connection will be authenticated via "
+						 "'yb-tserver-key' auth"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_use_tserver_key_auth,
+		false,
+		yb_use_tserver_key_auth_check_hook, NULL, NULL
 	},
 
 	/* End-of-list marker */

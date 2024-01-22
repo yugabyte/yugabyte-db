@@ -373,8 +373,27 @@ void PgDocOp::RecordRequestMetrics() {
   auto& metrics = pg_session_->metrics();
   for (const auto& op : pgsql_ops_) {
     auto* response = op->response();
-    if (response && response->has_metrics()) {
+    if (op->is_active() && response && response->has_metrics()) {
       metrics.RecordRequestMetrics(op->response()->metrics());
+
+      // Record the number of DocDB rows read.
+      // Index Scans on secondary indexes in colocated tables need special handling: the target
+      // table for such ops is the secondary index, however the scanned_table_rows field returns
+      // the number of main table rows scanned scanned. Hence, if a request has both table and index
+      // rows_scanned set, then we do not resolve the target table type. In all other cases, the
+      // index_rows_scanned field is not populated and the table type can be resolved to figure out
+      // the kind of rows scanned.
+      if (!response->metrics().has_scanned_table_rows()) {
+        continue;
+      }
+
+      if (table_->IsColocated() && response->metrics().has_scanned_index_rows()) {
+        metrics.RecordStorageRowsRead(TableType::USER, response->metrics().scanned_table_rows());
+        metrics.RecordStorageRowsRead(TableType::INDEX, response->metrics().scanned_index_rows());
+      } else {
+        metrics.RecordStorageRowsRead(
+            ResolveRelationType(*op, table_), response->metrics().scanned_table_rows());
+      }
     }
   }
 }

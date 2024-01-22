@@ -42,13 +42,13 @@ public class YbaMetadataComponent implements SupportBundleComponent {
       Path bundlePath,
       NodeDetails node)
       throws IOException {
-    log.info("Gathering call home json data for customer '{}'.", customer.getUuid());
+    log.info("Gathering YBA Metadata json data for customer '{}'.", customer.getUuid());
 
     // Create YBA_METADATA_FOLDER folder inside the support bundle folder.
     String destDir = bundlePath.toString() + "/" + YBA_METADATA_FOLDER;
     Files.createDirectories(Paths.get(destDir));
 
-    // Gather and save the YBA call home data.
+    // Gather and save the YBA metadata.
     supportBundleUtil.gatherAndSaveAllMetadata(customer, destDir);
   }
 

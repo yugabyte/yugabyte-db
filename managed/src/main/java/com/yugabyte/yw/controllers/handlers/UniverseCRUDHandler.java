@@ -755,6 +755,8 @@ public class UniverseCRUDHandler {
     TaskType taskType = TaskType.CreateUniverse;
     DB.beginTransaction();
     try {
+      // If the subsequent universe task fails on validation step, we will show error in UI.
+      taskParams.updateSucceeded = false;
       universe = Universe.create(taskParams, customer.getId());
       LOG.info("Created universe {} : {}.", universe.getUniverseUUID(), universe.getName());
       if (taskParams.runtimeFlags != null) {
@@ -2143,6 +2145,14 @@ public class UniverseCRUDHandler {
       String errMsg = "Unknown cluster " + StringUtils.join(taskParamClustersUuids, ",");
       LOG.error(errMsg);
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
+    }
+
+    if (!Objects.equals(taskParams.nodePrefix, universe.getUniverseDetails().nodePrefix)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Cannot change node prefix (from %s to %s)",
+              universe.getUniverseDetails().nodePrefix, taskParams.nodePrefix));
     }
 
     Set<UniverseDefinitionTaskParams.UpdateOptions> updateOptions =

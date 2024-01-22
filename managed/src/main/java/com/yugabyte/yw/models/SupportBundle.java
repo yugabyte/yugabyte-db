@@ -117,6 +117,9 @@ public class SupportBundle extends Model {
 
   @JsonIgnore
   public Path getPathObject() {
+    if (this.path == null) {
+      return null;
+    }
     return Paths.get(this.path);
   }
 
@@ -228,15 +231,11 @@ public class SupportBundle extends Model {
 
   public static void delete(UUID bundleUUID) {
     SupportBundle supportBundle = SupportBundle.getOrBadRequest(bundleUUID);
-    if (supportBundle.getStatus() == SupportBundleStatusType.Running) {
-      throw new PlatformServiceException(BAD_REQUEST, "The support bundle is in running state.");
+    if (supportBundle.delete()) {
+      LOG.info("Successfully deleted the db entry for support bundle: " + bundleUUID.toString());
     } else {
-      if (supportBundle.delete()) {
-        LOG.info("Successfully deleted the db entry for support bundle: " + bundleUUID.toString());
-      } else {
-        throw new PlatformServiceException(
-            INTERNAL_SERVER_ERROR, "Unable to delete the Support Bundle");
-      }
+      throw new PlatformServiceException(
+          INTERNAL_SERVER_ERROR, "Unable to delete the Support Bundle");
     }
   }
 }

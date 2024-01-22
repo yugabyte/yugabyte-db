@@ -93,6 +93,7 @@
     register: result
     until: result is succeeded
     retries: "{{ install_retry_count }}"
+    tags: yb-prebuilt-ami
 
   - name: Add ysql cgroup info to cgconfig.conf
     template:
