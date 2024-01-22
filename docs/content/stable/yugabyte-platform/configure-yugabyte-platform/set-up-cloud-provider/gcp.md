@@ -144,7 +144,7 @@ To edit the provider, select **Config Details**, make changes, and click **Apply
     If `new-project-yb` is a new GCE project, the backend request fails and you will be notified that you can't change the GCE project for an in-use provider.
 
 - Regions - You can add regions and zones to an in-use provider.
-Note that you cannot edit existing region details (such as shared subnet, yb image, and so on), or delete a region if any of the region's zones are in use. You also cannot delete zones which are in-use.
+Note that you cannot edit existing region details, or delete a region if any of the region's zones are in use. You also cannot delete zones which are in-use.
 
 To view the universes created using the provider, select **Universes**.
 
