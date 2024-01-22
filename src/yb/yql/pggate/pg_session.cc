@@ -1034,4 +1034,8 @@ const std::string PgSession::LogPrefix() const {
   return Format("Session id $0: ", pg_client_.SessionID());
 }
 
+Result<yb::tserver::PgTabletsMetadataResponsePB> PgSession::TabletsMetadata() {
+  return pg_client_.TabletsMetadata();
+}
+
 }  // namespace yb::pggate

@@ -1660,6 +1660,14 @@ class PgClientServiceImpl::Impl {
     return Status::OK();
   }
 
+  Status TabletsMetadata(
+      const PgTabletsMetadataRequestPB& req, PgTabletsMetadataResponsePB* resp,
+      rpc::RpcContext* context) {
+    const auto& result = VERIFY_RESULT(tablet_server_.GetLocalTabletsMetadata());
+    *resp->mutable_tablets() = {result.begin(), result.end()};
+    return Status::OK();
+  }
+
   #define PG_CLIENT_SESSION_METHOD_FORWARD(r, data, method) \
   Status method( \
       const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)& req, \

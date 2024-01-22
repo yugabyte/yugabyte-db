@@ -724,6 +724,19 @@ typedef enum PgReplicationSlotSnapshotAction {
   YB_REPLICATION_SLOT_USE_SNAPSHOT
 } YBCPgReplicationSlotSnapshotAction;
 
+typedef struct PgTabletsDescriptor {
+  const char* tablet_id;
+  const char* table_name;
+  const char* table_id;
+  const char* namespace_name;
+  const char* table_type;
+  const char* pgschema_name;
+  const char* partition_key_start;
+  size_t partition_key_start_len;
+  const char* partition_key_end;
+  size_t partition_key_end_len;
+} YBCPgTabletsDescriptor;
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif  // __cplusplus

@@ -73,6 +73,7 @@
 #include "yb/server/ycql_stat_provider.h"
 
 #include "yb/tablet/maintenance_manager.h"
+#include "yb/tablet/tablet_bootstrap_if.h"
 #include "yb/tablet/tablet_peer.h"
 
 #include "yb/tserver/heartbeater.h"
@@ -1379,4 +1380,17 @@ void TabletServer::ClearAllMetaCachesOnServer() {
   }
   client()->ClearAllMetaCachesOnServer();
 }
+
+Result<std::vector<tablet::TabletStatusPB>> TabletServer::GetLocalTabletsMetadata() const {
+  std::vector<tablet::TabletStatusPB> result;
+  auto peers = tablet_manager_.get()->GetTabletPeers();
+  for (const std::shared_ptr<tablet::TabletPeer>& peer : peers) {
+    tablet::TabletStatusPB status;
+    peer->GetTabletStatusPB(&status);
+    status.set_pgschema_name(peer->status_listener()->schema()->SchemaName());
+    result.emplace_back(std::move(status));
+  }
+  return result;
+}
+
 }  // namespace yb::tserver

@@ -872,6 +872,8 @@ void YBCStoreTServerAshSamples(
     YBCAshAcquireBufferLock acquire_cb_lock_fn, YBCAshGetNextCircularBufferSlot get_cb_slot_fn,
     uint64_t sample_time);
 
+YBCStatus YBCLocalTablets(YBCPgTabletsDescriptor** tablets, size_t* count);
+
 #ifdef __cplusplus
 }  // extern "C"
 #endif
