@@ -926,7 +926,7 @@ Status Tablet::OpenKeyValueTablet() {
         metadata_->cdc_sdk_min_checkpoint_op_id(),
         MonoDelta::FromMilliseconds(GetAtomicFlag(&FLAGS_cdc_intent_retention_ms)));
     RETURN_NOT_OK(transaction_participant_->SetDB(
-        doc_db(), &key_bounds_, &pending_op_counter_blocking_rocksdb_shutdown_start_));
+        doc_db(), &pending_op_counter_blocking_rocksdb_shutdown_start_));
   }
 
   // Don't allow reads at timestamps lower than the highest history cutoff of a past compaction.
