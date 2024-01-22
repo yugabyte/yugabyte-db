@@ -364,6 +364,19 @@ DROP TABLE q1;
 DROP TABLE q2;
 DROP TABLE q3;
 
+create table ss1(a int, primary key(a asc));
+insert into ss1 select generate_series(1,5);
+create table ss2(a int, b int, primary key(a asc, b asc));
+insert into ss2 select i, i from generate_series(1,5) i;
+insert into ss2 select i, i+1 from generate_series(1,5) i;
+analyze ss1;
+analyze ss2;
+/*+Set(enable_seqscan off) Set(yb_bnl_batch_size 1024) Leading((ss1 ss2))*/ explain (costs off) select * from ss1, ss2 where ss1.a = ss2.a order by ss1.a limit 10;
+/*+Set(enable_seqscan off) Set(yb_bnl_batch_size 1024) Leading((ss1 ss2))*/ select * from ss1, ss2 where ss1.a = ss2.a order by ss1.a limit 10;
+
+drop table ss1;
+drop table ss2;
+
 create table q1(a int, b int);
 create table q2(a int, b int);
 create index on q2(b, a);
