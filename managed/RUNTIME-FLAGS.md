@@ -50,7 +50,6 @@
 | "Snapshot creation max attempts" | "yb.snapshot_creation.max_attempts" | "GLOBAL" | "Max attempts while waiting for AWS Snapshot Creation" | "Integer" |
 | "Snapshot creation delay" | "yb.snapshot_creation.delay" | "GLOBAL" | "Delay per attempt while waiting for AWS Snapshot Creation" | "Integer" |
 | "Runtime Config UI" | "yb.runtime_conf_ui.enable_for_all" | "GLOBAL" | "Allows users to view the runtime configuration properties via UI" | "Boolean" |
-| "Allow Platform Downgrade" | "yb.is_platform_downgrade_allowed" | "GLOBAL" | "Allow Downgrading the Platform Version" | "Boolean" |
 | "YBC Upgrade Interval" | "ybc.upgrade.scheduler_interval" | "GLOBAL" | "YBC Upgrade interval" | "Duration" |
 | "YBC Universe Upgrade Batch Size" | "ybc.upgrade.universe_batch_size" | "GLOBAL" | "The number of maximum universes on which ybc will be upgraded simultaneously" | "Integer" |
 | "YBC Node Upgrade Batch Size" | "ybc.upgrade.node_batch_size" | "GLOBAL" | "The number of maximum nodes on which ybc will be upgraded simultaneously" | "Integer" |
