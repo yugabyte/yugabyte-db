@@ -2371,6 +2371,18 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_explain_hide_non_deterministic_fields", PGC_USERSET, CUSTOM_OPTIONS,
+			gettext_noop("If set, all fields that vary from run to run are hidden from "
+						 "the output of EXPLAIN"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_explain_hide_non_deterministic_fields,
+		false,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, false, NULL, NULL, NULL
