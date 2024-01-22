@@ -311,6 +311,7 @@ public class LocalNodeManager {
           case Software:
             updateSoftwareOnNode(userIntent, params.ybSoftwareVersion);
             break;
+          case Certs:
           case ToggleTls:
           case GFlags:
             UniverseTaskBase.ServerType processType =
@@ -459,6 +460,9 @@ public class LocalNodeManager {
   }
 
   private Map<String, String> getGFlagsFromArgs(Map<String, String> args, String key) {
+    if (!args.containsKey(key)) {
+      return Collections.emptyMap();
+    }
     return (Map<String, String>) Json.fromJson(Json.parse(args.get(key)), Map.class);
   }
 
@@ -487,7 +491,7 @@ public class LocalNodeManager {
                 ? MAX_MEM_RATIO_TSERVER
                 : MAX_MEM_RATIO_MASTER);
       }
-      processCerts(args, gflags, nodeInfo, userIntent);
+      processCerts(args, nodeInfo, userIntent);
       writeGFlagsToFile(userIntent, gflags, serverType, nodeInfo);
     } catch (IOException e) {
       throw new RuntimeException(e);
@@ -496,7 +500,6 @@ public class LocalNodeManager {
 
   private void processCerts(
       Map<String, String> args,
-      Map<String, String> gflags,
       NodeInfo nodeInfo,
       UniverseDefinitionTaskParams.UserIntent userIntent)
       throws IOException {
@@ -516,6 +519,15 @@ public class LocalNodeManager {
           args.get("--root_cert_path_client_to_server"),
           args.get("--server_cert_path_client_to_server"),
           args.get("--server_key_path_client_to_server"));
+    }
+    if (args.containsKey("--client_cert_path")) {
+      // These certs will be used for testing the connectivity of `yugabyte` client with postgres.
+      String certsForYSQLClientDir = homeDir + "/.yugabytedb";
+      copyCerts(
+          certsForYSQLClientDir,
+          args.get("--client_cert_path"),
+          args.get("--client_key_path"),
+          args.get("--root_cert_path_client_to_server"));
     }
   }
 
