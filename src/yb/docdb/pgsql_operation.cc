@@ -43,6 +43,7 @@
 
 #include "yb/dockv/doc_path.h"
 #include "yb/dockv/packed_row.h"
+#include "yb/dockv/packed_value.h"
 #include "yb/dockv/partition.h"
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/primitive_value_util.h"
@@ -746,7 +747,8 @@ class PgsqlWriteOperation::RowPackContext {
         packer_(packer_data.MakePacker()) {
   }
 
-  Result<bool> Add(ColumnId column_id, const QLValuePB& value) {
+  template <class Value>
+  Result<bool> Add(ColumnId column_id, const Value& value) {
     return std::visit([column_id, &value](auto& packer) {
       return packer.AddValue(column_id, value);
     }, packer_);
@@ -1005,7 +1007,52 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
     }
   }
 
-  if (ShouldYsqlPackRow(doc_read_context_->schema().is_colocated())) {
+  const auto& schema = doc_read_context_->schema();
+  auto pack_row = ShouldYsqlPackRow(schema.is_colocated());
+  if (request_.has_packed_value()) {
+    RETURN_NOT_OK(VerifyNoColsMarkedForDeletion(
+        request_.table_id(), schema, schema.value_column_ids()));
+    Slice packed_value(request_.packed_value());
+    if (pack_row &&
+        packed_value.size() < dockv::PackedSizeLimit(FLAGS_ysql_packed_row_size_limit)) {
+      RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
+          DocPath(encoded_doc_key_.as_slice()), dockv::ValueControlFields(),
+          ValueRef(packed_value), data.read_operation_data, request_.stmt_id()));
+    } else {
+      SCHECK(packed_value.TryConsumeByte(dockv::ValueEntryTypeAsChar::kPackedRowV1),
+             InvalidArgument,
+             "Packed value in a wrong format: $0", packed_value.ToDebugHexString());
+      const auto& packing = VERIFY_RESULT_REF(doc_read_context_->schema_packing_storage.GetPacking(
+          &packed_value));
+
+      std::optional<RowPackContext> pack_context;
+      if (pack_row) {
+        pack_context.emplace(
+            request_, data, VERIFY_RESULT(RowPackerData::Create(request_, *doc_read_context_)));
+      } else {
+        RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
+            DocPath(encoded_doc_key_.as_slice(), KeyEntryValue::kLivenessColumn),
+            dockv::ValueControlFields(), ValueRef(dockv::ValueEntryType::kNullLow),
+            data.read_operation_data, request_.stmt_id()));
+      }
+      for (size_t idx = 0; idx != packing.columns(); ++idx) {
+        auto value = dockv::PackedValueV1(packing.GetValue(idx, packed_value));
+        auto column_id = packing.column_packing_data(idx).id;
+        if (!pack_context || !VERIFY_RESULT(pack_context->Add(column_id, value))) {
+          if (value->empty()) {
+            static char null_column_type = dockv::ValueEntryTypeAsChar::kNullLow;
+            value = dockv::PackedValueV1(Slice(&null_column_type, sizeof(null_column_type)));
+          }
+          DocPath sub_path(encoded_doc_key_.as_slice(), KeyEntryValue::MakeColumnId(column_id));
+          RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
+              sub_path, ValueRef(*value), data.read_operation_data, request_.stmt_id()));
+        }
+      }
+      if (pack_context) {
+        RETURN_NOT_OK(pack_context->Complete(encoded_doc_key_));
+      }
+    }
+  } else if (pack_row) {
     RowPackContext pack_context(
         request_, data, VERIFY_RESULT(RowPackerData::Create(request_, *doc_read_context_)));
 
