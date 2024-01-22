@@ -831,6 +831,9 @@ Status CatalogManager::CreateNewXReplStream(
     const CreateCDCStreamRequestPB& req, CreateNewCDCStreamMode mode,
     const std::vector<TableId>& table_ids, const std::optional<const NamespaceId>& namespace_id,
     CreateCDCStreamResponsePB* resp, const LeaderEpoch& epoch, rpc::RpcContext* rpc) {
+
+  auto start_time = MonoTime::Now();
+
   VLOG_WITH_FUNC(1) << "Mode: " << IntegralToString(mode)
                     << ", table_ids: " << yb::ToString(table_ids)
                     << ", namespace_id: " << yb::ToString(namespace_id);
@@ -1064,6 +1067,8 @@ Status CatalogManager::CreateNewXReplStream(
     RETURN_NOT_OK(cdc_state_table_->InsertEntries(entries));
   }
 
+  LOG(INFO) << "Stream " << stream_id << " creation took "
+            << MonoTime::Now().GetDeltaSince(start_time).ToMilliseconds() << "ms";
   TRACE("Created CDC state entries");
   return Status::OK();
 }
