@@ -28,14 +28,16 @@ When you promote a standby instance to active, YugabyteDB Anywhere restores your
 Before configuring a HA cluster for your YugabyteDB Anywhere instances, ensure that you have the following:
 
 - [Multiple YugabyteDB Anywhere instances](../../install-yugabyte-platform/) to be used in the HA cluster.
-- YugabyteDB Anywhere VMs can connect to each other over the port where the YugabyteDB Anywhere UI is typically reachable (port 80 and 443, for example).
+- YugabyteDB Anywhere VMs can connect to each other over the port where the YugabyteDB Anywhere UI is reachable (typically 443).
+- Communication is open in both directions over ports 9000 and 9090 on all instances.
+- If you are using custom ports for Prometheus, all YugabyteDB Anywhere instances are using the same custom port. The default Prometheus port for YugabyteDB Anywhere is 9090.
 - All YugabyteDB Anywhere instances are running the same version of YugabyteDB Anywhere software. You should upgrade all YugabyteDB Anywhere instances in the HA cluster at approximately the same time.
 
 ## Configure active and standby instances
 
-To set up HA for YugabyteDB Anywhere, you first configure the active instance by creating an active replication configuration and generating a shared authentication key.
+To set up HA for YugabyteDB Anywhere, you first configure the active instance by creating an active HA replication configuration and generating a shared authentication key.
 
-You then configure one or more standby instances by creating standby replication configurations, using the shared authentication key generated on the active instance.
+You then configure one or more standby instances by creating standby HA replication configurations, using the shared authentication key generated on the active instance.
 
 If your instances are using the HTTPS protocol, you must also add the root certificates for the active and standby instances to the [YugabyteDB Anywhere trust store](../../security/enable-encryption-in-transit/#add-certificates-to-your-trust-store) on the active instance.
 
@@ -93,7 +95,7 @@ After the active instance has been configured, you can configure one or more sta
 
     - If you installed YBA using [Replicated](../../install-yugabyte-platform/install-software/replicated/), locate the CA certificate from the path `/var/lib/replicated/secrets/ca.crt` on the YBA instance.
 
-1. Switch to the active instance. 
+1. Switch to the active instance.
 
 1. Add the standby instance root certificate to the [YugabyteDB Anywhere trust store](../../security/enable-encryption-in-transit/#add-certificates-to-your-trust-store) on the active instance. **Note**  that you need to perform this step on the active instance, and not the standby instance.
 
@@ -108,6 +110,8 @@ After the active instance has been configured, you can configure one or more sta
 1. Switch back to the new standby instance, wait for a replication interval to pass, and then refresh the page. The other instances in the HA cluster should now appear in the list of instances.
 
 Your standby instance is now configured.
+
+To confirm communication between the active and standby, click **Make Active** on the standby. You should see a list of available backups that you can restore from.
 
 ## Promote a standby instance to active
 
@@ -177,16 +181,6 @@ The standby instance is now a standalone instance again.
 
 After you have returned a standby instance to standalone mode, the information on the instance is likely to be out of date, which can lead to incorrect behavior. It is recommended to wipe out the state information before using it in standalone mode. For assistance with resetting the state of a standby instance that you removed from a HA cluster, contact Yugabyte Support.
 
-## Limitations
-
-If you are using custom ports for Prometheus in your YugabyteDB Anywhere installation and the YugabyteDB Anywhere instance is configured for HA with other YugabyteDB Anywhere instances, then the following limitation applies:
-
-- All YugabyteDB Anywhere instances configured under HA must use the same custom port.
-
-    The default Prometheus port for YugabyteDB Anywhere is `9090`. Custom ports are configured through the settings section of the Replicated installer UI that is typically available at `https://<yugabyteanywhere-ip>:8800/`.
-
-    For information on how to access the Replicated settings page, see [Install YugabyteDB Anywhere](../../install-yugabyte-platform/install-software/default/).
-
 ## Troubleshooting
 
-If you face issues configuring high availability when the YBA instances are configured to use the HTTPS protocol, attempt the steps mentioned in the preceding sections to add CA certificates appropriately to the trust store. In case the issue persists, consider relaxing the certificate validation requirements as a workaround, by enabling the runtime configuration `yb.ha.ws.ssl.loose.acceptAnyCertificate` (set the flag to `true`).
+If you face issues configuring high availability when the YBA instances are configured to use the HTTPS protocol, attempt the steps mentioned in the preceding sections to add CA certificates appropriately to the trust store. If the issue persists, consider relaxing the certificate validation requirements as a workaround, by enabling the runtime configuration `yb.ha.ws.ssl.loose.acceptAnyCertificate` (set the flag to `true`).
