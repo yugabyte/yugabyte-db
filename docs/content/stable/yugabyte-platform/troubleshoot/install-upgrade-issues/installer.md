@@ -53,7 +53,7 @@ This happens when the user doesn't have sufficient privileges on the `yba_instal
 
 Affected releases: All
 
-Workaround: Change permissions on `yba_installer_full` directory to 755
+Workaround: Change permissions on `yba_installer_full` directory to 755.
 
 ## Preflight check for Prometheus fails
 
@@ -73,7 +73,7 @@ If you want to have green preflight checks prior to the upgrade, change the `scr
 
 When new default settings are added to `yba-ctl.yml` in a newer release, they aren't automatically added to `yba-ctl.yml` of an existing installation after an upgrade.
 
-Affected releases: all
+Affected releases: All
 
 Workaround: If you want to configure the new settings to non-default values, manually add the keys and values to `/opt/yba-ctl/yba-ctl.yml`. Otherwise, no action is needed.
 
@@ -81,6 +81,6 @@ Workaround: If you want to configure the new settings to non-default values, man
 
 If you have a Replicated installation that uses HTTP and you [migrate to YBA Installer](../../../install-yugabyte-platform/install-software/installer/#migrate-from-replicated), your [high availability](../../../administer-yugabyte-platform/high-availability/) (HA) setup will no longer work after the migration. This is because YBA Installer always uses HTTPS. YBA Installer will attempt to block the migration if it detects a Replicated installation with HA enabled that uses HTTP.
 
-Affected releases: all
+Affected releases: All
 
 Workaround: Refer to [Migration and high availability](../../../install-yugabyte-platform/install-software/installer/#migration-and-high-availability).

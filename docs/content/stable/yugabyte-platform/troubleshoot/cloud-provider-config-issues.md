@@ -25,7 +25,7 @@ You can diagnose and remedy a failure that occurred when [configuring Azure clou
 
 - Find your task of type **Create Provider** among the **Failed** tasks and click the corresponding **See Details**.
 
-- On the **Task details** page shown in the following illustration, click **Expand** to view the diagnostic information:<br>
+- On the **Task details** page shown in the following illustration, click **Expand** to view the diagnostic information:
 
   ![Azure configuration failure](/images/yp/platform-azure-prepare-cloud-env-6.png)
 
