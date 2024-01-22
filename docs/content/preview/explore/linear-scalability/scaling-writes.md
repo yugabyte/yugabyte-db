@@ -12,13 +12,15 @@ menu:
 type: docs
 ---
 
-Writes scale linearly in YugabyteDB as more nodes are added to the cluster.
+Writes scale linearly in YugabyteDB as more nodes are added to the cluster. [Write](../../../architecture/transactions/single-row-transactions/) operations are more involved than [reads](../scaling-reads). This is because the write operation has to be replicated to a quorum before it is acknowledged to the application. Although writes are internally considered as transactions, YugabyteDB has a lot of [optimizations for single-row transactions](../../../architecture/transactions/transactions-overview/#single-row-transactions) and achieves high performance.
+
+Let's go over how writes work and see how well they scale in YugabyteDB.
 
 ## How writes work
 
 When an application connected to a node sends a write request for a key, say `UPDATE T SET V=2 WHERE K=5`, YugabyteDB first identifies the location of the tablet leader containing the row with the key specified (`K=5`). After the location of the tablet leader is identified, the request is internally re-directed to the node containing the tablet leader for the requested key.
 
-The leader replicates the write to the followers and then acknowledges the write back to the application. The replication to followers adds additional latency to the request.
+The leader replicates the write to the followers, updates any indexes if needed and then acknowledges the write, back to the application. The replication to followers adds additional latency to the request.
 
 A basic write involves a maximum of just 2 nodes.
 
@@ -30,7 +32,7 @@ If multiple rows have to be fetched and are located in different tablets, variou
 
 ## Sysbench workload
 
-The following shows how writes scale horizontally in YugabyteDB using a Sysbench workload of basic inserts. The cluster consisted of m6i.4xlarge instances and had 1024 connections. All requests had a latency of less than 10ms.
+The following shows how writes scale horizontally in YugabyteDB using a [Sysbench](../../../benchmark/sysbench-ysql/) workload of basic inserts. The cluster consisted of m6i.4xlarge instances and had 1024 connections. All requests had a latency of less than 10ms.
 
 ![Scaling with Sysbench](/images/explore/scalability/scaling-writes-sysbench.png)
 
