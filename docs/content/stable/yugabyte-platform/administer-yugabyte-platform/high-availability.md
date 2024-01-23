@@ -12,34 +12,34 @@ menu:
 type: docs
 ---
 
-YugabyteDB Anywhere high availability (HA) is an active-standby model for multiple YugabyteDB Anywhere instances. YugabyteDB Anywhere HA uses YugabyteDB's distributed architecture to replicate your YugabyteDB Anywhere data across multiple virtual machines (VM), ensuring that you can recover quickly from a VM failure and continue to manage and monitor your universes, with your configuration and metrics data intact.
+YugabyteDB Anywhere (YBA) high availability (HA) is an active-standby model for multiple YBA instances. YBA HA uses YugabyteDB's distributed architecture to replicate your YBA data across multiple virtual machines (VM), ensuring that you can recover quickly from a VM failure and continue to manage and monitor your universes, with your configuration and metrics data intact.
 
-Each HA cluster includes a single active YugabyteDB Anywhere instance and at least one standby YugabyteDB Anywhere instance, configured as follows:
+Each HA cluster includes a single active YBA instance and at least one standby YBA instance, configured as follows:
 
 - The active instance runs normally, but also pushes out backups of its state to all of the standby instances in the HA cluster.
 - A standby instance is completely passive while in standby mode and cannot be used for managing or monitoring clusters until you manually promote it to active.
 
 Backups from the active instance are periodically taken and pushed to standby instances at a configurable frequency (no more than once per minute). The active instance also creates and sends one-off backups to standby instances whenever a task completes (such as creating a new universe). Metrics are duplicated to standby instances using Prometheus federation. Standby instances retain the ten most recent backups on disk.
 
-When you promote a standby instance to active, YugabyteDB Anywhere restores your selected backup, and then automatically demotes the previous active instance to standby mode.
+When you promote a standby instance to active, YBA restores your selected backup, and then automatically demotes the previous active instance to standby mode.
 
 ## Prerequisites
 
-Before configuring a HA cluster for your YugabyteDB Anywhere instances, ensure that you have the following:
+Before configuring a HA cluster for your YBA instances, ensure that you have the following:
 
-- [Multiple YugabyteDB Anywhere instances](../../install-yugabyte-platform/) to be used in the HA cluster.
-- YugabyteDB Anywhere VMs can connect to each other over the port where the YugabyteDB Anywhere UI is reachable (typically 443).
-- Communication is open in both directions over ports 9000 and 9090 on all instances.
-- If you are using custom ports for Prometheus, all YugabyteDB Anywhere instances are using the same custom port. The default Prometheus port for YugabyteDB Anywhere is 9090.
-- All YugabyteDB Anywhere instances are running the same version of YugabyteDB Anywhere software. You should upgrade all YugabyteDB Anywhere instances in the HA cluster at approximately the same time.
+- [Multiple YBA instances](../../install-yugabyte-platform/) to be used in the HA cluster.
+- The YBA instances can connect to each other over the port where the YugabyteDB Anywhere UI is reachable (typically 443).
+- Communication is open in both directions over ports 9000 and 9090 on all YBA instances.
+- If you are using custom ports for Prometheus, all YBA instances are using the same custom port. The default Prometheus port for YugabyteDB Anywhere is 9090.
+- All YBA instances are running the same version of YBA software. You should upgrade all YBA instances in the HA cluster at approximately the same time.
 
 ## Configure active and standby instances
 
-To set up HA for YugabyteDB Anywhere, you first configure the active instance by creating an active HA replication configuration and generating a shared authentication key.
+To set up HA, you first configure the active instance by creating an active HA replication configuration and generating a shared authentication key.
 
 You then configure one or more standby instances by creating standby HA replication configurations, using the shared authentication key generated on the active instance.
 
-If your instances are using the HTTPS protocol, you must also add the root certificates for the active and standby instances to the [YugabyteDB Anywhere trust store](../../security/enable-encryption-in-transit/#add-certificates-to-your-trust-store) on the active instance.
+If your instances are using the HTTPS protocol (the default), you must also add the root certificates for the active and standby instances to the [YugabyteDB Anywhere trust store](../../security/enable-encryption-in-transit/#add-certificates-to-your-trust-store) on the active instance.
 
 ### Configure the active instance
 
@@ -115,7 +115,7 @@ Your standby instance is now configured.
 
 To confirm communication between the active and standby, you can do the following:
 
-- Click **Make Active** on the standby. You should see a list of available backups that you can restore from.
+- Click **Make Active** on the standby. You should see a list of available backups that you can restore from. (Don't promote the standby.)
 - Verify that Prometheus on the standby is able to see similar metrics to the active. Navigate to `http://<STANDBY_IP>:9090/targets`; the federate target should have a status of UP, and the endpoint should match the active instance IP address.
 - Verify that the standby has all the database releases that are in use by universes also listed as Active on the **Releases** page (navigate to **Profile > Releases**). To discover all the database releases that are in use by universes, you can view the **Dashboard** page.
 
@@ -127,19 +127,19 @@ During a HA backup, the entire YugabyteDB Anywhere state is copied. If your univ
 
 You can make a standby instance active as follows:
 
-1. Open **Replication Configuration** of the standby instance that you wish to promote to active and click **Make Active**.
+1. On the standby instance you want to promote, navigate to **Admin > High Availability > Replication Configuration** and click **Make Active**.
 
-1. Use the **Make Active** dialog to select the backup from which you want to restore (in most cases, you should choose the most recent backup) and enable **Confirm promotion**.
+1. Select the backup from which you want to restore (in most cases, you should choose the most recent backup) and enable **Confirm promotion**.
 
-1. Click **Continue**. The restore takes a few seconds, after which expect to be logged out.
+1. Click **Continue**. The restore takes a few seconds, after which expect to be signed out.
 
-1. Log in using credentials that you had configured on the previously active instance.
+1. Sign in using the credentials that you had configured on the previously active instance.
 
 You should be able to see that all of the data has been restored into the instance, including universes, users, metrics, alerts, task history, cloud providers, and so on.
 
 ### Verify failover or switchover
 
-After switching or failing over to the standby, verify that the old active universe is in standby mode (switchover) or no longer available (failover). If both YBA instances attempt to take actions on DB universes, it could cause unpredictable side effects.
+After switching or failing over to the standby, verify that the old active YBA instance is in standby mode (switchover) or no longer available (failover). If both YBA instances were to attempt to perform actions on a universe, it could have unpredictable side effects.
 
 **Switchover**
 
