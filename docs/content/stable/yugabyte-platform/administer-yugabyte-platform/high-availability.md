@@ -116,7 +116,7 @@ Your standby instance is now configured.
 To confirm communication between the active and standby, you can do the following:
 
 - Click **Make Active** on the standby. You should see a list of available backups that you can restore from.
-- Verify that Prometheus on the standby is able to see similar metrics to the active.
+- Verify that Prometheus on the standby is able to see similar metrics to the active. Navigate to `http://<STANDBY_IP>:9090/targets`; the federate target should have a status of UP, and the endpoint should match the active instance IP address.
 - Verify that the standby has all the database releases that are in use by universes also listed as Active on the **Releases** page (navigate to **Profile > Releases**). To discover all the database releases that are in use by universes, you can view the **Dashboard** page.
 
     If there are releases missing, follow the instructions in [How to configure YugabyteDB Anywhere to provide Older, Hotfix, or Debug Builds](https://support.yugabyte.com/hc/en-us/articles/360054421952-How-to-configure-YugabyteDB-Anywhere-to-provide-Older-Hotfix-or-Debug-Builds).
