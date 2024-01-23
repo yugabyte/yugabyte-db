@@ -9,6 +9,7 @@ menu:
   stable:
     identifier: tutorials-google
     parent: tutorials
+    weight: 3
 type: indexpage
 ---
 
