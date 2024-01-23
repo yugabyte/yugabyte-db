@@ -1830,7 +1830,9 @@ class ControlScript(object):
                             ]
                         if self.configs.saved_data.get("secure"):
                             yugabyted_ui_cmd.extend(["-secure=true",
-                                "-database_password={}".format(
+                                "-ysql_password={}".format(
+                                self.configs.saved_data.get("database_password")),
+                                "-ycql_password={}".format(
                                 self.configs.saved_data.get("database_password"))])
 
                         if self.configs.saved_data.get("ysql_port"):

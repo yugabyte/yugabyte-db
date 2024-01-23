@@ -43,6 +43,7 @@ func (h *HelperContainer) GetMemTrackersFuture(
     resp, err := httpClient.Get(url)
     if err != nil {
         memTrackers.Error = err
+        h.logger.Warnf("failed to get mem trackers from url %s: %s", url, err.Error())
         future <- memTrackers
         return
     }
@@ -50,6 +51,7 @@ func (h *HelperContainer) GetMemTrackersFuture(
     body, err := ioutil.ReadAll(resp.Body)
     if err != nil {
         memTrackers.Error = err
+        h.logger.Warnf("failed to read mem trackers from url %s: %s", url, err.Error())
         future <- memTrackers
         return
     }
@@ -57,6 +59,7 @@ func (h *HelperContainer) GetMemTrackersFuture(
     err = json.Unmarshal([]byte(body), &memTrackersResponse)
     if err != nil {
         memTrackers.Error = err
+        h.logger.Warnf("failed to unmarshal the response from url %s: %s", url, err.Error())
         future <- memTrackers
         return
     }
