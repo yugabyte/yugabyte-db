@@ -111,9 +111,17 @@ After the active instance has been configured, you can configure one or more sta
 
 Your standby instance is now configured.
 
-To confirm communication between the active and standby, click **Make Active** on the standby. You should see a list of available backups that you can restore from.
+### Verify HA
 
-During a HA backup, the entire YugabyteDB Anywhere state is copied. If your universes are visible through YugabyteDB Anywhere UI and the replication timestamps are increasing, the backup is successful.
+To confirm communication between the active and standby, you can do the following:
+
+- Click **Make Active** on the standby. You should see a list of available backups that you can restore from.
+- Verify that Prometheus on the standby is able to see similar metrics to the active.
+- Verify that the standby has all the database releases that are in use by universes also listed as Active on the **Releases** page (navigate to **Profile > Releases**). To discover all the database releases that are in use by universes, you can view the **Dashboard** page.
+
+    If there are releases missing, follow the instructions in [How to configure YugabyteDB Anywhere to provide Older, Hotfix, or Debug Builds](https://support.yugabyte.com/hc/en-us/articles/360054421952-How-to-configure-YugabyteDB-Anywhere-to-provide-Older-Hotfix-or-Debug-Builds).
+
+During a HA backup, the entire YugabyteDB Anywhere state is copied. If your universes are visible through the YugabyteDB Anywhere UI and the replication timestamps are increasing, the backup is successful.
 
 ## Promote a standby instance to active
 
@@ -131,54 +139,64 @@ You should be able to see that all of the data has been restored into the instan
 
 ### Verify failover or switchover
 
-After switching or failing over to the standby, verify that the old active is in standby mode (switchover) or no longer available. If both YBA instances attempt to take actions on DB universes, it could cause unpredictable side effects.
+After switching or failing over to the standby, verify that the old active universe is in standby mode (switchover) or no longer available (failover). If both YBA instances attempt to take actions on DB universes, it could cause unpredictable side effects.
 
-- If it is not in standby mode, there could be an issue with communication from new active -> old active. Follow the setup instructions to verify that certificates and ports have been set up correctly.
-- If the old active is hard down (failover), verify that there is no chance for the old active to come back and run YBA at a later point.
-- If the old active does come back up, it should automatically go into standby mode. If the old active instance does not go into standby mode, you should manually demote it as follows:
+**Switchover**
 
-    1. Find the correct last failover time by querying the true active instance.
+- [Verify that HA is functioning properly](#verify-ha).
+- If the old active universe is not in standby mode, there could be an issue with communication from the new active to the old active universe. Follow the [setup instructions](#configure-active-and-standby-instances) to verify that certificates and ports are set up correctly.
+
+**Failover**
+
+- If the old active universe is hard down, verify that there is no chance that it can come back and run YBA at a later point.
+- If the old active universe does come back up, it should automatically go into standby mode. If it does not go into standby mode, you should manually demote it as follows:
+
+    1. Find the correct last failover time by querying the new active instance.
 
         ```sh
         curl -X GET 'https://10.9.104.164/api/v1/settings/ha/config' -H 'X-AUTH-YW-API-TOKEN: 8bf6e5b2-beff-4859-9016-bdc0fa0ced1e' --insecure
         ```
 
-    1. To the stale active send a manual demote request.
+    1. Send a manual demote request to the stale active.
 
         ```sh
         curl -X PUT 'https://10.9.113.130/api/v1/settings/ha/internal/config/demote/1705138628028' -H 'X-AUTH-YW-API-TOKEN: 1a5ad6de-f638-4ebc-9649-d8b187b688b0' -H 'HA-AUTH-TOKEN: sTroAGbJz+QydXXz9lc1bhdQmQqIZSyM6Z20MqitvLA=' -H "Content-Type: application/json" --data-raw '{"leader_address": "https://10.9.104.164"}' --insecure
         ```
 
-    If the timestamp can not be found for whatever reason, providing a current timestamp will forcibly demote the instance, but it will be harder to reestablish HA connection as now the active/standby have different notions of the last failover time. This could lead to unexpected behavior.
+    If you can't identify the timestamp for whatever reason, you can provide a current timestamp to forcibly demote the instance. However, it will be harder to reestablish the HA connection as the active and standby will have different notions of the last failover time. This could lead to unexpected behavior.
 
-If there are any issues with the old active going into standby that cannot be resolved by the above steps, it is recommended to disable HA completely and re-enable it with the new active standby configuration.
+    If there are any issues with the old active going into standby that cannot be resolved by the preceding steps, you should disable HA completely and re-enable it with the new active standby configuration.
 
-Verify that backups are flowing to the new standby (old active).
-
-Verify that Prometheus on standby is able to see similar metrics as the active
-
-Verify that new active has all the DB releases in use listed as active from the Releases page.
-
-To discover all in use DB releases, you can view the YBA dashboard page
-
-To do the same programmatically, you can use the following query (need jq command line tool)
-curl 'https://10.9.113.130/api/v1/customers/<CUSTOMER UUID>/universes' -H 'X-AUTH-YW-API-TOKEN: <YBA API TOKEN>'  --compressed --insecure | jq -r '.[].universeDetails.clusters | map(.userIntent.ybSoftwareVersion) | join(", ")'
-Search for all the returned releases in the releases page, if any don't show up or are not active, follow the process in https://support.yugabyte.com/hc/en-us/articles/360054421952-How-to-configure-YugabyteDB-Anywhere-to-provide-Older-Hotfix-or-Debug-Builds to add the appropriate releases to the new active instance.
+- If the old active has successfully switched to standby, [verify that HA is functioning properly](#verify-ha).
 
 ## Upgrade instances
 
-All instances involved in HA should be of the same YugabyteDB Anywhere version. If the versions are different, an attempt to promote a standby instance using a YugabyteDB Anywhere backup from an active instance may result in errors.
+All instances involved in HA should use the same version of YugabyteDB Anywhere. If the versions are different, an attempt to promote a standby instance using a YugabyteDB Anywhere backup from an active instance may result in errors.
 
-Even though you can perform an upgrade of all YugabyteDB Anywhere instances simultaneously and there are no explicit ordering requirements regarding upgrades of active and standby instances, it is recommended to follow these general guidelines:
+Even though you can perform an upgrade of all YugabyteDB Anywhere instances simultaneously and there are no explicit ordering requirements regarding upgrades of active and standby instances, you should follow these general guidelines:
 
 - Start an upgrade with an active instance.
 - After the active instance has been upgraded, ensure that YugabyteDB Anywhere is reachable by logging in and checking various pages.
 - Proceed with upgrading standby instances.
 
+Certificates in the trust store should not require setup again.
+
+After upgrading all instances, verify that the standby is receiving new backups. Note that the standby will still have old backups from before the upgrade (these are not deleted until the standby is promoted at some point or they expire).
+
+Because old backups are present, you need to be cautious promoting the standby in the time immediately after upgrading the HA pair.
+
+Only promote standby when both standby and active are at same version, and use the most recent backup that you are confident was received after the active was upgraded.
+
+### Upgrade instances in HA
+
 The following is the detailed upgrade procedure:
 
 1. Stop the HA synchronization. This ensures that only backups of the original YugabyteDB Anywhere version are synchronized to the standby instance.
-1. [Upgrade the active instance](../../upgrade/). Expect a momentary lapse in availability for the duration of the upgrade. If the upgrade is successful, proceed to step 3. If the upgrade fails, perform the following:
+1. [Upgrade the active instance](../../upgrade/). Expect a momentary lapse in availability for the duration of the upgrade.
+
+    If the upgrade is successful, proceed to step 3.
+
+    If the upgrade fails, perform the following:
 
     - Decommission the faulty active instance in the active-standby pair.
     - Promote the standby instance.
