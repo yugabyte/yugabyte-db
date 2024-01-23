@@ -25,7 +25,11 @@ type VersionInfoFuture struct {
     Error error
 }
 
-func (h *HelperContainer) GetVersionFuture(hostName string, future chan VersionInfoFuture) {
+func (h *HelperContainer) GetVersionFuture(
+    hostName string,
+    isMaster bool,
+    future chan VersionInfoFuture,
+) {
     versionInfo := VersionInfoFuture{
         VersionInfo: VersionInfoStruct{},
         Error: nil,
@@ -33,21 +37,23 @@ func (h *HelperContainer) GetVersionFuture(hostName string, future chan VersionI
     httpClient := &http.Client{
         Timeout: time.Second * 10,
     }
-    url := fmt.Sprintf("http://%s:%s/api/v1/version", hostName, MasterUIPort)
+    port := TserverUIPort
+    if isMaster {
+        port = MasterUIPort
+    }
+    url := fmt.Sprintf("http://%s:%s/api/v1/version", hostName, port)
     resp, err := httpClient.Get(url)
     if err != nil {
-        url = fmt.Sprintf("http://%s:%s/api/v1/version", hostName, TserverUIPort)
-        resp, err = httpClient.Get(url)
-        if err != nil {
-            versionInfo.Error = err
-            future <- versionInfo
-            return
-        }
+        versionInfo.Error = err
+        h.logger.Warnf("failed to get version from url %s: %s", url, err.Error())
+        future <- versionInfo
+        return
     }
     defer resp.Body.Close()
     body, err := ioutil.ReadAll(resp.Body)
     if err != nil {
         versionInfo.Error = err
+        h.logger.Warnf("failed to read version from url %s: %s", url, err.Error())
         future <- versionInfo
         return
     }
