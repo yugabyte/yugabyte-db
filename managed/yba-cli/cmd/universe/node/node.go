@@ -35,9 +35,9 @@ func init() {
 	NodeCmd.AddCommand(reprovisionNodeCmd)
 	NodeCmd.AddCommand(releaseNodeCmd)
 
-	NodeCmd.PersistentFlags().StringP("universe-name", "n", "",
+	NodeCmd.PersistentFlags().StringP("name", "n", "",
 		"[Required] The name of the universe for the corresponding node operations.")
-	NodeCmd.MarkPersistentFlagRequired("universe-name")
+	NodeCmd.MarkPersistentFlagRequired("name")
 	NodeCmd.PersistentFlags().String("node-name", "",
 		fmt.Sprintf(
 			"[Optional] The name of the universe node for the corresponding node operations. %s",
