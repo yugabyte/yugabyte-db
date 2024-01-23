@@ -326,28 +326,6 @@ TEST_F(PgGetLockStatusTest, TestGetLockStatusLimitNumOldTxns) {
   });
 }
 
-TEST_F(PgGetLockStatusTest, TestWaiterLockContainingColumnId) {
-  const auto table = "foo";
-  const auto key = "1";
-  auto session = ASSERT_RESULT(Init(table, "2"));
-  ASSERT_OK(session.conn->ExecuteFormat("UPDATE $0 SET v=1 WHERE k=$1", table, key));
-
-  auto conn = ASSERT_RESULT(Connect());
-  ASSERT_OK(conn.StartTransaction(IsolationLevel::SNAPSHOT_ISOLATION));
-  auto status_future = ASSERT_RESULT(
-      ExpectBlockedAsync(&conn, Format("UPDATE $0 SET v=1 WHERE k=$1", table, key)));
-
-  SleepFor(2s * kTimeMultiplier);
-  auto res = ASSERT_RESULT(session.conn->FetchRow<int64_t>(
-      "SELECT COUNT(*) FROM pg_locks WHERE NOT granted"));
-  // The waiter acquires 3 locks in total,
-  // 1 {STRONG_READ,STRONG_WRITE} on the column
-  // 1 {WEAK_READ,WEAK_WRITE} on the row
-  // 1 {WEAK_READ,WEAK_WRITE} on the table
-  ASSERT_EQ(res, 3);
-  ASSERT_OK(session.conn->Execute("COMMIT"));
-}
-
 TEST_F(PgGetLockStatusTest, TestGetWaitStart) {
   const auto table = "foo";
   const auto locked_key = "2";
@@ -503,7 +481,7 @@ TEST_F(PgGetLockStatusTest, TestColocatedWaiterWriteLock) {
       "INSERT INTO $0 SELECT generate_series(1, 10), 0", table_name));
 
   const auto key = "1";
-  const auto num_txns = 2;
+  const auto num_txns = 3;
   TestThreadHolder thread_holder;
   CountDownLatch fetched_locks{1};
   for (auto i = 0 ; i < num_txns ; i++) {
@@ -517,10 +495,22 @@ TEST_F(PgGetLockStatusTest, TestColocatedWaiterWriteLock) {
   }
 
   SleepFor(5s * kTimeMultiplier);
-  // Each transaction above acquires 3 locks, one {STRONG_READ,STRONG_WRITE} on the column,
-  // one {WEAK_READ, WEAK_WRITE} on the row, and a {WEAK_READ,WEAK_WRITE} on the table.
-  auto res = ASSERT_RESULT(setup_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM pg_locks"));
-  ASSERT_EQ(res, num_txns * 3);
+  // The transaction that has been granted has four locks; one {STRONG_READ,STRONG_WRITE} on the
+  // column, one {WEAK_READ, WEAK_WRITE} on the row, a {STRONG_READ} on the row, and a
+  // {WEAK_READ,WEAK_WRITE} on the table.
+  auto value = ASSERT_RESULT(
+      setup_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM pg_locks WHERE granted = true"));
+  ASSERT_EQ(value, 4);
+
+  // The waiter displays 2 locks in total,
+  // 1 {STRONG_READ,STRONG_WRITE} on the row
+  // 1 {WEAK_READ,WEAK_WRITE} on the table
+  // TODO(#18399): This is actually displaying the in-memory lock, not what the waiter is going to
+  // use for conflict resolution. This should be changed to display the lock to be used for conflict
+  // resolution.
+  value = ASSERT_RESULT(
+      setup_conn.FetchRow<int64_t>("SELECT COUNT(*) FROM pg_locks WHERE granted = false"));
+  ASSERT_EQ(value, (num_txns - 1) * 2);
   fetched_locks.CountDown();
   thread_holder.WaitAndStop(25s * kTimeMultiplier);
 }

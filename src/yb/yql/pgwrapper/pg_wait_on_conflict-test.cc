@@ -54,6 +54,7 @@ DECLARE_uint64(rpc_connection_timeout_ms);
 DECLARE_uint64(transactions_status_poll_interval_ms);
 DECLARE_int32(TEST_sleep_amidst_iterating_blockers_ms);
 DECLARE_uint64(refresh_waiter_timeout_ms);
+DECLARE_bool(ysql_skip_row_lock_for_update);
 DECLARE_bool(ysql_enable_packed_row);
 DECLARE_bool(yb_enable_read_committed_isolation);
 DECLARE_bool(TEST_drop_participant_signal);
@@ -992,7 +993,18 @@ TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TestDelayedProbeAnalysis)) {
   thread_holder.WaitAndStop(25s * kTimeMultiplier);
 }
 
-TEST_F(PgWaitQueuesTest, YB_DISABLE_TEST_IN_TSAN(TestWaiterTxnReRunConflictResolution)) {
+class PgWaitQueuesDisableRowLocking : public PgWaitQueuesTest {
+ protected:
+  void SetUp() override {
+    // ysql_skip_row_lock_for_update is set so that TestWaiterTxnReRunConflictResolution uses column
+    // level locking and the 3 transactions result in a deadlock.
+    ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_skip_row_lock_for_update) = true;
+    PgWaitQueuesTest::SetUp();
+  }
+};
+
+TEST_F(
+    PgWaitQueuesDisableRowLocking, YB_DISABLE_TEST_IN_TSAN(TestWaiterTxnReRunConflictResolution)) {
   // In the current implementation of the wait queue, we don't update the blocker info for
   // waiter transactions waiting in the queue with the new incoming transaction requests
   // (than don't enter the wait-queue). Since the waiter dependency is not up to date, we

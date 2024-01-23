@@ -118,6 +118,12 @@ DEFINE_RUNTIME_bool(ysql_enable_pack_full_row_update, false,
 DEFINE_RUNTIME_PREVIEW_bool(ysql_use_packed_row_v2, false,
                             "Whether to use packed row V2 when row packing is enabled.");
 
+DEFINE_NON_RUNTIME_bool(
+    ysql_skip_row_lock_for_update, false,
+    "By default DocDB operations for YSQL take row-level locks. If set to true, DocDB will instead "
+    "take finer column-level locks instead of locking the whole row. This may cause issues with "
+    "data integrity for operations with implicit dependencies between columns.");
+
 namespace yb::docdb {
 
 using dockv::DocKey;
@@ -703,6 +709,26 @@ class ExpressionHelper {
   std::vector<QLExprResult> results_;
   size_t next_result_idx_ = 0;
 };
+
+[[nodiscard]] inline bool NewValuesHaveExpression(const PgsqlWriteRequestPB& request) {
+  // In case of UPDATE row need to be protected from removing. Weak intent is enough for
+  // this purpose. To achieve this the path for row's SystemColumnIds::kLivenessColumn column
+  // is returned. The caller code will create strong intent for returned path
+  // (row's column doc key) and weak intents for all its prefixes (including row's doc key).
+  // Note: UPDATE operation may have expressions instead of exact value.
+  // These expressions may read column value.
+  // Potentially expression for updating column v1 may read value of column v2.
+  //
+  // UPDATE t SET v = v + 10 WHERE k = 1
+  // UPDATE t SET v1 = v2 + 10 WHERE k = 1
+  //
+  // Strong intent for the whole row is required in this case as it may be too expensive to
+  // determine what exact columns are read by the expression.
+
+  return std::any_of(
+      request.column_new_values().begin(), request.column_new_values().end(),
+      [](const auto& cv) { return !cv.expr().has_value(); });
+}
 
 void WriteNumRows(size_t result_rows, const WriteBufferPos& pos, WriteBuffer* buffer) {
   char encoded_rows[sizeof(uint64_t)];
@@ -1477,40 +1503,19 @@ Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
   *level = RequireReadSnapshot() ? IsolationLevel::SNAPSHOT_ISOLATION
                                  : IsolationLevel::SERIALIZABLE_ISOLATION;
 
+  const auto is_update = request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPDATE;
   switch (mode) {
     case GetDocPathsMode::kLock: {
-      if (request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPDATE) {
-        // In case of UPDATE row need to be protected from removing. Weak intent is enough for
-        // this purpose. To achieve this the path for row's SystemColumnIds::kLivenessColumn column
-        // is returned. The caller code will create strong intent for returned path
-        // (row's column doc key) and weak intents for all its prefixes (including row's doc key).
-        // Note: UPDATE operation may have expressions instead of exact value.
-        // These expressions may read column value.
-        // Potentially expression for updating column v1 may read value of column v2.
-        //
-        // UPDATE t SET v = v + 10 WHERE k = 1
-        // UPDATE t SET v1 = v2 + 10 WHERE k = 1
-        //
-        // Strong intent for the whole row is required in this case as it may be too expensive to
-        // determine what exact columns are read by the expression.
-
-        bool has_expression = false;
-        for (const auto& column_value : request_.column_new_values()) {
-          if (!column_value.expr().has_value()) {
-            has_expression = true;
-            break;
-          }
-        }
-        if (!has_expression) {
-          DocKeyColumnPathBuilderHolder holder(encoded_doc_key_.as_slice());
-          paths->emplace_back(holder.builder().Build(dockv::SystemColumnIds::kLivenessColumn));
-          return Status::OK();
-        }
+      if (PREDICT_FALSE(FLAGS_ysql_skip_row_lock_for_update) && is_update &&
+          !NewValuesHaveExpression(request_)) {
+        DocKeyColumnPathBuilderHolder holder(encoded_doc_key_.as_slice());
+        paths->emplace_back(holder.builder().Build(dockv::SystemColumnIds::kLivenessColumn));
+        return Status::OK();
       }
       break;
     }
     case GetDocPathsMode::kIntents: {
-      if (request_.stmt_type() != PgsqlWriteRequestPB::PGSQL_UPDATE) {
+      if (!is_update) {
         break;
       }
       const auto& column_values = request_.column_new_values();
@@ -1525,6 +1530,12 @@ Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
         paths->emplace_back(builder.Build(column_value.column_id()));
       }
       return Status::OK();
+    }
+    case GetDocPathsMode::kStrongReadIntents: {
+      if (!is_update || PREDICT_FALSE(FLAGS_ysql_skip_row_lock_for_update)) {
+        return Status::OK();
+      }
+      break;
     }
   }
   // Add row's doc key. Caller code will create strong intent for the whole row in this case.
