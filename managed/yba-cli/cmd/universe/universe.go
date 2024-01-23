@@ -27,5 +27,6 @@ func init() {
 	UniverseCmd.AddCommand(deleteUniverseCmd)
 	UniverseCmd.AddCommand(createUniverseCmd)
 	UniverseCmd.AddCommand(upgrade.UpgradeUniverseCmd)
+	UniverseCmd.AddCommand(upgrade.RestartCmd)
 	UniverseCmd.AddCommand(node.NodeCmd)
 }
