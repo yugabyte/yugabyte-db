@@ -236,3 +236,9 @@ After you have returned a standby instance to standalone mode, the information o
 ## Troubleshooting
 
 If you face issues configuring high availability when the YBA instances are configured to use the HTTPS protocol, attempt the steps mentioned in the preceding sections to add CA certificates appropriately to the trust store. If the issue persists, consider relaxing the certificate validation requirements as a workaround, by enabling the runtime configuration `yb.ha.ws.ssl.loose.acceptAnyCertificate` (set the flag to `true`).
+
+## Limitations
+
+- No automatic failover. If the active instance fails, follow the steps in [Promote a standby instance to active](#promote-a-standby-instance-to-active).
+- The last backup time updates regardless of successful synchronization. To validate that backups are running, check the YBA logs for errors during synchronization.
+- After promotion, you may be unable to sign in to the new active instance for under a minute. You can restart the newly active YBA.
