@@ -984,14 +984,14 @@ public class YbcBackupUtil {
               UniverseTaskBase.ServerType.MASTER,
               AutoFlagUtil.LOCAL_PERSISTED_AUTO_FLAG_CLASS);
       for (String flag : masterAutoFlags) {
-        if (GFlagsValidation.TEST_AUTO_FLAGS.contains(flag))
-          if (!targetMasterAutoFlags.contains(flag)) {
-            throw new PlatformServiceException(
-                BAD_REQUEST,
-                "Cannot restore backup as "
-                    + flag
-                    + " is missing on target universe master server.");
-          }
+        if (GFlagsValidation.TEST_AUTO_FLAGS.contains(flag)) {
+          continue;
+        }
+        if (!targetMasterAutoFlags.contains(flag)) {
+          throw new PlatformServiceException(
+              BAD_REQUEST,
+              "Cannot restore backup as " + flag + " is missing on target universe master server.");
+        }
       }
     }
     if (!CollectionUtils.isEmpty(tserverAutoFlags)) {
