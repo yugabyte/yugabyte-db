@@ -428,6 +428,9 @@ Status QLWriteOperation::InitializeKeys(const bool hashed_key, const bool primar
 
 Status QLWriteOperation::GetDocPaths(
     GetDocPathsMode mode, DocPathsToLock *paths, IsolationLevel *level) const {
+  if (mode == GetDocPathsMode::kStrongReadIntents) {
+    return Status::OK();
+  }
   if (mode == GetDocPathsMode::kLock || request_.column_values().empty() || !index_map_.empty()) {
     if (encoded_hashed_doc_key_) {
       paths->push_back(encoded_hashed_doc_key_);
