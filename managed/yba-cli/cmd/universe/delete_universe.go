@@ -59,7 +59,8 @@ var deleteUniverseCmd = &cobra.Command{
 
 		r, response, err := universeListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Universe", "Delete")
+			errMessage := util.ErrorFromHTTPResponse(response, err,
+				"Universe", "Delete - List Universes")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 

@@ -2,7 +2,7 @@
  * Copyright (c) YugaByte, Inc.
  */
 
-package instancetypes
+package node
 
 import (
 	"fmt"
@@ -15,12 +15,12 @@ import (
 	"github.com/yugabyte/yugabyte-db/managed/yba-cli/internal/formatter"
 )
 
-// removeInstanceTypesCmd represents the provider command
-var removeInstanceTypesCmd = &cobra.Command{
+// removeNodesCmd represents the provider command
+var removeNodesCmd = &cobra.Command{
 	Use:     "remove",
 	Aliases: []string{"delete"},
-	Short:   "Delete instance type of a YugabyteDB Anywhere on-premises provider",
-	Long:    "Delete instance types of a YugabyteDB Anywhere on-premises provider",
+	Short:   "Delete node of a YugabyteDB Anywhere on-premises provider",
+	Long:    "Delete nodes of a YugabyteDB Anywhere on-premises provider",
 	PreRun: func(cmd *cobra.Command, args []string) {
 		viper.BindPFlag("force", cmd.Flags().Lookup("force"))
 		providerNameFlag, err := cmd.Flags().GetString("provider-name")
@@ -30,21 +30,21 @@ var removeInstanceTypesCmd = &cobra.Command{
 		if len(providerNameFlag) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No provider name found to remove instance type"+
+				formatter.Colorize("No provider name found to remove node"+
 					"\n", formatter.RedColor))
 		}
-		instanceTypeName, err := cmd.Flags().GetString("instance-type-name")
+		ip, err := cmd.Flags().GetString("ip")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
-		if len(instanceTypeName) == 0 {
+		if len(ip) == 0 {
 			cmd.Help()
 			logrus.Fatalln(
-				formatter.Colorize("No instance type name found to remove"+
+				formatter.Colorize("No node name found to remove"+
 					"\n", formatter.RedColor))
 		}
 		err = util.ConfirmCommand(
-			fmt.Sprintf("Are you sure you want to remove %s: %s", "instance type", instanceTypeName),
+			fmt.Sprintf("Are you sure you want to remove %s: %s", "node", ip),
 			viper.GetBool("force"))
 		if err != nil {
 			logrus.Fatal(formatter.Colorize(err.Error(), formatter.RedColor))
@@ -64,7 +64,8 @@ var removeInstanceTypesCmd = &cobra.Command{
 		providerListRequest = providerListRequest.Name(providerName)
 		r, response, err := providerListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Instance Type", "Remove - Get Provider")
+			errMessage := util.ErrorFromHTTPResponse(response, err,
+				"Node Instance", "Remove - Fetch Provider")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		if len(r) < 1 {
@@ -79,34 +80,34 @@ var removeInstanceTypesCmd = &cobra.Command{
 
 		providerUUID := r[0].GetUuid()
 
-		instanceTypeName, err := cmd.Flags().GetString("instance-type-name")
+		ip, err := cmd.Flags().GetString("ip")
 		if err != nil {
 			logrus.Fatalf(formatter.Colorize(err.Error()+"\n", formatter.RedColor))
 		}
 
-		rDelete, response, err := authAPI.DeleteInstanceType(providerUUID, instanceTypeName).Execute()
+		rDelete, response, err := authAPI.DeleteInstance(providerUUID, ip).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Instance Type", "Remove")
+			errMessage := util.ErrorFromHTTPResponse(response, err, "Node Instance", "Remove")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
 		if rDelete.GetSuccess() {
-			fmt.Printf("The instance type %s has been removed from provider %s (%s)\n",
-				formatter.Colorize(instanceTypeName, formatter.GreenColor), providerName, providerUUID)
+			fmt.Printf("The node %s has been removed from provider %s (%s)\n",
+				formatter.Colorize(ip, formatter.GreenColor), providerName, providerUUID)
 
 		} else {
-			fmt.Printf("An error occurred while removing instance type from provider")
+			fmt.Printf("An error occurred while removing node from provider")
 		}
 	},
 }
 
 func init() {
-	removeInstanceTypesCmd.Flags().SortFlags = false
+	removeNodesCmd.Flags().SortFlags = false
 
-	removeInstanceTypesCmd.Flags().String("instance-type-name", "",
-		"[Required] Instance type name.")
-	removeInstanceTypesCmd.Flags().BoolP("force", "f", false,
+	removeNodesCmd.Flags().String("ip", "",
+		"[Required] IP address of the node instance.")
+	removeNodesCmd.Flags().BoolP("force", "f", false,
 		"[Optional] Bypass the prompt for non-interactive usage.")
 
-	removeInstanceTypesCmd.MarkFlagRequired("instance-type-name")
+	removeNodesCmd.MarkFlagRequired("ip")
 }
