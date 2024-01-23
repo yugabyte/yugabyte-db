@@ -40,7 +40,9 @@
      "(^troubleshoot/backend/gradlew)",
      "(^troubleshoot/backend/gradlew[.]bat)",
      "(^troubleshoot/backend/build.gradle.kts)",
-     "(^troubleshoot/backend/.*/application[.]properties)"
+     "(^troubleshoot/backend/.*/application[.]properties)",
+     "(^managed/src/main/resources/openapi/)",
+     "(^managed/src/main/resources/openapi_templates/)"
   ],
   "linters": {
     "script-and-regex.script": {
