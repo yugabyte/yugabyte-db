@@ -138,6 +138,8 @@ set(MASTER_SRCS
   xcluster/xcluster_outbound_replication_group.cc
   xcluster/xcluster_replication_group.cc
   xcluster/xcluster_safe_time_service.cc
+  xcluster/xcluster_source_manager.cc
+  xcluster/xcluster_target_manager.cc
   xrepl_catalog_manager.cc
   yql_aggregates_vtable.cc
   yql_auth_resource_role_permissions_index.cc
