@@ -29,7 +29,7 @@ The following illustration describes how the data export and import operations a
 
 The following illustration shows the steps in a live migration using YugabyteDB Voyager.
 
-![Live migration workflow](/images/migrate/live-migration-workflow.png)
+![Live migration workflow](/images/migrate/live-migration-workflow-new.png)
 
 | Step | Description |
 | :--- | :---|

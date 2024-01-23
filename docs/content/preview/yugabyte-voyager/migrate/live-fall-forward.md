@@ -37,7 +37,7 @@ Finally, if you need to switch to the source-replica database (because the curre
 
 The following illustration describes the workflow for live migration using YB Voyager with the fall-forward option.
 
-![Live migration with fall-forward workflow](/images/migrate/live-fall-forward.png)
+![Live migration with fall-forward workflow](/images/migrate/live-fall-forward-new.png)
 
 Before proceeding with migration, ensure that you have completed the following steps:
 

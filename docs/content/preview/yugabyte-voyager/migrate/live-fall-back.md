@@ -39,7 +39,7 @@ Finally, if you need to switch back to the source database (because the current 
 
 The following illustration describes the workflow for live migration using YB Voyager with the fall-back option.
 
-![fall-back-workflow](/images/migrate/fall-back-workflow.png)
+![fall-back-workflow](/images/migrate/fall-back-workflow-new.png)
 
 Before proceeding with migration, ensure that you have completed the following steps:
 
