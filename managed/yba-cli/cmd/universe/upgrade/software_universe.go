@@ -94,7 +94,8 @@ var upgradeSoftwareCmd = &cobra.Command{
 
 		r, response, err := universeListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Universe", "Upgrade Software")
+			errMessage := util.ErrorFromHTTPResponse(response, err,
+				"Universe", "Upgrade Software - Fetch Universes")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		if len(r) < 1 {

@@ -59,7 +59,8 @@ var deleteProviderCmd = &cobra.Command{
 
 		r, response, err := providerListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Provider", "Delete")
+			errMessage := util.ErrorFromHTTPResponse(response, err,
+				"Provider", "Delete - Fetch Providers")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 

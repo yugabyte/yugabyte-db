@@ -106,7 +106,8 @@ func buildClusters(
 	}
 	providerListResponse, response, err := providerListRequest.Execute()
 	if err != nil {
-		errMessage := util.ErrorFromHTTPResponse(response, err, "Provider", "List")
+		errMessage := util.ErrorFromHTTPResponse(response, err,
+			"Universe", "Create - Fetch Providers")
 		logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 	}
 	if len(providerListResponse) < 1 {
@@ -125,7 +126,8 @@ func buildClusters(
 	if providerType == "onprem" {
 		onpremInstanceTypes, response, err := authAPI.ListOfInstanceType(providerUUID).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Access Key", "List")
+			errMessage := util.ErrorFromHTTPResponse(response, err, "Universe",
+				"Create - Fetch Instance Types")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		if len(onpremInstanceTypes) > 0 {
@@ -337,7 +339,8 @@ func buildClusters(
 
 		r, response, err := releasesListRequest.Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Releases", "List")
+			errMessage := util.ErrorFromHTTPResponse(response, err,
+				"Universe", "Create - Fetch Releases")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 
@@ -363,7 +366,8 @@ func buildClusters(
 	if len(accessKeyCode) == 0 && providerType != "kubernetes" {
 		r, response, err := authAPI.List(providerUUID).Execute()
 		if err != nil {
-			errMessage := util.ErrorFromHTTPResponse(response, err, "Access Key", "List")
+			errMessage := util.ErrorFromHTTPResponse(response, err,
+				"Universe", "Create - Fetch Access Keys")
 			logrus.Fatalf(formatter.Colorize(errMessage.Error()+"\n", formatter.RedColor))
 		}
 		if len(r) < 1 {
