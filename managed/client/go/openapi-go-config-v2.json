@@ -1,6 +1,6 @@
     {
         "hideGenerationTimestamp": "true",
-        "packageName": "v1",
+        "packageName": "v2",
         "packageVersion": "2.0.0",
         "structPrefix": "true",
         "isGoSubmodule": "true",
