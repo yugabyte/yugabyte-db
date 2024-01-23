@@ -154,13 +154,13 @@ After switching or failing over to the standby, verify that the old active unive
     1. Find the correct last failover time by querying the new active instance.
 
         ```sh
-        curl -X GET 'https://10.9.104.164/api/v1/settings/ha/config' -H 'X-AUTH-YW-API-TOKEN: 8bf6e5b2-beff-4859-9016-bdc0fa0ced1e' --insecure
+        curl -X GET 'https://<new_active_ip>/api/v1/settings/ha/config' -H 'X-AUTH-YW-API-TOKEN: <api_token>' --insecure
         ```
 
     1. Send a manual demote request to the stale active.
 
         ```sh
-        curl -X PUT 'https://10.9.113.130/api/v1/settings/ha/internal/config/demote/1705138628028' -H 'X-AUTH-YW-API-TOKEN: 1a5ad6de-f638-4ebc-9649-d8b187b688b0' -H 'HA-AUTH-TOKEN: sTroAGbJz+QydXXz9lc1bhdQmQqIZSyM6Z20MqitvLA=' -H "Content-Type: application/json" --data-raw '{"leader_address": "https://10.9.104.164"}' --insecure
+        curl -X PUT 'https://<old_active_ip>/api/v1/settings/ha/internal/config/demote/<timestamp>' -H 'X-AUTH-YW-API-TOKEN: <api_token>' -H 'HA-AUTH-TOKEN: <ha_authentication_key>' -H "Content-Type: application/json" --data-raw '{"leader_address": "https://<new_active_ip>"}' --insecure
         ```
 
     If you can't identify the timestamp for whatever reason, you can provide a current timestamp to forcibly demote the instance. However, it will be harder to reestablish the HA connection as the active and standby will have different notions of the last failover time. This could lead to unexpected behavior.
@@ -241,4 +241,4 @@ If you face issues configuring high availability when the YBA instances are conf
 
 - No automatic failover. If the active instance fails, follow the steps in [Promote a standby instance to active](#promote-a-standby-instance-to-active).
 - The last backup time updates regardless of successful synchronization. To validate that backups are running, check the YBA logs for errors during synchronization.
-- After promotion, you may be unable to sign in to the new active instance for under a minute. You can restart the newly active YBA.
+- After promotion, you may be unable to sign in to the new active instance for under a minute. You can wait and then reload the page, or you can restart the newly active YBA.
