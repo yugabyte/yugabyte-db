@@ -1062,6 +1062,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
       YBUniverse ybUniverse, String providerName, UUID customerUUID) {
     List<String> zonesFilter = ybUniverse.getSpec().getZoneFilter();
     String storageClass = ybUniverse.getSpec().getDeviceInfo().getStorageClass();
+    String kubeNamespace = ybUniverse.getMetadata().getNamespace();
     KubernetesProviderFormData providerData = cloudProviderHandler.suggestedKubernetesConfigs();
     providerData.regionList =
         providerData.regionList.stream()
@@ -1081,6 +1082,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
                               z -> {
                                 HashMap<String, String> tempMap = new HashMap<>(z.config);
                                 tempMap.put("STORAGE_CLASS", storageClass);
+                                tempMap.put("KUBENAMESPACE", kubeNamespace);
                                 z.config = tempMap;
                                 return z;
                               })
@@ -1089,6 +1091,7 @@ public class YBUniverseReconciler extends AbstractReconciler<YBUniverse> {
                 })
             .collect(Collectors.toList());
     providerData.name = providerName;
+
     Provider autoProvider =
         cloudProviderHandler.createKubernetes(Customer.getOrBadRequest(customerUUID), providerData);
     // Fetch created provider from DB.
