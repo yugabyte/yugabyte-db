@@ -108,6 +108,8 @@ set(MASTER_SRCS
   master-path-handlers.cc
   mini_master.cc
   master_snapshot_coordinator.cc
+  multi_step_monitored_task.cc
+  post_tablet_create_task_base.cc
   restoration_state.cc
   restore_sys_catalog_state.cc
   snapshot_coordinator_context.cc
@@ -128,7 +130,7 @@ set(MASTER_SRCS
   ts_manager.cc
   universe_key_registry_service.cc
   util/yql_vtable_helpers.cc
-  xcluster/add_table_to_xcluster_task.cc
+  xcluster/add_table_to_xcluster_target_task.cc
   xcluster/xcluster_catalog_entity.cc
   xcluster/xcluster_config.cc
   xcluster/xcluster_consumer_metrics.cc
@@ -136,6 +138,8 @@ set(MASTER_SRCS
   xcluster/xcluster_outbound_replication_group.cc
   xcluster/xcluster_replication_group.cc
   xcluster/xcluster_safe_time_service.cc
+  xcluster/xcluster_source_manager.cc
+  xcluster/xcluster_target_manager.cc
   xrepl_catalog_manager.cc
   yql_aggregates_vtable.cc
   yql_auth_resource_role_permissions_index.cc

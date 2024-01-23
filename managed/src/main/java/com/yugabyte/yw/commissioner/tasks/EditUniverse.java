@@ -19,6 +19,7 @@ import com.yugabyte.yw.commissioner.TaskExecutor;
 import com.yugabyte.yw.commissioner.UpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.AnsibleConfigureServers;
+import com.yugabyte.yw.commissioner.tasks.subtasks.ChangeMasterConfig;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.PlacementInfoUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil.SelectMastersResult;
@@ -35,15 +36,17 @@ import com.yugabyte.yw.models.helpers.NodeDetails.MasterState;
 import com.yugabyte.yw.models.helpers.NodeDetails.NodeState;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.EnumSet;
-import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.BiConsumer;
 import java.util.stream.Collectors;
+import java.util.stream.Stream;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -144,7 +147,16 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
               .filter(n -> n.masterState == MasterState.ToStop)
               .collect(Collectors.toSet());
       boolean updateMasters = !addedMasters.isEmpty() || !removedMasters.isEmpty();
-      for (Cluster cluster : taskParams().clusters) {
+      // Primary is always the first but there is no rule. So, sort it to do primary first.
+      List<Cluster> clusters =
+          taskParams().clusters.stream()
+              .filter(
+                  c -> c.clusterType == ClusterType.PRIMARY || c.clusterType == ClusterType.ASYNC)
+              .sorted(
+                  Comparator.<Cluster, Integer>comparing(
+                      c -> c.clusterType == ClusterType.PRIMARY ? -1 : c.index))
+              .collect(Collectors.toList());
+      for (Cluster cluster : clusters) {
         // Updating cluster in memory
         universe
             .getUniverseDetails()
@@ -423,68 +435,46 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     if (cluster.clusterType == ClusterType.PRIMARY && isWaitForLeadersOnPreferred) {
       createWaitForLeadersOnPreferredOnlyTask();
     }
-
-    if (!newMasters.isEmpty()) {
-
-      // Filter out nodes which are not in the universe.
-      Set<NodeDetails> removeUniverseMasters =
-          filterUniverseNodes(universe, removeMasters, n -> true);
+    Set<NodeDetails> allTservers =
+        Stream.concat(newTservers.stream(), liveNodes.stream()).collect(Collectors.toSet());
+    Set<NodeDetails> allMasters =
+        Stream.concat(newMasters.stream(), liveNodes.stream().filter(n -> n.isMaster))
+            .collect(Collectors.toSet());
+    // Filter out nodes which are not in the universe.
+    Set<NodeDetails> removeUniverseMasters =
+        filterUniverseNodes(universe, removeMasters, n -> true);
+    if (!newMasters.isEmpty() || !removeUniverseMasters.isEmpty()) {
       // Now finalize the master quorum change tasks.
       createMoveMastersTasks(
-          SubTaskGroupType.WaitForDataMigration, newMasters, removeUniverseMasters);
-
+          SubTaskGroupType.ConfigureUniverse,
+          newMasters,
+          removeUniverseMasters,
+          (opType, node) -> {
+            // Wait for a master leader to be elected.
+            createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+            if (opType == ChangeMasterConfig.OpType.RemoveMaster) {
+              // Set isMaster to false before updating the addresses.
+              createUpdateNodeProcessTasks(Collections.singleton(node), ServerType.MASTER, false)
+                  .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+              // Remove this node from subsequent address update as it's no longer a master.
+              allMasters.remove(node);
+            }
+            // Even masters to be stopped should be updated as they are still masters before all the
+            // masters are moved.
+            createMasterAddressUpdateTask(allMasters, allTservers);
+          });
       if (!mastersToStop.isEmpty()) {
         createStopMasterTasks(mastersToStop)
             .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
       }
-
+      // Do this once after all the master addresses are frozen as this is expensive.
+      createXClusterConfigUpdateMasterAddressesTask();
+    } else if (updateMasters) {
+      // This is for async cluster after the primary masters are moved.
       // Wait for a master leader to be elected.
       createWaitForMasterLeaderTask().setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-
-      // Update these older ones to be not masters anymore so tserver info can be updated with the
-      // final master list and other future cluster client operations.
-      createUpdateNodeProcessTasks(removeMasters, ServerType.MASTER, false)
-          .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
-    }
-
-    if (updateMasters) {
       // Change the master addresses in the conf file for all tservers.
-      Set<NodeDetails> allTservers = new HashSet<>(newTservers);
-      allTservers.addAll(liveNodes);
-
-      createConfigureServerTasks(
-          allTservers,
-          params -> {
-            params.updateMasterAddrsOnly = true;
-            params.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
-          });
-      createUpdateMasterAddrsInMemoryTasks(allTservers, ServerType.TSERVER)
-          .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
-
-      Set<NodeDetails> allMasters = new HashSet<>(newMasters);
-      Set<String> takenMasters =
-          allMasters.stream().map(n -> n.nodeName).collect(Collectors.toSet());
-      allMasters.addAll(
-          liveNodes.stream()
-              .filter(
-                  n ->
-                      n.isMaster
-                          && !takenMasters.contains(n.nodeName)
-                          && !mastersToStop.contains(n))
-              .collect(Collectors.toSet()));
-
-      // Change the master addresses in the conf file for the new masters.
-      // Update the same set of master addresses.
-      createConfigureServerTasks(
-          allMasters,
-          params -> {
-            params.updateMasterAddrsOnly = true;
-            params.isMaster = true;
-            params.ignoreUseCustomImageConfig = ignoreUseCustomImageConfig;
-          });
-      createUpdateMasterAddrsInMemoryTasks(allMasters, ServerType.MASTER)
-          .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
-
+      createMasterAddressUpdateTask(allMasters, allTservers);
       // Update the master addresses on the target universes whose source universe belongs to
       // this task.
       createXClusterConfigUpdateMasterAddressesTask();
@@ -575,7 +565,10 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
    * details (such as ip addresses) are found at runtime by querying the database.
    */
   private void createMoveMastersTasks(
-      SubTaskGroupType subTask, Set<NodeDetails> newMasters, Set<NodeDetails> removeMasters) {
+      SubTaskGroupType subTaskGroupType,
+      Set<NodeDetails> newMasters,
+      Set<NodeDetails> removeMasters,
+      BiConsumer<ChangeMasterConfig.OpType, NodeDetails> postChangeConfigCallback) {
 
     // Get the list of node names to add as masters.
     List<NodeDetails> mastersToAdd = new ArrayList<>(newMasters);
@@ -590,18 +583,24 @@ public class EditUniverse extends UniverseDefinitionTaskBase {
     // task. So we might do multiple leader stepdown's, which happens automatically in the
     // client code during the task's run.
     for (int idx = 0; idx < numIters; idx++) {
-      createChangeConfigTasks(mastersToAdd.get(idx), true, subTask);
-      createChangeConfigTasks(mastersToRemove.get(idx), false, subTask);
+      createChangeConfigTasks(mastersToAdd.get(idx), true, subTaskGroupType);
+      postChangeConfigCallback.accept(ChangeMasterConfig.OpType.AddMaster, mastersToAdd.get(idx));
+      createChangeConfigTasks(mastersToRemove.get(idx), false, subTaskGroupType);
+      postChangeConfigCallback.accept(
+          ChangeMasterConfig.OpType.RemoveMaster, mastersToRemove.get(idx));
     }
 
     // Perform any additions still left.
-    for (int idx = numIters; idx < newMasters.size(); idx++) {
-      createChangeConfigTasks(mastersToAdd.get(idx), true, subTask);
+    for (int idx = numIters; idx < mastersToAdd.size(); idx++) {
+      createChangeConfigTasks(mastersToAdd.get(idx), true, subTaskGroupType);
+      postChangeConfigCallback.accept(ChangeMasterConfig.OpType.AddMaster, mastersToAdd.get(idx));
     }
 
     // Perform any removals still left.
-    for (int idx = numIters; idx < removeMasters.size(); idx++) {
-      createChangeConfigTasks(mastersToRemove.get(idx), false, subTask);
+    for (int idx = numIters; idx < mastersToRemove.size(); idx++) {
+      createChangeConfigTasks(mastersToRemove.get(idx), false, subTaskGroupType);
+      postChangeConfigCallback.accept(
+          ChangeMasterConfig.OpType.RemoveMaster, mastersToRemove.get(idx));
     }
   }
 }

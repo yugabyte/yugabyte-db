@@ -102,9 +102,6 @@ DEFINE_RUNTIME_int32(cdc_parent_tablet_deletion_task_retry_secs, 30,
     "Frequency at which the background task will verify parent tablets retained for xCluster or "
     "CDCSDK replication and determine if they can be cleaned up.");
 
-DEFINE_RUNTIME_bool(disable_auto_add_index_to_xcluster, false,
-    "Disables the automatic addition of indexes to transactional xCluster replication.");
-
 DEFINE_NON_RUNTIME_uint32(max_replication_slots, 10,
     "Controls the maximum number of replication slots that are allowed to exist.");
 
@@ -848,6 +845,9 @@ Status CatalogManager::CreateNewXReplStream(
     const CreateCDCStreamRequestPB& req, CreateNewCDCStreamMode mode,
     const std::vector<TableId>& table_ids, const std::optional<const NamespaceId>& namespace_id,
     CreateCDCStreamResponsePB* resp, const LeaderEpoch& epoch, rpc::RpcContext* rpc) {
+
+  auto start_time = MonoTime::Now();
+
   VLOG_WITH_FUNC(1) << "Mode: " << IntegralToString(mode)
                     << ", table_ids: " << yb::ToString(table_ids)
                     << ", namespace_id: " << yb::ToString(namespace_id);
@@ -1090,6 +1090,8 @@ Status CatalogManager::CreateNewXReplStream(
     RETURN_NOT_OK(cdc_state_table_->InsertEntries(entries));
   }
 
+  LOG(INFO) << "Stream " << stream_id << " creation took "
+            << MonoTime::Now().GetDeltaSince(start_time).ToMilliseconds() << "ms";
   TRACE("Created CDC state entries");
   return Status::OK();
 }
@@ -7111,95 +7113,6 @@ Status CatalogManager::BumpVersionAndStoreClusterConfig(
   return Status::OK();
 }
 
-bool CatalogManager::ShouldAddTableToXClusterReplication(
-    const TableInfo& table, const SysTablesEntryPB& pb) {
-  if (FLAGS_disable_auto_add_index_to_xcluster) {
-    return false;
-  }
-
-  // Only user created YSQL Indexes should be automatically added to xCluster replication.
-  // For Colocated tables, this function will return false since it is only called on the parent
-  // colocated table which cannot be an index.
-  if (pb.colocated() || pb.table_type() != PGSQL_TABLE_TYPE || !IsIndex(pb) ||
-      !IsUserCreatedTable(table)) {
-    return false;
-  }
-
-  auto indexed_table_stream_ids = GetXClusterConsumerStreamIdsForTable(table.id());
-  if (!indexed_table_stream_ids.empty()) {
-    VLOG(1) << "Index " << table.ToString() << " is already part of xcluster replication "
-            << yb::ToString(indexed_table_stream_ids);
-    return false;
-  }
-
-  auto indexed_table = GetTableInfo(GetIndexedTableId(pb));
-  if (!indexed_table) {
-    LOG(WARNING) << "Indexed table for " << table.id() << " not found";
-    return false;
-  }
-
-  auto stream_ids = GetXClusterConsumerStreamIdsForTable(indexed_table->id());
-  if (stream_ids.empty()) {
-    return false;
-  }
-
-  if (stream_ids.size() > 1) {
-    LOG(WARNING) << "Skip adding index " << table.ToString()
-                 << " to xCluster replication as the base table" << indexed_table->ToString()
-                 << " is part of multiple replication streams " << yb::ToString(stream_ids);
-    return false;
-  }
-
-  const auto& replication_group_id = stream_ids.begin()->first;
-  auto cluster_config = ClusterConfig();
-  {
-    auto l = cluster_config->LockForRead();
-    auto consumer_registry = l.data().pb.consumer_registry();
-    // Only add if we are in a transactional replication with STANDBY mode.
-    if (consumer_registry.role() != cdc::XClusterRole::STANDBY ||
-        !consumer_registry.transactional()) {
-      return false;
-    }
-
-    auto producer_entry =
-        FindOrNull(consumer_registry.producer_map(), replication_group_id.ToString());
-    if (producer_entry) {
-      // Check if the table is already part of replication.
-      // This is needed despite the check for GetXClusterConsumerStreamIdsForTable as the in-memory
-      // list is not atomically updated.
-      for (auto& stream_info : producer_entry->stream_map()) {
-        if (stream_info.second.consumer_table_id() == table.id()) {
-          VLOG(1) << "Index " << table.ToString() << " is already part of xcluster replication "
-                  << stream_info.first;
-          return false;
-        }
-      }
-    }
-  }
-
-  scoped_refptr<UniverseReplicationInfo> universe;
-  {
-    TRACE("Acquired catalog manager lock");
-    SharedLock lock(mutex_);
-    universe = FindPtrOrNull(universe_replication_map_, replication_group_id);
-    if (universe == nullptr) {
-      LOG(WARNING) << "Skip adding index " << table.ToString()
-                   << " to xCluster replication as the universe " << replication_group_id
-                   << " was not found";
-      return false;
-    }
-
-    if (universe->LockForRead()->is_deleted_or_failed()) {
-      LOG(WARNING) << "Skip adding index " << table.ToString()
-                   << " to xCluster replication as the universe " << replication_group_id
-                   << " is in a deleted or failed state";
-      return false;
-    }
-  }
-
-  return true;
-}
-
 Result<xcluster::ReplicationGroupId> CatalogManager::GetIndexesTableReplicationGroup(
     const TableInfo& index_info) {
   const auto indexed_table_id = GetIndexedTableId(index_info.LockForRead()->pb);
@@ -7514,6 +7427,13 @@ Status CatalogManager::XClusterRefreshLocalAutoFlagConfig(const LeaderEpoch& epo
   operation_succeeded = true;
 
   return Status::OK();
+}
+
+scoped_refptr<UniverseReplicationInfo> CatalogManager::GetUniverseReplication(
+    const xcluster::ReplicationGroupId& replication_group_id) {
+  SharedLock lock(mutex_);
+  TRACE("Acquired catalog manager lock");
+  return FindPtrOrNull(universe_replication_map_, replication_group_id);
 }
 
 }  // namespace master

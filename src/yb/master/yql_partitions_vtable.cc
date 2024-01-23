@@ -297,7 +297,7 @@ bool HasRelevantPbChanges(const SysTabletsEntryPB& old_pb, const SysTabletsEntry
   return false;
 }
 
-Result<std::vector<TabletInfoPtr>> YQLPartitionsVTable::FilterRelevantTablets(
+std::vector<TabletInfoPtr> YQLPartitionsVTable::FilterRelevantTablets(
     const std::vector<TabletInfo*>& mutated_tablets) const {
   std::vector<TabletInfoPtr> tablets;
   if (!ShouldGeneratePartitionsVTableOnChanges()) {

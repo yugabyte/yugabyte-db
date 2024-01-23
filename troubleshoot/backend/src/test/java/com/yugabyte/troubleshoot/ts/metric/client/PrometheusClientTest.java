@@ -10,6 +10,7 @@ import com.yugabyte.troubleshoot.ts.TestUtils;
 import com.yugabyte.troubleshoot.ts.metric.models.MetricQuery;
 import com.yugabyte.troubleshoot.ts.metric.models.MetricRangeQuery;
 import com.yugabyte.troubleshoot.ts.metric.models.MetricResponse;
+import com.yugabyte.troubleshoot.ts.service.ServiceTest;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
@@ -17,13 +18,12 @@ import org.apache.commons.lang3.tuple.ImmutablePair;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
-import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.web.client.MockRestServiceServer;
 import org.springframework.web.client.RestTemplate;
 
-@SpringBootTest
+@ServiceTest
 @ActiveProfiles("test")
 public class PrometheusClientTest {
 

@@ -927,10 +927,15 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
           << " version=" << schema_version << " current-schema=" << tablet_schema.ToString()
           << " to request-schema=" << req_schema.ToString()
           << " for table ID=" << table_info->table_id;
+
+  // There is no need to pause writes for an AlterSchema operation that is only going
+  // to be setting retention barriers, as is the case when an AlterSchema is issued in
+  // the context of a CDCSDK Create Stream
   ScopedRWOperationPause pause_writes;
-  if ((tablet.tablet->table_type() == TableType::YQL_TABLE_TYPE &&
+  if (!req->has_retention_requester_id() &&
+      ((tablet.tablet->table_type() == TableType::YQL_TABLE_TYPE &&
        !GetAtomicFlag(&FLAGS_disable_alter_vs_write_mutual_exclusion)) ||
-      tablet.tablet->table_type() == TableType::PGSQL_TABLE_TYPE) {
+      tablet.tablet->table_type() == TableType::PGSQL_TABLE_TYPE)) {
     // For schema change operations we will have to pause the write operations
     // until the schema change is done. This will be done synchronously.
     pause_writes = tablet.tablet->PauseWritePermits(context.GetClientDeadline());

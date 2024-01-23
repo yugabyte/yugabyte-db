@@ -358,4 +358,32 @@ public class TestPgExplainAnalyzeScans extends BasePgExplainAnalyzeTest {
       MAIN_TABLE, "v1 IN (5119, 5120, 5121)"), checker);
     }
   }
+
+  @Test
+  public void testIndexScanConditionAndFilter() throws Exception {
+    final String query = "SELECT * FROM %1$s WHERE %2$s < 1024 AND %2$s %% 2 = 0";
+
+    // Having a condition + filter on a range index scan should produce differing number of rows
+    // scanned for the index and main table.
+    {
+      Checker checker = SCAN_TOP_LEVEL_CHECKER
+          .storageReadRequests(Checkers.equal(2))
+          .storageReadExecutionTime(Checkers.greater(0.0))
+          .plan(makePlanBuilder()
+              .nodeType(NODE_INDEX_SCAN)
+              .actualRows(Checkers.equal(512))
+              .relationName(MAIN_TABLE)
+              .alias(MAIN_TABLE)
+              .indexName(MAIN_RANGE_INDEX)
+              .storageIndexReadRequests(Checkers.equal(1))
+              .storageIndexRowsScanned(Checkers.equal(1024))
+              .storageTableReadRequests(Checkers.equal(1))
+              .storageTableRowsScanned(Checkers.equal(512))
+              .build()
+          )
+          .build();
+
+      testExplain(String.format(query, MAIN_TABLE, "v4", MAIN_RANGE_INDEX), checker);
+    }
+  }
 }

@@ -492,7 +492,7 @@ select * from q3, q4 where q3.a = q4.a::text and q3.b = q4.b::text;
 (1 row)
 
 explain (costs off) /*+ Leading((q3 q4)) IndexScan(q4) */select * from q3, q4 where q3.a = q4.a and q3.b = q4.b;
-                                                                      QUERY PLAN                                                                      
+                                                                      QUERY PLAN
 ------------------------------------------------------------------------------------------------------------------------------------------------------
  YB Batched Nested Loop Join
    Join Filter: ((q3.a = (q4.a)::bpchar) AND (q3.b = (q4.b)::bpchar))
@@ -1387,6 +1387,42 @@ explain (costs off) SELECT * FROM q1, q2 where pg_backend_pid() >= 0 and q1.c1 =
 DROP TABLE q1;
 DROP TABLE q2;
 DROP TABLE q3;
+create table ss1(a int, primary key(a asc));
+insert into ss1 select generate_series(1,5);
+create table ss2(a int, b int, primary key(a asc, b asc));
+insert into ss2 select i, i from generate_series(1,5) i;
+insert into ss2 select i, i+1 from generate_series(1,5) i;
+analyze ss1;
+analyze ss2;
+/*+Set(enable_seqscan off) Set(yb_bnl_batch_size 1024) Leading((ss1 ss2))*/ explain (costs off) select * from ss1, ss2 where ss1.a = ss2.a order by ss1.a limit 10;
+                               QUERY PLAN
+------------------------------------------------------------------------
+ Limit
+   ->  YB Batched Nested Loop Join
+         Join Filter: (ss1.a = ss2.a)
+         Sort Keys: ss1.a
+         ->  Index Scan using ss1_pkey on ss1
+         ->  Index Scan using ss2_pkey on ss2
+               Index Cond: (a = ANY (ARRAY[ss1.a, $1, $2, ..., $1023]))
+(7 rows)
+
+/*+Set(enable_seqscan off) Set(yb_bnl_batch_size 1024) Leading((ss1 ss2))*/ select * from ss1, ss2 where ss1.a = ss2.a order by ss1.a limit 10;
+ a | a | b
+---+---+---
+ 1 | 1 | 1
+ 1 | 1 | 2
+ 2 | 2 | 2
+ 2 | 2 | 3
+ 3 | 3 | 3
+ 3 | 3 | 4
+ 4 | 4 | 4
+ 4 | 4 | 5
+ 5 | 5 | 5
+ 5 | 5 | 6
+(10 rows)
+
+drop table ss1;
+drop table ss2;
 create table q1(a int, b int);
 create table q2(a int, b int);
 create index on q2(b, a);
@@ -1752,7 +1788,7 @@ SELECT * FROM x1 LEFT JOIN LATERAL (
   WHERE x2.a = x1.a
 ) v2 ON true
 ORDER BY 1, 2, 3, 4, 5;
-                    QUERY PLAN                    
+                    QUERY PLAN
 --------------------------------------------------
  Sort
    Sort Key: x1.a, x1.b, x2.a, x2.b, x3.b
@@ -1773,14 +1809,14 @@ SELECT * FROM x1 LEFT JOIN LATERAL (
   WHERE x2.a = x1.a
 ) v2 ON true
 ORDER BY 1, 2, 3, 4, 5;
- a | b | a | b | b 
+ a | b | a | b | b
 ---+---+---+---+---
  1 | 0 | 1 | 0 | 0
  2 | 1 | 2 | 1 | 1
- 3 | 0 | 3 | 0 |  
- 4 | 1 | 4 | 1 |  
- 5 | 2 |   |   |  
- 6 | 3 |   |   |  
+ 3 | 0 | 3 | 0 |
+ 4 | 1 | 4 | 1 |
+ 5 | 2 |   |   |
+ 6 | 3 |   |   |
 (6 rows)
 
 EXPLAIN (COSTS OFF)
@@ -1792,7 +1828,7 @@ SELECT * FROM x1 LEFT JOIN LATERAL (
   WHERE x2.a = x1.a
 ) v2 ON true
 ORDER BY 1, 2, 3, 4, 5, 6, 7;
-                                   QUERY PLAN                                    
+                                   QUERY PLAN
 ---------------------------------------------------------------------------------
  Sort
    Sort Key: x1.a, x1.b, x2.a, x2.b, x4.a, x4.b, x3.b
@@ -1817,14 +1853,14 @@ SELECT * FROM x1 LEFT JOIN LATERAL (
   WHERE x2.a = x1.a
 ) v2 ON true
 ORDER BY 1, 2, 3, 4, 5, 6, 7;
- a | b | a | b | a | b | b 
+ a | b | a | b | a | b | b
 ---+---+---+---+---+---+---
  1 | 0 | 1 | 0 | 1 | 0 | 0
  2 | 1 | 2 | 1 | 2 | 1 | 1
  3 | 0 | 3 | 0 | 3 | 0 | 0
  4 | 1 | 4 | 1 | 4 | 1 | 1
- 5 | 2 |   |   |   |   |  
- 6 | 3 |   |   |   |   |  
+ 5 | 2 |   |   |   |   |
+ 6 | 3 |   |   |   |   |
 (6 rows)
 
 DROP TABLE x1;

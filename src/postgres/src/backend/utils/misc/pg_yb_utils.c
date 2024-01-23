@@ -3751,16 +3751,19 @@ aggregateStats(YbInstrumentation *instr, const YBCPgExecStats *exec_stats)
 	instr->tbl_reads.count += exec_stats->tables.reads;
 	instr->tbl_reads.wait_time += exec_stats->tables.read_wait;
 	instr->tbl_writes += exec_stats->tables.writes;
+	instr->tbl_reads.rows_scanned += exec_stats->tables.rows_scanned;
 
 	/* Secondary Index stats */
 	instr->index_reads.count += exec_stats->indices.reads;
 	instr->index_reads.wait_time += exec_stats->indices.read_wait;
 	instr->index_writes += exec_stats->indices.writes;
+	instr->index_reads.rows_scanned += exec_stats->indices.rows_scanned;
 
 	/* System Catalog stats */
 	instr->catalog_reads.count += exec_stats->catalog.reads;
 	instr->catalog_reads.wait_time += exec_stats->catalog.read_wait;
 	instr->catalog_writes += exec_stats->catalog.writes;
+	instr->catalog_reads.rows_scanned += exec_stats->catalog.rows_scanned;
 
 	/* Flush stats */
 	instr->write_flushes.count += exec_stats->num_flushes;
@@ -3784,9 +3787,13 @@ static YBCPgExecReadWriteStats
 getDiffReadWriteStats(const YBCPgExecReadWriteStats *current,
 					  const YBCPgExecReadWriteStats *old)
 {
-	return (YBCPgExecReadWriteStats){current->reads - old->reads,
-									 current->writes - old->writes,
-									 current->read_wait - old->read_wait};
+	return (YBCPgExecReadWriteStats)
+	{
+		current->reads - old->reads,
+		current->writes - old->writes,
+		current->read_wait - old->read_wait,
+		current->rows_scanned - old->rows_scanned
+	};
 }
 
 static void

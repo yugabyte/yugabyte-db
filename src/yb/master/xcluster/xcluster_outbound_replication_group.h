@@ -49,6 +49,8 @@ class XClusterOutboundReplicationGroup {
   std::string ToString() const { return Format("xClusterOutboundReplicationGroup $0", Id()); }
   std::string LogPrefix() const { return ToString(); }
 
+  SysXClusterOutboundReplicationGroupEntryPB GetMetadata() const;
+
   Result<std::vector<NamespaceId>> AddNamespaces(
       const LeaderEpoch& epoch, const std::vector<NamespaceName>& namespace_names,
       CoarseTimePoint deadline);

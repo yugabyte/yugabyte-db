@@ -15,9 +15,13 @@
 #include "yb/client/transaction_pool.h"
 #include "yb/client/yb_table_name.h"
 
+#include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_entity_info.pb.h"
+#include "yb/master/catalog_manager_if.h"
 #include "yb/master/master_defaults.h"
 
+#include "yb/master/mini_master.h"
+#include "yb/master/ts_descriptor.h"
 #include "yb/tserver/tablet_server.h"
 
 #include "yb/util/backoff_waiter.h"
@@ -305,6 +309,50 @@ Status GeoTransactionsTestBase::StartShutdownTabletServers(
     }
   }
   return Status::OK();
+}
+
+void GeoTransactionsTestBase::ValidateAllTabletLeaderinZone(std::vector<TabletId> tablet_uuids,
+                                                            int region) {
+  std::string region_str = yb::Format("rack$0", region);
+  auto& catalog_manager = ASSERT_RESULT(cluster_->GetLeaderMiniMaster())->catalog_manager();
+  for (const auto& tablet_id : tablet_uuids) {
+    auto table_info = ASSERT_RESULT(catalog_manager.GetTabletInfo(tablet_id));
+    auto leader = ASSERT_RESULT(table_info->GetLeader());
+    auto server_reg_pb = leader->GetRegistration();
+    ASSERT_EQ(server_reg_pb.common().cloud_info().placement_region(), region_str);
+  }
+}
+
+Result<uint32_t> GeoTransactionsTestBase::GetTablespaceOidForRegion(int region) {
+  auto conn = EXPECT_RESULT(Connect());
+  uint32_t tablespace_oid = EXPECT_RESULT(conn.FetchRow<int32_t>(strings::Substitute(
+      "SELECT oid FROM pg_catalog.pg_tablespace WHERE spcname = 'tablespace$0'", region)));
+  return tablespace_oid;
+}
+
+Result<std::vector<TabletId>> GeoTransactionsTestBase::GetStatusTablets(
+    int region, ExpectedLocality locality) {
+
+  YBTableName table_name;
+  if (locality == ExpectedLocality::kNoCheck) {
+    return std::vector<TabletId>();
+  } else if (locality == ExpectedLocality::kGlobal) {
+    table_name = YBTableName(
+        YQL_DATABASE_CQL, master::kSystemNamespaceName, kGlobalTransactionsTableName);
+  } else if (ANNOTATE_UNPROTECTED_READ(FLAGS_auto_create_local_transaction_tables)) {
+    auto tablespace_oid = EXPECT_RESULT(GetTablespaceOidForRegion(region));
+    table_name = YBTableName(
+        YQL_DATABASE_CQL, master::kSystemNamespaceName,
+        yb::Format("transactions_$0", tablespace_oid));
+  } else {
+    table_name = YBTableName(
+        YQL_DATABASE_CQL, master::kSystemNamespaceName,
+        yb::Format("transactions_region$0", region));
+  }
+  std::vector<TabletId> tablet_uuids;
+  RETURN_NOT_OK(client_->GetTablets(
+      table_name, 1000 /* max_tablets */, &tablet_uuids, nullptr /* ranges */));
+  return tablet_uuids;
 }
 
 } // namespace client
