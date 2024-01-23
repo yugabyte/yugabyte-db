@@ -130,7 +130,7 @@ YugabyteDB Anywhere also allows creating these machines out of band and importin
 
 Node Agent is an RPC service running on a YugabyteDB node, and is used to manage communication between YugabyteDB Anywhere and the database node. It includes the following functions:
 
-- Invoke shell commands directly on the remote host like running commands over SSH. Similar to SSH, the agent also does shell-login such that any previous command modifying the environment in the resource files (for example, ~/.bashrc) gets reflected in the subsequent command.
+- Invoke shell commands directly on the remote host like running commands over SSH. Similar to SSH, the agent also does shell-login such that any previous command modifying the environment in the resource files (for example, `~/.bashrc`) gets reflected in the subsequent command.
 - Invoke procedures or methods on the node agent.
 - For on-premesis (manual provisioned nodes), node agent functions as a utility to run preflight checks, and add a node instance.
 
@@ -207,10 +207,11 @@ It is not recommended to do so because editing the file can interfere with the s
 
 ### How does YBA determine that a node instance record maps to a node agent entry if they are not related?
 
-As mentioned above, a node agent registration has nothing to do with node instance entry. YBA uses the IP to identify. The IP can be a DNS from >= 2.18.5.
+YBA uses the IP address to identify a node instance. The IP can be a DNS from YBA version 2.18.5 and later.
 
-A bind address (defaults to the IP) is being added in > 2.18.5 in case DNS is supplied and node agent has to listen to a specific interface IP.
+For YBA versions later than 2.18.5, a bind address that defaults to the IP will be added in case a DNS is supplied and the node agent has to listen to a specific interface IP.
 
-### How does YBA clean up node agents for on-prem NON-manual nodes?
+### How does YBA clean up node agents for on-prem non-manual nodes?
 
-YBA removes the node agent entry when the node is cleaned up. It can leave node agent service running but when the node is again re-used, node agent is re-installed.
+YBA removes the node agent entry when the node is cleaned up. You can choose to leave the node agent service running, but when the node is again re-used, the node agent is re-installed.
+
