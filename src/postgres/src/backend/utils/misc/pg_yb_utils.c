@@ -445,7 +445,7 @@ YBTransactionsEnabled()
 }
 
 bool
-IsYBReadCommitted()
+YBIsReadCommittedSupported()
 {
 	static int cached_value = -1;
 	if (cached_value == -1)
@@ -457,7 +457,13 @@ IsYBReadCommitted()
 		cached_value = YBCIsEnvVarTrueWithDefault("FLAGS_yb_enable_read_committed_isolation", true);
 #endif
 	}
-	return IsYugaByteEnabled() && cached_value &&
+	return cached_value;
+}
+
+bool
+IsYBReadCommitted()
+{
+	return IsYugaByteEnabled() && YBIsReadCommittedSupported() &&
 				 (XactIsoLevel == XACT_READ_COMMITTED || XactIsoLevel == XACT_READ_UNCOMMITTED);
 }
 
