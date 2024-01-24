@@ -173,7 +173,7 @@ Unregistration is the step to disconnect YBA and a node agent from each other.
 
 ### Why does node agent installation ask for provider and other details during on-prem manual node agent setup?
 
-Node agent registration internally does not need configuration values such as region, availability zone, and so on, but it still asks for them because of the additional preflight check capability that it provides. It stores the configuration details in a config file called `$NODE_AGENT_HOME/config/config.yml`, and the values are used when the preflight check is run, or the node is added to the node instance of the provider. This is convenient for you when you run the command as there is no need to type all the input values again.
+Node agent registration internally does not need configuration values such as region, availability zone, and so on, but it still requests the details because of the additional preflight check capability that it provides. It stores the configuration details in a config file called `$NODE_AGENT_HOME/config/config.yml`, and the values are used when the preflight check is run, or the node is added to the node instance of the provider. This is convenient when you run the command as you don't have to provide the input values again.
 
 ### What happens if I want to change the provider settings of a node agent, or move it to another provider?
 
@@ -192,7 +192,7 @@ For YBA version 2.18.5 and later, do the following:
 
 As long as the IP does not change, the node agent does not try to register again.
 
-Note that the first step to change the provider is very important because after the provider configuration information changes in the config file as part of the second step, the node agent cannot find the node to delete it as the scope is always with the provider and availability zone.
+Note that the first step to change the provider is very important because after the provider configuration information changes in the config file as part of the second step, the node agent can't find the node to delete it as the scope is always with the provider and availability zone.
 
 ### How does a node agent perform preflight checks?
 
@@ -223,4 +223,3 @@ For YBA versions later than 2.18.5, a bind address that defaults to the IP will 
 ### How does YBA clean up node agents for on-prem non-manual nodes?
 
 YBA removes the node agent entry when the node is cleaned up. You can choose to leave the node agent service running, but when the node is again re-used, the node agent is re-installed.
-
