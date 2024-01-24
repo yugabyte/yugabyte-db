@@ -1002,22 +1002,25 @@ public class YbcBackupUtil {
                   restoreMap.get(bSI.backupType).get(keyspace).addAll(tablesToAdd);
                 }
               } else {
-                // For YSQL: If found DB again, throw error since there is a repetition request
-                // For YCQL: If found keyspace again, check at table level whether there is a
-                // repetition of request
-                if (bSI.backupType.equals(TableType.PGSQL_TABLE_TYPE)
-                    || !bSI.selectiveTableRestore
-                    || CollectionUtils.isEmpty(bSI.tableNameList)
-                    || CollectionUtils.containsAny(
-                        restoreMap.get(TableType.YQL_TABLE_TYPE).get(keyspace),
-                        bSI.tableNameList)) {
+                if (bSI.backupType.equals(TableType.PGSQL_TABLE_TYPE)) {
+                  // For YSQL: If found DB again, throw error since there is a repetition request
                   throw new PlatformServiceException(
                       PRECONDITION_FAILED,
-                      String.format("Overwrite of data attempted for keyspace %s", keyspace));
+                      String.format("Overwrite of data attempted for YSQL keyspace %s", keyspace));
+                } else {
+                  // For YCQL: If found keyspace again, check at table level whether there is a
+                  // repetition of request
+                  Set<String> tablesToAdd =
+                      getTablesToAddToRestoreMap(bInfo.getPerBackupLocationKeyspaceTables(), bSI);
+                  if (CollectionUtils.containsAny(
+                      restoreMap.get(TableType.YQL_TABLE_TYPE).get(keyspace), tablesToAdd)) {
+                    throw new PlatformServiceException(
+                        PRECONDITION_FAILED,
+                        String.format(
+                            "Overwrite of data attempted for YCQL keyspace %s", keyspace));
+                  }
+                  restoreMap.get(TableType.YQL_TABLE_TYPE).get(keyspace).addAll(tablesToAdd);
                 }
-                Set<String> tablesToAdd =
-                    getTablesToAddToRestoreMap(bInfo.getPerBackupLocationKeyspaceTables(), bSI);
-                restoreMap.get(TableType.YQL_TABLE_TYPE).get(keyspace).addAll(tablesToAdd);
               }
             });
     return restoreMap;
