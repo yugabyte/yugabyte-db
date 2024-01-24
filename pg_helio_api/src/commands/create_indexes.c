@@ -1783,6 +1783,22 @@ ParseIndexDefDocumentInternal(const bson_iter_t *indexesArrayIter,
 		ThrowIndexDefDocMissingFieldError("name");
 	}
 
+	if (indexDef->enableLargeIndexKeys)
+	{
+		if (indexDef->key->isWildcard || indexDef->wildcardProjectionDocument != NULL)
+		{
+			ereport(ERROR, (errcode(MongoCannotCreateIndex),
+							errmsg(
+								"enableLargeIndexKeys not supported with wildcard indexes.")));
+		}
+		if (indexDef->key->hasHashedIndexes || indexDef->key->hasTextIndexes)
+		{
+			ereport(ERROR, (errcode(MongoCannotCreateIndex),
+							errmsg(
+								"enableLargeIndexKeys not supported with hash or text indexes.")));
+		}
+	}
+
 	if (indexDef->key->hasCosmosIndexes &&
 		indexDef->cosmosSearchOptions == NULL)
 	{
