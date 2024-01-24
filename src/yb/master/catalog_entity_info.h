@@ -1319,7 +1319,8 @@ class UniverseReplicationInfo : public UniverseReplicationInfoBase,
 
   std::string ToString() const override;
 
-  // Set the Status related to errors on SetupUniverseReplication.
+  // Set the Status related to errors on SetupUniverseReplication. Only the first error status is
+  // preserved.
   void SetSetupUniverseReplicationErrorStatus(const Status& status);
 
   // Get the Status of the last error from the current SetupUniverseReplication.
