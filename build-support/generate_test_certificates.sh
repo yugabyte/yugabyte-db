@@ -21,6 +21,7 @@ if [[ $# -ne 1 ]]; then
 fi
 
 out_dir="$1"
+openssl_bin="$YB_THIRDPARTY_DIR/installed/common/bin/openssl"
 
 generate_ca() {
   local dir="$1"
@@ -90,37 +91,37 @@ basicConstraints = CA:false
 extendedKeyUsage = clientAuth,serverAuth
 EOT
 
-  openssl genrsa -out "$dir/ca.key" 2048
-  openssl req -new \
-              -config "$dir/ca.self.conf" \
-              -key "$dir/ca.key" \
-              -out "$dir/ca.csr"
-  openssl ca -config "$dir/ca.self.conf" \
-             -keyfile "$dir/ca.key" \
-             -selfsign \
-             -in "$dir/ca.csr" \
-             -out "$dir/ca.crt" \
-             -outdir "$dir" \
-             -batch
+  "$openssl_bin" genrsa -out "$dir/ca.key" 2048
+  "$openssl_bin" req -new \
+                     -config "$dir/ca.self.conf" \
+                     -key "$dir/ca.key" \
+                     -out "$dir/ca.csr"
+  "$openssl_bin" ca -config "$dir/ca.self.conf" \
+                    -keyfile "$dir/ca.key" \
+                    -selfsign \
+                    -in "$dir/ca.csr" \
+                    -out "$dir/ca.crt" \
+                    -outdir "$dir" \
+                    -batch
 }
 
 generate_cert() {
   local dir="$1"
   local prefix="$2"
 
-  openssl genrsa -out "$dir/$prefix.key" 2048
-  openssl req -new \
-              -config "$dir/$prefix.conf" \
-              -key "$dir/$prefix.key" \
-              -out "$dir/$prefix.csr"
-  openssl ca -config "$dir/ca.conf" \
-             -keyfile "$dir/ca.key" \
-             -cert "$dir/ca.crt" \
-             -policy yugabyte_policy \
-             -in "$dir/$prefix.csr" \
-             -out "$dir/$prefix.crt" \
-             -outdir "$dir" \
-             -batch
+  "$openssl_bin" genrsa -out "$dir/$prefix.key" 2048
+  "$openssl_bin" req -new \
+                     -config "$dir/$prefix.conf" \
+                     -key "$dir/$prefix.key" \
+                     -out "$dir/$prefix.csr"
+  "$openssl_bin" ca -config "$dir/ca.conf" \
+                    -keyfile "$dir/ca.key" \
+                    -cert "$dir/ca.crt" \
+                    -policy yugabyte_policy \
+                    -in "$dir/$prefix.csr" \
+                    -out "$dir/$prefix.crt" \
+                    -outdir "$dir" \
+                    -batch
 }
 
 generate_node_cert() {
@@ -186,12 +187,12 @@ commonName = yugabyte
 EOT
 
   generate_cert "$dir" "$prefix"
-  openssl pkcs8 -topk8 \
-                -inform PEM \
-                -outform DER \
-                -in "$dir/$prefix.key" \
-                -out "$dir/$prefix.key.der" \
-                -nocrypt
+  "$openssl_bin" pkcs8 -topk8 \
+                       -inform PEM \
+                       -outform DER \
+                       -in "$dir/$prefix.key" \
+                       -out "$dir/$prefix.key.der" \
+                       -nocrypt
 }
 
 temp_dir="$(mktemp -d)"
