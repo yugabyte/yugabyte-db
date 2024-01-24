@@ -1,10 +1,10 @@
 import { useState } from 'react';
 import { AxiosError } from 'axios';
 import { browserHistory } from 'react-router';
-import { Box, makeStyles, Typography } from '@material-ui/core';
+import { Box, makeStyles, Typography, useTheme } from '@material-ui/core';
 import { toast } from 'react-toastify';
-import { useMutation, useQueryClient } from 'react-query';
-import { useTranslation } from 'react-i18next';
+import { useMutation, useQuery, useQueryClient } from 'react-query';
+import { Trans, useTranslation } from 'react-i18next';
 
 import { YBInput, YBModal, YBModalProps } from '../../../../redesign/components';
 import { api, drConfigQueryKey, universeQueryKey } from '../../../../redesign/helpers/api';
@@ -12,11 +12,13 @@ import { fetchTaskUntilItCompletes } from '../../../../actions/xClusterReplicati
 import { handleServerError } from '../../../../utils/errorHandlingUtils';
 
 import { DrConfig } from '../dtos';
+import { Universe } from '../../../../redesign/helpers/dtos';
 
 import toastStyles from '../../../../redesign/styles/toastStyles.module.scss';
 
 interface DeleteConfigModalProps {
   drConfig: DrConfig;
+  currentUniverseName: string;
   modalProps: YBModalProps;
 
   redirectUrl?: string;
@@ -28,9 +30,11 @@ const useStyles = makeStyles((theme) => ({
   }
 }));
 
+const MODAL_NAME = 'DeleteConfigModal';
 const TRANSLATION_KEY_PREFIX = 'clusterDetail.disasterRecovery.config.deleteModal';
 export const DeleteConfigModal = ({
   drConfig,
+  currentUniverseName,
   modalProps,
   redirectUrl
 }: DeleteConfigModalProps) => {
@@ -38,6 +42,7 @@ export const DeleteConfigModal = ({
   const [confirmationText, setConfirmationText] = useState<string>('');
   const classes = useStyles();
   const queryClient = useQueryClient();
+  const theme = useTheme();
   const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
 
   const deleteDrConfigMutation = useMutation(
@@ -104,28 +109,40 @@ export const DeleteConfigModal = ({
     deleteDrConfigMutation.mutate(drConfig, { onSettled: () => resetModal() });
   };
 
-  const isFormDisabled = isSubmitting || confirmationText !== drConfig.name;
+  const modalTitle = t('title');
+  const cancelLabel = t('cancel', { keyPrefix: 'common' });
+  const isFormDisabled = isSubmitting || confirmationText !== currentUniverseName;
   return (
     <YBModal
-      title={t('title', { drConfigName: drConfig.name })}
+      title={modalTitle}
       submitLabel={t('submitButton')}
-      cancelLabel={t('cancel', { keyPrefix: 'common' })}
+      cancelLabel={cancelLabel}
       onSubmit={onSubmit}
       overrideHeight="fit-content"
       buttonProps={{ primary: { disabled: isFormDisabled } }}
       isSubmitting={isSubmitting}
       size="sm"
+      submitTestId={`${MODAL_NAME}-SubmitButton`}
+      cancelTestId={`${MODAL_NAME}-CancelButton`}
       {...modalProps}
     >
-      <Typography variant="body2">{t('deleteConfirmation')}</Typography>
+      <Typography variant="body2">
+        <Trans
+          i18nKey={`${TRANSLATION_KEY_PREFIX}.deleteConfirmation`}
+          values={{ currentUniverseName: currentUniverseName }}
+          components={{
+            bold: <b />
+          }}
+        />
+      </Typography>
       <Typography variant="body2" className={classes.consequenceText}>
         {t('deleteConsequence')}
       </Typography>
-      <Box marginTop={3}>
+      <Box marginTop={3} display="flex" flexDirection="column" gridGap={theme.spacing(1)}>
         <Typography variant="body2">{t('confirmationInstructions')}</Typography>
         <YBInput
           fullWidth
-          placeholder={drConfig.name}
+          placeholder={currentUniverseName}
           value={confirmationText}
           onChange={(event) => setConfirmationText(event.target.value)}
         />

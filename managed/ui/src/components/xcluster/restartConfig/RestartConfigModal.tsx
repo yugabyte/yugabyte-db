@@ -148,7 +148,7 @@ export const RestartConfigModal = (props: RestartConfigModalProps) => {
         fetchTaskUntilItCompletes(response.taskUUID, handleTaskCompletion, invalidateQueries);
       },
       onError: (error: Error | AxiosError) =>
-        handleServerError(error, { customErrorLabel: t('error.requestFailure') })
+        handleServerError(error, { customErrorLabel: t('error.requestFailureLabel') })
     }
   );
 
