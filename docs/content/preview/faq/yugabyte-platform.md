@@ -36,6 +36,21 @@ rightNav:
 - [How many machines do I need to try out YugabyteDB Anywhere against my load?](#how-many-machines-do-i-need-to-try-out-yugabytedb-anywhere-against-my-load)
 - [Can I control the properties (such as VPC, IOPS, tenancy, and so on) of the machines YugabyteDB Anywhere spins up?](#can-i-control-the-properties-such-as-vpc-iops-tenancy-and-so-on-of-the-machines-yugabytedb-anywhere-spins-up)
 
+#### Node agent
+
+- [What is a node agent?](#what-is-a-node-agent)
+- [How is node agent installed on a YugabyteDB node?](#how-is-node-agent-installed-on-a-yugabytedb-node)
+- [Why does YBA UI ask for SSH if the node agent is installed manually and can replace SSH?](#why-does-yba-ui-ask-for-ssh-if-the-node-agent-is-installed-manually-and-can-replace-ssh)
+- [What is registration and unregistration in node agent?](#what-is-registration-and-unregistration-in-node-agent)
+- [Why does node agent installation ask for provider and other details during on-prem manual node agent setup?](#why-does-node-agent-installation-ask-for-provider-and-other-details-during-on-prem-manual-node-agent-setup)
+- [What happens if I want to change the provider settings of a node agent, or move it to another provider?](#what-happens-if-i-want-to-change-the-provider-settings-of-a-node-agent-or-move-it-to-another-provider)
+- [How does a node agent perform preflight checks?](#how-does-a-node-agent-perform-preflight-checks)
+- [How to disable a node agent?](#how-to-disable-a-node-agent)
+- [How to change the node agent default port of 9070?](#how-to-change-the-node-agent-default-port-of-9070)
+- [Is it ok to manually edit the configuration file for node agent?](#is-it-okay-to-manually-edit-the-configuration-file-for-node-agent)
+- [How does YBA determine that a node instance record maps to a node agent entry if they are not related?](#how-does-yba-determine-that-a-node-instance-record-maps-to-a-node-agent-entry-if-they-are-not-related)
+- [How does YBA clean up node agents for on-prem non-manual nodes?](#how-does-yba-clean-up-node-agents-for-on-prem-non-manual-nodes)
+
 ## YugabyteDB Anywhere
 
 ### What is YugabyteDB Anywhere?
@@ -124,11 +139,11 @@ Yes, you can control what YugabyteDB Anywhere is spinning up. For example:
 
 YugabyteDB Anywhere also allows creating these machines out of band and importing them as an on-premises install.
 
-## Node Agent
+## Node agent
 
 ### What is a node agent?
 
-Node Agent is an RPC service running on a YugabyteDB node, and is used to manage communication between YugabyteDB Anywhere and the database node. It includes the following functions:
+Node agent is an RPC service running on a YugabyteDB node, and is used to manage communication between YugabyteDB Anywhere and the database node. It includes the following functions:
 
 - Invoke shell commands directly on the remote host like running commands over SSH. Similar to SSH, the agent also does shell-login such that any previous command modifying the environment in the resource files (for example, `~/.bashrc`) gets reflected in the subsequent command.
 - Invoke procedures or methods on the node agent.
@@ -136,21 +151,15 @@ Node Agent is an RPC service running on a YugabyteDB node, and is used to manage
 
 ### How is node agent installed on a YugabyteDB node?
 
-Installation depends on how the nodes are provisioned. For cloud (AWS, GCP, and Azure) and non-manual on-prem nodes (sudo access provided), the agents are installed as a part of a universe task during pre-provisioning step using SSH. So, a sudo user with SSH access (for example, ec2-user for AWS) is needed. After the node agent is installed, all the legacy SSH calls are replaced with node agent calls. Just like SSH daemon, node agent is run as a root user to perform provisioning of the nodes. After node provisioning, you can revoke the SSH access, but it's recommended to enable the access for debugging.
+Installation depends on how the nodes are provisioned. For cloud (AWS, GCP, and Azure) and non-manual on-prem nodes (sudo access provided), the agents are automatically installed as a part of a universe task during VM provisioning using SSH. So, a sudo user with SSH access (for example, ec2-user for AWS) is needed. After the node agent is installed, all the legacy SSH calls are replaced with node agent calls. Just like SSH daemon, node agent is run as a root user to perform provisioning of the nodes. After node provisioning, you can revoke the SSH access, but it's recommended to enable the access for debugging.
 
-For on-prem manual provisioning, an SSH user does not have sudo access but sudo is available on the local YugabyteDB node with a password.
-Users do not want node-agent to be run as root.
-Users can install node agent manually as described here https://docs.yugabyte.com/preview/yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/#install-node-agent
+For on-prem manual provisioning, an SSH user does not have sudo access, but sudo is available on the local YugabyteDB node with a password.
 
-It requires
-Downloading the node-agent as yugabyte user
-Run the installer as yugabyte user
-Install Systemd service as a sudo user but it runs the node agent service as yugabyte user.
-NOTE: Manual provisioning must be set to true in this case.
+For more information, refer to [install node agent](../../yugabyte-platform/configure-yugabyte-platform/set-up-cloud-provider/on-premises-manual/#install-node-agent).
 
 ### Why does YBA UI ask for SSH if the node agent is installed manually and can replace SSH?
 
-This is because of the legacy UI. There are some cases where an SSH key is needed for integrity but a ficticious non-working SSH key can be supplied.
+This is because of the legacy UI. There are some cases where an SSH key is needed for integrity but a fictitious non-working SSH key can be supplied.
 
 ### What is registration and unregistration in node agent?
 
@@ -201,7 +210,7 @@ A node agent can be disabled anytime at the [provider scope](../../yugabyte-plat
 
 Use the global [runtime configuration](../../yugabyte-platform/administer-yugabyte-platform/manage-runtime-config/) key `yb.node_agent.server.port`. The change is reflected only on newly created node agents.
 
-### Is it ok to manually edit the configuration file for node agent?
+### Is it okay to manually edit the configuration file for node agent?
 
 It is not recommended to do so because editing the file can interfere with the self-upgrade workflow. If it is a minor change, it is better to stop the node agent service first to keep YBA away from starting the upgrade process.
 
