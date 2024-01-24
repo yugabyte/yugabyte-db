@@ -59,9 +59,9 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
   @Inject
   protected CreateKubernetesUniverse(
       BaseTaskDependencies baseTaskDependencies,
-      OperatorStatusUpdaterFactory statusUpdaterFactory) {
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
     super(baseTaskDependencies);
-    this.kubernetesStatus = statusUpdaterFactory.create();
+    this.kubernetesStatus = operatorStatusUpdaterFactory.create();
   }
 
   @Override
@@ -248,7 +248,7 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
           taskParams().getKubernetesResourceDetails(),
           TaskType.CreateKubernetesUniverse.name(),
           getUserTaskUUID(),
-          (th != null) ? UniverseState.ERROR : UniverseState.READY,
+          (th != null) ? UniverseState.ERROR_CREATING : UniverseState.READY,
           th);
       unlockUniverseForUpdate();
     }

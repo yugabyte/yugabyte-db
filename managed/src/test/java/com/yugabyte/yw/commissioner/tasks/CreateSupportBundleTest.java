@@ -44,6 +44,7 @@ public class CreateSupportBundleTest extends CommissionerBaseTest {
   @Before
   public void setUp() {
     super.setUp();
+    when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
     this.customer = ModelFactory.testCustomer();
     this.universe = ModelFactory.createUniverse(customer.getId());
     this.runtimeConfigFactory = mockBaseTaskDependencies.getRuntimeConfigFactory();

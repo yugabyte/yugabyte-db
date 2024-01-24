@@ -460,6 +460,8 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     assertThat(
         task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.SoftwareUpgrade)));
     assertAuditEntry(1, customer.getUuid());
+    task.setCompletionTime(new Date());
+    task.save();
 
     // Software upgrade with rollback support.
     url =
@@ -566,6 +568,8 @@ public class UpgradeUniverseControllerTest extends PlatformGuiceApplicationBaseT
     assertThat(
         task.getType(), allOf(notNullValue(), equalTo(CustomerTask.TaskType.SoftwareUpgrade)));
     assertAuditEntry(1, customer.getUuid());
+    task.setCompletionTime(new Date());
+    task.save();
 
     // Software Upgrade with rollback support
     url =
