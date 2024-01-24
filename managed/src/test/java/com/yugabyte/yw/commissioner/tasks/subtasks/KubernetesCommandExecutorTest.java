@@ -23,6 +23,7 @@ import static play.inject.Bindings.bind;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.typesafe.config.Config;
+import com.yugabyte.operator.OperatorConfig;
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
 import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.ModelFactory;
@@ -390,7 +391,13 @@ public class KubernetesCommandExecutorTest extends SubTaskBaseTest {
       expectedOverrides.put("oldNamingStyle", false);
       expectedOverrides.put("fullnameOverride", "host");
     }
-
+    Map<String, Object> yugabytedUiInfo = new HashMap<>();
+    Map<String, Object> metricsSnapshotterInfo = new HashMap<>();
+    boolean COMMUNITY_OP_ENABLED = OperatorConfig.getOssMode();
+    metricsSnapshotterInfo.put("enabled", COMMUNITY_OP_ENABLED);
+    yugabytedUiInfo.put("enabled", COMMUNITY_OP_ENABLED);
+    yugabytedUiInfo.put("metricsSnapshotter", metricsSnapshotterInfo);
+    expectedOverrides.put("yugabytedUi", yugabytedUiInfo);
     return expectedOverrides;
   }
 

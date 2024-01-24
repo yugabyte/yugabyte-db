@@ -67,7 +67,7 @@ export const TabletList: FC<DatabaseListProps> = ({ selectedTableUuid, onRefetch
 
   const tableID = selectedTableUuid;
 
-  const { data: nodesResponse, isFetching: isFetchingNodes } = useGetClusterNodesQuery({
+  const { data: nodesResponse, isFetching: isFetchingNodes } = useGetClusterNodesQuery({}, {
     query: { refetchOnMount: "always" },
   });
   const hasReadReplica = !!nodesResponse?.data.find((node) => node.is_read_replica);

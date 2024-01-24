@@ -25,8 +25,8 @@ You can diagnose and remedy a failure that occurred when [configuring Azure clou
 
 - Find your task of type **Create Provider** among the **Failed** tasks and click the corresponding **See Details**.
 
-- On the **Task details** page shown in the following illustration, click **Expand** to view the diagnosic information:<br>
+- On the **Task details** page shown in the following illustration, click **Expand** to view the diagnostic information:
 
-  ![Azure configuraion failure](/images/yp/platform-azure-prepare-cloud-env-6.png)
+  ![Azure configuration failure](/images/yp/platform-azure-prepare-cloud-env-6.png)
 
 Typically, the failure is caused by your subscription not having enough quota on Azure to create the specific size VM cores in a specific region. To resolve the issue, increase the quota limit by following instructions provided in [Increase VM-family vCPU quotas](https://docs.microsoft.com/en-us/azure/azure-portal/supportability/per-vm-quota-requests).

@@ -730,6 +730,8 @@ class AzureCloudAdmin():
             logging.info("[app] VM {} is not found".format(vm_name))
             self.destroy_orphaned_resources(vm_name, node_uuid)
             return
+        public_ip = self.is_public_ip_assigned(vm)
+
         # Delete the VM first. Any subsequent failure will invoke the orphaned
         # resource deletion.
         logging.info("[app] Deleting vm {}".format(vm_name))
@@ -752,18 +754,19 @@ class AzureCloudAdmin():
             disk_dels[os_disk_name] = disk_del
 
         nic_name = self.get_nic_name(vm_name)
-        ip_name = self.get_public_ip_name(vm_name)
         logging.info("[app] Deleting nic {}".format(nic_name))
         nic_del = self.network_client.network_interfaces.begin_delete(NETWORK_RESOURCE_GROUP,
                                                                       nic_name)
         nic_del.wait()
         logging.info("[app] Deleted nic {}".format(nic_name))
 
-        logging.info("[app] Deleting ip {}".format(ip_name))
-        ip_del = self.network_client.public_ip_addresses.begin_delete(NETWORK_RESOURCE_GROUP,
-                                                                      ip_name)
-        ip_del.wait()
-        logging.info("[app] Deleted ip {}".format(ip_name))
+        if public_ip:
+            ip_name = self.get_public_ip_name(vm_name)
+            logging.info("[app] Deleting ip {}".format(ip_name))
+            ip_del = self.network_client.public_ip_addresses.begin_delete(NETWORK_RESOURCE_GROUP,
+                                                                          ip_name)
+            ip_del.wait()
+            logging.info("[app] Deleted ip {}".format(ip_name))
 
         for disk_name, disk_del in disk_dels.items():
             disk_del.wait()
@@ -1225,3 +1228,15 @@ class AzureCloudAdmin():
         async_vm_start = self.compute_client.virtual_machines.begin_start(RESOURCE_GROUP, vm_name)
         async_vm_start.wait()
         return async_vm_start.result()
+
+    def is_public_ip_assigned(self, vm):
+        # Check if public IP configuration is present and assigned
+        if vm.network_profile and vm.network_profile.network_interfaces:
+            for nic_reference in vm.network_profile.network_interfaces:
+                if nic_reference.id:
+                    nic = self.network_client.network_interfaces.get(NETWORK_RESOURCE_GROUP,
+                                                                     id_to_name(nic_reference.id))
+                    if nic.ip_configurations and nic.ip_configurations[0].public_ip_address:
+                        return True  # Public IP is assigned
+
+        return False  # Public IP is not assigned

@@ -18,7 +18,8 @@ public interface OperatorStatusUpdater {
   public enum UniverseState {
     CREATING("Creating"),
     READY("Ready"),
-    ERROR("Error"),
+    ERROR_UPDATING("Error Updating"),
+    ERROR_CREATING("Error Creating"),
     EDITING("Editing"),
     DELETING("Deleting"),
     PAUSED("Paused");
@@ -90,6 +91,10 @@ public interface OperatorStatusUpdater {
   }
 
   default void doKubernetesEventUpdate(KubernetesResourceDetails universeName, String status) {
+    // no-op implementation
+  }
+
+  default void updateUniverseState(KubernetesResourceDetails universeName, UniverseState state) {
     // no-op implementation
   }
 }

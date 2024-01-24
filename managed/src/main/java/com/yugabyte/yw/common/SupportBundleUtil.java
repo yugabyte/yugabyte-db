@@ -20,7 +20,10 @@ import com.yugabyte.yw.common.RedactingService.RedactionTarget;
 import com.yugabyte.yw.controllers.handlers.UniverseInfoHandler;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.SupportBundle;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.CloudInfoInterface;
@@ -162,6 +165,16 @@ public class SupportBundleUtil {
     } else {
       log.info("Failed to delete file with path: {}", filePath);
     }
+  }
+
+  public void deleteSupportBundle(SupportBundle supportBundle) {
+    // Delete the actual archive file
+    Path supportBundlePath = supportBundle.getPathObject();
+    if (supportBundlePath != null) {
+      deleteFile(supportBundlePath);
+    }
+    // Deletes row from the support_bundle db table
+    SupportBundle.delete(supportBundle.getBundleUUID());
   }
 
   /**
@@ -729,6 +742,14 @@ public class SupportBundleUtil {
         componentName);
   }
 
+  public void ignoreExceptions(Runnable r) {
+    try {
+      r.run();
+    } catch (Exception e) {
+      log.error("Error while trying to collect YBA Metadata subcomponent: ", e);
+    }
+  }
+
   public void saveMetadata(Customer customer, String destDir, JsonNode jsonData, String fileName) {
     // Declare file path.
     String metadataFilePath = Paths.get(destDir, fileName).toString();
@@ -783,10 +804,39 @@ public class SupportBundleUtil {
     saveMetadata(customer, destDir, jsonData, "users.json");
   }
 
+  public void getTaskMetadata(Customer customer, String destDir) {
+    // Gather metadata for customer_task table.
+    List<CustomerTask> customerTasks = CustomerTask.getByCustomerUUID(customer.getUuid());
+    // Save the above collected metadata.
+    JsonNode customerTaskJsonData =
+        RedactingService.filterSecretFields(Json.toJson(customerTasks), RedactionTarget.APIS);
+    saveMetadata(customer, destDir, customerTaskJsonData, "customer_task.json");
+
+    // Gather metadata for task_info table later.
+  }
+
+  public void getInstanceTypeMetadata(Customer customer, String destDir) {
+    // Gather metadata.
+    Set<UUID> providerUUIDs =
+        Provider.getAll(customer.getUuid()).stream()
+            .map(Provider::getUuid)
+            .collect(Collectors.toSet());
+    List<InstanceType> instanceTypes =
+        InstanceType.getAllInstanceTypes().stream()
+            .filter(it -> providerUUIDs.contains(it.getProvider().getUuid()))
+            .collect(Collectors.toList());
+    JsonNode jsonData =
+        RedactingService.filterSecretFields(Json.toJson(instanceTypes), RedactionTarget.APIS);
+
+    // Save the above collected metadata.
+    saveMetadata(customer, destDir, jsonData, "instance_type.json");
+  }
+
   public void gatherAndSaveAllMetadata(Customer customer, String destDir) {
-    getCustomerMetadata(customer, destDir);
-    getUniversesMetadata(customer, destDir);
-    getProvidersMetadata(customer, destDir);
-    getUsersMetadata(customer, destDir);
+    ignoreExceptions(() -> getCustomerMetadata(customer, destDir));
+    ignoreExceptions(() -> getUniversesMetadata(customer, destDir));
+    ignoreExceptions(() -> getProvidersMetadata(customer, destDir));
+    ignoreExceptions(() -> getUsersMetadata(customer, destDir));
+    ignoreExceptions(() -> getTaskMetadata(customer, destDir));
   }
 }

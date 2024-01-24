@@ -15,7 +15,10 @@
 
 #pragma once
 
+#include <optional>
 #include <type_traits>
+
+#include <boost/optional.hpp>
 
 #include <boost/preprocessor/cat.hpp>
 #include <boost/tti/has_type.hpp>
@@ -91,5 +94,12 @@ template<class T>
 class IsPointerLike : public IsPointerLikeImpl<
     typename std::remove_cv<typename std::remove_reference<T>::type>::type> {
 };
+
+template<class T>
+concept StdOptionalType = std::is_same_v<T, std::optional<typename T::value_type>>;
+
+template<class T>
+concept OptionalType = StdOptionalType<T> ||
+                       std::is_same_v<T, boost::optional<typename T::value_type>>;
 
 }  // namespace yb

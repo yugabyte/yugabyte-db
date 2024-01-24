@@ -336,6 +336,9 @@ public class ModelFactory {
           @Override
           public void run(Universe universe) {
             UniverseDefinitionTaskParams params = universe.getUniverseDetails();
+            if (params.nodeDetailsSet == null) {
+              params.nodeDetailsSet = new HashSet<>();
+            }
             for (int i = 1; i <= numNodesToAdd; i++) {
               NodeDetails node = new NodeDetails();
               node.cloudInfo = new CloudSpecificInfo();

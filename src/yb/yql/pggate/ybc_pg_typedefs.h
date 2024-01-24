@@ -443,6 +443,7 @@ typedef struct PgExecReadWriteStats {
   uint64_t reads;
   uint64_t writes;
   uint64_t read_wait;
+  uint64_t rows_scanned;
 } YBCPgExecReadWriteStats;
 
 typedef struct PgExecEventMetric {
@@ -572,6 +573,14 @@ typedef struct AshMetadata {
   uint16_t client_port;
   uint8_t addr_family;
 } YBCAshMetadata;
+
+typedef struct YBCBindColumn {
+  int attr_num;
+  const YBCPgTypeEntity* type_entity;
+  YBCPgCollationInfo collation_info;
+  bool is_null;
+  uint64_t datum;
+} YBCBindColumn;
 
 #ifdef __cplusplus
 }  // extern "C"

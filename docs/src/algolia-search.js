@@ -80,6 +80,8 @@ import algoliasearch from 'algoliasearch';
    * Main Docs section HTML.
    */
   function docsSection(hitIs) {
+    const searchText = searchInput.value.trim();
+
     let content = '';
     hitIs.forEach(hit => {
       let pageBreadcrumb = '';
@@ -100,26 +102,41 @@ import algoliasearch from 'algoliasearch';
       }
 
       if (hit._highlightResult.title.matchLevel !== 'full' && hit._highlightResult.description.matchLevel !== 'full') {
-        let partialHeaderMatched = 0;
+        let finalSubHead = '';
+        let partialHeaderLength = 0;
+        let headerFull = '';
+        let headerPartial = '';
         if (hit._highlightResult.headers) {
           hit._highlightResult.headers.every(pageHeader => {
             if (pageHeader.matchLevel) {
-              if (pageHeader.matchLevel === 'full') {
-                pageHash = generateHeadingIDs(pageHeader.value);
-                subHead = pageHeader.value.replace(/<em>|<\/em>/g, '');
-              } else if (pageHeader.matchLevel === 'partial' && pageHeader.matchedWords.length > partialHeaderMatched) {
-                partialHeaderMatched = pageHeader.matchedWords.length;
-                pageHash = generateHeadingIDs(pageHeader.value);
-                subHead = pageHeader.value.replace(/<em>|<\/em>/g, '');
+              const testSubHead = pageHeader.value.replace(/<em>|<\/em>/g, '');
+              if (testSubHead.indexOf(searchText) !== -1) {
+                finalSubHead = pageHeader.value;
+
+                return false;
               }
 
-              if (pageHeader.matchLevel === 'full') {
-                return false;
+              if (pageHeader.matchLevel === 'full' && headerFull === '') {
+                headerFull = pageHeader.value;
+              } else if (pageHeader.matchLevel === 'partial' && pageHeader.matchedWords.length > partialHeaderLength) {
+                headerPartial = pageHeader.value;
+                partialHeaderLength = pageHeader.matchedWords.length;
               }
             }
 
             return true;
           });
+
+          if (finalSubHead !== '') {
+            pageHash = generateHeadingIDs(finalSubHead);
+            subHead = finalSubHead.replace(/<em>|<\/em>/g, '');
+          } else if (headerFull !== '') {
+            pageHash = generateHeadingIDs(headerFull);
+            subHead = headerFull.replace(/<em>|<\/em>/g, '');
+          } else if (headerPartial !== '') {
+            pageHash = generateHeadingIDs(headerPartial);
+            subHead = headerPartial.replace(/<em>|<\/em>/g, '');
+          }
         }
       }
 

@@ -16,7 +16,8 @@ from ybops.common.exceptions import YBOpsRuntimeError
 """This script is builds and packages YugaWare application.
   - Builds the React API and generates production files (js, css, etc.)
   - Run sbt packaging command to package yugaware along with the react files
-  - Rename the package file to have the commit sha in it
+  - Alternatively run sbt packaging command to package yugaware community operator instead.
+   the package file to have the commit sha in it
   - Move the package file to the required destination
   - A higher level user, such as itest, will upload all release packages to s3 release bucket
 """
@@ -24,6 +25,9 @@ from ybops.common.exceptions import YBOpsRuntimeError
 parser = argparse.ArgumentParser()
 parser.add_argument('--destination', help='Copy release to Destination folder.')
 parser.add_argument('--tag', help='Release tag name')
+parser.add_argument('--community_operator',
+                    help='Build for community operator',
+                    action='store_true')
 parser.add_argument(
     '--unarchived', action='store_true',
     help='Untar release in "target/universal" directory or in --destination if specified.')
@@ -36,7 +40,6 @@ try:
     script_dir = os.path.dirname(os.path.realpath(__file__))
 
     common_sbt_options = ['-batch', '-no-colors']
-
     _, err = Popen(["sbt", "clean"] + common_sbt_options, stderr=PIPE).communicate()
     if err:
         raise RuntimeError(err)
@@ -46,8 +49,12 @@ try:
     subprocess.check_call(["df", "-h"])
 
     # Ignore any error output from packaging as npm is expected to have some warnings.
+    if args.community_operator:
+        sbt_str = "sbt -DcommunityOperator.enabled=true"
+    else:
+        sbt_str = "sbt"
     os.system(' '.join([
-        "sbt",
+        sbt_str,
         "universal:packageZipTarball"
     ] + common_sbt_options))
 

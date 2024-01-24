@@ -156,7 +156,7 @@ const RegionZoneComponent = (classes: ClassNameMap, t: TFunction) => (
                 {region_and_zone.zone}
             </Typography>
         </Box>
-        {region_and_zone.preference !== undefined &&
+        {region_and_zone.preference !== undefined && region_and_zone.preference !== -1 &&
             <YBTextBadge>
                 {t('clusterDetail.nodes.preference', { preference: region_and_zone.preference })}
             </YBTextBadge>
@@ -164,6 +164,8 @@ const RegionZoneComponent = (classes: ClassNameMap, t: TFunction) => (
     </Box>
     );
 }
+
+const NODE_COLUMNS_LS_KEY = "node-columns";
 
 export const NodesTab: FC = () => {
   const classes = useStyles();
@@ -196,8 +198,8 @@ export const NodesTab: FC = () => {
     });
   };
 
-  // Get nodes
-  const { data: nodesResponse, isFetching: fetchingNodes, refetch: refetchNodes } = useNodes();
+  // Get nodes, including master-only nodes
+  const { data: nodesResponse, isFetching: fetchingNodes, refetch: refetchNodes } = useNodes(true);
   // address of a live tserver
   const tserverAddress = nodesResponse?.data?.find((node) => node.is_node_up)?.host ?? "";
   const { data: gflagsResponse, isFetching: fetchingGflags, refetch: refetchGflags }
@@ -248,7 +250,10 @@ export const NodesTab: FC = () => {
       master_tserver_status: false,
       master_tserver_uptime: false
   };
-  const [columns, setColumns] = useState(defaultValues);
+  const [columns, setColumns] = useState({
+    ...defaultValues,
+    ...(JSON.parse(localStorage.getItem(NODE_COLUMNS_LS_KEY)!) || {})
+  });
   const { control, handleSubmit, reset, setValue, getValues } = useForm({
     mode: 'onChange',
     defaultValues: columns
@@ -260,6 +265,7 @@ export const NodesTab: FC = () => {
   };
   const applyColumnChanges = handleSubmit((formData) => {
     setColumns(formData);
+    localStorage.setItem(NODE_COLUMNS_LS_KEY, JSON.stringify(formData));
     closeQueryOptionsModal();
   });
 
@@ -337,6 +343,7 @@ export const NodesTab: FC = () => {
             {
                 tserver: node.is_node_up,
                 master: node.is_master_up,
+                is_tserver: node.is_tserver,
                 is_master: node.is_master
             },
             {
@@ -346,6 +353,7 @@ export const NodesTab: FC = () => {
                 master: node.is_master_up && node.metrics
                   ? node.metrics.master_uptime_us
                   : -1,
+                is_tserver: node.is_tserver,
                 is_master: node.is_master
             }
         ]
@@ -712,12 +720,12 @@ export const NodesTab: FC = () => {
             if (index == 0) {
                 return (
                     <>
-                        <div style={{ 'margin': '6px 0' }}>
+                        {value.is_tserver && <div style={{ 'margin': '6px 0' }}>
                             <YBSmartStatus
                                 status={value.tserver ? StateEnum.Succeeded : StateEnum.Failed}
                                 entity={StatusEntity.Tserver}
                             />
-                        </div>
+                        </div>}
                         {value.is_master && <div style={{ 'margin': '6px 0' }}>
                             <YBSmartStatus
                                 status={value.master ? StateEnum.Succeeded : StateEnum.Failed}
@@ -729,12 +737,12 @@ export const NodesTab: FC = () => {
             } else if (index == 1) {
                 return (
                     <>
-                        <div style={{ 'margin': '8px 0' }}>
+                        {value.is_tserver && <div style={{ 'margin': '8px 0' }}>
                             {value.tserver >= 0
                                 ? getHumanInterval(new Date(0).toString(),
                                     new Date(value.tserver * 1000).toString())
                                 : '-'}
-                        </div>
+                        </div>}
                         {value.is_master && <div style={{ 'margin': '12px 0 8px 0' }}>
                             {value.master >= 0
                                 ? getHumanInterval(new Date(0).toString(),

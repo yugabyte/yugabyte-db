@@ -250,17 +250,15 @@ static void CreateTableAddColumn(YBCPgStatement handle,
 											 is_nulls_first));
 }
 
-/* Utility function to add columns to the YB create statement
+/*
+ * Utility function to add columns to the YB create statement
  * Columns need to be sent in order first hash columns, then rest of primary
  * key columns, then regular columns.
- *
- * Table counts as colocated if it has a tablegroup or resides within the
- * colocated database and hasn't opted-out from colocation.
  */
-static void CreateTableAddColumns(YBCPgStatement handle,
-								  TupleDesc desc,
-								  Constraint *primary_key,
-								  const bool colocated)
+static void
+CreateTableAddColumns(YBCPgStatement handle, TupleDesc desc,
+					  Constraint *primary_key, const bool colocated,
+					  const bool is_tablegroup)
 {
 	ListCell  *cell;
 	IndexElem *index_elem;
@@ -277,17 +275,20 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 					 errmsg("OID should be the only primary key column")));
 
 		index_elem = linitial_node(IndexElem, primary_key->yb_index_params);
-		SortByDir order = index_elem->ordering;
 		/*
 		 * We can only have OID columns on system catalog tables
 		 * and we disallow hash partitioning on those, so OID is not allowed
 		 * to be a hash column - but that will be caught normally.
 		 */
-		bool is_hash = (order == SORTBY_HASH ||
-						(order == SORTBY_DEFAULT && !colocated));
+
+		SortByDir yb_order = YbSortOrdering(index_elem->ordering, colocated,
+											is_tablegroup,
+											true /* is_first_key */);
+		bool is_hash = (yb_order == SORTBY_HASH);
 		bool is_desc = false;
 		bool is_nulls_first = false;
-		ColumnSortingOptions(order,
+
+		ColumnSortingOptions(yb_order,
 							 index_elem->nulls_ordering,
 							 &is_desc,
 							 &is_nulls_first);
@@ -308,6 +309,11 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 		foreach(cell, primary_key->yb_index_params)
 		{
 			index_elem = lfirst_node(IndexElem, cell);
+
+			if (index_elem->ordering == SORTBY_HASH && colocated)
+				ereport(ERROR, (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+								errmsg("cannot colocate hash partitioned table")));
+
 			bool column_found = false;
 			for (int i = 0; i < desc->natts; ++i)
 			{
@@ -320,25 +326,26 @@ static void CreateTableAddColumns(YBCPgStatement handle,
 								 errmsg("PRIMARY KEY containing column of type"
 										" '%s' not yet supported",
 										YBPgTypeOidToStr(att->atttypid))));
-					SortByDir order = index_elem->ordering;
+
+
 					/* In YB mode, the first column defaults to HASH if it is
 					 * not set and its table is not colocated */
 					const bool is_first_key =
 						cell == list_head(primary_key->yb_index_params);
-					bool is_hash = (order == SORTBY_HASH ||
-									(is_first_key &&
-									 order == SORTBY_DEFAULT && !colocated));
+
+					SortByDir yb_order =
+						YbSortOrdering(index_elem->ordering, colocated,
+									   is_tablegroup, is_first_key);
 					bool is_desc = false;
 					bool is_nulls_first = false;
-					ColumnSortingOptions(order,
+
+					ColumnSortingOptions(yb_order,
 										 index_elem->nulls_ordering,
 										 &is_desc,
 										 &is_nulls_first);
-					CreateTableAddColumn(handle,
-										 att,
-										 is_hash,
-										 true /* is_primary */,
-										 is_desc,
+					CreateTableAddColumn(handle, att,
+										 (yb_order == SORTBY_HASH) /* is_hash */,
+										 true /* is_primary */, is_desc,
 										 is_nulls_first);
 					column_found = true;
 					break;
@@ -456,12 +463,11 @@ YBTransformPartitionSplitPoints(YBCPgStatement yb_stmt,
 }
 
 /* Utility function to handle split points */
-static void CreateTableHandleSplitOptions(YBCPgStatement handle,
-										  TupleDesc desc,
-										  OptSplit *split_options,
-										  Constraint *primary_key,
-										  Oid namespaceId,
-										  const bool colocated)
+static void
+CreateTableHandleSplitOptions(YBCPgStatement handle, TupleDesc desc,
+							  OptSplit *split_options, Constraint *primary_key,
+							  Oid namespaceId, const bool colocated,
+							  const bool is_tablegroup)
 {
 	/* Address both types of split options */
 	switch (split_options->split_type)
@@ -476,8 +482,9 @@ static void CreateTableHandleSplitOptions(YBCPgStatement handle,
 				IndexElem *index_elem = (IndexElem*) lfirst(head);
 
 				if (!index_elem ||
-				   !(index_elem->ordering == SORTBY_HASH ||
-				   index_elem->ordering == SORTBY_DEFAULT))
+					YbSortOrdering(index_elem->ordering, colocated,
+								   is_tablegroup,
+								   true /* is_first_key */) != SORTBY_HASH)
 					hashable = false;
 			} else {
 				/* In the abscence of a primary key, we use ybrowid as the PK to hash partition */
@@ -491,8 +498,8 @@ static void CreateTableHandleSplitOptions(YBCPgStatement handle,
 			}
 
 			if (!hashable)
-				ereport(ERROR, (errmsg("HASH columns must be present to "
-							"split by number of tablets")));
+				ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+								errmsg("HASH columns must be present to split by number of tablets")));
 			/* Tell pggate about it */
 			HandleYBStatus(YBCPgCreateTableSetNumTablets(handle, split_options->num_tablets));
 			break;
@@ -765,10 +772,8 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 									   oldRelfileNodeId,
 									   &handle));
 
-	CreateTableAddColumns(handle,
-						  desc,
-						  primary_key,
-						  is_colocated_via_database || OidIsValid(tablegroupId));
+	CreateTableAddColumns(handle, desc, primary_key, is_colocated_via_database,
+						  OidIsValid(tablegroupId) /* is_tablegroup */);
 
 	/* Handle SPLIT statement, if present */
 	OptSplit *split_options = stmt->split_options;
@@ -780,7 +785,8 @@ YBCCreateTable(CreateStmt *stmt, char *tableName, char relkind, TupleDesc desc,
 				 errmsg("cannot create colocated table with split option")));
 		CreateTableHandleSplitOptions(
 			handle, desc, split_options, primary_key, namespaceId,
-			is_colocated_via_database || OidIsValid(tablegroupId));
+			is_colocated_via_database,
+			OidIsValid(tablegroupId) /* is_tablegroup */);
 	}
 	/* Create the table. */
 	HandleYBStatus(YBCPgExecCreateTable(handle));

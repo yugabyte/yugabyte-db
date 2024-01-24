@@ -70,6 +70,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.CustomerTask.TargetType;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
@@ -92,6 +93,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -755,6 +757,8 @@ public class UniverseCRUDHandler {
     TaskType taskType = TaskType.CreateUniverse;
     DB.beginTransaction();
     try {
+      // If the subsequent universe task fails on validation step, we will show error in UI.
+      taskParams.updateSucceeded = false;
       universe = Universe.create(taskParams, customer.getId());
       LOG.info("Created universe {} : {}.", universe.getUniverseUUID(), universe.getName());
       if (taskParams.runtimeFlags != null) {
@@ -1186,6 +1190,21 @@ public class UniverseCRUDHandler {
       if (resourceDetails != null) {
         taskParams.setKubernetesResourceDetails(resourceDetails);
       }
+    }
+
+    Optional<UUID> oIdenticalIncompleteTask =
+        CustomerTask.maybeGetIdenticalIncompleteTaskUUID(
+            customer.getUuid(),
+            universe.getUniverseUUID(),
+            CustomerTask.TaskType.Delete,
+            TargetType.Universe);
+    if (oIdenticalIncompleteTask.isPresent()) {
+      UUID inProgressUuid = oIdenticalIncompleteTask.get();
+      LOG.info(
+          "Destroy universe task already exists for {} with task uuid = {}",
+          universe.getUniverseUUID(),
+          inProgressUuid);
+      return inProgressUuid;
     }
 
     UUID taskUUID = commissioner.submit(taskType, taskParams);
@@ -2143,6 +2162,14 @@ public class UniverseCRUDHandler {
       String errMsg = "Unknown cluster " + StringUtils.join(taskParamClustersUuids, ",");
       LOG.error(errMsg);
       throw new PlatformServiceException(BAD_REQUEST, errMsg);
+    }
+
+    if (!Objects.equals(taskParams.nodePrefix, universe.getUniverseDetails().nodePrefix)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "Cannot change node prefix (from %s to %s)",
+              universe.getUniverseDetails().nodePrefix, taskParams.nodePrefix));
     }
 
     Set<UniverseDefinitionTaskParams.UpdateOptions> updateOptions =

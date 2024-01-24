@@ -50,7 +50,7 @@ export const ConnectionsTab: FC = () => {
   const [nodeName, setNodeName] = useState<string | undefined>(ALL_NODES.value);
   const [relativeInterval, setRelativeInterval] = useState<string>(RelativeInterval.Last5Minutes);
   const { data: nodesResponse, refetch: refetchNodes, isLoading: isClusterNodesLoading } =
-      useGetClusterNodesQuery();
+      useGetClusterNodesQuery({});
   const nodesNamesList = useMemo(() => [
     ALL_NODES,
     ...(nodesResponse?.data.map((node) => ({ label: node.name, value: node.name })) ?? [])

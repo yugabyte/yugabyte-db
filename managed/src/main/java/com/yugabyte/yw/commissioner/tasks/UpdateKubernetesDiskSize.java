@@ -33,9 +33,9 @@ public class UpdateKubernetesDiskSize extends EditKubernetesUniverse {
   @Inject
   protected UpdateKubernetesDiskSize(
       BaseTaskDependencies baseTaskDependencies,
-      OperatorStatusUpdaterFactory statusUpdaterFactory,
-      KubernetesManagerFactory kubernetesManagerFactory) {
-    super(baseTaskDependencies, statusUpdaterFactory, kubernetesManagerFactory);
+      KubernetesManagerFactory kubernetesManagerFactory,
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
+    super(baseTaskDependencies, kubernetesManagerFactory, operatorStatusUpdaterFactory);
   }
 
   @Override

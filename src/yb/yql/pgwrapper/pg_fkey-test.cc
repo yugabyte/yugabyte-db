@@ -53,14 +53,14 @@ struct RpcCountMetric {
 };
 
 struct RpcCountMetricDescriber : public MetricWatcherDeltaDescriberTraits<RpcCountMetric, 3> {
-  explicit RpcCountMetricDescriber(std::reference_wrapper<const MetricEntity::MetricMap> map)
+  explicit RpcCountMetricDescriber(std::reference_wrapper<const MetricEntity> entity)
       : descriptors{
           Descriptor{
-              &delta.read, map, METRIC_handler_latency_yb_tserver_TabletServerService_Read},
+              &delta.read, entity, METRIC_handler_latency_yb_tserver_TabletServerService_Read},
           Descriptor{
-              &delta.write, map, METRIC_handler_latency_yb_tserver_TabletServerService_Write},
+              &delta.write, entity, METRIC_handler_latency_yb_tserver_TabletServerService_Write},
           Descriptor{
-              &delta.perform, map, METRIC_handler_latency_yb_tserver_PgClientService_Perform}}
+              &delta.perform, entity, METRIC_handler_latency_yb_tserver_PgClientService_Perform}}
   {}
 
   DeltaType delta;
@@ -73,7 +73,7 @@ class PgFKeyTest : public PgMiniTestBase {
     FLAGS_enable_automatic_tablet_splitting = false;
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_pg_conf_csv) = MaxQueryLayerRetriesConf(0);
     PgMiniTestBase::SetUp();
-    rpc_count_.emplace(GetMetricMap(*cluster_->mini_tablet_server(0)->server()));
+    rpc_count_.emplace(*cluster_->mini_tablet_server(0)->server()->metric_entity());
   }
 
   size_t NumTabletServers() override {

@@ -56,11 +56,11 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
   public DestroyKubernetesUniverse(
       BaseTaskDependencies baseTaskDependencies,
       XClusterUniverseService xClusterUniverseService,
-      OperatorStatusUpdaterFactory statusUpdaterFactory,
-      SupportBundleUtil supportBundleUtil) {
+      SupportBundleUtil supportBundleUtil,
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
     super(baseTaskDependencies, xClusterUniverseService, supportBundleUtil);
     this.xClusterUniverseService = xClusterUniverseService;
-    this.kubernetesStatus = statusUpdaterFactory.create();
+    this.kubernetesStatus = operatorStatusUpdaterFactory.create();
     this.supportBundleUtil = supportBundleUtil;
   }
 
@@ -247,7 +247,7 @@ public class DestroyKubernetesUniverse extends DestroyUniverse {
               params().getKubernetesResourceDetails(),
               TaskType.DestroyKubernetesUniverse.name(),
               getUserTaskUUID(),
-              UniverseState.ERROR,
+              UniverseState.DELETING,
               t);
         } finally {
           // If for any reason destroy fails we would just unlock the universe for update

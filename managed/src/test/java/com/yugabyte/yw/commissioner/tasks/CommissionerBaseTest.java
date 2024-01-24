@@ -68,6 +68,8 @@ import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.nodeui.DumpEntitiesResponse;
 import com.yugabyte.yw.common.nodeui.DumpEntitiesResponse.Replica;
 import com.yugabyte.yw.common.nodeui.DumpEntitiesResponse.Tablet;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponentFactory;
@@ -157,6 +159,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected BackupHelper mockBackupHelper;
   protected PrometheusConfigManager mockPrometheusConfigManager;
   protected YbcManager mockYbcManager;
+  protected OperatorStatusUpdaterFactory mockOperatorStatusUpdaterFactory;
+  protected OperatorStatusUpdater mockOperatorStatusUpdater;
 
   protected BaseTaskDependencies mockBaseTaskDependencies =
       Mockito.mock(BaseTaskDependencies.class);
@@ -258,6 +262,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockBackupHelper = mock(BackupHelper.class);
     mockYbcManager = mock(YbcManager.class);
     mockPrometheusConfigManager = mock(PrometheusConfigManager.class);
+    mockOperatorStatusUpdaterFactory = mock(OperatorStatusUpdaterFactory.class);
+    mockOperatorStatusUpdater = mock(OperatorStatusUpdater.class);
 
     return configureApplication(
             new GuiceApplicationBuilder()
@@ -303,6 +309,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                     bind(PrometheusConfigManager.class).toInstance(mockPrometheusConfigManager))
                 .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager)))
         .overrides(bind(CloudAPI.Factory.class).toInstance(mockCloudAPIFactory))
+        .overrides(
+            bind(OperatorStatusUpdaterFactory.class).toInstance(mockOperatorStatusUpdaterFactory))
         .build();
   }
 

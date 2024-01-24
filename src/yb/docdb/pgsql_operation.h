@@ -78,10 +78,6 @@ class PgsqlWriteOperation :
   // Execute write.
   Status Apply(const DocOperationApplyData& data) override;
 
-  Status UpdateIterator(
-      DocOperationApplyData* data, DocOperation* prev, SingleOperation single_operation,
-      std::optional<DocRowwiseIterator>* iterator) final;
-
  private:
   void ClearResponse() override {
     if (response_) {
@@ -235,6 +231,8 @@ class PgsqlReadOperation : public DocExprExecutor {
   PgsqlResponsePB response_;
   YQLRowwiseIteratorIf::UniPtr table_iter_;
   YQLRowwiseIteratorIf::UniPtr index_iter_;
+  uint64_t scanned_table_rows_ = 0;
+  uint64_t scanned_index_rows_ = 0;
 };
 
 }  // namespace yb::docdb

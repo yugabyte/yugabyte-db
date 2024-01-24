@@ -1657,10 +1657,22 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
       tserverNodes.remove(stoppedNode);
       masterNodes.remove(stoppedNode);
     }
+    createMasterAddressUpdateTask(masterNodes, tserverNodes);
 
+    // Update the master addresses on the target universes whose source universe belongs to
+    // this task.
+    createXClusterConfigUpdateMasterAddressesTask();
+  }
+
+  /*
+   * Setup a configure task to update the masters list in the conf files of the given
+   * tservers and masters.
+   */
+  protected void createMasterAddressUpdateTask(
+      Set<NodeDetails> masterNodes, Set<NodeDetails> tserverNodes) {
     // Configure all tservers to update the masters list as well.
     createConfigureServerTasks(tserverNodes, params -> params.updateMasterAddrsOnly = true)
-        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+        .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
 
     // Change the master addresses in the conf file for the all masters to reflect
     // the changes.
@@ -1670,7 +1682,7 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
               params.updateMasterAddrsOnly = true;
               params.isMaster = true;
             })
-        .setSubTaskGroupType(SubTaskGroupType.ConfigureUniverse);
+        .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
 
     // Update the master addresses in memory.
     createUpdateMasterAddrsInMemoryTasks(tserverNodes, ServerType.TSERVER)
@@ -1678,10 +1690,6 @@ public abstract class UniverseDefinitionTaskBase extends UniverseTaskBase {
 
     createUpdateMasterAddrsInMemoryTasks(masterNodes, ServerType.MASTER)
         .setSubTaskGroupType(SubTaskGroupType.UpdatingGFlags);
-
-    // Update the master addresses on the target universes whose source universe belongs to
-    // this task.
-    createXClusterConfigUpdateMasterAddressesTask();
   }
 
   /**

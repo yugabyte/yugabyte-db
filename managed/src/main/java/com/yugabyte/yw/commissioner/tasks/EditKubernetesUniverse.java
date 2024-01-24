@@ -63,10 +63,10 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
   @Inject
   protected EditKubernetesUniverse(
       BaseTaskDependencies baseTaskDependencies,
-      OperatorStatusUpdaterFactory statusUpdaterFactory,
-      KubernetesManagerFactory kubernetesManagerFactory) {
+      KubernetesManagerFactory kubernetesManagerFactory,
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
     super(baseTaskDependencies);
-    this.kubernetesStatus = statusUpdaterFactory.create();
+    this.kubernetesStatus = operatorStatusUpdaterFactory.create();
     this.kubernetesManagerFactory = kubernetesManagerFactory;
   }
 
@@ -208,7 +208,7 @@ public class EditKubernetesUniverse extends KubernetesTaskBase {
           taskParams().getKubernetesResourceDetails(),
           TaskType.EditKubernetesUniverse.name(),
           getUserTaskUUID(),
-          (th != null) ? UniverseState.ERROR : UniverseState.READY,
+          (th != null) ? UniverseState.ERROR_UPDATING : UniverseState.READY,
           th);
       unlockUniverseForUpdate();
     }
