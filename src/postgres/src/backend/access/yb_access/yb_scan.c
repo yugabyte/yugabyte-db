@@ -1895,9 +1895,31 @@ YbBindScanKeys(YbScanDesc ybScan, YbScanPlan scan_plan, bool is_for_precheck)
 }
 
 /*
- * Before beginning execution, determine whether recheck is needed.  Use as
- * little resources as possible to make this determination.  This is largely a
- * dup of ybcBeginScan minus the unessential parts.
+ * Whether any columns may find mismatch during preliminary check.
+ */
+static bool
+YbMayFailPreliminaryCheck(YbScanDesc ybScan)
+{
+	if (ybScan->all_ordinary_keys_bound)
+		return false;
+
+	ScanKey *keys = ybScan->keys;
+	for (int i = 0; i < ybScan->nkeys; i += YbGetLengthOfKey(&keys[i]))
+	{
+		if (ybScan->target_key_attnums[i] != InvalidAttrNumber &&
+			(!keys[i]->sk_flags ||
+			 (keys[i]->sk_flags & (SK_SEARCHNULL | SK_SEARCHNOTNULL))))
+			return true;
+	}
+	return false;
+}
+
+/*
+ * Before beginning execution, determine whether any kind of recheck is needed:
+ * - YB preliminary check
+ * - PG recheck
+ * Use as little resources as possible to make this determination.  This is
+ * largely a dup of ybcBeginScan minus the unessential parts.
  * TODO(jason): there may be room for further cleanup/optimization.
  */
 bool
@@ -1928,7 +1950,7 @@ YbPredetermineNeedsRecheck(Relation relation,
 	/*
 	 * Finally, ybscan has everything needed to determine recheck.  Do it now.
 	 */
-	return YbNeedsRecheck(&ybscan);
+	return (YbNeedsPgRecheck(&ybscan) || YbMayFailPreliminaryCheck(&ybscan));
 }
 
 typedef struct {
@@ -2078,16 +2100,15 @@ YbCollectHashKeyComponents(YbScanDesc ybScan, YbScanPlan scan_plan,
 }
 
 /*
- * Returns a bitmap of all non-hashcode columns that may require a recheck.
+ * Returns a bitmap of all non-hashcode columns that may require a PG recheck.
  */
 static Bitmapset *
-YbGetOrdinaryColumnsNeedingRecheck(YbScanDesc ybScan)
+YbGetOrdinaryColumnsNeedingPgRecheck(YbScanDesc ybScan)
 {
-	Bitmapset *columns = NULL;
-
 	if (ybScan->all_ordinary_keys_bound)
-		return columns;
+		return NULL;
 
+	Bitmapset *columns = NULL;
 	ScanKey *keys = ybScan->keys;
 	for (int i = 0; i < ybScan->nkeys; i += YbGetLengthOfKey(&keys[i]))
 	{
@@ -2115,7 +2136,7 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 	 * required_attrs struct stores list of target columns required by scan
 	 * plan. All other non system columns may be excluded from reading from
 	 * DocDB for optimization. Required columns are:
-	 * - any bound key column that is required for recheck
+	 * - any bound key column that is required for PG recheck
 	 * - all query targets columns (from index for Index Only Scan case and from
 	 * table otherwise)
 	 * - all qual columns (not bound to the scan keys), they are required for
@@ -2158,7 +2179,7 @@ ybcSetupTargets(YbScanDesc ybScan, YbScanPlan scan_plan, Scan *pg_scan_plan)
 									   is_index_only_scan);
 
 		required_attrs = bms_join(required_attrs,
-								  YbGetOrdinaryColumnsNeedingRecheck(ybScan));
+								  YbGetOrdinaryColumnsNeedingPgRecheck(ybScan));
 
 		/* Add any explicitly listed target keys */
 		AttrNumber *sk_attno = ybScan->target_key_attnums;
@@ -2594,10 +2615,12 @@ ybcBeginScan(Relation relation,
 }
 
 /*
+ * Also known as "preliminary check".
+ *
  * Return true if the given tuple does not match the ordinary
  * (non-yb_hash_code) scan keys.  Returning false is not a guarantee for match.
  *
- * Any modifications here may need to be reflected in YbNeedsRecheck as well.
+ * Any modifications here may need to be reflected in YbNeedsPgRecheck as well.
  */
 static bool
 ybIsTupMismatch(HeapTuple tup, YbScanDesc ybScan)
@@ -2660,12 +2683,12 @@ ybIsTupMismatch(HeapTuple tup, YbScanDesc ybScan)
  * predetermined for the entire scan before tuples are fetched.
  */
 inline bool
-YbNeedsRecheck(YbScanDesc ybScan)
+YbNeedsPgRecheck(YbScanDesc ybScan)
 {
 	if (ybScan->hash_code_keys != NIL)
 		return true;
 
-	Bitmapset *recheck_cols = YbGetOrdinaryColumnsNeedingRecheck(ybScan);
+	Bitmapset *recheck_cols = YbGetOrdinaryColumnsNeedingPgRecheck(ybScan);
 	bool any_cols_need_recheck = !bms_is_empty(recheck_cols);
 	bms_free(recheck_cols);
 
@@ -2680,7 +2703,7 @@ ybc_getnext_heaptuple(YbScanDesc ybScan, ScanDirection dir, bool *recheck)
 	if (ybScan->quit_scan)
 		return NULL;
 
-	*recheck = YbNeedsRecheck(ybScan);
+	*recheck = YbNeedsPgRecheck(ybScan);
 
 	/* Loop over rows from pggate. */
 	while (HeapTupleIsValid(tup = ybcFetchNextHeapTuple(ybScan, dir)))
@@ -2701,7 +2724,7 @@ ybc_getnext_indextuple(YbScanDesc ybScan, ScanDirection dir, bool *recheck)
 {
 	if (ybScan->quit_scan)
 		return NULL;
-	*recheck = YbNeedsRecheck(ybScan);
+	*recheck = YbNeedsPgRecheck(ybScan);
 	return ybcFetchNextIndexTuple(ybScan, dir);
 }
 
