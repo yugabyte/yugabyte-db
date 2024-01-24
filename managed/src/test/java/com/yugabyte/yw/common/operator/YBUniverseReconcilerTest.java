@@ -1,20 +1,31 @@
 package com.yugabyte.yw.common.operator;
 
+import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertFalse;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.ArgumentMatchers.isNull;
 
+import com.yugabyte.yw.common.CustomerTaskManager;
 import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.common.operator.utils.KubernetesEnvironmentVariables;
 import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
+import com.yugabyte.yw.common.utils.Pair;
 import com.yugabyte.yw.controllers.handlers.CloudProviderHandler;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
+import com.yugabyte.yw.controllers.handlers.UpgradeUniverseHandler;
 import com.yugabyte.yw.forms.KubernetesProviderFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseResp;
 import com.yugabyte.yw.models.Customer;
+import com.yugabyte.yw.models.CustomerTask;
 import com.yugabyte.yw.models.Provider;
+import com.yugabyte.yw.models.TaskInfo;
+import com.yugabyte.yw.models.TaskInfo.State;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.helpers.TaskType;
@@ -35,16 +46,21 @@ import io.yugabyte.operator.v1alpha1.ybuniversespec.TserverK8SNodeResourceSpec;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import javax.annotation.Nullable;
+import lombok.extern.slf4j.Slf4j;
 import org.junit.After;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import org.mockito.junit.MockitoJUnitRunner;
+import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
+@Slf4j
 public class YBUniverseReconcilerTest extends FakeDBApplication {
   @Mock KubernetesClient client;
 
@@ -63,7 +79,9 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
   @Mock Indexer<YBUniverse> indexer;
   @Mock UniverseCRUDHandler universeCRUDHandler;
   @Mock CloudProviderHandler cloudProviderHandler;
-  @Mock KubernetesOperatorStatusUpdater statusUpdater;
+  @Mock CustomerTaskManager customerTaskManager;
+  @Mock UpgradeUniverseHandler upgradeUniverseHandler;
+  @Mock KubernetesOperatorStatusUpdater kubernetesStatusUpdator;
 
   MockedStatic<KubernetesEnvironmentVariables> envVars;
 
@@ -94,13 +112,15 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
         new YBUniverseReconciler(
             client,
             informerFactory,
-            universeName,
+            namespace,
+            new OperatorWorkQueue(1, 5, 10),
             universeCRUDHandler,
-            null,
+            upgradeUniverseHandler,
             cloudProviderHandler,
             null,
-            statusUpdater,
-            confGetter);
+            kubernetesStatusUpdator,
+            confGetter,
+            customerTaskManager);
     // reconcilerFactory.getYBUniverseReconciler(client);
 
     // Setup Defaults
@@ -129,52 +149,36 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
 
   @Test
   public void testReconcileCreate() {
-    UniverseResp uResp = new UniverseResp(defaultUniverse, UUID.randomUUID());
-    Mockito.when(
-            universeCRUDHandler.createUniverse(
-                Mockito.eq(defaultCustomer), any(UniverseDefinitionTaskParams.class)))
-        .thenReturn(uResp);
-    // Empty response to show the universe isn't yet created
-    List<UniverseResp> findResp = new ArrayList<>();
-    Mockito.when(universeCRUDHandler.findByName(defaultCustomer, universeName))
-        .thenReturn(findResp);
-    YBUniverse universe = createYbUniverse();
+    String universeName = "test-create-reconcile-universe";
+    YBUniverse universe = createYbUniverse(universeName);
     ybUniverseReconciler.reconcile(universe, OperatorWorkQueue.ResourceAction.CREATE);
 
-    Mockito.verify(statusUpdater, Mockito.times(1))
-        .createYBUniverseEventStatus(null, null, TaskType.CreateKubernetesUniverse.name());
-    Mockito.verify(universeCRUDHandler, Mockito.times(1)).findByName(defaultCustomer, universeName);
+    Mockito.verify(kubernetesStatusUpdator, Mockito.times(1))
+        .createYBUniverseEventStatus(
+            isNull(),
+            any(KubernetesResourceDetails.class),
+            eq(TaskType.CreateKubernetesUniverse.name()));
     Mockito.verify(universeCRUDHandler, Mockito.times(1))
         .createUniverse(Mockito.eq(defaultCustomer), any(UniverseDefinitionTaskParams.class));
     Mockito.verify(ybUniverseResource, Mockito.atLeast(1)).patch(any(YBUniverse.class));
   }
 
   @Test
-  public void testReconcileCreateAlreadyExists() {
-    UniverseResp uResp = new UniverseResp(defaultUniverse, UUID.randomUUID());
-    // Empty response to show the universe isn't yet created
-    List<UniverseResp> findResp = new ArrayList<>();
-    findResp.add(uResp);
-    Mockito.when(universeCRUDHandler.findByName(defaultCustomer, universeName))
-        .thenReturn(findResp);
-    YBUniverse universe = createYbUniverse();
-    ybUniverseReconciler.reconcile(universe, OperatorWorkQueue.ResourceAction.CREATE);
-    Mockito.verify(universeCRUDHandler, Mockito.times(1)).findByName(defaultCustomer, universeName);
+  public void testReconcileCreateAlreadyExists() throws Exception {
+    // We don't find any customer task entry for create universe.
+    String universeName = "test-universe-already-exists";
+    YBUniverse ybUniverse = createYbUniverse(universeName);
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverse, defaultCustomer.getUuid());
+    Universe universe = Universe.create(taskParams, defaultCustomer.getId());
+    ybUniverseReconciler.reconcile(ybUniverse, OperatorWorkQueue.ResourceAction.CREATE);
     Mockito.verify(universeCRUDHandler, Mockito.never())
         .createUniverse(Mockito.eq(defaultCustomer), any(UniverseDefinitionTaskParams.class));
   }
 
   @Test
   public void testReconcileCreateAutoProvider() {
-    UniverseResp uResp = new UniverseResp(defaultUniverse, UUID.randomUUID());
-    Mockito.when(
-            universeCRUDHandler.createUniverse(
-                Mockito.eq(defaultCustomer), any(UniverseDefinitionTaskParams.class)))
-        .thenReturn(uResp);
-    // Empty response to show the universe isn't yet created
-    List<UniverseResp> findResp = new ArrayList<>();
-    Mockito.when(universeCRUDHandler.findByName(defaultCustomer, universeName))
-        .thenReturn(findResp);
+    String universeName = "test-universe-create-provider";
     KubernetesProviderFormData providerData = new KubernetesProviderFormData();
     Mockito.when(cloudProviderHandler.suggestedKubernetesConfigs()).thenReturn(providerData);
     // Create a provider with the name following `YBUniverseReconciler.getProviderName` format
@@ -183,15 +187,10 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
             invocation -> {
               return ModelFactory.kubernetesProvider(defaultCustomer, "prov-" + universeName);
             });
-
-    YBUniverse universe = createYbUniverse();
-    // Update universe to have no provider
-    YBUniverseSpec spec = universe.getSpec();
-    spec.setProviderName("");
-    universe.setSpec(spec);
+    YBUniverse universe = createYbUniverse(universeName);
+    universe.getSpec().setProviderName("");
     ybUniverseReconciler.reconcile(universe, OperatorWorkQueue.ResourceAction.CREATE);
 
-    Mockito.verify(universeCRUDHandler, Mockito.times(1)).findByName(defaultCustomer, universeName);
     Mockito.verify(cloudProviderHandler, Mockito.times(1)).suggestedKubernetesConfigs();
     Mockito.verify(cloudProviderHandler, Mockito.times(1))
         .createKubernetes(defaultCustomer, providerData);
@@ -200,10 +199,140 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     Mockito.verify(ybUniverseResource, Mockito.atLeast(1)).patch(any(YBUniverse.class));
   }
 
+  @Test
+  public void testCreateTaskRetryOnPlacementModificationTaskSet() throws Exception {
+    String universeName = "test-retry-universe";
+    YBUniverse ybUniverseOriginal = createYbUniverse(universeName);
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverseOriginal, defaultCustomer.getUuid());
+    Universe universe = Universe.create(taskParams, defaultCustomer.getId());
+    ModelFactory.addNodesToUniverse(universe.getUniverseUUID(), 1);
+    TaskInfo taskInfo = new TaskInfo(TaskType.CreateKubernetesUniverse, null);
+    taskInfo.setDetails(Json.toJson(taskParams));
+    taskInfo.setOwner("localhost");
+    taskInfo.save();
+    taskInfo.refresh();
+
+    UniverseDefinitionTaskParams uTaskParams = universe.getUniverseDetails();
+    uTaskParams.placementModificationTaskUuid = taskInfo.getTaskUUID();
+    universe.setUniverseDetails(uTaskParams);
+    universe.save();
+    ybUniverseReconciler.reconcile(ybUniverseOriginal, OperatorWorkQueue.ResourceAction.CREATE);
+
+    Mockito.verify(customerTaskManager, Mockito.times(1))
+        .retryCustomerTask(
+            Mockito.eq(defaultCustomer.getUuid()), Mockito.eq(taskInfo.getTaskUUID()));
+  }
+
+  @Test
+  public void testEditTaskRetryOnPlacementModificationTaskSet() throws Exception {
+    String universeName = "test-retry-universe";
+    YBUniverse ybUniverseOriginal = createYbUniverse(universeName);
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverseOriginal, defaultCustomer.getUuid());
+    Universe universe = Universe.create(taskParams, defaultCustomer.getId());
+    ModelFactory.addNodesToUniverse(universe.getUniverseUUID(), 1);
+    TaskInfo taskInfo = new TaskInfo(TaskType.SoftwareKubernetesUpgrade, null);
+    taskInfo.setDetails(Json.toJson(taskParams));
+    taskInfo.setOwner("localhost");
+    taskInfo.save();
+    taskInfo.refresh();
+
+    UniverseDefinitionTaskParams uTaskParams = universe.getUniverseDetails();
+    uTaskParams.placementModificationTaskUuid = taskInfo.getTaskUUID();
+    universe.setUniverseDetails(uTaskParams);
+    universe.save();
+    ybUniverseReconciler.reconcile(ybUniverseOriginal, OperatorWorkQueue.ResourceAction.UPDATE);
+
+    Mockito.verify(customerTaskManager, Mockito.times(1))
+        .retryCustomerTask(
+            Mockito.eq(defaultCustomer.getUuid()), Mockito.eq(taskInfo.getTaskUUID()));
+  }
+
+  @Test
+  public void testRequeueOnUniverseLocked() throws Exception {
+    String universeName = "test-locked-universe";
+    YBUniverse ybUniverseOriginal = createYbUniverse(universeName);
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverseOriginal, defaultCustomer.getUuid());
+    Universe universe = Universe.create(taskParams, defaultCustomer.getId());
+    ModelFactory.addNodesToUniverse(universe.getUniverseUUID(), 1);
+
+    UniverseDefinitionTaskParams uTaskParams = universe.getUniverseDetails();
+    uTaskParams.updateInProgress = true;
+    universe.setUniverseDetails(uTaskParams);
+    universe.save();
+
+    ybUniverseReconciler.reconcile(ybUniverseOriginal, OperatorWorkQueue.ResourceAction.NO_OP);
+    Thread task =
+        new Thread(
+            () -> {
+              Pair<String, OperatorWorkQueue.ResourceAction> queueItem =
+                  ybUniverseReconciler.getOperatorWorkQueue().pop();
+              assertEquals(queueItem.getSecond(), OperatorWorkQueue.ResourceAction.NO_OP);
+              assertTrue(ybUniverseReconciler.getOperatorWorkQueue().isEmpty());
+            });
+    task.start();
+    task.join();
+  }
+
+  @Test
+  public void testCreateOnPreviousCreateTaskFailed() throws Exception {
+    String universeName = "test-previous-task-failed-universe";
+    YBUniverse ybUniverseOriginal = createYbUniverse(universeName);
+    UniverseDefinitionTaskParams taskParams =
+        ybUniverseReconciler.createTaskParams(ybUniverseOriginal, defaultCustomer.getUuid());
+    Universe oldUniverse = Universe.create(taskParams, defaultCustomer.getId());
+    ModelFactory.addNodesToUniverse(oldUniverse.getUniverseUUID(), 1);
+    TaskInfo taskInfo = new TaskInfo(TaskType.CreateKubernetesUniverse, null);
+    taskInfo.setDetails(Json.toJson(taskParams));
+    taskInfo.setTaskState(State.Failure);
+    taskInfo.setOwner("localhost");
+    taskInfo.save();
+    taskInfo.refresh();
+    CustomerTask.create(
+        defaultCustomer,
+        oldUniverse.getUniverseUUID(),
+        taskInfo.getTaskUUID(),
+        CustomerTask.TargetType.Universe,
+        CustomerTask.TaskType.Create,
+        oldUniverse.getName());
+
+    // Need a response object otherwise reconciler fails with null
+    UniverseResp uResp = new UniverseResp(defaultUniverse, UUID.randomUUID());
+    Mockito.when(
+            universeCRUDHandler.createUniverse(
+                Mockito.eq(defaultCustomer), any(UniverseDefinitionTaskParams.class)))
+        .thenReturn(uResp);
+
+    // Change some param and verify latest spec is used after deleting currently created Universe
+    // object
+    ybUniverseOriginal.getSpec().setYbSoftwareVersion("2.21.0.0-b2");
+    ybUniverseReconciler.reconcile(ybUniverseOriginal, OperatorWorkQueue.ResourceAction.CREATE);
+
+    ArgumentCaptor<UniverseDefinitionTaskParams> uDTCaptor =
+        ArgumentCaptor.forClass(UniverseDefinitionTaskParams.class);
+    Mockito.verify(universeCRUDHandler, Mockito.times(1))
+        .createUniverse(Mockito.eq(defaultCustomer), uDTCaptor.capture());
+
+    String oldSoftwareVersion =
+        oldUniverse.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    String newSoftwareVersion =
+        uDTCaptor.getValue().getPrimaryCluster().userIntent.ybSoftwareVersion;
+    // Verify new spec used
+    assertFalse(newSoftwareVersion.equals(oldSoftwareVersion));
+    // Verify old universe objct removed
+    assertFalse(Universe.maybeGet(oldUniverse.getUniverseUUID()).isPresent());
+  }
+
   private YBUniverse createYbUniverse() {
+    return createYbUniverse(null);
+  }
+
+  private YBUniverse createYbUniverse(@Nullable String univName) {
     YBUniverse universe = new YBUniverse();
     ObjectMeta metadata = new ObjectMeta();
-    metadata.setName(universeName);
+    metadata.setName(univName == null ? universeName : univName);
     metadata.setNamespace(namespace);
     metadata.setGeneration((long) 123);
     YBUniverseStatus status = new YBUniverseStatus();
@@ -211,6 +340,8 @@ public class YBUniverseReconcilerTest extends FakeDBApplication {
     List<String> zones = new ArrayList<>();
     zones.add("one");
     zones.add("two");
+    spec.setYbSoftwareVersion("2.21.0.0-b1");
+    spec.setNumNodes(1L);
     spec.setZoneFilter(zones);
     spec.setReplicationFactor((long) 1);
     spec.setAssignPublicIP(true);
