@@ -65,12 +65,15 @@ public class AlertNotificationTemplateSubstitutor {
   }
 
   private String getPlaceholderValue(String key, boolean jsonString) {
+    if (key.equals(AlertTemplateSystemVariable.YUGABYTE_ALERT_UUID.getPlaceholderValue())) {
+      return processValue(alert.getUuid().toString(), jsonString);
+    }
     if (key.equals(AlertTemplateSystemVariable.YUGABYTE_ALERT_CHANNEL_NAME.getPlaceholderValue())) {
       return processValue(alertChannel.getName(), jsonString);
     }
     if (key.equals(AlertTemplateSystemVariable.YUGABYTE_ALERT_LABELS_JSON.getPlaceholderValue())) {
       Map<String, String> labels =
-          alert.getLabels().stream()
+          alert.getEffectiveLabels().stream()
               .collect(Collectors.toMap(AlertLabel::getName, AlertLabel::getValue));
       return Json.stringify(Json.toJson(labels));
     }

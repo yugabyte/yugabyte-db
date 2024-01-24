@@ -13,6 +13,7 @@ package com.yugabyte.yw.models.helpers;
 public enum KnownAlertLabels {
   CONFIGURATION_UUID,
   CONFIGURATION_TYPE,
+  ALERT_UUID,
   ALERT_TYPE,
   DEFINITION_UUID,
   DEFINITION_NAME,
