@@ -89,7 +89,7 @@ export interface AZUProviderCreateFormFieldValues {
   sshPrivateKeyContent: File;
   sshUser: string;
   imageBundles: ImageBundle[];
-  providerCredentialType: ProviderCredentialType
+  providerCredentialType: ProviderCredentialType;
 }
 
 export const DEFAULT_FORM_VALUES: Partial<AZUProviderCreateFormFieldValues> = {
@@ -100,7 +100,7 @@ export const DEFAULT_FORM_VALUES: Partial<AZUProviderCreateFormFieldValues> = {
   regions: [] as CloudVendorRegionField[],
   sshKeypairManagement: KeyPairManagement.YBA_MANAGED,
   sshPort: DEFAULT_SSH_PORT,
-  providerCredentialType: ProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL,
+  providerCredentialType: ProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL
 } as const;
 
 const VALIDATION_SCHEMA = object().shape({
@@ -250,7 +250,7 @@ export const AZUProviderCreateForm = ({
           </FormField>
           <Box width="100%" display="flex" flexDirection="column" gridGap="32px">
             <FieldGroup heading="Cloud Info">
-            <FormField>
+              <FormField>
                 <FieldLabel>Client ID</FieldLabel>
                 <YBInputField
                   control={formMethods.control}
@@ -258,8 +258,8 @@ export const AZUProviderCreateForm = ({
                   disabled={isFormDisabled}
                   fullWidth
                 />
-            </FormField>
-            <FormField>
+              </FormField>
+              <FormField>
                 <FieldLabel
                   infoTitle="Credential Type"
                   infoContent="For public cloud providers, YBA creates compute instances and therefore requires sufficient permissions to do so."
@@ -345,10 +345,7 @@ export const AZUProviderCreateForm = ({
               heading="Regions"
               headerAccessories={
                 regions.length > 0 ? (
-                  <RbacValidator
-                    accessRequiredOn={ApiPermissionMap.CREATE_REGION_BY_PROVIDER}
-                    isControl
-                  >
+                  <RbacValidator accessRequiredOn={ApiPermissionMap.CREATE_PROVIDER} isControl>
                     <YBButton
                       btnIcon="fa fa-plus"
                       btnText="Add Region"
@@ -378,7 +375,11 @@ export const AZUProviderCreateForm = ({
                 </FormHelperText>
               )}
             </FieldGroup>
-            <LinuxVersionCatalog control={formMethods.control as any} providerType={CloudType.azu} viewMode='CREATE'/>
+            <LinuxVersionCatalog
+              control={formMethods.control as any}
+              providerType={CloudType.azu}
+              viewMode="CREATE"
+            />
             <FieldGroup heading="SSH Key Pairs">
               <FormField>
                 <FieldLabel>SSH User</FieldLabel>
@@ -502,7 +503,9 @@ export const AZUProviderCreateForm = ({
   );
 };
 
-const constructProviderPayload = async (formValues: AZUProviderCreateFormFieldValues): Promise<YBProviderMutation> =>{
+const constructProviderPayload = async (
+  formValues: AZUProviderCreateFormFieldValues
+): Promise<YBProviderMutation> => {
   let sshPrivateKeyContent = '';
   try {
     sshPrivateKeyContent = formValues.sshPrivateKeyContent
@@ -528,7 +531,8 @@ const constructProviderPayload = async (formValues: AZUProviderCreateFormFieldVa
       cloudInfo: {
         [ProviderCode.AZU]: {
           azuClientId: formValues.azuClientId,
-          ...(formValues.providerCredentialType === ProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL && {
+          ...(formValues.providerCredentialType ===
+            ProviderCredentialType.SPECIFIED_SERVICE_PRINCIPAL && {
             azuClientSecret: formValues.azuClientSecret
           }),
           ...(formValues.azuHostedZoneId && { azuHostedZoneId: formValues.azuHostedZoneId }),
