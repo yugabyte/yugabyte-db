@@ -19,10 +19,14 @@ import com.yugabyte.yw.common.cdc.CdcStreamManager;
 import com.yugabyte.yw.common.config.RuntimeConfigFactory;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
+import com.yugabyte.yw.forms.CDCReplicationSlotResponse;
 import com.yugabyte.yw.forms.CdcStreamFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
+import com.yugabyte.yw.models.helpers.CommonUtils;
 import com.yugabyte.yw.rbac.annotations.AuthzPath;
 import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
 import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
@@ -42,7 +46,6 @@ import play.mvc.Result;
 // Keeping hidden until we have separate internal API publication
 @Api(
     value = "Universe CDC Management",
-    hidden = true,
     authorizations = @Authorization(AbstractPlatformController.API_KEY_AUTH))
 public class UniverseCdcStreamController extends AuthenticatedController {
   private static final Logger LOG = LoggerFactory.getLogger(UniverseCdcStreamController.class);
@@ -50,12 +53,8 @@ public class UniverseCdcStreamController extends AuthenticatedController {
   @Inject private RuntimeConfigFactory runtimeConfigFactory;
   @Inject private CdcStreamManager cdcStreamManager;
 
-  @AuthzPath({
-    @RequiredPermissionOnResource(
-        requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
-        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
-  })
+  private final String CDC_REPLICATION_SLOT_COMPATIBLE_YB_DB_VERSION = "2.21.0.0-b400";
+
   public Universe checkCloudAndValidateUniverse(UUID customerUUID, UUID universeUUID) {
     LOG.info("Checking config for customer='{}', universe='{}'", customerUUID, universeUUID);
     if (!runtimeConfigFactory.globalRuntimeConf().getBoolean("yb.cloud.enabled")) {
@@ -67,13 +66,14 @@ public class UniverseCdcStreamController extends AuthenticatedController {
     return Universe.getOrBadRequest(universeUUID, customer);
   }
 
-  @ApiOperation(value = "List CDC Streams for a cluster", notes = "List CDC Streams for a cluster")
+  @ApiOperation(value = "List CDC Streams for a cluster", notes = "YbaApi Internal.")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.21.0.0")
   public Result listCdcStreams(UUID customerUUID, UUID universeUUID) throws Exception {
     Universe universe = checkCloudAndValidateUniverse(customerUUID, universeUUID);
 
@@ -81,15 +81,14 @@ public class UniverseCdcStreamController extends AuthenticatedController {
     return PlatformResults.withData(response);
   }
 
-  @ApiOperation(
-      value = "Create CDC Stream for a cluster",
-      notes = "Create CDC Stream for a cluster")
+  @ApiOperation(value = "Create CDC Stream for a cluster", notes = "YbaApi Internal.")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.21.0.0")
   public Result createCdcStream(UUID customerUUID, UUID universeUUID, Http.Request request)
       throws Exception {
     Universe universe = checkCloudAndValidateUniverse(customerUUID, universeUUID);
@@ -105,20 +104,51 @@ public class UniverseCdcStreamController extends AuthenticatedController {
     return PlatformResults.withData(response);
   }
 
-  @ApiOperation(
-      value = "Delete a CDC stream for a cluster",
-      notes = "Delete a CDC Stream for a cluster")
+  @ApiOperation(value = "Delete a CDC stream for a cluster", notes = "YbaApi Internal.")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @YbaApi(visibility = YbaApiVisibility.INTERNAL, sinceYBAVersion = "2.21.0.0")
   public Result deleteCdcStream(UUID customerUUID, UUID universeUUID, String streamId)
       throws Exception {
     Universe universe = checkCloudAndValidateUniverse(customerUUID, universeUUID);
 
     CdcStreamDeleteResponse response = cdcStreamManager.deleteCdcStream(universe, streamId);
     return PlatformResults.withData(response);
+  }
+
+  @ApiOperation(
+      value = "List CDC Replication slot for a cluster",
+      notes = "WARNING: This is a preview API that could change.")
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
+  })
+  @YbaApi(visibility = YbaApiVisibility.PREVIEW, sinceYBAVersion = "2.21.0.0")
+  public Result listReplicationSlot(UUID customerUUID, UUID universeUUID) throws Exception {
+    Customer.getOrBadRequest(customerUUID);
+    Universe universe = Universe.getOrBadRequest(universeUUID);
+
+    String ybSoftwareVersion =
+        universe.getUniverseDetails().getPrimaryCluster().userIntent.ybSoftwareVersion;
+
+    if (!CommonUtils.isReleaseEqualOrAfter(
+        CDC_REPLICATION_SLOT_COMPATIBLE_YB_DB_VERSION, ybSoftwareVersion)) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          "CDC Replication Slot is not available on universe having version lower than "
+              + CDC_REPLICATION_SLOT_COMPATIBLE_YB_DB_VERSION);
+    }
+    try {
+      CDCReplicationSlotResponse response = cdcStreamManager.listReplicationSlot(universe);
+      return PlatformResults.withData(response);
+    } catch (Exception e) {
+      throw new PlatformServiceException(INTERNAL_SERVER_ERROR, e.getMessage());
+    }
   }
 }
