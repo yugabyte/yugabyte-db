@@ -135,7 +135,7 @@ export default class UniverseStatus extends Component {
                     btnText={'Retry Task'}
                     btnClass="btn btn-default view-task-details-btn"
                     onClick={() =>
-                      this.retryTaskClicked(failedTask.id, currentUniverse.universeUUID)
+                      this.retryTaskClicked(failedTask?.id, currentUniverse.universeUUID)
                     }
                   />
                 </RbacValidator>
@@ -238,7 +238,9 @@ export default class UniverseStatus extends Component {
                 <YBButton
                   btnText={'Retry Task'}
                   btnClass="btn btn-default view-task-details-btn"
-                  onClick={() => this.retryTaskClicked(failedTask.id, currentUniverse.universeUUID)}
+                  onClick={() =>
+                    this.retryTaskClicked(failedTask?.id, currentUniverse.universeUUID)
+                  }
                 />
               </RbacValidator>
             )}

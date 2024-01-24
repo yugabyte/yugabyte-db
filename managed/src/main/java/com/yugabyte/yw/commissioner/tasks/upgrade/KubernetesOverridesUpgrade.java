@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UpdateAndPersistKubernetesOverrides;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.models.Universe;
@@ -19,8 +20,10 @@ import javax.inject.Inject;
 public class KubernetesOverridesUpgrade extends KubernetesUpgradeTaskBase {
 
   @Inject
-  protected KubernetesOverridesUpgrade(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
+  protected KubernetesOverridesUpgrade(
+      BaseTaskDependencies baseTaskDependencies,
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
+    super(baseTaskDependencies, operatorStatusUpdaterFactory);
   }
 
   @Override
@@ -31,6 +34,13 @@ public class KubernetesOverridesUpgrade extends KubernetesUpgradeTaskBase {
   @Override
   public SubTaskGroupType getTaskSubGroupType() {
     return SubTaskGroupType.UpdatingKubernetesOverrides;
+  }
+
+  @Override
+  protected void createPrecheckTasks(Universe universe) {
+    if (isFirstTry()) {
+      verifyClustersConsistency();
+    }
   }
 
   @Override

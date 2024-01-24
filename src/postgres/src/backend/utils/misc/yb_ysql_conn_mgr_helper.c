@@ -35,6 +35,7 @@
 #include "catalog/pg_type.h"
 #include "catalog/pg_yb_role_profile.h"
 #include "commands/dbcommands.h"
+#include "common/ip.h"
 #include "libpq/libpq.h"
 #include "libpq/libpq-be.h"
 #include "libpq/pqformat.h"
@@ -722,4 +723,28 @@ YbSendFatalForLogicalConnectionPacket()
 
 	pq_flush();
 	CHECK_FOR_INTERRUPTS();
+}
+
+bool
+yb_is_client_ysqlconnmgr_check_hook(bool *newval, void **extra,
+									GucSource source)
+{
+	/* Allow setting yb_is_client_ysqlconnmgr as false */
+	if (!(*newval))
+		return true;
+
+	/* Client needs to be connected on unix domain socket */
+	if (!IS_AF_UNIX(MyProcPort->raddr.addr.ss_family))
+		ereport(FATAL, (errcode(ERRCODE_PROTOCOL_VIOLATION),
+						errmsg("yb_is_client_ysqlconnmgr can only be set "
+							   "if the connection is made over unix domain socket")));
+
+	/* Authentication method needs to be yb-tserver-key */
+	if (!MyProcPort->yb_is_tserver_auth_method)
+		ereport(FATAL,
+				(errcode(ERRCODE_PROTOCOL_VIOLATION),
+				 errmsg("yb_is_client_ysqlconnmgr can only be set "
+						"if the authentication method was yb-tserver-key")));
+
+	return true;
 }

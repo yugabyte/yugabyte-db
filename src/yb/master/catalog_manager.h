@@ -163,14 +163,27 @@ constexpr int32_t kInvalidClusterConfigVersion = 0;
 
 YB_DEFINE_ENUM(
     CreateNewCDCStreamMode,
-    // Only populate the namespace_id. It is only used by CDCSDK while creating a stream from
-    // cdc_service. The caller is expected to populate table_ids in subsequent requests.
-    // This should not be needed after we tackle #18890.
-    (kNamespaceId)
     // Only populate the table_id. It is only used by xCluster.
     (kXClusterTableIds)
     // Populate the namespace_id and a list of table ids. It is only used by CDCSDK.
     (kCdcsdkNamespaceAndTableIds)
+);
+
+YB_DEFINE_ENUM(
+    CDCSDKStreamCreationState,
+    // Stream has been initialized but no in-memory data structures or sys-catalog have been
+    // modified.
+    (kInitialized)
+    // Stream has been added to the in-memory maps.
+    (kAddedToMaps)
+    // Stream has been added to the in-memory maps and sys-catalog. Also an in-memory mutation has
+    // been created but not yet committed.
+    (kPreCommitMutation)
+    // Stream has been added to the in-memory maps and sys-catalog. The in-memory mutation has
+    // been committed.
+    (kPostCommitMutation)
+    // Stream has been created successfully and is ready to be streamed.
+    (kReady)
 );
 
 using DdlTxnIdToTablesMap =
@@ -1147,16 +1160,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status SubmitToSysCatalog(std::unique_ptr<tablet::Operation> operation);
 
-  Status PromoteAutoFlags(const PromoteAutoFlagsRequestPB* req, PromoteAutoFlagsResponsePB* resp);
-  Status RollbackAutoFlags(
-      const RollbackAutoFlagsRequestPB* req, RollbackAutoFlagsResponsePB* resp);
-  Status PromoteSingleAutoFlag(
-      const PromoteSingleAutoFlagRequestPB* req, PromoteSingleAutoFlagResponsePB* resp);
-  Status DemoteSingleAutoFlag(
-      const DemoteSingleAutoFlagRequestPB* req, DemoteSingleAutoFlagResponsePB* resp);
-  Status ValidateAutoFlagsConfig(
-      const ValidateAutoFlagsConfigRequestPB* req, ValidateAutoFlagsConfigResponsePB* resp);
-
   Status ReportYsqlDdlTxnStatus(
       const ReportYsqlDdlTxnStatusRequestPB* req,
       ReportYsqlDdlTxnStatusResponsePB* resp,
@@ -1253,12 +1256,17 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const LeaderEpoch& epoch);
 
   Status PopulateCDCStateTableWithCDCSDKSnapshotSafeOpIdDetails(
-    const scoped_refptr<TableInfo>& table,
-    const yb::TabletId& tablet_id,
-    const xrepl::StreamId& cdc_sdk_stream_id,
-    const yb::OpIdPB& safe_opid,
-    const yb::HybridTime& proposed_snapshot_time,
-    const bool require_history_cutoff) override;
+      const scoped_refptr<TableInfo>& table,
+      const yb::TabletId& tablet_id,
+      const xrepl::StreamId& cdc_sdk_stream_id,
+      const yb::OpIdPB& safe_opid,
+      const yb::HybridTime& proposed_snapshot_time,
+      bool require_history_cutoff) override;
+
+  Status WaitForSnapshotSafeOpIdToBePopulated(
+      const xrepl::StreamId& stream_id,
+      const std::vector<TableId>& table_ids,
+      CoarseTimePoint deadline) override;
 
   // Get the Table schema from system catalog table.
   Status GetTableSchemaFromSysCatalog(
@@ -1369,6 +1377,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       GetUniverseReplicationResponsePB* resp,
       rpc::RpcContext* rpc);
 
+  scoped_refptr<UniverseReplicationInfo> GetUniverseReplication(
+      const xcluster::ReplicationGroupId& replication_group_id);
+
   // Checks if the universe is in an active state or has failed during setup.
   Status IsSetupUniverseReplicationDone(
       const IsSetupUniverseReplicationDoneRequestPB* req,
@@ -1433,6 +1444,9 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       const CreateCDCStreamRequestPB& req, const std::string& source_type_option_value,
       const std::string& record_type_option_value, const std::string& id_type_option_value);
 
+  Status RollbackFailedCreateCDCSDKStream(
+      const xrepl::StreamId& stream_id, CDCSDKStreamCreationState& cdcsdk_stream_creation_state);
+
   // Process the newly created tables that are relevant to existing CDCSDK streams.
   Status ProcessNewTablesForCDCSDKStreams(
       const TableStreamIdsMap& table_to_unprocessed_streams_map, const LeaderEpoch& epoch);
@@ -1458,6 +1472,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   using StreamTablesMap = std::unordered_map<xrepl::StreamId, std::set<TableId>>;
 
   Status CleanUpCDCMetadataFromSystemCatalog(const StreamTablesMap& drop_stream_tablelist);
+
+  Status CleanUpCDCSDKStreamFromMaps(CDCStreamInfoPtr stream) REQUIRES(mutex_);
 
   Status UpdateCDCStreams(
       const std::vector<xrepl::StreamId>& stream_ids,
@@ -1515,6 +1531,15 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   void NotifyAutoFlagsConfigChanged();
 
+  // Maps replication group id to the corresponding xrepl stream for a table.
+  using XClusterConsumerTableStreamIds =
+      std::unordered_map<xcluster::ReplicationGroupId, xrepl::StreamId>;
+  // Gets the set of CDC stream info for an xCluster consumer table.
+  XClusterConsumerTableStreamIds GetXClusterConsumerStreamIdsForTable(const TableId& table_id) const
+      EXCLUDES(mutex_);
+
+  std::shared_ptr<ClusterConfigInfo> ClusterConfig() const;
+
  protected:
   // TODO Get rid of these friend classes and introduce formal interface.
   friend class TableLoader;
@@ -1532,7 +1557,7 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
   friend class BackfillTablet;
   friend class YsqlBackendsManager;
   friend class BackendsCatalogVersionJob;
-  friend class AddTableToXClusterTask;
+  friend class AddTableToXClusterTargetTask;
 
   FRIEND_TEST(yb::MasterPartitionedTest, VerifyOldLeaderStepsDown);
 
@@ -2067,8 +2092,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
                            DeleteNamespaceResponsePB* resp,
                            rpc::RpcContext* rpc,
                            const LeaderEpoch& epoch);
-
-  std::shared_ptr<ClusterConfigInfo> ClusterConfig() const;
 
   Result<TableInfoPtr> GetGlobalTransactionStatusTable();
 
@@ -2716,6 +2739,8 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status ReplicationSlotValidateName(const std::string& replication_slot_name);
 
+  Status TEST_CDCSDKFailCreateStreamRequestIfNeeded(const std::string& sync_point);
+
   // Create the cdc_state table if needed (i.e. if it does not exist already).
   //
   // This is called at the end of CreateCDCStream.
@@ -2887,14 +2912,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   std::unordered_set<xrepl::StreamId> GetCDCSDKStreamsForTable(const TableId& table_id) const;
 
-  // Maps replication group id to the corresponding xrepl stream for a table.
-  using XClusterConsumerTableStreamIds =
-      std::unordered_map<xcluster::ReplicationGroupId, xrepl::StreamId>;
-
-  // Gets the set of CDC stream info for an xCluster consumer table.
-  XClusterConsumerTableStreamIds GetXClusterConsumerStreamIdsForTable(const TableId& table_id) const
-      EXCLUDES(mutex_);
-
   Status CreateTransactionAwareSnapshot(
       const CreateSnapshotRequestPB& req, CreateSnapshotResponsePB* resp, CoarseTimePoint deadline);
 
@@ -2999,16 +3016,18 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
 
   Status DeleteCDCStreamsForTables(const std::unordered_set<TableId>& table_ids) EXCLUDES(mutex_);
 
-  bool ShouldAddTableToXClusterReplication(const TableInfo& index_info, const SysTablesEntryPB& pb)
-      EXCLUDES(mutex_);
+  // For a table that is currently in PREPARING state, if all its tablets have transitioned to
+  // RUNNING state, then collect and start the required post tablet creation async tasks. Table is
+  // advanced to the RUNNING state after all of these tasks complete successfully.
+  // new_running_tablets is the new set of tablets that are being transitioned to RUNNING state
+  // (dirty copy is modified) and yet to be persisted. These should be persisted before the table
+  // lock is released. Note:
+  //    WriteLock on the table is required.
+  void SchedulePostTabletCreationTasks(
+      const TableInfoPtr& table_info, const LeaderEpoch& epoch,
+      const std::set<TabletId>& new_running_tablets = {});
 
-  // Schedule AddTableToXClusterTask if needed. Returns true if task is needed and false otherwise.
-  // Write lock is required on the table.
-  bool ScheduleAddTableToXClusterTaskIfNeeded(
-      TableInfoPtr table_info, const SysTablesEntryPB& pb, const LeaderEpoch& epoch)
-      EXCLUDES(mutex_);
-
-  void ScheduleAddTableToXClusterTaskForAllTables(const LeaderEpoch& epoch) EXCLUDES(mutex_);
+  void SchedulePostTabletCreationTasksForPendingTables(const LeaderEpoch& epoch) EXCLUDES(mutex_);
 
   Result<xcluster::ReplicationGroupId> GetIndexesTableReplicationGroup(const TableInfo& index_info);
 
@@ -3023,18 +3042,6 @@ class CatalogManager : public tserver::TabletPeerLookupIf,
       ClusterConfigInfo* cluster_config, ClusterConfigInfo::WriteLock* l);
 
   Status RemoveTableFromXcluster(const std::vector<TabletId>& table_ids);
-
-  // For a table that is currently in PREPARING state, if all its tablets have transitioned to
-  // RUNNING state, either advance the table from PREPARING to RUNNING state, or start any async
-  // tasks if needed (ex: AddTableToXClusterTask).
-  // new_running_tablets is the new set of tablets that are being transitioned to RUNNING state
-  // (dirty copy is modified) and yet to be persisted. Returns true if the table state has changed.
-  // Note:
-  //    WriteLock on the table is required.
-  //    Caller is responsible for persisting the table to sys_catalog if its state has changed.
-  Result<bool> HandleNewRunningTabletsForTable(
-      TableInfoPtr table_info, const std::set<TabletId>& new_running_tablets,
-      const LeaderEpoch& epoch);
 
   // Background task that refreshes the in-memory map for YSQL pg_yb_catalog_version table.
   void RefreshPgCatalogVersionInfoPeriodically()

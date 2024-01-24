@@ -20,8 +20,11 @@ import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import lombok.extern.slf4j.Slf4j;
+import org.apache.commons.lang3.StringUtils;
 import org.junit.Test;
+import play.libs.Json;
 
 @Slf4j
 public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
@@ -37,19 +40,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     userIntent.specificGFlags = SpecificGFlags.construct(GFLAGS, GFLAGS);
     Universe universe = createUniverse(userIntent);
     initYSQL(universe);
-    UniverseDefinitionTaskParams.Cluster cluster =
-        universe.getUniverseDetails().getPrimaryCluster();
-    cluster.userIntent.numNodes += 2;
-    PlacementInfoUtil.updateUniverseDefinition(
-        universe.getUniverseDetails(),
-        customer.getId(),
-        cluster.uuid,
-        UniverseConfigureTaskParams.ClusterOperationType.EDIT);
-    assertEquals(
-        2,
-        universe.getUniverseDetails().nodeDetailsSet.stream()
-            .filter(n -> n.state == NodeDetails.NodeState.ToBeAdded)
-            .count());
+    changeNumberOfNodesInPrimary(universe, 2);
     UUID taskID =
         universeCRUDHandler.update(
             customer,
@@ -75,16 +66,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
         customer.getId(),
         cluster.uuid,
         UniverseConfigureTaskParams.ClusterOperationType.EDIT);
-    assertEquals(
-        3,
-        universe.getUniverseDetails().nodeDetailsSet.stream()
-            .filter(n -> n.state == NodeDetails.NodeState.ToBeAdded)
-            .count());
-    assertEquals(
-        3,
-        universe.getUniverseDetails().nodeDetailsSet.stream()
-            .filter(n -> n.state == NodeDetails.NodeState.ToBeRemoved)
-            .count());
+    verifyNodeModifications(universe, 3, 3);
     UUID taskID =
         universeCRUDHandler.update(
             customer,
@@ -110,16 +92,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
         customer.getId(),
         cluster.uuid,
         UniverseConfigureTaskParams.ClusterOperationType.EDIT);
-    assertEquals(
-        1,
-        universe.getUniverseDetails().nodeDetailsSet.stream()
-            .filter(n -> n.state == NodeDetails.NodeState.ToBeAdded)
-            .count());
-    assertEquals(
-        1,
-        universe.getUniverseDetails().nodeDetailsSet.stream()
-            .filter(n -> n.state == NodeDetails.NodeState.ToBeRemoved)
-            .count());
+    verifyNodeModifications(universe, 1, 1);
     UUID taskID =
         universeCRUDHandler.update(
             customer,
@@ -129,6 +102,62 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     verifyUniverseTaskSuccess(taskInfo);
     verifyUniverseState(Universe.getOrBadRequest(universe.getUniverseUUID()));
     verifyYSQL(universe);
+  }
+
+  @Test
+  public void testTwoAZMoves() throws InterruptedException {
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.specificGFlags = getGFlags("follower_unavailable_considered_failed_sec", "5");
+    Universe universe = createUniverse(userIntent);
+    initYSQL(universe);
+    UniverseDefinitionTaskParams.Cluster cluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    AtomicReference<UUID> removingAz = new AtomicReference<>();
+    cluster
+        .placementInfo
+        .azStream()
+        .limit(1)
+        .forEach(
+            az -> {
+              removingAz.set(az.uuid);
+              az.uuid = az4.getUuid();
+            });
+    PlacementInfoUtil.updateUniverseDefinition(
+        universe.getUniverseDetails(),
+        customer.getId(),
+        cluster.uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.EDIT);
+    verifyNodeModifications(universe, 1, 1);
+    UUID taskID =
+        universeCRUDHandler.update(
+            customer,
+            Universe.getOrBadRequest(universe.getUniverseUUID()),
+            universe.getUniverseDetails());
+    TaskInfo taskInfo = CommissionerBaseTest.waitForTask(taskID);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
+    verifyUniverseState(Universe.getOrBadRequest(universe.getUniverseUUID()));
+    verifyYSQL(universe);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    cluster = universe.getUniverseDetails().getPrimaryCluster();
+    cluster
+        .placementInfo
+        .azStream()
+        .filter(az -> az.uuid.equals(az4.getUuid()))
+        .limit(1)
+        .forEach(az -> az.uuid = removingAz.get()); // Going back to prev az.
+    PlacementInfoUtil.updateUniverseDefinition(
+        universe.getUniverseDetails(),
+        customer.getId(),
+        cluster.uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.EDIT);
+    verifyNodeModifications(universe, 1, 1);
+    taskID =
+        universeCRUDHandler.update(
+            customer,
+            Universe.getOrBadRequest(universe.getUniverseUUID()),
+            universe.getUniverseDetails());
+    taskInfo = CommissionerBaseTest.waitForTask(taskID);
+    assertEquals(TaskInfo.State.Success, taskInfo.getTaskState());
   }
 
   @Test
@@ -187,19 +216,7 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     universe = Universe.getOrBadRequest(universe.getUniverseUUID());
     verifyYSQL(universe, true);
 
-    UniverseDefinitionTaskParams.Cluster cluster =
-        universe.getUniverseDetails().getPrimaryCluster();
-    cluster.userIntent.numNodes += 2;
-    PlacementInfoUtil.updateUniverseDefinition(
-        universe.getUniverseDetails(),
-        customer.getId(),
-        cluster.uuid,
-        UniverseConfigureTaskParams.ClusterOperationType.EDIT);
-    assertEquals(
-        2,
-        universe.getUniverseDetails().nodeDetailsSet.stream()
-            .filter(n -> n.state == NodeDetails.NodeState.ToBeAdded)
-            .count());
+    changeNumberOfNodesInPrimary(universe, 2);
     UUID taskID =
         universeCRUDHandler.update(
             customer,
@@ -327,5 +344,143 @@ public class EditUniverseLocalTest extends LocalProviderUniverseTestBase {
     verifyUniverseState(Universe.getOrBadRequest(universe.getUniverseUUID()));
     verifyYSQL(universe);
     verifyYSQL(universe, true);
+  }
+
+  @Test
+  public void testUnknownMasterBeforeEdit() throws InterruptedException {
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.numNodes = 5;
+    userIntent.replicationFactor = 5;
+    Universe universe = createUniverse(userIntent);
+    initYSQL(universe);
+    String masterLeaderIP = getMasterLeader(universe);
+
+    universe =
+        Universe.saveDetails(
+            universe.getUniverseUUID(),
+            u -> {
+              UniverseDefinitionTaskParams details = u.getUniverseDetails();
+              details.nodeDetailsSet.stream()
+                  .filter(n -> !n.cloudInfo.private_ip.equals(masterLeaderIP))
+                  .limit(2)
+                  .forEach(n -> n.isMaster = false);
+              details.getPrimaryCluster().userIntent.replicationFactor =
+                  3; // Pretending we have RF3
+              u.setUniverseDetails(details);
+            });
+    log.debug("Universe {}", Json.toJson(universe.getUniverseDetails()));
+    UniverseDefinitionTaskParams.Cluster cluster =
+        universe.getUniverseDetails().getPrimaryCluster();
+    cluster.userIntent.numNodes += 1;
+    PlacementInfoUtil.updateUniverseDefinition(
+        universe.getUniverseDetails(),
+        customer.getId(),
+        cluster.uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.EDIT);
+
+    UUID taskID =
+        universeCRUDHandler.update(
+            customer,
+            Universe.getOrBadRequest(universe.getUniverseUUID()),
+            universe.getUniverseDetails());
+    TaskInfo taskInfo = CommissionerBaseTest.waitForTask(taskID);
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    String error = getAllErrorsStr(taskInfo);
+    assertThat(error, containsString("Unexpected MASTER: "));
+  }
+
+  @Test
+  public void testUnknownTserverBeforeEdit() throws InterruptedException {
+    UniverseDefinitionTaskParams.UserIntent userIntent = getDefaultUserIntent();
+    userIntent.numNodes = 4;
+    Universe universe = createUniverse(userIntent);
+    initYSQL(universe);
+    NodeDetails removed = silentlyRemoveNode(universe, false, true);
+    universe = Universe.getOrBadRequest(universe.getUniverseUUID());
+    changeNumberOfNodesInPrimary(universe, 1);
+
+    UUID taskID =
+        universeCRUDHandler.update(
+            customer,
+            Universe.getOrBadRequest(universe.getUniverseUUID()),
+            universe.getUniverseDetails());
+    TaskInfo taskInfo = CommissionerBaseTest.waitForTask(taskID);
+    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    String error = getAllErrorsStr(taskInfo);
+    assertThat(error, containsString("Unexpected TSERVER: " + removed.cloudInfo.private_ip));
+  }
+
+  private NodeDetails silentlyRemoveNode(Universe universe, boolean isMaster, boolean isTserver) {
+    AtomicReference<NodeDetails> node = new AtomicReference<>();
+    Universe.saveDetails(
+        universe.getUniverseUUID(),
+        u -> {
+          UniverseDefinitionTaskParams details = u.getUniverseDetails();
+          details.getPrimaryCluster().userIntent.numNodes--;
+          NodeDetails nodeToRemove =
+              details.nodeDetailsSet.stream()
+                  .filter(n -> n.isTserver == isTserver && n.isMaster == isMaster)
+                  .findFirst()
+                  .get();
+          node.set(nodeToRemove);
+          details.nodeDetailsSet.remove(nodeToRemove);
+          details
+              .getPrimaryCluster()
+              .placementInfo
+              .azStream()
+              .filter(az -> az.uuid.equals(nodeToRemove.azUuid))
+              .forEach(az -> az.numNodesInAZ--);
+          u.setUniverseDetails(details);
+        });
+    return node.get();
+  }
+
+  private void changeNumberOfNodesInPrimary(Universe universe, int increment) {
+    changeNumberOfNodesInCluster(
+        universe, universe.getUniverseDetails().getPrimaryCluster().uuid, increment);
+  }
+
+  private void changeNumberOfNodesInCluster(Universe universe, UUID clusterUUID, int increment) {
+    UniverseDefinitionTaskParams.Cluster cluster =
+        universe.getUniverseDetails().getClusterByUuid(clusterUUID);
+    cluster.userIntent.numNodes += increment;
+    PlacementInfoUtil.updateUniverseDefinition(
+        universe.getUniverseDetails(),
+        customer.getId(),
+        cluster.uuid,
+        UniverseConfigureTaskParams.ClusterOperationType.EDIT);
+    verifyNodeModifications(
+        universe, increment > 0 ? increment : 0, increment < 0 ? -increment : 0);
+  }
+
+  private SpecificGFlags getGFlags(String... additional) {
+    Map<String, String> gflags = new HashMap<>(GFLAGS);
+    for (int i = 0; i < additional.length / 2; i++) {
+      gflags.put(additional[i], additional[i + 1]);
+    }
+    return SpecificGFlags.construct(gflags, gflags);
+  }
+
+  private String getAllErrorsStr(TaskInfo taskInfo) {
+    StringBuilder sb = new StringBuilder(taskInfo.getErrorMessage());
+    for (TaskInfo subTask : taskInfo.getSubTasks()) {
+      if (!StringUtils.isEmpty(subTask.getErrorMessage())) {
+        sb.append("\n").append(subTask.getErrorMessage());
+      }
+    }
+    return sb.toString();
+  }
+
+  private void verifyNodeModifications(Universe universe, int added, int removed) {
+    assertEquals(
+        added,
+        universe.getUniverseDetails().nodeDetailsSet.stream()
+            .filter(n -> n.state == NodeDetails.NodeState.ToBeAdded)
+            .count());
+    assertEquals(
+        removed,
+        universe.getUniverseDetails().nodeDetailsSet.stream()
+            .filter(n -> n.state == NodeDetails.NodeState.ToBeRemoved)
+            .count());
   }
 }

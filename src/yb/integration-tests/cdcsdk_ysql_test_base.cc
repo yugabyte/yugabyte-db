@@ -1015,11 +1015,11 @@ namespace cdc {
 
   Result<GetCheckpointResponsePB> CDCSDKYsqlTest::GetCDCSnapshotCheckpoint(
       const xrepl::StreamId& stream_id, const TabletId& tablet_id, const TableId& table_id) {
-    RpcController get_checkpoint_rpc;
+
     GetCheckpointRequestPB get_checkpoint_req;
     GetCheckpointResponsePB get_checkpoint_resp;
     auto deadline = CoarseMonoClock::now() + test_client()->default_rpc_timeout();
-    get_checkpoint_rpc.set_deadline(deadline);
+
     get_checkpoint_req.set_stream_id(stream_id.ToString());
 
     if (!table_id.empty()) {
@@ -1030,6 +1030,9 @@ namespace cdc {
 
     RETURN_NOT_OK(WaitFor(
           [&]() -> Result<bool> {
+            RpcController get_checkpoint_rpc;
+            get_checkpoint_rpc.set_deadline(deadline);
+
             RETURN_NOT_OK(cdc_proxy_->GetCheckpoint(
                 get_checkpoint_req, &get_checkpoint_resp, &get_checkpoint_rpc));
 
@@ -1053,11 +1056,11 @@ namespace cdc {
 
   Result<CDCSDKCheckpointPB> CDCSDKYsqlTest::GetCDCSDKSnapshotCheckpoint(
       const xrepl::StreamId& stream_id, const TabletId& tablet_id, const TableId& table_id) {
-    RpcController get_checkpoint_rpc;
+
     GetCheckpointRequestPB get_checkpoint_req;
     GetCheckpointResponsePB get_checkpoint_resp;
     auto deadline = CoarseMonoClock::now() + test_client()->default_rpc_timeout();
-    get_checkpoint_rpc.set_deadline(deadline);
+
     get_checkpoint_req.set_stream_id(stream_id.ToString());
 
     if (!table_id.empty()) {
@@ -1067,6 +1070,9 @@ namespace cdc {
     get_checkpoint_req.set_tablet_id(tablet_id);
     RETURN_NOT_OK(WaitFor(
           [&]() -> Result<bool> {
+            RpcController get_checkpoint_rpc;
+            get_checkpoint_rpc.set_deadline(deadline);
+
             RETURN_NOT_OK(cdc_proxy_->GetCheckpoint(
                 get_checkpoint_req, &get_checkpoint_resp, &get_checkpoint_rpc));
 
@@ -2042,6 +2048,27 @@ namespace cdc {
     get_rpc.set_timeout(MonoDelta::FromMilliseconds(FLAGS_cdc_write_rpc_timeout_ms));
     RETURN_NOT_OK(cdc_proxy_->GetCDCDBStreamInfo(get_req, &get_resp, &get_rpc));
     return get_resp;
+  }
+
+  void CDCSDKYsqlTest::VerifyTablesInStreamMetadata(
+      const xrepl::StreamId& stream_id, const std::unordered_set<std::string>& expected_table_ids,
+      const std::string& timeout_msg) {
+    ASSERT_OK(WaitFor(
+        [&]() -> Result<bool> {
+          auto get_resp = GetDBStreamInfo(stream_id);
+          if (get_resp.ok() && !get_resp->has_error()) {
+            const uint64_t table_info_size = get_resp->table_info_size();
+            if (table_info_size == expected_table_ids.size()) {
+              std::unordered_set<std::string> table_ids;
+              for (auto entry : get_resp->table_info()) {
+                table_ids.insert(entry.table_id());
+              }
+              if (expected_table_ids == table_ids) return true;
+            }
+          }
+          return false;
+        },
+        MonoDelta::FromSeconds(60), timeout_msg));
   }
 
   Status CDCSDKYsqlTest::ChangeLeaderOfTablet(size_t new_leader_index, const TabletId tablet_id) {

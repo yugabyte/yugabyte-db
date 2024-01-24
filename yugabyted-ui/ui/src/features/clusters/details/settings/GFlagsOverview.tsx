@@ -46,7 +46,9 @@ export const GFlagsOverview: FC<GFlagsOverviewProps> = (/* { showDrift, toggleDr
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const { data: nodesResponse, isFetching: isFetchingNodes } = useGetClusterNodesQuery();
+  const { data: nodesResponse, isFetching: isFetchingNodes } = useGetClusterNodesQuery(
+    { get_all_masters: true }
+  );
   const nodesNamesList =
     nodesResponse?.data.map((node) => ({ label: node.name, value: node.host })) ?? [];
   const { data: nodeAddress } = useGetNodeAddressQuery();

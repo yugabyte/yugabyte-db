@@ -2072,6 +2072,52 @@ TEST_F_EX(CppCassandraDriverTest, TestBackfillBatchingDisabled, CppCassandraDriv
   testBackfillBatching(false);
 }
 
+TEST_F_EX(CppCassandraDriverTest, ConcurrentBackfillIndexFailures, CppCassandraDriverTest) {
+  ASSERT_OK(session_.ExecuteQuery("use test;"));
+  ASSERT_OK(
+      session_.ExecuteQuery("create table test.test_table (k int, v text, PRIMARY KEY (k)) "
+                            "with transactions = {'enabled' : true} AND tablets = 10;"));
+
+  LOG(INFO) << "Creating two indexes that will NOT backfill together";
+  ASSERT_OK(cluster_->SetFlagOnMasters("allow_batching_non_deferred_indexes", "false"));
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "true"));
+
+  ASSERT_OK(
+      cluster_->SetFlagOnTServers("TEST_index_backfill_fail_after_random_wait_upto_ms", "1000"));
+  ASSERT_OK(session_.ExecuteQuery("CREATE INDEX test_table_index_by_v0 ON test_table (v)"));
+  ASSERT_OK(session_.ExecuteQuery("CREATE INDEX test_table_index_by_v1 ON test_table (v)"));
+
+  constexpr auto kNamespace = "test";
+  const YBTableName table_name(YQL_DATABASE_CQL, kNamespace, "test_table");
+  const YBTableName index_table_name0(YQL_DATABASE_CQL, kNamespace, "test_table_index_by_v0");
+  const YBTableName index_table_name1(YQL_DATABASE_CQL, kNamespace, "test_table_index_by_v1");
+
+  for (const auto& idx : {index_table_name0, index_table_name1}) {
+    auto perm = ASSERT_RESULT(client_->WaitUntilIndexPermissionsAtLeast(
+        table_name, idx, IndexPermissions::INDEX_PERM_DO_BACKFILL));
+    ASSERT_EQ(perm, IndexPermissions::INDEX_PERM_DO_BACKFILL);
+  }
+
+  // Allow backfill to get past GetSafeTime
+  ASSERT_OK(WaitForBackfillSafeTimeOn(cluster_.get(), table_name));
+
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
+
+  // Wait for the backfill to actually run to completion/failure.
+  for (const auto& idx : {index_table_name0, index_table_name1}) {
+    auto res = client_->WaitUntilIndexPermissionsAtLeast(
+        table_name, idx, IndexPermissions::INDEX_PERM_NOT_USED);
+    EXPECT_NOK(res);
+    EXPECT_TRUE(res.status().IsNotFound());
+  }
+
+  // Wait for responses from "slower tablets" to also be received, as
+  // this is what caused the master to crash prior to #20510.
+  SleepFor(MonoDelta::FromSeconds(10));
+
+  ASSERT_TRUE(cluster_->master()->IsProcessAlive());
+}
+
 TEST_F_EX(
     CppCassandraDriverTest,
     DeleteIndexWhileBackfilling,
@@ -2080,6 +2126,7 @@ TEST_F_EX(
   ASSERT_OK(table.CreateTable(&session_, "test.test_table", {"k", "v"}, {"(k)"}, true));
 
   LOG(INFO) << "Creating two indexes that will backfill together";
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "true"));
   // Create 2 indexes that backfill together. One of them will be deleted while the backfill
   // is happening. The deleted index should be successfully deleted, and the other index will
   // be successfully backfilled.
@@ -2102,6 +2149,7 @@ TEST_F_EX(
   ASSERT_OK(session_.ExecuteQuery("drop index test_table_index_by_v1"));
 
   // Wait for the backfill to actually run to completion/failure.
+  ASSERT_OK(cluster_->SetFlagOnMasters("TEST_block_do_backfill", "false"));
   SleepFor(MonoDelta::FromSeconds(10));
   res = client_->WaitUntilIndexPermissionsAtLeast(
       table_name, index_table_name1, IndexPermissions::INDEX_PERM_NOT_USED, 50ms /* max_wait */);

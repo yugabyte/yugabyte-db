@@ -380,6 +380,9 @@ Status PerTableLoadState::UpdateTablet(TabletInfo *tablet) {
   if (tablet_meta.has_wrong_placements()) {
     tablets_wrong_placement_.insert(tablet_id);
   }
+  if (tablet_meta.has_badly_placed_leader()) {
+    tablets_with_badly_placed_leaders_.insert(tablet_id);
+  }
 
   return Status::OK();
 }
@@ -500,7 +503,7 @@ Result<bool> PerTableLoadState::CanAddTabletToTabletServer(
   }
   // If this server has a pending tablet delete, don't use it.
   if (global_state_->servers_with_pending_deletes_.count(to_ts)) {
-    LOG(INFO) << "tablet server " << to_ts << " has a pending delete. "
+    YB_LOG_EVERY_N_SECS(INFO, 20) << "tablet server " << to_ts << " has a pending delete. "
               << "Not allowing it to take more tablets";
     return false;
   }

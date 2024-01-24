@@ -2010,7 +2010,7 @@ TEST_F(RaftConsensusITest, TestReplicaBehaviorViaRPC) {
   }
 }
 
-TEST_F(RaftConsensusITest, YB_DISABLE_TEST_IN_FASTDEBUG(TestExpiredOperationWithSchemaChange)) {
+TEST_F(RaftConsensusITest, TestExpiredOperationWithSchemaChange) {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_num_tablet_servers) = 3;
 
   vector<string> ts_flags = {
@@ -2030,8 +2030,8 @@ TEST_F(RaftConsensusITest, YB_DISABLE_TEST_IN_FASTDEBUG(TestExpiredOperationWith
   ASSERT_OK(WaitForServersToAgree(MonoDelta::FromSeconds(10), tablet_servers_, tablet_id_, 1));
 
   // Make the the prepare thread to delay.
-  auto* const ts = cluster_->tablet_server(0);
-  ASSERT_OK(cluster_->SetFlag(ts, "TEST_block_prepare_batch", "true"));
+  auto* const stuck_ts = cluster_->tablet_server_by_uuid(tservers[0]->uuid());
+  ASSERT_OK(cluster_->SetFlag(stuck_ts, "TEST_block_prepare_batch", "true"));
   // And the following write will also get delayed in prepare phase.
   ASSERT_NOK(WriteSimpleTestRow(
       tservers[0], tablet_id_, kTestRowKey, kTestRowIntVal, "foo", MonoDelta::FromSeconds(2)));
@@ -2068,7 +2068,7 @@ TEST_F(RaftConsensusITest, YB_DISABLE_TEST_IN_FASTDEBUG(TestExpiredOperationWith
 
   // The previous delayed write operation's term and schema version is less than the current.
   // Because of smaller term, we expect WriteQuery::Finish() will skip CHECK on schema version.
-  ASSERT_OK(cluster_->SetFlag(ts, "TEST_block_prepare_batch", "false"));
+  ASSERT_OK(cluster_->SetFlag(stuck_ts, "TEST_block_prepare_batch", "false"));
   SleepFor(MonoDelta::FromMilliseconds(1000));
 }
 

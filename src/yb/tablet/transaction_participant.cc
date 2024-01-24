@@ -353,7 +353,7 @@ class TransactionParticipant::Impl
       return STATUS(NotFound, "RocksDB has been shut down.");
     }
     auto iter = docdb::CreateRocksDBIterator(db_.intents,
-                                             key_bounds_,
+                                             db_.key_bounds,
                                              docdb::BloomFilterMode::DONT_USE_BLOOM_FILTER,
                                              boost::none,
                                              rocksdb::kDefaultQueryId);
@@ -942,11 +942,10 @@ class TransactionParticipant::Impl
   }
 
   Status SetDB(
-      const docdb::DocDB& db, const docdb::KeyBounds* key_bounds,
+      const docdb::DocDB& db,
       RWOperationCounter* pending_op_counter_blocking_rocksdb_shutdown_start) {
     bool had_db = db_.intents != nullptr;
     db_ = db;
-    key_bounds_ = key_bounds;
     pending_op_counter_blocking_rocksdb_shutdown_start_ =
         pending_op_counter_blocking_rocksdb_shutdown_start;
 
@@ -1237,6 +1236,17 @@ class TransactionParticipant::Impl
   }
 
   Result<HybridTime> WaitForSafeTime(HybridTime safe_time, CoarseTimePoint deadline) {
+    // Once a WriteQuery passes conflict resolution, it performs all the required read operations
+    // as part of docdb::AssembleDocWriteBatch. While iterating over the relevant intents, it
+    // requests statuses of the corresponding transactions as of the picked read time. On seeing
+    // an ABORTED status, it decides to wait until the coordinator returned safe time so as to not
+    // wrongly interpret a COMMITTED transaction as aborted. A shutdown request could arrive in
+    // the meanwhile and change the state of the tablet peer. If so, return a retryable error
+    // instead of invoking the downstream code which eventually does a blocking wait until the
+    // deadline passes.
+    if (Closing()) {
+      return STATUS_FORMAT(IllegalState, "$0Transaction Participant is shutting down", LogPrefix());
+    }
     return participant_context_.WaitForSafeTime(safe_time, deadline);
   }
 
@@ -1944,7 +1954,6 @@ class TransactionParticipant::Impl
   std::string log_prefix_;
 
   docdb::DocDB db_;
-  const docdb::KeyBounds* key_bounds_;
   // Owned externally, should be guaranteed that would not be destroyed before this.
   RWOperationCounter* pending_op_counter_blocking_rocksdb_shutdown_start_ = nullptr;
 
@@ -2131,9 +2140,9 @@ Result<boost::optional<TabletId>> TransactionParticipant::FindStatusTablet(
 }
 
 Status TransactionParticipant::SetDB(
-    const docdb::DocDB& db, const docdb::KeyBounds* key_bounds,
+    const docdb::DocDB& db,
     RWOperationCounter* pending_op_counter_blocking_rocksdb_shutdown_start) {
-  return impl_->SetDB(db, key_bounds, pending_op_counter_blocking_rocksdb_shutdown_start);
+  return impl_->SetDB(db, pending_op_counter_blocking_rocksdb_shutdown_start);
 }
 
 void TransactionParticipant::GetStatus(

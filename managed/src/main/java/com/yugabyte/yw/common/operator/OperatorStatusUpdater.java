@@ -18,7 +18,8 @@ public interface OperatorStatusUpdater {
   public enum UniverseState {
     CREATING("Creating"),
     READY("Ready"),
-    ERROR("Error"),
+    ERROR_UPDATING("Error Updating"),
+    ERROR_CREATING("Error Creating"),
     EDITING("Editing"),
     DELETING("Deleting"),
     PAUSED("Paused");
@@ -35,12 +36,27 @@ public interface OperatorStatusUpdater {
   }
 
   default void createYBUniverseEventStatus(
+      Universe universe, KubernetesResourceDetails universeName, String taskName) {
+    // no-op implementation
+  }
+
+  default void startYBUniverseEventStatus(
       Universe universe,
       KubernetesResourceDetails universeName,
       String taskName,
       UUID taskUUID,
-      UniverseState universeState) {
+      UniverseState state,
+      boolean isRetry) {
     // no-op implementation
+  }
+
+  default void startYBUniverseEventStatus(
+      Universe universe,
+      KubernetesResourceDetails universeName,
+      String taskName,
+      UUID taskUUID,
+      UniverseState state) {
+    startYBUniverseEventStatus(universe, universeName, taskName, taskUUID, state, false);
   }
 
   default void updateRestoreJobStatus(String message, UUID taskUUID) {
@@ -75,6 +91,10 @@ public interface OperatorStatusUpdater {
   }
 
   default void doKubernetesEventUpdate(KubernetesResourceDetails universeName, String status) {
+    // no-op implementation
+  }
+
+  default void updateUniverseState(KubernetesResourceDetails universeName, UniverseState state) {
     // no-op implementation
   }
 }

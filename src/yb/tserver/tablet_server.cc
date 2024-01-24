@@ -37,7 +37,6 @@
 #include <list>
 #include <thread>
 
-#include "yb/client/auto_flags_manager.h"
 #include "yb/client/client.h"
 #include "yb/client/client_fwd.h"
 #include "yb/client/transaction_manager.h"
@@ -83,6 +82,7 @@
 #include "yb/tserver/pg_table_mutation_count_sender.h"
 #include "yb/tserver/ts_tablet_manager.h"
 #include "yb/tserver/tserver-path-handlers.h"
+#include "yb/tserver/tserver_auto_flags_manager.h"
 #include "yb/tserver/tserver_service.proxy.h"
 #include "yb/tserver/xcluster_consumer_if.h"
 #include "yb/tserver/backup_service.h"
@@ -305,7 +305,7 @@ TabletServer::TabletServer(const TabletServerOptions& opts)
     : DbServerBase("TabletServer", opts, "yb.tabletserver", server::CreateMemTrackerForServer()),
       fail_heartbeats_for_tests_(false),
       opts_(opts),
-      auto_flags_manager_(new AutoFlagsManager("yb-tserver", clock(), fs_manager_.get())),
+      auto_flags_manager_(new TserverAutoFlagsManager(clock(), fs_manager_.get())),
       tablet_manager_(new TSTabletManager(fs_manager_.get(), this, metric_registry())),
       path_handlers_(new TabletServerPathHandlers(this)),
       maintenance_manager_(new MaintenanceManager(MaintenanceManager::DEFAULT_OPTIONS)),
@@ -506,12 +506,7 @@ Status TabletServer::Init() {
 }
 
 Status TabletServer::InitAutoFlags() {
-  RETURN_NOT_OK(auto_flags_manager_->Init(options_.HostsString()));
-
-  if (!VERIFY_RESULT(auto_flags_manager_->LoadFromFile())) {
-    RETURN_NOT_OK(
-        auto_flags_manager_->LoadFromMaster(options_.HostsString(), *opts_.GetMasterAddresses()));
-  }
+  RETURN_NOT_OK(auto_flags_manager_->Init(options_.HostsString(), *opts_.GetMasterAddresses()));
 
   return RpcAndWebServerBase::InitAutoFlags();
 }

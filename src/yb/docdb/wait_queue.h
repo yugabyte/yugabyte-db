@@ -65,7 +65,8 @@ class WaitQueue {
       const std::shared_future<client::YBClient*>& client_future,
       const server::ClockPtr& clock,
       const MetricEntityPtr& metrics,
-      std::unique_ptr<ThreadPoolToken> thread_pool_token);
+      std::unique_ptr<ThreadPoolToken> thread_pool_token,
+      rpc::Messenger* messenger);
 
   ~WaitQueue();
 
@@ -79,7 +80,7 @@ class WaitQueue {
   Status WaitOn(
       const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
       std::shared_ptr<ConflictDataManager> blockers, const TabletId& status_tablet_id,
-      uint64_t serial_no, int64_t txn_start_us, uint64_t req_start_us,
+      uint64_t serial_no, int64_t txn_start_us, uint64_t req_start_us, CoarseTimePoint deadline,
       WaitDoneCallback callback);
 
   // Check the wait queue for any active blockers which would conflict with locks. This method
@@ -92,7 +93,7 @@ class WaitQueue {
   Result<bool> MaybeWaitOnLocks(
       const TransactionId& waiter, SubTransactionId subtxn_id, LockBatch* locks,
       const TabletId& status_tablet_id, uint64_t serial_no,
-      int64_t txn_start_us, uint64_t req_start_us,
+      int64_t txn_start_us, uint64_t req_start_us, CoarseTimePoint deadline,
       WaitDoneCallback callback);
 
   void Poll(HybridTime now);

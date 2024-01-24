@@ -14,6 +14,7 @@ import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.typesafe.config.Config;
@@ -694,11 +695,13 @@ public class AccessManagerTest extends FakeDBApplication {
 
   @Test
   public void testCreateCredentialsFile() throws IOException {
+    ObjectMapper mapper = Json.mapper();
     ObjectNode credentials = Json.newObject();
     credentials.put("foo", "bar");
     credentials.put("hello", "world");
     String configFile =
-        accessManager.createGCPCredentialsFile(defaultProvider.getUuid(), credentials);
+        accessManager.createGCPCredentialsFile(
+            defaultProvider.getUuid(), mapper.writeValueAsString(credentials));
     assertEquals(
         "/tmp/yugaware_tests/amt/keys/" + defaultProvider.getUuid() + "/credentials.json",
         configFile);
@@ -708,11 +711,13 @@ public class AccessManagerTest extends FakeDBApplication {
   }
 
   @Test
-  public void testReadCredentialsFromFile() {
+  public void testReadCredentialsFromFile() throws IOException {
+    ObjectMapper mapper = Json.mapper();
     Map<String, String> inputConfig = new HashMap<>();
     inputConfig.put("foo", "bar");
     inputConfig.put("hello", "world");
-    accessManager.createGCPCredentialsFile(defaultProvider.getUuid(), Json.toJson(inputConfig));
+    accessManager.createGCPCredentialsFile(
+        defaultProvider.getUuid(), mapper.writeValueAsString(inputConfig));
     Map<String, String> configMap =
         accessManager.readCredentialsFromFile(defaultProvider.getUuid());
     assertEquals(inputConfig, configMap);

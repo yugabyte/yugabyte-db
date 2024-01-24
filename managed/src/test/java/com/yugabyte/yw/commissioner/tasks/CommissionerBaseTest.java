@@ -68,6 +68,8 @@ import com.yugabyte.yw.common.metrics.MetricService;
 import com.yugabyte.yw.common.nodeui.DumpEntitiesResponse;
 import com.yugabyte.yw.common.nodeui.DumpEntitiesResponse.Replica;
 import com.yugabyte.yw.common.nodeui.DumpEntitiesResponse.Tablet;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponent;
 import com.yugabyte.yw.common.supportbundle.SupportBundleComponentFactory;
@@ -85,7 +87,9 @@ import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -155,6 +159,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
   protected BackupHelper mockBackupHelper;
   protected PrometheusConfigManager mockPrometheusConfigManager;
   protected YbcManager mockYbcManager;
+  protected OperatorStatusUpdaterFactory mockOperatorStatusUpdaterFactory;
+  protected OperatorStatusUpdater mockOperatorStatusUpdater;
 
   protected BaseTaskDependencies mockBaseTaskDependencies =
       Mockito.mock(BaseTaskDependencies.class);
@@ -218,6 +224,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     when(mockBaseTaskDependencies.getNodeManager()).thenReturn(mockNodeManager);
     when(mockBaseTaskDependencies.getBackupHelper()).thenReturn(mockBackupHelper);
     when(mockBaseTaskDependencies.getCommissioner()).thenReturn(commissioner);
+    when(mockBaseTaskDependencies.getNodeUIApiHelper()).thenReturn(mockNodeUIApiHelper);
   }
 
   @Override
@@ -255,6 +262,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
     mockBackupHelper = mock(BackupHelper.class);
     mockYbcManager = mock(YbcManager.class);
     mockPrometheusConfigManager = mock(PrometheusConfigManager.class);
+    mockOperatorStatusUpdaterFactory = mock(OperatorStatusUpdaterFactory.class);
+    mockOperatorStatusUpdater = mock(OperatorStatusUpdater.class);
 
     return configureApplication(
             new GuiceApplicationBuilder()
@@ -300,6 +309,8 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
                     bind(PrometheusConfigManager.class).toInstance(mockPrometheusConfigManager))
                 .overrides(bind(ReleaseManager.class).toInstance(mockReleaseManager)))
         .overrides(bind(CloudAPI.Factory.class).toInstance(mockCloudAPIFactory))
+        .overrides(
+            bind(OperatorStatusUpdaterFactory.class).toInstance(mockOperatorStatusUpdaterFactory))
         .build();
   }
 
@@ -507,7 +518,7 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
       ch.qos.logback.classic.Logger rootLogger =
           (ch.qos.logback.classic.Logger)
               LoggerFactory.getLogger(ch.qos.logback.classic.Logger.ROOT_LOGGER_NAME);
-      rootLogger.detachAppender("ASYNCSTDOUT");
+      // rootLogger.detachAppender("ASYNCSTDOUT");
 
       setPausePosition(0);
       UUID taskUuid = commissioner.submit(taskType, taskParams);
@@ -650,22 +661,41 @@ public abstract class CommissionerBaseTest extends PlatformGuiceApplicationBaseT
         .thenReturn(underReplicatedTabletsJson);
   }
 
+  /**
+   * Mocks the dump entities endpoint response.
+   *
+   * @param universe the universe we are getting the dump entities endpoint response from.
+   * @param nodeName if specified will add the specified node as a replica. If none is specified,
+   *     will set all nodes in universe as a replica.
+   * @param hasTablets whether or not the nodes will have tablets assigned.
+   */
   public void setDumpEntitiesMock(Universe universe, String nodeName, boolean hasTablets) {
-    NodeDetails node = universe.getNode(nodeName);
-    Replica replica = new Replica();
-    replica.setAddr(node.cloudInfo.private_ip + ":" + node.tserverRpcPort);
     Tablet tablet = new Tablet();
     tablet.setTabletId("Tablet id 1");
-    if (hasTablets) {
-      tablet.setReplicas(Arrays.asList(replica));
+
+    Collection<NodeDetails> nodes = new HashSet<>();
+    if (nodeName.isEmpty()) {
+      nodes = universe.getNodes();
     } else {
-      tablet.setReplicas(new ArrayList<Replica>());
+      nodes.add(universe.getNode(nodeName));
+    }
+
+    List<Replica> replicas = new ArrayList<Replica>();
+    tablet.setReplicas(replicas);
+
+    if (hasTablets) {
+      for (NodeDetails node : nodes) {
+        // Replica replica = tablet.getReplicas() == null ? new Replica() : tablet.getReplicas();
+        Replica replica = new Replica();
+        replica.setAddr(node.cloudInfo.private_ip + ":" + node.tserverRpcPort);
+        replicas.add(replica);
+      }
     }
 
     DumpEntitiesResponse response = new DumpEntitiesResponse();
     response.setTablets(Arrays.asList(tablet));
     ObjectNode dumpEntitiesJson = (ObjectNode) Json.toJson(response);
-    when(mockNodeUIApiHelper.getRequest(endsWith(RemoveNodeFromUniverse.DUMP_ENTITIES_URL_SUFFIX)))
+    when(mockNodeUIApiHelper.getRequest(endsWith(UniverseTaskBase.DUMP_ENTITIES_URL_SUFFIX)))
         .thenReturn(dumpEntitiesJson);
   }
 

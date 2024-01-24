@@ -37,10 +37,10 @@ The valid *arguments* for end migration are described in the following table:
 ### Example
 
 ```sh
-yb-voyager end migration --export-dir /dir/export-dir
-        --backup-log-files true
-        --backup-data-files true
-        --backup-schema-files true
-        --save-migration-reports true
+yb-voyager end migration --export-dir /dir/export-dir \
+        --backup-log-files true \
+        --backup-data-files true \
+        --backup-schema-files true \
+        --save-migration-reports true \
         --backup-dir /dir/backup-dir
 ```

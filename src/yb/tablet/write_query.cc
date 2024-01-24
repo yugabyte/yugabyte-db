@@ -123,6 +123,23 @@ bool CheckSchemaVersion(
   return false;
 }
 
+using DocPaths = boost::container::small_vector<RefCntPrefix, 16>;
+
+void AddReadPairs(const DocPaths& paths, docdb::LWKeyValueWriteBatchPB* write_batch) {
+  for (const auto& path : paths) {
+    auto& pair = *write_batch->add_read_pairs();
+    pair.dup_key(path.as_slice());
+    // Empty values are disallowed by docdb.
+    // https://github.com/YugaByte/yugabyte-db/issues/736
+    pair.dup_value(Slice(&dockv::KeyEntryTypeAsChar::kNullLow, 1));
+  }
+}
+
+[[nodiscard]] bool IsSkipped(const docdb::DocOperation& doc_op) {
+  return doc_op.OpType() == docdb::DocOperation::Type::PGSQL_WRITE_OPERATION &&
+         down_cast<const docdb::PgsqlWriteOperation&>(doc_op).response()->skipped();
+}
+
 } // namespace
 
 enum class WriteQuery::ExecuteMode {
@@ -582,7 +599,7 @@ Status WriteQuery::DoExecute() {
         doc_ops_, conflict_management_policy, now, write_batch.transaction().pg_txn_start_us(),
         request_start_us(), tablet->doc_db(), partial_range_key_intents, transaction_participant,
         tablet->metrics(), &prepare_result_.lock_batch,
-        wait_queue,
+        wait_queue, deadline(),
         [this, now](const Result<HybridTime>& result) {
           if (!result.ok()) {
             ExecuteDone(result.status());
@@ -596,20 +613,13 @@ Status WriteQuery::DoExecute() {
 
   if (isolation_level_ == IsolationLevel::SERIALIZABLE_ISOLATION &&
       prepare_result_.need_read_snapshot) {
-    boost::container::small_vector<RefCntPrefix, 16> paths;
+    DocPaths paths;
     for (const auto& doc_op : doc_ops_) {
-      paths.clear();
       IsolationLevel ignored_isolation_level;
       RETURN_NOT_OK(doc_op->GetDocPaths(
-          docdb::GetDocPathsMode::kLock, &paths, &ignored_isolation_level));
-      for (const auto& path : paths) {
-        auto key = path.as_slice();
-        auto& pair = write_batch.mutable_read_pairs()->emplace_back();
-        pair.dup_key(key);
-        // Empty values are disallowed by docdb.
-        // https://github.com/YugaByte/yugabyte-db/issues/736
-        pair.dup_value(std::string(1, dockv::KeyEntryTypeAsChar::kNullLow));
-      }
+              docdb::GetDocPathsMode::kLock, &paths, &ignored_isolation_level));
+      AddReadPairs(paths, &write_batch);
+      paths.clear();
     }
   }
 
@@ -621,7 +631,7 @@ Status WriteQuery::DoExecute() {
       read_time_ ? read_time_.read : HybridTime::kMax, write_batch.transaction().pg_txn_start_us(),
       request_start_us(), tablet->doc_db(), partial_range_key_intents,
       transaction_participant, tablet->metrics(),
-      &prepare_result_.lock_batch, wait_queue,
+      &prepare_result_.lock_batch, wait_queue, deadline(),
       [this](const Result<HybridTime>& result) {
         if (!result.ok()) {
           ExecuteDone(result.status());
@@ -704,16 +714,17 @@ Status WriteQuery::DoCompleteExecute(HybridTime safe_time) {
   // read_txn goes out of scope, the read point is deregistered.
   bool local_limit_updated = false;
 
-  // This loop may be executed multiple times multiple times only for serializable isolation or
+  // This loop may be executed multiple times only for serializable isolation or
   // when read_time was not yet picked for snapshot isolation.
   // In all other cases it is executed only once.
   auto init_marker_behavior = tablet->table_type() == TableType::REDIS_TABLE_TYPE
       ? docdb::InitMarkerBehavior::kRequired
       : docdb::InitMarkerBehavior::kOptional;
+  auto& write_batch = *request().mutable_write_batch();
   for (;;) {
     RETURN_NOT_OK(docdb::AssembleDocWriteBatch(
         doc_ops_, read_operation_data, tablet->doc_db(), &tablet->GetSchemaPackingProvider(),
-        scoped_read_operation_, request().mutable_write_batch(), init_marker_behavior,
+        scoped_read_operation_, &write_batch, init_marker_behavior,
         tablet->monotonic_counter(), &restart_read_ht_, tablet->metadata()->table_name()));
 
     // For serializable isolation we don't fix read time, so could do read restart locally,
@@ -733,23 +744,37 @@ Status WriteQuery::DoCompleteExecute(HybridTime safe_time) {
 
     restart_read_ht_ = HybridTime();
 
-    request().mutable_write_batch()->mutable_write_pairs()->clear();
+    write_batch.mutable_write_pairs()->clear();
 
     for (auto& doc_op : doc_ops_) {
       doc_op->ClearResponse();
     }
   }
 
-  if (allow_immediate_read_restart_ &&
-      isolation_level_ != IsolationLevel::NON_TRANSACTIONAL &&
-      response_) {
-    read_operation_data.read_time.ToPB(response_->mutable_used_read_time());
-  }
-
-  if (restart_read_ht_.is_valid()) {
+  if (isolation_level_ == IsolationLevel::NON_TRANSACTIONAL) {
     return Status::OK();
   }
 
+  if (allow_immediate_read_restart_ && response_) {
+    read_operation_data.read_time.ToPB(response_->mutable_used_read_time());
+  }
+
+  // SERIALIZABLE operations already add the row to read_pairs for UPDATE operations
+  // in DoExecute(), so we shouldn't be doing it again here.
+  if (write_batch.write_pairs_size() &&
+      isolation_level_ != IsolationLevel::SERIALIZABLE_ISOLATION) {
+    DocPaths paths;
+    for (const auto& doc_op : doc_ops_) {
+      if (IsSkipped(*doc_op)) {
+        continue;
+      }
+      IsolationLevel ignored_isolation_level;
+      RETURN_NOT_OK(doc_op->GetDocPaths(
+          docdb::GetDocPathsMode::kStrongReadIntents, &paths, &ignored_isolation_level));
+      AddReadPairs(paths, &write_batch);
+      paths.clear();
+    }
+  }
   return Status::OK();
 }
 

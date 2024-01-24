@@ -2,6 +2,7 @@ package com.yugabyte.yw.models.helpers;
 
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.ITask;
+import com.yugabyte.yw.commissioner.tasks.subtasks.CheckClusterConsistency;
 import java.lang.reflect.Field;
 import java.util.Arrays;
 import java.util.List;
@@ -266,6 +267,8 @@ public enum TaskType {
       com.yugabyte.yw.commissioner.tasks.subtasks.CheckUnderReplicatedTablets.class),
 
   CheckFollowerLag(com.yugabyte.yw.commissioner.tasks.subtasks.CheckFollowerLag.class),
+
+  CheckNodeSafeToDelete(com.yugabyte.yw.commissioner.tasks.subtasks.CheckNodeSafeToDelete.class),
 
   ManipulateDnsRecordTask(
       com.yugabyte.yw.commissioner.tasks.subtasks.ManipulateDnsRecordTask.class),
@@ -621,7 +624,9 @@ public enum TaskType {
   // Tasks belonging to subtasks.ldap classpath
   QueryLdapServer(com.yugabyte.yw.commissioner.tasks.subtasks.ldapsync.QueryLdapServer.class),
 
-  DbLdapSync(com.yugabyte.yw.commissioner.tasks.subtasks.ldapsync.DbLdapSync.class);
+  DbLdapSync(com.yugabyte.yw.commissioner.tasks.subtasks.ldapsync.DbLdapSync.class),
+
+  CheckForClusterServers(CheckClusterConsistency.class);
 
   private final Class<? extends ITask> taskClass;
 

@@ -604,7 +604,8 @@ class YBClient {
       const NamespaceId& namespace_id, const std::unordered_map<std::string, std::string>& options,
       bool populate_namespace_id_as_table_id = false,
       const ReplicationSlotName& replication_slot_name = ReplicationSlotName(""),
-      const std::optional<CDCSDKSnapshotOption>& consistent_snapshot_option = std::nullopt);
+      const std::optional<CDCSDKSnapshotOption>& consistent_snapshot_option = std::nullopt,
+      CoarseTimePoint deadline = CoarseTimePoint());
 
   // Delete multiple CDC streams.
   Status DeleteCDCStream(

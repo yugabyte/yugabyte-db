@@ -9,6 +9,7 @@ import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.gflags.AutoFlagUtil;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
@@ -26,8 +27,10 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
 
   @Inject
   protected SoftwareKubernetesUpgradeYB(
-      BaseTaskDependencies baseTaskDependencies, AutoFlagUtil autoFlagUtil) {
-    super(baseTaskDependencies);
+      BaseTaskDependencies baseTaskDependencies,
+      AutoFlagUtil autoFlagUtil,
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
+    super(baseTaskDependencies, operatorStatusUpdaterFactory);
     this.autoFlagUtil = autoFlagUtil;
   }
 
@@ -50,6 +53,9 @@ public class SoftwareKubernetesUpgradeYB extends KubernetesUpgradeTaskBase {
   @Override
   protected void createPrecheckTasks(Universe universe) {
     createSoftwareUpgradePrecheckTasks(taskParams().ybSoftwareVersion);
+    if (isFirstTry()) {
+      verifyClustersConsistency();
+    }
   }
 
   @Override

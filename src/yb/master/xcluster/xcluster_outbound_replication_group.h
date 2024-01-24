@@ -13,6 +13,7 @@
 
 #pragma once
 
+#include "yb/master/xcluster/master_xcluster_types.h"
 #include "yb/master/xcluster/xcluster_catalog_entity.h"
 
 namespace yb {
@@ -20,22 +21,35 @@ namespace master {
 
 class XClusterOutboundReplicationGroup {
  public:
+  struct HelperFunctions {
+    const std::function<Result<NamespaceId>(YQLDatabase, const NamespaceName&)>
+        get_namespace_id_func;
+    const std::function<Result<std::vector<TableInfoPtr>>(const NamespaceId&)> get_tables_func;
+    const std::function<Result<std::vector<xrepl::StreamId>>(
+        const std::vector<TableInfoPtr>&, CoarseTimePoint)>
+        bootstrap_tables_func;
+    const std::function<Result<DeleteCDCStreamResponsePB>(
+        const DeleteCDCStreamRequestPB&, const LeaderEpoch&)>
+        delete_cdc_stream_func;
+
+    // SysCatalog functions.
+    const std::function<Status(const LeaderEpoch& epoch, XClusterOutboundReplicationGroupInfo*)>
+        upsert_to_sys_catalog_func;
+    const std::function<Status(const LeaderEpoch& epoch, XClusterOutboundReplicationGroupInfo*)>
+        delete_from_sys_catalog_func;
+  };
+
   explicit XClusterOutboundReplicationGroup(
       const xcluster::ReplicationGroupId& replication_group_id,
       const SysXClusterOutboundReplicationGroupEntryPB& outbound_replication_group_pb,
-      SysCatalogTable* sys_catalog,
-      std::function<Result<std::vector<scoped_refptr<TableInfo>>>(const NamespaceId&)>
-          get_tables_func,
-      std::function<Result<NamespaceId>(YQLDatabase db_type, const NamespaceName& namespace_name)>
-          get_namespace_id_func,
-      std::function<Result<DeleteCDCStreamResponsePB>(
-          const DeleteCDCStreamRequestPB&, const LeaderEpoch& epoch)>
-          delete_cdc_stream_func);
+      HelperFunctions helper_functions);
 
   const xcluster::ReplicationGroupId& Id() const { return outbound_rg_info_->ReplicationGroupId(); }
 
   std::string ToString() const { return Format("xClusterOutboundReplicationGroup $0", Id()); }
   std::string LogPrefix() const { return ToString(); }
+
+  SysXClusterOutboundReplicationGroupEntryPB GetMetadata() const;
 
   Result<std::vector<NamespaceId>> AddNamespaces(
       const LeaderEpoch& epoch, const std::vector<NamespaceName>& namespace_names,
@@ -48,17 +62,6 @@ class XClusterOutboundReplicationGroup {
 
   Status Delete(const LeaderEpoch& epoch);
 
-  struct NamespaceCheckpointInfo {
-    bool initial_bootstrap_required = false;
-    struct TableInfo {
-      TableId table_id;
-      xrepl::StreamId stream_id;
-      TableName table_name;
-      PgSchemaName pg_schema_name;
-    };
-    std::vector<TableInfo> table_infos;
-  };
-
   // Returns std::nullopt if the namespace is not yet ready.
   Result<std::optional<bool>> IsBootstrapRequired(const NamespaceId& namespace_id) const;
 
@@ -70,9 +73,6 @@ class XClusterOutboundReplicationGroup {
       const std::vector<TableSchemaNamePair>& table_names = {}) const;
 
  private:
-  // Returns the user table infos for the given namespace.
-  Result<std::vector<scoped_refptr<TableInfo>>> GetTables(const NamespaceId& namespace_id) const;
-
   Result<NamespaceId> AddNamespaceInternal(
       const NamespaceName& namespace_name, CoarseTimePoint deadline,
       XClusterOutboundReplicationGroupInfo::WriteLock& l);
@@ -84,15 +84,12 @@ class XClusterOutboundReplicationGroup {
       const LeaderEpoch& epoch, const NamespaceId& namespace_id,
       const SysXClusterOutboundReplicationGroupEntryPB& pb);
 
-  std::unique_ptr<XClusterOutboundReplicationGroupInfo> outbound_rg_info_;
+  Result<SysXClusterOutboundReplicationGroupEntryPB::NamespaceInfoPB> BootstrapTables(
+      const std::vector<TableInfoPtr>& table_infos, CoarseTimePoint deadline);
 
-  SysCatalogTable* const sys_catalog_;
-  std::function<Result<std::vector<scoped_refptr<TableInfo>>>(const NamespaceId&)> get_tables_func_;
-  std::function<Result<NamespaceId>(YQLDatabase db_type, const NamespaceName& namespace_name)>
-      get_namespace_id_func_;
-  std::function<Result<DeleteCDCStreamResponsePB>(
-      const DeleteCDCStreamRequestPB&, const LeaderEpoch& epoch)>
-      delete_cdc_stream_func_;
+  HelperFunctions helper_functions_;
+
+  std::unique_ptr<XClusterOutboundReplicationGroupInfo> outbound_rg_info_;
 };
 
 }  // namespace master

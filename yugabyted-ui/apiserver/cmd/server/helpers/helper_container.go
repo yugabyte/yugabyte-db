@@ -8,10 +8,12 @@ type HelperContainer struct {
         logger  logger.Logger
 }
 
-// NewContainer returns an empty or an initialized container for your handlers.
+// NewHelperContainer returns an initialized container for your helpers.
 func NewHelperContainer(
     logger       logger.Logger,
     ) (HelperContainer, error) {
         c := HelperContainer{logger}
+        // initialize cache variables
+        c.InitCache()
         return c, nil
 }

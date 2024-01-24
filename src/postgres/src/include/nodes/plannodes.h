@@ -765,6 +765,7 @@ typedef struct YbBNLHashClauseInfo
 							   with. */
 	int innerHashAttNo;		/* Attno of inner side variable. */
 	Expr *outerParamExpr;	/* Outer expression of this clause. */
+	Expr *orig_expr;
 } YbBNLHashClauseInfo;
 
 typedef struct YbBatchedNestLoop

@@ -44,11 +44,15 @@ public class CreateSupportBundle extends AbstractTaskBase {
   @Inject private SupportBundleComponentFactory supportBundleComponentFactory;
   @Inject private SupportBundleUtil supportBundleUtil;
   @Inject private Config config;
-  @Inject private OperatorStatusUpdaterFactory statusUpdaterFactory;
+
+  private final OperatorStatusUpdater operatorStatusUpdater;
 
   @Inject
-  protected CreateSupportBundle(BaseTaskDependencies baseTaskDependencies) {
+  protected CreateSupportBundle(
+      BaseTaskDependencies baseTaskDependencies,
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
     super(baseTaskDependencies);
+    this.operatorStatusUpdater = operatorStatusUpdaterFactory.create();
   }
 
   @Override
@@ -59,16 +63,15 @@ public class CreateSupportBundle extends AbstractTaskBase {
   @Override
   public void run() {
     SupportBundle supportBundle = taskParams().supportBundle;
-    OperatorStatusUpdater kubernetesStatusUpdater = statusUpdaterFactory.create();
     try {
       Path gzipPath = generateBundle(supportBundle);
       supportBundle.setPathObject(gzipPath);
       supportBundle.setStatus(SupportBundleStatusType.Success);
-      kubernetesStatusUpdater.markSupportBundleFinished(
+      operatorStatusUpdater.markSupportBundleFinished(
           supportBundle, taskParams().getKubernetesResourceDetails(), gzipPath);
     } catch (Exception e) {
       taskParams().supportBundle.setStatus(SupportBundleStatusType.Failed);
-      kubernetesStatusUpdater.markSupportBundleFailed(
+      operatorStatusUpdater.markSupportBundleFailed(
           supportBundle, taskParams().getKubernetesResourceDetails());
       Throwables.throwIfUnchecked(e);
       throw new RuntimeException(e);

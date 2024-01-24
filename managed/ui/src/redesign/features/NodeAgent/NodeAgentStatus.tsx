@@ -1,4 +1,4 @@
-import React, { FC } from 'react';
+import { FC } from 'react';
 import clsx from 'clsx';
 import { Box, makeStyles } from '@material-ui/core';
 import { NodeAgentStatusList } from '../../utils/dtos';

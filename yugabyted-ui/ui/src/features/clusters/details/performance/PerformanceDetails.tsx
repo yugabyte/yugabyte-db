@@ -102,7 +102,7 @@ export const PerformanceDetails: FC = () => {
   const { path, params } = useRouteMatch<App.RouteParams>();
   const classes = useStyles();
   const { t } = useTranslation();
-  const { data: nodesResponse } = useGetClusterNodesQuery();
+  const { data: nodesResponse } = useGetClusterNodesQuery({});
   const tserverAddress = nodesResponse?.data?.find((node) => node.is_node_up)?.host ?? "";
   const { data: gflagsResponse } = useGetGflagsQuery<GflagsInfo>(
     { node_address: tserverAddress },

@@ -14,6 +14,7 @@ import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.DrConfigCreateForm;
+import com.yugabyte.yw.forms.DrConfigEditForm;
 import com.yugabyte.yw.forms.DrConfigFailoverForm;
 import com.yugabyte.yw.forms.DrConfigGetResp;
 import com.yugabyte.yw.forms.DrConfigReplaceReplicaForm;
@@ -222,6 +223,40 @@ public class DrConfigController extends AuthenticatedController {
             Json.toJson(createForm),
             taskUUID);
     return new YBPTask(taskUUID, drConfig.getUuid()).asResult();
+  }
+
+  @ApiOperation(
+      nickname = "editDrConfig",
+      value = "Edit disaster recovery config",
+      response = DrConfig.class)
+  @ApiImplicitParams(
+      @ApiImplicitParam(
+          name = "disaster_recovery_edit_form_data",
+          value = "Disaster Recovery Edit Form Data",
+          dataType = "com.yugabyte.yw.forms.DrConfigEditForm",
+          paramType = "body",
+          required = true))
+  @AuthzPath({
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+  })
+  public Result edit(UUID customerUUID, UUID drConfigUuid, Http.Request request) {
+    log.info("Received edit drConfig request");
+
+    // Parse and validate request.
+    Customer customer = Customer.getOrBadRequest(customerUUID);
+    DrConfig drConfig = DrConfig.getValidConfigOrBadRequest(customer, drConfigUuid);
+    DrConfigEditForm editForm = parseEditForm(request);
+    validateEditForm(editForm, customer.getUuid(), drConfig);
+
+    drConfig.setStorageConfigUuid(editForm.bootstrapParams.backupRequestParams.storageConfigUUID);
+    drConfig.setParallelism(editForm.bootstrapParams.backupRequestParams.parallelism);
+    drConfig.update();
+
+    DrConfigGetResp resp = new DrConfigGetResp(drConfig, drConfig.getActiveXClusterConfig());
+    return PlatformResults.withData(resp);
   }
 
   /**
@@ -959,7 +994,7 @@ public class DrConfigController extends AuthenticatedController {
     DrConfigSafetimeResp safetimeResp = new DrConfigSafetimeResp();
     namespaceSafeTimeList.forEach(
         namespaceSafeTimePB -> {
-          long estimatedDataLossMs = getEstimatedDataLossMs(targetUniverse, namespaceSafeTimePB);
+          double estimatedDataLossMs = getEstimatedDataLossMs(targetUniverse, namespaceSafeTimePB);
           safetimeResp.safetimes.add(
               new NamespaceSafetime(namespaceSafeTimePB, estimatedDataLossMs));
         });
@@ -980,6 +1015,30 @@ public class DrConfigController extends AuthenticatedController {
     validateBackupRequestParamsForBootstrapping(
         formData.bootstrapParams.backupRequestParams, customerUUID);
     return formData;
+  }
+
+  private DrConfigEditForm parseEditForm(Http.Request request) {
+    log.debug("Request body to edit a DR config is {}", request.body().asJson());
+    DrConfigEditForm formData =
+        formFactory.getFormDataOrBadRequest(request.body().asJson(), DrConfigEditForm.class);
+    return formData;
+  }
+
+  private void validateEditForm(DrConfigEditForm formData, UUID customerUUID, DrConfig drConfig) {
+    validateBackupRequestParamsForBootstrapping(
+        formData.bootstrapParams.backupRequestParams, customerUUID);
+
+    UUID newStorageConfigUUID = formData.bootstrapParams.backupRequestParams.storageConfigUUID;
+    int newParallelism = formData.bootstrapParams.backupRequestParams.parallelism;
+    if (drConfig.getStorageConfigUuid().equals(newStorageConfigUUID)
+        && drConfig.getParallelism() == newParallelism) {
+      throw new PlatformServiceException(
+          BAD_REQUEST,
+          String.format(
+              "No changes were made to drConfig. Current Storage configuration with uuid: %s and"
+                  + " parallelism: %d for drConfig: %s",
+              drConfig.getStorageConfigUuid(), drConfig.getParallelism(), drConfig.getName()));
+    }
   }
 
   private DrConfigSetTablesForm parseSetTablesForm(UUID customerUUID, Http.Request request) {
@@ -1164,10 +1223,10 @@ public class DrConfigController extends AuthenticatedController {
     }
   }
 
-  private long getEstimatedDataLossMs(
+  private double getEstimatedDataLossMs(
       Universe targetUniverse, NamespaceSafeTimePB namespaceSafeTimePB) {
     // -1 means could not find it from Prometheus.
-    long estimatedDataLossMs = -1;
+    double estimatedDataLossMs = -1;
     try {
       long safetimeEpochSeconds =
           Duration.ofNanos(
@@ -1178,7 +1237,7 @@ public class DrConfigController extends AuthenticatedController {
       String promQuery =
           String.format(
               "%s{export_type=\"master_export\",universe_uuid=\"%s\","
-                  + "node_address=\"%s\",namespace_id=\"%s\"}@%s",
+                  + "node_address=\"%s\",namespace_id=\"%s\"}@%s / 1000",
               XClusterConfigTaskBase.TXN_XCLUSTER_SAFETIME_LAG_NAME,
               targetUniverse.getUniverseUUID().toString(),
               targetUniverse.getMasterLeaderHostText(),
@@ -1204,8 +1263,8 @@ public class DrConfigController extends AuthenticatedController {
       estimatedDataLossMs =
           metricEntry.values.stream()
               .min(Comparator.comparing(ImmutablePair::getLeft))
-              .map(valueEntry -> valueEntry.getRight().longValue())
-              .orElse(-1L);
+              .map(valueEntry -> valueEntry.getRight())
+              .orElse(-1d);
       if (estimatedDataLossMs == -1) {
         log.error(
             "Could not get the estimatedDataLoss: could not identify the value with"

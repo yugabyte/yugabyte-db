@@ -1830,8 +1830,17 @@ class ControlScript(object):
                             ]
                         if self.configs.saved_data.get("secure"):
                             yugabyted_ui_cmd.extend(["-secure=true",
-                                "-database_password={}".format(
+                                "-ysql_password={}".format(
+                                self.configs.saved_data.get("database_password")),
+                                "-ycql_password={}".format(
                                 self.configs.saved_data.get("database_password"))])
+
+                        if self.configs.saved_data.get("ysql_port"):
+                            yugabyted_ui_cmd.append("-ysql_port={}".format(
+                                self.configs.saved_data.get("ysql_port")))
+                        if self.configs.saved_data.get("ycql_port"):
+                            yugabyted_ui_cmd.append("-ycql_port={}".format(
+                                self.configs.saved_data.get("ycql_port")))
 
                         self.processes["yugabyted-ui"] = ProcessManager(
                             "yugabyted-ui", yugabyted_ui_cmd,

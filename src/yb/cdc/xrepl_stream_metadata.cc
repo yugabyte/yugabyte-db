@@ -146,7 +146,8 @@ Status StreamMetadata::GetStreamInfoFromMaster(
       ASSIGN_ON_LOAD_SCHECK_EQ_ON_REFRESH(checkpoint_type);
     } else if (key == kIdType) {
       if (value == kNamespaceId) {
-        ASSIGN_ON_LOAD_SCHECK_EQ_ON_REFRESH(namespace_id);
+        // Ignore use-after-move-warning. There is at most one key of this type and value.
+        ASSIGN_ON_LOAD_SCHECK_EQ_ON_REFRESH(namespace_id); // NOLINT(bugprone-use-after-move)
       } else if (value != kTableId) {
         LOG(WARNING) << "Unsupported CDC Stream Id type: " << value;
       }

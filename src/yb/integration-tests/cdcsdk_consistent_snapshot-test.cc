@@ -29,6 +29,7 @@ class CDCSDKConsistentSnapshotTest : public CDCSDKYsqlTest {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_ysql_yb_enable_replication_commands) = false;
   }
 
+  void TestCSStreamFailureRollback(std::string sync_point, std::string expected_error);
 };
 
 
@@ -86,6 +87,122 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestCSStreamSnapshotEstablishment) {
             tablet_peer->get_cdc_min_replicated_index());
 }
 
+void CDCSDKConsistentSnapshotTest::TestCSStreamFailureRollback(
+    std::string sync_point, std::string expected_error) {
+  // Make UpdatePeersAndMetrics and Catalog Manager background tasks run frequently.
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) = 100;
+
+  auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
+  auto tablet_peer =
+      ASSERT_RESULT(GetLeaderPeerForTablet(test_cluster(), tablets.begin()->tablet_id()));
+
+  std::atomic<bool> force_failure = true;
+  yb::SyncPoint::GetInstance()->SetCallBack(sync_point, [&force_failure, &sync_point](void* arg) {
+    LOG(INFO) << "CDC stream creation sync point callback: " << sync_point
+              << ", force_failure: " << force_failure;
+    auto should_fail = reinterpret_cast<bool*>(arg);
+    *should_fail = force_failure;
+  });
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  auto s = CreateConsistentSnapshotStream();
+  ASSERT_NOK(s);
+  if (sync_point == "CreateCDCSDKStream::kWhileStoringConsistentSnapshotDetails") {
+    ASSERT_NE(s.status().message().AsStringView().find("CreateCDCStream RPC"), std::string::npos)
+        << s.status().message().AsStringView();
+    ASSERT_NE(s.status().message().AsStringView().find("timed out after"), std::string::npos)
+        << s.status().message().AsStringView();
+  } else {
+    ASSERT_NE(s.status().message().AsStringView().find(expected_error), std::string::npos)
+        << s.status().message().AsStringView();
+  }
+  LOG(INFO) << "Asserted the stream creation failures";
+
+  // Allow the background UpdatePeersAndMetrics to clean up the stream.
+  SleepFor(
+      MonoDelta::FromSeconds(4 * FLAGS_update_min_cdc_indices_interval_secs * kTimeMultiplier));
+
+  LOG(INFO) << "Checking the list of DB streams.";
+  auto list_streams_resp = ASSERT_RESULT(ListDBStreams());
+  ASSERT_EQ(list_streams_resp.streams_size(), 0) << list_streams_resp.DebugString();
+
+  ASSERT_EQ(tablet_peer->get_cdc_sdk_safe_time(), HybridTime::kInvalid);
+
+  // Future stream creations must succeed. Disable running UpdatePeersAndMetrics now so that it
+  // doesn't interfere with the safe time.
+  force_failure = false;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_enable_log_retention_by_op_idx) = false;
+
+  LOG(INFO) << "Creating Consistent snapshot stream again.";
+  xrepl::StreamId stream1_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+  const auto& snapshot_time_key_pair =
+      ASSERT_RESULT(GetSnapshotDetailsFromCdcStateTable(
+          stream1_id, tablet_peer->tablet_id(), test_client()));
+  auto checkpoint_result =
+      ASSERT_RESULT(GetCDCSnapshotCheckpoint(stream1_id, tablet_peer->tablet_id()));
+
+  LogRetentionBarrierAndRelatedDetails(checkpoint_result, tablet_peer);
+  ASSERT_GT(checkpoint_result.checkpoint().op_id().term(), 0);
+  ASSERT_GT(checkpoint_result.checkpoint().op_id().index(), 0);
+  ASSERT_GT(std::get<0>(snapshot_time_key_pair), tablet_peer->get_cdc_sdk_safe_time().ToUint64());
+  ASSERT_LE(checkpoint_result.checkpoint().op_id().index(),
+            tablet_peer->get_cdc_min_replicated_index());
+  ASSERT_EQ(tablet_peer->cdc_sdk_min_checkpoint_op_id().index,
+            tablet_peer->get_cdc_min_replicated_index());
+
+  list_streams_resp = ASSERT_RESULT(ListDBStreams());
+  ASSERT_EQ(list_streams_resp.streams_size(), 1);
+
+  yb::SyncPoint::GetInstance()->DisableProcessing();
+  yb::SyncPoint::GetInstance()->ClearAllCallBacks();
+}
+
+TEST_F(CDCSDKConsistentSnapshotTest, TestCSStreamFailureRollbackFailureBeforeSysCatalogEntry) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kBeforeSysCatalogEntry",
+      "Test failure for sync point CreateCDCSDKStream::kBeforeSysCatalogEntry.");
+}
+
+TEST_F(CDCSDKConsistentSnapshotTest, TestCSStreamFailureRollbackFailureBeforeInMemoryCommit) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kBeforeInMemoryStateCommit",
+      "Test failure for sync point CreateCDCSDKStream::kBeforeInMemoryStateCommit.");
+}
+
+TEST_F(CDCSDKConsistentSnapshotTest, TestCSStreamFailureRollbackFailureAfterInMemoryStateCommit) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kAfterInMemoryStateCommit",
+      "Test failure for sync point CreateCDCSDKStream::kAfterInMemoryStateCommit.");
+}
+
+TEST_F(CDCSDKConsistentSnapshotTest, TestCSStreamFailureRollbackFailureAfterDummy) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kAfterDummyCDCStateEntries",
+      "Test failure for sync point CreateCDCSDKStream::kAfterDummyCDCStateEntries.");
+}
+
+TEST_F(CDCSDKConsistentSnapshotTest, TestCSStreamFailureRollbackFailureAfterRetentionBarriers) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kAfterRetentionBarriers",
+      "Test failure for sync point CreateCDCSDKStream::kAfterRetentionBarriers.");
+}
+
+TEST_F(
+    CDCSDKConsistentSnapshotTest,
+    TestCSStreamFailureRollbackFailureWhileStoringConsistentSnapshot) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kWhileStoringConsistentSnapshotDetails", "" /* ignored */);
+}
+
+TEST_F(
+    CDCSDKConsistentSnapshotTest,
+    TestCSStreamFailureRollbackFailureAfterStoringConsistentSnapshot) {
+  TestCSStreamFailureRollback(
+      "CreateCDCSDKStream::kAfterStoringConsistentSnapshotDetails",
+      "Test failure for sync point CreateCDCSDKStream::kAfterStoringConsistentSnapshotDetails.");
+}
+
 // The goal of this test is to confirm that the retention barriers are set
 // for the slowest consumer
 TEST_F(CDCSDKConsistentSnapshotTest, TestTwoCSStream) {
@@ -112,6 +229,60 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestTwoCSStream) {
   //  Check that all the barriers are for the slowest consumer
   //  which would be stream1 as it was created before stream 2
   ASSERT_EQ(state1, state2);
+}
+
+// The goal of this test is to check if the cdc_state table entries are populated
+// as expected even if the ALTER TABLE from any tablet is slow
+TEST_F(CDCSDKConsistentSnapshotTest, TestCreateStreamWithSlowAlterTable) {
+  ASSERT_OK(SetUpWithParams(1, 1, false));
+
+  auto table = EXPECT_RESULT(CreateTable(&test_cluster_, kNamespaceName, kTableName, 2));
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(test_client()->GetTablets(table, 0, &tablets, nullptr));
+  ASSERT_EQ(tablets.size(), 2);
+
+  yb::SyncPoint::GetInstance()->SetCallBack("AsyncAlterTable::CDCSDKCreateStream", [&](void* arg) {
+    auto sync_point_tablet_id = reinterpret_cast<std::string*>(arg);
+    LOG(INFO) << "Tablet id: " << *sync_point_tablet_id;
+    if (*sync_point_tablet_id == tablets[0].tablet_id()) {
+      LOG(INFO) << "Found the tablet for which we shall slow down AlterTable";
+      SleepFor(MonoDelta::FromSeconds(2 * kTimeMultiplier));
+    }
+  });
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  // Create a Consistent Snapshot Stream with USE_SNAPSHOT option
+  auto stream_id = ASSERT_RESULT(CreateConsistentSnapshotStream());
+
+  auto checkpoints = ASSERT_RESULT(GetCDCCheckpoint(stream_id, tablets));
+  for (auto cp : checkpoints) {
+    LOG(INFO) << "Checkpoint = " << cp;
+    ASSERT_NE(cp, OpId::Invalid());
+  }
+
+  yb::SyncPoint::GetInstance()->DisableProcessing();
+  yb::SyncPoint::GetInstance()->ClearAllCallBacks();
+}
+
+TEST_F(CDCSDKConsistentSnapshotTest, TestCleanupAfterLateAlterTable) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
+
+  yb::SyncPoint::GetInstance()->SetCallBack("AsyncAlterTable::CDCSDKCreateStream", [&](void* arg) {
+    LOG(INFO) << "In the SyncPoint callback, about to go to sleep";
+    SleepFor(MonoDelta::FromSeconds(20 * kTimeMultiplier));
+  });
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  // Attempt to create a Consistent Snapshot Stream -
+  // this will fail because of the late ALTER TABLE response
+  ASSERT_NOK(CreateConsistentSnapshotStream());
+
+  SleepFor(MonoDelta::FromSeconds(25 * kTimeMultiplier));
+  VerifyTransactionParticipant(tablets[0].tablet_id(), OpId::Max());
+
+  yb::SyncPoint::GetInstance()->DisableProcessing();
+  yb::SyncPoint::GetInstance()->ClearAllCallBacks();
 }
 
 // The goal of this test is to confirm that the consistent snapshot related metadata is

@@ -117,7 +117,6 @@
 
 #include "yb/master/leader_epoch.h"
 #include "yb/master/master_fwd.h"
-#include "yb/master/auto_flags_orchestrator.h"
 #include "yb/master/async_rpc_tasks.h"
 #include "yb/master/backfill_index.h"
 #include "yb/master/catalog_entity_info.h"
@@ -139,11 +138,11 @@
 #include "yb/master/master_replication.pb.h"
 #include "yb/master/master_util.h"
 #include "yb/master/permissions_manager.h"
+#include "yb/master/post_tablet_create_task_base.h"
 #include "yb/master/scoped_leader_shared_lock-internal.h"
 #include "yb/master/sys_catalog.h"
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/ts_descriptor.h"
-#include "yb/master/xcluster/add_table_to_xcluster_task.h"
 #include "yb/master/xcluster/xcluster_manager.h"
 #include "yb/master/xcluster/xcluster_safe_time_service.h"
 #include "yb/master/yql_aggregates_vtable.h"
@@ -1038,7 +1037,7 @@ CatalogManager::CatalogManager(Master* master)
       master_, master_->metric_registry(),
       Bind(&CatalogManager::ElectedAsLeaderCb, Unretained(this))));
 
-  xcluster_manager_ = std::make_unique<XClusterManager>(master_, this, sys_catalog_.get());
+  xcluster_manager_ = std::make_unique<XClusterManager>(*master_, *this, *sys_catalog_.get());
 }
 
 CatalogManager::~CatalogManager() {
@@ -8308,7 +8307,6 @@ Status CatalogManager::ProcessTabletReportBatch(
   // appear in 'full_report', but that has no bearing on correctness.
   vector<TabletInfo*> mutated_tablets; // refcount protected by ReportedTablet::info
   std::unordered_map<TableId, std::set<TabletId>> new_running_tablets;
-  vector<TableInfo*> mutated_tables;  // refcount protected by 'table_info_map'
   for (auto it = begin; it != end; ++it) {
     const auto& tablet_id = it->tablet_id;
     const TabletInfoPtr& tablet = it->info;
@@ -8440,29 +8438,27 @@ Status CatalogManager::ProcessTabletReportBatch(
     }
   } // Finished one round of batch processing.
 
-  // Update the table state if all its tablets are now running.
-  for (auto& [table_id, tablets] : new_running_tablets) {
-    auto& table_info = table_info_map[table_id];
-    if (VERIFY_RESULT(HandleNewRunningTabletsForTable(table_info, tablets, epoch))) {
-      mutated_tables.push_back(table_info.get());
-    }
-  }
-
   // Write all tablet mutations to the catalog table.
   //
   // SysCatalogTable::Write will short-circuit the case where the data has not
   // in fact changed since the previous version and avoid any unnecessary mutations.
-  if (!mutated_tablets.empty() || !mutated_tables.empty()) {
-    Status s = sys_catalog_->Upsert(epoch, mutated_tablets, mutated_tables);
+  if (!mutated_tablets.empty()) {
+    Status s = sys_catalog_->Upsert(epoch, mutated_tablets);
     if (!s.ok()) {
       LOG(WARNING) << "Error updating tablets: " << s;
       return s;
     }
   }
+
+  // Update the table state if all its tablets are now running.
+  for (auto& [table_id, tablets] : new_running_tablets) {
+    SchedulePostTabletCreationTasks(table_info_map[table_id], epoch, tablets);
+  }
+
   // Filter the mutated tablets to find which tablets were modified. Need to actually commit the
   // state of the tablets before updating the system.partitions table, so get this first.
   vector<TabletInfoPtr> yql_partitions_mutated_tablets =
-      VERIFY_RESULT(GetYqlPartitionsVtable().FilterRelevantTablets(mutated_tablets));
+      GetYqlPartitionsVtable().FilterRelevantTablets(mutated_tablets);
 
   // Publish the in-memory tablet mutations and release the locks.
   for (auto& l : tablet_write_locks) {
@@ -13453,84 +13449,6 @@ Status CatalogManager::SubmitToSysCatalog(std::unique_ptr<tablet::Operation> ope
   return Status::OK();
 }
 
-Status CatalogManager::PromoteAutoFlags(
-    const PromoteAutoFlagsRequestPB* req, PromoteAutoFlagsResponsePB* resp) {
-  const auto max_class = VERIFY_RESULT_PREPEND(
-      ParseEnumInsensitive<AutoFlagClass>(req->max_flag_class()),
-      "Invalid value provided for flag class");
-
-  // It is expected PromoteAutoFlags RPC is triggered only for upgrades, hence it is required
-  // to avoid promotion of flags with AutoFlagClass::kNewInstallsOnly class.
-  SCHECK_LT(
-      max_class, AutoFlagClass::kNewInstallsOnly, InvalidArgument,
-      Format(
-          "max_class cannot be set to $0.",
-          ToString(AutoFlagClass::kNewInstallsOnly)));
-
-  auto [new_config_version, outcome] = VERIFY_RESULT(master::PromoteAutoFlags(
-      max_class, PromoteNonRuntimeAutoFlags(req->promote_non_runtime_flags()), req->force(),
-      *master_->auto_flags_manager(), this));
-
-  resp->set_new_config_version(new_config_version);
-  resp->set_flags_promoted(outcome != PromoteAutoFlagsOutcome::kNoFlagsPromoted);
-  resp->set_non_runtime_flags_promoted(
-      outcome == PromoteAutoFlagsOutcome::kNonRuntimeFlagsPromoted);
-  return Status::OK();
-}
-
-Status CatalogManager::RollbackAutoFlags(
-    const RollbackAutoFlagsRequestPB* req, RollbackAutoFlagsResponsePB* resp) {
-  auto [new_config_version, outcome] = VERIFY_RESULT(
-      master::RollbackAutoFlags(req->rollback_version(), *master_->auto_flags_manager(), this));
-
-  resp->set_new_config_version(new_config_version);
-  resp->set_flags_rolledback(outcome);
-  return Status::OK();
-}
-
-Status CatalogManager::PromoteSingleAutoFlag(
-    const PromoteSingleAutoFlagRequestPB* req, PromoteSingleAutoFlagResponsePB* resp) {
-  auto [new_config_version, outcome] = VERIFY_RESULT(master::PromoteSingleAutoFlag(
-      req->process_name(), req->auto_flag_name(), *master_->auto_flags_manager(), this));
-
-  resp->set_new_config_version(new_config_version);
-  resp->set_flag_promoted(outcome != PromoteAutoFlagsOutcome::kNoFlagsPromoted);
-  resp->set_non_runtime_flag_promoted(outcome == PromoteAutoFlagsOutcome::kNonRuntimeFlagsPromoted);
-  return Status::OK();
-}
-
-Status CatalogManager::DemoteSingleAutoFlag(
-    const DemoteSingleAutoFlagRequestPB* req, DemoteSingleAutoFlagResponsePB* resp) {
-  auto [new_config_version, outcome] = VERIFY_RESULT(master::DemoteSingleAutoFlag(
-      req->process_name(), req->auto_flag_name(), *master_->auto_flags_manager(), this));
-
-  resp->set_new_config_version(new_config_version);
-  resp->set_flag_demoted(outcome);
-  return Status::OK();
-}
-
-Status CatalogManager::ValidateAutoFlagsConfig(
-    const ValidateAutoFlagsConfigRequestPB* req, ValidateAutoFlagsConfigResponsePB* resp) {
-  VLOG_WITH_FUNC(1) << req->ShortDebugString();
-
-  auto min_class = AutoFlagClass::kLocalVolatile;
-  if (req->has_min_flag_class()) {
-    min_class = VERIFY_RESULT_PREPEND(
-        yb::UnderlyingToEnumSlow<yb::AutoFlagClass>(req->min_flag_class()),
-        "Invalid value provided for flag class");
-  }
-
-  auto local_auto_flag_config = master_->GetAutoFlagsConfig();
-  auto valid =
-      VERIFY_RESULT(AreAutoFlagsCompatible(local_auto_flag_config, req->config(), min_class));
-  VLOG_WITH_FUNC(1) << valid;
-
-  resp->set_valid(valid);
-  resp->set_config_version(local_auto_flag_config.config_version());
-
-  return Status::OK();
-}
-
 Status CatalogManager::GetStatefulServiceLocation(
     const GetStatefulServiceLocationRequestPB* req, GetStatefulServiceLocationResponsePB* resp) {
   VLOG(4) << "GetStatefulServiceLocation: " << req->ShortDebugString();
@@ -13597,7 +13515,7 @@ void CatalogManager::SysCatalogLoaded(SysCatalogLoadingState&& state) {
   snapshot_coordinator_.SysCatalogLoaded(state.epoch.leader_term);
 
   xcluster_manager_->SysCatalogLoaded();
-  ScheduleAddTableToXClusterTaskForAllTables(state.epoch);
+  SchedulePostTabletCreationTasksForPendingTables(state.epoch);
 }
 
 Status CatalogManager::UpdateLastFullCompactionRequestTime(
@@ -13735,46 +13653,30 @@ void CatalogManager::WriteTabletToSysCatalog(const TabletId& tablet_id) {
       "Failed to upsert migrated colocated tablet into sys catalog.");
 }
 
-bool CatalogManager::ScheduleAddTableToXClusterTaskIfNeeded(
-    TableInfoPtr table_info, const SysTablesEntryPB& pb, const LeaderEpoch& epoch) {
-  DCHECK(table_info->mutable_metadata()->is_dirty());
-  if (table_info->HasTasks(server::MonitoredTaskType::kAddTableToXClusterReplication)) {
-    // Task already scheduled.
-    return true;
-  }
+void CatalogManager::SchedulePostTabletCreationTasks(
+    const TableInfoPtr& table_info, const LeaderEpoch& epoch,
+    const std::set<TabletId>& new_running_tablets) {
+  auto& mutable_table_info = *table_info->mutable_metadata();
+  DCHECK(mutable_table_info.HasWriteLock());
 
-  if (!ShouldAddTableToXClusterReplication(*table_info, pb)) {
-    return false;
-  }
-
-  VLOG(1) << "Scheduling AddTableToXClusterTask for " << table_info->id();
-  auto call = std::make_shared<AddTableToXClusterTask>(this, table_info, epoch);
-  table_info->AddTask(call);
-  // Task will be removed from table_info if the scheduling fails.
-  auto s = ScheduleTask(call);
-  if (!s.ok()) {
-    table_info->SetCreateTableErrorStatus(s);
-    LOG(WARNING) << "Failed to start AddTableToXClusterTask: " << s;
-  }
-
-  return true;
-}
-
-Result<bool> CatalogManager::HandleNewRunningTabletsForTable(
-    TableInfoPtr table_info, const std::set<TabletId>& new_running_tablets,
-    const LeaderEpoch& epoch) {
-  auto* mutable_table_info = table_info->mutable_metadata()->mutable_dirty();
-  if (!mutable_table_info->IsPreparing() ||
+  if (!mutable_table_info.mutable_dirty()->IsPreparing() ||
       !table_info->AreAllTabletsRunning(new_running_tablets)) {
-    return false;
+    return;
   }
 
-  if (ScheduleAddTableToXClusterTaskIfNeeded(table_info, mutable_table_info->pb, epoch)) {
-    return false;
+  // Collect all PostTabletCreateTasks for this table.
+  auto table_creation_tasks = xcluster_manager_->GetPostTabletCreateTasks(table_info, epoch);
+  // TODO: Get cdcsdk tasks
+
+  if (table_creation_tasks.empty()) {
+    // Schedule a simple task that will mark this table as RUNNING when it completes.
+    table_creation_tasks.emplace_back(std::make_shared<MarkTableAsRunningTask>(
+        *this, *AsyncTaskPool(), *master_->messenger(), table_info, epoch));
   }
 
-  mutable_table_info->pb.set_state(SysTablesEntryPB::RUNNING);
-  return true;
+  WARN_NOT_OK(
+      PostTabletCreateTaskBase::StartTasks(table_creation_tasks, this, table_info, epoch),
+      "Failed to schedule PostTabletCreateTasks");
 }
 
 Status CatalogManager::PromoteTableToRunningState(
@@ -13782,7 +13684,7 @@ Status CatalogManager::PromoteTableToRunningState(
   auto l = table_info->LockForWrite();
   SCHECK(
       l.mutable_data()->IsPreparing(), IllegalState,
-      "Table $0 should be in PREPARING state. Current state: $2", table_info->ToString(),
+      "Table $0 should be in PREPARING state. Current state: $1", table_info->ToString(),
       l.mutable_data()->pb.state());
 
   l.mutable_data()->pb.set_state(SysTablesEntryPB::RUNNING);
@@ -13794,7 +13696,7 @@ Status CatalogManager::PromoteTableToRunningState(
   return Status::OK();
 }
 
-void CatalogManager::ScheduleAddTableToXClusterTaskForAllTables(const LeaderEpoch& epoch) {
+void CatalogManager::SchedulePostTabletCreationTasksForPendingTables(const LeaderEpoch& epoch) {
   std::vector<TableId> table_ids;
   {
     SharedLock lock(mutex_);
@@ -13807,16 +13709,12 @@ void CatalogManager::ScheduleAddTableToXClusterTaskForAllTables(const LeaderEpoc
   for (auto& table_id : table_ids) {
     auto table_info_result = FindTableById(table_id);
     if (!table_info_result) {
-      LOG(WARNING) << "Failed to find table " << table_id << " to schedule AddTableToXClusterTask";
+      LOG(WARNING) << "Failed to find table " << table_id << " to schedule PostTabletCreationTasks";
       continue;
     }
     auto& table_info = *table_info_result;
-    auto l = table_info->LockForRead();
-    if (l->IsPreparing() && table_info->AreAllTabletsRunning()) {
-      l.Unlock();
-      auto wl = table_info->LockForWrite();
-      ScheduleAddTableToXClusterTaskIfNeeded(table_info, wl.mutable_data()->pb, epoch);
-    }
+    auto wl = table_info->LockForWrite();
+    SchedulePostTabletCreationTasks(table_info, epoch);
   }
 }
 

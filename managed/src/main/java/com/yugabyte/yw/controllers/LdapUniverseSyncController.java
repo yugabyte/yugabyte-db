@@ -57,11 +57,9 @@ public class LdapUniverseSyncController extends AuthenticatedController {
    * @param request
    */
   @ApiOperation(
-      value =
-          "WARNING: This is a preview API that could change. Perform an LDAP users sync on the"
-              + " universe",
+      notes = "WARNING: This is a preview API that could change.",
+      value = "Perform an LDAP users sync on the universe",
       nickname = "syncLdapUniverse",
-      notes = "UNSTABLE - This API will undergo changes in future.",
       response = YBPTask.class)
   @ApiImplicitParams(
       @ApiImplicitParam(

@@ -107,7 +107,6 @@
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
-#include "yb/util/pg_util.h"
 #include "yb/util/random_util.h"
 #include "yb/util/scope_exit.h"
 #include "yb/util/size_literals.h"
@@ -159,6 +158,9 @@ DEFINE_RUNTIME_int32(index_backfill_additional_delay_before_backfilling_ms, 0,
     "value should be set to be something larger than the raft-heartbeat-interval "
     "but can be as high as the client_rpc_timeout if we want to be more conservative.");
 TAG_FLAG(index_backfill_additional_delay_before_backfilling_ms, evolving);
+
+DEFINE_test_flag(int32, index_backfill_fail_after_random_wait_upto_ms, 0,
+    "If set to > 0 BackfillIndex calls will be failed after randomly waiting.");
 
 DEFINE_RUNTIME_int32(index_backfill_wait_for_old_txns_ms, 0,
     "Index backfill needs to wait for transactions that started before the "
@@ -684,6 +686,19 @@ void TabletServiceAdminImpl::BackfillIndex(
     return;
   }
 
+  auto max_sleep_ms = GetAtomicFlag(&FLAGS_TEST_index_backfill_fail_after_random_wait_upto_ms);
+  if (max_sleep_ms > 0) {
+    auto rand_wait = RandomUniformInt(0, max_sleep_ms);
+    LOG(INFO) << "Randomly sleeping for " << rand_wait << " ms before failing";
+    SleepFor(1ms * rand_wait);
+    SetupErrorAndRespond(
+        resp->mutable_error(), STATUS_FORMAT(InvalidArgument, "Failing as requested for testing."),
+        TabletServerErrorPB::OPERATION_NOT_SUPPORTED, &context);
+    return;
+  }
+
+  const uint32_t our_schema_version = tablet.peer->tablet_metadata()->schema_version();
+  const uint32_t their_schema_version = req->schema_version();
   bool all_at_backfill = true;
   bool all_past_backfill = true;
   bool is_pg_table = tablet.tablet->table_type() == TableType::PGSQL_TABLE_TYPE;
@@ -712,9 +727,16 @@ void TabletServiceAdminImpl::BackfillIndex(
       all_past_backfill &=
           idx_info_pb.index_permissions() > IndexPermissions::INDEX_PERM_DO_BACKFILL;
     } else {
-      LOG(WARNING) << "index " << idx.table_id() << " not found in tablet metadata";
-      all_at_backfill = false;
-      all_past_backfill = false;
+      const auto& index_table_id = idx.table_id();
+      LOG(INFO) << "index " << index_table_id << " not found in tablet metadata";
+      *resp->add_failed_index_ids() = index_table_id;
+      SetupErrorAndRespond(
+          resp->mutable_error(),
+          STATUS_SUBSTITUTE(
+              InvalidArgument, "Index $0 not found in index_map. Current schema is $1",
+              index_table_id, our_schema_version),
+          TabletServerErrorPB::OPERATION_NOT_SUPPORTED, &context);
+      return;
     }
   }
 
@@ -731,8 +753,6 @@ void TabletServiceAdminImpl::BackfillIndex(
       return;
     }
 
-    uint32_t our_schema_version = tablet.peer->tablet_metadata()->schema_version();
-    uint32_t their_schema_version = req->schema_version();
     DCHECK_NE(our_schema_version, their_schema_version);
     SetupErrorAndRespond(
         resp->mutable_error(),
@@ -907,10 +927,15 @@ void TabletServiceAdminImpl::AlterSchema(const tablet::ChangeMetadataRequestPB* 
           << " version=" << schema_version << " current-schema=" << tablet_schema.ToString()
           << " to request-schema=" << req_schema.ToString()
           << " for table ID=" << table_info->table_id;
+
+  // There is no need to pause writes for an AlterSchema operation that is only going
+  // to be setting retention barriers, as is the case when an AlterSchema is issued in
+  // the context of a CDCSDK Create Stream
   ScopedRWOperationPause pause_writes;
-  if ((tablet.tablet->table_type() == TableType::YQL_TABLE_TYPE &&
+  if (!req->has_retention_requester_id() &&
+      ((tablet.tablet->table_type() == TableType::YQL_TABLE_TYPE &&
        !GetAtomicFlag(&FLAGS_disable_alter_vs_write_mutual_exclusion)) ||
-      tablet.tablet->table_type() == TableType::PGSQL_TABLE_TYPE) {
+      tablet.tablet->table_type() == TableType::PGSQL_TABLE_TYPE)) {
     // For schema change operations we will have to pause the write operations
     // until the schema change is done. This will be done synchronously.
     pause_writes = tablet.tablet->PauseWritePermits(context.GetClientDeadline());
@@ -1951,15 +1976,10 @@ void TabletServiceAdminImpl::WaitForYsqlBackendsCatalogVersion(
   // TODO(jason): come up with a more efficient connection reuse method for tserver-postgres
   // communication.  As of D19621, connections are spawned each request for YSQL upgrade, index
   // backfill, and this.  Creating the connection has a startup cost.
-  auto res = pgwrapper::PGConnBuilder({
-        .host = PgDeriveSocketDir(server_->pgsql_proxy_bind_address()),
-        .port = server_->pgsql_proxy_bind_address().port(),
-        .dbname = "template1",
-        .user = "postgres",
-        .password = UInt64ToString(server_->GetSharedMemoryPostgresAuthKey()),
-        .connect_timeout = make_unsigned(std::max(
-            2, narrow_cast<int>(ToSeconds(modified_deadline - CoarseMonoClock::Now())))),
-      }).Connect();
+  auto res = pgwrapper::CreateInternalPGConnBuilder(
+                 server_->pgsql_proxy_bind_address(), "template1",
+                 server_->GetSharedMemoryPostgresAuthKey(), modified_deadline)
+                 .Connect();
   if (!res.ok()) {
     LOG_WITH_PREFIX_AND_FUNC(ERROR) << "failed to connect to local postgres: " << res.status();
     SetupErrorAndRespond(resp->mutable_error(), res.status(), &context);

@@ -9,9 +9,11 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseSetTlsParams;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert;
 import com.yugabyte.yw.commissioner.tasks.subtasks.UniverseUpdateRootCert.UpdateRootCertAction;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.CertsRotateParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
+import com.yugabyte.yw.models.Universe;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 
@@ -19,8 +21,10 @@ import lombok.extern.slf4j.Slf4j;
 public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
 
   @Inject
-  protected CertsRotateKubernetesUpgrade(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
+  protected CertsRotateKubernetesUpgrade(
+      BaseTaskDependencies baseTaskDependencies,
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
+    super(baseTaskDependencies, operatorStatusUpdaterFactory);
   }
 
   @Override
@@ -31,6 +35,13 @@ public class CertsRotateKubernetesUpgrade extends KubernetesUpgradeTaskBase {
   @Override
   public SubTaskGroupType getTaskSubGroupType() {
     return SubTaskGroupType.RotatingCert;
+  }
+
+  @Override
+  protected void createPrecheckTasks(Universe universe) {
+    if (isFirstTry()) {
+      verifyClustersConsistency();
+    }
   }
 
   @Override

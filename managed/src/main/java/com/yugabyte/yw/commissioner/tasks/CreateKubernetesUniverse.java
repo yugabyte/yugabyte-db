@@ -29,6 +29,7 @@ import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.NodeDetails;
 import com.yugabyte.yw.models.helpers.PlacementInfo;
+import com.yugabyte.yw.models.helpers.TaskType;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
@@ -58,9 +59,9 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
   @Inject
   protected CreateKubernetesUniverse(
       BaseTaskDependencies baseTaskDependencies,
-      OperatorStatusUpdaterFactory statusUpdaterFactory) {
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
     super(baseTaskDependencies);
-    this.kubernetesStatus = statusUpdaterFactory.create();
+    this.kubernetesStatus = operatorStatusUpdaterFactory.create();
   }
 
   @Override
@@ -105,10 +106,10 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       }
 
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-      kubernetesStatus.createYBUniverseEventStatus(
+      kubernetesStatus.startYBUniverseEventStatus(
           universe,
           taskParams().getKubernetesResourceDetails(),
-          getName(),
+          TaskType.CreateKubernetesUniverse.name(),
           getUserTaskUUID(),
           UniverseState.CREATING);
 
@@ -245,9 +246,9 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       kubernetesStatus.updateYBUniverseStatus(
           getUniverse(),
           taskParams().getKubernetesResourceDetails(),
-          getName(),
+          TaskType.CreateKubernetesUniverse.name(),
           getUserTaskUUID(),
-          (th != null) ? UniverseState.ERROR : UniverseState.READY,
+          (th != null) ? UniverseState.ERROR_CREATING : UniverseState.READY,
           th);
       unlockUniverseForUpdate();
     }

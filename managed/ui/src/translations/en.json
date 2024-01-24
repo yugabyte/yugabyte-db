@@ -8,6 +8,7 @@
       "confirm": "Confirm",
       "continue": "Continue",
       "create": "Create",
+      "disable": "Disable",
       "genericFailure": "Something went wrong. Please try again.",
       "no": "No",
       "proceed": "Proceed",
@@ -32,7 +33,8 @@
       "note": "Note :",
       "reload": "Reload",
       "default": "Default",
-      "seconds": "Seconds"
+      "seconds": "Seconds",
+      "dot": "."
     },
     "task": {
       "viewDetails": "View Details"
@@ -145,6 +147,7 @@
         "rollbackFailedMsg": "The rollback of the Universe database upgrade has encountered an issue. To restore the Universe to its normal state, you can choose to either retry the rollback or get in touch our support team.",
         "finalizeFailedMsg": "The finalization of the Universe database upgrade has encountered an issue. To restore the Universe to its normal state, you can choose to either retry the finalization or get in touch our support team.",
         "upgradeFailedMsg": "The Universe database version upgrade has encountered an issue. To restore the Universe to its normal state, you have the option to either roll back the upgrade or retry the upgrade.",
+        "upgradeFialedNonRollback": "The Universe database version upgrade has encountered an issue. To restore the Universe to its normal state,you can choose to either retry the upgrade or get in touch our support team.",
         "viewTask": "View Task Details",
         "retryTask": "Retry Task",
         "preFinalize": {
@@ -1140,7 +1143,10 @@
       "unassignedNodesTitle": "Unassigned Nodes",
       "viewDetailsButton": "View Details",
       "unreachableInstanceAgents": "Instance agents are unreachable",
-      "contactSupport": "Contact Support"
+      "contactSupport": "Contact Support",
+      "delete": "Delete",
+      "deleteNodeAgent": "Delete Node Agent",
+      "confirmDeletionMessage": "Are you sure you want to delete the Node Agent associated with the provider {{provider_name}} ?"
     },
     "OIDCJWT": {
       "emailId": "Email ID",
@@ -1442,7 +1448,8 @@
           },
           "universeName": "Universe Name",
           "searchPlaceholder": "Search by universe name...",
-          "includeFutureUniverse": "Include future Universes"
+          "includeFutureUniverse": "Include future Universes",
+          "disabledOnUniverseCreatePerm": "Universe selection is not allowed for role with \"Create Universe\" permission"
         }
       }
     },
@@ -1525,6 +1532,90 @@
       "regionAmiModal": {
         "title": "Add AMI IDs for {{region_name}} ",
         "regionAmiId": "Region AMI ID"
+      }
+    },
+    "releases": {
+      "headerTitle": "Releases",
+      "tag": "Tag",
+      "tags": {
+        "x86_64": "VM x86",
+        "aarch64": "VM ARM",
+        "kubernetes": "Kubernetes"
+      },
+      "state": {
+        "active": "Active",
+        "disabled": "Disabled"
+      },
+      "type": {
+        "STS": "STS",
+        "LTS": "LTS",
+        "Preview": "Preview"
+      },
+      "newRelease": "New Release",
+      "architectureLabel": "Architecture",
+      "addRelease": "Add Release",
+      "chooseImportMethod": "Choose the import method",
+      "edit": "Edit",
+      "version": "Version",
+      "support": "Support",
+      "releaseDate": "Release Date", 
+      "releaseDetails": "Release Details",
+      "releaseNote": "Release Note",
+      "releaseSupport": "Release Support",
+      "releaseUsage": "Usage",
+      "enableDeployment": "Enable Deployment",
+      "disableDeployment": "Disable Deployment",
+      "importArchitecture": "Imported Architecture",
+      "releaseDeployment": "Deployment",
+      "deploymentType": "Deployment Type",
+      "status": "Status",
+      "linux": "VMs",
+      "kubernetes": "Kubernetes",
+      "x86_64": "x86 (Intel)",
+      "aarch64": "AArch6 (ARM)",
+      "creationDate": "Creation Date",
+      "noUniversesWithRelease": "There are no universes associated with this release",
+      "architecture": {
+        "type": "Type",
+        "importMethod": "Import Method",
+        "location": "Location"
+      },
+      "allowedReleases": "Show only allowed releases",
+      "releaseType": "Release Type:",
+      "searchVersions": "Search Versions",
+      "inUse": "In Use",
+      "inUseUniverses": "In-Use Universes",
+      "notInUse": "Not in Use",
+      "editArchitectureModal": {
+        "uploadDBInstaller": "Upload Database Installer(Linux) or helm chart (Kubernetes)",
+        "supportedFileFormat": "Supported file type: tar.gz",
+        "upload": "Upload",
+        "installerURL": "Database Installer(Linux) or helm chart (Kubernetes)",
+        "uploadSignatureFile": "Upload signature file",
+        "signature": "Signature"
+      },
+      "addReleaseModal": {
+        "viewReleaseDetails": "View Release Details",
+        "unableFetchRelease": "Unable to fetch release details.Provide the following information",
+        "addReleaseTag": "Add a release tag (optional)",
+        "version": "VERSION",
+        "deploymentType": "DEPLOYMENT TYPE",
+        "architecture": "ARCHITECTURE",
+        "releaseSupport": "RELEASE SUPPORT",
+        "releaseDate": "RELEASE DATE"
+      },
+      "disableReleaseModal": {
+        "disableMessage": "Are you sure you want to disable the release {{release_version}}?",
+        "enableRelease": "Enable Release",
+        "disableRelease": "Disable Release"
+      },
+      "deleteReleaseModal": {
+        "deleteMessage": "Are you sure you want to delete the release {{release_version}}?",
+        "modalTile": "Delete Release"
+      },
+      "editKubernetesModal": {
+        "modalTitle": "Edit Kubernetes",
+        "helperText": "YugabyteDB Anywhere will use this URL to retrieve the installation file during deployment and upgrades."
       }
     }
   }

@@ -12,9 +12,7 @@
 //
 
 #include "yb/master/xcluster/xcluster_outbound_replication_group.h"
-#include "yb/cdc/cdc_service.proxy.h"
 #include "yb/master/catalog_entity_info.h"
-#include "yb/master/ts_descriptor.h"
 
 namespace yb::master {
 
@@ -29,38 +27,40 @@ struct TableSchemaNamePairHash {
   }
 };
 
-Result<SysXClusterOutboundReplicationGroupEntryPB::NamespaceInfoPB> BootstrapTables(
-    const NamespaceName& namespace_id, const std::vector<scoped_refptr<TableInfo>>& table_infos,
-    CoarseTimePoint deadline) {
+}  // namespace
+
+XClusterOutboundReplicationGroup::XClusterOutboundReplicationGroup(
+    const xcluster::ReplicationGroupId& replication_group_id,
+    const SysXClusterOutboundReplicationGroupEntryPB& outbound_replication_group_pb,
+    HelperFunctions helper_functions)
+    : helper_functions_(std::move(helper_functions)) {
+  outbound_rg_info_ = std::make_unique<XClusterOutboundReplicationGroupInfo>(replication_group_id);
+  outbound_rg_info_->Load(outbound_replication_group_pb);
+}
+
+SysXClusterOutboundReplicationGroupEntryPB XClusterOutboundReplicationGroup::GetMetadata() const {
+  auto l = outbound_rg_info_->LockForRead();
+  return l->pb;
+}
+
+Status XClusterOutboundReplicationGroup::Upsert(
+    XClusterOutboundReplicationGroupInfo::WriteLock& l, const LeaderEpoch& epoch) {
+  auto status = helper_functions_.upsert_to_sys_catalog_func(epoch, outbound_rg_info_.get());
+  l.CommitOrWarn(status, "updating xClusterOutboundReplicationGroup in sys-catalog");
+  return status;
+}
+
+Result<SysXClusterOutboundReplicationGroupEntryPB::NamespaceInfoPB>
+XClusterOutboundReplicationGroup::BootstrapTables(
+    const std::vector<TableInfoPtr>& table_infos, CoarseTimePoint deadline) {
   SysXClusterOutboundReplicationGroupEntryPB::NamespaceInfoPB ns_info;
   ns_info.set_state(SysXClusterOutboundReplicationGroupEntryPB::NamespaceInfoPB::CHECKPOINTING);
 
-  cdc::BootstrapProducerRequestPB bootstrap_req;
-  master::TSDescriptor* ts = nullptr;
-  for (const auto& table_info : table_infos) {
-    bootstrap_req.add_table_ids(table_info->id());
-
-    if (!ts) {
-      ts = VERIFY_RESULT(table_info->GetTablets().front()->GetLeader());
-    }
-  }
-  SCHECK(ts, IllegalState, "No valid tserver found to bootstrap from");
-
-  std::shared_ptr<cdc::CDCServiceProxy> proxy;
-  RETURN_NOT_OK(ts->GetProxy(&proxy));
-
-  cdc::BootstrapProducerResponsePB bootstrap_resp;
-  rpc::RpcController bootstrap_rpc;
-  bootstrap_rpc.set_deadline(deadline);
-
-  // TODO(Hari): DB-9416 Make this async and atomic with upsert of xClusterOutboundReplicationGroup.
-  RETURN_NOT_OK(proxy->BootstrapProducer(bootstrap_req, &bootstrap_resp, &bootstrap_rpc));
-  if (bootstrap_resp.has_error()) {
-    RETURN_NOT_OK(StatusFromPB(bootstrap_resp.error().status()));
-  }
+  auto bootstrap_ids =
+      VERIFY_RESULT(helper_functions_.bootstrap_tables_func(table_infos, deadline));
 
   SCHECK_EQ(
-      table_infos.size(), bootstrap_resp.cdc_bootstrap_ids_size(), IllegalState,
+      table_infos.size(), bootstrap_ids.size(), IllegalState,
       "Number of tables to bootstrap and number of bootstrap ids do not match");
 
   bool initial_bootstrap_required = false;
@@ -69,7 +69,7 @@ Result<SysXClusterOutboundReplicationGroupEntryPB::NamespaceInfoPB> BootstrapTab
     // initial_bootstrap_required |= bootstrap_resp.bootstrap_required(i);
 
     SysXClusterOutboundReplicationGroupEntryPB::NamespaceInfoPB::TableInfoPB table_info;
-    table_info.set_stream_id(bootstrap_resp.cdc_bootstrap_ids(static_cast<int>(i)));
+    table_info.set_stream_id(bootstrap_ids[i].ToString());
     ns_info.mutable_table_infos()->insert({table_infos[i]->id(), std::move(table_info)});
   }
 
@@ -79,71 +79,12 @@ Result<SysXClusterOutboundReplicationGroupEntryPB::NamespaceInfoPB> BootstrapTab
   return ns_info;
 }
 
-// Should the table be part of xCluster replication?
-bool ShouldReplicateTable(const scoped_refptr<TableInfo>& table) {
-  if (table->GetTableType() != PGSQL_TABLE_TYPE || table->is_system()) {
-    // Limited to ysql databases.
-    // System tables are not replicated. DDLs statements will be replicated and executed on the
-    // target universe to handle catalog changes.
-    return false;
-  }
-
-  if (table->is_matview()) {
-    // Materialized views need not be replicated, since they are not modified. Every time the view
-    // is refreshed, new tablets are created. The same refresh can just run on the target universe.
-    return false;
-  }
-
-  if (table->IsColocatedUserTable()) {
-    // Only the colocated parent table needs to be replicated.
-    return false;
-  }
-
-  return true;
-}
-
-}  // namespace
-
-XClusterOutboundReplicationGroup::XClusterOutboundReplicationGroup(
-    const xcluster::ReplicationGroupId& replication_group_id,
-    const SysXClusterOutboundReplicationGroupEntryPB& outbound_replication_group_pb,
-    SysCatalogTable* sys_catalog,
-    std::function<Result<std::vector<scoped_refptr<TableInfo>>>(const NamespaceId&)>
-        get_tables_func,
-    std::function<Result<NamespaceId>(YQLDatabase db_type, const NamespaceName& namespace_name)>
-        get_namespace_id_func,
-    std::function<Result<DeleteCDCStreamResponsePB>(
-        const DeleteCDCStreamRequestPB&, const LeaderEpoch& epoch)>
-        delete_cdc_stream_func)
-    : sys_catalog_(sys_catalog),
-      get_tables_func_(std::move(get_tables_func)),
-      get_namespace_id_func_(std::move(get_namespace_id_func)),
-      delete_cdc_stream_func_(std::move(delete_cdc_stream_func)) {
-  outbound_rg_info_ = std::make_unique<XClusterOutboundReplicationGroupInfo>(replication_group_id);
-  outbound_rg_info_->Load(outbound_replication_group_pb);
-}
-
-Status XClusterOutboundReplicationGroup::Upsert(
-    XClusterOutboundReplicationGroupInfo::WriteLock& l, const LeaderEpoch& epoch) {
-  auto status = sys_catalog_->Upsert(epoch.leader_term, outbound_rg_info_.get());
-  l.CommitOrWarn(status, "updating xClusterOutboundReplicationGroup in sys-catalog");
-  return status;
-}
-
-Result<std::vector<scoped_refptr<TableInfo>>> XClusterOutboundReplicationGroup::GetTables(
-    const NamespaceId& namespace_id) const {
-  auto table_infos = VERIFY_RESULT(get_tables_func_(namespace_id));
-  EraseIf(
-      [](const scoped_refptr<TableInfo>& table) { return !ShouldReplicateTable(table); },
-      &table_infos);
-  return table_infos;
-}
-
 Result<NamespaceId> XClusterOutboundReplicationGroup::AddNamespaceInternal(
     const NamespaceName& namespace_name, CoarseTimePoint deadline,
     XClusterOutboundReplicationGroupInfo::WriteLock& l) {
   SCHECK(!namespace_name.empty(), InvalidArgument, "Namespace name cannot be empty");
-  auto namespace_id = VERIFY_RESULT(get_namespace_id_func_(YQL_DATABASE_PGSQL, namespace_name));
+  auto namespace_id =
+      VERIFY_RESULT(helper_functions_.get_namespace_id_func(YQL_DATABASE_PGSQL, namespace_name));
 
   auto& outbound_group_pb = l.mutable_data()->pb;
 
@@ -153,8 +94,8 @@ Result<NamespaceId> XClusterOutboundReplicationGroup::AddNamespaceInternal(
     return namespace_id;
   }
 
-  auto table_infos = VERIFY_RESULT(GetTables(namespace_id));
-  auto ns_checkpoint_info = VERIFY_RESULT(BootstrapTables(namespace_id, table_infos, deadline));
+  auto table_infos = VERIFY_RESULT(helper_functions_.get_tables_func(namespace_id));
+  auto ns_checkpoint_info = VERIFY_RESULT(BootstrapTables(table_infos, deadline));
   (*outbound_group_pb.mutable_namespace_infos())[namespace_id] = std::move(ns_checkpoint_info);
 
   return namespace_id;
@@ -208,7 +149,7 @@ Status XClusterOutboundReplicationGroup::DeleteNamespaceStreams(
 
   req.set_force_delete(true);
   req.set_ignore_errors(false);
-  auto resp = VERIFY_RESULT(delete_cdc_stream_func_(req, epoch));
+  auto resp = VERIFY_RESULT(helper_functions_.delete_cdc_stream_func(req, epoch));
   if (resp.has_error()) {
     return StatusFromPB(resp.error().status());
   }
@@ -237,7 +178,7 @@ Status XClusterOutboundReplicationGroup::Delete(const LeaderEpoch& epoch) {
   }
   outbound_group_pb.mutable_namespace_infos()->clear();
 
-  auto status = sys_catalog_->Delete(epoch.leader_term, outbound_rg_info_.get());
+  auto status = helper_functions_.delete_from_sys_catalog_func(epoch, outbound_rg_info_.get());
   l.CommitOrWarn(status, "updating xClusterOutboundReplicationGroup in sys-catalog");
 
   return status;
@@ -260,7 +201,7 @@ Result<std::optional<bool>> XClusterOutboundReplicationGroup::IsBootstrapRequire
   return namespace_info.initial_bootstrap_required();
 }
 
-Result<std::optional<XClusterOutboundReplicationGroup::NamespaceCheckpointInfo>>
+Result<std::optional<NamespaceCheckpointInfo>>
 XClusterOutboundReplicationGroup::GetNamespaceCheckpointInfo(
     const NamespaceId& namespace_id,
     const std::vector<std::pair<TableName, PgSchemaName>>& table_names) const {
@@ -280,7 +221,7 @@ XClusterOutboundReplicationGroup::GetNamespaceCheckpointInfo(
   NamespaceCheckpointInfo ns_info;
   ns_info.initial_bootstrap_required = namespace_info.initial_bootstrap_required();
 
-  auto all_tables = VERIFY_RESULT(GetTables(namespace_id));
+  auto all_tables = VERIFY_RESULT(helper_functions_.get_tables_func(namespace_id));
   std::vector<scoped_refptr<TableInfo>> table_infos;
 
   if (!table_names.empty()) {

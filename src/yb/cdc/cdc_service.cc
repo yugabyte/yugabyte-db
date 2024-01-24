@@ -1052,7 +1052,7 @@ Status CDCServiceImpl::CreateCDCStreamForNamespace(
 
   xrepl::StreamId db_stream_id = VERIFY_RESULT_OR_SET_CODE(
       client()->CreateCDCSDKStreamForNamespace(ns_id, options, populate_namespace_id_as_table_id,
-                                               ReplicationSlotName(""), snapshot_option),
+                                               ReplicationSlotName(""), snapshot_option, deadline),
       CDCError(CDCErrorPB::INTERNAL_ERROR));
   resp->set_db_stream_id(db_stream_id.ToString());
   return Status::OK();
@@ -2398,6 +2398,7 @@ void CDCServiceImpl::FilterOutTabletsToBeDeletedByAllStreams(
 Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
     const TabletId& input_tablet_id, TabletIdStreamIdSet* tablet_stream_to_be_deleted) {
   TabletIdCDCCheckpointMap tablet_min_checkpoint_map;
+  std::unordered_set<xrepl::StreamId> refreshed_metadata_set;
 
   int count = 0;
   Status iteration_status;
@@ -2434,7 +2435,11 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
       last_replicated_time_str = Timestamp(*entry.last_replication_time).ToFormattedString();
     }
 
-    auto get_stream_metadata = GetStream(stream_id);
+    RefreshStreamMapOption refresh_option = RefreshStreamMapOption::kNone;
+    if (refreshed_metadata_set.find(stream_id) == refreshed_metadata_set.end()) {
+      refresh_option = RefreshStreamMapOption::kIfInitiatedState;
+    }
+    auto get_stream_metadata = GetStream(stream_id, refresh_option);
     if (!get_stream_metadata.ok()) {
       LOG(WARNING) << "Read invalid stream id: " << stream_id << " for tablet " << tablet_id << ": "
                    << get_stream_metadata.status();
@@ -2458,6 +2463,10 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
       continue;
     }
     StreamMetadata& record = **get_stream_metadata;
+    // Refresh metadata from master for a stream in INITIATED state only once per round
+    if (record.GetState() == master::SysCDCStreamEntryPB_State_INITIATED) {
+      refreshed_metadata_set.insert(stream_id);
+    }
 
     HybridTime cdc_sdk_safe_time = HybridTime::kInvalid;
     int64_t last_active_time_cdc_state_table = std::numeric_limits<int64_t>::min();
@@ -2481,6 +2490,9 @@ Result<TabletIdCDCCheckpointMap> CDCServiceImpl::PopulateTabletCheckPointInfo(
 
     // Add the {tablet_id, stream_id} pair to the set if its checkpoint is OpId::Max().
     if (tablet_stream_to_be_deleted && checkpoint == OpId::Max()) {
+      VLOG(2) << "We will remove the entry for the stream: " << stream_id
+              << ", tablet_id: " << tablet_id
+              << ", from cdc_state table since it has OpId::Max().";
       tablet_stream_to_be_deleted->insert({tablet_id, stream_id});
     }
 
@@ -3467,7 +3479,9 @@ Status CDCServiceImpl::CheckStreamActive(
 }
 
 Status CDCServiceImpl::CheckTabletNotOfInterest(
-    const TabletStreamInfo& producer_tablet, int64_t last_active_time_passed, bool deletion_check) {
+    const TabletStreamInfo& producer_tablet, int64_t last_active_time_passed,
+    bool deletion_check) {
+
   // This is applicable only to Consistent Snapshot Streams,
   auto record = VERIFY_RESULT(GetStream(producer_tablet.stream_id));
   if (!record->GetSnapshotOption().has_value() || !record->GetStreamCreationTime().has_value()) {

@@ -622,11 +622,11 @@ class Tablet : public AbstractTablet,
 
   docdb::DocDB doc_db(TabletMetrics* metrics = nullptr) const {
     return {
-        regular_db_.get(),
-        intents_db_.get(),
-        &key_bounds_,
-        retention_policy_.get(),
-        metrics ? metrics : metrics_.get() };
+        .regular = regular_db_.get(),
+        .intents = intents_db_.get(),
+        .key_bounds = &key_bounds_,
+        .retention_policy = retention_policy_.get(),
+        .metrics = metrics ? metrics : metrics_.get() };
   }
 
   // Returns approximate middle key for tablet split:
@@ -1235,7 +1235,7 @@ class Tablet : public AbstractTablet,
 
   docdb::YQLRowwiseIteratorIf* cdc_iterator_ = nullptr;
 
-  AutoFlagsManager* auto_flags_manager_ = nullptr;
+  AutoFlagsManagerBase* auto_flags_manager_ = nullptr;
 
   mutable std::mutex control_path_mutex_;
   std::unordered_map<std::string, std::shared_ptr<void>> additional_metadata_

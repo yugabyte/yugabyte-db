@@ -255,6 +255,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "This config lets you enable support bundle creation for onprem universes.",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> supportBundleAllowCoresCollection =
+      new ConfKeyInfo<>(
+          "yb.support_bundle.allow_cores_collection",
+          ScopeType.GLOBAL,
+          "Allow collection of cores in Support Bundle",
+          "This global config allows you to disable collection of cores in support bundle, even if"
+              + " it is passed as a component while creating.",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Integer> snapshotCreationMaxAttempts =
       new ConfKeyInfo<>(
           "yb.snapshot_creation.max_attempts",
@@ -286,7 +295,7 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allow Platform Downgrade",
           "Allow Downgrading the Platform Version",
           ConfDataType.BooleanType,
-          ImmutableList.of(ConfKeyTags.PUBLIC));
+          ImmutableList.of(ConfKeyTags.INTERNAL));
   public static final ConfKeyInfo<Duration> ybcUpgradeInterval =
       new ConfKeyInfo<>(
           "ybc.upgrade.scheduler_interval",
@@ -927,6 +936,15 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
               + "are watched. Requires restart to take effect",
           ConfDataType.StringType,
           ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Boolean> acceptableClockSkewWaitEnabled =
+      new ConfKeyInfo<>(
+          "yb.wait_for_clock_sync.inline_enabled",
+          ScopeType.GLOBAL,
+          "Whether to wait for clock skew decrease",
+          "Whether to wait for the clock skew to go below the threshold before starting the "
+              + "master and tserver processes",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
   public static final ConfKeyInfo<Duration> waitForClockSyncMaxAcceptableClockSkew =
       new ConfKeyInfo<>(
           "yb.wait_for_clock_sync.max_acceptable_clock_skew",
@@ -1125,6 +1143,14 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "Allows user to enter postgres hba rules and ident map rules in multiple rows",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.PUBLIC));
+  public static final ConfKeyInfo<Boolean> releasesRedesign =
+      new ConfKeyInfo<>(
+          "yb.ui.feature_flags.releases_redesign",
+          ScopeType.GLOBAL,
+          "Enable the option to view new releases page",
+          "Enable the option to view new releases page",
+          ConfDataType.BooleanType,
+          ImmutableList.of(ConfKeyTags.BETA));
   public static final ConfKeyInfo<Boolean> haDisableCertValidation =
       new ConfKeyInfo<>(
           "yb.ha.ws.ssl.loose.acceptAnyCertificate",
@@ -1151,4 +1177,13 @@ public class GlobalConfKeys extends RuntimeConfigKeysModule {
           "If Kubernetes Operator thread fails, crash YBA",
           ConfDataType.BooleanType,
           ImmutableList.of(ConfKeyTags.BETA));
+  public static final ConfKeyInfo<Integer> xclusterBootstrapRequiredRpcMaxThreads =
+      new ConfKeyInfo<>(
+          "yb.xcluster.is_bootstrap_required_rpc_pool.max_threads",
+          ScopeType.GLOBAL,
+          "XCluster isBootstrapRequired rpc max parallel threads",
+          "Sets the maximum allowed number of threads to be run concurrently for xcluster"
+              + " isBootstrapRequired rpc",
+          ConfDataType.IntegerType,
+          ImmutableList.of(ConfKeyTags.PUBLIC));
 }

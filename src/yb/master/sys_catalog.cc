@@ -73,6 +73,7 @@
 #include "yb/gutil/strings/escaping.h"
 #include "yb/gutil/strings/split.h"
 
+#include "yb/master/master_auto_flags_manager.h"
 #include "yb/master/catalog_entity_info.h"
 #include "yb/master/catalog_manager_if.h"
 #include "yb/master/catalog_manager.h"
@@ -614,10 +615,10 @@ Status SysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata
       .snapshot_coordinator = &master_->catalog_manager()->snapshot_coordinator(),
       .tablet_splitter = nullptr,
       .allowed_history_cutoff_provider = std::bind(
-          &CatalogManager::AllowedHistoryCutoffProvider,
-          master_->catalog_manager_impl(), std::placeholders::_1),
+          &CatalogManager::AllowedHistoryCutoffProvider, master_->catalog_manager_impl(),
+          std::placeholders::_1),
       .transaction_manager_provider = nullptr,
-      .auto_flags_manager = master_->auto_flags_manager(),
+      .auto_flags_manager = master_->GetAutoFlagsManagerImpl(),
       // We won't be doing full compactions on the catalog tablet.
       .full_compaction_pool = nullptr,
       .admin_triggered_compaction_pool = nullptr,
@@ -1318,8 +1319,9 @@ Status SysCatalogTable::ReadPgClassInfo(
     // From PostgreSQL docs: r = ordinary table, i = index, S = sequence, t = TOAST table,
     // v = view, m = materialized view, c = composite type, f = foreign table,
     // p = partitioned table, I = partitioned index
-    if (relkind != 'r' && relkind != 'i' && relkind != 'p' && relkind != 'I') {
-      // This database object is not a table/index/partitioned table/partitioned index.
+    if (relkind != 'r' && relkind != 'i' && relkind != 'p' && relkind != 'I' && relkind != 'm') {
+      // This database object is not a table/index/partitioned table/partitioned index/
+      // materialized view.
       // Skip this.
       continue;
     }
@@ -1328,22 +1330,16 @@ Status SysCatalogTable::ReadPgClassInfo(
     if (is_colocated_database) {
       // A table in a colocated database is colocated unless it opted out
       // of colocation.
-      is_colocated_table = true;
-      const auto& reloptions_col = row.GetValue(reloptions_col_id);
-      if (!reloptions_col) {
-        return STATUS(Corruption, "Could not read reloptions column from pg_class for oid " +
-            std::to_string(oid));
+      auto table_info =
+          master_->catalog_manager()->GetTableInfo(GetPgsqlTableId(database_oid, oid));
+
+      if (!table_info) {
+        // Primary key indexes are a separate entry in pg_class but they do not have
+        // their own entry in YugaByte's catalog manager. So, we skip them here.
+        continue;
       }
-      if (!reloptions_col->binary_value().empty()) {
-        auto reloptions = VERIFY_RESULT(docdb::ExtractTextArrayFromQLBinaryValue(
-            reloptions_col.value()));
-        for (const auto& reloption : reloptions) {
-          if (reloption.compare("colocated=false") == 0) {
-            is_colocated_table = false;
-            break;
-          }
-        }
-      }
+
+      is_colocated_table = table_info->IsColocatedUserTable();
     }
 
     if (is_colocated_table) {

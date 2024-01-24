@@ -83,8 +83,8 @@ const useStyles = makeStyles((theme) => ({
 const getOverrides = (editDetails: ImageBundle) => {
   if (!isNonEmptyObject(editDetails)) return {};
   return {
-    sshUserOverride: values(editDetails?.details.regions)[0].sshUserOverride,
-    sshPortOverride: values(editDetails?.details.regions)[0].sshPortOverride
+    sshUserOverride: values(editDetails?.details.regions)[0]?.sshUserOverride,
+    sshPortOverride: values(editDetails?.details.regions)[0]?.sshPortOverride
   };
 };
 

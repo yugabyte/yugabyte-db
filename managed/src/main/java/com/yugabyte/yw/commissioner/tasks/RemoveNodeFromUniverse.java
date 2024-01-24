@@ -10,21 +10,15 @@
 
 package com.yugabyte.yw.commissioner.tasks;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.google.common.net.HostAndPort;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
-import com.yugabyte.yw.common.ApiHelper;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.NodeActionType;
-import com.yugabyte.yw.common.NodeUIApiHelper;
 import com.yugabyte.yw.common.PlacementInfoUtil;
-import com.yugabyte.yw.common.RetryTaskUntilCondition;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.UniverseConfKeys;
-import com.yugabyte.yw.common.nodeui.DumpEntitiesResponse;
 import com.yugabyte.yw.forms.NodeActionFormData;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -43,7 +37,6 @@ import java.util.stream.Collectors;
 import javax.inject.Inject;
 import lombok.extern.slf4j.Slf4j;
 import org.yb.util.TabletServerInfo;
-import play.libs.Json;
 
 // Allows the removal of a node from a universe. Ensures the task waits for the right set of
 // server data move primitives. And stops using the underlying instance, though YW still owns it.
@@ -52,15 +45,11 @@ import play.libs.Json;
 @Retryable
 public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
 
-  private final ApiHelper apiHelper;
-
   public static final String DUMP_ENTITIES_URL_SUFFIX = "/dump-entities";
 
   @Inject
-  protected RemoveNodeFromUniverse(
-      BaseTaskDependencies baseTaskDependencies, NodeUIApiHelper apiHelper) {
+  protected RemoveNodeFromUniverse(BaseTaskDependencies baseTaskDependencies) {
     super(baseTaskDependencies);
-    this.apiHelper = apiHelper;
   }
 
   @Override
@@ -83,6 +72,9 @@ public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
         confGetter.getConfForScope(getUniverse(), UniverseConfKeys.alwaysWaitForDataMove);
     if (alwaysWaitForDataMove) {
       performPrecheck();
+    }
+    if (isFirstTry()) {
+      verifyClustersConsistency();
     }
   }
 
@@ -295,39 +287,5 @@ public class RemoveNodeFromUniverse extends UniverseDefinitionTaskBase {
       }
     }
     log.debug("Pre-check succeeded");
-  }
-
-  private Set<String> getTserverTablets(Universe universe, NodeDetails currentNode) {
-    // Wait for a maximum of 10 seconds for url to succeed.
-    NodeDetails masterLeaderNode = universe.getMasterLeaderNode();
-    HostAndPort masterLeaderHostPort =
-        HostAndPort.fromParts(
-            masterLeaderNode.cloudInfo.private_ip, masterLeaderNode.masterHttpPort);
-    String masterLeaderUrl =
-        String.format("http://%s%s", masterLeaderHostPort.toString(), DUMP_ENTITIES_URL_SUFFIX);
-
-    RetryTaskUntilCondition<DumpEntitiesResponse> waitForCheck =
-        new RetryTaskUntilCondition<>(
-            () -> {
-              log.debug("Making url request to endpoint: {}", masterLeaderUrl);
-              JsonNode masterLeaderDumpJson = apiHelper.getRequest(masterLeaderUrl);
-              DumpEntitiesResponse dumpEntities =
-                  Json.fromJson(masterLeaderDumpJson, DumpEntitiesResponse.class);
-              return dumpEntities;
-            },
-            (d) -> {
-              if (d.getError() != null) {
-                log.warn("Url request to {} failed with error {}", masterLeaderUrl, d.getError());
-                return false;
-              }
-              return true;
-            });
-
-    DumpEntitiesResponse dumpEntitiesResponse = waitForCheck.retryWithBackoff(1, 2, 10);
-
-    HostAndPort currentNodeHP =
-        HostAndPort.fromParts(currentNode.cloudInfo.private_ip, currentNode.tserverRpcPort);
-
-    return dumpEntitiesResponse.getTabletsByTserverAddress(currentNodeHP);
   }
 }

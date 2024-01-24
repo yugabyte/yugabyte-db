@@ -96,6 +96,7 @@
 #include "utils/varlena.h"
 #include "utils/xml.h"
 #include "pg_yb_utils.h"
+#include "yb_ash.h"
 
 #ifndef PG_KRB_SRVTAB
 #define PG_KRB_SRVTAB ""
@@ -1057,6 +1058,24 @@ static struct config_bool ConfigureNamesBool[] =
 		},
 		&yb_lock_pk_single_rpc,
 		false,
+		NULL, NULL, NULL
+	},
+	{
+		{"yb_use_hash_splitting_by_default", PGC_USERSET, QUERY_TUNING_OTHER,
+			 gettext_noop("Enables hash splitting as the default method for primary "
+					   "key and index sorting in LSM indexes"),
+			 gettext_noop("When set to true, the default sorting for the first "
+					  "primary/index key column in LSM indexes is HASH, "
+					  "Setting this to false changes the default to ASC, "
+					  "making it compatible with standard PostgreSQL behavior. "
+					  "This setting is useful for optimizing query "
+					  "performance, especially for migrations from PostgreSQL "
+					  "or scenarios where index-based sorting and sharding "
+					  "behavior are critical."),
+
+	 },
+		&yb_use_hash_splitting_by_default,
+		true,
 		NULL, NULL, NULL
 	},
 	{
@@ -2362,14 +2381,15 @@ static struct config_bool ConfigureNamesBool[] =
 	},
 
 	{
-		{"yb_is_client_ysqlconnmgr", PGC_BACKEND, CUSTOM_OPTIONS,
+		/* YB: Not for general use */
+		{"yb_is_client_ysqlconnmgr", PGC_BACKEND, UNGROUPED,
 			gettext_noop("Identifies that connection is created by "
 						"Ysql Connection Manager."),
 			NULL
 		},
 		&yb_is_client_ysqlconnmgr,
 		false,
-		NULL, NULL, NULL
+		yb_is_client_ysqlconnmgr_check_hook, NULL, NULL
 	},
 
 	{
@@ -2426,6 +2446,19 @@ static struct config_bool ConfigureNamesBool[] =
 		&yb_enable_alter_table_rewrite,
 		true,
 		NULL, NULL, NULL
+	},
+
+	{
+		/* YB: Not for general use */
+		{"yb_use_tserver_key_auth", PGC_BACKEND, UNGROUPED,
+			gettext_noop("If set, the client connection will be authenticated via "
+						 "'yb-tserver-key' auth"),
+			NULL,
+			GUC_NOT_IN_SAMPLE
+		},
+		&yb_use_tserver_key_auth,
+		false,
+		yb_use_tserver_key_auth_check_hook, NULL, NULL
 	},
 
 	/* End-of-list marker */
@@ -3871,6 +3904,39 @@ static struct config_int ConfigureNamesInt[] =
 		NULL, NULL, NULL
 	},
 
+	{
+		{"yb_ash_circular_buffer_size", PGC_POSTMASTER, STATS_MONITORING,
+			gettext_noop("Size of the circular buffer that stores wait events"),
+			NULL,
+			GUC_NO_SHOW_ALL | GUC_NO_RESET_ALL | GUC_NOT_IN_SAMPLE |
+			GUC_DISALLOW_IN_FILE | GUC_UNIT_KB
+		},
+		&yb_ash_circular_buffer_size,
+		16 * 1024, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_ash_sampling_interval", PGC_SUSET, STATS_MONITORING,
+			gettext_noop("Duration between each sample"),
+			NULL,
+			GUC_UNIT_MS
+		},
+		&yb_ash_sampling_interval_ms,
+		1000, 1, INT_MAX,
+		NULL, NULL, NULL
+	},
+
+	{
+		{"yb_ash_sample_size", PGC_SUSET, STATS_MONITORING,
+			gettext_noop("Number of wait events captured in each sample"),
+			NULL
+		},
+		&yb_ash_sample_size,
+		500, 0, INT_MAX,
+		NULL, NULL, NULL
+	},
+
 	/* End-of-list marker */
 	{
 		{NULL, 0, 0, NULL, NULL}, NULL, 0, 0, 0, NULL, NULL, NULL
@@ -4550,7 +4616,7 @@ static struct config_string ConfigureNamesString[] =
 				" before most recent DDL. (2) DDL is performed while it is set to nonzero.")
 		},
 		&yb_read_time_string,
-		"0", 
+		"0",
 		check_yb_read_time, assign_yb_read_time, NULL
 	},
 

@@ -2087,7 +2087,8 @@ Status HandleGetChangesForSnapshotRequest(
     const EnumOidLabelMap& enum_oid_label_map, const CompositeAttsMap& composite_atts_map,
     client::YBClient* client, GetChangesResponsePB* resp, SchemaDetailsMap* cached_schema_details,
     const TableId& colocated_table_id, const tablet::TabletPtr& tablet_ptr, string* table_name,
-    CDCSDKCheckpointPB* checkpoint, bool* checkpoint_updated, HybridTime* safe_hybrid_time_resp) {
+    CDCSDKCheckpointPB* checkpoint, bool* checkpoint_updated, HybridTime* safe_hybrid_time_resp,
+    CoarseTimePoint deadline) {
 
   ReadHybridTime time;
 
@@ -2152,6 +2153,11 @@ Status HandleGetChangesForSnapshotRequest(
     std::vector<qlexpr::QLTableRow> rows;
     qlexpr::QLTableRow row;
     dockv::ReaderProjection projection(*schema_details.schema);
+
+    // A consistent view of data across tablets is required. The consistent snapshot time
+    // has been picked by Master. Thus, there is a need to wait for that timestamp to become
+    // safe to read at on this tablet.
+    RETURN_NOT_OK(tablet_ptr->SafeTime(tablet::RequireLease::kTrue, time.read, deadline));
     auto iter = VERIFY_RESULT(
         tablet_ptr->CreateCDCSnapshotIterator(projection, time, next_key, colocated_table_id));
     while (fetched < limit && VERIFY_RESULT(iter->FetchNext(&row))) {
@@ -2246,7 +2252,7 @@ Status GetChangesForCDCSDK(
     RETURN_NOT_OK(HandleGetChangesForSnapshotRequest(
         stream_id, tablet_id, from_op_id, tablet_peer, enum_oid_label_map, composite_atts_map,
         client, resp, cached_schema_details, colocated_table_id, tablet_ptr, &table_name,
-        &checkpoint, &checkpoint_updated, &safe_hybrid_time_resp));
+        &checkpoint, &checkpoint_updated, &safe_hybrid_time_resp, deadline));
   } else if (!from_op_id.key().empty() && from_op_id.write_id() != 0) {
     std::string reverse_index_key = from_op_id.key();
     Slice reverse_index_key_slice(reverse_index_key);
@@ -2424,6 +2430,10 @@ Status GetChangesForCDCSDK(
           } else {
             commit_time_threshold = *consistent_snapshot_time;
           }
+        } else {
+          if (safe_hybrid_time_req >= 0) {
+            commit_time_threshold = (uint64_t)safe_hybrid_time_req;
+          }
         }
         VLOG(3) << "Commit time Threshold = " << commit_time_threshold;
         VLOG(3) << "Txn commit time       = " << GetTransactionCommitTime(msg);
@@ -2557,7 +2567,7 @@ Status GetChangesForCDCSDK(
 
             (*cached_schema_details)[table_id] = SchemaDetails{
                 .schema_version = msg->change_metadata_request().schema_version(),
-                .schema = std::make_shared<Schema>(std::move(current_schema))};
+                .schema = std::make_shared<Schema>(current_schema)};
             changed_schema_version = msg->change_metadata_request().schema_version();
             auto result = client->GetTableSchemaFromSysCatalog(table_id, msg->hybrid_time());
             if (!result.ok()) {

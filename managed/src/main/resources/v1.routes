@@ -310,6 +310,7 @@ GET     /customers/:cUUID/universes/:uniUUID/master_infos                      c
 GET     /customers/:cUUID/universes/:uniUUID/cdc_streams                       com.yugabyte.yw.controllers.UniverseCdcStreamController.listCdcStreams(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/cdc_streams                       com.yugabyte.yw.controllers.UniverseCdcStreamController.createCdcStream(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 DELETE  /customers/:cUUID/universes/:uniUUID/cdc_streams/:streamId             com.yugabyte.yw.controllers.UniverseCdcStreamController.deleteCdcStream(cUUID: java.util.UUID, uniUUID: java.util.UUID, streamId: String)
+GET     /customers/:cUUID/universes/:uniUUID/cdc_replication_slots             com.yugabyte.yw.controllers.UniverseCdcStreamController.listReplicationSlot(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # Universe LDAP users Sync API
 POST /customers/:cUUID/universes/:univUUID/ldap_roles_sync                     com.yugabyte.yw.controllers.LdapUniverseSyncController.syncUniverse(cUUID: java.util.UUID, univUUID: java.util.UUID, request: Request)
@@ -365,6 +366,7 @@ POST    /customers/:cUUID/universes/:uniUUID/need_bootstrap                    c
 # Disaster Recovery API
 POST    /customers/:cUUID/dr_configs                                           com.yugabyte.yw.controllers.DrConfigController.create(cUUID: java.util.UUID, request: Request)
 GET     /customers/:cUUID/dr_configs/:drUUID                                   com.yugabyte.yw.controllers.DrConfigController.get(cUUID: java.util.UUID, drUUID: java.util.UUID)
+POST    /customers/:cUUID/dr_configs/:drUUID/edit                              com.yugabyte.yw.controllers.DrConfigController.edit(cUUID: java.util.UUID, drUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/dr_configs/:drUUID/replace_replica                   com.yugabyte.yw.controllers.DrConfigController.replaceReplica(cUUID: java.util.UUID, drUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/dr_configs/:drUUID/switchover                        com.yugabyte.yw.controllers.DrConfigController.switchover(cUUID: java.util.UUID, drUUID: java.util.UUID, request: Request)
 POST    /customers/:cUUID/dr_configs/:drUUID/failover                          com.yugabyte.yw.controllers.DrConfigController.failover(cUUID: java.util.UUID, drUUID: java.util.UUID, request: Request)

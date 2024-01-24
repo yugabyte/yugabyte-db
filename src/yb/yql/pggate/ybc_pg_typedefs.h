@@ -367,6 +367,8 @@ typedef struct PgCallbacks {
   void (*ConstructArrayDatum)(YBCPgOid oid, const char **, const int, char **, size_t *);
   /* hba.c */
   int (*CheckUserMap)(const char *, const char *, const char *, bool case_insensitive);
+  /* pgstat.h */
+  uint32_t (*PgstatReportWaitStart)(uint32_t);
 } YBCPgCallbacks;
 
 typedef struct PgGFlagsAccessor {
@@ -441,6 +443,7 @@ typedef struct PgExecReadWriteStats {
   uint64_t reads;
   uint64_t writes;
   uint64_t read_wait;
+  uint64_t rows_scanned;
 } YBCPgExecReadWriteStats;
 
 typedef struct PgExecEventMetric {
@@ -556,6 +559,9 @@ typedef struct AshMetadata {
   // root_request_id but with the same query_id.
   uint64_t query_id;
 
+  // PgClient session id.
+  uint64_t session_id;
+
   // If addr_family is AF_INET (ipv4) or AF_INET6 (ipv6), client_addr stores
   // the ipv4/ipv6 address and client_port stores the port of the PG process
   // where the YSQL query originated. In case of AF_INET, the first 4 bytes
@@ -567,6 +573,14 @@ typedef struct AshMetadata {
   uint16_t client_port;
   uint8_t addr_family;
 } YBCAshMetadata;
+
+typedef struct YBCBindColumn {
+  int attr_num;
+  const YBCPgTypeEntity* type_entity;
+  YBCPgCollationInfo collation_info;
+  bool is_null;
+  uint64_t datum;
+} YBCBindColumn;
 
 #ifdef __cplusplus
 }  // extern "C"

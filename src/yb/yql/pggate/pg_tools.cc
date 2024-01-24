@@ -17,8 +17,7 @@
 
 #include "yb/yql/pggate/ybc_pg_typedefs.h"
 
-namespace yb {
-namespace pggate {
+namespace yb::pggate {
 
 RowMarkType GetRowMarkType(const PgExecParameters* exec_params) {
   return exec_params && exec_params->rowmark > -1
@@ -26,5 +25,13 @@ RowMarkType GetRowMarkType(const PgExecParameters* exec_params) {
       : RowMarkType::ROW_MARK_ABSENT;
 }
 
-} // namespace pggate
-} // namespace yb
+PgWaitEventWatcher::PgWaitEventWatcher(
+    Starter starter, ash::WaitStateCode wait_event)
+    : starter_(starter),
+      prev_wait_event_(starter_(yb::to_underlying(wait_event))) {}
+
+PgWaitEventWatcher::~PgWaitEventWatcher() {
+  starter_(prev_wait_event_);
+}
+
+} // namespace yb::pggate

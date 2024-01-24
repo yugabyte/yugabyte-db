@@ -1323,6 +1323,10 @@ Status PgApiImpl::DmlBindColumn(PgStatement *handle, int attr_num, PgExpr *attr_
   return down_cast<PgDml*>(handle)->BindColumn(attr_num, attr_value);
 }
 
+Status PgApiImpl::DmlBindRow(YBCPgStatement handle, YBCBindColumn* columns, int count) {
+  return down_cast<PgDmlWrite*>(handle)->BindRow(columns, count);
+}
+
 Status PgApiImpl::DmlBindColumnCondBetween(PgStatement *handle, int attr_num,
                                            PgExpr *attr_value,
                                            bool start_inclusive,

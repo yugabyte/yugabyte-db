@@ -22,7 +22,7 @@ Observability refers to the extent to which the internal state and behavior of a
 
 The goal of observability is to make it easier to diagnose and resolve issues, optimize performance, and gain insights into the system's behavior. It is especially crucial in modern, complex, and distributed systems, where understanding the interactions between different services and components can be challenging. [DevOps Research and Assessment (DORA)](https://dora.dev/) research shows that a comprehensive monitoring and observability solution, along with several other technical practices, positively contributes to the management of software infrastructure.
 
-YugabytedDB provides several components and features that you can use to actively monitor your system and diagnose issues quickly.
+YugabyteDB provides several components and features that you can use to actively monitor your system and diagnose issues quickly.
 
 ## Metrics
 
@@ -39,7 +39,7 @@ YugabyteDB exports various [metrics](../../launch-and-manage/monitor-and-alert/m
 
 ## Alerting and monitoring
 
-Monitoring involves continuously checking the system's health and performance and notifying stakeholders if any issues arise. For this, you can set up automated alerts based on predefined thresholds or conditions. All metrics exposed by YugabytedDB are exportable to third-party monitoring tools like [Prometheus](./prometheus-integration/) and [Grafana](./grafana-dashboard/grafana/) which provide industry-standard alerting functionalities.
+Monitoring involves continuously checking the system's health and performance and notifying stakeholders if any issues arise. For this, you can set up automated alerts based on predefined thresholds or conditions. All metrics exposed by YugabyteDB are exportable to third-party monitoring tools like [Prometheus](./prometheus-integration/) and [Grafana](./grafana-dashboard/grafana/) which provide industry-standard alerting functionalities.
 
 {{<note>}}
 Both [YugabyteDB Anywhere](../../yugabyte-platform/alerts-monitoring/) and [YugabyteDB Managed](../../yugabyte-cloud/cloud-monitor/cloud-alerts/) provide a full suite of alerting capabilities for monitoring.

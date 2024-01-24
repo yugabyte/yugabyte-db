@@ -91,7 +91,10 @@ public class Provider extends Model {
       ImmutableSet.of(Common.CloudType.aws, Common.CloudType.gcp, Common.CloudType.local);
 
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.17.2.0")
-  @ApiModelProperty(value = "Deprecated since YBA version 2.17.2.0. Use details.metadata instead")
+  @ApiModelProperty(
+      value =
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.17.2.0.</b> Use"
+              + " details.metadata instead")
   @Column(nullable = false, columnDefinition = "TEXT")
   @DbJson
   @Encrypted
@@ -134,7 +137,7 @@ public class Provider extends Model {
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.17.2.0")
   @ApiModelProperty(
       value =
-          "Deprecated since YBA version 2.17.2.0, "
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.17.2.0.</b> "
               + "Use allAccessKeys[0].keyInfo.keyPairName instead")
   public String getKeyPairName() {
     if (this.allAccessKeys.size() > 0) {
@@ -145,7 +148,7 @@ public class Provider extends Model {
 
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.17.2.0")
   @JsonProperty("keyPairName")
-  @ApiModelProperty("Deprecated since YBA version 2.17.2.0")
+  @ApiModelProperty("<b style=\"color:#ff0000\">Deprecated since YBA version 2.17.2.0.</b>")
   public void setKeyPairName(String keyPairName) {
     if (this.getAllAccessKeys().size() > 0) {
       this.getAllAccessKeys().get(0).getKeyInfo().keyPairName = keyPairName;
@@ -163,14 +166,14 @@ public class Provider extends Model {
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.17.2.0")
   @ApiModelProperty(
       value =
-          "Deprecated since YBA version 2.17.2.0, "
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.17.2.0.</b> "
               + "Use allAccessKeys[0].keyInfo.sshPrivateKeyContent instead")
   public String getSshPrivateKeyContent() {
     return null;
   }
 
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.17.2.0")
-  @ApiModelProperty("Deprecated since YBA version 2.17.2.0")
+  @ApiModelProperty("<b style=\"color:#ff0000\">Deprecated since YBA version 2.17.2.0.</b>")
   @JsonProperty("sshPrivateKeyContent")
   public void setSshPrivateKeyContent(String sshPrivateKeyContent) {
     if (this.getAllAccessKeys().size() > 0) {
@@ -189,7 +192,7 @@ public class Provider extends Model {
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.17.2.0")
   @ApiModelProperty(
       value =
-          "Deprecated since YBA version 2.17.2.0, "
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.17.2.0.</b> "
               + "Use details.SshUser instead. Only supported in create request")
   public String getSshUser() {
     return this.details.sshUser;
@@ -205,7 +208,7 @@ public class Provider extends Model {
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.17.2.0")
   @ApiModelProperty(
       value =
-          "Deprecated since YBA version 2.17.2.0, "
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.17.2.0.</b> "
               + "Use details.SshPort instead. Only supported in create request")
   public Integer getSshPort() {
     return this.details.sshPort;
@@ -220,7 +223,7 @@ public class Provider extends Model {
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.17.2.0")
   @ApiModelProperty(
       value =
-          "Deprecated since YBA version 2.17.2.0, "
+          "<b style=\"color:#ff0000\">Deprecated since YBA version 2.17.2.0.</b> "
               + "Use details.airGapInstall. Only supported in Create Request")
   public boolean getAirGapInstall() {
     return details.airGapInstall;
@@ -232,7 +235,9 @@ public class Provider extends Model {
   }
 
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.17.2.0")
-  @ApiModelProperty(hidden = true, value = "Deprecated since YBA version 2.17.2.0")
+  @ApiModelProperty(
+      hidden = true,
+      value = "<b style=\"color:#ff0000\">Deprecated since YBA version 2.17.2.0.</b>")
   public void setNtpServers(List<String> ntpServers) {
     this.getDetails().ntpServers = ntpServers;
   }
@@ -243,7 +248,9 @@ public class Provider extends Model {
    * <p>deprecated use details.setUpChrony
    */
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.17.2.0")
-  @ApiModelProperty(hidden = true, value = "Deprecated since YBA version 2.17.2.0")
+  @ApiModelProperty(
+      hidden = true,
+      value = "<b style=\"color:#ff0000\">Deprecated since YBA version 2.17.2.0.</b>")
   public void setSetUpChrony(boolean v) {
     getDetails().setUpChrony = v;
   }
@@ -254,7 +261,9 @@ public class Provider extends Model {
    * provider UI
    */
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.17.2.0")
-  @ApiModelProperty(hidden = true, value = "Deprecated since YBA version 2.17.2.0")
+  @ApiModelProperty(
+      hidden = true,
+      value = "<b style=\"color:#ff0000\">Deprecated since YBA version 2.17.2.0.</b>")
   public void setShowSetUpChrony(boolean showSetUpChrony) {
     this.getDetails().showSetUpChrony = showSetUpChrony;
   }
@@ -265,24 +274,25 @@ public class Provider extends Model {
   // UI only calls passes these values in the bootstrap call.
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.17.2.0")
   @Transient
-  @ApiModelProperty("Deprecated since YBA version 2.17.2.0")
+  @ApiModelProperty("<b style=\"color:#ff0000\">Deprecated since YBA version 2.17.2.0.</b>")
   public String hostVpcId = null;
 
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.17.2.0")
   @Transient
-  @ApiModelProperty("Deprecated since YBA version 2.17.2.0")
+  @ApiModelProperty("<b style=\"color:#ff0000\">Deprecated since YBA version 2.17.2.0.</b>")
   public String hostVpcRegion = null;
 
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.17.2.0")
   @Transient
-  @ApiModelProperty("Deprecated since YBA version 2.17.2.0")
+  @ApiModelProperty("<b style=\"color:#ff0000\">Deprecated since YBA version 2.17.2.0.</b>")
   public String destVpcId = null;
 
   // Hosted Zone for the deployment
   @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.17.2.0")
   @Transient
   @ApiModelProperty(
-      "Deprecated since YBA version 2.17.2.0" + TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
+      "<b style=\"color:#ff0000\">Deprecated since YBA version 2.17.2.0.</b>"
+          + TRANSIENT_PROPERTY_IN_MUTATE_API_REQUEST)
   private String hostedZoneId = null;
 
   // End Transient Properties

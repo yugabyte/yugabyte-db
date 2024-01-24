@@ -79,40 +79,44 @@
           otel_systemd_dir: "/etc/systemd/system"
       - set_fact:
           prometheus_systemd_unit_dir: "/usr/lib/systemd/system"
-          when: ansible_os_family == "Suse"
+        when: ansible_os_family == "Suse"
       - set_fact:
           otel_systemd_dir: "{{ yb_home_dir }}/.config/systemd/user"
-          when: ansible_os_family != 'RedHat' or (ansible_distribution_major_version != '7' and not (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2'))
+        when: ansible_os_family != 'RedHat' or (ansible_distribution_major_version != '7' and not (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2'))
 
-      - name: Stop node exporter service
-        service:
-          enabled: yes
-          name: node_exporter
-          state: stopped
-        become: yes
-        become_method: sudo
+      - block:
+        - name: Stop node exporter service
+          service:
+            enabled: yes
+            name: node_exporter
+            state: stopped
+          become: yes
+          become_method: sudo
 
-      - name: Delete node exporter service
-        file:
-          path: "{{ prometheus_systemd_unit_dir }}/node_exporter.service"
-          state: absent
-        become: yes
-        become_method: sudo
+        - name: Delete node exporter service
+          file:
+            path: "{{ prometheus_systemd_unit_dir }}/node_exporter.service"
+            state: absent
+          become: yes
+          become_method: sudo
+        when: clean_node_exporter is defined and clean_node_exporter|bool
 
-      - name: Stop otel collector service
-        service:
-          enabled: yes
-          name: otel-collector
-          state: stopped
-        become: yes
-        become_method: sudo
+      - block:
+        - name: Stop otel collector service
+          service:
+            enabled: yes
+            name: otel-collector
+            state: stopped
+          become: yes
+          become_method: sudo
 
-      - name: Delete otel collector service
-        file:
-          path: "{{ otel_systemd_dir }}/otel-collector.service"
-          state: absent
-        become: yes
-        become_method: sudo
+        - name: Delete otel collector service
+          file:
+            path: "{{ otel_systemd_dir }}/otel-collector.service"
+            state: absent
+          become: yes
+          become_method: sudo
+        when: clean_otel_collector is defined and clean_otel_collector|bool
 
       - name: Perform daemon-reload for removed services
         shell:

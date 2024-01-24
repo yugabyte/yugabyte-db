@@ -357,7 +357,8 @@ public class CustomerController extends AuthenticatedController {
   }
 
   @ApiOperation(
-      value = "YbaApi Internal. Add metrics to a customer",
+      notes = "YbaApi Internal.",
+      value = "Add metrics to a customer",
       response = Object.class,
       responseContainer = "Map")
   @ApiResponses(

@@ -145,6 +145,14 @@ public class LocalNodeManager {
     }
   }
 
+  public void killProcess(String nodeName, UniverseTaskBase.ServerType serverType)
+      throws IOException, InterruptedException {
+    NodeInfo nodeInfo = nodesByNameMap.get(nodeName);
+    Process process = nodeInfo.processMap.get(serverType);
+    log.debug("Destroying process with pid {} for {}", process.pid(), nodeInfo.ip);
+    killProcess(process.pid());
+  }
+
   private enum NodeState {
     CREATED,
     PROVISIONED
@@ -298,10 +306,12 @@ public class LocalNodeManager {
               processAndWriteGFLags(
                   args, ybcGFlags, userIntent, UniverseTaskBase.ServerType.CONTROLLER, nodeInfo);
             }
+            commandArgs.addAll(NodeManager.getInlineWaitForClockSyncCommandArgs(this.confGetter));
             break;
           case Software:
             updateSoftwareOnNode(userIntent, params.ybSoftwareVersion);
             break;
+          case Certs:
           case ToggleTls:
           case GFlags:
             UniverseTaskBase.ServerType processType =
@@ -328,6 +338,10 @@ public class LocalNodeManager {
         }
         break;
       case Destroy:
+        for (UniverseTaskBase.ServerType serverType :
+            nodeInfo.processMap.keySet().toArray(new UniverseTaskBase.ServerType[0])) {
+          stopProcessForNode(serverType, nodeInfo);
+        }
         nodesByNameMap.remove(nodeInfo.name);
         response = ShellResponse.create(ERROR_CODE_SUCCESS, "Success!");
         break;
@@ -446,6 +460,9 @@ public class LocalNodeManager {
   }
 
   private Map<String, String> getGFlagsFromArgs(Map<String, String> args, String key) {
+    if (!args.containsKey(key)) {
+      return Collections.emptyMap();
+    }
     return (Map<String, String>) Json.fromJson(Json.parse(args.get(key)), Map.class);
   }
 
@@ -474,7 +491,7 @@ public class LocalNodeManager {
                 ? MAX_MEM_RATIO_TSERVER
                 : MAX_MEM_RATIO_MASTER);
       }
-      processCerts(args, gflags, nodeInfo, userIntent);
+      processCerts(args, nodeInfo, userIntent);
       writeGFlagsToFile(userIntent, gflags, serverType, nodeInfo);
     } catch (IOException e) {
       throw new RuntimeException(e);
@@ -483,7 +500,6 @@ public class LocalNodeManager {
 
   private void processCerts(
       Map<String, String> args,
-      Map<String, String> gflags,
       NodeInfo nodeInfo,
       UniverseDefinitionTaskParams.UserIntent userIntent)
       throws IOException {
@@ -503,6 +519,15 @@ public class LocalNodeManager {
           args.get("--root_cert_path_client_to_server"),
           args.get("--server_cert_path_client_to_server"),
           args.get("--server_key_path_client_to_server"));
+    }
+    if (args.containsKey("--client_cert_path")) {
+      // These certs will be used for testing the connectivity of `yugabyte` client with postgres.
+      String certsForYSQLClientDir = homeDir + "/.yugabytedb";
+      copyCerts(
+          certsForYSQLClientDir,
+          args.get("--client_cert_path"),
+          args.get("--client_key_path"),
+          args.get("--root_cert_path_client_to_server"));
     }
   }
 
@@ -596,6 +621,7 @@ public class LocalNodeManager {
     if (process == null) {
       throw new IllegalStateException("No process of type " + serverType + " for " + nodeInfo.name);
     }
+    log.debug("Killing process {}", process.pid());
     process.destroy();
   }
 

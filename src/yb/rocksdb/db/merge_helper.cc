@@ -196,6 +196,8 @@ Status MergeHelper::MergeUntil(InternalIterator* iter,
           !FilterMerge(orig_ikey.user_key, value_slice)) {
         if (original_key_is_iter) {
           // this is just an optimization that saves us one memcpy
+          // Ignore use-after-move warning since original_key_is_iter is only true on the
+          // first iteration. NOLINTNEXTLINE(bugprone-use-after-move).
           keys_.push_front(std::move(original_key));
         } else {
           keys_.push_front(iter->key().ToString());

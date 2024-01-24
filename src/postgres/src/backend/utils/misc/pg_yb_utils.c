@@ -78,9 +78,12 @@
 #include "commands/defrem.h"
 #include "commands/variable.h"
 #include "commands/ybccmds.h"
+#include "common/ip.h"
 #include "common/pg_yb_common.h"
 #include "lib/stringinfo.h"
 #include "libpq/hba.h"
+#include "libpq/libpq.h"
+#include "libpq/libpq-be.h"
 #include "optimizer/cost.h"
 #include "parser/parse_utilcmd.h"
 #include "tcop/utility.h"
@@ -101,6 +104,7 @@
 #include "yb/yql/pggate/ybc_pggate.h"
 #include "pgstat.h"
 #include "nodes/readfuncs.h"
+#include "yb_ash.h"
 
 #ifdef __linux__
 #include <sys/prctl.h>
@@ -862,9 +866,12 @@ YBInitPostgresBackend(
 		callbacks.UnixEpochToPostgresEpoch = &YbUnixEpochToPostgresEpoch;
 		callbacks.ConstructArrayDatum = &YbConstructArrayDatum;
 		callbacks.CheckUserMap = &check_usermap;
+		callbacks.PgstatReportWaitStart = &yb_pgstat_report_wait_start;
 		YBCInitPgGate(type_table, count, callbacks, session_id, &MyProc->yb_ash_metadata,
 					  &MyProc->yb_is_ash_metadata_set);
 		YBCInstallTxnDdlHook();
+		if (YBEnableAsh())
+			YbAshInstallHooks();
 
 		/*
 		 * For each process, we create one YBC session for PostgreSQL to use
@@ -883,6 +890,8 @@ YBInitPostgresBackend(
 		 * mapped to PG backends.
 		 */
 		yb_pgstat_add_session_info(YBCPgGetSessionID());
+		if (YBEnableAsh())
+			YbAshSetSessionId(YBCPgGetSessionID());
 	}
 }
 
@@ -1337,6 +1346,8 @@ bool yb_test_fail_table_rewrite_after_creation = false;
 bool ddl_rollback_enabled = false;
 
 bool yb_silence_advisory_locks_not_supported_error = false;
+
+bool yb_use_hash_splitting_by_default = true;
 
 const char*
 YBDatumToString(Datum datum, Oid typid)
@@ -3742,16 +3753,19 @@ aggregateStats(YbInstrumentation *instr, const YBCPgExecStats *exec_stats)
 	instr->tbl_reads.count += exec_stats->tables.reads;
 	instr->tbl_reads.wait_time += exec_stats->tables.read_wait;
 	instr->tbl_writes += exec_stats->tables.writes;
+	instr->tbl_reads.rows_scanned += exec_stats->tables.rows_scanned;
 
 	/* Secondary Index stats */
 	instr->index_reads.count += exec_stats->indices.reads;
 	instr->index_reads.wait_time += exec_stats->indices.read_wait;
 	instr->index_writes += exec_stats->indices.writes;
+	instr->index_reads.rows_scanned += exec_stats->indices.rows_scanned;
 
 	/* System Catalog stats */
 	instr->catalog_reads.count += exec_stats->catalog.reads;
 	instr->catalog_reads.wait_time += exec_stats->catalog.read_wait;
 	instr->catalog_writes += exec_stats->catalog.writes;
+	instr->catalog_reads.rows_scanned += exec_stats->catalog.rows_scanned;
 
 	/* Flush stats */
 	instr->write_flushes.count += exec_stats->num_flushes;
@@ -3775,9 +3789,13 @@ static YBCPgExecReadWriteStats
 getDiffReadWriteStats(const YBCPgExecReadWriteStats *current,
 					  const YBCPgExecReadWriteStats *old)
 {
-	return (YBCPgExecReadWriteStats){current->reads - old->reads,
-									 current->writes - old->writes,
-									 current->read_wait - old->read_wait};
+	return (YBCPgExecReadWriteStats)
+	{
+		current->reads - old->reads,
+		current->writes - old->writes,
+		current->read_wait - old->read_wait,
+		current->rows_scanned - old->rows_scanned
+	};
 }
 
 static void
@@ -4138,6 +4156,39 @@ YbReadWholeFile(const char *filename, int* length, int elevel)
 }
 
 /*
+ * Needed to support the guc variable yb_use_tserver_key_auth, which is
+ * processed before authentication i.e. before setting this variable.
+ */
+bool yb_use_tserver_key_auth;
+
+bool
+yb_use_tserver_key_auth_check_hook(bool *newval, void **extra, GucSource source)
+{
+	/* Allow setting yb_use_tserver_key_auth to false */
+	if (!(*newval))
+		return true;
+
+	/*
+	 * yb_use_tserver_key_auth can only be set for client connections made on
+	 * unix socket.
+	 */
+	if (!IS_AF_UNIX(MyProcPort->raddr.addr.ss_family))
+		ereport(FATAL,
+				(errcode(ERRCODE_PROTOCOL_VIOLATION),
+				 errmsg("yb_use_tserver_key_auth can only be set if the "
+						"connection is made over unix domain socket")));
+
+	/*
+	 * If yb_use_tserver_key_auth is set, authentication method used
+	 * is yb_tserver_key. The auth method is decided even before setting the
+	 * yb_use_tserver_key GUC variable in hba_getauthmethod (present in hba.c).
+	 */
+	Assert(MyProcPort->yb_is_tserver_auth_method);
+
+	return true;
+}
+
+/*
  * Copies the primary key of a relation to a create stmt intended to clone that
  * relation.
  */
@@ -4267,4 +4318,49 @@ YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
 
 	if (yb_test_fail_table_rewrite_after_creation)
 		elog(ERROR, "Injecting error.");
+}
+
+SortByDir
+YbSortOrdering(SortByDir ordering, bool is_colocated, bool is_tablegroup,
+			   bool is_first_key)
+{
+	switch (ordering)
+	{
+		case SORTBY_DEFAULT:
+			/*
+				 * In Yugabyte, use HASH as the default for the first column of
+				 * non-colocated tables
+			 */
+			if (IsYugaByteEnabled() && yb_use_hash_splitting_by_default &&
+				is_first_key && !is_colocated && !is_tablegroup)
+				return SORTBY_HASH;
+
+			return SORTBY_ASC;
+
+		case SORTBY_ASC:
+		case SORTBY_DESC:
+			break;
+
+		case SORTBY_USING:
+			ereport(ERROR, (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				errmsg("USING is not allowed in an index")));
+			break;
+
+		case SORTBY_HASH:
+			if (is_tablegroup && !MyDatabaseColocated)
+				ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+								errmsg("cannot create a hash partitioned index in a TABLEGROUP")));
+			else if (is_colocated)
+				ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+								errmsg("cannot colocate hash partitioned index")));
+			break;
+
+		default:
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("unsupported column sort order: %d", ordering)));
+			break;
+	}
+
+	return ordering;
 }

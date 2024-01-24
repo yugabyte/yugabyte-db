@@ -27,6 +27,8 @@
 
 #include "yb/tserver/tablet_server_interface.h"
 
+#include "yb/rpc/secure_stream.h"
+
 #include "yb/util/debug/sanitizer_scopes.h"
 #include "yb/util/env_util.h"
 #include "yb/util/errno.h"
@@ -46,7 +48,6 @@
 #include "yb/util/thread.h"
 #include "yb/util/to_stream.h"
 
-#include "yb/yql/pggate/pggate_flags.h"
 #include "yb/yql/ysql_conn_mgr_wrapper/ysql_conn_mgr_stats.h"
 
 #include "ybgate/ybgate_api.h"
@@ -406,9 +407,6 @@ Result<string> WritePostgresConfig(const PgProcessConf& conf) {
   metricsLibs.push_back("yb_pg_metrics");
   metricsLibs.push_back("pgaudit");
   metricsLibs.push_back("pg_hint_plan");
-  if (FLAGS_TEST_yb_enable_ash) {
-    metricsLibs.push_back("yb_ash");
-  }
 
   vector<string> lines;
   string line;
@@ -683,6 +681,11 @@ Status PgWrapper::Start() {
                 FLAGS_pg_mem_tracker_tcmalloc_gc_release_bytes);
   proc_->SetEnv("FLAGS_mem_tracker_update_consumption_interval_us",
                 FLAGS_pg_mem_tracker_update_consumption_interval_us);
+
+  proc_->SetEnv("YB_ALLOW_CLIENT_SET_TSERVER_KEY_AUTH",
+      FLAGS_enable_ysql_conn_mgr ? "1" : "0");
+
+  rpc::SetOpenSSLEnv(&*proc_);
 
   RETURN_NOT_OK(proc_->Start());
   if (!FLAGS_postmaster_cgroup.empty()) {
