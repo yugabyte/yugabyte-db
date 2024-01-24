@@ -310,6 +310,7 @@ GET     /customers/:cUUID/universes/:uniUUID/master_infos                      c
 GET     /customers/:cUUID/universes/:uniUUID/cdc_streams                       com.yugabyte.yw.controllers.UniverseCdcStreamController.listCdcStreams(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 POST    /customers/:cUUID/universes/:uniUUID/cdc_streams                       com.yugabyte.yw.controllers.UniverseCdcStreamController.createCdcStream(cUUID: java.util.UUID, uniUUID: java.util.UUID, request: Request)
 DELETE  /customers/:cUUID/universes/:uniUUID/cdc_streams/:streamId             com.yugabyte.yw.controllers.UniverseCdcStreamController.deleteCdcStream(cUUID: java.util.UUID, uniUUID: java.util.UUID, streamId: String)
+GET     /customers/:cUUID/universes/:uniUUID/cdc_replication_slots             com.yugabyte.yw.controllers.UniverseCdcStreamController.listReplicationSlot(cUUID: java.util.UUID, uniUUID: java.util.UUID)
 
 # Universe LDAP users Sync API
 POST /customers/:cUUID/universes/:univUUID/ldap_roles_sync                     com.yugabyte.yw.controllers.LdapUniverseSyncController.syncUniverse(cUUID: java.util.UUID, univUUID: java.util.UUID, request: Request)
