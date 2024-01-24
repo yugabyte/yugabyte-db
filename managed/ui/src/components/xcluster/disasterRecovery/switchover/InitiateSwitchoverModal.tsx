@@ -173,7 +173,7 @@ export const InitiateSwitchoverModal = ({ drConfig, modalProps }: InitiateSwitch
   const isFormDisabled = isSubmitting || confirmationText !== targetUniverseName;
   const modalTitle = (
     <Typography variant="h4" component="span" className={classes.modalTitle}>
-      {t('title', { drReplicaName: targetUniverseName })}
+      {t('title')}
       <YBTooltip
         title={
           <Typography variant="body2">
@@ -210,7 +210,18 @@ export const InitiateSwitchoverModal = ({ drConfig, modalProps }: InitiateSwitch
           <Trans i18nKey={`${TRANSLATION_KEY_PREFIX}.noDataLoss`} components={{ bold: <b /> }} />
         </Typography>
       </div>
-      <Box marginTop={4}>
+      <Box marginTop={2}>
+        <Typography variant="body2">
+          <Trans
+            i18nKey={`${TRANSLATION_KEY_PREFIX}.switchoverConfirmation`}
+            values={{ drReplicaName: targetUniverseName }}
+            components={{
+              bold: <b />
+            }}
+          />
+        </Typography>
+      </Box>
+      <Box marginTop={3}>
         <Typography variant="body2" className={classes.fieldLabel}>
           {t('confirmationInstructions')}
         </Typography>

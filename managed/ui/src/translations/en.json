@@ -45,6 +45,11 @@
       "failedToFetchAlertTemplates": "Failed to fetch alert templates.",
       "failedToFetchAlertConfigs": "Failed to fetch alert configurations."
     },
+    "prometheusMetricTrace": {
+      "async_replication_sent_lag_micros": "Async Replication Lag",
+      "consumer_safe_time_lag": "Consumer Safe Time Lag",
+      "consumer_safe_time_skew": "Consumer Safe Time Skew"
+    },
     "universeActions": {
       "encryptionAtRest": {
         "title": "Manage encryption at-Rest",
@@ -591,12 +596,12 @@
             "deleteConfig": "Remove disaster recovery",
             "editDrConfig": "Edit DR configuration",
             "editDrConfigTarget": "Change DR Replica Universe",
-            "editTables": "Select databases and tables",
+            "editTables": "Select Database and Tables",
             "switchover": "Switchover",
             "failover": "Failover",
             "advancedSubmenu": "Advanced",
-            "restartReplication": "Restart replication",
-            "dbSync": "Reconcile config with database"
+            "restartReplication": "Full Copy DR Primary",
+            "dbSync": "Reconcile Config with Database"
           }
         },
         "error": {
@@ -612,7 +617,7 @@
           }
         },
         "banner": {
-          "enablingDr": "<bold>Enabling disaster recovery...</bold> Universe operations are not available while the operation is in progress.",
+          "initializingDr": "<bold>Initializing disaster recovery...</bold> Universe operations are not available while the operation is in progress.",
           "failoverInProgress": "<bold>Failover in progress...</bold> Universe operations are not available while the operation is in progress.",
           "switchoverInProgress": "<bold>Switchover in progress...</bold> Universe operations are not available while the operation is in progress.",
           "connectYourApps": "<bold>Connect your applications</bold> to the new DR primary universe to direct read and writes to it.",
@@ -621,10 +626,11 @@
         },
         "switchover": {
           "initiateModal": {
-            "title": "Switchover to DR Replica: {{drReplicaName}}",
+            "title": "Switchover to DR Replica",
             "titleTooltip": "<paragraph>Switch the DR primary with the DR replica after waiting for replication drain so there will be no data loss.</paragraph>Replication drain allows the replication on the DR replica to catch up with the DR primary and be fully synchronized before initiating switchover.",
             "instructions": "Wait for the DR replica cluster to be fully synchronized with the primary by <bold>draining replication</bold> before switchover",
             "noDataLoss": "There will be <bold>no data loss</bold> in switchover.",
+            "switchoverConfirmation": "Are you sure you want to switchover to <bold>{{drReplicaName}}</bold>?",
             "confirmationInstructions": "Enter DR replica universe name to confirm.",
             "submitButton": "Initiate Switchover",
             "note": {
@@ -652,13 +658,14 @@
         },
         "failover": {
           "initiateModal": {
-            "title": "Failover to DR Replica: {{drReplicaName}}",
+            "title": "Failover to DR Replica",
             "description": "Start failover immediately at the cost of <bold>losing some data</bold> that is not replicated to the DR replica.",
             "estimatedDataLoss": {
               "label": "Potential Data Loss",
-              "tooltip": "The estimated data loss is determined by the DR replica's safe time lag at the last known safe time."
+              "tooltip": "The potential data loss is determined by the DR replica's safe time lag at the last known safe time."
             },
-            "confirmationInstructions": "Enter DR Replica universe name to confirm.",
+            "failoverConfirmation": "Are you sure you want to failover to <bold>{{drReplicaName}}</bold>?",
+            "confirmationInstructions": "Enter DR replica universe name to confirm.",
             "submitButton": "Initiate Failover",
             "error": {
               "taskFailure": "Failover task failed.",
@@ -753,12 +760,16 @@
             "drReplica": "DR REPLICA"
           },
           "createModal": {
-            "title": "Configure Active-Active Single-Master Disaster Recovery (DR)",
+            "title": "Configure Disaster Recovery (DR)",
             "step": {
               "selectTargetUniverse": {
-                "instruction": "Select a universe to use as the DR replica",
+                "instruction": {
+                  "text": "Select a universe to use as the DR replica",
+                  "tooltip": "<paragraph>The DR replica universe acts as a failover in case of a DR primary universe outage. It is asynchronously synchronized for high consistency.</paragraph><paragraph>Select a universe in a <bold>different region</bold> as a DR replica to survive potential region outages.</paragraph>"
+                },
                 "submitButton": "Next: Select Databases",
                 "drReplica": "DR Replica Universe",
+                "drReplicaSelectionHelpText": "Make sure the DR replica has the right <drReplicaPrerequisiteDocsLink>prerequisites</drReplicaPrerequisiteDocsLink> for disaster recovery.",
                 "error": {
                   "targetUniverseRequired": "Required.",
                   "mismatchedNodeToNodeEncryption": "The source and target universe must have matching TLS enable/disable setting."
@@ -768,7 +779,7 @@
                 "instruction": "Select the databases to enable disaster recovery for",
                 "validateButton": "Validate Table Selection",
                 "submitButton": "Next: Configure Full Copy",
-                "pitrSetUpNote": "<bold>Note:</bold> Point-in-time Recovery will be enabled for the selected databases on the DR Replica."
+                "pitrSetUpNote": "<bold>Note!</bold> Point-in-time Recovery will be enabled for the selected databases on the DR Replica."
               },
               "configureBootstrap": {
                 "instruction": "Choose the storage config to use for performing the initial copy",
@@ -784,10 +795,10 @@
               },
               "confirmAlert": {
                 "instruction": "Confirm alert threshold for acceptable replication lag",
-                "infoText": "Replication lag measures how far behind in time the DR replica lags the DR primary. You can set alerts on the DR primary to notify you when this lag reaches a specified threshold so that you can take action to correct the lag. Setting up a replication lag alert is optional.",
-                "currentLowestReplicationLagLabel": "Current lowest replication lag alert threshold set on {{sourceUniverseName}}:",
-                "setUpReplicationLagAlertPrompt": "<paragraph>You currently do not have any alerts set up for replication lag on {{sourceUniverseName}}.</paragraph><paragraph>You can configure a replication lag alert using the 'Create Alert Policy' action on the <manageAlertConfigLink>alert configuration page.</manageAlertConfigLink></paragraph>",
-                "editReplicationLagAlertPrompt": "You can edit these replication lag alerts from the <manageAlertConfigLink>alert configuration page.</manageAlertConfigLink>",
+                "infoText": "Replication lag measures how far behind in time the DR replica lags the DR primary. In a failover scenario, the longer the lag, the more data is at risk of being lost. To be notified if the lag exceeds a specific threshold so that you can take remedial measures, set a Universe alert for Replication Lag. Learn More",
+                "currentLowestReplicationLagLabel": "Lowest replication lag alert threshold on this DR primary universe ({{sourceUniverseName}}):",
+                "setUpReplicationLagAlertPrompt": "<paragraph>This DR primary universe does not have any replication lag alert configured. <manageAlertConfigLink>Configure an alert</manageAlertConfigLink></paragraph>",
+                "editReplicationLagAlertPrompt": "<manageAlertConfigLink>Change this alert</manageAlertConfigLink>",
                 "submitButton": "Confirm and Enable Disaster Recovery"
               }
             },
@@ -801,11 +812,11 @@
             }
           },
           "deleteModal": {
-            "title": "Remove Active-Active Single-Master Disaster Recovery (DR): {{drConfigName}}",
+            "title": "Remove Disaster Recovery",
             "submitButton": "Remove",
-            "deleteConfirmation": "Are you sure you want to remove disaster recovery?",
+            "deleteConfirmation": "Are you sure you want to remove disaster recovery from <bold>{{currentUniverseName}}</bold>?",
             "deleteConsequence": "Your databases will no longer be replicated and there will be no DR replica universe to failover to in case of a disaster.",
-            "confirmationInstructions": "Enter DR config name to proceed.",
+            "confirmationInstructions": "Enter the current universe name to confirm.",
             "error": {
               "requestFailureLabel": "Active-active single-master disaster recovery (DR) removal request failed",
               "taskFailure": "Active-active single-master disaster recovery (DR) removal task failed."
@@ -868,11 +879,12 @@
             }
           },
           "editTablesModal": {
-            "title": "Select Databases and tables",
+            "title": "Select Databases and Tables",
             "instruction": "Select the databases to enable disaster recovery for",
             "step": {
               "selectTables": {
-                "nextButton": "Next: Configure Full Copy"
+                "nextButton": "Next: Configure Full Copy",
+                "matchingTableNote": "<bold>Note!</bold> Only matching databases on both universes are eligible for disaster recovery. Ensure the databases are created with the same name on both universes to enable Disaster Recovery for them."
               },
               "configureBootstrap": {
                 "infoText": "<paragraph>The selected databases and/or tables contain <bold>data that is not yet replicated</bold> for DR. To enable DR for these databases and/or tables, a fully copy will be required before aynchronous replication from the DR primary universe to the DR replica universe can be established.</paragraph><paragraph>Are you sure you want to perform a <bold>full copy</bold> and add these databases and/or tables?</paragraph>",
@@ -916,6 +928,10 @@
           "configureReplicationLagAlert": "Max acceptable lag time"
         },
         "selectTable": {
+          "selectionDescriptorDr": "List of databases and tables in the DR primary universe.",
+          "selectionDescriptorXCluster": "List of databases and tables in the source universe.",
+          "tableSelectionCount": "{{selectedTableCount}} out of {{availableTableCount}} table(s) selected",
+          "databaseSelectionCount": "{{selectedDatabaseCount}} out of {{availableDatabaseCount}} database(s) selected",
           "error": {
             "failedToFetchIsBootstrapRequired": {
               "title": "Table full copy verification failed.",
@@ -977,7 +993,8 @@
         },
         "syncDbModal": {
           "title": "Reconcile Config with Database",
-          "syncConfirmation": "If out-of-band changes to an xCluster configuration have taken place (ex. changes using yb-admin), this action will allow YBA to update it's model of the xCluster config by pulling in those changes.",
+          "syncXClusterConfirmation": "If out-of-band changes to an xCluster configuration have taken place (ex. changes using yb-admin CLI), this action will allow YBA to update it's model of the xCluster config by pulling in those changes.",
+          "syncDrConfirmation": "If out-of-band changes to a disaster recovery configuration have taken place (ex. changes using yb-admin CLI), this action will allow YBA to update it's model of the xCluster config by pulling in those changes.",
           "submitButton": "Reconcile Config with Database",
           "error": {
             "taskFailure": "xCluster config DB sync task failed.",
@@ -1000,7 +1017,7 @@
             }
           },
           "error": {
-            "requestFailure": "Create full copy request failed.",
+            "requestFailureLabel": "Create full copy request failed",
             "taskFailure": "Create full copy task failed."
           }
         }

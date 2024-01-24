@@ -464,6 +464,22 @@ class UniverseDetail extends Component {
             <DrPanel currentUniverseUuid={currentUniverse.data.universeUUID} />
           </Tab.Pane>
         ),
+        isNotHidden(currentCustomer.data.features, 'universes.details.replication') && (
+          <Tab.Pane
+            eventKey={'replication'}
+            tabtitle="xCluster Replication"
+            key="replication-tab"
+            mountOnEnter={true}
+            unmountOnExit={true}
+            disabled={isDisabled(currentCustomer.data.features, 'universes.details.replication')}
+          >
+            {featureFlags.released.enableXCluster || featureFlags.test.enableXCluster ? (
+              <XClusterReplication currentUniverseUUID={currentUniverse.data.universeUUID} />
+            ) : (
+              <ReplicationContainer />
+            )}
+          </Tab.Pane>
+        ),
         isNotHidden(currentCustomer.data.features, 'universes.details.tasks') && (
           <Tab.Pane
             eventKey={'tasks'}
@@ -481,22 +497,6 @@ class UniverseDetail extends Component {
               refreshUniverseData={this.getUniverseInfo}
               visibleModal={visibleModal}
             />
-          </Tab.Pane>
-        ),
-        isNotHidden(currentCustomer.data.features, 'universes.details.replication') && (
-          <Tab.Pane
-            eventKey={'replication'}
-            tabtitle="xCluster Replication"
-            key="replication-tab"
-            mountOnEnter={true}
-            unmountOnExit={true}
-            disabled={isDisabled(currentCustomer.data.features, 'universes.details.replication')}
-          >
-            {featureFlags.released.enableXCluster || featureFlags.test.enableXCluster ? (
-              <XClusterReplication currentUniverseUUID={currentUniverse.data.universeUUID} />
-            ) : (
-              <ReplicationContainer />
-            )}
           </Tab.Pane>
         )
       ],
