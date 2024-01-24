@@ -210,9 +210,13 @@ export const ProviderList = (props: ProviderListProps) => {
   return (
     <>
       <Box display="flex" marginBottom="35px" justifyContent="space-between">
-        <Typography variant="h4">{`${providerLabel} Configs`}</Typography>
+        <Typography variant="h4">{`${
+          providerCode === ProviderCode.KUBERNETES && props.kubernetesProviderType
+            ? KubernetesProviderTypeLabel[props.kubernetesProviderType]
+            : ProviderLabel[providerCode]
+        } Configs`}</Typography>
         {filteredProviderList.length > 0 && (
-          <RbacValidator accessRequiredOn={ApiPermissionMap.CREATE_PROVIDERS} isControl>
+          <RbacValidator accessRequiredOn={ApiPermissionMap.CREATE_PROVIDER} isControl>
             <YBButton
               style={{ marginLeft: 'auto', width: '200px' }}
               variant="primary"

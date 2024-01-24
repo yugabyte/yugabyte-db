@@ -30,13 +30,9 @@ export const EmptyListPlaceholder = ({
   dataTestIdPrefix,
   onActionButtonClick
 }: EmptyListPlaceholderProps) => (
-
   <div className={clsx(styles.emptyListContainer, className)}>
     {PLUS_ICON}
-    <RbacValidator
-      accessRequiredOn={ApiPermissionMap.CREATE_PROVIDERS}
-      isControl
-    >
+    <RbacValidator accessRequiredOn={ApiPermissionMap.CREATE_PROVIDER} isControl>
       <YBButton
         style={{ minWidth: '200px' }}
         variant="primary"
