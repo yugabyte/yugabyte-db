@@ -1,6 +1,7 @@
 import jline.console.ConsoleReader
 import play.sbt.PlayImport.PlayKeys.{playInteractionMode, playMonitoredFiles}
 import play.sbt.PlayInteractionMode
+import java.io.File
 import java.nio.charset.StandardCharsets
 import java.nio.file.{FileSystems, Files}
 import sbt.complete.Parsers.spaceDelimited
@@ -399,7 +400,7 @@ releaseModulesLocally := {
 
 buildDependentArtifacts := {
   ybLog("Building dependencies...")
-  openApiProcessServer.value
+  (Compile / openApiProcessServer).value
   generateCrdObjects.value
   generateOssConfig.value
   val status = Process("mvn install -P buildDependenciesOnly", baseDirectory.value / "parent-module").!
@@ -540,27 +541,35 @@ openApiLint := {
   }
 }
 
-lazy val openApiProcessServer = taskKey[Unit]("Process OpenApi files")
+lazy val openApiProcessServer = taskKey[Seq[File]]("Process OpenApi files")
 openApiProcessServer / fileInputs += baseDirectory.value.toGlob /
     "src/main/resources/openapi" / ** / "[!_]*.yaml"
 openApiProcessServer / fileInputs += baseDirectory.value.toGlob /
     "src/main/resources/openapi_templates" / ** / "*.mustache"
 // Process and compile open api files
-openApiProcessServer := {
+Compile / openApiProcessServer := {
   if (openApiProcessServer.inputFileChanges.hasChanges) {
-    Def.sequential(
-      ybLogTask.toTask(" Detected changes in OpenApi spec files, regenerating server stubs..."),
-      openApiFormat,
-      openApiBundle,
-      javaGenV2Server / openApiGenerate,
-      javaGenV2Server / openApiStyleValidate,
-      openApiLint
-    ).value
+    Def.taskDyn {
+      val output = Def.sequential(
+          ybLogTask.toTask(" Detected changes in OpenApi spec files, regenerating server stubs..."),
+          openApiFormat,
+          openApiBundle,
+          javaGenV2Server / openApiGenerate
+        ).value
+      Def.task{
+        (javaGenV2Server / openApiStyleValidate).value
+        openApiLint.value
+        // return the list of generated java files to be managed
+        output.filter(_.getName.endsWith(".java"))
+      }}.value
   } else {
-    ybLog("Server stubs already generated for openapi.yaml." +
-        " Run 'cleanV2ServerStubs' to force regenerate.")
+    ybLog("OpenApi server stubs already generated." +
+        " Run 'cleanV2ServerStubs' to force regeneration.")
+    Seq()
   }
 }
+Compile / sourceGenerators += (Compile / openApiProcessServer)
+Compile / unmanagedSourceDirectories += target.value / "openapi/src/main/java"
 
 // Generate a Java v1 API client.
 lazy val javagen = project.in(file("client/java"))
@@ -578,7 +587,7 @@ lazy val javagen = project.in(file("client/java"))
 // Generate a Java v2 API client.
 lazy val javaGenV2Client = project.in(file("client/java"))
   .settings(
-    openApiInputSpec := "src/main/java/public/openapi.json",
+    openApiInputSpec := "target/openapi/src/main/java/public/openapi.json",
     openApiGeneratorName := "java",
     openApiOutputDir := "client/java/v2",
     openApiGenerateModelTests := SettingDisabled,
@@ -613,7 +622,7 @@ lazy val pythongen = project.in(file("client/python"))
 // Generate a Python V2 API client.
 lazy val pythonGenV2Client = project.in(file("client/python"))
   .settings(
-    openApiInputSpec := "src/main/java/public/openapi.json",
+    openApiInputSpec := "target/openapi/src/main/java/public/openapi.json",
     openApiGeneratorName := "python",
     openApiOutputDir := "client/python/v2",
     openApiGenerateModelTests := SettingDisabled,
@@ -639,7 +648,7 @@ lazy val gogen = project.in(file("client/go"))
 // Generate a Go V2 API client.
 lazy val goGenV2Client = project.in(file("client/go"))
   .settings(
-    openApiInputSpec := "src/main/java/public/openapi.json",
+    openApiInputSpec := "target/openapi/src/main/java/public/openapi.json",
     openApiGeneratorName := "go",
     openApiOutputDir := "client/go/v2",
     openApiGenerateModelTests := SettingDisabled,
@@ -682,6 +691,7 @@ openApiGenClients := {
   (pythonGenV2Client / openApiGenerate).value
   (goGenV2Client / openApiGenerate).value
 }
+openApiGenClients := openApiGenClients.dependsOn(Compile/openApiProcessServer).value
 
 lazy val openApiCompileClients = taskKey[Unit]("Compiling openapi clients")
 openApiCompileClients := {
@@ -691,18 +701,33 @@ openApiCompileClients := {
 }
 
 // Generate Java V2 API server stubs.
-lazy val javaGenV2Server = project.in(file("src"))
+val resDir = "../../src/main/resources"
+lazy val javaGenV2Server = project.in(file("target/openapi"))
   .enablePlugins(OpenApiGeneratorPlugin, OpenApiStylePlugin)
   .settings(
-    openApiInputSpec := "src/main/resources/openapi.yaml",
     openApiGeneratorName := "java-play-framework",
-    openApiOutputDir := "src/main/java/",
+    openApiInputSpec := (baseDirectory.value / resDir / "openapi.yaml").absolutePath,
+    openApiOutputDir := (baseDirectory.value / "src/main/java/").absolutePath,
+    openApiConfigFile := (baseDirectory.value / resDir / "openapi-java-server-config.json").absolutePath,
+    openApiTemplateDir := (baseDirectory.value / resDir / "openapi_templates/").absolutePath,
     openApiValidateSpec := SettingDisabled,
-    openApiConfigFile := "src/main/resources/openapi-java-server-config.json",
+    openApiGenerate := (openApiGenerate dependsOn openApiCopyIgnoreFile).value,
     // style plugin configurations
-    openApiStyleSpec := file("src/main/resources/openapi.yaml"),
-    openApiStyleConfig := Some(file("src/main/resources/openapi_style_validator.conf")),
+    openApiStyleSpec := baseDirectory.value / resDir / "openapi.yaml",
+    openApiStyleConfig := Some(baseDirectory.value / resDir / "openapi_style_validator.conf"),
   )
+
+// copy over the ignore file manually since openApiIgnoreFileOverride does not work
+lazy val openApiCopyIgnoreFile = taskKey[Unit]("Copy the openapi ignore file to target")
+javaGenV2Server / openApiCopyIgnoreFile := {
+  val src = (baseDirectory.value / "src/main/resources/.openapi-generator-ignore").toPath
+  var tgt = (baseDirectory.value / "target/openapi/src/main/java/.openapi-generator-ignore").toPath
+  ybLog("Copying " + src + " to " + tgt)
+  Files.createDirectories((baseDirectory.value / "target/openapi/src/main/java/").toPath)
+  Files.copy((baseDirectory.value / "src/main/resources/.openapi-generator-ignore").toPath,
+      (baseDirectory.value / "target/openapi/src/main/java/.openapi-generator-ignore").toPath,
+      java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+}
 
 Universal / packageZipTarball := (Universal / packageZipTarball).dependsOn(versionGenerate, buildDependentArtifacts).value
 
