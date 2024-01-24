@@ -416,7 +416,7 @@ ybcingettuple(IndexScanDesc scan, ScanDirection dir)
 		if (ybscan->quit_scan)
 			return NULL;
 
-		scan->xs_recheck = YbNeedsRecheck(ybscan);
+		scan->xs_recheck = YbNeedsPgRecheck(ybscan);
 		if (!ybscan->is_exec_done)
 		{
 			HandleYBStatus(YBCPgSetForwardScan(ybscan->handle,
