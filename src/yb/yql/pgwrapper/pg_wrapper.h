@@ -15,6 +15,7 @@
 #include <atomic>
 #include <optional>
 #include <string>
+#include <variant>
 #include <vector>
 
 #include "yb/gutil/ref_counted.h"
