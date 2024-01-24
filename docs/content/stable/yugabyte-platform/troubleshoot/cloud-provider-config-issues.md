@@ -13,7 +13,7 @@ type: docs
 
 You might encounter issues during configuration of cloud providers for YugabyteDB Anywhere.
 
-If you experience difficulties while troubleshooting, contact [Yugabyte Support](https://support.yugabyte.com).
+If you have problems while troubleshooting, contact {{% support-platform %}}.
 
 ## Azure cloud provider configuration problems
 

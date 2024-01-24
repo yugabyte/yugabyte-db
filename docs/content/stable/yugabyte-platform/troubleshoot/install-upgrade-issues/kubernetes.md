@@ -21,7 +21,7 @@ type: docs
 
   <li>
     <a href="../vm/" class="nav-link">
-      <i class="fa-solid fa-building"></i>
+      <i class="fa-solid fa-cloud"></i>
       Virtual machine </a>
   </li>
 
@@ -36,7 +36,7 @@ type: docs
 
 Occasionally, you might encounter issues during installation and upgrade of YugabyteDB Anywhere on Kubernetes. You can troubleshoot most of these issues.
 
-If you experience difficulties while troubleshooting, contact {{% support-platform %}}.
+If you have problems while troubleshooting, contact {{% support-platform %}}.
 
 For more information, see the following:
 

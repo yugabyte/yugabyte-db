@@ -20,7 +20,7 @@ type: docs
 
   <li>
     <a href="../vm/" class="nav-link active">
-      <i class="fa-solid fa-building"></i>
+      <i class="fa-solid fa-cloud"></i>
       Virtual machine</a>
   </li>
 
@@ -35,7 +35,7 @@ type: docs
 
 Occasionally, you might encounter issues during installation and upgrade of YugabyteDB Anywhere on a virtual machine. Most of these issues are related to connections.
 
-If you experience difficulties while troubleshooting, contact [Yugabyte Support](https://support.yugabyte.com).
+If you have problems while troubleshooting, contact {{% support-platform %}}.
 
 ## Docker Engine connection to host issues
 

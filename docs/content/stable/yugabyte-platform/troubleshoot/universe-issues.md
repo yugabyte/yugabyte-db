@@ -66,7 +66,7 @@ Disk: /dev/sda2       208G  5.1G  203G   3% /
 
 You typically create universes by navigating to **Universes > Create universe > Primary cluster**, as per the following illustration:
 
-![Troubleshoot universe](/images/yb-platform/troubleshoot-uni-creation.png)<br>
+![Troubleshoot universe](/images/yb-platform/troubleshoot-uni-creation.png)
 
 If you disable **Assign Public IP** during the universe creation, the process may fail under certain conditions, unless you either install the following packages on the machine image or make them available on an accessible package repository:
 

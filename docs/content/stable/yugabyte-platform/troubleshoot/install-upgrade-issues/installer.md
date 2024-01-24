@@ -35,7 +35,7 @@ type: docs
 
 Occasionally, you might encounter issues during installation and upgrade of YugabyteDB Anywhere using [YBA Installer](../../../install-yugabyte-platform/install-software/installer/).
 
-If you experience difficulties while troubleshooting, contact [Yugabyte Support](https://support.yugabyte.com).
+If you have problems while troubleshooting, contact {{% support-platform %}}.
 
 ## Permissions issue with find command
 
@@ -71,7 +71,7 @@ If you want to have green preflight checks prior to the upgrade, change the `scr
 
 ## New settings are not automatically updated in yba-ctl.yml
 
-When new default settings are added to `yba-ctl.yml` in a newer release, they aren't automatically added to `yba-ctl.yml` of an existing installation after an upgrade.
+When new default settings are added to `yba-ctl.yml` in a newer release, they may not be automatically added to `yba-ctl.yml` of an existing installation after an upgrade.
 
 Affected releases: All
 

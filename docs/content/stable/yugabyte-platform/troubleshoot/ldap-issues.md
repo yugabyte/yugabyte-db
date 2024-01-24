@@ -11,7 +11,6 @@ menu:
 type: docs
 ---
 
-
 ## Troubleshooting LDAP
 
 Laboratory machines sometimes lack an appropriate intermediate certificate in order to trust the LDAP server certificate. You can prepend the environment variable `LDAPTLS_REQCERT=never` to test connectivity with ldapsearch:
