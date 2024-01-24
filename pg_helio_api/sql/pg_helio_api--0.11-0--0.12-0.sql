@@ -43,4 +43,9 @@ SET search_path TO helio_api;
 #include "udfs/schema_mgmt/drop_collection--0.12-0.sql"
 
 
+/*
+ * Region: Index Manangement APIs
+ */
+#include "udfs/index_mgmt/drop_indexes--0.12-0.sql"
+
 RESET search_path;

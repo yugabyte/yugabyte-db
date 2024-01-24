@@ -686,10 +686,7 @@ ERROR:  $nProbes must be an integer value.
 HINT:  $nProbes must be an integer value.
 -- numLists > data size, pgvector will generate randomized centroids, using original vector data to query
 CALL helio_api.drop_indexes('db', '{ "dropIndexes": "aggregation_pipeline", "index": "foo_1"}');
-ERROR:  procedure helio_api.drop_indexes(unknown, unknown) does not exist
-LINE 1: CALL helio_api.drop_indexes('db', '{ "dropIndexes": "aggrega...
-             ^
-HINT:  No procedure matches the given name and argument types. You might need to add explicit type casts.
+ERROR:  index not found with name [foo_1]
 SELECT helio_api_internal.create_indexes_non_concurrently('db', '{ "createIndexes": "aggregation_pipeline", "indexes": [ { "key": { "v": "cosmosSearch" }, "name": "foo_1", "cosmosSearchOptions": { "kind": "vector-ivf", "numLists": 10000, "similarity": "COS", "dimensions": 3 } } ] }', true);
 ERROR:  function helio_api_catalog.bson_extract_vector(bson, text) does not exist
 LINE 1: ...lic.vector_cosine_ops) WITH (lists = 10000) WHERE helio_api_...

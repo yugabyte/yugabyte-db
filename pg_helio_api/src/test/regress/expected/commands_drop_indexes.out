@@ -1,0 +1,95 @@
+SET search_path TO helio_api, helio_api_catalog,helio_core;
+SET helio_api.next_collection_id TO 15000;
+SET helio_api.next_collection_index_id TO 15000;
+---- dropIndexes - top level - parse error ----
+SELECT helio_api.create_collection('db', 'collection_3');
+NOTICE:  creating collection
+ create_collection 
+-------------------
+ t
+(1 row)
+
+CALL helio_api.drop_indexes('db', NULL);
+ERROR:  arg cannot be NULL
+CALL helio_api.drop_indexes(NULL, '{}');
+ERROR:  dbName cannot be NULL
+CALL helio_api.drop_indexes('db', '{}');
+ERROR:  BSON field 'dropIndexes.dropIndexes' is missing but a required field
+CALL helio_api.drop_indexes('db', '{"dropIndexes": null, "index": ["my_idx_1", "does_not_exist"]}');
+ERROR:  BSON field 'dropIndexes.dropIndexes' is the wrong type 'null', expected type 'string'
+HINT:  BSON field 'dropIndexes.dropIndexes' is the wrong type 'null', expected type 'string'
+CALL helio_api.drop_indexes('db', '{"dropIndexes": "collection_3", "unknown_field": 1}');
+ERROR:  BSON field 'dropIndexes.unknown_field' is an unknown field
+CALL helio_api.drop_indexes('db', '{"dropIndexes": "collection_3", "index": null}');
+ERROR:  BSON field 'dropIndexes.index' is the wrong type 'null', expected type '[string, object]'
+HINT:  BSON field 'dropIndexes.index' is the wrong type 'null', expected type '[string, object]'
+CALL helio_api.drop_indexes('db', '{"dropIndexes": "collection_3"}');
+ERROR:  BSON field 'dropIndexes.index' is missing but a required field
+-- this is ok
+CALL helio_api.drop_indexes('db', '{"dropIndexes": "collection_3", "index":[]}');
+                         retval                          
+---------------------------------------------------------
+ { "ok" : true, "nIndexesWas" : { "$numberLong" : "1"} }
+(1 row)
+
+CALL helio_api.drop_indexes('db', '{"dropIndexes": 1, "index":[]}');
+ERROR:  BSON field 'dropIndexes.dropIndexes' is the wrong type 'int', expected type 'string'
+HINT:  BSON field 'dropIndexes.dropIndexes' is the wrong type 'int', expected type 'string'
+CALL helio_api.drop_indexes('db', '{"dropIndexes": "collection_3", "index": 1}');
+ERROR:  BSON field 'dropIndexes.index' is the wrong type 'int', expected type '[string, object]'
+HINT:  BSON field 'dropIndexes.index' is the wrong type 'int', expected type '[string, object]'
+---- dropIndexes - top level - not implemented yet ----
+CALL helio_api.drop_indexes('db', '{"dropIndexes": "collection_3", "index": {}}');
+ERROR:  can't find index with key: { }
+CALL helio_api.drop_indexes('db', '{"dropIndexes": "collection_3", "writeConcern": 1}');
+ERROR:  BSON field 'dropIndexes.index' is missing but a required field
+CALL helio_api.drop_indexes('db', '{"dropIndexes": "collection_3", "comment": 1}');
+ERROR:  BSON field 'dropIndexes.index' is missing but a required field
+---- dropIndexes -- collection doesn't exist ----
+CALL helio_api.drop_indexes('db', '{"dropIndexes": "collection_4"}');
+ERROR:  BSON field 'dropIndexes.index' is missing but a required field
+---- dropIndexes -- index doesn't exist ----
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_3", "indexes": [{"key": {"a": 1}, "name": "my_idx_1"}]}', true);
+                                                                                                   create_indexes_non_concurrently                                                                                                    
+--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : false, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+CALL helio_api.drop_indexes('db', '{"dropIndexes": "collection_3", "index": ["my_idx_1", "does_not_exist"]}');
+ERROR:  index not found with name [does_not_exist]
+CALL helio_api.drop_indexes('db', '{"dropIndexes": "collection_3", "index": ["does_not_exist", "my_idx_1"]}');
+ERROR:  index not found with name [does_not_exist]
+---- dropIndexes -- unique unidex should work (unique index alters the table to remove a constraint)
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "collection_3", "indexes": [{"key": {"a": 1}, "name": "idx_1", "unique": true }]}', true);
+ERROR:  operator class "helio_api_catalog.bson_rum_exclusion_ops" does not exist for access method "helio_rum"
+CONTEXT:  SQL statement "ALTER TABLE helio_data.documents_15000 ADD CONSTRAINT documents_rum_index_15002 EXCLUDE USING helio_rum ( document helio_api_catalog.bson_rum_single_path_ops(path='a', generateNotFoundTerm=true) WITH OPERATOR(helio_api_catalog.=?=), ((shard_key_value, document)::helio_api_catalog.shard_key_and_document) helio_api_catalog.bson_rum_exclusion_ops(path='a') WITH OPERATOR(helio_api_catalog.=)) "
+CALL helio_api.drop_indexes('db', '{"dropIndexes": "collection_3", "index": ["idx_1"]}');
+ERROR:  index not found with name [idx_1]
+-- test drop_collection
+SELECT helio_api_internal.create_indexes_non_concurrently('db', '{"createIndexes": "drop_collection_test", "indexes": [{"key": {"a": 1}, "name": "my_idx_1"}]}');
+NOTICE:  creating collection
+                                                                                                   create_indexes_non_concurrently                                                                                                   
+-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+ { "raw" : { "defaultShard" : { "numIndexesBefore" : { "$numberInt" : "1" }, "numIndexesAfter" : { "$numberInt" : "2" }, "createdCollectionAutomatically" : true, "ok" : { "$numberInt" : "1" } } }, "ok" : { "$numberInt" : "1" } }
+(1 row)
+
+-- store id of drop_collection_test before dropping it
+SELECT collection_id AS db_drop_collection_test_id FROM helio_api_catalog.collections
+WHERE collection_name = 'drop_collection_test' AND database_name = 'db' \gset
+-- Insert a record into index metadata that indicates an invalid collection index
+-- to show that we delete records for invalid indexes too when dropping collection.
+INSERT INTO helio_api_catalog.collection_indexes (collection_id, index_id, index_spec, index_is_valid)
+VALUES (:db_drop_collection_test_id, 1010, ('invalid_index_1', '{"a": 1}', null, null, null, null, 2, null), false);
+SELECT helio_api.drop_collection('db', 'drop_collection_test');
+ drop_collection 
+-----------------
+ t
+(1 row)
+
+SELECT COUNT(*)=0 FROM helio_api_catalog.collection_indexes
+WHERE collection_id = :db_drop_collection_test_id;
+ ?column? 
+----------
+ t
+(1 row)
+

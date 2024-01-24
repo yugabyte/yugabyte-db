@@ -865,7 +865,7 @@ IndexKeyGetMatchingIndexes(uint64 collectionId, const pgbson *indexKeyDocument)
 			"FROM %s.collection_indexes WHERE collection_id = $1 AND"
 			" (index_spec).index_key::%s OPERATOR(%s.=) $2::%s AND"
 			" (index_is_valid OR %s.index_build_is_in_progress(index_id))",
-			ApiCatalogSchemaName, FullBsonTypeName, ApiCatalogSchemaName,
+			ApiCatalogSchemaName, FullBsonTypeName, CoreSchemaName,
 			FullBsonTypeName, ApiInternalSchemaName);
 
 	int argCount = 2;
