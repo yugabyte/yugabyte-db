@@ -440,6 +440,29 @@ public class KubernetesOperatorStatusUpdater implements OperatorStatusUpdater {
     }
   }
 
+  @Override
+  public synchronized void updateUniverseState(
+      KubernetesResourceDetails universeName, UniverseState state) {
+    try (final KubernetesClient kubernetesClient =
+        new KubernetesClientBuilder().withConfig(k8sClientConfig).build()) {
+      YBUniverse ybUniverse = getYBUniverse(kubernetesClient, universeName);
+      if (ybUniverse == null) {
+        log.error("YBUniverse {} no longer exists", universeName);
+        return;
+      }
+      YBUniverseStatus ybUniverseStatus = getOrCreateUniverseStatus(ybUniverse);
+      ybUniverseStatus.setUniverseState(state.getUniverseStateString());
+      ybUniverse.setStatus(ybUniverseStatus);
+      kubernetesClient
+          .resources(YBUniverse.class)
+          .inNamespace(ybUniverse.getMetadata().getNamespace())
+          .resource(ybUniverse)
+          .replaceStatus();
+    } catch (Exception e) {
+      log.error("Could not update Universe state: ", e);
+    }
+  }
+
   private YBUniverse getYBUniverse(
       KubernetesClient kubernetesClient, KubernetesResourceDetails name) {
     log.debug("lookup ybuniverse {}/{}", name.namespace, name.name);

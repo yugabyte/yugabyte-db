@@ -1037,7 +1037,7 @@ CatalogManager::CatalogManager(Master* master)
       master_, master_->metric_registry(),
       Bind(&CatalogManager::ElectedAsLeaderCb, Unretained(this))));
 
-  xcluster_manager_ = std::make_unique<XClusterManager>(master_, this, sys_catalog_.get());
+  xcluster_manager_ = std::make_unique<XClusterManager>(*master_, *this, *sys_catalog_.get());
 }
 
 CatalogManager::~CatalogManager() {

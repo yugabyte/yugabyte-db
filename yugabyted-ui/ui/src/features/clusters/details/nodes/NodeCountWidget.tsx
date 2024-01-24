@@ -1,4 +1,4 @@
-import React, { FC } from 'react';
+import React, { FC, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Grid, makeStyles, Typography } from '@material-ui/core';
 import { YBStatus, STATUS_TYPES } from '@app/components';
@@ -48,7 +48,16 @@ export const NodeCountWidget: FC<NodeCountWidgetProps> = ({
   const classes = useStyles();
   const { t } = useTranslation();
 
-  const nodesData = nodes?.data;
+  // list of nodes that have a tserver, for NodeCountWidget
+  const nodesData = useMemo(() => {
+    if (nodes?.data) {
+        return nodes.data.filter((node) => node.is_tserver);
+    }
+    return [];
+  }, [nodes]);
+
+  // total number of nodes including those that only have a master with no tserver
+  const numNodesIncludingMasterOnlyNodes = nodes?.data.length ?? 0;
 
   const numNodes = nodesData?.length ?? 0;
   const deadNodes = nodesData?.filter(node => !node.is_node_up) ?? [];
@@ -58,9 +67,14 @@ export const NodeCountWidget: FC<NodeCountWidgetProps> = ({
   return (
       <Grid container className={classes.container}>
         <div className={classes.clusterInfo}>
-          <Typography variant="body1" className={classes.label}>
-            {t('clusterDetail.nodes.totalNodes')}
-          </Typography>
+          {numNodes < numNodesIncludingMasterOnlyNodes
+            ? <Typography variant="body1" className={classes.label}>
+                {t('clusterDetail.nodes.totalTserverNodes')}
+              </Typography>
+            : <Typography variant="body1" className={classes.label}>
+                {t('clusterDetail.nodes.totalNodes')}
+              </Typography>
+          }
           <Typography variant="h4" className={classes.value}>
             {numNodes}
           </Typography>

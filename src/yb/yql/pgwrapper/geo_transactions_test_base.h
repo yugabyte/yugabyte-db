@@ -24,12 +24,18 @@ namespace yb {
 
 namespace client {
 
+YB_DEFINE_ENUM(ExpectedLocality, (kLocal)(kGlobal)(kNoCheck));
+YB_STRONGLY_TYPED_BOOL(SetGlobalTransactionsGFlag);
+YB_STRONGLY_TYPED_BOOL(SetGlobalTransactionSessionVar);
+YB_STRONGLY_TYPED_BOOL(WaitForHashChange);
+YB_STRONGLY_TYPED_BOOL(InsertToLocalFirst);
+
 class TransactionManager;
 class TransactionPool;
 
 class GeoTransactionsTestBase : public pgwrapper::PgMiniTestBase {
  public:
-  static constexpr auto kTablePrefix = "test";
+  static const inline std::string kTablePrefix = "test";
   static constexpr auto kLocalRegion = 1;
   static constexpr auto kOtherRegion = 2;
 
@@ -82,6 +88,10 @@ class GeoTransactionsTestBase : public pgwrapper::PgMiniTestBase {
   Status StartShutdownTabletServers(
     const std::optional<std::string>& region_str, const std::optional<std::string>& zone_str,
     bool shutdown);
+
+  void ValidateAllTabletLeaderinZone(std::vector<TabletId> tablet_uuids, int region);
+  Result<uint32_t> GetTablespaceOidForRegion(int region);
+  Result<std::vector<TabletId>> GetStatusTablets(int region, ExpectedLocality locality);
 
   TransactionManager* transaction_manager_;
   TransactionPool* transaction_pool_;

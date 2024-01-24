@@ -1347,6 +1347,8 @@ bool ddl_rollback_enabled = false;
 
 bool yb_silence_advisory_locks_not_supported_error = false;
 
+bool yb_use_hash_splitting_by_default = true;
+
 const char*
 YBDatumToString(Datum datum, Oid typid)
 {
@@ -4316,4 +4318,49 @@ YbIndexSetNewRelfileNode(Relation indexRel, Oid newRelfileNodeId,
 
 	if (yb_test_fail_table_rewrite_after_creation)
 		elog(ERROR, "Injecting error.");
+}
+
+SortByDir
+YbSortOrdering(SortByDir ordering, bool is_colocated, bool is_tablegroup,
+			   bool is_first_key)
+{
+	switch (ordering)
+	{
+		case SORTBY_DEFAULT:
+			/*
+				 * In Yugabyte, use HASH as the default for the first column of
+				 * non-colocated tables
+			 */
+			if (IsYugaByteEnabled() && yb_use_hash_splitting_by_default &&
+				is_first_key && !is_colocated && !is_tablegroup)
+				return SORTBY_HASH;
+
+			return SORTBY_ASC;
+
+		case SORTBY_ASC:
+		case SORTBY_DESC:
+			break;
+
+		case SORTBY_USING:
+			ereport(ERROR, (errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+				errmsg("USING is not allowed in an index")));
+			break;
+
+		case SORTBY_HASH:
+			if (is_tablegroup && !MyDatabaseColocated)
+				ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+								errmsg("cannot create a hash partitioned index in a TABLEGROUP")));
+			else if (is_colocated)
+				ereport(ERROR, (errcode(ERRCODE_INVALID_OBJECT_DEFINITION),
+								errmsg("cannot colocate hash partitioned index")));
+			break;
+
+		default:
+			ereport(ERROR,
+					(errcode(ERRCODE_INVALID_TABLE_DEFINITION),
+					 errmsg("unsupported column sort order: %d", ordering)));
+			break;
+	}
+
+	return ordering;
 }

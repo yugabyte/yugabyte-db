@@ -598,6 +598,8 @@ extern bool yb_test_fail_table_rewrite_after_creation;
 */
 extern bool ddl_rollback_enabled;
 
+extern bool yb_use_hash_splitting_by_default;
+
 /*
  * GUC to allow user to silence the error saying that advisory locks are not
  * supported.
@@ -1032,6 +1034,7 @@ extern void** YbPtrListToArray(const List* str_list, size_t* length);
  */
 extern char* YbReadWholeFile(const char *filename, int* length, int elevel);
 
+
 /*
  * If the tserver gflag --ysql_enable_db_catalog_version_mode is true
  * but the number of rows in pg_yb_catalog_version is 1, disallow a DDL
@@ -1050,5 +1053,12 @@ extern void YbATCopyPrimaryKeyToCreateStmt(Relation rel,
 
 extern void YbIndexSetNewRelfileNode(Relation indexRel, Oid relfileNodeId,
 									 bool yb_copy_split_options);
+
+/*
+ * Returns the ordering type for a primary key. By default, the first element of
+ * YB relations are sorted by HASH, unless Postgres sorting is set, or the table
+ * is colocated.
+ */
+extern SortByDir YbSortOrdering(SortByDir ordering, bool is_colocated, bool is_tablegroup, bool is_first_key);
 
 #endif /* PG_YB_UTILS_H */

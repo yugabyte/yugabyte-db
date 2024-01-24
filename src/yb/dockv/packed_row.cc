@@ -46,10 +46,6 @@ using PackedValueWithPrefixV1 = std::pair<Slice, PackedValueV1>;
 using PackedValueWithPrefixV2 = std::pair<Slice, PackedValueV2>;
 using ValuePair = std::pair<Slice, const QLValuePB&>;
 
-size_t PackedSizeLimit(size_t value) {
-  return value ? value : make_unsigned(FLAGS_db_block_size_bytes);
-}
-
 std::string ValueToString(const QLValuePB& value) {
   return value.ShortDebugString();
 }
@@ -112,6 +108,10 @@ void PackPrefix(Slice prefix, ValueBuffer* buffer) {
   buffer->Append(prefix);
 }
 
+bool IsNull(const PackableValue& value) {
+  return value.IsNull();
+}
+
 class ColumnPackerV1 {
  public:
   ColumnPackerV1(const ColumnPackingData& column_data, ValueBuffer* buffer)
@@ -148,6 +148,10 @@ class ColumnPackerV1 {
     return DoPackValue(/* prefix= */ nullptr, value, limit);
   }
 
+  bool PackValue(const PackableValue& value, size_t limit) {
+    return DoPackValue(/* prefix= */ nullptr, value, limit);
+  }
+
   Result<bool> PackValue(PackedValueV2 value, size_t limit) {
     return PackValue(VERIFY_RESULT(UnpackQLValue(value, column_data_.data_type)), limit);
   }
@@ -180,6 +184,14 @@ class ColumnPackerV1 {
 
   void DoPackValueImpl(PackedValueV1 value) {
     buffer_.Append(*value);
+  }
+
+  size_t PackedValueSize(const PackableValue& value) {
+    return value.PackedSizeV1();
+  }
+
+  void DoPackValueImpl(const PackableValue& value) {
+    value.PackToV1(&buffer_);
   }
 
   template <class Prefix, class Value>
@@ -225,7 +237,7 @@ class ColumnPackerV2 {
   }
 
   bool PackValue(const PackableValue& value, size_t limit) {
-    return value.PackTo(limit, &buffer_);
+    return DoPackValue(value, limit);
   }
 
   bool PackValue(PackedValueV2 value, size_t limit) {
@@ -268,6 +280,14 @@ class ColumnPackerV2 {
     buffer_.Append(*value);
   }
 
+  size_t PackedValueSize(const PackableValue& value) {
+    return value.PackedSizeV2();
+  }
+
+  void DoPackValueImpl(const PackableValue& value) {
+    value.PackToV2(&buffer_);
+  }
+
   void MarkColumnNull(size_t var_header_start, size_t idx) {
     buffer_.mutable_data()[var_header_start + idx / 8] |= 1 << (idx & 7);
   }
@@ -302,8 +322,8 @@ Status CompleteColumns(size_t packed_columns, Packer* packer) {
   const auto& packing = packer->packing();
   if (packed_columns < packing.columns()) {
     const auto& packing_data = packing.column_packing_data(packing.columns() - 1);
-    const auto& missing_value =
-        VERIFY_RESULT_REF(packer->schema().GetMissingValueByColumnId(packing_data.id));
+    const auto& missing_value = VERIFY_RESULT_REF(
+        packer->missing_value_provider().GetMissingValueByColumnId(packing_data.id));
     if (!IsNull(missing_value)) {
       RETURN_NOT_OK(packer->AddValue(packing_data.id, missing_value));
     } else {
@@ -319,21 +339,27 @@ Status CompleteColumns(size_t packed_columns, Packer* packer) {
 
 } // namespace
 
+size_t PackedSizeLimit(size_t value) {
+  return value ? value : make_unsigned(FLAGS_db_block_size_bytes);
+}
+
 RowPackerBase::RowPackerBase(
     std::reference_wrapper<const SchemaPacking> packing, size_t packed_size_limit,
-    const ValueControlFields& control_fields, std::reference_wrapper<const Schema> schema)
+    const ValueControlFields& control_fields,
+    std::reference_wrapper<const MissingValueProvider> missing_value_provider)
     : packing_(packing),
       packed_size_limit_(PackedSizeLimit(packed_size_limit)),
-      schema_(schema) {
+      missing_value_provider_(missing_value_provider) {
   control_fields.AppendEncoded(&result_);
 }
 
 RowPackerBase::RowPackerBase(
     std::reference_wrapper<const SchemaPacking> packing, size_t packed_size_limit,
-    Slice control_fields, std::reference_wrapper<const Schema> schema)
+    Slice control_fields,
+    std::reference_wrapper<const MissingValueProvider> missing_value_provider)
     : packing_(packing),
       packed_size_limit_(PackedSizeLimit(packed_size_limit)),
-      schema_(schema) {
+      missing_value_provider_(missing_value_provider) {
   result_.Append(control_fields);
 }
 
@@ -439,6 +465,10 @@ Result<bool> RowPackerV1::AddValue(ColumnId column_id, Slice value, ssize_t tail
 Result<bool> RowPackerV1::AddValue(
     ColumnId column_id, Slice value_prefix, Slice value_suffix, ssize_t tail_size) {
   return AddValue(column_id, value_prefix, PackedValueV1(value_suffix), tail_size);
+}
+
+Result<bool> RowPackerV1::AddValue(ColumnId column_id, const PackableValue& value) {
+  return DoAddValue(column_id, value, /* tail_size= */ 0);
 }
 
 void RowPackerV1::Restart() {

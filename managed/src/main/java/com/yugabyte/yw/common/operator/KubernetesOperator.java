@@ -47,8 +47,6 @@ public class KubernetesOperator {
 
   @Inject private SupportBundleUtil supportBundleUtil;
 
-  @Inject OperatorStatusUpdaterFactory statusUpdaterFactory;
-
   @Inject private YBReconcilerFactory reconcilerFactory;
 
   @Inject private RuntimeConfGetter confGetter;

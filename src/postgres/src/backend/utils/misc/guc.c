@@ -1061,6 +1061,24 @@ static struct config_bool ConfigureNamesBool[] =
 		NULL, NULL, NULL
 	},
 	{
+		{"yb_use_hash_splitting_by_default", PGC_USERSET, QUERY_TUNING_OTHER,
+			 gettext_noop("Enables hash splitting as the default method for primary "
+					   "key and index sorting in LSM indexes"),
+			 gettext_noop("When set to true, the default sorting for the first "
+					  "primary/index key column in LSM indexes is HASH, "
+					  "Setting this to false changes the default to ASC, "
+					  "making it compatible with standard PostgreSQL behavior. "
+					  "This setting is useful for optimizing query "
+					  "performance, especially for migrations from PostgreSQL "
+					  "or scenarios where index-based sorting and sharding "
+					  "behavior are critical."),
+
+	 },
+		&yb_use_hash_splitting_by_default,
+		true,
+		NULL, NULL, NULL
+	},
+	{
 		{"yb_prefer_bnl", PGC_USERSET, QUERY_TUNING_METHOD,
 			gettext_noop("If enabled, planner will force a preference of batched"
 						" nested loop join plans over classic nested loop"
@@ -4598,7 +4616,7 @@ static struct config_string ConfigureNamesString[] =
 				" before most recent DDL. (2) DDL is performed while it is set to nonzero.")
 		},
 		&yb_read_time_string,
-		"0", 
+		"0",
 		check_yb_read_time, assign_yb_read_time, NULL
 	},
 

@@ -42,9 +42,9 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
   @Inject
   protected UpgradeKubernetesUniverse(
       BaseTaskDependencies baseTaskDependencies,
-      OperatorStatusUpdaterFactory statusUpdaterFactory) {
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
     super(baseTaskDependencies);
-    this.kubernetesStatus = statusUpdaterFactory.create();
+    this.kubernetesStatus = operatorStatusUpdaterFactory.create();
   }
 
   public static class Params extends KubernetesUpgradeParams {}
@@ -176,7 +176,7 @@ public class UpgradeKubernetesUniverse extends KubernetesTaskBase {
           taskParams().getKubernetesResourceDetails(),
           TaskType.UpgradeKubernetesUniverse.name(),
           getUserTaskUUID(),
-          (th != null) ? UniverseState.ERROR : UniverseState.READY,
+          (th != null) ? UniverseState.ERROR_UPDATING : UniverseState.READY,
           th);
       unlockUniverseForUpdate();
     }

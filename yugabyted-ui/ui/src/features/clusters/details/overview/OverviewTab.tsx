@@ -65,7 +65,7 @@ export const OverviewTab: FC = () => {
     history.push(newLocation); // this will trigger page re-rendering, thus no need in useState/useEffect
   };
 
-  const { data: nodesResponse } = useGetClusterNodesQuery();
+  const { data: nodesResponse } = useGetClusterNodesQuery({});
   const regionData = useMemo(() => {
     const primarySet = new Set<string>();
     const readReplicaSet = new Set<string>();

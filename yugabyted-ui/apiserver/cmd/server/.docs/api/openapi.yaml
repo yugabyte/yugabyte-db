@@ -330,6 +330,16 @@ paths:
     get:
       description: Get nodes for a Yugabyte cluster
       operationId: getClusterNodes
+      parameters:
+      - allowEmptyValue: true
+        description: Whether to get master-only nodes that have no tserver
+        explode: true
+        in: query
+        name: get_all_masters
+        required: false
+        schema:
+          type: boolean
+        style: form
       responses:
         "200":
           content:
@@ -2513,7 +2523,6 @@ components:
       type: object
     ConnectionStatsItem:
       properties:
-      # GH #19722 : Structure of Ysql Connection Manager stats have changed.
         pool:
           type: string
         active_logical_connections:

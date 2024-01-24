@@ -90,14 +90,19 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForLeadersOnPreferredOnly,
           TaskType.ChangeMasterConfig, // Add
           TaskType.CheckFollowerLag, // Add
+          TaskType.WaitForMasterLeader,
+          TaskType.AnsibleConfigureServers, // Tservers
+          TaskType.AnsibleConfigureServers, // Masters
+          TaskType.SetFlagInMemory,
+          TaskType.SetFlagInMemory,
           TaskType.ChangeMasterConfig, // Remove
-          TaskType.AnsibleClusterServerCtl, // Stop master
           TaskType.WaitForMasterLeader,
           TaskType.UpdateNodeProcess,
           TaskType.AnsibleConfigureServers, // Tservers
-          TaskType.SetFlagInMemory,
           TaskType.AnsibleConfigureServers, // Masters
           TaskType.SetFlagInMemory,
+          TaskType.SetFlagInMemory,
+          TaskType.AnsibleClusterServerCtl, // Stop master
           TaskType.SwamperTargetsFileUpdate,
           TaskType.UpdateUniverseIntent,
           TaskType.WaitForTServerHeartBeats,
@@ -131,14 +136,19 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
           TaskType.WaitForLeadersOnPreferredOnly,
           TaskType.ChangeMasterConfig, // Add
           TaskType.CheckFollowerLag, // Add
+          TaskType.WaitForMasterLeader,
+          TaskType.AnsibleConfigureServers, // Tservers
+          TaskType.AnsibleConfigureServers, // Masters
+          TaskType.SetFlagInMemory,
+          TaskType.SetFlagInMemory,
           TaskType.ChangeMasterConfig, // Remove
-          TaskType.AnsibleClusterServerCtl, // Stop master
           TaskType.WaitForMasterLeader,
           TaskType.UpdateNodeProcess,
           TaskType.AnsibleConfigureServers, // Tservers
-          TaskType.SetFlagInMemory,
           TaskType.AnsibleConfigureServers, // Masters
           TaskType.SetFlagInMemory,
+          TaskType.SetFlagInMemory,
+          TaskType.AnsibleClusterServerCtl, // Stop master
           TaskType.SwamperTargetsFileUpdate,
           TaskType.UpdateUniverseIntent,
           TaskType.WaitForTServerHeartBeats,

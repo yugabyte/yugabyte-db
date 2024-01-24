@@ -27,10 +27,10 @@ public class RestoreBackup extends UniverseTaskBase {
   protected RestoreBackup(
       BaseTaskDependencies baseTaskDependencies,
       YbcManager ybcManager,
-      OperatorStatusUpdaterFactory statusUpdaterFactory) {
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
     super(baseTaskDependencies);
     this.ybcManager = ybcManager;
-    this.kubernetesStatus = statusUpdaterFactory.create();
+    this.kubernetesStatus = operatorStatusUpdaterFactory.create();
   }
 
   @Override

@@ -43,6 +43,7 @@
 
 #include "yb/dockv/doc_path.h"
 #include "yb/dockv/packed_row.h"
+#include "yb/dockv/packed_value.h"
 #include "yb/dockv/partition.h"
 #include "yb/dockv/pg_row.h"
 #include "yb/dockv/primitive_value_util.h"
@@ -116,6 +117,12 @@ DEFINE_RUNTIME_bool(ysql_enable_pack_full_row_update, false,
 
 DEFINE_RUNTIME_PREVIEW_bool(ysql_use_packed_row_v2, false,
                             "Whether to use packed row V2 when row packing is enabled.");
+
+DEFINE_NON_RUNTIME_bool(
+    ysql_skip_row_lock_for_update, false,
+    "By default DocDB operations for YSQL take row-level locks. If set to true, DocDB will instead "
+    "take finer column-level locks instead of locking the whole row. This may cause issues with "
+    "data integrity for operations with implicit dependencies between columns.");
 
 namespace yb::docdb {
 
@@ -703,6 +710,26 @@ class ExpressionHelper {
   size_t next_result_idx_ = 0;
 };
 
+[[nodiscard]] inline bool NewValuesHaveExpression(const PgsqlWriteRequestPB& request) {
+  // In case of UPDATE row need to be protected from removing. Weak intent is enough for
+  // this purpose. To achieve this the path for row's SystemColumnIds::kLivenessColumn column
+  // is returned. The caller code will create strong intent for returned path
+  // (row's column doc key) and weak intents for all its prefixes (including row's doc key).
+  // Note: UPDATE operation may have expressions instead of exact value.
+  // These expressions may read column value.
+  // Potentially expression for updating column v1 may read value of column v2.
+  //
+  // UPDATE t SET v = v + 10 WHERE k = 1
+  // UPDATE t SET v1 = v2 + 10 WHERE k = 1
+  //
+  // Strong intent for the whole row is required in this case as it may be too expensive to
+  // determine what exact columns are read by the expression.
+
+  return std::any_of(
+      request.column_new_values().begin(), request.column_new_values().end(),
+      [](const auto& cv) { return !cv.expr().has_value(); });
+}
+
 void WriteNumRows(size_t result_rows, const WriteBufferPos& pos, WriteBuffer* buffer) {
   char encoded_rows[sizeof(uint64_t)];
   NetworkByteOrder::Store64(encoded_rows, result_rows);
@@ -746,7 +773,8 @@ class PgsqlWriteOperation::RowPackContext {
         packer_(packer_data.MakePacker()) {
   }
 
-  Result<bool> Add(ColumnId column_id, const QLValuePB& value) {
+  template <class Value>
+  Result<bool> Add(ColumnId column_id, const Value& value) {
     return std::visit([column_id, &value](auto& packer) {
       return packer.AddValue(column_id, value);
     }, packer_);
@@ -1005,7 +1033,52 @@ Status PgsqlWriteOperation::ApplyInsert(const DocOperationApplyData& data, IsUps
     }
   }
 
-  if (ShouldYsqlPackRow(doc_read_context_->schema().is_colocated())) {
+  const auto& schema = doc_read_context_->schema();
+  auto pack_row = ShouldYsqlPackRow(schema.is_colocated());
+  if (request_.has_packed_value()) {
+    RETURN_NOT_OK(VerifyNoColsMarkedForDeletion(
+        request_.table_id(), schema, schema.value_column_ids()));
+    Slice packed_value(request_.packed_value());
+    if (pack_row &&
+        packed_value.size() < dockv::PackedSizeLimit(FLAGS_ysql_packed_row_size_limit)) {
+      RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
+          DocPath(encoded_doc_key_.as_slice()), dockv::ValueControlFields(),
+          ValueRef(packed_value), data.read_operation_data, request_.stmt_id()));
+    } else {
+      SCHECK(packed_value.TryConsumeByte(dockv::ValueEntryTypeAsChar::kPackedRowV1),
+             InvalidArgument,
+             "Packed value in a wrong format: $0", packed_value.ToDebugHexString());
+      const auto& packing = VERIFY_RESULT_REF(doc_read_context_->schema_packing_storage.GetPacking(
+          &packed_value));
+
+      std::optional<RowPackContext> pack_context;
+      if (pack_row) {
+        pack_context.emplace(
+            request_, data, VERIFY_RESULT(RowPackerData::Create(request_, *doc_read_context_)));
+      } else {
+        RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
+            DocPath(encoded_doc_key_.as_slice(), KeyEntryValue::kLivenessColumn),
+            dockv::ValueControlFields(), ValueRef(dockv::ValueEntryType::kNullLow),
+            data.read_operation_data, request_.stmt_id()));
+      }
+      for (size_t idx = 0; idx != packing.columns(); ++idx) {
+        auto value = dockv::PackedValueV1(packing.GetValue(idx, packed_value));
+        auto column_id = packing.column_packing_data(idx).id;
+        if (!pack_context || !VERIFY_RESULT(pack_context->Add(column_id, value))) {
+          if (value->empty()) {
+            static char null_column_type = dockv::ValueEntryTypeAsChar::kNullLow;
+            value = dockv::PackedValueV1(Slice(&null_column_type, sizeof(null_column_type)));
+          }
+          DocPath sub_path(encoded_doc_key_.as_slice(), KeyEntryValue::MakeColumnId(column_id));
+          RETURN_NOT_OK(data.doc_write_batch->SetPrimitive(
+              sub_path, ValueRef(*value), data.read_operation_data, request_.stmt_id()));
+        }
+      }
+      if (pack_context) {
+        RETURN_NOT_OK(pack_context->Complete(encoded_doc_key_));
+      }
+    }
+  } else if (pack_row) {
     RowPackContext pack_context(
         request_, data, VERIFY_RESULT(RowPackerData::Create(request_, *doc_read_context_)));
 
@@ -1430,40 +1503,19 @@ Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
   *level = RequireReadSnapshot() ? IsolationLevel::SNAPSHOT_ISOLATION
                                  : IsolationLevel::SERIALIZABLE_ISOLATION;
 
+  const auto is_update = request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPDATE;
   switch (mode) {
     case GetDocPathsMode::kLock: {
-      if (request_.stmt_type() == PgsqlWriteRequestPB::PGSQL_UPDATE) {
-        // In case of UPDATE row need to be protected from removing. Weak intent is enough for
-        // this purpose. To achieve this the path for row's SystemColumnIds::kLivenessColumn column
-        // is returned. The caller code will create strong intent for returned path
-        // (row's column doc key) and weak intents for all its prefixes (including row's doc key).
-        // Note: UPDATE operation may have expressions instead of exact value.
-        // These expressions may read column value.
-        // Potentially expression for updating column v1 may read value of column v2.
-        //
-        // UPDATE t SET v = v + 10 WHERE k = 1
-        // UPDATE t SET v1 = v2 + 10 WHERE k = 1
-        //
-        // Strong intent for the whole row is required in this case as it may be too expensive to
-        // determine what exact columns are read by the expression.
-
-        bool has_expression = false;
-        for (const auto& column_value : request_.column_new_values()) {
-          if (!column_value.expr().has_value()) {
-            has_expression = true;
-            break;
-          }
-        }
-        if (!has_expression) {
-          DocKeyColumnPathBuilderHolder holder(encoded_doc_key_.as_slice());
-          paths->emplace_back(holder.builder().Build(dockv::SystemColumnIds::kLivenessColumn));
-          return Status::OK();
-        }
+      if (PREDICT_FALSE(FLAGS_ysql_skip_row_lock_for_update) && is_update &&
+          !NewValuesHaveExpression(request_)) {
+        DocKeyColumnPathBuilderHolder holder(encoded_doc_key_.as_slice());
+        paths->emplace_back(holder.builder().Build(dockv::SystemColumnIds::kLivenessColumn));
+        return Status::OK();
       }
       break;
     }
     case GetDocPathsMode::kIntents: {
-      if (request_.stmt_type() != PgsqlWriteRequestPB::PGSQL_UPDATE) {
+      if (!is_update) {
         break;
       }
       const auto& column_values = request_.column_new_values();
@@ -1478,6 +1530,12 @@ Status PgsqlWriteOperation::GetDocPaths(GetDocPathsMode mode,
         paths->emplace_back(builder.Build(column_value.column_id()));
       }
       return Status::OK();
+    }
+    case GetDocPathsMode::kStrongReadIntents: {
+      if (!is_update || PREDICT_FALSE(FLAGS_ysql_skip_row_lock_for_update)) {
+        return Status::OK();
+      }
+      break;
     }
   }
   // Add row's doc key. Caller code will create strong intent for the whole row in this case.

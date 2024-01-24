@@ -633,7 +633,7 @@ public class GFlagsUtil {
     AuditLogConfig auditLogConfig = taskParams.auditLogConfig;
     if (auditLogConfig != null) {
       if (auditLogConfig.getYsqlAuditConfig() != null
-          && auditLogConfig.getYcqlAuditConfig().isEnabled()) {
+          && auditLogConfig.getYsqlAuditConfig().isEnabled()) {
         YSQLAuditConfig ysqlAuditConfig = auditLogConfig.getYsqlAuditConfig();
         if (CollectionUtils.isNotEmpty(ysqlAuditConfig.getClasses())) {
           ysqlPgConfCsvEntries.add(

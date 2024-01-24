@@ -198,6 +198,18 @@ std::vector<std::string> PerfArguments(int pid) {
   return {"perf", "record", "-g", Format("-p$0", pid), Format("-o/tmp/perf.$0.data", pid)};
 }
 
+Result<std::string> RowToString(PGresult* result, int row, const std::string& sep) {
+  int cols = PQnfields(result);
+  std::string line;
+  for (int col = 0; col != cols; ++col) {
+    if (col) {
+      line += sep;
+    }
+    line += VERIFY_RESULT(ToString(result, row, col));
+  }
+  return line;
+}
+
 }  // namespace
 
 template<BasePGType T>
@@ -396,6 +408,34 @@ Result<PGResultPtr> PGConn::FetchMatrix(const std::string& command, int rows, in
   return res;
 }
 
+Result<std::string> PGConn::FetchRowAsString(const std::string& command, const std::string& sep) {
+  auto res = VERIFY_RESULT(Fetch(command));
+
+  auto fetched_rows = PQntuples(res.get());
+  if (fetched_rows != 1) {
+    return STATUS_FORMAT(
+        RuntimeError, "Fetched $0 rows, while 1 expected", fetched_rows);
+  }
+
+  return RowToString(res.get(), 0, sep);
+}
+
+Result<std::string> PGConn::FetchAllAsString(
+    const std::string& command, const std::string& column_sep, const std::string& row_sep) {
+  auto res = VERIFY_RESULT(Fetch(command));
+
+  std::string result;
+  auto fetched_rows = PQntuples(res.get());
+  for (int i = 0; i != fetched_rows; ++i) {
+    if (i) {
+      result += row_sep;
+    }
+    result += VERIFY_RESULT(RowToString(res.get(), i, column_sep));
+  }
+
+  return result;
+}
+
 Status PGConn::StartTransaction(IsolationLevel isolation_level) {
   switch (isolation_level) {
     case IsolationLevel::NON_TRANSACTIONAL:
@@ -583,17 +623,17 @@ Result<std::string> ToString(PGresult* result, int row, int column) {
   auto type = PQftype(result, column);
   switch (type) {
     case BOOLOID:
-      return yb::ToString(VERIFY_RESULT(GetValue<bool>(result, row, column)));
+      return AsString(VERIFY_RESULT(GetValue<bool>(result, row, column)));
     case INT8OID:
-      return yb::ToString(VERIFY_RESULT(GetValue<int64_t>(result, row, column)));
+      return AsString(VERIFY_RESULT(GetValue<int64_t>(result, row, column)));
     case INT2OID:
-      return yb::ToString(VERIFY_RESULT(GetValue<int16_t>(result, row, column)));
+      return AsString(VERIFY_RESULT(GetValue<int16_t>(result, row, column)));
     case INT4OID:
-      return yb::ToString(VERIFY_RESULT(GetValue<int32_t>(result, row, column)));
+      return AsString(VERIFY_RESULT(GetValue<int32_t>(result, row, column)));
     case FLOAT4OID:
-      return yb::ToString(VERIFY_RESULT(GetValue<float>(result, row, column)));
+      return AsString(VERIFY_RESULT(GetValue<float>(result, row, column)));
     case FLOAT8OID:
-      return yb::ToString(VERIFY_RESULT(GetValue<double>(result, row, column)));
+      return AsString(VERIFY_RESULT(GetValue<double>(result, row, column)));
     case NAMEOID: FALLTHROUGH_INTENDED;
     case TEXTOID: FALLTHROUGH_INTENDED;
     case BPCHAROID: FALLTHROUGH_INTENDED;
@@ -601,9 +641,9 @@ Result<std::string> ToString(PGresult* result, int row, int column) {
     case CSTRINGOID:
       return VERIFY_RESULT(GetValue<std::string>(result, row, column));
     case OIDOID:
-      return yb::ToString(VERIFY_RESULT(GetValue<PGOid>(result, row, column)));
+      return AsString(VERIFY_RESULT(GetValue<PGOid>(result, row, column)));
     case UUIDOID:
-      return yb::ToString(VERIFY_RESULT(GetValue<Uuid>(result, row, column)));
+      return AsString(VERIFY_RESULT(GetValue<Uuid>(result, row, column)));
     default:
       return Format("Type not supported: $0", type);
   }
