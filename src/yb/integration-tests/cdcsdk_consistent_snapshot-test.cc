@@ -264,6 +264,27 @@ TEST_F(CDCSDKConsistentSnapshotTest, TestCreateStreamWithSlowAlterTable) {
   yb::SyncPoint::GetInstance()->ClearAllCallBacks();
 }
 
+TEST_F(CDCSDKConsistentSnapshotTest, TestCleanupAfterLateAlterTable) {
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_update_min_cdc_indices_interval_secs) = 1;
+  auto tablets = ASSERT_RESULT(SetUpWithOneTablet(1, 1, false));
+
+  yb::SyncPoint::GetInstance()->SetCallBack("AsyncAlterTable::CDCSDKCreateStream", [&](void* arg) {
+    LOG(INFO) << "In the SyncPoint callback, about to go to sleep";
+    SleepFor(MonoDelta::FromSeconds(20 * kTimeMultiplier));
+  });
+  SyncPoint::GetInstance()->EnableProcessing();
+
+  // Attempt to create a Consistent Snapshot Stream -
+  // this will fail because of the late ALTER TABLE response
+  ASSERT_NOK(CreateConsistentSnapshotStream());
+
+  SleepFor(MonoDelta::FromSeconds(25 * kTimeMultiplier));
+  VerifyTransactionParticipant(tablets[0].tablet_id(), OpId::Max());
+
+  yb::SyncPoint::GetInstance()->DisableProcessing();
+  yb::SyncPoint::GetInstance()->ClearAllCallBacks();
+}
+
 // The goal of this test is to confirm that the consistent snapshot related metadata is
 // persisted in the sys_catalog
 TEST_F(CDCSDKConsistentSnapshotTest, TestConsistentSnapshotMetadataPersistence) {
