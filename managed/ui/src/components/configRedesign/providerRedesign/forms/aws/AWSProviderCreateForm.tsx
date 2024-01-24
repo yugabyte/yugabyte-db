@@ -407,10 +407,7 @@ export const AWSProviderCreateForm = ({
               infoContent="Which regions would you like to allow DB nodes to be deployed into?"
               headerAccessories={
                 regions.length > 0 ? (
-                  <RbacValidator
-                    accessRequiredOn={ApiPermissionMap.CREATE_REGION_BY_PROVIDER}
-                    isControl
-                  >
+                  <RbacValidator accessRequiredOn={ApiPermissionMap.CREATE_PROVIDER} isControl>
                     <YBButton
                       btnIcon="fa fa-plus"
                       btnText="Add Region"
@@ -635,7 +632,7 @@ const constructProviderPayload = async (
   try {
     sshPrivateKeyContent =
       formValues.sshKeypairManagement === KeyPairManagement.SELF_MANAGED &&
-        formValues.sshPrivateKeyContent
+      formValues.sshPrivateKeyContent
         ? (await readFileAsText(formValues.sshPrivateKeyContent)) ?? ''
         : '';
   } catch (error) {
@@ -674,8 +671,8 @@ const constructProviderPayload = async (
           [ProviderCode.AWS]: {
             ...(formValues.ybImageType === YBImageType.CUSTOM_AMI
               ? {
-                ...(regionFormValues.ybImage && { ybImage: regionFormValues.ybImage })
-              }
+                  ...(regionFormValues.ybImage && { ybImage: regionFormValues.ybImage })
+                }
               : { ...(formValues.ybImageType && { arch: formValues.ybImageType }) }),
             ...(regionFormValues.securityGroupId && {
               securityGroupId: regionFormValues.securityGroupId
