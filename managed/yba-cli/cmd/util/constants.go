@@ -10,11 +10,15 @@ const (
 	GCPCredentialsEnv = "GOOGLE_APPLICATION_CREDENTIALS"
 	// GCSCredentialsJSON field name to denote in Json request
 	GCSCredentialsJSON = "GCS_CREDENTIALS_JSON"
+	// UseGCPIAM field name to denote in Json request
+	UseGCPIAM = "USE_GCP_IAM"
 
 	// AWSAccessKeyEnv env variable name for aws provider/storage config/releases
 	AWSAccessKeyEnv = "AWS_ACCESS_KEY_ID"
 	// AWSSecretAccessKeyEnv env variable name for aws provider/storage config/releases
 	AWSSecretAccessKeyEnv = "AWS_SECRET_ACCESS_KEY"
+	// IAMInstanceProfile field name to denote in Json request
+	IAMInstanceProfile = "IAM_INSTANCE_PROFILE"
 
 	// AzureSubscriptionIDEnv env variable name for azure provider
 	AzureSubscriptionIDEnv = "AZURE_SUBSCRIPTION_ID"
@@ -70,6 +74,11 @@ const (
 	AbortTaskStatus = "Abort"
 	// AbortedTaskStatus task status
 	AbortedTaskStatus = "Aborted"
+)
+
+const (
+	// StorageCustomerConfigType field name to denote in request bodies
+	StorageCustomerConfigType = "STORAGE"
 )
 
 // CompletedStates returns set of states that mark the task as completed
