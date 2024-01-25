@@ -20,7 +20,7 @@ YugabyteDB Anywhere (YBA) high availability (HA) is an active-standby model for 
 Each HA cluster includes a single active YBA instance and at least one standby YBA instance, configured as follows:
 
 - The active instance runs normally, but also pushes out backups of its state to all of the standby instances in the HA cluster.
-- A standby instance is completely passive while in standby mode and cannot be used for managing or monitoring clusters until you manually promote it to active.
+- A standby instance is completely passive while in standby mode and can't be used for managing or monitoring clusters until you manually promote it to active.
 
 Backups from the active instance are periodically taken and pushed to standby instances at a configurable frequency (no more than once per minute). The active instance also creates and sends one-off backups to standby instances whenever a task completes (such as creating a new universe). Metrics are duplicated to standby instances using Prometheus federation. Standby instances retain the ten most recent backups on disk.
 
@@ -31,10 +31,10 @@ When you promote a standby instance to active, YBA restores your selected backup
 Before configuring a HA cluster for your YBA instances, ensure that you have the following:
 
 - [Multiple YBA instances](../../install-yugabyte-platform/) to be used in the HA cluster.
-- The YBA instances can connect to each other over the port where the YugabyteDB Anywhere UI is reachable (typically 443).
+- The YBA instances can connect to each other over the port where the YBA UI is reachable (typically 443).
 - Communication is open in both directions over ports 9000 and 9090 on all YBA instances.
 - If you are using custom ports for Prometheus, all YBA instances are using the same custom port. The default Prometheus port for YugabyteDB Anywhere is 9090.
-- All YBA instances are running the same version of YBA software. You should upgrade all YBA instances in the HA cluster at approximately the same time.
+- All YBA instances are running the same version of YBA software. (The YBA instances in a HA cluster should always be upgraded at approximately the same time.)
 
 ## Configure active and standby instances
 
@@ -118,12 +118,12 @@ Your standby instance is now configured.
 
 To confirm communication between the active and standby, you can do the following:
 
-- Click **Make Active** on the standby. You should see a list of available backups that you can restore from. (Don't promote the standby.)
+- Click **Make Active** on the standby (but don't promote it). You should see a list of available backups that you can restore from.
 - Verify that Prometheus on the standby is able to see similar metrics to the active. Navigate to `http://<STANDBY_IP>:9090/targets`; the federate target should have a status of UP, and the endpoint should match the active instance IP address.
 
     ![Verify Prometheus](/images/yp/high-availability/ha-prometheus.png)
 
-- Verify that the standby has all the database releases that are in use by universes also listed as Active on the **Releases** page (navigate to **Profile > Releases**). To discover all the database releases that are in use by universes, you can view the **Dashboard** page.
+- Navigate to **Profile > Releases** and verify that the standby has all the database releases that are in use by universes, and that the releases are listed as Active. To discover all the database releases that are in use by universes, you can view the **Dashboard** page.
 
     If releases are missing, follow the instructions in [How to configure YugabyteDB Anywhere to provide Older, Hotfix, or Debug Builds](https://support.yugabyte.com/hc/en-us/articles/360054421952-How-to-configure-YugabyteDB-Anywhere-to-provide-Older-Hotfix-or-Debug-Builds).
 
@@ -145,14 +145,14 @@ You should be able to see that all of the data has been restored into the instan
 
 ### Verify promotion
 
-After switching or failing over to the standby, verify that the old active YBA instance is in standby mode (switchover) or no longer available (failover). If both YBA instances were to attempt to perform actions on a universe, it could have unpredictable side effects.
+After switching or failing over to the standby, verify that the old active YBA instance is in standby mode (switchover), or is no longer available (failover). If both YBA instances were to attempt to perform actions on a universe, it could have unpredictable side effects.
 
 #### Switchover
 
 After a switchover, do the following:
 
 - [Verify that HA is functioning properly](#verify-ha).
-- If the old active instance is not in standby mode, there could be an issue with communication from the new active to the old active instance. Follow the [setup instructions](#configure-active-and-standby-instances) to verify that certificates and ports are set up correctly.
+- If the old active instance is not in standby mode, there could be a communication issue from the new active to the old active instance. Follow the [setup instructions](#configure-active-and-standby-instances) to verify that certificates and ports are set up correctly.
 
 #### Failover
 
@@ -174,17 +174,17 @@ All instances involved in HA should use the same version of YugabyteDB Anywhere.
 Although you can upgrade all YBA instances simultaneously and there are no explicit ordering requirements regarding upgrades of active and standby instances, you should follow these general guidelines:
 
 - Start an upgrade with the active instance.
-- After the active instance has been upgraded, ensure that YugabyteDB Anywhere is reachable by signing in and checking various pages.
+- After the active instance has been upgraded, ensure that YBA is reachable by signing in and checking various pages.
 - Proceed with upgrading standby instances.
 - After upgrading all instances, verify that the standbys are receiving new backups from the active instance.
 
 Certificates in the trust store should not require setup again.
 
-{{< warning title="Don't promote an old active backup" >}}
+{{< warning title="Important: Don't promote an old active backup" >}}
 
 Immediately after an upgrade, older backups of the active instance _before it was upgraded_ will still be available on the standby. These are not deleted until the standby is promoted at some point, or they expire. Because these old backups are present, you need to be cautious promoting the standby in the time immediately after upgrading the HA pair.
 
-Only promote standby when both standby and active are at same version, and use the most recent backup that you are confident was received after the active was upgraded.
+Only promote a standby when both standby and active are at same version, and use the most recent backup that you are confident was received after the active was upgraded.
 
 {{< /warning >}}
 
