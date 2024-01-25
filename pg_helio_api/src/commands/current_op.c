@@ -1002,6 +1002,11 @@ GetIndexSpecForShardedCreateIndexQuery(SingleWorkerActivity *activity)
 static void
 AddFailedIndexBuilds(TupleDesc descriptor, Tuplestorestate *tupleStore)
 {
+	if (!IsClusterVersionAtleastThis(1, 12, 0))
+	{
+		return;
+	}
+
 	/* This can be cleaned up to be better - but not in the current iteration */
 	StringInfo queryInfo = makeStringInfo();
 	appendStringInfo(queryInfo, " SELECT "
@@ -1009,7 +1014,7 @@ AddFailedIndexBuilds(TupleDesc descriptor, Tuplestorestate *tupleStore)
 								" iq.index_cmd_status AS status, "
 								" COALESCE(iq.comment::text, '') AS comment, "
 								" coll.database_name || '.' || coll.collection_name AS ns "
-								" FROM %s.%s_index_queue AS iq "
+								" FROM helio_api_catalog.helio_index_queue AS iq "
 								" JOIN %s.collection_indexes AS ci ON (iq.index_id = ci.index_id) "
 								" JOIN %s.collections AS coll ON (ci.collection_id = coll.collection_id) "
 								" WHERE iq.cmd_type = 'C' AND ( "
@@ -1021,8 +1026,7 @@ AddFailedIndexBuilds(TupleDesc descriptor, Tuplestorestate *tupleStore)
 								"       SELECT distinct global_pid FROM citus_stat_activity WHERE global_pid IS NOT NULL "
 								"       ) "
 								"   ) "
-								" )", ApiInternalSchemaName, ApiCatalogSchemaName,
-					 ExtensionObjectPrefix,
+								" )", ApiInternalSchemaName,
 					 ApiCatalogSchemaName, ApiCatalogSchemaName);
 
 	SPIParseOpenOptions parseOptions =

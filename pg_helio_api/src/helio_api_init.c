@@ -171,6 +171,9 @@ char *DefaultWriteConcernLevel = DEFAULT_WRITE_CONCERN_LEVEL;
 #define DEFAULT_COLL_STATS_COUNT_POLICY_THRESHOLD 10000
 int CollStatsCountPolicyThreshold = DEFAULT_COLL_STATS_COUNT_POLICY_THRESHOLD;
 
+#define DEFAULT_ENABLE_INDEX_BUILD_BACKGROUND false
+bool EnableIndexBuildBackground = DEFAULT_ENABLE_INDEX_BUILD_BACKGROUND;
+
 #define DEFAULT_MAX_INDEX_BUILD_ATTEMPTS 3
 int MaxIndexBuildAttempts = DEFAULT_MAX_INDEX_BUILD_ATTEMPTS;
 
@@ -448,6 +451,12 @@ InitApiConfigurations(char *prefix)
 		gettext_noop("Cluster-wide write concern; set via marlin."),
 		NULL, &DefaultWriteConcernLevel, DEFAULT_WRITE_CONCERN_LEVEL,
 		PGC_SUSET, 0, NULL, NULL, NULL);
+
+	DefineCustomBoolVariable(
+		psprintf("%s.enableIndexBuildBackground", prefix),
+		gettext_noop("Enables support for Index Builds in background in pgmongo."),
+		NULL, &EnableIndexBuildBackground, DEFAULT_ENABLE_INDEX_BUILD_BACKGROUND,
+		PGC_USERSET, 0, NULL, NULL, NULL);
 
 	DefineCustomIntVariable(
 		psprintf("%s.maxIndexBuildAttempts", prefix),

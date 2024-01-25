@@ -31,6 +31,7 @@
 #include "utils/query_utils.h"
 #include "utils/mongo_errors.h"
 #include "metadata/metadata_guc.h"
+#include "utils/version_utils.h"
 
 /* --------------------------------------------------------- */
 /* Forward declaration */
@@ -1240,7 +1241,7 @@ command_get_next_collection_index_id(PG_FUNCTION_ARGS)
 
 
 /*
- * AddRequestInIndexQueue inserts a record into ApiCatalogSchemaName.Extension_index_queue
+ * AddRequestInIndexQueue inserts a record into helio_api_catalog.helio_index_queue
  * for given indexId using SPI.
  */
 void
@@ -1248,10 +1249,9 @@ AddRequestInIndexQueue(char *createIndexCmd, int indexId, uint64 collectionId, c
 					   cmdType)
 {
 	Assert(cmdType == CREATE_INDEX_COMMAND_TYPE || cmdType == REINDEX_COMMAND_TYPE);
-	const char *cmdStr = FormatSqlQuery("INSERT INTO %s.%s_index_queue "
+	const char *cmdStr = FormatSqlQuery("INSERT INTO helio_api_catalog.helio_index_queue "
 										"(index_cmd, index_id, collection_id, index_cmd_status, cmd_type) "
-										"VALUES ($1, $2, $3, $4, $5) ",
-										ApiCatalogSchemaName, ExtensionObjectPrefix);
+										"VALUES ($1, $2, $3, $4, $5) ");
 
 	int argCount = 5;
 	Oid argTypes[5];
@@ -1300,7 +1300,7 @@ GetRequestFromIndexQueue(char cmdType, uint64 collectionId)
 	 *
 	 * SELECT index_cmd, index_id, index_cmd_status,
 	 *        COALESCE(attempt, 0) AS attempt, comment, update_time
-	 * FROM ApiCatalogSchema.Extension_index_queue iq
+	 * FROM helio_api_catalog.helio_index_queue iq
 	 * WHERE cmd_type = '%c'
 	 *       AND iq.collection_id = collectionId
 	 *       AND (index_cmd_status != IndexCmdStatus_Inprogress
@@ -1315,8 +1315,8 @@ GetRequestFromIndexQueue(char cmdType, uint64 collectionId)
 	appendStringInfo(cmdStr,
 					 "SELECT index_cmd, index_id, index_cmd_status, COALESCE(attempt, 0) AS attempt, comment, update_time");
 	appendStringInfo(cmdStr,
-					 " FROM %s.%s_index_queue iq WHERE cmd_type = '%c'",
-					 ApiCatalogSchemaName, ExtensionObjectPrefix, cmdType);
+					 " FROM helio_api_catalog.helio_index_queue iq WHERE cmd_type = '%c'",
+					 cmdType);
 	appendStringInfo(cmdStr, " AND iq.collection_id = " UINT64_FORMAT, collectionId);
 	appendStringInfo(cmdStr, " AND (index_cmd_status != %d", IndexCmdStatus_Inprogress);
 	appendStringInfo(cmdStr, " OR (index_cmd_status = %d", IndexCmdStatus_Inprogress);
@@ -1373,7 +1373,7 @@ GetCollectionIdsForIndexBuild(char cmdType, List *excludeCollectionIds)
 	 *
 	 * SELECT array_agg(a.collection_id) FROM
 	 *  (SELECT collection_id
-	 *  FROM ApiCatalogSchema.Extension_index_queue pq
+	 *  FROM helio_api_catalog.helio_index_queue pq
 	 *  WHERE cmd_type = $1 AND collection_id <> ANY($2)
 	 *  ORDER BY min(pq.index_cmd_status) LIMIT MaxNumActiveUsersIndexBuilds
 	 *  ) a;
@@ -1383,8 +1383,7 @@ GetCollectionIdsForIndexBuild(char cmdType, List *excludeCollectionIds)
 	appendStringInfo(cmdStr,
 					 "SELECT array_agg(a.collection_id) FROM (");
 	appendStringInfo(cmdStr,
-					 "SELECT collection_id FROM %s.%s_index_queue iq WHERE cmd_type = $1",
-					 ApiCatalogSchemaName, ExtensionObjectPrefix);
+					 "SELECT collection_id FROM helio_api_catalog.helio_index_queue iq WHERE cmd_type = $1");
 
 	if (excludeCollectionIds != NIL)
 	{
@@ -1461,15 +1460,14 @@ GetCollectionIdsForIndexBuild(char cmdType, List *excludeCollectionIds)
 
 /*
  * RemoveRequestFromIndexQueue deletes the record inserted for given index from
- * ApiCatalogSchemaName.Extension_index_queue using SPI.
+ * helio_api_catalog.helio_index_queue using SPI.
  */
 void
 RemoveRequestFromIndexQueue(int indexId, char cmdType)
 {
 	Assert(cmdType == CREATE_INDEX_COMMAND_TYPE || cmdType == REINDEX_COMMAND_TYPE);
 	const char *cmdStr = FormatSqlQuery(
-		"DELETE FROM %s.%s_index_queue WHERE index_id = $1 AND cmd_type = $2;",
-		ApiCatalogSchemaName, ExtensionObjectPrefix);
+		"DELETE FROM helio_api_catalog.helio_index_queue WHERE index_id = $1 AND cmd_type = $2;");
 
 	int argCount = 2;
 	Oid argTypes[2];
@@ -1500,9 +1498,8 @@ MarkIndexRequestStatus(int indexId, char cmdType, IndexCmdStatus status, pgbson 
 	Assert(cmdType == CREATE_INDEX_COMMAND_TYPE || cmdType == REINDEX_COMMAND_TYPE);
 	StringInfo cmdStr = makeStringInfo();
 	appendStringInfo(cmdStr,
-					 "UPDATE %s.%s_index_queue SET index_cmd_status = $1, comment = mongo_catalog.bson_from_bytea($2),"
-					 " update_time = $3, attempt = $4 ",
-					 ApiCatalogSchemaName, ExtensionObjectPrefix);
+					 "UPDATE helio_api_catalog.helio_index_queue SET index_cmd_status = $1, comment = mongo_catalog.bson_from_bytea($2),"
+					 " update_time = $3, attempt = $4 ");
 
 	if (opId != NULL)
 	{
@@ -1560,15 +1557,20 @@ MarkIndexRequestStatus(int indexId, char cmdType, IndexCmdStatus status, pgbson 
 
 
 /*
- * GetIndexBuildStatusFromIndexQueue gets the status of Create Index request from the ApiCatalogSchema.Extension__index_queue
+ * GetIndexBuildStatusFromIndexQueue gets the status of Create Index request from the helio_api_catalog.helio_index_queue
  */
 IndexCmdStatus
 GetIndexBuildStatusFromIndexQueue(int indexId)
 {
+	IndexCmdStatus status = IndexCmdStatus_Unknown;
+	if (!IsClusterVersionAtleastThis(1, 12, 0))
+	{
+		return status;
+	}
+
 	const char *cmdStr =
-		FormatSqlQuery("SELECT index_cmd_status FROM %s.%s_index_queue"
-					   " WHERE index_id = $1 AND cmd_type = 'C';", ApiCatalogSchemaName,
-					   ExtensionObjectPrefix);
+		FormatSqlQuery("SELECT index_cmd_status FROM helio_api_catalog.helio_index_queue"
+					   " WHERE index_id = $1 AND cmd_type = 'C';");
 	int argCount = 1;
 	Oid argTypes[1];
 	Datum argValues[1];
@@ -1593,8 +1595,6 @@ GetIndexBuildStatusFromIndexQueue(int indexId)
 	{
 		ereport(ERROR, (errmsg("could not run SPI query")));
 	}
-
-	IndexCmdStatus status = IndexCmdStatus_Unknown;
 
 	if (SPI_processed > 0)
 	{

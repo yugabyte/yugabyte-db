@@ -28,6 +28,7 @@ extern int IndexBuildScheduleInSec;
 static char * GetClusterInitializedVersion(void);
 static void DistributeCrudFunctions(void);
 static void ScheduleIndexBuildTasks(void);
+static void CreateIndexBuildsTable(void);
 static void CreateDatabaseTriggers(void);
 static void AlterDefaultDatabaseObjects(void);
 static void UpdateClusterMetadata(void);
@@ -164,16 +165,17 @@ ScheduleIndexBuildTasks()
 
 	/*
 	 * These schedule the index build tasks at the coordinator.
-	 * TODO: Decide on value of MaxNumActiveUsersIndexBuilds. Also how will user override these ?
-	 *
 	 * Since we leave behind the jobs when dropping the extension (during development), it would be nice to unschedule existing ones first in case something changed
 	 */
 	StringInfo unscheduleStr = makeStringInfo();
 	appendStringInfo(unscheduleStr,
 					 "SELECT cron.unschedule(jobid) FROM cron.job WHERE jobname LIKE"
-					 "'%s_index_build_task%%';", ExtensionObjectPrefix);
+					 "'helio_index_build_task%%';");
 	ExtensionExecuteQueryViaSPI(unscheduleStr->data, readOnly, SPI_OK_SELECT,
 								&isNull);
+
+	/* create queue table and its indexes */
+	CreateIndexBuildsTable();
 
 	char scheduleInterval[50];
 
@@ -191,14 +193,83 @@ ScheduleIndexBuildTasks()
 	{
 		StringInfo scheduleStr = makeStringInfo();
 		appendStringInfo(scheduleStr,
-						 "SELECT cron.schedule('%s_index_build_task_'"
+						 "SELECT cron.schedule('helio_index_build_task_'"
 						 " || %d, '%s',"
 						 "'CALL %s.build_index_concurrently(%d);');",
-						 ExtensionObjectPrefix, i, scheduleInterval,
+						 i, scheduleInterval,
 						 ApiInternalSchemaName, i);
 		ExtensionExecuteQueryViaSPI(scheduleStr->data, readOnly, SPI_OK_SELECT,
 									&isNull);
 	}
+}
+
+
+/*
+ * Create index queue table, its indexes and grant permissions.
+ */
+static void
+CreateIndexBuildsTable()
+{
+	StringInfo createStr = makeStringInfo();
+	appendStringInfo(createStr,
+					 "CREATE TABLE IF NOT EXISTS helio_api_catalog.helio_index_queue ("
+					 "index_cmd text not null,"
+
+	                 /* 'C' for CREATE INDEX and 'R' for REINDEX */
+					 "cmd_type char CHECK (cmd_type IN ('C', 'R')),"
+					 "index_id integer not null,"
+
+	                 /* index_cmd_status gets represented as enum IndexCmdStatus in index.h */
+					 "index_cmd_status integer default 1,"
+					 "global_pid bigint,"
+					 "start_time timestamp WITH TIME ZONE,"
+					 "collection_id bigint not null,"
+
+	                 /* Used to enter the error encounter during execution of index_cmd */
+					 "comment %s.bson,"
+
+	                 /* current attempt counter for retrying the failed request */
+					 "attempt smallint,"
+
+	                 /* update_time shows the time when request was updated in the table */
+					 "update_time timestamp with time zone DEFAULT now()"
+					 ")", CoreSchemaName);
+
+	bool readOnly = false;
+	bool isNull = false;
+
+	ExtensionExecuteQueryViaSPI(createStr->data, readOnly, SPI_OK_UTILITY,
+								&isNull);
+
+	resetStringInfo(createStr);
+	appendStringInfo(createStr,
+					 "CREATE INDEX IF NOT EXISTS helio_index_queue_indexid_cmdtype on helio_api_catalog.helio_index_queue (index_id, cmd_type)");
+	ExtensionExecuteQueryViaSPI(createStr->data, readOnly, SPI_OK_UTILITY,
+								&isNull);
+
+	resetStringInfo(createStr);
+	appendStringInfo(createStr,
+					 "CREATE INDEX IF NOT EXISTS helio_index_queue_cmdtype_collectionid_cmdstatus on helio_api_catalog.helio_index_queue (cmd_type, collection_id, index_cmd_status)");
+	ExtensionExecuteQueryViaSPI(createStr->data, readOnly, SPI_OK_UTILITY,
+								&isNull);
+
+	resetStringInfo(createStr);
+	appendStringInfo(createStr,
+					 "GRANT SELECT ON TABLE helio_api_catalog.helio_index_queue TO public");
+	ExtensionExecuteQueryViaSPI(createStr->data, readOnly, SPI_OK_UTILITY,
+								&isNull);
+
+	resetStringInfo(createStr);
+	appendStringInfo(createStr,
+					 "GRANT ALL ON TABLE helio_api_catalog.helio_index_queue TO helio_admin_role, pgmongo_role");
+	ExtensionExecuteQueryViaSPI(createStr->data, readOnly, SPI_OK_UTILITY,
+								&isNull);
+
+	resetStringInfo(createStr);
+	appendStringInfo(createStr,
+					 "SELECT citus_add_local_table_to_metadata('helio_api_catalog.helio_index_queue')");
+	ExtensionExecuteQueryViaSPI(createStr->data, readOnly, SPI_OK_SELECT,
+								&isNull);
 }
 
 

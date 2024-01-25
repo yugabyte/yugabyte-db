@@ -87,6 +87,7 @@ typedef struct
 
 extern int MaxIndexBuildAttempts;
 extern int IndexQueueEvictionIntervalInSec;
+extern bool EnableIndexBuildBackground;
 
 /* Do not retry the index build if error code belongs to following list. */
 static const SkippableError SkippableErrors[] = {
@@ -140,6 +141,15 @@ static void TryDropCollectionIndex(int indexId);
 Datum
 command_build_index_concurrently(PG_FUNCTION_ARGS)
 {
+	/* If the binary is in 1.12 and the schema in 1.11, we do not want proceed here.
+	 * GW already has a check (EnableIndexBuildBackground && IsAtLeastVersion1_12_0)
+	 * to call create_indexes_background.
+	 */
+	if (!EnableIndexBuildBackground || !IsClusterVersionAtleastThis(1, 12, 0))
+	{
+		PG_RETURN_VOID();
+	}
+
 	List *excludeCollectionIds = NIL;
 	uint64 *collectionIds = GetCollectionIdsForIndexBuild(
 		CREATE_INDEX_COMMAND_TYPE, excludeCollectionIds);
@@ -180,6 +190,11 @@ command_build_index_concurrently(PG_FUNCTION_ARGS)
 						(errmsg("Excluded collectionId "UINT64_FORMAT, collectionId),
 						 errhint("Excluded collectionId "UINT64_FORMAT, collectionId)));
 			}
+		}
+
+		if (excludeCollectionIds == NIL)
+		{
+			break;
 		}
 
 		/* excluded collectionids so far */
@@ -1048,9 +1063,9 @@ CreateLockTagAdvisoryForCreateIndexBackground(uint64 collectionId)
  * CheckForIndexCmdToFinish checks for the index command to finish for all indexIds present in indexIdList.
  * The count(indexId) will match the length(indexIdList) only if for each indexId in indexIdList, any one of following conditions are met:
  * 1. Request is already picked second time (attempt count >= 2) by cron-job before CheckForIndexCmdToFinish function could check its failure status.
- * 2. Request is not there in mongo_catalog.Extension_index_queue, which means it is completed successfully.
- * 3. Request is there in ApicatalogSchema.Extension_index_queue and index_cmd_status >= 3 (Failed, Skippable).
- * 4. Request is there in ApicatalogSchema.Extension_index_queue and index_cmd_status = 2 (InProgress)
+ * 2. Request is not there in helio_api_catalog.helio_index_queue, which means it is completed successfully.
+ * 3. Request is there in helio_api_catalog.helio_index_queue and index_cmd_status >= 3 (Failed, Skippable).
+ * 4. Request is there in helio_api_catalog.helio_index_queue and index_cmd_status = 2 (InProgress)
  *    and corresponding global_pid (opid) is not present in pg_stat_activity. This means that process was abruptly failed.
  */
 static BuildIndexesResult *
@@ -1065,17 +1080,17 @@ CheckForIndexCmdToFinish(const List *indexIdList, char cmdType)
 
 	/*  WITH query AS
 	 *      (SELECT index_cmd_status::int4, comment, attempt
-	 *      FROM ApicatalogSchema.Extension_index_queue piq
+	 *      FROM helio_api_catalog.helio_index_queue piq
 	 *      WHERE cmd_type = 'C' AND index_id =ANY(ARRAY[32001, 32002, 32003, 32004, 32005, 32006])
 	 *  )
 	 *  SELECT COALESCE(mongo_catalog.bson_array_agg(mongo_catalog.row_get_bson(query), ''), '{ "": [] }'::mongo_catalog.bson) FROM query
 	 */
 	const char *query =
 		FormatSqlQuery("WITH query AS (SELECT index_cmd_status::int4, comment, attempt"
-					   " FROM %s.%s_index_queue piq "
+					   " FROM helio_api_catalog.helio_index_queue piq "
 					   " WHERE cmd_type = $1 AND index_id =ANY($2)) "
 					   " SELECT COALESCE(%s.bson_array_agg(%s.row_get_bson(query), ''), '{ \"\": [] }'::%s) FROM query",
-					   ApiCatalogSchemaName, ExtensionObjectPrefix, ApiCatalogSchemaName,
+					   ApiCatalogSchemaName,
 					   ApiCatalogSchemaName, FullBsonTypeName);
 
 	int argCount = 2;

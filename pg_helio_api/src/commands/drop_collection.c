@@ -23,6 +23,7 @@
 #include "utils/query_utils.h"
 #include "utils/index_utils.h"
 #include "utils/guc_utils.h"
+#include "utils/version_utils.h"
 
 #include "api_hooks.h"
 
@@ -162,16 +163,18 @@ command_drop_collection(PG_FUNCTION_ARGS)
 
 	DeleteAllCollectionIndexRecords(collection->collectionId);
 
-	StringInfo deleteFromIndexQueueCommand = makeStringInfo();
-	appendStringInfo(deleteFromIndexQueueCommand,
-					 "DELETE FROM %s.%s_index_queue WHERE collection_id = $1",
-					 ApiCatalogSchemaName, ExtensionObjectPrefix);
-	isNull = false;
+	if (IsClusterVersionAtleastThis(1, 12, 0))
+	{
+		StringInfo deleteFromIndexQueueCommand = makeStringInfo();
+		appendStringInfo(deleteFromIndexQueueCommand,
+						 "DELETE FROM helio_api_catalog.helio_index_queue WHERE collection_id = $1");
+		isNull = false;
 
-	RunQueryWithCommutativeWrites(deleteFromIndexQueueCommand->data, 1,
-								  collectionIdArgType, collectionIdArgValue,
-								  collectionIdArgNull, SPI_OK_DELETE,
-								  &isNull);
+		RunQueryWithCommutativeWrites(deleteFromIndexQueueCommand->data, 1,
+									  collectionIdArgType, collectionIdArgValue,
+									  collectionIdArgNull, SPI_OK_DELETE,
+									  &isNull);
+	}
 
 	DeleteAllCollectionIndexRecords(collection->collectionId);
 

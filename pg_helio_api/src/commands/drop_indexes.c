@@ -342,7 +342,7 @@ ProcessDropIndexesRequest(char *dbName, DropIndexesArg dropIndexesArg, bool
 
 
 /*
- * command_drop_indexes_concurrently_internal calls command_drop_indexes_concurrently_internal only on coordinator.
+ * command_drop_indexes_concurrently calls command_drop_indexes_concurrently_internal only on coordinator.
  */
 Datum
 command_drop_indexes_concurrently(PG_FUNCTION_ARGS)
@@ -871,28 +871,47 @@ HandleDropIndexConcurrently(uint64 collectionId, int indexId, bool unique, bool
 
 /*
  * CleanUpIndexBuildRequest cleans up an existing (if there is any) running Index Build request for the indexId.
- * It also deletes the Index Build request from ApiCatalogSchemaName.ExtensionObjectPrefix_index_queue
+ * It also deletes the Index Build request from helio_api_catalog.helio_index_queue
  */
 static void
 CleanUpIndexBuildRequest(int indexId)
 {
 	StringInfo cmdStr = makeStringInfo();
 	appendStringInfo(cmdStr,
-					 "WITH op_data AS (SELECT citus_pid_for_gpid(iq.global_pid) AS pid, iq.global_pid AS global_pid, iq.start_time AS timestamp");
+					 "SELECT citus_pid_for_gpid(iq.global_pid) AS pid, iq.global_pid AS global_pid, iq.start_time AS timestamp");
 	appendStringInfo(cmdStr,
-					 " FROM %s.%s_index_queue iq WHERE index_id = %d AND cmd_type = '%c')",
-					 ApiCatalogSchemaName, ExtensionObjectPrefix, indexId,
-					 CREATE_INDEX_COMMAND_TYPE);
-	appendStringInfo(cmdStr,
-					 ", matching_backends AS ( SELECT op_data.pid AS pid, op_data.global_pid AS global_pid, op_data.timestamp FROM op_data "
-					 " JOIN pg_stat_activity csa ON op_data.pid = csa.pid "
-					 " AND csa.query_start = timestamp LIMIT 1)"
-					 " SELECT pg_cancel_backend(global_pid) FROM matching_backends;");
+					 " FROM helio_api_catalog.helio_index_queue iq WHERE index_id = %d AND cmd_type = '%c'",
+					 indexId, CREATE_INDEX_COMMAND_TYPE);
 
-	bool isNull = true;
 	bool readOnly = true;
-	ExtensionExecuteQueryViaSPI(cmdStr->data, readOnly, SPI_OK_SELECT,
-								&isNull);
+	int numValues = 3;
+	bool isNull[3];
+	Datum results[3];
+	ExtensionExecuteMultiValueQueryViaSPI(cmdStr->data, readOnly, SPI_OK_SELECT, results,
+										  isNull, numValues);
+
+	if (!isNull[0])
+	{
+		resetStringInfo(cmdStr);
+		Datum pid = results[0];
+		int64 globalPid = DatumGetInt64(results[1]);
+		Datum startTime = results[2];
+
+		appendStringInfo(cmdStr, " SELECT pg_cancel_backend(%ld) FROM pg_stat_activity ",
+						 globalPid);
+		appendStringInfo(cmdStr, " WHERE pid = $1 AND query_start = $2");
+		int nargs = 2;
+		Oid argTypes[2] = { INT4OID, TIMESTAMPTZOID };
+		Datum argValues[2] = {
+			pid, startTime
+		};
+		bool isReadOnly = true;
+		bool isNull = true;
+		ExtensionExecuteQueryWithArgsViaSPI(cmdStr->data, nargs, argTypes,
+											argValues,
+											NULL, isReadOnly, SPI_OK_SELECT,
+											&isNull);
+	}
 
 	/* Remove the create index request from Index queue as well. */
 	RemoveRequestFromIndexQueue(indexId, CREATE_INDEX_COMMAND_TYPE);
