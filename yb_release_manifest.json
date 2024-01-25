@@ -51,7 +51,8 @@
       "$BUILD_ROOT/share/initial_sys_catalog_snapshot",
       "$BUILD_ROOT/share/ysql_conn_mgr.template.conf",
       "$BUILD_ROOT/share/ysql_migrations",
-      "sample/*.sql"
+      "sample/*.sql",
+      "https://downloads.yugabyte.com/ybc/2.0.0.0-b19/ybc-2.0.0.0-b19-${YBCOS}-${ARCH}.tar.gz"
     ],
     "tools": [
       "bin/yb-prof.py",
