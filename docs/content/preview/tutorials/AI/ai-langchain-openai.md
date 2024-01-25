@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-This tutorial demonstrates how use [LangChain](https://python.langchain.com/docs/get_started/introduction) to build applications with LLM integration. LangChain is a framework for developing applications powered by language models.
+This tutorial demonstrates how to use [LangChain](https://python.langchain.com/docs/get_started/introduction) to build applications with LLM integration. LangChain is a framework for developing applications powered by language models.
 
 Follow the guide to learn how to build a scalable LLM application using the [SQL](https://python.langchain.com/docs/use_cases/qa_structured/sql) chain capabilities of LangChain in conjunction with an [OpenAI](https://openai.com/) LLM. The application can query a [PostgreSQL-compatible](https://www.yugabyte.com/postgresql/postgresql-compatibility/) YugabyteDB database from natural language.
 
