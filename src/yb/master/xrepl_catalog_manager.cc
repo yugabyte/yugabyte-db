@@ -4239,8 +4239,9 @@ void CatalogManager::MergeUniverseReplication(
           "Updating universe replication entries and cluster config in sys-catalog");
     }
 
-    SyncXClusterConsumerReplicationStatusMap(
-        xcluster::ReplicationGroupId(original_universe->id()), *pm);
+    SyncXClusterConsumerReplicationStatusMap(original_universe->ReplicationGroupId(), *pm);
+    SyncXClusterConsumerReplicationStatusMap(universe->ReplicationGroupId(), *pm);
+
     alter_lock.Commit();
     cl.Commit();
     original_lock.Commit();
