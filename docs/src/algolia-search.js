@@ -4,8 +4,35 @@ import algoliasearch from 'algoliasearch';
 (function () {
   const algoliaAppId = 'UMBCUJCBE8';
   const algoliaApiKey = 'b6c4bdb11b865250add6fecc38d8ebdf';
+  const algoliaIndexName = 'yugabytedb_docs';
   const ignoreClickOnMeElement = document.querySelector('body:not(.td-searchpage) .search-area');
   const searchInput = document.getElementById('search-query');
+
+  /**
+   * Decode the cookie and return the appropriate cookie value if found
+   * Otherwise empty string is returned.
+   *
+   * return string
+   */
+  function getCookie(cname) {
+    const splittedCookie = document.cookie.split(';');
+    const splittedLength = splittedCookie.length;
+
+    let fetchCookie = 0;
+    let matchedCookie = '';
+
+    while (fetchCookie < splittedLength) {
+      const cookiePair = splittedCookie[fetchCookie].split('=');
+      if (cname === cookiePair[0].trim() && cookiePair[1].trim() !== '') {
+        matchedCookie = decodeURIComponent(cookiePair[1]);
+        break;
+      }
+
+      fetchCookie += 1;
+    }
+
+    return matchedCookie;
+  }
 
   /**
    * Provided name value from the Query param either from URL or with the passed
@@ -67,7 +94,7 @@ import algoliasearch from 'algoliasearch';
   /**
    * Send the click events to Algolia.
    *
-   * @param {Object} e click event.
+   * @param {Object} e - click event.
    */
   function clickEvents(e) {
     if ((e.target.parentNode && e.target.parentNode.className === 'search-title') || (e.target.parentNode.parentNode && e.target.parentNode.parentNode.className === 'search-title')) {
@@ -75,20 +102,15 @@ import algoliasearch from 'algoliasearch';
 
       if (e.target.href) {
         clickResult = e.target;
-        e.preventDefault();
       } else if (e.target.parentNode.href) {
         clickResult = e.target.parentNode;
-        e.preventDefault();
       }
 
       let hitPosition = 0;
       let objectId = '';
-      let pageLink = '';
       let queryId = '';
 
       if (clickResult.href) {
-        pageLink = clickResult.href;
-
         if (clickResult.getAttribute('data-objectid')) {
           objectId = clickResult.getAttribute('data-objectid');
         }
@@ -103,6 +125,11 @@ import algoliasearch from 'algoliasearch';
       }
 
       if (objectId !== '' && queryId !== '' && hitPosition > 0) {
+        let userTokenValue = getCookie('_ga');
+        if (userTokenValue === '') {
+          userTokenValue = 'noToken';
+        }
+
         (async () => {
           const rawResponse = await fetch('https://insights.algolia.io/1/events', {
             method: 'POST',
@@ -116,8 +143,8 @@ import algoliasearch from 'algoliasearch';
                 events: [{
                   eventType: 'click',
                   eventName: 'Link clicked',
-                  index: 'yugabytedb_docs',
-                  timestamp: Date.now(),
+                  index: algoliaIndexName,
+                  userToken: userTokenValue,
                   queryID: queryId,
                   objectIDs: [objectId],
                   positions: [parseInt(hitPosition, 10)],
@@ -128,10 +155,6 @@ import algoliasearch from 'algoliasearch';
 
           await rawResponse.json();
         })();
-      }
-
-      if (pageLink !== '') {
-        window.location = pageLink;
       }
     }
   }
@@ -235,14 +258,13 @@ import algoliasearch from 'algoliasearch';
   /**
    * Search Pagination HTML.
    */
-  function searchPagination(pagerInfo) {
+  function searchPager(pagerInfo) {
     document.querySelector('#docs').removeAttribute('style');
 
     const {
       currentPage, pagerId, pagerType, totalPages,
     } = pagerInfo;
     const searchpager = document.getElementById(pagerId);
-    const searchResults = document.getElementById('doc-hit');
 
     let firstPage = '<span class="pager-btn" data-pager="1">1</span>';
     let lastPage = `<span class="pager-btn" data-pager="${totalPages}">${totalPages}</span>`;
@@ -327,11 +349,6 @@ import algoliasearch from 'algoliasearch';
       pagerClick[pagerLoop].addEventListener('click', searchSettings);
       pagerLoop += 1;
     }
-
-    if (searchResults) {
-      searchResults.addEventListener('click', clickEvents);
-      searchResults.addEventListener('contextmenu', clickEvents);
-    }
   }
 
   /**
@@ -355,12 +372,13 @@ import algoliasearch from 'algoliasearch';
     }
 
     const client = algoliasearch(algoliaAppId, algoliaApiKey);
-    const index = client.initIndex('yugabytedb_docs');
+    const index = client.initIndex(algoliaIndexName);
     const pageItems = searchURLParameter('page');
     const searchpagerparent = document.querySelector('#pagination-docs');
     const searchOptions = {
       hitsPerPage: perPageCount,
       page: 0,
+      clickAnalytics: true,
     };
 
     if (pageItems && pageItems > 0) {
@@ -371,13 +389,15 @@ import algoliasearch from 'algoliasearch';
       ({
         hits, nbHits, nbPages, page, queryID,
       }) => {
+        const searchResults = document.getElementById('doc-hit');
+
         let pagerDetails = {};
         let sectionHTML = '';
         sectionHTML += docsSection(queryID, hits);
         if (hits.length > 0 && sectionHTML !== '') {
-          document.getElementById('doc-hit').innerHTML = sectionHTML;
+          searchResults.innerHTML = sectionHTML;
         } else {
-          document.getElementById('doc-hit').innerHTML = `<li class="no-result">0 results found for <b>"${searchValue}"</b></li>`;
+          searchResults.innerHTML = `<li class="no-result">0 results found for <b>"${searchValue}"</b></li>`;
         }
 
         if (document.querySelector('body').classList.contains('td-searchpage')) {
@@ -389,7 +409,7 @@ import algoliasearch from 'algoliasearch';
             totalPages: nbPages,
           };
 
-          searchPagination(pagerDetails);
+          searchPager(pagerDetails);
           searchpagerparent.className = `pager results-${nbHits}`;
         } else {
           searchpagerparent.className = `pager results-${nbHits}`;
@@ -404,6 +424,11 @@ import algoliasearch from 'algoliasearch';
             </div>
             ${viewAll}
           </nav>`;
+        }
+
+        if (searchResults) {
+          searchResults.addEventListener('click', clickEvents);
+          searchResults.addEventListener('contextmenu', clickEvents);
         }
       },
     );
