@@ -16,11 +16,11 @@ type: indexpage
   <div class="col-12 col-md-6 col-lg-12 col-xl-6">
     <a class="section-link icon-offset" href="ai-langchain-openai">
       <div class="head">
-        <img class="icon" src="/images/tutorials/ai/langchain-logo.svg" aria-hidden="true" />
+        <img class="icon" src="/images/tutorials/ai/icons/langchain-icon.svg" aria-hidden="true" />
         <div class="title">LangChain and OpenAI</div>
       </div>
       <div class="body">
-        Build Scalable Apps with LLM integrations using LangChain and OpenAI.
+        Build scalable applications with LLM integrations using LangChain and OpenAI.
       </div>
     </a>
   </div>

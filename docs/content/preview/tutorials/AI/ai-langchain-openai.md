@@ -1,6 +1,6 @@
 ---
 title: How to Develop LLM Apps with LangChain, OpenAI and YugabyteDB
-headerTitle: Develop LLM Apps with LangChain, OpenAI and YugaybteDB
+headerTitle: Develop LLM Apps with LangChain, OpenAI, and YugaybteDB
 linkTitle: LangChain and OpenAI
 description: Learn to build context-aware LLM applications using LangChain and OpenAI.
 image: /images/tutorials/ai/icons/langchain-icon.svg
@@ -12,13 +12,16 @@ menu:
     weight: 60
 type: docs
 ---
+
 This tutorial demonstrates how use LangChain to build applications with LLM integration. By using the [SQL](https://python.langchain.com/docs/use_cases/qa_structured/sql) chain capabilities of LangChain in conjunction with an [OpenAI](https://openai.com/) LLM, the application can query a [PostgreSQL-compatible](https://www.yugabyte.com/postgresql/postgresql-compatibility/) YugabyteDB database from natural language.
 
 ## Prerequisites
-* Install Python3
-* Install Docker
+
+* Python 3
+* Docker
 
 ## Set up the application
+
 Download the application and provide settings specific to your deployment:
 
 1. Clone the repository.
@@ -31,7 +34,8 @@ Download the application and provide settings specific to your deployment:
 
     Dependencies can be installed in a virtual environment, or globally on your machine.
 
-    * Option 1 (recommended): Install Dependencies from *requirements.txt* in virtual environment
+    * Option 1 (recommended): Install Dependencies from *requirements.txt* in virtual environment:
+
         ```sh
         python3 -m venv yb-langchain-env
         source yb-langchain-env/bin/activate
@@ -40,7 +44,8 @@ Download the application and provide settings specific to your deployment:
         # pip install -r requirements-m1.txt
         ```
 
-    * Option 2: Install Dependencies Globally
+    * Option 2: Install Dependencies Globally:
+
         ```sh
         pip install langchain
         pip install psycopg2
@@ -51,13 +56,12 @@ Download the application and provide settings specific to your deployment:
         pip install flask
         pip install python-dotenv
         ```
-1. Create an [OpenAI API Key](https://platform.openai.com/api-keys) and store it's value in a secure location. This will be used to connect the application to the LLM to generate SQL queries and an appropriate response from the database.
+
+1. Create an [OpenAI API Key](https://platform.openai.com/api-keys) and store its value in a secure location. This will be used to connect the application to the LLM to generate SQL queries and an appropriate response from the database.
 
 1. Configure the application environment variables in `{project_directory/.env}`.
 
-## Get Started with YugabyteDB
-
-YugabyteDB is a [PostgreSQL-compatible](https://www.yugabyte.com/postgresql/postgresql-compatibility/) distributed database.  
+## Set up YugabyteDB
 
 Start a 3-node YugabyteDB cluster in Docker (or feel free to use another deployment option):
 
@@ -93,33 +97,36 @@ The database connectivity settings are provided in the `{project_dir}/.env` file
 
 Navigate to the YugabyteDB UI to confirm that the database is up and running, at <http://127.0.0.1:15433>.
 
-## Load the E-Commerce Schema and Seed Data
+## Load the e-commerce schema and seed data
 
-This application requires an e-commerce database with a product catalog and inventory information. This schema includes `products`, `users`, `purchases` and `product_inventory`. It also creates a read-only user role to prevent any destructive actions while querying the database directly from LangChain.
+This application requires an e-commerce database with a product catalog and inventory information. This schema includes `products`, `users`, `purchases`, and `product_inventory`. It also creates a read-only user role to prevent any destructive actions while querying the database directly from LangChain.
 
 The `pg_trgm` PostgreSQL extension is installed to execute similarity searches on alphanumeric text.
 
 1. Copy the schema to the first node's Docker container.
+
     ```sh
     docker cp {project_dir}/sql/schema.sql yugabytedb-node1:/home
-    ```   
+    ```
 
 1. Copy the seed data file to the Docker container.
+
     ```sh
     docker cp {project_dir}/sql/generated_data.sql yugabytedb-node1:/home
     ```
 
 1. Execute the SQL files against the database.
+
     ```sh
-     docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 -c '\i /home/schema.sql'
-     docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 -c '\i /home/generated_data.sql'
+    docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 -c '\i /home/schema.sql'
+    docker exec -it yugabytedb-node1 bin/ysqlsh -h yugabytedb-node1 -c '\i /home/generated_data.sql'
     ```
 
-## Review the Application
+## Review the application
 
 The Python application relies on a custom prompt to provide additional context to the LLM, in order to generate more relevant responses. For instance, sample queries are provided to help suggest SQL syntax to OpenAI:
 
-```
+```output
 ...
 Query the database using PostgreSQL syntax.
 
@@ -136,7 +143,7 @@ select * from products where name ILIKE '%input_text%';
 
 After setting the context, the user input can be used to complete the prompt.
 
-```
+```output
 ...
 Generate a PostgreSQL query using the input: {input_text}.     
 Answer should be in the format of a JSON object. This object should have the key "query" with the SQL query and "query_response" as a JSON array of the query response.
@@ -161,6 +168,7 @@ try:
 except (Exception, psycopg2.Error) as error:
     print(error)
 ```
+
 ```sh
 # SQLDatabaseChain invocation example:
 > Entering new SQLDatabaseChain chain...
@@ -191,70 +199,69 @@ Answer:{"query": "SELECT COUNT(*) FROM product_inventory WHERE color = 'pink' AN
 > Finished chain.
 ```
 
-## Start the Flask Server
+## Start the Flask server
 
 The Flask server for this application exposes a REST endpoint which returns values from the database.
 
 1. Start the server.
 
-```sh
-python3 app.py
-```
+    ```sh
+    python3 app.py
+    ```
 
-```output
-* Running on http://127.0.0.1:8080
-```
+    ```output
+    * Running on http://127.0.0.1:8080
+    ```
 
 1. Send a POST request to the `/queries` endpoint with a relevant prompt. For instance:
 
-```sh
+    ```sh
+    # What purchases have been made by user1?
 
-# What purchases have been made by user1?
+    # What colors do the Intelligent Racer come in?
 
-# What colors do the Intelligent Racer come in?
+    # How many narrow shoes come in pink?
 
-# How many narrow shoes come in pink?
+    # Find me shoes that are in stock and available in size 15.
 
-# Find me shoes that are in stock and available in size 15.
+    curl -X POST http://localhost:8080/your_endpoint -H "Content-Type: application/json" -d '{"user_prompt":"Find me shoes that are in stock and available in size 15."}'
+    ```
 
-curl -X POST http://localhost:8080/your_endpoint -H "Content-Type: application/json" -d '{"user_prompt":"Find me shoes that are in stock and available in size 15."}'
-```
-
-```output
-[
-  {
-    "color": [
-      "yellow",
-      "blue"
-    ],
-    "description": null,
-    "name": "Efficient Jogger 1",
-    "price": "110.08",
-    "quantity": 22,
-    "width": [
-      "narrow",
-      "wide"
+    ```output.json
+    [
+      {
+        "color": [
+          "yellow",
+          "blue"
+        ],
+        "description": null,
+        "name": "Efficient Jogger 1",
+        "price": "110.08",
+        "quantity": 22,
+        "width": [
+          "narrow",
+          "wide"
+        ]
+      },
+      {
+        "color": [
+          "blue",
+          "yellow"
+        ],
+        "description": null,
+        "name": "Efficient Jogger 8",
+        "price": "143.63",
+        "quantity": 85,
+        "width": [
+          "wide",
+          "narrow"
+        ]
+      },
+      ...
     ]
-  },
-  {
-    "color": [
-      "blue",
-      "yellow"
-    ],
-    "description": null,
-    "name": "Efficient Jogger 8",
-    "price": "143.63",
-    "quantity": 85,
-    "width": [
-      "wide",
-      "narrow"
-    ]
-  },
-  ...
-]
-```
+    ```
 
-# Wrap-up
+## Wrap-up
 
 LangChain provides a powerful toolkit to application developers seeking LLM integrations. By connecting to YugabyteDB, users can access data directly, without the need for replication.
 
