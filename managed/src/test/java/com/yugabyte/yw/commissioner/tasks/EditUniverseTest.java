@@ -114,8 +114,8 @@ public class EditUniverseTest extends UniverseModifyBaseTest {
   private static final List<TaskType> UNIVERSE_EXPAND_TASK_SEQUENCE_ON_PREM =
       ImmutableList.of(
           TaskType.CheckLeaderlessTablets,
-          TaskType.FreezeUniverse,
           TaskType.PreflightNodeCheck,
+          TaskType.FreezeUniverse,
           TaskType.SetNodeStatus, // ToBeAdded to Adding
           TaskType.AnsibleCreateServer,
           TaskType.AnsibleUpdateNodeInfo,

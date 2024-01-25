@@ -66,7 +66,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.NodeTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PauseServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistResizeNode;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PersistSystemdUpgrade;
-import com.yugabyte.yw.commissioner.tasks.subtasks.PreflightNodeCheck;
 import com.yugabyte.yw.commissioner.tasks.subtasks.PromoteAutoFlags;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RebootServer;
 import com.yugabyte.yw.commissioner.tasks.subtasks.ResetUniverseVersion;
@@ -4178,33 +4177,6 @@ public abstract class UniverseTaskBase extends AbstractTaskBase {
     } catch (Exception e) {
       String msg = String.format("Error while getting live tablet servers");
       throw new RuntimeException(msg, e);
-    }
-  }
-
-  // Perform preflight checks on the given node.
-  public void performPreflightCheck(
-      Cluster cluster,
-      NodeDetails currentNode,
-      @Nullable UUID rootCA,
-      @Nullable UUID clientRootCA) {
-    if (cluster.userIntent.providerType == com.yugabyte.yw.commissioner.Common.CloudType.onprem) {
-      PreflightNodeCheck.Params preflightTaskParams = new PreflightNodeCheck.Params();
-      UserIntent userIntent = cluster.userIntent;
-      preflightTaskParams.nodeName = currentNode.nodeName;
-      preflightTaskParams.nodeUuid = currentNode.nodeUuid;
-      preflightTaskParams.deviceInfo = userIntent.getDeviceInfoForNode(currentNode);
-      preflightTaskParams.azUuid = currentNode.azUuid;
-      preflightTaskParams.setUniverseUUID(taskParams().getUniverseUUID());
-      preflightTaskParams.rootCA = rootCA;
-      preflightTaskParams.setClientRootCA(clientRootCA);
-      UniverseTaskParams.CommunicationPorts.exportToCommunicationPorts(
-          preflightTaskParams.communicationPorts, currentNode);
-      preflightTaskParams.extraDependencies.installNodeExporter =
-          taskParams().extraDependencies.installNodeExporter;
-      log.info("Running preflight checks for node {}.", preflightTaskParams.nodeName);
-      PreflightNodeCheck task = createTask(PreflightNodeCheck.class);
-      task.initialize(preflightTaskParams);
-      task.run();
     }
   }
 
