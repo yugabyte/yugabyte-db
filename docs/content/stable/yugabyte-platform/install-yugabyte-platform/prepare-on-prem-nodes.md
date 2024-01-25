@@ -25,13 +25,15 @@ Note that support for ARM architectures is unavailable for airgapped setups, bec
 
 ### Supported operating systems
 
-YBA supports deploying YugabyteDB on a variety of [operating systems](../../../reference/configuration/operating-systems/#yugabytedb-anywhere). YBA additionally supports deploying YugabyteDB on Red Hat Enterprise Linux 8. AlmaLinux OS 9 is used by default.
+YBA supports deploying YugabyteDB on a variety of [operating systems](../../../reference/configuration/operating-systems/#yugabytedb-anywhere). YBA additionally supports deploying YugabyteDB on Red Hat Enterprise Linux 8. AlmaLinux OS 8 is used by default.
 
 #### Requirements for all OSes
 
-Python 3 is required. If you're using YugabyteDB Anywhere to provision nodes in public clouds, be sure the custom AMI you plan to use has Python 3 installed.
+Python 3 is required. If you're using YugabyteDB Anywhere to provision nodes in public clouds, be sure the custom AMI you plan to use has Python 3 installed. Be sure `python3` is added to your PATH.
 
 The host AMI must have `gtar` and `zipinfo` installed.
+
+If the node is running SELinux, the selinux, policycoreutils-python, and python3-libselinux packages must be installed.
 
 #### Oracle Linux and AlmaLinux notes
 
