@@ -15,14 +15,13 @@ import lombok.extern.slf4j.Slf4j;
 import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
-import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnitRunner;
 
 @RunWith(MockitoJUnitRunner.class)
 @Slf4j
 public class ConfigureDBApisKubernetesTest extends KubernetesUpgradeTaskTest {
 
-  @InjectMocks ConfigureDBApisKubernetes configureDBApisKubernetes;
+  ConfigureDBApisKubernetes configureDBApisKubernetes;
 
   private static final List<TaskType> ENABLE_DB_API_TASK_SEQUENCE =
       ImmutableList.of(
@@ -45,6 +44,8 @@ public class ConfigureDBApisKubernetesTest extends KubernetesUpgradeTaskTest {
   @Before
   public void setUp() {
     super.setUp();
+    this.configureDBApisKubernetes =
+        new ConfigureDBApisKubernetes(mockBaseTaskDependencies, mockOperatorStatusUpdaterFactory);
     setupUniverseSingleAZ(false, false);
     configureDBApisKubernetes.setUserTaskUUID(UUID.randomUUID());
   }

@@ -16,6 +16,11 @@ import {
 import { fetchTaskProgress, fetchTaskProgressResponse } from '../../../actions/tasks';
 import { toast } from 'react-toastify';
 import { handleCACertErrMsg } from '../../customCACerts';
+import {
+  fetchHostInfo,
+  fetchHostInfoSuccess,
+  fetchHostInfoFailure
+} from '../../../actions/customers';
 
 const mapStateToProps = (state) => {
   return {
@@ -25,7 +30,8 @@ const mapStateToProps = (state) => {
     deleteConfig: state.customer.deleteConfig,
     modal: state.modal,
     featureFlags: state.featureFlags,
-    currentUserInfo: state.customer.currentUser.data
+    currentUserInfo: state.customer.currentUser.data,
+    hostInfo: state.customer.hostInfo
   };
 };
 
@@ -94,6 +100,16 @@ const mapDispatchToProps = (dispatch) => {
         .catch((err) => {
           console.error(err);
         });
+    },
+
+    fetchHostInfo: () => {
+      dispatch(fetchHostInfo()).then((response) => {
+        if (response.payload.status !== 200) {
+          dispatch(fetchHostInfoFailure(response.payload));
+        } else {
+          dispatch(fetchHostInfoSuccess(response.payload));
+        }
+      });
     }
   };
 };

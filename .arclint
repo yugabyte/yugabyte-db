@@ -40,7 +40,10 @@
      "(^troubleshoot/backend/gradlew)",
      "(^troubleshoot/backend/gradlew[.]bat)",
      "(^troubleshoot/backend/build.gradle.kts)",
-     "(^troubleshoot/backend/.*/application[.]properties)"
+     "(^troubleshoot/backend/.*/application[.]properties)",
+     "(^troubleshoot/backend/src/main/resources/mocks/.*)",
+     "(^managed/src/main/resources/openapi/)",
+     "(^managed/src/main/resources/openapi_templates/)"
   ],
   "linters": {
     "script-and-regex.script": {
@@ -64,6 +67,7 @@
         "(^yugabyted-ui/.*/go[.]mod)",
         "(^yugabyted-ui/.*/go[.]sum)",
         "(^yugabyted-ui/ui/src/api/)",
+        "(^yugabyted-ui/ui/src/translations/)",
         "(^thirdparty/thirdparty_src_checksums[.]txt$)",
         "(^java/yb-client/src/test/java/org/yb/client/TestYBClient[.]java$)",
         "(^cmake_modules/cotire[.]cmake$)",

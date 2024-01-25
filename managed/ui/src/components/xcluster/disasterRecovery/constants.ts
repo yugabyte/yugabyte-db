@@ -27,4 +27,9 @@ export const DURATION_UNIT_TO_MS = {
 /**
  * Standard width for all dropdown select components in the DR workflow.
  */
-export const DR_DROPDOWN_SELECT_INPUT_WIDTH = '350px';
+export const DR_DROPDOWN_SELECT_INPUT_WIDTH_PX = 350;
+
+export const DOCS_URL_ACTIVE_ACTIVE_SINGLE_MASTER =
+  'https://docs.yugabyte.com/preview/develop/build-global-apps/active-active-single-master/';
+export const DOCS_URL_DR_REPLICA_SELECTION_LIMITATIONS =
+  'https://docs.yugabyte.com/preview/yugabyte-platform/create-deployments/async-replication-platform/#limitations';

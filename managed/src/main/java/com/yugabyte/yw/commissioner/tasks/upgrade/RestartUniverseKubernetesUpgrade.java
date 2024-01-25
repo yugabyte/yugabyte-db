@@ -8,6 +8,7 @@ import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.KubernetesUpgradeTaskBase;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.RestartTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
 import javax.inject.Inject;
@@ -19,8 +20,10 @@ import lombok.extern.slf4j.Slf4j;
 public class RestartUniverseKubernetesUpgrade extends KubernetesUpgradeTaskBase {
 
   @Inject
-  protected RestartUniverseKubernetesUpgrade(BaseTaskDependencies baseTaskDependencies) {
-    super(baseTaskDependencies);
+  protected RestartUniverseKubernetesUpgrade(
+      BaseTaskDependencies baseTaskDependencies,
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
+    super(baseTaskDependencies, operatorStatusUpdaterFactory);
   }
 
   @Override

@@ -30,6 +30,7 @@
 #include "yb/util/net/net_fwd.h"
 #include "yb/util/result.h"
 #include "yb/util/subprocess.h"
+#include "yb/util/type_traits.h"
 #include "yb/util/uuid.h"
 
 namespace yb::pgwrapper {
@@ -78,8 +79,7 @@ concept BasePGType =
     std::is_same_v<T, PGOid> || std::is_same_v<T, Uuid>;
 
 template<class T>
-concept OptionalPGType =
-    std::is_same_v<T, std::optional<typename T::value_type>> && BasePGType<typename T::value_type>;
+concept OptionalPGType = StdOptionalType<T> && BasePGType<typename T::value_type>;
 
 template<class T>
 concept AllowedPGType = BasePGType<T> || OptionalPGType<T>;

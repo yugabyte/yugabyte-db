@@ -70,6 +70,7 @@ import com.yugabyte.yw.models.AvailabilityZone;
 import com.yugabyte.yw.models.CertificateInfo;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.CustomerTask;
+import com.yugabyte.yw.models.CustomerTask.TargetType;
 import com.yugabyte.yw.models.ImageBundle;
 import com.yugabyte.yw.models.Provider;
 import com.yugabyte.yw.models.ProviderDetails;
@@ -92,6 +93,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicInteger;
@@ -1188,6 +1190,21 @@ public class UniverseCRUDHandler {
       if (resourceDetails != null) {
         taskParams.setKubernetesResourceDetails(resourceDetails);
       }
+    }
+
+    Optional<UUID> oIdenticalIncompleteTask =
+        CustomerTask.maybeGetIdenticalIncompleteTaskUUID(
+            customer.getUuid(),
+            universe.getUniverseUUID(),
+            CustomerTask.TaskType.Delete,
+            TargetType.Universe);
+    if (oIdenticalIncompleteTask.isPresent()) {
+      UUID inProgressUuid = oIdenticalIncompleteTask.get();
+      LOG.info(
+          "Destroy universe task already exists for {} with task uuid = {}",
+          universe.getUniverseUUID(),
+          inProgressUuid);
+      return inProgressUuid;
     }
 
     UUID taskUUID = commissioner.submit(taskType, taskParams);

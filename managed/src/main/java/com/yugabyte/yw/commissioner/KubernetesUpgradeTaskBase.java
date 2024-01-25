@@ -6,6 +6,9 @@ import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
 import com.yugabyte.yw.commissioner.tasks.KubernetesTaskBase;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor.CommandType;
 import com.yugabyte.yw.common.KubernetesUtil;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdater.UniverseState;
+import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UpgradeTaskParams;
@@ -24,8 +27,13 @@ import lombok.extern.slf4j.Slf4j;
 @Slf4j
 public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
 
-  protected KubernetesUpgradeTaskBase(BaseTaskDependencies baseTaskDependencies) {
+  private final OperatorStatusUpdater kubernetesStatus;
+
+  protected KubernetesUpgradeTaskBase(
+      BaseTaskDependencies baseTaskDependencies,
+      OperatorStatusUpdaterFactory operatorStatusUpdaterFactory) {
     super(baseTaskDependencies);
+    this.kubernetesStatus = operatorStatusUpdaterFactory.create();
   }
 
   @Override
@@ -43,10 +51,17 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
   // Wrapper that takes care of common pre and post upgrade tasks and user has
   // flexibility to manipulate subTaskGroupQueue through the lambda passed in parameter
   public void runUpgrade(Runnable upgradeLambda) {
+    Throwable th = null;
     checkUniverseVersion();
     Universe universe =
         lockAndFreezeUniverseForUpdate(
             taskParams().expectedUniverseVersion, null /* Txn callback */);
+    kubernetesStatus.startYBUniverseEventStatus(
+        universe,
+        taskParams().getKubernetesResourceDetails(),
+        getTaskExecutor().getTaskType(getClass()).name(),
+        getUserTaskUUID(),
+        UniverseState.EDITING);
     try {
       if (taskParams().nodePrefix == null) {
         taskParams().nodePrefix = universe.getUniverseDetails().nodePrefix;
@@ -90,6 +105,7 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
       // disabled, so we enable it again in case of errors.
       setTaskQueueAndRun(
           () -> createLoadBalancerStateChangeTask(true).setSubTaskGroupType(getTaskSubGroupType()));
+      th = t;
       throw t;
     } finally {
       try {
@@ -103,6 +119,13 @@ public abstract class KubernetesUpgradeTaskBase extends KubernetesTaskBase {
         try {
           unlockXClusterUniverses(lockedXClusterUniversesUuidSet, false /* ignoreErrors */);
         } finally {
+          kubernetesStatus.updateYBUniverseStatus(
+              universe,
+              taskParams().getKubernetesResourceDetails(),
+              getTaskExecutor().getTaskType(getClass()).name(),
+              getUserTaskUUID(),
+              (th != null) ? UniverseState.ERROR_UPDATING : UniverseState.READY,
+              th);
           unlockUniverseForUpdate();
         }
       }

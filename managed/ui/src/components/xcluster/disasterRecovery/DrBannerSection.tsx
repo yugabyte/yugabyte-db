@@ -78,7 +78,7 @@ export const DrBannerSection = ({
           <div className={classes.bannerContent}>
             <Typography variant="body2">
               <Trans
-                i18nKey={`${TRANSLATION_KEY_PREFIX}.banner.enablingDr`}
+                i18nKey={`${TRANSLATION_KEY_PREFIX}.banner.initializingDr`}
                 components={{ bold: <b /> }}
               />
             </Typography>

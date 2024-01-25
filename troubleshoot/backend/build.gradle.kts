@@ -71,6 +71,7 @@ val dependenciesList = dependencies {
   implementation("io.micrometer:micrometer-registry-prometheus:1.12.1")
   implementation("org.apache.httpcomponents.client5:httpclient5:5.3")
   implementation("io.ebean:ebean-jackson-mapper:$ebeanVersion")
+  implementation("org.apache.commons:commons-math3:3.6.1")
 
   testImplementation("org.springframework.boot:spring-boot-starter-test")
   testImplementation("io.zonky.test:embedded-database-spring-test:2.4.0")

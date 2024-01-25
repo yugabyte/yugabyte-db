@@ -1448,6 +1448,21 @@ TEST_F(XClusterTestTransactionalOnly, FailedSetupSystemUniverseReplication) {
       {producer_table_, producer_transaction_table}, {LeaderOnly::kTrue, Transactional::kTrue}));
 }
 
+TEST_F(XClusterTestTransactionalOnly, FailedSetupMissingTable) {
+  // Make sure we cannot setup replication when consumer is missing a table.
+  constexpr int kNumTablets = 1;
+  ASSERT_OK(SetUpWithParams({kNumTablets}, 1 /* replication_factor */));
+  auto extra_producer_table_name =
+      ASSERT_RESULT(CreateTable(producer_client(), namespace_name, "extra_table_", kNumTablets));
+
+  std::shared_ptr<client::YBTable> extra_producer_table;
+  ASSERT_OK(producer_client()->OpenTable(extra_producer_table_name, &extra_producer_table));
+
+  auto status = SetupUniverseReplication({producer_table_, extra_producer_table});
+  ASSERT_NOK(status);
+  ASSERT_STR_CONTAINS(status.ToString(), "Could not find matching table for yugabyte.extra_table_");
+}
+
 TEST_F(XClusterTestTransactionalOnly, ApplyOperationsWithTransactions) {
   uint32_t replication_factor = NonTsanVsTsan(3, 1);
   ASSERT_OK(SetUpWithParams({2}, replication_factor));

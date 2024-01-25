@@ -1342,7 +1342,9 @@ std::string UniverseReplicationInfo::ToString() const {
 
 void UniverseReplicationInfo::SetSetupUniverseReplicationErrorStatus(const Status& status) {
   std::lock_guard l(lock_);
-  setup_universe_replication_error_ = status;
+  if (setup_universe_replication_error_.ok()) {
+    setup_universe_replication_error_ = status;
+  }
 }
 
 Status UniverseReplicationInfo::GetSetupUniverseReplicationErrorStatus() const {

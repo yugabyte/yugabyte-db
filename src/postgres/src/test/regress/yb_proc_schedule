@@ -9,3 +9,4 @@ test: yb_functional_indexes
 test: yb_functional_index_multiple_column
 test: yb_get_current_transaction_priority
 test: yb_lock_status
+test: yb_lock_row_for_update

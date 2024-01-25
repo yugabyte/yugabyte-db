@@ -89,7 +89,7 @@ export const TablesTab: FC<{ dbApi: GetClusterTablesApiEnum }> = ({ dbApi }) => 
     );
 
   const { refetch: refetchTablets } = useGetClusterTabletsQuery({ query: { enabled: false }});
-  const { refetch: refetchNodes } = useGetClusterNodesQuery({ query: { enabled: false }});
+  const { refetch: refetchNodes } = useGetClusterNodesQuery({}, { query: { enabled: false }});
   const { refetch: refetchHealth } = useGetClusterHealthCheckQuery({ query: { enabled: false }});
 
   const refetchData = () => {

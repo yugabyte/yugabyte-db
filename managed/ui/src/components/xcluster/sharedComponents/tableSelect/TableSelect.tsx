@@ -9,7 +9,8 @@ import {
 import { useQueries, useQuery, UseQueryResult } from 'react-query';
 import Select, { ValueType } from 'react-select';
 import clsx from 'clsx';
-import { Box } from '@material-ui/core';
+import { Box, Typography } from '@material-ui/core';
+import { useTranslation } from 'react-i18next';
 
 import {
   fetchTablesInUniverse,
@@ -179,7 +180,7 @@ const NOTE_EXPAND_CONTENT = (
     </p>
   </div>
 );
-const TABLE_DESCRIPTOR = 'List of databases and tables in the source universe';
+const TRANSLATION_KEY_PREFIX = 'clusterDetail.xCluster.selectTable';
 
 /**
  * Input component for selecting tables for xCluster configuration.
@@ -208,6 +209,7 @@ export const TableSelect = (props: TableSelectProps) => {
   const [sortOrder, setSortOrder] = useState<ReactBSTableSortOrder>(SortOrder.ASCENDING);
   const [isTooltipOpen, setIsTooltipOpen] = useState<boolean>(false);
   const [isMouseOverTooltip, setIsMouseOverTooltip] = useState<boolean>(false);
+  const { t } = useTranslation('translation', { keyPrefix: TRANSLATION_KEY_PREFIX });
 
   const sourceUniverseNamespaceQuery = useQuery<UniverseNamespace[]>(
     universeQueryKey.namespaces(sourceUniverseUUID),
@@ -422,6 +424,9 @@ export const TableSelect = (props: TableSelectProps) => {
     }
   };
 
+  const tableDescriptor = isDrInterface
+    ? t('selectionDescriptorDr')
+    : t('selectionDescriptorXCluster');
   const runtimeConfigEntries = globalRuntimeConfigQuery.data.configEntries ?? [];
   const isTransactionalAtomicityEnabled = runtimeConfigEntries.some(
     (config: any) =>
@@ -490,9 +495,9 @@ export const TableSelect = (props: TableSelectProps) => {
             </YBTooltip>
           </Box>
         )}
-      <div className={styles.tableDescriptor}>{TABLE_DESCRIPTOR}</div>
-      <div className={styles.tableToolbar}>
-        {!isDrInterface && (
+      <div className={styles.tableDescriptor}>{tableDescriptor}</div>
+      {!isDrInterface && (
+        <div className={styles.tableToolbar}>
           <Select
             styles={TABLE_TYPE_SELECT_STYLES}
             options={TABLE_TYPE_OPTIONS}
@@ -500,13 +505,13 @@ export const TableSelect = (props: TableSelectProps) => {
             value={{ value: tableType, label: TableTypeLabel[tableType] }}
             isDisabled={isFixedTableType}
           />
-        )}
-        <YBInputField
-          containerClassName={styles.namespaceSearchInput}
-          placeHolder="Search for databases.."
-          onValueChanged={(searchTerm: string) => setNamespaceSearchTerm(searchTerm)}
-        />
-      </div>
+          <YBInputField
+            containerClassName={styles.namespaceSearchInput}
+            placeHolder="Search for databases.."
+            onValueChanged={(searchTerm: string) => setNamespaceSearchTerm(searchTerm)}
+          />
+        </div>
+      )}
       <div className={styles.bootstrapTableContainer}>
         <BootstrapTable
           tableContainerClass={styles.bootstrapTable}
@@ -584,16 +589,21 @@ export const TableSelect = (props: TableSelectProps) => {
           />
         </div>
       )}
-      {tableType === TableType.PGSQL_TABLE_TYPE &&
-      props.configAction !== XClusterConfigAction.MANAGE_TABLE ? (
-        <div>
-          Tables in {selectedNamespaceUuids.length} of{' '}
-          {Object.keys(replicationItems.PGSQL_TABLE_TYPE.namespaces).length} database(s) selected
-        </div>
+      {tableType === TableType.YQL_TABLE_TYPE ||
+      props.configAction === XClusterConfigAction.MANAGE_TABLE ? (
+        <Typography variant="body2">
+          {t('tableSelectionCount', {
+            selectedTableCount: selectedTableUUIDs.length,
+            availableTableCount: replicationItems[tableType].tableCount
+          })}
+        </Typography>
       ) : (
-        <div>
-          {selectedTableUUIDs.length} of {replicationItems[tableType].tableCount} table(s) selected
-        </div>
+        <Typography variant="body2">
+          {t('databaseSelectionCount', {
+            selectedDatabaseCount: selectedNamespaceUuids.length,
+            availableDatabaseCount: Object.keys(replicationItems.PGSQL_TABLE_TYPE.namespaces).length
+          })}
+        </Typography>
       )}
       {(selectionError || selectionWarning) && (
         <div className={styles.validationContainer}>

@@ -19,7 +19,10 @@ export type YBReactSelectFieldProps<TFieldValues extends FieldValues> = {
   onChange?: (value: ReactSelectOption) => void;
   placeholder?: string;
   stylesOverride?: Partial<Styles>;
-  width?: string;
+  width?: string; // Will override dynamic width.
+  autoSizeMinWidth?: number; // If specified, will grow the field width from a given minimum.
+  accessoryContainerWidthPx?: number;
+  maxWidth?: string;
 } & UseControllerProps<TFieldValues>;
 
 export const YBReactSelectField = <T extends FieldValues>({
@@ -29,13 +32,17 @@ export const YBReactSelectField = <T extends FieldValues>({
   isDisabled = false,
   placeholder,
   stylesOverride,
-  width = '100%',
+  width,
+  autoSizeMinWidth,
+  accessoryContainerWidthPx = 0,
+  maxWidth,
   ...useControllerProps
 }: YBReactSelectFieldProps<T>) => {
   const { field, fieldState } = useController(useControllerProps);
   const theme = useTheme();
 
   const reactSelectStyles: Partial<Styles> = {
+    ...stylesOverride,
     control: (baseStyles) => ({
       ...baseStyles,
       height: 42,
@@ -43,25 +50,33 @@ export const YBReactSelectField = <T extends FieldValues>({
       border: `1px solid ${
         fieldState.error ? theme.palette.orange[700] : theme.palette.ybacolors.ybGray
       }`,
-      backgroundColor: fieldState.error ? theme.palette.error[100] : baseStyles.backgroundColor
+      backgroundColor: fieldState.error ? theme.palette.error[100] : baseStyles.backgroundColor,
+      ...stylesOverride?.control
     }),
     menu: (baseStyles) => ({
       ...baseStyles,
-      zIndex: 9999
+      zIndex: 9999,
+      ...stylesOverride?.menu
     }),
     placeholder: (baseStyles) => ({
       ...baseStyles,
-      color: theme.palette.grey[300]
-    }),
-    ...stylesOverride
+      color: theme.palette.grey[300],
+      ...stylesOverride?.placeholder
+    })
   };
 
   const handleChange = (value: any) => {
     field.onChange(value);
     onChange && onChange(value);
   };
+  // We scale the width by multiplying the option label length by a constant factor and add a constant
+  // width to account for accessory components like pills/badges.
+  const autosizedWidth = Math.max(
+    (field.value?.label?.length ?? 0) * 11 + accessoryContainerWidthPx,
+    autoSizeMinWidth ?? 300
+  );
   return (
-    <Box width={width}>
+    <Box width={width ?? (autoSizeMinWidth ? `${autosizedWidth}px` : '100%')} maxWidth={maxWidth}>
       <div data-testid={`YBReactSelectField-${field.name}`}>
         <Select
           styles={reactSelectStyles}
@@ -73,6 +88,7 @@ export const YBReactSelectField = <T extends FieldValues>({
           options={options}
           isDisabled={isDisabled}
           placeholder={placeholder}
+          menuShouldScrollIntoView={true}
         />
       </div>
       {fieldState.error?.message && (

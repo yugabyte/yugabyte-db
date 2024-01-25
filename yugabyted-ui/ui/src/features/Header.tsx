@@ -91,7 +91,7 @@ export const Header: FC = () => {
   const clusterName = clusterData?.data?.spec.name || t("common.cluster");
 
   // Get nodes
-  const { data: nodesResponse } = useGetClusterNodesQuery();
+  const { data: nodesResponse } = useGetClusterNodesQuery({});
   const deadNodes = nodesResponse?.data?.filter((node) => !node.is_node_up) ?? [];
   const hasReadReplica = !!nodesResponse?.data.find((node) => node.is_read_replica);
 

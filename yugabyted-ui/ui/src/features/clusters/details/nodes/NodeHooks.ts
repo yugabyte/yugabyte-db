@@ -1,13 +1,15 @@
 import { useGetClusterNodesQuery, useGetIsLoadBalancerIdleQuery } from "@app/api/src";
 import React from "react";
 
-export const useNodes = () => {
+export const useNodes = (getAllMasters?: boolean) => {
   // Get nodes
   const {
     data: nodesResponse,
     refetch: refetchClusterNodesQuery,
     ...nodeQueryData
-  } = useGetClusterNodesQuery();
+  } = useGetClusterNodesQuery(
+    { ...getAllMasters && {get_all_masters: getAllMasters} }
+  );
 
   // We get load balancer separately for now since we rely on yb-admin which is slow
   const {

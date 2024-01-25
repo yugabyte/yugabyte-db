@@ -1,8 +1,8 @@
-package com.yugabyte.yw.common.operator;
+package com.yugabyte.yw.common.operator.utils;
 
 import static org.junit.Assert.*;
 
-import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue;
+import com.yugabyte.yw.common.operator.utils.OperatorWorkQueue.ResourceAction;
 import com.yugabyte.yw.common.utils.Pair;
 import java.util.ArrayList;
 import java.util.Iterator;
@@ -18,7 +18,7 @@ public class OperatorWorkQueueTest {
 
   @Before
   public void beforeTest() {
-    workQueue = new OperatorWorkQueue();
+    workQueue = new OperatorWorkQueue(1, 1, 2);
   }
 
   @Test
@@ -68,5 +68,36 @@ public class OperatorWorkQueueTest {
     } catch (InterruptedException e) {
       System.out.println("interrupted");
     }
+  }
+
+  @Test
+  public void testRequeueOnUniverseLockRequeue() throws InterruptedException {
+    workQueue.requeue("one", ResourceAction.CREATE, false);
+    Thread.sleep(8500);
+    // Create locks requeue so this UPDATE should not be added
+    workQueue.requeue("one", ResourceAction.UPDATE, false);
+    Thread.sleep(8500);
+    int count = 0;
+    while (!workQueue.isEmpty()) {
+      workQueue.pop();
+      count++;
+    }
+    // Create and NoOp
+    // Not the second NoOp
+    assertEquals(count, 2);
+
+    // Should allow to add this element now
+    workQueue.requeue("one", OperatorWorkQueue.ResourceAction.UPDATE, false);
+    Thread.sleep(8500);
+    // Not allowed to add, since Update puts NoOp action too, should lock NoOp
+    // requeue.
+    workQueue.requeue("one", OperatorWorkQueue.ResourceAction.NO_OP, false);
+    Thread.sleep(3500);
+    count = 0;
+    while (!workQueue.isEmpty()) {
+      workQueue.pop();
+      count++;
+    }
+    assertEquals(count, 2);
   }
 }

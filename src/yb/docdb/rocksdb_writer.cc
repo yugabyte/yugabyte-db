@@ -159,6 +159,15 @@ void HandleExternalRecord(
   ++(*write_id);
 }
 
+[[nodiscard]] dockv::ReadIntentTypeSets GetIntentTypesForRead(
+    IsolationLevel level, RowMarkType row_mark, bool read_is_for_write_op) {
+  auto result = dockv::GetIntentTypesForRead(level, row_mark);
+  if (read_is_for_write_op) {
+    result.read.Set(dockv::IntentType::kStrongRead);
+  }
+  return result;
+}
+
 }  // namespace
 
 NonTransactionalWriter::NonTransactionalWriter(
@@ -256,12 +265,14 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
   if (!put_batch_.read_pairs().empty()) {
     RETURN_NOT_OK(EnumerateIntents(
         put_batch_.read_pairs(),
-        [this, intent_types = dockv::GetIntentTypesForRead(isolation_level_, row_mark_)](
-            auto ancestor_doc_key, auto full_doc_key,
-            const auto& value, auto* key, auto last_key, auto is_row_lock) {
+        [this, intent_types = GetIntentTypesForRead(
+                   isolation_level_, row_mark_,
+                   !put_batch_.write_pairs().empty() /* read_is_for_write_op */)](
+            auto ancestor_doc_key, auto full_doc_key, const auto& value, auto* key, auto last_key,
+            auto is_row_lock) {
           return (*this)(
-              dockv::GetIntentTypes(intent_types, is_row_lock), ancestor_doc_key,
-              full_doc_key, value, key, last_key);
+              dockv::GetIntentTypes(intent_types, is_row_lock), ancestor_doc_key, full_doc_key,
+              value, key, last_key);
         },
         partial_range_key_intents_));
   }
@@ -273,6 +284,7 @@ Status TransactionalWriter::Apply(rocksdb::DirectWriteHandler* handler) {
 Status TransactionalWriter::operator()(
     dockv::IntentTypeSet intent_types, dockv::AncestorDocKey ancestor_doc_key, dockv::FullDocKey,
     Slice intent_value, dockv::KeyBytes* key, dockv::LastKey last_key) {
+  RSTATUS_DCHECK(intent_types.Any(), IllegalState, "Intent type set should not be empty");
   if (ancestor_doc_key) {
     weak_intents_[key->data()] |= MakeWeak(intent_types);
     return Status::OK();

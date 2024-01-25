@@ -22,7 +22,6 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
-import static play.inject.Bindings.bind;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -32,8 +31,6 @@ import com.yugabyte.yw.common.ApiUtils;
 import com.yugabyte.yw.common.RegexMatcher;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
-import com.yugabyte.yw.common.operator.NoOpOperatorStatusUpdater;
-import com.yugabyte.yw.common.operator.OperatorStatusUpdaterFactory;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent.K8SNodeResourceSpec;
 import com.yugabyte.yw.models.AvailabilityZone;
@@ -57,22 +54,21 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.stream.Collectors;
+import org.junit.Before;
 import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.ArgumentCaptor;
-import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnitRunner;
 import org.yb.client.ChangeMasterClusterConfigResponse;
 import org.yb.client.GetLoadMovePercentResponse;
 import org.yb.client.IsServerReadyResponse;
 import org.yb.client.YBClient;
-import play.inject.guice.GuiceApplicationBuilder;
 import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
-  @InjectMocks private EditKubernetesUniverse editUniverse;
+  private EditKubernetesUniverse editUniverse;
 
   private Universe defaultUniverse;
 
@@ -81,14 +77,13 @@ public class EditKubernetesUniverseTest extends CommissionerBaseTest {
 
   private Map<String, String> config = new HashMap<>();
 
-  protected OperatorStatusUpdaterFactory mockStatusUpdaterFactory =
-      mock(OperatorStatusUpdaterFactory.class);
-
-  @Override
-  protected GuiceApplicationBuilder configureApplication(GuiceApplicationBuilder builder) {
-    when(mockStatusUpdaterFactory.create()).thenReturn(mock(NoOpOperatorStatusUpdater.class));
-    return super.configureApplication(builder)
-        .overrides(bind(OperatorStatusUpdaterFactory.class).toInstance(mockStatusUpdaterFactory));
+  @Before
+  public void setUp() {
+    super.setUp();
+    when(mockOperatorStatusUpdaterFactory.create()).thenReturn(mockOperatorStatusUpdater);
+    this.editUniverse =
+        new EditKubernetesUniverse(
+            mockBaseTaskDependencies, null, mockOperatorStatusUpdaterFactory);
   }
 
   private void setup() {
