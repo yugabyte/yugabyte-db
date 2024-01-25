@@ -39,7 +39,8 @@ Unless otherwise noted, x86 operating systems are supported by all supported ver
 
 | Operating system | x86            | ARM            | Notes |
 | :--------------- | :------------- | :------------- | :--- |
-| AlmaLinux 9      | {{<icon/yes>}} | {{<icon/yes>}} | Default for YBA-deployed nodes |
+| AlmaLinux 8      | {{<icon/yes>}} | {{<icon/yes>}} | Default for YBA-deployed nodes |
+| AlmaLinux 9      | {{<icon/yes>}} | {{<icon/yes>}} |  |
 | Amazon Linux 2   | {{<icon/yes>}} | {{<icon/yes>}} | v2.18.0 and later |
 | CentOS7          | {{<icon/yes>}} |                | |
 | Oracle 7         | {{<icon/yes>}} |   |
