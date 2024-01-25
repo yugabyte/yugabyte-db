@@ -226,7 +226,7 @@ public class AccessKeyHandler {
                 details.sshUser,
                 details.sshPort,
                 details.airGapInstall,
-                false,
+                details.skipProvisioning,
                 details.setUpChrony,
                 details.ntpServers,
                 details.showSetUpChrony,
@@ -240,7 +240,7 @@ public class AccessKeyHandler {
                 details.sshUser,
                 details.sshPort,
                 details.airGapInstall,
-                false,
+                details.skipProvisioning,
                 details.setUpChrony,
                 details.ntpServers,
                 details.showSetUpChrony);
