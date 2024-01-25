@@ -42,6 +42,10 @@ SET search_path TO helio_api;
  */
 #include "udfs/schema_mgmt/drop_collection--0.12-0.sql"
 
+/*
+ * Region: Aggregation operators.
+ */
+ #include "udfs/aggregation/group_aggregates_support--0.12-0.sql"
 
 /*
  * Region: Index Manangement APIs
