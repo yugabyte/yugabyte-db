@@ -1253,8 +1253,14 @@ void TabletServiceImpl::GetOldSingleShardWaiters(const GetOldSingleShardWaitersR
                                                 rpc::RpcContext context) {
   TRACE("GetOldSingleShardWaiters");
 
-  auto s =
-      server_->tablet_manager()->waiting_txn_registry()->GetOldSingleShardWaiters(*req, resp);
+  auto* waiting_txn_registry = server_->tablet_manager()->waiting_txn_registry();
+  if (!waiting_txn_registry) {
+    LOG(INFO) << "Skipping query for old single shard waiters as the server's "
+              << "waiting_txn_registry doesn't exist.";
+    context.RespondSuccess();
+    return;
+  }
+  auto s = waiting_txn_registry->GetOldSingleShardWaiters(*req, resp);
   if (s.ok()) {
     context.RespondSuccess();
   } else {
