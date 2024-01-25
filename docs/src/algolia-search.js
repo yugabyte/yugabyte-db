@@ -176,11 +176,12 @@ import algoliasearch from 'algoliasearch';
   /**
    * Main Docs section HTML.
    */
-  function docsSection(queryID, hitIs) {
+  function docsSection(queryID, hitIs, resultPosition) {
     const searchText = searchInput.value.trim();
 
     let content = '';
     hitIs.forEach((hit, index) => {
+      const dataPosition = resultPosition + index + 1;
       let pageBreadcrumb = '';
       let pageHash = '';
       let pageTitle = '';
@@ -243,7 +244,7 @@ import algoliasearch from 'algoliasearch';
 
       content += `<li>
         <div class="search-title">
-          <a href="${hit.url.replace(/^(?:\/\/|[^/]+)*\//, '/')}${pageHash}" data-objectid="${hit.objectID}" data-queryid="${queryID}" data-position="${index + 1}">
+          <a href="${hit.url.replace(/^(?:\/\/|[^/]+)*\//, '/')}${pageHash}" data-objectid="${hit.objectID}" data-queryid="${queryID}" data-position="${dataPosition}">
             <span class="search-title-inner">${pageTitle}</span>
             <div class="search-subhead-inner">${subHead}</div>
             <div class="breadcrumb-item">${pageBreadcrumb}</div>
@@ -390,10 +391,11 @@ import algoliasearch from 'algoliasearch';
         hits, nbHits, nbPages, page, queryID,
       }) => {
         const searchResults = document.getElementById('doc-hit');
+        const startResultPosition = page * perPageCount;
 
         let pagerDetails = {};
         let sectionHTML = '';
-        sectionHTML += docsSection(queryID, hits);
+        sectionHTML += docsSection(queryID, hits, startResultPosition);
         if (hits.length > 0 && sectionHTML !== '') {
           searchResults.innerHTML = sectionHTML;
         } else {
