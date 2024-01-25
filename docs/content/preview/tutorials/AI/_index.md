@@ -24,4 +24,30 @@ type: indexpage
       </div>
     </a>
   </div>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="../azure/azure-openai/">
+      <div class="head">
+        <img class="icon" src="/images/tutorials/azure/icons/OpenAI-Icon.svg" aria-hidden="true" />
+        <div class="title">Azure OpenAI</div>
+      </div>
+      <div class="body">
+        Build a scalable generative AI application using YugabyteDB as the database backend.
+      </div>
+    </a>
+  </div>
+  <div class="col-12 col-md-6 col-lg-12 col-xl-6">
+    <a class="section-link icon-offset" href="../google/google-vertex-ai/">
+      <div class="head">
+        <img
+          class="icon"
+          src="/images/tutorials/google/icons/Google-Vertex-AI-Icon.svg"
+          aria-hidden="true"
+        />
+        <div class="title">Google Vertex AI</div>
+      </div>
+      <div class="body">
+        Deploy generative AI applications using Google Vertex AI and YugabyteDB.
+      </div>
+    </a>
+  </div>
 </div>

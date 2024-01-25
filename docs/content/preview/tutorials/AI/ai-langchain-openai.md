@@ -1,10 +1,10 @@
 ---
 title: How to Develop LLM Apps with LangChain, OpenAI and YugabyteDB
-headerTitle: Develop LLM Apps with LangChain, OpenAI, and YugaybteDB
+headerTitle: Build LLM applications with LangChain, OpenAI, and YugaybteDB
 linkTitle: LangChain and OpenAI
 description: Learn to build context-aware LLM applications using LangChain and OpenAI.
 image: /images/tutorials/ai/icons/langchain-icon.svg
-headcontent: Use YugaybteDB as the database backend for your LLM applications
+headcontent: Use YugaybteDB as the database backend for LLM applications
 menu:
   preview:
     identifier: tutorials-ai-langchain-openai
@@ -13,7 +13,9 @@ menu:
 type: docs
 ---
 
-This tutorial demonstrates how use LangChain to build applications with LLM integration. By using the [SQL](https://python.langchain.com/docs/use_cases/qa_structured/sql) chain capabilities of LangChain in conjunction with an [OpenAI](https://openai.com/) LLM, the application can query a [PostgreSQL-compatible](https://www.yugabyte.com/postgresql/postgresql-compatibility/) YugabyteDB database from natural language.
+This tutorial demonstrates how use [LangChain](https://python.langchain.com/docs/get_started/introduction) to build applications with LLM integration. LangChain is a framework for developing applications powered by language models.
+
+Follow the guide to learn how to build a scalable LLM application using the [SQL](https://python.langchain.com/docs/use_cases/qa_structured/sql) chain capabilities of LangChain in conjunction with an [OpenAI](https://openai.com/) LLM. The application can query a [PostgreSQL-compatible](https://www.yugabyte.com/postgresql/postgresql-compatibility/) YugabyteDB database from natural language.
 
 ## Prerequisites
 
@@ -265,4 +267,4 @@ The Flask server for this application exposes a REST endpoint which returns valu
 
 LangChain provides a powerful toolkit to application developers seeking LLM integrations. By connecting to YugabyteDB, users can access data directly, without the need for replication.
 
-If you're interested in more... [ADD ADDITIONAL RESOURCES HERE]
+For more information about LangChain, see the [LangChain documentation](https://python.langchain.com/docs/get_started/introduction).
