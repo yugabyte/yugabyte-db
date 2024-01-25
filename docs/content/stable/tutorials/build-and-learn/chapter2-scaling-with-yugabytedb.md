@@ -11,9 +11,11 @@ menu:
 type: docs
 ---
 
-The days went by, thousands of users signed up for the YugaPlus streaming service and started watching their favorites 24/7. Soon, the YugaPlus team noticed that the PostgreSQL database server was about to outgrow its storage and compute capacity. They had a choice of switching to a database instance with larger storage capacity and more CPUs. However, that would lead to a downtime during the migration and they would need to repeat this process again after reaching the capacity of the new database instance.
+{{< note title="YugaPlus - Time to Scale" >}}
+The days passed, and the YugaPlus streaming service saw thousands of new users, all eagerly watching their favorite movies 24/7. It wasn't long before the YugaPlus team noticed a looming issue: their PostgreSQL database server was quickly approaching its limits in storage and compute capacity. They pondered upgrading to a larger database instance with increased storage and more CPUs. Yet, such an upgrade would not only cause downtime during the migration but also might become a recurring issue as capacity limits would eventually be reached again.
 
-Eventually, the YugaPlus team decided to solve the scalability requirements by migrating to a multi-node YugabyteDB cluster that can scale out and up on demand...
+After careful consideration, the team decided to tackle these scalability challenges by migrating to a multi-node YugabyteDB cluster that could scale up and out on demand...
+{{< /note >}}
 
 In this chapter you'll learn:
 

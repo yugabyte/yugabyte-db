@@ -110,7 +110,7 @@ At the time of writing, OpenAI offered a generous free tier, which was more than
         -e DB_URL=jdbc:postgresql://postgres:5432/postgres \
         -e DB_USER=postgres \
         -e DB_PASSWORD=password \
-        -e OPENAI_KEY=sk... \
+        -e OPENAI_KEY=${YOUR_OPENAI_KEY} \
         yugaplus-backend
     ```
 
@@ -145,14 +145,53 @@ INFO 1 --- [main] c.y.backend.YugaPlusBackendApplication   : Started YugaPlusBac
 
 The frontend container starts in a few seconds and is accessible at the following address: <http://localhost:3000/>
 
+Use the credentials below to log into YugaPlus!
+
+* Username: `user1@gmail.com`
+* Password: `MyYugaPlusPassword`
+
+![YugaPlus Log-in Screen](/images/tutorials/build-and-learn/chapter1-login-screen.png)
+
 {{< header Level="2" >}}Search For Your Favorite Movies{{< /header >}}
 
-TBD:
+Once logged in, you'll arrive at the YugaPlus home page, which is divided into two sections. The **Your Movies** section displays your user library, featuring movies you are currently watching or plan to watch soon. The **Search New Movies** section helps you discover new content by asking for recommendations in plain English.
 
-* Quickly explain the schema (movie and user history table)
-* Explain the overview and overview_vector columns
-* Suggest to search for a movie (a tab for the 'AI search' and 'Full Text Search')
-* Suggest to pick different categories and add movies to the catalogu
-* Show sql queries that are executed by AI and Full Text search (also in separate tabs. just use the backend to print the generated query)
+![YugaPlus Home Screen](/images/tutorials/build-and-learn/chapter1-home-screen.png)
 
-Congratulations!!!
+Internally, the microservice uses the following database schema:
+
+![YugaPlus Home Screen](/images/tutorials/build-and-learn/yugaplus-schema.png)
+
+* `movie` - the table stores information about movies available on YugaPlus. The `overview_vector` column contains 1536-dimensional vectors generated using OpenAI's `text-embedding-ada-002` model, based on the movies' descriptions in the `overview` column.
+* `user_account` - the table with uses-specific details.
+* `user_library` - this table records the movies that users add to their libraries.
+
+Next, go ahead and ask YugaPlus to suggest a few movies for your upcoming evening watch by typing in the following prompt:
+
+<ul class="nav nav-tabs-alt nav-tabs-yb">
+  <li >
+    <a href="#similarity-search" class="nav-link active" id="similarity-search-tab" data-toggle="tab"
+       role="tab" aria-controls="similarity-search" aria-selected="true">
+      <i class="fa-brands fa-apple" aria-hidden="true"></i>
+      Similarity Search (OpenAI)
+    </a>
+  </li>
+  <li>
+    <a href="#full-text-search" class="nav-link" id="full-text-search-tab" data-toggle="tab"
+       role="tab" aria-controls="full-text-search" aria-selected="false">
+      <i class="fa-brands fa-linux" aria-hidden="true"></i>
+      Full-text search
+    </a>
+  </li>
+</ul>
+
+<div class="tab-content">
+  <div id="similarity-search" class="tab-pane fade show active" role="tabpanel" aria-labelledby="similarity-search-tab">
+  {{% includeMarkdown "includes/chapter1-similarity-search.md" %}}
+  </div>
+  <div id="full-text-search" class="tab-pane fade" role="tabpanel" aria-labelledby="full-text-search-tab">
+  {{% includeMarkdown "includes/chapter1-full-text-search.md" %}}
+  </div>
+</div>
+
+Congratulations, you've completed Chapter 1! You have successfully deployed the first version of the YugaPlus movies catalog microservice and got it operational on a PostgreSQL instance with the pgvector extension.
