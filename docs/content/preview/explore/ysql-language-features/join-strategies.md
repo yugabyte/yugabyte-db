@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-[Joins](../../ysql-language-features/queries#join-columns) are a fundamental concept in relational databases for querying and combining data from multiple tables. They are the mechanism used to combine rows from two or more tables based on a related column between them. The related column is usually a foreign key that establishes a relationship between the tables. A join condition specifies how the rows from one table should be matched with the rows from another table. It is defined in the `ON` clause of the `join` statement.
+[Joins](../../ysql-language-features/queries#join-columns) are a fundamental concept in relational databases for querying and combining data from multiple tables. They are the mechanism used to combine rows from two or more tables based on a related column between them. The related column is usually a foreign key that establishes a relationship between the tables. A join condition specifies how the rows from one table should be matched with the rows from another table. It can be defined in one of `ON`, `USING` or `WHERE` clauses.
 
 Although as a user you would write your query using one of the standard joins - [Inner](../queries/#inner-join), [Left outer](..//queries/#left-outer-join), [Right outer](../queries/#right-outer-join), [Full outer](../queries/#full-outer-join), [Cross](../queries/#cross-join), the query planner will choose from one of many join strategies to execute the query and fetch results.
 
@@ -206,8 +206,10 @@ To reduce the number of requests sent across the nodes during the Nested Loop jo
 If `yb_bnl_batch_size` is greater than `1`, the optimizer will try to adopt the batching optimization when other join strategies are not fit for the current query.
 
 To fetch all scores of students named `Natasha` who have scored more than `70` in any subject using Batched nested loop join, you would execute,
-
+{{/* TOD0: fix this after 2.21 */}}
 ```sql
+-- For versions <  2.21 : nestloop(students scores)
+-- For versions >= 2.21 : ybbatchednl(students scores)
 explain (analyze, dist, costs off)
 /*+
     nestloop(students scores)
@@ -245,7 +247,7 @@ And the query plan would be similar to:
  Peak Memory Usage: 476 kB
 ```
 
-The key point to note here is index condition: `(id = ANY (ARRAY[students.id, $1, $2, ..., $1023]))` which led to `loops=1` as the lookup was batched. In the case of [nested loop join](#nested-loop-join), this was `loops=8`. This batching would drastically improve performance in many scenarios.
+The key point to note here is the index condition: `(id = ANY (ARRAY[students.id, $1, $2, ..., $1023]))` which led to `loops=1` in the inner scan as the lookup was batched. In the case of [nested loop join](#nested-loop-join), the inner side looped `8` times. Such batching can drastically improve performance in many scenarios.
 
 ## Learn more
 
