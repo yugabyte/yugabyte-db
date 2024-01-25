@@ -8703,6 +8703,18 @@ make_modifytable(PlannerInfo *root, Plan *subplan,
 	node->ybReturningColumns = NIL;
 	node->no_update_index_list = NIL;
 	node->no_row_trigger = false;
+
+	/*
+	 * It suffices to use the first entry of resultRelations to compute
+	 * ybUseScanTupleInUpdate.
+	 * resultRelations contains more than one entry for partitioned relations
+	 * and ybUseScanTupleInUpdate is true for all partitioned relations.
+	 */
+	RangeTblEntry *rte = root->simple_rte_array[linitial_int(resultRelations)];
+	Relation relation = RelationIdGetRelation(rte->relid);
+	node->ybUseScanTupleInUpdate =
+		YbUseScanTupleInUpdate(relation, rte->updatedCols);
+	RelationClose(relation);
 	return node;
 }
 

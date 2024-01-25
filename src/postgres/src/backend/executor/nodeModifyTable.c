@@ -704,7 +704,8 @@ ExecInitUpdateProjection(ModifyTableState *mtstate,
 								  relDesc,
 								  mtstate->ps.ps_ExprContext,
 								  resultRelInfo->ri_newTupleSlot,
-								  &mtstate->ps);
+								  &mtstate->ps,
+								  node->ybUseScanTupleInUpdate);
 
 	resultRelInfo->ri_projectNewInfoValid = true;
 }
@@ -3863,7 +3864,8 @@ ExecInitMerge(ModifyTableState *mtstate, EState *estate)
 												  relationDesc,
 												  econtext,
 												  resultRelInfo->ri_newTupleSlot,
-												  &mtstate->ps);
+												  &mtstate->ps,
+												  node->ybUseScanTupleInUpdate);
 					mtstate->mt_merge_subcommands |= MERGE_UPDATE;
 					break;
 				case CMD_DELETE:
@@ -4277,15 +4279,11 @@ ExecModifyTable(PlanState *pstate)
 			/*
 			 * For YugaByte relations extract the old row from the wholerow junk
 			 * attribute if needed.
-			 * 1. For tables with secondary indexes we need the (old) ybctid for
-			 *    removing old index entries (for UPDATE and DELETE)
-			 * 2. For tables with row triggers we need to pass the old row for
-			 *    trigger execution.
 			 */
-
 			if (IsYBRelation(relation) &&
-				(YBRelHasSecondaryIndices(relation) ||
-				 YBRelHasOldRowTriggers(relation, operation)))
+				YbUseWholeRowJunkAttribute(
+					relation, ExecGetUpdatedCols(resultRelInfo, estate),
+					operation))
 			{
 				AttrNumber  resno;
 				Plan	   *subplan = outerPlan(node->ps.plan);
@@ -4451,10 +4449,7 @@ ExecModifyTable(PlanState *pstate)
 						Relation relation = resultRelInfo->ri_RelationDesc;
 						bool row_found = false;
 						if (IsYBRelation(relation))
-						{
-							row_found =
-								YbFetchTableSlot(relation, tupleid, oldSlot);
-						}
+							row_found = true;
 						else
 						{
 							row_found = table_tuple_fetch_row_version(
@@ -4939,7 +4934,8 @@ ExecInitModifyTable(ModifyTable *node, EState *estate, int eflags)
 									  relationDesc,
 									  econtext,
 									  onconfl->oc_ProjSlot,
-									  &mtstate->ps);
+									  &mtstate->ps,
+									  node->ybUseScanTupleInUpdate);
 
 		/* initialize state to evaluate the WHERE clause, if any */
 		if (node->onConflictWhere)

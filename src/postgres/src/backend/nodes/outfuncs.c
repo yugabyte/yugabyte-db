@@ -444,6 +444,7 @@ _outModifyTable(StringInfo str, const ModifyTable *node)
 	WRITE_NODE_FIELD(ybColumnRefs);
 	WRITE_NODE_FIELD(no_update_index_list);
 	WRITE_BOOL_FIELD(no_row_trigger);
+	WRITE_BOOL_FIELD(ybUseScanTupleInUpdate);
 }
 
 static void
