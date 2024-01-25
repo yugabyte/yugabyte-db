@@ -95,7 +95,13 @@ Navigate to **Configs > Infrastructure > Amazon Web Services** to see a list of 
 
 To view a provider, select it in the list of AWS Configs to display the **Overview**.
 
-To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that, depending on whether the provider has been used to create a universe, you can only edit a subset of options.
+To edit the provider, select **Config Details**, make changes, and click **Apply Changes**. For more information, refer to [Provider settings](#provider-settings). Note that for YBA version 2.18.5, if the provider has been used to create a universe, you can only edit a subset of fields, including the following:
+
+- Provider Name
+- Access Key ID
+- Secret Access Key
+- Regions - You can add regions and zones to an in-use provider.
+Note that you cannot edit existing region details, or delete a region if any of the region's zones are in use. You also cannot delete zones which are in-use.
 
 To view the universes created using the provider, select **Universes**.
 
