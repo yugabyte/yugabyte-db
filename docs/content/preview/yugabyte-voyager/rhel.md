@@ -46,7 +46,7 @@ Note that if you're using **RHEL 8** or **CentOS 8**, perform the following two 
 - Disable the default `PostgreSQL` yum module on your machine using the following command:
 
     ```sh
-    sudo dnf -qy module disable postgresql
+    sudo dnf --disablerepo=* -y install https://download.postgresql.org/pub/repos/yum/reporpms/EL-8-ppc64le/pgdg-redhat-repo-latest.noarch.rpm
     ```
 
 - Install `perl-open` on your machine using the following command:
