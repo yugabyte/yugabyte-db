@@ -13,7 +13,7 @@ menu:
 type: docs
 ---
 
-[Joins](../../ysql-language-features/queries#join-columns) are a fundamental concept in relational databases for querying and combining data from multiple tables. They are the mechanism used to combine rows from two or more tables based on a related column between them. The related column is usually a foreign key that establishes a relationship between the tables. A join condition specifies how the rows from one table should be matched with the rows from another table. It is defined in the `ON` clause of the join statement.
+[Joins](../../ysql-language-features/queries#join-columns) are a fundamental concept in relational databases for querying and combining data from multiple tables. They are the mechanism used to combine rows from two or more tables based on a related column between them. The related column is usually a foreign key that establishes a relationship between the tables. A join condition specifies how the rows from one table should be matched with the rows from another table. It is defined in the `ON` clause of the `join` statement.
 
 Although as a user you would write your query using one of the standard joins - [Inner](../queries/#inner-join), [Left outer](..//queries/#left-outer-join), [Right outer](../queries/#right-outer-join), [Full outer](../queries/#full-outer-join), [Cross](../queries/#cross-join), the query planner will choose from one of many join strategies to execute the query and fetch results.
 
@@ -72,9 +72,9 @@ In the following examples, we will use **hints** to force the query planner to p
 
 ## Nested Loop Join
 
-Nested Loop Join is the simplest join algorithm. It involves iterating through each row of the first table and checking for matches in the second table based on the join condition. It has an outer loop and an inner loop. The outer loop iterates through the rows of the first (outer) table, while the inner loop iterates through the rows of the second (inner) table. The worst-case time complexity is `O(m*n)` - where `m & n` are the sizes of outer and inner tables respectively. Often used when one table is small and an index can be utilized. 
+Nested Loop Join is the simplest join algorithm. It involves iterating through each row of the first table and checking for matches in the second table based on the join condition. It has an outer loop and an inner loop. The outer loop iterates through the rows of the first (outer) table, while the inner loop iterates through the rows of the second (inner) table. The worst-case time complexity is `O(m*n)` - where `m & n` are the sizes of outer and inner tables respectively. Often used when one table is small and an index can be utilized.
 
-This is also the preferred join strategy at times as it is the only join method to not require extra memory overhead and also operates well in queries where the join clause has low selectivity. In fact, if you compare the `Peak Memory Usage` of this strategy with others mentioned below, you will notice that this is the lowest.
+This is also the preferred join strategy at times as it is the only join method to not require extra memory overhead and also operates well in queries where the join clause has low selectivity. If you compare the `Peak Memory Usage` of this strategy with others mentioned below, you will notice that this is the lowest.
 
 To fetch all scores of students named `Natasha` who have scored more than `70` in any subject using Nested loop join, you would execute,
 
@@ -115,7 +115,7 @@ The query plan would be similar to:
 
 In a Merge Join, both input tables must be sorted on the join key. It works by merging the sorted input streams based on the join condition. Merge Joins are efficient when dealing with large datasets, and the join condition involves equality comparisons. If the tables are not already sorted, the optimizer will use sorting operations as part of the execution plan.
 
-As the join key columns are now sorted, the executer can compare the 2 streams easily in `O(n+m)` time complexity. Merge joins are typically suitable when joining based on equality and are commonly used when the join keys are indexed or the data is naturally sorted.
+As the join key columns are now sorted, the executor can compare the 2 streams easily in `O(n+m)` time complexity. Merge joins are typically suitable when joining based on equality and are commonly used when the join keys are indexed or the data is naturally sorted.
 
 To fetch all scores of students named `Natasha` who have scored more than `70` in any subject and use Merge join, you would execute,
 
@@ -245,7 +245,7 @@ And the query plan would be similar to:
  Peak Memory Usage: 476 kB
 ```
 
-The key point to note here is index condition: `(id = ANY (ARRAY[students.id, $1, $2, ..., $1023]))` which led to `loops=1` as the lookup was batched. In the case of [nested loop join](#nested-loop-join), this was `loops=8`. This batching would drastically improve performance in many sceanrios.
+The key point to note here is index condition: `(id = ANY (ARRAY[students.id, $1, $2, ..., $1023]))` which led to `loops=1` as the lookup was batched. In the case of [nested loop join](#nested-loop-join), this was `loops=8`. This batching would drastically improve performance in many scenarios.
 
 ## Learn more
 
