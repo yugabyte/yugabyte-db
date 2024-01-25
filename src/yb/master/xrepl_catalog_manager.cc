@@ -5935,6 +5935,18 @@ Status CatalogManager::YsqlBackfillReplicationSlotNameToCDCSDKStream(
   return Status::OK();
 }
 
+std::vector<SysUniverseReplicationEntryPB>
+CatalogManager::GetAllXClusterUniverseReplicationInfos() {
+  SharedLock lock(mutex_);
+  std::vector<SysUniverseReplicationEntryPB> result;
+  for (const auto& [_, universe_info] : universe_replication_map_) {
+    auto l = universe_info->LockForRead();
+    result.push_back(l->pb);
+  }
+
+  return result;
+}
+
 // Validate that the given replication slot name is valid.
 // This function is a duplicate of the ReplicationSlotValidateName function from
 // src/postgres/src/backend/replication/slot.c
