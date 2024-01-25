@@ -19,7 +19,8 @@
     "edit_authorized_keys.yml",
     "configure_ssh2.yml",
     "install-third-party.yml",
-    "Dockerfile"
+    "Dockerfile",
+    "sudo_whitelist.txt"
   ],
   "bin": [
     "bin/ansible-playbook.sh",
