@@ -137,7 +137,7 @@ def parse_config_file(config_path):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="Threaded file write operation with "
                                                  "process control.")
-    parser.add_argument(DOUBLE_HYPHEN + CONFIG_ARG, type=str, default='ebs_io_fis.conf',
+    parser.add_argument(DOUBLE_HYPHEN + CONFIG_ARG, type=str, default='disk_io_detection.conf',
                         help="Specify the configuration file path.")
     parser.add_argument(DOUBLE_HYPHEN + FILE_PATHS_ARG, type=str, default={}, nargs='*',
                         help="Specify the file path.")
