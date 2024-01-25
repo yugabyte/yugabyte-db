@@ -213,7 +213,7 @@ SET LOCAL enable_seqscan = off;
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 5.0, 1.1 ], "k": 2, "path": "v", "nProbes": 1 }  } } ], "cursor": {} }');
 COMMIT;
 
-SELECT pgmongo_test_helpers.drop_primary_key('db','aggregation_pipeline');
+SELECT helio_test_helpers.drop_primary_key('db','aggregation_pipeline');
 
 BEGIN;
 set local enable_seqscan to off;

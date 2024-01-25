@@ -704,10 +704,12 @@ SET LOCAL enable_seqscan = off;
 SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 5.0, 1.1 ], "k": 2, "path": "v", "nProbes": 1 }  } } ], "cursor": {} }');
 ERROR:  Similarity index was not found for a vector similarity search query.
 COMMIT;
-SELECT pgmongo_test_helpers.drop_primary_key('db','aggregation_pipeline');
-ERROR:  schema "pgmongo_test_helpers" does not exist
-LINE 1: SELECT pgmongo_test_helpers.drop_primary_key('db','aggregati...
-               ^
+SELECT helio_test_helpers.drop_primary_key('db','aggregation_pipeline');
+ drop_primary_key 
+------------------
+ 
+(1 row)
+
 BEGIN;
 set local enable_seqscan to off;
 EXPLAIN (COSTS OFF, VERBOSE ON) SELECT document FROM bson_aggregation_pipeline('db', '{ "aggregate": "aggregation_pipeline", "pipeline": [ { "$search": { "cosmosSearch": { "vector": [ 3.0, 4.9, 1.0 ], "k": 1, "path": "v", "nProbes": 1 }  } } ], "cursor": {} }');
