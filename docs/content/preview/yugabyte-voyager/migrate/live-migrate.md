@@ -25,7 +25,7 @@ Eventually, the migration process reaches a steady state where you can [cutover 
 
 The following illustration describes how the data export and import operations are simultaneously handled by YugabyteDB Voyager.
 
-![Live migration short](/images/migrate/live-migration-short.png)
+![Live migration short](/images/migrate/live-migration-short-new.png)
 
 The following illustration shows the steps in a live migration using YugabyteDB Voyager.
 
