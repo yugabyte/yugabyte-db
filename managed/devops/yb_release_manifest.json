@@ -15,7 +15,8 @@
     "send_sudo_pass.yml",
     "yb_custom_ami_builder.yml",
     "remote_role.yml",
-    "configure_ssh2.yml"
+    "configure_ssh2.yml",
+    "sudo_whitelist.txt"
   ],
   "bin": [
     "bin/common.sh",
