@@ -147,7 +147,7 @@ Node agent is an RPC service running on a YugabyteDB node, and is used to manage
 
 - Invoke shell commands directly on the remote host like running commands over SSH. Similar to SSH, the agent also does shell-login such that any previous command modifying the environment in the resource files (for example, `~/.bashrc`) gets reflected in the subsequent command.
 - Invoke procedures or methods on the node agent.
-- For on-premesis (manual provisioned nodes), node agent functions as a utility to run preflight checks, and add a node instance.
+- Additionally, for on-premesis (manual provisioned nodes), node agent also functions as a utility to run preflight checks, and add a node instance.
 
 ### How is node agent installed on a YugabyteDB node?
 
@@ -167,9 +167,9 @@ Node agent is a secure service that performs authentication on every remote call
 
 - YBA aware of the node agent service.
 - the node agent trust YBA and vice-versa.
-This step is called registration. Note that registration has nothing to do with a provider.
+This secure set-up process is called registration. Note that registration has nothing to do with a provider.
 
-Unregistration is the step to disconnect YBA and a node agent from each other.
+Unregistration is the process to remove the node agent entry from YBA such that there is no communication between each other.
 
 ### Why does node agent installation ask for provider and other details during on-prem manual node agent setup?
 
@@ -185,14 +185,14 @@ A node agent does not need to be unregistered to move a provider as it is not ti
 1. Run the installation again, or the command `node-agent node configure`. Running the command is faster as it does not install node agent again.
 1. Start the `systemd` service.
 
-For YBA version 2.18.5 and later, do the following:
+For YBA version 2.18.6 or 2.20.2, do the following:
 
 1. Remove the node instance from the provider if it is already added using the command `node-agent node delete-instance`.
 1. Run the command `node-agent node configure`.
 
 As long as the IP does not change, the node agent does not try to register again.
 
-Note that the first step to change the provider is very important because after the provider configuration information changes in the config file as part of the second step, the node agent can't find the node to delete it as the scope is always with the provider and availability zone.
+Note that the first step (remove the node instance) is very important because after the provider configuration information changes in the config file as part of the second step, the node agent can't find the node to delete it as the scope is always with the provider and availability zone.
 
 ### How does a node agent perform preflight checks?
 
@@ -218,8 +218,8 @@ It is not recommended to do so because editing the file can interfere with the s
 
 YBA uses the IP address to identify a node instance. The IP can be a DNS from YBA version 2.18.5 and later.
 
-For YBA versions later than 2.18.5, a bind address that defaults to the IP will be added in case a DNS is supplied and the node agent has to listen to a specific interface IP.
+For YBA versions 2.18.6 or 2.20.2, a bind address that defaults to the IP will be added in case a DNS is supplied and the node agent has to listen to a specific interface IP.
 
 ### How does YBA clean up node agents for on-prem non-manual nodes?
 
-YBA removes the node agent entry when the node is cleaned up. You can choose to leave the node agent service running, but when the node is again re-used, the node agent is re-installed.
+YBA removes the node agent entry when YBA releases the node back to the node instances pool of the provider. You can choose to leave the node agent service running, but when the node is again re-used, the node agent is re-installed.
