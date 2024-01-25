@@ -253,3 +253,4 @@ The key point to note here is index condition: `(id = ANY (ARRAY[students.id, $1
 - [Postgres Join Methods in YugabyteDB](https://dev.to/yugabyte/postgresql-join-methods-in-yugabytedb-f02)
 - [Batched Nested Loop to reduce read requests to the distributed storage](https://dev.to/yugabyte/batched-nested-loop-to-reduce-read-requests-to-the-distributed-storage-j5i)
 - [**OR** Filter on Two Tables](https://dev.to/yugabyte/or-filter-on-two-tables-and-batched-nested-loops-aa)
+- [Pagination with BNL](https://dev.to/yugabyte/batched-nested-loop-for-join-with-pagination-621)
