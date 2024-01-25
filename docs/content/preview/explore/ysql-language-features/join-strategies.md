@@ -92,7 +92,7 @@ SELECT name, subject, score
 
 The query plan would be similar to:
 
-```sql  
+```yaml
  Nested Loop (actual time=2002.483..9011.038 rows=18 loops=1)
    ->  Seq Scan on students (actual time=1001.369..1001.393 rows=8 loops=1)
          Remote Filter: ((name)::text = 'Natasha'::text)
@@ -132,7 +132,7 @@ SELECT name, subject, score
 
 The query plan would be similar to:
 
-```sql
+```yaml
  Merge Join (actual time=2002.906..2002.947 rows=18 loops=1)
    Merge Cond: (students.id = scores.id)
    ->  Sort (actual time=1001.443..1001.445 rows=8 loops=1)
@@ -176,7 +176,7 @@ SELECT name, subject, score
 
 The query plan would be similar to:
 
-```sql
+```yaml
  Hash Join (actual time=2002.431..2002.477 rows=18 loops=1)
    Hash Cond: (scores.id = students.id)
    ->  Seq Scan on scores (actual time=1001.043..1001.061 rows=51 loops=1)
@@ -223,7 +223,7 @@ SELECT name, subject, score
 
 And the query plan would be similar to:
 
-```sql
+```yaml
  YB Batched Nested Loop Join (actual time=4004.255..4004.297 rows=18 loops=1)
    Join Filter: (students.id = scores.id)
    ->  Index Scan using idx_name on students (actual time=2001.861..2001.870 rows=8 loops=1)
