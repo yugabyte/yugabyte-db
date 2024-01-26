@@ -488,7 +488,8 @@ public class NodeInstanceController extends AuthenticatedController {
     if (nodeAction == NodeActionType.ADD
         || nodeAction == NodeActionType.START
         || nodeAction == NodeActionType.START_MASTER
-        || nodeAction == NodeActionType.STOP) {
+        || nodeAction == NodeActionType.STOP
+        || nodeAction == NodeActionType.REPLACE) {
       if (!CertificateInfo.isCertificateValid(taskParams.rootCA)) {
         String errMsg =
             String.format(
