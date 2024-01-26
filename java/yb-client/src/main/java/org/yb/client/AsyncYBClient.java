@@ -175,7 +175,7 @@ public class AsyncYBClient implements AutoCloseable {
   public static final Logger LOG = LoggerFactory.getLogger(AsyncYBClient.class);
 
   private static final int SHUTDOWN_TIMEOUT_SEC = 15;
-  public static final int SLEEP_TIME = 500;
+  public static int sleepTime = 500;
   public static final byte[] EMPTY_ARRAY = new byte[0];
   public static final long NO_TIMESTAMP = -1;
   public static final long DEFAULT_OPERATION_TIMEOUT_MS = 10000;
@@ -296,6 +296,8 @@ public class AsyncYBClient implements AutoCloseable {
 
   private final int numTabletsInTable;
 
+  private final int maxAttempts;
+
   private AsyncYBClient(AsyncYBClientBuilder b) {
     this.executor = b.getOrCreateWorker();
     this.eventLoopGroup = b.createEventLoopGroup(executor);
@@ -312,6 +314,8 @@ public class AsyncYBClient implements AutoCloseable {
     this.clientPort = b.clientPort;
     this.defaultSocketReadTimeoutMs = b.defaultSocketReadTimeoutMs;
     this.numTabletsInTable = b.numTablets;
+    this.maxAttempts = b.maxRpcAttempts;
+    sleepTime = b.sleepTime;
   }
 
   /**
@@ -500,14 +504,15 @@ public class AsyncYBClient implements AutoCloseable {
                                                        boolean needSchemaInfo,
                                                        CdcSdkCheckpoint explicitCheckpoint) {
     return getChangesCDCSDK(table, streamId, tabletId, term, index, key, write_id, time,
-      needSchemaInfo, null, -1);
+      needSchemaInfo, explicitCheckpoint, -1);
   }
 
   public Deferred<GetChangesResponse> getChangesCDCSDK(YBTable table, String streamId,
       String tabletId, long term, long index, byte[] key, int write_id, long time,
       boolean needSchemaInfo, CdcSdkCheckpoint explicitCheckpoint, long safeHybridTime) {
     return getChangesCDCSDK(
-        table, streamId, tabletId, term, index, key, write_id, time, needSchemaInfo, null, -1, 0);
+        table, streamId, tabletId, term, index, key, write_id, time, needSchemaInfo,
+        explicitCheckpoint, safeHybridTime, 0);
   }
 
   /**
@@ -533,6 +538,7 @@ public class AsyncYBClient implements AutoCloseable {
     GetChangesRequest rpc = new GetChangesRequest(table, streamId, tabletId, term, index, key,
         write_id, time, needSchemaInfo, explicitCheckpoint, table.getTableId(), safeHybridTime,
         walSegmentIndex);
+    rpc.maxAttempts = this.maxAttempts;
     Deferred<GetChangesResponse> d = rpc.getDeferred();
     d.addErrback(new Callback<Exception, Exception>() {
       @Override
@@ -560,6 +566,7 @@ public class AsyncYBClient implements AutoCloseable {
                                                        String streamId, String tabletId) {
     checkIsClosed();
     GetCheckpointRequest rpc = new GetCheckpointRequest(table, streamId, tabletId);
+    rpc.maxAttempts = this.maxAttempts;
     Deferred<GetCheckpointResponse> d = rpc.getDeferred();
     rpc.setTimeoutMillis(defaultOperationTimeoutMs);
     sendRpcToTablet(rpc);
@@ -576,6 +583,7 @@ public class AsyncYBClient implements AutoCloseable {
     checkIsClosed();
     SetCheckpointRequest rpc = new SetCheckpointRequest(table, streamId,
       tabletId, term, index, initialCheckpoint, bootstrap, cdcsdkSafeTime);
+    rpc.maxAttempts = this.maxAttempts;
     Deferred<SetCheckpointResponse> d = rpc.getDeferred();
     rpc.setTimeoutMillis(defaultOperationTimeoutMs);
     sendRpcToTablet(rpc);
@@ -589,6 +597,7 @@ public class AsyncYBClient implements AutoCloseable {
     checkIsClosed();
     GetTabletListToPollForCDCRequest rpc = new GetTabletListToPollForCDCRequest(table, streamId,
       tableId, tabletId);
+    rpc.maxAttempts = this.maxAttempts;
     Deferred<GetTabletListToPollForCDCResponse> d = rpc.getDeferred();
     rpc.setTimeoutMillis(defaultOperationTimeoutMs);
     sendRpcToTablet(rpc);
@@ -623,6 +632,7 @@ public class AsyncYBClient implements AutoCloseable {
     checkIsClosed();
     SetCheckpointRequest rpc = new SetCheckpointRequest(table, streamId,
         tabletId, term, index, initialCheckpoint, bootstrap);
+    rpc.maxAttempts = this.maxAttempts;
     Deferred<SetCheckpointResponse> d = rpc.getDeferred();
     rpc.setTimeoutMillis(defaultOperationTimeoutMs);
     sendRpcToTablet(rpc);
@@ -676,6 +686,21 @@ public class AsyncYBClient implements AutoCloseable {
     PromoteAutoFlagsRequest rpc = new PromoteAutoFlagsRequest(this.masterTable, maxFlagClass,
         promoteNonRuntimeFlags, force);
     Deferred<PromoteAutoFlagsResponse> d = rpc.getDeferred();
+    rpc.setTimeoutMillis(defaultOperationTimeoutMs);
+    sendRpcToTablet(rpc);
+    return d;
+  }
+
+  /**
+   * Rollbacks the auto flag config for each servers.
+   * @param rollbackVersion auto flags version to which rollback is desired.
+   * @return a deferred object that yields the response to the rollback autoFlag config from
+   *         server.
+   */
+  public Deferred<RollbackAutoFlagsResponse> getRollbackAutoFlagsResponse(int rollbackVersion) {
+    checkIsClosed();
+    RollbackAutoFlagsRequest rpc = new RollbackAutoFlagsRequest(this.masterTable, rollbackVersion);
+    Deferred<RollbackAutoFlagsResponse> d = rpc.getDeferred();
     rpc.setTimeoutMillis(defaultOperationTimeoutMs);
     sendRpcToTablet(rpc);
     return d;
@@ -1463,6 +1488,7 @@ public class AsyncYBClient implements AutoCloseable {
     ListCDCStreamsRequest request =
         new ListCDCStreamsRequest(this.masterTable, tableId, namespaceId, idType);
     request.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    request.maxAttempts = this.maxAttempts;
     return sendRpcToTablet(request);
   }
 
@@ -1690,6 +1716,7 @@ public class AsyncYBClient implements AutoCloseable {
     ListTablesRequest rpc = new ListTablesRequest(
       this.masterTable, nameFilter, excludeSystemTables, namespace);
     rpc.setTimeoutMillis(defaultAdminOperationTimeoutMs);
+    rpc.maxAttempts = this.maxAttempts;
     return sendRpcToTablet(rpc);
   }
 
@@ -1803,6 +1830,7 @@ public class AsyncYBClient implements AutoCloseable {
     GetDBStreamInfoRequest rpc = new GetDBStreamInfoRequest(this.masterTable, streamId);
     Deferred<GetDBStreamInfoResponse> d = rpc.getDeferred();
     rpc.setTimeoutMillis(defaultOperationTimeoutMs);
+    rpc.maxAttempts = this.maxAttempts;
     sendRpcToTablet(rpc);
     return d;
   }
@@ -2244,7 +2272,7 @@ public class AsyncYBClient implements AutoCloseable {
 
 
   long getSleepTimeForRpc(YRpc<?> rpc) {
-    byte attemptCount = rpc.attempt;
+    int attemptCount = rpc.attempt;
     assert (attemptCount > 0);
     if (attemptCount == 0) {
       LOG.warn("Possible bug: attempting to retry an RPC with no attempts. RPC: " + rpc,
@@ -2252,7 +2280,7 @@ public class AsyncYBClient implements AutoCloseable {
       attemptCount = 1;
     }
     // TODO backoffs? Sleep in increments of 500 ms, plus some random time up to 50
-    long sleepTime = (attemptCount * SLEEP_TIME) + sleepRandomizer.nextInt(50);
+    long sleepTime = (attemptCount * AsyncYBClient.sleepTime) + sleepRandomizer.nextInt(50);
 
     if (LOG.isDebugEnabled()) {
       LOG.debug("Going to sleep for " + sleepTime + " at retry " + rpc.attempt);
@@ -3516,6 +3544,10 @@ public class AsyncYBClient implements AutoCloseable {
 
     private int numTablets = DEFAULT_MAX_TABLETS;
 
+    private int maxRpcAttempts = 100;
+
+    private int sleepTime = 500;
+
     /**
      * Creates a new builder for a client that will connect to the specified masters.
      * @param masterAddresses comma-separated list of "host:port" pairs of the masters
@@ -3673,6 +3705,26 @@ public class AsyncYBClient implements AutoCloseable {
     public AsyncYBClientBuilder workerCount(int workerCount) {
       Preconditions.checkArgument(workerCount > 0, "workerCount should be greater than 0");
       this.workerCount = workerCount;
+      return this;
+    }
+
+    /**
+     * Set the maximum number of attempts to retry sending rpc to tablet.
+     * Optional
+     * If not provided, defaults to 100
+     */
+    public AsyncYBClientBuilder maxRpcAttempts(int maxRpcAttempts) {
+      this.maxRpcAttempts = maxRpcAttempts;
+      return this;
+    }
+
+    /**
+     * Set the sleep time between the rpc retries.
+     * Optional
+     * If not provided, defaults to 500
+     */
+    public AsyncYBClientBuilder sleepTime(int sleepTime) {
+      this.sleepTime = sleepTime;
       return this;
     }
 

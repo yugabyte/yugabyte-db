@@ -10,20 +10,26 @@ import static play.mvc.Http.Status.BAD_REQUEST;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.yugabyte.yw.commissioner.Commissioner;
+import com.yugabyte.yw.commissioner.tasks.CloudBootstrap;
 import com.yugabyte.yw.commissioner.tasks.CloudProviderDelete;
 import com.yugabyte.yw.commissioner.tasks.DestroyUniverse;
 import com.yugabyte.yw.commissioner.tasks.MultiTableBackup;
 import com.yugabyte.yw.commissioner.tasks.RebootNodeInUniverse;
 import com.yugabyte.yw.commissioner.tasks.params.IProviderTaskParams;
 import com.yugabyte.yw.commissioner.tasks.params.NodeTaskParams;
+import com.yugabyte.yw.commissioner.tasks.upgrade.SoftwareKubernetesUpgrade;
 import com.yugabyte.yw.common.services.YBClientService;
 import com.yugabyte.yw.forms.AbstractTaskParams;
 import com.yugabyte.yw.forms.BackupRequestParams;
 import com.yugabyte.yw.forms.BackupTableParams;
+import com.yugabyte.yw.forms.KubernetesGFlagsUpgradeParams;
+import com.yugabyte.yw.forms.KubernetesOverridesUpgradeParams;
 import com.yugabyte.yw.forms.ResizeNodeParams;
 import com.yugabyte.yw.forms.RestoreBackupParams;
+import com.yugabyte.yw.forms.SoftwareUpgradeParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseTaskParams;
+import com.yugabyte.yw.forms.VMImageUpgradeParams;
 import com.yugabyte.yw.models.Backup;
 import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Customer;
@@ -141,7 +147,8 @@ public class CustomerTaskManager {
                               || backup.getState().equals(Backup.BackupState.Stopped))
                   .collect(Collectors.groupingBy(Backup::getCategory));
 
-          backupCategoryMap.getOrDefault(BackupCategory.YB_BACKUP_SCRIPT, new ArrayList<>())
+          backupCategoryMap
+              .getOrDefault(BackupCategory.YB_BACKUP_SCRIPT, new ArrayList<>())
               .stream()
               .forEach(backup -> backup.transitionState(Backup.BackupState.Failed));
           List<Backup> ybcBackups =
@@ -369,6 +376,22 @@ public class CustomerTaskManager {
       case DestroyKubernetesUniverse:
         taskParams = Json.fromJson(oldTaskParams, DestroyUniverse.Params.class);
         break;
+      case KubernetesOverridesUpgrade:
+        taskParams = Json.fromJson(oldTaskParams, KubernetesOverridesUpgradeParams.class);
+        break;
+      case GFlagsKubernetesUpgrade:
+        taskParams = Json.fromJson(oldTaskParams, KubernetesGFlagsUpgradeParams.class);
+        break;
+      case SoftwareKubernetesUpgrade:
+        taskParams = Json.fromJson(oldTaskParams, SoftwareUpgradeParams.class);
+        break;
+      case SoftwareUpgrade:
+      case SoftwareUpgradeYB:
+        taskParams = Json.fromJson(oldTaskParams, SoftwareUpgradeParams.class);
+        break;
+      case VMImageUpgrade:
+        taskParams = Json.fromJson(oldTaskParams, VMImageUpgradeParams.class);
+        break;
       case AddNodeToUniverse:
       case RemoveNodeFromUniverse:
       case DeleteNodeFromUniverse:
@@ -483,6 +506,9 @@ public class CustomerTaskManager {
         break;
       case CloudProviderDelete:
         taskParams = Json.fromJson(oldTaskParams, CloudProviderDelete.Params.class);
+        break;
+      case CloudBootstrap:
+        taskParams = Json.fromJson(oldTaskParams, CloudBootstrap.Params.class);
         break;
       default:
         String errMsg =

@@ -567,18 +567,16 @@ check_XactIsoLevel(int *newval, void **extra, GucSource source)
 	return true;
 }
 
-#ifdef NEIL
 void
-assign_XactIsoLevel(const char *newval, void *extra)
+yb_assign_XactIsoLevel(int newval, void *extra)
 {
-	XactIsoLevel = *((int *) extra);
+	XactIsoLevel = newval;
 	if (YBTransactionsEnabled())
 	{
 		HandleYBStatus(
 			YBCPgSetTransactionIsolationLevel(YBGetEffectivePggateIsolationLevel()));
 	}
 }
-#endif
 
 const char *
 yb_fetch_effective_transaction_isolation_level(void)

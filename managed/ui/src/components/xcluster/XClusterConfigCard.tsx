@@ -5,13 +5,14 @@ import clsx from 'clsx';
 
 import RightArrow from './ArrowIcon';
 import { ReplicationParticipantCard } from './ReplicationParticipantCard';
-import { XClusterConfig } from './XClusterTypes';
 import { XClusterConfigStatus, XClusterConfigTypeLabel } from './constants';
 import { XClusterConfigStatusLabel } from './XClusterConfigStatusLabel';
-import { fetchUniversesList } from '../../actions/xClusterReplication';
-import { findUniverseName, MaxAcceptableLag, CurrentReplicationLag } from './ReplicationUtils';
-import { usePillStyles } from '../configRedesign/providerRedesign/utils';
+import { MaxAcceptableLag, CurrentReplicationLag } from './ReplicationUtils';
+import { usePillStyles } from '../../redesign/styles/styles';
 import { ybFormatDate } from '../../redesign/helpers/DateUtils';
+import { api, universeQueryKey } from '../../redesign/helpers/api';
+
+import { XClusterConfig } from './dtos';
 
 import styles from './XClusterConfigCard.module.scss';
 
@@ -25,19 +26,18 @@ export const XClusterConfigCard = ({
   currentUniverseUUID
 }: XClusterConfigCardProps) => {
   const pillClasses = usePillStyles();
-  const universeListQuery = useQuery(['universeList'], () =>
-    fetchUniversesList().then((res) => res.data)
+  const sourceUniverseQuery = useQuery(
+    universeQueryKey.detail(xClusterConfig.sourceUniverseUUID),
+    () => api.fetchUniverse(xClusterConfig.sourceUniverseUUID)
+  );
+  const targetUniverseQuery = useQuery(
+    universeQueryKey.detail(xClusterConfig.targetUniverseUUID),
+    () => api.fetchUniverse(xClusterConfig.targetUniverseUUID)
   );
 
-  const sourceUniverseName =
-    !universeListQuery.isLoading && xClusterConfig.sourceUniverseUUID
-      ? findUniverseName(universeListQuery.data, xClusterConfig.sourceUniverseUUID)
-      : '';
-  const targetUniverseName =
-    !universeListQuery.isLoading && xClusterConfig.targetUniverseUUID
-      ? findUniverseName(universeListQuery.data, xClusterConfig.targetUniverseUUID)
-      : '';
-
+  const sourceUniverseName = sourceUniverseQuery.data?.name ?? '';
+  const targetUniverseName = targetUniverseQuery.data?.name ?? '';
+  const isUniverseQueryLoading = sourceUniverseQuery.isLoading || targetUniverseQuery.isLoading;
   return (
     <div className={styles.configCard}>
       <Link to={`/universes/${currentUniverseUUID}/replication/${xClusterConfig.uuid}`}>
@@ -67,7 +67,7 @@ export const XClusterConfigCard = ({
             isSource={true}
             clusterName={sourceUniverseName}
             isCurrentUniverse={currentUniverseUUID === xClusterConfig.sourceUniverseUUID}
-            isLoading={universeListQuery.isLoading}
+            isLoading={isUniverseQueryLoading}
             isActive={xClusterConfig.sourceActive}
             xClusterConfigType={xClusterConfig.type}
           />
@@ -78,7 +78,7 @@ export const XClusterConfigCard = ({
             isSource={false}
             clusterName={targetUniverseName}
             isCurrentUniverse={currentUniverseUUID === xClusterConfig.targetUniverseUUID}
-            isLoading={universeListQuery.isLoading}
+            isLoading={isUniverseQueryLoading}
             isActive={xClusterConfig.targetActive}
             xClusterConfigType={xClusterConfig.type}
           />

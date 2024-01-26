@@ -1,6 +1,31 @@
 <script src="/js/site.js"></script>
+<!-- Add target/rel on external links -->
+<script type="module">
+import detectExternalLink from 'https://cdn.jsdelivr.net/npm/detect-external-link@2/+esm';
+if (typeof detectExternalLink === 'function') {
+  const selectLinks = document.querySelectorAll('.td-content a');
+  selectLinks.forEach(element => {
+    const linkHref = element.getAttribute('href');
+    if (linkHref !== null) {
+      const isExternal = detectExternalLink(linkHref, {
+        'hosts': [
+          'https://docs.yugabyte.com/'
+        ]
+      });
+      if (isExternal) {
+        if (!element.target) {
+          element.target = '_blank';
+          if (!element.rel) {
+            element.rel = 'noopener';
+          }
+        }
+      }
+    }
+  });
+}
+</script>
 
 {{ $layoutType := .Type }}
-{{ with .Site.Params.algolia }}
+{{ with .Site.Params.algolia_docsearch }}
   <script src="/js/search.js"></script>
 {{ end }}

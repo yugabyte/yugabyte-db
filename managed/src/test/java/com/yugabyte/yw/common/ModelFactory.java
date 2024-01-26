@@ -57,7 +57,6 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.Universe.UniverseUpdater;
 import com.yugabyte.yw.models.Users;
-import com.yugabyte.yw.models.Users.Role;
 import com.yugabyte.yw.models.common.Condition;
 import com.yugabyte.yw.models.common.Unit;
 import com.yugabyte.yw.models.configs.CustomerConfig;
@@ -69,6 +68,11 @@ import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementAZ;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementCloud;
 import com.yugabyte.yw.models.helpers.PlacementInfo.PlacementRegion;
 import com.yugabyte.yw.models.helpers.TaskType;
+import com.yugabyte.yw.models.rbac.ResourceGroup;
+import com.yugabyte.yw.models.rbac.Role;
+import com.yugabyte.yw.models.rbac.RoleBinding;
+import com.yugabyte.yw.models.rbac.RoleBinding.RoleBindingType;
+import db.migration.default_.common.R__Sync_System_Roles;
 import io.ebean.DB;
 import java.io.IOException;
 import java.security.NoSuchAlgorithmException;
@@ -113,15 +117,31 @@ public class ModelFactory {
   }
 
   public static Users testUser(Customer customer, String email) {
-    return testUser(customer, email, Role.Admin);
+    return testUser(customer, email, Users.Role.Admin);
   }
 
-  public static Users testUser(Customer customer, Role role) {
+  public static Users testUser(Customer customer, Users.Role role) {
     return testUser(customer, "test@customer.com", role);
   }
 
-  public static Users testUser(Customer customer, String email, Role role) {
+  public static Users testUser(Customer customer, String email, Users.Role role) {
     return Users.create(email, "password", role, customer.getUuid(), false);
+  }
+
+  public static Users testSuperAdminUserNewRbac(Customer customer) {
+    // Create test user.
+    Users testUser =
+        Users.create(
+            "test@customer.com", "password", Users.Role.SuperAdmin, customer.getUuid(), false);
+    // Create all built in roles.
+    R__Sync_System_Roles.syncSystemRoles();
+    Role testSuperAdminRole = Role.getOrBadRequest(customer.getUuid(), "SuperAdmin");
+    // Need to define all available resources in resource group as default.
+    ResourceGroup resourceGroup =
+        ResourceGroup.getSystemDefaultResourceGroup(customer.getUuid(), testUser);
+    // Create a single role binding for the user with super admin role.
+    RoleBinding.create(testUser, RoleBindingType.System, testSuperAdminRole, resourceGroup);
+    return testUser;
   }
 
   /*

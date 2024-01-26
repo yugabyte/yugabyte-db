@@ -280,6 +280,7 @@ SELECT tj FROM text_table WHERE yb_hash_code(tj) <= 63;
 CREATE TABLE t(h INT, r INT, PRIMARY KEY(h, r));
 INSERT INTO t VALUES(1, 1), (1, 3);
 SELECT * FROM t WHERE h = 1 AND r in(1, 3) FOR KEY SHARE;
+DROP TABLE t;
 
 -- Test for ItemPointerIsValid assertion failure
 CREATE TYPE rainbow AS ENUM ('red', 'orange', 'yellow', 'green', 'blue', 'purple');
@@ -318,3 +319,72 @@ REINDEX(verbose) INDEX yb_j_idx;
 create table texttab (t text);
 insert into texttab values ('a');
 select count(*) from texttab group by t;
+
+-- ALTER TABLE ADD COLUMN DEFAULT with pre-existing rows
+CREATE TABLE mytable (pk INT NOT NULL PRIMARY KEY);
+INSERT INTO mytable SELECT * FROM generate_series(1, 10) a;
+ALTER TABLE mytable ADD COLUMN c_bigint BIGINT NOT NULL DEFAULT -1;
+SELECT c_bigint FROM mytable WHERE c_bigint = -1 LIMIT 1;
+DROP TABLE mytable;
+
+-- Test ON CONFLICT DO UPDATE with partitioned table and non-identical children
+
+CREATE TABLE upsert_test (
+    a   INT PRIMARY KEY,
+    b   TEXT
+) PARTITION BY LIST (a);
+
+CREATE TABLE upsert_test_1 PARTITION OF upsert_test FOR VALUES IN (1);
+CREATE TABLE upsert_test_2 (b TEXT, a INT PRIMARY KEY);
+ALTER TABLE upsert_test ATTACH PARTITION upsert_test_2 FOR VALUES IN (2);
+
+INSERT INTO upsert_test VALUES(1, 'Boo'), (2, 'Zoo');
+-- uncorrelated sub-select:
+WITH aaa AS (SELECT 1 AS a, 'Foo' AS b) INSERT INTO upsert_test
+  VALUES (1, 'Bar') ON CONFLICT(a)
+  DO UPDATE SET (b, a) = (SELECT b, a FROM aaa) RETURNING *;
+-- correlated sub-select:
+WITH aaa AS (SELECT 1 AS ctea, ' Foo' AS cteb) INSERT INTO upsert_test
+  VALUES (1, 'Bar'), (2, 'Baz') ON CONFLICT(a)
+  DO UPDATE SET (b, a) = (SELECT upsert_test.b||cteb, upsert_test.a FROM aaa) RETURNING *;
+
+DROP TABLE upsert_test;
+
+-- Update partitioned table with multiple partitions
+CREATE TABLE t(id int) PARTITION BY range(id);
+CREATE TABLE t_1_100 PARTITION OF t FOR VALUES FROM (1) TO (100);
+CREATE TABLE t_101_200 PARTITION OF t FOR VALUES FROM (101) TO (200);
+INSERT INTO t VALUES (1);
+UPDATE t SET id = 2;
+SELECT * FROM t;
+DROP TABLE t;
+
+-- Update partitioned table with multiple partitions and secondary index
+CREATE TABLE t3(id int primary key, name int, add int, unique(id, name)) PARTITION BY range(id);
+CREATE TABLE t3_1_100 partition of t3 FOR VALUES FROM (1) TO (100);
+CREATE TABLE t3_101_200 partition of t3 FOR VALUES FROM (101) TO (200);
+INSERT INTO t3 VALUES (1, 1, 1);
+UPDATE t3 SET ADD = 2;
+SELECT * from t3;
+DROP TABLE t3;
+
+-- Cross partition UPDATE with nested loop join (multiple matches)
+CREATE TABLE list_parted (a int, b int) PARTITION BY list (a);
+CREATE TABLE sub_part1 PARTITION OF list_parted for VALUES in (1);
+CREATE TABLE sub_part2 PARTITION OF list_parted for VALUES in (2);
+INSERT into list_parted VALUES (1, 2);
+
+CREATE TABLE non_parted (id int);
+INSERT into non_parted VALUES (1), (1), (1);
+UPDATE list_parted t1 set a = 2 FROM non_parted t2 WHERE t1.a = t2.id and a = 1;
+SELECT * FROM list_parted;
+DROP TABLE list_parted;
+DROP TABLE non_parted;
+-- Test no segmentation fault in YbSeqscan with row marks
+CREATE TABLE main_table (a int) partition by range(a);
+CREATE TABLE main_table_1_100 partition of main_table FOR VALUES FROM (1) TO (100);
+INSERT INTO main_table VALUES (1);
+BEGIN TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+SELECT * FROM main_table;
+SELECT * FROM main_table FOR KEY SHARE;
+COMMIT;

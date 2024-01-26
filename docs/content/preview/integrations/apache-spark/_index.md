@@ -8,7 +8,7 @@ image: /images/section_icons/develop/ecosystem/apache-spark.png
 menu:
   preview_integrations:
     identifier: apache-spark
-    parent: integrations
+    parent: integrations-other
     weight: 571
 type: indexpage
 ---

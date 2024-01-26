@@ -12,13 +12,10 @@ package com.yugabyte.yw.common.swagger;
 import com.google.common.base.Strings;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.models.common.YBADeprecated;
-
-import java.text.DateFormat;
 import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.Calendar;
 import java.util.Date;
-
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j

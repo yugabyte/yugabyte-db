@@ -27,6 +27,8 @@
 #include "yb/client/table_creator.h"
 #include "yb/client/table_info.h"
 #include "yb/client/tablet_server.h"
+#include "yb/client/transaction.h"
+#include "yb/client/transaction_pool.h"
 
 #include "yb/dockv/partition.h"
 #include "yb/common/pg_types.h"
@@ -90,9 +92,7 @@ DEFINE_test_flag(uint64, delay_before_get_locks_status_ms, 0,
 
 DECLARE_uint64(transaction_heartbeat_usec);
 
-namespace yb {
-namespace tserver {
-
+namespace yb::tserver {
 namespace {
 
 template <class Resp>
@@ -102,6 +102,42 @@ void Respond(const Status& status, Resp* resp, rpc::RpcContext* context) {
   }
   context->RespondSuccess();
 }
+
+class TxnAssignment {
+ public:
+  using Watcher = std::shared_ptr<client::YBTransactionPtr>;
+
+  explicit TxnAssignment(rw_spinlock* mutex) : mutex_(*mutex) {}
+
+  void Assign(const Watcher& watcher, IsDDL is_ddl) {
+    std::lock_guard lock(mutex_);
+    *(is_ddl ? &ddl_ : &plain_) = watcher;
+  }
+
+  client::YBTransactionPtr Get() {
+    SharedLock lock(mutex_);
+    // TODO(kramanathan): Return the DDL txn in preference to the plain txn until GHI #18451 is
+    // resolved.
+    auto ddl = ddl_.lock();
+    if (ddl) {
+      return *ddl;
+    }
+
+    auto plain = plain_.lock();
+    if (plain) {
+      return *plain;
+    }
+
+    return nullptr;
+  }
+
+ private:
+  using WatcherWeak = Watcher::weak_type;
+
+  rw_spinlock& mutex_;
+  WatcherWeak plain_;
+  WatcherWeak ddl_;
+};
 
 class PgClientSessionLocker;
 
@@ -118,7 +154,7 @@ class LockablePgClientSession : public PgClientSession {
       Touch();
       std::shared_ptr<CountDownLatch> latch;
       {
-        std::unique_lock<std::mutex> lock(mutex_);
+        std::unique_lock lock(mutex_);
         latch = ProcessSharedRequest(size, &exchange_->exchange());
       }
       if (latch) {
@@ -155,28 +191,107 @@ class LockablePgClientSession : public PgClientSession {
   std::atomic<CoarseTimePoint> expiration_;
 };
 
-class PgClientSessionLocker {
+template <class T>
+class DeferredConstructible {
  public:
-  using LockablePtr = std::shared_ptr<LockablePgClientSession>;
+  DeferredConstructible() = default;
 
-  explicit PgClientSessionLocker(const LockablePtr& lockable)
-      : lockable_(lockable), lock_(lockable->mutex_) {
+  ~DeferredConstructible() {
+    get().~T();
   }
 
-  PgClientSession& operator*() const {
-    return *lockable_;
+  T& get() const {
+#ifndef NDEBUG
+    DCHECK(initialized_);
+#endif
+    return *pointer_cast<T*>(holder_);
   }
 
-  PgClientSession* operator->() const {
-    return lockable_.get();
+  template <class... Args>
+  void Init(Args&&... args) {
+#ifndef NDEBUG
+    DCHECK(!initialized_);
+    initialized_ = true;
+#endif
+    new (holder_) T(std::forward<Args>(args)...);
   }
 
  private:
-  LockablePtr lockable_;
+  mutable char holder_[sizeof(T)];
+#ifndef NDEBUG
+  bool initialized_{false};
+#endif
+
+  DISALLOW_COPY_AND_ASSIGN(DeferredConstructible);
+};
+
+using TransactionBuilder = std::function<
+    client::YBTransactionPtr(
+        TxnAssignment* dest, IsDDL, client::ForceGlobalTransaction, CoarseTimePoint)>;
+
+class SessionInfo {
+ public:
+  LockablePgClientSession& session() { return session_.get(); }
+
+  uint64_t id() const { return session_.get().id(); }
+
+  TxnAssignment& txn_assignment() { return txn_assignment_; }
+
+  template <class... Args>
+  static auto Make(rw_spinlock* txn_assignment_mutex,
+                   CoarseDuration lifetime,
+                   const TransactionBuilder& builder,
+                   Args&&... args) {
+    struct ConstructorAccessor : public SessionInfo {
+      explicit ConstructorAccessor(rw_spinlock* txn_assignment_mutex)
+          : SessionInfo(txn_assignment_mutex) {}
+    };
+    auto accessor = std::make_shared<ConstructorAccessor>(txn_assignment_mutex);
+    SessionInfo* session_info = accessor.get();
+    session_info->session_.Init(
+        lifetime,
+        [&builder, txn_assignment = &session_info->txn_assignment_](auto&&... builder_args) {
+          return builder(txn_assignment, std::forward<decltype(builder_args)>(builder_args)...);
+        },
+        accessor,
+        std::forward<Args>(args)...);
+    return std::shared_ptr<SessionInfo>(std::move(accessor), session_info);
+  }
+
+ private:
+  explicit SessionInfo(rw_spinlock* txn_assignment_mutex)
+      : txn_assignment_(txn_assignment_mutex) {}
+
+  TxnAssignment txn_assignment_;
+  DeferredConstructible<LockablePgClientSession> session_;
+};
+
+void AddTransactionInfo(
+    PgGetActiveTransactionListResponsePB* out, SessionInfo* src) {
+  auto txn = src->txn_assignment().Get();
+  if (txn) {
+    auto& entry = *out->add_entries();
+    entry.set_session_id(src->id());
+    txn->id().AsSlice().CopyToBuffer(entry.mutable_txn_id());
+  }
+}
+
+using LockablePgClientSessionPtr = std::shared_ptr<LockablePgClientSession>;
+
+class PgClientSessionLocker {
+ public:
+  explicit PgClientSessionLocker(LockablePgClientSessionPtr lockable)
+      : lockable_(std::move(lockable)), lock_(lockable_->mutex_) {
+  }
+
+  PgClientSession* operator->() const { return lockable_.get(); }
+
+ private:
+  LockablePgClientSessionPtr lockable_;
   std::unique_lock<std::mutex> lock_;
 };
 
-using LockablePgClientSessionPtr = std::shared_ptr<LockablePgClientSession>;
+using SessionInfoPtr = std::shared_ptr<SessionInfo>;
 using OldTxnsRespPtr = std::shared_ptr<tserver::GetOldTransactionsResponsePB>;
 using RemoteTabletServerPtr = std::shared_ptr<client::internal::RemoteTabletServer>;
 using OldTransactionMetadataPB = tserver::GetOldTransactionsResponsePB::OldTransactionMetadataPB;
@@ -192,19 +307,6 @@ void GetTablePartitionList(const client::YBTablePtr& table, PgTablePartitionsPB*
     *partition_keys->Add() = key;
   }
   partition_list->set_version(table_partition_list->version);
-}
-
-void AddTransactionInfo(
-    PgGetActiveTransactionListResponsePB* out, const PgClientSessionLocker& locker) {
-  auto& session = *locker;
-  const auto* txn_id = session.GetTransactionId();
-  if (!txn_id) {
-    return;
-  }
-
-  auto& entry = *out->add_entries();
-  entry.set_session_id(session.id());
-  txn_id->AsSlice().CopyToBuffer(entry.mutable_txn_id());
 }
 
 } // namespace
@@ -244,7 +346,10 @@ class PgClientServiceImpl::Impl {
         xcluster_context_(xcluster_context),
         pg_node_level_mutation_counter_(pg_node_level_mutation_counter),
         response_cache_(parent_mem_tracker, metric_entity),
-        instance_id_(Uuid::Generate()) {
+        instance_id_(Uuid::Generate()),
+        transaction_builder_([this](auto&&... args) {
+          return BuildTransaction(std::forward<decltype(args)>(args)...);
+        }) {
     ScheduleCheckExpiredSessions(CoarseMonoClock::now());
   }
 
@@ -263,19 +368,20 @@ class PgClientServiceImpl::Impl {
     }
 
     auto session_id = ++session_serial_no_;
-    auto session = std::make_shared<LockablePgClientSession>(
-        FLAGS_pg_client_session_expiration_ms * 1ms, session_id, &client(), clock_,
-        transaction_pool_provider_, &table_cache_, xcluster_context_,
+    auto session_info = SessionInfo::Make(
+        &txns_assignment_mutexes_[session_id % txns_assignment_mutexes_.size()],
+        FLAGS_pg_client_session_expiration_ms * 1ms,
+        transaction_builder_, session_id, &client(), clock_, &table_cache_, xcluster_context_,
         pg_node_level_mutation_counter_, &response_cache_, &sequence_cache_);
     resp->set_session_id(session_id);
     if (FLAGS_pg_client_use_shared_memory) {
       resp->set_instance_id(instance_id_.data(), instance_id_.size());
-      session->StartExchange(instance_id_);
+      session_info->session().StartExchange(instance_id_);
     }
 
     std::lock_guard lock(mutex_);
-    auto it = sessions_.insert(std::move(session)).first;
-    session_expiration_queue_.push({(**it).expiration(), session_id});
+    auto it = sessions_.insert(std::move(session_info)).first;
+    session_expiration_queue_.push({(**it).session().expiration(), session_id});
     return Status::OK();
   }
 
@@ -395,7 +501,7 @@ class PgClientServiceImpl::Impl {
   // Comparator used for maintaining a max heap of old transactions based on their start times.
   struct OldTransactionComparator {
     bool operator()(
-        const OldTransactionMetadataPBPtr lhs, const OldTransactionMetadataPBPtr rhs) const {
+        const OldTransactionMetadataPBPtr& lhs, const OldTransactionMetadataPBPtr& rhs) const {
       // Order is reversed so that we pop newer transactions first.
       if (lhs->start_time() != rhs->start_time()) {
         return lhs->start_time() < rhs->start_time();
@@ -915,7 +1021,7 @@ class PgClientServiceImpl::Impl {
       const PgGetActiveTransactionListRequestPB& req, PgGetActiveTransactionListResponsePB* resp,
       rpc::RpcContext* context) {
     if (req.has_session_id()) {
-      AddTransactionInfo(resp, VERIFY_RESULT(GetSession(req.session_id().value())));
+      AddTransactionInfo(resp, VERIFY_RESULT(GetSessionInfo(req.session_id().value())).get());
       return Status::OK();
     }
 
@@ -926,7 +1032,7 @@ class PgClientServiceImpl::Impl {
     }
 
     for (const auto& session : sessions_snapshot) {
-      AddTransactionInfo(resp, PgClientSessionLocker(session));
+      AddTransactionInfo(resp, session.get());
     }
 
     return Status::OK();
@@ -1005,7 +1111,21 @@ class PgClientServiceImpl::Impl {
     return VERIFY_RESULT(GetSession(req))->method(req, resp, context); \
   }
 
+  #define PG_CLIENT_SESSION_ASYNC_METHOD_FORWARD(r, data, method) \
+  void method( \
+      const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)& req, \
+      BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)* resp, \
+      rpc::RpcContext context) { \
+    const auto session = GetSession(req); \
+    if (!session.ok()) { \
+      Respond(session.status(), resp, &context); \
+      return; \
+    } \
+    (*session)->method(req, resp, std::move(context)); \
+  }
+
   BOOST_PP_SEQ_FOR_EACH(PG_CLIENT_SESSION_METHOD_FORWARD, ~, PG_CLIENT_SESSION_METHODS);
+  BOOST_PP_SEQ_FOR_EACH(PG_CLIENT_SESSION_ASYNC_METHOD_FORWARD, ~, PG_CLIENT_SESSION_ASYNC_METHODS);
 
   size_t TEST_SessionsCount() {
     SharedLock lock(mutex_);
@@ -1020,15 +1140,19 @@ class PgClientServiceImpl::Impl {
     return GetSession(req.session_id());
   }
 
-  Result<LockablePgClientSessionPtr> DoGetSession(uint64_t session_id) {
-    SharedLock<rw_spinlock> lock(mutex_);
+  Result<SessionInfoPtr> GetSessionInfo(uint64_t session_id) {
     DCHECK_NE(session_id, 0);
+    SharedLock lock(mutex_);
     auto it = sessions_.find(session_id);
-    if (it == sessions_.end()) {
-      return STATUS_FORMAT(InvalidArgument, "Unknown session: $0", session_id);
-    }
-    (**it).Touch();
+    SCHECK(it != sessions_.end(), InvalidArgument, "Unknown session: $0", session_id);
     return *it;
+  }
+
+  Result<LockablePgClientSessionPtr> DoGetSession(uint64_t session_id) {
+    auto session_info = VERIFY_RESULT(GetSessionInfo(session_id));
+    LockablePgClientSessionPtr result(session_info, &session_info->session());
+    result->Touch();
+    return result;
   }
 
   Result<PgClientSessionLocker> GetSession(uint64_t session_id) {
@@ -1059,7 +1183,7 @@ class PgClientServiceImpl::Impl {
       session_expiration_queue_.pop();
       auto it = sessions_.find(id);
       if (it != sessions_.end()) {
-        auto current_expiration = (**it).expiration();
+        auto current_expiration = (**it).session().expiration();
         if (current_expiration > now) {
           session_expiration_queue_.push({current_expiration, id});
         } else {
@@ -1074,6 +1198,16 @@ class PgClientServiceImpl::Impl {
     return VERIFY_RESULT(GetSession(*req))->Perform(req, resp, context);
   }
 
+  [[nodiscard]] client::YBTransactionPtr BuildTransaction(
+      TxnAssignment* dest, IsDDL is_ddl, client::ForceGlobalTransaction force_global,
+      CoarseTimePoint deadline) {
+    auto watcher = std::make_shared<client::YBTransactionPtr>(
+        transaction_pool_provider_().Take(force_global, deadline));
+    dest->Assign(watcher, is_ddl);
+    auto* txn = &**watcher;
+    return {std::move(watcher), txn};
+  }
+
   const TabletServerIf& tablet_server_;
   std::shared_future<client::YBClient*> client_future_;
   scoped_refptr<ClockBase> clock_;
@@ -1082,10 +1216,10 @@ class PgClientServiceImpl::Impl {
   rw_spinlock mutex_;
 
   boost::multi_index_container<
-      LockablePgClientSessionPtr,
+      SessionInfoPtr,
       boost::multi_index::indexed_by<
           boost::multi_index::hashed_unique<
-              boost::multi_index::const_mem_fun<PgClientSession, uint64_t, &PgClientSession::id>
+              boost::multi_index::const_mem_fun<SessionInfo, uint64_t, &SessionInfo::id>
           >
       >
   > sessions_ GUARDED_BY(mutex_);
@@ -1117,6 +1251,9 @@ class PgClientServiceImpl::Impl {
   PgSequenceCache sequence_cache_;
 
   const Uuid instance_id_;
+
+  std::array<rw_spinlock, 8> txns_assignment_mutexes_;
+  TransactionBuilder transaction_builder_;
 };
 
 PgClientServiceImpl::PgClientServiceImpl(
@@ -1157,7 +1294,15 @@ void PgClientServiceImpl::method( \
   Respond(impl_->method(*req, resp, &context), resp, &context); \
 }
 
-BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DEFINE, ~, YB_PG_CLIENT_METHODS);
+#define YB_PG_CLIENT_ASYNC_METHOD_DEFINE(r, data, method) \
+void PgClientServiceImpl::method( \
+    const BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), RequestPB)* req, \
+    BOOST_PP_CAT(BOOST_PP_CAT(Pg, method), ResponsePB)* resp, \
+    rpc::RpcContext context) { \
+  impl_->method(*req, resp, std::move(context)); \
+}
 
-}  // namespace tserver
-}  // namespace yb
+BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DEFINE, ~, YB_PG_CLIENT_METHODS);
+BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_ASYNC_METHOD_DEFINE, ~, YB_PG_CLIENT_ASYNC_METHODS);
+
+}  // namespace yb::tserver

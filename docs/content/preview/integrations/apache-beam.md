@@ -5,7 +5,7 @@ description: Apache Beam
 menu:
   preview_integrations:
     identifier: apache-beam
-    parent: integrations
+    parent: data-integration
     weight: 571
 type: docs
 ---

@@ -9,6 +9,8 @@
 
 import { FC, useContext } from 'react';
 import copy from 'copy-to-clipboard';
+import { useQuery } from 'react-query';
+import { find, isEmpty } from 'lodash';
 import { Link } from 'react-router';
 import { useTranslation } from 'react-i18next';
 
@@ -18,11 +20,15 @@ import { YBButton } from '../../../redesign/components';
 import { formatBytes } from '../../xcluster/ReplicationUtils';
 import { ENTITY_NOT_AVAILABLE, calculateDuration } from '../common/BackupUtils';
 import { Badge_Types, StatusBadge } from '../../common/badge/StatusBadge';
+import { api } from '../../../redesign/helpers/api';
 import { ybFormatDate } from '../../../redesign/helpers/DateUtils';
 import { IRestore } from '../common/IRestore';
 import { RestoreContextMethods, RestoreDetailsContext } from './RestoreContext';
 import { TableType } from '../../../redesign/helpers/dtos';
 import ArrowRight from '../components/restore/icons/RightArrowCircled.svg';
+import { BootstrapTable, TableHeaderColumn } from 'react-bootstrap-table';
+import { useToggle } from 'react-use';
+import clsx from 'clsx';
 
 const useStyles = makeStyles((theme) => ({
   restoreDetailsPanel: {
@@ -87,8 +93,6 @@ const useStyles = makeStyles((theme) => ({
     cursor: 'pointer'
   },
   header: {
-    color: theme.palette.orange[500],
-    textDecoration: 'underline',
     marginTop: theme.spacing(1)
   },
   divider: {
@@ -102,6 +106,10 @@ const useStyles = makeStyles((theme) => ({
     columnGap: '72px',
     flexWrap: 'wrap',
     rowGap: '24px'
+  },
+  link: {
+    color: theme.palette.orange[500],
+    textDecoration: 'underline'
   }
 }));
 
@@ -111,8 +119,12 @@ export const RestoreDetails = () => {
     RestoreDetailsContext
   ) as unknown) as RestoreContextMethods;
 
-  const { t } = useTranslation("translation", {
+  const { t } = useTranslation('translation', {
     keyPrefix: 'restore.restoreDetails'
+  });
+
+  const { data: universesList } = useQuery(['universes'], () => api.fetchUniverseList(), {
+    refetchOnMount: false
   });
 
   if (!selectedRestore) return null;
@@ -138,19 +150,28 @@ export const RestoreDetails = () => {
                 {t('sourceUniverse')}
               </Typography>
               <CopyUUID uuid={selectedRestore.sourceUniverseUUID} />
-              <Link
-                target="_blank"
-                to={`/universes/${selectedRestore.sourceUniverseUUID}`}
-                onClick={(e) => {
-                  e.stopPropagation();
-                }}
-              >
+              {find(universesList, { universeUUID: selectedRestore.sourceUniverseUUID }) ? (
+                <Link
+                  target="_blank"
+                  to={`/universes/${selectedRestore.sourceUniverseUUID}`}
+                  className={classes.link}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                  }}
+                >
+                  <div className={classes.header}>
+                    {selectedRestore.sourceUniverseName
+                      ? selectedRestore.sourceUniverseName
+                      : ENTITY_NOT_AVAILABLE}
+                  </div>
+                </Link>
+              ) : (
                 <div className={classes.header}>
                   {selectedRestore.sourceUniverseName
                     ? selectedRestore.sourceUniverseName
                     : ENTITY_NOT_AVAILABLE}
                 </div>
-              </Link>
+              )}
             </div>
             <img className={classes.arrowIcon} src={ArrowRight} alt="arrowRight" />
             <div>
@@ -158,11 +179,28 @@ export const RestoreDetails = () => {
                 {t('targetUniverse')}
               </Typography>
               <CopyUUID uuid={selectedRestore.universeUUID} />
-              <div className={classes.header}>
-                {selectedRestore.targetUniverseName
-                  ? selectedRestore.targetUniverseName
-                  : ENTITY_NOT_AVAILABLE}
-              </div>
+              {find(universesList, { universeUUID: selectedRestore.universeUUID }) ? (
+                <Link
+                  target="_blank"
+                  to={`/universes/${selectedRestore.universeUUID}`}
+                  className={classes.link}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                  }}
+                >
+                  <div className={classes.header}>
+                    {selectedRestore.targetUniverseName
+                      ? selectedRestore.targetUniverseName
+                      : ENTITY_NOT_AVAILABLE}
+                  </div>
+                </Link>
+              ) : (
+                <div className={classes.header}>
+                  {selectedRestore.targetUniverseName
+                    ? selectedRestore.targetUniverseName
+                    : ENTITY_NOT_AVAILABLE}
+                </div>
+              )}
             </div>
           </div>
           <div className={classes.divider} />
@@ -184,7 +222,11 @@ export const RestoreDetails = () => {
                 {t('tableType')}
               </Typography>
               <div>
-                {selectedRestore.backupType ? selectedRestore?.backupType === TableType.PGSQL_TABLE_TYPE ? 'YSQL' : 'YCQL' : '-'}
+                {selectedRestore.backupType
+                  ? selectedRestore?.backupType === TableType.PGSQL_TABLE_TYPE
+                    ? 'YSQL'
+                    : 'YCQL'
+                  : '-'}
               </div>
             </div>
             <div>
@@ -192,8 +234,9 @@ export const RestoreDetails = () => {
                 {t('backupDate')}
               </Typography>
               <div>
-                {selectedRestore?.backupCreatedOnDate ?
-                  ybFormatDate(selectedRestore.backupCreatedOnDate) : '-'}
+                {selectedRestore?.backupCreatedOnDate
+                  ? ybFormatDate(selectedRestore.backupCreatedOnDate)
+                  : '-'}
               </div>
             </div>
             <div>
@@ -226,7 +269,7 @@ export const RestoreDetails = () => {
 
 const CopyUUID = ({ uuid }: { uuid: string }) => {
   const classes = useStyles();
-  const { t } = useTranslation("translation", {
+  const { t } = useTranslation('translation', {
     keyPrefix: 'restore.restoreDetails'
   });
 
@@ -265,14 +308,30 @@ const RestoreDBDetailsStyles = makeStyles((theme) => ({
       borderBottom: '1px solid rgba(0,0,0,0.1)'
     }
   },
+  clickable: {
+    cursor: 'pointer'
+  },
   copyButton: {
     padding: '5px 10px',
-    opacity: 0.5
+    opacity: 0.9
   },
   buttonLabel: {
     color: theme.palette.ybacolors.ybDarkGray,
     fontSize: '12px',
     fontWeight: 500
+  },
+  tableNameList: {
+    marginLeft: '75px',
+    marginTop: '15px'
+  },
+  header: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-start',
+    '& i': {
+      fontSize: '18px',
+      marginRight: '15px'
+    }
   }
 }));
 type RestoreDBDetailsProps = {
@@ -280,29 +339,79 @@ type RestoreDBDetailsProps = {
 };
 const RestoreDBDetails: FC<RestoreDBDetailsProps> = ({ restoreDetails }) => {
   const classes = RestoreDBDetailsStyles();
-  const { t } = useTranslation("translation", {
+  const { t } = useTranslation('translation', {
     keyPrefix: 'restore.restoreDetails'
   });
+
+  if (restoreDetails.restoreKeyspaceList.length === 0) return null;
+
   return (
     <div className={classes.root}>
       <Typography variant="body1" className={classes.title}>
         {t('database')}
       </Typography>
-      {restoreDetails.restoreKeyspaceList.map((restore) => (
-        <div className={classes.databaseItem}>
-          {restore.targetKeyspace}
-          <YBButton
-            className={classes.copyButton}
-            variant="secondary"
-            onClick={() => {
-              copy(restore.storageLocation);
-              toast.success(t('copied'));
-            }}
-          >
-            <span className={classes.buttonLabel}>{t('copyBackupLocation')}</span>
-          </YBButton>
-        </div>
-      ))}
+      {restoreDetails.restoreKeyspaceList.map((restore) => {
+        return <DbItem restore={restore} restoreDetails={restoreDetails} />;
+      })}
     </div>
+  );
+};
+
+const COLLAPSED_ICON = <i className="fa fa-caret-right expand-keyspace-icon" />;
+const EXPANDED_ICON = <i className="fa fa-caret-down expand-keyspace-icon" />;
+
+const DbItem = ({
+  restore,
+  restoreDetails
+}: {
+  restore: IRestore['restoreKeyspaceList'][number];
+  restoreDetails: IRestore;
+}) => {
+  const classes = RestoreDBDetailsStyles();
+
+  const [expanded, toggleExpanded] = useToggle(false);
+
+  const { t } = useTranslation('translation', {
+    keyPrefix: 'restore.restoreDetails'
+  });
+  const hasTableList =
+    restoreDetails.backupType === TableType.YQL_TABLE_TYPE && !isEmpty(restore.tableNameList);
+  return (
+    <>
+      <div
+        className={clsx(classes.databaseItem, hasTableList && classes.clickable)}
+        onClick={() => {
+          toggleExpanded(!expanded);
+        }}
+      >
+        <span className={classes.header}>
+          {hasTableList ? (expanded ? EXPANDED_ICON : COLLAPSED_ICON) : null}
+          {restore.targetKeyspace}
+        </span>
+        <YBButton
+          className={classes.copyButton}
+          variant="secondary"
+          onClick={(e) => {
+            e.stopPropagation();
+            copy(restore.storageLocation);
+            toast.success(t('copied'));
+          }}
+        >
+          <span className={classes.buttonLabel}>{t('copyBackupLocation')}</span>
+        </YBButton>
+      </div>
+      {expanded && hasTableList && (
+        <div className={classes.tableNameList}>
+          <Typography variant="body1" className={classes.title}>
+            {t('tables')}
+          </Typography>
+          {restore?.tableNameList?.map((t) => (
+            <div key={t} className={classes.databaseItem}>
+              {t}
+            </div>
+          ))}
+        </div>
+      )}
+    </>
   );
 };

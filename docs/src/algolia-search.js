@@ -1,5 +1,6 @@
 import algoliasearch from 'algoliasearch';
 
+/* eslint no-underscore-dangle: 0 */
 (function () {
   const ignoreClickOnMeElement = document.querySelector('body:not(.td-searchpage) .search-area');
   const searchInput = document.getElementById('search-query');
@@ -59,16 +60,51 @@ import algoliasearch from 'algoliasearch';
   function docsSection(hitIs) {
     let content = '';
     hitIs.forEach(hit => {
-      const hitLevel0 = hit.hierarchy.lvl0;
-      if (!hitLevel0) {
-        return;
+      let pageBreadcrumb = '';
+      let pageHash = '';
+      let pageTitle = '';
+
+      if (hit.headers[0]) {
+        pageTitle = hit.headers[0];
+      } else if (hit.title) {
+        pageTitle = hit.title;
+      }
+
+      if (hit.breadcrumb) {
+        pageBreadcrumb = hit.breadcrumb;
+      }
+
+      if (hit._highlightResult.title.matchLevel !== 'full' && hit._highlightResult.description.matchLevel !== 'full') {
+        let partialHeaderMatched = 0;
+        if (hit._highlightResult.headers) {
+          hit._highlightResult.headers.every(pageHeader => {
+            if (pageHeader.matchLevel) {
+              if (pageHeader.matchLevel === 'full') {
+                pageHash = `#${pageHeader.value.toLowerCase().trim()}`;
+                pageHash = pageHash.replace(/<em>|<\/em>/g, '').replace(/\s+|_/g, '-');
+              } else if (pageHeader.matchLevel === 'partial') {
+                if (pageHeader.matchedWords.length > partialHeaderMatched) {
+                  partialHeaderMatched = pageHeader.matchedWords.length;
+                  pageHash = `#${pageHeader.value.toLowerCase().trim()}`;
+                  pageHash = pageHash.replace(/<em>|<\/em>/g, '').replace(/\s+|_/g, '-');
+                }
+              }
+
+              if (pageHeader.matchLevel === 'full') {
+                return false;
+              }
+            }
+
+            return true;
+          });
+        }
       }
 
       content += `<li>
         <div class="search-title">
-          <a href="${hit.url.replace(/^(?:\/\/|[^/]+)*\//, '/')}">
-            <span class="search-title-inner">${hitLevel0}</span>
-            <div class="breadcrumb-item">${hit.breadcrumb}</div>
+          <a href="${hit.url.replace(/^(?:\/\/|[^/]+)*\//, '/')}${pageHash}">
+            <span class="search-title-inner">${pageTitle}</span>
+            <div class="breadcrumb-item">${pageBreadcrumb}</div>
           </a>
         </div>
       </li>`;
@@ -190,14 +226,13 @@ import algoliasearch from 'algoliasearch';
       perPageCount = 10;
     }
 
-    const client = algoliasearch('UMBCUJCBE8', 'e2f160cd7efe96b0ada15fd27f297d66');
-    const index = client.initIndex('yugabyte_docs');
+    const client = algoliasearch('UMBCUJCBE8', 'b6c4bdb11b865250add6fecc38d8ebdf');
+    const index = client.initIndex('yugabytedb_docs');
     const pageItems = searchURLParameter('page');
     const searchpagerparent = document.querySelector('#pagination-docs');
     const searchOptions = {
       hitsPerPage: perPageCount,
       page: 0,
-      filters: 'version:"preview"',
     };
 
     if (pageItems && pageItems > 0) {
@@ -211,7 +246,7 @@ import algoliasearch from 'algoliasearch';
         let pagerDetails = {};
         let sectionHTML = '';
         sectionHTML += docsSection(hits);
-        if (hits.length > 0) {
+        if (hits.length > 0 && sectionHTML !== '') {
           document.getElementById('doc-hit').innerHTML = sectionHTML;
         } else {
           document.getElementById('doc-hit').innerHTML = `<li class="no-result">0 results found for <b>"${searchValue}"</b></li>`;

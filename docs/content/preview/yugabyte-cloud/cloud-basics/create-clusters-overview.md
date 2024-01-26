@@ -52,7 +52,7 @@ Multi-region clusters are resilient to region-level outages, and are available i
 - **Read replica**. Replica clusters are added to an existing primary cluster and deployed in separate regions, typically remote from the primary. Data is written in the primary cluster, and copied to the read replicas, where it can be read. The primary cluster still gets all write requests, while read requests can go either to the primary cluster or to the read replica clusters depending on which is closest.
 <!-- - **Cross-cluster**. Two clusters are deployed in separate regions. Data is shared between the clusters, either in one direction, or asynchronously. -->
 
-Multi-region clusters must be deployed in VPCs, with each region or read replica deployed in its own VPC. Refer to [VPC networking](../cloud-vpcs/).
+Multi-region clusters must be deployed in VPCs, with each region and read replica deployed in a VPC. Refer to [VPC networking](../cloud-vpcs/).
 
 For more details, refer to [Topologies](../create-clusters-topology/).
 
@@ -81,8 +81,8 @@ For best performance as well as lower data transfer costs, you want to minimize 
 
 For lowest possible network latency and data transfer costs, deploy your cluster in a VPC on the same cloud provider as your application VPC. This configuration also provides the best security. You can connect your cluster to the application VPC in the following ways:
 
-- [Peering](../cloud-vpcs/cloud-add-peering/) [AWS or GCP]. For best results, your application should located in one of the regions where your cluster is deployed.
-- [Private link](../cloud-vpcs/cloud-add-endpoint/) [AWS or Azure]. To connect using a private link, the link endpoints (your cluster and the application) must be in the same region.
+- [Peering](../cloud-vpcs/cloud-add-peering/) [AWS or GCP]. For best results, your application should be located in one of the regions where your cluster is deployed.
+- [Private link](../cloud-vpcs/cloud-add-endpoint/) [AWS or Azure]. To connect using a private link, the link endpoints (your cluster and the application VPC) must be in the same region.
 
 For a list of supported regions, refer to [Cloud provider regions](#cloud-provider-regions).
 
@@ -251,22 +251,21 @@ The following **Azure regions** are available:
 - Sao Paulo State (brazilsouth)
 - Toronto (canadacentral)
 - Pune (centralindia)
-- Iowa (centralus)*
+- Iowa (centralus)
 - Hong Kong (eastasia)
 - Virginia (eastus)
 - Virginia (eastus2)*
 - Paris (francecentral)
-- Frankfurt (germanywestcentral)*
 - Tokyo, Saitama (japaneast)*
 - Seoul (koreacentral)*
 - Ireland (northeurope)
 - Norway (norwayeast)
 - Johannesburg (southafricanorth)*
 - Texas (southcentralus)*
-- Singapore (southeastasia)*
 - Zurich (switzerlandnorth)
 - Dubai (uaenorth)*
 - London (uksouth)
+- Netherlands (westeurope)
 - Washington (westus2)
 - Phoenix (westus3)
 

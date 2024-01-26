@@ -1,0 +1,43 @@
+apiVersion: apiextensions.k8s.io/v1
+kind: CustomResourceDefinition
+metadata:
+  name: restorejobs.operator.yugabyte.io
+spec:
+  group: operator.yugabyte.io
+  scope: Namespaced
+  names:
+    plural: restorejobs
+    singular: restorejob
+    kind: RestoreJob
+  versions:
+    - name: v1alpha1
+      subresources:
+        status: {}
+      served: true
+      storage: true
+      schema:
+        openAPIV3Schema:
+          type: object
+          properties:
+            status:
+              type: object
+              properties:
+                message:
+                  type: string
+                taskUUID:
+                  type: string
+                resourceUUID:
+                  type: string
+            spec:
+              type: object
+              properties:
+                actionType:
+                  type: string
+                  enum:
+                    - RESTORE
+                universe:
+                  type: string
+                backup:
+                  type: string
+                keyspace:
+                  type: string

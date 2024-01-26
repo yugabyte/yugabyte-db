@@ -67,7 +67,7 @@ var installCmd = &cobra.Command{
 			log.Fatal("failed to write state: " + err.Error())
 		}
 
-		common.Install(common.GetVersion())
+		common.Install(ybaCtl.Version())
 
 		for _, name := range serviceOrder {
 			log.Info("About to install component " + name)
@@ -80,7 +80,7 @@ var installCmd = &cobra.Command{
 		if err := ybactlstate.StoreState(state); err != nil {
 			log.Fatal("after full install, failed to update state: " + err.Error())
 		}
-		common.WaitForYBAReady()
+		common.WaitForYBAReady(ybaCtl.Version())
 
 		var statuses []common.Status
 		for _, name := range serviceOrder {

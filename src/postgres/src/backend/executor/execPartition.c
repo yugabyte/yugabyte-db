@@ -518,10 +518,20 @@ ExecInitPartitionInfo(ModifyTableState *mtstate, EState *estate,
 
 	partrel = table_open(partOid, RowExclusiveLock);
 
+	/*
+	 * The result relation's range table index passed into InitResultRelInfo
+	 * later gets used in the YB code-path to fetch range table entry
+	 * during YBExecUpdateAct(). The actual nominalRelation value needs to be
+	 * passed on in order to correctly fetch the entry.
+	 */
+	int resultRelationIndex =
+			(!IsYBRelation(firstResultRel) ||
+			 partrel->rd_rel->relkind == RELKIND_FOREIGN_TABLE) ? 0 :
+			(node ? node->nominalRelation : 1);
 	leaf_part_rri = makeNode(ResultRelInfo);
 	InitResultRelInfo(leaf_part_rri,
 					  partrel,
-					  0,
+					  resultRelationIndex,
 					  rootResultRelInfo,
 					  estate->es_instrument);
 
@@ -821,7 +831,8 @@ ExecInitPartitionInfo(ModifyTableState *mtstate, EState *estate,
 											  partrelDesc,
 											  econtext,
 											  onconfl->oc_ProjSlot,
-											  &mtstate->ps);
+											  &mtstate->ps,
+											  node->ybUseScanTupleInUpdate);
 
 				/*
 				 * If there is a WHERE clause, initialize state where it will
@@ -942,7 +953,8 @@ ExecInitPartitionInfo(ModifyTableState *mtstate, EState *estate,
 												  RelationGetDescr(leaf_part_rri->ri_RelationDesc),
 												  econtext,
 												  leaf_part_rri->ri_newTupleSlot,
-												  NULL);
+												  NULL,
+												  node->ybUseScanTupleInUpdate);
 					break;
 				case CMD_DELETE:
 					break;

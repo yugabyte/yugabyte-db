@@ -193,7 +193,7 @@ ERROR:  column "a" of relation "itest4" is not an identity column
 ALTER TABLE itest4 ALTER COLUMN a DROP IDENTITY IF EXISTS;  -- noop
 NOTICE:  column "a" of relation "itest4" is not an identity column, skipping
 INSERT INTO itest4 DEFAULT VALUES;  -- fails because NOT NULL is not dropped
-ERROR:  null value in column "a" violates not-null constraint
+ERROR:  null value in column "a" of relation "itest4" violates not-null constraint
 DETAIL:  Failing row contains (null, ).
 ALTER TABLE itest4 ALTER COLUMN a DROP NOT NULL;
 INSERT INTO itest4 DEFAULT VALUES;

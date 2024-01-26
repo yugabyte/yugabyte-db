@@ -256,6 +256,7 @@ typedef struct ModifyTable
 	List	   *ybColumnRefs;	/* colrefs to evaluate pushdown expressions */
 	bool		no_row_trigger; /* planner has checked no triggers apply */
 	List	   *no_update_index_list; /* OIDs of indexes to be aren't updated */
+	bool 		ybUseScanTupleInUpdate; /* use old scan tuple in UPDATE to construct the new tuple */
 } ModifyTable;
 
 struct PartitionPruneInfo;		/* forward reference to struct below */

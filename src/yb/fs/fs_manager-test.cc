@@ -32,7 +32,7 @@
 
 #include <boost/algorithm/string/predicate.hpp>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <glog/stl_logging.h>
 #include <gtest/gtest.h>
 

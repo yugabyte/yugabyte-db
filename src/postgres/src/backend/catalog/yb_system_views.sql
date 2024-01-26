@@ -28,41 +28,6 @@ SELECT
 FROM yb_pg_stat_get_queries(NULL) AS S
 LEFT JOIN pg_database AS D ON (S.db_oid = D.oid);
 
--- YB_TODO(Arpan) Need to use this new definition for pg_locks without breaking initdb
---
--- CREATE VIEW pg_locks AS
--- SELECT l.locktype,
---        l.database,
---        l.relation,
---        null::int                  AS page,
---        null::smallint             AS tuple,
---        null::text                 AS virtualxid,
---        null::xid                  AS transactionid,
---        null::oid                  AS classid,
---        null::oid                  AS objid,
---        null::smallint             AS objsubid,
---        null::text                 AS virtualtransaction,
---        l.pid,
---        array_to_string(mode, ',') AS mode,
---        l.granted,
---        l.fastpath,
---        l.waitstart,
---        l.waitend,
---        jsonb_build_object('node', l.node,
---                           'transactionid', l.transaction_id,
---                           'subtransaction_id', l.subtransaction_id,
---                           'is_explicit', l.is_explicit,
---                           'tablet_id', l.tablet_id,
---                           'blocked_by', l.blocked_by,
---                           'keyrangedetails', jsonb_build_object(
---                                   'cols', to_jsonb(l.hash_cols || l.range_cols),
---                                   'attnum', l.attnum,
---                                   'column_id', l.column_id,
---                                   'multiple_rows_locked', l.multiple_rows_locked
---                               )
---            )                      AS ybdetails
--- FROM yb_lock_status(null, null) AS l;
-
 CREATE OR REPLACE FUNCTION
   yb_is_database_colocated(check_legacy boolean DEFAULT false)
 RETURNS boolean

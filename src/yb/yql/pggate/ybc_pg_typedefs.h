@@ -385,6 +385,7 @@ typedef struct PgGFlagsAccessor {
   const bool*     ysql_minimal_catalog_caches_preload;
   const bool*     ysql_enable_create_database_oid_collision_retry;
   const char*     ysql_catalog_preload_additional_table_list;
+  const bool*     ysql_use_relcache_file;
 } YBCPgGFlagsAccessor;
 
 typedef struct YbTablePropertiesData {
@@ -439,6 +440,11 @@ typedef struct PgExecReadWriteStats {
   uint64_t read_wait;
 } YBCPgExecReadWriteStats;
 
+typedef struct PgExecEventMetric {
+  int64_t sum;
+  int64_t count;
+} YBCPgExecEventMetric;
+
 typedef struct PgExecStats {
   YBCPgExecReadWriteStats tables;
   YBCPgExecReadWriteStats indices;
@@ -447,7 +453,10 @@ typedef struct PgExecStats {
   uint64_t num_flushes;
   uint64_t flush_wait;
 
-  uint64_t storage_metrics[YB_PGGATE_IDENTIFIER(YB_ANALYZE_METRIC_COUNT)];
+  uint64_t storage_gauge_metrics[YB_PGGATE_IDENTIFIER(YB_STORAGE_GAUGE_COUNT)];
+  int64_t storage_counter_metrics[YB_PGGATE_IDENTIFIER(YB_STORAGE_COUNTER_COUNT)];
+  YBCPgExecEventMetric
+      storage_event_metrics[YB_PGGATE_IDENTIFIER(YB_STORAGE_EVENT_COUNT)];
 } YBCPgExecStats;
 
 // Make sure this is in sync with PgsqlMetricsCaptureType in pgsql_protocol.proto.
@@ -505,14 +514,27 @@ static const int32_t kYBCMaxNumDbCatalogVersions = 10000;
 typedef enum PgSysTablePrefetcherCacheMode {
   YB_YQL_PREFETCHER_TRUST_CACHE,
   YB_YQL_PREFETCHER_RENEW_CACHE_SOFT,
-  YB_YQL_PREFETCHER_RENEW_CACHE_HARD,
-  YB_YQL_PREFETCHER_NO_CACHE
+  YB_YQL_PREFETCHER_RENEW_CACHE_HARD
 } YBCPgSysTablePrefetcherCacheMode;
 
 typedef struct PgLastKnownCatalogVersionInfo {
   uint64_t version;
   bool is_db_catalog_version_mode;
 } YBCPgLastKnownCatalogVersionInfo;
+
+typedef enum PgTransactionSetting {
+  // Single shard transactions can use a fast path to give full ACID guarantees without the overhead
+  // of a distributed transaction.
+  YB_SINGLE_SHARD_TRANSACTION,
+  // Force non-transactional semantics to avoid overhead of a distributed transaction. This is used
+  // in the following cases as of today:
+  //   (1) Index backfill
+  //   (2) COPY with ysql_non_txn_copy=true
+  //   (3) For normal DML writes if yb_disable_transactional_writes is set by the user
+  YB_NON_TRANSACTIONAL,
+  // Use a distributed transaction for full ACID semantics (common case).
+  YB_TRANSACTIONAL
+} YBCPgTransactionSetting;
 
 #ifdef __cplusplus
 }  // extern "C"

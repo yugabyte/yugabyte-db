@@ -189,6 +189,9 @@ void CatalogManagerBgTasks::Run() {
             "Failed to create Test Echo service");
       }
 
+      // TODO(auto-analyze, #19464): we allow enabling this service at runtime. We should also allow
+      // disabling this service at runtime i.e., the service should stop on the tserver hosting it
+      // when the flag is set to false.
       if (GetAtomicFlag(&FLAGS_ysql_enable_auto_analyze_service)) {
         WARN_NOT_OK(catalog_manager_->CreatePgAutoAnalyzeService(l.epoch()),
                     "Failed to create Auto Analyze service");
@@ -271,8 +274,8 @@ void CatalogManagerBgTasks::Run() {
             catalog_manager_->FindCDCSDKStreamsForAddedTables(&table_unprocessed_streams_map);
 
         if (s.ok() && !table_unprocessed_streams_map.empty()) {
-          s = catalog_manager_->AddTabletEntriesToCDCSDKStreamsForNewTables(
-              table_unprocessed_streams_map);
+          s = catalog_manager_->ProcessNewTablesForCDCSDKStreams(
+              table_unprocessed_streams_map, l.epoch());
         }
         if (!s.ok()) {
           YB_LOG_EVERY_N(WARNING, 10)
@@ -301,10 +304,15 @@ void CatalogManagerBgTasks::Run() {
       catalog_manager_->StartCDCParentTabletDeletionTaskIfStopped();
 
       // Run background tasks related to XCluster & CDC Schema.
-      WARN_NOT_OK(catalog_manager_->RunXClusterBgTasks(), "Failed XCluster Background Task");
+      WARN_NOT_OK(
+          catalog_manager_->RunXClusterBgTasks(l.epoch()), "Failed XCluster Background Task");
 
       // Abort inactive YSQL BackendsCatalogVersionJob jobs.
       catalog_manager_->master_->ysql_backends_manager()->AbortInactiveJobs();
+
+      // Set the universe_uuid field in the cluster config if not already set.
+      WARN_NOT_OK(catalog_manager_->SetUniverseUuidIfNeeded(l.epoch()),
+                  "Failed SetUniverseUuidIfNeeded Task");
 
       was_leader_ = true;
     } else {

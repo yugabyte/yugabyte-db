@@ -44,7 +44,7 @@
 #include <vector>
 
 #include <boost/container/small_vector.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/once.h"
 #include "yb/gutil/port.h"
@@ -125,9 +125,9 @@ void CloseProcFdDir(DIR* dir) {
 
 namespace util {
 
-void LogWaitCode(int ret_code) {
+void LogWaitCode(int ret_code, const std::string &process_name) {
   std::ostringstream msg;
-  msg << "PostgreSQL server returned with code " << ret_code;
+  msg << process_name << " server returned with code " << ret_code;
   // Status handling based on https://linux.die.net/man/2/waitpid
   if (WIFEXITED(ret_code)) {
     msg << ", exited with status " << WEXITSTATUS(ret_code);

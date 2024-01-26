@@ -12,7 +12,13 @@ export default class CpuUsagePanel extends Component {
   static propTypes = {};
 
   render() {
-    const { isKubernetes, metric, masterMetric, isDedicatedNodes } = this.props;
+    const {
+      isKubernetes,
+      metric,
+      masterMetric,
+      isDedicatedNodes,
+      useK8CustomResources
+    } = this.props;
     const usage = {
       system: undefined,
       user: undefined
@@ -69,6 +75,9 @@ export default class CpuUsagePanel extends Component {
       <div className={`metrics-padded-panel cpu-usage-panel ${customClassName}-mode-panel`}>
         {isNaN(usage.system) ? (
           <Fragment>
+            {isKubernetes && useK8CustomResources && (
+              <span className="node-type-label cpu">{NodeType.TServer}</span>
+            )}
             <div
               className={`centered text-light text-lightgray empty-state ${customClassName}-mode-empty`}
             >
@@ -93,7 +102,9 @@ export default class CpuUsagePanel extends Component {
               size={Math.round(value * 1000) / 10}
               kind="% used"
               inline={true}
-              label={isDedicatedNodes ? NodeType.TServer : null}
+              label={
+                (isKubernetes && useK8CustomResources) || isDedicatedNodes ? NodeType.TServer : null
+              }
             />
             <Graph value={value} />
             {isDedicatedNodes && (

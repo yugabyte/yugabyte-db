@@ -9,7 +9,6 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
-import static play.mvc.Http.Status.BAD_REQUEST;
 import static play.mvc.Http.Status.INTERNAL_SERVER_ERROR;
 
 import com.yugabyte.yw.commissioner.AbstractTaskBase;
@@ -17,11 +16,11 @@ import com.yugabyte.yw.commissioner.tasks.CommissionerBaseTest;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.TestHelper;
-import com.yugabyte.yw.common.TestUtils;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.helpers.CloudSpecificInfo;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import java.util.Optional;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.junit.Before;
@@ -65,16 +64,16 @@ public class CheckSoftwareVersionTest extends CommissionerBaseTest {
 
   @Test
   @Parameters({
-    "2.17.0.1-b1, 2.17.0.1, 9",
-    "2.17.0.0-b1, 2.17.0.2, 1",
-    "2.18.0.0-b1, 2.17.0.0, 1",
-    "2.18.0.0-b1, 2.17.0.0, 1"
+    "2.17.0.1-b1, 2.17.0.1, b9",
+    "2.17.0.0-b1, 2.17.0.2, b1",
+    "2.18.0.0-b1, 2.17.0.0, b1",
+    "2.18.0.0-b1, 2.17.0.0, b1"
   })
   public void testDifferentVersionFail(String version1, String nodeVersion, String nodeBuild) {
     TestHelper.updateUniverseVersion(defaultUniverse, version1);
     try {
-      when(mockClient.getStatus(any(), anyInt()))
-          .thenReturn(TestUtils.prepareGetStatusResponse(nodeVersion, nodeBuild));
+      when(mockYBClient.getServerVersion(any(), anyString(), anyInt()))
+          .thenReturn(Optional.of(nodeVersion + "-" + nodeBuild));
     } catch (Exception ignored) {
       fail();
     }
@@ -85,8 +84,8 @@ public class CheckSoftwareVersionTest extends CommissionerBaseTest {
     params.requiredVersion = version1;
     task.initialize(params);
     PlatformServiceException pe = assertThrows(PlatformServiceException.class, () -> task.run());
-    assertEquals(BAD_REQUEST, pe.getHttpStatus());
-    String newYbSoftwareVersion = nodeVersion + "-b" + nodeBuild;
+    assertEquals(INTERNAL_SERVER_ERROR, pe.getHttpStatus());
+    String newYbSoftwareVersion = nodeVersion + "-" + nodeBuild;
     assertEquals(
         "Expected version: "
             + version1
@@ -99,7 +98,7 @@ public class CheckSoftwareVersionTest extends CommissionerBaseTest {
 
   @Test
   @Parameters({
-    "2.17.0.1-b1, 2.17.0.1, 1",
+    "2.17.0.1-b1, 2.17.0.1, b1",
     "2.17.0.0-b1, 2.17.0.0, PRE_RELEASE",
     "2.17.0.0-PRE_RELEASE, 2.17.0.0, b1"
   })
@@ -107,8 +106,8 @@ public class CheckSoftwareVersionTest extends CommissionerBaseTest {
       String version, String nodeVersion, String nodeBuild) {
     TestHelper.updateUniverseVersion(defaultUniverse, version);
     try {
-      when(mockClient.getStatus(any(), anyInt()))
-          .thenReturn(TestUtils.prepareGetStatusResponse(nodeVersion, nodeBuild));
+      when(mockYBClient.getServerVersion(any(), anyString(), anyInt()))
+          .thenReturn(Optional.of(nodeVersion + "-" + nodeBuild));
     } catch (Exception ignored) {
       fail();
     }
@@ -130,11 +129,12 @@ public class CheckSoftwareVersionTest extends CommissionerBaseTest {
       params.nodeName = node.nodeName;
       params.requiredVersion = "2.17.0.0-b1";
       task.initialize(params);
-      when(mockClient.getStatus(anyString(), anyInt()))
-          .thenThrow(new RuntimeException("Unable to get the status"));
+      when(mockYBClient.getServerVersion(any(), anyString(), anyInt()))
+          .thenReturn(Optional.empty());
       PlatformServiceException pe = assertThrows(PlatformServiceException.class, () -> task.run());
       assertEquals(INTERNAL_SERVER_ERROR, pe.getHttpStatus());
-      assertEquals("Unable to get the status", pe.getMessage());
+      assertEquals(
+          "Could not determine version on node " + node.cloudInfo.private_ip, pe.getMessage());
     } catch (Exception ignored) {
       fail();
     }

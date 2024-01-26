@@ -20,7 +20,7 @@
 #include <utility>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/common/common.pb.h"
@@ -34,10 +34,11 @@
 
 #include "yb/integration-tests/external_mini_cluster.h"
 
-
+#include "yb/util/async_util.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/result.h"
 #include "yb/util/status.h"
+#include "yb/util/test_macros.h"
 #include "yb/util/test_util.h"
 #include "yb/util/tsan_util.h"
 
@@ -494,16 +495,94 @@ TEST_F(MasterChangeConfigTest, TestPingShellMaster) {
   ASSERT_OK(cluster_->PingMaster(*new_shell_master));
 }
 
-// Process that stops/fails internal to external mini cluster is not allowing test to terminate.
-TEST_F(MasterChangeConfigTest, DISABLED_TestIncorrectMasterStart) {
-  string peers = cluster_->GetMasterAddresses();
-  // Master process start with master_addresses not containing a new master host/port should fail
-  // and become un-pingable.
-  Result<ExternalMaster *> new_master = cluster_->StartMasterWithPeers(peers);
-  ASSERT_OK(new_master);
-  LOG(INFO) << "Tried incorrect master " << (*new_master)->bound_rpc_hostport().ToString();
-  ASSERT_NOK(cluster_->PingMaster(*new_master));
-  (*new_master)->Shutdown();
+TEST_F(MasterChangeConfigTest, TestConcurrentAddMastersFails) {
+  auto initial_masters = cluster_->master_daemons();
+  ExternalMaster* first_new_master = nullptr;
+  ExternalMaster* second_new_master = nullptr;
+  SetCurLogIndex();
+
+  cluster_->StartShellMaster(&first_new_master);
+  // Delay rbs so that the master leader gets to process ADD_SERVER request for the second new
+  // master while the first new master is in PRE_VOTER state.
+  ASSERT_OK(cluster_->SetFlag(first_new_master,
+                              "TEST_inject_latency_during_remote_bootstrap_secs", "15"));
+  ASSERT_OK_PREPEND(cluster_->ChangeConfig(first_new_master, consensus::ADD_SERVER),
+                    "Change Config(ADD_SERVER) returned error: ");
+  // Just ADD_SERVER gets processed, so increment the log index only by 1.
+  cur_log_index_ += 1;
+  ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(cur_log_index_, initial_masters, 5s));
+  ++num_masters_;
+  // Try adding the second new master. This should block until the above added master gets promoted
+  // from PRE_VOTER to VOTER.
+  auto status_future = std::async(std::launch::async, [&]() {
+    cluster_->StartShellMaster(&second_new_master);
+    return cluster_->ChangeConfig(second_new_master, consensus::ADD_SERVER);
+  });
+  ASSERT_TRUE(status_future.wait_for(10s) == std::future_status::timeout)
+      << "Change Config(ADD_SERVER) should have been blocked for at least 10 secs.";
+
+  // Wait for the first new master to raise a CHANGE_ROLE request.
+  cur_log_index_ += 1;
+  ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(cur_log_index_));
+  // Now the ADD_SERVER for the second master should go through.
+  ASSERT_OK_PREPEND(status_future.get(), "Change Config(ADD_SERVER) returned error: ");
+  // Wait for the log index to be incremented by 2, one for ADD_SERVER and other for CHANGE_ROLE.
+  cur_log_index_ += 2;
+  ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(cur_log_index_));
+  ++num_masters_;
+  VerifyLeaderMasterPeerCount();
+  VerifyNonLeaderMastersPeerCount();
+}
+
+TEST_F(MasterChangeConfigTest, TestBlockRemoveServerWhenConfigHasTransitioningServer) {
+  auto current_masters = cluster_->master_daemons();
+  const size_t num_add_masters = 2;
+  for (size_t i = 0 ; i < num_add_masters ; i++) {
+    ExternalMaster* new_master = nullptr;
+    cluster_->StartShellMaster(&new_master);
+    // Make this peer stay in the PRE_VOTER phase for a while. Setting the delay to 15 secs as the
+    // timeout for WaitForMastersToCommitUpTo is set to 30 secs. So when we finally wait below for
+    // this peer to become a VOTER (at max for 30 secs), the call wouldn't fail.
+    ASSERT_OK(cluster_->SetFlag(
+        new_master, "TEST_inject_latency_during_remote_bootstrap_secs", "15"));
+
+    SetCurLogIndex();
+
+    Status s = cluster_->ChangeConfig(new_master, consensus::ADD_SERVER);
+    ASSERT_OK_PREPEND(s, "Change Config(ADD_SERVER) returned error: ");
+    // Adding a server will generate two ChangeConfig calls. One to add a server as a learner, and
+    // one to promote this server to a voter once bootstrapping is finished. Since we don't want to
+    // wait until the new peer becomes a VOTER, just wait for the log index to be incremented by 1.
+    cur_log_index_ += 1;
+    ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(cur_log_index_, current_masters));
+    ++num_masters_;
+
+    // If we try to remove the leader master, it will initiate a leader stepdown and then remove it.
+    // But since there is a peer in transition, leader step will not go through. So try removing a
+    // follower instead.
+    if (cluster_->GetLeaderMaster()->uuid() == current_masters.back()->uuid()) {
+      std::swap(current_masters.back(), current_masters.front());
+    }
+    // Even the follower removal shouldn't go through until the above added server is in transition.
+    auto status_future = std::async(std::launch::async, [&]() {
+      return cluster_->ChangeConfig(current_masters.back(), consensus::REMOVE_SERVER);
+    });
+    ASSERT_TRUE(status_future.wait_for(10s) == std::future_status::timeout)
+        << "Change Config(REMOVE_SERVER) should have been blocked for at least 10 secs.";
+    current_masters.pop_back();
+    // Wait for the above added server to transition from PRE_VOTER to VOTER.
+    cur_log_index_ += 1;
+    ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(cur_log_index_, current_masters));
+    current_masters.push_back(new_master);
+    // Now the REMOVE_SERVER request should go through.
+    ASSERT_OK_PREPEND(status_future.get(), "Change Config(REMOVE_SERVER) returned error: ");
+    cur_log_index_ += 1;
+    ASSERT_OK(cluster_->WaitForMastersToCommitUpTo(cur_log_index_, current_masters));
+    --num_masters_;
+  }
+
+  VerifyLeaderMasterPeerCount();
+  VerifyNonLeaderMastersPeerCount();
 }
 
 } // namespace master

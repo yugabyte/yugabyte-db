@@ -41,8 +41,8 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
     log.info("Started {} task for uuid={}", getName(), taskParams().getUniverseUUID());
 
     try {
-
       // Set the 'updateInProgress' flag to prevent other updates from happening.
+      Cluster cluster = taskParams().getReadOnlyClusters().get(0);
       Universe universe =
           lockUniverseForUpdate(
               taskParams().expectedUniverseVersion,
@@ -59,7 +59,9 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
                   // Update on-prem node UUIDs.
                   updateOnPremNodeUuidsOnTaskParams();
                   // Set the prepared data to universe in-memory.
-                  setUserIntentToUniverse(u, taskParams(), true);
+                  updateUniverseNodesAndSettings(u, taskParams(), true);
+                  u.getUniverseDetails()
+                      .upsertCluster(cluster.userIntent, cluster.placementInfo, cluster.uuid);
                   // There is a rare possibility that this succeeds and
                   // saving the Universe fails. It is ok because the retry
                   // will just fail.
@@ -68,7 +70,6 @@ public class ReadOnlyClusterCreate extends UniverseDefinitionTaskBase {
               });
 
       // Sanity checks for clusters list validity are performed in the controller.
-      Cluster cluster = taskParams().getReadOnlyClusters().get(0);
       Set<NodeDetails> readOnlyNodes = taskParams().getNodesInCluster(cluster.uuid);
       boolean ignoreUseCustomImageConfig = !readOnlyNodes.stream().allMatch(n -> n.ybPrebuiltAmi);
 

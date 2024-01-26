@@ -20,6 +20,7 @@
 #include "yb/consensus/log.h"
 #include "yb/consensus/log_anchor_registry.h"
 
+#include "yb/gutil/bind.h"
 #include "yb/gutil/strings/util.h"
 
 #include "yb/master/master_options.h"
@@ -38,6 +39,7 @@
 #include "yb/util/jsonreader.h"
 #include "yb/util/logging.h"
 #include "yb/util/pb_util.h"
+#include "yb/util/string_trim.h"
 #include "yb/util/string_util.h"
 #include "yb/util/version_info.h"
 
@@ -52,12 +54,14 @@ using google::protobuf::FieldDescriptor;
 using google::protobuf::GetEnumDescriptor;
 using google::protobuf::Message;
 
+using std::array;
 using std::endl;
 using std::flush;
 using std::string;
 using std::unique_ptr;
 using std::vector;
 using std::unordered_set;
+using std::unordered_map;
 
 namespace yb {
 
@@ -65,8 +69,8 @@ using master::SysRowEntryType;
 
 namespace tools {
 
-static const string line = "----------------------------------------"
-                           "----------------------------------------";
+static constexpr const char* const kSectionSeparator = "----------------------------------------"
+                                                       "----------------------------------------";
 
 // Output streams.
 auto& sinfo = std::cerr;
@@ -102,12 +106,13 @@ class MiniSysCatalogTable {
   scoped_refptr<server::Clock> clock_;
   unique_ptr<ThreadPool> thread_pool_;
 
-  unique_ptr<tablet::TabletStatusListener> status_listener_;
+  unique_ptr<MetricRegistry> metric_registry_;
   unique_ptr<consensus::ConsensusMetadata> consensus_metadata_;
   std::promise<client::YBClient*> client_promise_;
   const tablet::TabletOptions tablet_options_;
 
   tablet::TabletPtr tablet_;
+  tablet::TabletPeerPtr tablet_peer_;
 };
 
 Result<MiniSysCatalogTablePtr> MiniSysCatalogTable::Load(FsManager* fs_manager) {
@@ -117,7 +122,8 @@ Result<MiniSysCatalogTablePtr> MiniSysCatalogTable::Load(FsManager* fs_manager) 
 }
 
 MiniSysCatalogTable::MiniSysCatalogTable()
-    : clock_(server::LogicalClock::CreateStartingAt(HybridTime::kInitial)) {
+    : clock_(server::LogicalClock::CreateStartingAt(HybridTime::kInitial)),
+      metric_registry_(new MetricRegistry) {
   CHECK_OK(ThreadPoolBuilder("pool").set_min_threads(1).Build(&thread_pool_));
 }
 
@@ -167,8 +173,7 @@ Status MiniSysCatalogTable::LoadConsensusMetadata(FsManager* fs_manager, const s
   } else if (loaded_config.peers().empty()) {
     LOG(ERROR) << "Loaded consensus metadata, but had no peers";
   } else {
-    LOG(ERROR) << "Loaded consensus metadata - expected a single peer, but got "
-               << loaded_config.peers().size() << " peers";
+    LOG(INFO) << "Loaded consensus metadata - got " << loaded_config.peers().size() << " peers";
   }
 
   return Status::OK();
@@ -176,31 +181,50 @@ Status MiniSysCatalogTable::LoadConsensusMetadata(FsManager* fs_manager, const s
 
 Status MiniSysCatalogTable::OpenTablet(const scoped_refptr<tablet::RaftGroupMetadata>& metadata,
                                        const Schema& expected_schema) {
+  struct DoNothing {
+    static void fn(std::shared_ptr<StateChangeContext>) {}
+  };
+  std::shared_future<client::YBClient*> client_future = client_promise_.get_future();
+  tablet_peer_ = std::make_shared<tablet::TabletPeer>(
+      metadata,
+      consensus::RaftPeerPB(),
+      clock_,
+      metadata->fs_manager()->uuid(),
+      Bind(&DoNothing::fn),
+      metric_registry_.get(),
+      nullptr, // tablet_splitter
+      client_future);
+
   tablet::TabletInitData tablet_init_data = {
       .metadata = metadata,
-      .client_future = client_promise_.get_future(),
+      .client_future = client_future,
       .clock = clock_,
       .parent_mem_tracker = nullptr,
       .block_based_table_mem_tracker = nullptr,
+      .metric_registry = metric_registry_.get(),
       .log_anchor_registry = nullptr,
       .tablet_options = tablet_options_,
       .log_prefix_suffix = "",
+      .transaction_participant_context = tablet_peer_.get(),
       .local_tablet_filter = nullptr,
-      // Initdb is much faster with transactions disabled.
-      .txns_enabled = tablet::TransactionsEnabled::kFalse,
+      .transaction_coordinator_context = nullptr,
+      // Curently TabletBootstrap::PlaySegments() fails if txns_enabled == false.
+      .txns_enabled = tablet::TransactionsEnabled::kTrue,
       .is_sys_catalog = tablet::IsSysCatalogTablet::kTrue,
+      .snapshot_coordinator = nullptr,
+      .tablet_splitter = nullptr,
       .allowed_history_cutoff_provider = nullptr,
       .transaction_manager_provider = nullptr,
+      .auto_flags_manager = nullptr,
       .full_compaction_pool = nullptr,
       .admin_triggered_compaction_pool = nullptr,
       .post_split_compaction_added = nullptr,
       .metadata_cache = nullptr,
   };
 
-  status_listener_ = std::make_unique<tablet::TabletStatusListener>(metadata);
   tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
-      .listener = status_listener_.get(),
+      .listener = tablet_peer_->status_listener(),
       .append_pool = thread_pool_.get(),
       .allocation_pool = thread_pool_.get(),
       .log_sync_pool = thread_pool_.get(),
@@ -369,10 +393,11 @@ YB_DEFINE_ENUM(OptionFlag,
     // Options in HEADER section.
     (kNoYBVersionStr)(kNoYBVersionPB)(kNoDescriptors)(kNoRaft)(kNoConsensus)
     // Options in Entry.
-    (kNoHexData)(kNoRawData)(kNoDataPB)(kNoData)(kNoAction));
+    (kNoHexData)(kNoRawData)(kNoDataPB)(kNoData)(kNoAction)
+    // For 'show-changes' command.
+    (kShowNoOp));
 
 using ReadFlags = EnumBitSet<OptionFlag>;
-struct ReadArguments; // Forward declaration.
 
 class ReadFilters {
  public:
@@ -442,6 +467,50 @@ bool ReadFilters::NeedToShow(SysRowEntryType type, const ObjectId& id) const {
 }
 
 // ------------------------------------------------------------------------------------------------
+// Actions for the entries.
+// ------------------------------------------------------------------------------------------------
+enum ActionType {
+  kNO_OP,
+  // Writable actions:
+  kCHANGE,
+  kADD,
+  kREMOVE,
+  kUNKNOWN,
+  kNUM_ACTIONS
+};
+
+string ToString(ActionType act) {
+  switch (act) {
+    case kNO_OP:  return "NO-OP";
+    case kCHANGE: return "CHANGE";
+    case kADD:    return "ADD";
+    case kREMOVE: return "REMOVE";
+    default:      return "UNKNOWN";
+  }
+}
+
+using ActionNameMap = unordered_map<string, ActionType>;
+
+ActionNameMap InitActionNames() {
+  ActionNameMap act_name_map;
+  for (int a = 0; a < kNUM_ACTIONS; ++a) {
+    const ActionType act = static_cast<ActionType>(a);
+    act_name_map[ToString(act)] = act;
+  }
+  return act_name_map;
+}
+
+Result<ActionType> Parse_ActionType(const string& act_str) {
+  if (act_str.empty()) {
+    return kNO_OP;
+  }
+
+  static const ActionNameMap act_name_map = InitActionNames();
+  const ActionNameMap::const_iterator it = act_name_map.find(act_str);
+  return it == act_name_map.end() ? kUNKNOWN : it->second;
+}
+
+// ------------------------------------------------------------------------------------------------
 // JSON writer with special handling of SysRowEntry.
 // ------------------------------------------------------------------------------------------------
 class SysRowJsonWriter : public JsonWriter {
@@ -471,11 +540,9 @@ class SysRowJsonWriter : public JsonWriter {
   WriteEntryPBVisitor* GetWriteEntryPBVisitor() { return &visitor_; }
 
  protected:
-  void ProtobufRepeatedField(const google::protobuf::Message& pb,
-                             const google::protobuf::FieldDescriptor* field,
-                             int index) override;
+  void ProtobufRepeatedField(const Message& pb, const FieldDescriptor* field, int index) override;
 
-  void SysRow(const google::protobuf::Message& message);
+  void SysRow(const Message& message);
 
   void AddAction();
   void AddHexData(const Slice& data);
@@ -502,7 +569,7 @@ void SysRowJsonWriter::ProtobufRepeatedField(
   }
 }
 
-void SysRowJsonWriter::SysRow(const google::protobuf::Message& message) {
+void SysRowJsonWriter::SysRow(const Message& message) {
   const master::SysRowEntry& entry = dynamic_cast<const master::SysRowEntry&>(message);
   if (filters_.IsSet(OptionFlag::kUseNestedFiltering) &&
       !filters_.NeedToShow(entry.type(), entry.id()) ) {
@@ -622,26 +689,152 @@ Status SysRowJsonWriter::WriteEntryPB(const Slice& id, const Slice& data) {
 }
 
 // ------------------------------------------------------------------------------------------------
-// Actions for the entries.
+// JSON reader with special handling of SysRowEntry.
 // ------------------------------------------------------------------------------------------------
-enum ActionType {
-  kNO_OP,
-  // Writable actions:
-  kCHANGE,
-  kADD,
-  kREMOVE,
-  kUNKNOWN,
-  kNUM_ACTIONS
+class SysRowHandlerIf {
+ public:
+  virtual ~SysRowHandlerIf() {}
+  virtual Status ReadAndProcess() = 0;
 };
 
-string ToString(ActionType act) {
-  switch (act) {
-    case kNO_OP:  return "NO-OP";
-    case kCHANGE: return "CHANGE";
-    case kADD:    return "ADD";
-    case kREMOVE: return "REMOVE";
-    default:      return "UNKNOWN";
+class SysRowJsonReader : public JsonReader {
+ public:
+  typedef std::function<unique_ptr<SysRowHandlerIf>(
+      const rapidjson::Value& value, master::SysRowEntry* entry)> CreateSysRowHandlerFn;
+
+  explicit SysRowJsonReader(string text) : JsonReader(std::move(text)) {}
+
+  Status ExtractSysRowMessage(const rapidjson::Value& value, Message* pb) const;
+
+  int GetNesting() const {
+    return nesting_;
   }
+
+  void SetSysRowHandlerCreator(const CreateSysRowHandlerFn& fn) {
+    create_handler_fn_ = fn;
+  }
+
+ private:
+  Status ExtractProtobufRepeatedField(
+      const rapidjson::Value& value, Message* pb, const FieldDescriptor* field) const override;
+
+  CreateSysRowHandlerFn create_handler_fn_;
+  mutable int nesting_ = 0;
+};
+
+Status SysRowJsonReader::ExtractProtobufRepeatedField(
+    const rapidjson::Value& value, Message* pb, const FieldDescriptor* field) const {
+  if (field->cpp_type() == FieldDescriptor::CPPTYPE_MESSAGE &&
+      field->message_type() &&
+      field->message_type()->full_name() == "yb.master.SysRowEntry") {
+    return ExtractSysRowMessage(value,
+        DCHECK_NOTNULL(DCHECK_NOTNULL(pb)->GetReflection())->AddMessage(pb, field));
+  } else {
+    return JsonReader::ExtractProtobufRepeatedField(value, pb, field);
+  }
+}
+
+Status SysRowJsonReader::ExtractSysRowMessage(const rapidjson::Value& value, Message* pb) const {
+  ++nesting_;
+  LOG_IF(DFATAL, !create_handler_fn_) << "Handler-creator function is not initialized";
+  const unique_ptr<SysRowHandlerIf> sys_row =
+      create_handler_fn_(value, dynamic_cast<master::SysRowEntry*>(pb));
+  const Status s = sys_row->ReadAndProcess();
+  --nesting_;
+  return s;
+}
+
+// Helper for debug output.
+string EntryDetails(const SysRowJsonReader& r, const rapidjson::Value& json) {
+  string type, id;
+  Status s = r.ExtractString(&json, "TYPE", &type);
+  if (!s.ok()) {
+    serr << "Failed to extract TYPE: " << s << endl;
+  }
+
+  s = r.ExtractString(&json, "ID", &id);
+  if (!s.ok()) {
+    serr << "Failed to extract ID: " << s << endl;
+  }
+
+  return type + " ID=" + id;
+}
+
+Status ProcessSysEntryJson(const SysRowJsonReader& r, const rapidjson::Value& value) {
+  // The result entry is ignored.
+  // ExtractSysRowMessage is called to call finally the SysRowHandler methods.
+  master::SysRowEntry entry;
+  return r.ExtractSysRowMessage(value, &entry);
+}
+
+// ------------------------------------------------------------------------------------------------
+// Base SysRowEntry loader.
+// ------------------------------------------------------------------------------------------------
+class SysRowHandler : public SysRowHandlerIf {
+ public:
+  SysRowHandler(
+      const SysRowJsonReader& r, const rapidjson::Value& value, master::SysRowEntry* entry)
+      : reader_(r), json_entry_(value), entry_(entry) {}
+
+  Status ReadAndProcess() override;
+  // Hooks for command-specific handling in derived classes.
+  virtual Status PreProcess() { return Status::OK(); }
+  virtual Status PostProcess() { return Status::OK(); }
+
+  SysRowEntryType GetEntryType() const {
+    return DCHECK_NOTNULL(entry_)->type();
+  }
+
+  // Implement Visitor API for CallVisitor() function.
+  template<SysRowEntryType Type>
+  Status Visit() {
+    return ReadSysRowPB<Type>();
+  }
+
+ protected:
+  template<SysRowEntryType Type>
+  Status ReadSysRowPB();
+
+ protected:
+  const SysRowJsonReader& reader_;
+
+  const rapidjson::Value& json_entry_;
+  master::SysRowEntry* entry_;
+  unique_ptr<Message> sys_row_pb_new_; // From 'DATA' JSON member.
+};
+
+template<SysRowEntryType Type>
+Status SysRowHandler::ReadSysRowPB() {
+  RETURN_NOT_OK(Desc<Type>::CheckIsNotUnknown());
+
+  // Parse PB from DATA.
+  typename Desc<Type>::PBType* const sys_row_pb = new typename Desc<Type>::PBType;
+  RETURN_NOT_OK(reader_.ExtractProtobuf(&json_entry_, "DATA", sys_row_pb));
+  DCHECK_NOTNULL(entry_)->set_data(sys_row_pb->SerializeAsString());
+  sys_row_pb_new_.reset(sys_row_pb); // Save PB for post-processing.
+  return Status::OK();
+}
+
+Status SysRowHandler::ReadAndProcess() {
+  string type_str, id_str;
+  RETURN_NOT_OK(reader_.ExtractString(&json_entry_, "TYPE", &type_str));
+  const SysRowEntryType type = VERIFY_RESULT(Parse_SysRowEntryType(type_str));
+
+  RETURN_NOT_OK(reader_.ExtractString(&json_entry_, "ID", &id_str));
+
+  // Fill this SysRowEntry.
+  DCHECK_NOTNULL(entry_)->set_type(type);
+  entry_->set_id(id_str);
+
+  Status s = PreProcess();
+  if (s.ok()) {
+    // Fill this SysRowEntry 'data' via SysRowHandler::ReadSysRowPB().
+    s = CallVisitor<SysRowHandler>(type, this);
+  }
+  if (s.ok()) {
+    s = PostProcess();
+  }
+  return s;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -651,7 +844,9 @@ class SysCatalogTool {
  public:
   virtual ~SysCatalogTool() = default;
 
-  Status Read(const ReadFilters& filters);
+  Result<string> ReadIntoString(const ReadFilters& filters);
+
+  Status ShowChangesIn(const string& file_name, const ReadFilters& filters);
 
   // Implement Visitor API for CallVisitor() function.
   template<SysRowEntryType Type>
@@ -705,7 +900,7 @@ Status SysCatalogTool::Init() {
 }
 
 // ------------------------------------------------------------------------------------------------
-// Read command
+// Dump command
 // ------------------------------------------------------------------------------------------------
 template<typename PB_ENUM>
 Status SysCatalogTool::WriteEnumDescriptor() {
@@ -746,8 +941,8 @@ Status SysCatalogTool::WritePBDescriptor(const string& type) {
   return Status::OK();
 }
 
-Status SysCatalogTool::Read(const ReadFilters& filters) {
-  LOG(INFO) << "Running the Read command. Options=" << filters.ToString();
+Result<string> SysCatalogTool::ReadIntoString(const ReadFilters& filters) {
+  LOG(INFO) << "Running the dump command. Options=" << filters.ToString();
   const Timestamp start_time = DateTime::TimestampNow();
 
   std::stringstream stream;
@@ -874,25 +1069,234 @@ Status SysCatalogTool::Read(const ReadFilters& filters) {
   writer_->EndObject(); // root
   sinfo << "Filtered " << filtered_entries << " entries from " << num_entries
         << " read entries" << endl << flush;
-  sinfo << "Result JSON:" << endl << flush;
-  sjson << stream.str() << endl;
+  return stream.str();
+}
+
+// ------------------------------------------------------------------------------------------------
+// Show-changes command
+// ------------------------------------------------------------------------------------------------
+
+// ------------------------------------------------------------------------------------------------
+// SysRowHandler for show-changes command.
+// ------------------------------------------------------------------------------------------------
+class ShowChangesCmdSysRowHandler : public SysRowHandler {
+ public:
+  ShowChangesCmdSysRowHandler(
+      const SysRowJsonReader& r, const rapidjson::Value& value, master::SysRowEntry* entry,
+      bool show_no_op) : SysRowHandler(r, value, entry), show_no_op_(show_no_op) {}
+
+  Status PreProcess() override;
+
+  Status PostProcess() override;
+
+  // Implement Visitor API for CallVisitor() function.
+  template<SysRowEntryType Type>
+  Status Visit() {
+    return ReadAndCheckPB<Type>();
+  }
+
+ protected:
+  template<SysRowEntryType Type>
+  Status ReadAndCheckPB();
+
+  bool show_no_op_;
+  ActionType act_ = kUNKNOWN;
+  string old_data_;
+  string prefix_;
+};
+
+Status ShowChangesCmdSysRowHandler::PreProcess() {
+  string act_str;
+  RETURN_NOT_OK(reader_.ExtractString(&json_entry_, "__ACTION__", &act_str));
+  act_ = VERIFY_RESULT(Parse_ActionType(act_str));
+
+  if (act_ != kNO_OP || show_no_op_) {
+    prefix_.clear();
+    for (int i = 1; i < reader_.GetNesting(); ++i) {
+      prefix_ += "|-> ";
+    }
+    sinfo << prefix_  << ToString(act_) << ": " << master::SysRowEntryType_Name(GetEntryType())
+          << " " << entry_->id() << endl;
+  }
+
+  if (act_ != kNO_OP) {
+    sinfo << kSectionSeparator << endl;
+  }
+
+  if (act_ != kADD) {
+    string hex;
+    RETURN_NOT_OK(reader_.ExtractString(&json_entry_, "DATA-HEX", &hex));
+    uint64_t hash;
+    RETURN_NOT_OK(reader_.ExtractUInt64(&json_entry_, "DATA-HASH", &hash));
+
+    SCHECK(ByteStringFromAscii(hex, &old_data_), InvalidArgument,
+        EntryDetails(reader_, json_entry_) + ": Cannot parse DATA-HEX from: " + hex);
+    const uint64_t expected_hash = Slice(old_data_).hash();
+    SCHECK(hash == expected_hash, InvalidArgument, EntryDetails(reader_, json_entry_) +
+        ": Incorrect DATA-HASH value: " + yb::ToString(hash) +
+        " expected " + yb::ToString(expected_hash));
+
+    // Convert binary data back into hex (format of DATA-HEX).
+    SCHECK(ByteStringToAscii(old_data_) == hex, InternalError,
+        EntryDetails(reader_, json_entry_) + ": Invalid DATA-HEX: " + hex);
+  }
+
+  return Status::OK();
+}
+
+string AddPrefixToAllLines(const string& prefix, const string& str) {
+  string s = prefix + util::RightTrimStr(str);
+  GlobalReplaceSubstring("\n", "\n" + prefix, &s);
+  return s + "\n";
+}
+
+template<SysRowEntryType Type>
+Status ShowChangesCmdSysRowHandler::ReadAndCheckPB() {
+  switch (act_) {
+    case kNO_OP: FALLTHROUGH_INTENDED;
+    case kCHANGE: {
+      typename Desc<Type>::PBType old_pb;
+      // Parse PB from DATA-HEX.
+      RETURN_NOT_OK(pb_util::ParseFromArray(
+          &old_pb, to_uchar_ptr(old_data_.data()), old_data_.size()));
+
+      // Compare PBs.
+      string diff_str;
+      const bool pbs_equal = pb_util::ArePBsEqual(old_pb, *sys_row_pb_new_, &diff_str);
+      if (act_ == kCHANGE) {
+        SCHECK(!pbs_equal, InvalidArgument, "ERROR: No data changes found!");
+        sinfo << AddPrefixToAllLines(prefix_, diff_str);
+      } else {
+        SCHECK(pbs_equal, InvalidArgument, "ERROR: Unexpected data changes: " + diff_str);
+      }
+    }
+    break;
+
+    case kADD: {
+      sinfo << AddPrefixToAllLines(prefix_, sys_row_pb_new_->DebugString());
+    }
+    break;
+
+    case kREMOVE: {
+      typename Desc<Type>::PBType old_pb;
+      // Parse PB from DATA-HEX.
+      RETURN_NOT_OK(pb_util::ParseFromArray(
+          &old_pb, to_uchar_ptr(old_data_.data()), old_data_.size()));
+      sinfo << AddPrefixToAllLines(prefix_, old_pb.DebugString());
+    }
+    break;
+
+    default: return STATUS(InternalError, "Unexpected action", ToString(act_));
+  }
+
+  return Status::OK();
+}
+
+Status ShowChangesCmdSysRowHandler::PostProcess() {
+  // Calling ReadAndCheckPB().
+  const Status s = CallVisitor<ShowChangesCmdSysRowHandler>(GetEntryType(), this);
+
+  if (act_ != kNO_OP) {
+    sinfo << kSectionSeparator << endl;
+  }
+  return s;
+}
+
+Status SysCatalogTool::ShowChangesIn(const string& file_name, const ReadFilters& filters) {
+  using rapidjson::Value;
+
+  LOG(INFO) << "Running the show-changes command: input JSON file=" << file_name;
+  const Timestamp start_time = DateTime::TimestampNow();
+
+  RETURN_NOT_OK(InitFsManager());
+
+  faststring data;
+  sinfo << "Reading from file " << file_name << flush;
+  RETURN_NOT_OK(ReadFileToString(fs_manager_->env(), file_name, &data));
+  sinfo << " - done" << endl;
+
+  sinfo << "Parsing JSON data " << flush;
+  SysRowJsonReader r(data.ToString());
+  RETURN_NOT_OK(r.Init());
+
+  r.SetSysRowHandlerCreator(
+      [&r, &filters](const rapidjson::Value& value, master::SysRowEntry* entry)
+          -> unique_ptr<SysRowHandlerIf> {
+        return std::make_unique<ShowChangesCmdSysRowHandler>(
+            r, value, entry, filters.IsSet(OptionFlag::kShowNoOp));
+      });
+
+  sinfo << " - done" << endl;
+
+  array<vector<const Value*>, kNUM_ACTIONS> act_to_values;
+  sinfo << "Searching for changed entries:" << endl;
+  vector<const Value*> sys;
+  RETURN_NOT_OK(r.ExtractObjectArray(r.root(), "SYS-CATALOG", &sys));
+
+  for (const Value* v : sys) {
+    string act_str;
+    RETURN_NOT_OK(r.ExtractString(v, "__ACTION__", &act_str));
+    const ActionType act = VERIFY_RESULT(Parse_ActionType(act_str));
+    act_to_values[act].push_back(v);
+    if (act == kUNKNOWN) {
+      sinfo << "WARNING: " << EntryDetails(r, *v) << ": Unknown __ACTION__: " << act_str << endl;
+    }
+  }
+
+  for (int act = 0; act < kNUM_ACTIONS; ++act) {
+    if (act_to_values[act].empty() ||
+        act == kUNKNOWN ||
+        (act == kNO_OP && filters.IsNotSet(OptionFlag::kShowNoOp))) {
+      continue;
+    }
+
+    sinfo << endl
+          << "Show details for " << act_to_values[act].size() <<  " "
+          << ToString(static_cast<ActionType>(act)) << " actions..."
+          << endl << kSectionSeparator << endl;
+    for (const Value* v : act_to_values[act]) {
+      RETURN_NOT_OK(ProcessSysEntryJson(r, *v));
+    }
+
+    if (act == kNO_OP) {
+      sinfo << kSectionSeparator << endl;
+    }
+  }
+
+  sinfo << endl << "Total entries in SYS-CATALOG: " << sys.size() << endl;
+  for (int act = kNO_OP; act < kNUM_ACTIONS; ++act) {
+    sinfo << "    " << ToString(static_cast<ActionType>(act)) << ": "
+          << act_to_values[act].size() << endl;
+  }
+
+  if (0 == act_to_values[kCHANGE].size() +
+           act_to_values[kADD].size() + act_to_values[kREMOVE].size()) {
+    return STATUS(InvalidArgument, "ERROR: No actions found");
+  }
+
+  const Timestamp end_time = DateTime::TimestampNow();
+  const MonoDelta duration = MonoDelta::FromMicroseconds(end_time.ToInt64() - start_time.ToInt64());
+  sinfo << "Total time: " << duration.ToString() << " (" << start_time.ToHumanReadableTime()
+        << " - " << end_time.ToHumanReadableTime() << ")" << endl;
   return Status::OK();
 }
 
 // ------------------------------------------------------------------------------------------------
 // SysCatalogAction enum
 // ------------------------------------------------------------------------------------------------
-#define SYS_CATALOG_WRITE_ENABLED 0
+#define SYS_CATALOG_WRITE_ENABLED 1
 
-// API: Read, Diff (no read; only show differences in the stored-file), Check (Dry-run?),
-//      Apply (Write?), Compare (check-result: real SysCatalog vs stored-file), Revert (Rollback?).
+// API: dump         : read SysCatalog tablet and dump all entries into JSON file
+//      show-changes : no read, only show differences in the stored-file
+//      update       : includes pre-check + data writing +
+//                     post-check-result: real SysCatalog vs stored-file
+//      rollback     : includes pre-check, old data writing back, post-check-result
 #if SYS_CATALOG_WRITE_ENABLED
-#define SYS_CATALOG_ACTIONS (Help)(Read)(Diff)(Check)(Apply)(Compare)(Revert)
+#define SYS_CATALOG_ACTIONS (Help)(Dump)(ShowChanges)
+// (Update)(Rollback)
 #else
-#define SYS_CATALOG_ACTIONS (Help)(Read)
+#define SYS_CATALOG_ACTIONS (Help)(Dump)
 #endif // SYS_CATALOG_WRITE_ENABLED
-
-// NOTE: Write stuff will be commited in a separate diff.
 
 YB_DEFINE_ENUM(SysCatalogAction, SYS_CATALOG_ACTIONS);
 
@@ -912,12 +1316,14 @@ Status HelpExecute(const HelpArguments& args) {
 }
 
 // ------------------------------------------------------------------------------------------------
-// Read command
+// Dump command
 // ------------------------------------------------------------------------------------------------
-const string kReadDescription = "Read entries from the SysCatalog. Read all entries by default. "
+const string kDumpDescription = "Dump entries from the SysCatalog. Dump all entries by default. "
                                 "Arguments";
 
-struct ReadArguments {
+struct DumpArguments {
+  string file;
+
   // Filtering by entry type name.
   vector<string> show;
   vector<string> skip;
@@ -943,7 +1349,7 @@ struct ReadArguments {
   bool no_action;
 };
 
-unique_ptr<OptionsDescription> ReadOptions() {
+unique_ptr<OptionsDescription> DumpOptions() {
   string types;
   for (int type = master::SysRowEntryType_MIN; type <= master::SysRowEntryType_MAX; ++type) {
     if (type != SysRowEntryType::UNKNOWN) {
@@ -952,9 +1358,10 @@ unique_ptr<OptionsDescription> ReadOptions() {
     }
   }
 
-  auto result = std::make_unique<OptionsDescriptionImpl<ReadArguments>>(kReadDescription);
+  auto result = std::make_unique<OptionsDescriptionImpl<DumpArguments>>(kDumpDescription);
   auto& args = result->args;
   result->desc.add_options()
+      ("file", po::value(&args.file), "Optional JSON file name for output")
       // Filters.
       ("show", po::value(&args.show),
           (string("Filter: show only specified entry types. Options:") + types).c_str())
@@ -989,7 +1396,7 @@ unique_ptr<OptionsDescription> ReadOptions() {
   return result;
 }
 
-Status ReadExecute(const ReadArguments& args) {
+Status DumpExecute(const DumpArguments& args) {
   // Process arguments.
   unordered_set<ObjectId> include_ids, exclude_ids;
   unordered_set<SysRowEntryType> skip_types;
@@ -1038,9 +1445,60 @@ Status ReadExecute(const ReadArguments& args) {
        .Set(OptionFlag::kNoAction, args.no_action);
 
   // Call the handler.
-  return SysCatalogTool().Read(ReadFilters(
-      std::move(include_ids), std::move(exclude_ids), std::move(skip_types), std::move(flags)));
+  const string json = VERIFY_RESULT(SysCatalogTool().ReadIntoString(ReadFilters(
+      std::move(include_ids), std::move(exclude_ids), std::move(skip_types), std::move(flags))));
+
+  if (args.file.empty()) {
+    sinfo << "Result JSON:" << endl << flush;
+    sjson << json << endl;
+  } else {
+    sinfo << "Writing to file " << args.file << flush;
+    RETURN_NOT_OK(WriteStringToFileSync(Env::Default(), Slice(json), args.file));
+    sinfo << " - done" << endl;
+  }
+  return Status::OK();
 }
+
+// ------------------------------------------------------------------------------------------------
+// Show-changes command
+// ------------------------------------------------------------------------------------------------
+const string kShowChangesDescription = "Show changes in entries in the JSON file. Arguments";
+
+struct ShowChangesArguments {
+  string file;
+  bool show_no_op;
+};
+
+unique_ptr<OptionsDescription> ShowChangesOptions() {
+  auto result =
+      std::make_unique<OptionsDescriptionImpl<ShowChangesArguments>>(kShowChangesDescription);
+  auto& args = result->args;
+  result->desc.add_options()
+      ("file", po::value(&args.file), "Input JSON file name")
+      ("show-no-op", po::bool_switch(&args.show_no_op), "Check entries with NO-OP action");
+  return result;
+}
+
+Status ShowChangesExecute(const ShowChangesArguments& args) {
+  // Process arguments.
+  ReadFlags flags;
+  flags.Set(OptionFlag::kShowNoOp, args.show_no_op);
+
+  // Call the handler.
+  return SysCatalogTool().ShowChangesIn(args.file, ReadFilters(std::move(flags)));
+}
+
+// ------------------------------------------------------------------------------------------------
+// Update command
+// The command includes pre-check + writing + post-check.
+// ------------------------------------------------------------------------------------------------
+// TODO: Implement the commands.
+
+// ------------------------------------------------------------------------------------------------
+// Rollback command
+// The command includes pre-check + writing old data back + post-check.
+// ------------------------------------------------------------------------------------------------
+// TODO: Implement the commands.
 
 // ------------------------------------------------------------------------------------------------
 // SysCatalogAction Tool
@@ -1062,32 +1520,25 @@ int main(int argc, char** argv) {
       "For detailed logging use gflag: '--minloglevel <level>'\n"
       "\n"
       "Example: sys-catalog-tool --fs_data_dirs ~/yugabyte-data/node-1/disk-1 --minloglevel 0 "
-      "read > ./sys.json"
+      "dump --file ./sys.json"
 #if SYS_CATALOG_WRITE_ENABLED
       "\n\n"
       "Usual Pipeline:\n"
-      "  1. read    - Read SysCatalog from tablet into JSON file.\n"
+      "  1. dump    - Read SysCatalog from tablet into JSON file.\n"
       "  2. To update the SysCatalog manually correct the JSON file. Use __ACTION__ fields: \n"
       "     ADD, REMOVE, CHANGE, \"\" == NoOp.\n"
       "         ADD:    Add the new entry into the SysCatalog.\n"
       "         REMOVE: Remove the entry from the SysCatalog.\n"
       "         CHANGE: Update this entry. Take new values from the JSON file.\n"
       "         \"\":     Do nothing with the entry.\n"
-      "  3. diff    - Read the __ACTION__ fields in the JSON file and print the difference\n"
-      "               to the screen. It does not read or write the SysCatalog tablet.\n"
-      "  4. check   - Read SysCatalog tablet. Compare it with the JSON file - ensure nothing\n"
-      "               was changed since the JSON file was generated.\n"
-      "               It does not write data into the SysCtalog.\n"
-      "  5. apply   - IMPORTANT! THIS WRITES DATA INTO THE SYS-CATALOG. USE WITH CAUTION!\n"
-      "               Write the entries back to the SysCatalog tablet.\n"
-      "               It writes only entries with __ACTION__ = ADD or REMOVE or CHANGE.\n"
-      "  6. compare - Read the SysCatalog and compare with the changed entries in the JSON file.\n"
-      "               It compares only entries with __ACTION__ = ADD or REMOVE or CHANGE.\n"
-      "               This operation can be used to ensure, that the previous `Apply`\n"
-      "               operation was successfully completed.\n"
-      "  7. revert  - IMPORTANT! THIS WRITES DATA INTO THE SYS-CATALOG. USE WITH CAUTION!\n"
-      "               Rollback changes after previous `Apply` operation.\n"
-      "               It restores back entries with __ACTION__ = ADD or REMOVE or CHANGE."
+      "  3. show-changes - Read the __ACTION__ fields in the JSON file and print the difference\n"
+      "                    to the screen. It does not read or write the SysCatalog tablet.\n"
+      "  4. update       - IMPORTANT! THIS WRITES DATA INTO THE SYS-CATALOG. USE WITH CAUTION!\n"
+      "                    Write the entries back to the SysCatalog tablet.\n"
+      "                    It writes only entries with __ACTION__ = ADD or REMOVE or CHANGE.\n"
+      "  5. rollback     - IMPORTANT! THIS WRITES DATA INTO THE SYS-CATALOG. USE WITH CAUTION!\n"
+      "                    Rollback changes after previous `Apply` operation.\n"
+      "                    It restores back entries with __ACTION__ = ADD or REMOVE or CHANGE."
 #endif // SYS_CATALOG_WRITE_ENABLED
       );
 

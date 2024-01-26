@@ -29,7 +29,7 @@
 
 #include <boost/optional.hpp>
 #include <boost/preprocessor/cat.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/dockv/partial_row.h"
 #include "yb/dockv/partition.h"
@@ -779,8 +779,7 @@ Status BackfillTable::LaunchComputeSafeTimeForRead() {
       SCHECK(!res->is_special(), InvalidArgument, "Invalid xCluster safe time for namespace ",
              indexed_table_->namespace_id());
 
-      LOG_WITH_PREFIX(INFO) << "Using xCluster safe time " << read_time_for_backfill_
-                            << " as the backfill read time";
+      LOG_WITH_PREFIX(INFO) << "Using xCluster safe time " << *res << " as the backfill read time";
       return SetSafeTimeAndStartBackfill(*res);
     } else {
       if (res.status().IsNotFound()) {
@@ -791,6 +790,15 @@ Status BackfillTable::LaunchComputeSafeTimeForRead() {
       }
     }
   }
+  // NOTE: Colocated indexes in a transactional xCluster will use the regular tablet safe time.
+  // Only the parent table is part of the xCluster replication, so new data that is added to the
+  // index on the source universe automatically flows to the target universe even before the index
+  // is created on it.
+  // We still need to run backfill since the WAL entries for the backfill are NOT replicated via
+  // xCluster. This is because both backfill entries and xCluster replicated entries use the same
+  // external HT field. To ensure transactional correctness we just need to pick a time higher than
+  // the time that was picked on the source side. Since the table is created on the source universe
+  // before the target this is always guaranteed to be true.
 
   auto tablets = indexed_table_->GetTablets();
   num_tablets_.store(tablets.size(), std::memory_order_release);
@@ -958,8 +966,10 @@ Status BackfillTable::DoBackfill() {
     LOG(INFO) << Format("Blocking $0 for $1", __func__, kSpinWait);
     SleepFor(kSpinWait);
   }
-  VLOG_WITH_PREFIX(1) << "starting backfill with timestamp: "
-                      << read_time_for_backfill_;
+  if (VLOG_IS_ON(1)) {
+    std::lock_guard l(mutex_);
+    VLOG_WITH_PREFIX(1) << "starting backfill with timestamp: " << read_time_for_backfill_;
+  }
 
   num_tablets_.store(tablets.size(), std::memory_order_release);
   tablets_pending_.store(tablets.size(), std::memory_order_release);

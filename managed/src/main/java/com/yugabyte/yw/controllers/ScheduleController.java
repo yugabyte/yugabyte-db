@@ -21,6 +21,8 @@ import com.yugabyte.yw.models.Schedule;
 import com.yugabyte.yw.models.Schedule.State;
 import com.yugabyte.yw.models.ScheduleTask;
 import com.yugabyte.yw.models.Universe;
+import com.yugabyte.yw.models.common.YbaApi;
+import com.yugabyte.yw.models.common.YbaApi.YbaApiVisibility;
 import com.yugabyte.yw.models.filters.ScheduleFilter;
 import com.yugabyte.yw.models.paging.SchedulePagedApiResponse;
 import com.yugabyte.yw.models.paging.SchedulePagedQuery;
@@ -58,8 +60,12 @@ public class ScheduleController extends AuthenticatedController {
     this.backupHelper = backupHelper;
   }
 
+  @Deprecated
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
   @ApiOperation(
-      value = "List schedules",
+      value =
+          "Deprecated since YBA version 2.20.0.0."
+              + " Use 'List schedules V2' instead. List schedules",
       response = Schedule.class,
       responseContainer = "List",
       nickname = "listSchedules")
@@ -116,21 +122,19 @@ public class ScheduleController extends AuthenticatedController {
     return PlatformResults.withData(schedule);
   }
 
+  @Deprecated
+  @YbaApi(visibility = YbaApiVisibility.DEPRECATED, sinceYBAVersion = "2.20.0.0")
   @ApiOperation(
-      value = "Delete a schedule",
+      value =
+          "Deprecated since YBA version 2.20.0.0."
+              + " Use 'Delete a schedule V2' instead. Delete a schedule",
       response = PlatformResults.YBPSuccess.class,
       nickname = "deleteSchedule")
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
-        resourceLocation =
-            @Resource(
-                path = Util.UNIVERSE_UUID,
-                sourceType = SourceType.DB,
-                dbClass = Schedule.class,
-                identifier = "schedules",
-                columnName = "schedule_uuid"))
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result delete(UUID customerUUID, UUID scheduleUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);
@@ -158,7 +162,9 @@ public class ScheduleController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+            @PermissionAttribute(
+                resourceType = ResourceType.UNIVERSE,
+                action = Action.BACKUP_RESTORE),
         resourceLocation =
             @Resource(
                 path = Util.UNIVERSE_UUID,
@@ -253,14 +259,8 @@ public class ScheduleController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
-        resourceLocation =
-            @Resource(
-                path = Util.UNIVERSE_UUID,
-                sourceType = SourceType.DB,
-                dbClass = Schedule.class,
-                identifier = "schedules",
-                columnName = "schedule_uuid"))
+            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
   })
   public Result deleteYb(UUID customerUUID, UUID scheduleUUID, Http.Request request) {
     Customer.getOrBadRequest(customerUUID);

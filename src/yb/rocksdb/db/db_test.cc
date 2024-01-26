@@ -4569,6 +4569,12 @@ class ModelDB: public DB {
     return snapshot;
   }
 
+  std::unique_ptr<Iterator> NewIndexIterator(
+      const ReadOptions& options, SkipLastEntry skip_last_index_entry,
+      ColumnFamilyHandle* column_family) override {
+    return nullptr;
+  }
+
   void ReleaseSnapshot(const Snapshot* snapshot) override {
     delete reinterpret_cast<const ModelSnapshot*>(snapshot);
   }

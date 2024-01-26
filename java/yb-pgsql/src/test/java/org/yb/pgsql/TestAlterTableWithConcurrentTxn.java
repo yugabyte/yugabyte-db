@@ -381,7 +381,16 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
         // Running a simple select on statement to load table's metadata into the PgGate cache.
         txnStmt1.execute("SELECT * FROM " + tableName);
         if (!dependentTableName.isEmpty()) {
-          txnStmt2.execute("SELECT * FROM " + dependentTableName);
+          if (alterCommand == AlterCommand.DETACH_PARTITION) {
+            // For partitioned table, the pg_inherits cache is only populated upon INSERTs, so
+            // run an INSERT statement to populate the cache. A SELECT will only populate the
+            // relcache entry for the child directly, just like a SELECT to a regular table. To
+            // populate the inheritance hierarcy into the cache (which is needed by this test), we
+            // should run an INSERT.
+            txnStmt2.execute("INSERT INTO " + dependentTableName + " VALUES (2)");
+          } else {
+            txnStmt2.execute("SELECT * FROM " + dependentTableName);
+          }
         }
       }
 
@@ -621,7 +630,7 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
       stmt.execute("INSERT INTO " + tableName + " VALUES (1, 1)");
 
       runInvalidQuery(stmt, "ALTER TABLE " + tableName + " ADD COLUMN c INT NOT NULL",
-          "column \"c\" contains null values");
+          "column \"c\" of relation \"" + tableName + "\" contains null values");
 
       Thread.sleep(20000); // 20 seconds
       assertQuery(stmt, "SELECT COUNT(*) FROM " + tableName, new Row(1));
@@ -681,8 +690,6 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
       String expectedErrorOnInsert;
       if (alterType == AlterCommand.DROP_IDENTITY) {
         expectedErrorOnInsert = NO_SEQUENCE_FOUND_ERROR;
-      } else if (alterType == AlterCommand.DETACH_PARTITION) {
-        expectedErrorOnInsert = NO_TUPLE_FOUND_ERROR;
       } else if (alterType == AlterCommand.ATTACH_PARTITION) {
         expectedErrorOnInsert = NO_ERROR;
       } else {
@@ -712,17 +719,9 @@ public class TestAlterTableWithConcurrentTxn extends BasePgSQLTest {
     //    Transaction should not conflict because new schema is used for
     //    DML operation and the original schema is not already cached.
     for (AlterCommand alterType : AlterCommand.values()) {
-
-      String expectedErrorOnInsert;
-      if (alterType == AlterCommand.DETACH_PARTITION) {
-        expectedErrorOnInsert = NO_TUPLE_FOUND_ERROR;
-      } else {
-        expectedErrorOnInsert = NO_ERROR;
-      }
-
       LOG.info("Run INSERT txn after ALTER " + alterType + " cache set " + !cacheMetadataSetTrue);
       runDmlTxnWithAlterOnCurrentResource(Dml.INSERT, alterType, !cacheMetadataSetTrue,
-          executeDmlAfterAlter, expectedErrorOnInsert);
+          executeDmlAfterAlter, NO_ERROR);
       LOG.info("Run SELECT txn after ALTER " + alterType + " cache set " + !cacheMetadataSetTrue);
       runDmlTxnWithAlterOnCurrentResource(Dml.SELECT, alterType, !cacheMetadataSetTrue,
           executeDmlAfterAlter, NO_ERROR);

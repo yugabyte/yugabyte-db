@@ -50,6 +50,7 @@ import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.concurrent.atomic.AtomicReference;
+import java.util.function.Consumer;
 import java.util.stream.Collectors;
 import javax.persistence.CascadeType;
 import javax.persistence.Column;
@@ -60,8 +61,10 @@ import javax.persistence.PostRemove;
 import javax.persistence.Table;
 import javax.persistence.Transient;
 import javax.persistence.UniqueConstraint;
+import lombok.Builder;
 import lombok.Getter;
 import lombok.Setter;
+import org.apache.commons.lang3.StringUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.slf4j.MDC;
@@ -284,7 +287,9 @@ public class Universe extends Model {
    * @return list of UUIDs of all universes
    */
   public static Set<UUID> getAllUUIDs(Customer customer) {
-    return ImmutableSet.copyOf(find.query().where().eq("customer_id", customer.getId()).findIds());
+    List<UUID> universeList = find.query().where().eq("customer_id", customer.getId()).findIds();
+    Set<UUID> universeUUIDs = new HashSet<UUID>(universeList);
+    return universeUUIDs;
   }
 
   public static Set<UUID> getAllUUIDs() {
@@ -430,6 +435,22 @@ public class Universe extends Model {
    */
   public interface UniverseUpdater {
     void run(Universe universe);
+
+    // Returns the config associated with this updater.
+    default UniverseUpdaterConfig getConfig() {
+      return UniverseUpdaterConfig.builder().build();
+    }
+  }
+
+  /** Config parameters for the universe updater. */
+  @Builder
+  @Getter
+  public static class UniverseUpdaterConfig {
+    private boolean checkSuccess;
+    private boolean forceUpdate;
+    @Builder.Default private boolean freezeUniverse = true;
+    private boolean ignoreAbsence;
+    private Consumer<Universe> callback;
   }
 
   /**
@@ -546,7 +567,9 @@ public class Universe extends Model {
   public NodeDetails getNodeByPrivateIP(String nodeIP) {
     Collection<NodeDetails> nodes = getNodes();
     for (NodeDetails node : nodes) {
-      if (node.cloudInfo.private_ip.equals(nodeIP)) {
+      if (node.cloudInfo != null
+          && StringUtils.isNotBlank(node.cloudInfo.private_ip)
+          && node.cloudInfo.private_ip.equals(nodeIP)) {
         return node;
       }
     }
@@ -602,6 +625,19 @@ public class Universe extends Model {
     if (filteredServers.isEmpty()) {
       LOG.trace(
           "No live nodes for getLiveTServersInPrimaryCluster in universe {}", getUniverseUUID());
+    }
+    return filteredServers;
+  }
+
+  public List<NodeDetails> getRunningTserversInPrimaryCluster() {
+    List<NodeDetails> servers = getTServersInPrimaryCluster();
+    List<NodeDetails> filteredServers =
+        servers.stream().filter(NodeDetails::isConsideredRunning).collect(Collectors.toList());
+
+    if (filteredServers.isEmpty()) {
+      LOG.trace(
+          "No Running nodes for getRunningTserversInPrimaryCluster in universe {}",
+          getUniverseUUID());
     }
     return filteredServers;
   }
@@ -1002,9 +1038,7 @@ public class Universe extends Model {
   }
 
   public boolean nodeExists(String host, int port) {
-    return getUniverseDetails()
-        .nodeDetailsSet
-        .parallelStream()
+    return getUniverseDetails().nodeDetailsSet.parallelStream()
         .anyMatch(
             n ->
                 n.cloudInfo.private_ip != null
@@ -1059,7 +1093,12 @@ public class Universe extends Model {
   }
 
   static Set<UUID> getUniverseUUIDsForCustomer(Long customerId) {
-    return find.query().select("universeUUID").where().eq("customer_id", customerId).findList()
+    return find
+        .query()
+        .select("universeUUID")
+        .where()
+        .eq("customer_id", customerId)
+        .findList()
         .stream()
         .map(Universe::getUniverseUUID)
         .collect(Collectors.toSet());

@@ -16,7 +16,8 @@ import java.util.UUID;
 /** This class will be used by Customer details API. */
 @ApiModel(
     description =
-        "Customer details, including their universe UUIDs. Only the customer code and name are modifiable.")
+        "Customer details, including their universe UUIDs. Only the customer code and name are"
+            + " modifiable.")
 public class CustomerDetailsData {
 
   @ApiModelProperty(value = "User UUID", accessMode = READ_ONLY)

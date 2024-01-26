@@ -22,6 +22,7 @@ export interface IRestore {
   restoreKeyspaceList: {
     targetKeyspace: string;
     storageLocation: string;
+    tableNameList?: string[];
   }[]
 }
 
@@ -41,9 +42,5 @@ export const RESTORE_STATUS_OPTIONS: { value: Restore_States | null; label: stri
   {
     label: 'Failed',
     value: Restore_States.FAILED
-  },
-  {
-    label: 'Aborted',
-    value: Restore_States.ABORTED
   }
 ];

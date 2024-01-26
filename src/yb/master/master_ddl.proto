@@ -167,6 +167,7 @@ message ListTablesResponsePB {
     optional SysTablesEntryPB.State state = 6;
     optional string pgschema_name = 7;
     optional ColocatedInfo colocated_info = 8;
+    optional bool hidden = 9;
   }
 
   repeated TableInfo tables = 2;
@@ -220,6 +221,8 @@ message GetTableSchemaResponsePB {
   optional bool is_compatible_with_previous_version = 14 [default = false];
 
   optional uint32 wal_retention_secs = 15;
+
+  repeated YsqlDdlTxnVerifierStatePB ysql_ddl_txn_verifier_state = 17;
 }
 
 message GetTablegroupSchemaRequestPB {

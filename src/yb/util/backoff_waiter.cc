@@ -15,7 +15,7 @@
 #include <algorithm>
 #include <string>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 using std::string;
 

@@ -32,13 +32,33 @@ Status CreateEmptyAutoFlagsConfig(AutoFlagsManager* auto_flag_manager);
 // Intended to be used in new cluster created with AutoFlags.
 Status CreateAutoFlagsConfigForNewCluster(AutoFlagsManager* auto_flag_manager);
 
+YB_DEFINE_ENUM(
+    PromoteAutoFlagsOutcome, (kNoFlagsPromoted)(kNewFlagsPromoted)(kNonRuntimeFlagsPromoted));
+
 // Promote eligible AutoFlags up to max_flag_class. If no new flags were eligible, Status
 // AlreadyPresent is returned. When force is set, the config version is bumped up even if no new
-// flags are eligible.
-Status PromoteAutoFlags(
+// flags are eligible. Returns the new config version and whether any non-runtime flags were
+// promoted.
+Result<std::pair<uint32_t, PromoteAutoFlagsOutcome>> PromoteAutoFlags(
     const AutoFlagClass max_flag_class, const PromoteNonRuntimeAutoFlags promote_non_runtime_flags,
-    const bool force, const AutoFlagsManager& auto_flag_manager, CatalogManager* catalog_manager,
-    uint32_t* new_config_version, bool* non_runtime_flags_promoted);
+    const bool force, const AutoFlagsManager& auto_flag_manager, CatalogManager* catalog_manager);
+
+Result<std::pair<uint32_t, PromoteAutoFlagsOutcome>> PromoteSingleAutoFlag(
+    const ProcessName& process_name, const std::string& flag_name,
+    const AutoFlagsManager& auto_flag_manager, CatalogManager* catalog_manager);
+
+// Rollback AutoFlags to the specified version. Only Volatile AutoFlags are eligible for rollback.
+// Returns weather any flags were rolled back and the new config version.
+Result<std::pair<uint32_t, bool>> RollbackAutoFlags(
+    uint32_t rollback_version, const AutoFlagsManager& auto_flag_manager,
+    CatalogManager* catalog_manager);
+
+// Demote a single AutoFlag. Returns weather the flag was demoted and the new config version.
+// Note: This is extremely dangerous and should only be used under the guidance of YugabyteDB
+// engineering team.
+Result<std::pair<uint32_t, bool>> DemoteSingleAutoFlag(
+    const ProcessName& process_name, const std::string& flag_name,
+    const AutoFlagsManager& auto_flag_manager, CatalogManager* catalog_manager);
 }  // namespace master
 
 }  // namespace yb

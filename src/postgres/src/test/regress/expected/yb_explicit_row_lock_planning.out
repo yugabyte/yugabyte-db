@@ -134,14 +134,15 @@ SELECT * FROM yb_locks_t2 WHERE k1=1 AND k2=2 FOR UPDATE;
 -- Test LockRows node is used for join.
 EXPLAIN (COSTS OFF)
 SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UPDATE;
-                         QUERY PLAN
-------------------------------------------------------------
+                                   QUERY PLAN
+---------------------------------------------------------------------------------
  LockRows
-   ->  Nested Loop
+   ->  YB Batched Nested Loop Join
+         Join Filter: (yb_locks_t2.k1 = yb_locks_t.k)
          ->  Seq Scan on yb_locks_t2
          ->  Index Scan using yb_locks_t_pkey on yb_locks_t
-               Index Cond: (k = yb_locks_t2.k1)
-(5 rows)
+               Index Cond: (k = ANY (ARRAY[yb_locks_t2.k1, $2, $3, ..., $1024]))
+(6 rows)
 
 SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UPDATE;
  k1 | k2 | k3 | v | k
@@ -206,19 +207,20 @@ SELECT * FROM yb_locks_t FOR UPDATE;
 EXPLAIN (COSTS OFF)
 SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UPDATE;
                                    QUERY PLAN
---------------------------------------------------------------------------------
+---------------------------------------------------------------------------------
  LockRows (no-op)
-   ->  Nested Loop
+   ->  YB Batched Nested Loop Join
+         Join Filter: (yb_locks_t2.k1 = yb_locks_t.k)
          ->  Seq Scan (Locked FOR UPDATE) on yb_locks_t2
          ->  Index Scan (Locked FOR UPDATE) using yb_locks_t_pkey on yb_locks_t
-               Index Cond: (k = yb_locks_t2.k1)
-(5 rows)
+               Index Cond: (k = ANY (ARRAY[yb_locks_t2.k1, $2, $3, ..., $1024]))
+(6 rows)
 
 SELECT * FROM yb_locks_t2, yb_locks_t WHERE yb_locks_t2.k1 = yb_locks_t.k FOR UPDATE;
  k1 | k2 | k3 | v | k
 ----+----+----+---+---
-  5 |  6 |  7 | 8 | 5
   1 |  2 |  3 | 4 | 1
+  5 |  6 |  7 | 8 | 5
 (2 rows)
 
 -- Test locking, and no LockRows node, when using an ASC table and YB Sequential Scan.

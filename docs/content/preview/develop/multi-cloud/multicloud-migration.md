@@ -92,7 +92,7 @@ A simple way to set up replication is as follows:
 
 ![Multi-cloud Replication](/images/develop/multicloud/multicloud-migration-replication.png)
 
-Any data changes to the AWS universe are automatically applied to the GCP universe. _NOTE_: For this example, DDL changes have to be applied manually.
+Any data changes to the AWS universe are automatically applied to the GCP universe. _Note_: For this example, DDL changes have to be applied manually.
 
 ### Switch over to the new universe
 

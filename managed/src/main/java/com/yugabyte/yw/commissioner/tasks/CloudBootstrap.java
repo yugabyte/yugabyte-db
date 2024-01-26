@@ -14,6 +14,7 @@ import com.yugabyte.yw.cloud.PublicCloudConstants.Architecture;
 import com.yugabyte.yw.commissioner.BaseTaskDependencies;
 import com.yugabyte.yw.commissioner.Common;
 import com.yugabyte.yw.commissioner.Common.CloudType;
+import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.TaskExecutor.SubTaskGroup;
 import com.yugabyte.yw.commissioner.UserTaskDetails;
 import com.yugabyte.yw.commissioner.tasks.params.CloudTaskParams;
@@ -41,6 +42,7 @@ import lombok.extern.slf4j.Slf4j;
 import play.libs.Json;
 
 @Slf4j
+@Retryable
 public class CloudBootstrap extends CloudTaskBase {
 
   private CloudProviderHandler cloudProviderHandler;
@@ -293,14 +295,14 @@ public class CloudBootstrap extends CloudTaskBase {
             .perRegionMetadata
             .forEach(
                 (regionCode, metadata) -> {
-                  createRegionSetupTask(regionCode, metadata, taskParams().destVpcId)
+                  createRegionSetupTask(regionCode, metadata, taskParams().destVpcId, isFirstTry())
                       .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.BootstrappingRegion);
                 });
         taskParams()
             .perRegionMetadata
             .forEach(
                 (regionCode, metadata) -> {
-                  createAccessKeySetupTask(taskParams(), regionCode)
+                  createAccessKeySetupTask(taskParams(), regionCode, isFirstTry())
                       .setSubTaskGroupType(UserTaskDetails.SubTaskGroupType.CreateAccessKey);
                 });
 
@@ -346,6 +348,7 @@ public class CloudBootstrap extends CloudTaskBase {
     CloudImageBundleSetup.Params params = new CloudImageBundleSetup.Params();
     params.providerUUID = taskParams().providerUUID;
     params.imageBundles = taskParams().imageBundles;
+    params.isFirstTry = isFirstTry();
     CloudImageBundleSetup task = createTask(CloudImageBundleSetup.class);
     task.initialize(params);
     subTaskGroup.addSubTask(task);

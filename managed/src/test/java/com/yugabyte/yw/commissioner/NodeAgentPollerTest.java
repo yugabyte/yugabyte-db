@@ -77,7 +77,8 @@ public class NodeAgentPollerTest extends FakeDBApplication {
         .thenReturn(Duration.ofSeconds(3));
     certificateHelper = new CertificateHelper(mockConfGetter);
     nodeAgentManager = new NodeAgentManager(mockAppConfig, mockConfigHelper, certificateHelper);
-    nodeAgentHandler = new NodeAgentHandler(mockAppConfig, nodeAgentManager, mockNodeAgentClient);
+    nodeAgentHandler =
+        new NodeAgentHandler(mockCommissioner, nodeAgentManager, mockNodeAgentClient);
     nodeAgentPoller =
         new NodeAgentPoller(
             mockConfGetter,

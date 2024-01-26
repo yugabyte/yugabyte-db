@@ -54,6 +54,8 @@ class GcpCreateInstancesMethod(CreateInstancesMethod):
                                  help="Instance type template for GCP instances")
 
     def run_ansible_create(self, args):
+        if args.ssh_user is not None:
+            self.SSH_USER = args.ssh_user
         server_type = args.type
 
         can_ip_forward = (

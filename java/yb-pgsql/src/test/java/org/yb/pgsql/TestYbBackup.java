@@ -750,7 +750,7 @@ public class TestYbBackup extends BasePgSQLTest {
 
       runInvalidQuery(
           stmt, "INSERT INTO test_tbl(id, b) VALUES(3, 6)",
-          "null value in column \"a\" violates not-null constraint");
+          "null value in column \"a\" of relation \"test_tbl\" violates not-null constraint");
 
       String backupDir = YBBackupUtil.getTempBackupDir();
       String output = YBBackupUtil.runYbBackupCreate("--backup_location", backupDir,

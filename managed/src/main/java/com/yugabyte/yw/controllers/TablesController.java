@@ -362,7 +362,9 @@ public class TablesController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
+            @PermissionAttribute(
+                resourceType = ResourceType.UNIVERSE,
+                action = Action.BACKUP_RESTORE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
   // Remove this too.
@@ -542,8 +544,7 @@ public class TablesController extends AuthenticatedController {
     List<TableInfo> tableInfoList = getTableInfosOrEmpty(universe);
     if (keyspace != null && tableUuids.isEmpty()) {
       tableInfoList =
-          tableInfoList
-              .parallelStream()
+          tableInfoList.parallelStream()
               .filter(tableInfo -> keyspace.equals(tableInfo.getNamespace().getName()))
               .filter(tableInfo -> tableType.equals(tableInfo.getTableType()))
               .collect(Collectors.toList());
@@ -556,8 +557,7 @@ public class TablesController extends AuthenticatedController {
 
     if (keyspace == null) {
       tableInfoList =
-          tableInfoList
-              .parallelStream()
+          tableInfoList.parallelStream()
               .filter(tableInfo -> tableType.equals(tableInfo.getTableType()))
               .collect(Collectors.toList());
       if (tableInfoList.isEmpty()) {

@@ -140,8 +140,8 @@ To start YugabyteDB Helm chart, perform the following:
     ```
 
     ```output
-    NAME                 CHART VERSION  APP VERSION   DESCRIPTION
-  yugabytedb/yugabyte  {{<yb-version version="preview" format="short">}}          {{<yb-version version="preview" format="build">}}  YugabyteDB is the high-performance distributed ...
+    NAME                 CHART VERSION  APP VERSION    DESCRIPTION
+  yugabytedb/yugabyte  {{<yb-version version="preview" format="short">}}         {{<yb-version version="preview" format="build">}}  YugabyteDB is the high-performance distributed ...
   ```
 
 Now you are ready to create a local YugabyteDB cluster.
@@ -244,7 +244,7 @@ $ kubectl --namespace yb-demo exec -it yb-tserver-0 -- sh -c "cd /home/yugabyte 
 ```
 
 ```output
-ysqlsh (11.2-YB-2.1.0.0-b0)
+ysqlsh (11.2-YB-{{< yb-version version="preview">}}-b0)
 Type "help" for help.
 
 yugabyte=#

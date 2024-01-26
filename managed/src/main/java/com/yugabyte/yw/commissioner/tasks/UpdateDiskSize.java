@@ -48,7 +48,7 @@ public class UpdateDiskSize extends UniverseDefinitionTaskBase {
               taskParams().expectedUniverseVersion,
               u -> {
                 // Set the task param data to universe in-memory.
-                setUserIntentToUniverse(u, taskParams(), false);
+                updateUniverseNodesAndSettings(u, taskParams(), false);
               });
 
       Cluster primaryCluster = universe.getUniverseDetails().getPrimaryCluster();
@@ -57,6 +57,8 @@ public class UpdateDiskSize extends UniverseDefinitionTaskBase {
 
       // Create Task to update the disk size.
       createUpdateDiskSizeTasks(PlacementInfoUtil.getLiveNodes(nodes));
+
+      createUpdateUniverseIntentTask(primaryCluster);
 
       // Marks update of this universe as a success only if all the tasks before it succeeded.
       createMarkUniverseUpdateSuccessTasks()

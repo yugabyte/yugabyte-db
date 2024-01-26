@@ -1090,6 +1090,22 @@ public class KubernetesCommandExecutor extends UniverseTaskBase {
       tserverOverrides.put("ysql_enable_auth", "true");
       Map<String, String> DEFAULT_YSQL_HBA_CONF_MAP =
           Collections.singletonMap(GFlagsUtil.YSQL_HBA_CONF_CSV, "local all yugabyte trust");
+      if (tserverOverrides.containsKey(GFlagsUtil.YSQL_HBA_CONF_CSV)
+          && confGetter.getGlobalConf(GlobalConfKeys.oidcFeatureEnhancements)) {
+        /*
+         * Preprocess the ysql_hba_conf_csv flag for IdP specific use case.
+         * Refer Design Doc:
+         * https://docs.google.com/document/d/1SJzZJrAqc0wkXTCuMS7UKi1-5xEuYQKCOOa3QWYpMeM/edit
+         */
+        GFlagsUtil.processHbaConfFlagIfRequired(
+            null,
+            tserverOverrides,
+            confGetter,
+            u.getUniverseUUID(),
+            taskParams().isReadOnlyCluster
+                ? u.getUniverseDetails().getReadOnlyClusters().get(0).uuid
+                : u.getUniverseDetails().getPrimaryCluster().uuid);
+      }
       GFlagsUtil.mergeCSVs(
           tserverOverrides, DEFAULT_YSQL_HBA_CONF_MAP, GFlagsUtil.YSQL_HBA_CONF_CSV);
       tserverOverrides.putIfAbsent(GFlagsUtil.YSQL_HBA_CONF_CSV, "local all yugabyte trust");

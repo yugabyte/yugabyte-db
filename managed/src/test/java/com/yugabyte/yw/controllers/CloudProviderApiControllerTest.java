@@ -66,6 +66,8 @@ import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.PlatformServiceException;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.PlatformResults.YBPTask;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.UserIntent;
@@ -109,6 +111,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.Mockito;
+import org.mockito.MockitoAnnotations;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -122,24 +125,29 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
       ImmutableList.of("region1", "region2");
 
   @Mock Config mockConfig;
+  @Mock RuntimeConfGetter mockConfGetter;
 
   Customer customer;
   Users user;
 
   @Before
   public void setUp() {
+    MockitoAnnotations.initMocks(this);
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
     try {
       String kubeFile = createTempFile("test2.conf", "test5678");
       when(mockAccessManager.createKubernetesConfig(anyString(), anyMap(), anyBoolean()))
           .thenReturn(kubeFile);
-      when(mockCommissioner.submit(any(), any())).thenReturn(UUID.randomUUID());
+      UUID taskUUID = buildTaskInfo(null, TaskType.CloudProviderEdit);
+      when(mockCommissioner.submit(any(), any())).thenReturn(taskUUID);
     } catch (Exception e) {
       // Do nothing
     }
     String gcpCredentialFile = createTempFile("gcpCreds.json", "test5678");
     when(mockAccessManager.createGCPCredentialsFile(any(), any())).thenReturn(gcpCredentialFile);
+    when(mockConfGetter.getConfForScope(customer, CustomerConfKeys.cloudEnabled)).thenReturn(false);
+    when(mockConfGetter.getStaticConf()).thenReturn(mockConfig);
   }
 
   private Result listProviders() {
@@ -278,9 +286,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   @Test
   public void testCreateProvider() {
     createProviderTest(
-        buildProviderReq("azu", "Microsoft"),
-        ImmutableList.of("region1", "region2"),
-        UUID.randomUUID());
+        buildProviderReq("azu", "Microsoft"), ImmutableList.of("region1", "region2"));
   }
 
   @Test
@@ -293,7 +299,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     region.setProvider(provider);
     region.setCode("region1");
     provider.setRegions(ImmutableList.of(region));
-    provider = createProviderTest(provider, ImmutableList.of(), UUID.randomUUID());
+    provider = createProviderTest(provider, ImmutableList.of());
     assertNull(provider.getDestVpcId());
     assertNull(provider.getHostVpcId());
   }
@@ -307,7 +313,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     reqConfig.put("use_host_vpc", "true");
     reqConfig.put("use_host_credentials", "true");
     CloudInfoInterface.setCloudProviderInfoFromConfig(provider, reqConfig);
-    provider = createProviderTest(provider, ImmutableList.of("region1"), UUID.randomUUID());
+    provider = createProviderTest(provider, ImmutableList.of("region1"));
     Map<String, String> config = CloudInfoInterface.fetchEnvVars(provider);
     GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
     assertEquals("234234", gcpCloudInfo.getHostVpcId());
@@ -324,7 +330,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     reqConfig.put("use_host_vpc", "false");
     reqConfig.put("use_host_credentials", "false");
     CloudInfoInterface.setCloudProviderInfoFromConfig(provider, reqConfig);
-    provider = createProviderTest(provider, ImmutableList.of("region1"), UUID.randomUUID());
+    provider = createProviderTest(provider, ImmutableList.of("region1"));
     GCPCloudInfo gcpCloudInfo = CloudInfoInterface.get(provider);
     assertEquals(CloudInfoInterface.VPCType.NEW, gcpCloudInfo.getVpcType());
   }
@@ -334,7 +340,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     when(mockCloudQueryHelper.getCurrentHostInfo(eq(CloudType.aws)))
         .thenReturn(Json.newObject().put("vpc-id", "234234").put("region", "VPCreg"));
     Provider provider = buildProviderReq("aws", "AWS");
-    provider = createProviderTest(provider, ImmutableList.of("region1"), UUID.randomUUID());
+    provider = createProviderTest(provider, ImmutableList.of("region1"));
     AWSCloudInfo awsCloudInfo = CloudInfoInterface.get(provider);
     assertEquals("234234", awsCloudInfo.getHostVpcId());
     assertEquals("VPCreg", awsCloudInfo.getHostVpcRegion());
@@ -342,23 +348,21 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
 
   @Test
   public void testCreateGCPProviderNoRegionInput() {
-    createProviderTest(
-        buildProviderReq("gcp", "Google"),
-        ImmutableList.of("region1", "region2"),
-        UUID.randomUUID());
+    createProviderTest(buildProviderReq("gcp", "Google"), ImmutableList.of("region1", "region2"));
   }
 
   @Test
   public void testAwsBootstrapWithDestVpcId() {
     Provider providerReq = buildProviderReq("aws", "Amazon");
     providerReq.setDestVpcId("nofail");
-    createProviderTest(providerReq, ImmutableList.of("region1", "region2"), UUID.randomUUID());
+    createProviderTest(providerReq, ImmutableList.of("region1", "region2"));
   }
 
   private Provider createProviderTest(
-      Provider provider, ImmutableList<String> regionCodesFromCloudAPI, UUID actualTaskUUID) {
+      Provider provider, ImmutableList<String> regionCodesFromCloudAPI) {
     JsonNode bodyJson = Json.toJson(provider);
     boolean isOnprem = CloudType.onprem.name().equals(provider.getCode());
+    UUID actualTaskUUID = buildTaskInfo(null, TaskType.CloudProviderEdit);
     when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
         .thenReturn(actualTaskUUID);
     if (!isOnprem) {
@@ -413,8 +417,9 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
 
   @Test
   public void testAddingAlreadyDeletedRegion() {
+    UUID taskUUID = buildTaskInfo(null, TaskType.CloudProviderEdit);
     when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
-        .thenReturn(UUID.randomUUID());
+        .thenReturn(taskUUID);
     ProviderDetails providerDetails = new ProviderDetails();
     Provider provider =
         Provider.create(customer.getUuid(), Common.CloudType.aws, "test", providerDetails);
@@ -448,10 +453,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
   @Test
   public void testCreateMultiInstanceProvider() {
     ModelFactory.awsProvider(customer);
-    createProviderTest(
-        buildProviderReq("aws", "Amazon1"),
-        ImmutableList.of("region1", "region2"),
-        UUID.randomUUID());
+    createProviderTest(buildProviderReq("aws", "Amazon1"), ImmutableList.of("region1", "region2"));
   }
 
   @Test
@@ -461,26 +463,20 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
         assertPlatformException(
             () ->
                 createProviderTest(
-                    buildProviderReq("aws", "Amazon"),
-                    ImmutableList.of("region1", "region2"),
-                    UUID.randomUUID()));
+                    buildProviderReq("aws", "Amazon"), ImmutableList.of("region1", "region2")));
     assertConflict(result, "Provider with the name Amazon already exists");
   }
 
   @Test
   public void testCreateMultiInstanceProviderWithSameNameButDifferentCloud() {
     ModelFactory.awsProvider(customer);
-    createProviderTest(
-        buildProviderReq("gcp", "Amazon1"),
-        ImmutableList.of("region1", "region2"),
-        UUID.randomUUID());
+    createProviderTest(buildProviderReq("gcp", "Amazon1"), ImmutableList.of("region1", "region2"));
   }
 
   @Test
   public void testCreateProviderSameNameDiffCustomer() {
     Provider.create(UUID.randomUUID(), Common.CloudType.aws, "Amazon");
-    createProviderTest(
-        buildProviderReq("aws", "Amazon"), REGION_CODES_FROM_CLOUD_API, UUID.randomUUID());
+    createProviderTest(buildProviderReq("aws", "Amazon"), REGION_CODES_FROM_CLOUD_API);
   }
 
   @Test
@@ -489,9 +485,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     bodyJson.put("code", "aws");
     Result result =
         assertPlatformException(
-            () ->
-                createProviderTest(
-                    buildProviderReq("aws", null), REGION_CODES_FROM_CLOUD_API, UUID.randomUUID()));
+            () -> createProviderTest(buildProviderReq("aws", null), REGION_CODES_FROM_CLOUD_API));
     assertBadRequest(result, "\"name\":[\"error.required\"]}");
     assertAuditEntry(0, customer.getUuid());
   }
@@ -519,8 +513,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     }
     providerReq.setCustomerUUID(customer.getUuid());
     CloudInfoInterface.setCloudProviderInfoFromConfig(providerReq, reqConfig);
-    Provider createdProvider =
-        createProviderTest(providerReq, REGION_CODES_FROM_CLOUD_API, UUID.randomUUID());
+    Provider createdProvider = createProviderTest(providerReq, REGION_CODES_FROM_CLOUD_API);
     Map<String, String> config = CloudInfoInterface.fetchEnvVars(createdProvider);
     assertFalse(config.isEmpty());
     if (code.equals("gcp")) {
@@ -559,13 +552,14 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     when(mockCloudAPIFactory.get(any())).thenReturn(mockCloudAPI);
 
     when(mockCloudQueryHelper.getRegionCodes(provider)).thenReturn(ImmutableList.of(region));
+    UUID taskUUID = buildTaskInfo(null, TaskType.CloudProviderEdit);
     when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
         .thenAnswer(
             invocation -> {
               CloudBootstrap.Params taskParams = invocation.getArgument(1);
               CloudBootstrap.Params.PerRegionMetadata m = taskParams.perRegionMetadata.get(region);
               assertEquals(instanceTemplate, m.instanceTemplate);
-              return UUID.randomUUID();
+              return taskUUID;
             });
     assertOk(createProvider(Json.toJson(provider)));
     verify(mockCommissioner, times(1))
@@ -643,7 +637,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     Result result = deleteProvider(p.getUuid());
     assertYBPSuccess(result, "Deleted provider: " + p.getUuid());
 
-    assertEquals(0, InstanceType.findByProvider(p, mockConfig).size());
+    assertEquals(0, InstanceType.findByProvider(p, mockConfGetter).size());
     assertNull(Provider.get(p.getUuid()));
   }
 
@@ -1059,8 +1053,9 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
                 + "sg_id is not attached to vpc: vpc_id\"],"
                 + "\"data.REGION.us-west-2.SUBNETS\":[\"subnet-a is not associated with vpc_id\"],"
                 + "\"errorSource\":[\"providerValidation\"]}}"));
+    UUID taskUUID = buildTaskInfo(null, TaskType.CloudProviderEdit);
     when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
-        .thenReturn(UUID.randomUUID());
+        .thenReturn(taskUUID);
     // Test validation pass
     result = createProvider(bodyJson);
     assertOk(result);
@@ -1084,8 +1079,9 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     regionsList.add(region);
     bodyJson.set("regions", regionsList);
 
+    UUID taskUUID = buildTaskInfo(null, TaskType.CloudProviderEdit);
     when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
-        .thenReturn(UUID.randomUUID());
+        .thenReturn(taskUUID);
     // Test validation pass
     Result result = createProvider(bodyJson);
     assertOk(result);
@@ -1127,7 +1123,7 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
     region.setProvider(provider);
     region.setCode("region1");
     provider.setRegions(ImmutableList.of(region));
-    provider = createProviderTest(provider, ImmutableList.of(), UUID.randomUUID());
+    provider = createProviderTest(provider, ImmutableList.of());
 
     ImageBundleDetails details = new ImageBundleDetails();
     details.setGlobalYbImage("Global-AMI-Image");
@@ -1223,8 +1219,9 @@ public class CloudProviderApiControllerTest extends FakeDBApplication {
         .thenThrow(
             new PlatformServiceException(BAD_REQUEST, "Hosted Zone validation failed: Invalid ID"));
     mockDnsManagerListSuccess();
+    UUID taskUUID = buildTaskInfo(null, TaskType.CloudProviderEdit);
     when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
-        .thenReturn(UUID.randomUUID());
+        .thenReturn(taskUUID);
     Result result = createProvider(bodyJson, true);
     assertOk(result);
     YBPTask ybpTask = Json.fromJson(Json.parse(contentAsString(result)), YBPTask.class);

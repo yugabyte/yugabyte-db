@@ -18,10 +18,12 @@
 // under the License.
 //
 
+#include "yb/util/flags.h"
 #include "yb/util/logging.h"
 #include "yb/util/sync_point.h"
 
-#ifndef NDEBUG
+DEFINE_test_flag(bool, enable_sync_points, false, "Enable sync points for testing.");
+
 namespace yb {
 
 SyncPoint* SyncPoint::GetInstance() {
@@ -110,5 +112,9 @@ void SyncPoint::Process(const std::string& point, void* cb_arg) {
   cv_.notify_all();
 }
 
+void TEST_sync_point(const std::string& point, void* cb_arg) {
+  if (PREDICT_FALSE(FLAGS_TEST_enable_sync_points)) {
+    yb::SyncPoint::GetInstance()->Process(point, cb_arg);
+  }
+}
 }  // namespace yb
-#endif  // NDEBUG

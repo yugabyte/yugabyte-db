@@ -348,8 +348,8 @@ public class MetricQueryExecutorTest extends FakeDBApplication {
 
     JsonNode responseJson =
         Json.parse(
-            "{\"status\":\"error\",\"errorType\":\"bad_data\","
-                + "\"error\":\"parse error at char 44: unexpected \\\"{\\\" in aggregation, expected \\\")\\\"\"}");
+            "{\"status\":\"error\",\"errorType\":\"bad_data\",\"error\":\"parse error at char 44:"
+                + " unexpected \\\"{\\\" in aggregation, expected \\\")\\\"\"}");
     when(mockApiHelper.getRequest(anyString(), anyMap(), anyMap()))
         .thenReturn(Json.toJson(responseJson));
     JsonNode response = qe.call();

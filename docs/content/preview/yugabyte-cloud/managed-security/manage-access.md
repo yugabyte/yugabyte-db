@@ -31,7 +31,7 @@ Users can log in to YugabyteDB Managed using either an email-based account or a 
 
 To manage the social logins available to users, do the following:
 
-1. Navigate to **Admin > Access Control > Users**, then click **Login Methods** to display the **Login Methods** dialog.
+1. Navigate to **Security > Access Control > Authentication**, then click **Edit Configuration** to display the **Login Methods** dialog.
 1. Enable the social logins you want to use.
 1. Click **Save Changes**.
 
@@ -43,7 +43,7 @@ You add users by sending them an invitation.
 
 To invite a user:
 
-1. Navigate to **Admin > Access Control > Users**, then click **Invite User** to display the **Invite User** dialog.
+1. Navigate to **Security > Access Control > Users**, then click **Invite User** to display the **Invite User** dialog.
 1. Enter one or more email addresses of people you're inviting.
 1. Choose a [role](../managed-roles/) for the new users.
 1. Click **Invite**.

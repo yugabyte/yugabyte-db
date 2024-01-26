@@ -390,14 +390,14 @@ void ForwardIterator::SeekInternal(const Slice& internal_key,
       is_prev_inclusive_ = true;
     }
 
-    TEST_SYNC_POINT_CALLBACK("ForwardIterator::SeekInternal:Immutable", this);
+    DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("ForwardIterator::SeekInternal:Immutable", this);
   } else if (current_ && current_ != mutable_iter_) {
     // current_ is one of immutable iterators, push it back to the heap
     immutable_min_heap_.push(current_);
   }
 
   UpdateCurrent();
-  TEST_SYNC_POINT_CALLBACK("ForwardIterator::SeekInternal:Return", this);
+  DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("ForwardIterator::SeekInternal:Return", this);
 }
 
 const KeyValueEntry& ForwardIterator::Next() {
@@ -456,7 +456,7 @@ const KeyValueEntry& ForwardIterator::Next() {
     }
   }
   UpdateCurrent();
-  TEST_SYNC_POINT_CALLBACK("ForwardIterator::Next:Return", this);
+  DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("ForwardIterator::Next:Return", this);
   return Entry();
 }
 
@@ -553,11 +553,11 @@ void ForwardIterator::RenewIterators() {
     if (found) {
       if (l0_iters_[iold] == nullptr) {
         l0_iters_new.push_back(nullptr);
-        TEST_SYNC_POINT_CALLBACK("ForwardIterator::RenewIterators:Null", this);
+        DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("ForwardIterator::RenewIterators:Null", this);
       } else {
         l0_iters_new.push_back(l0_iters_[iold]);
         l0_iters_[iold] = nullptr;
-        TEST_SYNC_POINT_CALLBACK("ForwardIterator::RenewIterators:Copy", this);
+        DEBUG_ONLY_TEST_SYNC_POINT_CALLBACK("ForwardIterator::RenewIterators:Copy", this);
       }
       continue;
     }

@@ -17,18 +17,11 @@ import com.yugabyte.yw.common.ConfigHelper.ConfigType;
 import com.yugabyte.yw.common.Util;
 import com.yugabyte.yw.common.ValidatingFormFactory;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
-import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
-import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.forms.DemoteInstanceFormData;
 import com.yugabyte.yw.forms.PlatformResults;
 import com.yugabyte.yw.forms.PlatformResults.YBPSuccess;
 import com.yugabyte.yw.models.HighAvailabilityConfig;
 import com.yugabyte.yw.models.PlatformInstance;
-import com.yugabyte.yw.rbac.annotations.AuthzPath;
-import com.yugabyte.yw.rbac.annotations.PermissionAttribute;
-import com.yugabyte.yw.rbac.annotations.RequiredPermissionOnResource;
-import com.yugabyte.yw.rbac.annotations.Resource;
-import com.yugabyte.yw.rbac.enums.SourceType;
 import java.net.URL;
 import java.util.Date;
 import java.util.List;
@@ -68,12 +61,6 @@ public class InternalHAController extends Controller {
     return request.header(HAAuthenticator.HA_CLUSTER_KEY_TOKEN_HEADER).get();
   }
 
-  @AuthzPath({
-    @RequiredPermissionOnResource(
-        requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.READ),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
-  })
   public Result getHAConfigByClusterKey(Http.Request request) {
     try {
       Optional<HighAvailabilityConfig> config =
@@ -92,12 +79,6 @@ public class InternalHAController extends Controller {
   }
 
   // TODO: Change this to accept ObjectNode instead of ArrayNode in request body
-  @AuthzPath({
-    @RequiredPermissionOnResource(
-        requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
-  })
   public Result syncInstances(long timestamp, Http.Request request) {
     Optional<HighAvailabilityConfig> config =
         HighAvailabilityConfig.getByClusterKey(this.getClusterKey(request));
@@ -138,12 +119,6 @@ public class InternalHAController extends Controller {
     return PlatformResults.withData(processedInstances);
   }
 
-  @AuthzPath({
-    @RequiredPermissionOnResource(
-        requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
-  })
   public Result syncBackups(Http.Request request) throws Exception {
     Http.MultipartFormData<Files.TemporaryFile> body = request.body().asMultipartFormData();
 
@@ -198,12 +173,6 @@ public class InternalHAController extends Controller {
     }
   }
 
-  @AuthzPath({
-    @RequiredPermissionOnResource(
-        requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
-  })
   public Result demoteLocalLeader(long timestamp, Http.Request request) {
     try {
       Optional<HighAvailabilityConfig> config =

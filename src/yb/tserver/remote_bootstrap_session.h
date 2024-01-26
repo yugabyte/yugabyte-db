@@ -183,7 +183,7 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
     sources_[Source::id_type()] = std::make_unique<Source>(tablet_peer_, &tablet_superblock_);
   }
 
-  Status ReadSuperblockFromDisk();
+  Status ReadSuperblockFromDisk(tablet::RaftGroupReplicaSuperBlockPB* out = nullptr);
 
   Result<tablet::TabletPtr> GetRunningTablet();
 
@@ -218,6 +218,8 @@ class RemoteBootstrapSession : public RefCountedThreadSafe<RemoteBootstrapSessio
   Env* env() const;
 
   RemoteBootstrapSource* Source(DataIdPB::IdType id_type) const;
+
+  Result<OpId> CreateSnapshot(int retry);
 
   std::shared_ptr<tablet::TabletPeer> tablet_peer_;
   const std::string session_id_;

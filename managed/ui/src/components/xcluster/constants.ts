@@ -51,6 +51,7 @@ export const XClusterConfigAction = {
   RESTART: 'restart',
   DELETE: 'delete',
   ADD_TABLE: 'addTable',
+  MANAGE_TABLE: 'manageTable',
   EDIT: 'edit',
   DB_SYNC: 'dbSync'
 } as const;
@@ -66,6 +67,12 @@ export const XClusterConfigTypeLabel = {
   [XClusterConfigType.BASIC]: 'Basic',
   [XClusterConfigType.TXN]: 'Transactional'
 } as const;
+
+export const UniverseXClusterRole = {
+  SOURCE: 'source',
+  TARGET: 'target'
+} as const;
+export type UniverseXClusterRole = typeof UniverseXClusterRole[keyof typeof UniverseXClusterRole];
 
 //------------------------------------------------------------------------------------
 // Table Selection Constants
@@ -184,8 +191,16 @@ export const MetricTraceName = {
 
 export const REPLICATION_LAG_ALERT_NAME = 'Replication Lag';
 
-export const XCLUSTER_METRIC_REFETCH_INTERVAL_MS = 10_000;
-export const XCLUSTER_CONFIG_REFETCH_INTERVAL_MS = 30_000;
+export const PollingIntervalMs = {
+  DR_CONFIG: 30_000,
+  DR_CONFIG_STATE_TRANSITIONS: 10_000,
+  XCLUSTER_CONFIG: 30_000,
+  XCLUSTER_CONFIG_STATE_TRANSITIONS: 10_000,
+  XCLUSTER_METRICS: 10_000
+} as const;
+
+export const XCLUSTER_METRIC_REFETCH_INTERVAL_MS = PollingIntervalMs.XCLUSTER_METRICS;
+export const XCLUSTER_CONFIG_REFETCH_INTERVAL_MS = PollingIntervalMs.XCLUSTER_CONFIG;
 
 export const XClusterModalName = {
   EDIT_CONFIG: 'editXClusterConfigModal',

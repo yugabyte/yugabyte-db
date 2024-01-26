@@ -298,26 +298,25 @@ class VersionInfoWriter {
   return result;
 }
 
+[[nodiscard]] std::optional<uint32_t> GetCacheLifetimeThreshold(PrefetchingCacheMode mode) {
+  switch(mode) {
+    case PrefetchingCacheMode::TRUST_CACHE:
+      return std::nullopt;
+    case PrefetchingCacheMode::RENEW_CACHE_SOFT:
+      return FLAGS_pg_cache_response_renew_soft_lifetime_limit_ms;
+    case PrefetchingCacheMode::RENEW_CACHE_HARD:
+      return 0;
+  }
+  FATAL_INVALID_ENUM_VALUE(PrefetchingCacheMode, mode);
+}
+
 [[nodiscard]] PgSession::CacheOptions BuildCacheOptions(
     yb::ThreadSafeArena* arena, const ReadHybridTime& catalog_read_time,
-    const std::vector<OperationInfo>& ops, const PrefetcherOptions& options) {
-  std::optional<uint32_t> threshold_ms;
-  switch(options.cache_mode) {
-    case PrefetchingCacheMode::NO_CACHE:
-      DCHECK(false);
-      break;
-    case PrefetchingCacheMode::TRUST_CACHE:
-      break;
-    case PrefetchingCacheMode::RENEW_CACHE_SOFT:
-      threshold_ms = FLAGS_pg_cache_response_renew_soft_lifetime_limit_ms;
-      break;
-    case PrefetchingCacheMode::RENEW_CACHE_HARD:
-      threshold_ms = 0;
-      break;
-  }
+    const std::vector<OperationInfo>& ops, const PrefetcherOptions::CachingInfo& caching_info) {
   return {
-      .key = BuildCacheKey(arena, catalog_read_time, ops, options.version_info),
-      .lifetime_threshold_ms = threshold_ms
+      .key_group = caching_info.db_oid,
+      .key_value = BuildCacheKey(arena, catalog_read_time, ops, caching_info.version_info),
+      .lifetime_threshold_ms = GetCacheLifetimeThreshold(caching_info.mode)
   };
 }
 
@@ -337,11 +336,11 @@ auto MakeGenerator(const std::vector<OperationInfo>& ops) {
 Result<rpc::CallResponsePtr> Run(
     yb::ThreadSafeArena* arena, PgSession* session,
     const std::vector<OperationInfo>& ops, const PrefetcherOptions& options) {
-  auto result = options.cache_mode == PrefetchingCacheMode::NO_CACHE
-    ? VERIFY_RESULT(session->RunAsync(make_lw_function(MakeGenerator(ops)), HybridTime()))
-    : VERIFY_RESULT(session->RunAsync(
+  auto result = VERIFY_RESULT(options.caching_info
+      ? session->RunAsync(
           make_lw_function(MakeGenerator(ops)),
-          BuildCacheOptions(arena, session->catalog_read_time(), ops, options)));
+          BuildCacheOptions(arena, session->catalog_read_time(), ops, *options.caching_info))
+      : session->RunAsync(make_lw_function(MakeGenerator(ops)), HybridTime()));
   return VERIFY_RESULT(result.Get()).response;
 }
 
@@ -468,8 +467,12 @@ std::string PrefetcherOptions::VersionInfo::ToString() const {
   return YB_STRUCT_TO_STRING(version, is_db_catalog_version_mode);
 }
 
+std::string PrefetcherOptions::CachingInfo::ToString() const {
+  return YB_STRUCT_TO_STRING(version_info, mode);
+}
+
 std::string PrefetcherOptions::ToString() const {
-  return YB_STRUCT_TO_STRING(version_info, cache_mode, fetch_row_limit);
+  return YB_STRUCT_TO_STRING(caching_info, fetch_row_limit);
 }
 
 class PgSysTablePrefetcher::Impl {

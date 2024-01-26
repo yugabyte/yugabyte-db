@@ -31,7 +31,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/rocksdb/util/logging.h"
 #include "yb/util/status_log.h"

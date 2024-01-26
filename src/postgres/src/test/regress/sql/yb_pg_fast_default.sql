@@ -258,12 +258,14 @@ SELECT comp();
 
 DROP TABLE T;
 
--- Simple querie
+-- Simple queries
 CREATE TABLE T (pk INT NOT NULL PRIMARY KEY);
 
 SELECT set('t');
 
 INSERT INTO T SELECT * FROM generate_series(1, 10) a;
+
+ALTER TABLE T ADD COLUMN c_bigint BIGINT NOT NULL DEFAULT -1 DEFAULT -2; -- fail due to multiple default values
 
 ALTER TABLE T ADD COLUMN c_bigint BIGINT NOT NULL DEFAULT -1;
 

@@ -8,6 +8,7 @@
     "|compact_[^_]+_bytes|compaction_times_micros_[^_]+",
     "|numfiles_in_singlecompaction_[^_]+)",
     "|mem_tracker_(RegularDB_MemTable|IntentsDB_MemTable)",
+    "|mem_tracker_server_PerTablet_(RegularDB_MemTable|IntentsDB_MemTable)",
     "|async_replication_[^_]+_lag_micros|transaction_conflicts",
     "|majority_sst_files_rejections|expired_transactions",
     "|log_(sync_latency_[^_]+|group_commit_latency_[^_]+",
@@ -15,5 +16,6 @@
     "|cache_size|cache_num_ops)|follower_lag_ms|[^_]+_memory_pressure_rejections",
     "|log_wal_size|ql_read_latency_[^_]+|(all|write)_operations_inflight|ql_write_latency_[^_]+",
     "|write_lock_latency_[^_]+|is_raft_leader"
-  ]
+  ],
+  "show_help": "false"
 }

@@ -93,6 +93,7 @@ public class Util {
   public static final String CUSTOMERS = "customers";
   public static final String UNIVERSES = "universes";
   public static final String USERS = "users";
+  public static final String ROLE = "role";
   public static final String UNIVERSE_UUID = "universeUUID";
 
   public static final String AVAILABLE_MEMORY = "MemAvailable";
@@ -142,6 +143,7 @@ public class Util {
   public static void setYbaVersion(String version) {
     YBA_VERSION = version;
   }
+
   /**
    * Returns a list of Inet address objects in the proxy tier. This is needed by Cassandra clients.
    */
@@ -863,7 +865,7 @@ public class Util {
   }
 
   public static String getYbcNodeIp(Universe universe) {
-    List<NodeDetails> nodeList = universe.getLiveTServersInPrimaryCluster();
+    List<NodeDetails> nodeList = universe.getRunningTserversInPrimaryCluster();
     return nodeList.get(0).cloudInfo.private_ip;
   }
 
@@ -878,7 +880,8 @@ public class Util {
     MessageDigest md = MessageDigest.getInstance(checksumAlgorithm);
     try (DigestInputStream dis =
         new DigestInputStream(new FileInputStream(filePath.toFile()), md)) {
-      while (dis.read() != -1) ; // Empty loop to clear the data
+      while (dis.read() != -1)
+        ; // Empty loop to clear the data
       md = dis.getMessageDigest();
       // Convert the digest to String.
       StringBuilder result = new StringBuilder();
@@ -993,5 +996,14 @@ public class Util {
       }
     }
     return dataDirPath;
+  }
+
+  public static String extractRegexValue(String input, String patternStr) {
+    Pattern pattern = Pattern.compile(patternStr);
+    Matcher matcher = pattern.matcher(input);
+    if (matcher.find()) {
+      return matcher.group(1);
+    }
+    return null;
   }
 }

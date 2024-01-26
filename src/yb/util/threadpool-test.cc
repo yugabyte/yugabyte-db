@@ -39,7 +39,7 @@
 #include <thread>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 #include <gtest/gtest.h>
 
 #include "yb/gutil/atomicops.h"

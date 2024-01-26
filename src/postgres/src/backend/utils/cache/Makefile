@@ -13,6 +13,7 @@ top_builddir = ../../../..
 include $(top_builddir)/src/Makefile.global
 
 OBJS = \
+	yb_inheritscache.o \
 	attoptcache.o \
 	catcache.o \
 	evtcache.o \

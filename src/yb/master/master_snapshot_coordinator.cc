@@ -39,6 +39,7 @@
 #include "yb/master/snapshot_coordinator_context.h"
 #include "yb/master/snapshot_schedule_state.h"
 #include "yb/master/snapshot_state.h"
+#include "yb/master/state_with_tablets.h"
 #include "yb/master/sys_catalog_writer.h"
 
 #include "yb/rpc/poller.h"
@@ -56,6 +57,7 @@
 #include "yb/util/status_format.h"
 #include "yb/util/status_log.h"
 #include "yb/util/stopwatch.h"
+#include "yb/util/unique_lock.h"
 
 using std::vector;
 using std::string;
@@ -83,6 +85,12 @@ DEFINE_RUNTIME_bool(schedule_restoration_rpcs_out_of_band, true,
 DEFINE_RUNTIME_bool(skip_crash_on_duplicate_snapshot, false,
     "Should we not crash when we get a create snapshot request with the same "
     "id as one of the previous snapshots.");
+
+DEFINE_RUNTIME_AUTO_bool(
+    enable_object_retention_due_to_snapshots, kLocalPersisted, false, true,
+    "When true, tables and tablets are hidden instead of getting deleted on a drop if there are "
+    "snapshots covering the object. Snapshots also get created with a TTL when "
+    "this flag value is true.");
 
 DEFINE_test_flag(int32, delay_sys_catalog_restore_on_followers_secs, 0,
                  "Sleep for these many seconds on followers during sys catalog restore");
@@ -136,7 +144,7 @@ struct NoOp {
 // Finds appropriate entry in passed collection and invokes Done on it.
 template <class Collection, class PostProcess = NoOp>
 auto MakeDoneCallback(
-    std::mutex* mutex, const Collection& collection, const typename Collection::key_type& key,
+    std::mutex* mutex, const Collection* collection, const typename Collection::key_type& key,
     const TabletId& tablet_id, const PostProcess& post_process = PostProcess()) {
   struct DoneFunctor {
     std::mutex& mutex;
@@ -158,12 +166,12 @@ auto MakeDoneCallback(
     }
   };
 
-  return DoneFunctor {
-    .mutex = *mutex,
-    .collection = collection,
-    .key = key,
-    .tablet_id = tablet_id,
-    .post_process = post_process,
+  return DoneFunctor{
+      .mutex = *mutex,
+      .collection = *collection,
+      .key = key,
+      .tablet_id = tablet_id,
+      .post_process = post_process,
   };
 }
 
@@ -216,12 +224,13 @@ class MasterSnapshotCoordinator::Impl {
       : context_(*context), cm_(cm), poller_(std::bind(&Impl::Poll, this)) {}
 
   Result<TxnSnapshotId> Create(
-      const SysRowEntries& entries, bool imported, int64_t leader_term, CoarseTimePoint deadline) {
+      const SysRowEntries& entries, bool imported, int64_t leader_term, CoarseTimePoint deadline,
+      int32_t retention_duration_hours) {
     auto synchronizer = std::make_shared<Synchronizer>();
     auto snapshot_id = TxnSnapshotId::GenerateRandom();
     RETURN_NOT_OK(SubmitCreate(
         entries, imported, SnapshotScheduleId::Nil(), HybridTime::kInvalid, snapshot_id,
-        leader_term,
+        leader_term, retention_duration_hours,
         tablet::MakeWeakSynchronizerOperationCompletionCallback(synchronizer)));
     RETURN_NOT_OK(synchronizer->WaitUntil(ToSteady(deadline)));
 
@@ -327,12 +336,11 @@ class MasterSnapshotCoordinator::Impl {
     return Status::OK();
   }
 
-  void UpdateSnapshotIfPresent(const TxnSnapshotId& id, int64_t leader_term)
-      NO_THREAD_SAFETY_ANALYSIS EXCLUDES(mutex_) {
-    std::unique_lock<std::mutex> lock(mutex_);
+  void UpdateSnapshotIfPresent(const TxnSnapshotId& id, int64_t leader_term) EXCLUDES(mutex_) {
+    UniqueLock lock(mutex_);
     auto it = snapshots_.find(id);
     if (it != snapshots_.end()) {
-      UpdateSnapshot(it->get(), leader_term, &lock);
+      UpdateSnapshot(it->get(), leader_term, &GetLockForCondition(&lock));
     }
   }
 
@@ -340,19 +348,36 @@ class MasterSnapshotCoordinator::Impl {
   Status LoadEntryOfType(
       tablet::Tablet* tablet, const SysRowEntryType& type, Map* m) REQUIRES(mutex_) {
     return EnumerateSysCatalog(tablet, context_.schema(), type,
-        [this, &m](const Slice& id, const Slice& data) NO_THREAD_SAFETY_ANALYSIS -> Status {
+        [this, &m](const Slice& id, const Slice& data) REQUIRES(mutex_) -> Status {
           return LoadEntry<Pb>(id, data, m);
     });
   }
 
+  Status LoadSnapshotEntry(tablet::Tablet* tablet) REQUIRES(mutex_) {
+    return EnumerateSysCatalog(tablet, context_.schema(), SysRowEntryType::SNAPSHOT,
+        [this](const Slice& id, const Slice& data) REQUIRES(mutex_) -> Status {
+          RETURN_NOT_OK(LoadEntry<SysSnapshotEntryPB>(id, data, &snapshots_));
+          auto snapshot_id = TryFullyDecodeTxnSnapshotId(id);
+          UpdateCoveringMap(snapshot_id);
+          return Status::OK();
+        });
+  }
+
   Status Load(tablet::Tablet* tablet) {
     std::lock_guard lock(mutex_);
-    RETURN_NOT_OK(LoadEntryOfType<SysSnapshotEntryPB>(
-        tablet, SysRowEntryType::SNAPSHOT, &snapshots_));
+    RETURN_NOT_OK(LoadSnapshotEntry(tablet));
     RETURN_NOT_OK(LoadEntryOfType<SnapshotScheduleOptionsPB>(
         tablet, SysRowEntryType::SNAPSHOT_SCHEDULE, &schedules_));
     return LoadEntryOfType<SysRestorationEntryPB>(
         tablet, SysRowEntryType::SNAPSHOT_RESTORATION, &restorations_);
+  }
+
+  Status DoApplySnapshotWrite(const std::string& id_str, const Slice& value) {
+    RETURN_NOT_OK(DoApplyWrite<SysSnapshotEntryPB>(id_str, value, &snapshots_));
+    auto snapshot_id = TryFullyDecodeTxnSnapshotId(id_str);
+    std::lock_guard<std::mutex> l(mutex_);
+    UpdateCoveringMap(snapshot_id);
+    return Status::OK();
   }
 
   Status ApplyWritePair(Slice key, const Slice& value) {
@@ -379,8 +404,8 @@ class MasterSnapshotCoordinator::Impl {
 
     switch (first_key.GetInt32()) {
       case SysRowEntryType::SNAPSHOT:
-        return DoApplyWrite<SysSnapshotEntryPB>(
-            sub_doc_key.doc_key().range_group()[1].GetString(), value, &snapshots_);
+        return DoApplySnapshotWrite(
+            sub_doc_key.doc_key().range_group()[1].GetString(), value);
 
       case SysRowEntryType::SNAPSHOT_SCHEDULE:
         return DoApplyWrite<SnapshotScheduleOptionsPB>(
@@ -1091,6 +1116,16 @@ class MasterSnapshotCoordinator::Impl {
     return restore_kv;
   }
 
+  bool IsTabletCoveredBySnapshot(const TabletId& tablet_id, const TxnSnapshotId& snapshot_id) {
+    std::lock_guard l(mutex_);
+    auto it = tablet_to_covering_snapshots_.find(tablet_id);
+    // If snapshot_id is nil then return true if any snapshot covers the particular tablet
+    // whereas if snapshot_id is not nil then return true if that particular snapshot
+    // covers the tablet.
+    return it != tablet_to_covering_snapshots_.end() &&
+           (!snapshot_id || it->second.contains(snapshot_id));
+  }
+
   void Start() {
     {
       std::lock_guard lock(mutex_);
@@ -1203,7 +1238,8 @@ class MasterSnapshotCoordinator::Impl {
                     MasterError(MasterErrorPB::SNAPSHOT_NOT_FOUND));
   }
 
-  void ExecuteOperations(const TabletSnapshotOperations& operations, int64_t leader_term) {
+  void ExecuteOperations(
+      const TabletSnapshotOperations& operations, int64_t leader_term) {
     if (operations.empty()) {
       return;
     }
@@ -1226,7 +1262,7 @@ class MasterSnapshotCoordinator::Impl {
       const TabletSnapshotOperation& operation, const TabletInfoPtr& tablet_info,
       int64_t leader_term) {
     auto callback = MakeDoneCallback(
-        &mutex_, snapshots_, operation.snapshot_id, operation.tablet_id,
+        &mutex_, &snapshots_, operation.snapshot_id, operation.tablet_id,
         std::bind(&Impl::UpdateSnapshot, this, _1, leader_term, _2));
     if (!tablet_info) {
       callback(STATUS_EC_FORMAT(NotFound, MasterError(MasterErrorPB::TABLET_NOT_RUNNING),
@@ -1296,7 +1332,7 @@ class MasterSnapshotCoordinator::Impl {
       const TabletRestoreOperation& operation, const TabletInfoPtr& tablet_info,
       int64_t leader_term) {
     auto callback = MakeDoneCallback(
-        &mutex_, restorations_, operation.restoration_id, operation.tablet_id,
+        &mutex_, &restorations_, operation.restoration_id, operation.tablet_id,
         std::bind(&Impl::FinishRestoration, this, _1, leader_term));
     if (!tablet_info) {
       callback(STATUS_EC_FORMAT(
@@ -1359,17 +1395,20 @@ class MasterSnapshotCoordinator::Impl {
     {
       std::lock_guard lock(mutex_);
       for (const auto& p : snapshots_) {
+        // Refresh the throttle limit.
+        p->Throttler().RefreshLimit(
+            GetRpcLimit(FLAGS_max_concurrent_snapshot_rpcs,
+                        FLAGS_max_concurrent_snapshot_rpcs_per_tserver, leader_term));
         if (p->NeedCleanup()) {
           LOG(INFO) << "Cleanup of snapshot " << p->id() << " started.";
           if (!p->CleanupTracker().Start().ok()) {
             LOG(DFATAL) << "Cleanup of snapshot " << p->id() << " was already started.";
           }
           cleanup_snapshots.push_back(p->id());
+        } else if (p->HasExpired(context_.Clock()->Now())) {
+          LOG(INFO) << "Snapshot " << p->id() << " has expired";
+          TryDeleteSnapshot(p.get(), &schedules_data);
         } else {
-          // Refresh the throttle limit.
-          p->Throttler().RefreshLimit(
-              GetRpcLimit(FLAGS_max_concurrent_snapshot_rpcs,
-                          FLAGS_max_concurrent_snapshot_rpcs_per_tserver, leader_term));
           p->PrepareOperations(&operations);
         }
       }
@@ -1390,10 +1429,11 @@ class MasterSnapshotCoordinator::Impl {
         }
         r->PrepareOperations(&restore_operations, tablets_snapshot, db_oid);
       }
+      for (const auto& id : cleanup_snapshots) {
+        CleanupObject(leader_term, id, snapshots_, EncodedSnapshotKey(id, &context_));
+      }
     }
-    for (const auto& id : cleanup_snapshots) {
-      CleanupObject(leader_term, id, snapshots_, EncodedSnapshotKey(id, &context_));
-    }
+
     ExecuteOperations(operations, leader_term);
     PollSchedulesComplete(schedules_data, l.epoch());
     ExecuteRestoreOperations(restore_operations, leader_term);
@@ -1465,11 +1505,13 @@ class MasterSnapshotCoordinator::Impl {
           WARN_NOT_OK(ExecuteScheduleOperation(operation, epoch.leader_term),
                       Format("Failed to execute operation on $0", operation.schedule_id));
           break;
-        case SnapshotScheduleOperationType::kCleanup:
+        case SnapshotScheduleOperationType::kCleanup: {
+          std::lock_guard l(mutex_);
           CleanupObject(
               epoch.leader_term, operation.schedule_id, schedules_,
               SnapshotScheduleState::EncodedKey(operation.schedule_id, &context_));
           break;
+        }
         default:
           LOG(DFATAL) << "Unexpected operation type: " << operation.type;
           break;
@@ -1557,6 +1599,9 @@ class MasterSnapshotCoordinator::Impl {
     return SubmitCreate(
         *entries, /* imported= */ false, operation.schedule_id,
         operation.previous_snapshot_hybrid_time, operation.snapshot_id, leader_term,
+        // For snapshots created as part of a schedule, the retention is dictated by
+        // the schedule params so set it null here.
+        std::nullopt /* retention_duration_hours */,
         [this, schedule_id = operation.schedule_id, snapshot_id = operation.snapshot_id,
          synchronizer](
             const Status& status) {
@@ -1586,6 +1631,7 @@ class MasterSnapshotCoordinator::Impl {
   Status SubmitCreate(
       const SysRowEntries& entries, bool imported, const SnapshotScheduleId& schedule_id,
       HybridTime previous_snapshot_hybrid_time, TxnSnapshotId snapshot_id, int64_t leader_term,
+      std::optional<int32_t> retention_duration_hours,
       tablet::OperationCompletionCallback completion_clbk) {
     auto operation = std::make_unique<tablet::SnapshotOperation>(/* tablet= */ nullptr);
     auto request = operation->AllocateRequest();
@@ -1614,6 +1660,11 @@ class MasterSnapshotCoordinator::Impl {
     }
     if (previous_snapshot_hybrid_time) {
       request->set_previous_snapshot_hybrid_time(previous_snapshot_hybrid_time.ToUint64());
+    }
+    // Only set the Ttl field if all the peers are on a version with this feature.
+    if (GetAtomicFlag(&FLAGS_enable_object_retention_due_to_snapshots)
+        && retention_duration_hours) {
+      request->set_retention_duration_hours(*retention_duration_hours);
     }
 
     // TODO(lw_uc) implement PackFrom for LWAny.
@@ -1681,6 +1732,21 @@ class MasterSnapshotCoordinator::Impl {
       return;
     }
     (**it).DeleteAborted(status);
+  }
+
+  void AddCoveringSnapshot(const SnapshotState& state) REQUIRES(mutex_) {
+    for (const auto& tablet_id : state.tablet_ids()) {
+      tablet_to_covering_snapshots_[tablet_id].insert(state.id());
+    }
+  }
+
+  void RemoveCoveringSnapshot(const SnapshotState& state) REQUIRES(mutex_) {
+    for (const auto& tablet_id : state.tablet_ids()) {
+      tablet_to_covering_snapshots_[tablet_id].erase(state.id());
+      if (tablet_to_covering_snapshots_[tablet_id].empty()) {
+        tablet_to_covering_snapshots_.erase(tablet_id);
+      }
+    }
   }
 
   void UpdateSnapshot(
@@ -2001,6 +2067,23 @@ class MasterSnapshotCoordinator::Impl {
     return num_tservers * per_tserver_limit;
   }
 
+  void UpdateCoveringMap(const TxnSnapshotId& snapshot_id) REQUIRES(mutex_) {
+    Result<SnapshotState&> snapshot = FindSnapshot(snapshot_id);
+    // If snapshot is not found then this write was for tombstoning
+    // the entry in which case it must have already been removed from the
+    // covering map when its state was persisted as DELETED, so we do nothing here.
+    if (!snapshot.ok()) {
+      return;
+    }
+    if (snapshot->ShouldRemoveFromCoveringMap()) {
+      RemoveCoveringSnapshot(*snapshot);
+    } else if (snapshot->ShouldAddToCoveringMap()) {
+      AddCoveringSnapshot(*snapshot);
+    }
+    VLOG(2) << "Snapshot to covering tablets dependency map "
+            << AsString(tablet_to_covering_snapshots_);
+  }
+
   SnapshotCoordinatorContext& context_;
   CatalogManager* cm_;
   std::mutex mutex_;
@@ -2058,6 +2141,13 @@ class MasterSnapshotCoordinator::Impl {
   Restorations restorations_ GUARDED_BY(mutex_);
   HybridTime last_restorations_update_ht_ GUARDED_BY(mutex_);
   Schedules schedules_ GUARDED_BY(mutex_);
+  // Stores tablets and their associated snapshots that are preventing the tablet
+  // from getting deleted. A snapshot covers a tablet iff:
+  // 1. The tablet is a part of that snapshot
+  // 2. Snapshot is not created due to a PITR schedule
+  // 3. Snapshot is in COMPLETE state
+  std::unordered_map<TabletId, std::unordered_set<TxnSnapshotId>>
+      tablet_to_covering_snapshots_ GUARDED_BY(mutex_);
   rpc::Poller poller_;
 };
 
@@ -2068,8 +2158,9 @@ MasterSnapshotCoordinator::MasterSnapshotCoordinator(
 MasterSnapshotCoordinator::~MasterSnapshotCoordinator() {}
 
 Result<TxnSnapshotId> MasterSnapshotCoordinator::Create(
-    const SysRowEntries& entries, bool imported, int64_t leader_term, CoarseTimePoint deadline) {
-  return impl_->Create(entries, imported, leader_term, deadline);
+    const SysRowEntries& entries, bool imported, int64_t leader_term, CoarseTimePoint deadline,
+    int32_t retention_duration_hours) {
+  return impl_->Create(entries, imported, leader_term, deadline, retention_duration_hours);
 }
 
 Status MasterSnapshotCoordinator::CreateReplicated(
@@ -2199,6 +2290,11 @@ Result<docdb::KeyValuePairPB> MasterSnapshotCoordinator::UpdateRestorationAndGet
 
 bool MasterSnapshotCoordinator::IsPitrActive() {
   return impl_->IsPitrActive();
+}
+
+bool MasterSnapshotCoordinator::IsTabletCoveredBySnapshot(
+    const TabletId& tablet_id, const TxnSnapshotId& snapshot_id) {
+  return impl_->IsTabletCoveredBySnapshot(tablet_id, snapshot_id);
 }
 
 } // namespace master

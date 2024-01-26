@@ -51,7 +51,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
 
   virtual ~PgTxnManager();
 
-  Status BeginTransaction();
+  Status BeginTransaction(int64_t start_time);
 
   Status CalculateIsolation(bool read_only_op, TxnPriorityRequirement txn_priority_requirement);
   Status RecreateTransaction();
@@ -130,6 +130,7 @@ class PgTxnManager : public RefCountedThreadSafe<PgTxnManager> {
   // and cancels the other transaction.
   uint64_t priority_ = 0;
   SavePriority use_saved_priority_ = SavePriority::kFalse;
+  int64_t pg_txn_start_us_ = 0;
 
   PgCallbacks pg_callbacks_;
 

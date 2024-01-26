@@ -28,6 +28,7 @@
 #include "yb/util/flags/auto_flags.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/flags.h"
+#include "yb/util/logging.h"
 
 using std::string;
 
@@ -115,15 +116,19 @@ Result<std::optional<AutoFlagsConfigPB>> GetAutoFlagConfigFromMaster(
   return af_client->GetAutoFlagConfig();
 }
 
-google::protobuf::RepeatedPtrField<string>* GetPerProcessFlags(
-    const string& process_name, AutoFlagsConfigPB* config) {
-  for (auto& per_process_flags : *config->mutable_promoted_flags()) {
+std::unordered_set<std::string> GetPerProcessFlags(
+    const ProcessName& process_name, const AutoFlagsConfigPB& config) {
+  std::unordered_set<std::string> flags;
+  for (auto& per_process_flags : config.promoted_flags()) {
     if (per_process_flags.process_name() == process_name) {
-      return per_process_flags.mutable_flags();
+      for (auto& flag : per_process_flags.flags()) {
+        flags.insert(flag);
+      }
+      break;
     }
   }
 
-  return nullptr;
+  return flags;
 }
 
 }  // namespace
@@ -141,7 +146,7 @@ Result<bool> AutoFlagsManager::LoadFromFile() {
     return true;
   }
 
-  std::lock_guard update_lock(update_mutex_);
+  std::lock_guard update_lock(mutex_);
 
   AutoFlagsConfigPB pb_config;
   auto status = fs_manager_->ReadAutoFlagsConfig(&pb_config);
@@ -153,10 +158,7 @@ Result<bool> AutoFlagsManager::LoadFromFile() {
     return status;
   }
 
-  {
-    std::lock_guard l(config_mutex_);
-    current_config_ = std::move(pb_config);
-  }
+  current_config_ = std::move(pb_config);
 
   RETURN_NOT_OK(ApplyConfig(ApplyNonRuntimeAutoFlags::kTrue));
 
@@ -234,88 +236,82 @@ Status AutoFlagsManager::LoadFromConfig(
     return Status::OK();
   }
 
-  std::lock_guard update_lock(update_mutex_);
+  std::lock_guard update_lock(mutex_);
 
-  {
-    SharedLock<rw_spinlock> lock(config_mutex_);
-
-    // First new config can be empty, and should still be written to disk.
-    // Else no-op if it is the same or lower version.
-    if (current_config_.config_version() != 0 &&
-        new_config.config_version() <= current_config_.config_version()) {
-      LOG(INFO) << "AutoFlags config update ignored as we are already on the same"
-                   " or higher version. Current version: "
-                << current_config_.config_version()
-                << ", New version: " << new_config.config_version();
-      return Status::OK();
-    }
+  // First new config can be empty, and should still be written to disk.
+  // Else no-op if it is the same or lower version.
+  if (current_config_.config_version() != 0 &&
+      new_config.config_version() <= current_config_.config_version()) {
+    LOG(INFO) << "AutoFlags config update ignored as we are already on the same"
+                 " or higher version. Current version: "
+              << current_config_.config_version()
+              << ", New version: " << new_config.config_version();
+    return Status::OK();
   }
 
-  LOG(INFO) << "Storing new AutoFlags config: " << new_config.DebugString();
+  LOG(INFO) << "Storing new AutoFlags config: " << new_config.ShortDebugString();
   RETURN_NOT_OK(fs_manager_->WriteAutoFlagsConfig(&new_config));
 
-  {
-    std::lock_guard lock(config_mutex_);
-    current_config_ = std::move(new_config);
-  }
+  current_config_ = std::move(new_config);
 
   return ApplyConfig(apply_non_runtime);
 }
 
 uint32_t AutoFlagsManager::GetConfigVersion() const {
-  SharedLock<rw_spinlock> lock(config_mutex_);
+  SharedLock lock(mutex_);
   return current_config_.config_version();
 }
 
 AutoFlagsConfigPB AutoFlagsManager::GetConfig() const {
-  SharedLock<rw_spinlock> lock(config_mutex_);
+  SharedLock lock(mutex_);
   return current_config_;
 }
 
 Status AutoFlagsManager::ApplyConfig(ApplyNonRuntimeAutoFlags apply_non_runtime) {
-  SharedLock<rw_spinlock> lock(config_mutex_);
-  auto* flags = GetPerProcessFlags(process_name_, &current_config_);
-
-  if (!flags) {
-    return Status::OK();
-  }
-
-  std::vector<string> flags_to_promote;
-  std::vector<string> non_runtime_flags_skipped;
-
-  for (const auto& flag_name : *flags) {
-    auto desc = GetAutoFlagDescription(flag_name);
+  const auto required_promoted_flags = GetPerProcessFlags(process_name_, current_config_);
+  for (const auto& flag_name : required_promoted_flags) {
     // This will fail if the node is running a old version of the code that does not support the
     // flag.
     RSTATUS_DCHECK(
-        desc, NotSupported,
+        GetAutoFlagDescription(flag_name) != nullptr, NotSupported,
         "AutoFlag '$0' is not supported. Upgrade the process to a version that supports this flag.",
         flag_name);
+  }
 
+  std::vector<std::string> flags_promoted;
+  std::vector<std::string> flags_demoted;
+  std::vector<std::string> non_runtime_flags_skipped;
+
+  const auto server_auto_flags = VERIFY_RESULT(GetAvailableAutoFlagsForServer());
+  for (auto& flag_name : server_auto_flags) {
+    auto* flag_desc = CHECK_NOTNULL(GetAutoFlagDescription(flag_name));
     gflags::CommandLineFlagInfo flag_info;
-    // All AutoFlags are gFlags, so this cannot fail.
     CHECK(GetCommandLineFlagInfo(flag_name.c_str(), &flag_info));
+    bool is_flag_promoted = IsFlagPromoted(flag_info, *flag_desc);
 
-    if (!IsFlagPromoted(flag_info, *desc)) {
-      if (apply_non_runtime || desc->is_runtime) {
-        flags_to_promote.emplace_back(flag_name);
-      } else {
-        non_runtime_flags_skipped.emplace_back(flag_name);
+    if (required_promoted_flags.contains(flag_desc->name)) {
+      if (!is_flag_promoted) {
+        if (apply_non_runtime || flag_desc->is_runtime) {
+          PromoteAutoFlag(*flag_desc);
+          flags_promoted.push_back(flag_desc->name);
+        } else {
+          non_runtime_flags_skipped.push_back(flag_desc->name);
+        }
       }
+      // else - Flag is already promoted. No-op.
+    } else if (is_flag_promoted) {
+      DemoteAutoFlag(*flag_desc);
+      flags_demoted.push_back(flag_desc->name);
     }
+    // else - Flag is not promoted and not required to be promoted. No-op.
   }
 
-  for (const auto& flag_name : flags_to_promote) {
-    // Flags have already been validated. This cannot fail.
-    CHECK_OK(PromoteAutoFlag(flag_name));
+  if (!flags_promoted.empty()) {
+    LOG(INFO) << "AutoFlags promoted: " << JoinStrings(flags_promoted, ",");
   }
-
-  if (!flags_to_promote.empty()) {
-    // TODO(Hari): Its ok for this to be INFO level for now, as this is a new feature and we don't
-    // have too many AutoFlags. Switch to VLOG when this assumption changes.
-    LOG(INFO) << "AutoFlags applied: " << JoinStrings(flags_to_promote, ",");
+  if (!flags_demoted.empty()) {
+    LOG(INFO) << "AutoFlags demoted: " << JoinStrings(flags_demoted, ",");
   }
-
   if (!non_runtime_flags_skipped.empty()) {
     LOG(WARNING) << "Non-runtime AutoFlags skipped apply: "
                  << JoinStrings(non_runtime_flags_skipped, ",")

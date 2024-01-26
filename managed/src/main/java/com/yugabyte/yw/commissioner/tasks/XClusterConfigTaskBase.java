@@ -14,7 +14,6 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.ReplicateNamespaces;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetReplicationPaused;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.SetRestoreTime;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.WaitForReplicationDrain;
-import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigModifyTables;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigRename;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetStatus;
 import com.yugabyte.yw.commissioner.tasks.subtasks.xcluster.XClusterConfigSetStatusForTables;
@@ -308,24 +307,6 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     return createSetReplicationPausedTask(xClusterConfig, status.equals("Paused"));
   }
 
-  protected SubTaskGroup createXClusterConfigModifyTablesTask(
-      XClusterConfig xClusterConfig,
-      Set<String> tables,
-      XClusterConfigModifyTables.Params.Action action) {
-    SubTaskGroup subTaskGroup = createSubTaskGroup("XClusterConfigModifyTables");
-    XClusterConfigModifyTables.Params modifyTablesParams = new XClusterConfigModifyTables.Params();
-    modifyTablesParams.setUniverseUUID(xClusterConfig.getTargetUniverseUUID());
-    modifyTablesParams.xClusterConfig = xClusterConfig;
-    modifyTablesParams.tables = tables;
-    modifyTablesParams.action = action;
-
-    XClusterConfigModifyTables task = createTask(XClusterConfigModifyTables.class);
-    task.initialize(modifyTablesParams);
-    subTaskGroup.addSubTask(task);
-    getRunnableTask().addSubTaskGroup(subTaskGroup);
-    return subTaskGroup;
-  }
-
   protected SubTaskGroup createXClusterConfigRenameTask(
       XClusterConfig xClusterConfig, String newName) {
     SubTaskGroup subTaskGroup = createSubTaskGroup("XClusterConfigRename");
@@ -516,7 +497,9 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
         .collect(Collectors.toSet());
   }
 
-  /** @see #getTablesNeedBootstrap(Set) */
+  /**
+   * @see #getTablesNeedBootstrap(Set)
+   */
   protected Set<XClusterTableConfig> getTablesNeedBootstrap() {
     return getTablesNeedBootstrap(getXClusterConfigFromTaskParams().getTableIds());
   }
@@ -547,7 +530,9 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
         .collect(Collectors.toSet());
   }
 
-  /** @see #getTablesNotNeedBootstrap(Set) */
+  /**
+   * @see #getTablesNotNeedBootstrap(Set)
+   */
   protected Set<XClusterTableConfig> getTablesNotNeedBootstrap() {
     return getTablesNotNeedBootstrap(getXClusterConfigFromTaskParams().getTableIds());
   }
@@ -781,6 +766,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
             .getProducerMapMap()
             .get(xClusterConfig.getReplicationGroupName());
     if (replicationGroup == null) {
+      xClusterConfig.updateReplicationSetupDone(tableIds, false /* replicationSetupDone */);
       return false;
     }
 
@@ -1345,6 +1331,7 @@ public abstract class XClusterConfigTaskBase extends UniverseDefinitionTaskBase 
     }
     return tableType;
   }
+
   // --------------------------------------------------------------------------------
   // End of TableInfo helpers.
 

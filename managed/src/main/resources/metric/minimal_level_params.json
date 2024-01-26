@@ -47,5 +47,6 @@
     "async_replication_[^_]+_lag_micros|majority_sst_files_rejections",
     "|follower_lag_ms|[^_]+_memory_pressure_rejections",
     "|rocksdb_current_version_sst_files_size|log_wal_size"
-  ]
+  ],
+  "show_help": "false"
 }

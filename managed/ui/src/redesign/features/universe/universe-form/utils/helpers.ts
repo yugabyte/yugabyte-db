@@ -367,6 +367,11 @@ export const createUniverse = async ({
 
     //redirect to task page
     response?.universeUUID && transitToUniverse(response.universeUUID);
+    
+    setTimeout(()=>{
+      window.location.reload();
+    }, 2000);
+
     return response;
   } catch (error) {
     console.error(error);

@@ -257,7 +257,7 @@ OutboundCall::~OutboundCall() {
               << MonoDelta(CoarseMonoClock::Now() - start_).ToMicroseconds() << "us."
               << (trace_ ? " Trace:" : "");
     if (trace_) {
-      trace_->Dump(&LOG(INFO), true);
+      trace_->DumpToLogInfo(true);
     }
   }
 
@@ -657,6 +657,10 @@ bool OutboundCall::IsFinished() const {
 // The following two functions are only invoked when the call has already finished.
 Result<RefCntSlice> OutboundCall::ExtractSidecar(size_t idx) const NO_THREAD_SAFETY_ANALYSIS {
   return call_response_.ExtractSidecar(idx);
+}
+
+size_t OutboundCall::GetSidecarsCount() const NO_THREAD_SAFETY_ANALYSIS {
+  return call_response_.GetSidecarsCount();
 }
 
 size_t OutboundCall::TransferSidecars(Sidecars* dest) NO_THREAD_SAFETY_ANALYSIS  {

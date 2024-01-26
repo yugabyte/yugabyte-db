@@ -6,7 +6,7 @@ description: Use Caspio to work with distributed SQL databases in YugabyteDB.
 menu:
   preview_integrations:
     identifier: caspio
-    parent: integrations
+    parent: development-platforms
     weight: 900
 type: docs
 ---

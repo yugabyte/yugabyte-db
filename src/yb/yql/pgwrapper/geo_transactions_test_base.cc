@@ -75,6 +75,12 @@ void GeoTransactionsTestBase::SetUp() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_load_balancer_max_concurrent_moves_per_table) = 10;
 
   pgwrapper::PgMiniTestBase::SetUp();
+  InitTransactionManagerAndPool();
+  // Wait for system.transactions to be created.
+  WaitForStatusTabletsVersion(1);
+}
+
+void GeoTransactionsTestBase::InitTransactionManagerAndPool() {
   transaction_pool_ = nullptr;
   for (size_t i = 0; i != cluster_->num_tablet_servers(); ++i) {
     auto mini_ts = cluster_->mini_tablet_server(i);
@@ -85,9 +91,6 @@ void GeoTransactionsTestBase::SetUp() {
     }
   }
   ASSERT_NE(transaction_pool_, nullptr);
-
-  // Wait for system.transactions to be created.
-  WaitForStatusTabletsVersion(1);
 }
 
 const std::shared_ptr<tserver::MiniTabletServer> GeoTransactionsTestBase::PickPgTabletServer(

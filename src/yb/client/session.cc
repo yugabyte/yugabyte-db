@@ -204,7 +204,7 @@ void BatcherFlushDone(
     retry_batcher->Add(op);
   }
 
-  TEST_SYNC_POINT("BatcherFlushDone:Retry:1");
+  DEBUG_ONLY_TEST_SYNC_POINT("BatcherFlushDone:Retry:1");
 
   FlushBatcherAsync(retry_batcher, std::move(callback), batcher_config,
       internal::IsWithinTransactionRetry::kTrue);
@@ -317,10 +317,26 @@ internal::Batcher& YBSession::Batcher() {
   return *batcher_;
 }
 
-void YBSession::Apply(YBOperationPtr yb_op) {
+namespace {
+void PrepareAndApplyYbOp(internal::Batcher* batcher, YBOperationPtr yb_op) {
   VLOG(5) << "YBSession Apply yb_op: " << yb_op->ToString();
   yb_op->reset_request_id();
-  Batcher().Add(yb_op);
+  batcher->Add(std::move(yb_op));
+}
+}  // namespace
+
+void YBSession::Apply(YBOperationPtr yb_op) {
+  PrepareAndApplyYbOp(&Batcher(), std::move(yb_op));
+}
+
+void YBSession::Apply(const std::vector<YBOperationPtr>& ops) {
+  if (ops.empty()) {
+    return;
+  }
+  auto& batcher = Batcher();
+  for (const auto& yb_op : ops) {
+    PrepareAndApplyYbOp(&batcher, yb_op);
+  }
 }
 
 bool YBSession::IsInProgress(YBOperationPtr yb_op) const {
@@ -336,72 +352,29 @@ bool YBSession::IsInProgress(YBOperationPtr yb_op) const {
   return false;
 }
 
-void YBSession::Apply(const std::vector<YBOperationPtr>& ops) {
-  if (ops.empty()) {
-    return;
-  }
-  auto& batcher = Batcher();
-  for (const auto& op : ops) {
-    op->reset_request_id();
-    batcher.Add(op);
-  }
-}
-
 FlushStatus YBSession::TEST_FlushAndGetOpsErrors() {
   return FlushFuture().get();
 }
 
 Status YBSession::TEST_Flush() {
-  return FlushFuture().get().status;
+  auto flush_status = TEST_FlushAndGetOpsErrors();
+  if (VLOG_IS_ON(2)) {
+    for (auto& error : flush_status.errors) {
+      VLOG(2) << "Flush of operation " << error->failed_op().ToString()
+              << " failed: " << error->status();
+    }
+  }
+  return std::move(flush_status.status);
 }
 
 Status YBSession::TEST_ApplyAndFlush(YBOperationPtr yb_op) {
   Apply(std::move(yb_op));
-
-  return FlushFuture().get().status;
+  return TEST_Flush();
 }
 
 Status YBSession::TEST_ApplyAndFlush(const std::vector<YBOperationPtr>& ops) {
   Apply(ops);
-  return FlushFuture().get().status;
-}
-
-Status YBSession::ApplyAndFlushSync(const std::vector<YBOperationPtr>& ops) {
-  Apply(ops);
-  auto future = FlushFuture();
-
-  auto deadline = deadline_;
-  if (deadline == CoarseTimePoint()) {
-    if (timeout_.Initialized()) {
-      deadline = CoarseMonoClock::Now() + timeout_;
-    } else {
-      // Client writing with no deadline set, using 60 seconds.
-      deadline = CoarseMonoClock::Now() + 60s;
-    }
-  }
-
-  auto future_status = future.wait_until(deadline);
-  SCHECK(future_status == std::future_status::ready, TimedOut, "Timed out waiting for Flush");
-  auto flush_status = future.get();
-  for (auto& error : flush_status.errors) {
-    VLOG(2) << "Flush of operation " << error->failed_op().ToString()
-            << " failed: " << error->status();
-  }
-  return flush_status.status;
-}
-
-Status YBSession::ApplyAndFlushSync(YBOperationPtr ops) {
-  return ApplyAndFlushSync(std::vector<YBOperationPtr>{ops});
-}
-
-Status YBSession::ReadSync(std::shared_ptr<YBOperation> yb_op) {
-  CHECK(yb_op->read_only());
-  return ApplyAndFlushSync(std::move(yb_op));
-}
-
-Status YBSession::TEST_ReadSync(std::shared_ptr<YBOperation> yb_op) {
-  CHECK(yb_op->read_only());
-  return TEST_ApplyAndFlush(std::move(yb_op));
+  return TEST_Flush();
 }
 
 size_t YBSession::TEST_CountBufferedOperations() const {

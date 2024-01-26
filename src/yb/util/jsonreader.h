@@ -59,7 +59,7 @@ namespace yb {
 class JsonReader {
  public:
   explicit JsonReader(std::string text);
-  ~JsonReader();
+  virtual ~JsonReader();
 
   Status Init();
 
@@ -81,6 +81,10 @@ class JsonReader {
   Status ExtractInt64(const rapidjson::Value* object,
                       const char* field,
                       int64_t* result) const;
+
+  Status ExtractUInt32(const rapidjson::Value* object,
+                       const char* field,
+                       uint32_t* result) const;
 
   Status ExtractUInt64(const rapidjson::Value* object,
                        const char* field,
@@ -106,7 +110,7 @@ class JsonReader {
 
   const rapidjson::Value* root() const { return &document_; }
 
- private:
+ protected:
   Status ExtractField(const rapidjson::Value* object,
                       const char* field,
                       const rapidjson::Value** result) const;
@@ -118,10 +122,11 @@ class JsonReader {
                               google::protobuf::Message* pb,
                               const google::protobuf::FieldDescriptor* field) const;
 
-  Status ExtractProtobufRepeatedField(const rapidjson::Value& value,
-                                      google::protobuf::Message* pb,
-                                      const google::protobuf::FieldDescriptor* field) const;
+  virtual Status ExtractProtobufRepeatedField(const rapidjson::Value& value,
+                                              google::protobuf::Message* pb,
+                                              const google::protobuf::FieldDescriptor* field) const;
 
+ private:
   std::string text_;
   rapidjson::Document document_;
 

@@ -189,8 +189,10 @@ class BlockBasedTable : public TableReader {
   //  - nullptr if input_iter is a data index iterator and no new iterators were created.
   //
   // Note: ErrorIterator with error will be returned if GetIndexReader returned an error.
-  InternalIterator* NewIndexIterator(const ReadOptions& read_options,
-                                     BlockIter* input_iter = nullptr);
+  InternalIterator* NewIndexIterator(
+      const ReadOptions& read_options, BlockIter* input_iter);
+
+  InternalIterator* NewIndexIterator(const ReadOptions& read_options) override;
 
   // Converts an index entry (i.e. an encoded BlockHandle) into an iterator over the contents of
   // a correspoding block. Updates and returns input_iter if the one is specified, or returns

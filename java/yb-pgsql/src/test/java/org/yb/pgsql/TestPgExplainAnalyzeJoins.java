@@ -155,7 +155,8 @@ public class TestPgExplainAnalyzeJoins extends BasePgExplainAnalyzeTest {
 
   @Test
   public void testNestedLoopJoin() throws Exception {
-    String simpleNLQuery = "/*+ NestLoop(%1$s %2$s) Leading((%1$s %2$s)) */ SELECT * FROM %1$s "
+    String simpleNLQuery = "/*+ Set(yb_bnl_batch_size 1) NestLoop(%1$s %2$s) "
+      + " Leading((%1$s %2$s)) */ SELECT * FROM %1$s "
       + " JOIN %2$s ON %1$s.%3$s = %2$s.%4$s %5$s";
 
     // 1. Simple Nested Loop

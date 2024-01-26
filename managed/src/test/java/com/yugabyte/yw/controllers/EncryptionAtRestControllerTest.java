@@ -120,7 +120,7 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
 
   @Test
   public void testDeleteConfig() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.DeleteDrConfig);
     when(mockCommissioner.submit(any(TaskType.class), any(KMSConfigTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     ModelFactory.createKMSConfig(customer.getUuid(), "SMARTKEY", Json.newObject());
@@ -142,7 +142,8 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
   }
 
   @Ignore(
-      "This test passes locally but fails on Jenkins due to Guice not injecting mocked ApiHelper for an unknown reason")
+      "This test passes locally but fails on Jenkins due to Guice not injecting mocked ApiHelper"
+          + " for an unknown reason")
   @Test
   public void testCreateAndRecoverKey() {
     String kmsConfigUrl = "/api/customers/" + customer.getUuid() + "/kms_configs/SMARTKEY";
@@ -228,7 +229,7 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
             .put(AwsKmsAuthConfigField.SECRET_ACCESS_KEY.fieldName, "valid_secretKey")
             .put(AwsKmsAuthConfigField.ENDPOINT.fieldName, "https://kms.ap-south-1.amazonaws.com")
             .put("name", "test");
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.CreateKMSConfig);
     when(mockCommissioner.submit(any(TaskType.class), any(KMSConfigTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     CloudAPI mockCloudAPI = mock(CloudAPI.class);
@@ -320,7 +321,7 @@ public class EncryptionAtRestControllerTest extends FakeDBApplication {
     String kmsConfigUrl =
         "/api/v1/customers/" + customer.getUuid() + "/kms_configs/" + kmsConfigUUID + "/edit";
     ObjectNode kmsConfigReq = Json.newObject().put("base_url", "api.amer.smartkey.io");
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.EditKMSConfig);
     when(mockCommissioner.submit(any(TaskType.class), any(KMSConfigTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     Result updateKMSResult =

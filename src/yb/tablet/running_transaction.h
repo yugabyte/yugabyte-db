@@ -56,8 +56,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
   }
 
   MUST_USE_RESULT bool UpdateStatus(
-      TransactionStatus transaction_status, HybridTime time_of_status,
-      HybridTime coordinator_safe_time, SubtxnSet aborted_subtxn_set,
+      const TabletId& status_tablet, TransactionStatus transaction_status,
+      HybridTime time_of_status, HybridTime coordinator_safe_time, SubtxnSet aborted_subtxn_set,
       const Status& expected_deadlock_status);
 
   void UpdateAbortCheckHT(HybridTime now, UpdateAbortCheckHTMode mode);
@@ -106,6 +106,18 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
              TransactionStatusCallback callback,
              std::unique_lock<std::mutex>* lock);
 
+  Status CheckPromotionAllowed() {
+    if (last_known_status_ == TransactionStatus::ABORTED) {
+      return STATUS_FORMAT(
+          IllegalState, Format("Transaction $0 in ABORTED state. Cannot be promoted.", id()));
+    }
+    if (abort_request_in_progress_) {
+      return STATUS_FORMAT(
+          IllegalState, Format("Request to abort txn $0 in progress. Cannot be promoted.", id()));
+    }
+    return Status::OK();
+  }
+
   std::string ToString() const;
   void ScheduleRemoveIntents(const RunningTransactionPtr& shared_self, RemoveReason reason);
 
@@ -136,14 +148,17 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
       HybridTime last_known_status_hybrid_time,
       TransactionStatus last_known_status);
 
-  void SendStatusRequest(int64_t serial_no, const RunningTransactionPtr& shared_self);
+  void SendStatusRequest(
+      const TabletId& status_tablet, int64_t serial_no, const RunningTransactionPtr& shared_self);
 
-  void StatusReceived(const Status& status,
+  void StatusReceived(const TabletId& status_tablet,
+                      const Status& status,
                       const tserver::GetTransactionStatusResponsePB& response,
                       int64_t serial_no,
                       const RunningTransactionPtr& shared_self);
 
-  void DoStatusReceived(const Status& status,
+  void DoStatusReceived(const TabletId& status_tablet,
+                        const Status& status,
                         const tserver::GetTransactionStatusResponsePB& response,
                         int64_t serial_no,
                         const RunningTransactionPtr& shared_self);
@@ -164,7 +179,8 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
       const Status& status,
       const tserver::AbortTransactionResponsePB& response);
 
-  void AbortReceived(const Status& status,
+  void AbortReceived(const TabletId& status_tablet,
+                     const Status& status,
                      const tserver::AbortTransactionResponsePB& response,
                      const RunningTransactionPtr& shared_self);
 
@@ -195,6 +211,13 @@ class RunningTransaction : public std::enable_shared_from_this<RunningTransactio
 
   // Time of the next check whether this transaction has been aborted.
   HybridTime abort_check_ht_;
+  // Is true if an external request to abort the transaction is in progress i.e. AbortTransaction
+  // rpc to the transaction coordinator is in progress. Gets set in RunningTransaction::Abort and
+  // reset in RunningTransaction::AbortReceived.
+  bool abort_request_in_progress_ = false;
+
+  // Number of outstanding status request rpcs.
+  std::atomic<int64_t> outstanding_status_requests_{0};
 };
 
 Status MakeAbortedStatus(const TransactionId& id);

@@ -4,7 +4,9 @@ package com.yugabyte.yw.models.configs.validators;
 
 import com.google.cloud.storage.Storage;
 import com.google.cloud.storage.StorageException;
+import com.google.common.collect.HashMultimap;
 import com.google.common.collect.ImmutableList;
+import com.google.common.collect.SetMultimap;
 import com.yugabyte.yw.common.BeanValidator;
 import com.yugabyte.yw.common.CloudUtil.ConfigLocationInfo;
 import com.yugabyte.yw.common.CloudUtil.ExtraPermissionToValidate;
@@ -45,27 +47,35 @@ public class CustomerConfigStorageGCSValidator extends CustomerConfigStorageVali
     super.validate(data);
 
     CustomerConfigStorageGCSData gcsData = (CustomerConfigStorageGCSData) data;
-    if (!StringUtils.isEmpty(gcsData.gcsCredentialsJson)) {
-      Storage storage = null;
-      try {
-        storage = factory.createGcpStorage(gcsData);
-      } catch (IOException ex) {
-        throwBeanValidatorError(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, ex.getMessage());
-      }
 
-      validateGCSUrl(
-          storage, CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, gcsData.backupLocation);
-      if (gcsData.regionLocations != null) {
-        for (RegionLocations location : gcsData.regionLocations) {
-          if (StringUtils.isEmpty(location.region)) {
-            throwBeanValidatorError(
-                CustomerConfigConsts.REGION_FIELDNAME, "This field cannot be empty.");
-          }
-          validateUrl(
-              CustomerConfigConsts.REGION_LOCATION_FIELDNAME, location.location, true, false);
-          validateGCSUrl(
-              storage, CustomerConfigConsts.REGION_LOCATION_FIELDNAME, location.location);
+    // Should not contain neither or both json creds and use GCP IAM flag.
+    if (StringUtils.isEmpty(gcsData.gcsCredentialsJson) ^ (gcsData.useGcpIam)) {
+      SetMultimap<String, String> validationErrorsMap = HashMultimap.create();
+      validationErrorsMap.put(
+          CustomerConfigConsts.USE_GCP_IAM_FIELDNAME,
+          "Must pass only one of 'GCS_CREDENTIALS_JSON' or 'USE_GCP_IAM'.");
+      validationErrorsMap.put(
+          CustomerConfigConsts.GCS_CREDENTIALS_JSON_FIELDNAME,
+          "Must pass only one of 'GCS_CREDENTIALS_JSON' or 'USE_GCP_IAM'.");
+      throwMultipleBeanValidatorError(validationErrorsMap, "storageConfigValidation");
+    }
+
+    Storage storage = null;
+    try {
+      storage = factory.createGcpStorage(gcsData);
+    } catch (IOException ex) {
+      throwBeanValidatorError(CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, ex.getMessage());
+    }
+
+    validateGCSUrl(storage, CustomerConfigConsts.BACKUP_LOCATION_FIELDNAME, gcsData.backupLocation);
+    if (gcsData.regionLocations != null) {
+      for (RegionLocations location : gcsData.regionLocations) {
+        if (StringUtils.isEmpty(location.region)) {
+          throwBeanValidatorError(
+              CustomerConfigConsts.REGION_FIELDNAME, "This field cannot be empty.");
         }
+        validateUrl(CustomerConfigConsts.REGION_LOCATION_FIELDNAME, location.location, true, false);
+        validateGCSUrl(storage, CustomerConfigConsts.REGION_LOCATION_FIELDNAME, location.location);
       }
     }
   }

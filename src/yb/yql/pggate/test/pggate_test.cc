@@ -131,7 +131,8 @@ void PggateTest::TearDown() {
 
 Status PggateTest::Init(const char *test_name,
                         int num_tablet_servers,
-                        int replication_factor) {
+                        int replication_factor,
+                        const std::string& use_existing_db) {
   // Create cluster before setting client API.
   RETURN_NOT_OK(CreateCluster(num_tablet_servers, replication_factor));
 
@@ -166,8 +167,12 @@ Status PggateTest::Init(const char *test_name,
   CHECK_YBC_STATUS(
       YBCPgInitSession(nullptr /* database_name */, session_stats, false /* is_binary_upgrade */));
 
-  // Setup database
-  SetupDB();
+  if (use_existing_db.empty()) {
+    // Setup database
+    SetupDB();
+  } else {
+    ConnectDB(use_existing_db);
+  }
   return Status::OK();
 }
 
@@ -179,6 +184,7 @@ Status PggateTest::CreateCluster(int num_tablet_servers, int replication_factor)
   if (replication_factor > 0) {
     opts.replication_factor = replication_factor;
   }
+  CustomizeExternalMiniCluster(&opts);
   cluster_ = std::make_shared<ExternalMiniCluster>(opts);
   CHECK_OK(cluster_->Start());
 
@@ -218,7 +224,7 @@ void PggateTest::CommitDDLTransaction() {
 }
 
 void PggateTest::BeginTransaction() {
-  CHECK_YBC_STATUS(YBCPgBeginTransaction());
+  CHECK_YBC_STATUS(YBCPgBeginTransaction(0));
 }
 
 void PggateTest::CommitTransaction() {

@@ -503,9 +503,10 @@ class PgApiImpl {
   //------------------------------------------------------------------------------------------------
   // Insert.
   Status NewInsert(const PgObjectId& table_id,
-                   bool is_single_row_txn,
                    bool is_region_local,
-                   PgStatement **handle);
+                   PgStatement **handle,
+                   YBCPgTransactionSetting transaction_setting =
+                       YBCPgTransactionSetting::YB_TRANSACTIONAL);
 
   Status ExecInsert(PgStatement *handle);
 
@@ -518,18 +519,20 @@ class PgApiImpl {
   //------------------------------------------------------------------------------------------------
   // Update.
   Status NewUpdate(const PgObjectId& table_id,
-                   bool is_single_row_txn,
                    bool is_region_local,
-                   PgStatement **handle);
+                   PgStatement **handle,
+                   YBCPgTransactionSetting transaction_setting =
+                       YBCPgTransactionSetting::YB_TRANSACTIONAL);
 
   Status ExecUpdate(PgStatement *handle);
 
   //------------------------------------------------------------------------------------------------
   // Delete.
   Status NewDelete(const PgObjectId& table_id,
-                   bool is_single_row_txn,
                    bool is_region_local,
-                   PgStatement **handle);
+                   PgStatement **handle,
+                   YBCPgTransactionSetting transaction_setting =
+                       YBCPgTransactionSetting::YB_TRANSACTIONAL);
 
   Status ExecDelete(PgStatement *handle);
 
@@ -538,9 +541,10 @@ class PgApiImpl {
   //------------------------------------------------------------------------------------------------
   // Colocated Truncate.
   Status NewTruncateColocated(const PgObjectId& table_id,
-                              bool is_single_row_txn,
                               bool is_region_local,
-                              PgStatement **handle);
+                              PgStatement **handle,
+                              YBCPgTransactionSetting transaction_setting =
+                                  YBCPgTransactionSetting::YB_TRANSACTIONAL);
 
   Status ExecTruncateColocated(PgStatement *handle);
 
@@ -595,7 +599,7 @@ class PgApiImpl {
 
   //------------------------------------------------------------------------------------------------
   // Transaction control.
-  Status BeginTransaction();
+  Status BeginTransaction(int64_t start_time);
   Status RecreateTransaction();
   Status RestartTransaction();
   Status ResetTransactionReadPoint();
@@ -688,6 +692,10 @@ class PgApiImpl {
   Result<bool> CheckIfPitrActive();
 
   Result<bool> IsObjectPartOfXRepl(const PgObjectId& table_id);
+
+  Result<boost::container::small_vector<RefCntSlice, 2>> GetTableKeyRanges(
+      const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
+      uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length);
 
   MemTracker &GetMemTracker() { return *mem_tracker_; }
 

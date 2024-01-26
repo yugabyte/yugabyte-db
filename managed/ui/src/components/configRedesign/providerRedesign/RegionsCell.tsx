@@ -6,7 +6,7 @@
  */
 import { Box, Typography } from '@material-ui/core';
 
-import { usePillStyles } from './utils';
+import { usePillStyles } from '../../../redesign/styles/styles';
 
 import { YBRegion } from './types';
 

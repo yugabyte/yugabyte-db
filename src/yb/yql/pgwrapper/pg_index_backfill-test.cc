@@ -21,6 +21,7 @@
 #include "yb/common/schema.h"
 
 #include "yb/integration-tests/backfill-test-util.h"
+#include "yb/integration-tests/external_mini_cluster_fs_inspector.h"
 
 #include "yb/master/master_admin.proxy.h"
 #include "yb/master/master_admin.pb.h"
@@ -33,6 +34,7 @@
 #include "yb/util/countdown_latch.h"
 #include "yb/util/format.h"
 #include "yb/util/monotime.h"
+#include "yb/util/pb_util.h"
 #include "yb/util/status_format.h"
 #include "yb/util/string_util.h"
 #include "yb/util/test_thread_holder.h"
@@ -266,6 +268,35 @@ void PgIndexBackfillTest::TestRetainDeleteMarkers(const std::string& db_name) {
 
   ASSERT_EQ(table_info->schema.version(), 0);
   ASSERT_FALSE(table_info->schema.table_properties().retain_delete_markers());
+
+  // Validate the value if retain_delete_markers is persisted correctly in a tablet meta-data:
+  // let's get all tablets for an index table and validate it's superblock on a disk.
+  google::protobuf::RepeatedPtrField<master::TabletLocationsPB> tablets;
+  ASSERT_OK(client->GetTabletsFromTableId(table_id, 0, &tablets));
+  ASSERT_GT(tablets.size(), 0);
+
+  itest::ExternalMiniClusterFsInspector inspector { cluster_.get() };
+  for (const auto& tablet : tablets) {
+    for (size_t n = 0; n < cluster_->num_tablet_servers(); ++n) {
+      tablet::RaftGroupReplicaSuperBlockPB superblock;
+      ASSERT_OK(inspector.ReadTabletSuperBlockOnTS(n, tablet.tablet_id(), &superblock));
+      ASSERT_TRUE(superblock.has_kv_store());
+      ASSERT_GT(superblock.kv_store().tables_size(), 0);
+      for (const auto& table_pb : superblock.kv_store().tables()) {
+        // Take into accound only index table (required in case of colocation).
+        if (table_pb.has_table_name() && table_pb.table_name() != index_name) {
+          continue;
+        }
+
+        ASSERT_TRUE(table_pb.has_schema());
+        ASSERT_TRUE(table_pb.schema().has_table_properties());
+        LOG(INFO) << "P " << cluster_->tablet_server(n)->id() << " T " << tablet.tablet_id()
+                  << (table_pb.has_table_name() ? " Table " + table_pb.table_name() : "")
+                  << " properties: " << table_pb.schema().table_properties().ShortDebugString();
+        ASSERT_FALSE(table_pb.schema().table_properties().retain_delete_markers());
+      }
+    }
+  }
 }
 
 void PgIndexBackfillTest::TestLargeBackfill(const int num_rows) {
@@ -622,7 +653,20 @@ Status PgIndexBackfillTest::TestInsertsWhileCreatingIndex(bool expect_missing_ro
   return Status::OK();
 }
 
-TEST_F(PgIndexBackfillTest, InsertsWhileCreatingIndex) {
+class PgIndexBackfillTestEnableWait : public PgIndexBackfillTest {
+ protected:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillTest::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.insert(
+        options->extra_tserver_flags.end(),
+        {
+          "--ysql_yb_disable_wait_for_backends_catalog_version=false",
+          "--ysql_yb_index_state_flags_update_delay=0",
+        });
+  }
+};
+
+TEST_F_EX(PgIndexBackfillTest, InsertsWhileCreatingIndexEnableWait, PgIndexBackfillTestEnableWait) {
   ASSERT_OK(TestInsertsWhileCreatingIndex(false /* expect_missing_row */));
 }
 
@@ -630,8 +674,12 @@ class PgIndexBackfillTestDisableWait : public PgIndexBackfillTest {
  protected:
   void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
     PgIndexBackfillTest::UpdateMiniClusterOptions(options);
-    options->extra_tserver_flags.push_back(
-        "--ysql_yb_disable_wait_for_backends_catalog_version=true");
+    options->extra_tserver_flags.insert(
+        options->extra_tserver_flags.end(),
+        {
+          "--ysql_yb_disable_wait_for_backends_catalog_version=true",
+          "--ysql_yb_index_state_flags_update_delay=0",
+        });
   }
 };
 
@@ -2152,6 +2200,16 @@ TEST_F_EX(PgIndexBackfillTest,
   thread_holder_.Stop();
 }
 
+// Override to use YSQL backends manager.
+class PgIndexBackfillBackendsManager : public PgIndexBackfillBlockDoBackfill {
+ public:
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* options) override {
+    PgIndexBackfillBlockDoBackfill::UpdateMiniClusterOptions(options);
+    options->extra_tserver_flags.push_back(
+        "--ysql_yb_disable_wait_for_backends_catalog_version=false");
+  }
+};
+
 // Make sure transaction is not aborted by getting safe time.  Simulate the following:
 //   Session A                                    Session B
 //   --------------------------                   ---------------------------------
@@ -2168,7 +2226,7 @@ TEST_F_EX(PgIndexBackfillTest,
 // TODO(#19000): enable for TSAN.
 TEST_F_EX(PgIndexBackfillTest,
           YB_DISABLE_TEST_IN_TSAN(NoAbortTxn),
-          PgIndexBackfillBlockDoBackfill) {
+          PgIndexBackfillBackendsManager) {
   ASSERT_OK(conn_->ExecuteFormat("CREATE TABLE $0 (i int PRIMARY KEY, j int) SPLIT INTO 1 TABLETS",
                                  kTableName));
   ASSERT_OK(conn_->ExecuteFormat("INSERT INTO $0 VALUES (1, 2), (3, 4)", kTableName));

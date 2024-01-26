@@ -136,7 +136,8 @@ WriteQuery::WriteQuery(
     TabletPtr tablet,
     rpc::RpcContext* rpc_context,
     tserver::WriteResponsePB* response)
-    : operation_(std::make_unique<WriteOperation>(std::move(tablet))),
+    : tablet_(tablet),
+      operation_(std::make_unique<WriteOperation>(std::move(tablet))),
       term_(term),
       deadline_(deadline),
       context_(context),
@@ -144,6 +145,7 @@ WriteQuery::WriteQuery(
       response_(response),
       start_time_(CoarseMonoClock::Now()),
       execute_mode_(ExecuteMode::kSimple) {
+  IncrementActiveWriteQueryObjectsBy(1);
 }
 
 LWWritePB& WriteQuery::request() {
@@ -194,6 +196,7 @@ void WriteQuery::Release() {
 }
 
 WriteQuery::~WriteQuery() {
+  IncrementActiveWriteQueryObjectsBy(-1);
 }
 
 void WriteQuery::set_client_request(std::reference_wrapper<const tserver::WriteRequestPB> req) {
@@ -516,7 +519,7 @@ Status WriteQuery::DoExecute() {
       transactional_table, write_batch.has_transaction(), deadline(), partial_range_key_intents,
       tablet->shared_lock_manager()));
 
-  TEST_SYNC_POINT("WriteQuery::DoExecute::PreparedDocWriteOps");
+  DEBUG_ONLY_TEST_SYNC_POINT("WriteQuery::DoExecute::PreparedDocWriteOps");
 
   auto* transaction_participant = tablet->transaction_participant();
   docdb::WaitQueue* wait_queue = nullptr;
@@ -542,9 +545,24 @@ Status WriteQuery::DoExecute() {
   if (isolation_level_ == IsolationLevel::NON_TRANSACTIONAL) {
     auto now = tablet->clock()->Now();
     auto conflict_management_policy = GetConflictManagementPolicy(wait_queue, write_batch);
+
+    {
+      // TODO(#19498): Enable the below check if possible. Right now we can't enable it because the
+      // read time for all YCQL operations is picked on the YCQL query layer, and this might be
+      // indicative of some correctness bugs similar to #19407 which was seen on YSQL.
+
+      // Read time should not be picked until conflict resolution is successful for the single shard
+      // operation path. This is because ResolveOperationConflicts() doesn't check regular db for
+      // conflicting data committed in regular db. If in future, we have to read data before
+      // conflict resolution, we should check conflicts in regular db too.
+
+      // RSTATUS_DCHECK(
+      //     !read_time_, IllegalState,
+      //     "Read time was picked before conflict resolution for a single shard operation.");
+    }
     return docdb::ResolveOperationConflicts(
-        doc_ops_, conflict_management_policy, now, tablet->doc_db(),
-        partial_range_key_intents, transaction_participant,
+        doc_ops_, conflict_management_policy, now, write_batch.transaction().pg_txn_start_us(),
+        tablet->doc_db(), partial_range_key_intents, transaction_participant,
         tablet->metrics(), &prepare_result_.lock_batch,
         wait_queue,
         [this, now](const Result<HybridTime>& result) {
@@ -582,7 +600,7 @@ Status WriteQuery::DoExecute() {
   // TODO(wait-queues): Ensure that wait_queue respects deadline() during conflict resolution.
   return docdb::ResolveTransactionConflicts(
       doc_ops_, conflict_management_policy, write_batch, tablet->clock()->Now(),
-      read_time_ ? read_time_.read : HybridTime::kMax,
+      read_time_ ? read_time_.read : HybridTime::kMax, write_batch.transaction().pg_txn_start_us(),
       tablet->doc_db(), partial_range_key_intents,
       transaction_participant, tablet->metrics(),
       &prepare_result_.lock_batch, wait_queue,
@@ -716,7 +734,13 @@ Status WriteQuery::DoCompleteExecute(HybridTime safe_time) {
 }
 
 Result<TabletPtr> WriteQuery::tablet_safe() const {
-  return operation_->tablet_safe();
+  // We cannot rely on using operation_->tablet_safe() as operation_ is moved to TabletPeer::Submit
+  // at some point in the lifecycle of the WriteQuery, and wouldn't be a valid dereference/access.
+  auto tablet = tablet_.lock();
+  if (!tablet) {
+    return STATUS_FORMAT(IllegalState, "Underlying tablet object might have been deallocated");
+  }
+  return tablet;
 }
 
 void WriteQuery::AdjustYsqlQueryTransactionality(size_t ysql_batch_size) {
@@ -899,9 +923,11 @@ struct UpdateQLIndexesTask {
 
   void AddRequests(
       const std::shared_ptr<UpdateQLIndexesTask>& self, docdb::QLWriteOperation* write_op) {
+    DCHECK_EQ(self.get(), this);
+
     // Apply the write ops to update the index
     {
-      std::lock_guard lock(self->mutex);
+      std::lock_guard lock(mutex);
       counter += write_op->index_requests().size();
     }
     for (auto& [index_info, index_request] : write_op->index_requests()) {
@@ -1102,6 +1128,17 @@ void WriteQuery::PgsqlExecuteDone(const Status& status) {
 
 void WriteQuery::SimpleExecuteDone(const Status& status) {
   StartSynchronization(std::move(self_), status);
+}
+
+void WriteQuery::IncrementActiveWriteQueryObjectsBy(int64_t value) {
+  auto res = tablet_safe();
+  if (res.ok() && (*res)->metrics()) {
+    (*res)->metrics()->IncrementBy(tablet::TabletGauges::kActiveWriteQueryObjects, value);
+    did_update_active_write_queries_metric_ = true;
+  } else if (PREDICT_FALSE(did_update_active_write_queries_metric_)) {
+    LOG(DFATAL) << "Unable to update kActiveWriteQueryObjects metric but had "
+                << "previosuly contributed to it.";
+  }
 }
 
 }  // namespace tablet

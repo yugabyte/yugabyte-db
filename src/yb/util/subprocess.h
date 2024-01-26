@@ -40,7 +40,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/macros.h"
 #include "yb/gutil/thread_annotations.h"
@@ -55,7 +55,7 @@ namespace util {
 // Handle and log the status code from waitpid().
 // The status code is encoded. We need to call the proper macro
 // to decode it to be readable.
-void LogWaitCode(int ret_code);
+void LogWaitCode(int ret_code, const std::string &process_name);
 
 } // namespace util
 

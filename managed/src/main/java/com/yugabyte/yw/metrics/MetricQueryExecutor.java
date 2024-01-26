@@ -130,8 +130,7 @@ public class MetricQueryExecutor implements Callable<JsonNode> {
         if (metricSettings.isReturnAggregatedValue()) {
           try {
             MetricQueryContext aggregatedContext =
-                context
-                    .toBuilder()
+                context.toBuilder()
                     .removeGroupBy(context.getAdditionalGroupBy())
                     .additionalGroupBy(Collections.emptySet())
                     .build();

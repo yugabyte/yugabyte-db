@@ -22,6 +22,7 @@ func New() *YbaCtlComponent {
 
 // Setup will create the base install directory needed for initialization.
 func (yc *YbaCtlComponent) Setup() error {
+	common.Version = yc.Version()
 	err := common.MkdirAll(common.YbactlInstallDir(), common.DirMode)
 	return err
 }
@@ -32,8 +33,6 @@ func (yc *YbaCtlComponent) Setup() error {
 func (yc *YbaCtlComponent) Install() error {
 	log.Info("Installing yba-ctl")
 
-	os.Chdir(common.GetBinaryDir())
-
 	for _, file := range []string{common.GoBinaryName, common.VersionMetadataJSON} {
 		// Remove the existing file and ignore not exists errors.
 		err := os.Remove(filepath.Join(common.YbactlInstallDir(), file))
@@ -41,9 +40,9 @@ func (yc *YbaCtlComponent) Install() error {
 			return fmt.Errorf("failed to remove existing file %s: %w",
 				filepath.Join(common.YbactlInstallDir(), file), err)
 		}
-
-		if err := common.Copy(file, common.YbactlInstallDir(), false, true); err != nil {
-			return fmt.Errorf("failed to copy %s during yba-ctl install: %w", file, err)
+		fp := common.AbsoluteBundlePath(file)
+		if err := common.Copy(fp, common.YbactlInstallDir(), false, true); err != nil {
+			return fmt.Errorf("failed to copy %s during yba-ctl install: %w", fp, err)
 		}
 	}
 

@@ -302,7 +302,7 @@ func (c *Container) GetCluster(ctx echo.Context) error {
         }
         // Get software version
         smallestVersion := c.helper.GetSmallestVersion(versionInfoFutures)
-        numCores := numNodes * int32(runtime.NumCPU())
+        numCores := int32(len(reducedNodeList)) * int32(runtime.NumCPU())
 
         // Get ram limits
         ramProvisionedBytes := float64(0)

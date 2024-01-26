@@ -42,7 +42,7 @@
 
 #include <boost/container/static_vector.hpp>
 #include <boost/optional/optional.hpp>
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/client/client.h"
 #include "yb/client/meta_data_cache.h"
@@ -105,7 +105,6 @@
 #include "yb/util/fault_injection.h"
 #include "yb/util/flags.h"
 #include "yb/util/format.h"
-#include "yb/util/logging.h"
 #include "yb/util/mem_tracker.h"
 #include "yb/util/metrics.h"
 #include "yb/util/monotime.h"
@@ -327,6 +326,11 @@ METRIC_DEFINE_gauge_uint64(server, ts_post_split_compaction_added,
                         MetricUnit::kRequests,
                         "Number of post-split compaction requests submitted.");
 
+METRIC_DEFINE_gauge_uint32(
+    server, ts_live_tablet_peers, "Number of Live Tablet Peers", MetricUnit::kUnits,
+    "Number of live tablet peers running on this tserver. Tablet peers are live if they are "
+    "bootstrapping or running.");
+
 THREAD_POOL_METRICS_DEFINE(server, admin_triggered_compaction_pool,
     "Thread pool for admin-triggered tablet compaction jobs.");
 
@@ -505,6 +509,8 @@ TSTabletManager::TSTabletManager(FsManager* fs_manager,
   ts_split_op_apply_ = METRIC_ts_split_op_apply.Instantiate(server_->metric_entity(), 0);
   ts_post_split_compaction_added_ =
       METRIC_ts_post_split_compaction_added.Instantiate(server_->metric_entity(), 0);
+  ts_live_tablet_peers_metric_ =
+      METRIC_ts_live_tablet_peers.Instantiate(server_->metric_entity(), 0);
 
   mem_manager_ = std::make_shared<TabletMemoryManager>(
       &tablet_options_,
@@ -1346,10 +1352,10 @@ Status TSTabletManager::StartRemoteSnapshotTransfer(
   // ScopeExit before calling RegisterRemoteClientAndLookupTablet so that if it fails,
   // we cleanup as expected.
   auto decrement_num_session = ScopeExit([this, &private_addr]() {
-    DecrementRemoteSessionCount(private_addr, &snapshot_transfer_clients);
+    DecrementRemoteSessionCount(private_addr, &snapshot_transfer_clients_);
   });
   TabletPeerPtr tablet = VERIFY_RESULT(RegisterRemoteClientAndLookupTablet(
-      tablet_id, private_addr, kLogPrefix, &snapshot_transfer_clients));
+      tablet_id, private_addr, kLogPrefix, &snapshot_transfer_clients_));
 
   SCHECK(tablet, InvalidArgument, Format("Could not find tablet $0", tablet_id));
   const auto& rocksdb_dir = tablet->tablet_metadata()->rocksdb_dir();
@@ -1538,8 +1544,8 @@ Status TSTabletManager::StartTabletStateTransition(
 }
 
 bool TSTabletManager::IsTabletInTransition(const TabletId& tablet_id) const {
-  std::unique_lock<std::mutex> lock(transition_in_progress_mutex_);
-  return ContainsKey(transition_in_progress_, tablet_id);
+  std::lock_guard lock(transition_in_progress_mutex_);
+  return transition_in_progress_.contains(tablet_id);
 }
 
 Status TSTabletManager::OpenTabletMeta(const string& tablet_id,
@@ -1582,14 +1588,10 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   consensus::ConsensusBootstrapInfo bootstrap_info;
   bool bootstrap_retryable_requests = true;
 
-  MemTrackerPtr parent_mem_tracker =
-      MemTracker::FindOrCreateTracker("Tablets", server_->mem_tracker());
-
   consensus::RetryableRequestsManager retryable_requests_manager(
       tablet_id, fs_manager_, meta->wal_dir(),
-      MemTracker::FindOrCreateTracker(Format("tablet-$0", cmeta->tablet_id()),
-          /* metric_name */ "PerTablet", parent_mem_tracker, AddToParent::kTrue,
-              CreateMetrics::kFalse), kLogPrefix);
+      mem_manager_->FindOrCreateOverheadMemTrackerForTablet(cmeta->tablet_id()), kLogPrefix);
+
   s = retryable_requests_manager.Init(server_->Clock());
   if(!s.ok()) {
     LOG(ERROR) << kLogPrefix << "Tablet failed to init retryable requests: " << s;
@@ -1641,7 +1643,7 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         .metadata = meta,
         .client_future = server_->client_future(),
         .clock = scoped_refptr<server::Clock>(server_->clock()),
-        .parent_mem_tracker = parent_mem_tracker,
+        .parent_mem_tracker = mem_manager_->tablets_overhead_mem_tracker(),
         .block_based_table_mem_tracker = mem_manager_->block_based_table_mem_tracker(),
         .metric_registry = metric_registry_,
         .log_anchor_registry = tablet_peer->log_anchor_registry(),
@@ -1665,7 +1667,9 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
         .full_compaction_pool = full_compaction_pool(),
         .admin_triggered_compaction_pool = admin_triggered_compaction_pool(),
         .post_split_compaction_added = ts_post_split_compaction_added_,
-        .metadata_cache = metadata_cache};
+        .metadata_cache = metadata_cache,
+        .get_min_xcluster_schema_version =
+            std::bind(&TabletServer::GetMinXClusterSchemaVersion, server_, _1, _2)};
     tablet::BootstrapTabletData data = {
       .tablet_init_data = tablet_init_data,
       .listener = tablet_peer->status_listener(),
@@ -1736,8 +1740,8 @@ void TSTabletManager::OpenTablet(const RaftGroupMetadataPtr& meta,
   if (elapsed_ms > FLAGS_tablet_start_warn_threshold_ms) {
     LOG(WARNING) << kLogPrefix << "Tablet startup took " << elapsed_ms << "ms";
     if (Trace::CurrentTrace()) {
-      LOG(WARNING) << kLogPrefix << "Trace:" << std::endl
-                   << Trace::CurrentTrace()->DumpToString(true);
+      LOG(INFO) << kLogPrefix << "Trace:";
+      Trace::CurrentTrace()->DumpToLogInfo(true);
     }
   }
 
@@ -1821,8 +1825,9 @@ void TSTabletManager::StartShutdown() {
   full_compaction_manager_->Shutdown();
 
   // Wait for all remote operations to finish.
-  WaitForRemoteSessionsToEnd(remote_bootstrap_clients_, kDebugBootstrapString);
-  WaitForRemoteSessionsToEnd(snapshot_transfer_clients, kDebugSnapshotTransferString);
+  WaitForRemoteSessionsToEnd(TabletRemoteSessionType::kBootstrap, kDebugBootstrapString);
+  WaitForRemoteSessionsToEnd(
+      TabletRemoteSessionType::kSnapshotTransfer, kDebugSnapshotTransferString);
 
   // Shut down the bootstrap pool, so new tablets are registered after this point.
   open_tablet_pool_->Shutdown();
@@ -2180,6 +2185,7 @@ int TSTabletManager::GetNumLiveTablets() const {
       count++;
     }
   }
+  ts_live_tablet_peers_metric_->set_value(count);
   return count;
 }
 
@@ -2862,7 +2868,7 @@ void TSTabletManager::FlushDirtySuperblocks() {
 }
 
 void TSTabletManager::WaitForRemoteSessionsToEnd(
-    const RemoteClients& remote_clients, const std::string& debug_session_string) const {
+    TabletRemoteSessionType session_type, const std::string& debug_session_string) const {
   const MonoDelta kSingleWait = 10ms;
   const MonoDelta kReportInterval = 5s;
   const MonoDelta kMaxWait = 30s;
@@ -2871,6 +2877,9 @@ void TSTabletManager::WaitForRemoteSessionsToEnd(
   while (true) {
     {
       std::lock_guard lock(mutex_);
+      auto& remote_clients = session_type == TabletRemoteSessionType::kBootstrap
+                                 ? remote_bootstrap_clients_
+                                 : snapshot_transfer_clients_;
       const auto& remaining_sessions = remote_clients.num_clients_;
       const auto& source_addresses = remote_clients.source_addresses_;
       if (remaining_sessions == 0) return;

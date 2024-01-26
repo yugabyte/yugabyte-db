@@ -53,7 +53,7 @@
 #include <boost/utility.hpp>
 #include <ev++.h> // NOLINT
 #include "yb/util/flags.h"
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/bind.h"
 #include "yb/gutil/integral_types.h"

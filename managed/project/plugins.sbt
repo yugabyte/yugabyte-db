@@ -2,7 +2,7 @@ useCoursier := false
 
 dependencyOverrides += "org.scala-lang.modules" %% "scala-xml" % "2.1.0"
 
-val jacksonVersion         = "2.14.2"
+val jacksonVersion         = "2.15.3"
 
 val jacksonOverrides = Seq(
   "com.fasterxml.jackson.core"       % "jackson-core",
@@ -18,6 +18,8 @@ val jacksonOverrides = Seq(
 ).map(_ % jacksonVersion)
 
 dependencyOverrides ++= jacksonOverrides
+
+dependencyOverrides += "com.google.googlejavaformat" % "google-java-format" % "1.17.0"
 
 libraryDependencies += "ch.qos.logback" % "logback-classic" % "1.2.11"
 
