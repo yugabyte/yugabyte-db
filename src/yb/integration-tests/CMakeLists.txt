@@ -66,6 +66,7 @@ set(INTEGRATION_TESTS_SRCS
   mini_cluster_base.cc
   mini_cluster_utils.cc
   packed_row_test_base.cc
+  postgres-minicluster.cc
   redis_table_test_base.cc
   test_workload.cc
   ts_itest-base.cc
