@@ -1701,6 +1701,41 @@ public class PlacementInfoUtil {
     return result;
   }
 
+  public static NodeDetails createToBeAddedNode(NodeDetails templateNode) {
+    NodeDetails newNode = new NodeDetails();
+    newNode.cloudInfo = new CloudSpecificInfo();
+    newNode.machineImage = templateNode.machineImage;
+    newNode.ybPrebuiltAmi = templateNode.ybPrebuiltAmi;
+    newNode.placementUuid = templateNode.placementUuid;
+    newNode.azUuid = templateNode.azUuid;
+
+    newNode.disksAreMountedByUUID = true;
+    newNode.isMaster = templateNode.isMaster;
+    if (newNode.isMaster) {
+      newNode.masterState = NodeDetails.MasterState.ToStart;
+    }
+    newNode.isTserver = templateNode.isTserver;
+    newNode.state = NodeDetails.NodeState.ToBeAdded;
+
+    if (templateNode.cloudInfo == null) {
+      throw new RuntimeException(
+          String.format(
+              "Node to be copied is missing cloudInfo. Node template name: %s",
+              templateNode.getNodeName()));
+    }
+
+    newNode.cloudInfo.region = templateNode.cloudInfo.region;
+    newNode.cloudInfo.cloud = templateNode.cloudInfo.cloud;
+    newNode.cloudInfo.az = templateNode.cloudInfo.az;
+    newNode.cloudInfo.subnet_id = templateNode.cloudInfo.subnet_id;
+    newNode.cloudInfo.secondary_subnet_id = templateNode.cloudInfo.secondary_subnet_id;
+    newNode.cloudInfo.instance_type = templateNode.cloudInfo.instance_type;
+    newNode.cloudInfo.assignPublicIP = templateNode.cloudInfo.assignPublicIP;
+    newNode.cloudInfo.useTimeSync = templateNode.cloudInfo.useTimeSync;
+
+    return newNode;
+  }
+
   public static class SelectMastersResult {
     public static final SelectMastersResult NONE = new SelectMastersResult();
     public Set<NodeDetails> addedMasters;

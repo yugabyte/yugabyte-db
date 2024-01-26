@@ -85,6 +85,7 @@ public class TaskExecutorTest extends PlatformGuiceApplicationBaseTest {
           TaskType.UpdateKubernetesDiskSize,
           TaskType.CreateUniverse,
           TaskType.EditUniverse,
+          TaskType.ReplaceNodeInUniverse,
           TaskType.EditKubernetesUniverse,
           TaskType.ReadOnlyClusterCreate,
           TaskType.AddNodeToUniverse,
