@@ -144,7 +144,6 @@
 #include "yb/master/sys_catalog_constants.h"
 #include "yb/master/ts_descriptor.h"
 #include "yb/master/xcluster/xcluster_manager.h"
-#include "yb/master/xcluster/xcluster_safe_time_service.h"
 #include "yb/master/yql_aggregates_vtable.h"
 #include "yb/master/yql_auth_resource_role_permissions_index.h"
 #include "yb/master/yql_auth_role_permissions_vtable.h"
