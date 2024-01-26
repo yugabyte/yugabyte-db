@@ -142,7 +142,7 @@ def copy_deep(src: str, dst: str, create_dst_dir: bool = False) -> None:
     if src.startswith("http"):
         logging.debug("Pulling {} to {} from the web".format(src, dst))
         opener = urllib.request.URLopener()
-        opener.addheader(('User-Agent'), ('yugabyte'))  # the mypy linter enforces tuples here
+        opener.addheader('User-Agent', 'yugabyte')  # type: ignore[arg-type]
         opener.retrieve(src, os.path.join(dst, os.path.basename(src)))
     elif os.path.isdir(src) and not src_is_link:
         logging.debug("Copying directory {} to {}".format(src, dst))
