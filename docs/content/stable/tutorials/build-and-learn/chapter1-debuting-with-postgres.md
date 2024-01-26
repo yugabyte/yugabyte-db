@@ -103,14 +103,14 @@ At the time of writing, OpenAI offered a generous free tier, which was more than
     docker build -t yugaplus-backend .
     ```
 
-3. Start a backend container using your `OPENAI_KEY`:
+3. Start a backend container using your `OPENAI_API_KEY`:
 
     ```shell
     docker run --name yugaplus-backend --net yugaplus-network -p 8080:8080 \
         -e DB_URL=jdbc:postgresql://postgres:5432/postgres \
         -e DB_USER=postgres \
         -e DB_PASSWORD=password \
-        -e OPENAI_KEY=${YOUR_OPENAI_KEY} \
+        -e OPENAI_API_KEY=${YOUR_OPENAI_API_KEY} \
         yugaplus-backend
     ```
 
