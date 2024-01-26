@@ -12,14 +12,21 @@
 // under the License.
 
 #include "yb/common/snapshot.h"
+#include "yb/gutil/strings/split.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_ddl.proxy.h"
 #include "yb/tools/yb-admin-test-base.h"
+#include "yb/tserver/tserver_service.proxy.h"
 #include "yb/util/flags.h"
 
 #include "yb/client/client.h"
 #include "yb/client/ql-dml-test-base.h"
 #include "yb/client/schema.h"
+#include "yb/client/snapshot_test_util.h"
 #include "yb/client/table.h"
 #include "yb/client/table_info.h"
+
+#include "yb/integration-tests/cql_test_util.h"
 
 #include "yb/master/master_backup.proxy.h"
 #include "yb/master/master_replication.proxy.h"
@@ -27,6 +34,7 @@
 #include "yb/rpc/secure_stream.h"
 
 #include "yb/tools/admin-test-base.h"
+#include "yb/tools/test_admin_client.h"
 #include "yb/tools/yb-admin_util.h"
 
 #include "yb/tserver/mini_tablet_server.h"
@@ -41,8 +49,10 @@
 #include "yb/util/subprocess.h"
 #include "yb/util/tsan_util.h"
 
-DECLARE_string(certs_dir);
+#include "yb/yql/pgwrapper/libpq_utils.h"
+
 DECLARE_bool(check_bootstrap_required);
+DECLARE_uint64(snapshot_coordinator_cleanup_delay_ms);
 DECLARE_bool(TEST_create_table_with_empty_namespace_name);
 DECLARE_bool(TEST_simulate_long_restore);
 
@@ -162,13 +172,6 @@ class AdminCliTest : public AdminCliTestBase {
   std::unique_ptr<MasterBackupProxy> backup_service_proxy_;
 };
 
-TEST_F(AdminCliTest, TestNonTLS) { ASSERT_OK(RunAdminToolCommand("list_all_masters")); }
-
-// TODO: Enabled once ENG-4900 is resolved.
-TEST_F(AdminCliTest, DISABLED_TestTLS) {
-  ASSERT_OK(RunAdminToolCommand("--certs_dir_name", GetCertsDir(), "list_all_masters"));
-}
-
 TEST_F(AdminCliTest, TestCreateSnapshot) {
   CreateTable(Transactional::kFalse);
   const string& table_name = table_.name().table_name();
@@ -190,6 +193,45 @@ TEST_F(AdminCliTest, TestCreateSnapshot) {
   rpc.Reset();
   ASSERT_OK(ASSERT_RESULT(BackupServiceProxy())->ListSnapshots(req, &resp, &rpc));
   ASSERT_EQ(resp.snapshots_size(), 1);
+
+  LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
+}
+
+TEST_F(AdminCliTest, TestCreateSnapshotWithTtl) {
+  CreateTable(Transactional::kFalse);
+  const string& table_name = table_.name().table_name();
+  const string& keyspace = table_.name().namespace_name();
+
+  // Create snapshot of default table that gets created.
+  auto id1 = ASSERT_RESULT(RunAdminToolCommand(
+      "create_snapshot", keyspace, table_name, 60 /* flush_timeout_secs */,
+      3 /* retention_duration_hours */));
+  auto id2 = ASSERT_RESULT(RunAdminToolCommand(
+      "create_keyspace_snapshot", keyspace, 5 /* retention_duration_hours */));
+  auto id3 = ASSERT_RESULT(RunAdminToolCommand(
+      "create_keyspace_snapshot", keyspace, 0 /* retention_duration_hours */));
+  auto id4 = ASSERT_RESULT(RunAdminToolCommand("create_keyspace_snapshot", keyspace));
+  std::unordered_map<std::string, uint32_t> id_to_expected_retention;
+  std::vector<string> split = strings::Split(id1, ": ");
+  id_to_expected_retention[split[1].substr(0, split[1].size() - 1)] = 3;
+  split = strings::Split(id2, ": ");
+  id_to_expected_retention[split[1].substr(0, split[1].size() - 1)] = 5;
+  split = strings::Split(id3, ": ");
+  id_to_expected_retention[split[1].substr(0, split[1].size() - 1)] = -1;
+  split = strings::Split(id4, ": ");
+  id_to_expected_retention[split[1].substr(0, split[1].size() - 1)] = 24;
+  LOG(INFO) << "Snashot Ids with expected retention: " << AsString(id_to_expected_retention);
+
+  ListSnapshotsRequestPB req;
+  ListSnapshotsResponsePB resp;
+  RpcController rpc;
+  ASSERT_OK(ASSERT_RESULT(BackupServiceProxy())->ListSnapshots(req, &resp, &rpc));
+  ASSERT_EQ(resp.snapshots_size(), 4);
+  for (const auto& entry : resp.snapshots()) {
+    TxnSnapshotId id = TryFullyDecodeTxnSnapshotId(entry.id());
+    ASSERT_TRUE(id_to_expected_retention.contains(id.ToString()));
+    ASSERT_EQ(entry.entry().retention_duration_hours(), id_to_expected_retention[id.ToString()]);
+  }
 
   LOG(INFO) << "Test finished: " << CURRENT_TEST_CASE_AND_TEST_NAME_STR();
 }
@@ -560,6 +602,19 @@ void AdminCliTest::DoTestExportImportIndexSnapshot(Transactional transactional) 
   const auto snapshot_file = JoinPathSegments(tmp_dir, "exported_snapshot.dat");
   ASSERT_OK(RunAdminToolCommand("export_snapshot", snapshot_id, snapshot_file));
 
+  // Create snapshot of default table but skip the attached index that gets created.
+  ASSERT_OK(RunAdminToolCommand("create_snapshot", keyspace, table_name, "skip_indexes"));
+  auto skip_index_snapshot_id = ASSERT_RESULT(GetCompletedSnapshot(/* num_snapshots= */ 2));
+  if (skip_index_snapshot_id == snapshot_id) {
+    skip_index_snapshot_id = ASSERT_RESULT(GetCompletedSnapshot(
+        /* num_snapshots= */ 2, /* idx= */ 1));
+  }
+
+  const auto skip_index_snapshot_file =
+      JoinPathSegments(tmp_dir, "exported_skip_index_snapshot.dat");
+  ASSERT_OK(
+      RunAdminToolCommand("export_snapshot", skip_index_snapshot_id, skip_index_snapshot_file));
+
   // Import table and index into the existing table and index.
   ASSERT_OK(RunAdminToolCommand("import_snapshot", snapshot_file));
   // Wait for the new snapshot completion.
@@ -632,6 +687,15 @@ void AdminCliTest::DoTestExportImportIndexSnapshot(Transactional transactional) 
   ASSERT_NOK(RunAdminToolCommand("import_snapshot", snapshot_file, keyspace, "new_" + table_name));
   ASSERT_NOK(RunAdminToolCommand(
       "import_snapshot", snapshot_file, "new_" + keyspace, "new_" + table_name));
+
+  // Import skip_index_snapshot_file should not import index.
+  ASSERT_OK(RunAdminToolCommand(
+      "import_snapshot", skip_index_snapshot_file));  // Wait for the new snapshot completion.
+  ASSERT_RESULT(WaitForAllSnapshots());
+  // Verify that index is not imported and the table is imported correctly.
+  ASSERT_EQ(1, ASSERT_RESULT(NumTables(table_name)));
+  ASSERT_EQ(0, ASSERT_RESULT(NumTables(index_name)));
+  CheckAndDeleteImportedTable(keyspace, table_name);
 }
 
 TEST_F(AdminCliTest, TestExportImportIndexSnapshot) {
@@ -764,7 +828,34 @@ TEST_F(AdminCliTest, TestSetPreferredZone) {
       strings::Substitute("$0:3", c2z1)));
 }
 
-TEST_F(AdminCliTest, TestListSnapshotWithNamespaceNameMigration) {
+class SnapshotAdminCliTest : public AdminCliTest {
+ public:
+  void SetUp() override {
+    AdminCliTest::SetUp();
+    snapshot_util_ = std::make_unique<client::SnapshotTestUtil>();
+    snapshot_util_->SetProxy(&client_->proxy_cache());
+    snapshot_util_->SetCluster(cluster_.get());
+  }
+
+  Result<master::SysTablesEntryPB> GetTableEntryFromSnapshot(
+      const client::Snapshots& snapshots, const TxnSnapshotId& snapshot_id) {
+    for (const auto& snapshot : snapshots) {
+      if (VERIFY_RESULT(FullyDecodeTxnSnapshotId(snapshot.id())) == snapshot_id) {
+        for (const auto& entry : snapshot.entry().entries()) {
+          if (entry.type() == master::SysRowEntryType::TABLE) {
+            return pb_util::ParseFromSlice<master::SysTablesEntryPB>(entry.data());
+          }
+        }
+      }
+    }
+    return STATUS(NotFound, "Could not find TABLE entry");
+  }
+
+ protected:
+  std::unique_ptr<client::SnapshotTestUtil> snapshot_util_;
+};
+
+TEST_F_EX(AdminCliTest, TestListSnapshotWithNamespaceNameMigration, SnapshotAdminCliTest) {
   // Start with a table missing its namespace_name (as if created before 2.3).
   FLAGS_TEST_create_table_with_empty_namespace_name = true;
   CreateTable(Transactional::kFalse);
@@ -775,42 +866,189 @@ TEST_F(AdminCliTest, TestListSnapshotWithNamespaceNameMigration) {
   // Create snapshot of default table that gets created.
   LOG(INFO) << ASSERT_RESULT(RunAdminToolCommand("create_snapshot", keyspace, table_name));
 
-  ListSnapshotsRequestPB req;
-  ListSnapshotsResponsePB resp;
-  RpcController rpc;
-  ASSERT_OK(ASSERT_RESULT(BackupServiceProxy())->ListSnapshots(req, &resp, &rpc));
-  ASSERT_EQ(resp.snapshots_size(), 1);
-  auto snapshot_id = FullyDecodeTxnSnapshotId(resp.snapshots(0).id());
-  auto get_table_entry = [&]() -> Result<master::SysTablesEntryPB> {
-    for (auto& entry : resp.snapshots(0).entry().entries()) {
-      if (entry.type() == master::SysRowEntryType::TABLE) {
-        return pb_util::ParseFromSlice<master::SysTablesEntryPB>(entry.data());
-      }
-    }
-    return STATUS(NotFound, "Could not find TABLE entry");
-  };
+  auto snapshots = ASSERT_RESULT(snapshot_util_->ListSnapshots());
+  ASSERT_EQ(snapshots.size(), 1);
+  auto snapshot_id = ASSERT_RESULT(FullyDecodeTxnSnapshotId(snapshots[0].id()));
 
   // Old behaviour, snapshot doesn't have namespace_name.
-  master::SysTablesEntryPB table_meta = ASSERT_RESULT(get_table_entry());
+  auto table_meta = ASSERT_RESULT(GetTableEntryFromSnapshot(snapshots, snapshot_id));
   ASSERT_FALSE(table_meta.has_namespace_name());
-
-  // Delete snapshot.
-  LOG(INFO) << ASSERT_RESULT(RunAdminToolCommand("delete_snapshot", snapshot_id));
 
   // Restart cluster, run namespace_name migration to populate the namespace_name field.
   ASSERT_OK(cluster_->RestartSync());
 
   // Create a new snapshot.
   LOG(INFO) << ASSERT_RESULT(RunAdminToolCommand("create_snapshot", keyspace, table_name));
+  snapshots = ASSERT_RESULT(snapshot_util_->ListSnapshots());
+  ASSERT_EQ(snapshots.size(), 2);
 
-  rpc.Reset();
-  ASSERT_OK(ASSERT_RESULT(BackupServiceProxy())->ListSnapshots(req, &resp, &rpc));
-  ASSERT_EQ(resp.snapshots_size(), 1);
+  // Find the new snapshot id.
+  TxnSnapshotId new_snapshot_id = ASSERT_RESULT(FullyDecodeTxnSnapshotId(snapshots[0].id()));
+  if (new_snapshot_id == snapshot_id) {
+    new_snapshot_id = ASSERT_RESULT(FullyDecodeTxnSnapshotId(snapshots[1].id()));
+  }
 
   // Ensure that the namespace_name field is now populated.
-  table_meta = ASSERT_RESULT(get_table_entry());
+  table_meta = ASSERT_RESULT(GetTableEntryFromSnapshot(snapshots, new_snapshot_id));
   ASSERT_TRUE(table_meta.has_namespace_name());
   ASSERT_EQ(table_meta.namespace_name(), keyspace);
+}
+
+// An external mini cluster with libpq capabilities to be able to run
+// ysqlsh commands as well as invoke yb-admin snapshot related commands.
+const std::string kClusterName = "yugacluster";
+
+class YbAdminSnapshotTest : public AdminTestBase {
+ public:
+  Status PrepareCommon() {
+    LOG(INFO) << "Create cluster";
+    CreateCluster(kClusterName, ExtraTSFlags(), ExtraMasterFlags());
+
+    LOG(INFO) << "Create client";
+    client_ = VERIFY_RESULT(CreateClient());
+    test_admin_client_ = std::make_unique<TestAdminClient>(cluster_.get(), client_.get());
+
+    return Status::OK();
+  }
+
+  void UpdateMiniClusterOptions(ExternalMiniClusterOptions* opts) override {
+    opts->enable_ysql = true;
+    opts->num_masters = 3;
+  }
+
+  virtual std::vector<std::string> ExtraTSFlags() {
+    return {};
+  }
+
+  virtual std::vector<std::string> ExtraMasterFlags() {
+    // To speed up tests.
+    return { "--snapshot_coordinator_cleanup_delay_ms=1000",
+             "--snapshot_coordinator_poll_interval_ms=500" };
+  }
+
+  Result<pgwrapper::PGConn> PgConnect(const std::string& db_name = std::string()) {
+    auto* ts = cluster_->tablet_server(
+        RandomUniformInt<size_t>(0, cluster_->num_tablet_servers() - 1));
+    return pgwrapper::PGConnBuilder({
+      .host = ts->bind_host(),
+      .port = ts->pgsql_rpc_port(),
+      .dbname = db_name
+    }).Connect();
+  }
+
+  Result<master::ListTablesResponsePB::TableInfo> GetTableByName(const std::string& table_name) {
+    auto proxy = cluster_->GetLeaderMasterProxy<master::MasterDdlProxy>();
+    master::ListTablesRequestPB req;
+    req.set_include_not_running(true);
+    req.set_name_filter(table_name);
+    master::ListTablesResponsePB resp;
+    rpc::RpcController rpc;
+    rpc.set_timeout(30s * kTimeMultiplier);
+    RETURN_NOT_OK(proxy.ListTables(req, &resp, &rpc));
+    if (resp.tables_size() != 1) {
+      return STATUS_FORMAT(IllegalState, "Expected only one table with name $0", table_name);
+    }
+    return resp.tables(0);
+  }
+
+  Result<std::vector<tserver::ListTabletsResponsePB::StatusAndSchemaPB>> GetTabletsOnTserver(
+      size_t tserver_idx, const std::string& namespace_name, const std::string& table_name_substr) {
+    auto proxy = cluster_->GetTServerProxy<tserver::TabletServerServiceProxy>(tserver_idx);
+    tserver::ListTabletsRequestPB req;
+    tserver::ListTabletsResponsePB resp;
+    rpc::RpcController controller;
+    controller.set_timeout(30s);
+    RETURN_NOT_OK(proxy.ListTablets(req, &resp, &controller));
+    std::vector<tserver::ListTabletsResponsePB::StatusAndSchemaPB> res;
+    for (const auto& tablet : resp.status_and_schema()) {
+      if (tablet.tablet_status().namespace_name() == namespace_name
+          && tablet.tablet_status().table_name().find(table_name_substr) != string::npos) {
+        LOG(INFO) << "Tablet on tserver " << tablet.tablet_status().ShortDebugString();
+        res.push_back(tablet);
+      }
+    }
+    return res;
+  }
+
+  std::unique_ptr<TestAdminClient> test_admin_client_;
+};
+
+TEST_F(YbAdminSnapshotTest, SnapshotHidesColocatedTables) {
+  ASSERT_OK(PrepareCommon());
+  // Create a colocated db.
+  auto conn = ASSERT_RESULT(PgConnect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE demo WITH colocation=true"));
+  auto conn_demo = ASSERT_RESULT(PgConnect("demo"));
+  // Create a table.
+  ASSERT_OK(conn_demo.Execute("CREATE TABLE t1 (id INT PRIMARY KEY)"));
+  // Create a snapshot.
+  master::TableIdentifierPB ns_identifier;
+  ns_identifier.mutable_namespace_()->set_database_type(YQL_DATABASE_PGSQL);
+  ns_identifier.mutable_namespace_()->set_name("demo");
+  auto snapshot_id = ASSERT_RESULT(test_admin_client_->CreateSnapshotAndWait(
+      SnapshotScheduleId(Uuid::Nil()), ns_identifier));
+  LOG(INFO) << "Created snapshot with id " << snapshot_id;
+  ASSERT_OK(cluster_->StepDownMasterLeaderAndWaitForNewLeader());
+  // Now drop table t1. It should get hidden.
+  ASSERT_OK(conn_demo.Execute("DROP TABLE t1"));
+  auto table = ASSERT_RESULT(GetTableByName("t1"));
+  ASSERT_EQ(table.state(), master::SysTablesEntryPB::RUNNING);
+  ASSERT_TRUE(table.hidden());
+  LOG(INFO) << "Table is hidden on the master";
+  // Table should continue to exist in the tablet metadata on the tservers.
+  for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
+    auto tablets = ASSERT_RESULT(GetTabletsOnTserver(i, "demo", "colocation.parent"));
+    ASSERT_EQ(tablets.size(), 1);
+    ASSERT_EQ(tablets[0].tablet_status().colocated_table_ids_size(), 2);
+  }
+  // Now delete the snapshot, the cleanup of this table should get triggered that should remove
+  // it from the parent tablet.
+  ASSERT_OK(test_admin_client_->DeleteSnapshotAndWait(snapshot_id));
+  LOG(INFO) << "Snapshot is deleted";
+  // Table should be deleted now.
+  ASSERT_OK(WaitFor([this]() -> Result<bool> {
+    auto table = VERIFY_RESULT(GetTableByName("t1"));
+    if (table.state() != master::SysTablesEntryPB::DELETED) {
+      return false;
+    }
+    LOG(INFO) << "Table is deleted on the master";
+    // Table should be deleted from the tablet metadata on the tservers.
+    // Thus next compaction will clear out the data for this table.
+    for (size_t i = 0; i < cluster_->num_tablet_servers(); i++) {
+      auto tablets = VERIFY_RESULT(GetTabletsOnTserver(i, "demo", "colocation.parent"));
+      if (tablets.size() != 1 || tablets[0].tablet_status().colocated_table_ids_size() != 1) {
+        return false;
+      }
+    }
+    LOG(INFO) << "Table is deleted from tserver";
+    return true;
+  }, 120s, "Wait for table to be deleted"));
+}
+
+// Tests that if master leader does not have the auto flag
+// enable_object_retention_due_to_snapshots set to true then
+// it does not expire snapshots and deletes objects instead of hiding them.
+TEST_F(YbAdminSnapshotTest, TtlDuringUpgrade) {
+  ASSERT_OK(PrepareCommon());
+  // Disable the flag on the master leader.
+  ASSERT_OK(cluster_->SetFlag(
+      cluster_->GetLeaderMaster(), "enable_object_retention_due_to_snapshots", "false"));
+  // Create a db.
+  auto conn = ASSERT_RESULT(PgConnect());
+  ASSERT_OK(conn.Execute("CREATE DATABASE demo"));
+  auto conn_demo = ASSERT_RESULT(PgConnect("demo"));
+  // Create a table.
+  ASSERT_OK(conn_demo.Execute("CREATE TABLE t1 (id INT PRIMARY KEY)"));
+  // Create a snapshot.
+  master::TableIdentifierPB ns_identifier;
+  ns_identifier.mutable_namespace_()->set_database_type(YQL_DATABASE_PGSQL);
+  ns_identifier.mutable_namespace_()->set_name("demo");
+  ASSERT_RESULT(test_admin_client_->CreateSnapshotAndWait(
+      SnapshotScheduleId(Uuid::Nil()), ns_identifier, 24 /* retention_duration_hours */));
+  // Drop table. It should get deleted now.
+  ASSERT_OK(conn_demo.Execute("DROP TABLE t1"));
+  auto table = ASSERT_RESULT(GetTableByName("t1"));
+  ASSERT_EQ(table.state(), master::SysTablesEntryPB::DELETED);
 }
 
 }  // namespace tools

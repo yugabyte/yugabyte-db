@@ -135,5 +135,6 @@ public class ApplicationLogsComponent implements SupportBundleComponent {
     }
 
     log.debug("Downloaded application logs to {}, between {} and {}", destDir, startDate, endDate);
-  };
+  }
+  ;
 }

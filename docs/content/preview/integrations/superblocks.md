@@ -6,7 +6,7 @@ description: Use Superblocks to work with distributed SQL databases in YugabyteD
 menu:
   preview_integrations:
     identifier: superblocks
-    parent: integrations
+    parent: development-platforms
     weight: 900
 type: docs
 ---

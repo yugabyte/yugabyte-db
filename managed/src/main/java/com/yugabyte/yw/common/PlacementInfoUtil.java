@@ -1068,6 +1068,7 @@ public class PlacementInfoUtil {
     ADD, // A node has to be added at this placement indices combination.
     REMOVE // Remove the node at this placement indices combination.
   }
+
   // Structure for tracking the calculated placement indexes on cloud/region/az.
   static class PlacementIndexes {
     public final int cloudIdx;

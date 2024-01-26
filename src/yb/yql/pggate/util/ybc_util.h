@@ -114,6 +114,11 @@ extern bool yb_enable_hash_batch_in;
 extern bool yb_enable_add_column_missing_default;
 
 /*
+ * Guc variable that enables replication commands.
+ */
+extern bool yb_enable_replication_commands;
+
+/*
  * xcluster consistency level
  */
 #define XCLUSTER_CONSISTENCY_TABLET 0

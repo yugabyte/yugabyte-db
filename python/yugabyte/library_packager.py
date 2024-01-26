@@ -16,18 +16,15 @@
 """
 Copyright (c) YugaByte, Inc.
 
-Finds all Linux dynamic libraries that have to be packaged with the YugaByte distribution tarball by
-starting from a small set of executables and walking the dependency graph. Creates a self-sufficient
-distribution directory.
-
-Run doctest tests as follows:
-
-  python -m doctest python/yugabyte/library_packager.py
+Finds all Linux dynamic libraries that have to be packaged with the YugabyteDB distribution tarball
+by starting from a small set of executables and walking the dependency graph. Creates a
+self-sufficient distribution directory.
 """
 
 
 import argparse
 import collections
+import enum
 import glob
 import logging
 import os
@@ -35,6 +32,7 @@ import re
 import shutil
 import subprocess
 
+from collections import defaultdict
 from functools import total_ordering
 from queue import Queue
 
@@ -45,9 +43,10 @@ from yugabyte.common_util import (
     YB_SRC_ROOT,
 )
 from yugabyte.rpath import set_rpath, remove_rpath
+from yugabyte.file_util import clean_path_join
 from yugabyte.linuxbrew import get_linuxbrew_home, using_linuxbrew, LinuxbrewHome
 
-from typing import List, Optional, Any, Set, Tuple
+from typing import List, Optional, Any, Set, Tuple, Dict, cast
 
 # A resolved shared library dependency shown by ldd.
 # Example (split across two lines):
@@ -72,21 +71,32 @@ YB_BUILD_SUPPORT_DIR = os.path.join(YB_SRC_ROOT, 'build-support')
 PATCHELF_NOT_AN_ELF_EXECUTABLE = 'not an ELF executable'
 
 LIBRARY_PATH_RE = re.compile('^(.*[.]so)(?:$|[.].*$)')
-LIBRARY_CATEGORIES_NO_LINUXBREW = ['system', 'yb', 'yb-thirdparty', 'postgres']
-LIBRARY_CATEGORIES = LIBRARY_CATEGORIES_NO_LINUXBREW + ['linuxbrew']
 
 
 # This is an alternative to global variables, bundling a few commonly used things.
 DistributionContext = collections.namedtuple(
         'DistributionContext',
         ['build_dir',
+         'build_postgres_lib_dir',
          'dest_dir',
          'verbose_mode'])
 
 
+# Ensure files with these names are treated as shared libraries for the purpose of setting RPATHs.
+SPECIAL_CASE_LIB_NAME_PREFIXES = (
+    'liblber-',
+    'libldap-',
+    'libldap_r-',
+)
+
+
 def should_manipulate_rpath_of(file_path: str) -> bool:
+    base_name = os.path.basename(file_path)
     return not os.path.islink(file_path) and (
-        os.access(file_path, os.X_OK) or file_path.endswith('.so')
+        os.access(file_path, os.X_OK) or
+        file_path.endswith('.so') or
+        # Some libraries don't have the executable bit set on them. We will fix that.
+        base_name.startswith(SPECIAL_CASE_LIB_NAME_PREFIXES) and '.so.' in base_name
     ) and not (
         # This directory has a few executable files that we should not manipulate.
         os.path.dirname(file_path).endswith('/pgxs/config')
@@ -94,16 +104,52 @@ def should_manipulate_rpath_of(file_path: str) -> bool:
 
 
 @total_ordering
+class DependencyCategory(enum.Enum):
+    # Binaries built as part of YugabyteDB but not as part of Postgres.
+    YB = 'yb'
+
+    # Binaries built as part of yugabyte-db-thirdparty
+    YB_THIRDPARTY = 'yb-thirdparty'
+
+    LINUXBREW = 'linuxbrew'
+
+    # Libraries residing in system-wide library directories. We do not copy these.
+    SYSTEM = 'system'
+
+    POSTGRES = 'postgres'
+
+    # Various scripts copied as is from YugabyteDB sources.
+    YB_SCRIPTS = 'yb-scripts'
+
+    def __init__(self, subdir_name: str) -> None:
+        self.subdir_name = subdir_name
+
+    def __lt__(self, other: Any) -> bool:
+        if not isinstance(other, DependencyCategory):
+            return False
+        return self.value < cast(DependencyCategory, other).value
+
+
+CATEGORIES_FOR_RPATH = [
+    DependencyCategory.YB,
+    DependencyCategory.YB_THIRDPARTY,
+    DependencyCategory.POSTGRES
+]
+
+
+@total_ordering
 class Dependency:
     """
     Describes a dependency of an executable or a shared library on another shared library.
-    @param name: the name of the library as requested by the original executable/shared library
-    @param target: target file pointed to by the dependency
     """
 
+    # The name of the library as requested by the original executable/shared library.
     name: str
+
+    # Target file pointed to by the dependency
     target: str
-    category: Optional[str]
+
+    category: Optional[DependencyCategory]
     origin: str
     context: DistributionContext
 
@@ -117,9 +163,14 @@ class Dependency:
     def __hash__(self) -> int:
         return hash(self.name) ^ hash(self.target)
 
+    def _comparison_key(self) -> Tuple[str, str]:
+        return (self.name, self.target)
+
     def __eq__(self, other: Any) -> bool:
-        return self.name == other.name and \
-               self.target == other.target
+        if not isinstance(other, Dependency):
+            return False
+        other_dep = cast(Dependency, other)
+        return self._comparison_key() == other._comparison_key()
 
     def __str__(self) -> str:
         return "Dependency(name='{}', target='{}', origin='{}')".format(
@@ -131,42 +182,30 @@ class Dependency:
     def __lt__(self, other: Any) -> bool:
         return (self.name, self.target) < (other.name, other.target)
 
-    def get_category(self) -> str:
-        """
-        Categorizes binaries into a few buckets:
-        - yb -- built as part of YugabyteDB
-        - yb-thirdparty -- built as part of yugabyte-db-thirdparty
-        - linuxbrew -- built using Linuxbrew
-        - system -- a library residing in a system-wide library directory. We do not copy these.
-        - postgres -- libraries inside the postgres directory
-        """
-        if self.category:
+    def get_category(self) -> DependencyCategory:
+        if self.category is not None:
             return self.category
 
         linuxbrew_home = get_linuxbrew_home()
         if linuxbrew_home is not None and linuxbrew_home.path_is_in_linuxbrew_dir(self.target):
-            self.category = 'linuxbrew'
+            self.category = DependencyCategory.LINUXBREW
         elif self.target.startswith(get_thirdparty_dir() + '/'):
-            self.category = 'yb-thirdparty'
+            self.category = DependencyCategory.YB_THIRDPARTY
         elif self.target.startswith(self.context.build_dir + '/postgres/'):
-            self.category = 'postgres'
+            self.category = DependencyCategory.POSTGRES
         elif self.target.startswith(self.context.build_dir + '/'):
-            self.category = 'yb'
+            self.category = DependencyCategory.YB
         elif (self.target.startswith(YB_SCRIPT_BIN_DIR + '/') or
               self.target.startswith(YB_BUILD_SUPPORT_DIR + '/')):
-            self.category = 'yb-scripts'
+            self.category = DependencyCategory.YB_SCRIPTS
 
         if not self.category:
             for system_library_path in SYSTEM_LIBRARY_PATHS:
                 if self.target.startswith(system_library_path + '/'):
-                    self.category = 'system'
+                    self.category = DependencyCategory.SYSTEM
                     break
 
         if self.category:
-            if self.category not in LIBRARY_CATEGORIES:
-                raise RuntimeError(
-                    ("Internal error: library category computed as '{}', must be one of: {}. " +
-                     "Dependency: {}").format(self.category, LIBRARY_CATEGORIES, self))
             return self.category
 
         if linuxbrew_home:
@@ -204,6 +243,11 @@ def add_common_arguments(parser: argparse.ArgumentParser) -> None:
 
 
 def symlink(source: str, link_path: str) -> None:
+    """
+    Create a symbolic link at `link_path` pointing to the existing file or directory at `source`.
+    Does nothing if the source path is absolute and the desired link already exists and points
+    to the same path.
+    """
     if os.path.exists(link_path):
         if not source.startswith('/') or os.path.realpath(link_path) != os.path.realpath(source):
             raise RuntimeError(
@@ -229,8 +273,16 @@ class LibraryPackager:
 
     seed_executable_patterns: List[str]
     installed_dyn_linked_binaries: List[str]
+
+    # Subdirectories of the destination directory.
     main_dest_bin_dir: str
     postgres_dest_bin_dir: str
+
+    # Number of files in a particular directory where RPATH was set to a particular value.
+    rpath_stats_by_dir: Dict[Tuple[str, str], int]
+
+    # Number of files from which RPATH was removed, by directory.
+    rpath_removal_stats_by_dir: Dict[str, int]
 
     def __init__(self,
                  build_dir: str,
@@ -249,46 +301,63 @@ class LibraryPackager:
         self.context = DistributionContext(
             dest_dir=dest_dir,
             build_dir=build_dir,
+            build_postgres_lib_dir=os.path.join(build_dir, 'postgres', 'lib'),
             verbose_mode=verbose_mode)
         self.installed_dyn_linked_binaries = []
         self.main_dest_bin_dir = os.path.join(self.dest_dir, 'bin')
         self.postgres_dest_bin_dir = os.path.join(self.dest_dir, 'postgres', 'bin')
 
+        self.rpath_stats_by_dir = defaultdict(int)
+        self.rpath_removal_stats_by_dir = defaultdict(int)
+
     @staticmethod
     def get_absolute_rpath_items(dest_root_dir: str) -> List[str]:
+        """
+        Get the list of absolute paths of subdirectories of the destination directory that should be
+        accessible
+        """
         assert not using_linuxbrew()
         return [
-            os.path.abspath(os.path.join(dest_root_dir, 'lib', library_category))
-            for library_category in LIBRARY_CATEGORIES_NO_LINUXBREW
+            os.path.abspath(os.path.join(dest_root_dir, 'lib', library_category.subdir_name))
+            for library_category in CATEGORIES_FOR_RPATH
         ] + [os.path.abspath(os.path.join(dest_root_dir, 'postgres', 'lib'))]
 
     @staticmethod
     def get_relative_rpath_items(dest_root_dir: str, dest_abs_dir: str) -> List[str]:
         return [
-            f'$ORIGIN/{os.path.relpath(rpath_item, dest_abs_dir)}'
+            clean_path_join('$ORIGIN', os.path.relpath(rpath_item, dest_abs_dir))
             for rpath_item in LibraryPackager.get_absolute_rpath_items(dest_root_dir)
         ]
 
-    @staticmethod
-    def set_or_remove_rpath(dest_root_dir: str, file_path: str) -> None:
+    def set_or_remove_rpath(self, dest_root_dir: str, file_path: str) -> None:
         if not should_manipulate_rpath_of(file_path):
+            if not os.path.islink(file_path):
+                logging.debug("Not manipulating RPATH or permissions of file: %s", file_path)
             return
 
         if not os.access(file_path, os.W_OK):
             # Make sure we can write to the file. This may be necessary for e.g. files copied from
             # Linuxbrew or third-party dependencies.
             subprocess.check_call(['chmod', 'u+w', file_path])
+        if not os.access(file_path, os.X_OK):
+            subprocess.check_call(['chmod', 'u+x', file_path])
 
         if using_linuxbrew():
-            # In Linuxbrew mode, we will set the rp
+            # When using Linuxbrew, we manage RPATH as follows:
+            # - Remove RPATH altogether during packaging (what we are doing here).
+            # - Generate a post_install.sh file, which, when executed, sets the RPATH appropriately
+            #   according to the installation location.
+            logging.debug("Removing RPATH from file: %s", file_path)
+            self.rpath_removal_stats_by_dir[os.path.dirname(file_path)] += 1
             remove_rpath(file_path)
             return
 
         file_abs_path = os.path.abspath(file_path)
         new_rpath = ':'.join(LibraryPackager.get_relative_rpath_items(
                     dest_root_dir, os.path.dirname(file_abs_path)))
-        logging.info("Setting rpath on file %s to %s", file_path, new_rpath)
+        logging.debug("Setting RPATH on file %s to %s", file_path, new_rpath)
         set_rpath(file_path, new_rpath)
+        self.rpath_stats_by_dir[(os.path.dirname(file_path), new_rpath)] += 1
 
     def install_dyn_linked_binary(self, src_path: str, dest_dir: str) -> str:
         logging.debug(f"Installing dynamically-linked executable {src_path} to {dest_dir}")
@@ -296,7 +365,7 @@ class LibraryPackager:
             raise RuntimeError("Not a directory: '{}'".format(dest_dir))
         shutil.copy(src_path, dest_dir)
         installed_binary_path = os.path.join(dest_dir, os.path.basename(src_path))
-        LibraryPackager.set_or_remove_rpath(self.dest_dir, installed_binary_path)
+        self.set_or_remove_rpath(self.dest_dir, installed_binary_path)
         self.installed_dyn_linked_binaries.append(installed_binary_path)
         return installed_binary_path
 
@@ -369,7 +438,7 @@ class LibraryPackager:
 
     def get_all_postgres_lib_deps(self) -> List[Dependency]:
         deps: List[Dependency] = []
-        for root, dirs, files in os.walk(os.path.join(self.context.build_dir, 'postgres', 'lib')):
+        for root, dirs, files in os.walk(self.context.build_postgres_lib_dir):
             for file_name in files:
                 if file_name.endswith('.so') and not os.path.islink(file_name):
                     file_path = os.path.join(root, file_name)
@@ -378,7 +447,7 @@ class LibraryPackager:
 
     def get_postgres_lib_rel_paths_to_patch(self) -> List[str]:
         rel_paths: List[str] = []
-        postgres_lib_dir = os.path.join(self.context.build_dir, 'postgres', 'lib')
+        postgres_lib_dir = self.context.build_postgres_lib_dir
         for root, dirs, files in os.walk(postgres_lib_dir):
             for file_name in files:
                 file_path = os.path.join(root, file_name)
@@ -523,7 +592,7 @@ class LibraryPackager:
             for dep in sorted(deps_in_category, key=lambda dep: dep.target):
                 logging.info("    {} -> {}".format(
                     dep.name + ' ' * (max_name_len - len(dep.name)), dep.target))
-            if category == 'system':
+            if category == DependencyCategory.SYSTEM:
                 logging.info(
                     "Not packaging any of the above dependencies from a system-wide directory.")
                 continue
@@ -536,10 +605,10 @@ class LibraryPackager:
                     "installed as part of copying the entire postgres directory.")
                 continue
 
-            if category == 'linuxbrew':
+            if category == DependencyCategory.LINUXBREW:
                 category_dest_dir = linuxbrew_lib_dest_dir
             else:
-                category_dest_dir = os.path.join(dest_lib_dir, category)
+                category_dest_dir = os.path.join(dest_lib_dir, category.subdir_name)
             mkdir_p(category_dest_dir)
 
             for dep in deps_in_category:
@@ -647,6 +716,14 @@ class LibraryPackager:
         with open(post_install_path, 'w') as post_install_script_output:
             post_install_script_output.write(new_post_install_script)
 
+        self.log_rpath_stats()
+
+    def log_rpath_stats(self) -> None:
+        for dir_path, count in self.rpath_removal_stats_by_dir.items():
+            logging.info("Removed RPATH from %d files in %s", count, dir_path)
+        for (dir_path, rpath), count in self.rpath_stats_by_dir.items():
+            logging.info("Set RPATH to %s for %d files in %s", rpath, count, dir_path)
+
     def postprocess_distribution(self, build_target: str) -> None:
         """
         build_target is different from self.dest_dir because this function is invoked after
@@ -654,22 +731,7 @@ class LibraryPackager:
         be one intermediate packaging directory, and we should only have one pass to set rpath
         on all executables and dynamic libraries.
         """
-        is_linuxbrew = using_linuxbrew()
-        num_removed_rpath = 0
-
         for root, dirs, files in os.walk(os.path.join(build_target, 'postgres')):
             for file_name in files:
                 file_path = os.path.join(root, file_name)
-                if not should_manipulate_rpath_of(file_path):
-                    continue
-
-                if is_linuxbrew:
-                    # For a Linuxbrew-based package, we will set rpath in post_install.sh, so
-                    # we should remove it here.
-                    remove_rpath(file_path)
-                    num_removed_rpath += 1
-                else:
-                    LibraryPackager.set_or_remove_rpath(build_target, file_path)
-
-        if num_removed_rpath > 0:
-            logging.info("Removed rpath from %d files in %s", num_removed_rpath, build_target)
+                self.set_or_remove_rpath(build_target, file_path)

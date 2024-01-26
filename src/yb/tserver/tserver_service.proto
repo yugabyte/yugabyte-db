@@ -112,6 +112,8 @@ service TabletServerService {
 
   rpc StartRemoteSnapshotTransfer(StartRemoteSnapshotTransferRequestPB)
       returns (StartRemoteSnapshotTransferResponsePB);
+
+  rpc GetTabletKeyRanges(GetTabletKeyRangesRequestPB) returns (GetTabletKeyRangesResponsePB);
 }
 
 // Note: Either among transactions_by_tablet or transaction_ids should be set. Both the fields
@@ -250,6 +252,9 @@ message GetTransactionStatusResponsePB {
 
   // Status containing deadlock info if the transaction was aborted due to deadlock. Else, it is
   // set to Status::OK().
+  //
+  // Note: The field might not be present on older versions of YB and hence its existence
+  // should be checked before usage by the reader.
   repeated AppStatusPB deadlock_reason = 8;
 }
 

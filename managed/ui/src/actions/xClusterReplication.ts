@@ -2,7 +2,7 @@ import axios from 'axios';
 import moment from 'moment';
 
 import { ROOT_URL } from '../config';
-import { XClusterConfig, Metrics } from '../components/xcluster';
+import { Metrics } from '../components/xcluster';
 import { getCustomerEndpoint } from './common';
 import {
   MetricName,
@@ -11,6 +11,7 @@ import {
 } from '../components/xcluster/constants';
 import { ApiTimeout } from '../redesign/helpers/api';
 import { YBPTask } from '../redesign/helpers/dtos';
+import { XClusterConfig } from '../components/xcluster/dtos';
 
 // TODO: Move this out of the /actions folder since these functions aren't Redux actions.
 
@@ -19,6 +20,9 @@ export function getUniverseInfo(universeUUID: string) {
   return axios.get(`${ROOT_URL}/customers/${cUUID}/universes/${universeUUID}`);
 }
 
+/**
+ * @deprecated Pleaes use fetchUniverseList from helpers/api.ts instead.
+ */
 export function fetchUniversesList() {
   const cUUID = localStorage.getItem('customerId');
   return axios.get(`${ROOT_URL}/customers/${cUUID}/universes`);
@@ -70,10 +74,12 @@ export function restartXClusterConfig(
   bootstrapParams: { backupRequestParams: any }
 ) {
   const customerId = localStorage.getItem('customerId');
-  return axios.post(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterUUID}`, {
-    tables,
-    bootstrapParams
-  });
+  return axios
+    .post<YBPTask>(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterUUID}`, {
+      tables,
+      bootstrapParams
+    })
+    .then((response) => response.data);
 }
 
 export function isBootstrapRequired(
@@ -144,10 +150,12 @@ export function editXClusterConfigTables(
   }
 ) {
   const customerId = localStorage.getItem('customerId');
-  return axios.put(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterUUID}`, {
-    tables: tables,
-    ...(bootstrapParams !== undefined && { bootstrapParams })
-  });
+  return axios
+    .put<YBPTask>(`${ROOT_URL}/customers/${customerId}/xcluster_configs/${xClusterUUID}`, {
+      tables: tables,
+      ...(bootstrapParams !== undefined && { bootstrapParams })
+    })
+    .then((response) => response.data);
 }
 
 export function deleteXclusterConfig(uuid: string, isForceDelete: boolean) {
@@ -246,7 +254,7 @@ type callbackFunc = (err: boolean, data: any) => void;
 
 export function fetchTaskUntilItCompletes(
   taskUUID: string,
-  callback: callbackFunc,
+  onTaskCompletion: callbackFunc,
   onTaskStarted?: () => void,
   interval = DEFAULT_TASK_REFETCH_INTERVAL
 ) {
@@ -260,9 +268,9 @@ export function fetchTaskUntilItCompletes(
         taskRunning = true;
       }
       if (status === 'Failed' || status === 'Failure') {
-        callback(true, resp);
+        onTaskCompletion(true, resp);
       } else if (percent === 100) {
-        callback(false, resp.data);
+        onTaskCompletion(false, resp.data);
       } else {
         setTimeout(retryTask, interval);
       }

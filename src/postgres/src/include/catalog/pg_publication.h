@@ -158,4 +158,6 @@ extern Bitmapset *pub_collist_to_bitmapset(Bitmapset *columns, Datum pubcols,
 extern Oid	get_publication_oid(const char *pubname, bool missing_ok);
 extern char *get_publication_name(Oid pubid, bool missing_ok);
 
+extern bool yb_is_publishable_relation(Relation rel);
+
 #endif							/* PG_PUBLICATION_H */

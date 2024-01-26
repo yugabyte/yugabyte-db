@@ -1178,11 +1178,6 @@ SubDocKey(DocKey(0x0000, [1], []), [ColumnId(2); HT{ physical: 1000 logical: 1 w
     20; ttl: 2.000s
 SubDocKey(DocKey(0x0000, [1], []), [ColumnId(3); HT{ physical: 1000 logical: 1 w: 2 }]) -> \
     30; ttl: 2.000s
-      )#",
-      R"#(
-SubDocKey(DocKey(0x0000, [1], []), [HT{ physical: 1000 logical: 1 }]) -> \
-{ 1: 10; ttl: 2.000s; timestamp: 1000 2: 20; ttl: 2.000s; timestamp: 1000 \
-3: 30; ttl: 2.000s; timestamp: 1000 }
       )#"));
 
   // Verify reads work well without system column id.

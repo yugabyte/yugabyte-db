@@ -37,8 +37,6 @@
 #include <string>
 #include <vector>
 
-#include <glog/logging.h>
-
 #include "yb/client/transaction.h"
 #include "yb/client/transaction_manager.h"
 #include "yb/client/transaction_pool.h"
@@ -1593,8 +1591,8 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
   TRACE_EVENT1("tserver", "FlushTablets",
                "TS: ", req->dest_uuid());
 
-  LOG(INFO) << "Processing FlushTablets from " << context.requestor_string();
-  VLOG(1) << "Full FlushTablets request: " << req->DebugString();
+  LOG_WITH_PREFIX(INFO) << "Processing FlushTablets from " << context.requestor_string();
+  VLOG_WITH_PREFIX(1) << "Full FlushTablets request: " << req->DebugString();
   TabletPeers tablet_peers;
   TSTabletManager::TabletPtrs tablet_ptrs;
 
@@ -1612,10 +1610,14 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
     }
   }
   switch (req->operation()) {
-    case FlushTabletsRequestPB::FLUSH:
+    case FlushTabletsRequestPB::FLUSH: {
+      auto flush_flags = req->regular_only() ? tablet::FlushFlags::kRegular
+                                             : tablet::FlushFlags::kAllDbs;
+      VLOG_WITH_PREFIX(1) << "flush_flags: " << to_underlying(flush_flags);
       for (const tablet::TabletPtr& tablet : tablet_ptrs) {
         resp->set_failed_tablet_id(tablet->tablet_id());
-        RETURN_UNKNOWN_ERROR_IF_NOT_OK(tablet->Flush(tablet::FlushMode::kAsync), resp, &context);
+        RETURN_UNKNOWN_ERROR_IF_NOT_OK(
+            tablet->Flush(tablet::FlushMode::kAsync, flush_flags), resp, &context);
         if (!FLAGS_TEST_skip_force_superblock_flush) {
           RETURN_UNKNOWN_ERROR_IF_NOT_OK(
               tablet->FlushSuperblock(tablet::OnlyIfDirty::kTrue), resp, &context);
@@ -1630,6 +1632,7 @@ void TabletServiceAdminImpl::FlushTablets(const FlushTabletsRequestPB* req,
         resp->clear_failed_tablet_id();
       }
       break;
+    }
     case FlushTabletsRequestPB::COMPACT:
       RETURN_UNKNOWN_ERROR_IF_NOT_OK(
           server_->tablet_manager()->TriggerAdminCompaction(tablet_ptrs, true /* should_wait */),
@@ -2081,8 +2084,8 @@ void TabletServiceImpl::Read(const ReadRequestPB* req,
         static CountDownLatch row_mark_exclusive_latch(FLAGS_TEST_wait_row_mark_exclusive_count);
         row_mark_exclusive_latch.CountDown();
         row_mark_exclusive_latch.Wait();
-        TEST_SYNC_POINT("TabletServiceImpl::Read::RowMarkExclusive:1");
-        TEST_SYNC_POINT("TabletServiceImpl::Read::RowMarkExclusive:2");
+        DEBUG_ONLY_TEST_SYNC_POINT("TabletServiceImpl::Read::RowMarkExclusive:1");
+        DEBUG_ONLY_TEST_SYNC_POINT("TabletServiceImpl::Read::RowMarkExclusive:2");
         break;
       }
     }
@@ -2206,6 +2209,10 @@ void ConsensusServiceImpl::UpdateConsensus(const consensus::LWConsensusRequestPB
 
   CompleteUpdateConsensusResponse(tablet_peer, resp);
 
+  auto trace = Trace::CurrentTrace();
+  if (trace && req->trace_requested()) {
+    resp->dup_trace_buffer(trace->DumpToString(true));
+  }
   context.RespondSuccess();
 }
 
@@ -2948,6 +2955,21 @@ void TabletServiceImpl::StartRemoteSnapshotTransfer(
 
   RETURN_UNKNOWN_ERROR_IF_NOT_OK(s, resp, &context);
   context.RespondSuccess();
+}
+
+void TabletServiceImpl::GetTabletKeyRanges(
+    const GetTabletKeyRangesRequestPB* req, GetTabletKeyRangesResponsePB* resp,
+    rpc::RpcContext context) {
+  PerformAtLeader(
+      req, resp, &context,
+      [req, &context](const LeaderTabletPeer& leader_tablet_peer) -> Status {
+        const auto& tablet = leader_tablet_peer.tablet;
+        RETURN_NOT_OK(tablet->GetTabletKeyRanges(
+            req->lower_bound_key(), req->upper_bound_key(), req->max_num_ranges(),
+            req->range_size_bytes(), tablet::IsForward(req->is_forward()), req->max_key_length(),
+            &context.sidecars().Start()));
+        return Status::OK();
+      });
 }
 
 void TabletServiceAdminImpl::TestRetry(

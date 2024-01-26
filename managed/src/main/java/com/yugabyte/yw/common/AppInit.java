@@ -32,6 +32,7 @@ import com.yugabyte.yw.common.alerts.QueryAlerts;
 import com.yugabyte.yw.common.certmgmt.CertificateHelper;
 import com.yugabyte.yw.common.config.GlobalConfKeys;
 import com.yugabyte.yw.common.config.RuntimeConfGetter;
+import com.yugabyte.yw.common.diagnostics.ThreadDumpPublisher;
 import com.yugabyte.yw.common.ha.PlatformReplicationManager;
 import com.yugabyte.yw.common.metrics.PlatformMetricsProcessor;
 import com.yugabyte.yw.common.metrics.SwamperTargetsFileUpdater;
@@ -45,7 +46,6 @@ import com.yugabyte.yw.models.InstanceType;
 import com.yugabyte.yw.models.InstanceType.InstanceTypeDetails;
 import com.yugabyte.yw.models.MetricConfig;
 import com.yugabyte.yw.models.Provider;
-import com.yugabyte.yw.queries.QueryHelper;
 import com.yugabyte.yw.scheduler.Scheduler;
 import io.ebean.DB;
 import io.prometheus.client.hotspot.DefaultExports;
@@ -86,7 +86,7 @@ public class AppInit {
       SwamperTargetsFileUpdater swamperTargetsFileUpdater,
       AlertConfigurationService alertConfigurationService,
       AlertDestinationService alertDestinationService,
-      QueryHelper queryHelper,
+      ThreadDumpPublisher threadDumpPublisher,
       PlatformMetricsProcessor platformMetricsProcessor,
       Scheduler scheduler,
       CallHome callHome,
@@ -111,6 +111,11 @@ public class AppInit {
       String mode = config.getString("yb.mode");
 
       if (!environment.isTest()) {
+        // only start thread dump collection for YBM at this time
+        if (config.getBoolean("yb.cloud.enabled")) {
+          threadDumpPublisher.start();
+        }
+
         // Check if we have provider data, if not, we need to seed the database
         if (Customer.find.query().where().findCount() == 0 && config.getBoolean("yb.seedData")) {
           log.debug("Seed the Yugaware DB");
@@ -169,8 +174,7 @@ public class AppInit {
         List<Provider> providerList = Provider.find.query().where().findList();
         for (Provider provider : providerList) {
           if (provider.getCode().equals("aws")) {
-            for (InstanceType instanceType :
-                InstanceType.findByProvider(provider, application.config())) {
+            for (InstanceType instanceType : InstanceType.findByProvider(provider, confGetter)) {
               if (instanceType.getInstanceTypeDetails() != null
                   && (instanceType.getInstanceTypeDetails().volumeDetailsList == null
                       || (instanceType.getInstanceTypeDetails().arch == null

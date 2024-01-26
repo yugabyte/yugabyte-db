@@ -8,5 +8,6 @@ import java.util.List;
 public class GFlagsAuditPayload {
 
   public List<GFlagDiffEntry> master = new ArrayList<GFlagDiffEntry>();
-  public List<GFlagDiffEntry> tserver = new ArrayList<GFlagDiffEntry>();;
+  public List<GFlagDiffEntry> tserver = new ArrayList<GFlagDiffEntry>();
+  ;
 }

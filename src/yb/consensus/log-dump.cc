@@ -36,7 +36,6 @@
 
 #include <boost/preprocessor/cat.hpp>
 #include <boost/preprocessor/stringize.hpp>
-#include <glog/logging.h>
 
 #include "yb/common/schema_pbutil.h"
 #include "yb/common/schema.h"

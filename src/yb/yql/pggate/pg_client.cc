@@ -723,6 +723,39 @@ class PgClient::Impl {
     return Status::OK();
   }
 
+  Result<boost::container::small_vector<RefCntSlice, 2>> GetTableKeyRanges(
+      const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
+      uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward,
+      uint32_t max_key_length) {
+    tserver::PgGetTableKeyRangesRequestPB req;
+    tserver::PgGetTableKeyRangesResponsePB resp;
+    req.set_session_id(session_id_);
+    table_id.ToPB(req.mutable_table_id());
+    if (!lower_bound_key.empty()) {
+      req.mutable_lower_bound_key()->assign(lower_bound_key.cdata(), lower_bound_key.size());
+    }
+    if (!upper_bound_key.empty()) {
+      req.mutable_upper_bound_key()->assign(upper_bound_key.cdata(), upper_bound_key.size());
+    }
+    req.set_max_num_ranges(max_num_ranges);
+    req.set_range_size_bytes(range_size_bytes);
+    req.set_is_forward(is_forward);
+    req.set_max_key_length(max_key_length);
+
+    auto* controller = PrepareController();
+
+    RETURN_NOT_OK(proxy_->GetTableKeyRanges(req, &resp, controller));
+    if (resp.has_status()) {
+      return StatusFromPB(resp.status());
+    }
+
+    boost::container::small_vector<RefCntSlice, 2> result;
+    for (size_t i = 0; i < controller->GetSidecarsCount(); ++i) {
+      result.push_back(VERIFY_RESULT(controller->ExtractSidecar(i)));
+    }
+    return result;
+  }
+
   Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> GetTserverCatalogVersionInfo(
       bool size_only, uint32_t db_oid) {
     tserver::PgGetTserverCatalogVersionInfoRequestPB req;
@@ -979,6 +1012,14 @@ Result<bool> PgClient::CheckIfPitrActive() {
 
 Result<bool> PgClient::IsObjectPartOfXRepl(const PgObjectId& table_id) {
   return impl_->IsObjectPartOfXRepl(table_id);
+}
+
+Result<boost::container::small_vector<RefCntSlice, 2>> PgClient::GetTableKeyRanges(
+    const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
+    uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length) {
+  return impl_->GetTableKeyRanges(
+      table_id, lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes, is_forward,
+      max_key_length);
 }
 
 Result<tserver::PgGetTserverCatalogVersionInfoResponsePB> PgClient::GetTserverCatalogVersionInfo(

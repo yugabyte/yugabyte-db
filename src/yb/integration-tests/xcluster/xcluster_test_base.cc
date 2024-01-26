@@ -22,6 +22,7 @@
 
 #include "yb/client/table_creator.h"
 #include "yb/client/yb_table_name.h"
+#include "yb/common/colocated_util.h"
 #include "yb/common/wire_protocol.h"
 
 #include "yb/gutil/casts.h"
@@ -29,6 +30,8 @@
 #include "yb/integration-tests/cdc_test_util.h"
 #include "yb/integration-tests/mini_cluster.h"
 #include "yb/master/catalog_manager_if.h"
+#include "yb/master/master_ddl.pb.h"
+#include "yb/master/master_ddl.proxy.h"
 #include "yb/master/master_defaults.h"
 #include "yb/master/master_replication.proxy.h"
 #include "yb/master/mini_master.h"
@@ -50,12 +53,25 @@ DECLARE_int32(replication_factor);
 DECLARE_string(certs_for_cdc_dir);
 DECLARE_string(certs_dir);
 DECLARE_int32(catalog_manager_bg_task_wait_ms);
+DECLARE_bool(enable_load_balancing);
+DECLARE_bool(ysql_legacy_colocated_database_creation);
 
 namespace yb {
 
 using client::YBClient;
 using client::YBTableName;
 using tserver::XClusterConsumer;
+
+Status XClusterTestBase::PostSetUp() {
+  if (!producer_tables_.empty()) {
+    producer_table_ = producer_tables_.front();
+  }
+  if (!consumer_tables_.empty()) {
+    consumer_table_ = consumer_tables_.front();
+  }
+
+  return WaitForLoadBalancersToStabilize();
+}
 
 Result<std::unique_ptr<XClusterTestBase::Cluster>> XClusterTestBase::CreateCluster(
     const std::string& cluster_id, const std::string& cluster_short_name, uint32_t num_tservers,
@@ -166,6 +182,9 @@ Status XClusterTestBase::RunOnBothClusters(std::function<Status(Cluster*)> run_o
 }
 
 Status XClusterTestBase::WaitForLoadBalancersToStabilize() {
+  if (!FLAGS_enable_load_balancing) {
+    return Status::OK();
+  }
   auto se = ScopeExit([catalog_manager_bg_task_wait_ms = FLAGS_catalog_manager_bg_task_wait_ms] {
     ANNOTATE_UNPROTECTED_WRITE(FLAGS_catalog_manager_bg_task_wait_ms) =
         catalog_manager_bg_task_wait_ms;
@@ -499,7 +518,7 @@ Status XClusterTestBase::WaitForSetupUniverseReplication(
 }
 
 Status XClusterTestBase::GetCDCStreamForTable(
-    const std::string& table_id, master::ListCDCStreamsResponsePB* resp) {
+    const TableId& table_id, master::ListCDCStreamsResponsePB* resp) {
   return LoggedWaitFor([this, table_id, resp]() -> Result<bool> {
     master::ListCDCStreamsRequestPB req;
     req.set_table_id(table_id);
@@ -520,7 +539,7 @@ uint32_t XClusterTestBase::GetSuccessfulWriteOps(MiniCluster* cluster) {
     auto* tserver = mini_tserver->server();
     XClusterConsumer* xcluster_consumer;
     if (tserver && (xcluster_consumer = tserver->GetXClusterConsumer())) {
-      size += xcluster_consumer->GetNumSuccessfulWriteRpcs();
+      size += xcluster_consumer->TEST_GetNumSuccessfulWriteRpcs();
     }
   }
   return size;
@@ -706,45 +725,54 @@ Result<std::vector<xrepl::StreamId>> XClusterTestBase::BootstrapProducer(
 }
 
 Status XClusterTestBase::WaitForReplicationDrain(
-    const std::shared_ptr<master::MasterReplicationProxy>& master_proxy,
-    const master::WaitForReplicationDrainRequestPB& req,
-    int expected_num_nondrained,
-    int timeout_secs) {
+    int expected_num_nondrained, int timeout_secs, std::optional<uint64> target_time,
+    std::vector<TableId> producer_table_ids) {
+  auto master_proxy = std::make_shared<master::MasterReplicationProxy>(
+      &producer_client()->proxy_cache(),
+      VERIFY_RESULT(producer_cluster()->GetLeaderMiniMaster())->bound_rpc_addr());
+
+  master::WaitForReplicationDrainRequestPB req;
   master::WaitForReplicationDrainResponsePB resp;
   rpc::RpcController rpc;
   rpc.set_timeout(MonoDelta::FromSeconds(timeout_secs));
-  auto s = master_proxy->WaitForReplicationDrain(req, &resp, &rpc);
-  return SetupWaitForReplicationDrainStatus(s, resp, expected_num_nondrained);
-}
 
-void XClusterTestBase::PopulateWaitForReplicationDrainRequest(
-    const std::vector<std::shared_ptr<client::YBTable>>& producer_tables,
-    master::WaitForReplicationDrainRequestPB* req) {
-  for (const auto& producer_table : producer_tables) {
+  if (producer_table_ids.empty()) {
+    for (const auto& producer_table : producer_tables_) {
+      producer_table_ids.push_back(producer_table->id());
+    }
+  }
+
+  for (const auto& table_id : producer_table_ids) {
     master::ListCDCStreamsResponsePB list_resp;
-    ASSERT_OK(GetCDCStreamForTable(producer_table->id(), &list_resp));
-    ASSERT_EQ(list_resp.streams_size(), 1);
-    ASSERT_EQ(list_resp.streams(0).table_id(0), producer_table->id());
-    req->add_stream_ids(list_resp.streams(0).stream_id());
+    RETURN_NOT_OK(GetCDCStreamForTable(table_id, &list_resp));
+    SCHECK_EQ(
+        list_resp.streams_size(), 1, IllegalState,
+        Format(
+            "Producer table $0 has $1 streams which is unexpected", table_id,
+            list_resp.streams_size()));
+    SCHECK_EQ(
+        list_resp.streams(0).table_id(0), table_id, IllegalState,
+        "Producer table id does not match");
+    req.add_stream_ids(list_resp.streams(0).stream_id());
   }
-}
 
-Status XClusterTestBase::SetupWaitForReplicationDrainStatus(
-    Status api_status,
-    const master::WaitForReplicationDrainResponsePB& api_resp,
-    int expected_num_nondrained) {
-  if (!api_status.ok()) {
-    return api_status;
+  if (target_time) {
+    req.set_target_time(*target_time);
   }
-  if (api_resp.has_error()) {
-    return STATUS(IllegalState,
-        Format("WaitForReplicationDrain returned error: $0", api_resp.error().DebugString()));
+
+  RETURN_NOT_OK(master_proxy->WaitForReplicationDrain(req, &resp, &rpc));
+
+  if (resp.has_error()) {
+    return StatusFromPB(resp.error().status());
   }
-  if (api_resp.undrained_stream_info_size() != expected_num_nondrained) {
-    return STATUS(IllegalState,
-        Format("Mismatched number of non-drained streams. Expected $0, got $1.",
-               expected_num_nondrained, api_resp.undrained_stream_info_size()));
+
+  if (resp.undrained_stream_info_size() != expected_num_nondrained) {
+    return STATUS(
+        IllegalState, Format(
+                          "Mismatched number of non-drained streams. Expected $0, got $1.",
+                          expected_num_nondrained, resp.undrained_stream_info_size()));
   }
+
   return Status::OK();
 }
 
@@ -864,6 +892,95 @@ Status XClusterTestBase::PauseResumeXClusterProducerStreams(
       !resp.has_error(), IllegalState,
       Format("PauseResumeXClusterProducerStreams returned error: $0", resp.error().DebugString()));
   return Status::OK();
+}
+
+namespace {
+
+/*
+ * TODO (#11597): Given one is not able to get tablegroup ID by name, currently this works by
+ * getting the first available tablegroup appearing in the namespace.
+ */
+Result<TableId> GetTablegroupParentTable(
+    XClusterTestBase::Cluster* cluster, const std::string& namespace_name) {
+  // Lookup the namespace id from the namespace name.
+  std::string namespace_id;
+  // Whether the database named namespace_name is a colocated database.
+  bool colocated_database;
+  master::MasterDdlProxy master_proxy(
+      &cluster->client_->proxy_cache(),
+      VERIFY_RESULT(cluster->mini_cluster_->GetLeaderMiniMaster())->bound_rpc_addr());
+  rpc::RpcController rpc;
+  rpc.set_timeout(MonoDelta::FromSeconds(kRpcTimeout));
+  {
+    master::ListNamespacesRequestPB req;
+    master::ListNamespacesResponsePB resp;
+
+    RETURN_NOT_OK(master_proxy.ListNamespaces(req, &resp, &rpc));
+    if (resp.has_error()) {
+      return STATUS(IllegalState, "Failed to get namespace info");
+    }
+
+    // Find and return the namespace id.
+    bool namespaceFound = false;
+    for (const auto& entry : resp.namespaces()) {
+      if (entry.name() == namespace_name) {
+        namespaceFound = true;
+        namespace_id = entry.id();
+        break;
+      }
+    }
+
+    if (!namespaceFound) {
+      return STATUS(IllegalState, "Failed to find namespace");
+    }
+  }
+
+  {
+    master::GetNamespaceInfoRequestPB req;
+    master::GetNamespaceInfoResponsePB resp;
+
+    req.mutable_namespace_()->set_id(namespace_id);
+
+    rpc.Reset();
+    RETURN_NOT_OK(master_proxy.GetNamespaceInfo(req, &resp, &rpc));
+    if (resp.has_error()) {
+      return STATUS(IllegalState, "Failed to get namespace info");
+    }
+    colocated_database = resp.colocated();
+  }
+
+  master::ListTablegroupsRequestPB req;
+  master::ListTablegroupsResponsePB resp;
+
+  req.set_namespace_id(namespace_id);
+  rpc.Reset();
+  RETURN_NOT_OK(master_proxy.ListTablegroups(req, &resp, &rpc));
+  if (resp.has_error()) {
+    return STATUS(IllegalState, "Failed listing tablegroups");
+  }
+
+  // Find and return the tablegroup.
+  if (resp.tablegroups().empty()) {
+    return STATUS(
+        IllegalState, Format("Unable to find tablegroup in namespace $0", namespace_name));
+  }
+
+  if (colocated_database) return GetColocationParentTableId(resp.tablegroups()[0].id());
+  return GetTablegroupParentTableId(resp.tablegroups()[0].id());
+}
+
+}  // namespace
+
+Result<TableId> XClusterTestBase::GetColocatedDatabaseParentTableId() {
+  if (FLAGS_ysql_legacy_colocated_database_creation) {
+    // Legacy colocated database
+    master::GetNamespaceInfoResponsePB ns_resp;
+    RETURN_NOT_OK(
+        producer_client()->GetNamespaceInfo("", namespace_name, YQL_DATABASE_PGSQL, &ns_resp));
+    return GetColocatedDbParentTableId(ns_resp.namespace_().id());
+  }
+  // Colocated database
+  return GetTablegroupParentTable(&producer_cluster_, namespace_name);
 }
 
 } // namespace yb

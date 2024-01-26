@@ -165,6 +165,9 @@ public abstract class AbstractTaskBase implements ITask {
     return taskParams().getPreviousTaskUUID() == null;
   }
 
+  @Override
+  public void validateParams() {}
+
   /**
    * We would try to parse the shell response message as JSON and return JsonNode
    *

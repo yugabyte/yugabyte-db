@@ -4,12 +4,15 @@ import { Component } from 'react';
 import 'react-fa';
 import { MenuItem, NavDropdown, Navbar, Nav } from 'react-bootstrap';
 import { Link } from 'react-router';
-import YBLogo from '../YBLogo/YBLogo';
-import './stylesheets/TopNavBar.scss';
 import { getPromiseState } from '../../../utils/PromiseUtils';
 import { LinkContainer } from 'react-router-bootstrap';
 import { isNotHidden, isDisabled } from '../../../utils/LayoutUtils';
 import { clearCredentials } from '../../../routes';
+import { isRbacEnabled } from '../../../redesign/features/rbac/common/RbacUtils';
+import { hasNecessaryPerm } from '../../../redesign/features/rbac/common/RbacValidator';
+import { Action, Resource } from '../../../redesign/features/rbac';
+import './stylesheets/TopNavBar.scss';
+import YBLogo from '../YBLogo/YBLogo';
 
 class YBMenuItem extends Component {
   render() {
@@ -45,6 +48,11 @@ export default class TopNavBar extends Component {
       ? currentCustomer.data.email
       : '';
 
+    const hasDefaultReadPerm =  hasNecessaryPerm({
+      permissionRequired: [Action.READ],
+      resourceType: Resource.DEFAULT
+    });
+
     // TODO(bogdan): icon for logs...
     return (
       <Navbar fixedTop>
@@ -57,7 +65,7 @@ export default class TopNavBar extends Component {
             </Navbar.Header>
           )}
         <div className="flex-grow"></div>
-        {getPromiseState(currentCustomer).isSuccess() &&
+        {(isRbacEnabled() || getPromiseState(currentCustomer).isSuccess()) &&
           isNotHidden(currentCustomer.data.features, 'main.dropdown') && (
             <Nav pullRight>
               <NavDropdown
@@ -77,7 +85,7 @@ export default class TopNavBar extends Component {
                     <i className="fa fa-user fa-fw"></i>User Profile
                   </YBMenuItem>
                 )}
-                {isNotHidden(currentCustomer.data.features, 'main.logs') && (
+                {isNotHidden(currentCustomer.data.features, 'main.logs') && hasDefaultReadPerm && (
                   <YBMenuItem
                     to={'/logs'}
                     disabled={isDisabled(currentCustomer.data.features, 'main.logs')}
@@ -85,7 +93,7 @@ export default class TopNavBar extends Component {
                     <i className="fa fa-file fa-fw"></i>Logs
                   </YBMenuItem>
                 )}
-                {isNotHidden(currentCustomer.data.features, 'main.releases') && (
+                {isNotHidden(currentCustomer.data.features, 'main.releases') && hasDefaultReadPerm && (
                   <YBMenuItem
                     to={'/releases'}
                     disabled={isDisabled(currentCustomer.data.features, 'main.releases')}

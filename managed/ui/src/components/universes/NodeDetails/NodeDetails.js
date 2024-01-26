@@ -123,7 +123,7 @@ export default class NodeDetails extends Component {
       let instanceName = '';
 
       if (isDefinedNotNull(nodeInstanceList)) {
-        const matchingInstance = nodeInstanceList.data.filter(
+        const matchingInstance = nodeInstanceList.data?.filter(
           (instance) => instance.nodeName === nodeName
         );
         instanceName = _.get(matchingInstance, '[0]details.instanceName', '');
@@ -167,10 +167,12 @@ export default class NodeDetails extends Component {
         regionItem: `${nodeDetail.cloudInfo.region}`,
         azItem: `${nodeDetail.cloudInfo.az}`,
         isMaster: nodeDetail.isMaster ? 'Details' : '-',
+        isMasterProcess: nodeDetail.isMaster,
         isMasterLeader: isMasterLeader,
         masterPort: nodeDetail.masterHttpPort,
         tserverPort: nodeDetail.tserverHttpPort,
         isTServer: nodeDetail.isTserver ? 'Details' : '-',
+        isTServerProcess: nodeDetail.isTserver,
         privateIP: nodeDetail.cloudInfo.private_ip,
         publicIP: nodeDetail.cloudInfo.public_ip,
         nodeStatus,

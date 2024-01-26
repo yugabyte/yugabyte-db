@@ -8,7 +8,7 @@ aliases:
 menu:
   preview_integrations:
     identifier: cdc-debezium
-    parent: integrations
+    parent: data-integration
     weight: 571
 type: docs
 ---

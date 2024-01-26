@@ -1,5 +1,5 @@
 ---
-title: Transactions
+title: Scaling Transactions
 headerTitle: Transactions
 linkTitle: Transactions
 description: Transactions

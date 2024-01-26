@@ -15,6 +15,7 @@ import (
 	"strings"
 	"text/template"
 
+	"github.com/Masterminds/sprig/v3"
 	"github.com/spf13/viper"
 	"sigs.k8s.io/yaml"
 
@@ -44,6 +45,11 @@ func readConfigAndTemplate(configYmlFileName string, service common.Component) (
 		"installRoot":       common.GetSoftwareRoot,
 		"installVersionDir": common.GetInstallerSoftwareDir,
 		"baseInstall":       common.GetBaseInstall,
+	}
+
+	// Copy over sprig template functions
+	for k, v := range sprig.GenericFuncMap() {
+		funcMap[k] = v
 	}
 
 	tmpl, err := template.New(configYmlFileName).

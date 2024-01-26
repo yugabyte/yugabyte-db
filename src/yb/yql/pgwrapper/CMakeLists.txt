@@ -65,7 +65,8 @@ set(PG_WRAPPER_TEST_BASE_SRCS
     pg_mini_test_base.cc
     pg_tablet_split_test_base.cc
     pg_test_utils.cc
-    pg_wrapper_test_base.cc)
+    pg_wrapper_test_base.cc
+    pg_ddl_atomicity_test_base.cc)
 set(PG_WRAPPER_TEST_BASE_DEPS
     pq_utils
     yb_client_test_util)

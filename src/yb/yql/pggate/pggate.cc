@@ -1405,11 +1405,12 @@ Status PgApiImpl::DmlExecWriteOp(PgStatement *handle, int32_t *rows_affected_cou
 // Insert ------------------------------------------------------------------------------------------
 
 Status PgApiImpl::NewInsert(const PgObjectId& table_id,
-                            bool is_single_row_txn,
                             bool is_region_local,
-                            PgStatement **handle) {
+                            PgStatement **handle,
+                            YBCPgTransactionSetting transaction_setting) {
   *handle = nullptr;
-  auto stmt = std::make_unique<PgInsert>(pg_session_, table_id, is_single_row_txn, is_region_local);
+  auto stmt = std::make_unique<PgInsert>(
+      pg_session_, table_id, is_region_local, transaction_setting);
   RETURN_NOT_OK(stmt->Prepare());
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -1454,11 +1455,12 @@ Status PgApiImpl::InsertStmtSetIsBackfill(PgStatement *handle, const bool is_bac
 // Update ------------------------------------------------------------------------------------------
 
 Status PgApiImpl::NewUpdate(const PgObjectId& table_id,
-                            bool is_single_row_txn,
                             bool is_region_local,
-                            PgStatement **handle) {
+                            PgStatement **handle,
+                            YBCPgTransactionSetting transaction_setting) {
   *handle = nullptr;
-  auto stmt = std::make_unique<PgUpdate>(pg_session_, table_id, is_single_row_txn, is_region_local);
+  auto stmt = std::make_unique<PgUpdate>(
+      pg_session_, table_id, is_region_local, transaction_setting);
   RETURN_NOT_OK(stmt->Prepare());
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -1475,11 +1477,12 @@ Status PgApiImpl::ExecUpdate(PgStatement *handle) {
 // Delete ------------------------------------------------------------------------------------------
 
 Status PgApiImpl::NewDelete(const PgObjectId& table_id,
-                            bool is_single_row_txn,
                             bool is_region_local,
-                            PgStatement **handle) {
+                            PgStatement **handle,
+                            YBCPgTransactionSetting transaction_setting) {
   *handle = nullptr;
-  auto stmt = std::make_unique<PgDelete>(pg_session_, table_id, is_single_row_txn, is_region_local);
+  auto stmt = std::make_unique<PgDelete>(
+      pg_session_, table_id, is_region_local, transaction_setting);
   RETURN_NOT_OK(stmt->Prepare());
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -1554,12 +1557,12 @@ Status PgApiImpl::DeleteStmtSetIsPersistNeeded(PgStatement *handle, const bool i
 // Colocated Truncate ------------------------------------------------------------------------------
 
 Status PgApiImpl::NewTruncateColocated(const PgObjectId& table_id,
-                                       bool is_single_row_txn,
                                        bool is_region_local,
-                                       PgStatement **handle) {
+                                       PgStatement **handle,
+                                       YBCPgTransactionSetting transaction_setting) {
   *handle = nullptr;
   auto stmt = std::make_unique<PgTruncateColocated>(
-      pg_session_, table_id, is_single_row_txn, is_region_local);
+      pg_session_, table_id, is_region_local, transaction_setting);
   RETURN_NOT_OK(stmt->Prepare());
   RETURN_NOT_OK(AddToCurrentPgMemctx(std::move(stmt), handle));
   return Status::OK();
@@ -1884,9 +1887,9 @@ Status PgApiImpl::NewTupleExpr(
 }
 
 // Transaction Control -----------------------------------------------------------------------------
-Status PgApiImpl::BeginTransaction() {
+Status PgApiImpl::BeginTransaction(int64_t start_time) {
   pg_session_->InvalidateForeignKeyReferenceCache();
-  return pg_txn_manager_->BeginTransaction();
+  return pg_txn_manager_->BeginTransaction(start_time);
 }
 
 Status PgApiImpl::RecreateTransaction() {
@@ -2115,6 +2118,14 @@ Result<bool> PgApiImpl::CheckIfPitrActive() {
 
 Result<bool> PgApiImpl::IsObjectPartOfXRepl(const PgObjectId& table_id) {
   return pg_session_->IsObjectPartOfXRepl(table_id);
+}
+
+Result<boost::container::small_vector<RefCntSlice, 2>> PgApiImpl::GetTableKeyRanges(
+    const PgObjectId& table_id, Slice lower_bound_key, Slice upper_bound_key,
+    uint64_t max_num_ranges, uint64_t range_size_bytes, bool is_forward, uint32_t max_key_length) {
+  return pg_session_->GetTableKeyRanges(
+      table_id, lower_bound_key, upper_bound_key, max_num_ranges, range_size_bytes, is_forward,
+      max_key_length);
 }
 
 } // namespace pggate

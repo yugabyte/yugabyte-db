@@ -287,8 +287,7 @@ bool ClusterLoadBalancer::IsLoadBalancerEnabled() const {
 ClusterLoadBalancer::ClusterLoadBalancer(CatalogManager* cm)
     : random_(GetRandomSeed32()),
       is_enabled_(FLAGS_enable_load_balancing),
-      cbuf_activities_(FLAGS_load_balancer_num_idle_runs),
-      epoch_(LeaderEpoch(-1)) {
+      cbuf_activities_(FLAGS_load_balancer_num_idle_runs) {
   ResetGlobalState(false /* initialize_ts_descs */);
 
   catalog_manager_ = cm;

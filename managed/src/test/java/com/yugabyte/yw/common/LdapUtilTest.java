@@ -5,6 +5,7 @@ import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertNotNull;
 import static org.junit.Assert.assertNull;
 import static org.junit.Assert.assertThrows;
+import static org.junit.Assert.assertTrue;
 import static org.mockito.AdditionalMatchers.not;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
@@ -17,10 +18,19 @@ import static org.mockito.Mockito.spy;
 import static org.mockito.Mockito.when;
 
 import com.yugabyte.yw.common.LdapUtil.TlsProtocol;
+import com.yugabyte.yw.common.rbac.Permission;
+import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
+import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.models.Customer;
 import com.yugabyte.yw.models.LdapDnToYbaRole;
 import com.yugabyte.yw.models.Users;
 import com.yugabyte.yw.models.Users.Role;
+import com.yugabyte.yw.models.rbac.ResourceGroup;
+import com.yugabyte.yw.models.rbac.Role.RoleType;
+import com.yugabyte.yw.models.rbac.RoleBinding;
+import java.util.HashSet;
+import java.util.List;
+import java.util.Set;
 import junitparams.JUnitParamsRunner;
 import junitparams.Parameters;
 import org.apache.directory.api.ldap.model.cursor.EntryCursor;
@@ -112,7 +122,8 @@ public class LdapUtilTest extends FakeDBApplication {
                 false,
                 false,
                 Role.ReadOnly,
-                TlsProtocol.TLSv1_2));
+                TlsProtocol.TLSv1_2,
+                false));
 
     assertNotNull(user);
     assertEquals("test-user", user.getEmail());
@@ -154,7 +165,8 @@ public class LdapUtilTest extends FakeDBApplication {
                     false,
                     false,
                     Role.ReadOnly,
-                    TlsProtocol.TLSv1_2)));
+                    TlsProtocol.TLSv1_2,
+                    false)));
   }
 
   @Test
@@ -195,7 +207,8 @@ public class LdapUtilTest extends FakeDBApplication {
                     false,
                     false,
                     Role.ReadOnly,
-                    TlsProtocol.TLSv1_2)));
+                    TlsProtocol.TLSv1_2,
+                    false)));
     assertNull(Users.getByEmail(user.getEmail()));
   }
 
@@ -232,7 +245,8 @@ public class LdapUtilTest extends FakeDBApplication {
                 false,
                 false,
                 Role.ReadOnly,
-                TlsProtocol.TLSv1_2));
+                TlsProtocol.TLSv1_2,
+                false));
 
     assertNotNull(user);
     assertEquals(Users.Role.BackupAdmin, user.getRole());
@@ -277,11 +291,88 @@ public class LdapUtilTest extends FakeDBApplication {
                 false,
                 false,
                 Role.ReadOnly,
-                TlsProtocol.TLSv1_2));
+                TlsProtocol.TLSv1_2,
+                false));
 
     assertNotNull(updatedUser);
     assertEquals(Users.Role.BackupAdmin, updatedUser.getRole());
     assertEquals(true, updatedUser.isLdapSpecifiedRole());
+  }
+
+  @Test
+  public void testAuthViaLDAPUpdateRoleWithNewRbac() throws Exception {
+    setupTest();
+    Customer customer = ModelFactory.testCustomer();
+    Users user = ModelFactory.testUser(customer);
+    user.setLdapSpecifiedRole(true);
+    user.setUserType(Users.UserType.ldap);
+    user.update();
+    Entry entry = new DefaultEntry();
+    entry.add("yugabytePlatformRole", "BackupAdmin");
+    doNothing().when(ldapNetworkConnection).unBind();
+    when(entryCursor.next()).thenReturn(true).thenReturn(false);
+    when(entryCursor.get()).thenReturn(entry);
+
+    Set<Permission> permissionSet = fetchPermissionSet(Role.BackupAdmin);
+    com.yugabyte.yw.models.rbac.Role role =
+        com.yugabyte.yw.models.rbac.Role.create(
+            customer.getUuid(), "BackupAdmin", "BackupAdmin", RoleType.System, permissionSet);
+
+    Users updatedUser =
+        ldapUtil.authViaLDAP(
+            user.getEmail(),
+            "password",
+            new LdapUtil.LdapConfiguration(
+                "ldapUrl",
+                389,
+                "base-dn",
+                "",
+                "cn=",
+                false,
+                false,
+                false,
+                "service_account",
+                "service_password",
+                "",
+                false,
+                "*",
+                SearchScope.SUBTREE,
+                "base-dn",
+                "",
+                false,
+                false,
+                Role.ReadOnly,
+                TlsProtocol.TLSv1_2,
+                true));
+
+    assertNotNull(updatedUser);
+    assertEquals(Users.Role.BackupAdmin, updatedUser.getRole());
+    assertEquals(true, updatedUser.isLdapSpecifiedRole());
+
+    List<RoleBinding> roleBindingList = RoleBinding.getAll(user.getUuid());
+    assertEquals(1, roleBindingList.size());
+    assertEquals(
+        6, roleBindingList.get(0).getRole().getPermissionDetails().getPermissionList().size());
+    for (ResourceGroup.ResourceDefinition rD :
+        roleBindingList.get(0).getResourceGroup().getResourceDefinitionSet()) {
+      switch (rD.getResourceType()) {
+        case UNIVERSE:
+          assertTrue(rD.isAllowAll());
+          break;
+        case USER:
+          assertTrue(rD.isAllowAll());
+          break;
+        case ROLE:
+          assertTrue(rD.isAllowAll());
+          break;
+        case OTHER:
+          assertEquals(1, rD.getResourceUUIDSet().size());
+          assertTrue(rD.getResourceUUIDSet().contains(user.getCustomerUUID()));
+          break;
+        default:
+          throw new RuntimeException("Invalid resource type: " + rD.getResourceType());
+      }
+    }
   }
 
   @Test
@@ -322,7 +413,8 @@ public class LdapUtilTest extends FakeDBApplication {
                 false,
                 false,
                 Role.ReadOnly,
-                TlsProtocol.TLSv1_2));
+                TlsProtocol.TLSv1_2,
+                false));
 
     assertEquals(user, oldUser);
   }
@@ -404,7 +496,8 @@ public class LdapUtilTest extends FakeDBApplication {
                 false,
                 groupMappingOn,
                 defaultLdapRole,
-                TlsProtocol.TLSv1_2));
+                TlsProtocol.TLSv1_2,
+                false));
 
     if (newLdapRoleValid) {
       assertEquals(true, loggedInUser.isLdapSpecifiedRole());
@@ -456,12 +549,85 @@ public class LdapUtilTest extends FakeDBApplication {
                 false,
                 false,
                 Role.ReadOnly,
-                TlsProtocol.TLSv1_2));
+                TlsProtocol.TLSv1_2,
+                false));
 
     assertNotNull(user);
     assertEquals("test-user", user.getEmail());
     assertEquals(Role.Admin, user.getRole());
     assertEquals(true, user.isLdapSpecifiedRole());
+  }
+
+  @Test
+  public void testAuthViaLDAPWithSearchAndBindSuccessWithNewRbac() throws Exception {
+    setupTest();
+    Entry entry = new DefaultEntry("CN=" + username);
+    entry.add("yugabytePlatformRole", "Admin");
+    doNothing().when(ldapNetworkConnection).unBind();
+    when(entryCursor.next()).thenReturn(true).thenReturn(false);
+    when(entryCursor.get()).thenReturn(entry);
+
+    Set<Permission> permissionSet = fetchPermissionSet(Role.Admin);
+    com.yugabyte.yw.models.rbac.Role role =
+        com.yugabyte.yw.models.rbac.Role.create(
+            testCustomer.getUuid(), "Admin", "Admin", RoleType.System, permissionSet);
+
+    Users user =
+        ldapUtil.authViaLDAP(
+            "test-user",
+            "password",
+            new LdapUtil.LdapConfiguration(
+                "ldapUrl",
+                389,
+                "base-dn",
+                "",
+                "cn=",
+                false,
+                false,
+                true,
+                "service_account",
+                "service_password",
+                "search-attribute",
+                false,
+                "*",
+                SearchScope.SUBTREE,
+                "base-dn",
+                "",
+                false,
+                false,
+                Role.ReadOnly,
+                TlsProtocol.TLSv1_2,
+                true));
+
+    assertNotNull(user);
+    assertEquals("test-user", user.getEmail());
+    assertEquals(Role.Admin, user.getRole());
+    assertEquals(true, user.isLdapSpecifiedRole());
+
+    List<RoleBinding> roleBindingList = RoleBinding.getAll(user.getUuid());
+    assertEquals(1, roleBindingList.size());
+    assertEquals(
+        20, roleBindingList.get(0).getRole().getPermissionDetails().getPermissionList().size());
+    for (ResourceGroup.ResourceDefinition rD :
+        roleBindingList.get(0).getResourceGroup().getResourceDefinitionSet()) {
+      switch (rD.getResourceType()) {
+        case UNIVERSE:
+          assertTrue(rD.isAllowAll());
+          break;
+        case USER:
+          assertTrue(rD.isAllowAll());
+          break;
+        case ROLE:
+          assertTrue(rD.isAllowAll());
+          break;
+        case OTHER:
+          assertEquals(1, rD.getResourceUUIDSet().size());
+          assertTrue(rD.getResourceUUIDSet().contains(user.getCustomerUUID()));
+          break;
+        default:
+          throw new RuntimeException("Invalid resource type: " + rD.getResourceType());
+      }
+    }
   }
 
   @Test
@@ -494,7 +660,8 @@ public class LdapUtilTest extends FakeDBApplication {
                     false,
                     false,
                     Role.ReadOnly,
-                    TlsProtocol.TLSv1_2)));
+                    TlsProtocol.TLSv1_2,
+                    false)));
   }
 
   @Test
@@ -566,7 +733,8 @@ public class LdapUtilTest extends FakeDBApplication {
                 true,
                 true,
                 Role.ReadOnly,
-                TlsProtocol.TLSv1_2));
+                TlsProtocol.TLSv1_2,
+                false));
 
     assertNotNull(user);
     assertEquals(username, user.getEmail());
@@ -614,7 +782,8 @@ public class LdapUtilTest extends FakeDBApplication {
                 false,
                 true,
                 Role.ReadOnly,
-                TlsProtocol.TLSv1_2));
+                TlsProtocol.TLSv1_2,
+                false));
 
     assertNotNull(user);
     assertEquals(username, user.getEmail());
@@ -652,11 +821,46 @@ public class LdapUtilTest extends FakeDBApplication {
                     false,
                     true,
                     Role.ReadOnly,
-                    TlsProtocol.TLSv1_2));
+                    TlsProtocol.TLSv1_2,
+                    false));
           } catch (LdapException e) {
             throw new RuntimeException(e);
           }
         });
     ;
+  }
+
+  private Set<Permission> fetchPermissionSet(Role role) {
+    Set<Permission> permissionSet = new HashSet<>();
+    switch (role) {
+      case SuperAdmin:
+        permissionSet.add(new Permission(ResourceType.OTHER, Action.SUPER_ADMIN_ACTIONS));
+      case Admin:
+        permissionSet.add(new Permission(ResourceType.OTHER, Action.CREATE));
+        permissionSet.add(new Permission(ResourceType.OTHER, Action.UPDATE));
+        permissionSet.add(new Permission(ResourceType.OTHER, Action.DELETE));
+        permissionSet.add(new Permission(ResourceType.UNIVERSE, Action.CREATE));
+        permissionSet.add(new Permission(ResourceType.UNIVERSE, Action.UPDATE));
+        permissionSet.add(new Permission(ResourceType.UNIVERSE, Action.DELETE));
+        permissionSet.add(new Permission(ResourceType.UNIVERSE, Action.PAUSE_RESUME));
+        permissionSet.add(new Permission(ResourceType.USER, Action.CREATE));
+        permissionSet.add(new Permission(ResourceType.USER, Action.UPDATE));
+        permissionSet.add(new Permission(ResourceType.USER, Action.UPDATE_ROLE_BINDINGS));
+        permissionSet.add(new Permission(ResourceType.USER, Action.DELETE));
+        permissionSet.add(new Permission(ResourceType.ROLE, Action.CREATE));
+        permissionSet.add(new Permission(ResourceType.ROLE, Action.UPDATE));
+        permissionSet.add(new Permission(ResourceType.ROLE, Action.DELETE));
+      case BackupAdmin:
+        permissionSet.add(new Permission(ResourceType.UNIVERSE, Action.BACKUP_RESTORE));
+      case ReadOnly:
+        permissionSet.add(new Permission(ResourceType.OTHER, Action.READ));
+        permissionSet.add(new Permission(ResourceType.UNIVERSE, Action.READ));
+        permissionSet.add(new Permission(ResourceType.USER, Action.READ));
+        permissionSet.add(new Permission(ResourceType.ROLE, Action.READ));
+        permissionSet.add(new Permission(ResourceType.USER, Action.UPDATE_PROFILE));
+      default:
+        break;
+    }
+    return permissionSet;
   }
 }

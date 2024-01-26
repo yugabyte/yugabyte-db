@@ -1265,6 +1265,69 @@ Status promote_auto_flags_action(
   return Status::OK();
 }
 
+const auto rollback_auto_flags_args = "<rollback_version>";
+Status rollback_auto_flags_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 1) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  const int64_t rollback_version = VERIFY_RESULT(CheckedStoll(args[0]));
+  SCHECK_LT(
+      rollback_version, std::numeric_limits<uint32_t>::max(), InvalidArgument,
+      "rollback_version exceeds bounds");
+
+  RETURN_NOT_OK_PREPEND(
+      client->RollbackAutoFlags(static_cast<uint32_t>(rollback_version)),
+      "Unable to Rollback AutoFlags");
+  return Status::OK();
+}
+
+const auto promote_single_auto_flag_args = "<process_name> <auto_flag_name>";
+Status promote_single_auto_flag_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() != 2) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  auto& process_name = args[0];
+  auto& auto_flag_name = args[1];
+
+  RETURN_NOT_OK_PREPEND(
+      client->PromoteSingleAutoFlag(process_name, auto_flag_name), "Unable to Promote AutoFlag");
+  return Status::OK();
+}
+
+const auto demote_single_auto_flag_args = "<process_name> <auto_flag_name> [force]";
+Status demote_single_auto_flag_action(
+    const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
+  if (args.size() > 3) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+
+  auto& process_name = args[0];
+  auto& auto_flag_name = args[1];
+  if (args.size() == 3 && !IsEqCaseInsensitive(args[2], "force")) {
+    return ClusterAdminCli::kInvalidArguments;
+  }
+  const bool force = args.size() == 3;
+
+  if (!force) {
+    std::cout
+        << "WARNING: Demotion of AutoFlags is dangerous and can lead to silent corruptions and "
+           "data loss!";
+    std::cout << "Are you sure you want to demote the flag '" << auto_flag_name
+              << "' belonging to process '" << process_name << "'? (y/N)?";
+    std::string answer;
+    std::cin >> answer;
+    SCHECK(answer == "y" || answer == "Y", InvalidArgument, "demote_single_auto_flag aborted");
+  }
+
+  RETURN_NOT_OK_PREPEND(
+      client->DemoteSingleAutoFlag(process_name, auto_flag_name), "Unable to Demote AutoFlag");
+  return Status::OK();
+}
+
 std::string GetListSnapshotsFlagList() {
   std::string options = "";
   for (auto flag : ListSnapshotsFlagList()) {
@@ -1299,17 +1362,33 @@ Status list_snapshots_action(
 }
 
 const auto create_snapshot_args =
-    "<table> [<table>]... [<flush_timeout_in_seconds>] (default 60, set 0 to skip flushing)";
+    "<table> [<table>]... [<flush_timeout_in_seconds>] (default 60, set 0 to skip flushing) "
+    "[<retention_duration_hours>] (set a <= 0 value to retain the snapshot forever. If not "
+    "specified then takes the default value controlled by gflag default_snapshot_retention_hours) "
+    "[skip_indexes]";
 Status create_snapshot_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   int timeout_secs = 60;
+  std::optional<int32_t> retention_duration_hours;
+  bool timeout_set = false;
+  bool skip_indexes = false;
   const auto tables = VERIFY_RESULT(ResolveTableNames(
-      client, args.begin(), args.end(), [&timeout_secs](auto i, const auto& end) -> Status {
-        if (std::next(i) == end) {
-          timeout_secs = VERIFY_RESULT(CheckedStoi(*i));
-          return Status::OK();
+      client, args.begin(), args.end(), [&](auto i, const auto& end) -> Status {
+        for (auto curr_it = i; curr_it != end; ++curr_it) {
+          if (IsEqCaseInsensitive(*curr_it, "skip_indexes")) {
+            skip_indexes = true;
+            continue;
+          }
+          if (!timeout_set) {
+            timeout_secs = VERIFY_RESULT(CheckedStoi(*curr_it));
+            timeout_set = true;
+          } else if (!retention_duration_hours) {
+            retention_duration_hours = VERIFY_RESULT(CheckedStoi(*curr_it));
+          } else {
+            return ClusterAdminCli::kInvalidArguments;
+          }
         }
-        return ClusterAdminCli::kInvalidArguments;
+        return Status::OK();
       }));
 
   for (auto table : tables) {
@@ -1317,10 +1396,16 @@ Status create_snapshot_action(
       return STATUS(
           InvalidArgument, "Cannot create snapshot of YCQL system table", table.table_name());
     }
+    if (table.is_pgsql_namespace()) {
+      return STATUS(
+          InvalidArgument,
+          "Cannot create snapshot of individual YSQL tables. Only database level is supported");
+    }
   }
 
   RETURN_NOT_OK_PREPEND(
-      client->CreateSnapshot(tables, true, timeout_secs),
+      client->CreateSnapshot(tables, retention_duration_hours,
+                             !skip_indexes, timeout_secs),
       Format("Unable to create snapshot of tables: $0", yb::ToString(tables)));
   return Status::OK();
 }
@@ -1418,11 +1503,23 @@ Status edit_snapshot_schedule_action(
   return PrintJsonResult(client->EditSnapshotSchedule(schedule_id, new_interval, new_retention));
 }
 
-const auto create_keyspace_snapshot_args = "[ycql.]<database_name>";
+const auto create_keyspace_snapshot_args = "[ycql.]<database_name> [retention_duration_hours] "
+    "(set a <= 0 value to retain the snapshot forever. If not specified "
+    "then takes the default value controlled by gflag default_retention_hours) "
+    "[skip_indexes] (if not specified then defaults to false)";
 Status create_keyspace_snapshot_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
-  if (args.size() != 1) {
+  if (args.size() < 1 || args.size() > 3) {
     return ClusterAdminCli::kInvalidArguments;
+  }
+  std::optional<int32_t> retention_duration_hours;
+  bool skip_indexes = false;
+  for (size_t i = 1; i < args.size(); i++) {
+    if (IsEqCaseInsensitive(args[i], "skip_indexes")) {
+      skip_indexes = true;
+    } else {
+      retention_duration_hours = VERIFY_RESULT(CheckedStoi(args[i]));
+    }
   }
 
   const TypedNamespaceName keyspace = VERIFY_RESULT(ParseNamespaceName(args[0]));
@@ -1431,16 +1528,23 @@ Status create_keyspace_snapshot_action(
       Format("Wrong keyspace type: $0", YQLDatabase_Name(keyspace.db_type)));
 
   RETURN_NOT_OK_PREPEND(
-      client->CreateNamespaceSnapshot(keyspace),
+      client->CreateNamespaceSnapshot(keyspace, retention_duration_hours, !skip_indexes),
       Format("Unable to create snapshot of keyspace: $0", keyspace.name));
   return Status::OK();
 }
 
-const auto create_database_snapshot_args = "[ysql.]<database_name>";
+const auto create_database_snapshot_args = "[ysql.]<database_name> [retention_duration_hours] "
+    "(set a <= 0 value to retain the snapshot forever. If not specified "
+    "then takes the default value controlled by gflag default_retention_hours)";
 Status create_database_snapshot_action(
     const ClusterAdminCli::CLIArguments& args, ClusterAdminClient* client) {
   if (args.size() != 1) {
     return ClusterAdminCli::kInvalidArguments;
+  }
+
+  std::optional<int32_t> retention_duration_hours;
+  if (args.size() == 2) {
+    retention_duration_hours = VERIFY_RESULT(CheckedStoi(args[1]));
   }
 
   const TypedNamespaceName database =
@@ -1450,7 +1554,7 @@ Status create_database_snapshot_action(
       Format("Wrong database type: $0", YQLDatabase_Name(database.db_type)));
 
   RETURN_NOT_OK_PREPEND(
-      client->CreateNamespaceSnapshot(database),
+      client->CreateNamespaceSnapshot(database, retention_duration_hours),
       Format("Unable to create snapshot of database: $0", database.name));
   return Status::OK();
 }
@@ -1656,7 +1760,7 @@ Status create_change_data_stream_action(
     return ClusterAdminCli::kInvalidArguments;
   }
 
-  std::string checkpoint_type = yb::ToString("IMPLICIT");
+  std::string checkpoint_type = yb::ToString("EXPLICIT");
   std::string record_type = yb::ToString("CHANGE");
   std::string uppercase_checkpoint_type;
   std::string uppercase_record_type;
@@ -2130,6 +2234,9 @@ void ClusterAdminCli::RegisterCommandHandlers() {
   REGISTER_COMMAND(set_wal_retention_secs);
   REGISTER_COMMAND(get_wal_retention_secs);
   REGISTER_COMMAND(promote_auto_flags);
+  REGISTER_COMMAND(rollback_auto_flags);
+  REGISTER_COMMAND(promote_single_auto_flag);
+  REGISTER_COMMAND(demote_single_auto_flag);
   REGISTER_COMMAND(list_snapshots);
   REGISTER_COMMAND(create_snapshot);
   REGISTER_COMMAND(list_snapshot_restorations);

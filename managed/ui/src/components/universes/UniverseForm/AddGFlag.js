@@ -20,7 +20,7 @@ import './UniverseForm.scss';
 
 const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus }) => {
   const featureFlags = useSelector((state) => state.featureFlags);
-  const { mode, server, dbVersion, existingFlags } = gFlagProps;
+  const { mode, server, dbVersion, existingFlags, isGFlagMultilineConfEnabled } = gFlagProps;
   const [searchVal, setSearchVal] = useState('');
   const [isLoading, setLoader] = useState(true);
   const [toggleMostUsed, setToggleMostUsed] = useState(true);
@@ -29,10 +29,6 @@ const AddGFlag = ({ formProps, gFlagProps, updateJWKSDialogStatus }) => {
   const [filteredArr, setFilteredArr] = useState(null);
   const [selectedFlag, setSelectedFlag] = useState(null);
   const [apiError, setAPIError] = useState(null);
-
-  // Multiline Conf GFlag
-  const isGFlagMultilineConfEnabled =
-    featureFlags.test.enableGFlagMultilineConf || featureFlags.released.enableGFlagMultilineConf;
 
   //Declarative methods
   const filterByText = (arr, text) => arr.filter((e) => e?.name?.includes(text));

@@ -133,6 +133,8 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
     mockWaits(mockClient, 3);
     UniverseModifyBaseTest.mockGetMasterRegistrationResponse(
         mockClient, ImmutableList.of("10.0.0.4", "10.0.0.6"), Collections.emptyList());
+
+    setFollowerLagMock();
   }
 
   private TaskInfo submitTask(NodeTaskParams taskParams, String nodeName) {
@@ -183,7 +185,7 @@ public class RemoveNodeFromUniverseTest extends CommissionerBaseTest {
           TaskType.UpdateNodeProcess,
           TaskType.WaitForServer,
           TaskType.ChangeMasterConfig,
-          TaskType.WaitForFollowerLag,
+          TaskType.CheckFollowerLag,
           TaskType.ChangeMasterConfig,
           TaskType.AnsibleClusterServerCtl,
           TaskType.WaitForMasterLeader,

@@ -14,6 +14,7 @@ import lombok.extern.slf4j.Slf4j;
 import org.yb.client.DeleteUniverseReplicationResponse;
 import org.yb.client.MasterErrorException;
 import org.yb.client.YBClient;
+import org.yb.master.CatalogEntityInfo;
 
 @Slf4j
 public class DeleteReplication extends XClusterConfigTaskBase {
@@ -65,8 +66,20 @@ public class DeleteReplication extends XClusterConfigTaskBase {
     String targetUniverseCertificate = targetUniverse.getCertificateNodetoNode();
     try (YBClient client =
         ybService.getClient(targetUniverseMasterAddresses, targetUniverseCertificate)) {
+      // Sync the state for the tables.
+      CatalogEntityInfo.SysClusterConfigEntryPB clusterConfig =
+          getClusterConfig(client, targetUniverse.getUniverseUUID());
+      boolean replicationGroupExists =
+          syncReplicationSetUpStateForTables(
+              clusterConfig, xClusterConfig, xClusterConfig.getTableIds());
+      if (!replicationGroupExists) {
+        log.warn("No replication group found for {}", xClusterConfig);
+      }
+
       // Catch the `Universe replication NOT_FOUND` exception, and because it already does not
-      // exist, the exception will be ignored.
+      // exist, the exception will be ignored. We run the RPC even when the target universe
+      // cluster config did not have the replication group to preserve the old behavior, and it
+      // is useful in case YBDB returns some warnings to be printed in the YBA logs.
       try {
         DeleteUniverseReplicationResponse resp =
             client.deleteUniverseReplication(
@@ -102,14 +115,7 @@ public class DeleteReplication extends XClusterConfigTaskBase {
           .getTablesById(
               xClusterConfig.getTableIdsWithReplicationSetup(
                   xClusterConfig.getTableIds(), true /* done */))
-          .forEach(
-              tableConfig -> {
-                tableConfig.setStatus(XClusterTableConfig.Status.Validated);
-                tableConfig.setReplicationSetupDone(false);
-                tableConfig.setStreamId(null);
-                tableConfig.setBootstrapCreateTime(null);
-                tableConfig.setRestoreTime(null);
-              });
+          .forEach(XClusterTableConfig::reset);
       xClusterConfig.update();
 
       if (HighAvailabilityConfig.get().isPresent()) {
@@ -117,7 +123,9 @@ public class DeleteReplication extends XClusterConfigTaskBase {
       }
     } catch (Exception e) {
       log.error("{} hit error : {}", getName(), e.getMessage());
-      throw new RuntimeException(e);
+      if (!taskParams().ignoreErrors) {
+        throw new RuntimeException(e);
+      }
     }
 
     log.info("Completed {}", getName());

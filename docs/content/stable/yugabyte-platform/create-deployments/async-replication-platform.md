@@ -61,28 +61,28 @@ You can set up xCluster replication as follows:
 
 1. Click **Validate Table Selection**.
 
-   This triggers YugabyteDB Anywhere to check whether or not bootstrapping is required for the selected database and its tables:
+    YugabyteDB Anywhere checks whether or not bootstrapping is required for the selected database and its tables. Depending on the result, do the following:
 
-   - If bootstrapping is not required, **Validate Table Selection** changes to **Enable Replication** which you need to click in order to set up replication:
+    - If bootstrapping is not required, **Validate Table Selection** changes to **Enable Replication** which you need to click in order to set up replication.
 
-   - If bootstrapping is required, **Validate Table Selection** changes to **Next: Configure Bootstrap** which you need to click in order to access the bootstrapping settings, and then proceed by completing the fields of the dialog shown in the following illustration:
+    - If bootstrapping is required, **Validate Table Selection** changes to **Next: Configure Bootstrap** which you need to click in order to access the bootstrapping settings, and then proceed by completing the fields of the dialog shown in the following illustration:
 
-     ![Create Replication](/images/yp/asynch-replication-335.png)
+      ![Create Replication](/images/yp/asynch-replication-335.png)
 
-     Select the storage configuration to be used during backup and restore part of bootstrapping. For information on how to configure storage, see [Configure backup storage](../../back-up-restore-universes/configure-backup-storage/).
+      Select the storage configuration to be used during backup and restore part of bootstrapping. For information on how to configure storage, see [Configure backup storage](../../back-up-restore-universes/configure-backup-storage/).
 
-     Optionally, specify the number of parallel threads that can run during bootstrapping. The greater number would result in a more significant decrease of the backup and restore time, but put  more pressure on the universes.
+      Optionally, specify the number of parallel threads that can run during bootstrapping. The greater number would result in a more significant decrease of the backup and restore time, but put  more pressure on the universes.
 
-     Clicking **Bootstrap and Enable Replication** starts the process of setting up replication. Tables that do not require bootstrapping are set up for replication first, followed by tables that need bootstrapping, database per database.
+      Clicking **Bootstrap and Enable Replication** starts the process of setting up replication. Tables that do not require bootstrapping are set up for replication first, followed by tables that need bootstrapping, database per database.
 
-     You can view the progress on xCluster tasks by navigating to **Universes**, selecting the source universe, and then selecting **Tasks**.
+    You can view the progress on xCluster tasks by navigating to **Universes**, selecting the source universe, and then selecting **Tasks**.
 
 1. Optionally, configure alerts on lag, as follows:
 
     - Click **Max acceptable lag time**.
     - Use the **Define Max Acceptable Lag Time** dialog to enable or disable alert issued when the replication lag exceeds the specified threshold, as per the following illustration:
 
-    ![Create Replication](/images/yp/asynch-replication-91.png)
+      ![Create Replication](/images/yp/asynch-replication-91.png)
 
     In addition to the replication lag alert, an alert for unreplicated YSQL tables on the source universe in a database with replicated tables, is added by default. This alert will fire if, for example, a user has added a new table to a database but neglected to add it to the replication group. After receiving this alert, you can add the table to the replication; refer to [View, manage, and monitor replication](#view-manage-and-monitor-replication).
 
@@ -124,7 +124,7 @@ This page allows you to do the following:
 
   ![Replication Details](/images/yp/asynch-replication-551.png)
 
-  Note that even though index tables are not displayed in the preceding dialog, the replication is automatically restarted for them if it is restarted for the main table.
+  Note that even though index tables are not displayed, the replication is automatically restarted for them if it is restarted for the main table.
 
 - Delete the replication configuration by clicking **Actions > Delete Replication**.
 

@@ -84,6 +84,10 @@ class ReceivedSidecars {
     return GetFlatDynamicMemoryUsageOf(sidecar_bounds_);
   }
 
+  size_t GetCount() const {
+    return sidecar_bounds_.size() > 0 ? sidecar_bounds_.size() - 1 : 0;
+  }
+
  private:
   static constexpr size_t kMinBufferForSidecarSlices = 16;
   // Slices of data for rpc sidecars. They point into memory owned by transfer_.

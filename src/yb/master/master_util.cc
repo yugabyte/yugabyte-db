@@ -28,6 +28,7 @@
 #include "yb/rpc/rpc_controller.h"
 
 #include "yb/util/countdown_latch.h"
+#include "yb/util/format.h"
 #include "yb/util/net/net_util.h"
 #include "yb/util/result.h"
 #include "yb/util/status_format.h"
@@ -44,6 +45,16 @@ const char* DatabasePrefix(YQLDatabase db) {
   }
   CHECK(false) << "Unexpected db type " << db;
   return kDBTypePrefixUnknown;
+}
+
+std::string ShortDatabaseType(YQLDatabase db_type) {
+  switch(db_type) {
+    case YQL_DATABASE_UNKNOWN: return "UNKNOWN";
+    case YQL_DATABASE_CQL: return "YCQL";
+    case YQL_DATABASE_PGSQL: return "YSQL";
+    case YQL_DATABASE_REDIS: return "YEDIS";
+  }
+  return Format("<invalid database type $0>", to_underlying(db_type));
 }
 
 namespace master {

@@ -118,9 +118,6 @@ class XClusterOutputClient : public XClusterAsyncExecutor {
   // Returns true if all records are processed, false if there are still some pending records.
   bool IncProcessedRecordCount() REQUIRES(lock_);
 
-  XClusterOutputClientResponse PrepareResponse() REQUIRES(lock_);
-  void SendResponse(const XClusterOutputClientResponse& resp) EXCLUDES(lock_);
-
   void HandleResponse() EXCLUDES(lock_);
   void HandleError(const Status& s) EXCLUDES(lock_);
 

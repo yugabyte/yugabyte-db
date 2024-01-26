@@ -81,4 +81,12 @@ class ProcessSupervisor {
   scoped_refptr<Thread> supervisor_thread_;
   void RunThread();
 };
+
+struct ProcessWrapperCommonConfig {
+  std::string certs_dir;
+  std::string certs_for_client_dir;
+  std::string cert_base_name;
+  bool enable_tls = false;
+};
+
 }  // namespace yb

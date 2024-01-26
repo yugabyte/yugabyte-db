@@ -32,7 +32,6 @@
 
 #include "yb/util/test_util.h"
 
-#include <glog/logging.h>
 #include <gtest/gtest-spi.h>
 
 #include "yb/gutil/casts.h"
@@ -59,6 +58,7 @@ DEFINE_NON_RUNTIME_string(test_leave_files, "on_failure",
 DEFINE_NON_RUNTIME_int32(test_random_seed, 0, "Random seed to use for randomized tests");
 DECLARE_int64(memory_limit_hard_bytes);
 DECLARE_bool(enable_tracing);
+DECLARE_bool(TEST_enable_sync_points);
 DECLARE_bool(TEST_running_test);
 DECLARE_bool(never_fsync);
 DECLARE_string(vmodule);
@@ -133,6 +133,7 @@ YBTest::~YBTest() {
 
 void YBTest::SetUp() {
   ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_running_test) = true;
+  ANNOTATE_UNPROTECTED_WRITE(FLAGS_TEST_enable_sync_points) = true;
 
   InitSpinLockContentionProfiling();
   InitGoogleLoggingSafeBasic("yb_test");
@@ -191,13 +192,6 @@ void OverrideFlagForSlowTests(const std::string& flag_name,
   }
   google::SetCommandLineOptionWithMode(flag_name.c_str(), new_value.c_str(),
                                        google::SET_FLAG_IF_DEFAULT);
-}
-
-Status EnableVerboseLoggingForModule(const std::string& module, int level) {
-  string old_value = FLAGS_vmodule;
-  string new_value = Format("$0$1$2=$3", old_value, (old_value.empty() ? "" : ","), module, level);
-
-  return SET_FLAG(vmodule, new_value);
 }
 
 int SeedRandom() {

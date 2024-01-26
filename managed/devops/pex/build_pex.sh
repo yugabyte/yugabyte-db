@@ -24,18 +24,20 @@ function generateMultiPlatformPex {
 
     echo "Generating the PEX file ... "
     # Executable command to generate the PEX file. Components:
-    # Line 1: Required Python dependencies (python3_requirements_frozen.txt)
-    # Line 2: Required Python versions (3.6, 3.7, 3.8, 3.9, 3.10, 3.11)
-    # Line 3: Required Linux Platforms (manyLinux2014, one for each Python version)
-    # Line 4: Data directories to bundle into the PEX (opscli)
-    # Line 5: --resolve-local-platforms flag (Ensure wheels built in the pex match
-    # the platform specifications)
-    # Line 6: Created PEX file output (named as pexEnv.pex)
+    # -r Required Python dependencies (python3_requirements_frozen.txt)
+    # --python Required Python versions (3.6, 3.7, 3.8, 3.9, 3.10, 3.11)
+    # --platform Required Linux Platforms (manyLinux2014, one for each Python version)
+    # -D Data directories to bundle into the PEX (opscli)
+    # --resolve-local-platforms flag (Ensure wheels built in the pex match platform specifications)
+    # --venv prepend scripts to PATH
+    # --include-tools to generate venv with PEX_TOOLS=1 on target side
+    # --venv-copies copies over python executable directly into PEX rather than symlink to system
+    # -o Created PEX file output (named as pexEnv.pex)
     pex_command_exec=(python3 -m pex -r "$PYTHON_REQUIREMENTS_FILE"
     ${PYTHON3_VERSIONS[@]/#/--python=}
     ${LINUX_PLATFORMS[@]/#/--platform=}
     -D ../opscli
-    --resolve-local-platforms
+    --resolve-local-platforms --venv prepend --include-tools --venv-copies
      -o pexEnv.pex)
 
     ${pex_command_exec[*]}

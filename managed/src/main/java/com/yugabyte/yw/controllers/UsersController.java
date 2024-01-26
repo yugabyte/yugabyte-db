@@ -123,13 +123,18 @@ public class UsersController extends AuthenticatedController {
     @RequiredPermissionOnResource(
         requiredPermission =
             @PermissionAttribute(resourceType = ResourceType.USER, action = Action.READ),
-        resourceLocation = @Resource(path = Util.USERS, sourceType = SourceType.ENDPOINT))
+        resourceLocation = @Resource(path = Util.USERS, sourceType = SourceType.ENDPOINT),
+        checkOnlyPermission = true)
   })
   public Result list(UUID customerUUID) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
+    UserWithFeatures u = RequestContext.get(TokenAuthenticator.USER);
+    Set<UUID> resourceUUIDs =
+        roleBindingUtil.getResourceUuids(u.getUser().getUuid(), ResourceType.USER, Action.READ);
     List<Users> users = Users.getAll(customerUUID);
     List<UserWithFeatures> userWithFeaturesList =
         users.stream()
+            .filter(user -> resourceUUIDs.contains(user.getUuid()))
             .map(user -> userService.getUserWithFeatures(customer, user))
             .collect(Collectors.toList());
     return PlatformResults.withData(userWithFeaturesList);
@@ -153,7 +158,11 @@ public class UsersController extends AuthenticatedController {
     @RequiredPermissionOnResource(
         requiredPermission =
             @PermissionAttribute(resourceType = ResourceType.USER, action = Action.CREATE),
-        resourceLocation = @Resource(path = Util.USERS, sourceType = SourceType.ENDPOINT))
+        resourceLocation = @Resource(path = Util.USERS, sourceType = SourceType.ENDPOINT)),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.ROLE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.ROLE, sourceType = SourceType.ENDPOINT))
   })
   @Transactional
   public Result create(UUID customerUUID, Http.Request request) {
@@ -228,6 +237,10 @@ public class UsersController extends AuthenticatedController {
       // Check the role and resource definitions list field. New RBAC APIs use case. To be
       // standardized.
       else if (formData.getRole() == null && formData.getRoleResourceDefinitions() != null) {
+        // Validate the roles and resource group definitions given.
+        roleBindingUtil.validateRoles(customerUUID, formData.getRoleResourceDefinitions());
+        roleBindingUtil.validateResourceGroups(customerUUID, formData.getRoleResourceDefinitions());
+
         // Create the user.
         user =
             Users.create(
@@ -236,6 +249,10 @@ public class UsersController extends AuthenticatedController {
                 Users.Role.ConnectOnly,
                 customerUUID,
                 false);
+
+        // Populate all the system default resource groups for all system defined roles.
+        roleBindingUtil.populateSystemRoleResourceGroups(
+            customerUUID, user.getUuid(), formData.getRoleResourceDefinitions());
         // Add all the role bindings for the user.
         List<RoleBinding> createdRoleBindings =
             roleBindingUtil.setUserRoleBindings(
@@ -284,8 +301,8 @@ public class UsersController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.DELETE),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+            @PermissionAttribute(resourceType = ResourceType.USER, action = Action.DELETE),
+        resourceLocation = @Resource(path = Util.USERS, sourceType = SourceType.ENDPOINT))
   })
   public Result delete(UUID customerUUID, UUID userUUID, Http.Request request) {
     Users user = Users.getOrBadRequest(customerUUID, userUUID);
@@ -349,8 +366,14 @@ public class UsersController extends AuthenticatedController {
   @AuthzPath({
     @RequiredPermissionOnResource(
         requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.OTHER, action = Action.UPDATE),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
+            @PermissionAttribute(
+                resourceType = ResourceType.USER,
+                action = Action.UPDATE_ROLE_BINDINGS),
+        resourceLocation = @Resource(path = Util.USERS, sourceType = SourceType.ENDPOINT)),
+    @RequiredPermissionOnResource(
+        requiredPermission =
+            @PermissionAttribute(resourceType = ResourceType.ROLE, action = Action.READ),
+        resourceLocation = @Resource(path = Util.ROLE, sourceType = SourceType.ENDPOINT))
   })
   @Deprecated
   @Transactional
@@ -411,12 +434,7 @@ public class UsersController extends AuthenticatedController {
         dataType = "com.yugabyte.yw.forms.UserRegisterFormData",
         paramType = "body")
   })
-  @AuthzPath({
-    @RequiredPermissionOnResource(
-        requiredPermission =
-            @PermissionAttribute(resourceType = ResourceType.USER, action = Action.UPDATE),
-        resourceLocation = @Resource(path = Util.CUSTOMERS, sourceType = SourceType.ENDPOINT))
-  })
+  @AuthzPath
   public Result changePassword(UUID customerUUID, UUID userUUID, Http.Request request) {
     Users user = Users.getOrBadRequest(customerUUID, userUUID);
     if (UserType.ldap == user.getUserType()) {

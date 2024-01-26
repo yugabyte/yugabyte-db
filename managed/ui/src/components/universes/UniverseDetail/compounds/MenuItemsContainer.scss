@@ -1,7 +1,7 @@
 @use '../../../../_style/colors.scss';
 
 .menu-items-container {
-  $menu-width: 250px;
+  $menu-width: 280px;
 
   display: flex;
   width: $menu-width;
@@ -11,6 +11,10 @@
     min-width: 100%;
     transition: margin-left 250ms ease;
     will-change: margin-left;
+
+    li.disabled > a {
+      cursor: not-allowed;
+    }
 
     &--slide-left {
       margin-left: -$menu-width;
@@ -25,4 +29,3 @@
     min-width: 100%;
   }
 }
-

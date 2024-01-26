@@ -14,6 +14,13 @@ export const RoleType = {
   CUSTOM: 'Custom'
 } as const;
 
+export const ForbiddenRoles = [
+  {
+    roleType: RoleType.SYSTEM,
+    name: 'SuperAdmin'
+  }
+];
+
 export interface Role {
   roleUUID: string;
   name: string;

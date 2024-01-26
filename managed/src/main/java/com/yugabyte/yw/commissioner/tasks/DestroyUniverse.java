@@ -18,6 +18,7 @@ import com.yugabyte.yw.commissioner.tasks.subtasks.DeleteCertificate;
 import com.yugabyte.yw.commissioner.tasks.subtasks.RemoveUniverseEntry;
 import com.yugabyte.yw.common.DnsManager;
 import com.yugabyte.yw.common.XClusterUniverseService;
+import com.yugabyte.yw.common.operator.KubernetesResourceDetails;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams.Cluster;
 import com.yugabyte.yw.forms.UniverseTaskParams;
@@ -26,6 +27,7 @@ import com.yugabyte.yw.models.DrConfig;
 import com.yugabyte.yw.models.Universe;
 import com.yugabyte.yw.models.XClusterConfig;
 import com.yugabyte.yw.models.helpers.NodeDetails;
+import io.swagger.annotations.ApiModelProperty;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
@@ -34,6 +36,8 @@ import java.util.UUID;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.inject.Inject;
+import lombok.Getter;
+import lombok.Setter;
 import lombok.extern.slf4j.Slf4j;
 
 @Slf4j
@@ -53,6 +57,11 @@ public class DestroyUniverse extends UniverseTaskBase {
     public Boolean isForceDelete;
     public Boolean isDeleteBackups;
     public Boolean isDeleteAssociatedCerts;
+
+    @ApiModelProperty(hidden = true)
+    @Getter
+    @Setter
+    KubernetesResourceDetails kubernetesResourceDetails;
   }
 
   public Params params() {
@@ -66,9 +75,9 @@ public class DestroyUniverse extends UniverseTaskBase {
       // to prevent other updates from happening.
       Universe universe;
       if (params().isForceDelete) {
-        universe = forceLockUniverseForUpdate(-1, true);
+        universe = forceLockUniverseForUpdate(-1);
       } else {
-        universe = lockUniverseForUpdate(-1, true);
+        universe = lockUniverseForUpdate(-1);
       }
 
       // Delete xCluster configs involving this universe and put the locked universes to

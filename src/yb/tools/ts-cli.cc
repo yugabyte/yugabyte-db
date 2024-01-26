@@ -33,8 +33,6 @@
 
 #include <memory>
 
-#include <glog/logging.h>
-
 #include "yb/dockv/partition.h"
 #include "yb/qlexpr/ql_rowblock.h"
 #include "yb/common/schema_pbutil.h"

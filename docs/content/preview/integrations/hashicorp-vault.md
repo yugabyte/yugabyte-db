@@ -6,7 +6,7 @@ aliases:
 menu:
   preview_integrations:
     identifier: hashicorp-vault
-    parent: integrations
+    parent: integrations-security
     weight: 571
 type: docs
 ---

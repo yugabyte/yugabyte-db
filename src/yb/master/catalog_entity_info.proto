@@ -76,6 +76,15 @@ message BackfillJobPB {
   optional uint64 backfilling_timestamp = 3;
 }
 
+  message YsqlDdlTxnVerifierStatePB {
+    optional bool contains_create_table_op = 1;
+    optional bool contains_alter_table_op = 2;
+    optional bool contains_drop_table_op = 3;
+
+    optional SchemaPB previous_schema = 4;
+    optional string previous_table_name = 5;
+  }
+
 // The on-disk entry in the sys.catalog table ("metadata" column) for
 // tables entries.
 message SysTablesEntryPB {
@@ -187,19 +196,10 @@ message SysTablesEntryPB {
   // Time when the table was hidden.
   optional fixed64 hide_hybrid_time = 35;
 
-  message YsqlDdlTxnVerifierState {
-    optional bool contains_create_table_op = 1;
-    optional bool contains_alter_table_op = 2;
-    optional bool contains_drop_table_op = 3;
-
-    optional SchemaPB previous_schema = 4;
-    optional string previous_table_name = 5;
-  }
-
   // State that indicates that this table is being changed by a YSQL transaction.
   // This repeated field contains only a single element as of now. When we support DDL + Savepoints,
   // we will have one element for every savepoint modifying this table in this field.
-  repeated YsqlDdlTxnVerifierState ysql_ddl_txn_verifier_state = 38;
+  repeated YsqlDdlTxnVerifierStatePB ysql_ddl_txn_verifier_state = 38;
 
   // YSQL transaction that is currently modifying this table state. The changes being performed by
   // it are detailed in 'ysql_ddl_txn_state' above.
@@ -392,6 +392,10 @@ message SysClusterConfigEntryPB {
   optional BlacklistPB leader_blacklist = 7;
   optional EncryptionInfoPB encryption_info = 5;
   optional cdc.ConsumerRegistryPB consumer_registry = 6;
+  // This field is only generated internally by the master leader in PrepareDefaultClusterConfig (as
+  // opposed to cluster_uuid which can be passed in as a flag). If not already set, it is set on
+  // the VisitSysCatalog path.
+  optional string universe_uuid = 8;
 }
 
 message SysXClusterConfigEntryPB {
@@ -525,6 +529,7 @@ message SysCDCStreamEntryPB {
   optional State state = 3 [default = ACTIVE];
   optional string namespace_id = 4;
   optional bool transactional = 5; // [default = false]
+  optional string cdcsdk_ysql_replication_slot_name = 6;
 }
 
 // The on-disk entry in the sys.catalog table ("metadata" column) for snapshots entries.
@@ -563,6 +568,11 @@ message SysSnapshotEntryPB {
   optional bytes schedule_id = 6;
 
   optional fixed64 previous_snapshot_hybrid_time = 7;
+
+  // Number of hours the snapshot needs to be kept around
+  // before it is deleted. Set to -1 to retain indefinitely until
+  // an explicit delete_snapshot.
+  optional int32 retention_duration_hours = 8;
 }
 
 message SchemaVersionMappingPB {

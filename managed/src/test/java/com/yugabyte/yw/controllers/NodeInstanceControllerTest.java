@@ -336,6 +336,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
     checkNotOk(r, error);
     assertAuditEntry(0, customer.getUuid());
   }
+
   // Test for Delete Instance, use case is only for OnPrem, but test can be validated with AWS
   // provider as well
   @Test
@@ -423,7 +424,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
       if ((nodeActionType == NodeActionType.QUERY) || (nodeActionType == NodeActionType.DELETE)) {
         continue;
       }
-      UUID fakeTaskUUID = UUID.randomUUID();
+      UUID fakeTaskUUID = buildTaskInfo(null, TaskType.AddNodeToUniverse);
       when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
           .thenReturn(fakeTaskUUID);
       Universe u = ModelFactory.createUniverse(nodeActionType.name(), customer.getId());
@@ -568,7 +569,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
   @Test
   public void testStartNodeActionPassesClustersAndRootCAInTaskParams() {
     NodeActionType nodeActionType = NodeActionType.START;
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.StartNodeInUniverse);
     when(mockCommissioner.submit(any(TaskType.class), any(UniverseDefinitionTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     Universe u = ModelFactory.createUniverse(nodeActionType.name(), customer.getId());
@@ -592,7 +593,7 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
   @Test
   public void testDetachedNodeActionValid() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.PrecheckNodeDetached);
     when(mockCommissioner.submit(any(TaskType.class), any(DetachedNodeTaskParams.class)))
         .thenReturn(fakeTaskUUID);
     Result r =
@@ -649,10 +650,11 @@ public class NodeInstanceControllerTest extends FakeDBApplication {
 
   @Test
   public void testDetachedNodeActionAlreadyInProgress() {
+    UUID taskUUID = buildTaskInfo(null, TaskType.PrecheckNodeDetached);
     CustomerTask.create(
         customer,
         node.getNodeUuid(),
-        UUID.randomUUID(),
+        taskUUID,
         CustomerTask.TargetType.Node,
         CustomerTask.TaskType.PrecheckNode,
         node.getNodeName());

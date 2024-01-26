@@ -380,7 +380,8 @@ YBCatalogTupleInsert(Relation heapRel, HeapTuple tup, bool yb_shared_insert)
 								  RelationGetDescr(heapRel),
 								  tup,
 								  ONCONFLICT_NONE,
-								  &ybctid);
+								  &ybctid,
+								  YB_TRANSACTIONAL);
 		}
 		YB_FOR_EACH_DB_END;
 	}
@@ -390,7 +391,8 @@ YBCatalogTupleInsert(Relation heapRel, HeapTuple tup, bool yb_shared_insert)
 						  RelationGetDescr(heapRel),
 						  tup,
 						  ONCONFLICT_NONE,
-						  &ybctid);
+						  &ybctid,
+						  YB_TRANSACTIONAL);
 	/* Update the local cache automatically */
 	YbSetSysCacheTuple(heapRel, tup);
 
@@ -437,12 +439,9 @@ CatalogTupleInsertWithInfo(Relation heapRel, HeapTuple tup,
 				 */
 				if (dboid == YBCGetDatabaseOid(heapRel))
 					continue; /* Will be done after the loop. */
-				YBCExecuteInsertForDb(dboid,
-									  heapRel,
-									  RelationGetDescr(heapRel),
-									  tup,
-									  ONCONFLICT_NONE,
-									  &ybctid);
+				YBCExecuteInsertForDb(
+						dboid, heapRel, RelationGetDescr(heapRel), tup, ONCONFLICT_NONE, &ybctid,
+						YB_TRANSACTIONAL);
 			}
 			YB_FOR_EACH_DB_END;
 		}
@@ -451,7 +450,8 @@ CatalogTupleInsertWithInfo(Relation heapRel, HeapTuple tup,
 							  RelationGetDescr(heapRel),
 							  tup,
 							  ONCONFLICT_NONE,
-							  &ybctid);
+							  &ybctid,
+							  YB_TRANSACTIONAL);
 
 		/* Update the local cache automatically */
 		YbSetSysCacheTuple(heapRel, tup);

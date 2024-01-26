@@ -215,6 +215,31 @@ Status DoDecodeValue(
       value_type, Slice(original_start, slice.end()).ToDebugHexString(), data_type);
 }
 
+// Should be used only in conjunction with WriteBuffer::Append* methods.
+template <class T>
+class LazyBigEndianValue {
+ public:
+  explicit LazyBigEndianValue(PgValueDatum datum) : datum_(datum) {}
+
+  size_t size() const {
+    return sizeof(T);
+  }
+
+  // Exactly one of the methods below will be invoked.
+  void CopyTo(char* out) {
+    auto value = LoadRaw<T, BigEndian>(&datum_);
+    memcpy(out, &value, sizeof(value));
+  }
+
+  Slice AsSlice() {
+    datum_ = LoadRaw<T, BigEndian>(&datum_);
+    return Slice(pointer_cast<const char*>(&datum_), sizeof(T));
+  }
+
+ private:
+  PgValueDatum datum_;
+};
+
 template <class T, bool kLast>
 void EncodePrimitive(const PgTableRow& row, WriteBuffer* buffer, const PgWireEncoderEntry* chain) {
   auto index = chain->data;
@@ -225,9 +250,8 @@ void EncodePrimitive(const PgTableRow& row, WriteBuffer* buffer, const PgWireEnc
   }
 
   auto datum = row.GetPrimitiveDatum(index);
-  auto value = LoadRaw<T, BigEndian>(&datum);
-  buffer->AppendWithPrefix(0, pointer_cast<const char*>(&value), sizeof(value));
-  CallNextEncoder<kLast>(row, buffer, chain);
+  buffer->AppendWithPrefix(0, LazyBigEndianValue<T>(datum));
+  MUST_TAIL return CallNextEncoder<kLast>(row, buffer, chain);
 }
 
 template <bool kLast>

@@ -18,6 +18,11 @@ import static junit.framework.TestCase.assertTrue;
 import static org.junit.Assert.assertEquals;
 import static org.junit.Assert.assertFalse;
 import static org.junit.Assert.assertNotNull;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyBoolean;
+import static org.mockito.ArgumentMatchers.anyMap;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.any;
 import static org.mockito.Mockito.anyBoolean;
 import static org.mockito.Mockito.anyMap;
@@ -47,6 +52,8 @@ import com.yugabyte.yw.common.FakeDBApplication;
 import com.yugabyte.yw.common.ModelFactory;
 import com.yugabyte.yw.common.ShellResponse;
 import com.yugabyte.yw.common.TestUtils;
+import com.yugabyte.yw.common.config.CustomerConfKeys;
+import com.yugabyte.yw.common.config.RuntimeConfGetter;
 import com.yugabyte.yw.forms.UniverseDefinitionTaskParams;
 import com.yugabyte.yw.models.AccessKey;
 import com.yugabyte.yw.models.AccessKey.KeyInfo;
@@ -80,6 +87,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.Mockito;
+import org.mockito.MockitoAnnotations;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import play.libs.Json;
@@ -90,12 +98,14 @@ public class CloudProviderControllerTest extends FakeDBApplication {
   public static final Logger LOG = LoggerFactory.getLogger(CloudProviderControllerTest.class);
 
   @Mock Config mockConfig;
+  @Mock RuntimeConfGetter mockConfGetter;
 
   Customer customer;
   Users user;
 
   @Before
   public void setUp() {
+    MockitoAnnotations.initMocks(this);
     customer = ModelFactory.testCustomer();
     user = ModelFactory.testUser(customer);
     try {
@@ -108,6 +118,8 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     when(mockAccessManager.createKubernetesAuthDataFile(
             anyString(), anyString(), anyString(), anyBoolean()))
         .thenReturn("/tmp/some-fake-path-here/kubernetes-auth-file.txt");
+    when(mockConfGetter.getConfForScope(customer, CustomerConfKeys.cloudEnabled)).thenReturn(false);
+    when(mockConfGetter.getStaticConf()).thenReturn(mockConfig);
   }
 
   private Result listProviders() {
@@ -512,27 +524,20 @@ public class CloudProviderControllerTest extends FakeDBApplication {
     // when(mockAppConfig.getString("yb.kubernetes.pullSecretName")).thenReturn(pullSecretName);
 
     String nodeInfos =
-        "{\"items\": ["
-            + "{\"metadata\": {\"labels\": "
-            + "{\"failure-domain.beta.kubernetes.io/region\": \"deprecated\", "
-            + "\"failure-domain.beta.kubernetes.io/zone\": \"deprecated\", "
-            + "\"topology.kubernetes.io/region\": \"region-1\", \"topology.kubernetes.io/zone\": \"r1-az1\"}, "
-            + "\"name\": \"node-1\"}}, "
-            + "{\"metadata\": {\"labels\": "
-            + "{\"failure-domain.beta.kubernetes.io/region\": \"region-2\", "
-            + "\"failure-domain.beta.kubernetes.io/zone\": \"r2-az1\"}, "
-            + "\"name\": \"node-2\"}}, "
-            + "{\"metadata\": {\"labels\": "
-            + "{\"topology.kubernetes.io/region\": \"region-3\", \"topology.kubernetes.io/zone\": \"r3-az1\"}, "
-            + "\"name\": \"node-3\"}}"
-            + "]}";
+        "{\"items\": [{\"metadata\": {\"labels\": {\"failure-domain.beta.kubernetes.io/region\":"
+            + " \"deprecated\", \"failure-domain.beta.kubernetes.io/zone\": \"deprecated\","
+            + " \"topology.kubernetes.io/region\": \"region-1\", \"topology.kubernetes.io/zone\":"
+            + " \"r1-az1\"}, \"name\": \"node-1\"}}, {\"metadata\": {\"labels\":"
+            + " {\"failure-domain.beta.kubernetes.io/region\": \"region-2\","
+            + " \"failure-domain.beta.kubernetes.io/zone\": \"r2-az1\"}, \"name\": \"node-2\"}},"
+            + " {\"metadata\": {\"labels\": {\"topology.kubernetes.io/region\": \"region-3\","
+            + " \"topology.kubernetes.io/zone\": \"r3-az1\"}, \"name\": \"node-3\"}}]}";
     List<Node> nodes = TestUtils.deserialize(nodeInfos, NodeList.class).getItems();
     when(mockKubernetesManager.getNodeInfos(any())).thenReturn(nodes);
 
     String secretContent =
-        "{\"metadata\": {"
-            + "\"annotations\": {\"kubectl.kubernetes.io/last-applied-configuration\": \"removed\"}, "
-            + "\"creationTimestamp\": \"2021-03-05\", \"name\": \""
+        "{\"metadata\": {\"annotations\": {\"kubectl.kubernetes.io/last-applied-configuration\":"
+            + " \"removed\"}, \"creationTimestamp\": \"2021-03-05\", \"name\": \""
             + pullSecretName
             + "\", "
             + "\"namespace\": \"testns\", "
@@ -643,7 +648,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
       assertNull(e.getMessage());
     }
 
-    assertEquals(0, InstanceType.findByProvider(p, mockConfig).size());
+    assertEquals(0, InstanceType.findByProvider(p, mockConfGetter).size());
     assertNull(Provider.get(p.getUuid()));
   }
 
@@ -855,7 +860,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
 
   @Test
   public void testAwsBootstrapWithDestVpcId() {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.BootstrapProducer);
     when(mockCommissioner.submit(
             Mockito.any(TaskType.class), Mockito.any(CloudBootstrap.Params.class)))
         .thenReturn(fakeTaskUUID);
@@ -902,7 +907,7 @@ public class CloudProviderControllerTest extends FakeDBApplication {
 
   private void prepareBootstrap(
       ObjectNode bodyJson, Provider provider, boolean expectCallToGetRegions) {
-    UUID fakeTaskUUID = UUID.randomUUID();
+    UUID fakeTaskUUID = buildTaskInfo(null, TaskType.BootstrapProducer);
     when(mockCommissioner.submit(any(TaskType.class), any(CloudBootstrap.Params.class)))
         .thenReturn(fakeTaskUUID);
     when(mockCloudQueryHelper.getRegionCodes(provider))

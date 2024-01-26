@@ -351,7 +351,7 @@ public class YbcBackupNodeRetrieverTest extends FakeDBApplication {
     verify(mockYbcManager, times(3)).ybcPingCheck(nodeIPCaptor.capture(), eq(null), anyInt());
     List<String> capturedIPs = nodeIPCaptor.getAllValues();
     NodeDetails masterLeaderNode = mockUniverse.getMasterLeaderNode();
-    List<NodeDetails> nodeDetails = mockUniverse.getLiveTServersInPrimaryCluster();
+    List<NodeDetails> nodeDetails = mockUniverse.getRunningTserversInPrimaryCluster();
     Set<String> leaderRegionNodeIPs =
         nodeDetails.stream()
             .filter(nD -> nD.getRegion().equals(masterLeaderNode.getRegion()))

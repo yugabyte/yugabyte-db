@@ -91,7 +91,7 @@ SELECT * FROM test; -- reads start a distributed txn in serializable isolation l
  2 | 2
 (2 rows)
 
-SELECT yb_get_current_transaction_priority(); -- still 0
+SELECT yb_get_current_transaction_priority();
     yb_get_current_transaction_priority
 -------------------------------------------
  0.400000000 (Normal priority transaction)

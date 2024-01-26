@@ -32,6 +32,9 @@ message FlushTablesRequestPB {
   // Whether we want to include index tables in this flush. If there are index tables in the tables
   // field this field must be set to false, otherwise the request will fail.
   optional bool add_indexes = 3;
+
+  // Whether the operation only applies to regular RocksDB but not intents RocksDB.
+  optional bool regular_only = 4;
 }
 
 message FlushTablesResponsePB {

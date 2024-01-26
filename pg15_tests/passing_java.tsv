@@ -1,11 +1,20 @@
+org.yb.pgsql.TestAlterTableWithConcurrentTxn#testMultipleDmlTransactionWithAlterOnCurrentResource
 org.yb.pgsql.TestJWTAuth
 org.yb.pgsql.TestPg15Regress
+org.yb.pgsql.TestPgAlterTable#testAddColumnWithNotNullConstraint
+org.yb.pgsql.TestPgAlterTableChangePrimaryKey#nulls
 org.yb.pgsql.TestPgAlterTableColumnType#testAlterPartitionColumnTypeFailure
 org.yb.pgsql.TestPgAlterTableColumnType#testMultipleRewrites
+org.yb.pgsql.TestPgAlterTableColumnType#testNotNullConstraints
 org.yb.pgsql.TestPgAlterTableColumnType#testSplitOptions
+org.yb.pgsql.TestPgAlterTableColumnType#testTableWithRangeKey
+org.yb.pgsql.TestPgAlterTableColumnType#testTempTables
+org.yb.pgsql.TestPgAlterTableColumnType#testUniqueConstraints
 org.yb.pgsql.TestPgBatchExecution
 org.yb.pgsql.TestPgCacheConsistency#testCatalogVersionLogging
 org.yb.pgsql.TestPgExplainAnalyzeMetrics
+org.yb.pgsql.TestPgExplainAnalyzeScans#testFetchLimitCosting
+org.yb.pgsql.TestPgPrefetchControl#testBnlWithSizeLimit
 org.yb.pgsql.TestPgPrefetchControl#testLimitPerformance
 org.yb.pgsql.TestPgPrefetchControl#testSimplePrefetch
 org.yb.pgsql.TestPgPrefetchControl#testSizeBasedFetch
@@ -19,3 +28,5 @@ org.yb.pgsql.TestPgRegressSecondaryIndexScan
 org.yb.pgsql.TestPgRegressTabletSplit
 org.yb.pgsql.TestPgRegressTypesNumeric
 org.yb.pgsql.TestPgTransactions#testSerializableReadDelayWrite
+org.yb.pgsql.TestPgWrapper#testNotNullConstraint
+org.yb.pgsql.TestYbBackup#testAlteredTableWithNotNull

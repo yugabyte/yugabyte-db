@@ -17,6 +17,9 @@ import { HAInstancesContainer } from '../ha/instances/HAInstanceContainer';
 import ListCACerts from '../customCACerts/ListCACerts';
 import { RBACContainer } from '../../redesign/features/rbac/RBACContainer';
 import { isCertCAEnabledInRuntimeConfig } from '../customCACerts';
+import { RBAC_RUNTIME_FLAG } from '../../redesign/features/rbac/common/RbacUtils';
+import { RbacValidator } from '../../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../redesign/features/rbac/UserPermPathMapping';
 import './Administration.scss';
 
 // very basic redux store definition, just enough to compile without ts errors
@@ -92,7 +95,9 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
     test['enableRunTimeConfig'] ||
     released['enableRunTimeConfig'];
 
-  const isRBACEnabled = test['enableRBAC'] || released['enableRBAC'];
+  const isRBACEnabled = globalRuntimeConfigs?.data?.configEntries?.find(
+    (c: any) => c.key === RBAC_RUNTIME_FLAG
+  )?.value === 'true';
 
   const configTagFilter = globalRuntimeConfigs?.data?.configEntries?.find(
     (c: any) => c.key === 'yb.runtime_conf_ui.tag_filter'
@@ -128,37 +133,41 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
   const getHighAvailabilityTab = () => {
     return isAvailable(currentCustomer.data.features, 'administration.highAvailability') ? (
       <Tab eventKey="ha" title="High Availability" key="high-availability">
-        <YBTabsPanel
-          defaultTab={HighAvailabilityTabs.Replication}
-          activeTab={params.section}
-          routePrefix={`/admin/${AdministrationTabs.HA}/`}
-          id="administration-ha-subtab"
-          className="config-tabs"
+        <RbacValidator
+          accessRequiredOn={UserPermissionMap.SUPER_ADMIN}
         >
-          <Tab
-            eventKey={HighAvailabilityTabs.Replication}
-            title={
-              <span>
-                <i className="fa fa-clone tab-logo" aria-hidden="true"></i> Replication
-                Configuration
-              </span>
-            }
-            unmountOnExit
+          <YBTabsPanel
+            defaultTab={HighAvailabilityTabs.Replication}
+            activeTab={params.section}
+            routePrefix={`/admin/${AdministrationTabs.HA}/`}
+            id="administration-ha-subtab"
+            className="config-tabs"
           >
-            <HAReplication />
-          </Tab>
-          <Tab
-            eventKey={HighAvailabilityTabs.Instances}
-            title={
-              <span>
-                <i className="fa fa-codepen tab-logo" aria-hidden="true"></i> Instance Configuration
-              </span>
-            }
-            unmountOnExit
-          >
-            <HAInstancesContainer />
-          </Tab>
-        </YBTabsPanel>
+            <Tab
+              eventKey={HighAvailabilityTabs.Replication}
+              title={
+                <span>
+                  <i className="fa fa-clone tab-logo" aria-hidden="true"></i> Replication
+                  Configuration
+                </span>
+              }
+              unmountOnExit
+            >
+              <HAReplication />
+            </Tab>
+            <Tab
+              eventKey={HighAvailabilityTabs.Instances}
+              title={
+                <span>
+                  <i className="fa fa-codepen tab-logo" aria-hidden="true"></i> Instance Configuration
+                </span>
+              }
+              unmountOnExit
+            >
+              <HAInstancesContainer />
+            </Tab>
+          </YBTabsPanel>
+        </RbacValidator >
       </Tab>
     ) : null;
   };
@@ -218,7 +227,7 @@ export const Administration: FC<RouteComponentProps<{}, RouteParams>> = ({ param
       >
         {getHighAvailabilityTab()}
         {getAlertTab()}
-        {getUserManagementTab()}
+        {!isRBACEnabled && getUserManagementTab()}
         {isCustomCaCertsEnabled && getCustomCACertsTab()}
         {isCongifUIEnabled && getAdvancedTab()}
         {isRBACEnabled && getRbacTab()}

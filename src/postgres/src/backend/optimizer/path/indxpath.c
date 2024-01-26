@@ -628,8 +628,14 @@ yb_get_batched_index_paths(PlannerInfo *root, RelOptInfo *rel,
 			 */
 			Relids outer_relids =
 				bms_difference(rinfo->required_relids, inner_relids);
-			RestrictInfo *tmp_batched =
-				yb_get_batched_restrictinfo(rinfo, outer_relids, inner_relids);
+			RestrictInfo *tmp_batched = NULL;
+
+			/* TODO: We don't support expression indexes yet. */
+			if (index->indexkeys[i] != 0)
+			{
+				tmp_batched =
+					yb_get_batched_restrictinfo(rinfo, outer_relids, inner_relids);
+			}
 
 			/* Disabling batching the same inner attno twice for now. */
 			if (tmp_batched)
@@ -874,29 +880,15 @@ get_join_index_paths(PlannerInfo *root, RelOptInfo *rel,
 	/* We should have found something, else caller passed silly relids */
 	Assert(clauseset.nonempty);
 
-	bool yb_batched_paths_exist = false;
-	if (yb_bnl_batch_size > 1)
-	{
-		yb_batched_paths_exist =
-			yb_get_batched_index_paths(root, rel, index,&clauseset,
-					bitindexpaths);
-	}
-
 	/*
-	 * YB: With BNL enabled, we still explore NL compatible joins unless
-	 * yb_prefer_bnl to true or CBO is disabled. If yb_prefer_bnl is true,
-	 * we will never see an NL path that feeds into an index scan on the inner
-	 * side if an equivalent BNL path is available. It is still possible to
-	 * obtain NL paths that don't have BNL equivalents such as ones where the
-	 * inner side is a materialized index/seq scan.
+	 * YB: We collect batched paths first to prioritize them in the path queue.
 	 */
-	if (yb_bnl_batch_size <= 1 ||
-		 (yb_enable_optimizer_statistics && !yb_prefer_bnl) ||
-		 !yb_batched_paths_exist)
-	{
-		/* Build index path(s) using the collected set of clauses */
-		get_index_paths(root, rel, index, &clauseset, bitindexpaths);
-	}
+	if (yb_bnl_batch_size > 1)
+		yb_get_batched_index_paths(root, rel, index,&clauseset,
+											bitindexpaths);
+
+	/* Build index path(s) using the collected set of clauses */
+	get_index_paths(root, rel, index, &clauseset, bitindexpaths);
 
 	/*
 	 * Remember we considered paths for this set of relids.
@@ -2309,7 +2301,8 @@ get_loop_count(PlannerInfo *root, Index cur_relid, Relids outer_relids)
 			result = rowcount;
 	}
 
-	if (!bms_is_empty(root->yb_cur_batched_relids))
+	if (!bms_is_empty(root->yb_cur_batched_relids) &&
+		 yb_enable_base_scans_cost_model)
 		result /= yb_bnl_batch_size;
 
 	/* Return 1.0 if we found no valid relations (shouldn't happen) */

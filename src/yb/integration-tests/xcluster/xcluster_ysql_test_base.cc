@@ -26,6 +26,7 @@
 #include "yb/tserver/tablet_server.h"
 #include "yb/util/backoff_waiter.h"
 #include "yb/util/thread.h"
+#include "yb/yql/pgwrapper/libpq_utils.h"
 
 DECLARE_bool(enable_ysql);
 DECLARE_bool(hide_pg_catalog_table_creation_logs);
@@ -387,7 +388,7 @@ Status XClusterYsqlTestBase::WaitForRowCount(
     const YBTableName& table_name, uint32_t row_count, Cluster* cluster, bool allow_greater) {
   uint32_t last_row_count = 0;
 
-  return WaitFor(
+  return LoggedWaitFor(
       [&]() -> Result<bool> {
         auto result = GetRowCount(table_name, cluster);
         if (!result) {
@@ -395,6 +396,7 @@ Status XClusterYsqlTestBase::WaitForRowCount(
           return false;
         }
         last_row_count = result.get();
+        LOG(INFO) << "Row Count: " << last_row_count;
         if (allow_greater) {
           return last_row_count >= row_count;
         }
@@ -402,9 +404,7 @@ Status XClusterYsqlTestBase::WaitForRowCount(
       },
       MonoDelta::FromSeconds(kWaitForRowCountTimeout),
       Format(
-          "Wait for consumer row_count $0 to reach $1 $2",
-          last_row_count,
-          allow_greater ? "atleast" : "",
+          "Wait for $0 row_count to reach $2 $3", table_name, allow_greater ? "atleast" : "",
           row_count));
 }
 
@@ -423,6 +423,41 @@ Status XClusterYsqlTestBase::ValidateRows(
   }
 
   return OK();
+}
+
+Status XClusterYsqlTestBase::VerifyWrittenRecords(
+    std::shared_ptr<client::YBTable> producer_table,
+    std::shared_ptr<client::YBTable> consumer_table) {
+  if (!producer_table) {
+    producer_table = producer_table_;
+  }
+  if (!consumer_table) {
+    consumer_table = consumer_table_;
+  }
+  return VerifyWrittenRecords(producer_table->name(), consumer_table->name());
+}
+
+Status XClusterYsqlTestBase::VerifyWrittenRecords(
+    const YBTableName& producer_table_name, const YBTableName& consumer_table_name) {
+  return LoggedWaitFor(
+      [this, producer_table_name, consumer_table_name]() -> Result<bool> {
+        auto producer_results =
+            VERIFY_RESULT(ScanToStrings(producer_table_name, &producer_cluster_));
+        auto consumer_results =
+            VERIFY_RESULT(ScanToStrings(consumer_table_name, &consumer_cluster_));
+        if (PQntuples(producer_results.get()) != PQntuples(consumer_results.get())) {
+          return false;
+        }
+        for (int i = 0; i < PQntuples(producer_results.get()); ++i) {
+          auto prod_val = EXPECT_RESULT(pgwrapper::ToString(producer_results.get(), i, 0));
+          auto cons_val = EXPECT_RESULT(pgwrapper::ToString(consumer_results.get(), i, 0));
+          if (prod_val != cons_val) {
+            return false;
+          }
+        }
+        return true;
+      },
+      MonoDelta::FromSeconds(kRpcTimeout), "Verify written records");
 }
 
 Result<std::vector<xrepl::StreamId>> XClusterYsqlTestBase::BootstrapCluster(
@@ -452,5 +487,230 @@ Result<std::vector<xrepl::StreamId>> XClusterYsqlTestBase::BootstrapCluster(
   }
 
   return bootstrap_ids;
+}
+
+void XClusterYsqlTestBase::BumpUpSchemaVersionsWithAlters(
+    const std::vector<std::shared_ptr<client::YBTable>>& tables) {
+  // Perform some ALTERs to bump up the schema versions and cause schema version mismatch
+  // between producer and consumer before setting up replication.
+  {
+    for (const auto& table : tables) {
+      auto tbl = table->name();
+      for (size_t i = 0; i < 4; i++) {
+        auto p_conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(tbl.namespace_name()));
+        ASSERT_OK(p_conn.ExecuteFormat("ALTER TABLE $0 OWNER TO yugabyte;", tbl.table_name()));
+        if (i % 2 == 0) {
+          auto c_conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(tbl.namespace_name()));
+          ASSERT_OK(c_conn.ExecuteFormat("ALTER TABLE $0 OWNER TO yugabyte;", tbl.table_name()));
+        }
+      }
+    }
+  }
+}
+
+Status XClusterYsqlTestBase::InsertRowsInProducer(
+    uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> producer_table,
+    bool use_transaction) {
+  if (!producer_table) {
+    producer_table = producer_table_;
+  }
+  return WriteWorkload(
+      start, end, &producer_cluster_, producer_table->name(), /* delete_op */ false,
+      use_transaction);
+}
+
+Status XClusterYsqlTestBase::DeleteRowsInProducer(
+    uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> producer_table,
+    bool use_transaction) {
+  if (!producer_table) {
+    producer_table = producer_table_;
+  }
+  return WriteWorkload(
+      start, end, &producer_cluster_, producer_table->name(), /* delete_op */ true,
+      use_transaction);
+}
+
+Status XClusterYsqlTestBase::InsertGenerateSeriesOnProducer(
+    uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> producer_table) {
+  if (!producer_table) {
+    producer_table = producer_table_;
+  }
+  return WriteGenerateSeries(start, end, &producer_cluster_, producer_table->name());
+}
+
+Status XClusterYsqlTestBase::InsertTransactionalBatchOnProducer(
+    uint32_t start, uint32_t end, std::shared_ptr<client::YBTable> producer_table,
+    bool commit_transaction) {
+  if (!producer_table) {
+    producer_table = producer_table_;
+  }
+  return WriteTransactionalWorkload(
+      start, end, &producer_cluster_, producer_table->name(), commit_transaction);
+}
+
+Status XClusterYsqlTestBase::WriteGenerateSeries(
+    uint32_t start, uint32_t end, Cluster* cluster, const client::YBTableName& table) {
+  auto conn = EXPECT_RESULT(cluster->ConnectToDB(table.namespace_name()));
+  auto generate_string =
+      Format("INSERT INTO $0 VALUES (generate_series($1, $2))", table.table_name(), start, end);
+  return conn.ExecuteFormat(generate_string);
+}
+
+Status XClusterYsqlTestBase::WriteTransactionalWorkload(
+    uint32_t start, uint32_t end, Cluster* cluster, const client::YBTableName& table,
+    bool commit_transaction) {
+  auto conn = VERIFY_RESULT(cluster->ConnectToDB(table.namespace_name()));
+  std::string table_name_str = GetCompleteTableName(table);
+  RETURN_NOT_OK(conn.Execute("BEGIN"));
+  for (uint32_t i = start; i < end; i++) {
+    RETURN_NOT_OK(conn.ExecuteFormat(
+        "INSERT INTO $0($1) VALUES ($2) ON CONFLICT DO NOTHING", table_name_str, kKeyColumnName,
+        i));
+  }
+  if (commit_transaction) {
+    RETURN_NOT_OK(conn.Execute("COMMIT"));
+  } else {
+    RETURN_NOT_OK(conn.Execute("ABORT"));
+  }
+  return Status::OK();
+}
+
+Status XClusterYsqlTestBase::WriteWorkload(
+    uint32_t start, uint32_t end, Cluster* cluster, const YBTableName& table, bool delete_op,
+    bool use_transaction) {
+  auto conn = VERIFY_RESULT(cluster->ConnectToDB(table.namespace_name()));
+  std::string table_name_str = GetCompleteTableName(table);
+
+  LOG(INFO) << "Writing " << end - start << (delete_op ? " deletes" : " inserts")
+            << " using transaction " << use_transaction;
+  if (use_transaction) {
+    RETURN_NOT_OK(conn.ExecuteFormat("BEGIN"));
+  }
+  for (uint32_t i = start; i < end; i++) {
+    if (delete_op) {
+      RETURN_NOT_OK(
+          conn.ExecuteFormat("DELETE FROM $0 WHERE $1 = $2", table_name_str, kKeyColumnName, i));
+    } else {
+      // TODO(#6582) transactions currently don't work, so don't use ON CONFLICT DO NOTHING now.
+      RETURN_NOT_OK(conn.ExecuteFormat(
+          "INSERT INTO $0($1) VALUES ($2)",  // ON CONFLICT DO NOTHING",
+          table_name_str, kKeyColumnName, i));
+    }
+  }
+  if (use_transaction) {
+    RETURN_NOT_OK(conn.ExecuteFormat("COMMIT"));
+  }
+
+  return Status::OK();
+}
+
+void XClusterYsqlTestBase::TestReplicationWithSchemaChanges(
+    TableId producer_table_id, bool bootstrap) {
+  auto tbl = consumer_table_->name();
+
+  BumpUpSchemaVersionsWithAlters({consumer_table_});
+
+  {
+    // Perform a DDL so that there are already some change metadata ops in the WAL to process
+    auto p_conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(tbl.namespace_name()));
+    ASSERT_OK(p_conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN pre_setup TEXT", tbl.table_name()));
+
+    auto c_conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(tbl.namespace_name()));
+    ASSERT_OK(c_conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN pre_setup TEXT", tbl.table_name()));
+  }
+
+  // If bootstrap is requested, run bootstrap
+  std::vector<xrepl::StreamId> bootstrap_ids = {};
+  if (bootstrap) {
+    bootstrap_ids = ASSERT_RESULT(
+        BootstrapProducer(producer_cluster(), producer_client(), {producer_table_id}));
+  }
+
+  ASSERT_OK(SetupUniverseReplication(
+      producer_cluster(), consumer_cluster(), consumer_client(), kReplicationGroupId,
+      {producer_table_id}, bootstrap_ids, {LeaderOnly::kTrue, Transactional::kTrue}));
+
+  ASSERT_OK(InsertGenerateSeriesOnProducer(0, 50, producer_table_));
+
+  master::GetUniverseReplicationResponsePB resp;
+  ASSERT_OK(
+      VerifyUniverseReplication(consumer_cluster(), consumer_client(), kReplicationGroupId, &resp));
+  ASSERT_EQ(resp.entry().producer_id(), kReplicationGroupId);
+  ASSERT_EQ(resp.entry().tables_size(), 1);
+  ASSERT_EQ(resp.entry().tables(0), producer_table_id);
+  ASSERT_OK(VerifyWrittenRecords());
+
+  // Alter the table on the Consumer side by adding a column
+  {
+    std::string new_col = "new_col";
+    auto conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(tbl.namespace_name()));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 TEXT", tbl.table_name(), new_col));
+  }
+
+  // Verify single value inserts are replicated correctly and can be read
+  ASSERT_OK(InsertRowsInProducer(51, 52));
+  ASSERT_OK(VerifyWrittenRecords());
+
+  // 5. Verify batch inserts are replicated correctly and can be read
+  ASSERT_OK(InsertGenerateSeriesOnProducer(52, 100));
+  ASSERT_OK(VerifyWrittenRecords());
+
+  // Verify transactional inserts are replicated correctly and can be read
+  ASSERT_OK(InsertTransactionalBatchOnProducer(101, 150));
+  ASSERT_OK(VerifyWrittenRecords());
+
+  // Alter the table on the producer side by adding the same column and insert some rows
+  // and verify
+  {
+    std::string new_col = "new_col";
+    auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(tbl.namespace_name()));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 TEXT", tbl.table_name(), new_col));
+  }
+
+  // Verify single value inserts are replicated correctly and can be read
+  ASSERT_OK(InsertRowsInProducer(151, 152));
+  ASSERT_OK(VerifyWrittenRecords());
+
+  // Verify batch inserts are replicated correctly and can be read
+  ASSERT_OK(InsertGenerateSeriesOnProducer(152, 200));
+  ASSERT_OK(VerifyWrittenRecords());
+
+  // Verify transactional inserts are replicated correctly and can be read
+  ASSERT_OK(InsertTransactionalBatchOnProducer(201, 250));
+  ASSERT_OK(VerifyWrittenRecords());
+
+  {
+    // Verify I/U/D
+    auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(tbl.namespace_name()));
+    ASSERT_OK(conn.ExecuteFormat("INSERT INTO $0 VALUES(251,'Hello', 'World')", tbl.table_name()));
+    ASSERT_OK(VerifyWrittenRecords());
+
+    ASSERT_OK(conn.ExecuteFormat("UPDATE $0 SET new_col = 'Hi' WHERE key = 251", tbl.table_name()));
+    ASSERT_OK(VerifyWrittenRecords());
+
+    ASSERT_OK(conn.ExecuteFormat("DELETE FROM $0 WHERE key = 251", tbl.table_name()));
+    ASSERT_OK(VerifyWrittenRecords());
+  }
+
+  // Bump up schema version on Producer and verify.
+  {
+    auto alter_owner_str = Format("ALTER TABLE $0 OWNER TO yugabyte;", tbl.table_name());
+    auto conn = EXPECT_RESULT(producer_cluster_.ConnectToDB(tbl.namespace_name()));
+    ASSERT_OK(conn.ExecuteFormat(alter_owner_str));
+    ASSERT_OK(InsertRowsInProducer(251, 300));
+    ASSERT_OK(VerifyWrittenRecords());
+  }
+
+  // Alter table on consumer side to generate new schema version.
+  {
+    std::string new_col = "new_col_2";
+    auto conn = EXPECT_RESULT(consumer_cluster_.ConnectToDB(tbl.namespace_name()));
+    ASSERT_OK(conn.ExecuteFormat("ALTER TABLE $0 ADD COLUMN $1 TEXT", tbl.table_name(), new_col));
+  }
+
+  ASSERT_OK(consumer_cluster()->FlushTablets());
+
+  ASSERT_OK(InsertRowsInProducer(301, 350));
+  ASSERT_OK(VerifyWrittenRecords());
 }
 }  // namespace yb

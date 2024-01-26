@@ -2,19 +2,21 @@ import { useCallback } from 'react';
 import { useDeepCompareEffect, useFirstMountState, useMountedState } from 'react-use';
 import { AxiosError } from 'axios';
 import { MutationOptions, QueryClient, useMutation } from 'react-query';
+import { toast } from 'react-toastify';
+
 import { api, instanceTypeQueryKey, providerQueryKey, xClusterQueryKey } from './api';
 import {
   InstanceTypeMutation,
   YBProviderMutation
 } from '../../components/configRedesign/providerRedesign/types';
-import { InstanceType, YBPBeanValidationError, YBPError, YBPSuccess, YBPTask } from './dtos';
 import { handleServerError } from '../../utils/errorHandlingUtils';
 import {
   getCreateProviderErrorMessage,
   getEditProviderErrorMessage
 } from '../../components/configRedesign/providerRedesign/forms/utils';
 import { syncXClusterConfigWithDB } from '../../actions/xClusterReplication';
-import { toast } from 'react-toastify';
+
+import { InstanceType, YBPSuccess, YBPTask } from './dtos';
 
 // run callback when component is mounted only
 export const useWhenMounted = () => {
@@ -65,7 +67,6 @@ export const useCreateProvider = (
           : queryClient.invalidateQueries(providerQueryKey.ALL);
       },
       onError: (error, variables, context) => {
-        error;
         mutationOptions?.onError
           ? mutationOptions.onError(error, variables, context)
           : handleServerError(error, { customErrorExtractor: getCreateProviderErrorMessage });
@@ -99,7 +100,6 @@ export const useEditProvider = (
         }
       },
       onError: (error, variables, context) => {
-        error;
         mutationOptions?.onError
           ? mutationOptions.onError(error, variables, context)
           : handleServerError(error, { customErrorExtractor: getEditProviderErrorMessage });
@@ -133,16 +133,16 @@ export const useDeleteProvider = (
     }
   });
 
-type CreateInstanceTypeParams = {
+type UpdateInstanceTypeParams = {
   providerUUID: string;
   instanceType: InstanceTypeMutation;
 };
 export const useUpdateInstanceType = (
   queryClient: QueryClient,
-  mutationOptions?: MutationOptions<InstanceType, Error | AxiosError, CreateInstanceTypeParams>
+  mutationOptions?: MutationOptions<InstanceType, Error | AxiosError, UpdateInstanceTypeParams>
 ) =>
   useMutation(
-    ({ providerUUID, instanceType }: CreateInstanceTypeParams) =>
+    ({ providerUUID, instanceType }: UpdateInstanceTypeParams) =>
       api.createInstanceType(providerUUID, instanceType),
     {
       ...mutationOptions,
@@ -196,17 +196,17 @@ export const useDeleteInstanceType = (
   );
 
 type SyncXClusterConfigWithDBParams = {
-  xClusterConfigUUID: string;
+  xClusterConfigUuid: string;
   replicationGroupName: string;
-  universeUUID: string;
+  targetUniverseUuid: string;
 };
 export const useSyncXClusterConfigWithDB = (
   queryClient: QueryClient,
   mutationOptions?: MutationOptions<YBPTask, Error | AxiosError, SyncXClusterConfigWithDBParams>
 ) =>
   useMutation(
-    ({ replicationGroupName, universeUUID }: SyncXClusterConfigWithDBParams) =>
-      syncXClusterConfigWithDB(replicationGroupName, universeUUID),
+    ({ replicationGroupName, targetUniverseUuid }: SyncXClusterConfigWithDBParams) =>
+      syncXClusterConfigWithDB(replicationGroupName, targetUniverseUuid),
     {
       ...mutationOptions,
       onSuccess: (response, variables, context) => {
@@ -214,14 +214,14 @@ export const useSyncXClusterConfigWithDB = (
           mutationOptions.onSuccess(response, variables, context);
         } else {
           toast.success('Reconciled xCluster config with DB.');
-          queryClient.invalidateQueries(xClusterQueryKey.detail(variables.xClusterConfigUUID));
+          queryClient.invalidateQueries(xClusterQueryKey.detail(variables.xClusterConfigUuid));
         }
       },
       onError: (error, variables, context) => {
         mutationOptions?.onError
           ? mutationOptions.onError(error, variables, context)
           : handleServerError(error, {
-              customErrorLabel: 'xCluster Config DB sync request failed'
+              customErrorLabel: 'xCluster config DB sync request failed'
             });
       }
     }

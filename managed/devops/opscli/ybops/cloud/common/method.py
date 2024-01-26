@@ -461,7 +461,7 @@ class AddAuthorizedKey(AbstractInstancesMethod):
         if args.public_key_content == "":
             # public key is taken by parsing private key file in cases when
             # a customer uploads only private key file
-            public_key_content = get_public_key_content(args.private_key_file)
+            public_key_content = get_public_key_content(args.new_private_key_file)
         updated_vars = {
             "command": "add-authorized-key",
             "public_key_content": public_key_content
@@ -773,6 +773,9 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
                                  help="Comma-separated LUN indexes for mounted on instance disks.")
         self.parser.add_argument("--install_locales", action="store_true", default=False,
                                  help="If enabled YBA will install locale on the DB nodes")
+        self.parser.add_argument("--install_otel_collector", action="store_true")
+        self.parser.add_argument('--otel_col_config_file', default=None,
+                                 help="Path to OpenTelemetry Collector config file.")
 
     def callback(self, args):
         host_info = self.cloud.get_host_info(args)
@@ -831,6 +834,10 @@ class ProvisionInstancesMethod(AbstractInstancesMethod):
         self.extra_vars.update({"configure_ybc": args.configure_ybc})
         self.extra_vars["device_names"] = self.cloud.get_device_names(args)
         self.extra_vars["lun_indexes"] = args.lun_indexes
+        if args.install_otel_collector:
+            self.extra_vars.update({"install_otel_collector": args.install_otel_collector})
+        if args.otel_col_config_file:
+            self.extra_vars.update({"otel_col_config_file_local": args.otel_col_config_file})
 
         if wait_for_server(self.extra_vars):
             self.cloud.setup_ansible(args).run("yb-server-provision.yml",

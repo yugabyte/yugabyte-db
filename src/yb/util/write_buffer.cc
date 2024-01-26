@@ -43,8 +43,6 @@ void WriteBuffer::AppendToNewBlock(Slice value) {
 }
 
 void WriteBuffer::PushBack(char value) {
-  size_ += 1;
-
   if (last_block_free_begin_ != last_block_free_end_) {
     *last_block_free_begin_++ = value;
     return;
@@ -68,9 +66,9 @@ void WriteBuffer::AppendToNewBlock(char prefix, Slice slice) {
 
 void WriteBuffer::AddBlock(const RefCntBuffer& buffer, size_t skip) {
   ShrinkLastBlock();
+  size_without_last_block_ += filled_in_last_block();
   blocks_.emplace_back(buffer, skip);
   auto block_size = buffer.size() - skip;
-  size_ += block_size;
   if (consumption_ && *consumption_) {
     consumption_->Add(block_size);
   }
@@ -87,6 +85,7 @@ void WriteBuffer::ShrinkLastBlock() {
     blocks_.back().Shrink(size);
   } else {
     blocks_.pop_back();
+    last_block_free_begin_ = last_block_free_end_ = nullptr;
   }
 }
 
@@ -94,19 +93,20 @@ void WriteBuffer::Take(WriteBuffer* source) {
   source->ShrinkLastBlock();
 
   if (source->blocks_.empty()) {
-    source->last_block_free_begin_ = source->last_block_free_end_ = nullptr;
     return;
   }
 
+  auto source_size = source->size();
   ShrinkLastBlock();
+  size_without_last_block_ += filled_in_last_block();
 
   blocks_.reserve(blocks_.size() + source->blocks_.size());
   for (auto& block : source->blocks_) {
     blocks_.push_back(std::move(block));
   }
-  size_ += source->size_;
+  size_without_last_block_ += source->size_without_last_block_;
   if (consumption_ && *consumption_) {
-    consumption_->Add(source->size_);
+    consumption_->Add(source_size);
   }
   last_block_free_begin_ = last_block_free_end_ = blocks_.back().end();
 
@@ -115,15 +115,16 @@ void WriteBuffer::Take(WriteBuffer* source) {
 
 void WriteBuffer::Reset() {
   if (consumption_ && *consumption_) {
-    consumption_->Add(-size_);
+    consumption_->Add(-size_without_last_block_);
   }
 
   last_block_free_begin_ = last_block_free_end_ = nullptr;
-  size_ = 0;
+  size_without_last_block_ = 0;
   blocks_.clear();
 }
 
 void WriteBuffer::AllocateBlock(size_t size) {
+  size_without_last_block_ += blocks_.empty() ? 0 : blocks_.back().size();
   blocks_.emplace_back(size);
   if (consumption_ && *consumption_) {
     consumption_->Add(size);
@@ -215,7 +216,7 @@ void WriteBuffer::DoAppendTo(Out* out) const {
   if (blocks_.empty()) {
     return;
   }
-  out->reserve(out->size() + size_);
+  out->reserve(out->size() + size());
   auto last = blocks_.size() - 1;
   for (size_t i = 0; i != last; ++i) {
     blocks_[i].AsSlice().AppendTo(out);
@@ -243,7 +244,7 @@ void WriteBuffer::AssignTo(faststring* out) const {
 std::string WriteBuffer::ToBuffer() const {
   std::string str;
   AssignTo(&str);
-  CHECK_EQ(str.size(), size_);
+  CHECK_EQ(str.size(), size());
   return str;
 }
 
@@ -267,7 +268,7 @@ WriteBufferPos WriteBuffer::Position() {
 
 size_t WriteBuffer::BytesAfterPosition(const WriteBufferPos& pos) const {
   if (pos.address == nullptr) {
-    return size_;
+    return size();
   }
   size_t last = blocks_.size() - 1;
   size_t result = last_block_free_begin_ - blocks_[last].data();
@@ -292,6 +293,24 @@ void WriteBuffer::DoAppendSplit(char* out, size_t out_size, char prefix, Slice s
   *out++ = prefix;
   memcpy(out, slice.data(), --out_size);
   AppendToNewBlock(slice.WithoutPrefix(out_size));
+}
+
+void WriteBuffer::DoAppendFallback(char* out, size_t out_size, Slice slice) {
+  if (out_size == 0) {
+    AppendToNewBlock(slice);
+    return;
+  }
+
+  DoAppendSplit(out, out_size, slice);
+}
+
+void WriteBuffer::DoAppendFallback(char* out, size_t out_size, char ch, Slice slice) {
+  if (out_size == 0) {
+    AppendToNewBlock(ch, slice);
+    return;
+  }
+
+  DoAppendSplit(out, out_size, ch, slice);
 }
 
 }  // namespace yb

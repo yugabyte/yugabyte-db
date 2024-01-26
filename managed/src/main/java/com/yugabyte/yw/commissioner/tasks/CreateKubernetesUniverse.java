@@ -17,6 +17,7 @@ import com.yugabyte.yw.commissioner.Common.CloudType;
 import com.yugabyte.yw.commissioner.ITask.Abortable;
 import com.yugabyte.yw.commissioner.ITask.Retryable;
 import com.yugabyte.yw.commissioner.UserTaskDetails.SubTaskGroupType;
+import com.yugabyte.yw.commissioner.tasks.subtasks.InstallThirdPartySoftwareK8s;
 import com.yugabyte.yw.commissioner.tasks.subtasks.KubernetesCommandExecutor;
 import com.yugabyte.yw.common.KubernetesUtil;
 import com.yugabyte.yw.common.PlacementInfoUtil;
@@ -101,7 +102,8 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       }
 
       Universe universe = lockUniverseForUpdate(taskParams().expectedUniverseVersion);
-      kubernetesStatus.createYBUniverseEventStatus(universe, getName(), getUserTaskUUID());
+      kubernetesStatus.createYBUniverseEventStatus(
+          universe, taskParams().getKubernetesResourceDetails(), getName(), getUserTaskUUID());
 
       // Set all the in-memory node names first.
       setNodeNames(universe);
@@ -146,6 +148,8 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
           pi,
           false); /*isReadOnlyCluster*/
 
+      installThirdPartyPackagesTaskK8s(
+          universe, InstallThirdPartySoftwareK8s.SoftwareUpgradeType.JWT_JWKS);
       Set<NodeDetails> tserversAdded =
           getPodsToAdd(placement.tservers, null, ServerType.TSERVER, isMultiAz, false);
 
@@ -226,7 +230,12 @@ public class CreateKubernetesUniverse extends KubernetesTaskBase {
       th = t;
       throw t;
     } finally {
-      kubernetesStatus.updateYBUniverseStatus(getUniverse(), getName(), getUserTaskUUID(), th);
+      kubernetesStatus.updateYBUniverseStatus(
+          getUniverse(),
+          taskParams().getKubernetesResourceDetails(),
+          getName(),
+          getUserTaskUUID(),
+          th);
       unlockUniverseForUpdate();
     }
     log.info("Finished {} task.", getName());

@@ -21,6 +21,7 @@ import com.yugabyte.yw.models.Backup.BackupCategory;
 import com.yugabyte.yw.models.Backup.BackupState;
 import com.yugabyte.yw.models.Backup.BackupVersion;
 import com.yugabyte.yw.models.configs.CustomerConfig;
+import com.yugabyte.yw.models.helpers.TaskType;
 import io.ebean.DB;
 import io.ebean.SqlUpdate;
 import java.util.ArrayList;
@@ -160,11 +161,12 @@ public class BackupTest extends FakeDBApplication {
 
   @Test
   public void testFetchByTaskWithInvalidBackupUUID() {
+    UUID taskUUID = buildTaskInfo(null, TaskType.CreateUniverse);
     CustomerTask ct =
         CustomerTask.create(
             defaultCustomer,
             UUID.randomUUID(),
-            UUID.randomUUID(),
+            taskUUID,
             CustomerTask.TargetType.Backup,
             CustomerTask.TaskType.Create,
             "Demo Backup");
@@ -178,11 +180,12 @@ public class BackupTest extends FakeDBApplication {
     Backup b =
         ModelFactory.createBackup(
             defaultCustomer.getUuid(), u.getUniverseUUID(), s3StorageConfig.getConfigUUID());
+    UUID taskUUID = buildTaskInfo(null, TaskType.CreateUniverse);
     CustomerTask ct =
         CustomerTask.create(
             defaultCustomer,
             b.getBackupUUID(),
-            UUID.randomUUID(),
+            taskUUID,
             CustomerTask.TargetType.Table,
             CustomerTask.TaskType.Create,
             "Demo Backup");

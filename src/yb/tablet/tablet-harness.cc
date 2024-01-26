@@ -69,7 +69,7 @@ Status TabletHarness::Create(bool first_time) {
   }
 
   clock_ = server::LogicalClock::CreateStartingAt(HybridTime::kInitial);
-  tablet_ = std::make_shared<Tablet>(MakeTabletInitData(metadata));
+  tablet_.reset(new Tablet(MakeTabletInitData(metadata)));
   return Status::OK();
 }
 
@@ -81,7 +81,7 @@ Status TabletHarness::Open() {
 
 Result<TabletPtr> TabletHarness::OpenTablet(const TabletId& tablet_id) {
   auto metadata = VERIFY_RESULT(RaftGroupMetadata::Load(fs_manager_.get(), tablet_id));
-  auto tablet = std::make_shared<Tablet>(MakeTabletInitData(metadata));
+  std::shared_ptr<Tablet> tablet(new Tablet(MakeTabletInitData(metadata)));
   RETURN_NOT_OK(tablet->Open());
   tablet->MarkFinishedBootstrapping();
   RETURN_NOT_OK(

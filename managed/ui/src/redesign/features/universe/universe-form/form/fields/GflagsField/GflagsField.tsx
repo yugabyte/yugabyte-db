@@ -39,8 +39,6 @@ import '../../../../../../../components/universes/UniverseForm/UniverseForm.scss
 4. Rewrite with using material ui components
 */
 
-const MULTILINE_GFLAGS = ['ysql_hba_conf_csv'];
-
 interface GflagsFieldProps {
   dbVersion: string;
   fieldPath: string;
@@ -49,6 +47,7 @@ interface GflagsFieldProps {
   isReadOnly: boolean;
   isReadReplica: boolean;
   tableMaxHeight?: string;
+  isGFlagMultilineConfEnabled: boolean;
 }
 
 interface SelectedOption {
@@ -109,7 +108,8 @@ export const GFlagsField = ({
   editMode = false,
   isReadOnly = false,
   isReadReplica = false,
-  tableMaxHeight
+  tableMaxHeight,
+  isGFlagMultilineConfEnabled
 }: GflagsFieldProps): ReactElement => {
   const { fields, append, insert, remove } = useFieldArray({
     name: fieldPath as any,
@@ -136,7 +136,7 @@ export const GFlagsField = ({
           {t('universeForm.gFlags.addGflags')}
         </>
       ),
-      className: 'btn btn-orange mr-10',
+      className: 'btn btn-orange mr-10 btn-add-gflag',
       bsStyle: 'danger'
     },
     {
@@ -147,7 +147,8 @@ export const GFlagsField = ({
           {t('universeForm.gFlags.addJson')}
         </>
       ),
-      className: 'btn btn-default'
+      className: 'btn btn-orange mr-10',
+      bsStyle: 'danger'
     }
   ];
   //server list - TO DRY THE CODE
@@ -512,7 +513,12 @@ export const GFlagsField = ({
           <AddGFlag
             formProps={formProps}
             updateJWKSDialogStatus={updateJWKSDialogStatus}
-            gFlagProps={{ ...selectedProps, dbVersion, existingFlags: fields }}
+            gFlagProps={{
+              ...selectedProps,
+              dbVersion,
+              existingFlags: fields,
+              isGFlagMultilineConfEnabled
+            }}
           />
         );
 

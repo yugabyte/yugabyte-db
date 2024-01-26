@@ -397,7 +397,37 @@ CREATE VIEW pg_publication_tables AS
     WHERE C.oid = GPT.relid;
 
 CREATE VIEW pg_locks AS
-    SELECT * FROM pg_lock_status() AS L;
+SELECT l.locktype,
+       l.database,
+       l.relation,
+       null::int                  AS page,
+       null::smallint             AS tuple,
+       null::text                 AS virtualxid,
+       null::xid                  AS transactionid,
+       null::oid                  AS classid,
+       null::oid                  AS objid,
+       null::smallint             AS objsubid,
+       null::text                 AS virtualtransaction,
+       l.pid,
+       array_to_string(mode, ',') AS mode,
+       l.granted,
+       l.fastpath,
+       l.waitstart,
+       l.waitend,
+       jsonb_build_object('node', l.node,
+                          'transactionid', l.transaction_id,
+                          'subtransaction_id', l.subtransaction_id,
+                          'is_explicit', l.is_explicit,
+                          'tablet_id', l.tablet_id,
+                          'blocked_by', l.blocked_by,
+                          'keyrangedetails', jsonb_build_object(
+                                  'cols', to_jsonb(l.hash_cols || l.range_cols),
+                                  'attnum', l.attnum,
+                                  'column_id', l.column_id,
+                                  'multiple_rows_locked', l.multiple_rows_locked
+                              )
+           )                      AS ybdetails
+FROM yb_lock_status(null, null) AS l;
 
 CREATE VIEW pg_cursors AS
     SELECT * FROM pg_cursor() AS C;

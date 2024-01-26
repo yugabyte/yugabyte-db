@@ -42,7 +42,7 @@ namespace pgwrapper {
 std::string GetPostgresInstallRoot();
 
 // Configuration for an external PostgreSQL server.
-struct PgProcessConf {
+struct PgProcessConf : public ProcessWrapperCommonConfig {
   static constexpr uint16_t kDefaultPort = 5433;
 
   static Result<PgProcessConf> CreateValidateAndRunInitDb(
@@ -56,10 +56,6 @@ struct PgProcessConf {
   uint16_t pg_port = kDefaultPort;
   std::string listen_addresses = "0.0.0.0";
   std::string master_addresses;
-  std::string certs_dir;
-  std::string certs_for_client_dir;
-  std::string cert_base_name;
-  bool enable_tls = false;
 
   // File descriptor of the local tserver's shared memory.
   int tserver_shm_fd = -1;

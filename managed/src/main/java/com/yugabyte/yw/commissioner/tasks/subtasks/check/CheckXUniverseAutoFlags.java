@@ -103,7 +103,8 @@ public class CheckXUniverseAutoFlags extends ServerSubTaskBase {
             .extractAutoFlags(
                 targetUniverseVersion,
                 serverType.equals(ServerType.MASTER) ? "yb-master" : "yb-tserver")
-            .autoFlagDetails.stream()
+            .autoFlagDetails
+            .stream()
             .map(flag -> flag.name)
             .collect(Collectors.toSet());
     promotedAndModifiedAutoFlags.forEach(

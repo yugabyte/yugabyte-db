@@ -31,7 +31,6 @@
 //
 #pragma once
 
-#include "yb/gutil/macros.h"
 #include "yb/gutil/ref_counted.h"
 
 #include "yb/util/enums.h"
@@ -39,9 +38,10 @@
 
 namespace yb {
 
-class Counter;
+class AggregateStats;
 template<class T>
 class AtomicGauge;
+class Counter;
 class EventStats;
 class MetricEntity;
 class PgsqlResponsePB;
@@ -76,6 +76,8 @@ YB_DEFINE_ENUM(TabletCounters,
   (kDocDBObsoleteKeysFound)
   (kDocDBObsoleteKeysFoundPastCutoff))
 
+YB_DEFINE_ENUM(TabletGauges, (kActiveWriteQueryObjects))
+
 // Container for all metrics specific to a single tablet.
 class TabletMetrics {
  public:
@@ -86,17 +88,31 @@ class TabletMetrics {
 
   virtual uint64_t Get(TabletCounters counter) const = 0;
 
+  virtual int64_t Get(TabletGauges gauge) const = 0;
+
   void Increment(TabletCounters counter) {
     IncrementBy(counter, 1);
   }
 
   virtual void IncrementBy(TabletCounters counter, uint64_t amount) = 0;
 
+  void Increment(TabletGauges gauge) {
+    IncrementBy(gauge, 1);
+  }
+
+  void Decrement(TabletGauges gauge) {
+    IncrementBy(gauge, -1);
+  }
+
+  virtual void IncrementBy(TabletGauges gauge, int64_t amount) = 0;
+
   void Increment(TabletEventStats event_stats, uint64_t value) {
     IncrementBy(event_stats, value, 1);
   }
 
   virtual void IncrementBy(TabletEventStats event_stats, uint64_t value, uint64_t amount) = 0;
+
+  virtual void AddAggregateStats(TabletEventStats event_stats, const AggregateStats& other) = 0;
 
  private:
   // Keeps track of the number of instances created for verification that the metrics belong
@@ -115,15 +131,15 @@ class ScopedTabletMetrics final : public TabletMetrics {
 
   uint64_t Get(TabletCounters counter) const override;
 
+  int64_t Get(TabletGauges gauge) const override;
+
   void IncrementBy(TabletCounters counter, uint64_t amount) override;
+
+  void IncrementBy(TabletGauges gauge, int64_t amount) override;
 
   void IncrementBy(TabletEventStats event_stats, uint64_t value, uint64_t amount) override;
 
-  void Prepare();
-
-  // TODO(hdr_histogram): histogram_context used to forward histogram changes until histogram
-  // support is added to this class.
-  void SetHistogramContext(TabletMetrics* histogram_context);
+  void AddAggregateStats(TabletEventStats event_stats, const AggregateStats& other) override;
 
   void CopyToPgsqlResponse(PgsqlResponsePB* response) const;
 
@@ -133,12 +149,9 @@ class ScopedTabletMetrics final : public TabletMetrics {
   void MergeAndClear(TabletMetrics* target);
 
  private:
-#if DCHECK_IS_ON()
-  bool in_use_ = false;
-#endif
   std::vector<uint64_t> counters_;
-
-  TabletMetrics* histogram_context_ = nullptr;
+  std::vector<int64_t> gauges_;
+  std::vector<AggregateStats> stats_;
 };
 
 class ScopedTabletMetricsLatencyTracker {

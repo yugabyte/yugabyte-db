@@ -56,14 +56,19 @@ std::string PutConfigValue(
   std::sregex_iterator placeholder_it(line.begin(), line.end(), placeholder_regex);
   std::sregex_iterator end_it;
 
-  if (placeholder_it != end_it) {
+  while (placeholder_it != end_it) {
     const std::string placeholder = (*placeholder_it)[0].str();
     const auto it = config.find(placeholder);
+
     if (it != config.end()) {
       const std::string& value = it->second;
       modified_line.replace(placeholder_it->position(), placeholder_it->length(), value);
     }
+    placeholder_it = std::sregex_iterator(modified_line.begin(),
+                                          modified_line.end(),
+                                          placeholder_regex);
   }
+
   return modified_line;
 }
 
@@ -108,6 +113,31 @@ std::string get_num_workers(uint32_t value) {
   return std::to_string(value);
 }
 
+void YsqlConnMgrConf::AddSslConfig(std::map<std::string, std::string>* ysql_conn_mgr_configs) {
+  std::string tls_ca_file;
+  std::string tls_key_file;
+  std::string tls_cert_file;
+
+  // ssl config
+  if (enable_tls && !certs_for_client_dir.empty()) {
+    if (tls_cert_file.empty())
+    tls_cert_file = Format("$0/node.$1.crt",
+                           certs_for_client_dir,
+                           cert_base_name);
+    if (tls_key_file.empty())
+    tls_key_file = Format("$0/node.$1.key",
+                           certs_for_client_dir,
+                           cert_base_name);
+    if (tls_ca_file.empty())
+    tls_ca_file = Format("$0/ca.crt", certs_for_client_dir);
+  }
+
+  (*ysql_conn_mgr_configs)["{%enable_tls%}"] = enable_tls ? "" : "#";
+  (*ysql_conn_mgr_configs)["{%tls_ca_file%}"] = tls_ca_file;
+  (*ysql_conn_mgr_configs)["{%tls_key_file%}"] = tls_key_file;
+  (*ysql_conn_mgr_configs)["{%tls_cert_file%}"] = tls_cert_file;
+}
+
 std::string YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
   const auto conf_file_path = JoinPathSegments(data_dir_, conf_file_name_);
 
@@ -131,6 +161,8 @@ std::string YsqlConnMgrConf::CreateYsqlConnMgrConfigAndGetPath() {
     {"{%log_debug%}", BoolToString(log_debug_)},
     {"{%stats_interval%}", std::to_string(FLAGS_ysql_conn_mgr_stats_interval)},
     {"{%min_pool_size%}", std::to_string(FLAGS_ysql_conn_mgr_min_conns_per_db)}};
+
+  AddSslConfig(&ysql_conn_mgr_configs);
 
   // Create a config file.
   WriteConfig(conf_file_path, ysql_conn_mgr_configs);

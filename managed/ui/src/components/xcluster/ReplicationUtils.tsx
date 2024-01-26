@@ -15,7 +15,8 @@ import {
   XClusterConfigStatus,
   REPLICATION_LAG_ALERT_NAME,
   BROKEN_XCLUSTER_CONFIG_STATUSES,
-  XClusterConfigType
+  XClusterConfigType,
+  XClusterTableEligibility
 } from './constants';
 import { api } from '../../redesign/helpers/api';
 import { getUniverseStatus } from '../universes/helpers/universeHelpers';
@@ -23,13 +24,8 @@ import { UnavailableUniverseStates, YBTableRelationType } from '../../redesign/h
 import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
 import { SortOrder } from '../../redesign/helpers/constants';
 
-import {
-  Metrics,
-  MetricTrace,
-  XClusterConfig,
-  XClusterTable,
-  XClusterTableDetails
-} from './XClusterTypes';
+import { Metrics, MetricTrace, XClusterTable, XClusterTableCandidate } from './XClusterTypes';
+import { XClusterConfig, XClusterTableDetails } from './dtos';
 import { TableType, Universe, YBTable } from '../../redesign/helpers/dtos';
 
 import './ReplicationUtils.scss';
@@ -311,14 +307,6 @@ export const parseFloatIfDefined = (input: string | number | undefined) => {
   return parseFloat(input);
 };
 
-export const findUniverseName = function (universeList: Array<any>, universeUUID: string): string {
-  return universeList.find((universe: any) => universe.universeUUID === universeUUID)?.name;
-};
-
-export const getUniverseByUUID = (universeList: Universe[], uuid: string) => {
-  return universeList.find((universes) => universes.universeUUID === uuid);
-};
-
 export const getEnabledConfigActions = (
   replication: XClusterConfig,
   sourceUniverse: Universe | undefined,
@@ -342,6 +330,7 @@ export const getEnabledConfigActions = (
       return [
         replication.paused ? XClusterConfigAction.RESUME : XClusterConfigAction.PAUSE,
         XClusterConfigAction.ADD_TABLE,
+        XClusterConfigAction.MANAGE_TABLE,
         XClusterConfigAction.DB_SYNC,
         XClusterConfigAction.DELETE,
         XClusterConfigAction.EDIT,
@@ -379,12 +368,22 @@ export const getSharedXClusterConfigs = (sourceUniverse: Universe, targetUnivers
 };
 
 /**
- * Adapt tableUUID to the format required for xCluster work.
- * - tableUUID is given in XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX format from
- *   /customers/<customerUUID>/universes/<universeUUID>/tables endpoint
- * - tableUUID used in xCluster endpoints have the '-' stripped away
+ * Adapt UUID to the format required for xCluster work.
+ * - UUIDs are generally given in XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX format
+ * - UUIDs used in xCluster endpoints often have the '-' stripped away
  */
-export const adaptTableUUID = (tableUUID: string) => tableUUID.replaceAll('-', '');
+export const formatUuidForXCluster = (tableUuid: string) => tableUuid.replaceAll('-', '');
+
+/**
+ * Adapt UUID from format required for xCluster work to the common format with dashes.
+ * - UUIDs are generally given in XXXXXXXX-XXXX-XXXX-XXXX-XXXXXXXXXXXX format
+ * - UUIDs used in xCluster endpoints often have the '-' stripped away
+ */
+export const formatUuidFromXCluster = (tableUuid: string) =>
+  tableUuid.replace(
+    /^([0-9a-f]{8})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{4})([0-9a-f]{12})$/,
+    '$1-$2-$3-$4-$5'
+  );
 
 export const tableSort = <RowType,>(
   a: RowType,
@@ -396,7 +395,7 @@ export const tableSort = <RowType,>(
   let ord = 0;
 
   ord = a[sortField] < b[sortField] ? -1 : 1;
-  // Break ties with the provided tie breaker field in ascending order.
+  // Break ties with the provided tiebreaker field in ascending order.
   if (a[sortField] === b[sortField]) {
     return a[tieBreakerField] < b[tieBreakerField] ? -1 : 1;
   }
@@ -404,22 +403,30 @@ export const tableSort = <RowType,>(
   return sortOrder === SortOrder.ASCENDING ? ord : ord * -1;
 };
 
-// TODO:
-// Investigate whether we can store table type as a property of xCluster config.
-// This will help reduce complexity and avoid filtering through all source universe tables.
-// JIRA: https://yugabyte.atlassian.net/browse/PLAT-6095
 /**
- * - Return the `tableType` of any table in an xCluster config.
- *   - The underlying assumption is that tables within an xCluster config should all have the same `tableType`.
- * - Returns undefined if no source universe tables exist in the xCluster config (Error/Unexpected case)
+ * Return the `tableType` of any table in an xCluster config.
  */
-export const getXClusterConfigTableType = (
-  xClusterConfig: XClusterConfig,
-  sourceUniverseTables: YBTable[]
+export const getXClusterConfigTableType = (xClusterConfig: XClusterConfig) => {
+  switch (xClusterConfig.tableType) {
+    case 'YSQL':
+      return TableType.PGSQL_TABLE_TYPE;
+    case 'YCQL':
+      return TableType.YQL_TABLE_TYPE;
+    case 'UNKNOWN':
+      return undefined;
+  }
+};
+
+/**
+ * Returns whether the provided table can be added/removed from the xCluster config.
+ */
+export const isTableSelectable = (
+  table: XClusterTableCandidate,
+  xClusterConfigAction: XClusterConfigAction
 ) =>
-  sourceUniverseTables.find((table) =>
-    xClusterConfig.tables.includes(adaptTableUUID(table.tableUUID))
-  )?.tableType;
+  table.eligibilityDetails.status === XClusterTableEligibility.ELIGIBLE_UNUSED ||
+  (xClusterConfigAction === XClusterConfigAction.MANAGE_TABLE &&
+    table.eligibilityDetails.status === XClusterTableEligibility.ELIGIBLE_IN_CURRENT_CONFIG);
 
 /**
  * Returns array of XClusterTable by augmenting YBTable with XClusterTableDetails
@@ -432,7 +439,7 @@ export const augmentTablesWithXClusterDetails = (
   const ybTableMap = new Map<string, YBTable>();
   ybTable.forEach((table) => {
     const { tableUUID, ...tableDetails } = table;
-    const adaptedTableUUID = adaptTableUUID(tableUUID);
+    const adaptedTableUUID = formatUuidForXCluster(tableUUID);
     ybTableMap.set(adaptedTableUUID, { ...tableDetails, tableUUID: adaptedTableUUID });
   });
   const tables = xClusterConfigTables.reduce((tables: XClusterTable[], table) => {
@@ -481,7 +488,7 @@ export const getTablesForBootstrapping = async (
   bootstrapTest = await isBootstrapRequired(
     sourceUniverseUUID,
     targetUniverseUUID,
-    selectedTableUUIDs.map(adaptTableUUID),
+    selectedTableUUIDs.map(formatUuidForXCluster),
     xClusterConfigType
   );
 
@@ -499,14 +506,14 @@ export const getTablesForBootstrapping = async (
       }
       const tableUUIDs = ysqlKeyspaceToTableUUIDs.get(table.keySpace);
       if (tableUUIDs !== undefined) {
-        tableUUIDs.add(adaptTableUUID(table.tableUUID));
+        tableUUIDs.add(formatUuidForXCluster(table.tableUUID));
       } else {
         ysqlKeyspaceToTableUUIDs.set(
           table.keySpace,
-          new Set<string>([adaptTableUUID(table.tableUUID)])
+          new Set<string>([formatUuidForXCluster(table.tableUUID)])
         );
       }
-      ysqlTableUUIDToKeyspace.set(adaptTableUUID(table.tableUUID), table.keySpace);
+      ysqlTableUUIDToKeyspace.set(formatUuidForXCluster(table.tableUUID), table.keySpace);
     });
 
     Object.entries(bootstrapTest).forEach(([tableUUID, bootstrapRequired]) => {

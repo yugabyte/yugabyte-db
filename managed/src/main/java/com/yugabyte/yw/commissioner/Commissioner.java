@@ -406,6 +406,7 @@ public class Commissioner {
     }
     return consumer;
   }
+
   /**
    * A progress monitor to constantly write a last updated timestamp in the DB so that this process
    * and all its subtasks are considered to be alive.

@@ -28,9 +28,11 @@ DECLARE_int32(yb_client_admin_operation_timeout_sec);
 
 using namespace std::chrono_literals;
 
-DEFINE_RUNTIME_uint64(ysql_table_mutation_count_aggregate_interval_ms, 5 * 1000,
-                      "Interval at which the table mutation counts are sent to the auto analyze "
-                      "service which tracks table mutation counters at the cluster level.");
+DEFINE_RUNTIME_uint64(ysql_node_level_mutation_reporting_interval_ms, 5 * 1000,
+                      "Interval at which the node level table mutation counts are sent to the auto "
+                      "analyze service which tracks table mutation counters at the cluster level.");
+DEFINE_RUNTIME_int32(ysql_node_level_mutation_reporting_timeout_ms, 5 * 1000,
+                      "Timeout for mutation reporting rpc to auto-analyze service.");
 
 namespace yb {
 
@@ -45,8 +47,7 @@ TableMutationCountSender::~TableMutationCountSender() {
 }
 
 Status TableMutationCountSender::Start() {
-  RSTATUS_DCHECK(thread_, InternalError, "Table mutation sender thread already exists");
-
+  RSTATUS_DCHECK(!thread_, InternalError, "Table mutation sender thread already exists");
   VLOG(1) << "Initializing table mutation count sender thread";
   return yb::Thread::Create("pg_table_mutation_count_sender", "table_mutation_count_send",
       &TableMutationCountSender::RunThread, this, &thread_);
@@ -71,9 +72,9 @@ Status TableMutationCountSender::Stop() {
 Status TableMutationCountSender::DoSendMutationCounts() {
   // Send mutations to the auto analyze stateful service that aggregates mutations from all nodes
   // and triggers ANALYZE as necessary.
-
   auto mutation_counts = server_.GetPgNodeLevelMutationCounter().GetAndClear();
   if (mutation_counts.size() == 0) {
+    VLOG(4) << "No table mutation counts to send";
     return Status::OK();
   }
 
@@ -91,9 +92,13 @@ Status TableMutationCountSender::DoSendMutationCounts() {
     table_mutation_count->set_mutation_count(mutation_count);
   }
 
-  const auto result =
-      client_->IncreaseMutationCounters(req, FLAGS_yb_client_admin_operation_timeout_sec * 1s);
+  VLOG(3) << "Sending table mutation counts: " << req.ShortDebugString();
+
+  const auto result = client_->IncreaseMutationCounters(
+      req, GetAtomicFlag(&FLAGS_ysql_node_level_mutation_reporting_timeout_ms) * 1ms);
   if (!result) {
+    VLOG(2) << "Result: " << result.ToString();
+
     // It is possible that cluster-level mutation counters were updated but the response failed for
     // some other reason. In this case, unless we are certain that the cluster-level mutation
     // counters weren't updated, we avoid retrying to avoid double counting (i.e., we prefer
@@ -116,8 +121,10 @@ void TableMutationCountSender::RunThread() {
   while (true) {
     {
       UniqueLock lock(mutex_);
+      VLOG(5) << "Next send after "
+              << GetAtomicFlag(&FLAGS_ysql_node_level_mutation_reporting_interval_ms) << "ms";
       cond_.wait_for(GetLockForCondition(&lock),
-                     FLAGS_ysql_table_mutation_count_aggregate_interval_ms * 1ms);
+                     GetAtomicFlag(&FLAGS_ysql_node_level_mutation_reporting_interval_ms) * 1ms);
 
       if (stopped_) {
         VLOG(1) << "Table mutation count sender thread has finished";

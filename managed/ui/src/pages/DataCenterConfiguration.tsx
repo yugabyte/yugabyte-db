@@ -10,6 +10,8 @@ import DataCenterConfigurationContainer from '../components/config/ConfigProvide
 import { YBErrorIndicator, YBLoading, YBLoadingCircleIcon } from '../components/common/indicators';
 import { api, runtimeConfigQueryKey } from '../redesign/helpers/api';
 import { RuntimeConfigKey } from '../redesign/helpers/constants';
+import { getWrappedChildren, hasNecessaryPerm } from '../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../redesign/features/rbac/UserPermPathMapping';
 
 const DataCenterConfigRedesignComponent = lazy(() =>
   import('../components/configRedesign/DataCenterConfigRedesign').then(
@@ -26,6 +28,12 @@ export const DataCenterConfiguration = (props: any) => {
     () => api.fetchRuntimeConfigs(customerUUID, true)
   );
 
+  const hasViewProviderPerm = hasNecessaryPerm(UserPermissionMap.listProvider);
+
+  if (!hasViewProviderPerm) {
+    return getWrappedChildren({ minimal: false, overrideStyle: { marginTop: '150px' } });
+  }
+
   if (customerRuntimeConfigQuery.isLoading || customerRuntimeConfigQuery.isIdle) {
     return <YBLoading />;
   }
@@ -37,7 +45,7 @@ export const DataCenterConfiguration = (props: any) => {
   const runtimeConfigEntries = customerRuntimeConfigQuery.data.configEntries ?? [];
   const shouldShowRedesignedUI = runtimeConfigEntries.some(
     (config: any) =>
-      config.key === RuntimeConfigKey.PROVIDER_REDESIGN_FEATURE_FLAG && config.value === 'true'
+      config.key === RuntimeConfigKey.PROVIDER_REDESIGN_UI_FEATURE_FLAG && config.value === 'true'
   );
 
   return (

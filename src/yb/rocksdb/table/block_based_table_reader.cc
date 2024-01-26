@@ -1154,6 +1154,8 @@ yb::Result<BlockBasedTable::CachableEntry<IndexReader>> BlockBasedTable::GetInde
   }
 }
 
+// TODO: consider allocating index iterator on arena, try and measure potential performance
+// improvements.
 InternalIterator* BlockBasedTable::NewIndexIterator(
     const ReadOptions& read_options, BlockIter* input_iter) {
   const auto index_reader_result = GetIndexReader(read_options);
@@ -1172,6 +1174,10 @@ InternalIterator* BlockBasedTable::NewIndexIterator(
   }
 
   return new_iter;
+}
+
+InternalIterator* BlockBasedTable::NewIndexIterator(const ReadOptions& read_options) {
+  return NewIndexIterator(read_options, /* input_iter = */ nullptr);
 }
 
 yb::Result<BlockBasedTable::CachableEntry<Block>> BlockBasedTable::RetrieveBlock(

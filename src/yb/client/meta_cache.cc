@@ -44,7 +44,6 @@
 #include <vector>
 
 #include <boost/optional/optional_io.hpp>
-#include <glog/logging.h>
 
 #include "yb/client/client.h"
 #include "yb/client/client_error.h"
@@ -859,9 +858,13 @@ void LookupRpc::DoProcessResponse(const Status& status, const Response& resp) {
 namespace {
 
 Status CheckTabletLocations(
-    const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations) {
+    const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
+    AllowSplitTablet allow_split_tablets) {
   const std::string* prev_partition_end = nullptr;
   for (const TabletLocationsPB& loc : locations) {
+    LOG_IF(DFATAL, !allow_split_tablets && loc.split_tablet_ids().size() > 0)
+        << "Processing remote tablet location with split children id set: "
+        << loc.ShortDebugString() << " when allow_split_tablets was set to false.";
     if (prev_partition_end && *prev_partition_end > loc.partition().partition_key_start()) {
       LOG(DFATAL) << "There should be no overlaps in tablet partitions and they should be sorted "
                   << "by partition_key_start. Prev partition end: "
@@ -926,7 +929,8 @@ class FullTableLookup : public ToStringable {
 
 Status MetaCache::ProcessTabletLocations(
     const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
-    boost::optional<PartitionListVersion> table_partition_list_version, LookupRpc* lookup_rpc) {
+    boost::optional<PartitionListVersion> table_partition_list_version, LookupRpc* lookup_rpc,
+    AllowSplitTablet allow_split_tablets) {
   if (VLOG_IS_ON(2)) {
     VLOG_WITH_PREFIX_AND_FUNC(2) << "lookup_rpc: " << AsString(lookup_rpc);
     for (const auto& loc : locations) {
@@ -937,7 +941,7 @@ Status MetaCache::ProcessTabletLocations(
     VLOG_WITH_PREFIX_AND_FUNC(4) << AsString(locations);
   }
 
-  RETURN_NOT_OK(CheckTabletLocations(locations));
+  RETURN_NOT_OK(CheckTabletLocations(locations, allow_split_tablets));
 
   std::vector<std::pair<LookupCallback, LookupCallbackVisitor>> to_notify;
   {
@@ -1053,23 +1057,19 @@ Result<RemoteTabletPtr> MetaCache::ProcessTabletLocation(
     }
 
     if (remote) {
-      // Partition should not have changed.
+      // For colocated tables, RemoteTablet already exists because it was processed in a previous
+      // iteration of the for loop (for location.table_ids()). Assert that the partition splits
+      // are still the same.
       DCHECK_EQ(location.partition().partition_key_start(),
                 remote->partition().partition_key_start());
       DCHECK_EQ(location.partition().partition_key_end(),
                 remote->partition().partition_key_end());
 
-      // For colocated tables, RemoteTablet already exists because it was processed
-      // in a previous iteration of the for loop (for location.table_ids()).
-      // We need to add this tablet to the current table's tablets_by_key map.
-      if (tablets_by_key) {
-        (*tablets_by_key)[remote->partition().partition_key_start()] = remote;
-      }
-
       VLOG_WITH_PREFIX(5) << "Refreshing tablet " << tablet_id << ": "
-                          << location.ShortDebugString();
+                          << location.ShortDebugString() << " if not split.";
     } else {
-      VLOG_WITH_PREFIX(5) << "Caching tablet " << tablet_id << ": " << location.ShortDebugString();
+      VLOG_WITH_PREFIX(5) << "Caching tablet " << tablet_id << ": "
+                          << location.ShortDebugString() << " if not split.";
 
       dockv::Partition partition;
       dockv::Partition::FromPB(location.partition(), &partition);
@@ -1078,8 +1078,17 @@ Result<RemoteTabletPtr> MetaCache::ProcessTabletLocation(
           location.split_parent_tablet_id());
 
       CHECK(tablets_by_id_.emplace(tablet_id, remote).second);
-      if (tablets_by_key) {
-        (*tablets_by_key)[partition.partition_key_start()] = remote;
+    }
+    // Add this tablet to the current table's tablets_by_key map.
+    if (tablets_by_key) {
+      if (location.split_tablet_ids().size() == 0) {
+        (*tablets_by_key)[remote->partition().partition_key_start()] = remote;
+      } else {
+        // We should not update the partition cache with the remote tablet if it has been split.
+        // Also, we cannot return TABLET_SPLIT error since use cases like x-cluster and cdc access
+        // the parent tablet by id after the split has been processed.
+        VLOG_WITH_PREFIX(5) << "Skipped caching tablet " << tablet_id << " by key since it has "
+                            << "been split: " << yb::ToString(location.split_tablet_ids());
       }
     }
     remote->Refresh(ts_cache_, location.replicas());
@@ -1339,8 +1348,10 @@ class LookupByIdRpc : public LookupRpc {
   Status ProcessTabletLocations(
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
       boost::optional<PartitionListVersion> table_partition_list_version) override {
+    // Use cases like x-cluster and cdc access the split parent tablet explicitly by id post split.
+    // Hence we expect to see split tablets in the response.
     return meta_cache()->ProcessTabletLocations(
-        locations, table_partition_list_version, this);
+        locations, table_partition_list_version, this, AllowSplitTablet::kTrue);
   }
 
   // Tablet to lookup.
@@ -1442,8 +1453,10 @@ class LookupFullTableRpc : public LookupRpc {
   Status ProcessTabletLocations(
       const google::protobuf::RepeatedPtrField<master::TabletLocationsPB>& locations,
       boost::optional<PartitionListVersion> table_partition_list_version) override {
+    // On LookupFullTableRpc, master reads from the active 'partitions_' map, so it would never
+    // return location(s) containing split_tablet_ids.
     return meta_cache()->ProcessTabletLocations(
-        locations, table_partition_list_version, this);
+        locations, table_partition_list_version, this, AllowSplitTablet::kFalse);
   }
 
   // Request body.
@@ -1607,8 +1620,10 @@ class LookupByKeyRpc : public LookupRpc {
     VLOG_WITH_PREFIX_AND_FUNC(2) << "partition_group_start: " << partition_group_start_.ToString();
     // This condition is guaranteed by VerifyResponse function:
     CHECK(resp_.partition_list_version() == partition_group_start_.partition_list_version);
-
-    return meta_cache()->ProcessTabletLocations(locations, table_partition_list_version, this);
+    // On LookupByKeyRpc, master reads from the active 'partitions_' map, so it would never
+    // return location(s) containing split_tablet_ids.
+    return meta_cache()->ProcessTabletLocations(
+        locations, table_partition_list_version, this, AllowSplitTablet::kFalse);
   }
 
   // Encoded partition group start key to lookup.
@@ -1994,6 +2009,14 @@ void MetaCache::LookupTabletByKey(const std::shared_ptr<YBTable>& table,
                                   CoarseTimePoint deadline,
                                   LookupTabletCallback callback,
                                   FailOnPartitionListRefreshed fail_on_partition_list_refreshed) {
+  const auto now = CoarseMonoClock::Now();
+  if (deadline < now) {
+    callback(STATUS_FORMAT(
+        TimedOut, "LookupTabletByKey attempted after deadline expired, passed since deadline: $0",
+        now - deadline));
+    return;
+  }
+
   if (table->ArePartitionsStale()) {
     RefreshTablePartitions(
         table,

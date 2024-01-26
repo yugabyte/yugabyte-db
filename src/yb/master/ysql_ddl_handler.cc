@@ -10,20 +10,30 @@
 // or implied.  See the License for the specific language governing permissions and limitations
 // under the License.
 
+#include <chrono>
+
 #include "yb/master/catalog_manager.h"
 #include "yb/master/master.h"
 #include "yb/master/master_ddl.pb.h"
 #include "yb/master/ysql_transaction_ddl.h"
 
+#include "yb/util/backoff_waiter.h"
+#include "yb/util/trace.h"
+
+DEFINE_RUNTIME_bool(retry_if_ddl_txn_verification_pending, true,
+    "Whether to retry a transaction if it fails verification.");
+
+DEFINE_RUNTIME_int32(wait_for_ysql_ddl_verification_timeout_ms, 200,
+    "Timeout in milliseconds to wait for YSQL DDL transaction verification to finish");
+
 DEFINE_test_flag(bool, disable_ysql_ddl_txn_verification, false,
     "Simulates a condition where the background process that checks whether the YSQL transaction "
     "was a success or a failure is indefinitely delayed");
 
-DEFINE_test_flag(int32, delay_ysql_ddl_rollback_secs, 0,
-                 "Number of seconds to sleep before rolling back a failed ddl transaction");
-
 DEFINE_test_flag(int32, ysql_max_random_delay_before_ddl_verification_usecs, 0,
                   "Maximum #usecs to randomly sleep before verifying a YSQL DDL transaction");
+
+DEFINE_test_flag(bool, pause_ddl_rollback, false, "Pause DDL rollback");
 
 using namespace std::placeholders;
 using std::shared_ptr;
@@ -66,14 +76,14 @@ void CatalogManager::ScheduleYsqlTxnVerification(
 }
 
 Status CatalogManager::YsqlTableSchemaChecker(
-    scoped_refptr<TableInfo> table, const string& txn_id_pb, bool txn_rpc_success,
+    scoped_refptr<TableInfo> table, const string& pb_txn_id, bool txn_rpc_success,
     const LeaderEpoch& epoch) {
   if (!txn_rpc_success) {
     return STATUS_FORMAT(IllegalState, "Failed to find Transaction Status for table $0",
                          table->ToString());
   }
   bool is_committed = VERIFY_RESULT(ysql_transaction_->PgSchemaChecker(table));
-  return YsqlDdlTxnCompleteCallback(table, txn_id_pb, is_committed, epoch);
+  return YsqlDdlTxnCompleteCallback(table, pb_txn_id, is_committed, epoch);
 }
 
 Status CatalogManager::ReportYsqlDdlTxnStatus(
@@ -122,16 +132,16 @@ Status CatalogManager::ReportYsqlDdlTxnStatus(
 }
 
 Status CatalogManager::YsqlDdlTxnCompleteCallback(scoped_refptr<TableInfo> table,
-                                                  const string& txn_id_pb,
+                                                  const string& pb_txn_id,
                                                   bool success,
                                                   const LeaderEpoch& epoch) {
   SleepFor(MonoDelta::FromMicroseconds(RandomUniformInt<int>(0,
     FLAGS_TEST_ysql_max_random_delay_before_ddl_verification_usecs)));
 
-  DCHECK(!txn_id_pb.empty());
+  DCHECK(!pb_txn_id.empty());
   DCHECK(table);
   const auto& table_id = table->id();
-  const auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(txn_id_pb));
+  const auto txn_id = VERIFY_RESULT(FullyDecodeTransactionId(pb_txn_id));
   bool table_present = false;
   {
     LockGuard lock(ddl_txn_verifier_mutex_);
@@ -165,8 +175,8 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(scoped_refptr<TableInfo> table
     // doing anything as the deletion of the table will delete this index.
     const auto& indexed_table_id = table->indexed_table_id();
     auto indexed_table = VERIFY_RESULT(FindTableById(indexed_table_id));
-    if (table->IsBeingDroppedDueToDdlTxn(txn_id_pb, success) &&
-        indexed_table->IsBeingDroppedDueToDdlTxn(txn_id_pb, success)) {
+    if (table->IsBeingDroppedDueToDdlTxn(pb_txn_id, success) &&
+        indexed_table->IsBeingDroppedDueToDdlTxn(pb_txn_id, success)) {
       VLOG(1) << "Skipping DDL transaction verification for index " << table->ToString()
               << " as the indexed table " << indexed_table->ToString()
               << " is also being dropped";
@@ -178,11 +188,9 @@ Status CatalogManager::YsqlDdlTxnCompleteCallback(scoped_refptr<TableInfo> table
 
 Status CatalogManager::YsqlDdlTxnCompleteCallbackInternal(
     TableInfo* table, const TransactionId& txn_id, bool success, const LeaderEpoch& epoch) {
-  if (FLAGS_TEST_delay_ysql_ddl_rollback_secs > 0) {
-    LOG(INFO) << "YsqlDdlTxnCompleteCallbackInternal: Sleep for "
-              << FLAGS_TEST_delay_ysql_ddl_rollback_secs << " seconds";
-    SleepFor(MonoDelta::FromSeconds(FLAGS_TEST_delay_ysql_ddl_rollback_secs));
-  }
+
+  TEST_PAUSE_IF_FLAG(TEST_pause_ddl_rollback);
+
   const auto id = "table id: " + table->id();
 
   auto l = table->LockForWrite();
@@ -200,8 +208,7 @@ Status CatalogManager::YsqlDdlTxnCompleteCallbackInternal(
 
   auto& metadata = l.mutable_data()->pb;
 
-  SCHECK(metadata.state() == SysTablesEntryPB::RUNNING ||
-         metadata.state() == SysTablesEntryPB::ALTERING, Aborted,
+  SCHECK(l->is_running(), Aborted,
          "Unexpected table state ($0), abandoning DDL rollback for $1",
          SysTablesEntryPB_State_Name(metadata.state()), table->ToString());
 
@@ -327,6 +334,52 @@ Status CatalogManager::YsqlDdlTxnDropTableHelper(
   dtreq.mutable_table()->set_table_id(table->id());
   dtreq.set_is_index_table(table->is_index());
   return DeleteTableInternal(&dtreq, &dtresp, nullptr /* rpc */, epoch);
+}
+
+Status CatalogManager::WaitForDdlVerificationToFinish(
+    const scoped_refptr<TableInfo>& table, const string& pb_txn_id) {
+
+  auto is_ddl_in_progress = [&] {
+    TRACE("Locking table");
+    auto l = table->LockForRead();
+    return l->has_ysql_ddl_txn_verifier_state() && l->pb_transaction_id() != pb_txn_id;
+  };
+
+  if (!FLAGS_retry_if_ddl_txn_verification_pending) {
+    // Simply check whether some other ddl is in progress, if so, return error.
+    return is_ddl_in_progress() ? STATUS_FORMAT(
+        TryAgain, "Table is undergoing DDL transaction verification: $0", table->ToString())
+        : Status::OK();
+  }
+
+  // Best effort wait for any previous DDL verification on this table to be complete. This is mostly
+  // to handle the case where a script calls multiple DDLs on the same table in sequential order in
+  // quick succession. In that case we do not want to fail the second DDL simply because background
+  // DDL transaction still did not finish for the previous DDL. Note that we release the lock at the
+  // end so it is still possible that by the time the caller acquires a lock later, some other DDL
+  // transaction started on this table and the caller fails. But this case is ok, because we only
+  // intend to make sequential DDLs work, not serialize concurrent DDL. If we didn't release the
+  // lock here, then we would effectively be blocking DDL verification itself, which needs a write
+  // lock.
+  Status s =
+      RetryFunc(CoarseMonoClock::Now() +
+                std::chrono::milliseconds(FLAGS_wait_for_ysql_ddl_verification_timeout_ms),
+      "Waiting for ddl transaction",
+      Format("Table is undergoing DDL transaction verification: $0", table->ToString()),
+      [&](CoarseTimePoint deadline, bool *ddl_verification_in_progress) -> Status {
+        *ddl_verification_in_progress = is_ddl_in_progress();
+        return Status::OK();
+      }
+  );
+
+  // The above function returns a timed out error if ddl verification is not complete yet. In that
+  // case do not return timeout to the client (which may handle an actual timeout differently and
+  // retry more often), instead return a TryAgain error.
+  if (s.IsTimedOut()) {
+    return STATUS_FORMAT(TryAgain, "Table is undergoing DDL transaction verification: $0",
+        table->ToString());
+  }
+  return s;
 }
 
 } // namespace master

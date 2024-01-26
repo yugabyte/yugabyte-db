@@ -15,7 +15,7 @@
 
 #include <stdarg.h>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 using rocksdb::InfoLogLevel;
 

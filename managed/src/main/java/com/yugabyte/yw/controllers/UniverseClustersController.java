@@ -14,6 +14,8 @@ import static com.yugabyte.yw.controllers.UniverseControllerRequestBinder.bindFo
 
 import com.google.inject.Inject;
 import com.yugabyte.yw.common.Util;
+import com.yugabyte.yw.common.operator.annotations.BlockOperatorResource;
+import com.yugabyte.yw.common.operator.annotations.OperatorResourceTypes;
 import com.yugabyte.yw.common.rbac.PermissionInfo.Action;
 import com.yugabyte.yw.common.rbac.PermissionInfo.ResourceType;
 import com.yugabyte.yw.controllers.handlers.UniverseCRUDHandler;
@@ -66,6 +68,7 @@ public class UniverseClustersController extends AuthenticatedController {
         resourceLocation =
             @Resource(path = Util.UNIVERSE_UUID, sourceType = SourceType.REQUEST_BODY))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result createAllClusters(UUID customerUUID, Http.Request request) {
     // TODO: add assertions that only expected params are set or bad_request
     // Basically taskParams.clusters[]->userIntent and may be few more things
@@ -124,6 +127,7 @@ public class UniverseClustersController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result updatePrimaryCluster(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
@@ -196,6 +200,7 @@ public class UniverseClustersController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result deleteReadonlyCluster(
       UUID customerUUID,
       UUID universeUUID,
@@ -244,6 +249,7 @@ public class UniverseClustersController extends AuthenticatedController {
             @PermissionAttribute(resourceType = ResourceType.UNIVERSE, action = Action.UPDATE),
         resourceLocation = @Resource(path = Util.UNIVERSES, sourceType = SourceType.ENDPOINT))
   })
+  @BlockOperatorResource(resource = OperatorResourceTypes.UNIVERSE)
   public Result updateReadOnlyCluster(UUID customerUUID, UUID universeUUID, Http.Request request) {
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);

@@ -98,6 +98,8 @@ DECLARE_int32(tracing_level);
 #define TRACE_FUNC() \
   TRACE(__func__)
 
+#define TRACE_BEGIN_END_FUNC(t) yb::ScopedBeginEndFunc _begin_end_scope(__func__);
+
 #define PLAIN_TRACE_TO(trace, message) \
   do { \
     if ((trace)) { \
@@ -169,6 +171,25 @@ class Trace : public RefCountedThreadSafe<Trace> {
   // successive trace messages.
   void Dump(std::ostream* out, bool include_time_deltas) const;
   void Dump(std::ostream* out, int32_t tracing_depth, bool include_time_deltas) const;
+
+  // Dumps the trace to Log(INFO)
+  void DumpToLogInfo(bool include_time_deltas) const;
+
+  // Sets the given flag to true, and
+  // returns and empty string ("")
+  //
+  // Useful to chain with probabilistic macros such as YB_LOG_EVERY_xxx()
+  //
+  // Example usage:
+  //   bool was_printed = false;
+  //   LOG_EVERY_N(INFO, 1000) << Trace::SetTrue(&was_printed) << "rpc took too long : Trace :";
+  //   if (was_printed) {
+  //     trace_->DumpToLogInfo(true);
+  //   }
+  static std::string SetTrue(bool* flag) {
+    *flag = true;
+    return "";
+  }
 
   // Dump the trace buffer as a string.
   std::string DumpToString(int32_t tracing_depth, bool include_time_deltas) const;
@@ -281,6 +302,24 @@ class ScopedAdoptTrace {
   scoped_refptr<Trace> trace_;
 
   DISALLOW_COPY_AND_ASSIGN(ScopedAdoptTrace);
+};
+
+// Adds a Begin/End trace call in the constructor/destructor.
+// This should only be used on the stack (and thus created and destroyed
+// on the same thread).
+class ScopedBeginEndFunc {
+ public:
+  explicit ScopedBeginEndFunc(std::string function) : function_name_(std::move(function)) {
+    TRACE("Begin: $0", function_name_);
+  }
+  ~ScopedBeginEndFunc() {
+    TRACE("End: $0", function_name_);
+  }
+
+ private:
+  std::string function_name_;
+
+  DISALLOW_COPY_AND_ASSIGN(ScopedBeginEndFunc);
 };
 
 // PlainTrace could be used in simple cases when we trace only up to 20 entries with const message.

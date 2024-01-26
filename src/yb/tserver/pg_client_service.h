@@ -36,6 +36,7 @@ namespace tserver {
 
 class PgMutationCounter;
 
+// Forwards call to corresponding PgClientSession sync method (see PG_CLIENT_SESSION_METHODS).
 #define YB_PG_CLIENT_METHODS \
     (AlterDatabase) \
     (AlterTable) \
@@ -78,6 +79,12 @@ class PgMutationCounter;
     (GetActiveTransactionList) \
     /**/
 
+// Forwards call to corresponding PgClientSession async method (see
+// PG_CLIENT_SESSION_ASYNC_METHODS).
+#define YB_PG_CLIENT_ASYNC_METHODS \
+    (GetTableKeyRanges) \
+    /**/
+
 class PgClientServiceImpl : public PgClientServiceIf {
  public:
   explicit PgClientServiceImpl(
@@ -107,6 +114,7 @@ class PgClientServiceImpl : public PgClientServiceIf {
       rpc::RpcContext context) override;
 
   BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DECLARE, ~, YB_PG_CLIENT_METHODS);
+  BOOST_PP_SEQ_FOR_EACH(YB_PG_CLIENT_METHOD_DECLARE, ~, YB_PG_CLIENT_ASYNC_METHODS);
 
  private:
   class Impl;

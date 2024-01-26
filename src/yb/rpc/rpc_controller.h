@@ -33,7 +33,7 @@
 
 #include <memory>
 
-#include <glog/logging.h>
+#include "yb/util/logging.h"
 
 #include "yb/gutil/macros.h"
 
@@ -148,6 +148,8 @@ class RpcController {
 
   // Assign sidecar with specified index to out.
   Result<RefCntSlice> ExtractSidecar(size_t idx) const;
+
+  size_t GetSidecarsCount() const;
 
   // Transfer all sidecars to specified context.
   size_t TransferSidecars(Sidecars* dest);

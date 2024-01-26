@@ -58,7 +58,6 @@ import java.util.UUID;
 import java.util.concurrent.ArrayBlockingQueue;
 import java.util.concurrent.BlockingQueue;
 import java.util.stream.Collectors;
-import javax.inject.Inject;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.yb.util.Pair;
@@ -86,7 +85,7 @@ public class KubernetesOperatorController {
 
   public static final Logger LOG = LoggerFactory.getLogger(KubernetesOperatorController.class);
 
-  @Inject KubernetesOperatorStatusUpdater kubernetesStatusUpdater;
+  KubernetesOperatorStatusUpdater kubernetesStatusUpdater;
 
   public enum OperatorAction {
     CREATED,
@@ -102,7 +101,8 @@ public class KubernetesOperatorController {
       String namespace,
       UniverseCRUDHandler universeCRUDHandler,
       UpgradeUniverseHandler upgradeUniverseHandler,
-      CloudProviderHandler cloudProviderHandler) {
+      CloudProviderHandler cloudProviderHandler,
+      KubernetesOperatorStatusUpdater kubernetesStatusUpdater) {
     this.kubernetesClient = kubernetesClient;
     this.ybUniverseClient = ybUniverseClient;
     this.ybUniverseLister = new Lister<>(ybUniverseInformer.getIndexer());
@@ -112,6 +112,7 @@ public class KubernetesOperatorController {
     this.universeCRUDHandler = universeCRUDHandler;
     this.upgradeUniverseHandler = upgradeUniverseHandler;
     this.cloudProviderHandler = cloudProviderHandler;
+    this.kubernetesStatusUpdater = kubernetesStatusUpdater;
     addEventHandlersToSharedIndexInformers();
   }
 
@@ -208,7 +209,7 @@ public class KubernetesOperatorController {
         } else {
           Universe universe = Universe.getOrBadRequest(universeResp.universeUUID);
           UUID universeUUID = universe.getUniverseUUID();
-          Result task = deleteUniverse(cust.getUuid(), universeUUID);
+          Result task = deleteUniverse(cust.getUuid(), universeUUID, ybUniverse);
 
           if (!isRunningInKubernetes()) {
             ObjectMeta objectMeta = ybUniverse.getMetadata();
@@ -259,7 +260,7 @@ public class KubernetesOperatorController {
     }
   }
 
-  private Result deleteUniverse(UUID customerUUID, UUID universeUUID) {
+  private Result deleteUniverse(UUID customerUUID, UUID universeUUID, YBUniverse ybUniverse) {
     LOG.info("Deleting universe using operator");
     Customer customer = Customer.getOrBadRequest(customerUUID);
     Universe universe = Universe.getOrBadRequest(universeUUID, customer);
@@ -270,7 +271,10 @@ public class KubernetesOperatorController {
 
     /* customer, universe, isForceDelete, isDeleteBackups, isDeleteAssociatedCerts */
     if (!universe.getUniverseDetails().updateInProgress) {
-      UUID taskUUID = universeCRUDHandler.destroy(customer, universe, false, false, false);
+      KubernetesResourceDetails resourceDetails =
+          KubernetesResourceDetails.fromResource(ybUniverse);
+      UUID taskUUID =
+          universeCRUDHandler.destroy(customer, universe, false, false, false, resourceDetails);
       return new YBPTask(taskUUID, universeUUID).asResult();
     } else {
       LOG.info("Delete in progress, not deleting universe");
@@ -358,7 +362,7 @@ public class KubernetesOperatorController {
           String startingTask =
               String.format("Starting task on universe %s", currentUserIntent.universeName);
           kubernetesStatusUpdater.doKubernetesEventUpdate(
-              currentUserIntent.universeName, startingTask);
+              KubernetesResourceDetails.fromResource(ybUniverse), startingTask);
           if (!incomingIntent.universeOverrides.equals(currentUserIntent.universeOverrides)) {
             LOG.info("Updating Kubernetes Overrides");
             updateOverridesYbUniverse(
@@ -530,26 +534,7 @@ public class KubernetesOperatorController {
     taskParams.creatingUser = users.get(0);
     // CommonUtils.getUserFromContext(ctx);
     taskParams.expectedUniverseVersion = -1; // -1 skips the version check
-    return taskParams;
-  }
-
-  private UniverseConfigureTaskParams createTaskParams(UserIntent userIntent) throws Exception {
-    LOG.info("Creating task params from userIntent");
-    UniverseConfigureTaskParams taskParams = new UniverseConfigureTaskParams();
-    Cluster cluster = new Cluster(ClusterType.PRIMARY, userIntent);
-    taskParams.clusters.add(cluster);
-    List<Customer> custList = Customer.getAll();
-    Customer cust = custList.get(0);
-    List<Users> users = Users.getAll(cust.getUuid());
-    if (users.isEmpty()) {
-      LOG.error("Users list is of size 0!");
-      throw new Exception("Need at least one user");
-    } else {
-      LOG.info("Taking first user for customer");
-    }
-    taskParams.creatingUser = users.get(0);
-    // CommonUtils.getUserFromContext(ctx);
-    taskParams.expectedUniverseVersion = -1; // -1 skips the version check
+    taskParams.setKubernetesResourceDetails(KubernetesResourceDetails.fromResource(ybUniverse));
     return taskParams;
   }
 

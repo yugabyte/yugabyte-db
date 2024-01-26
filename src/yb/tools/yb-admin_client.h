@@ -323,14 +323,22 @@ class ClusterAdminClient {
   Status PromoteAutoFlags(
       const std::string& max_flag_class, const bool promote_non_runtime_flags, const bool force);
 
+  Status RollbackAutoFlags(uint32_t rollback_version);
+
+  Status PromoteSingleAutoFlag(const std::string& process_name, const std::string& flag_name);
+  Status DemoteSingleAutoFlag(const std::string& process_name, const std::string& flag_name);
+
   Status ListAllNamespaces();
 
   // Snapshot operations.
   Result<master::ListSnapshotsResponsePB> ListSnapshots(const ListSnapshotsFlags& flags);
   Status CreateSnapshot(const std::vector<client::YBTableName>& tables,
+                        std::optional<int32_t> retention_duration_hours,
                         const bool add_indexes = true,
                         const int flush_timeout_secs = 0);
-  Status CreateNamespaceSnapshot(const TypedNamespaceName& ns);
+  Status CreateNamespaceSnapshot(
+      const TypedNamespaceName& ns, std::optional<int32_t> retention_duration_hours,
+      bool add_indexes = true);
   Result<master::ListSnapshotRestorationsResponsePB> ListSnapshotRestorations(
       const TxnSnapshotRestorationId& restoration_id);
   Result<rapidjson::Document> CreateSnapshotSchedule(const client::YBTableName& keyspace,

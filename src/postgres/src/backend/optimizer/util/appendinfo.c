@@ -873,10 +873,11 @@ add_row_identity_columns(PlannerInfo *root, Index rtindex,
 		 * row-level trigger corresponding to the operations, then also return
 		 * the whole row.
 		 */
-		if (YBRelHasOldRowTriggers(target_relation, commandType) ||
-			YBRelHasSecondaryIndices(target_relation))
+		if (YbUseWholeRowJunkAttribute(target_relation, target_rte->updatedCols,
+									   commandType))
 		{
-			var = makeWholeRowVar(target_rte, rtindex, 0, false);
+			var = makeVar(rtindex, InvalidAttrNumber, RECORDOID, -1, InvalidOid,
+						  0);
 			add_row_identity_var(root, var, rtindex, "wholerow");
 		}
 

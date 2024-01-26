@@ -127,6 +127,8 @@
       lineinfile:
         dest: "{{ yb_home_dir }}/.bash_profile"
         line: ". {{ yb_home_dir }}/.bashrc"
+        owner: "{{ user_name }}"
+        group: "{{ user_name }}"
         create: yes
         state: present
 
@@ -134,6 +136,8 @@
       lineinfile:
         dest: "{{ yb_home_dir }}/.bashrc"
         line: "export XDG_RUNTIME_DIR=/run/user/{{ output.stdout }}"
+        owner: "{{ user_name }}"
+        group: "{{ user_name }}"
         create: yes
         state: present
 
@@ -153,37 +157,6 @@
       become_method: sudo
       shell:
         cmd: "loginctl enable-linger {{ user_name }}"
-
-    - block:
-      - name: Set ulimits for user scope in system.conf
-        lineinfile:
-          dest: /etc/systemd/system.conf
-          regexp: '^DefaultLimitNOFILE*'
-          line: 'DefaultLimitNOFILE=1048576'
-          create: yes
-          state: present
-          insertafter: 'EOF'
-
-      - name: Set ulimits for user scope in user.conf
-        lineinfile:
-          dest: /etc/systemd/user.conf
-          regexp: '^DefaultLimitNOFILE*'
-          line: 'DefaultLimitNOFILE=1048576'
-          create: yes
-          state: present
-          insertafter: 'EOF'
-
-      - name: Reboot the system for new ulimits
-        reboot:
-          pre_reboot_delay: 60
-          post_reboot_delay: 60
-          reboot_timeout: 300
-        register: reboot
-
-      - name: Log reboot time
-        debug:
-          msg: System took {{ reboot.elapsed }} seconds to reboot
-      when: ansible_os_family == 'RedHat' and ansible_distribution_major_version == '8'
     # Do not configure user scope for setting up systemd in centos7/amazonLinux:2.
     when: ansible_os_family != 'RedHat' or (ansible_distribution_major_version != '7' and not (ansible_distribution == 'Amazon' and ansible_distribution_major_version == '2'))
   - block:
@@ -253,8 +226,7 @@
         line: "#includedir /etc/sudoers.d"
         state: present
         validate: "/usr/sbin/visudo -cf %s"
-      when: (ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7') or
-            (ansible_os_family == 'Amazon' and ansible_distribution_major_version == '2')
+      when: ansible_os_family == 'RedHat' and ansible_distribution_major_version == '7'
 
   - name: setup-postgres-cgroups
     include_role:

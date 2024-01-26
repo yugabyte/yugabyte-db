@@ -700,6 +700,7 @@ public class HealthChecker {
             new NodeInfo()
                 .setNodeHost(nodeDetails.cloudInfo.private_ip)
                 .setNodeName(nodeDetails.nodeName)
+                .setNodeUuid(nodeDetails.nodeUuid)
                 .setNodeIdentifier(
                     nodeInstance != null ? nodeInstance.getDetails().instanceName : "")
                 .setYbSoftwareVersion(userIntent.ybSoftwareVersion)
@@ -975,8 +976,8 @@ public class HealthChecker {
       // they are added.
       Path path =
           fileHelperService.createTempFile(
-              "collect_metrics_" + universeUuid + "_" + nodeInfo.nodeName, ".sh");
-      Files.write(path, scriptContent.getBytes(StandardCharsets.UTF_8));
+              "collect_metrics_" + universeUuid + "_" + nodeInfo.nodeUuid, ".sh");
+      Files.writeString(path, scriptContent);
 
       return path.toString();
     } catch (IOException e) {
@@ -997,8 +998,8 @@ public class HealthChecker {
       // they are added.
       Path path =
           fileHelperService.createTempFile(
-              "node_health_" + universeUuid + "_" + nodeInfo.nodeName, ".py");
-      Files.write(path, scriptContent.getBytes(StandardCharsets.UTF_8));
+              "node_health_" + universeUuid + "_" + nodeInfo.nodeUuid, ".py");
+      Files.writeString(path, scriptContent);
 
       return path.toString();
     } catch (IOException e) {
@@ -1054,6 +1055,7 @@ public class HealthChecker {
     private String ybcDir = "";
     private String nodeHost;
     private String nodeName;
+    private UUID nodeUuid;
     private String nodeIdentifier = "";
     private String ybSoftwareVersion = null;
     private boolean enableTls = false;

@@ -5809,14 +5809,22 @@ ATRewriteTables(AlterTableStmt *parsetree, List **wqueue, LOCKMODE lockmode,
 		 * the equivalent of a rewrite, by the time we reach here so the trigger
 		 * is executed after the rewrite.
 		 */
-		if (IsYugaByteEnabled() && tab->subcmds[AT_PASS_ALTER_TYPE] != NIL &&
-			tab->rewrite > 0)
+		if (IsYBRelationById(tab->relid) &&
+			tab->subcmds[AT_PASS_ALTER_TYPE] != NIL && tab->rewrite > 0)
 		{
 			if (parsetree)
 				EventTriggerTableRewrite((Node *) parsetree, tab->relid,
 										 tab->rewrite);
 			continue;
 		}
+
+		/*
+		 * When rewriting a temp relation, we need to execute the PG
+		 * transaction handling code-paths, as PG uses the transaction ID to
+		 * determine what rows are visible to a specific transaction.
+		 */
+		if (!IsYBRelationById(tab->relid) && tab->rewrite > 0)
+			SetTxnWithPGRel();
 
 		/*
 		 * If we change column data types, the operation has to be propagated
@@ -21181,7 +21189,7 @@ YbATCopyFkAndCheckConstraints(const Relation old_rel, Relation new_rel,
 
 /*
  * Copy all rows from one table to the other.
- * Does not perform any constraint checks.
+ * Performs constraint checks when a column type is altered.
  *
  * This is a based on ATRewriteTable, but adopted for YB and with attribute
  * remapping, accounting for old_rel columns dropped in new_rel (we don't expect
@@ -21234,6 +21242,7 @@ YbATCopyTableRowsUnchecked(Relation old_rel, Relation new_rel,
 	EState		   *estate;
 	ExprContext	   *econtext;
 	ListCell	   *cell;
+	List		   *notnull_attrs = NIL;
 
 	Assert(IsYBRelation(new_rel));
 
@@ -21268,6 +21277,13 @@ YbATCopyTableRowsUnchecked(Relation old_rel, Relation new_rel,
 			ExecInitExpr((Expr *) new_column_value->expr, NULL);
 	}
 
+	for (int i = 0; i < newTupDesc->natts; i++)
+	{
+		Form_pg_attribute attr = TupleDescAttr(newTupDesc, i);
+		if (attr->attnotnull && !attr->attisdropped)
+			notnull_attrs = lappend_int(notnull_attrs, i);
+	}
+
 	/*
 	 * Scan through the rows, generating a new row if needed and then
 	 * checking all the constraints.
@@ -21281,6 +21297,7 @@ YbATCopyTableRowsUnchecked(Relation old_rel, Relation new_rel,
 	 */
 	oldcxt = MemoryContextSwitchTo(econtext->ecxt_per_tuple_memory);
 
+	/* The following while loop is similar to the one in ATRewriteTable. */
 	while ((tuple = heap_getnext(scan, ForwardScanDirection)) != NULL)
 	{
 
@@ -21334,6 +21351,51 @@ YbATCopyTableRowsUnchecked(Relation old_rel, Relation new_rel,
 		 */
 		tuple = heap_form_tuple(newTupDesc, new_values, new_isnull);
 
+		/* If we performed type conversions, re-check constraints */
+		if (has_altered_column_type)
+		{
+			foreach(cell, notnull_attrs)
+			{
+				int			attn = lfirst_int(cell);
+
+				if (heap_attisnull(tuple, attn + 1, newTupDesc))
+				{
+					Form_pg_attribute attr = TupleDescAttr(newTupDesc, attn);
+
+					ereport(ERROR,
+							(errcode(ERRCODE_NOT_NULL_VIOLATION),
+							 errmsg("column \"%s\" of relation \"%s\" contains null values",
+									NameStr(attr->attname),
+									RelationGetRelationName(old_rel)),
+							 errtablecol(old_rel, attn + 1)));
+				}
+			}
+
+			foreach(cell, new_check_constraints)
+			{
+				CookedConstraint *constraint = lfirst(cell);
+				ExprState *exprstate = ExecPrepareExpr(
+					(Expr *) constraint->expr, estate);
+				econtext->ecxt_scantuple = newslot;
+				ExecStoreHeapTuple(tuple, newslot, false);
+				if (!ExecCheck(exprstate, econtext))
+					ereport(ERROR,
+							(errcode(ERRCODE_CHECK_VIOLATION),
+							 errmsg("check constraint \"%s\""
+									" is violated by some row",
+									constraint->name),
+							 errtableconstraint(new_rel,
+												constraint->name)));
+			}
+
+		/*
+		 * TODO(fizaa): When we add support for altering the type of a foreign
+		 * key column, we should check the foreign key constraints here. See
+		 * https://github.com/yugabyte/yugabyte-db/issues/17037.
+		 */
+
+		}
+
 		ExecStoreHeapTuple(tuple, newslot, false);
 
 		/* Write the tuple out to the new relation */
@@ -21343,43 +21405,6 @@ YbATCopyTableRowsUnchecked(Relation old_rel, Relation new_rel,
 		MemoryContextReset(econtext->ecxt_per_tuple_memory);
 
 		CHECK_FOR_INTERRUPTS();
-	}
-
-	/* If we performed type conversions, re-check check and FK constraints */
-	if (has_altered_column_type)
-	{
-		Relation constrRel = table_open(ConstraintRelationId, AccessShareLock);
-		#ifdef YB_TODO
-		/* validateCheckConstraint is not available in pg15, needs to be handled.*/
-		foreach(cell, new_check_constraints)
-		{
-			CookedConstraint *cooked_constraint = lfirst(cell);
-			HeapTuple		  constrTup =
-				get_catalog_object_by_oid(constrRel,
-										  Anum_pg_constraint_oid,
-										  cooked_constraint->conoid);
-			validateCheckConstraint(new_rel, constrTup);
-		}
-		#endif
-
-		foreach(cell, new_fk_constraint_oids)
-		{
-			Oid		  constraint_oid = lfirst_oid(cell);
-			HeapTuple constrTup =
-				get_catalog_object_by_oid(constrRel,
-										  Anum_pg_constraint_oid,
-										  constraint_oid);
-			Form_pg_constraint constraint =
-				(Form_pg_constraint) GETSTRUCT(constrTup);
-
-			Relation pk_rel = table_open(constraint->confrelid, AccessShareLock);
-			validateForeignKeyConstraint(NameStr(constraint->conname), new_rel,
-										 pk_rel, constraint->conindid,
-										 constraint_oid);
-			table_close(pk_rel, AccessShareLock);
-		}
-
-		table_close(constrRel, AccessShareLock);
 	}
 
 	/*
@@ -21500,8 +21525,7 @@ YbATMoveRelDependencies(Relation old_rel, Relation new_rel, Relation pg_depend,
 	ScanKeyData key[2];
 	SysScanDesc scan;
 	HeapTuple	dep_tuple, con_tuple;
-	ListCell   *cell;
-	List *cons_to_drop = NIL; /* list of pairs (ConOid, ConstraintedRelOid) */
+	ObjectAddresses *cons_to_drop;
 
 	/* Move sequences dependencies. */
 	ScanKeyInit(&key[0], Anum_pg_depend_refclassid, BTEqualStrategyNumber,
@@ -21539,10 +21563,11 @@ YbATMoveRelDependencies(Relation old_rel, Relation new_rel, Relation pg_depend,
 	scan = systable_beginscan(pg_constraint, InvalidOid /* no index */,
 							  true /* indexOK */, NULL /* snapshot */,
 							  2 /* nkeys */, key);
+	cons_to_drop = new_object_addresses();
 	while (HeapTupleIsValid(con_tuple = systable_getnext(scan)))
 	{
 		Form_pg_constraint con_form = (Form_pg_constraint) GETSTRUCT(con_tuple);
-
+		ObjectAddress con_addr;
 		/*
 		 * We need to rename this FK constraint and create a new one in its
 		 * stead. Dropping old constraints will be postponed until the end of
@@ -21560,9 +21585,9 @@ YbATMoveRelDependencies(Relation old_rel, Relation new_rel, Relation pg_depend,
 		CatalogTupleUpdate(pg_constraint, &con_tuple->t_self, con_tuple);
 		CommandCounterIncrement();
 
-		cons_to_drop =
-			lappend(cons_to_drop, list_make2_oid(con_form->oid,
-												 con_form->conrelid));
+		ObjectAddressSet(con_addr, ConstraintRelationId,
+						 con_form->oid);
+		add_exact_object_address(&con_addr, cons_to_drop);
 
 		/*
 		 * We don't need AccessExclusiveLock since old constraint
@@ -21590,22 +21615,8 @@ YbATMoveRelDependencies(Relation old_rel, Relation new_rel, Relation pg_depend,
 	}
 	systable_endscan(scan);
 
-	foreach(cell, cons_to_drop)
-	{
-		List *cell_list = lfirst(cell);
-		Oid	  conoid = linitial_oid(cell_list);
-		Oid	  base_relid = lsecond_oid(cell_list);
-
-		ObjectAddress con_objaddr;
-		con_objaddr.classId = ConstraintRelationId;
-		con_objaddr.objectId = conoid;
-		con_objaddr.objectSubId = 0;
-
-		Relation base_rel = table_open(base_relid, ShareUpdateExclusiveLock);
-
-		performDeletion(&con_objaddr, DROP_CASCADE, 0);
-		table_close(base_rel, ShareUpdateExclusiveLock);
-	}
+	performMultipleDeletions(cons_to_drop, DROP_RESTRICT,
+							 PERFORM_DELETION_INTERNAL);
 }
 
 static void

@@ -5,14 +5,12 @@ package com.yugabyte.yw.commissioner.tasks.upgrade;
 import static com.yugabyte.yw.commissioner.tasks.UniverseTaskBase.ServerType.MASTER;
 import static com.yugabyte.yw.models.TaskInfo.State.Success;
 import static org.junit.Assert.assertEquals;
+import static org.junit.Assert.assertThrows;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoMoreInteractions;
-import static org.mockito.Mockito.when;
 
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.google.common.collect.ImmutableList;
 import com.google.common.collect.ImmutableMap;
 import com.yugabyte.yw.commissioner.Common;
@@ -36,7 +34,6 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.InjectMocks;
 import org.mockito.junit.MockitoJUnitRunner;
-import play.libs.Json;
 
 @RunWith(MockitoJUnitRunner.class)
 @Slf4j
@@ -65,8 +62,8 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
           TaskType.WaitForServerReady,
           TaskType.WaitForEncryptionKeyInMemory,
           TaskType.ModifyBlackList,
-          TaskType.WaitForFollowerLag,
-          TaskType.WaitForFollowerLag,
+          TaskType.CheckFollowerLag,
+          TaskType.CheckFollowerLag,
           TaskType.RunHooks,
           TaskType.SetNodeState);
 
@@ -81,9 +78,8 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
     attachHooks("ThirdpartySoftwareUpgrade");
     thirdpartySoftwareUpgrade.setUserTaskUUID(UUID.randomUUID());
 
-    ObjectNode bodyJson = Json.newObject();
-    bodyJson.put("underreplicated_tablets", Json.newArray());
-    when(mockNodeUIApiHelper.getRequest(anyString())).thenReturn(bodyJson);
+    setUnderReplicatedTabletsMock();
+    setFollowerLagMock();
   }
 
   private TaskInfo submitTask(ThirdpartySoftwareUpgradeParams requestParams, int version) {
@@ -134,8 +130,7 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
     ThirdpartySoftwareUpgradeParams taskParams = new ThirdpartySoftwareUpgradeParams();
     taskParams.setUniverseUUID(defaultUniverse.getUniverseUUID());
     taskParams.clusters = defaultUniverse.getUniverseDetails().clusters;
-    TaskInfo taskInfo = submitTask(taskParams, expectedUniverseVersion);
-    assertEquals(TaskInfo.State.Failure, taskInfo.getTaskState());
+    assertThrows(RuntimeException.class, () -> submitTask(taskParams, expectedUniverseVersion));
     verifyNoMoreInteractions(mockNodeManager);
   }
 
@@ -179,7 +174,7 @@ public class ThirdpartySoftwareUpgradeTest extends UpgradeTaskTest {
         subTasks.stream().collect(Collectors.groupingBy(TaskInfo::getPosition));
 
     int position = 0;
-
+    assertTaskType(subTasksByPosition.get(position++), TaskType.FreezeUniverse);
     // Assert that the first task is the pre-upgrade hooks
     assertTaskType(subTasksByPosition.get(position++), TaskType.RunHooks);
 

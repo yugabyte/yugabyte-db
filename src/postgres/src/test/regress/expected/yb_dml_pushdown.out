@@ -526,17 +526,18 @@ SELECT * FROM single_row;
 
 EXPLAIN (COSTS FALSE) WITH temp AS (UPDATE single_row SET v1 = v1 + 1 WHERE k = 1 RETURNING k, v1)
   UPDATE single_row SET v2 = temp.v1 FROM temp WHERE single_row.k = temp.k;
-                         QUERY PLAN
-------------------------------------------------------------
+                               QUERY PLAN
+-------------------------------------------------------------------------
  Update on single_row
    CTE temp
      ->  Update on single_row single_row_1
            ->  Result
-   ->  Nested Loop
+   ->  YB Batched Nested Loop Join
+         Join Filter: (single_row.k = temp.k)
          ->  CTE Scan on temp
          ->  Index Scan using single_row_pkey on single_row
-               Index Cond: (k = temp.k)
-(8 rows)
+               Index Cond: (k = ANY (ARRAY[temp.k, $4, $5, ..., $1026]))
+(9 rows)
 
 WITH temp AS (UPDATE single_row SET v1 = v1 + 1 WHERE k = 1 RETURNING k, v1)
   UPDATE single_row SET v2 = temp.v1 FROM temp WHERE single_row.k = temp.k;
@@ -567,17 +568,18 @@ SELECT * FROM single_row;
 CREATE INDEX single_row_v2_idx ON single_row(v2);
 EXPLAIN (COSTS FALSE) WITH temp AS (UPDATE single_row SET v1 = v1 + 1 WHERE k = 1 RETURNING k, v1)
   UPDATE single_row SET v2 = temp.v1 FROM temp WHERE single_row.k = temp.k;
-                         QUERY PLAN
-------------------------------------------------------------
+                               QUERY PLAN
+-------------------------------------------------------------------------
  Update on single_row
    CTE temp
      ->  Update on single_row single_row_1
            ->  Result
-   ->  Nested Loop
+   ->  YB Batched Nested Loop Join
+         Join Filter: (single_row.k = temp.k)
          ->  CTE Scan on temp
          ->  Index Scan using single_row_pkey on single_row
-               Index Cond: (k = temp.k)
-(8 rows)
+               Index Cond: (k = ANY (ARRAY[temp.k, $4, $5, ..., $1026]))
+(9 rows)
 
 EXPLAIN (COSTS FALSE) WITH temp AS (UPDATE single_row SET v2 = v1 + 1 WHERE k = 1 RETURNING k, v1)
   UPDATE single_row SET v2 = temp.v1 FROM temp WHERE single_row.k = temp.k;
@@ -588,11 +590,12 @@ EXPLAIN (COSTS FALSE) WITH temp AS (UPDATE single_row SET v2 = v1 + 1 WHERE k = 
      ->  Update on single_row single_row_1
            ->  Index Scan using single_row_pkey on single_row single_row_1
                  Index Cond: (k = 1)
-   ->  Nested Loop
+   ->  YB Batched Nested Loop Join
+         Join Filter: (single_row.k = temp.k)
          ->  CTE Scan on temp
          ->  Index Scan using single_row_pkey on single_row
-               Index Cond: (k = temp.k)
-(9 rows)
+               Index Cond: (k = ANY (ARRAY[temp.k, $4, $5, ..., $1026]))
+(10 rows)
 
 DROP INDEX single_row_v2_idx;
 -- Updates on a table with a trigger
@@ -613,11 +616,12 @@ EXPLAIN (COSTS FALSE) WITH temp AS (UPDATE single_row SET v2 = v1 + 1 WHERE k = 
      ->  Update on single_row single_row_1
            ->  Index Scan using single_row_pkey on single_row single_row_1
                  Index Cond: (k = 1)
-   ->  Nested Loop
+   ->  YB Batched Nested Loop Join
+         Join Filter: (single_row.k = temp.k)
          ->  CTE Scan on temp
          ->  Index Scan using single_row_pkey on single_row
-               Index Cond: (k = temp.k)
-(9 rows)
+               Index Cond: (k = ANY (ARRAY[temp.k, $4, $5, ..., $1026]))
+(10 rows)
 
 DROP TRIGGER notify_single_row_v1_update ON single_row;
 DROP FUNCTION notify_single_row_v1_update_trigger;
@@ -1807,7 +1811,7 @@ SELECT * FROM single_row_not_null_constraints ORDER BY k;
 
 -- Should fail constraint check.
 UPDATE single_row_not_null_constraints SET v2 = v2 + null WHERE k = 1;
-ERROR:  null value in column "v2" violates not-null constraint
+ERROR:  null value in column "v2" of relation "single_row_not_null_constraints" violates not-null constraint
 DETAIL:  Failing row contains (1, null, null).
 -- Should update 0 rows (non-existent key).
 UPDATE single_row_not_null_constraints SET v2 = v2 + 2 WHERE k = 4;
@@ -2371,7 +2375,7 @@ INSERT INTO single_row_default_col(k, a, c) VALUES (3, NULL, 3);
 INSERT INTO single_row_default_col(k, a, c) VALUES (4, NULL, 4);
 -- Setting b to null should not be allowed.
 INSERT INTO single_row_default_col(k, a, b, c) VALUES (5, 5, NULL, 5);
-ERROR:  null value in column "b" violates not-null constraint
+ERROR:  null value in column "b" of relation "single_row_default_col" violates not-null constraint
 DETAIL:  Failing row contains (5, 5, null, 5).
 SELECT * FROM single_row_default_col ORDER BY k;
  k | a  | b  | c
@@ -2426,7 +2430,7 @@ SELECT * FROM single_row_default_col ORDER BY k;
 
 -- Setting b to null should not be allowed.
 UPDATE single_row_default_col SET b = NULL, c = 5 WHERE k = 3;
-ERROR:  null value in column "b" violates not-null constraint
+ERROR:  null value in column "b" of relation "single_row_default_col" violates not-null constraint
 DETAIL:  Failing row contains (3, null, null, 5).
 SELECT * FROM single_row_default_col ORDER BY k;
  k | a | b  | c
@@ -2486,7 +2490,7 @@ SELECT * FROM single_row_default_col ORDER BY k;
 
 -- Setting b to null should not be allowed.
 UPDATE single_row_default_col SET b = NULL, c = 5 WHERE k = 3;
-ERROR:  null value in column "b" violates not-null constraint
+ERROR:  null value in column "b" of relation "single_row_default_col" violates not-null constraint
 DETAIL:  Failing row contains (3, null, null, 5).
 SELECT * FROM single_row_default_col ORDER BY k;
  k | a | b  | c

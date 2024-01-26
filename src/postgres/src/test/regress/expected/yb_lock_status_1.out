@@ -113,18 +113,18 @@ END ;
 $$ LANGUAGE plpgsql;
 -- Basic queries
 SELECT true FROM yb_lock_status(null, null);
- bool
-------
+ ?column?
+----------
 (0 rows)
 
 SELECT true FROM yb_lock_status('yb_lock_tests'::regclass, null);
- bool
-------
+ ?column?
+----------
 (0 rows)
 
 SELECT true FROM yb_lock_status('yb_lock_tests'::regclass::int4, null);
- bool
-------
+ ?column?
+----------
 (0 rows)
 
 SELECT true FROM yb_lock_status(null, 'bogus');
@@ -132,13 +132,13 @@ ERROR:  invalid input syntax for type uuid: "bogus"
 LINE 1: SELECT true FROM yb_lock_status(null, 'bogus');
                                               ^
 SELECT true FROM yb_lock_status(null, '10000000-2000-3000-1000-400000000000');
- bool
-------
+ ?column?
+----------
 (0 rows)
 
 SELECT true FROM yb_lock_status('yb_lock_tests'::regclass, '10000000-2000-3000-1000-400000000000');
- bool
-------
+ ?column?
+----------
 (0 rows)
 
 -- READ COMMITTED
@@ -512,10 +512,10 @@ SELECT l.relation::regclass, a.attname, l.locktype, l.mode, l.hash_cols, l.range
 FROM yb_lock_status(null,null) l LEFT JOIN pg_attribute a ON a.attrelid = l.relation AND a.attnum = l.attnum;
      relation     | attname | locktype |            mode            | hash_cols | range_cols | attnum | column_id
 ------------------+---------+----------+----------------------------+-----------+------------+--------+-----------
- attno_test_table |         | relation | {WEAK_READ,WEAK_WRITE}     |           |            |        |
- attno_test_table |         | keyrange | {WEAK_READ,WEAK_WRITE}     | {1,1}     |            |        |
- attno_test_table |         | row      | {WEAK_READ,WEAK_WRITE}     | {1,1}     | {1}        |        |
  attno_test_table | a       | column   | {STRONG_READ,STRONG_WRITE} | {1,1}     | {1}        |      1 |        13
+ attno_test_table |         | row      | {WEAK_READ,WEAK_WRITE}     | {1,1}     | {1}        |        |
+ attno_test_table |         | keyrange | {WEAK_READ,WEAK_WRITE}     | {1,1}     |            |        |
+ attno_test_table |         | relation | {WEAK_READ,WEAK_WRITE}     |           |            |        |
 (4 rows)
 
 ABORT;
@@ -525,10 +525,10 @@ SELECT l.relation::regclass, a.attname, l.locktype, l.mode, l.hash_cols, l.range
 FROM yb_lock_status(null,null) l LEFT JOIN pg_attribute a ON a.attrelid = l.relation AND a.attnum = l.attnum;
      relation     | attname | locktype |            mode            | hash_cols | range_cols | attnum | column_id
 ------------------+---------+----------+----------------------------+-----------+------------+--------+-----------
- attno_test_table |         | relation | {WEAK_READ,WEAK_WRITE}     |           |            |        |
- attno_test_table |         | keyrange | {WEAK_READ,WEAK_WRITE}     | {1,1}     |            |        |
- attno_test_table |         | row      | {WEAK_READ,WEAK_WRITE}     | {1,1}     | {1}        |        |
  attno_test_table | c       | column   | {STRONG_READ,STRONG_WRITE} | {1,1}     | {1}        |      3 |        14
+ attno_test_table |         | row      | {WEAK_READ,WEAK_WRITE}     | {1,1}     | {1}        |        |
+ attno_test_table |         | keyrange | {WEAK_READ,WEAK_WRITE}     | {1,1}     |            |        |
+ attno_test_table |         | relation | {WEAK_READ,WEAK_WRITE}     |           |            |        |
 (4 rows)
 
 ABORT;
@@ -539,10 +539,10 @@ SELECT l.relation::regclass, a.attname, l.locktype, l.mode, l.hash_cols, l.range
 FROM yb_lock_status(null,null) l LEFT JOIN pg_attribute a ON a.attrelid = l.relation AND a.attnum = l.attnum;
      relation     | attname | locktype |            mode            | hash_cols | range_cols | attnum | column_id
 ------------------+---------+----------+----------------------------+-----------+------------+--------+-----------
- attno_test_table |         | relation | {WEAK_READ,WEAK_WRITE}     |           |            |        |
- attno_test_table |         | keyrange | {WEAK_READ,WEAK_WRITE}     | {1,1}     |            |        |
- attno_test_table |         | row      | {WEAK_READ,WEAK_WRITE}     | {1,1}     | {1}        |        |
  attno_test_table | d       | column   | {STRONG_READ,STRONG_WRITE} | {1,1}     | {1}        |      4 |        15
+ attno_test_table |         | row      | {WEAK_READ,WEAK_WRITE}     | {1,1}     | {1}        |        |
+ attno_test_table |         | keyrange | {WEAK_READ,WEAK_WRITE}     | {1,1}     |            |        |
+ attno_test_table |         | relation | {WEAK_READ,WEAK_WRITE}     |           |            |        |
 (4 rows)
 
 ABORT;
@@ -553,10 +553,10 @@ SELECT l.relation::regclass, a.attname, l.locktype, l.mode, l.hash_cols, l.range
 FROM yb_lock_status(null,null) l LEFT JOIN pg_attribute a ON a.attrelid = l.relation AND a.attnum = l.attnum;
      relation     | attname | locktype |            mode            | hash_cols | range_cols | attnum | column_id
 ------------------+---------+----------+----------------------------+-----------+------------+--------+-----------
- attno_test_table |         | relation | {WEAK_READ,WEAK_WRITE}     |           |            |        |
- attno_test_table |         | keyrange | {WEAK_READ,WEAK_WRITE}     | {1,1}     |            |        |
- attno_test_table |         | row      | {WEAK_READ,WEAK_WRITE}     | {1,1}     | {1}        |        |
  attno_test_table | c       | column   | {STRONG_READ,STRONG_WRITE} | {1,1}     | {1}        |      7 |        16
+ attno_test_table |         | row      | {WEAK_READ,WEAK_WRITE}     | {1,1}     | {1}        |        |
+ attno_test_table |         | keyrange | {WEAK_READ,WEAK_WRITE}     | {1,1}     |            |        |
+ attno_test_table |         | relation | {WEAK_READ,WEAK_WRITE}     |           |            |        |
 (4 rows)
 
 ABORT;

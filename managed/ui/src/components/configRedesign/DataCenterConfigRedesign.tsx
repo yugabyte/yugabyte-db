@@ -33,6 +33,8 @@ import { YBTabsPanel, YBTabsWithLinksPanel } from '../panels';
 import { assertUnreachableCase } from '../../utils/errorHandlingUtils';
 import { isAvailable, showOrRedirect } from '../../utils/LayoutUtils';
 import { api, regionMetadataQueryKey } from '../../redesign/helpers/api';
+import { RbacValidator } from '../../redesign/features/rbac/common/RbacValidator';
+import { UserPermissionMap } from '../../redesign/features/rbac/UserPermPathMapping';
 
 interface ReactRouterProps {
   location: LocationShape;
@@ -79,138 +81,144 @@ export const DataCenterConfigRedesign = ({ location, params }: ReactRouterProps)
   return (
     <div>
       <h2 className="content-title">Provider Configuration</h2>
-      <YBTabsWithLinksPanel
-        defaultTab={defaultTab}
-        activeTab={activeTab}
-        routePrefix={`/${CONFIG_ROUTE_PREFIX}/`}
-        id="config-tab-panel"
-        className="universe-detail data-center-config-tab"
+      <RbacValidator
+        accessRequiredOn={{
+          ...UserPermissionMap.listProvider
+        }}
       >
-        {isAvailable(currentCustomer.data.features, 'config.infra') && (
-          <Tab eventKey={ConfigTabKey.INFRA} title="Infrastructure" key="infra-config">
-            <YBTabsPanel
-              defaultTab={ProviderCode.AWS}
-              activeTab={params.section}
-              id="cloud-config-tab-panel"
-              className="config-tabs redesign"
-              routePrefix={`/${CONFIG_ROUTE_PREFIX}/${ConfigTabKey.INFRA}/`}
-            >
-              <Tab
-                eventKey={ProviderCode.AWS}
-                title={getTabTitle(ProviderCode.AWS)}
-                key="aws-tab"
-                unmountOnExit={true}
+        <YBTabsWithLinksPanel
+          defaultTab={defaultTab}
+          activeTab={activeTab}
+          routePrefix={`/${CONFIG_ROUTE_PREFIX}/`}
+          id="config-tab-panel"
+          className="universe-detail data-center-config-tab"
+        >
+          {isAvailable(currentCustomer.data.features, 'config.infra') && (
+            <Tab eventKey={ConfigTabKey.INFRA} title="Infrastructure" key="infra-config">
+              <YBTabsPanel
+                defaultTab={ProviderCode.AWS}
+                activeTab={params.section}
+                id="cloud-config-tab-panel"
+                className="config-tabs redesign"
+                routePrefix={`/${CONFIG_ROUTE_PREFIX}/${ConfigTabKey.INFRA}/`}
               >
-                {params.uuid === undefined ? (
-                  <InfraProvider providerCode={ProviderCode.AWS} />
-                ) : (
-                  <ProviderView providerUUID={params.uuid} />
-                )}
+                <Tab
+                  eventKey={ProviderCode.AWS}
+                  title={getTabTitle(ProviderCode.AWS)}
+                  key="aws-tab"
+                  unmountOnExit={true}
+                >
+                  {params.uuid === undefined ? (
+                    <InfraProvider providerCode={ProviderCode.AWS} />
+                  ) : (
+                    <ProviderView providerUUID={params.uuid} />
+                  )}
+                </Tab>
+                <Tab
+                  eventKey={ProviderCode.GCP}
+                  title={getTabTitle(ProviderCode.GCP)}
+                  key="gcp-tab"
+                  unmountOnExit={true}
+                >
+                  {params.uuid === undefined ? (
+                    <InfraProvider providerCode={ProviderCode.GCP} />
+                  ) : (
+                    <ProviderView providerUUID={params.uuid} />
+                  )}
+                </Tab>
+                <Tab
+                  eventKey={ProviderCode.AZU}
+                  title={getTabTitle(ProviderCode.AZU)}
+                  key="azure-tab"
+                  unmountOnExit={true}
+                >
+                  {params.uuid === undefined ? (
+                    <InfraProvider providerCode={ProviderCode.AZU} />
+                  ) : (
+                    <ProviderView providerUUID={params.uuid} />
+                  )}
+                </Tab>
+                <Tab
+                  eventKey={KubernetesProviderType.TANZU}
+                  title={getTabTitle(KubernetesProviderType.TANZU)}
+                  key="tanzu-tab"
+                  unmountOnExit={true}
+                >
+                  {params.uuid === undefined ? (
+                    <InfraProvider
+                      providerCode={ProviderCode.KUBERNETES}
+                      kubernetesProviderType={KubernetesProviderType.TANZU}
+                    />
+                  ) : (
+                    <ProviderView providerUUID={params.uuid} />
+                  )}
+                </Tab>
+                <Tab
+                  eventKey={KubernetesProviderType.OPEN_SHIFT}
+                  title={getTabTitle(KubernetesProviderType.OPEN_SHIFT)}
+                  key="openshift-tab"
+                  unmountOnExit={true}
+                >
+                  {params.uuid === undefined ? (
+                    <InfraProvider
+                      providerCode={ProviderCode.KUBERNETES}
+                      kubernetesProviderType={KubernetesProviderType.OPEN_SHIFT}
+                    />
+                  ) : (
+                    <ProviderView providerUUID={params.uuid} />
+                  )}
+                </Tab>
+                <Tab
+                  eventKey={KubernetesProviderType.MANAGED_SERVICE}
+                  title={getTabTitle(KubernetesProviderType.MANAGED_SERVICE)}
+                  key="k8s-tab"
+                  unmountOnExit={true}
+                >
+                  {params.uuid === undefined ? (
+                    <InfraProvider
+                      providerCode={ProviderCode.KUBERNETES}
+                      kubernetesProviderType={KubernetesProviderType.MANAGED_SERVICE}
+                    />
+                  ) : (
+                    <ProviderView providerUUID={params.uuid} />
+                  )}
+                </Tab>
+                <Tab
+                  eventKey={ProviderCode.ON_PREM}
+                  title={getTabTitle(ProviderCode.ON_PREM)}
+                  key="onprem-tab"
+                  unmountOnExit={true}
+                >
+                  {params.uuid === undefined ? (
+                    <InfraProvider providerCode={ProviderCode.ON_PREM} />
+                  ) : (
+                    <ProviderView providerUUID={params.uuid} />
+                  )}
+                </Tab>
+              </YBTabsPanel>
+            </Tab>
+          )}
+          {isAvailable(currentCustomer.data.features, 'config.backup') && (
+            <Tab eventKey="backup" title="Backup" key="storage-config">
+              <StorageConfigurationContainer
+                activeTab={activeSection}
+                routePrefix={CONFIG_ROUTE_PREFIX}
+              />
+            </Tab>
+          )}
+          {isAvailable(currentCustomer.data.features, 'config.security') && (
+            <Tab eventKey={ConfigTabKey.SECURITY} title="Security" key="security-config">
+              <SecurityConfiguration activeTab={params.section} />
+            </Tab>
+          )}
+          {(featureFlags.test['enableMultiRegionConfig'] ||
+            featureFlags.released['enableMultiRegionConfig']) && (
+              <Tab eventKey={ConfigTabKey.BACKUP_NEW} title="New Backup Config" key="new-backup-config">
+                <NewStorageConfiguration activeTab={params.section} />
               </Tab>
-              <Tab
-                eventKey={ProviderCode.GCP}
-                title={getTabTitle(ProviderCode.GCP)}
-                key="gcp-tab"
-                unmountOnExit={true}
-              >
-                {params.uuid === undefined ? (
-                  <InfraProvider providerCode={ProviderCode.GCP} />
-                ) : (
-                  <ProviderView providerUUID={params.uuid} />
-                )}
-              </Tab>
-              <Tab
-                eventKey={ProviderCode.AZU}
-                title={getTabTitle(ProviderCode.AZU)}
-                key="azure-tab"
-                unmountOnExit={true}
-              >
-                {params.uuid === undefined ? (
-                  <InfraProvider providerCode={ProviderCode.AZU} />
-                ) : (
-                  <ProviderView providerUUID={params.uuid} />
-                )}
-              </Tab>
-              <Tab
-                eventKey={KubernetesProviderType.TANZU}
-                title={getTabTitle(KubernetesProviderType.TANZU)}
-                key="tanzu-tab"
-                unmountOnExit={true}
-              >
-                {params.uuid === undefined ? (
-                  <InfraProvider
-                    providerCode={ProviderCode.KUBERNETES}
-                    kubernetesProviderType={KubernetesProviderType.TANZU}
-                  />
-                ) : (
-                  <ProviderView providerUUID={params.uuid} />
-                )}
-              </Tab>
-              <Tab
-                eventKey={KubernetesProviderType.OPEN_SHIFT}
-                title={getTabTitle(KubernetesProviderType.OPEN_SHIFT)}
-                key="openshift-tab"
-                unmountOnExit={true}
-              >
-                {params.uuid === undefined ? (
-                  <InfraProvider
-                    providerCode={ProviderCode.KUBERNETES}
-                    kubernetesProviderType={KubernetesProviderType.OPEN_SHIFT}
-                  />
-                ) : (
-                  <ProviderView providerUUID={params.uuid} />
-                )}
-              </Tab>
-              <Tab
-                eventKey={KubernetesProviderType.MANAGED_SERVICE}
-                title={getTabTitle(KubernetesProviderType.MANAGED_SERVICE)}
-                key="k8s-tab"
-                unmountOnExit={true}
-              >
-                {params.uuid === undefined ? (
-                  <InfraProvider
-                    providerCode={ProviderCode.KUBERNETES}
-                    kubernetesProviderType={KubernetesProviderType.MANAGED_SERVICE}
-                  />
-                ) : (
-                  <ProviderView providerUUID={params.uuid} />
-                )}
-              </Tab>
-              <Tab
-                eventKey={ProviderCode.ON_PREM}
-                title={getTabTitle(ProviderCode.ON_PREM)}
-                key="onprem-tab"
-                unmountOnExit={true}
-              >
-                {params.uuid === undefined ? (
-                  <InfraProvider providerCode={ProviderCode.ON_PREM} />
-                ) : (
-                  <ProviderView providerUUID={params.uuid} />
-                )}
-              </Tab>
-            </YBTabsPanel>
-          </Tab>
-        )}
-        {isAvailable(currentCustomer.data.features, 'config.backup') && (
-          <Tab eventKey="backup" title="Backup" key="storage-config">
-            <StorageConfigurationContainer
-              activeTab={activeSection}
-              routePrefix={CONFIG_ROUTE_PREFIX}
-            />
-          </Tab>
-        )}
-        {isAvailable(currentCustomer.data.features, 'config.security') && (
-          <Tab eventKey={ConfigTabKey.SECURITY} title="Security" key="security-config">
-            <SecurityConfiguration activeTab={params.section} />
-          </Tab>
-        )}
-        {(featureFlags.test['enableMultiRegionConfig'] ||
-          featureFlags.released['enableMultiRegionConfig']) && (
-          <Tab eventKey={ConfigTabKey.BACKUP_NEW} title="New Backup Config" key="new-backup-config">
-            <NewStorageConfiguration activeTab={params.section} />
-          </Tab>
-        )}
-      </YBTabsWithLinksPanel>
+            )}
+        </YBTabsWithLinksPanel>
+      </RbacValidator>
     </div>
   );
 };

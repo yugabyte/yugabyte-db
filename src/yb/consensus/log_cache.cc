@@ -242,12 +242,14 @@ Status LogCache::AppendOperations(const ReplicateMsgs& msgs, const OpId& committ
     prepare_result = PrepareAppendOperations(msgs);
   }
 
+  TracePtr current_trace(Trace::CurrentTrace());
   Status log_status = log_->AsyncAppendReplicates(
     msgs, committed_op_id, batch_mono_time,
     Bind(&LogCache::LogCallback,
          Unretained(this),
          prepare_result.overwritten_cache,
          prepare_result.last_idx_in_batch,
+         current_trace,
          callback));
 
   if (!log_status.ok()) {
@@ -263,8 +265,11 @@ Status LogCache::AppendOperations(const ReplicateMsgs& msgs, const OpId& committ
 
 void LogCache::LogCallback(bool overwritten_cache,
                            int64_t last_idx_in_batch,
+                           TracePtr trace,
                            const StatusCallback& user_callback,
                            const Status& log_status) {
+  ADOPT_TRACE(trace.get());
+  TRACE("Appended till idx $0 to the local log", last_idx_in_batch);
   if (overwritten_cache || log_status.ok()) {
     std::lock_guard l(lock_);
     if (overwritten_cache) {

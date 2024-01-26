@@ -33,7 +33,7 @@ func forceDeleteContainer(containers ...string) error {
 
 // deleteContainerImagesRegex deletes all images matching the given regex
 func deleteContainerImagesRegex(regex string) error {
-	cmdArgs := fmt.Sprintf(`images | grep "%s" | awk '{print $3}' | xargs sudo docker rmi -f`, regex)
+	cmdArgs := fmt.Sprintf(`images | grep "%s" | awk '{print $3}' | xargs docker rmi -f`, regex)
 	if out := shell.RunShell("docker", cmdArgs); !out.Succeeded() {
 		if strings.Contains(out.StderrString(), "requires at least 1 argument") {
 			logging.Debug("found no images matching regex " + regex)

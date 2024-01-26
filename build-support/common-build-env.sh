@@ -63,7 +63,6 @@ $YB_SRC_ROOT/python/yugabyte/gen_initial_sys_catalog_snapshot.py
   export YB_SCRIPT_PATH_IS_SAME_PATH=$YB_SRC_ROOT/python/yugabyte/is_same_path.py
   export YB_SCRIPT_PATH_KILL_LONG_RUNNING_MINICLUSTER_DAEMONS=\
 $YB_SRC_ROOT/python/yugabyte/kill_long_running_minicluster_daemons.py
-  export YB_SCRIPT_PATH_MAKE_RPATH_RELATIVE=$YB_SRC_ROOT/python/yugabyte/make_rpath_relative.py
   export YB_SCRIPT_PATH_PARSE_TEST_FAILURE=$YB_SRC_ROOT/python/yugabyte/parse_test_failure.py
   export YB_SCRIPT_PATH_POSTPROCESS_TEST_RESULT=\
 $YB_SRC_ROOT/python/yugabyte/postprocess_test_result.py
@@ -80,6 +79,8 @@ $YB_SRC_ROOT/python/yugabyte/split_long_command_line.py
 $YB_SRC_ROOT/python/yugabyte/update_test_result_xml.py
   export YB_SCRIPT_PATH_YB_RELEASE_CORE_DB=$YB_SRC_ROOT/python/yugabyte/yb_release_core_db.py
   export YB_SCRIPT_PATH_LIST_PACKAGED_TARGETS=$YB_SRC_ROOT/python/yugabyte/list_packaged_targets.py
+  export YB_SCRIPT_PATH_VALIDATE_BUILD_ROOT=$YB_SRC_ROOT/python/yugabyte/validate_build_root.py
+  export YB_SCRIPT_PATH_ANALYZE_TEST_RESULTS=$YB_SRC_ROOT/python/yugabyte/analyze_test_results.py
 }
 
 set_yb_src_root() {
@@ -389,13 +390,8 @@ decide_whether_to_use_linuxbrew() {
       if [[ ${predefined_build_root##*/} == *-linuxbrew-* ]]; then
         YB_USE_LINUXBREW=1
       fi
-    elif [[ -n ${YB_LINUXBREW_DIR:-} ||
-            ( ${YB_COMPILER_TYPE} =~ ^clang[0-9]+$ &&
-               $build_type =~ ^(release|prof_(gen|use))$ &&
-              "$( uname -m )" == "x86_64" &&
-              ${OSTYPE} =~ ^linux.*$ ) ]] && ! is_ubuntu; then
-      YB_USE_LINUXBREW=1
     fi
+    # Default is no linuxbrew
     export YB_USE_LINUXBREW=${YB_USE_LINUXBREW:-0}
   fi
 }
@@ -647,10 +643,14 @@ set_cmake_build_type_and_compiler_type() {
 
   if [[ -z ${build_type:-} ]]; then
     if [[ ${YB_LINKING_TYPE:-} == *-lto ]]; then
-      log "Setting build type to 'release' by default (YB_LINKING_TYPE=${YB_LINKING_TYPE})"
+      if [[ ${yb_set_build_type_quietly:-} != "true" ]]; then
+        log "Setting build type to 'release' by default (YB_LINKING_TYPE=${YB_LINKING_TYPE})"
+      fi
       build_type=release
     else
-      log "Setting build type to 'debug' by default"
+      if [[ ${yb_set_build_type_quietly:-} != "true" ]]; then
+        log "Setting build type to 'debug' by default"
+      fi
       build_type=debug
     fi
   fi
@@ -1638,7 +1638,9 @@ get_build_worker_list() {
     if [[ -n ${YB_BUILD_WORKERS_FILE:-} ]]; then
       build_workers=( $( cat "$YB_BUILD_WORKERS_FILE" ))
     else
-      build_workers=( $( curl -s "$YB_BUILD_WORKERS_LIST_URL" ) )
+      build_workers=( $( curl -s "$YB_BUILD_WORKERS_LIST_URL" ) ) \
+        || fatal "Failed to curl $YB_BUILD_WORKERS_LIST_URL: check your network connection or use" \
+                 "--no-remote"
     fi
     if [[ ${#build_workers[@]} -eq 0 ]]; then
       log "Got an empty list of build workers from $YB_BUILD_WORKERS_LIST_URL," \
@@ -2041,7 +2043,7 @@ handle_predefined_build_root() {
   if [[ $predefined_build_root != $YB_BUILD_INTERNAL_PARENT_DIR/* && \
         $predefined_build_root != $YB_BUILD_EXTERNAL_PARENT_DIR/* ]]; then
     # Sometimes $predefined_build_root contains symlinks on its path.
-    "$YB_SRC_ROOT/build-support/validate_build_root.py" \
+    "$YB_SCRIPT_PATH_VALIDATE_BUILD_ROOT" \
       "$predefined_build_root" \
       "$YB_BUILD_INTERNAL_PARENT_DIR" \
       "$YB_BUILD_EXTERNAL_PARENT_DIR"
@@ -2262,6 +2264,7 @@ check_python_script_syntax() {
 run_shellcheck() {
   local scripts_to_check=(
     bin/release_package_docker_test.sh
+    bin/run_tests_on_spark_tool.sh
     build-support/common-build-env.sh
     build-support/common-cli-env.sh
     build-support/common-test-env.sh
@@ -2382,7 +2385,7 @@ activate_virtualenv() {
   if [[ ${yb_readonly_virtualenv} == "false" ]]; then
     local requirements_file_path="$YB_SRC_ROOT/requirements_frozen.txt"
     local installed_requirements_file_path=$virtualenv_dir/${requirements_file_path##*/}
-    pip3 install --upgrade pip
+    "$pip_executable" --retries 0 install --upgrade pip
     if ! cmp --silent "$requirements_file_path" "$installed_requirements_file_path"; then
       run_with_retries 10 0.5 "$pip_executable" install -r "$requirements_file_path" \
         $pip_no_cache
@@ -2593,7 +2596,7 @@ set_prebuilt_thirdparty_url() {
       local thirdparty_tool_cmd_line=(
         "$YB_BUILD_SUPPORT_DIR/thirdparty_tool"
         --save-thirdparty-url-to-file "$thirdparty_url_file_path"
-        --compiler-type "$YB_COMPILER_TYPE"
+        --compiler-type "${YB_COMPILER_TYPE_FOR_THIRDPARTY:-$YB_COMPILER_TYPE}"
       )
       if [[ -n ${YB_USE_LINUXBREW:-} ]]; then
         # See arg_str_to_bool in Python code for how the boolean parameter is interpreted.

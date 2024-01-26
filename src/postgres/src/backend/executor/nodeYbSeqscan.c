@@ -117,9 +117,20 @@ YbSeqNext(YbSeqScanState *node)
 		 * predicate. So, we set the rowmark on all read requests sent to
 		 * tserver instead of locking each tuple one by one in LockRows node.
 		 */
-		if (estate->es_rowmarks && estate->es_range_table_size > 0)
+		for (int i = 0; estate->es_rowmarks && i < estate->es_range_table_size;
+			 i++)
 		{
-			ExecRowMark *erm = estate->es_rowmarks[0];
+			ExecRowMark *erm = estate->es_rowmarks[i];
+			/*
+			 * YB_TODO: This block of code is broken on master (GH #20704). With
+			 * PG commit f9eb7c14b08d2cc5eda62ffaf37a356c05e89b93,
+			 * estate->es_rowmarks is an array with
+			 * potentially NULL elements (previously, it was a list). As a
+			 * temporary fix till #20704 is addressed, ignore any NULL element
+			 * in es_rowmarks.
+			 */
+			if (!erm)
+				continue;
 			/* Do not propagate non-row-locking row marks. */
 			if (erm->markType != ROW_MARK_REFERENCE &&
 				erm->markType != ROW_MARK_COPY)

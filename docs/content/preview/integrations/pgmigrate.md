@@ -6,7 +6,7 @@ description: Use PGmigrate to work with distributed SQL databases in YugabyteDB.
 menu:
   preview_integrations:
     identifier: pgmigrate
-    parent: integrations
+    parent: data-migration
     weight: 571
 type: docs
 ---

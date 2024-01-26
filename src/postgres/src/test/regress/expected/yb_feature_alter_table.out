@@ -340,7 +340,7 @@ create table atacc1 (test int not null);
 alter table atacc1 alter column test drop not null;
 insert into atacc1 values (null);
 alter table atacc1 alter test set not null;
-ERROR:  column "test" contains null values
+ERROR:  column "test" of relation "atacc1" contains null values
 delete from atacc1;
 alter table atacc1 alter test set not null;
 -- try altering a non-existent column, should fail
@@ -827,7 +827,7 @@ DROP TABLE test_alter_column_type_with_index;
 CREATE TABLE foobar (key text, value text);
 INSERT INTO foobar VALUES ('key', 'value');
 ALTER TABLE foobar ADD COLUMN v2 text not null; -- fails due to not null constraint
-ERROR:  column "v2" contains null values
+ERROR:  column "v2" of relation "foobar" contains null values
 ALTER TABLE foobar ADD COLUMN v2 text not null DEFAULT 'abc'; -- passes
 DROP TABLE foobar;
 --

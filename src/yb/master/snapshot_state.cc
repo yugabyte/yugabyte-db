@@ -56,6 +56,10 @@ DEFINE_RUNTIME_int64(max_concurrent_snapshot_rpcs_per_tserver, 1,
     "live tservers then the total maximum concurrent snapshot RPCs is just the "
     "value of this flag.");
 
+DEFINE_test_flag(bool, treat_hours_as_milliseconds_for_snapshot_expiry, false,
+    "Test only flag to expire snapshots after x milliseconds instead of x hours. Used "
+    "to speed up tests");
+
 namespace yb {
 namespace master {
 
@@ -89,6 +93,9 @@ SnapshotState::SnapshotState(
   InitTabletIds(request.tablet_id(),
                 request.imported() ? SysSnapshotEntryPB::COMPLETE : SysSnapshotEntryPB::CREATING);
   request.extra_data().UnpackTo(&entries_);
+  if (request.retention_duration_hours()) {
+    retention_duration_hours_ = request.retention_duration_hours();
+  }
 }
 
 SnapshotState::SnapshotState(
@@ -102,6 +109,9 @@ SnapshotState::SnapshotState(
       version_(entry.version()) {
   InitTablets(entry.tablet_snapshots());
   *entries_.mutable_entries() = entry.entries();
+  if (entry.has_retention_duration_hours()) {
+    retention_duration_hours_ = entry.retention_duration_hours();
+  }
 }
 
 std::string SnapshotState::ToString() const {
@@ -139,6 +149,10 @@ Status SnapshotState::ToEntryPB(
 
   if (schedule_id_) {
     out->set_schedule_id(schedule_id_.data(), schedule_id_.size());
+  }
+
+  if (retention_duration_hours_) {
+    out->set_retention_duration_hours(*retention_duration_hours_);
   }
 
   out->set_version(version_);
@@ -256,6 +270,18 @@ Status SnapshotState::CheckDoneStatus(const Status& status) {
     return Status::OK();
   }
   return status;
+}
+
+bool SnapshotState::HasExpired(HybridTime now) const {
+  if (schedule_id_ || !retention_duration_hours_ ||
+      *retention_duration_hours_ < 0 || !snapshot_hybrid_time_) {
+    return false;
+  }
+  auto delta = FLAGS_TEST_treat_hours_as_milliseconds_for_snapshot_expiry ?
+      MonoDelta::FromMilliseconds(*retention_duration_hours_) :
+      MonoDelta::FromHours(*retention_duration_hours_);
+  HybridTime expiry_time = snapshot_hybrid_time_.AddDelta(delta);
+  return now > expiry_time;
 }
 
 } // namespace master

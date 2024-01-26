@@ -247,6 +247,7 @@ set(TSERVER_SRCS
   xcluster_safe_time_map.cc
   xcluster_consumer.cc
   xcluster_poller.cc
+  xcluster_poller_stats.cc
   xcluster_output_client.cc
   xcluster_write_implementations.cc)
 

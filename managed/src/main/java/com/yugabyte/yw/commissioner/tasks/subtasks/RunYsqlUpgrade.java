@@ -158,29 +158,25 @@ public class RunYsqlUpgrade extends UniverseTaskBase {
           continue;
         }
 
-        HostAndPort hp = null;
-        List<NodeDetails> tserverNodes = universe.getTServers();
-        for (NodeDetails currentNode : tserverNodes) {
-          boolean tserverAlive = isTserverAliveOnNode(currentNode, universe.getMasterAddresses());
-          if (tserverAlive) {
-            log.debug(
-                "Tserver: {} is alive, with ip and port: {}:{}",
-                currentNode.getNodeName(),
-                currentNode.cloudInfo.private_ip,
-                currentNode.tserverRpcPort);
-            hp =
-                HostAndPort.fromParts(currentNode.cloudInfo.private_ip, currentNode.tserverRpcPort);
-            break;
-          }
-        }
+        NodeDetails aliveTServer = findAliveTServer(client, universe);
 
         // No alive tservers found.
-        if (hp == null) {
+        if (aliveTServer == null) {
           log.debug("Failed to find alive tservers for universe {}", universe.getUniverseUUID());
           errorMessage =
               String.format("No alive tservers found in universe: %s", universe.getUniverseUUID());
           continue;
         }
+
+        log.debug(
+            "Tserver: {} is alive in region {}, with ip and port: {}:{}",
+            aliveTServer.getNodeName(),
+            aliveTServer.getRegion(),
+            aliveTServer.cloudInfo.private_ip,
+            aliveTServer.tserverRpcPort);
+        HostAndPort hp =
+            HostAndPort.fromParts(aliveTServer.cloudInfo.private_ip, aliveTServer.tserverRpcPort);
+
         UpgradeYsqlResponse upgradeYsqlResponse = client.upgradeYsql(hp, useSingleConnection);
         if (upgradeYsqlResponse.hasError()) {
           log.debug(
@@ -200,5 +196,36 @@ public class RunYsqlUpgrade extends UniverseTaskBase {
       log.debug("Successfully performed YSQL upgrade for universe {}", universe.getUniverseUUID());
       break;
     }
+  }
+
+  /*
+   * Tries to find alive tserver in same region as the master leader region. If not,
+   *   will try to find an alive tserver in any region.
+   */
+  private NodeDetails findAliveTServer(YBClient client, Universe universe) {
+    NodeDetails masterLeaderNode = universe.getMasterLeaderNode();
+    String masterLeaderRegion = masterLeaderNode.getRegion();
+    NodeDetails aliveTServer = null;
+
+    List<NodeDetails> tserverNodes = universe.getTServers();
+    for (NodeDetails currentNode : tserverNodes) {
+      log.debug(
+          "Current node: {} in region {}, with ip and port: {}:{}",
+          currentNode.getNodeName(),
+          currentNode.getRegion(),
+          currentNode.cloudInfo.private_ip,
+          currentNode.tserverRpcPort);
+      boolean tServerAlive = isTserverAliveOnNode(currentNode, universe.getMasterAddresses());
+      if (tServerAlive && isNodesInSameRegion(masterLeaderNode, currentNode)) {
+        return currentNode;
+      } else if (tServerAlive) {
+        aliveTServer = currentNode;
+      }
+    }
+    return aliveTServer;
+  }
+
+  private boolean isNodesInSameRegion(NodeDetails node1, NodeDetails node2) {
+    return node1.getRegion().equals(node2.getRegion());
   }
 }
