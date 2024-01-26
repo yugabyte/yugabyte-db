@@ -1119,7 +1119,7 @@ Result<std::vector<tablet::TabletPeerPtr>> WaitForTableActiveTabletLeadersPeers(
 }
 
 Status WaitUntilTabletHasLeader(
-    MiniCluster* cluster, const string& tablet_id, MonoTime deadline) {
+    MiniCluster* cluster, const TabletId& tablet_id, CoarseTimePoint deadline) {
   return Wait(
       [cluster, &tablet_id] {
         auto tablet_peers = ListTabletPeers(cluster, [&tablet_id](auto peer) {
@@ -1130,6 +1130,19 @@ Status WaitUntilTabletHasLeader(
         return tablet_peers.size() == 1;
       },
       deadline, "Waiting for election in tablet " + tablet_id);
+}
+
+Status WaitForTableLeaders(
+    MiniCluster* cluster, const TableId& table_id, CoarseTimePoint deadline) {
+  for (const auto& tablet_id : ListTabletIdsForTable(cluster, table_id)) {
+    RETURN_NOT_OK(WaitUntilTabletHasLeader(cluster, tablet_id, deadline));
+  }
+  return Status::OK();
+}
+
+Status WaitForTableLeaders(
+    MiniCluster* cluster, const TableId& table_id, CoarseDuration timeout) {
+  return WaitForTableLeaders(cluster, table_id, CoarseMonoClock::Now() + timeout);
 }
 
 Status WaitUntilMasterHasLeader(MiniCluster* cluster, MonoDelta timeout) {
@@ -1454,6 +1467,10 @@ Status WaitAllReplicasSynchronizedWithLeader(
         Format("Wait T $0 P $1 commit $2", peer->tablet_id(), peer->permanent_uuid(), it->second)));
   }
   return Status::OK();
+}
+
+Status WaitAllReplicasSynchronizedWithLeader(MiniCluster* cluster, CoarseDuration timeout) {
+  return WaitAllReplicasSynchronizedWithLeader(cluster, CoarseMonoClock::Now() + timeout);
 }
 
 Status WaitForAnySstFiles(tablet::TabletPeerPtr peer, MonoDelta timeout) {
