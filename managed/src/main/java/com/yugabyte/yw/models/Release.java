@@ -3,6 +3,7 @@ package com.yugabyte.yw.models;
 import static play.mvc.Http.Status.BAD_REQUEST;
 
 import com.yugabyte.yw.common.PlatformServiceException;
+import com.yugabyte.yw.controllers.apiModels.CreateRelease;
 import io.ebean.Finder;
 import io.ebean.Model;
 import io.ebean.annotation.EnumValue;
@@ -11,6 +12,9 @@ import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
 import jakarta.persistence.Enumerated;
 import jakarta.persistence.Id;
+import java.text.DateFormat;
+import java.text.ParseException;
+import java.util.Date;
 import java.util.List;
 import java.util.UUID;
 import lombok.Getter;
@@ -38,7 +42,7 @@ public class Release extends Model {
   @Column(nullable = false)
   private YbType yb_type;
 
-  private String releaseDate;
+  private Date releaseDate;
 
   private String releaseNotes;
 
@@ -72,8 +76,43 @@ public class Release extends Model {
     return release;
   }
 
+  public static Release createFromRequest(CreateRelease reqRelease) {
+    Release release = new Release();
+    // Generate UUID if one was not provided.
+    if (reqRelease.release_uuid == null) {
+      release.releaseUUID = reqRelease.release_uuid;
+    } else {
+      release.releaseUUID = UUID.randomUUID();
+    }
+
+    // Required fields
+    release.version = reqRelease.version;
+    release.releaseType = reqRelease.release_type;
+    release.yb_type = YbType.valueOf(reqRelease.yb_type);
+
+    // Optional fields
+    release.releaseTag = reqRelease.release_tag;
+    if (reqRelease.release_date != null) {
+      DateFormat df = DateFormat.getDateInstance();
+      try {
+        release.releaseDate = df.parse(reqRelease.release_date);
+      } catch (ParseException e) {
+        log.warn("unable to parse date format", e);
+      }
+    }
+    release.releaseNotes = reqRelease.release_notes;
+    release.state = ReleaseState.ACTIVE;
+
+    release.save();
+    return release;
+  }
+
   public static Release get(UUID uuid) {
     return find.byId(uuid);
+  }
+
+  public static List<Release> getAll() {
+    return find.all();
   }
 
   public static Release getOrBadRequest(UUID releaseUUID) {
