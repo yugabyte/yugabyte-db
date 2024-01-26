@@ -268,3 +268,4 @@ The Flask server for this application exposes a REST endpoint which returns valu
 LangChain provides a powerful toolkit to application developers seeking LLM integrations. By connecting to YugabyteDB, users can access data directly, without the need for replication.
 
 For more information about LangChain, see the [LangChain documentation](https://python.langchain.com/docs/get_started/introduction).
+If you would like to learn more on integrating OpenAI with YugabyteDB, check out the [Azure OpenAI tutorial](../../azure/azure-openai/).
